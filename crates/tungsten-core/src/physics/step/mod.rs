@@ -143,6 +143,7 @@ use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impu
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
 use solver::{
     apply_impulse, apply_restitution, narrow_phase, one_way_holds, soft_params, solve_contacts,
+    solve_friction, tangent,
 };
 use sweep::{SweepGrid, speculative_pass};
 
@@ -427,6 +428,38 @@ struct StepExtra {
     /// Each entity proxy's gravity scale, in proxy order; empty while every
     /// one is 1.
     gravity_scales: Vec<f32>,
+    /// Each proxy's friction, the entity proxies' and then the tiles', in
+    /// proxy order; empty while every one is 0, which leaves friction out
+    /// of the frame.
+    frictions: Vec<f32>,
+    /// The substep's friction constraints, one for each contact whose
+    /// friction is above 0, in contact order.
+    friction: Vec<FrictionConstraint>,
+    /// Tangent impulses carried by pair index between substeps, as
+    /// `pair_impulses` carries normal ones; kept only in a frame with
+    /// friction.
+    pair_tangents: Vec<f32>,
+    /// Nonzero tangent impulses by pair key, across frames and pair builds.
+    tangents: ImpulseMap,
+    /// Nonzero carried tangents of the pairs a repair removes, by pair key.
+    repair_tangents: ImpulseMap,
+    /// Scratch for filling `repair_tangents`.
+    removed_tangents: Vec<(u128, f32)>,
+}
+
+/// One contact's Coulomb friction (`D-063`'s solver, a tangent row beside
+/// the normal one): solved after the normal pass of each iteration, its
+/// accumulated impulse clamped to `±mu · λn`.
+#[derive(Debug, Clone, Copy)]
+struct FrictionConstraint {
+    /// Its contact's index in the substep's contacts.
+    contact: u32,
+    /// The geometric mean of the two sides' friction, above 0.
+    mu: f32,
+    /// Inverse of the summed inverse masses along the tangent.
+    tangent_mass: f32,
+    /// Accumulated impulse along the tangent `(−n.y, n.x)`, warm-started.
+    impulse: f32,
 }
 
 impl PhysicsBuffers {
@@ -893,6 +926,8 @@ fn substep(
     } = buffers;
     candidates.clear();
     contacts.clear();
+    extra.friction.clear();
+    let friction_on = !extra.frictions.is_empty();
     let seed_impulses = std::mem::take(seed_pair_impulses);
 
     // Narrow phase once per substep; solver iterations reuse these contacts.
@@ -909,6 +944,11 @@ fn substep(
         // Forget a disappearing contact immediately, even if it returns
         // later without a broadphase rebuild.
         let cached_impulse = std::mem::replace(&mut pair_impulses[pair_index], 0.0);
+        let cached_tangent = if friction_on {
+            std::mem::replace(&mut extra.pair_tangents[pair_index], 0.0)
+        } else {
+            0.0
+        };
         let a_idx = a_u as usize;
         let b_idx = b_u as usize;
         let margin = (proxies[a_idx].velocity - proxies[b_idx].velocity).length() * sub_dt
@@ -1010,6 +1050,22 @@ fn substep(
             key,
             pair_index,
         });
+        // Friction rides beside the contact when both sides have some.
+        if friction_on {
+            let mu = (extra.frictions[a_idx] * extra.frictions[b_idx]).sqrt();
+            if mu > 0.0 {
+                extra.friction.push(FrictionConstraint {
+                    contact: (contacts.len() - 1) as u32,
+                    mu,
+                    tangent_mass: 1.0 / inv_mass_sum,
+                    impulse: if seed_impulses {
+                        extra.tangents.get(key)
+                    } else {
+                        cached_tangent
+                    },
+                });
+            }
+        }
         if contact.penetration > 0.0 {
             if proxies[a_idx].kinematic || proxies[b_idx].kinematic {
                 kinematic_touch(proxies, events, kept, a_idx, b_idx, &contact);
@@ -1077,6 +1133,12 @@ fn substep(
             apply_impulse(proxies, contact, contact.normal * contact.impulse);
         }
     }
+    for friction in &extra.friction {
+        if friction.impulse != 0.0 {
+            let contact = &contacts[friction.contact as usize];
+            apply_impulse(proxies, contact, tangent(contact.normal) * friction.impulse);
+        }
+    }
 
     let inv_h = 1.0 / sub_dt;
     let soft = soft_params(config.contact_hertz, config.contact_damping_ratio, sub_dt);
@@ -1089,6 +1151,7 @@ fn substep(
 
     for _ in 0..config.solver_iterations.max(1) {
         solve_contacts(proxies, contacts, config, soft, soft_static, inv_h, true);
+        solve_friction(proxies, contacts, &mut extra.friction);
     }
 
     // Position integration converts the bias velocity into depenetration. A
@@ -1138,6 +1201,7 @@ fn substep(
 
     // One bias-free relax iteration strips the injected bias energy.
     solve_contacts(proxies, contacts, config, soft, soft_static, inv_h, false);
+    solve_friction(proxies, contacts, &mut extra.friction);
 
     apply_restitution(proxies, contacts, config.restitution_threshold);
 
@@ -1145,6 +1209,9 @@ fn substep(
     // at frame end or when a pair rebuild invalidates these indices.
     for contact in contacts.iter() {
         pair_impulses[contact.pair_index] = contact.impulse;
+    }
+    for friction in &extra.friction {
+        extra.pair_tangents[contacts[friction.contact as usize].pair_index] = friction.impulse;
     }
     *impulses_dirty = true;
     #[cfg(test)]

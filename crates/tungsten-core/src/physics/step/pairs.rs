@@ -127,6 +127,13 @@ impl ImpulseMap {
         }
     }
 
+    /// Empty the map, keeping its buffers: every key reads 0.
+    pub(super) fn clear(&mut self) {
+        self.keys.clear();
+        self.values.clear();
+        self.mask = 0;
+    }
+
     pub(super) fn get(&self, key: u128) -> f32 {
         if self.keys.is_empty() {
             return 0.0;
@@ -349,6 +356,12 @@ pub(super) fn build_pairs(
     buffers.pair_impulses.clear();
     buffers.pair_impulses.resize(pairs.len(), 0.0);
     buffers.seed_pair_impulses = true;
+    // Tangents ride beside the normal impulses only in a frame with friction.
+    let extra = &mut *buffers.extra;
+    extra.pair_tangents.clear();
+    if !extra.frictions.is_empty() {
+        extra.pair_tangents.resize(pairs.len(), 0.0);
+    }
     #[cfg(test)]
     {
         buffers.pair_builds += 1;
@@ -410,26 +423,50 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         removed_impulses,
         pairs,
         pair_impulses,
+        extra,
         ..
     } = buffers;
+    let super::StepExtra {
+        frictions,
+        pair_tangents,
+        repair_tangents,
+        removed_tangents,
+        ..
+    } = &mut **extra;
+    let friction_on = !frictions.is_empty();
     for &member in tripped.iter() {
         pair_flags[member as usize] |= PAIR_TRIPPED;
     }
 
     // Remove the members' pairs, keeping the order of the rest, and remember
-    // each removed pair's carried impulse under its key.
+    // each removed pair's carried impulse, and tangent in a frame with
+    // friction, under its key.
     removed_impulses.clear();
+    removed_tangents.clear();
     let mut kept = 0;
     for index in 0..pairs.len() {
         let (a, b) = pairs[index];
         let impulse = pair_impulses[index];
+        let tangent = if friction_on {
+            pair_tangents[index]
+        } else {
+            0.0
+        };
         if (pair_flags[a as usize] | pair_flags[b as usize]) & PAIR_TRIPPED == 0 {
             pairs[kept] = (a, b);
             pair_impulses[kept] = impulse;
+            if friction_on {
+                pair_tangents[kept] = tangent;
+            }
             kept += 1;
-        } else if impulse != 0.0 {
+        } else if impulse != 0.0 || tangent != 0.0 {
             let key = pair_key(proxies[a as usize].key, proxies[b as usize].key);
-            removed_impulses.push((key, impulse));
+            if impulse != 0.0 {
+                removed_impulses.push((key, impulse));
+            }
+            if tangent != 0.0 {
+                removed_tangents.push((key, tangent));
+            }
         }
     }
     pairs.truncate(kept);
@@ -437,6 +474,17 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
     repair_impulses.reset(removed_impulses.len());
     for &(key, impulse) in removed_impulses.iter() {
         repair_impulses.insert(key, impulse);
+    }
+    if friction_on {
+        pair_tangents.truncate(kept);
+    }
+    if removed_tangents.is_empty() {
+        repair_tangents.clear();
+    } else {
+        repair_tangents.reset(removed_tangents.len());
+        for &(key, tangent) in removed_tangents.iter() {
+            repair_tangents.insert(key, tangent);
+        }
     }
 
     // A fresh allowance from each member's current state.
@@ -478,16 +526,25 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
     }
 
     let carried = !removed_impulses.is_empty();
+    let carried_tangents = !removed_tangents.is_empty();
     for &member in tripped.iter() {
         let aabb = &pair_aabbs[member as usize];
         let member_key = proxies[member as usize].key;
         let mut admit = |a: u32, b: u32, other: u32| {
             pairs.push((a, b));
+            let key = pair_key(member_key, proxies[other as usize].key);
             pair_impulses.push(if carried {
-                repair_impulses.get(pair_key(member_key, proxies[other as usize].key))
+                repair_impulses.get(key)
             } else {
                 0.0
             });
+            if friction_on {
+                pair_tangents.push(if carried_tangents {
+                    repair_tangents.get(key)
+                } else {
+                    0.0
+                });
+            }
         };
         // Only the members query, so this is not the build's initiator rule:
         // an untripped awake body of lower index must still be paired here.
@@ -540,6 +597,19 @@ pub(super) fn sync_impulses(buffers: &mut PhysicsBuffers) {
     for contact in &buffers.contacts {
         if contact.impulse > 0.0 {
             buffers.impulses.insert(contact.key, contact.impulse);
+        }
+    }
+    // The tangents of the same contacts, in a frame with friction.
+    let extra = &mut *buffers.extra;
+    if extra.friction.is_empty() {
+        extra.tangents.clear();
+    } else {
+        extra.tangents.reset(extra.friction.len());
+        for friction in &extra.friction {
+            if friction.impulse != 0.0 {
+                let key = buffers.contacts[friction.contact as usize].key;
+                extra.tangents.insert(key, friction.impulse);
+            }
         }
     }
     buffers.impulses_dirty = false;

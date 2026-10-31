@@ -1572,6 +1572,207 @@ fn persistent_pairs_match_fresh_contacts_on_randomized_piles_bullets_and_wakes()
     assert!(repairs > 0, "the oracle never checked a repaired list");
 }
 
+/// How far a box of friction 0.5 launched at 300 px/s along a floor of
+/// friction 0.5 slides under gravity 900 before it stops: a static box's
+/// top, or a row of tiles whose material `stone` has friction 0.5.
+fn slide_distance(tiles: bool) -> f32 {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    if tiles {
+        world.insert_resource(crate::physics::PhysicsMaterials::new([(
+            "stone".to_owned(),
+            crate::physics::PhysicsMaterial {
+                friction: 0.5,
+                ..Default::default()
+            },
+        )]));
+        let mut data = map_data(64, vec![vec![0; 64]]);
+        data.set_tile_props(
+            0,
+            TileProps {
+                material: Some("stone".into()),
+                ..TileProps::default()
+            },
+        );
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("floor".into(), data);
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("floor", Vec2::new(-512.0, 90.0)));
+    } else {
+        let floor = spawn_static(
+            &mut world,
+            Collider::aabb(Vec2::new(600.0, 10.0)),
+            Vec2::new(0.0, 100.0),
+        );
+        world.insert(floor, RigidBody::r#static().with_friction(0.5));
+    }
+    let start = Vec2::new(-400.0, 90.0 - 8.0);
+    let body = spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_friction(0.5),
+        Collider::aabb(Vec2::splat(8.0)),
+        start,
+        Vec2::new(300.0, 0.0),
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let velocity = world.get::<Velocity>(body).unwrap().0;
+    assert!(velocity.length() < 1.0, "still sliding at {velocity}");
+    world.get::<Position>(body).unwrap().0.x - start.x
+}
+
+#[test]
+fn a_sliding_box_stops_where_coulomb_friction_says() {
+    // Decelerated at μ·g = 450 px/s², 300 px/s stops after v² / 2a = 100 px.
+    let distance = slide_distance(false);
+    assert!(
+        (distance - 100.0).abs() <= 3.0,
+        "slid {distance} px, Coulomb says 100"
+    );
+}
+
+#[test]
+fn a_tile_floor_takes_its_materials_friction() {
+    let (tiles, floor) = (slide_distance(true), slide_distance(false));
+    assert!(
+        (tiles - floor).abs() <= 0.01 * floor,
+        "slid {tiles} px on the tiles, {floor} px on the static floor"
+    );
+}
+
+#[test]
+fn a_box_rides_a_moving_platform_by_friction() {
+    for (friction, rides) in [(1.0, true), (0.0, false)] {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+        spawn_body(
+            &mut world,
+            RigidBody::kinematic().with_friction(friction),
+            Collider::aabb(Vec2::new(300.0, 10.0)),
+            Vec2::new(0.0, 100.0),
+            Vec2::new(100.0, 0.0),
+        );
+        let start = Vec2::new(0.0, 90.0 - 8.0);
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic().with_friction(friction),
+            Collider::aabb(Vec2::splat(8.0)),
+            start,
+            Vec2::ZERO,
+        );
+        for _ in 0..30 {
+            physics_step(&mut world);
+        }
+        let velocity = world.get::<Velocity>(body).unwrap().0;
+        let moved = world.get::<Position>(body).unwrap().0.x - start.x;
+        if rides {
+            assert!(
+                (velocity.x - 100.0).abs() < 1.0,
+                "friction 1: the box moves at {velocity} on a 100 px/s platform"
+            );
+        } else {
+            assert!(
+                velocity.x.abs() < 1.0 && moved.abs() < 1.0,
+                "no friction: the box moves at {velocity}, {moved} px on"
+            );
+        }
+    }
+}
+
+/// One 1/60 s step of `world` driven substep by substep as `physics_step`
+/// drives a world without sleep, sensors or loose bodies, with a pair
+/// rebuild forced before substep `rebuild`, when given.
+fn step_by_substeps(world: &mut World, rebuild: Option<u32>) {
+    let config = *world.resource::<PhysicsConfig>();
+    assert!(config.sleep_threshold <= 0.0, "the driver runs no sleep");
+    let dt = 1.0 / 60.0;
+    let mut buffers = world
+        .remove_resource::<PhysicsBuffers>()
+        .unwrap_or_default();
+    let kinematics = gather_proxies(
+        world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+        &mut buffers.extra,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    let substeps = substep_count(&config, dt, kinematics > 0);
+    let sub_dt = dt / substeps as f32;
+    buffers.pairs_invalidated = true;
+    buffers.static_grid.begin_frame();
+    buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
+    buffers.kept.clear();
+    buffers.events.clear();
+    for step in 0..substeps {
+        if rebuild == Some(step) {
+            buffers.pairs_invalidated = true;
+        }
+        let time_left = (dt - step as f32 * sub_dt).max(sub_dt);
+        substep(&config, sub_dt, time_left, &mut buffers, false);
+    }
+    sync_impulses(&mut buffers);
+    write_back(world, &buffers.proxies, &mut buffers.sensors, dt);
+    world.insert_resource(buffers);
+}
+
+#[test]
+fn tangent_impulses_warm_start_across_a_rebuild() {
+    // A box slides on a belt at 10 px/s until friction 0.05 has it moving
+    // with the belt: its tangent impulse sits at its bound, warm-started
+    // each substep. A pair rebuild mid-step carries it by key, the
+    // impulse's bits as the pair index carries them.
+    let rig = || {
+        let mut world = seed_world();
+        let config = world.resource_mut::<PhysicsConfig>();
+        config.gravity = Vec2::new(0.0, 900.0);
+        config.sleep_threshold = 0.0;
+        spawn_body(
+            &mut world,
+            RigidBody::kinematic().with_friction(0.05),
+            Collider::aabb(Vec2::new(300.0, 10.0)),
+            Vec2::new(0.0, 100.0),
+            Vec2::new(10.0, 0.0),
+        );
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic().with_friction(0.05),
+            Collider::aabb(Vec2::splat(8.0)),
+            Vec2::new(0.0, 90.0 - 8.0),
+            Vec2::ZERO,
+        );
+        (world, body)
+    };
+    let ((mut kept, body), (mut rebuilt, _)) = (rig(), rig());
+    let tangent = |world: &World| {
+        let friction = &world.resource::<PhysicsBuffers>().extra.friction;
+        assert_eq!(friction.len(), 1, "one contact with friction");
+        friction[0].impulse
+    };
+    let mut sliding = 0;
+    for step in 0..20 {
+        step_by_substeps(&mut kept, None);
+        step_by_substeps(&mut rebuilt, Some(2));
+        assert_eq!(
+            body_bits(&kept, &[body]),
+            body_bits(&rebuilt, &[body]),
+            "step {step}: the rebuild moved the box"
+        );
+        let (a, b) = (tangent(&kept), tangent(&rebuilt));
+        assert_eq!(a.to_bits(), b.to_bits(), "step {step}: {a} against {b}");
+        sliding += usize::from(a != 0.0);
+    }
+    assert!(sliding >= 5, "the box slid for {sliding} steps");
+    assert!(
+        (kept.get::<Velocity>(body).unwrap().0.x - 10.0).abs() < 0.5,
+        "the box rides the belt"
+    );
+}
+
 #[test]
 fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
     let mut world = seed_world();

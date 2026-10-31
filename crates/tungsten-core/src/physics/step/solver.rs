@@ -1,7 +1,7 @@
 //! Warm-started soft contact solver (D-063) and the signed-distance narrow
 //! phase that admits speculative contacts (D-064).
 
-use super::{ContactConstraint, Proxy};
+use super::{ContactConstraint, FrictionConstraint, Proxy};
 use crate::physics::PhysicsConfig;
 use crate::physics::collision::{
     Aabb, Contact, FACE_ONE_WAY, aabb_vs_aabb_speculative, aabb_vs_circle_speculative,
@@ -85,6 +85,37 @@ pub(super) fn solve_contacts(
         contact.impulse = new_impulse;
         if delta != 0.0 {
             apply_impulse(proxies, contact, contact.normal * delta);
+        }
+    }
+}
+
+/// A contact's tangent: its normal turned a quarter, `(−n.y, n.x)`.
+#[inline(always)]
+pub(super) fn tangent(normal: Vec2) -> Vec2 {
+    Vec2::new(-normal.y, normal.x)
+}
+
+/// One Gauss-Seidel pass of Coulomb friction after a normal pass: each
+/// constraint's impulse removes its contact's tangent relative velocity, a
+/// kinematic side's included, its accumulated value within `±mu` times the
+/// contact's normal impulse. An empty list does nothing.
+pub(super) fn solve_friction(
+    proxies: &mut [Proxy],
+    contacts: &[ContactConstraint],
+    friction: &mut [FrictionConstraint],
+) {
+    for row in friction.iter_mut() {
+        let contact = &contacts[row.contact as usize];
+        let t = tangent(contact.normal);
+        let a = contact.a as usize;
+        let b = contact.b as usize;
+        let vt = (proxies[a].velocity - proxies[b].velocity).dot(t);
+        let bound = row.mu * contact.impulse;
+        let new_impulse = (row.impulse - row.tangent_mass * vt).clamp(-bound, bound);
+        let delta = new_impulse - row.impulse;
+        row.impulse = new_impulse;
+        if delta != 0.0 {
+            apply_impulse(proxies, contact, t * delta);
         }
     }
 }

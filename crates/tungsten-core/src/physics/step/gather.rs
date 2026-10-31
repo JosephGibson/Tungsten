@@ -4,8 +4,10 @@
 //! proxies come from a cache of the collision layers that asks the registry
 //! every frame whether a map changed (its cursor) and re-traces only the
 //! 16 × 16 chunks around the cells written (`outline`); each is in its
-//! collision layer's physics layers. The cache keeps the outline's runs
-//! beside them, which casts meet.
+//! collision layer's physics layers and takes its tile's physics material's
+//! restitution and friction, resolved when a map is traced and again when
+//! the `PhysicsMaterials` resource's version moves. The cache keeps the
+//! outline's runs beside them, which casts meet.
 
 use super::outline::{CHUNK, LayerCells, Run, TileClass, trace_chunk};
 use super::{Layers, Proxy, ProxyLayers, SensorBody, StepExtra};
@@ -18,6 +20,7 @@ use crate::physics::collision::FACE_ALL;
 use crate::physics::collision::{FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
 use crate::physics::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use crate::physics::query::TileHit;
+use crate::physics::{PhysicsMaterial, PhysicsMaterials};
 use glam::Vec2;
 use std::ops::RangeInclusive;
 
@@ -80,7 +83,8 @@ fn run_key(map: Entity, layer: usize, run: &Run) -> u64 {
 /// order, and stays empty otherwise. The tile proxies are `tiles`', brought
 /// up to the World's maps first. `extra` gets each entity proxy's gravity
 /// scale once a dynamic body's differs from 1, 1 for every proxy that is
-/// not dynamic. Returns how many kinematic proxies it staged, which sets the
+/// not dynamic, and each proxy's friction, the tiles' included, once one is
+/// above 0. Returns how many kinematic proxies it staged, which sets the
 /// frame's substep count.
 pub(super) fn gather_proxies(
     world: &World,
@@ -96,6 +100,7 @@ pub(super) fn gather_proxies(
     sensors.clear();
     tile_ids.clear();
     extra.gravity_scales.clear();
+    extra.frictions.clear();
     let mut kinematics = 0;
     let mut layered = false;
 
@@ -139,11 +144,18 @@ pub(super) fn gather_proxies(
             Some(b) if is_dynamic => b.gravity_scale,
             _ => 1.0,
         };
-        // Once one scale differs from 1, every proxy has one.
+        // Once one scale differs from 1, every proxy has one; once one
+        // friction is above 0, likewise.
         let scales = &mut extra.gravity_scales;
         if gravity_scale != 1.0 || !scales.is_empty() {
             scales.resize(proxies.len(), 1.0);
             scales.push(gravity_scale);
+        }
+        let friction = body.map_or(0.0, |b| b.friction);
+        let frictions = &mut extra.frictions;
+        if friction != 0.0 || !frictions.is_empty() {
+            frictions.resize(proxies.len(), 0.0);
+            frictions.push(friction);
         }
         proxies.push(Proxy {
             entity: Some(entity),
@@ -166,6 +178,16 @@ pub(super) fn gather_proxies(
     }
 
     tiles.refresh(world);
+    let bodies = proxies.len();
+    let tile_frictions = tiles.frictions();
+    if !(extra.frictions.is_empty() && tile_frictions.is_empty()) {
+        extra.frictions.resize(bodies, 0.0);
+        if tile_frictions.is_empty() {
+            extra.frictions.resize(bodies + tiles.len(), 0.0);
+        } else {
+            extra.frictions.extend_from_slice(tile_frictions);
+        }
+    }
     proxies.extend_from_slice(&tiles.proxies);
     layers.of.extend_from_slice(&tiles.layers);
     layers.layered = layered || tiles.state.layered;
@@ -224,6 +246,12 @@ struct CacheState {
     written_ids: Vec<u64>,
     /// Chunks traced since the cache was made.
     traced: u64,
+    /// Each tile proxy's friction, in gather order; empty while every
+    /// tile's is 0.
+    frictions: Vec<f32>,
+    /// The version of the World's `PhysicsMaterials` the maps' coefficients
+    /// were resolved against; `None` without the resource.
+    materials_version: Option<u64>,
     /// The arrays the last refresh replaced, kept for the next one to fill.
     spare: TileArrays,
     /// Maps traced, whole or in part, since the cache was made.
@@ -428,9 +456,10 @@ impl CachedMap {
     }
 
     /// Appends the map's proxies to `arrays`: each solid cell's static box
-    /// with the mask its trace gave, its layer's layers and its sensor
-    /// identity, in layer, row and column order.
-    fn push_proxies(&self, arrays: &mut TileArrays) {
+    /// with the mask its trace gave, its material's restitution and
+    /// friction from `coefficients` ([`tile_coefficients`]), its layer's
+    /// layers and its sensor identity, in layer, row and column order.
+    fn push_proxies(&self, arrays: &mut TileArrays, coefficients: &[PhysicsMaterial]) {
         let half = Vec2::new(self.tile.x * 0.5, self.tile.y * 0.5);
         for layer in &self.layers {
             for row in 0..self.height {
@@ -455,7 +484,9 @@ impl CachedMap {
                         is_dynamic: false,
                         has_velocity: false,
                         inv_mass: 0.0,
-                        restitution: 0.0,
+                        restitution: coefficients
+                            .get(tile as usize)
+                            .map_or(0.0, |material| material.restitution),
                         face_mask: layer.masks[at],
                         sleeping: false,
                         kinematic: false,
@@ -465,6 +496,11 @@ impl CachedMap {
                     arrays
                         .ids
                         .push(tile_identity(self.entity, layer.index, col, row));
+                    arrays.push_friction(
+                        coefficients
+                            .get(tile as usize)
+                            .map_or(0.0, |material| material.friction),
+                    );
                 }
             }
         }
@@ -610,12 +646,41 @@ fn origin_bits(instance: &TilemapInstance) -> [u32; 2] {
     [instance.origin.x.to_bits(), instance.origin.y.to_bits()]
 }
 
-/// Tile proxies with each one's layers and sensor identity, in one order.
+/// The physics material coefficients of each of `data`'s tileset entries,
+/// from its `material` and the World's `materials`: empty when no entry
+/// names a material `materials` holds, every tile then taking 0.
+fn tile_coefficients(
+    data: &TilemapData,
+    materials: Option<&PhysicsMaterials>,
+) -> Vec<PhysicsMaterial> {
+    let Some(materials) = materials else {
+        return Vec::new();
+    };
+    let of = |tile: usize| {
+        let props = data.tile_props(tile as TileIndex);
+        props
+            .material
+            .as_deref()
+            .and_then(|name| materials.get(name))
+    };
+    let tiles = data.tileset.len();
+    if (0..tiles).all(|tile| of(tile).is_none()) {
+        return Vec::new();
+    }
+    (0..tiles)
+        .map(|tile| of(tile).unwrap_or_default())
+        .collect()
+}
+
+/// Tile proxies with each one's layers, sensor identity and friction, in
+/// one order.
 #[derive(Debug, Default)]
 pub(super) struct TileArrays {
     pub(super) proxies: Vec<Proxy>,
     pub(super) layers: Vec<Layers>,
     pub(super) ids: Vec<u64>,
+    /// Each proxy's friction; empty while every one is 0.
+    pub(super) frictions: Vec<f32>,
 }
 
 impl TileArrays {
@@ -623,6 +688,15 @@ impl TileArrays {
         self.proxies.clear();
         self.layers.clear();
         self.ids.clear();
+        self.frictions.clear();
+    }
+
+    /// Records the friction of the proxy just pushed, once one is above 0.
+    fn push_friction(&mut self, friction: f32) {
+        if friction != 0.0 || !self.frictions.is_empty() {
+            self.frictions.resize(self.proxies.len() - 1, 0.0);
+            self.frictions.push(friction);
+        }
     }
 }
 
@@ -630,6 +704,9 @@ impl TileArrays {
 enum Refresh {
     /// Its proxies, masks and runs stand.
     Keep(usize),
+    /// Its masks and runs stand, its materials resolve again and its
+    /// proxies are rebuilt: the `PhysicsMaterials` resource changed.
+    Restamp(usize),
     /// Its collision cells listed were written: re-trace around them.
     Written(usize, Vec<WrittenCell>),
     /// New, moved, renamed or replaced: trace it whole.
@@ -650,6 +727,12 @@ impl TileCache {
     /// The outline's runs, in their first cell's tile order.
     pub(super) fn runs(&self) -> &[TileRun] {
         &self.state.runs
+    }
+
+    /// Each tile proxy's friction, in gather order; empty while every
+    /// tile's is 0.
+    pub(super) fn frictions(&self) -> &[f32] {
+        &self.state.frictions
     }
 
     /// Chunks traced since the cache was made.
@@ -762,7 +845,11 @@ impl TileCache {
         state.written.clear();
         state.written_ids.clear();
         let registry = world.get_resource::<TilemapRegistry>();
-        if Self::matches(&state.maps, world, registry) {
+        let materials = world.get_resource::<PhysicsMaterials>();
+        let materials_version = materials.map(PhysicsMaterials::version);
+        let restamp = materials_version != state.materials_version;
+        state.materials_version = materials_version;
+        if !restamp && Self::matches(&state.maps, world, registry) {
             return;
         }
         let mut kept = std::mem::take(&mut state.maps);
@@ -771,6 +858,7 @@ impl TileCache {
             proxies: std::mem::take(&mut self.proxies),
             layers: std::mem::take(&mut self.layers),
             ids: std::mem::take(&mut self.ids),
+            frictions: std::mem::take(&mut state.frictions),
         };
         let mut arrays = std::mem::take(&mut state.spare);
         arrays.clear();
@@ -789,6 +877,7 @@ impl TileCache {
             let refresh = match at {
                 None => Refresh::Whole,
                 Some(at) => match registry.changes_since(&kept[at].id, &kept[at].cursor) {
+                    Some(TileChanges::Unchanged) if restamp => Refresh::Restamp(at),
                     Some(TileChanges::Unchanged) => Refresh::Keep(at),
                     Some(TileChanges::Cells(cells)) => {
                         let mut cells: Vec<WrittenCell> = cells
@@ -801,7 +890,9 @@ impl TileCache {
                             .collect();
                         cells.sort_unstable();
                         cells.dedup();
-                        if cells.is_empty() {
+                        if cells.is_empty() && restamp {
+                            Refresh::Restamp(at)
+                        } else if cells.is_empty() {
                             Refresh::Keep(at)
                         } else {
                             Refresh::Written(at, cells)
@@ -819,12 +910,17 @@ impl TileCache {
                         .proxies
                         .extend_from_slice(&old.proxies[range.clone()]);
                     arrays.layers.extend_from_slice(&old.layers[range.clone()]);
-                    arrays.ids.extend_from_slice(&old.ids[range]);
+                    arrays.ids.extend_from_slice(&old.ids[range.clone()]);
+                    if !old.frictions.is_empty() {
+                        arrays.frictions.resize(start, 0.0);
+                        arrays.frictions.extend_from_slice(&old.frictions[range]);
+                    }
                     map.start = start;
                     map.cursor = cursor;
                     state.maps.push(map);
                     continue;
                 }
+                Refresh::Restamp(at) => kept.swap_remove(at),
                 Refresh::Written(at, cells) => {
                     let mut map = kept.swap_remove(at);
                     map.write(data, &cells, &mut state.traced);
@@ -855,9 +951,12 @@ impl TileCache {
             }
             map.cursor = cursor;
             map.start = start;
-            map.push_proxies(&mut arrays);
+            map.push_proxies(&mut arrays, &tile_coefficients(data, materials));
             map.len = arrays.proxies.len() - start;
             state.maps.push(map);
+        }
+        if !arrays.frictions.is_empty() {
+            arrays.frictions.resize(arrays.proxies.len(), 0.0);
         }
         // What is left went, or now places another map elsewhere.
         for gone in &kept {
@@ -874,6 +973,7 @@ impl TileCache {
         self.proxies = arrays.proxies;
         self.layers = arrays.layers;
         self.ids = arrays.ids;
+        state.frictions = arrays.frictions;
         state.spare = old;
         if !same {
             state.runs.clear();
