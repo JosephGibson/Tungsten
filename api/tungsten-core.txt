@@ -1981,6 +1981,51 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::LayerKind
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::LayerKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::LayerKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::LayerKind
+pub enum tungsten_core::assets::tilemap::SlopeCorner
+pub tungsten_core::assets::tilemap::SlopeCorner::BottomLeft
+pub tungsten_core::assets::tilemap::SlopeCorner::BottomRight
+pub tungsten_core::assets::tilemap::SlopeCorner::TopLeft
+pub tungsten_core::assets::tilemap::SlopeCorner::TopRight
+impl core::clone::Clone for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::clone(&self) -> tungsten_core::assets::tilemap::SlopeCorner
+impl core::cmp::Eq for tungsten_core::assets::tilemap::SlopeCorner
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::eq(&self, &tungsten_core::assets::tilemap::SlopeCorner) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Freeze for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Send for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Sync for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeCorner
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeCorner
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeCorner
+pub enum tungsten_core::assets::tilemap::SlopeRise
+pub tungsten_core::assets::tilemap::SlopeRise::Full
+pub tungsten_core::assets::tilemap::SlopeRise::High
+pub tungsten_core::assets::tilemap::SlopeRise::Low
+impl core::clone::Clone for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::clone(&self) -> tungsten_core::assets::tilemap::SlopeRise
+impl core::cmp::Eq for tungsten_core::assets::tilemap::SlopeRise
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::eq(&self, &tungsten_core::assets::tilemap::SlopeRise) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Freeze for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Send for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Sync for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeRise
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeRise
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeRise
 pub enum tungsten_core::assets::tilemap::TilemapError
 pub tungsten_core::assets::tilemap::TilemapError::DuplicateTile
 pub tungsten_core::assets::tilemap::TilemapError::DuplicateTile::path: alloc::string::String
@@ -2081,12 +2126,36 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::ObjectLayer
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::ObjectLayer
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
+pub struct tungsten_core::assets::tilemap::Slope
+pub tungsten_core::assets::tilemap::Slope::corner: tungsten_core::assets::tilemap::SlopeCorner
+pub tungsten_core::assets::tilemap::Slope::rise: tungsten_core::assets::tilemap::SlopeRise
+impl tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::parse(&str) -> core::result::Result<Self, alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::clone(&self) -> tungsten_core::assets::tilemap::Slope
+impl core::cmp::Eq for tungsten_core::assets::tilemap::Slope
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::eq(&self, &tungsten_core::assets::tilemap::Slope) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::tilemap::Slope
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::Slope
+impl core::marker::Freeze for tungsten_core::assets::tilemap::Slope
+impl core::marker::Send for tungsten_core::assets::tilemap::Slope
+impl core::marker::Sync for tungsten_core::assets::tilemap::Slope
+impl core::marker::Unpin for tungsten_core::assets::tilemap::Slope
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::Slope
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::Slope
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::Slope
 #[non_exhaustive] pub struct tungsten_core::assets::tilemap::TileProps
 pub tungsten_core::assets::tilemap::TileProps::broken: tungsten_core::assets::tilemap::TileIndex
 pub tungsten_core::assets::tilemap::TileProps::health: core::option::Option<f32>
 pub tungsten_core::assets::tilemap::TileProps::mask: core::option::Option<u8>
 pub tungsten_core::assets::tilemap::TileProps::material: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::tilemap::TileProps::one_way: bool
+pub tungsten_core::assets::tilemap::TileProps::slope: core::option::Option<tungsten_core::assets::tilemap::Slope>
 pub tungsten_core::assets::tilemap::TileProps::style: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::tilemap::TileProps::weight: u32
 impl tungsten_core::assets::tilemap::TileProps
@@ -2694,6 +2763,51 @@ impl core::marker::Unpin for tungsten_core::assets::scene::SceneTweenRepeat
 impl core::marker::UnsafeUnpin for tungsten_core::assets::scene::SceneTweenRepeat
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::scene::SceneTweenRepeat
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::SceneTweenRepeat
+pub enum tungsten_core::assets::SlopeCorner
+pub tungsten_core::assets::SlopeCorner::BottomLeft
+pub tungsten_core::assets::SlopeCorner::BottomRight
+pub tungsten_core::assets::SlopeCorner::TopLeft
+pub tungsten_core::assets::SlopeCorner::TopRight
+impl core::clone::Clone for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::clone(&self) -> tungsten_core::assets::tilemap::SlopeCorner
+impl core::cmp::Eq for tungsten_core::assets::tilemap::SlopeCorner
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::eq(&self, &tungsten_core::assets::tilemap::SlopeCorner) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Freeze for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Send for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Sync for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeCorner
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeCorner
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeCorner
+pub enum tungsten_core::assets::SlopeRise
+pub tungsten_core::assets::SlopeRise::Full
+pub tungsten_core::assets::SlopeRise::High
+pub tungsten_core::assets::SlopeRise::Low
+impl core::clone::Clone for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::clone(&self) -> tungsten_core::assets::tilemap::SlopeRise
+impl core::cmp::Eq for tungsten_core::assets::tilemap::SlopeRise
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::eq(&self, &tungsten_core::assets::tilemap::SlopeRise) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Freeze for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Send for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Sync for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeRise
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeRise
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeRise
 #[non_exhaustive] pub enum tungsten_core::assets::StagedLoadError
 pub tungsten_core::assets::StagedLoadError::Data
 pub tungsten_core::assets::StagedLoadError::Data::id: alloc::string::String
@@ -3965,6 +4079,29 @@ impl core::marker::Unpin for tungsten_core::assets::shader::ShaderRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::shader::ShaderRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::shader::ShaderRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::shader::ShaderRegistry
+pub struct tungsten_core::assets::Slope
+pub tungsten_core::assets::Slope::corner: tungsten_core::assets::tilemap::SlopeCorner
+pub tungsten_core::assets::Slope::rise: tungsten_core::assets::tilemap::SlopeRise
+impl tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::parse(&str) -> core::result::Result<Self, alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::clone(&self) -> tungsten_core::assets::tilemap::Slope
+impl core::cmp::Eq for tungsten_core::assets::tilemap::Slope
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::eq(&self, &tungsten_core::assets::tilemap::Slope) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::tilemap::Slope
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::Slope
+impl core::marker::Freeze for tungsten_core::assets::tilemap::Slope
+impl core::marker::Send for tungsten_core::assets::tilemap::Slope
+impl core::marker::Sync for tungsten_core::assets::tilemap::Slope
+impl core::marker::Unpin for tungsten_core::assets::tilemap::Slope
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::Slope
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::Slope
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::Slope
 pub struct tungsten_core::assets::SoundData
 pub tungsten_core::assets::SoundData::channels: u16
 pub tungsten_core::assets::SoundData::sample_rate: u32
@@ -4086,6 +4223,7 @@ pub tungsten_core::assets::TileProps::health: core::option::Option<f32>
 pub tungsten_core::assets::TileProps::mask: core::option::Option<u8>
 pub tungsten_core::assets::TileProps::material: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::TileProps::one_way: bool
+pub tungsten_core::assets::TileProps::slope: core::option::Option<tungsten_core::assets::tilemap::Slope>
 pub tungsten_core::assets::TileProps::style: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::TileProps::weight: u32
 impl tungsten_core::assets::tilemap::TileProps
@@ -15104,6 +15242,51 @@ impl core::marker::Unpin for tungsten_core::physics::components::Shape
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::Shape
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::Shape
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::Shape
+pub enum tungsten_core::SlopeCorner
+pub tungsten_core::SlopeCorner::BottomLeft
+pub tungsten_core::SlopeCorner::BottomRight
+pub tungsten_core::SlopeCorner::TopLeft
+pub tungsten_core::SlopeCorner::TopRight
+impl core::clone::Clone for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::clone(&self) -> tungsten_core::assets::tilemap::SlopeCorner
+impl core::cmp::Eq for tungsten_core::assets::tilemap::SlopeCorner
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::eq(&self, &tungsten_core::assets::tilemap::SlopeCorner) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::tilemap::SlopeCorner
+pub fn tungsten_core::assets::tilemap::SlopeCorner::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Freeze for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Send for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Sync for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeCorner
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeCorner
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeCorner
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeCorner
+pub enum tungsten_core::SlopeRise
+pub tungsten_core::SlopeRise::Full
+pub tungsten_core::SlopeRise::High
+pub tungsten_core::SlopeRise::Low
+impl core::clone::Clone for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::clone(&self) -> tungsten_core::assets::tilemap::SlopeRise
+impl core::cmp::Eq for tungsten_core::assets::tilemap::SlopeRise
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::eq(&self, &tungsten_core::assets::tilemap::SlopeRise) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::tilemap::SlopeRise
+pub fn tungsten_core::assets::tilemap::SlopeRise::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Freeze for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Send for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Sync for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeRise
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeRise
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeRise
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeRise
 pub enum tungsten_core::SquashTrigger
 pub tungsten_core::SquashTrigger::Manual
 pub tungsten_core::SquashTrigger::OnHit
@@ -18568,6 +18751,29 @@ impl core::marker::Unpin for tungsten_core::ShakeEvent
 impl core::marker::UnsafeUnpin for tungsten_core::ShakeEvent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ShakeEvent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ShakeEvent
+pub struct tungsten_core::Slope
+pub tungsten_core::Slope::corner: tungsten_core::assets::tilemap::SlopeCorner
+pub tungsten_core::Slope::rise: tungsten_core::assets::tilemap::SlopeRise
+impl tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::parse(&str) -> core::result::Result<Self, alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::clone(&self) -> tungsten_core::assets::tilemap::Slope
+impl core::cmp::Eq for tungsten_core::assets::tilemap::Slope
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::eq(&self, &tungsten_core::assets::tilemap::Slope) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::tilemap::Slope
+pub fn tungsten_core::assets::tilemap::Slope::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::tilemap::Slope
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::Slope
+impl core::marker::Freeze for tungsten_core::assets::tilemap::Slope
+impl core::marker::Send for tungsten_core::assets::tilemap::Slope
+impl core::marker::Sync for tungsten_core::assets::tilemap::Slope
+impl core::marker::Unpin for tungsten_core::assets::tilemap::Slope
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::Slope
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::Slope
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::Slope
 pub struct tungsten_core::SoundData
 pub tungsten_core::SoundData::channels: u16
 pub tungsten_core::SoundData::sample_rate: u32
@@ -19102,6 +19308,7 @@ pub tungsten_core::TileProps::health: core::option::Option<f32>
 pub tungsten_core::TileProps::mask: core::option::Option<u8>
 pub tungsten_core::TileProps::material: core::option::Option<alloc::string::String>
 pub tungsten_core::TileProps::one_way: bool
+pub tungsten_core::TileProps::slope: core::option::Option<tungsten_core::assets::tilemap::Slope>
 pub tungsten_core::TileProps::style: core::option::Option<alloc::string::String>
 pub tungsten_core::TileProps::weight: u32
 impl tungsten_core::assets::tilemap::TileProps

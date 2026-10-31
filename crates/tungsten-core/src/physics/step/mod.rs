@@ -151,6 +151,7 @@ mod gather;
 mod outline;
 mod pairs;
 mod sleep;
+mod slope;
 mod solver;
 mod sweep;
 
@@ -187,6 +188,9 @@ struct Proxy {
     restitution: f32,
     /// Tile exposed-face mask; internal faces suppress seam contacts.
     face_mask: u8,
+    /// A tile's slope code (`step/slope.rs`), 0 for a full cell and every
+    /// body.
+    slope: u8,
     /// Body is in a sleeping island (D-065); set at frame start from the
     /// persistent sleep map, may flip awake mid-substep when a contact wakes
     /// the body. Proxies persist across substeps (D-066), so this carries

@@ -187,6 +187,9 @@ pub struct TileProps {
     /// A variant's draw weight, at least 1; a weight other than 1 needs
     /// `mask`.
     pub weight: u32,
+    /// In a collision layer, the slope its cell is instead of a full box;
+    /// a slope tile cannot be one-way.
+    pub slope: Option<Slope>,
 }
 
 /// The default [`TileProps`], which a tile without its own reads.
@@ -198,7 +201,96 @@ static PLAIN_TILE: TileProps = TileProps {
     style: None,
     mask: None,
     weight: 1,
+    slope: None,
 };
+
+/// A slope tile's shape: how far its sloped face rises across the cell and
+/// the cell corner its solid part holds. Written as the rise, `"45"`,
+/// `"2:1 low"` or `"2:1 high"`, then the corner, `br`, `bl`, `tr` or `tl`:
+/// `"45 br"` is solid below the diagonal from the cell's bottom-left corner
+/// to its top-right. A `2:1 low` slope is a triangle half a cell high, a
+/// `2:1 high` one a trapezoid from half a cell to a cell, so a low cell and
+/// a high cell side by side make one 2:1 surface. `tr` and `tl` are
+/// ceilings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Slope {
+    /// How far the face rises.
+    pub rise: SlopeRise,
+    /// The corner its solid part holds.
+    pub corner: SlopeCorner,
+}
+
+/// A [`Slope`]'s rise across its cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SlopeRise {
+    /// `45`: a cell for a cell.
+    Full,
+    /// `2:1 low`: half a cell, from the cell's edge.
+    Low,
+    /// `2:1 high`: from half a cell to a cell.
+    High,
+}
+
+/// The cell corner a [`Slope`]'s solid part holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SlopeCorner {
+    /// `br`.
+    BottomRight,
+    /// `bl`.
+    BottomLeft,
+    /// `tr`: a ceiling.
+    TopRight,
+    /// `tl`: a ceiling.
+    TopLeft,
+}
+
+impl Slope {
+    /// The slope `text` names, as `"45 br"` or `"2:1 low tl"`.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let (rise, corner) = text.trim().rsplit_once(' ').ok_or_else(|| {
+            format!("`slope` must be a rise and a corner, as \"45 br\" (got \"{text}\")")
+        })?;
+        let rise = match rise.trim() {
+            "45" => SlopeRise::Full,
+            "2:1 low" => SlopeRise::Low,
+            "2:1 high" => SlopeRise::High,
+            other => {
+                return Err(format!(
+                    "`slope`'s rise must be \"45\", \"2:1 low\" or \"2:1 high\" (got \"{other}\")"
+                ));
+            }
+        };
+        let corner = match corner {
+            "br" => SlopeCorner::BottomRight,
+            "bl" => SlopeCorner::BottomLeft,
+            "tr" => SlopeCorner::TopRight,
+            "tl" => SlopeCorner::TopLeft,
+            other => {
+                return Err(format!(
+                    "`slope`'s corner must be br, bl, tr or tl (got \"{other}\")"
+                ));
+            }
+        };
+        Ok(Self { rise, corner })
+    }
+
+    /// The step's code for the slope, 1 to 12: its rise times four plus its
+    /// corner, plus 1.
+    pub(crate) fn code(self) -> u8 {
+        let rise = match self.rise {
+            SlopeRise::Full => 0,
+            SlopeRise::Low => 1,
+            SlopeRise::High => 2,
+        };
+        let corner = match self.corner {
+            SlopeCorner::BottomRight => 0,
+            SlopeCorner::BottomLeft => 1,
+            SlopeCorner::TopRight => 2,
+            SlopeCorner::TopLeft => 3,
+        };
+        1 + rise * 4 + corner
+    }
+}
 
 impl Default for TileProps {
     fn default() -> Self {
@@ -219,6 +311,9 @@ impl TileProps {
     fn check(&self, tiles: usize) -> Result<(), String> {
         if self.material.as_deref() == Some("") {
             return Err("`material` must not be empty".to_owned());
+        }
+        if self.slope.is_some() && self.one_way {
+            return Err("a `slope` tile cannot be `one_way`".to_owned());
         }
         if let Some(health) = self.health
             && !(health.is_finite() && health > 0.0)
@@ -866,8 +961,8 @@ impl TilemapData {
 /// type and held to [`TileProps`]'s rules; `broken` names a sprite of
 /// `tileset`. The message names the property.
 fn tile_props_of(tile: &TiledTile, tileset: &[String]) -> Result<TileProps, String> {
-    const NAMES: [&str; 7] = [
-        "material", "health", "broken", "one_way", "style", "mask", "weight",
+    const NAMES: [&str; 8] = [
+        "material", "health", "broken", "one_way", "style", "mask", "weight", "slope",
     ];
     let mut props = TileProps::default();
     let mut seen: Vec<&str> = Vec::new();
@@ -909,6 +1004,11 @@ fn tile_props_of(tile: &TiledTile, tileset: &[String]) -> Result<TileProps, Stri
                         .filter(|&mask| mask <= 15)
                         .ok_or_else(|| format!("`mask` must be 0 to 15 (got {mask})"))?,
                 );
+            }
+            "slope" => {
+                props.slope = Some(Slope::parse(
+                    value.as_str().ok_or_else(|| wrong("a string"))?,
+                )?);
             }
             "weight" => {
                 let weight = value.as_i64().ok_or_else(|| wrong("an integer"))?;

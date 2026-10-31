@@ -7,7 +7,7 @@ use super::{Proxy, ProxyLayers, TouchObs, tile_hit};
 use crate::physics::PhysicsConfig;
 use crate::physics::broadphase::{ProxyId, SpatialGrid, for_each_in_both};
 use crate::physics::collision::{
-    Aabb, FACE_BOTTOM, FACE_LEFT, FACE_ONE_WAY, FACE_RIGHT, FACE_TOP, sweep_aabb_vs_aabb,
+    Aabb, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_ONE_WAY, FACE_RIGHT, FACE_TOP, sweep_aabb_vs_aabb,
 };
 use crate::physics::components::Shape;
 use crate::physics::events::CollisionEvent;
@@ -161,9 +161,20 @@ pub(super) fn speculative_pass(
                 // last-resort net.
                 Shape::Circle { radius } => Vec2::splat(radius),
             };
-            if let Some((t, n)) = sweep_aabb_vs_aabb(a_prev, a_cur, a_half, target.center, b_half) {
-                // Skip hits on internal tile faces.
-                let face_bit = if n.x < 0.0 {
+            // A slope cell is swept as its polygon, every other static as a
+            // box.
+            let hit = if target.slope != 0 {
+                let poly = super::slope::polygon(target.slope, target.center, b_half);
+                super::slope::box_sweep(a_prev, a_cur, a_half, &poly)
+            } else {
+                sweep_aabb_vs_aabb(a_prev, a_cur, a_half, target.center, b_half)
+            };
+            if let Some((t, n)) = hit {
+                // Skip hits on internal tile faces; a slope's face is always
+                // exposed.
+                let face_bit = if n.x != 0.0 && n.y != 0.0 {
+                    FACE_ALL
+                } else if n.x < 0.0 {
                     FACE_LEFT
                 } else if n.x > 0.0 {
                     FACE_RIGHT
@@ -172,7 +183,7 @@ pub(super) fn speculative_pass(
                 } else {
                     FACE_BOTTOM
                 };
-                if target.face_mask & face_bit == 0 {
+                if target.face_mask & face_bit == 0 && face_bit != FACE_ALL {
                     continue;
                 }
                 // A one-way tile stops a body through its top face alone,

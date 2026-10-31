@@ -48,15 +48,21 @@ fn tile_key(center: Vec2) -> u64 {
 }
 
 /// A tile proxy's warm-start identity: [`tile_key`], a one-way cell's with
-/// its flag mixed in, so a cell turning one-way or back is another support
-/// to the sleep record, which wakes the sleepers on it (`D-156`).
-fn cell_key(center: Vec2, one_way: bool) -> u64 {
-    let key = tile_key(center);
-    if !one_way {
-        return key;
+/// its flag mixed in and a slope cell's with its kind, so a cell turning
+/// one-way, another slope or back is another support to the sleep record,
+/// which wakes the sleepers on it (`D-156`).
+fn cell_key(center: Vec2, one_way: bool, slope: u8) -> u64 {
+    let mut key = tile_key(center);
+    if one_way {
+        let h = (key ^ 0x6F6E_655F_7761_7921).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        key = (h ^ (h >> 31)) & !(1 << 63);
     }
-    let h = (key ^ 0x6F6E_655F_7761_7921).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    (h ^ (h >> 31)) & !(1 << 63)
+    if slope != 0 {
+        let h =
+            (key ^ (0x736C_6F70_6500_0000 | u64::from(slope))).wrapping_mul(0x94D0_49BB_1331_11EB);
+        key = (h ^ (h >> 29)) & !(1 << 63);
+    }
+    key
 }
 
 /// A tile's identity in sensor overlap keys: its map entity, layer and
@@ -210,6 +216,7 @@ pub(super) fn gather_proxies(
             inv_mass,
             restitution,
             face_mask: FACE_ALL,
+            slope: 0,
             sleeping: false,
             kinematic,
             kept_awake: false,
@@ -422,6 +429,7 @@ impl CachedMap {
                 TileClass {
                     material,
                     one_way: props.one_way,
+                    slope: props.slope.map_or(0, crate::assets::Slope::code),
                 }
             })
             .collect();
@@ -492,7 +500,8 @@ impl CachedMap {
     }
 
     /// Copies the written `cells` from `data` and re-traces the chunks that
-    /// hold each and its four neighbours, each once.
+    /// hold each, its four neighbours and each diagonal neighbour that is a
+    /// slope, whose mask reads its diagonals, each once.
     fn write(&mut self, data: &TilemapData, cells: &[WrittenCell], traced: &mut u64) {
         let width = self.width as usize;
         let mut dirty: Vec<(usize, u32, u32)> = Vec::new();
@@ -503,13 +512,26 @@ impl CachedMap {
             let at = (row as usize) * width + col as usize;
             self.layers[slot].tiles[at] = data.layers[index].tiles[at];
             let (c, r) = (i64::from(col), i64::from(row));
-            for (dc, dr) in [(0, 0), (0, -1), (1, 0), (0, 1), (-1, 0)] {
+            let around = [(0, 0), (0, -1), (1, 0), (0, 1), (-1, 0)];
+            let diagonals = [(1, -1), (1, 1), (-1, 1), (-1, -1)];
+            for (dc, dr) in around.into_iter().chain(diagonals) {
                 let (Ok(col), Ok(row)) = (u32::try_from(c + dc), u32::try_from(r + dr)) else {
                     continue;
                 };
-                if col < self.width && row < self.height {
-                    dirty.push((slot, row / CHUNK, col / CHUNK));
+                if col >= self.width || row >= self.height {
+                    continue;
                 }
+                if dc != 0 && dr != 0 {
+                    let tile = self.layers[slot].tiles[(row as usize) * width + col as usize];
+                    let sloped = usize::try_from(tile)
+                        .ok()
+                        .and_then(|tile| self.classes.get(tile))
+                        .is_some_and(|class| class.slope != 0);
+                    if !sloped {
+                        continue;
+                    }
+                }
+                dirty.push((slot, row / CHUNK, col / CHUNK));
             }
         }
         dirty.sort_unstable();
@@ -539,7 +561,7 @@ impl CachedMap {
                     );
                     arrays.proxies.push(Proxy {
                         entity: None,
-                        key: cell_key(center, self.one_way(tile)),
+                        key: cell_key(center, self.one_way(tile), self.slope(tile)),
                         center,
                         prev_center: center,
                         velocity: Vec2::ZERO,
@@ -552,6 +574,7 @@ impl CachedMap {
                             .get(tile as usize)
                             .map_or(0.0, |material| material.restitution),
                         face_mask: layer.masks[at],
+                        slope: self.slope(tile),
                         sleeping: false,
                         kinematic: false,
                         kept_awake: false,
@@ -639,6 +662,13 @@ impl CachedMap {
         self.classes
             .get(tile as usize)
             .is_some_and(|class| class.one_way)
+    }
+
+    /// `tile`'s slope code, 0 for a full cell.
+    fn slope(&self, tile: TileIndex) -> u8 {
+        self.classes
+            .get(tile as usize)
+            .map_or(0, |class| class.slope)
     }
 
     /// The cell at `(col, row)` of the layer at `slot` when it holds a solid
@@ -1211,6 +1241,7 @@ fn scan_map(map: Entity, instance: &TilemapInstance, data: &TilemapData, arrays:
                     inv_mass: 0.0,
                     restitution: 0.0,
                     face_mask,
+                    slope: 0,
                     sleeping: false,
                     kinematic: false,
                     kept_awake: false,

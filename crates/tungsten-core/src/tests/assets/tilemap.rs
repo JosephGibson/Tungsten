@@ -905,3 +905,100 @@ fn set_layer_physics_panics_on_a_render_layer() {
     let ground = map.add_layer("ground", LayerKind::Render);
     map.set_layer_physics(ground, LayerPhysics::DEFAULT);
 }
+
+#[test]
+fn slope_tiles_load_and_refuse_one_way() {
+    let slope =
+        |text: &str| serde_json::json!([{ "name": "slope", "type": "string", "value": text }]);
+    let names = [
+        ("45 br", SlopeRise::Full, SlopeCorner::BottomRight),
+        ("45 bl", SlopeRise::Full, SlopeCorner::BottomLeft),
+        ("2:1 low tr", SlopeRise::Low, SlopeCorner::TopRight),
+        ("2:1 high tl", SlopeRise::High, SlopeCorner::TopLeft),
+    ];
+    let tiles: Vec<serde_json::Value> = names
+        .iter()
+        .enumerate()
+        .map(|(id, (text, ..))| tiled_tile(id as u32, "ramp", &slope(text)))
+        .collect();
+    let map = load_json(&map_with_tiles(
+        &serde_json::Value::Array(tiles),
+        &serde_json::json!([{ "name": "ground" }]),
+    ))
+    .unwrap();
+    for (tile, (text, rise, corner)) in names.into_iter().enumerate() {
+        assert_eq!(
+            map.tile_props(tile as TileIndex).slope,
+            Some(Slope { rise, corner }),
+            "{text}"
+        );
+    }
+    assert_eq!(TileProps::default().slope, None);
+    // Every kind's code is its own, 1 to 12.
+    let rises = [SlopeRise::Full, SlopeRise::Low, SlopeRise::High];
+    let corners = [
+        SlopeCorner::BottomRight,
+        SlopeCorner::BottomLeft,
+        SlopeCorner::TopRight,
+        SlopeCorner::TopLeft,
+    ];
+    let mut codes: Vec<u8> = rises
+        .iter()
+        .flat_map(|&rise| {
+            corners
+                .iter()
+                .map(move |&corner| Slope { rise, corner }.code())
+        })
+        .collect();
+    codes.sort_unstable();
+    assert_eq!(codes, (1..=12).collect::<Vec<u8>>());
+
+    let one_way = serde_json::json!({ "name": "one_way", "type": "bool", "value": true });
+    let cases = [
+        (
+            vec![slope("45 br")[0].clone(), one_way],
+            "a `slope` tile cannot be `one_way`",
+        ),
+        (
+            slope("45").as_array().unwrap().clone(),
+            "`slope` must be a rise and a corner, as \"45 br\" (got \"45\")",
+        ),
+        (
+            slope("30 br").as_array().unwrap().clone(),
+            "`slope`'s rise must be \"45\", \"2:1 low\" or \"2:1 high\" (got \"30\")",
+        ),
+        (
+            slope("2:1 low up").as_array().unwrap().clone(),
+            "`slope`'s corner must be br, bl, tr or tl (got \"up\")",
+        ),
+        (
+            vec![serde_json::json!({ "name": "slope", "value": 45 })],
+            "`slope` must be a string (got 45)",
+        ),
+    ];
+    for (properties, expected) in cases {
+        let tiles = serde_json::json!([tiled_tile(7, "a", &serde_json::Value::Array(properties))]);
+        let err = load_json(&map_with_tiles(
+            &tiles,
+            &serde_json::json!([{ "name": "ground" }]),
+        ))
+        .unwrap_err();
+        assert!(
+            err.to_string().ends_with(&format!("tile id=7: {expected}")),
+            "{err}"
+        );
+    }
+    let mut map = TilemapData::new(16, 16, 2, 2);
+    let ramp = map.add_tile("ramp");
+    let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        map.set_tile_props(
+            ramp,
+            TileProps {
+                slope: Some(Slope::parse("45 br").unwrap()),
+                one_way: true,
+                ..TileProps::default()
+            },
+        );
+    }));
+    assert!(refused.is_err(), "the builder refuses a one-way slope");
+}

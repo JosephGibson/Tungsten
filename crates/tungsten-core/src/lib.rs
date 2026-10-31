@@ -37,9 +37,10 @@ pub use assets::{
     ResolvedDataEntry, ResolvedFont, ResolvedFontFamily, ResolvedManifest, ResolvedMaterial,
     ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab, ResolvedSound, ResolvedUiTheme,
     SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,
-    SceneTweenRepeat, SoundData, SoundEntry, SoundRegistry, SpriteAsset, SpriteAssetId, StagedLoad,
-    StagedLoadError, TextureHandle, TileChanges, TileDamage, TileIndex, TileProps, TilemapData,
-    TilemapInstance, TilemapLayer, TilemapRegistry, UiThemeEntry, WorldRngSeed,
+    SceneTweenRepeat, Slope, SlopeCorner, SlopeRise, SoundData, SoundEntry, SoundRegistry,
+    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileChanges,
+    TileDamage, TileIndex, TileProps, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry,
+    UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioBus, AudioCommand, AudioCommands, MAX_VOICES, Voice};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};

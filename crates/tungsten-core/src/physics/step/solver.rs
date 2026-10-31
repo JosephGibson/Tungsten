@@ -1,6 +1,7 @@
 //! Warm-started soft contact solver (D-063) and the signed-distance narrow
 //! phase that admits speculative contacts (D-064).
 
+use super::slope;
 use super::{ContactConstraint, FrictionConstraint, NO_SPIN, Proxy, RollingConstraint, SpinState};
 use crate::physics::PhysicsConfig;
 use crate::physics::collision::{
@@ -195,6 +196,28 @@ pub(super) fn solve_rolling(
     }
 }
 
+/// [`masked_contact`] against a slope tile: a box's or a circle's contact
+/// with its polygon.
+#[cold]
+#[inline(never)]
+fn slope_contact(
+    a: &Proxy,
+    a_center: Vec2,
+    b: &Proxy,
+    b_center: Vec2,
+    margin: f32,
+) -> Option<Contact> {
+    let poly = slope::polygon(b.slope, b_center, b.half_extents());
+    match a.shape {
+        Shape::Circle { radius } => {
+            slope::circle_contact(a_center, radius, &poly, b.face_mask, margin)
+        }
+        Shape::Aabb { half_extents } => {
+            slope::box_contact(a_center, half_extents, &poly, b.face_mask, margin)
+        }
+    }
+}
+
 /// Restitution from the approach velocity stored at contact build; contacts
 /// slower than the threshold stay inelastic so piles can settle.
 pub(super) fn apply_restitution(
@@ -273,7 +296,7 @@ pub(super) fn one_way_holds(
 }
 
 /// The signed-distance contact of `a` at `a_center` against `b` at
-/// `b_center`, a tile by its face mask.
+/// `b_center`, a tile by its face mask and a slope tile by its polygon.
 #[inline(always)]
 fn masked_contact(
     a: &Proxy,
@@ -282,6 +305,9 @@ fn masked_contact(
     b_center: Vec2,
     margin: f32,
 ) -> Option<Contact> {
+    if b.slope != 0 {
+        return slope_contact(a, a_center, b, b_center, margin);
+    }
     match (a.shape, b.shape) {
         (
             Shape::Aabb {

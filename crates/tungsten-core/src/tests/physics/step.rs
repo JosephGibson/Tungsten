@@ -6488,3 +6488,297 @@ fn sensor_events_name_their_cells() {
         [SensorExited::new(swept, None).with_tile(cell(1))]
     );
 }
+
+/// The slope of kind `code`, 1 to 12: its rise times four plus its corner,
+/// plus 1.
+fn slope_kind(code: u8) -> crate::assets::Slope {
+    use crate::assets::{SlopeCorner, SlopeRise};
+    let rises = [SlopeRise::Full, SlopeRise::Low, SlopeRise::High];
+    let corners = [
+        SlopeCorner::BottomRight,
+        SlopeCorner::BottomLeft,
+        SlopeCorner::TopRight,
+        SlopeCorner::TopLeft,
+    ];
+    let at = usize::from(code - 1);
+    crate::assets::Slope {
+        rise: rises[at / 4],
+        corner: corners[at % 4],
+    }
+}
+
+/// A map of 16 px cells drawn by rows of letters in one collision layer:
+/// `#` solid, `a` to `l` slope kinds 1 to 12 (tiles 1 to 12) and `.` empty.
+fn slope_map(rows: &[&str]) -> TilemapData {
+    let (width, height) = (rows[0].len() as u32, rows.len() as u32);
+    let mut data = TilemapData::new(16, 16, width, height);
+    data.add_tile("solid");
+    for code in 1..=12 {
+        let tile = data.add_tile(format!("slope{code}"));
+        data.set_tile_props(
+            tile,
+            TileProps {
+                slope: Some(slope_kind(code)),
+                ..TileProps::default()
+            },
+        );
+    }
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    for (row, letters) in rows.iter().enumerate() {
+        for (col, letter) in letters.chars().enumerate() {
+            let tile = match letter {
+                '#' => 0,
+                'a'..='l' => i32::from(letter as u8 - b'a') + 1,
+                _ => continue,
+            };
+            data.set_tile(layer, col as u32, row as u32, tile);
+        }
+    }
+    data
+}
+
+/// How deep a body overlaps slope kind `code`'s cell centred at `cell`: a
+/// box's least overlap by SAT on x, y and the slope's normal, a circle's
+/// radius past its centre's signed distance to the polygon; 0 or less when
+/// apart. Whether its centre is inside comes with it.
+fn slope_depth(code: u8, cell: Vec2, collider: Collider, center: Vec2) -> (f32, bool) {
+    let poly = slope::polygon(code, cell, Vec2::splat(8.0));
+    let points = &poly.points[..poly.len];
+    let inside = (0..poly.len).all(|i| (center - points[i]).dot(poly.normals[i]) < 0.0);
+    let depth = match collider.shape {
+        Shape::Circle { radius } => {
+            let distance = (0..poly.len)
+                .map(|i| {
+                    let (p, q) = (points[i], points[(i + 1) % poly.len]);
+                    let t = ((center - p).dot(q - p) / (q - p).length_squared()).clamp(0.0, 1.0);
+                    center.distance(p + (q - p) * t)
+                })
+                .fold(f32::INFINITY, f32::min);
+            radius + if inside { distance } else { -distance }
+        }
+        Shape::Aabb { half_extents } => [Vec2::X, Vec2::Y, poly.normal]
+            .into_iter()
+            .map(|axis| {
+                let reach = half_extents.x * axis.x.abs() + half_extents.y * axis.y.abs();
+                let along = points.iter().map(|p| p.dot(axis));
+                let low = along.clone().fold(f32::INFINITY, f32::min);
+                let high = along.fold(f32::NEG_INFINITY, f32::max);
+                (center.dot(axis) + reach).min(high) - (center.dot(axis) - reach).max(low)
+            })
+            .fold(f32::INFINITY, f32::min),
+    };
+    (depth, inside)
+}
+
+#[test]
+fn piles_stay_out_of_slopes() {
+    // For each kind, 500 boxes and circles of 2.5 to 5 px poured five at a
+    // time every other step from a spout 116 px over a 20-cell bin's field
+    // of that kind's cells, staggered so the pile presses on every side of
+    // them: over 600 steps no centre enters a polygon and no body sinks
+    // 2 px into one. Full cells in their place read 1.21 px at most.
+    std::thread::scope(|scope| {
+        let runs: Vec<_> = (1..=12u8)
+            .map(|code| {
+                scope.spawn(move || {
+                    let letter = char::from(b'a' + code - 1);
+                    let mut rows = vec![format!("#{}#", ".".repeat(20)); 40];
+                    for row in (26..39).step_by(3) {
+                        let shift = (row / 3) % 2;
+                        rows[row] = (0..22)
+                            .map(|col| match col {
+                                0 | 21 => '#',
+                                _ if col % 4 == 1 + shift * 2 => letter,
+                                _ => '.',
+                            })
+                            .collect();
+                    }
+                    rows.push("#".repeat(22));
+                    let mut cells = Vec::new();
+                    for (row, line) in rows.iter().enumerate() {
+                        for (col, tile) in line.chars().enumerate() {
+                            if tile == letter {
+                                cells.push(Vec2::new(col as f32, row as f32) * 16.0 + 8.0);
+                            }
+                        }
+                    }
+                    let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+                    let mut world = one_way_world(slope_map(&rows));
+                    let mut rng = crate::Pcg32::seeded(0x5_1095 + u64::from(code));
+                    let mut bodies: Vec<(Entity, Collider)> = Vec::new();
+                    let mut deepest = (f32::MIN, 0, Vec2::ZERO);
+                    for step in 0..600 {
+                        if bodies.len() < 500 && step % 2 == 0 {
+                            for lane in 0..5 {
+                                let size = rng.next_range(2.5, 5.0);
+                                let collider = if bodies.len().is_multiple_of(2) {
+                                    Collider::aabb(Vec2::new(size, rng.next_range(2.5, 5.0)))
+                                } else {
+                                    Collider::circle(size)
+                                };
+                                let x = 28.0 + 59.2 * (lane as f32 + rng.next_range(0.2, 0.8));
+                                let body = spawn_body(
+                                    &mut world,
+                                    RigidBody::dynamic(),
+                                    collider,
+                                    Vec2::new(x, 300.0),
+                                    Vec2::ZERO,
+                                );
+                                bodies.push((body, collider));
+                            }
+                        }
+                        physics_step(&mut world);
+                        for &(body, collider) in &bodies {
+                            let center = world.get::<Position>(body).unwrap().0;
+                            for &cell in &cells {
+                                if (center - cell).abs().max_element() > 16.0 {
+                                    continue;
+                                }
+                                let (depth, inside) = slope_depth(code, cell, collider, center);
+                                assert!(!inside, "kind {code}, step {step}: {center} in {cell}");
+                                if depth > deepest.0 {
+                                    deepest = (depth, step, center);
+                                }
+                            }
+                        }
+                    }
+                    let low = bodies
+                        .iter()
+                        .filter(|&&(body, _)| world.get::<Position>(body).unwrap().0.y > 400.0)
+                        .count();
+                    (code, deepest, low)
+                })
+            })
+            .collect();
+        for run in runs {
+            let (code, (depth, step, center), low) = run.join().unwrap();
+            assert!(
+                depth < 2.0,
+                "kind {code}: {depth} px deep at step {step}, {center}"
+            );
+            assert!(low > 450, "kind {code}: {low} bodies reached the field");
+        }
+    });
+}
+
+#[test]
+fn a_box_slides_down_a_frictionless_slope() {
+    // A ramp of twelve 45° cells, its face y = 192 − x: an 8 px box let go
+    // on it at x 150 slides down at g · sin 45° along the face, crossing
+    // the cells' seams without a bump.
+    let rows: Vec<String> = (0..12)
+        .map(|row| {
+            (0..12)
+                .map(|col| match (col + row).cmp(&11) {
+                    std::cmp::Ordering::Equal => 'a',
+                    std::cmp::Ordering::Greater => '#',
+                    std::cmp::Ordering::Less => '.',
+                })
+                .collect()
+        })
+        .collect();
+    let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+    let mut world = one_way_world(slope_map(&rows));
+    let start = Vec2::new(150.0, 192.0 - 150.0 - 8.0);
+    let body = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(4.0)),
+        start,
+        Vec2::ZERO,
+    );
+    let along = Vec2::new(-1.0, 1.0).normalize();
+    let mut slowest = f32::MAX;
+    for step in 1..=30 {
+        physics_step(&mut world);
+        let at = world.get::<Position>(body).unwrap().0;
+        let corner = at + Vec2::splat(4.0);
+        assert!(
+            (corner.x + corner.y - 192.0).abs() / 2f32.sqrt() < 0.5,
+            "step {step}: the box left the face at {at}"
+        );
+        let velocity = world.get::<Velocity>(body).unwrap().0;
+        let expected = 900.0 * std::f32::consts::FRAC_1_SQRT_2 * step as f32 / 60.0;
+        slowest = slowest.min(velocity.dot(along) / expected);
+    }
+    let velocity = world.get::<Velocity>(body).unwrap().0;
+    let speed = velocity.dot(along);
+    let expected = 900.0 * std::f32::consts::FRAC_1_SQRT_2 * 0.5;
+    assert!(
+        (speed - expected).abs() <= 0.03 * expected,
+        "{speed} px/s along the face after 0.5 s, g · sin 45° gives {expected}"
+    );
+    assert!(
+        velocity.perp_dot(along).abs() < 0.01 * expected,
+        "off the face's line: {velocity}"
+    );
+    assert!(slowest > 0.9, "a seam slowed it to {slowest} of its speed");
+    let moved = start.x - world.get::<Position>(body).unwrap().0.x;
+    assert!(moved > 50.0, "it crossed cells: {moved} px");
+}
+
+#[test]
+fn a_cell_changing_slope_wakes_its_sleepers() {
+    // A box asleep on a full cell and one asleep on a 45° cell's foot: the
+    // first cell turned to a 45° slope and the second to a 2:1 one, each
+    // through the registry, both boxes are awake at the next step and the
+    // first slides off its cell.
+    let mut world = one_way_world(slope_map(&[
+        "............",
+        "............",
+        "............",
+        "..#.....a...",
+        "############",
+    ]));
+    let on_full = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(3.0)),
+        Vec2::new(40.0, 45.0),
+        Vec2::ZERO,
+    );
+    // The 45° cell's foot: its face meets the floor at x 128, so a box
+    // left of it rests on the floor against the face's lower end.
+    let on_slope = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(3.0),
+        Vec2::new(141.0, 54.0),
+        Vec2::ZERO,
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let sleeping = |world: &World, body: Entity| {
+        world
+            .get_resource::<PhysicsBuffers>()
+            .unwrap()
+            .is_sleeping(body)
+    };
+    assert!(
+        sleeping(&world, on_full) && sleeping(&world, on_slope),
+        "both asleep: {:?}, {:?}",
+        world.get::<Position>(on_full).unwrap().0,
+        world.get::<Position>(on_slope).unwrap().0
+    );
+    let rested = world.get::<Position>(on_full).unwrap().0;
+    assert!(
+        (rested.y + 3.0 - 48.0).abs() < 0.5,
+        "on the cell at {rested}"
+    );
+    for (col, row, tile) in [(2, 3, 1), (8, 3, 5)] {
+        assert!(
+            world
+                .resource_mut::<TilemapRegistry>()
+                .set_tile("ledges", 0, col, row, tile)
+        );
+    }
+    physics_step(&mut world);
+    assert!(!sleeping(&world, on_full), "the box on the full cell woke");
+    assert!(!sleeping(&world, on_slope), "the ball on the slope woke");
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    let slid = world.get::<Position>(on_full).unwrap().0;
+    assert!(slid.x < rested.x - 8.0, "it slid off its cell: {slid}");
+}

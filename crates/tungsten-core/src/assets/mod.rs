@@ -40,6 +40,7 @@ pub use scene::{
 pub use shader::{ShaderAssetId, ShaderRegistry};
 pub use terrain::{CellChange, ChangedCells, MapCursor, TileChanges, TileDamage};
 pub use tilemap::{
-    EMPTY_TILE, LayerKind, LayerPhysics, MapObject, ObjectLayer, TileIndex, TileProps, TilemapData,
-    TilemapError, TilemapInstance, TilemapLayer, TilemapRegistry,
+    EMPTY_TILE, LayerKind, LayerPhysics, MapObject, ObjectLayer, Slope, SlopeCorner, SlopeRise,
+    TileIndex, TileProps, TilemapData, TilemapError, TilemapInstance, TilemapLayer,
+    TilemapRegistry,
 };
