@@ -1716,7 +1716,13 @@ fn step_by_substeps(world: &mut World, rebuild: Option<u32>) {
         substep(&config, sub_dt, time_left, &mut buffers, false);
     }
     sync_impulses(&mut buffers);
-    write_back(world, &buffers.proxies, &mut buffers.sensors, dt);
+    write_back(
+        world,
+        &buffers.proxies,
+        &mut buffers.sensors,
+        &buffers.extra,
+        dt,
+    );
     world.insert_resource(buffers);
 }
 
@@ -1770,6 +1776,113 @@ fn tangent_impulses_warm_start_across_a_rebuild() {
     assert!(
         (kept.get::<Velocity>(body).unwrap().0.x - 10.0).abs() < 0.5,
         "the box rides the belt"
+    );
+}
+
+/// A world under gravity 900 with a static floor of `friction` whose top
+/// is y = 90, and a rolling ball of radius 10 with `friction` and
+/// `rolling` resting on it, launched at `speed` px/s along it.
+fn rolling_rig(friction: f32, rolling: f32, speed: f32) -> (World, Entity) {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(2000.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    world.insert(floor, RigidBody::r#static().with_friction(friction));
+    let ball = world.spawn_with(
+        RigidBodyBundle::dynamic(Position::new(-1500.0, 80.0), Collider::circle(10.0))
+            .with_body(
+                RigidBody::dynamic()
+                    .with_friction(friction)
+                    .with_rolling(rolling),
+            )
+            .with_velocity(Velocity::new(speed, 0.0))
+            .with_spin(),
+    );
+    (world, ball)
+}
+
+/// A ball's speed along the floor and its rim speed, `ω · r`.
+fn roll_of(world: &World, ball: Entity) -> (f32, f32) {
+    let spin = world.get::<Spin>(ball).unwrap();
+    (
+        world.get::<Velocity>(ball).unwrap().0.x,
+        spin.angular_velocity * 10.0,
+    )
+}
+
+#[test]
+fn a_rolling_ball_rolls_without_slipping() {
+    // Friction slows the slide and spins the disc until its rim keeps pace,
+    // at two thirds of the launch speed.
+    let (mut world, ball) = rolling_rig(0.5, 0.0, 200.0);
+    for _ in 0..30 {
+        physics_step(&mut world);
+    }
+    let (speed, rim) = roll_of(&world, ball);
+    assert!(
+        (rim - speed).abs() <= 0.02 * speed,
+        "rolling at {speed} px/s with its rim at {rim}"
+    );
+    assert!(
+        (speed - 200.0 * 2.0 / 3.0).abs() < 2.0,
+        "a disc rolls on at two thirds of 200 px/s, not {speed}"
+    );
+}
+
+#[test]
+fn rolling_resistance_brings_a_ball_to_rest() {
+    // Rolling resistance 0.05 stops a roll; without it the roll goes on,
+    // and without friction the ball slides on unturned.
+    let (mut resisted, ball) = rolling_rig(0.5, 0.05, 60.0);
+    let (mut free, free_ball) = rolling_rig(0.5, 0.0, 60.0);
+    let (mut frictionless, slider) = rolling_rig(0.0, 0.05, 60.0);
+    for _ in 0..180 {
+        physics_step(&mut resisted);
+        physics_step(&mut free);
+        physics_step(&mut frictionless);
+    }
+    let (speed, rim) = roll_of(&resisted, ball);
+    assert!(
+        speed.abs() < 0.5 && rim.abs() < 0.5,
+        "still rolling at {speed} px/s, rim {rim}, after 3 s"
+    );
+    let (speed, rim) = roll_of(&free, free_ball);
+    assert!(
+        speed > 30.0 && (rim - speed).abs() < 1.0,
+        "free: {speed}, {rim}"
+    );
+    let (speed, rim) = roll_of(&frictionless, slider);
+    assert!(speed > 59.0 && rim == 0.0, "frictionless: {speed}, {rim}");
+}
+
+#[test]
+fn a_spinner_on_a_frictionless_floor_keeps_its_spin() {
+    // Its rim at 50 px/s keeps it awake past the sleep delay though it
+    // stands still: no friction couples the spin to the floor.
+    let (mut world, ball) = rolling_rig(0.0, 0.0, 0.0);
+    world.get_mut::<Spin>(ball).unwrap().angular_velocity = 5.0;
+    let mut angle = 0.0;
+    for step in 0..120 {
+        physics_step(&mut world);
+        let spin = *world.get::<Spin>(ball).unwrap();
+        assert!(
+            spin.angle > angle,
+            "step {step}: the angle stopped at {angle}"
+        );
+        angle = spin.angle;
+    }
+    assert!(
+        !is_sleeping(&world, ball),
+        "a spinner sleeps while its rim turns"
+    );
+    let speed = world.get::<Velocity>(ball).unwrap().0;
+    assert!(speed.length() < 1.0, "the spinner moved at {speed}");
+    assert!(
+        (angle - 10.0).abs() < 0.05,
+        "two seconds at 5 rad/s turned {angle}"
     );
 }
 

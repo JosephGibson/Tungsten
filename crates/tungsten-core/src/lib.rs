@@ -74,7 +74,7 @@ pub use lighting::{AmbientLight, LIGHT_CAP};
 pub use physics::{
     Aabb, BodyKind, Collider, CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig,
     PhysicsLayers, PhysicsMaterial, PhysicsMaterials, PhysicsPlugin, Position, PrevPosition,
-    RigidBody, RigidBodyBundle, SensorEntered, Shape, SpatialFilter, SpatialGrid, SpatialHit,
+    RigidBody, RigidBodyBundle, SensorEntered, Shape, SpatialFilter, SpatialGrid, SpatialHit, Spin,
     TerrainFace, Velocity, aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_prev_snapshot,
     physics_step, physics_sync,
 };

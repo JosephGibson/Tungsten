@@ -1,5 +1,5 @@
 //! Physics components: AABB/circle, static, dynamic and kinematic bodies and
-//! sensors, no rotation.
+//! sensors; a circle may spin ([`Spin`]), a box stays upright.
 
 use glam::Vec2;
 
@@ -41,6 +41,27 @@ impl Velocity {
     pub fn new(x: f32, y: f32) -> Self {
         Self(Vec2::new(x, y))
     }
+}
+
+/// A spinning circle's turn (`D-033`): its angle in radians, which grows
+/// clockwise on screen (y down), its angular velocity in radians a second,
+/// and its angle before the last fixed step, which
+/// [`physics_prev_snapshot`](crate::physics::physics_prev_snapshot) copies
+/// and [`physics_sync`](crate::physics::physics_sync) draws `Transform`'s
+/// rotation from, as it does positions. The step spins a dynamic circle that
+/// [`rolls`](RigidBody::rolls) and has one: its contacts' friction turns it
+/// and rolling resistance slows it. Spawn it with the body ([`RigidBodyBundle::with_spin`]), since
+/// inserting it later moves the entity's archetype and reorders the solve
+/// (`D-066`). A sleeping spinner is frozen: a write to its `Spin` does not
+/// wake it; [`wake`](crate::physics::wake) does.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Spin {
+    /// Radians, clockwise on screen.
+    pub angle: f32,
+    /// Radians a second.
+    pub angular_velocity: f32,
+    /// The angle before the last fixed step.
+    pub prev_angle: f32,
 }
 
 /// Axis-aligned collider shape. A match outside this crate needs a wildcard
@@ -187,6 +208,10 @@ pub struct RigidBody {
     /// Rolling resistance, finite and at least 0: 0 from every
     /// constructor. A contact's is the larger of its two sides'.
     pub rolling: f32,
+    /// A circle that rolls: [`RigidBodyBundle`] spawns it with a [`Spin`],
+    /// which the step turns. False from every constructor; boxes stay
+    /// upright.
+    pub rolls: bool,
 }
 
 impl RigidBody {
@@ -208,6 +233,7 @@ impl RigidBody {
             gravity_scale: 1.0,
             friction: 0.0,
             rolling: 0.0,
+            rolls: false,
         }
     }
 
@@ -223,6 +249,7 @@ impl RigidBody {
             gravity_scale: 1.0,
             friction: 0.0,
             rolling: 0.0,
+            rolls: false,
         }
     }
 
@@ -241,6 +268,7 @@ impl RigidBody {
             gravity_scale: 1.0,
             friction: 0.0,
             rolling: 0.0,
+            rolls: false,
         }
     }
 
@@ -258,6 +286,7 @@ impl RigidBody {
             gravity_scale: 1.0,
             friction: 0.0,
             rolling: 0.0,
+            rolls: false,
         }
     }
 
@@ -357,7 +386,8 @@ impl RigidBody {
 ///
 /// A dynamic or kinematic body or a sensor gets `Position`,
 /// [`PrevPosition`] at the same point, `Velocity`, `Collider` and
-/// `RigidBody`; a static one the same without `Velocity`. So every bundle
+/// `RigidBody`; a static one the same without `Velocity`; a body that
+/// [`rolls`](RigidBody::rolls) a [`Spin`] at rest too. So every bundle
 /// body is drawn interpolated; a game that wants a body without history
 /// spawns its components as a tuple.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -446,11 +476,28 @@ impl RigidBodyBundle {
         self.body.mask = mask;
         self
     }
+
+    /// The bundle with its circle rolling: spawned with a [`Spin`] at rest
+    /// ([`RigidBody::rolls`]).
+    ///
+    /// # Panics
+    ///
+    /// When the collider is not a circle.
+    #[must_use]
+    pub fn with_spin(mut self) -> Self {
+        assert!(
+            matches!(self.collider.shape, Shape::Circle { .. }),
+            "only a circle rolls; a box stays upright"
+        );
+        self.body.rolls = true;
+        self
+    }
 }
 
 impl Bundle for RigidBodyBundle {
     /// `Position`, `PrevPosition` at the same point, `Velocity` when there
-    /// is one, `Collider`, `RigidBody`.
+    /// is one, `Collider`, `RigidBody`, and a [`Spin`] at rest when the body
+    /// rolls.
     #[inline]
     fn put<S: BundleSink>(self, sink: &mut S) {
         sink.put(self.position);
@@ -459,6 +506,10 @@ impl Bundle for RigidBodyBundle {
             sink.put(velocity);
         }
         sink.put(self.collider);
+        let rolls = self.body.rolls;
         sink.put(self.body);
+        if rolls {
+            sink.put(Spin::default());
+        }
     }
 }

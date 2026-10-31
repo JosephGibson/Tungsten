@@ -1,7 +1,7 @@
 //! Warm-started soft contact solver (D-063) and the signed-distance narrow
 //! phase that admits speculative contacts (D-064).
 
-use super::{ContactConstraint, FrictionConstraint, Proxy};
+use super::{ContactConstraint, FrictionConstraint, NO_SPIN, Proxy, RollingConstraint, SpinState};
 use crate::physics::PhysicsConfig;
 use crate::physics::collision::{
     Aabb, Contact, FACE_ONE_WAY, aabb_vs_aabb_speculative, aabb_vs_circle_speculative,
@@ -95,12 +95,47 @@ pub(super) fn tangent(normal: Vec2) -> Vec2 {
     Vec2::new(-normal.y, normal.x)
 }
 
+/// A tangent impulse `impulse` of `row`'s contact: along the tangent on the
+/// two bodies, and on a spinning side's spin, `−2 · impulse · inv_m / r`
+/// (its contact point sits `r` from its centre against the normal, its
+/// moment of inertia is `m r² / 2`).
+#[inline]
+pub(super) fn apply_tangent(
+    proxies: &mut [Proxy],
+    spins: &mut [SpinState],
+    contact: &ContactConstraint,
+    row: &FrictionConstraint,
+    impulse: f32,
+) {
+    apply_impulse(proxies, contact, tangent(contact.normal) * impulse);
+    for (slot, inv) in [(row.spin_a, contact.inv_a), (row.spin_b, contact.inv_b)] {
+        if slot != NO_SPIN && inv > 0.0 {
+            let spin = &mut spins[slot as usize];
+            spin.angular_velocity -= 2.0 * impulse * inv / spin.radius;
+        }
+    }
+}
+
+/// A side's rim speed along its contact's tangent, `r · ω`, which a spin of
+/// `slot` subtracts from the tangent relative velocity; 0 for no spin.
+#[inline]
+fn rim(spins: &[SpinState], slot: u32) -> f32 {
+    if slot == NO_SPIN {
+        0.0
+    } else {
+        let spin = &spins[slot as usize];
+        spin.radius * spin.angular_velocity
+    }
+}
+
 /// One Gauss-Seidel pass of Coulomb friction after a normal pass: each
 /// constraint's impulse removes its contact's tangent relative velocity, a
-/// kinematic side's included, its accumulated value within `±mu` times the
-/// contact's normal impulse. An empty list does nothing.
+/// kinematic side's included and each spinning side's rim speed, its
+/// accumulated value within `±mu` times the contact's normal impulse. An
+/// empty list does nothing.
 pub(super) fn solve_friction(
     proxies: &mut [Proxy],
+    spins: &mut [SpinState],
     contacts: &[ContactConstraint],
     friction: &mut [FrictionConstraint],
 ) {
@@ -109,13 +144,53 @@ pub(super) fn solve_friction(
         let t = tangent(contact.normal);
         let a = contact.a as usize;
         let b = contact.b as usize;
-        let vt = (proxies[a].velocity - proxies[b].velocity).dot(t);
+        let vt = (proxies[a].velocity - proxies[b].velocity).dot(t)
+            - rim(spins, row.spin_a)
+            - rim(spins, row.spin_b);
         let bound = row.mu * contact.impulse;
         let new_impulse = (row.impulse - row.tangent_mass * vt).clamp(-bound, bound);
         let delta = new_impulse - row.impulse;
         row.impulse = new_impulse;
         if delta != 0.0 {
-            apply_impulse(proxies, contact, t * delta);
+            apply_tangent(proxies, spins, contact, row, delta);
+        }
+    }
+}
+
+/// One Gauss-Seidel pass of rolling resistance after the friction pass:
+/// each constraint's angular impulse opposes its spinning side's spin
+/// relative to the other side's, its accumulated value within `±bound`
+/// times the contact's normal impulse. An empty list does nothing.
+pub(super) fn solve_rolling(
+    spins: &mut [SpinState],
+    contacts: &[ContactConstraint],
+    rolling: &mut [RollingConstraint],
+) {
+    let spin_of = |spins: &[SpinState], slot: u32| {
+        if slot == NO_SPIN {
+            0.0
+        } else {
+            spins[slot as usize].angular_velocity
+        }
+    };
+    for row in rolling.iter_mut() {
+        let contact = &contacts[row.contact as usize];
+        let relative = spin_of(spins, row.spin_a) - spin_of(spins, row.spin_b);
+        let bound = row.bound * contact.impulse;
+        let new_impulse = (row.impulse - row.mass * relative).clamp(-bound, bound);
+        let delta = new_impulse - row.impulse;
+        row.impulse = new_impulse;
+        if delta == 0.0 {
+            continue;
+        }
+        for (slot, inv, sign) in [
+            (row.spin_a, contact.inv_a, 1.0),
+            (row.spin_b, contact.inv_b, -1.0),
+        ] {
+            if slot != NO_SPIN && inv > 0.0 {
+                let spin = &mut spins[slot as usize];
+                spin.angular_velocity += sign * delta * 2.0 * inv / (spin.radius * spin.radius);
+            }
         }
     }
 }

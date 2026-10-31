@@ -24,7 +24,7 @@ pub use collision::{
     aabb_vs_circle_speculative, circle_vs_circle, circle_vs_circle_speculative,
 };
 pub use components::{
-    BodyKind, Collider, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, Velocity,
+    BodyKind, Collider, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, Spin, Velocity,
 };
 pub use events::{CollisionEvent, SensorEntered};
 pub use plugin::{

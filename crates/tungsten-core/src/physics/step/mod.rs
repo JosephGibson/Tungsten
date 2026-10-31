@@ -120,7 +120,9 @@ use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::{
     Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_ONE_WAY, FACE_RIGHT, FACE_TOP,
 };
-use super::components::{BodyKind, Collider, Position, PrevPosition, RigidBody, Shape, Velocity};
+use super::components::{
+    BodyKind, Collider, Position, PrevPosition, RigidBody, Shape, Spin, Velocity,
+};
 use super::events::{CollisionEvent, SensorEntered};
 use super::query::{IndexEntry, SpatialIndex};
 use crate::components::Transform;
@@ -142,8 +144,8 @@ use gather::{TileCache, entity_key, gather_proxies};
 use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses};
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
 use solver::{
-    apply_impulse, apply_restitution, narrow_phase, one_way_holds, soft_params, solve_contacts,
-    solve_friction, tangent,
+    apply_impulse, apply_restitution, apply_tangent, narrow_phase, one_way_holds, soft_params,
+    solve_contacts, solve_friction, solve_rolling,
 };
 use sweep::{SweepGrid, speculative_pass};
 
@@ -445,15 +447,64 @@ struct StepExtra {
     repair_tangents: ImpulseMap,
     /// Scratch for filling `repair_tangents`.
     removed_tangents: Vec<(u128, f32)>,
+    /// Each proxy's slot in `spins`, in proxy order, [`NO_SPIN`] for one
+    /// that does not spin; empty while nothing spins.
+    spin_of: Vec<u32>,
+    /// The spinning dynamic circles' turns, in proxy order.
+    spins: Vec<SpinState>,
+    /// Each proxy's rolling resistance, the tiles' included, in proxy
+    /// order; empty while nothing spins or every one is 0.
+    rollings: Vec<f32>,
+    /// The substep's rolling resistance constraints, one for each contact
+    /// with a spinning side whose rolling resistance is above 0.
+    rolling: Vec<RollingConstraint>,
 }
 
+/// [`StepExtra::spin_of`]'s slot for a proxy that does not spin.
+const NO_SPIN: u32 = u32::MAX;
+
+/// A spinning dynamic circle's turn for the step ([`Spin`]).
+#[derive(Debug, Clone, Copy)]
+struct SpinState {
+    /// Its proxy and entity.
+    proxy: u32,
+    entity: Entity,
+    angle: f32,
+    angular_velocity: f32,
+    radius: f32,
+}
+
+/// One contact's rolling resistance (`D-063`'s solver, a row on the spin
+/// alone): an angular impulse opposing the spinning side's spin relative to
+/// the other side's, accumulated within `±bound · λn`.
+#[derive(Debug, Clone, Copy)]
+struct RollingConstraint {
+    /// Its contact's index in the substep's contacts.
+    contact: u32,
+    /// The two sides' slots in the spins, [`NO_SPIN`] for one that does
+    /// not spin.
+    spin_a: u32,
+    spin_b: u32,
+    /// The larger rolling resistance of the two sides times the spinning
+    /// radius.
+    bound: f32,
+    /// Inverse of the summed inverse moments of inertia.
+    mass: f32,
+    /// Accumulated angular impulse.
+    impulse: f32,
+}
 /// One contact's Coulomb friction (`D-063`'s solver, a tangent row beside
 /// the normal one): solved after the normal pass of each iteration, its
-/// accumulated impulse clamped to `±mu · λn`.
+/// accumulated impulse clamped to `±mu · λn`. A spinning side's rim speed
+/// enters its tangent velocity, and the impulse turns it.
 #[derive(Debug, Clone, Copy)]
 struct FrictionConstraint {
     /// Its contact's index in the substep's contacts.
     contact: u32,
+    /// The two sides' slots in the spins, [`NO_SPIN`] for one that does
+    /// not spin.
+    spin_a: u32,
+    spin_b: u32,
     /// The geometric mean of the two sides' friction, above 0.
     mu: f32,
     /// Inverse of the summed inverse masses along the tangent.
@@ -486,6 +537,12 @@ impl PhysicsBuffers {
         self.sleep
             .get(entity_key(entity))
             .is_some_and(|entry| entry.sleeping)
+    }
+
+    /// Whether the last step turned a spinner: the snapshot and the sync
+    /// read [`Spin`]s only then.
+    pub(crate) fn has_spins(&self) -> bool {
+        !self.extra.spins.is_empty()
     }
 
     /// Number of sleeping bodies (diagnostic).
@@ -738,7 +795,13 @@ pub fn physics_step(world: &mut World) {
     }
 
     sync_impulses(&mut buffers);
-    write_back(world, &buffers.proxies, &mut buffers.sensors, dt);
+    write_back(
+        world,
+        &buffers.proxies,
+        &mut buffers.sensors,
+        &buffers.extra,
+        dt,
+    );
     // Queries see this step's final positions from here on.
     SpatialIndex::mark_stale(world);
     if buffers.sensors.is_empty() {
@@ -812,10 +875,17 @@ fn substep_count(config: &PhysicsConfig, dt: f32, kinematic: bool) -> u32 {
 /// invariant external-write detection relies on (D-065). A moving kinematic
 /// body writes its `Position` only: the step never changes its velocity. A
 /// sensor row pulls no proxy: it moves by `velocity · dt` and records its
-/// new centre. The mutable query iterates the exact archetype/row order
+/// new centre. An awake spinner writes its `Spin`'s angle and angular
+/// velocity. The mutable query iterates the exact archetype/row order
 /// `gather_proxies` used, so entity proxies zip positionally with the query
 /// rows.
-fn write_back(world: &mut World, proxies: &[Proxy], sensors: &mut [SensorBody], dt: f32) {
+fn write_back(
+    world: &mut World,
+    proxies: &[Proxy],
+    sensors: &mut [SensorBody],
+    extra: &StepExtra,
+    dt: f32,
+) {
     let mut rows = proxies.iter();
     let mut sensor_rows = sensors.iter_mut();
     for (entity, collider, position, body, velocity) in world.query_mut::<(
@@ -849,6 +919,15 @@ fn write_back(world: &mut World, proxies: &[Proxy], sensors: &mut [SensorBody], 
         position.0 = proxy.center - proxy.offset;
         if let Some(vel) = velocity {
             vel.0 = proxy.velocity;
+        }
+    }
+    for turn in &extra.spins {
+        if proxies[turn.proxy as usize].sleeping {
+            continue;
+        }
+        if let Some(spin) = world.get_mut::<Spin>(turn.entity) {
+            spin.angle = turn.angle;
+            spin.angular_velocity = turn.angular_velocity;
         }
     }
 }
@@ -927,7 +1006,9 @@ fn substep(
     candidates.clear();
     contacts.clear();
     extra.friction.clear();
+    extra.rolling.clear();
     let friction_on = !extra.frictions.is_empty();
+    let spins_on = !extra.spin_of.is_empty();
     let seed_impulses = std::mem::take(seed_pair_impulses);
 
     // Narrow phase once per substep; solver iterations reuse these contacts.
@@ -1050,19 +1131,58 @@ fn substep(
             key,
             pair_index,
         });
-        // Friction rides beside the contact when both sides have some.
+        // Friction rides beside the contact when both sides have some, and
+        // rolling resistance when a side spins. A spinning side's moment of
+        // inertia is `m r² / 2`, so its rim adds `r² / I = 2 / m` to the
+        // tangent's inverse mass.
+        let (spin_a, spin_b) = if spins_on {
+            (extra.spin_of[a_idx], extra.spin_of[b_idx])
+        } else {
+            (NO_SPIN, NO_SPIN)
+        };
         if friction_on {
             let mu = (extra.frictions[a_idx] * extra.frictions[b_idx]).sqrt();
             if mu > 0.0 {
+                let mut inv_tangent = inv_mass_sum;
+                if spin_a != NO_SPIN {
+                    inv_tangent += 2.0 * inv_a;
+                }
+                if spin_b != NO_SPIN {
+                    inv_tangent += 2.0 * inv_b;
+                }
                 extra.friction.push(FrictionConstraint {
                     contact: (contacts.len() - 1) as u32,
+                    spin_a,
+                    spin_b,
                     mu,
-                    tangent_mass: 1.0 / inv_mass_sum,
+                    tangent_mass: 1.0 / inv_tangent,
                     impulse: if seed_impulses {
                         extra.tangents.get(key)
                     } else {
                         cached_tangent
                     },
+                });
+            }
+        }
+        if (spin_a != NO_SPIN || spin_b != NO_SPIN) && !extra.rollings.is_empty() {
+            let k = extra.rollings[a_idx].max(extra.rollings[b_idx]);
+            let radius_of = |slot: u32, inv: f32| {
+                if slot == NO_SPIN || inv == 0.0 {
+                    (0.0, 0.0)
+                } else {
+                    let radius = extra.spins[slot as usize].radius;
+                    (radius, 2.0 * inv / (radius * radius))
+                }
+            };
+            let ((ra, inv_ia), (rb, inv_ib)) = (radius_of(spin_a, inv_a), radius_of(spin_b, inv_b));
+            if k > 0.0 && inv_ia + inv_ib > 0.0 {
+                extra.rolling.push(RollingConstraint {
+                    contact: (contacts.len() - 1) as u32,
+                    spin_a,
+                    spin_b,
+                    bound: k * ra.max(rb),
+                    mass: 1.0 / (inv_ia + inv_ib),
+                    impulse: 0.0,
                 });
             }
         }
@@ -1136,7 +1256,13 @@ fn substep(
     for friction in &extra.friction {
         if friction.impulse != 0.0 {
             let contact = &contacts[friction.contact as usize];
-            apply_impulse(proxies, contact, tangent(contact.normal) * friction.impulse);
+            apply_tangent(
+                proxies,
+                &mut extra.spins,
+                contact,
+                friction,
+                friction.impulse,
+            );
         }
     }
 
@@ -1151,7 +1277,8 @@ fn substep(
 
     for _ in 0..config.solver_iterations.max(1) {
         solve_contacts(proxies, contacts, config, soft, soft_static, inv_h, true);
-        solve_friction(proxies, contacts, &mut extra.friction);
+        solve_friction(proxies, &mut extra.spins, contacts, &mut extra.friction);
+        solve_rolling(&mut extra.spins, contacts, &mut extra.rolling);
     }
 
     // Position integration converts the bias velocity into depenetration. A
@@ -1181,6 +1308,12 @@ fn substep(
         let travel = proxy.velocity * sub_dt;
         proxy.center += travel;
     }
+    // A spinner turns as it moves; one asleep stays as it was.
+    for spin in &mut extra.spins {
+        if !proxies[spin.proxy as usize].sleeping {
+            spin.angle += spin.angular_velocity * sub_dt;
+        }
+    }
 
     // A velocity the solve handed a body is checked against what it reaches
     // from where the substep began, and the move is corrected.
@@ -1201,7 +1334,8 @@ fn substep(
 
     // One bias-free relax iteration strips the injected bias energy.
     solve_contacts(proxies, contacts, config, soft, soft_static, inv_h, false);
-    solve_friction(proxies, contacts, &mut extra.friction);
+    solve_friction(proxies, &mut extra.spins, contacts, &mut extra.friction);
+    solve_rolling(&mut extra.spins, contacts, &mut extra.rolling);
 
     apply_restitution(proxies, contacts, config.restitution_threshold);
 

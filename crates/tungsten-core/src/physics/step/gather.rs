@@ -10,7 +10,7 @@
 //! outline's runs beside them, which casts meet.
 
 use super::outline::{CHUNK, LayerCells, Run, TileClass, trace_chunk};
-use super::{Layers, Proxy, ProxyLayers, SensorBody, StepExtra};
+use super::{Layers, NO_SPIN, Proxy, ProxyLayers, SensorBody, SpinState, StepExtra};
 use crate::assets::{
     LayerKind, MapCursor, TileChanges, TileIndex, TilemapData, TilemapInstance, TilemapRegistry,
 };
@@ -18,7 +18,7 @@ use crate::ecs::{Entity, World};
 use crate::physics::collision::FACE_ALL;
 #[cfg(test)]
 use crate::physics::collision::{FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
-use crate::physics::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
+use crate::physics::components::{BodyKind, Collider, Position, RigidBody, Shape, Spin, Velocity};
 use crate::physics::query::TileHit;
 use crate::physics::{PhysicsMaterial, PhysicsMaterials};
 use glam::Vec2;
@@ -84,8 +84,9 @@ fn run_key(map: Entity, layer: usize, run: &Run) -> u64 {
 /// up to the World's maps first. `extra` gets each entity proxy's gravity
 /// scale once a dynamic body's differs from 1, 1 for every proxy that is
 /// not dynamic, and each proxy's friction, the tiles' included, once one is
-/// above 0. Returns how many kinematic proxies it staged, which sets the
-/// frame's substep count.
+/// above 0; and each dynamic circle that rolls and has a [`Spin`] its turn,
+/// with every proxy's rolling resistance once one is above 0. Returns how many
+/// kinematic proxies it staged, which sets the frame's substep count.
 pub(super) fn gather_proxies(
     world: &World,
     proxies: &mut Vec<Proxy>,
@@ -101,6 +102,9 @@ pub(super) fn gather_proxies(
     tile_ids.clear();
     extra.gravity_scales.clear();
     extra.frictions.clear();
+    extra.spin_of.clear();
+    extra.spins.clear();
+    extra.rollings.clear();
     let mut kinematics = 0;
     let mut layered = false;
 
@@ -157,6 +161,27 @@ pub(super) fn gather_proxies(
             frictions.resize(proxies.len(), 0.0);
             frictions.push(friction);
         }
+        let rolling = body.map_or(0.0, |b| b.rolling);
+        let rollings = &mut extra.rollings;
+        if rolling != 0.0 || !rollings.is_empty() {
+            rollings.resize(proxies.len(), 0.0);
+            rollings.push(rolling);
+        }
+        // A dynamic circle that rolls turns; its `Spin` is read below, so
+        // a world where nothing rolls never reads one.
+        if let (Some(b), Shape::Circle { radius }) = (body, collider.shape)
+            && b.rolls
+            && is_dynamic
+            && radius > 0.0
+        {
+            extra.spins.push(SpinState {
+                proxy: proxies.len() as u32,
+                entity,
+                angle: 0.0,
+                angular_velocity: 0.0,
+                radius,
+            });
+        }
         proxies.push(Proxy {
             entity: Some(entity),
             key: entity_key(entity),
@@ -179,13 +204,35 @@ pub(super) fn gather_proxies(
 
     tiles.refresh(world);
     let bodies = proxies.len();
-    let tile_frictions = tiles.frictions();
-    if !(extra.frictions.is_empty() && tile_frictions.is_empty()) {
-        extra.frictions.resize(bodies, 0.0);
-        if tile_frictions.is_empty() {
-            extra.frictions.resize(bodies + tiles.len(), 0.0);
-        } else {
-            extra.frictions.extend_from_slice(tile_frictions);
+    // The tiles' frictions and rolling resistances follow the bodies'; the
+    // rolling resistances matter only while something spins.
+    let fill = |values: &mut Vec<f32>, tile_values: &[f32]| {
+        if !(values.is_empty() && tile_values.is_empty()) {
+            values.resize(bodies, 0.0);
+            if tile_values.is_empty() {
+                values.resize(bodies + tiles.len(), 0.0);
+            } else {
+                values.extend_from_slice(tile_values);
+            }
+        }
+    };
+    fill(&mut extra.frictions, tiles.frictions());
+    // Each roller's turn, those with a `Spin`; then every proxy's slot.
+    extra.spins.retain_mut(|turn| {
+        let Some(spin) = world.get::<Spin>(turn.entity) else {
+            return false;
+        };
+        turn.angle = spin.angle;
+        turn.angular_velocity = spin.angular_velocity;
+        true
+    });
+    if extra.spins.is_empty() {
+        extra.rollings.clear();
+    } else {
+        fill(&mut extra.rollings, tiles.rollings());
+        extra.spin_of.resize(bodies + tiles.len(), NO_SPIN);
+        for (slot, turn) in extra.spins.iter().enumerate() {
+            extra.spin_of[turn.proxy as usize] = slot as u32;
         }
     }
     proxies.extend_from_slice(&tiles.proxies);
@@ -249,6 +296,8 @@ struct CacheState {
     /// Each tile proxy's friction, in gather order; empty while every
     /// tile's is 0.
     frictions: Vec<f32>,
+    /// Each tile proxy's rolling resistance, likewise.
+    rollings: Vec<f32>,
     /// The version of the World's `PhysicsMaterials` the maps' coefficients
     /// were resolved against; `None` without the resource.
     materials_version: Option<u64>,
@@ -496,11 +545,8 @@ impl CachedMap {
                     arrays
                         .ids
                         .push(tile_identity(self.entity, layer.index, col, row));
-                    arrays.push_friction(
-                        coefficients
-                            .get(tile as usize)
-                            .map_or(0.0, |material| material.friction),
-                    );
+                    let material = coefficients.get(tile as usize).copied().unwrap_or_default();
+                    arrays.push_coefficients(material.friction, material.rolling);
                 }
             }
         }
@@ -681,6 +727,8 @@ pub(super) struct TileArrays {
     pub(super) ids: Vec<u64>,
     /// Each proxy's friction; empty while every one is 0.
     pub(super) frictions: Vec<f32>,
+    /// Each proxy's rolling resistance; empty while every one is 0.
+    pub(super) rollings: Vec<f32>,
 }
 
 impl TileArrays {
@@ -689,13 +737,21 @@ impl TileArrays {
         self.layers.clear();
         self.ids.clear();
         self.frictions.clear();
+        self.rollings.clear();
     }
 
-    /// Records the friction of the proxy just pushed, once one is above 0.
-    fn push_friction(&mut self, friction: f32) {
-        if friction != 0.0 || !self.frictions.is_empty() {
-            self.frictions.resize(self.proxies.len() - 1, 0.0);
-            self.frictions.push(friction);
+    /// Records the friction and rolling resistance of the proxy just
+    /// pushed, each list once one of its values is above 0.
+    fn push_coefficients(&mut self, friction: f32, rolling: f32) {
+        let before = self.proxies.len() - 1;
+        for (values, value) in [
+            (&mut self.frictions, friction),
+            (&mut self.rollings, rolling),
+        ] {
+            if value != 0.0 || !values.is_empty() {
+                values.resize(before, 0.0);
+                values.push(value);
+            }
         }
     }
 }
@@ -733,6 +789,12 @@ impl TileCache {
     /// tile's is 0.
     pub(super) fn frictions(&self) -> &[f32] {
         &self.state.frictions
+    }
+
+    /// Each tile proxy's rolling resistance, in gather order; empty while
+    /// every tile's is 0.
+    pub(super) fn rollings(&self) -> &[f32] {
+        &self.state.rollings
     }
 
     /// Chunks traced since the cache was made.
@@ -859,6 +921,7 @@ impl TileCache {
             layers: std::mem::take(&mut self.layers),
             ids: std::mem::take(&mut self.ids),
             frictions: std::mem::take(&mut state.frictions),
+            rollings: std::mem::take(&mut state.rollings),
         };
         let mut arrays = std::mem::take(&mut state.spare);
         arrays.clear();
@@ -911,9 +974,14 @@ impl TileCache {
                         .extend_from_slice(&old.proxies[range.clone()]);
                     arrays.layers.extend_from_slice(&old.layers[range.clone()]);
                     arrays.ids.extend_from_slice(&old.ids[range.clone()]);
-                    if !old.frictions.is_empty() {
-                        arrays.frictions.resize(start, 0.0);
-                        arrays.frictions.extend_from_slice(&old.frictions[range]);
+                    for (values, old) in [
+                        (&mut arrays.frictions, &old.frictions),
+                        (&mut arrays.rollings, &old.rollings),
+                    ] {
+                        if !old.is_empty() {
+                            values.resize(start, 0.0);
+                            values.extend_from_slice(&old[range.clone()]);
+                        }
                     }
                     map.start = start;
                     map.cursor = cursor;
@@ -955,8 +1023,10 @@ impl TileCache {
             map.len = arrays.proxies.len() - start;
             state.maps.push(map);
         }
-        if !arrays.frictions.is_empty() {
-            arrays.frictions.resize(arrays.proxies.len(), 0.0);
+        for values in [&mut arrays.frictions, &mut arrays.rollings] {
+            if !values.is_empty() {
+                values.resize(arrays.proxies.len(), 0.0);
+            }
         }
         // What is left went, or now places another map elsewhere.
         for gone in &kept {
@@ -974,6 +1044,7 @@ impl TileCache {
         self.layers = arrays.layers;
         self.ids = arrays.ids;
         state.frictions = arrays.frictions;
+        state.rollings = arrays.rollings;
         state.spare = old;
         if !same {
             state.runs.clear();

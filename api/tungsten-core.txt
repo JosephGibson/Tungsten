@@ -7291,6 +7291,7 @@ pub tungsten_core::physics::components::RigidBody::layers: u32
 pub tungsten_core::physics::components::RigidBody::mask: u32
 pub tungsten_core::physics::components::RigidBody::restitution: f32
 pub tungsten_core::physics::components::RigidBody::rolling: f32
+pub tungsten_core::physics::components::RigidBody::rolls: bool
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
@@ -7335,6 +7336,7 @@ pub fn tungsten_core::physics::components::RigidBodyBundle::static(tungsten_core
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_body(self, tungsten_core::physics::components::RigidBody) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_layers(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_mask(self, u32) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_spin(self) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_velocity(self, tungsten_core::physics::components::Velocity) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBodyBundle
 pub fn tungsten_core::physics::components::RigidBodyBundle::clone(&self) -> tungsten_core::physics::components::RigidBodyBundle
@@ -7354,6 +7356,27 @@ impl core::marker::Unpin for tungsten_core::physics::components::RigidBodyBundle
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::RigidBodyBundle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::RigidBodyBundle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::RigidBodyBundle
+pub struct tungsten_core::physics::components::Spin
+pub tungsten_core::physics::components::Spin::angle: f32
+pub tungsten_core::physics::components::Spin::angular_velocity: f32
+pub tungsten_core::physics::components::Spin::prev_angle: f32
+impl core::clone::Clone for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::clone(&self) -> tungsten_core::physics::components::Spin
+impl core::cmp::PartialEq for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::eq(&self, &tungsten_core::physics::components::Spin) -> bool
+impl core::default::Default for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::default() -> tungsten_core::physics::components::Spin
+impl core::fmt::Debug for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::components::Spin
+impl core::marker::StructuralPartialEq for tungsten_core::physics::components::Spin
+impl core::marker::Freeze for tungsten_core::physics::components::Spin
+impl core::marker::Send for tungsten_core::physics::components::Spin
+impl core::marker::Sync for tungsten_core::physics::components::Spin
+impl core::marker::Unpin for tungsten_core::physics::components::Spin
+impl core::marker::UnsafeUnpin for tungsten_core::physics::components::Spin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::Spin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::Spin
 pub struct tungsten_core::physics::components::Velocity(pub glam::f32::vec2::Vec2)
 impl tungsten_core::physics::components::Velocity
 pub fn tungsten_core::physics::components::Velocity::new(f32, f32) -> Self
@@ -7773,6 +7796,7 @@ pub tungsten_core::physics::RigidBody::layers: u32
 pub tungsten_core::physics::RigidBody::mask: u32
 pub tungsten_core::physics::RigidBody::restitution: f32
 pub tungsten_core::physics::RigidBody::rolling: f32
+pub tungsten_core::physics::RigidBody::rolls: bool
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
@@ -7817,6 +7841,7 @@ pub fn tungsten_core::physics::components::RigidBodyBundle::static(tungsten_core
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_body(self, tungsten_core::physics::components::RigidBody) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_layers(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_mask(self, u32) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_spin(self) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_velocity(self, tungsten_core::physics::components::Velocity) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBodyBundle
 pub fn tungsten_core::physics::components::RigidBodyBundle::clone(&self) -> tungsten_core::physics::components::RigidBodyBundle
@@ -7928,6 +7953,27 @@ impl core::marker::Unpin for tungsten_core::SpatialHit
 impl core::marker::UnsafeUnpin for tungsten_core::SpatialHit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SpatialHit
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SpatialHit
+pub struct tungsten_core::physics::Spin
+pub tungsten_core::physics::Spin::angle: f32
+pub tungsten_core::physics::Spin::angular_velocity: f32
+pub tungsten_core::physics::Spin::prev_angle: f32
+impl core::clone::Clone for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::clone(&self) -> tungsten_core::physics::components::Spin
+impl core::cmp::PartialEq for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::eq(&self, &tungsten_core::physics::components::Spin) -> bool
+impl core::default::Default for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::default() -> tungsten_core::physics::components::Spin
+impl core::fmt::Debug for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::components::Spin
+impl core::marker::StructuralPartialEq for tungsten_core::physics::components::Spin
+impl core::marker::Freeze for tungsten_core::physics::components::Spin
+impl core::marker::Send for tungsten_core::physics::components::Spin
+impl core::marker::Sync for tungsten_core::physics::components::Spin
+impl core::marker::Unpin for tungsten_core::physics::components::Spin
+impl core::marker::UnsafeUnpin for tungsten_core::physics::components::Spin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::Spin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::Spin
 #[non_exhaustive] pub struct tungsten_core::physics::TerrainFace
 pub tungsten_core::physics::TerrainFace::end: glam::f32::vec2::Vec2
 pub tungsten_core::physics::TerrainFace::normal: glam::f32::vec2::Vec2
@@ -17936,6 +17982,7 @@ pub tungsten_core::RigidBody::layers: u32
 pub tungsten_core::RigidBody::mask: u32
 pub tungsten_core::RigidBody::restitution: f32
 pub tungsten_core::RigidBody::rolling: f32
+pub tungsten_core::RigidBody::rolls: bool
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
@@ -17980,6 +18027,7 @@ pub fn tungsten_core::physics::components::RigidBodyBundle::static(tungsten_core
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_body(self, tungsten_core::physics::components::RigidBody) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_layers(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_mask(self, u32) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_spin(self) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_velocity(self, tungsten_core::physics::components::Velocity) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBodyBundle
 pub fn tungsten_core::physics::components::RigidBodyBundle::clone(&self) -> tungsten_core::physics::components::RigidBodyBundle
@@ -18418,6 +18466,27 @@ impl<'w> core::marker::Unpin for tungsten_core::component_registry::SpawnContext
 impl<'w> core::marker::UnsafeUnpin for tungsten_core::component_registry::SpawnContext<'w>
 impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::SpawnContext<'w>
 impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::SpawnContext<'w>
+pub struct tungsten_core::Spin
+pub tungsten_core::Spin::angle: f32
+pub tungsten_core::Spin::angular_velocity: f32
+pub tungsten_core::Spin::prev_angle: f32
+impl core::clone::Clone for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::clone(&self) -> tungsten_core::physics::components::Spin
+impl core::cmp::PartialEq for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::eq(&self, &tungsten_core::physics::components::Spin) -> bool
+impl core::default::Default for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::default() -> tungsten_core::physics::components::Spin
+impl core::fmt::Debug for tungsten_core::physics::components::Spin
+pub fn tungsten_core::physics::components::Spin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::components::Spin
+impl core::marker::StructuralPartialEq for tungsten_core::physics::components::Spin
+impl core::marker::Freeze for tungsten_core::physics::components::Spin
+impl core::marker::Send for tungsten_core::physics::components::Spin
+impl core::marker::Sync for tungsten_core::physics::components::Spin
+impl core::marker::Unpin for tungsten_core::physics::components::Spin
+impl core::marker::UnsafeUnpin for tungsten_core::physics::components::Spin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::Spin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::Spin
 pub struct tungsten_core::Sprite
 pub tungsten_core::Sprite::asset_id: tungsten_core::assets::registry::SpriteAssetId
 pub tungsten_core::Sprite::color: [u8; 4]

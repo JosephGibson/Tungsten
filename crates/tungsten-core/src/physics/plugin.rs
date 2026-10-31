@@ -11,8 +11,8 @@ use crate::component_registry::{MissingAsset, SpawnContext};
 use crate::components::Transform;
 use crate::ecs::World;
 use crate::physics::{
-    Collider, CollisionEvent, PhysicsLayers, PhysicsMaterials, Position, PrevPosition, RigidBody,
-    RigidBodyBundle, SensorEntered, Shape, Velocity, physics_step,
+    Collider, CollisionEvent, PhysicsBuffers, PhysicsLayers, PhysicsMaterials, Position,
+    PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, Shape, Spin, Velocity, physics_step,
 };
 use crate::schedule::{Plugin, Schedule, Stage, system};
 use crate::time::Time;
@@ -55,10 +55,11 @@ impl Plugin for PhysicsPlugin {
     }
 }
 
-/// Copies each body's `Position` into its [`PrevPosition`]: the history a
-/// fixed step starts from. `PhysicsPlugin` runs it first in `fixed_update`
-/// under [`PHYSICS_PREV_SNAPSHOT`], so a step's history spans whatever moves
-/// the body in that step, gameplay's writes and the solve.
+/// Copies each body's `Position` into its [`PrevPosition`], and, once a
+/// step has turned a spinner, each [`Spin`]'s angle into its `prev_angle`:
+/// the history a fixed step starts from. `PhysicsPlugin` runs it first in `fixed_update` under
+/// [`PHYSICS_PREV_SNAPSHOT`], so a step's history spans whatever moves the
+/// body in that step, gameplay's writes and the solve.
 pub fn physics_prev_snapshot(world: &mut World) {
     world
         .query_mut_slices::<(&mut PrevPosition, &Position)>()
@@ -68,13 +69,27 @@ pub fn physics_prev_snapshot(world: &mut World) {
                 .zip(positions)
                 .for_each(|(prev, position)| prev.0 = position.0);
         });
+    if spinning(world) {
+        for spin in world.query_mut::<&mut Spin>() {
+            spin.prev_angle = spin.angle;
+        }
+    }
+}
+
+/// Whether the last step turned a spinner, so `Spin`s need their history and
+/// their drawing: a world without one never queries them.
+fn spinning(world: &World) -> bool {
+    world
+        .get_resource::<PhysicsBuffers>()
+        .is_some_and(PhysicsBuffers::has_spins)
 }
 
 /// Draws each body: writes `Transform.position` as
 /// `prev + (cur - prev) * alpha` ([`Time::alpha`]) for an entity with a
 /// [`PrevPosition`] while [`Time::interpolate`] is on, and as its `Position`
-/// otherwise and in a world without `Time`. Never writes `Position`
-/// (`D-033`).
+/// otherwise and in a world without `Time`; and, once a step has turned a
+/// spinner, `Transform.rotation` from a [`Spin`] the same way, its
+/// `prev_angle` to its `angle`. Never writes `Position` or `Spin` (`D-033`).
 pub fn physics_sync(world: &mut World) {
     let alpha = world
         .get_resource::<Time>()
@@ -96,6 +111,14 @@ pub fn physics_sync(world: &mut World) {
                 .zip(positions)
                 .for_each(|(transform, position)| transform.position = position.0),
         });
+    if spinning(world) {
+        for (transform, spin) in world.query_mut::<(&mut Transform, &Spin)>() {
+            transform.rotation = match alpha {
+                Some(alpha) => spin.prev_angle + (spin.angle - spin.prev_angle) * alpha,
+                None => spin.angle,
+            };
+        }
+    }
 }
 
 /// The scene component [`PhysicsPlugin`] registers.
@@ -244,6 +267,9 @@ struct RigidBodyFields {
     mask: Option<SceneLayers>,
     /// A dynamic body's share of gravity; 1 when missing.
     gravity_scale: Option<f32>,
+    /// A dynamic circle that rolls, spawned with a `Spin`.
+    #[serde(default)]
+    rolls: bool,
 }
 
 /// `components.rigid_body`, checked: the bundle's parts beside the entry's
@@ -255,6 +281,8 @@ struct RigidBodyDef {
     collider: Collider,
     /// The body with its numbered layers and its own coefficients.
     body: RigidBody,
+    /// It rolls, so its spawn puts a `Spin`.
+    rolls: bool,
     /// The layer names of `layers` and of `mask`, with their places.
     layer_names: Vec<(usize, String)>,
     mask_names: Vec<(usize, String)>,
@@ -332,6 +360,12 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
             }
             scale => scale.unwrap_or(1.0),
         };
+        if fields.rolls
+            && !(matches!(fields.kind, SceneBodyKind::Dynamic)
+                && matches!(shape, Shape::Circle { .. }))
+        {
+            return Err("`rolls` is for dynamic circles only".to_owned());
+        }
         // `restitution`, `friction`, `rolling` and `material` are accepted on
         // every kind and do nothing on a sensor, which has no contacts.
         let (body, velocity) = match fields.kind {
@@ -376,6 +410,7 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
                 .with_layers(layers)
                 .with_mask(mask)
                 .with_gravity_scale(gravity_scale),
+            rolls: fields.rolls,
             layer_names,
             mask_names,
             material: fields.material,
@@ -421,6 +456,7 @@ fn spawn_rigid_body(def: RigidBodyDef, at: &SpawnContext<'_>) -> RigidBodyBundle
         velocity,
         collider,
         mut body,
+        rolls,
         layer_names,
         mask_names,
         material,
@@ -458,6 +494,7 @@ fn spawn_rigid_body(def: RigidBodyDef, at: &SpawnContext<'_>) -> RigidBodyBundle
             body = body.with_rolling(rolling);
         }
     }
+    body.rolls = rolls;
     RigidBodyBundle {
         position: Position(at.transform().position),
         velocity,

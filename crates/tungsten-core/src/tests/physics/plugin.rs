@@ -647,3 +647,74 @@ fn an_unknown_layer_or_material_fails_the_load_at_its_field() {
         "component `rigid_body`, field `layers[0]`: unknown physics layer `walls`"
     );
 }
+
+#[test]
+fn spin_draws_interpolated() {
+    use crate::ecs::Bundle;
+
+    let mut world = physics_world();
+    let mut time = Time::new();
+    time.advance_frame(DT);
+    world.insert_resource(time);
+    world.insert_resource(crate::physics::PhysicsConfig::default());
+    let ball = world.spawn_with((Transform::default(),).with(
+        RigidBodyBundle::dynamic(Position::new(0.0, 0.0), Collider::circle(4.0)).with_spin(),
+    ));
+    // A step turns the spinner; the snapshot then keeps its angle's history.
+    world.get_mut::<Spin>(ball).unwrap().angular_velocity = 6.0;
+    physics_prev_snapshot(&mut world);
+    physics_step(&mut world);
+    let spin = *world.get::<Spin>(ball).unwrap();
+    assert_eq!(spin.prev_angle, 0.0);
+    assert!((spin.angle - 0.1).abs() < 1e-5, "{spin:?}");
+    // Drawn a quarter of the way from the last angle to this one.
+    let mut quarter = Time::new();
+    quarter.advance_frame(DT * 0.25);
+    world.insert_resource(quarter);
+    physics_sync(&mut world);
+    let drawn = world.get::<Transform>(ball).unwrap().rotation;
+    assert!((drawn - 0.25 * spin.angle).abs() < 1e-6, "drawn at {drawn}");
+    // Without interpolation, at its angle; the next snapshot moves the
+    // history on.
+    world.resource_mut::<Time>().set_interpolate(false);
+    physics_sync(&mut world);
+    assert_eq!(world.get::<Transform>(ball).unwrap().rotation, spin.angle);
+    physics_prev_snapshot(&mut world);
+    assert_eq!(world.get::<Spin>(ball).unwrap().prev_angle, spin.angle);
+}
+
+#[test]
+fn rolls_is_for_circles() {
+    let mut world = physics_world();
+    let circle = serde_json::json!({ "kind": "circle", "radius": 4.0 });
+    let box_shape = serde_json::json!({ "kind": "aabb", "half_extents": [4.0, 4.0] });
+    let roller = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "dynamic", "shape": circle, "rolls": true }),
+    );
+    assert!(world.get::<RigidBody>(roller).unwrap().rolls);
+    assert_eq!(world.get::<Spin>(roller), Some(&Spin::default()));
+    let plain = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "dynamic", "shape": circle }),
+    );
+    assert!(!world.has::<Spin>(plain));
+    for value in [
+        serde_json::json!({ "kind": "dynamic", "shape": box_shape, "rolls": true }),
+        serde_json::json!({ "kind": "static", "shape": circle, "rolls": true }),
+        serde_json::json!({ "kind": "kinematic", "shape": circle, "rolls": true }),
+    ] {
+        let message = check_error(&world, &value);
+        assert!(
+            message.contains("`rolls` is for dynamic circles only"),
+            "{value}: {message}"
+        );
+    }
+    let boxed = std::panic::catch_unwind(|| {
+        RigidBodyBundle::dynamic(Position::new(0.0, 0.0), Collider::aabb(Vec2::splat(4.0)))
+            .with_spin()
+    });
+    assert!(boxed.is_err(), "a box's bundle refuses a spin");
+}
