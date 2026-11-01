@@ -183,9 +183,27 @@ impl SlopePolygon {
     /// running from vertex `k` to the next with outward normal `normals[k]`
     /// in angle order, y down.
     fn minkowski(&self, half: Vec2) -> ([Vec2; 5], [Vec2; 5]) {
-        let mut normals = [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y, self.normal];
-        let angle = |n: Vec2| n.y.atan2(n.x).rem_euclid(std::f32::consts::TAU);
-        normals.sort_by(|a, b| angle(*a).total_cmp(&angle(*b)));
+        // The axes stand in angle order (0, π/2, π, 3π/2), so a normal off
+        // both axes goes in by its quadrant, where the sort would put it;
+        // any other normal takes the sort.
+        let n = self.normal;
+        let normals = if n.x.abs() >= 1e-3 && n.y.abs() >= 1e-3 {
+            let at = match (n.x > 0.0, n.y > 0.0) {
+                (true, true) => 1,
+                (false, true) => 2,
+                (false, false) => 3,
+                (true, false) => 4,
+            };
+            let mut normals = [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y, Vec2::ZERO];
+            normals.copy_within(at..4, at + 1);
+            normals[at] = n;
+            normals
+        } else {
+            let mut normals = [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y, n];
+            let angle = |n: Vec2| n.y.atan2(n.x).rem_euclid(std::f32::consts::TAU);
+            normals.sort_by(|a, b| angle(*a).total_cmp(&angle(*b)));
+            normals
+        };
         let mut vertices = [Vec2::ZERO; 5];
         for (k, vertex) in vertices.iter_mut().enumerate() {
             // The vertex before edge `k`: between it and the edge before.
