@@ -1357,7 +1357,11 @@ pub(super) fn enter_circle(
     if b >= 0.0 {
         return None;
     }
-    let disc = b * b - c;
+    // The half chord's square from the closest approach, r² − |m − b·dir|²:
+    // b² − c in exact arithmetic, without that difference of two numbers
+    // near the distance squared, which loses the radius far away.
+    let closest = m - dir * b;
+    let disc = radius * radius - closest.length_squared();
     let meets = if closed { disc >= 0.0 } else { disc > 0.0 };
     meets.then(|| (-b - disc.sqrt()).max(0.0))
 }

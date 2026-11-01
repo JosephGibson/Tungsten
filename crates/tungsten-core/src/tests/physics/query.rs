@@ -117,6 +117,39 @@ fn ray_hits_a_circle_with_point_normal_and_distance() {
 }
 
 #[test]
+fn far_circles_keep_their_surface() {
+    // A circle's entry once took b² − c, two numbers near the distance
+    // squared whose difference lost the radius: at 10,000 px a ray met a
+    // post of radius 2 at its centre with no normal, and a cast at
+    // 20,000 px missed. Both meet the surface, and a head-on entry stays
+    // within a hundredth of a pixel of it out to 60,000 px.
+    let mut world = world();
+    let near = post(&mut world, Vec2::new(10_000.3, 0.0), 2.0);
+    let far = post(&mut world, Vec2::new(20_000.3, 50.0), 2.0);
+    physics_step(&mut world);
+    let ray = cast_ray(&world, Vec2::ZERO, Vec2::X, 20_000.0, &all()).unwrap();
+    assert_eq!(ray.entity, Some(near));
+    assert!(ray.normal.abs_diff_eq(Vec2::NEG_X, 1e-4), "{ray:?}");
+    assert!((ray.distance - 9_998.3).abs() < 0.01, "{ray:?}");
+    let shape = Shape::Circle { radius: 2.0 };
+    let cast = cast_shape(&world, shape, Vec2::new(0.0, 50.0), Vec2::X, 30_000.0, &all())
+        .expect("a head-on cast meets the far post");
+    assert_eq!(cast.entity, Some(far));
+    assert!(cast.normal.abs_diff_eq(Vec2::NEG_X, 1e-4), "{cast:?}");
+    assert!((cast.distance - 19_996.3).abs() < 0.01, "{cast:?}");
+    for radius in [0.5, 1.0, 2.0, 4.0] {
+        for step in 0..1_000 {
+            let d = 500.0 + step as f32 * 59.5;
+            let t = enter_circle(Vec2::ZERO, Vec2::X, Vec2::new(d, 0.0), radius, true);
+            assert!(
+                t.is_some_and(|t| (t - (d - radius)).abs() < 0.01),
+                "radius {radius} at {d}: {t:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn ray_hits_a_tile_and_never_an_internal_face() {
     let mut world = world();
     floor(&mut world, 10);
