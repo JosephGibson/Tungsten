@@ -1,0 +1,218 @@
+# Physics tail pass (physics-tail) — draft
+
+- **status:** draft
+- **goal:** Lower `e01-pit`'s total p95 and p99 (49.1–50.1 and 62.0–63.3 ms per run at `a2662f05`, the B captures of `perf-runs/20261101T193400Z-sitting/`) by code-, math- and memory-level changes in `crates/tungsten-core/src/physics/step/`, bit-identical changes first, each kept only on its own sitting, with no physics row's p95 regressed.
+- **non-goals:**
+  - 7.14's closed list ([phase-7](phase-7.md) §2.5): the sensor pass's temporary index (C1, 2.8 % of the 20 highest frames' `physics_step`) and every other item there stay 7.14's.
+  - The grid walk in `physics/broadphase.rs` (24.7 % of the 20 highest frames' `physics_step`), `CollisionEvent`'s 72-byte layout (public API, `D-229`) and example 01's event readers (about 3.9 ms a frame, the same in awake frames): measured here, changed by none of the steps; the close records them as levers.
+  - The solver's rules, the narrow phase's maths, the wake test (`D-065`) and the arrival pass's rules (`D-092`): their costs only, never their results, except Step 4's pair order (§2.6).
+  - A row's workload, the verdict thresholds, the owned metrics.
+- **files to touch:**
+  - This session: this file; `ROADMAP.md` (Now).
+  - Step 1: `crates/tungsten-core/src/physics/step/{pairs.rs,mod.rs,arrival.rs}`; `crates/tungsten-core/src/tests/physics/step.rs`; guard pins under `examples/02_bench/src/tests/guards/` and `examples/01_platformer/tests/game/guards/pit.json` only as §5 allows.
+  - Step 2: `crates/tungsten-core/src/physics/step/{pairs.rs,mod.rs,arrival.rs}`; `crates/tungsten-core/src/ecs/event_queue.rs` (one crate-private append, the pass's one file outside `step/`); `crates/tungsten-core/src/tests/physics/step.rs`, `crates/tungsten-core/src/tests/ecs/event_queue.rs`; guard pins as §5 allows.
+  - Step 3 (conditional): `crates/tungsten-core/src/physics/step/{mod.rs,pairs.rs,arrival.rs,solver.rs,sleep.rs,gather.rs,sweep.rs}` (the files that read `Proxy` fields); `crates/tungsten-core/src/tests/physics/step.rs`; guard pins as §5 allows.
+  - Step 4: `crates/tungsten-core/src/physics/step/{pairs.rs,mod.rs}`; `crates/tungsten-core/src/tests/physics/step.rs`; `crates/tungsten-core/tests/integration/physics_determinism.rs` (`EXPECTED`); `DECISIONS.md`, `docs/DECISION_INDEX.md`; guard pins as §5 allows.
+  - Step 5 (close): this file (deleted); `ROADMAP.md`; `docs/known-issues.md` (the `P3 — core/physics/step/` row at line 51); `docs/perf/benchmarks.md` (Levers for 9.2).
+  - Evidence (not tracked): `perf-runs/20261101-physics-tail/`.
+- **ordered steps:** (1) the pair build's per-candidate tests; (2) lookups and copies: keyed warm starts, the arrival pass's search and sort, the event drain; (3) the proxy and contact layout, only if Step 2's re-profile asks for it; (4) a woken proxy repaired instead of a rebuild, which moves digests and takes its own decision; (5) close.
+- **done-when:** every step kept or dropped by §2.4's rule with its sitting quoted in the evidence log, or skipped by §6; the close's re-profile and its sitting against this plan's commit recorded; the known-issues row and benchmarks' levers updated; `just check`, `just physics-release` and `just smoke` pass and the close sitting's `e01-pit` captures are valid with their script reports passed; the plan deleted with its citations and the item out of Now.
+
+Item `physics-tail` in [ROADMAP.md](../../ROADMAP.md), from the owner's brief of 2026-11-01: a pass outside 7.14's closed list, which it neither joins nor shortens. Written 2026-11-01 at `a2662f05`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md), the [tungsten-perf skill](../../.claude/skills/tungsten-perf/SKILL.md) and the [operating rules](../operating-rules.md); this plan records only where it differs: a change its sitting does not keep is restored and recorded, which is a result of the pass, not a failed step.
+
+## Context digest
+
+`D-233` took the contact record off `e01-pit` (its `physics_step` p50 42.7 → 24.7 ms); what is left of the row's tail is the pit's wake wave. Its window is the same in every run: the pile asleep, then about 12,000 sleepers waking over window frames 41–67, then awake. The runner's p95 is the 16th-highest of 300 frames and its p99 the 4th-highest (nearest rank, `scripts/perf_stats.py:118-122`): frame 77 in every B run (about 40 ms of `physics_step`), where 13 contact wakes rebuild the pair list twice after the frame-start build, and frame 63 or 64 (about 56 ms), inside the wave. A profile of frame 77 puts 49.0 % of its `physics_step` in three pair builds, because a contact wake invalidates the pair list (`D-081`), then keyed warm starts after each build (10.5 %, `D-076`) and the collision events (5.9 %); the 20 highest frames add the arrival pass (17.6 %, `D-092`), which frame 77 hardly runs.
+
+The pass stands on `D-075`/`D-081` (pairs under travel budgets, a repair for tripped proxies, a build after a contact wake), `D-076` (warm starts by pair index, the keyed map after a build), `D-080` (one grid's visit order), `D-092` (the arrival pass), `D-067` (the determinism hash) and `D-226` (a plan that claims a speed-up takes full sittings). Step 4 amends `D-081`. The [known issues' row](../known-issues.md) on the step's cost (line 51) holds the review's two unsat patches, `perf/P1.patch` and `perf/P2.patch` under `perf-runs/20261101-physics-review/`, which Step 2 takes up. 7.14 measures its own list on 7.13's tree; this pass moves its baseline, not its list.
+
+## 1. Audit
+
+Read at `a2662f05`.
+
+| # | Finding | Evidence |
+| --- | --- | --- |
+| A1 | Every frame starts with a build: `physics_step` sets `pairs_invalidated`, and `refresh_pairs` builds while it is set, else repairs the tripped proxies unless more than a quarter of the awake ones tripped. | `step/mod.rs:865`; `step/pairs.rs:216-235`, `REBUILD_ONE_IN` `pairs.rs:182` |
+| A2 | A contact wake in the pair loop sets `pairs_invalidated`, so the next substep rebuilds every pair; `D-081` keeps that build. | `step/mod.rs:1237-1246`; `DECISIONS.md:722` |
+| A3 | A build syncs the keyed map first: `reset` writes every slot of a table of twice the contacts rounded up to a power of two, then each live contact is inserted; the build sets `seed_pair_impulses`, so the next pair loop reads each contact's warm start, its tangent and a one-way tile's hold from the map by `u128` key. Keys and values sit in two arrays, so a probe reads two lines. | `pairs.rs:251`, `pairs.rs:592-616`, `pairs.rs:100-152`, `pairs.rs:356-358`; `mod.rs:1164`, `mod.rs:1197-1201`, `mod.rs:1261-1265`, `mod.rs:1320-1324` |
+| A4 | The build's per-candidate test skips an awake candidate at or below the querier from `pair_flags`, then tests the overlap from `pair_aabbs`, computing both boxes' min and max from centre and half extents for every candidate, then `layers.meet`; pairs are pushed in the grid's visit order. The grid's insert and query take the same `Aabb`. | `pairs.rs:340-354`; `collision.rs:51-76`; `broadphase.rs:154`, `broadphase.rs:182` |
+| A5 | Each penetrating contact pushes a 72-byte `CollisionEvent` in every substep (a kinematic one through `kinematic_touch`); the frame drains them into the queue one `send` at a time when the world has the queue, and `send` is one `push`. Every row here has it: `PhysicsPlugin` registers it for 01 and the template, and the bench rows, which step without the plugin, register it themselves. | `mod.rs:1366-1375`, `mod.rs:1948`, `mod.rs:933-943`; `ecs/event_queue.rs:94-96`; `examples/02_bench/src/physics.rs:223`, `terrain.rs:163`, `piles.rs:261` |
+| A6 | The arrival pass lists every awake body whose velocity the solve changed by more than `ARRIVAL_SLOPS · linear_slop / h`, walks the pair grid for each, and for a neighbour listed earlier in the round binary-searches the round's pairs (`built_pair`); a body's pairs are contiguous there. Each round's pairs are sorted by a stable sort, which takes scratch from the allocator. | `mod.rs:1446-1468`; `arrival.rs:262-312`, `arrival.rs:134-142`, `arrival.rs:353-357` |
+| A7 | `Proxy` is 80 bytes, pinned by a test; `ContactConstraint` carries its `u128` key, which aligns it to 16. | `mod.rs:174-206`, `mod.rs:316-338`; `tests/physics/step.rs:3422` |
+| A8 | The determinism hash is `EXPECTED` in `physics_determinism.rs`, run by `just physics-release`; a counter guard compares every counter of its pin for equality. | `tests/integration/physics_determinism.rs:62-84`; `tungsten/src/testing/guard.rs:209-226` |
+| A9 | With `check_pair_contacts` set, every substep's contact set is checked against a fresh pair finding; `pair_builds` and `pair_repairs` count builds and repairs in tests. | `mod.rs:1117-1122`; `tests/physics/step.rs:1482`; `pairs.rs:365-368`, `pairs.rs:584-587` |
+
+## 2. Design
+
+### 2.1 The wave, measured
+
+Method: the runner's aligned build of `a2662f05` (`target/perf/tree-aligned/`, which cargo reported fresh) run as the runner runs it, with `perf record --call-graph fp` gated by perf's control FIFO on chosen window frames, then `perf script --inline` folded under `physics_step`. Tools, data and numbers are in `perf-runs/20261101-physics-tail/plan/` (its `README.md`); the run session reuses `tools/`.
+
+- **Frames** (`baseline-split.txt`). Per run, total p95 49.08–50.08 ms and p99 62.04–63.26 ms. The runner's nearest rank reads the 16th-highest frame for p95 and the 4th-highest for p99 (`scripts/perf_stats.py:118-122`): frame 77 in all ten B runs (39.7–40.7 ms of `physics_step`), and frame 63 or 64. The 20 highest frames are 53–67, 70, 74 and 77–79 in every run, averaging 47.1–47.9 ms of `physics_step` and 54.6–55.3 ms of `total`.
+- **Profiles** (50 kHz). The 20 highest frames (65,981 samples, 84.9 % under `physics_step`): `build_pairs` 44.0 % (the grid walk 24.7 %, the per-candidate closure 18.6 % with `Aabb::overlaps` 12.5 % and `ProxyLayers::meet` 1.7 %, the grids' staging 4.8 %, `sync_impulses` 2.6 %); `arrival_pass` 17.6 % (`built_pair` 2.1 %, the sort 0.6 % and its scratch's free 0.6 %); `ImpulseMap::get` 8.7 %; `solve_contacts` 5.5 %; the pair loop's narrow phase 4.5 %; event pushes 3.1 % and queue sends 1.3 %; `sensor_pass` 2.8 %. Frame 77 alone (3,130 samples, 76.2 % under `physics_step`): `build_pairs` 49.0 % (the closure 21.7 % with `overlaps` 15.4 %, the staging 6.4 %, `sync_impulses` 3.1 %); `ImpulseMap::get` 10.5 %; `solve_contacts` 7.5 %; the narrow phase 5.9 %; event pushes 4.3 % and sends 1.6 %; `sensor_pass` 3.2 %; `arrival_pass` 0.5 %. An earlier profile of frames 55–67 and 77–79 read within a point of the 20's.
+- **Builds a frame.** Frame 80, awake, builds once, at frame start: `build_pairs` 7.7 ms under the profiler (25.4 % of its `physics_step`). Frame 77 spends 23.4 ms there, three builds; the 20 highest frames, about four, one a substep. Their end-of-frame pair count (about 70,000) is a last-substep build's, against 84,000–95,000 in awake frames whose one build had the whole frame's radius. The arrival pass is under 1 % of awake frames.
+- **Memory.** Over wake frames 41–67: 14 minor faults, no major ones and 0.00 s of system time (`/proc/<pid>/stat`); over frames 55–67 and 77–79, IPC 2.01 and an L1 load miss rate of 3.7 %, against 2.08 and 4.7 % over awake frames 100–199 (`perf stat`, user only). The wave is bound by the work's count, not by stalls.
+- **Outside the step.** Example 01's event readers take `body_impacts` 2.03, `ball_impacts` 0.91 and `iron_friction` 0.95 ms a frame over frames 55–67 and 77–79, 2.05, 2.03 and 0.98 over awake frames.
+
+### 2.2 Candidates and targets
+
+Each candidate has two shares of `physics_step`: frame 77's (about 40 ms), the frame p95 reads, and the 20 highest frames' (about 47.5 ms a frame), which hold p99's frame and the frames that can take rank 16 as a change reorders them. Its target removes half of the share its gate reads, as an absolute time, the rule [phase-7](phase-7.md) §2.5 sets for 7.14's items: frame 77's for W1–W4, whose sitting judges p95; the 20's for W5, which can move only p99. A candidate under 5 % rides with a larger change of its kind or leaves the list, as there.
+
+| # | Candidate | Frame 77 | 20 highest | Target | Step |
+| --- | --- | --- | --- | --- | --- |
+| W1 | A contact wake rebuilds the pair list in the next substep, and the build's warm starts fall back to keyed lookups | the build 49.0 %, two of its three builds after wakes: about 13 ms | the build 44.0 %, three of four after wakes: about 15.7 ms | −6.5 ms on frame 77 | 4 (moves digests, its own decision) |
+| W2 | The per-pair tests: the build's per-candidate closure and the pair loop's narrow phase | 21.7 % + 5.9 %, about 11 ms | 18.6 % + 4.5 %, about 11 ms | −5.5 ms on frame 77 | 1 |
+| W3 | Keyed warm-start lookups after a build, and the map's sync | 10.5 % + 3.1 %, about 5.4 ms | 8.7 % + 2.6 %, about 5.4 ms | −2.7 ms on frame 77 | 2 |
+| W4 | A `CollisionEvent` per penetrating contact per substep, pushed and then sent one by one | 5.9 %, about 2.4 ms | 4.4 %, about 2.1 ms | −1.2 ms on frame 77, riding with W3 | 2 |
+| W5 | The arrival pass (found by the profile, not in the brief): its same-round search and its sort | 0.5 % | the pass 17.6 %, about 8.4 ms; the part Step 2 changes, `built_pair` 2.1 % and the sort with its scratch 1.2 %, about 1.6 ms | −0.8 ms on the 20, riding with W3 | 2 |
+| W6 | The `Proxy` layout, with `ContactConstraint`'s key | no share of its own: IPC 2.01, L1 load misses 3.7 % | | Step 2's re-profile decides (§2.5) | 3 |
+| W7 | Allocations as the pair list grows | 14 minor faults and no system time over the wake; the allocator's only frames are the arrival sort's scratch's free, 0.6 % of the 20 | | dropped under 5 %; the scratch goes with W5 | — |
+
+The pass's target, not a gate: total p95 at most 42 ms and p99 at most 50 ms in every run of the close sitting. Frame 77's surplus is its two wake rebuilds (frame 80, one build, reads about 25 ms of `physics_step`); once W1 removes them, rank 16 passes to the wave's frames and to frames 70 and 74 (34–36 ms of `physics_step` today), which the earlier steps also shorten.
+
+### 2.3 What a sitting can see
+
+A kept change must read `e01-pit`'s `stage.total` p95 `improved` in both direct pairs: Δ below −τ with its interval below 0, τ = 5 % of the base's mean p95, about 2.5 ms. p95 is whichever frame holds rank 16 after the change, frame 77 today, so a change has to take about 2.5 ms, 6 % of its `physics_step`, out of that frame and every frame that can overtake it. That is why W4 rides with W3 in one change (Step 2), the narrow phase rides with the build's tests (Step 1), and W5, which frame 77 hardly runs, rides with W3 too: alone it could move p99 but not the gate. Expected effects on p95, for the evidence log to check: Step 1 about −3 ms, Step 2 about −2 to −3 ms (its arrival part shows in p99), Step 4 about −8 to −13 ms; Step 3 is not estimated. Each step's evidence quotes p99 per run on both sides (K8), since no gate reads it.
+
+Rows: every step's code reaches every world that steps bodies, and every world here has the event queue (A5), so each step sits `e01-pit,physics,physics-sparse,terrain,friction,slopes,template`: the six physics rows, five of which own `physics_step` p95, and the template, whose player and tiles build pairs too. A sitting of seven rows takes about 40 minutes with its builds.
+
+### 2.4 The keep rule and the sitting procedure
+
+The owner's rule: keep a change only when `e01-pit`'s total p95 reads `improved` in both pairs, nothing regresses and the digests match, the last for Steps 1–3 only (Step 4 names its moves, §2.6). The checks, numbered for the steps:
+
+- **K1** `cargo fmt --all -- --check` → exit 0.
+- **K2** `just lint` → exit 0.
+- **K3** `cargo test -p tungsten-core --locked` → exit 0.
+- **K4** `just physics-release` → exit 0; for Steps 1–3 also `git diff --quiet HEAD -- crates/tungsten-core/tests/integration/physics_determinism.rs` → exit 0, so the hash passed unchanged.
+- **K5** `just check` → exit 0. A guard pin is rewritten only for a counter §5 lets the step move: `TUNGSTEN_GUARDS_WRITE=1` on that one test, then the test run twice without it, each changed counter's old → new value in the evidence row.
+- **K6** The sitting, as one background job with nothing beside it and nothing written to the tree until it ends, the owner's NoMachine client disconnected: `set -o pipefail; WGPU_BACKEND=vulkan just perf sitting --base HEAD --rows <rows> --wait-quiet 900 2>&1 | tee perf-runs/20261101-physics-tail/step-<n>-sitting.log` → exit 0 (1 for a `regressed` or `unresolved` row, 3 for an `invalid` one).
+- **K7** With `S=$(ls -d perf-runs/*Z-sitting | tail -1)`, `acc() { ls -d $S/captures/$1-$2 $S/captures/$1-$2-[0-9] 2>/dev/null | tail -1; }` (a label's accepted capture: the runner retakes one that background load voided into `<row>-<label>-2`, `scripts/perf.py:363`, `scripts/perf.py:846`) and `L="1 2"; jq -e '.rows[] | select(.name == "e01-pit") | .reran' $S/sitting.json >/dev/null && L="3 4"` (a rerun's set replaces the first):
+  - `rg -q 'Compiling tungsten-core v[0-9.]+ \(.*/target/perf/base-tree/' perf-runs/20261101-physics-tail/step-<n>-sitting.log` → exit 0: the base built from HEAD's export (every step commits, so HEAD moves between sittings; a retake with HEAD unmoved skips this line).
+  - `jq -e 'all(.rows[]; .verdict == "ok")' $S/sitting.json` → exit 0.
+  - `jq -e '.rows[] | select(.name == "e01-pit") | .pairs | length == 2 and all(.[]; .["stage.total p95"] == "improved")' $S/sitting.json` → exit 0.
+  - `for c in $S/captures/*-A1; do r=${c%-A1}; jq -s -e '[.[].runs[].digest] | unique | length == 1' $r-[AB][1-4]*/capture.json >/dev/null || echo "${r##*/}"; done` → prints nothing in Steps 1–3; in Step 4, exactly the rows §2.6 names.
+- **K8** Quotes for the evidence row and the commit, with K7's `acc` and `L`: `for n in $L; do for c in $(acc e01-pit A$n) $(acc e01-pit B$n); do echo "${c##*/} $(jq -r '[.runs[].cpu.stages.total | "\(.p95)/\(.p99)"] | join(" ")' $c/capture.json)"; done; done` (per-run p95/p99 of each accepted capture); `for n in $L; do just perf compare $(acc e01-pit A$n) $(acc e01-pit B$n); done`, `stage.total` p95's Δ and interval in each pair; `python3 -I perf-runs/20261101-physics-tail/plan/tools/split_wave.py $(acc e01-pit A${L%% *}) $(acc e01-pit B${L%% *}) > perf-runs/20261101-physics-tail/step-<n>-split.txt` → exit 0, each run's rank-16 and rank-4 frames with their `physics_step`, and its 20 highest, on both sides.
+- **K9** Kept: stage the step's paths only; commit `perf(physics): <summary>, sitting <UTC id>` in at most 72 characters (with `, sitting ` and the 16-character id, a summary of at most 31); `git push origin 0.NNN` (the whole command). Not kept: first `git diff > perf-runs/20261101-physics-tail/step-<n>.patch`, then restore each changed file with `git show HEAD:<path> > <path>` and remove each added one; `git status --short` shows nothing but this plan; the evidence row reads `dropped` with K8's quotes; commit `docs(plans): …` and push.
+
+- **R** The re-profile, after a sitting and with nothing beside it, from the repo root, on HEAD's tree:
+  1. Build it: `RUSTFLAGS="-C force-frame-pointers=yes -C llvm-args=-align-all-functions=6 -C llvm-args=-align-all-nofallthru-blocks=6" CARGO_TARGET_DIR=target/perf/tree-aligned cargo build --release --locked -p example-01-platformer` → exit 0, printing `Compiling tungsten-core` when the last sitting's change was not kept, since its candidate binary is still there (`scripts/perf.py:834`).
+  2. Its frames: `tools/split_wave.py` on the latest sitting's accepted `e01-pit` captures of HEAD's tree (K7's `acc` and `L`: its B side when its change was kept, its A side when not; the baseline sitting's B captures when no sitting has run) prints each run's rank-16 frame and its 20 highest; where runs differ, the frames most of them share.
+  3. `python3 -I perf-runs/20261101-physics-tail/plan/tools/wave_profile.py target/perf/tree-aligned/release/example-01-platformer perf-runs/20261101-physics-tail/plan/e01-pit-script.json <out dir> top20 <the 20 as spans> 50000`, and again with label `p95` and the rank-16 frame alone (`N-N`); each folded with `tools/fold.py` under `physics_step`, and `perf annotate` of the symbols the step names.
+
+The base: every step sits `--base HEAD`, whose export carries HEAD's commit time, later than `target/perf/base-aligned`'s last build, so cargo rebuilds it; K7's first line confirms that. The close's sitting has an older base, this plan's commit, so it ages `base-aligned`'s workspace fingerprints first: without that, cargo reuses the newer build silently ([known issues](../known-issues.md#follow-ups), the sitting's stale base).
+
+### 2.5 The bit-identical changes
+
+Bit-identical means each step computes the same `f32` values in the same order and visits candidates, pairs and contacts in the same order, so every digest and `EXPECTED` stay; a reordered float sum is not bit-identical (§6).
+
+- **Step 1 (W2).** `perf annotate` of `build_pairs` and `substep` on the plan's frame-77 and top-20 profiles (`plan/frame77.data`, `plan/top20.data`) first, their hot lines in the evidence. Then: each proxy's inflated box also kept as bounds, its `min` and `max` computed once where `pair_aabbs` is written (the build and the repair), which are the very sums `Aabb::overlaps` computes per candidate today (`collision.rs:51-76`); the closure tests the bounds with `overlaps`' strict comparisons. The grid's inserts and queries keep the `Aabb`, since rebuilding one from bounds (`from_min_max`) rounds differently. `pair_flags` stays the compact byte array `D-080` chose and is read first, as now. In the pair loop, only loads the annotate shows hot and whose values do not change are hoisted or read once; no new float operation.
+- **Step 2 (W3, W4, W5).** The keyed map's key and value in one slot, same hash, probing and load factor, so a probe reads one line and every lookup returns what it does now. The seeded warm starts read after the pair loop, as the review's `P1.patch` does (contact and friction rows in order, the test reference check after the loop), the one-way hold keeping its in-loop lookup since it decides admission. The arrival pass: each listed slot's first pair recorded as it pushes, so `built_pair` scans that slot's run without the binary search; the round's sort an unstable sort by depth ascending, then target inverse mass descending by `total_cmp` (today's comparator, `arrival.rs:354-357`), then push index, which is the stable sort's order without its scratch. The event drain: one append into the queue when its capacity holds the batch, else today's loop, through a crate-private `EventQueue` method (`P2.patch`), so allocation growth stays the loop's.
+- **Step 3 (W6), conditional.** After Step 2's sitting the run takes R, annotating `substep`, `arrival_pass` and `solve_contacts`. Only when lines that load `Proxy` or `ContactConstraint` fields hold at least 2.5 ms of the rank-16 frame's `physics_step`, or of the 20 highest frames' mean, does Step 3 run: the fields those loops read in `Proxy`'s first 64 bytes and the rest after them or in a parallel array, with the size pin moved to the new size; `ContactConstraint`'s key in a parallel array read only by the sync and the record. Otherwise Step 3 is `dropped` with the reading and no sitting.
+
+### 2.6 Step 4: a woken proxy is repaired, not rebuilt
+
+The rule, a new decision amending `D-081`'s "`D-075`'s build still runs … after a contact wake" (`DECISIONS.md:722`), written with the [tungsten-decision skill](../../.claude/skills/tungsten-decision/SKILL.md) under the next free `D-` number at its commit:
+
+- A contact wake (A2) no longer sets `pairs_invalidated`; the woken proxy goes on a list the next `refresh_pairs` reads. A wake at frame start (`sleep_frame_start`) or through `wake()` comes before the frame's build, as now.
+- The next `refresh_pairs`, with no build due (A1), sets `PAIR_AWAKE` on each woken proxy and adds it to the tripped set, which stays in proxy order without duplicates; `REBUILD_ONE_IN` judges the union against the awake count, so a wide wake still rebuilds.
+- The repair runs as `D-081` steps 1–5 state: the woken member's pairs (as a sleeper, a target of awake queriers) are removed with their carried impulses under their keys; it takes a fresh awake radius from its velocity and the time left, joins `R`, queries the main grid and the repair grid, and pairs with sleepers and statics as `(member, other)`, with awake bodies as `(lower, higher)`. Pairs between two sleepers never existed and are needed only once one wakes, when it becomes a member.
+- Completeness is `D-081`'s argument: the member's anchor is its repair, the main grid holds it under its old static-radius cells and the repair grid under its new box, so every overlap of its new box is found. `assert_pair_contacts` (A9) checks it in the step's tests.
+- What moves, and why: a repaired list keeps its old pairs first and the members' re-admitted pairs after them, not a build's order, so the solver's order after a wake changes and with it every trajectory a contact wake touches. Rows whose windows hold no sleeper keep their digests: `physics` and `physics-sparse` guard `sleeping` at 0 every window frame, `friction` guards its `sleeping` counter at 0, and the `physics:` lines of `slopes` and `template` read `sleeping=0` throughout (`perf-runs/20261101T172146Z-sitting/captures/slopes-B1/`, `perf-runs/20261101T053213Z-sitting/captures/template-B1/`). `e01-pit` moves; `terrain`, whose windows hold 264–275 sleepers, moves when a contact wakes one of them. `EXPECTED` moves (its 3,000-body pile sleeps and wakes), its old and new values in the commit and the decision.
+- Tests: a settled pile woken by a dropped body with `check_pair_contacts` on, its contact sets complete every substep, one build a frame and `pair_repairs` counting the wake substeps; a wide wake past a quarter of the awake bodies still rebuilds; existing tests that pinned a rebuild after a contact wake updated, each named in the evidence row.
+
+## 3. Steps
+
+### Step 1: The pair build's per-candidate tests (W2)
+
+- **Files:** Step 1's list in the header.
+- **Change:** §2.5's Step 1: the annotate, then bounds beside `pair_aabbs` read by the build's closure, and the pair loop's hot loads hoisted.
+- **Done-when:** K1–K5 → as written, no guard counter moved but allocations; K6 with rows `e01-pit,physics,physics-sparse,terrain,friction,slopes,template` → exit 0; K7 → each line as written, digests equal; K8 quoted.
+- **Commit:** kept: `perf(physics): pair candidates against bounds, sitting <id>`; dropped: `docs(plans): record the dropped pair-bounds change`.
+- **Moves:** none but allocation counters (§5).
+
+### Step 2: Lookups and copies (W3, W4, W5)
+
+- **Files:** Step 2's list in the header.
+- **Change:** §2.5's Step 2, in this order in one change: the map's slots, the seeded lookups after the pair loop, the arrival pass's slot runs and sort, the event drain. Then, whatever the sitting reads and after K9, R into `perf-runs/20261101-physics-tail/step-2/` for Step 3's gate.
+- **Done-when:** K1–K5 → as written; `cargo test -p tungsten-core --locked event_queue` → exit 0 with a test of the append's both branches; K6 with rows `e01-pit,physics,physics-sparse,terrain,friction,slopes,template` → exit 0; K7 → each line as written, digests equal; K8 quoted; R's build line as written and its folds and annotates in `perf-runs/20261101-physics-tail/step-2/`.
+- **Commit:** kept: `perf(physics): lookups and copies, sitting <id>`; dropped: `docs(plans): record the dropped lookups change`.
+- **Moves:** allocation counters only (the arrival sort's scratch).
+
+### Step 3: The proxy and contact layout (W6), conditional
+
+- **Files:** Step 3's list in the header.
+- **Change:** §2.5's Step 3 when its gate holds; otherwise the evidence row reads `dropped` with the gate's reading, and no sitting runs.
+- **Done-when:** the gate's reading in the evidence row; when it runs: K1–K5 → as written, `Proxy`'s size pin at its new value; K6 with rows `e01-pit,physics,physics-sparse,terrain,friction,slopes,template` → exit 0; K7 → each line as written, digests equal; K8 quoted.
+- **Commit:** kept: `perf(physics): hot proxy fields first, sitting <id>`; dropped or gated out: `docs(plans): record the proxy layout's gate`.
+- **Moves:** the size pin; allocation counters only.
+
+### Step 4: A woken proxy repaired, not rebuilt (W1)
+
+- **Files:** Step 4's list in the header.
+- **Change:** §2.6's rule, its tests and its decision; `EXPECTED` rewritten from `just physics-release`'s printed hash.
+- **Done-when:** K1–K3 → exit 0, the new tests among them; `just physics-release` → exit 0 with the new `EXPECTED`, its old and new values in the evidence row; `cargo test -p tungsten-core --locked --test integration decision_index` → exit 0; K5 → exit 0, guard pins moved only as §5 allows; K6 with rows `e01-pit,physics,physics-sparse,terrain,friction,slopes,template` → exit 0; K7 → the first three lines as written, the digest loop printing `e01-pit`, perhaps `terrain`, and none of `physics`, `physics-sparse`, `friction`, `slopes` or `template`; K8 quoted, the split showing the wake frames on both sides, since a change of motion can move the wave itself.
+- **Commit:** kept: `perf(physics): repair woken proxies, sitting <id>` (no `!`: no public item changes), the decision in the same commit; dropped: `docs(plans): record the dropped wake repair`, with the decision not written.
+- **Moves:** §5's Step 4 line.
+
+### Step 5: Close
+
+- **Files:** Step 5's list in the header.
+- **Change:**
+  1. R into `perf-runs/20261101-physics-tail/close/`, on the tree the last step left (its rebuild confirmed when that step was not kept): the remaining shares, the stop condition's evidence (§6).
+  2. When any step was kept: the close sitting against this plan's commit `<plan commit>`, after `fd -t f . $(fd -t d -d 1 '^(tungsten|example-0)' target/perf/base-aligned/release/.fingerprint) -x touch -d 2001-01-01 {}`: `set -o pipefail; WGPU_BACKEND=vulkan just perf sitting --base <plan commit> --rows e01-pit,physics,physics-sparse,terrain,friction,slopes,template --wait-quiet 900 2>&1 | tee perf-runs/20261101-physics-tail/close-sitting.log`.
+  3. Records: the known-issues row at line 51 rewritten to what the pass leaves (each kept step with its sitting, each dropped one with its deltas and patch path, the fate of `P1.patch` and `P2.patch`, the remaining shares); benchmarks' "Contact wakes rebuild the pair list" lever closed by Step 4's decision or left open with its numbers, and one open lever line each for the grid walk, 01's event readers and `CollisionEvent`'s layout, with the re-profile's numbers; follow-ups that neither holds to ROADMAP.md's Later, one line each.
+  4. The plan deleted with every citation of it, and `physics-tail` out of Now.
+- **Done-when:** R's build line as written and its folds in `perf-runs/20261101-physics-tail/close/`; the close sitting → exit 0, `rg -q 'Compiling tungsten-core v[0-9.]+ \(.*/target/perf/base-tree/' perf-runs/20261101-physics-tail/close-sitting.log` → exit 0, `jq -e 'all(.rows[]; .verdict == "ok")'` → exit 0, `e01-pit` total p95 `improved` in both pairs (K7's line) and its per-run p95/p99 quoted against §2.1's (or the sitting recorded as not run when no step was kept); with K7's `acc` and `L` on the close sitting, `for n in $L; do jq -e 'all(.runs[]; .valid)' $(acc e01-pit B$n)/capture.json; done` → each exit 0, its runs' script reports passed; `just check` → exit 0; `just physics-release` → exit 0; `just smoke` → exit 0; `rg -q 'physics-tail\.md' .; test $? -eq 1` → exit 0; `just repo-check` → exit 0.
+- **Ends with:** the commits, the evidence, what the owner should try (01's pit: fill it, wake it, feel the wave) and the next prompt.
+
+## 4. Open questions
+
+| # | Question | Default |
+| --- | --- | --- |
+| Q1 | A dropped change re-sat in a narrower form? | No: its patch and deltas are recorded; 9.2 or a later pass may take it up. |
+| Q2 | Step 4 fails a test outside its list (an example 01 test, say)? | The step stops: restored, the failing test named in the evidence row; no test edits beyond §2.6's and §5's. |
+| Q3 | Does `REBUILD_ONE_IN` count woken members with tripped ones? | Yes, one quarter rule over the union (§2.6). |
+| Q4 | Step 4 when Steps 1–3 were all dropped? | It runs: it depends on none of them. |
+| Q5 | When is "the remaining cost is the work itself"? | When R shows no candidate in `step/` outside the solver's iterations, the narrow phase's maths and the grid walk holding 2.5 ms of the rank-16 frame's `physics_step` or of the 20 highest frames' mean. |
+| Q6 | Step 3's gate measured on which frames after a dropped Step 2? | HEAD's, from Step 2's A captures, on a rebuilt binary (R's first two items). |
+
+## 5. Invariants
+
+- **May move:** Steps 1–3: the `allocations` and `allocated_bytes` of a guard whose world runs the changed code, each named old → new (the arrival sort's scratch makes them fall); Step 3: `Proxy`'s size pin. Step 4: `EXPECTED`; the digests of the rows §2.6 names; the pins of the guards whose windows have a contact wake (`pit`, `terrain`), every changed counter named; the pair order after a wake.
+- **Must not move:** in Steps 1–3, every digest in each sitting and `EXPECTED`; in every step, each guard's `events_sent`, `archetype_moves`, `spawned`, `despawned` and sprite counters except Step 4's named pins; the digests of `physics`, `physics-sparse`, `friction`, `slopes` and `template` in Step 4; every public item (the event queue's append is crate-private); every row's workload and `workload_version`.
+
+## 6. Stop conditions
+
+- A done-when check other than K6–K7's verdicts fails: restore the step's files, mark the step skipped with the output, carry on with the steps that don't depend on it (the skill's rule).
+- K6–K7's verdicts fail: the change is not kept (K9's second branch); the pass carries on.
+- A digest or `EXPECTED` moves in Steps 1–3: not bit-identical (a reordered float sum included). The change is not kept as written; if its gain is worth one, it comes back only as its own step after Step 4, with the cause named and its own decision entry, within the sitting limit.
+- Eight sittings started (one refused at its start check does not count): the remaining steps are skipped and named, and the close quotes each step's sitting, its own sitting recorded as not run if it does not fit.
+- The remaining cost is the work itself (Q5) at Step 2's re-profile: Steps 3 and 4 still run (Step 4 removes work rather than cheapening it); at the close, recorded.
+- A file outside the step's list: the step stops.
+- A sitting invalid from background load alone: retaken once after `--wait-quiet`; a second one stops the step.
+
+## 7. Critique
+
+Round 1: gpt-6-astra through Codex (`critique --raw --repo`), xhigh, 2026-11-01, on the uncommitted draft at `a2662f05`. Footer: 283.8 s, tokens in 1,186,874 (cached 1,092,096), out 9,916, commands 30, output 408.7 KB, 5h 0 % → 25 %, week 83 % → 87 %.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 1 | The "p95 frames" (the 15 highest) leave out the frame p95 reads: nearest rank makes p95 the 16th-highest frame and p99 the 4th, so a change to the 15 can leave p95 unmoved. | `scripts/perf_stats.py:118-122` (rank ⌈95 · 300 / 100⌉ = 285 of 300); the ten B runs: frame 77 holds rank 16 in each, at its run's p95 (49.56 ms in B1 run 1), frame 63 or 64 rank 4 | Accepted | The 20 highest frames and frame 77 alone re-profiled (§2.1); the digest, §2.1–§2.3 and the targets restated by rank, W1–W4 against frame 77 and W5 against the 20, W5 named as able to move p99 only; `split_wave.py` prints each run's rank-16 and rank-4 frames and its 20 highest. |
+| 2 | The close can profile a dropped change: a sitting leaves its candidate binary in `target/perf/tree-aligned`, K9 restores sources without a rebuild, and with every step dropped "the last kept step's B captures" do not exist. | `scripts/perf.py:834` (the candidate build into `tree-aligned`); `tools/wave_profile.py` runs the binary it is given; K9 | Accepted | R (§2.4): a build of HEAD's tree that must print `Compiling tungsten-core` after a change not kept, and its frames from the latest sitting's side that matches HEAD, or the baseline sitting's B captures; Step 2, Step 3's gate, the close, Q5 and Q6 use R. |
+| 3 | The bench rows send collision events: they register `CollisionEvent` themselves, so A5's "their events are cleared" is wrong and Step 2's drain reaches them. | `examples/02_bench/src/physics.rs:223`, `terrain.rs:163`, `piles.rs:261`; the drain's queue check at `mod.rs:935` | Accepted | A5 corrected; every step sits `template` beside the six physics rows (§2.3), Step 4's digest list naming `template` among the rows that keep theirs. |
+
+Round 2: the same critic at xhigh, on the plan without §7 and the evidence log (`--from "sed '/^## 7\./,/^## Fol/{/^## Fol/!d}' …"`) with a focus note naming round 1's changes. Footer: 306.2 s, tokens in 964,067 (cached 879,104), out 9,581, commands 18, output 280.8 KB, 5h 25 % → 47 %, week 87 % → 90 %. No third round (the skill's rule).
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 2.1 | K7, K8 and the close name unsuffixed capture folders, but the runner retakes a capture that background load voided into `<row>-<label>-2`, and a rerun's A3–B4 replace the first set, so the checks could quote discarded timings or fail a valid close. | `scripts/perf.py:363` (`new_dir`'s `-2`), `scripts/perf.py:846-858` (one retake, the second attempt returned); `perf-runs/20261101T180505Z-sitting/captures/e01-pit-B2-2/` | Accepted | K7 defines `acc` (a label's last attempt) and `L` (`1 2`, or `3 4` after a rerun); K8, R and the close use them; the digest loop reads every attempt. Tried on that sitting: `acc e01-pit B2` returns `e01-pit-B2-2`. |
+| 2.2 | W5's −4.2 ms is half the whole arrival pass, but Step 2 changes only `built_pair` and the sort, about 1.6 ms of the 20 highest frames. | §2.1's shares (2.1 % + 0.6 % + 0.6 % of about 47.5 ms); `arrival.rs:137-142`, `arrival.rs:353-357` | Accepted | W5's target is −0.8 ms, half the part changed; the pass's loop body (its hot cut at `arrival.rs:289` reads the target proxy) falls to Step 3's gate, and the rest is the pass's work. |
+| 2.3 | `split_wave.py`'s conditional expression covers the whole report line, so a run without a detected wake prints only `no wake`, losing the rank frames R and K8 need. | `perf-runs/20261101-physics-tail/plan/tools/split_wave.py:65` | Accepted | The tool prints the run's line unconditionally with only the wake annotation conditional; checked on `e01-pit-B1` and on `physics-B1`, which has no wake. |
+
+## Evidence log
+
+| Step | Date | Verdict | Key numbers | Paths |
+| --- | --- | --- | --- | --- |
+| Plan | 2026-11-01 | measured | p95 = frame 77 (39.7–40.7 ms `physics_step`), p99 = frame 63/64; frame 77: build 49.0 % (three builds), keyed gets 10.5 %, events 5.9 %, arrival 0.5 %; 20 highest: build 44.0 %, arrival 17.6 %, keyed gets 8.7 % | `perf-runs/20261101-physics-tail/plan/` |
+
+## Follow-ups
