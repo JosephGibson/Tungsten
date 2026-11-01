@@ -418,7 +418,12 @@ fn a_wide_cells_slope_face_is_never_read_as_a_side() {
     for code in 1..=12u8 {
         for (w, h) in [(16.0, 16.0), (64.0, 16.0), (256.0, 16.0), (16.0, 256.0)] {
             let poly = polygon(code, Vec2::ZERO, Vec2::new(w, h) * 0.5);
-            assert_eq!(face_of(poly.normal), 0, "kind {code} on {w} x {h}: {}", poly.normal);
+            assert_eq!(
+                face_of(poly.normal),
+                0,
+                "kind {code} on {w} x {h}: {}",
+                poly.normal
+            );
         }
     }
     let wide = polygon(5, Vec2::new(32.0, 8.0), Vec2::new(32.0, 8.0));
@@ -461,7 +466,9 @@ fn a_contact_on_a_vertex_between_exposed_sides_has_a_unit_normal() {
                 for &vertex in &poly.points[..poly.len] {
                     let contact = circle_contact(vertex, 3.0, &poly, FACE_ALL, 0.0);
                     if !contact.is_some_and(|c| unit(c.normal)) {
-                        bad.push(format!("circle on kind {code}'s vertex {vertex}: {contact:?}"));
+                        bad.push(format!(
+                            "circle on kind {code}'s vertex {vertex}: {contact:?}"
+                        ));
                     }
                 }
             }

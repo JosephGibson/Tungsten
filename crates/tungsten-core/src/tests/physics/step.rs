@@ -358,7 +358,11 @@ fn sweep_net_lets_a_fast_body_slide_along_a_floor_it_touches() {
             Collider::circle(10.0),
         ] {
             for gravity in [900.0, 3_600.0] {
-                for (speed, dt) in [(1_200.0, 1.0 / 60.0), (3_000.0, 1.0 / 60.0), (600.0, 1.0 / 30.0)] {
+                for (speed, dt) in [
+                    (1_200.0, 1.0 / 60.0),
+                    (3_000.0, 1.0 / 60.0),
+                    (600.0, 1.0 / 30.0),
+                ] {
                     let mut world = seed_world();
                     world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, gravity);
                     world.resource_mut::<Time>().advance_frame(dt);
@@ -371,7 +375,8 @@ fn sweep_net_lets_a_fast_body_slide_along_a_floor_it_touches() {
                     }
                     let start = Vec2::new(-400.0, 90.0 - collider.shape.half_extents().y);
                     let launch = Vec2::new(speed, 0.0);
-                    let body = spawn_body(&mut world, RigidBody::dynamic(), collider, start, launch);
+                    let body =
+                        spawn_body(&mut world, RigidBody::dynamic(), collider, start, launch);
                     for _ in 0..30 {
                         physics_step(&mut world);
                         drain_events(&mut world);
@@ -1940,7 +1945,10 @@ fn friction_and_rolling_bounds_that_overflow_stay_finite() {
             physics_step(&mut world);
         }
         let at = world.get::<Position>(ball).unwrap().0;
-        assert!(at.is_finite(), "friction {friction}, rolling {rolling}: {at}");
+        assert!(
+            at.is_finite(),
+            "friction {friction}, rolling {rolling}: {at}"
+        );
     }
     // A body of friction `f32::MAX` on a static of friction 2.
     let mut world = seed_world();
@@ -6213,7 +6221,10 @@ fn late_woken_floor_contact(order: u8, striker: u8, gap: f32) -> (usize, usize) 
         }
     };
     let _ = step_contacts(&mut world, 120);
-    assert!(is_sleeping(&world, ball), "the ball sleeps before the strike");
+    assert!(
+        is_sleeping(&world, ball),
+        "the ball sleeps before the strike"
+    );
     let rest = world.get::<Position>(ball).unwrap().0;
     let at = Vec2::new(rest.x - 20.0 - gap, rest.y);
     let velocity = Vec2::new(240.0, 0.0);
@@ -6226,7 +6237,13 @@ fn late_woken_floor_contact(order: u8, striker: u8, gap: f32) -> (usize, usize) 
             spawn_kinematic(&mut world, Collider::aabb(Vec2::splat(10.0)), at, velocity);
         }
         _ => {
-            spawn_body(&mut world, RigidBody::dynamic(), Collider::circle(10.0), at, velocity);
+            spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                Collider::circle(10.0),
+                at,
+                velocity,
+            );
         }
     }
     let (began, ended) = step_contacts(&mut world, 30);
@@ -7053,7 +7070,13 @@ fn a_body_lands_on_a_wide_cells_slope_face() {
             let w = width as f32;
             let face = |x: f32| 32.0 - 8.0 * x / w;
             let start = Vec2::new(w * 0.5, face(w * 0.5) - 16.0);
-            let body = spawn_body(&mut world, RigidBody::dynamic(), collider, start, Vec2::ZERO);
+            let body = spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                collider,
+                start,
+                Vec2::ZERO,
+            );
             let mut deepest = f32::MIN;
             for _ in 0..60 {
                 physics_step(&mut world);

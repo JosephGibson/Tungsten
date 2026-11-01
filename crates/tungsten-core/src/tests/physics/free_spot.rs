@@ -175,7 +175,11 @@ fn a_collider_without_a_body_is_a_solid() {
     let mut ghost = RigidBodyBundle::dynamic(Position(at), Collider::aabb(Vec2::splat(4.0)));
     ghost.body.mask = 1 << 3;
     let ghost = world.spawn_with(ghost);
-    assert_eq!(free_spot(&world, ghost), Some(at), "its mask leaves out layer 0");
+    assert_eq!(
+        free_spot(&world, ghost),
+        Some(at),
+        "its mask leaves out layer 0"
+    );
 }
 
 #[test]

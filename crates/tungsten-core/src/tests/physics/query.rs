@@ -175,8 +175,15 @@ fn far_circles_keep_their_surface() {
     assert!(ray.normal.abs_diff_eq(Vec2::NEG_X, 1e-4), "{ray:?}");
     assert!((ray.distance - 9_998.3).abs() < 0.01, "{ray:?}");
     let shape = Shape::Circle { radius: 2.0 };
-    let cast = cast_shape(&world, shape, Vec2::new(0.0, 50.0), Vec2::X, 30_000.0, &all())
-        .expect("a head-on cast meets the far post");
+    let cast = cast_shape(
+        &world,
+        shape,
+        Vec2::new(0.0, 50.0),
+        Vec2::X,
+        30_000.0,
+        &all(),
+    )
+    .expect("a head-on cast meets the far post");
     assert_eq!(cast.entity, Some(far));
     assert!(cast.normal.abs_diff_eq(Vec2::NEG_X, 1e-4), "{cast:?}");
     assert!((cast.distance - 19_996.3).abs() < 0.01, "{cast:?}");
