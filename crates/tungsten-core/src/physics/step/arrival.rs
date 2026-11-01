@@ -273,15 +273,6 @@ pub(super) fn arrival_pass(
             }
             for &other_id in candidates.iter() {
                 let other = other_id as usize;
-                // Two bodies of one round share a pair: the one listed first
-                // has it, when its own reach found this one; a slower body's
-                // smaller box can miss it.
-                if state[other] & ARRIVAL_LISTED != 0
-                    && (round_start..at).contains(&(slot[other] as usize))
-                    && built_pair(pairs, slot, slot[other], body as u32)
-                {
-                    continue;
-                }
                 // The body passes a neighbour its layers do not meet.
                 if !layers.meet(body, other) {
                     continue;
@@ -296,6 +287,16 @@ pub(super) fn arrival_pass(
                     .max_element()
                     - slack;
                 if apart > 0.0 && apart * apart > relative.length_squared() * sub_dt * sub_dt {
+                    continue;
+                }
+                // Two bodies of one round share a pair: the one listed first
+                // has it, when its own reach found this one; a slower body's
+                // smaller box can miss it. The search for that pair comes
+                // after the cheap cuts.
+                if state[other] & ARRIVAL_LISTED != 0
+                    && (round_start..at).contains(&(slot[other] as usize))
+                    && built_pair(pairs, slot, slot[other], body as u32)
+                {
                     continue;
                 }
                 let margin = relative.length() * sub_dt + slack;
