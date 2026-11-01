@@ -25,7 +25,7 @@ Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tun
 | Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |
 | Parallax, camera shake trauma, squash/stretch (`D-073`) | `core/components.rs`, `core/camera.rs`, `tungsten/game_feel.rs`, `tungsten/sprite_extract.rs` |
 | Particles, mesh particles (`D-049`–`D-051`, `D-093`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `render/mesh_particle.rs`, `examples/01_platformer/assets/particles/` |
-| Audio mixer, decode (`D-027`, `D-028`, `D-034`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/integration/audio_decode.rs` |
+| Audio mixer, pan, ducks, reload, decode (`D-027`, `D-028`, `D-034`, `D-231`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/integration/audio_decode.rs` |
 | Telemetry, perf lines (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `tungsten/app.rs`, `docs/perf/profiling-workflow.md` |
 | Perf runner, rows, sittings (`D-078`) | `scripts/perf.py`, `scripts/perf_stats.py`, `scripts/perf-rows.json`, `scripts/test-perf.py` |
 | Criterion micro-benchmarks | `crates/*/benches/`, `docs/perf/profiling-workflow.md` |
@@ -35,7 +35,7 @@ Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tun
 
 | Task | Open |
 | --- | --- |
-| Manifest load, data entries, load path, GPU upload, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`, `D-171`) | `core/assets/manifest.rs`, `core/assets/data.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/` |
+| Manifest load, boot plan, data entries, load path, GPU upload, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`, `D-171`, `D-231`) | `core/assets/manifest.rs`, `core/assets/data.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/` |
 | Hot reload, file watch (`D-031`, `D-053`) | `tungsten/hot_reload.rs`, `tungsten/asset_loader/reload.rs` |
 | Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader/atlas.rs` |
 | Tilemaps, tile collision (`D-032`, `D-033`, `D-228`) | `core/assets/tilemap.rs`, `core/assets/terrain.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step/gather.rs` |
@@ -62,7 +62,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | UI tree, layout, focus, hits, routing, tracks, prompts, capture, prewarm (`D-124`, `D-125`, `D-149`, `D-163`, `D-164`) | `core/ui/`, `tungsten/testing/ui.rs`, `core/tests/ui/`, `tungsten/tests/ui_route.rs` |
 | UI paint list, overlay pipeline, text batches, layout stage, debug actions (`D-147`, `D-148`) | `core/ui/paint.rs`, `render/ui.rs`, `render/ui.wgsl`, `tungsten/app.rs`, `tungsten/ui_debug.rs`, `core/tests/ui/paint.rs`, `render/tests/ui.rs`, `render/tests/text_batches.rs` |
 | Render components, default sprite extract, `Extracts` channels (`D-042`, `D-086`, `D-113`, `D-114`, `D-138`) | `core/components.rs`, `tungsten/sprite_extract.rs`, `tungsten/extract.rs` |
-| Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
+| Materials, the fragment prelude, post-stack (`D-058`, `D-231`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |
 | Lighting (`D-061`) | `core/components.rs`, `core/lighting.rs`, `render/lighting.rs`, `render/lit_sprite.rs`, `assets/shaders/lit_sprite.wgsl`, `tungsten/light_extract.rs` |
@@ -76,8 +76,8 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 | Task | Open |
 | --- | --- |
 | Platformer, a game on the template run from its folder | `examples/01_platformer/README.md` (each mechanic's kit item), `examples/01_platformer/src/game.rs` and `examples/01_platformer/src/save.rs` (the seam), `examples/01_platformer/src/features/`, `examples/01_platformer/src/shell/` (the template's, copied), `examples/01_platformer/tests/game/` (`saves`, `playthrough`) |
-| Platformer art, level and layout regeneration; the actors' bodies as data | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/tools/content/`, `examples/01_platformer/tools/locks.json` (`D-223`), `examples/01_platformer/tools/actors.py` (`BODIES`), `examples/01_platformer/src/shared.rs` (`Body`) |
-| Benchmarks: workloads, knobs, guards | `examples/02_bench/src/<bench>.rs`, `examples/02_bench/src/knobs.rs`, `examples/02_bench/src/tests/guards.rs`, `docs/perf/benchmarks.md` |
+| Platformer art, level and layout regeneration; the actors' bodies as data | `examples/01_platformer/tools/{README.md,generate.py,level.py,level.json,content/,locks.json,actors.py}` (the locks `D-223`, the bodies `BODIES`), `examples/01_platformer/src/shared.rs` (`Body`) |
+| Benchmarks: workloads, knobs, guards, `boot`'s seeded assets | `examples/02_bench/src/<bench>.rs`, `examples/02_bench/src/knobs.rs`, `examples/02_bench/src/tests/guards.rs`, `docs/perf/benchmarks.md` |
 | Fixtures crate (`D-193`): scenes by `TUNGSTEN_FIXTURE`, pixel tests, UI sprite generator | `examples/03_fixtures/src/`, `examples/03_fixtures/tests/`, `examples/03_fixtures/tools/README.md` |
 | Template: shell, sample, seam; `tungsten` CLI (`D-181`–`D-183`, `D-187`, `D-199`) | `templates/basic/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `tungsten/describe.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |

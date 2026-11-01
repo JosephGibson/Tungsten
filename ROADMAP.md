@@ -21,6 +21,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - Example 01's ribcage prop (`bones_1`), read as barbed wire in the hollow, off the troll bridge too (385.6, 401), if the owner reads it so there.
 - Example 01's hurt flash drawn as a generated full-view sprite it stretches and fades (`examples/01_platformer/tools/effects.py:3179`): an edge falloff, deeper corners and a dither on the stock vignette, so a hurt flash drives a second vignette. S-103.
 - Example 01's tests hold a press over frames until a fixed step reads it (`examples/01_platformer/tests/game/main.rs:375`): a harness `step_fixed(n)` that steps frames until `n` fixed steps have run. S-182.
+- Named rectangles in a sprite sheet for irregular atlases, beside its `<sheet>_<n>` frames, when a game brings one (`D-231`, boot-and-seams' Q8).
 - The kit's cue listener for `SoundOnEvent`, whose events carry no position, with redo 7.9's pan and looping cue voices (P7-13).
 - `just perf`'s GPU run merged into its timing run, now that the timestamp ring costs `gpu` 1.01× (redo 7.3's Q5): at 9.1, once the merged run's cost is measured.
 - Agent memory outside H2's three hubs: `git_fetch_denied` still quotes `scripts/roadmap.py`'s last fetch, which `just status` now prints, and `agent_tooling_run_traps`' perf-gate bullet and `milestone_step_refactor_outside_list` describe retired flows; prune them at the next memory pass.
