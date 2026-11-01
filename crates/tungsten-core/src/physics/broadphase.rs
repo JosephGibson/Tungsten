@@ -14,7 +14,9 @@ use glam::IVec2;
 #[cfg(test)]
 use glam::Vec2;
 
-/// Caller-owned proxy index.
+/// Caller-owned proxy index, dense: a grid keeps two tables of four bytes
+/// per id up to the largest id it has seen, never shrunk, so a caller with
+/// sparse keys maps them to dense indices first.
 pub type ProxyId = u32;
 
 /// A direct table may spend this many slots per staged cell ref: about the
