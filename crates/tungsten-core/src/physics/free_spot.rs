@@ -35,7 +35,8 @@ enum Solid {
 /// A cell is the tile size of the map the body overlaps, 16 px where it
 /// overlaps none. Solids are the full collision cells of the layers its
 /// mask meets, read from the maps and their instances, and the static
-/// bodies those layers meet; one-way and slope cells are not.
+/// bodies those layers meet, a collider without a body among them (layer
+/// 0, as the step reads it); one-way and slope cells are not.
 ///
 /// Returns the body's own position when it overlaps nothing, and `None`
 /// for an entity without `Position`, `Collider` and `RigidBody`, or when
@@ -142,9 +143,19 @@ fn solids(world: &World, entity: Entity, body: &RigidBody, area: &Aabb) -> Vec<S
         }
     }
     for (other, position, collider, rigid) in
-        world.query::<(Entity, &Position, &Collider, &RigidBody)>()
+        world.query::<(Entity, &Position, &Collider, Option<&RigidBody>)>()
     {
-        if other == entity || rigid.kind != BodyKind::Static || !meets(rigid.layers, rigid.mask) {
+        // A collider without a body is a static wall in layer 0 meeting
+        // every layer, as the step reads it.
+        let (kind, layers, mask) = rigid.map_or(
+            (
+                BodyKind::Static,
+                RigidBody::DEFAULT_LAYERS,
+                RigidBody::ALL_LAYERS,
+            ),
+            |rigid| (rigid.kind, rigid.layers, rigid.mask),
+        );
+        if other == entity || kind != BodyKind::Static || !meets(layers, mask) {
             continue;
         }
         let center = position.0 + collider.offset;

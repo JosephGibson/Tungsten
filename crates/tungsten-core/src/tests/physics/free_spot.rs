@@ -139,6 +139,46 @@ fn cells_and_bodies_on_layers_it_does_not_meet_are_free() {
 }
 
 #[test]
+fn a_collider_without_a_body_is_a_solid() {
+    // The step reads a collider without a `RigidBody` as a static wall in
+    // layer 0 meeting every layer, so a crate inside one moves out of it as
+    // out of a static body's, whichever was spawned first; a body whose
+    // mask leaves out layer 0 stays.
+    let at = Vec2::new(100.0, 100.0);
+    for crate_first in [false, true] {
+        for bare in [false, true] {
+            let mut world = world(&[]);
+            let spawn_wall = |world: &mut World| {
+                let collider = Collider::aabb(Vec2::splat(16.0));
+                if bare {
+                    world.spawn_with((Position(at), collider));
+                } else {
+                    world.spawn_with(RigidBodyBundle::r#static(Position(at), collider));
+                }
+            };
+            if !crate_first {
+                spawn_wall(&mut world);
+            }
+            let body = crate_at(&mut world, at);
+            if crate_first {
+                spawn_wall(&mut world);
+            }
+            assert_eq!(
+                free_spot(&world, body),
+                Some(Vec2::new(100.0, 80.0)),
+                "bare {bare}, crate first {crate_first}"
+            );
+        }
+    }
+    let mut world = world(&[]);
+    world.spawn_with((Position(at), Collider::aabb(Vec2::splat(16.0))));
+    let mut ghost = RigidBodyBundle::dynamic(Position(at), Collider::aabb(Vec2::splat(4.0)));
+    ghost.body.mask = 1 << 3;
+    let ghost = world.spawn_with(ghost);
+    assert_eq!(free_spot(&world, ghost), Some(at), "its mask leaves out layer 0");
+}
+
+#[test]
 fn no_free_spot_within_eight_cells_leaves_it_and_says_so() {
     let mut world = world(&columns(0..=19, WALL));
     let body = crate_at(&mut world, Vec2::new(160.0, 160.0));
