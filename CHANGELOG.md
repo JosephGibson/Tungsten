@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-11-01
+
 Summary: the roadmap redo's Phase 7 steps 7.8 and 7.9: runtime terrain, with tiles edited in place, auto-tiled and one-way (`D-228`), and physics on it, with friction, rolling circles, contact and sensor events, predicate casts and slope tiles (`D-229`); saves of many areas, the World saved by name per area (`D-230`); and boot loading in slices, with sprite sheets, sound reload and the small seams 7.5's register named (`D-231`). 7.17, the UI pass, is next. 01's save stays at schema 23; the template's moves to 4.
 
 ### Added
