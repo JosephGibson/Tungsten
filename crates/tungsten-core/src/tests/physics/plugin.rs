@@ -337,6 +337,19 @@ fn mass_on_a_kinematic_or_sensor_rigid_body_fails_naming_mass() {
 }
 
 #[test]
+fn with_mass_refuses_a_mass_without_a_finite_positive_inverse() {
+    // A mass of 0, below 0, NaN or infinite once gave a dynamic body an
+    // inverse of 0, which fell through statics and tiles, and a subnormal
+    // one an infinite inverse; `with_mass` panics on them, as the
+    // `rigid_body` loader refuses them.
+    for mass in [0.0, -1.0, f32::NAN, f32::INFINITY, 1.0e-39] {
+        let made = std::panic::catch_unwind(|| RigidBody::dynamic().with_mass(mass));
+        assert!(made.is_err(), "mass {mass} accepted");
+    }
+    assert_eq!(RigidBody::dynamic().with_mass(4.0).inv_mass, 0.25);
+}
+
+#[test]
 fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
     let world = physics_world();
     let circle = serde_json::json!({ "kind": "circle", "radius": 4.0 });
