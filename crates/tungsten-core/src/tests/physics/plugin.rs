@@ -802,14 +802,16 @@ fn rolls_is_for_circles() {
 }
 
 #[test]
-fn the_plugin_registers_the_contact_queues() {
+fn the_plugin_leaves_the_contact_queues_to_the_game() {
     use crate::ecs::EventQueue;
     use crate::physics::{ContactBegan, ContactEnded};
 
     let world = physics_world();
-    assert!(world.has_resource::<EventQueue<ContactBegan>>());
-    assert!(world.has_resource::<EventQueue<ContactEnded>>());
+    assert!(!world.has_resource::<EventQueue<ContactBegan>>());
+    assert!(!world.has_resource::<EventQueue<ContactEnded>>());
     assert!(world.has_resource::<EventQueue<CollisionEvent>>());
+    assert!(world.has_resource::<EventQueue<SensorEntered>>());
+    assert!(world.has_resource::<EventQueue<SensorExited>>());
 }
 
 #[test]

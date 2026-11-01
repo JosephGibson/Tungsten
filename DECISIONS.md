@@ -3475,6 +3475,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Tests: core's `assets::tilemap::`, `assets::terrain::` and `physics::step::outline::`, the step's `the_step_keeps_todays_tile_proxies`, `an_edit_retraces_its_chunk_and_neighbours_only` and one-way tests, the query's `casts_on_run_boxes_give_the_cells_hits` and `overlap_and_nearest_read_tiles_from_the_grid_as_before`; the kit's `shots_meet_tiles_by_their_layers` and `the_controller_jumps_up_through_a_one_way_edge_and_lands_on_it`; the umbrella's `the_overlay_draws_the_tile_outline`; 02's `guards_terrain`.
 
 ## D-229 — Physics on the runtime terrain: physics layer names and materials; Coulomb friction and opt-in rolling; contact events with speeds, begins and ends; sensor exits and swept sensors; casts that pass refused hits; 45° and 2:1 slope tiles
+**Amended by D-233:** the contact events only; `PhysicsPlugin` registers neither `ContactBegan` nor `ContactEnded`, so the record runs once a game registers either; the rest stands.
 **Date:** 2026-10-31
 **Decision:** Redo 7.8's second plan (phase 7's Step 5): the physics `D-228` left open, as far as its steps landed. Every default keeps today's worlds: friction 0, no spin, no slope, no swept sensor, so the physics hashes and the kit's pin hold.
 
@@ -3556,3 +3557,14 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - A transient CI failure waits for the owner's rerun (`gh run rerun ID --failed`), anything else for a fix and a push; the owner can still tag by hand.
 - A failure only the cut causes still reaches a tag; the chain's `just check` on the cut tree covers Linux.
 - Tests: `scripts/test-release.py`'s `Run`, `scripts/test-release-preflight.py`'s `test_ci_gate_*`.
+
+## D-233 — The contact record is the game's to ask for: `PhysicsPlugin` registers neither `ContactBegan` nor `ContactEnded`
+**Date:** 2026-11-01
+**Decision:** `PhysicsPlugin` registers `EventQueue<CollisionEvent>`, `EventQueue<SensorEntered>` and `EventQueue<SensorExited>` and leaves `ContactBegan` and `ContactEnded` to the game: one that wants begins and ends registers either queue at startup (`App::register_event`, `World::register_event`), and the step keeps the contact record only while one exists, as `D-229` gates it. No flag: the queue is the request.
+**Why:** `D-229` meant the record off until a game listens, but the plugin registered both queues, so every World built on it, each game on `DefaultPlugins` among them, ran the record each step while nothing outside core's tests read it: 0.114's release sitting against `v0.113.0` (`perf-runs/20261101T053213Z-sitting/`) read `e01-pit`'s `physics_step` p50 21.46 → 42.54 ms, both pairs `regressed`, and the physics review's profile put the record at about 39 % of it. The queue already says whether anything reads the events; a flag would be a second switch that could disagree with it.
+**Consequences:**
+- Amends `D-229` as its marker line says.
+- A game that read the plugin's queues registers them; none in the repository did. A queue registered mid-run starts an empty record, so a pair already touching begins the next time the step solves it.
+- No pin moved. 01's pit guard reads its pin (72,637 allocations, 69,118,796 bytes, 12 events) with the record off and, its queues registered by hand, on: in its window, after the settle, the record began and ended no pair and reused its buffers. 02's twelve guards hold; its physics rows step by hand without the plugin. The physics hashes hold, and `e01-pit`'s digest with them: the record writes nothing back to the bodies.
+- The sitting against the tree before it (`perf-runs/20261101T193400Z-sitting/`, A/A `unchanged`): `e01-pit`'s `physics_step` p50 42.70 → 24.67 and 42.69 → 24.59 ms, `total` p50 52.19 → 34.10 and 52.12 → 34.00 ms and p95 64.84 → 49.82 and 64.98 → 49.55 ms, each `improved` in both pairs; `physics` `unchanged`.
+- Tests: core's `physics::plugin::tests::the_plugin_leaves_the_contact_queues_to_the_game` and `physics::step::tests::the_record_waits_for_a_game_to_register_a_contact_queue`.

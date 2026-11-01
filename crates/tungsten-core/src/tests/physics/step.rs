@@ -6121,6 +6121,51 @@ fn contacts_begin_and_end_once_per_touch() {
     assert_eq!(ended, [ContactEnded::new(ball, Some(floor))]);
 }
 
+/// A ball dropped 30 px onto a static floor in a World built with
+/// `PhysicsPlugin`, whose game registers `ContactBegan` when `listens`: the
+/// World after 60 steps, the ball, the floor and the begins sent.
+fn plugin_landing(listens: bool) -> (World, Entity, Entity, Vec<ContactBegan>) {
+    use crate::physics::PhysicsPlugin;
+    use crate::schedule::{Plugin, Schedule};
+
+    let mut world = seed_world();
+    PhysicsPlugin.build(&mut Schedule::new(), &mut world);
+    if listens {
+        world.register_event::<ContactBegan>();
+    }
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 40.0));
+    let mut began = Vec::new();
+    for _ in 0..60 {
+        physics_step(&mut world);
+        if let Some(queue) = world.get_resource_mut::<EventQueue<ContactBegan>>() {
+            began.extend(queue.iter_current().copied());
+            queue.flush();
+        }
+        world.resource_mut::<EventQueue<CollisionEvent>>().flush();
+    }
+    (world, ball, floor, began)
+}
+
+#[test]
+fn the_record_waits_for_a_game_to_register_a_contact_queue() {
+    let (world, ..) = plugin_landing(false);
+    assert!(!world.has_resource::<EventQueue<ContactBegan>>());
+    assert!(!world.has_resource::<EventQueue<ContactEnded>>());
+    let extra = &world.resource::<PhysicsBuffers>().extra;
+    assert!(!extra.record_on, "nothing listens");
+    assert!(extra.record.entries.is_empty(), "the landing left no pair");
+    let (world, ball, floor, began) = plugin_landing(true);
+    assert!(world.resource::<PhysicsBuffers>().extra.record_on);
+    assert_eq!(began.len(), 1, "{began:?}");
+    assert_eq!((began[0].a, began[0].b), (ball, Some(floor)));
+}
+
 /// A ball of radius 10 at 300 px/s along x, `gap` px short of a static
 /// wall at the step's start, with `restitution`: its begins and ends over
 /// 60 steps without gravity.

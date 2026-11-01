@@ -68,7 +68,9 @@ impl CollisionEvent {
 /// names them; `speed` is the largest closing speed along the normal the
 /// pair had since it came within reach, so an impact reads its speed
 /// however the gap closed. A pair is its two sides, a tile by its map,
-/// layer and cell.
+/// layer and cell. The step keeps the record these come from only while
+/// the World holds this queue or [`ContactEnded`]'s, which a game registers
+/// (`World::register_event`); `PhysicsPlugin` registers neither.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct ContactBegan {

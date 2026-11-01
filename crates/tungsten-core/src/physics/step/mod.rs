@@ -101,7 +101,8 @@
 //! only the cells the step's tile refresh changed.
 //!
 //! The contact record (`ContactBegan`, `ContactEnded`) runs while either
-//! queue exists. A pair touches in a substep when its contact penetrates or
+//! queue exists, which a game registers (`PhysicsPlugin` registers neither,
+//! D-233). A pair touches in a substep when its contact penetrates or
 //! the solve gave it a normal impulse, or an arrival or safety-net clamp
 //! stopped one side against the other; a pair is its two sides, a tile by
 //! its map, layer and cell (the cache's identity), never the solver's pair
