@@ -2192,7 +2192,7 @@ fn record_main_draws<'a>(
         render_pass,
         sprite_batches,
         materials,
-        Some(&lit_sprite_pipeline.pipeline),
+        Some(lit_sprite_pipeline),
         Some(&lighting.bind_group),
     );
     render_pass.pop_debug_group();

@@ -3,6 +3,7 @@
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
+use tungsten_core::components::SpriteFlip;
 use tungsten_core::physics::{Position, PrevPosition, Velocity};
 use tungsten_core::{
     Entity, Inspectable, Plugin, Schedule, SpawnContext, Time, Transform, World, system,
@@ -67,13 +68,16 @@ enum Snap {
 ///
 /// With `turn`, it writes `Transform.rotation` as the direction's angle
 /// plus its offset, so art drawn facing up turns with an offset of `π/2`; a
-/// rotation tween or an oscillator on the same entity is hidden. It never
-/// flips a sprite: a [`CharacterAnimator`](crate::CharacterAnimator)'s clip
-/// sets show mirrored art. It reads no gameplay's state and gameplay reads
-/// none of its, and it works on children.
+/// rotation tween or an oscillator on the same entity is hidden. With
+/// `flip`, it writes the entity's `SpriteFlip` for art drawn facing right:
+/// flipped while it faces left, unflipped while it faces right, kept while
+/// it faces straight up or down, so one set of frames serves both sides
+/// (redo 7.9); a [`CharacterAnimator`](crate::CharacterAnimator)'s clip set
+/// may show mirrored art instead. It reads no gameplay's state and gameplay
+/// reads none of its, and it works on children.
 ///
 /// Scene name `facing`:
-/// `{ "from": "motion", "snap": "free", "turn": false, "offset": 0, "min_speed": 1 }`,
+/// `{ "from": "motion", "snap": "free", "turn": false, "offset": 0, "min_speed": 1, "flip": false }`,
 /// `from` one of `motion` (default), `intent` and `aim`, `snap` one of
 /// `free` (default), `horizontal`, `four` and `eight`, `offset` in radians
 /// and `min_speed` in world pixels per second, each with those defaults.
@@ -119,6 +123,8 @@ pub struct Facing {
     turn: bool,
     offset: f32,
     min_speed: f32,
+    /// It writes the entity's `SpriteFlip`.
+    flip: bool,
     /// The unit direction at its last frame.
     direction: Vec2,
 }
@@ -139,6 +145,8 @@ struct FacingFields {
     min_speed: f32,
     #[serde(default = "right", with = "vec2")]
     direction: Vec2,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    flip: bool,
 }
 
 fn default_min_speed() -> f32 {
@@ -174,6 +182,7 @@ impl TryFrom<FacingFields> for Facing {
             turn: fields.turn,
             offset: fields.offset,
             min_speed: fields.min_speed,
+            flip: fields.flip,
             direction: fields.direction,
         })
     }
@@ -188,6 +197,7 @@ impl From<Facing> for FacingFields {
             offset: facing.offset,
             min_speed: facing.min_speed,
             direction: facing.direction,
+            flip: facing.flip,
         }
     }
 }
@@ -209,6 +219,7 @@ impl Facing {
             turn: false,
             offset: 0.0,
             min_speed: DEFAULT_MIN_SPEED,
+            flip: false,
             direction: Vec2::X,
         }
     }
@@ -264,6 +275,14 @@ impl Facing {
         );
         self.turn = true;
         self.offset = offset;
+        self
+    }
+
+    /// The facing, writing the entity's `SpriteFlip` from its side: flipped
+    /// facing left, for art drawn facing right.
+    #[must_use]
+    pub fn flipping(mut self) -> Self {
+        self.flip = true;
         self
     }
 
@@ -378,6 +397,14 @@ impl Plugin for FacingPlugin {
                 )
                 .default("1.0"),
             )
+            .field(
+                FieldDescription::new(
+                    "flip",
+                    FieldType::Bool,
+                    "writes the entity's sprite flip from the side it faces, for art drawn facing right",
+                )
+                .default("false"),
+            )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
             .genre(SHMUP)
@@ -393,6 +420,7 @@ impl Plugin for FacingPlugin {
             } else {
                 facing.offset = def.offset;
             }
+            facing.flip = def.flip;
             (facing,)
         });
         let mut entities = Vec::new();
@@ -419,10 +447,13 @@ struct FacingDef {
     offset: f32,
     #[serde(default = "default_min_speed", deserialize_with = "non_negative")]
     min_speed: f32,
+    #[serde(default)]
+    flip: bool,
 }
 
-/// Sets every facing's direction from its source, and its entity's
-/// rotation when it turns; `entities` is the frame's scratch list.
+/// Sets every facing's direction from its source, its entity's rotation
+/// when it turns and its `SpriteFlip` when it flips; `entities` is the
+/// frame's scratch list.
 fn facing(world: &mut World, entities: &mut Vec<Entity>) {
     let step = world.get_resource::<Time>().map_or(0.0, Time::fixed_step);
     entities.clear();
@@ -443,6 +474,19 @@ fn facing(world: &mut World, entities: &mut Vec<Entity>) {
         {
             transform.rotation = direction.to_angle() + facing.offset;
         }
+        if facing.flip && direction.x != 0.0 {
+            write_flip(world, entity, direction.x < 0.0);
+        }
+    }
+}
+
+/// Sets `entity`'s `SpriteFlip` to `flipped`, inserting one the first time
+/// it flips; afterwards it stays, so a turn moves no archetype.
+pub(crate) fn write_flip(world: &mut World, entity: Entity, flipped: bool) {
+    match world.get_mut::<SpriteFlip>(entity) {
+        Some(flip) => flip.0 = flipped,
+        None if flipped => world.insert(entity, SpriteFlip(true)),
+        None => {}
     }
 }
 
@@ -474,8 +518,9 @@ impl Inspectable for Facing {
         } else {
             String::new()
         };
+        let flip = if self.flip { ", flipping" } else { "" };
         vec![
-            ("source", format!("{from}, snap {snap}{turn}")),
+            ("source", format!("{from}, snap {snap}{turn}{flip}")),
             ("direction", point(self.direction)),
         ]
     }

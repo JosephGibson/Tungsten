@@ -5,6 +5,7 @@ use tungsten_core::assets::{FilterMode, MaterialAssetId, TextureHandle};
 use tungsten_core::tween::UniformOverrideBlock;
 
 use crate::counters::{self, Counts};
+use crate::lit_sprite::LitSpritePipeline;
 use crate::material::{MaterialPipeline, MaterialSlot};
 use crate::post::ParamSlots;
 use crate::shader_hot_reload::build_validated;
@@ -287,6 +288,11 @@ pub struct SpritePipeline {
     material_slots: HashMap<MaterialAssetId, ParamSlots<MaterialSlot>>,
     /// Batches of each material drawn so far this frame.
     material_batches: HashMap<MaterialAssetId, usize>,
+    /// Redo 7.9: the lit batches' group-3 slots, one per lit batch with a
+    /// uniform block in a frame, as material batches keep theirs (`D-101`),
+    /// and the zeroed slot every lit batch without one binds.
+    lit_flash_slots: ParamSlots<MaterialSlot>,
+    lit_no_flash: Option<MaterialSlot>,
     /// Whether a frame has outgrown the largest instance buffer, logged once.
     warned_instance_cap: bool,
     pub(crate) counts: Box<Counts>,
@@ -472,6 +478,8 @@ impl SpritePipeline {
             handles: TextureHandles::new(),
             material_slots: HashMap::new(),
             material_batches: HashMap::new(),
+            lit_flash_slots: ParamSlots::default(),
+            lit_no_flash: None,
             warned_instance_cap: false,
             counts,
         }
@@ -945,7 +953,9 @@ impl SpritePipeline {
     /// M29: when `batch.lit` is set, the renderer pulls the lit texture
     /// bundle from `self.lit_textures` (group 1, three views + sampler) and
     /// uses `lit_sprite_pipeline` + `lighting_bind_group` (group 2). `lit`
-    /// wins over `material_id` when both are present.
+    /// wins over `material_id` when both are present. Redo 7.9: a lit batch
+    /// binds its uniform block at group 3, the k-th lit batch with one slot
+    /// k, and a lit batch without one a zeroed block, so it draws as before.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -954,7 +964,7 @@ impl SpritePipeline {
         render_pass: &mut wgpu::RenderPass<'_>,
         batches: &[SpriteBatch],
         material_pipelines: &HashMap<MaterialAssetId, MaterialPipeline>,
-        lit_sprite_pipeline: Option<&wgpu::RenderPipeline>,
+        lit_sprite_pipeline: Option<&LitSpritePipeline>,
         lighting_bind_group: Option<&wgpu::BindGroup>,
     ) {
         let total_instances: usize = batches.iter().map(|batch| batch.instances.len()).sum();
@@ -972,6 +982,7 @@ impl SpritePipeline {
             );
         }
         self.material_batches.clear();
+        let mut lit_flash_batches = 0;
         let instance_stride = std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress;
         // Each batch lands in the staging view as one slice copy, in batch
         // order, so draw ranges below index it the same way. No intermediate
@@ -1070,13 +1081,13 @@ impl SpritePipeline {
                         render_pass.set_pipeline(&material_pipeline.unwrap().pipeline);
                     }
                     PipelineKey::Lit => {
-                        render_pass.set_pipeline(lit_resources.unwrap().1);
+                        render_pass.set_pipeline(&lit_resources.unwrap().1.pipeline);
                     }
                 }
                 last_pipeline_key = Some(pipeline_key);
             }
 
-            if let Some((lit, _pipeline, lighting_bg)) = lit_resources {
+            if let Some((lit, pipeline, lighting_bg)) = lit_resources {
                 if batch.filter != lit.filter {
                     log::warn!(
                         "lit sprite batch filter {:?} != lit pool filter {:?} for handle {:?}",
@@ -1088,6 +1099,25 @@ impl SpritePipeline {
                 }
                 render_pass.set_bind_group(1, &lit.bind_group, &[]);
                 render_pass.set_bind_group(2, lighting_bg, &[]);
+                let layout = &pipeline.flash_bind_group_layout;
+                let flash = if let Some(block) = &batch.uniform_overrides {
+                    let payload = block.to_bytes();
+                    let (slot, stale) =
+                        self.lit_flash_slots.stage(lit_flash_batches, &payload, || {
+                            MaterialSlot::new(device, layout, "lit_flash")
+                        });
+                    lit_flash_batches += 1;
+                    if stale {
+                        counters::write_buffer(&self.counts, queue, &slot.ubo, 0, &payload);
+                    }
+                    slot
+                } else {
+                    self.lit_no_flash.get_or_insert_with(|| {
+                        // A new buffer reads as zeros: no flash.
+                        MaterialSlot::new(device, layout, "lit_no_flash")
+                    })
+                };
+                render_pass.set_bind_group(3, &flash.bind_group, &[]);
             } else {
                 let Some(gpu_tex) = self.textures.get(&batch.texture) else {
                     log::warn!("Missing GPU texture for handle {:?}", batch.texture);

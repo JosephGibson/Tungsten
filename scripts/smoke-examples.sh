@@ -214,6 +214,14 @@ row "lighting" "$log_dir/${fixtures_pkg}-lighting.log" "$fixtures_pkg" \
   TUNGSTEN_FIXTURE=lighting
 end_section "Lighting passed" "Lighting failures" 1
 
+# Redo 7.9: seams row over the `seams` scene. A lit sprite and its flipped
+# twin, a flashing lit sprite and an unlit one take the lit pipeline's flash
+# block and mirrored normals; `just visual` checks their pixels.
+begin_section "Redo 7.9 seams fixture matrix (pkg: $fixtures_pkg, scene=seams)"
+row "seams" "$log_dir/${fixtures_pkg}-seams.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=seams
+end_section "Seams passed" "Seams failures" 1
+
 # M30: game-feel rows. The `post` row pins the fixture env so trauma and
 # every squash envelope are armed at startup — a three-frame run would not
 # otherwise reach a collision. The default example discovery row already

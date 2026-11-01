@@ -521,7 +521,7 @@ fn reference_extract(world: &World) -> Vec<SpriteBatch> {
             per_key.insert(key, i);
             let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
             batch.material_id = effective_material;
-            batch.uniform_overrides = if lit { None } else { override_block.copied() };
+            batch.uniform_overrides = override_block.copied();
             batch.lit = lit;
             out.push(batch);
             i
@@ -797,16 +797,18 @@ fn golden_world_covers_every_sprite_kind() {
 
 #[test]
 fn default_extract_output_is_pinned() {
-    // Counts and digest of the pre-rewrite extract on this world.
+    // Counts and digest of the pre-rewrite extract on this world; redo 7.9's
+    // lit batches keep their sprites' blocks, which moved the digest from
+    // 0x7cec_8f23_3d8b_fd57 and left every batch and instance as it was.
     let world = golden_world(1, 600);
     let batches = extract_sprites_default(&world);
     let instances: usize = batches.iter().map(|b| b.instances.len()).sum();
     assert_eq!(batches.len(), 69);
     assert_eq!(instances, 420);
-    assert_eq!(fnv1a(&batch_bytes(&batches)), 0x7cec_8f23_3d8b_fd57);
+    assert_eq!(fnv1a(&batch_bytes(&batches)), 0xce55_3b86_48da_bffc);
     assert_eq!(
         fnv1a(&batch_bytes(&reference_extract(&world))),
-        0x7cec_8f23_3d8b_fd57
+        0xce55_3b86_48da_bffc
     );
 }
 
@@ -1623,4 +1625,128 @@ fn a_sprite_without_an_anchor_draws_as_before() {
     assert_eq!(instance.position, [100.0, 50.0]);
     assert_eq!(instance.size, [-32.0, 24.0]);
     assert_eq!(instance.rotation, 0.75);
+}
+
+/// One 16 × 16 sprite anchored at `anchor`, drawn by an entity at
+/// `transform` with `flip` (no `SpriteFlip` for `None`): its one instance.
+fn flipped_instance(
+    anchor: Option<[f32; 2]>,
+    transform: Transform,
+    flip: Option<bool>,
+) -> SpriteInstance {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "troll", FilterMode::Nearest);
+    world
+        .resource_mut::<AssetRegistry>()
+        .set_sprite_frame("troll", None, anchor);
+    let e = spawn_visible(&mut world, "troll", transform.position, 0);
+    world.insert(e, transform);
+    if let Some(flip) = flip {
+        world.insert(e, tungsten_core::components::SpriteFlip(flip));
+    }
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 1);
+    batches[0].instances[0]
+}
+
+#[test]
+fn a_flipped_sprite_mirrors_about_its_anchor() {
+    let at = Vec2::new(100.0, 50.0);
+    let transform = Transform {
+        position: at,
+        scale: Vec2::splat(2.0),
+        ..Transform::default()
+    };
+    let unflipped = flipped_instance(Some([4.0, 15.0]), transform, Some(false));
+    assert_eq!(unflipped.position, [92.0, 20.0]);
+    assert_eq!(
+        (unflipped.uv_min, unflipped.uv_size),
+        ([0.0, 0.0], [1.0, 1.0])
+    );
+    // The mirrored image puts the anchor's texel at x = (16 − 4) × 2 of the
+    // quad, and that point lands on the entity.
+    let flipped = flipped_instance(Some([4.0, 15.0]), transform, Some(true));
+    assert_eq!(flipped.position, [76.0, 20.0]);
+    assert_eq!(flipped.size, [32.0, 32.0]);
+    assert_eq!((flipped.uv_min, flipped.uv_size), ([1.0, 0.0], [-1.0, 1.0]));
+    assert_eq!(drawn_at(&flipped, Vec2::new(24.0, 30.0)), at);
+    // Turned, it turns about the mirrored anchor, which stays on the entity.
+    for rotation in [0.5, std::f32::consts::FRAC_PI_2, -2.0] {
+        let turned = flipped_instance(
+            Some([4.0, 15.0]),
+            Transform {
+                rotation,
+                ..transform
+            },
+            Some(true),
+        );
+        assert!(
+            drawn_at(&turned, Vec2::new(24.0, 30.0)).distance(at) < 1e-4,
+            "{rotation}"
+        );
+    }
+}
+
+#[test]
+fn a_flipped_sprite_without_an_anchor_keeps_its_box() {
+    let transform = Transform {
+        position: Vec2::new(100.0, 50.0),
+        rotation: 0.75,
+        scale: Vec2::new(2.0, 1.5),
+    };
+    let plain = flipped_instance(None, transform, None);
+    let flipped = flipped_instance(None, transform, Some(true));
+    assert_eq!(
+        (flipped.position, flipped.size, flipped.rotation),
+        (plain.position, plain.size, plain.rotation)
+    );
+    assert_eq!((flipped.uv_min, flipped.uv_size), ([1.0, 0.0], [-1.0, 1.0]));
+    // An unflipped `SpriteFlip` draws as no flip at all.
+    let unflipped = flipped_instance(None, transform, Some(false));
+    assert_eq!(
+        format!("{unflipped:?}"),
+        format!("{plain:?}"),
+        "SpriteFlip(false)"
+    );
+}
+
+#[test]
+fn an_unlit_sprite_draws_on_the_stock_pipeline() {
+    let mut world = world_with_registry();
+    register_lit_sprite(&mut world, "lit_quad");
+    let lit = spawn_visible(&mut world, "lit_quad", Vec2::ZERO, 0);
+    let unlit = spawn_visible(&mut world, "lit_quad", Vec2::new(40.0, 0.0), 1);
+    world.insert(unlit, tungsten_core::components::Unlit);
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 2);
+    assert!(batches[0].lit, "{lit:?} keeps its maps");
+    assert!(!batches[1].lit, "the unlit one draws on the stock pipeline");
+    // The albedo page is the one the stock pool holds under the same handle.
+    assert_eq!(batches[1].texture, TextureHandle(7));
+    assert_eq!(batches[1].instances[0].position, [40.0, 0.0]);
+}
+
+#[test]
+fn a_lit_sprite_keeps_its_flash_block() {
+    let mut world = world_with_registry();
+    register_lit_sprite(&mut world, "lit_quad");
+    let block = UniformOverrideBlock::from_slots(
+        [[1.0, 1.0, 1.0, 1.0], [0.0; 4], [0.0; 4], [0.0; 4]],
+        [0.5, 0.0, 0.0, 0.0],
+        [0; 4],
+    );
+    let flashing = spawn_visible(&mut world, "lit_quad", Vec2::ZERO, 0);
+    world.insert(flashing, block);
+    // The kit's flash also sets its material, which a lit sprite never runs.
+    world.get_mut::<Sprite>(flashing).unwrap().material_id = Some(MaterialAssetId(3));
+    spawn_visible(&mut world, "lit_quad", Vec2::new(40.0, 0.0), 1);
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 2);
+    assert!(batches[0].lit && batches[1].lit);
+    assert_eq!(batches[0].material_id, None);
+    assert_eq!(
+        batches[0].uniform_overrides.map(|b| b.to_bytes()),
+        Some(block.to_bytes())
+    );
+    assert!(batches[1].uniform_overrides.is_none(), "no block, no flash");
 }

@@ -87,6 +87,20 @@ impl Default for Visibility {
     }
 }
 
+/// Mirrors its entity's sprite left to right while it holds `true` (redo
+/// 7.9): about the sprite's anchor, or its centre without one, by a negative
+/// UV width, and a lit sprite's normals mirror with it. It stays on the
+/// entity while unflipped, so a turn moves no archetype; the kit's `Facing`
+/// writes it from its direction when asked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SpriteFlip(pub bool);
+
+/// Draws its entity's sprite on the stock sprite pipeline though the sprite
+/// has normal or emissive maps, so no light reaches it (redo 7.9): a far
+/// prop behind a lit scene.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Unlit;
+
 /// 2D forward light source (M29). Closed-enum kind per `D-054`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Light {

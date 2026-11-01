@@ -1830,6 +1830,9 @@ pub tungsten_core::assets::scene::SceneTweenChannel::ColorG::to: u8
 pub tungsten_core::assets::scene::SceneTweenChannel::ColorR
 pub tungsten_core::assets::scene::SceneTweenChannel::ColorR::from: u8
 pub tungsten_core::assets::scene::SceneTweenChannel::ColorR::to: u8
+pub tungsten_core::assets::scene::SceneTweenChannel::LightIntensity
+pub tungsten_core::assets::scene::SceneTweenChannel::LightIntensity::from: f32
+pub tungsten_core::assets::scene::SceneTweenChannel::LightIntensity::to: f32
 pub tungsten_core::assets::scene::SceneTweenChannel::PositionX
 pub tungsten_core::assets::scene::SceneTweenChannel::PositionX::from: f32
 pub tungsten_core::assets::scene::SceneTweenChannel::PositionX::to: f32
@@ -2888,6 +2891,9 @@ pub tungsten_core::assets::SceneTweenChannel::ColorG::to: u8
 pub tungsten_core::assets::SceneTweenChannel::ColorR
 pub tungsten_core::assets::SceneTweenChannel::ColorR::from: u8
 pub tungsten_core::assets::SceneTweenChannel::ColorR::to: u8
+pub tungsten_core::assets::SceneTweenChannel::LightIntensity
+pub tungsten_core::assets::SceneTweenChannel::LightIntensity::from: f32
+pub tungsten_core::assets::SceneTweenChannel::LightIntensity::to: f32
 pub tungsten_core::assets::SceneTweenChannel::PositionX
 pub tungsten_core::assets::SceneTweenChannel::PositionX::from: f32
 pub tungsten_core::assets::SceneTweenChannel::PositionX::to: f32
@@ -5184,6 +5190,25 @@ impl core::marker::Unpin for tungsten_core::components::Sprite
 impl core::marker::UnsafeUnpin for tungsten_core::components::Sprite
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Sprite
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Sprite
+pub struct tungsten_core::components::SpriteFlip(pub bool)
+impl core::clone::Clone for tungsten_core::components::SpriteFlip
+pub fn tungsten_core::components::SpriteFlip::clone(&self) -> tungsten_core::components::SpriteFlip
+impl core::cmp::Eq for tungsten_core::components::SpriteFlip
+impl core::cmp::PartialEq for tungsten_core::components::SpriteFlip
+pub fn tungsten_core::components::SpriteFlip::eq(&self, &tungsten_core::components::SpriteFlip) -> bool
+impl core::default::Default for tungsten_core::components::SpriteFlip
+pub fn tungsten_core::components::SpriteFlip::default() -> tungsten_core::components::SpriteFlip
+impl core::fmt::Debug for tungsten_core::components::SpriteFlip
+pub fn tungsten_core::components::SpriteFlip::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::components::SpriteFlip
+impl core::marker::StructuralPartialEq for tungsten_core::components::SpriteFlip
+impl core::marker::Freeze for tungsten_core::components::SpriteFlip
+impl core::marker::Send for tungsten_core::components::SpriteFlip
+impl core::marker::Sync for tungsten_core::components::SpriteFlip
+impl core::marker::Unpin for tungsten_core::components::SpriteFlip
+impl core::marker::UnsafeUnpin for tungsten_core::components::SpriteFlip
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::SpriteFlip
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::SpriteFlip
 pub struct tungsten_core::components::SpriteSquashStretch
 pub tungsten_core::components::SpriteSquashStretch::amount: glam::f32::vec2::Vec2
 pub tungsten_core::components::SpriteSquashStretch::duration: f32
@@ -5266,6 +5291,25 @@ impl core::marker::Unpin for tungsten_core::components::Transform
 impl core::marker::UnsafeUnpin for tungsten_core::components::Transform
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Transform
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Transform
+pub struct tungsten_core::components::Unlit
+impl core::clone::Clone for tungsten_core::components::Unlit
+pub fn tungsten_core::components::Unlit::clone(&self) -> tungsten_core::components::Unlit
+impl core::cmp::Eq for tungsten_core::components::Unlit
+impl core::cmp::PartialEq for tungsten_core::components::Unlit
+pub fn tungsten_core::components::Unlit::eq(&self, &tungsten_core::components::Unlit) -> bool
+impl core::default::Default for tungsten_core::components::Unlit
+pub fn tungsten_core::components::Unlit::default() -> tungsten_core::components::Unlit
+impl core::fmt::Debug for tungsten_core::components::Unlit
+pub fn tungsten_core::components::Unlit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::components::Unlit
+impl core::marker::StructuralPartialEq for tungsten_core::components::Unlit
+impl core::marker::Freeze for tungsten_core::components::Unlit
+impl core::marker::Send for tungsten_core::components::Unlit
+impl core::marker::Sync for tungsten_core::components::Unlit
+impl core::marker::Unpin for tungsten_core::components::Unlit
+impl core::marker::UnsafeUnpin for tungsten_core::components::Unlit
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Unlit
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Unlit
 pub struct tungsten_core::components::Visibility
 pub tungsten_core::components::Visibility::visible: bool
 impl core::clone::Clone for tungsten_core::components::Visibility
@@ -11274,6 +11318,9 @@ pub tungsten_core::tween::TweenChannel::ColorG::to: u8
 pub tungsten_core::tween::TweenChannel::ColorR
 pub tungsten_core::tween::TweenChannel::ColorR::from: u8
 pub tungsten_core::tween::TweenChannel::ColorR::to: u8
+pub tungsten_core::tween::TweenChannel::LightIntensity
+pub tungsten_core::tween::TweenChannel::LightIntensity::from: f32
+pub tungsten_core::tween::TweenChannel::LightIntensity::to: f32
 pub tungsten_core::tween::TweenChannel::PositionX
 pub tungsten_core::tween::TweenChannel::PositionX::from: f32
 pub tungsten_core::tween::TweenChannel::PositionX::to: f32
@@ -15746,6 +15793,9 @@ pub tungsten_core::SceneTweenChannel::ColorG::to: u8
 pub tungsten_core::SceneTweenChannel::ColorR
 pub tungsten_core::SceneTweenChannel::ColorR::from: u8
 pub tungsten_core::SceneTweenChannel::ColorR::to: u8
+pub tungsten_core::SceneTweenChannel::LightIntensity
+pub tungsten_core::SceneTweenChannel::LightIntensity::from: f32
+pub tungsten_core::SceneTweenChannel::LightIntensity::to: f32
 pub tungsten_core::SceneTweenChannel::PositionX
 pub tungsten_core::SceneTweenChannel::PositionX::from: f32
 pub tungsten_core::SceneTweenChannel::PositionX::to: f32
@@ -16235,6 +16285,9 @@ pub tungsten_core::TweenChannel::ColorG::to: u8
 pub tungsten_core::TweenChannel::ColorR
 pub tungsten_core::TweenChannel::ColorR::from: u8
 pub tungsten_core::TweenChannel::ColorR::to: u8
+pub tungsten_core::TweenChannel::LightIntensity
+pub tungsten_core::TweenChannel::LightIntensity::from: f32
+pub tungsten_core::TweenChannel::LightIntensity::to: f32
 pub tungsten_core::TweenChannel::PositionX
 pub tungsten_core::TweenChannel::PositionX::from: f32
 pub tungsten_core::TweenChannel::PositionX::to: f32

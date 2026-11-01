@@ -21,7 +21,7 @@ use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::motion::platformer::PlatformerController;
 use crate::present::animation::ANIMATION_TICK;
-use crate::present::facing::{FACING, Facing};
+use crate::present::facing::{FACING, Facing, write_flip};
 
 /// [`CharacterAnimatorPlugin`]'s system, in the present phase.
 pub const CHARACTER_ANIMATOR: &str = "character_animator";
@@ -34,12 +34,16 @@ const CHARACTER_ANIMATOR_COMPONENT: &str = "character_animator";
 const DEFAULT_MIN_SPEED: f32 = 10.0;
 
 /// The clip a [`CharacterAnimator`] state shows: one animation, or a set
-/// by the way the entity faces, which names `left` and `right` and may
-/// name `up` and `down`; a set without them shows the last side faced while
-/// the entity faces up or down.
+/// by the way the entity faces, which names `right` and may name `left`,
+/// `up` and `down`; a set without `up` and `down` shows the last side faced
+/// while the entity faces up or down. A set without `left` shows `right`
+/// flipped while the entity faces left: the animator writes its
+/// `SpriteFlip` while such a set shows, for art drawn facing right (redo
+/// 7.9).
 ///
 /// Data form: a manifest animation ID, `"hero_run"`, or
-/// `{ "left": "seeker_walk_left", "right": "seeker_walk_right", "up": "seeker_walk_up", "down": "seeker_walk_down" }`.
+/// `{ "left": "seeker_walk_left", "right": "seeker_walk_right", "up": "seeker_walk_up", "down": "seeker_walk_down" }`,
+/// or `{ "right": "hero_run" }` for one set of frames on both sides.
 ///
 /// # Examples
 ///
@@ -67,7 +71,8 @@ enum ClipsKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ClipSet {
-    left: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    left: Option<String>,
     right: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     up: Option<String>,
@@ -91,7 +96,22 @@ impl Clips {
     pub fn sides(left: impl Into<String>, right: impl Into<String>) -> Self {
         Self {
             kind: ClipsKind::Set(ClipSet {
-                left: left.into(),
+                left: Some(left.into()),
+                right: right.into(),
+                up: None,
+                down: None,
+            }),
+        }
+    }
+
+    /// One animation for both sides: `right` while the entity faces right,
+    /// the same flipped (its `SpriteFlip`) while it faces left, for art
+    /// drawn facing right.
+    #[must_use]
+    pub fn mirrored(right: impl Into<String>) -> Self {
+        Self {
+            kind: ClipsKind::Set(ClipSet {
+                left: None,
                 right: right.into(),
                 up: None,
                 down: None,
@@ -110,7 +130,7 @@ impl Clips {
     ) -> Self {
         Self {
             kind: ClipsKind::Set(ClipSet {
-                left: left.into(),
+                left: Some(left.into()),
                 right: right.into(),
                 up: Some(up.into()),
                 down: Some(down.into()),
@@ -124,10 +144,10 @@ impl Clips {
         match &self.kind {
             ClipsKind::One(id) => vec![(field.to_string(), id.as_str())],
             ClipsKind::Set(set) => {
-                let mut ids = vec![
-                    (format!("{field}.left"), set.left.as_str()),
-                    (format!("{field}.right"), set.right.as_str()),
-                ];
+                let mut ids = vec![(format!("{field}.right"), set.right.as_str())];
+                if let Some(left) = &set.left {
+                    ids.insert(0, (format!("{field}.left"), left.as_str()));
+                }
                 if let Some(up) = &set.up {
                     ids.push((format!("{field}.up"), up.as_str()));
                 }
@@ -142,10 +162,12 @@ impl Clips {
     /// The animation for `direction`, the way the entity faces or moves:
     /// a set's side by the dominant axis, `up` and `down` when it names them
     /// and the last side faced otherwise. `left` is the last side, updated
-    /// as the entity faces left or right.
-    fn pick(&self, direction: Vec2, left: &mut bool) -> &str {
+    /// as the entity faces left or right. With it comes the `SpriteFlip` to
+    /// write, for a set without `left` alone: flipped while it shows
+    /// `right` for the left side.
+    fn pick(&self, direction: Vec2, left: &mut bool) -> (&str, Option<bool>) {
         let set = match &self.kind {
-            ClipsKind::One(id) => return id,
+            ClipsKind::One(id) => return (id, None),
             ClipsKind::Set(set) => set,
         };
         let vertical = if direction.x.abs() >= direction.y.abs() {
@@ -158,21 +180,31 @@ impl Clips {
         } else {
             set.down.as_deref()
         };
-        vertical.unwrap_or(if *left { &set.left } else { &set.right })
+        match (vertical, &set.left) {
+            (Some(vertical), None) => (vertical, Some(false)),
+            (Some(vertical), Some(_)) => (vertical, None),
+            (None, Some(side)) if *left => (side, None),
+            (None, Some(_)) => (&set.right, None),
+            (None, None) => (&set.right, Some(*left)),
+        }
     }
 
     /// The clip in a line, for inspector rows.
     fn summary(&self) -> String {
         match &self.kind {
             ClipsKind::One(id) => id.clone(),
-            ClipsKind::Set(set) => match (&set.up, &set.down) {
-                (Some(up), Some(down)) => {
-                    format!("{} | {} | {up} | {down}", set.left, set.right)
+            ClipsKind::Set(set) => {
+                let left = set
+                    .left
+                    .clone()
+                    .unwrap_or_else(|| format!("{} flipped", set.right));
+                match (&set.up, &set.down) {
+                    (Some(up), Some(down)) => format!("{left} | {} | {up} | {down}", set.right),
+                    (Some(up), None) => format!("{left} | {} | {up} | -", set.right),
+                    (None, Some(down)) => format!("{left} | {} | - | {down}", set.right),
+                    (None, None) => format!("{left} | {}", set.right),
                 }
-                (Some(up), None) => format!("{} | {} | {up} | -", set.left, set.right),
-                (None, Some(down)) => format!("{} | {} | - | {down}", set.left, set.right),
-                (None, None) => format!("{} | {}", set.left, set.right),
-            },
+            }
         }
     }
 }
@@ -486,7 +518,7 @@ impl Plugin for CharacterAnimatorPlugin {
             FieldDescription::new(
                 name,
                 FieldType::Object(
-                    "an animation ID, or { left, right, up, down } of animation IDs by facing",
+                    "an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out",
                 ),
                 doc,
             )
@@ -635,12 +667,21 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
         };
         animator.state = state;
         let mut left = animator.left;
-        let id = animator.clips(state).pick(direction, &mut left).to_owned();
+        let (id, flip) = animator.clips(state).pick(direction, &mut left);
+        let id = id.to_owned();
         animator.left = left;
-        if animator.clip.as_deref() == Some(id.as_str()) {
+        let unchanged = animator.clip.as_deref() == Some(id.as_str());
+        if !unchanged {
+            animator.clip = Some(id.clone());
+        }
+        // A set without `left` turns the same frames by the sprite's flip,
+        // which changes with no change of clip.
+        if let Some(flip) = flip {
+            write_flip(world, entity, flip);
+        }
+        if unchanged {
             continue;
         }
-        animator.clip = Some(id.clone());
         let first = registry
             .get(&id)
             .and_then(|clip| clip.frames.first())

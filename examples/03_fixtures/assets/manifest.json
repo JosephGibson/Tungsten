@@ -14,7 +14,8 @@
     "ex05_item_elixir": { "path": "sprites/items/elixir.png", "filter": "nearest" },
     "ex05_item_bow": { "path": "sprites/items/bow.png", "filter": "nearest" },
     "ex05_item_mail": { "path": "sprites/items/mail.png", "filter": "nearest" },
-    "ex05_item_moonstone": { "path": "sprites/items/moonstone.png", "filter": "nearest" }
+    "ex05_item_moonstone": { "path": "sprites/items/moonstone.png", "filter": "nearest" },
+    "seams_lit": { "path": "seams/lit.png", "filter": "nearest", "normal_map": "seams/lit_n.png", "emissive_mask": "seams/lit_e.png" }
   },
   "particle_meshes": {
     "ex04_bullet_tri": {

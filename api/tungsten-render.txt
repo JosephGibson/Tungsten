@@ -142,6 +142,7 @@ pub fn tungsten_render::lighting::pack_lights(&[tungsten_render::lighting::GpuLi
 pub fn tungsten_render::lighting::pack_one_light(glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> tungsten_render::lighting::GpuLight
 pub mod tungsten_render::lit_sprite
 pub struct tungsten_render::lit_sprite::LitSpritePipeline
+pub tungsten_render::lit_sprite::LitSpritePipeline::flash_bind_group_layout: wgpu::api::bind_group_layout::BindGroupLayout
 pub tungsten_render::lit_sprite::LitSpritePipeline::pipeline: wgpu::api::render_pipeline::RenderPipeline
 pub tungsten_render::lit_sprite::LitSpritePipeline::pipeline_layout: wgpu::api::pipeline_layout::PipelineLayout
 impl tungsten_render::lit_sprite::LitSpritePipeline
@@ -917,7 +918,7 @@ impl tungsten_render::sprite::SpritePipeline
 pub fn tungsten_render::sprite::SpritePipeline::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
 pub fn tungsten_render::sprite::SpritePipeline::camera_bind_group(&self) -> &wgpu::api::bind_group::BindGroup
 pub fn tungsten_render::sprite::SpritePipeline::camera_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
-pub fn tungsten_render::sprite::SpritePipeline::draw(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &mut wgpu::api::render_pass::RenderPass<'_>, &[tungsten_render::sprite::SpriteBatch], &std::collections::hash::map::HashMap<tungsten_core::assets::material::MaterialAssetId, tungsten_render::material::MaterialPipeline>, core::option::Option<&wgpu::api::render_pipeline::RenderPipeline>, core::option::Option<&wgpu::api::bind_group::BindGroup>)
+pub fn tungsten_render::sprite::SpritePipeline::draw(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &mut wgpu::api::render_pass::RenderPass<'_>, &[tungsten_render::sprite::SpriteBatch], &std::collections::hash::map::HashMap<tungsten_core::assets::material::MaterialAssetId, tungsten_render::material::MaterialPipeline>, core::option::Option<&tungsten_render::lit_sprite::LitSpritePipeline>, core::option::Option<&wgpu::api::bind_group::BindGroup>)
 pub fn tungsten_render::sprite::SpritePipeline::drop_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
 pub fn tungsten_render::sprite::SpritePipeline::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
 pub fn tungsten_render::sprite::SpritePipeline::lit_texture_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
@@ -1704,6 +1705,7 @@ impl core::marker::UnsafeUnpin for tungsten_render::lighting::LightingResources
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::LightingResources
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::LightingResources
 pub struct tungsten_render::LitSpritePipeline
+pub tungsten_render::LitSpritePipeline::flash_bind_group_layout: wgpu::api::bind_group_layout::BindGroupLayout
 pub tungsten_render::LitSpritePipeline::pipeline: wgpu::api::render_pipeline::RenderPipeline
 pub tungsten_render::LitSpritePipeline::pipeline_layout: wgpu::api::pipeline_layout::PipelineLayout
 impl tungsten_render::lit_sprite::LitSpritePipeline
@@ -2127,7 +2129,7 @@ impl tungsten_render::sprite::SpritePipeline
 pub fn tungsten_render::sprite::SpritePipeline::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
 pub fn tungsten_render::sprite::SpritePipeline::camera_bind_group(&self) -> &wgpu::api::bind_group::BindGroup
 pub fn tungsten_render::sprite::SpritePipeline::camera_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
-pub fn tungsten_render::sprite::SpritePipeline::draw(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &mut wgpu::api::render_pass::RenderPass<'_>, &[tungsten_render::sprite::SpriteBatch], &std::collections::hash::map::HashMap<tungsten_core::assets::material::MaterialAssetId, tungsten_render::material::MaterialPipeline>, core::option::Option<&wgpu::api::render_pipeline::RenderPipeline>, core::option::Option<&wgpu::api::bind_group::BindGroup>)
+pub fn tungsten_render::sprite::SpritePipeline::draw(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &mut wgpu::api::render_pass::RenderPass<'_>, &[tungsten_render::sprite::SpriteBatch], &std::collections::hash::map::HashMap<tungsten_core::assets::material::MaterialAssetId, tungsten_render::material::MaterialPipeline>, core::option::Option<&tungsten_render::lit_sprite::LitSpritePipeline>, core::option::Option<&wgpu::api::bind_group::BindGroup>)
 pub fn tungsten_render::sprite::SpritePipeline::drop_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
 pub fn tungsten_render::sprite::SpritePipeline::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
 pub fn tungsten_render::sprite::SpritePipeline::lit_texture_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout

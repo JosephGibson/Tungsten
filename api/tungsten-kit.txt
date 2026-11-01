@@ -693,6 +693,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Children
 pub struct tungsten_kit::prelude::Clips
 impl tungsten_kit::Clips
 pub fn tungsten_kit::Clips::four(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Clips::mirrored(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::one(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::sides(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_kit::Clips
@@ -1536,6 +1537,7 @@ pub struct tungsten_kit::prelude::Facing
 impl tungsten_kit::Facing
 pub fn tungsten_kit::Facing::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Facing::eight_way(self) -> Self
+pub fn tungsten_kit::Facing::flipping(self) -> Self
 pub fn tungsten_kit::Facing::four_way(self) -> Self
 pub fn tungsten_kit::Facing::from_aim(self) -> Self
 pub fn tungsten_kit::Facing::from_intent(self) -> Self
@@ -4423,6 +4425,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Children
 pub struct tungsten_kit::Clips
 impl tungsten_kit::Clips
 pub fn tungsten_kit::Clips::four(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Clips::mirrored(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::one(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::sides(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_kit::Clips
@@ -5315,6 +5318,7 @@ pub struct tungsten_kit::Facing
 impl tungsten_kit::Facing
 pub fn tungsten_kit::Facing::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Facing::eight_way(self) -> Self
+pub fn tungsten_kit::Facing::flipping(self) -> Self
 pub fn tungsten_kit::Facing::four_way(self) -> Self
 pub fn tungsten_kit::Facing::from_aim(self) -> Self
 pub fn tungsten_kit::Facing::from_intent(self) -> Self

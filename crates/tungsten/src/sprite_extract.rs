@@ -28,6 +28,13 @@
 //! a warning once per ID for as long as `ExtractScratch` lives (every
 //! `App`); the flags and the log sit in a cold helper outside the row loop.
 //!
+//! Redo 7.9: a `SpriteFlip` holding `true` mirrors the instance by a negative
+//! UV width, about the sprite's anchor or, without one, in its own box; an
+//! `Unlit` sprite with maps draws on the stock pipeline; a lit sprite keeps
+//! its `UniformOverrideBlock`, whose flash lanes the lit shader reads. An
+//! archetype holds a flip or the marker in every row or in none, so its first
+//! row tells, and a frame without either looks nothing more up.
+//!
 //! `D-114`: a sprite drawn by the stock sprite or lit pipeline whose bound lies
 //! wholly outside the camera's view writes no instance. The view is the one
 //! render projects with: the surface size the app passes through
@@ -47,6 +54,7 @@ use std::hash::Hasher;
 
 use glam::{BVec2, Vec2};
 use tungsten_core::assets::{SpriteAssetId, TextureHandle};
+use tungsten_core::components::{SpriteFlip, Unlit};
 use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
     AssetRegistry, CameraState, Entity, FilterMode, MaterialAssetId, OptionalColumn, ParallaxLayer,
@@ -185,8 +193,8 @@ impl WarnedIds {
 enum SpriteWarning {
     /// The ID names no loaded sprite, so the sprite draws nothing.
     NoAsset,
-    /// A lit sprite carries this material; lit wins and the material is not
-    /// bound (`D-061`).
+    /// A lit sprite carries this material; the lit shader draws it, taking
+    /// only its block's flash lanes (`D-061`).
     LitMaterial(Option<MaterialAssetId>),
 }
 
@@ -211,7 +219,7 @@ fn warn_once(
         SpriteWarning::LitMaterial(material) => {
             if buffers.lit_material.first(id) {
                 log::warn!(
-                    "lit sprite '{name}' carries material_id {material:?}; lit wins (material UBO not bound)"
+                    "lit sprite '{name}' carries material_id {material:?}; the lit shader draws it, taking only its block's flash lanes"
                 );
             }
         }
@@ -413,6 +421,9 @@ fn extract_into(
     )>();
     archetypes.for_each(|(_, columns)| {
         let (entities, transforms, sprites, visibilities, override_blocks, parallaxes) = columns;
+        let first = entities.first();
+        let flips = first.is_some_and(|&e| world.has::<SpriteFlip>(e));
+        let unlit = first.is_some_and(|&e| world.has::<Unlit>(e));
         let rows = entities
             .iter()
             .zip(transforms)
@@ -433,8 +444,9 @@ fn extract_into(
             // M29: lit wins over material when both are present. The collision
             // is intentionally a non-goal in M29 (`D-061`); warn once per
             // sprite ID so debug logs surface the conflict rather than
-            // silently dropping the material.
-            let lit = asset.lit_atlas.is_some();
+            // silently dropping the material. An unlit sprite draws on the
+            // stock pipeline, maps or not.
+            let lit = asset.lit_atlas.is_some() && !unlit;
             let effective_material = if lit { None } else { s.material_id };
             if lit && s.material_id.is_some() {
                 let warning = SpriteWarning::LitMaterial(s.material_id);
@@ -455,7 +467,7 @@ fn extract_into(
                             texture: asset.atlas,
                             filter: asset.filter,
                             material_id: effective_material,
-                            uniform_overrides: if lit { None } else { override_block.copied() },
+                            uniform_overrides: override_block.copied(),
                             lit,
                             run: 0,
                             batch: 0,
@@ -477,7 +489,15 @@ fn extract_into(
                 asset.width as f32 * t.scale.x,
                 asset.height as f32 * t.scale.y,
             );
+            let flip = flips && world.get::<SpriteFlip>(e).is_some_and(|flip| flip.0);
             if let Some(anchor) = asset.anchor {
+                // A flipped sprite mirrors about its anchor: the mirrored
+                // image's anchor lands on the entity.
+                let anchor = if flip {
+                    [asset.width as f32 - anchor[0], anchor[1]]
+                } else {
+                    anchor
+                };
                 position += anchor_offset(anchor, t.scale, size, t.rotation);
             }
             let order = painter_order(s.z_order, e.id());
@@ -502,16 +522,23 @@ fn extract_into(
                 record: records.len() as u32,
                 class,
             });
+            let mut uv_min = asset.uv.min;
+            let mut uv_size = [
+                asset.uv.max[0] - asset.uv.min[0],
+                asset.uv.max[1] - asset.uv.min[1],
+            ];
+            if flip {
+                // A negative width samples right to left.
+                uv_min[0] = asset.uv.max[0];
+                uv_size[0] = -uv_size[0];
+            }
             records.push(SpriteInstance {
                 position: [position.x, position.y],
                 size: [size.x, size.y],
                 rotation: t.rotation,
                 color: s.color,
-                uv_min: asset.uv.min,
-                uv_size: [
-                    asset.uv.max[0] - asset.uv.min[0],
-                    asset.uv.max[1] - asset.uv.min[1],
-                ],
+                uv_min,
+                uv_size,
                 // Right for the single-batch case below when the count
                 // repeats last frame's; rewritten otherwise.
                 z_norm: z_norm(last_total, index),

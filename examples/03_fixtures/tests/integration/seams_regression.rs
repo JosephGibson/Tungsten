@@ -1,0 +1,394 @@
+//! Opt-in GPU regression for the drawing seams of redo 7.9, on the fixtures
+//! crate's `seams` scene: each piece checked by its pixels, a mean or every
+//! pixel of a region against a bound, never a golden.
+//!
+//! Gate: `TUNGSTEN_VISUAL_REGRESSION=1` (needs GPU/display). Capture: 8 smoke
+//! frames, frame 5 at 1280x720, once for the module; the capture,
+//! `tungsten-seams-regression.png` in the temporary folder, is the drawing
+//! sheet. The scene draws world pixels one to one, so a piece's quad spans
+//! `PIECE` pixels about its centre.
+
+use std::ops::Range;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+use example_03_fixtures::seams::{FLASH_AT, LIT_AT, PIECE, TWIN_AT, UNLIT_AT};
+use glam::Vec2;
+
+/// The scene loads its manifests relative to the workspace root.
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn gated() -> bool {
+    std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_ok()
+}
+
+/// The scene's frame 5, captured on first use.
+fn capture() -> &'static Rgba {
+    static CAPTURE: OnceLock<Rgba> = OnceLock::new();
+    CAPTURE.get_or_init(|| {
+        let path = std::env::temp_dir().join("tungsten-seams-regression.png");
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+        let status = std::process::Command::new(env!("CARGO_BIN_EXE_example-03-fixtures"))
+            .current_dir(workspace_root())
+            .env("TUNGSTEN_FIXTURE", "seams")
+            .env_remove("TUNGSTEN_CAPTURE_DIRECT")
+            .env("TUNGSTEN_SMOKE_FRAMES", "8")
+            .env("TUNGSTEN_CAPTURE_FRAME", "5")
+            .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")
+            .env("TUNGSTEN_CAPTURE_PATH", &path)
+            .status()
+            .expect("run example-03-fixtures");
+        assert!(
+            status.success(),
+            "example-03-fixtures exited with {status:?}"
+        );
+        let image = Rgba::read(&path);
+        assert_eq!((image.width, image.height), (1280, 720));
+        image
+    })
+}
+
+/// The pixels of the piece at `centre` over its quad's columns `xs` and
+/// rows `ys`, counted from its top-left corner.
+fn region(
+    image: &Rgba,
+    centre: Vec2,
+    xs: Range<usize>,
+    ys: Range<usize>,
+) -> impl Iterator<Item = [u8; 4]> + '_ {
+    let corner = centre - Vec2::splat(PIECE * 0.5);
+    let (left, top) = (corner.x as usize, corner.y as usize);
+    ys.flat_map(move |y| xs.clone().map(move |x| image.at(left + x, top + y)))
+}
+
+/// The mean of red, green and blue over a region.
+fn brightness(image: &Rgba, centre: Vec2, xs: Range<usize>, ys: Range<usize>) -> f32 {
+    let (sum, count) = region(image, centre, xs, ys).fold((0u64, 0u64), |(sum, count), p| {
+        (
+            sum + u64::from(p[0]) + u64::from(p[1]) + u64::from(p[2]),
+            count + 3,
+        )
+    });
+    sum as f32 / count as f32
+}
+
+#[test]
+fn a_flipped_lit_sprite_keeps_its_lit_side() {
+    if !gated() {
+        return;
+    }
+    let image = capture();
+    // Away from the red edge on either side, each half's mean: the light
+    // stands at the left of both.
+    for (centre, piece) in [(LIT_AT, "the lit sprite"), (TWIN_AT, "its flipped twin")] {
+        let near = brightness(image, centre, 12..28, 8..56);
+        let far = brightness(image, centre, 36..52, 8..56);
+        assert!(
+            near > far + 20.0,
+            "{piece}: the side toward the light {near:.1}, the other {far:.1}"
+        );
+    }
+    // The red edge marks the texture's right: the twin shows it on its left.
+    let red = |centre: Vec2, xs: Range<usize>| {
+        region(image, centre, xs, 8..56).all(|[r, g, ..]| r > 240 && g < 160)
+    };
+    assert!(
+        red(LIT_AT, 57..63) && !red(LIT_AT, 1..7),
+        "the sprite's red edge"
+    );
+    assert!(
+        red(TWIN_AT, 1..7) && !red(TWIN_AT, 57..63),
+        "the twin's red edge"
+    );
+}
+
+#[test]
+fn a_flashing_lit_sprite_whitens() {
+    if !gated() {
+        return;
+    }
+    let image = capture();
+    // The block's flash lanes, white at full amount, cover the light, the
+    // ambient and the red edge alike.
+    for [r, g, b, _] in region(image, FLASH_AT, 2..62, 2..62) {
+        assert!(r >= 250 && g >= 250 && b >= 250, "({r}, {g}, {b})");
+    }
+}
+
+#[test]
+fn an_unlit_sprite_ignores_the_light() {
+    if !gated() {
+        return;
+    }
+    let image = capture();
+    // Beside the light, the albedo's grey 128 stands as drawn, edge
+    // included: no light, ambient or emissive reaches the stock pipeline.
+    for [r, g, b, _] in region(image, UNLIT_AT, 2..62, 2..62) {
+        assert!(
+            [r, g, b].iter().all(|&c| c.abs_diff(128) <= 2),
+            "({r}, {g}, {b})"
+        );
+    }
+}
+
+/// A capture as RGBA bytes, read by the minimal PNG reader below, so the
+/// suite needs no image crate of its own: 8-bit RGBA without interlace, as
+/// the renderer writes captures; zlib's stored, fixed and dynamic blocks
+/// (RFC 1950, RFC 1951) and the five scanline filters.
+struct Rgba {
+    width: usize,
+    height: usize,
+    pixels: Vec<u8>,
+}
+
+impl Rgba {
+    fn read(path: &Path) -> Self {
+        let bytes = std::fs::read(path).expect("read the capture");
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n", "a PNG");
+        let be = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+        let (mut at, mut width, mut height, mut packed) = (8, 0, 0, Vec::new());
+        while at + 8 <= bytes.len() {
+            let len = be(at);
+            let data = &bytes[at + 8..at + 8 + len];
+            match &bytes[at + 4..at + 8] {
+                b"IHDR" => {
+                    (width, height) = (be(at + 8), be(at + 12));
+                    assert_eq!(data[8..13], [8, 6, 0, 0, 0], "8-bit RGBA, no interlace");
+                }
+                b"IDAT" => packed.extend_from_slice(data),
+                _ => {}
+            }
+            at += 12 + len;
+        }
+        // Past zlib's two-byte header; its checksum is not read.
+        let raw = inflate(&packed[2..]);
+        let stride = width * 4;
+        assert_eq!(raw.len(), (stride + 1) * height, "one filtered line a row");
+        let mut pixels = vec![0u8; stride * height];
+        for y in 0..height {
+            let filter = raw[y * (stride + 1)];
+            for x in 0..stride {
+                let left = if x >= 4 {
+                    pixels[y * stride + x - 4]
+                } else {
+                    0
+                };
+                let up = if y > 0 {
+                    pixels[(y - 1) * stride + x]
+                } else {
+                    0
+                };
+                let corner = if x >= 4 && y > 0 {
+                    pixels[(y - 1) * stride + x - 4]
+                } else {
+                    0
+                };
+                let predicted = match filter {
+                    0 => 0,
+                    1 => left,
+                    2 => up,
+                    3 => u8::midpoint(left, up),
+                    4 => paeth(left, up, corner),
+                    other => panic!("scanline filter {other}"),
+                };
+                pixels[y * stride + x] = raw[y * (stride + 1) + 1 + x].wrapping_add(predicted);
+            }
+        }
+        Self {
+            width,
+            height,
+            pixels,
+        }
+    }
+
+    fn at(&self, x: usize, y: usize) -> [u8; 4] {
+        let i = (y * self.width + x) * 4;
+        self.pixels[i..i + 4].try_into().unwrap()
+    }
+}
+
+fn paeth(left: u8, up: u8, corner: u8) -> u8 {
+    let p = i16::from(left) + i16::from(up) - i16::from(corner);
+    let (to_left, to_up, to_corner) = (
+        (p - i16::from(left)).abs(),
+        (p - i16::from(up)).abs(),
+        (p - i16::from(corner)).abs(),
+    );
+    if to_left <= to_up && to_left <= to_corner {
+        left
+    } else if to_up <= to_corner {
+        up
+    } else {
+        corner
+    }
+}
+
+/// A deflate stream's bits, least significant first.
+struct Bits<'a> {
+    data: &'a [u8],
+    at: usize,
+    bit: u32,
+}
+
+impl Bits<'_> {
+    fn take(&mut self, count: u32) -> usize {
+        let mut value = 0;
+        for i in 0..count {
+            value |= usize::from(self.data[self.at] >> self.bit & 1) << i;
+            self.bit += 1;
+            if self.bit == 8 {
+                (self.at, self.bit) = (self.at + 1, 0);
+            }
+        }
+        value
+    }
+}
+
+/// A canonical Huffman code: how many codes of each length, and the symbols
+/// in code order.
+struct Huffman {
+    counts: [usize; 16],
+    symbols: Vec<usize>,
+}
+
+impl Huffman {
+    fn new(lengths: &[u8]) -> Self {
+        let mut counts = [0; 16];
+        for &length in lengths {
+            counts[usize::from(length)] += 1;
+        }
+        counts[0] = 0;
+        let mut next = [0; 16];
+        for length in 1..16 {
+            next[length] = next[length - 1] + counts[length - 1];
+        }
+        let mut symbols = vec![0; lengths.len()];
+        for (symbol, &length) in lengths.iter().enumerate() {
+            if length != 0 {
+                symbols[next[usize::from(length)]] = symbol;
+                next[usize::from(length)] += 1;
+            }
+        }
+        Self { counts, symbols }
+    }
+
+    fn decode(&self, bits: &mut Bits<'_>) -> usize {
+        let (mut code, mut first, mut index) = (0, 0, 0);
+        for length in 1..16 {
+            code |= bits.take(1);
+            let count = self.counts[length];
+            if code < first + count {
+                return self.symbols[index + code - first];
+            }
+            index += count;
+            first = (first + count) << 1;
+            code <<= 1;
+        }
+        panic!("no Huffman code");
+    }
+}
+
+/// A raw deflate stream's bytes.
+fn inflate(data: &[u8]) -> Vec<u8> {
+    const LENGTH_BASE: [usize; 29] = [
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115,
+        131, 163, 195, 227, 258,
+    ];
+    const LENGTH_EXTRA: [u32; 29] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+    ];
+    const DISTANCE_BASE: [usize; 30] = [
+        1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+        2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+    ];
+    const DISTANCE_EXTRA: [u32; 30] = [
+        0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12,
+        13, 13,
+    ];
+    /// The order a dynamic block lists its code-length code's lengths in.
+    const ORDER: [usize; 19] = [
+        16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+    ];
+    let mut bits = Bits {
+        data,
+        at: 0,
+        bit: 0,
+    };
+    let mut out = Vec::new();
+    loop {
+        let last = bits.take(1) == 1;
+        let (literals, distances) = match bits.take(2) {
+            0 => {
+                // Stored: from the next byte, its length, the length's
+                // complement and the bytes.
+                if bits.bit != 0 {
+                    (bits.at, bits.bit) = (bits.at + 1, 0);
+                }
+                let len = usize::from(u16::from_le_bytes([data[bits.at], data[bits.at + 1]]));
+                out.extend_from_slice(&data[bits.at + 4..bits.at + 4 + len]);
+                bits.at += 4 + len;
+                if last {
+                    break;
+                }
+                continue;
+            }
+            1 => {
+                let mut lengths = [8u8; 288];
+                lengths[144..256].fill(9);
+                lengths[256..280].fill(7);
+                (Huffman::new(&lengths), Huffman::new(&[5; 30]))
+            }
+            2 => {
+                let literals = bits.take(5) + 257;
+                let distances = bits.take(5) + 1;
+                let mut code_lengths = [0u8; 19];
+                for &index in &ORDER[..bits.take(4) + 4] {
+                    code_lengths[index] = bits.take(3) as u8;
+                }
+                let code = Huffman::new(&code_lengths);
+                let mut lengths = Vec::with_capacity(literals + distances);
+                while lengths.len() < literals + distances {
+                    let (length, repeat) = match code.decode(&mut bits) {
+                        length @ 0..=15 => (length as u8, 1),
+                        16 => (
+                            *lengths.last().expect("a length to repeat"),
+                            3 + bits.take(2),
+                        ),
+                        17 => (0, 3 + bits.take(3)),
+                        _ => (0, 11 + bits.take(7)),
+                    };
+                    lengths.extend(std::iter::repeat_n(length, repeat));
+                }
+                (
+                    Huffman::new(&lengths[..literals]),
+                    Huffman::new(&lengths[literals..]),
+                )
+            }
+            kind => panic!("deflate block type {kind}"),
+        };
+        loop {
+            let symbol = literals.decode(&mut bits);
+            match symbol {
+                0..=255 => out.push(symbol as u8),
+                256 => break,
+                _ => {
+                    let length = LENGTH_BASE[symbol - 257] + bits.take(LENGTH_EXTRA[symbol - 257]);
+                    let index = distances.decode(&mut bits);
+                    let distance = DISTANCE_BASE[index] + bits.take(DISTANCE_EXTRA[index]);
+                    let start = out.len() - distance;
+                    for i in 0..length {
+                        out.push(out[start + i]);
+                    }
+                }
+            }
+        }
+        if last {
+            break;
+        }
+    }
+    out
+}

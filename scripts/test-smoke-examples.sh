@@ -82,7 +82,7 @@ expect_output() {
 
 if run_case "all pass" 0; then
   for line in "Passed: 3/3" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
-    "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" \
+    "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" "Seams passed: 1/1" \
     "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "UI screens passed: 1/1" \
     "Debug views passed: 1/1" "Benchmarks passed: 19/19" \
     "Frame cap passed: 1/1"; do
@@ -103,6 +103,7 @@ example-03-fixtures msaa= sort= post=all aa= bloom= feel= frames=3 timing= bench
 example-03-fixtures msaa= sort= post=empty aa=smaa_high bloom= feel= frames=3 timing= bench= preset= scene=post
 example-03-fixtures msaa= sort= post=bloom_only aa= bloom=on feel= frames=3 timing= bench= preset= scene=post
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= scene=lighting
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= scene=seams
 example-03-fixtures msaa= sort= post= aa= bloom= feel=on frames=3 timing= bench= preset= scene=post
 example-03-fixtures msaa=4 sort=gpu_depth post= aa= bloom= feel= frames=3 timing= bench= preset= scene=post
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=16 timing= bench= preset= scene=transition transition=fade
