@@ -7033,6 +7033,57 @@ fn a_fast_flat_box_stops_on_a_slope_over_a_floor() {
 }
 
 #[test]
+fn a_flat_box_flying_into_a_ramps_foot_stays_out_of_it() {
+    // A 45 br cell (x 64..80, y 32..48) on a floor row: a box of half
+    // (4, 0) flying right 0.5 px over the floor into the ramp's foot, with
+    // no gravity. The safety net skips a body of zero extent, so the slope's
+    // speculative contact alone stops it, at 30 px a substep (3,600 px/s at
+    // 1/30 s) and at 0.1 s unbounded, the box spawned before or after
+    // another body.
+    let rows = ["........", "........", "....a...", "########"];
+    for (speed, dt, bound) in [(3_600.0, 1.0 / 30.0, 1.0 / 30.0), (2_400.0, 0.1, 0.0)] {
+        for other_first in [false, true] {
+            let mut world = one_way_world(slope_map(&rows));
+            {
+                let config = &mut *world.resource_mut::<PhysicsConfig>();
+                config.gravity = Vec2::ZERO;
+                config.max_step_dt = bound;
+            }
+            world.resource_mut::<Time>().advance_frame(dt);
+            let other = |world: &mut World| {
+                let collider = Collider::aabb(Vec2::splat(4.0));
+                spawn_body(
+                    world,
+                    RigidBody::dynamic(),
+                    collider,
+                    Vec2::splat(-400.0),
+                    Vec2::ZERO,
+                )
+            };
+            if other_first {
+                other(&mut world);
+            }
+            let collider = Collider::aabb(Vec2::new(4.0, 0.0));
+            let start = Vec2::new(20.0, 47.5);
+            let launch = Vec2::new(speed, 0.0);
+            let body = spawn_body(&mut world, RigidBody::dynamic(), collider, start, launch);
+            if !other_first {
+                other(&mut world);
+            }
+            for step in 0..12 {
+                physics_step(&mut world);
+                let at = world.get::<Position>(body).unwrap().0;
+                assert!(
+                    !(at.x > 84.0 && at.y > 32.0),
+                    "{speed} px/s at dt {dt}, other first {other_first}: \
+                     through the ramp to {at} at step {step}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn a_body_lands_on_a_wide_cells_slope_face() {
     // The outline test's 2:1 floor on cells `width` x 16: row 0 [., .,
     // 2:1 low, 2:1 high], row 1 [low, high, #, #]. A box or circle of half 4

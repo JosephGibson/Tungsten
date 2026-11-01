@@ -282,11 +282,28 @@ pub(in crate::physics) fn box_contact(
         }
     } else {
         // A vertex, between edge `j` and edge `l` after it.
-        let (j, l) = if t <= 0.0 {
+        let (mut j, mut l) = if t <= 0.0 {
             ((k + 4) % 5, k)
         } else {
             (k, (k + 1) % 5)
         };
+        // Beside an edge of zero length the vertex stands for two, and that
+        // edge's normal splits its cone: the sides are the half that holds
+        // the centre.
+        let zero =
+            |edge: usize| (vertices[(edge + 1) % 5] - vertices[edge]).length_squared() == 0.0;
+        let offset = center - vertices[l];
+        if t > 0.0 && zero(l) {
+            let m = (l + 1) % 5;
+            if normals[l].perp_dot(offset) * normals[l].perp_dot(normals[m]) > 0.0 {
+                (j, l) = (l, m);
+            }
+        } else if t <= 0.0 && zero(j) {
+            let i = (j + 4) % 5;
+            if normals[j].perp_dot(offset) * normals[j].perp_dot(normals[i]) > 0.0 {
+                (j, l) = (i, j);
+            }
+        }
         let vertex = vertices[l];
         match (exposed(normals[j], mask), exposed(normals[l], mask)) {
             (true, true) => Contact {
