@@ -488,6 +488,9 @@ struct StepExtra {
     contact_closing: Vec<f32>,
     /// The arrival pass's and the safety net's touches in the substep.
     touches: Vec<TouchObs>,
+    /// The proxies the substep's contacts woke; after the last substep,
+    /// those no pair build saw awake. Filled only while the record runs.
+    woken: Vec<u32>,
     /// The step's begins and ends, sent after its collision events.
     began: Vec<ContactBegan>,
     ended: Vec<ContactEnded>,
@@ -900,9 +903,11 @@ pub fn physics_step(world: &mut World) {
             record,
             began,
             ended,
+            woken,
             ..
         } = &mut **extra;
-        record.finish(proxies, *bodies, tiles, layers, began, ended);
+        woken.sort_unstable();
+        record.finish(proxies, *bodies, tiles, layers, woken, began, ended);
     }
     write_back(
         world,
@@ -1150,6 +1155,7 @@ fn substep(
     extra.rolling.clear();
     extra.contact_closing.clear();
     extra.touches.clear();
+    extra.woken.clear();
     let bodies = *bodies;
     let friction_on = !extra.frictions.is_empty();
     let spins_on = !extra.spin_of.is_empty();
@@ -1233,6 +1239,9 @@ fn substep(
                 let entry = &mut sleep.entries[b_idx];
                 entry.sleeping = false;
                 entry.timer = 0.0;
+                if record_on {
+                    extra.woken.push(b_u);
+                }
             }
         }
         // A sleeping side is frozen at inverse mass 0 for this substep.
@@ -2249,14 +2258,17 @@ impl ContactRecord {
 
     /// The step's end: a pair it touched and the last did not begins; one it
     /// did not touch ends, unless its sides are both immovable through the
-    /// step and neither changed, or they still overlap. Begins come in
-    /// first-touch order, ends in the record's.
+    /// step and neither changed, or they still overlap, or a side is one the
+    /// last substep woke, sorted in `woken`, and they still overlap. Begins
+    /// come in first-touch order, ends in the record's.
+    #[allow(clippy::too_many_arguments)]
     fn finish(
         &mut self,
         proxies: &[Proxy],
         bodies: usize,
         tiles: &TileCache,
         layers: &ProxyLayers,
+        woken: &[u32],
         began: &mut Vec<ContactBegan>,
         ended: &mut Vec<ContactEnded>,
     ) {
@@ -2286,22 +2298,28 @@ impl ContactRecord {
                 return true;
             };
             let state = |index: usize| kinematic_state(&proxies[index], layers.of[index]);
+            let overlaps = || {
+                layers.meet(a, b)
+                    && narrow_phase(&proxies[a], &proxies[b], 0.0)
+                        .is_some_and(|contact| contact.penetration > 0.0)
+            };
             if entry.touched != stamp {
                 // A pair the step solved touches only as solved; one it did
                 // not keeps touching while its sides stay as they were, or
-                // still overlap.
+                // still overlap. A side the last substep woke slept when its
+                // pairs were built, so no substep solved its pair: it keeps
+                // touching while they overlap.
                 if !(immovable(&proxies[a]) && immovable(&proxies[b])) {
-                    ends(entry, ended);
-                    return false;
-                }
-                if (state(a), state(b)) != (entry.a_state, entry.b_state) {
-                    let overlaps = layers.meet(a, b)
-                        && narrow_phase(&proxies[a], &proxies[b], 0.0)
-                            .is_some_and(|contact| contact.penetration > 0.0);
-                    if !overlaps {
+                    let woke_late = [a, b]
+                        .iter()
+                        .any(|&side| woken.binary_search(&(side as u32)).is_ok());
+                    if !(woke_late && overlaps()) {
                         ends(entry, ended);
                         return false;
                     }
+                } else if (state(a), state(b)) != (entry.a_state, entry.b_state) && !overlaps() {
+                    ends(entry, ended);
+                    return false;
                 }
                 entry.touched = stamp;
             } else if entry.began == stamp {

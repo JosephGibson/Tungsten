@@ -6079,6 +6079,124 @@ fn a_body_leaving_a_sleeper_ends_their_contact() {
     assert!(is_sleeping(&world, sleeper), "the sleeper never woke");
 }
 
+/// The ends and begins of a ball's floor contact over 30 steps after a
+/// striker closing at 240 px/s from `gap` px off wakes it, the ball asleep
+/// on a floor wide enough that it never leaves it, at 1/60 s and gravity
+/// 900. `order`: 0 the floor spawned first, 1 the ball first, 2 a far
+/// static first. `striker`: 0 a dynamic ball spawned at the strike, 1 one
+/// spawned first and parked asleep, then written into place, 2 a kinematic
+/// box.
+fn late_woken_floor_contact(order: u8, striker: u8, gap: f32) -> (usize, usize) {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor_collider = Collider::aabb(Vec2::new(1_200.0, 10.0));
+    let floor_at = Vec2::new(0.0, 100.0);
+    let parked = (striker == 1).then(|| spawn_ball(&mut world, Vec2::new(-150.0, 80.0)));
+    let (floor, ball) = match order {
+        0 => {
+            let floor = spawn_static(&mut world, floor_collider, floor_at);
+            (floor, spawn_ball(&mut world, Vec2::new(0.0, 80.0)))
+        }
+        1 => {
+            let ball = spawn_ball(&mut world, Vec2::new(0.0, 80.0));
+            (spawn_static(&mut world, floor_collider, floor_at), ball)
+        }
+        _ => {
+            let far = Collider::aabb(Vec2::splat(10.0));
+            spawn_static(&mut world, far, Vec2::new(5_000.0, -5_000.0));
+            let floor = spawn_static(&mut world, floor_collider, floor_at);
+            (floor, spawn_ball(&mut world, Vec2::new(0.0, 80.0)))
+        }
+    };
+    let _ = step_contacts(&mut world, 120);
+    assert!(is_sleeping(&world, ball), "the ball sleeps before the strike");
+    let rest = world.get::<Position>(ball).unwrap().0;
+    let at = Vec2::new(rest.x - 20.0 - gap, rest.y);
+    let velocity = Vec2::new(240.0, 0.0);
+    match (striker, parked) {
+        (1, Some(parked)) => {
+            world.get_mut::<Position>(parked).unwrap().0 = at;
+            world.get_mut::<Velocity>(parked).unwrap().0 = velocity;
+        }
+        (2, _) => {
+            spawn_kinematic(&mut world, Collider::aabb(Vec2::splat(10.0)), at, velocity);
+        }
+        _ => {
+            spawn_body(&mut world, RigidBody::dynamic(), Collider::circle(10.0), at, velocity);
+        }
+    }
+    let (began, ended) = step_contacts(&mut world, 30);
+    let names = |a: Entity, b: Option<Entity>| {
+        (a == ball && b == Some(floor)) || (a == floor && b == Some(ball))
+    };
+    assert!(
+        (world.get::<Position>(ball).unwrap().0.y - rest.y).abs() < 0.5,
+        "the ball stays on the floor"
+    );
+    (
+        ended.iter().filter(|e| names(e.a, e.b)).count(),
+        began.iter().filter(|b| names(b.a, b.b)).count(),
+    )
+}
+
+#[test]
+fn a_sleeper_woken_in_the_last_substep_keeps_its_floor_contact() {
+    // A substep moves the striker 1 px and the speculative margin is 1 px
+    // plus 4 · slop, so a gap in [4, 5) or [8, 9) wakes the ball in a
+    // step's last substep, the others earlier. No pair of the ball's was
+    // built while it slept, so none was solved in that step; the floor
+    // contact it still rests on neither ends nor begins again.
+    let mut failures = Vec::new();
+    for striker in 0..3_u8 {
+        for order in 0..3_u8 {
+            for gap in [3.5_f32, 4.0, 4.5, 4.75, 5.5, 6.5, 8.25, 9.5] {
+                let (ends, begins) = late_woken_floor_contact(order, striker, gap);
+                if ends + begins > 0 {
+                    failures.push((striker, order, gap, ends, begins));
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "(striker, order, gap, ends, begins) of a floor contact that never parted: {failures:?}"
+    );
+}
+
+#[test]
+fn a_late_woken_stack_keeps_its_resting_contacts() {
+    // A two-ball stack asleep on a floor; a ball 4.5 px off the bottom one
+    // at 240 px/s wakes it in the strike's last substep. Its floor contact
+    // and the top ball's on it do not end at the wake and begin again.
+    let mut world = record_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    let _ = step_contacts(&mut world, 150);
+    assert!(is_sleeping(&world, bottom) && is_sleeping(&world, top));
+    let rest = world.get::<Position>(bottom).unwrap().0;
+    spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(6.0),
+        Vec2::new(rest.x - 12.0 - 4.5, rest.y),
+        Vec2::new(240.0, 0.0),
+    );
+    let (_, ended) = step_contacts(&mut world, 1);
+    let (began, _) = step_contacts(&mut world, 1);
+    let rebegun: Vec<(Entity, Option<Entity>)> = ended
+        .iter()
+        .filter(|e| {
+            began
+                .iter()
+                .any(|b| (b.a, b.b) == (e.a, e.b) || (Some(b.a), b.b) == (e.b, Some(e.a)))
+        })
+        .map(|e| (e.a, e.b))
+        .collect();
+    assert!(
+        rebegun.is_empty(),
+        "pairs ended at the wake and begun the next step: {rebegun:?}"
+    );
+}
+
 #[test]
 fn a_despawned_body_ends_its_contacts() {
     let mut world = record_world();
