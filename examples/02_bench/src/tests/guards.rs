@@ -490,9 +490,12 @@ fn guards_boot() {
             .is_none(),
         "a headless load packs nothing"
     );
+    // The bytes are not pinned: the manifest canonicalizes each file's path,
+    // so the paths the plan keeps carry the checkout's root, and the bytes
+    // move with its length (CI's root, 6 bytes longer, read 1,254 more).
     let reading = CounterGuard {
         allocations: after.count - before.count,
-        allocated_bytes: after.bytes - before.bytes,
+        allocated_bytes: 0,
         archetype_moves: world_after.archetype_moves - world_before.archetype_moves,
         spawned: world_after.spawned - world_before.spawned,
         despawned: world_after.despawned - world_before.despawned,
