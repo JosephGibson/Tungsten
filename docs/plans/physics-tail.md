@@ -1,6 +1,6 @@
-# Physics tail pass (physics-tail) — draft
+# Physics tail pass (physics-tail)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Lower `e01-pit`'s total p95 and p99 (49.1–50.1 and 62.0–63.3 ms per run at `a2662f05`, the B captures of `perf-runs/20261101T193400Z-sitting/`) by code-, math- and memory-level changes in `crates/tungsten-core/src/physics/step/`, bit-identical changes first, each kept only on its own sitting, with no physics row's p95 regressed.
 - **non-goals:**
   - 7.14's closed list ([phase-7](phase-7.md) §2.5): the sensor pass's temporary index (C1, 2.8 % of the 20 highest frames' `physics_step`) and every other item there stay 7.14's.
@@ -214,5 +214,6 @@ Round 2: the same critic at xhigh, on the plan without §7 and the evidence log 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
 | Plan | 2026-11-01 | measured | p95 = frame 77 (39.7–40.7 ms `physics_step`), p99 = frame 63/64; frame 77: build 49.0 % (three builds), keyed gets 10.5 %, events 5.9 %, arrival 0.5 %; 20 highest: build 44.0 %, arrival 17.6 %, keyed gets 8.7 % | `perf-runs/20261101-physics-tail/plan/` |
+| 1 | 2026-11-01 | kept, sitting `20261101T232713Z` | Annotate: the overlap's sums and four branches (`collision.rs:0`, `:75`, `:52`) 34 % of `build_pairs`' own frame-77 samples; now one lane-wise compare (`cmpltps`, `movmskps`) on bounds kept as min and −max lanes in `StepExtra`, set with each box in the build, the tile staging and the repair, whose tests read them too. The pair loop's hot loads (`pairs.rs:143`, the keyed probe, 27–30 % of `substep`'s own; the event's stack copy 6–8 %; `proxies[b]`'s first load at `mod.rs:1187`) hold no unchanging value: nothing hoisted. K1, K2 exit 0; K3 exit 0 (1,353 + 34 + 18 passed, 8 ignored); K4 exit 0 (16 passed), the `physics_determinism.rs` diff exit 0; K5 exit 0 (4,002 passed, 10 ignored), no pin moved: a first draft with the arrays in `PhysicsBuffers` moved the pit's `allocated_bytes` 69,118,796 → 69,121,676 (48 B more boxed in each of 60 steps). K6 exit 0 (1,224 s). K7: the base built from the export, all seven rows `ok`, `e01-pit` p95 `improved` in both pairs, the digest loop printed nothing. K8 p95/p99 per run: A1 49.68/63.07 49.87/62.79 49.57/63.12 49.73/63.17 49.56/62.99; B1 44.00/55.49 43.67/55.84 43.42/55.50 43.86/55.80 44.19/55.04; A2 49.77/62.78 49.85/62.89 48.94/62.41 49.78/63.17 49.67/63.34; B2 42.84/54.37 44.00/55.49 43.34/55.35 42.99/55.60 43.40/55.25. p95 Δ −5.85 [−6.26, −5.44] and −6.29 [−6.91, −5.67] ms (τ 2.48; §2.3 expected about −3), p99 −7.49 and −7.71; rank 16 still frame 77, its `physics_step` 40.3 → 34.5 ms; the 20 highest 47.7 → 41.3 | `perf-runs/20261101T232713Z-sitting/`; `perf-runs/20261101-physics-tail/step-1-sitting.log`, `step-1-split.txt`, `step-1/` (annotates) |
 
 ## Follow-ups

@@ -145,7 +145,7 @@ use super::query::{IndexEntry, SpatialIndex, TileHit, first_overlap, first_overl
 use crate::components::Transform;
 use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
-use glam::Vec2;
+use glam::{Vec2, Vec4};
 
 mod arrival;
 mod gather;
@@ -451,6 +451,11 @@ struct StepExtra {
     /// Each entity proxy's gravity scale, in proxy order; empty while every
     /// one is 1.
     gravity_scales: Vec<f32>,
+    /// Each proxy's pair box as the pair tests read it
+    /// (`pairs::box_bounds`), set with its `PhysicsBuffers::pair_aabbs` box.
+    pair_bounds: Vec<Vec4>,
+    /// The staged tile boxes' bounds, beside `PairGrid::tile_aabbs`.
+    tile_bounds: Vec<Vec4>,
     /// Each proxy's friction, the entity proxies' and then the tiles', in
     /// proxy order; empty while every one is 0, which leaves friction out
     /// of the frame.

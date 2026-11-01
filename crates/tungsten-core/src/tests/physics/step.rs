@@ -1,5 +1,6 @@
 use super::pairs::{
-    EMPTY_PAIR, PAIR_AWAKE, PAIR_MARGIN_SLOPS, build_pairs, collect_tripped, gravity_allowance,
+    EMPTY_PAIR, PAIR_AWAKE, PAIR_MARGIN_SLOPS, bounds_overlap, box_bounds, build_pairs,
+    collect_tripped, gravity_allowance, query_bounds,
 };
 use super::*;
 use crate::assets::tilemap::TerrainProps;
@@ -1482,6 +1483,16 @@ fn diagnostic_counts_track_the_last_step() {
 pub(super) fn assert_pair_contacts(config: &PhysicsConfig, sub_dt: f32, buffers: &PhysicsBuffers) {
     use std::collections::BTreeSet;
 
+    // The pair tests read the boxes' bounds, which follow every box.
+    let pair_bounds = &buffers.extra.pair_bounds;
+    assert_eq!(pair_bounds.len(), buffers.pair_aabbs.len());
+    for (aabb, bounds) in buffers.pair_aabbs.iter().zip(pair_bounds) {
+        assert_eq!(
+            bounds.to_array().map(f32::to_bits),
+            box_bounds(aabb).to_array().map(f32::to_bits),
+            "stale pair bounds"
+        );
+    }
     let proxies = &buffers.proxies;
     // A pair whose layers do not meet is never a contact.
     let contact_key = |a: usize, b: usize| {
@@ -1540,6 +1551,36 @@ pub(super) fn assert_pair_contacts(config: &PhysicsConfig, sub_dt: f32, buffers:
         persistent, exhaustive,
         "persistent pair list missed a contact"
     );
+}
+
+#[test]
+fn pair_bounds_answer_as_aabb_overlaps() {
+    // For every pair of these boxes, apart, touching, crossing or nested, at
+    // signed zeros, infinite or NaN, the one compare of the pair tests
+    // answers as `Aabb::overlaps` does.
+    let centers = [-0.5_f32, -0.0, 0.0, 1.0, f32::INFINITY, f32::NAN];
+    let extents = [0.0_f32, 0.5, 1.0, f32::NAN];
+    let axis: Vec<_> = centers
+        .iter()
+        .flat_map(|&c| extents.iter().map(move |&h| (c, h)))
+        .collect();
+    let boxes: Vec<_> = axis
+        .iter()
+        .flat_map(|&(cx, hx)| {
+            axis.iter()
+                .map(move |&(cy, hy)| Aabb::new(Vec2::new(cx, cy), Vec2::new(hx, hy)))
+        })
+        .collect();
+    for a in &boxes {
+        let query = query_bounds(a);
+        for b in &boxes {
+            assert_eq!(
+                bounds_overlap(query, box_bounds(b)),
+                a.overlaps(b),
+                "{a:?} against {b:?}"
+            );
+        }
+    }
 }
 
 #[test]
