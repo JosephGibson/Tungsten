@@ -117,6 +117,49 @@ fn ray_hits_a_circle_with_point_normal_and_distance() {
 }
 
 #[test]
+fn a_box_cast_meets_a_far_slope_face_at_its_corner() {
+    // A box cast down onto the middle of a 45 br face reports its corner on
+    // the face. The face's ends were told from the other vertices by their
+    // reach along its normal to 1e-3 px, under the rounding of world
+    // coordinates from about 12,000 px, so there the point jumped 45 px to
+    // one end. A 200 x 50 map of 64 px cells, ramps in row 47.
+    let mut world = world();
+    let mut data = TilemapData::new(64, 64, 200, 50);
+    let ramp = data.add_tile("ramp");
+    data.set_tile_props(
+        ramp,
+        crate::assets::TileProps {
+            slope: Some(slope_kind(1)),
+            ..Default::default()
+        },
+    );
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    let cols = [3u32, 187, 199];
+    for col in cols {
+        data.set_tile(layer, col, 47, ramp);
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("far".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("far", Vec2::ZERO));
+    physics_step(&mut world);
+    let small = Shape::Aabb {
+        half_extents: Vec2::splat(4.0),
+    };
+    for col in cols {
+        let x0 = col as f32 * 64.0;
+        let from = Vec2::new(x0 + 28.0, 2_900.0);
+        let hit = cast_shape(&world, small, from, Vec2::Y, 500.0, &all()).unwrap();
+        assert!((hit.distance - 136.0).abs() < 1e-3, "col {col}: {hit:?}");
+        let normal = Vec2::new(-1.0, -1.0).normalize();
+        assert!(hit.normal.abs_diff_eq(normal, 1e-3), "col {col}: {hit:?}");
+        let corner = Vec2::new(x0 + 32.0, 3_040.0);
+        assert!(hit.point.abs_diff_eq(corner, 0.01), "col {col}: {hit:?}");
+    }
+}
+
+#[test]
 fn far_circles_keep_their_surface() {
     // A circle's entry once took b² − c, two numbers near the distance
     // squared whose difference lost the radius: at 10,000 px a ray met a

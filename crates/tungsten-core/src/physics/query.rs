@@ -1396,11 +1396,16 @@ fn box_contact_point(at: Vec2, half: Vec2, center: Vec2, other: Vec2, normal: Ve
 /// of the span a leg and the box's face share.
 fn slope_contact_point(at: Vec2, half: Vec2, poly: &SlopePolygon, normal: Vec2) -> Vec2 {
     let points = &poly.points[..poly.len];
+    // Each vertex's reach from the polygon's first: within the cell the
+    // offsets are exact, so the face's ends agree to a few ulps of the
+    // cell's size wherever it lies, not of the world coordinate.
+    let origin = points[0];
+    let reach = |p: Vec2| (p - origin).dot(normal);
     let far = points
         .iter()
-        .map(|p| p.dot(normal))
+        .map(|&p| reach(p))
         .fold(f32::NEG_INFINITY, f32::max);
-    let mut support = points.iter().filter(|p| far - p.dot(normal) < 1.0e-3);
+    let mut support = points.iter().filter(|&&p| far - reach(p) < 1.0e-3);
     let (Some(&first), second) = (support.next(), support.next()) else {
         return at;
     };
