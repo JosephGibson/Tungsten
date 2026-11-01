@@ -80,6 +80,12 @@ impl SweepGrid {
     /// in the pair grid's order.
     fn query(&mut self, pairs: &mut PairGrid, query: &Aabb, out: &mut Vec<ProxyId>) {
         out.clear();
+        // With no tiles and a few statics, test their cells before walking:
+        // a body away from the walls meets nothing (the test stays out of
+        // `for_each_in`, whose inlined walk `build_pairs` shares).
+        if pairs.tiles.misses_few(query, 0) && self.grid.misses_few(query, 8) {
+            return;
+        }
         for_each_in_both(
             &mut self.grid,
             &mut pairs.tiles,
