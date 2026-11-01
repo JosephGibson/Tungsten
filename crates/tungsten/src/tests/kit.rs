@@ -148,10 +148,12 @@ fn animated_sprite_shows_the_current_frame_and_holds_while_paused() {
                 AnimationFrame {
                     sprite: open,
                     duration_ms: 100,
+                    sound: None,
                 },
                 AnimationFrame {
                     sprite: shut,
                     duration_ms: 100,
+                    sound: None,
                 },
             ],
         },
@@ -2883,6 +2885,7 @@ fn a_misspelt_clip_fails_the_load_and_a_new_clip_shows_its_first_frame_however_s
             .map(|i| AnimationFrame {
                 sprite: SpriteAssetId::new(first + i),
                 duration_ms: ms,
+                sound: None,
             })
             .collect(),
     };

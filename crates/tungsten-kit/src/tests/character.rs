@@ -15,6 +15,7 @@ fn clip(first: u32, frames: u32, duration_ms: u32) -> AnimationData {
             .map(|i| AnimationFrame {
                 sprite: SpriteAssetId::new(first + i),
                 duration_ms,
+                sound: None,
             })
             .collect(),
     }

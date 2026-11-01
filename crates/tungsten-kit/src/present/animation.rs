@@ -2,10 +2,11 @@
 //! `AnimationState` and shows its current frame through the entity's
 //! `Sprite`, which the default extract draws.
 
+use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::{
-    AnimationRegistry, AnimationState, Entity, Plugin, Schedule, SpawnContext, Sprite, Time, World,
-    system,
+    AnimationRegistry, AnimationState, AudioCommands, Entity, Plugin, Schedule, SoundRegistry,
+    SpawnContext, Sprite, Time, Transform, World, system,
 };
 
 use crate::foundation::describe::{
@@ -13,6 +14,8 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::register_rows_with;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::lifecycle::ended::{end, ensure_kit_despawn};
+use crate::react::cues::CueListener;
 
 /// [`AnimationPlugin`]'s system, in the present phase.
 pub const ANIMATION_TICK: &str = "animation_tick";
@@ -50,8 +53,8 @@ const ANIMATION: &str = "animation";
 ///     AnimationData {
 ///         looping: true,
 ///         frames: vec![
-///             AnimationFrame { sprite: open, duration_ms: 100 },
-///             AnimationFrame { sprite: shut, duration_ms: 100 },
+///             AnimationFrame { sprite: open, duration_ms: 100, sound: None },
+///             AnimationFrame { sprite: shut, duration_ms: 100, sound: None },
 ///         ],
 ///     },
 /// );
@@ -76,6 +79,7 @@ pub struct AnimationPlugin;
 impl Plugin for AnimationPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
+        ensure_kit_despawn(schedule, world);
         register_rows_with(world, "AnimationState", |world: &World, entity: Entity| {
             world
                 .get::<AnimationState>(entity)
@@ -91,7 +95,9 @@ impl Plugin for AnimationPlugin {
             world,
             ComponentDescription::new(
                 ANIMATION,
-                "An animated sprite: its current frame written into the entity's Sprite.",
+                "An animated sprite: its current frame written into the entity's Sprite; \
+                 optional `speed` (its rate, 1 unless set) and `despawn` (a finished \
+                 one-shot ends the entity).",
             )
             .field(FieldDescription::new(
                 "id",
@@ -104,7 +110,9 @@ impl Plugin for AnimationPlugin {
             .roundtrip(round_trip::<AnimationDef>),
         );
         world.register_component_with(ANIMATION, |def: AnimationDef, _: &SpawnContext<'_>| {
-            (AnimationState::new(def.id),)
+            (AnimationState::new(def.id)
+                .with_speed(def.speed)
+                .with_despawn_at_end(def.despawn),)
         });
         schedule.add(
             Phase::Present.stage(),
@@ -118,17 +126,46 @@ impl Plugin for AnimationPlugin {
 #[serde(deny_unknown_fields)]
 struct AnimationDef {
     id: String,
+    /// Redo 7.9: the rate, 1 unless set.
+    #[serde(default = "one")]
+    speed: f32,
+    /// Redo 7.9: a finished one-shot ends the entity.
+    #[serde(default)]
+    despawn: bool,
 }
 
-/// Advances every animated sprite and shows its current frame. The registry
+fn one() -> f32 {
+    1.0
+}
+
+/// Advances every animated sprite at its speed and shows its current frame
+/// (redo 7.9: plays the sound of the last frame each advance entered, and
+/// ends an entity whose one-shot finished with `despawn` set). The registry
 /// leaves the World for the pass and goes back after it, never cloned.
 fn animation_tick(world: &mut World) {
     let dt_ms = world.get_resource::<Time>().map_or(0.0, Time::delta) * 1000.0;
     let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
         return;
     };
-    for (state, sprite) in world.query_mut::<(&mut AnimationState, &mut Sprite)>() {
-        state.advance(dt_ms, &registry);
+    // The pass's query is the two columns it writes, as before redo 7.9:
+    // each further element allocates per call, which example 01's guard
+    // pins. A frame that sounds or ends a one-shot reads its entities after.
+    let mut sounds: Vec<(usize, String)> = Vec::new();
+    let mut finishing = false;
+    for (row, (state, sprite)) in world
+        .query_mut::<(&mut AnimationState, &mut Sprite)>()
+        .enumerate()
+    {
+        let was_finished = state.finished;
+        let advanced = state.advance_entering(dt_ms, &registry);
+        if let Some(frame) = advanced.sound_frame
+            && let Some(sound) = registry
+                .get(&state.animation_id)
+                .and_then(|clip| clip.frames[frame].sound.as_ref())
+        {
+            sounds.push((row, sound.clone()));
+        }
+        finishing |= state.finished && !was_finished && state.despawn_at_end();
         if let Some(current) = state.current_sprite(&registry)
             && current != sprite.asset_id
         {
@@ -136,6 +173,49 @@ fn animation_tick(world: &mut World) {
         }
     }
     world.insert_resource(registry);
+    if sounds.is_empty() && !finishing {
+        return;
+    }
+    // The pass's rows in its order, each entity and whether it ends; `end`
+    // queues an entity once, however often it is listed.
+    let rows: Vec<(Entity, bool)> = world
+        .query::<(Entity, &AnimationState, &Sprite)>()
+        .map(|(entity, state, _)| (entity, state.finished && state.despawn_at_end()))
+        .collect();
+    for (row, sound) in sounds {
+        let entity = rows[row].0;
+        let at = world.get::<Transform>(entity).map(|t| t.position);
+        play_frame_sound(world, &sound, at);
+    }
+    if finishing {
+        for &(entity, ends) in &rows {
+            if ends {
+                end(world, entity, ANIMATION);
+            }
+        }
+    }
+}
+
+/// A frame's sound, at its manifest volume × the cue listener's gain at the
+/// entity's position, as a `sound` cue plays; past the listener's hearing,
+/// or without a position, at the volume alone.
+fn play_frame_sound(world: &mut World, id: &str, at: Option<Vec2>) {
+    let Some((handle, volume)) = world
+        .get_resource::<SoundRegistry>()
+        .and_then(|sounds| sounds.get_by_id(id).map(|h| (h, sounds.get_volume(h))))
+    else {
+        return;
+    };
+    let gain = match (world.get_resource::<CueListener>(), at) {
+        (Some(listener), Some(at)) => listener.gain(at),
+        _ => 1.0,
+    };
+    if gain <= 0.0 {
+        return;
+    }
+    if let Some(audio) = world.get_resource_mut::<AudioCommands>() {
+        audio.play_with(handle, volume * gain, false);
+    }
 }
 
 #[cfg(test)]

@@ -562,6 +562,7 @@ fn cross_check(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result
         .get_resource::<AnimationRegistry>()
         .expect("AnimationRegistry resource missing");
 
+    let sounds = world.get_resource::<SoundRegistry>();
     for (anim_id, anim_data) in anim_registry.iter() {
         for (i, frame) in anim_data.frames.iter().enumerate() {
             if registry.sprite(frame.sprite).is_none() {
@@ -570,6 +571,14 @@ fn cross_check(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result
                     anim_id,
                     i,
                     registry.sprite_name(frame.sprite).unwrap_or("?"),
+                ));
+            }
+            // Redo 7.9: a frame's sound names a loaded sound.
+            if let Some(sound) = &frame.sound
+                && sounds.is_none_or(|sounds| sounds.get_by_id(sound).is_none())
+            {
+                return Err(anyhow::anyhow!(
+                    "Animation '{anim_id}' frame {i} references unknown sound ID '{sound}'"
                 ));
             }
         }

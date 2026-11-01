@@ -351,6 +351,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
                         .map(|&sprite| AnimationFrame {
                             sprite,
                             duration_ms,
+                            sound: None,
                         })
                         .collect(),
                 },

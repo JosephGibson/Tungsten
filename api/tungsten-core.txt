@@ -20,6 +20,27 @@ impl core::marker::Unpin for tungsten_core::assets::animation::AnimationError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::animation::AnimationError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::animation::AnimationError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::animation::AnimationError
+#[non_exhaustive] pub struct tungsten_core::assets::animation::Advanced
+pub tungsten_core::assets::animation::Advanced::sound_frame: core::option::Option<usize>
+pub tungsten_core::assets::animation::Advanced::sprite: core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+impl core::clone::Clone for tungsten_core::assets::animation::Advanced
+pub fn tungsten_core::assets::animation::Advanced::clone(&self) -> tungsten_core::assets::animation::Advanced
+impl core::cmp::Eq for tungsten_core::assets::animation::Advanced
+impl core::cmp::PartialEq for tungsten_core::assets::animation::Advanced
+pub fn tungsten_core::assets::animation::Advanced::eq(&self, &tungsten_core::assets::animation::Advanced) -> bool
+impl core::default::Default for tungsten_core::assets::animation::Advanced
+pub fn tungsten_core::assets::animation::Advanced::default() -> tungsten_core::assets::animation::Advanced
+impl core::fmt::Debug for tungsten_core::assets::animation::Advanced
+pub fn tungsten_core::assets::animation::Advanced::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::animation::Advanced
+impl core::marker::StructuralPartialEq for tungsten_core::assets::animation::Advanced
+impl core::marker::Freeze for tungsten_core::assets::animation::Advanced
+impl core::marker::Send for tungsten_core::assets::animation::Advanced
+impl core::marker::Sync for tungsten_core::assets::animation::Advanced
+impl core::marker::Unpin for tungsten_core::assets::animation::Advanced
+impl core::marker::UnsafeUnpin for tungsten_core::assets::animation::Advanced
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::animation::Advanced
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::animation::Advanced
 pub struct tungsten_core::assets::animation::AnimationData
 pub tungsten_core::assets::animation::AnimationData::frames: alloc::vec::Vec<tungsten_core::assets::animation::AnimationFrame>
 pub tungsten_core::assets::animation::AnimationData::looping: bool
@@ -39,6 +60,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::animatio
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::animation::AnimationData
 pub struct tungsten_core::assets::animation::AnimationFrame
 pub tungsten_core::assets::animation::AnimationFrame::duration_ms: u32
+pub tungsten_core::assets::animation::AnimationFrame::sound: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::animation::AnimationFrame::sprite: tungsten_core::assets::registry::SpriteAssetId
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationFrame
 pub fn tungsten_core::assets::animation::AnimationFrame::clone(&self) -> tungsten_core::assets::animation::AnimationFrame
@@ -81,8 +103,15 @@ pub tungsten_core::assets::animation::AnimationState::frame_index: usize
 pub tungsten_core::assets::animation::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::animation::AnimationState::advance_entering(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> tungsten_core::assets::animation::Advanced
 pub fn tungsten_core::assets::animation::AnimationState::current_sprite(&self, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::animation::AnimationState::despawn_at_end(&self) -> bool
 pub fn tungsten_core::assets::animation::AnimationState::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::assets::animation::AnimationState::set_despawn_at_end(&mut self, bool)
+pub fn tungsten_core::assets::animation::AnimationState::set_speed(&mut self, f32)
+pub fn tungsten_core::assets::animation::AnimationState::speed(&self) -> f32
+pub fn tungsten_core::assets::animation::AnimationState::with_despawn_at_end(self, bool) -> Self
+pub fn tungsten_core::assets::animation::AnimationState::with_speed(self, f32) -> Self
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::clone(&self) -> tungsten_core::assets::animation::AnimationState
 impl core::fmt::Debug for tungsten_core::assets::animation::AnimationState
@@ -3007,6 +3036,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::animatio
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::animation::AnimationData
 pub struct tungsten_core::assets::AnimationFrame
 pub tungsten_core::assets::AnimationFrame::duration_ms: u32
+pub tungsten_core::assets::AnimationFrame::sound: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::AnimationFrame::sprite: tungsten_core::assets::registry::SpriteAssetId
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationFrame
 pub fn tungsten_core::assets::animation::AnimationFrame::clone(&self) -> tungsten_core::assets::animation::AnimationFrame
@@ -3049,8 +3079,15 @@ pub tungsten_core::assets::AnimationState::frame_index: usize
 pub tungsten_core::assets::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::animation::AnimationState::advance_entering(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> tungsten_core::assets::animation::Advanced
 pub fn tungsten_core::assets::animation::AnimationState::current_sprite(&self, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::animation::AnimationState::despawn_at_end(&self) -> bool
 pub fn tungsten_core::assets::animation::AnimationState::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::assets::animation::AnimationState::set_despawn_at_end(&mut self, bool)
+pub fn tungsten_core::assets::animation::AnimationState::set_speed(&mut self, f32)
+pub fn tungsten_core::assets::animation::AnimationState::speed(&self) -> f32
+pub fn tungsten_core::assets::animation::AnimationState::with_despawn_at_end(self, bool) -> Self
+pub fn tungsten_core::assets::animation::AnimationState::with_speed(self, f32) -> Self
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::clone(&self) -> tungsten_core::assets::animation::AnimationState
 impl core::fmt::Debug for tungsten_core::assets::animation::AnimationState
@@ -16474,8 +16511,15 @@ pub tungsten_core::AnimationState::frame_index: usize
 pub tungsten_core::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::animation::AnimationState::advance_entering(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> tungsten_core::assets::animation::Advanced
 pub fn tungsten_core::assets::animation::AnimationState::current_sprite(&self, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::animation::AnimationState::despawn_at_end(&self) -> bool
 pub fn tungsten_core::assets::animation::AnimationState::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::assets::animation::AnimationState::set_despawn_at_end(&mut self, bool)
+pub fn tungsten_core::assets::animation::AnimationState::set_speed(&mut self, f32)
+pub fn tungsten_core::assets::animation::AnimationState::speed(&self) -> f32
+pub fn tungsten_core::assets::animation::AnimationState::with_despawn_at_end(self, bool) -> Self
+pub fn tungsten_core::assets::animation::AnimationState::with_speed(self, f32) -> Self
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::clone(&self) -> tungsten_core::assets::animation::AnimationState
 impl core::fmt::Debug for tungsten_core::assets::animation::AnimationState

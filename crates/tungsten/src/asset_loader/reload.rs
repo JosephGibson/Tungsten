@@ -179,6 +179,20 @@ pub fn reload_animation(id: &str, path: &Path, world: &mut World) -> anyhow::Res
             return Ok(());
         }
     };
+    // Redo 7.9: a frame's sound must name a loaded sound.
+    let sounds = world.get_resource::<SoundRegistry>();
+    if let Some((i, sound)) = data.frames.iter().enumerate().find_map(|(i, frame)| {
+        frame
+            .sound
+            .as_ref()
+            .filter(|sound| sounds.is_none_or(|sounds| sounds.get_by_id(sound).is_none()))
+            .map(|sound| (i, sound))
+    }) {
+        log::error!(
+            "Hot reload animation '{id}': frame {i} references unknown sound ID '{sound}'; keeping the previous clip"
+        );
+        return Ok(());
+    }
 
     world
         .get_resource_mut::<AnimationRegistry>()

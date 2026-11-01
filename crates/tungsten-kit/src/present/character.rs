@@ -289,7 +289,7 @@ impl State {
 ///
 /// let clip = |first: u32| AnimationData {
 ///     looping: true,
-///     frames: vec![AnimationFrame { sprite: SpriteAssetId::new(first), duration_ms: 100 }],
+///     frames: vec![AnimationFrame { sprite: SpriteAssetId::new(first), duration_ms: 100, sound: None }],
 /// };
 /// let mut clips = AnimationRegistry::new();
 /// for (id, first) in [("hero_idle", 0), ("hero_run_left", 1), ("hero_run_right", 2)] {
@@ -645,7 +645,11 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
             .get(&id)
             .and_then(|clip| clip.frames.first())
             .map(|frame| frame.sprite);
-        world.insert(entity, AnimationState::new(id));
+        // Redo 7.9: the entity's speed carries across its clip changes.
+        let speed = world
+            .get::<AnimationState>(entity)
+            .map_or(1.0, AnimationState::speed);
+        world.insert(entity, AnimationState::new(id).with_speed(speed));
         if let (Some(first), Some(sprite)) = (first, world.get_mut::<Sprite>(entity)) {
             sprite.asset_id = first;
         }

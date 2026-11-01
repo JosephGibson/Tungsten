@@ -343,6 +343,7 @@ fn clips(world: &mut World) {
                     .map(|frame| AnimationFrame {
                         sprite: SpriteAssetId::new((first * 2 + frame) as u32),
                         duration_ms: 100,
+                        sound: None,
                     })
                     .collect(),
             },

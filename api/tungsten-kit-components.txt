@@ -20,7 +20,7 @@ component aim: The direction the entity aims in, from its intent, the cursor, it
   field offset: [x, y] = [0.0, 0.0] — the aim's origin from the entity's point, in world pixels
   genres: top_down, shmup
   sample: { "from": "target", "target": { "nearest": { "all": ["team.player"] } } }
-component animation: An animated sprite: its current frame written into the entity's Sprite.
+component animation: An animated sprite: its current frame written into the entity's Sprite; optional `speed` (its rate, 1 unless set) and `despawn` (a finished one-shot ends the entity).
   field id: text — a manifest animation ID
   genres: platformer, top_down
   sample: { "id": "blink" }

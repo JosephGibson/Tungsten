@@ -1830,3 +1830,53 @@ fn a_removed_sound_stays_and_warns() {
     assert_eq!(sounds.get(hum).unwrap().samples.len(), 900);
     assert!(sounds.get_looping(hum));
 }
+
+#[test]
+fn an_unknown_frame_sound_fails_the_load() {
+    let manifest_path = plan_game("");
+    write(
+        &manifest_path.with_file_name("run.json"),
+        r#"{"looping": true, "frames": [
+            {"sprite": "walk_0", "duration_ms": 100, "sound": "step"},
+            {"sprite": "walk_3", "duration_ms": 100, "sound": "squeak"}
+        ]}"#,
+    );
+    let manifest = ResolvedManifest::load(&manifest_path).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest, &mut world);
+    let err = loop {
+        match plan.run_next_into(&mut world, &mut target) {
+            Ok(true) => {}
+            Ok(false) => panic!("the load took a frame naming an unknown sound"),
+            Err(err) => break err,
+        }
+    };
+    assert_eq!(
+        plan.units()[plan.done()],
+        LoadUnit::CrossChecks,
+        "checked once the sounds load"
+    );
+    assert!(
+        err.to_string()
+            .contains("frame 1 references unknown sound ID 'squeak'"),
+        "{err}"
+    );
+
+    // A reload naming an unknown sound keeps the previous clip.
+    let path = manifest_path.with_file_name("idle.json");
+    write(
+        &path,
+        r#"{"looping": false, "frames": [{"sprite": "hero", "duration_ms": 50, "sound": "nope"}]}"#,
+    );
+    let before = world
+        .resource::<AnimationRegistry>()
+        .get("idle")
+        .unwrap()
+        .frames
+        .len();
+    reload::reload_animation("idle", &path, &mut world).unwrap();
+    let idle = world.resource::<AnimationRegistry>().get("idle").unwrap();
+    assert_eq!(idle.frames.len(), before);
+    assert!(idle.frames[0].sound.is_none());
+}

@@ -12,18 +12,22 @@ fn test_anim() -> AnimationData {
             AnimationFrame {
                 sprite: walk(0),
                 duration_ms: 100,
+                sound: None,
             },
             AnimationFrame {
                 sprite: walk(1),
                 duration_ms: 100,
+                sound: None,
             },
             AnimationFrame {
                 sprite: walk(2),
                 duration_ms: 100,
+                sound: None,
             },
             AnimationFrame {
                 sprite: walk(3),
                 duration_ms: 100,
+                sound: None,
             },
         ],
     }
@@ -107,10 +111,12 @@ fn zero_duration_does_not_infinite_loop() {
                 AnimationFrame {
                     sprite: SpriteAssetId::new(0),
                     duration_ms: 0,
+                    sound: None,
                 },
                 AnimationFrame {
                     sprite: SpriteAssetId::new(1),
                     duration_ms: 0,
+                    sound: None,
                 },
             ],
         },
@@ -174,6 +180,7 @@ fn total_duration_saturates_instead_of_overflowing() {
     let long = |sprite| AnimationFrame {
         sprite,
         duration_ms: 3_000_000_000,
+        sound: None,
     };
     let data = AnimationData {
         looping: false,
@@ -181,4 +188,44 @@ fn total_duration_saturates_instead_of_overflowing() {
     };
     assert_eq!(data.total_duration_ms(), u32::MAX);
     assert_eq!(test_anim().total_duration_ms(), 400);
+}
+
+#[test]
+fn a_frames_sound_reads_from_the_file() {
+    let dir = std::env::temp_dir().join(format!("tungsten_anim_sound_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("walk.json");
+    std::fs::write(
+        &path,
+        r#"{"looping": true, "frames": [
+            {"sprite": "walk_0", "duration_ms": 100},
+            {"sprite": "walk_1", "duration_ms": 100, "sound": "step"}
+        ]}"#,
+    )
+    .unwrap();
+    let mut sprites = AssetRegistry::new();
+    let anim = AnimationData::load(&path, &mut sprites).unwrap();
+    let sounds: Vec<Option<&str>> = anim.frames.iter().map(|f| f.sound.as_deref()).collect();
+    assert_eq!(sounds, [None, Some("step")]);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // Playback enters the sounded frame, and reports it once.
+    let mut registry = AnimationRegistry::new();
+    registry.insert("walk".into(), anim);
+    let mut state = AnimationState::new("walk");
+    assert_eq!(state.advance_entering(50.0, &registry).sound_frame, None);
+    assert_eq!(state.advance_entering(60.0, &registry).sound_frame, Some(1));
+    assert_eq!(state.advance_entering(10.0, &registry).sound_frame, None);
+    // Speed and the end's despawn share two bytes; the component stays 40.
+    state.set_speed(0.5);
+    state.set_despawn_at_end(true);
+    assert_eq!((state.speed(), state.despawn_at_end()), (0.5, true));
+    state.set_speed(f32::NAN);
+    assert_eq!(state.speed(), 1.0, "a speed that is not finite plays at 1");
+    state.set_speed(-2.0);
+    assert_eq!(state.speed(), 1.0);
+    state.set_speed(100.0);
+    assert_eq!(state.speed(), 32.767);
+    assert!(state.despawn_at_end(), "the speed leaves the despawn bit");
+    assert_eq!(std::mem::size_of::<AnimationState>(), 40);
 }

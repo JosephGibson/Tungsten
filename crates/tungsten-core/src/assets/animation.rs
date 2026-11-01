@@ -10,6 +10,9 @@ use super::registry::{AssetRegistry, SpriteAssetId};
 pub struct AnimationFrame {
     pub sprite: SpriteAssetId,
     pub duration_ms: u32,
+    /// A manifest sound the kit plays as the clip enters this frame (redo
+    /// 7.9), its ID checked against the sounds at load.
+    pub sound: Option<String>,
 }
 
 /// D-010 animation data.
@@ -30,6 +33,8 @@ struct AnimationFile {
 struct AnimationFileFrame {
     sprite: String,
     duration_ms: u32,
+    #[serde(default)]
+    sound: Option<String>,
 }
 
 /// Error loading an animation file.
@@ -68,6 +73,7 @@ impl AnimationData {
                 .map(|frame| AnimationFrame {
                     sprite: sprites.intern_sprite(&frame.sprite),
                     duration_ms: frame.duration_ms,
+                    sound: frame.sound,
                 })
                 .collect(),
         })
@@ -133,6 +139,27 @@ pub struct AnimationState {
     pub accumulated_ms: f32,
     pub playing: bool,
     pub finished: bool,
+    /// The [`speed`](Self::speed) in thousandths, low 15 bits, and
+    /// [`despawn_at_end`](Self::despawn_at_end), the top bit (redo 7.9):
+    /// two bytes in the padding, so the component stays 40 bytes, which
+    /// example 01's allocation guard pins.
+    rate: u16,
+}
+
+/// [`AnimationState`]'s speed bits and its despawn bit.
+const SPEED_BITS: u16 = 0x7FFF;
+const DESPAWN_BIT: u16 = 0x8000;
+/// Speed steps per unit.
+const SPEED_STEPS: f32 = 1000.0;
+
+/// What one [`AnimationState::advance_entering`] did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Advanced {
+    /// The new frame's sprite, on a frame change.
+    pub sprite: Option<SpriteAssetId>,
+    /// The last frame the advance entered that names a sound.
+    pub sound_frame: Option<usize>,
 }
 
 impl AnimationState {
@@ -143,7 +170,52 @@ impl AnimationState {
             accumulated_ms: 0.0,
             playing: true,
             finished: false,
+            rate: SPEED_STEPS as u16,
         }
+    }
+
+    /// The playback rate (redo 7.9): 1 plays the frames at their durations,
+    /// 0.5 at half speed, 0 holds the frame; 1 unless set.
+    #[must_use]
+    pub fn speed(&self) -> f32 {
+        f32::from(self.rate & SPEED_BITS) / SPEED_STEPS
+    }
+
+    /// Sets the playback rate, to the nearest thousandth up to 32.767; one
+    /// that is not finite or is negative reads 1.
+    pub fn set_speed(&mut self, speed: f32) {
+        let speed = if speed.is_finite() && speed >= 0.0 {
+            speed.min(f32::from(SPEED_BITS) / SPEED_STEPS)
+        } else {
+            1.0
+        };
+        self.rate = (self.rate & DESPAWN_BIT) | (speed * SPEED_STEPS).round() as u16;
+    }
+
+    /// The state, at `speed` ([`set_speed`](Self::set_speed)).
+    #[must_use]
+    pub fn with_speed(mut self, speed: f32) -> Self {
+        self.set_speed(speed);
+        self
+    }
+
+    /// Whether the kit ends its entity once a one-shot clip finishes (redo
+    /// 7.9); a looping clip never finishes. Off unless set.
+    #[must_use]
+    pub fn despawn_at_end(&self) -> bool {
+        self.rate & DESPAWN_BIT != 0
+    }
+
+    /// Sets whether a finished one-shot ends its entity.
+    pub fn set_despawn_at_end(&mut self, despawn: bool) {
+        self.rate = (self.rate & SPEED_BITS) | if despawn { DESPAWN_BIT } else { 0 };
+    }
+
+    /// The state, ending its entity at a one-shot's end.
+    #[must_use]
+    pub fn with_despawn_at_end(mut self, despawn: bool) -> Self {
+        self.set_despawn_at_end(despawn);
+        self
     }
 
     /// Current frame's sprite ID.
@@ -154,18 +226,30 @@ impl AnimationState {
         Some(frame.sprite)
     }
 
-    /// Advance by milliseconds; returns the new frame's sprite ID on a frame change.
+    /// Advance by milliseconds at its [`speed`](Self::speed); returns the new
+    /// frame's sprite ID on a frame change.
     pub fn advance(&mut self, dt_ms: f32, registry: &AnimationRegistry) -> Option<SpriteAssetId> {
+        self.advance_entering(dt_ms, registry).sprite
+    }
+
+    /// [`advance`](Self::advance), and the last frame it entered that names
+    /// a sound (redo 7.9): a frame is entered when playback moves into it,
+    /// a loop's wrap into the first frame included, so a clip's first frame
+    /// sounds on each wrap, never at the clip's start.
+    pub fn advance_entering(&mut self, dt_ms: f32, registry: &AnimationRegistry) -> Advanced {
+        let mut advanced = Advanced::default();
         if !self.playing || self.finished {
-            return None;
+            return advanced;
         }
 
-        let anim = registry.get(&self.animation_id)?;
+        let Some(anim) = registry.get(&self.animation_id) else {
+            return advanced;
+        };
         if anim.frames.is_empty() {
-            return None;
+            return advanced;
         }
 
-        self.accumulated_ms += dt_ms;
+        self.accumulated_ms += dt_ms * self.speed();
         let old_frame = self.frame_index;
         // A hot reload may replace the clip with fewer frames while playback
         // still points into the old clip. Preserve progress up to its new end.
@@ -192,13 +276,15 @@ impl AnimationState {
                     break;
                 }
             }
+            if anim.frames[self.frame_index].sound.is_some() {
+                advanced.sound_frame = Some(self.frame_index);
+            }
         }
 
         if self.frame_index != old_frame {
-            Some(anim.frames[self.frame_index].sprite)
-        } else {
-            None
+            advanced.sprite = Some(anim.frames[self.frame_index].sprite);
         }
+        advanced
     }
 }
 
