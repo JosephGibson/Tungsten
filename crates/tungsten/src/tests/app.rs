@@ -1,8 +1,8 @@
 use super::{
-    App, FrameClock, FrameEnd, RedrawSchedule, compose_post_stack, format_perf_physics_line,
-    format_perf_systems_line, frame_dt_secs, frame_interval_ms, is_action_map, is_reload_root,
-    load_action_map_at_startup, manifest_reload_roots, redraw_schedule, resolve_startup_display,
-    runtime_display_mode,
+    App, FrameClock, FrameEnd, RedrawSchedule, StartupTimings, compose_post_stack,
+    format_perf_physics_line, format_perf_systems_line, format_startup_line, frame_dt_secs,
+    frame_interval_ms, is_action_map, is_reload_root, load_action_map_at_startup,
+    manifest_reload_roots, redraw_schedule, resolve_startup_display, runtime_display_mode,
 };
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -925,4 +925,107 @@ fn startup_queues_shipped_volumes_below_one() {
         .err()
         .expect("App::new accepted a NaN master volume");
     assert!(err.to_string().contains("audio.master_volume"), "{err}");
+}
+
+#[test]
+fn the_startup_line_names_every_timing() {
+    let timings = StartupTimings {
+        window: 1.0,
+        renderer: 2.5,
+        boot: 0.0,
+        load: 30.25,
+        sprites: None,
+        sounds: None,
+        pack: None,
+        startup: 4.0,
+        audio: 5.0,
+        first_frame: Some(61.5),
+        loaded: 50.0,
+        boot_frames: 0,
+        slice_max: 0.0,
+    };
+    let line = format_startup_line(&timings);
+    assert_eq!(
+        line,
+        "startup: window=1.00ms renderer=2.50ms boot=0.00ms load=30.25ms sprites=n/a \
+         sounds=n/a pack=n/a startup=4.00ms audio=5.00ms first_frame=61.50ms loaded=50.00ms \
+         boot_frames=0 slice_max=0.00ms"
+    );
+    // Every field the `startup` probe returns, by name.
+    let fields = serde_json::to_value(timings).unwrap();
+    for name in fields.as_object().unwrap().keys() {
+        assert!(
+            line.contains(&format!(" {name}=")),
+            "{name} missing: {line}"
+        );
+    }
+}
+
+/// A config whose `assets` section names `manifest`, its reload as given.
+fn config_naming(manifest: &Path, hot_reload: Option<bool>) -> Config {
+    let mut config = Config::default();
+    config.assets.manifest = Some(manifest.to_path_buf());
+    config.assets.hot_reload = hot_reload;
+    config
+}
+
+#[test]
+fn a_config_without_a_manifest_sets_no_root() {
+    let app = App::new(Config::default()).unwrap();
+    assert!(app.manifest_roots.is_empty());
+    assert_eq!(app.hot_reload_dirs, None);
+    assert_eq!(app.manifest_path, None);
+}
+
+#[test]
+fn a_named_manifest_becomes_the_root_with_debug_reload() {
+    let dir = user_tempdir("named_manifest");
+    let folder = dir.join("assets");
+    let manifest = folder.join("manifest.json");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(&manifest, "{}").unwrap();
+
+    // Unset, the reload follows the build: on in a debug build.
+    let app = App::new(config_naming(&manifest, None)).unwrap();
+    assert_eq!(app.manifest_roots, std::slice::from_ref(&manifest));
+    let debug = cfg!(debug_assertions);
+    assert_eq!(app.hot_reload_dirs, debug.then(|| vec![folder.clone()]));
+    assert_eq!(app.manifest_path, debug.then(|| manifest.clone()));
+
+    let app = App::new(config_naming(&manifest, Some(true))).unwrap();
+    assert_eq!(app.hot_reload_dirs, Some(vec![folder]));
+    assert_eq!(app.manifest_path, Some(manifest.clone()));
+
+    let app = App::new(config_naming(&manifest, Some(false))).unwrap();
+    assert_eq!(app.manifest_roots, [manifest]);
+    assert_eq!(app.hot_reload_dirs, None);
+    assert_eq!(app.manifest_path, None);
+}
+
+#[test]
+fn a_named_manifest_that_is_missing_fails_the_app() {
+    let dir = user_tempdir("missing_manifest");
+    let err = App::new(config_naming(&dir.join("manifest.json"), None))
+        .err()
+        .expect("App::new accepted a missing manifest");
+    assert!(err.to_string().contains("assets.manifest"), "{err}");
+}
+
+#[test]
+fn set_manifest_roots_and_enable_hot_reload_replace_the_configs() {
+    let dir = user_tempdir("replaced_manifest");
+    let manifest = dir.join("manifest.json");
+    std::fs::write(&manifest, "{}").unwrap();
+    let mut app = App::new(config_naming(&manifest, Some(true))).unwrap();
+    assert_eq!(app.hot_reload_dirs, Some(vec![dir.clone()]));
+
+    let game = PathBuf::from("game/assets/manifest.json");
+    app.set_manifest_roots(vec![game.clone()]);
+    assert_eq!(app.manifest_roots, std::slice::from_ref(&game));
+    app.enable_hot_reload(&[PathBuf::from("game/assets")], game.clone());
+    assert_eq!(
+        app.hot_reload_dirs,
+        Some(vec![PathBuf::from("game/assets")])
+    );
+    assert_eq!(app.manifest_path, Some(game));
 }

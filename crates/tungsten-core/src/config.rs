@@ -4,7 +4,7 @@ use crate::settings::{FrameRateCap, Settings, UserFolder};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -544,6 +544,37 @@ impl AudioConfig {
     }
 }
 
+/// The `assets` section of `tungsten.json` (redo 7.9): the root manifest
+/// the app loads, and whether edits to it and under its folder apply while
+/// the game runs.
+///
+/// ```json
+/// "assets": { "manifest": "assets/manifest.json", "hot_reload": true }
+/// ```
+///
+/// A file without the section names no manifest, so the app loads none
+/// unless the game sets its roots in code. An unknown key fails the parse.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub struct AssetsConfig {
+    /// `assets.manifest`: the root manifest, relative to the game's folder;
+    /// none unless set.
+    pub manifest: Option<PathBuf>,
+    /// `assets.hot_reload`: whether the app watches the manifest and its
+    /// folder; unset, on in debug builds.
+    pub hot_reload: Option<bool>,
+}
+
+impl AssetsConfig {
+    /// Whether the app watches the manifest: `hot_reload` when set, else
+    /// `debug_build`.
+    #[must_use]
+    pub fn hot_reload_or(&self, debug_build: bool) -> bool {
+        self.hot_reload.unwrap_or(debug_build)
+    }
+}
+
 /// Top-level engine configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
@@ -564,6 +595,9 @@ pub struct Config {
     /// The volumes the game ships (`D-184`).
     #[serde(default)]
     pub audio: AudioConfig,
+    /// The root manifest and its hot reload (redo 7.9).
+    #[serde(default)]
+    pub assets: AssetsConfig,
     /// What `load` would have logged before any logger exists (`D-119`).
     #[serde(skip)]
     load_warnings: Vec<String>,

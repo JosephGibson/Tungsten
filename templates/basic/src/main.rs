@@ -3,8 +3,6 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
-
 use tungsten::App;
 use tungsten::core::Config;
 use tungsten_template_basic::game;
@@ -16,12 +14,9 @@ fn main() -> anyhow::Result<()> {
         title: config.window.title.clone(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     };
+    // `tungsten.json`'s `assets` section names the manifest; in a debug
+    // build, edits under assets/ and to input.json apply while it runs.
     let mut app = App::new(config)?;
-    app.set_manifest_roots(vec![PathBuf::from(game::MANIFEST)]);
-    if cfg!(debug_assertions) {
-        // Edits under assets/ and to input.json apply while the game runs.
-        app.enable_hot_reload(&[PathBuf::from("assets")], PathBuf::from(game::MANIFEST));
-    }
     // Escape opens the pause menu; the shell's Quit ends the run.
     app.set_exit_on_escape(false);
     game::register(&mut app, info);

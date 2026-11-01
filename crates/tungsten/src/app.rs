@@ -102,6 +102,71 @@ pub use tungsten_core::WindowSize;
 /// Post-renderer startup hook.
 pub type StartupFn = Box<dyn FnOnce(&mut World, &mut Renderer)>;
 
+/// How a windowed run started (redo 7.9, T2), in milliseconds; the app
+/// inserts it once loaded, and under `TUNGSTEN_PERF_LOG` logs it as one
+/// `startup:` line once the first frame has presented too. The `startup`
+/// script probe returns it.
+///
+/// The phases are durations: `window`, `renderer`, `boot` (the boot group),
+/// `load` (the rest of the assets), within it `sprites` and `sounds` (their
+/// decoding) and `pack` (packing and uploads), then `startup` (the hook) and
+/// `audio` (its start). A phase not measured is `None`. The milestones count
+/// from the start of the run's event loop: `first_frame`, when the first
+/// frame presented, and `loaded`, when frame 1 may start.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct StartupTimings {
+    /// Creating the window.
+    pub window: f64,
+    /// Creating the renderer, the engine's font included.
+    pub renderer: f64,
+    /// Loading the boot group; 0 without one.
+    pub boot: f64,
+    /// Loading every other asset, the manifests' merge included.
+    pub load: f64,
+    /// Within `load`, decoding the sprites.
+    pub sprites: Option<f64>,
+    /// Within `load`, decoding the sounds.
+    pub sounds: Option<f64>,
+    /// Within `load`, packing the sprites and uploading their pages.
+    pub pack: Option<f64>,
+    /// The startup hook.
+    pub startup: f64,
+    /// Starting audio: every sound prepared at the device's rate.
+    pub audio: f64,
+    /// When the first frame presented; `None` before it.
+    pub first_frame: Option<f64>,
+    /// When frame 1 may start: the load, the hook and audio done.
+    pub loaded: f64,
+    /// Frames drawn while loading.
+    pub boot_frames: u32,
+    /// The longest stretch of loading between two of those frames.
+    pub slice_max: f64,
+}
+
+/// The start's clock (redo 7.9): `run_window` starts it, `resumed` times
+/// its phases, and the first presented frame stamps `first_frame`.
+#[derive(Default)]
+struct StartupClock {
+    started: Option<Instant>,
+    timings: StartupTimings,
+    loaded: bool,
+    logged: bool,
+}
+
+impl StartupClock {
+    /// Milliseconds from the clock's start to now; 0 before it started.
+    fn now_ms(&self) -> f64 {
+        self.started
+            .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0)
+    }
+}
+
+/// Milliseconds since `since`.
+fn ms_since(since: Instant) -> f64 {
+    since.elapsed().as_secs_f64() * 1000.0
+}
+
 /// Winit loop, ECS, and renderer owner.
 pub struct App {
     config: Config,
@@ -166,6 +231,8 @@ pub struct App {
     pub(crate) script: Option<ScriptRunner>,
     /// Where a script run writes its report.
     script_report: Option<PathBuf>,
+    /// How the run started (redo 7.9).
+    startup_clock: StartupClock,
 }
 
 impl App {
@@ -184,8 +251,13 @@ impl App {
     /// # Errors
     ///
     /// An invalid `game.id`, `time` section, `audio` volume (`D-184`) or
-    /// `logging.level`, or a shipped `input.json` that cannot be read or
-    /// parsed.
+    /// `logging.level`, a shipped `input.json` that cannot be read or
+    /// parsed, or an `assets.manifest` that is not a file.
+    ///
+    /// The config's `assets.manifest` becomes the app's one manifest root,
+    /// watched with its folder when `assets.hot_reload` is on (unset, in
+    /// debug builds); [`App::set_manifest_roots`] and
+    /// [`App::enable_hot_reload`] replace them.
     pub fn new(config: Config) -> anyhow::Result<Self> {
         Self::with_plugins(config, DefaultPlugins::set())
     }
@@ -473,7 +545,10 @@ impl App {
                 ScriptRunner::new(script, &path.display().to_string(), false)
             }),
             script_report: env_path(env, REPORT_ENV),
+            startup_clock: StartupClock::default(),
         };
+        app.take_config_manifest()
+            .inspect_err(|err| log::error!("{err}"))?;
 
         // Engine plugins register first, so their `PreUpdate` systems precede
         // a game's and a game's `PostUpdate` systems follow theirs.
@@ -668,8 +743,35 @@ impl App {
     }
 
     /// D-052 manifest composition roots; D-017 duplicate IDs are fatal.
+    /// They replace the root `tungsten.json`'s `assets.manifest` names.
     pub fn set_manifest_roots(&mut self, roots: Vec<PathBuf>) {
         self.manifest_roots = roots;
+    }
+
+    /// Redo 7.9: the config's `assets.manifest` as the one root, and with
+    /// its hot reload on, the manifest and its folder watched as
+    /// [`App::enable_hot_reload`] watches them. A config naming none sets
+    /// nothing.
+    fn take_config_manifest(&mut self) -> anyhow::Result<()> {
+        let assets = &self.config.assets;
+        let Some(manifest) = assets.manifest.clone() else {
+            return Ok(());
+        };
+        if !manifest.is_file() {
+            anyhow::bail!(
+                "assets.manifest '{}' is not a file; the game runs from its own folder",
+                manifest.display()
+            );
+        }
+        if assets.hot_reload_or(cfg!(debug_assertions)) {
+            let folder = manifest
+                .parent()
+                .filter(|folder| !folder.as_os_str().is_empty())
+                .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+            self.enable_hot_reload(&[folder], manifest.clone());
+        }
+        self.manifest_roots = vec![manifest];
+        Ok(())
     }
 
     /// Watch asset roots; reload at frame boundary.
@@ -677,7 +779,8 @@ impl App {
     /// The watcher starts in [`App::run`], so this and
     /// [`App::set_manifest_roots`] may come in either order: an edit to any
     /// root manifest reloads the merged graph (`D-089`). `manifest_path` is
-    /// the manifest reloaded by an app that declares no roots.
+    /// the manifest reloaded by an app that declares no roots. It replaces
+    /// the watch `tungsten.json`'s `assets` section asked for.
     pub fn enable_hot_reload(&mut self, assets_dirs: &[PathBuf], manifest_path: PathBuf) {
         self.hot_reload_dirs = Some(assets_dirs.to_vec());
         self.manifest_path = Some(manifest_path);
@@ -735,6 +838,7 @@ impl App {
     /// Resolves the schedule and runs the event loop to its end. A script
     /// run starts no watcher and no gamepad backend (redo 7.2).
     fn run_window(&mut self) -> anyhow::Result<()> {
+        self.startup_clock.started = Some(Instant::now());
         self.resolve_schedule()
             .inspect_err(|err| log::error!("{err}"))?;
         if self.script.is_none() {
@@ -835,6 +939,43 @@ impl App {
             .as_mut()
             .and_then(|capture| capture.finish(self.frames_rendered));
         self.fatal_error.take().or(capture_error)
+    }
+
+    /// Redo 7.9: the load, the hook and audio are done; frame 1 may start.
+    /// Stamps `loaded` and inserts [`StartupTimings`].
+    fn mark_loaded(&mut self) {
+        let clock = &mut self.startup_clock;
+        clock.timings.loaded = clock.now_ms();
+        clock.loaded = true;
+        self.publish_startup();
+    }
+
+    /// Redo 7.9: a frame presented; the first stamps `first_frame`.
+    fn mark_presented(&mut self) {
+        let clock = &mut self.startup_clock;
+        if clock.timings.first_frame.is_some() || clock.started.is_none() {
+            return;
+        }
+        clock.timings.first_frame = Some(clock.now_ms());
+        self.publish_startup();
+    }
+
+    /// Once loaded, writes the timings to the World; once the first frame
+    /// has presented too, logs the `startup:` line under
+    /// `TUNGSTEN_PERF_LOG`, once.
+    fn publish_startup(&mut self) {
+        let clock = &mut self.startup_clock;
+        if !clock.loaded {
+            return;
+        }
+        self.world.insert_resource(clock.timings);
+        if clock.logged || clock.timings.first_frame.is_none() {
+            return;
+        }
+        clock.logged = true;
+        if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
+            log::debug!("{}", format_startup_line(&clock.timings));
+        }
     }
 
     /// Start the watcher `enable_hot_reload` asked for: its directories, plus
@@ -1836,6 +1977,9 @@ impl App {
         let frame = self.frames_rendered + 1;
         match result {
             Ok(outcome) => {
+                if matches!(outcome, RenderOutcome::Presented { .. }) {
+                    self.mark_presented();
+                }
                 self.frames_rendered = frame;
                 if let Some(capture) = &mut self.capture {
                     capture.frame_rendered(frame, outcome);
@@ -2291,6 +2435,29 @@ fn drain_debug_draw(world: &mut World) -> (Vec<QuadInstance>, Vec<DebugLineInsta
     (debug_quads, debug_lines)
 }
 
+/// The `startup:` line (redo 7.9): every [`StartupTimings`] field in its
+/// order, milliseconds with two decimals, `n/a` for one not measured.
+fn format_startup_line(timings: &StartupTimings) -> String {
+    let ms = |value: f64| format!("{value:.2}ms");
+    let measured = |value: Option<f64>| value.map_or_else(|| "n/a".to_string(), ms);
+    format!(
+        "startup: window={} renderer={} boot={} load={} sprites={} sounds={} pack={} startup={} audio={} first_frame={} loaded={} boot_frames={} slice_max={}",
+        ms(timings.window),
+        ms(timings.renderer),
+        ms(timings.boot),
+        ms(timings.load),
+        measured(timings.sprites),
+        measured(timings.sounds),
+        measured(timings.pack),
+        ms(timings.startup),
+        ms(timings.audio),
+        measured(timings.first_frame),
+        ms(timings.loaded),
+        timings.boot_frames,
+        ms(timings.slice_max),
+    )
+}
+
 #[inline(always)]
 #[allow(clippy::too_many_arguments)] // One value per field of the line.
 fn log_perf_line(
@@ -2554,6 +2721,7 @@ impl ApplicationHandler for App {
                 requested_display.resolution.height,
             ));
 
+        let window_start = Instant::now();
         let window = match event_loop.create_window(attrs) {
             Ok(w) => Arc::new(w),
             Err(e) => {
@@ -2576,6 +2744,8 @@ impl ApplicationHandler for App {
         let initial_inner_size = window.inner_size();
         input_bridge::apply_scale_factor(&mut self.world, window.scale_factor());
         set_monitor(&mut self.world, read_monitor(&window));
+        self.startup_clock.timings.window = ms_since(window_start);
+        let renderer_start = Instant::now();
 
         let mut render_config = self.config.render.clone();
         let startup_state = DisplayState {
@@ -2634,8 +2804,10 @@ impl ApplicationHandler for App {
         }
 
         self.window = Some(window);
+        self.startup_clock.timings.renderer = ms_since(renderer_start);
 
         // D-052: merge manifests before user startup; duplicate IDs halt boot.
+        let load_start = Instant::now();
         if !self.manifest_roots.is_empty()
             && let Some(renderer) = &mut self.renderer
             && let Err(e) =
@@ -2646,14 +2818,18 @@ impl ApplicationHandler for App {
             event_loop.exit();
             return;
         }
+        self.startup_clock.timings.load = ms_since(load_start);
 
+        let startup_start = Instant::now();
         if let Some(startup) = self.startup.take()
             && let Some(renderer) = &mut self.renderer
         {
             startup(&mut self.world, renderer);
         }
+        self.startup_clock.timings.startup = ms_since(startup_start);
 
         // Audio init after startup: SoundRegistry populated.
+        let audio_start = Instant::now();
         if let Some(sound_registry) = self.world.get_resource::<SoundRegistry>() {
             match AudioSystem::init(sound_registry) {
                 Ok(sys) => {
@@ -2664,6 +2840,8 @@ impl ApplicationHandler for App {
                 }
             }
         }
+        self.startup_clock.timings.audio = ms_since(audio_start);
+        self.mark_loaded();
 
         // Startup time, audio init's resampling included, excluded from
         // first-frame dt; prevents first-substep tunneling.

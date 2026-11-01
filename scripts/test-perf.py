@@ -116,6 +116,23 @@ class Parsing(unittest.TestCase):
         self.assertIn("bench.teleports", stats["counters"])
         self.assertIn("physics.pairs", stats["counters"])
 
+    def test_startup_line_reads_as_metrics(self):
+        startup = APP + "startup: window=3.00ms renderer=40.00ms boot=0.00ms load=900.50ms sprites=n/a sounds=n/a pack=n/a startup=2.00ms audio=80.00ms first_frame=1100.00ms loaded=1050.00ms boot_frames=0 slice_max=0.00ms"
+        text = physics_log(4) + startup + "\n"
+        log = perf_stats.parse_log(text)
+        self.assertEqual(log.startup["loaded"], 1050.0)
+        self.assertIsNone(log.startup["sprites"], "n/a is not measured")
+        self.assertEqual(log.orphans, 0, "a startup line is the run's, not a frame's")
+        measured = perf_stats.analyze(text, 1, 3, [])["measured"]
+        stats = perf_stats.cpu_stats(measured)["startup"]
+        self.assertEqual(stats["loaded"], {"p50": 1050.0, "p95": 1050.0, "p99": 1050.0, "mean": 1050.0}, "one sample a run")
+        self.assertEqual(stats["boot_frames"]["mean"], 0.0)
+        self.assertNotIn("sprites", stats)
+        # Per-run values, as a verdict reads them.
+        runs = [{"cpu": {"startup": {"loaded": {"mean": value}}}} for value in (1050.0, 1040.0)]
+        self.assertEqual(perf_stats.metric_values({"runs": runs}, "startup.loaded", "mean"), [1050.0, 1040.0])
+        self.assertEqual(perf_stats.cpu_stats(perf_stats.parse_log(physics_log(4)).frames)["startup"], {}, "no line, no startup")
+
     def test_percentiles_are_nearest_rank(self):
         summary = perf_stats.summarize([float(value) for value in range(1, 101)])
         self.assertEqual((summary["p50"], summary["p95"], summary["p99"]), (50.0, 95.0, 99.0))

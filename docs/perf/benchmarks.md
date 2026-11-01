@@ -19,7 +19,7 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 - **Determinism.** Every random choice comes from `Pcg32::seeded(seed)` and dt is pinned, so one build replays one workload. No rendered text depends on wall-clock time. A capture's runs share a digest over the window's `physics:` and `bench:` lines.
 - **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest.
 - **Lean view.** `view.rs` is a culled, unsorted extract over `Position` plus `ViewSprite`. `physics`, `ecs` and `churn` draw through it, so their render cost stays flat as they scale; `gpu` and `particles` use the engine's extracts.
-- **Telemetry.** `counters.rs` logs `bench-config:` once and `bench:` counters every frame, on log target `bench`; a frame's `bench:` line prints in the next frame.
+- **Telemetry.** `counters.rs` logs `bench-config:` once and `bench:` counters every frame, on log target `bench`; a frame's `bench:` line prints in the next frame. The app logs one `startup:` line once loaded and presented (redo 7.9, `StartupTimings`): its phases and milestones in ms, `n/a` for one not measured, which `perf_stats.py` reads as one sample a run of `startup.<field>`.
 - **Engine hook.** `Bench::engine_config` runs before the window opens; `gpu` applies `aa` and `bloom_mips` there unless `TUNGSTEN_RENDER_MSAA`, `TUNGSTEN_RENDER_POST_AA` or `TUNGSTEN_RENDER_BLOOM_MAX_MIPS` is set. The runner clears those variables.
 - **Workload version.** A change to a row's work bumps its `workload_version` in the registry; engine changes never do. Every row is at version 1.
 - **Peak RSS** is reported for every row and judged only between captures of one sitting.
@@ -267,7 +267,7 @@ Each bench guard runs its row's warm-up and a 60-frame window at the configurati
 - **G3 more than 16 lights:** open. `LIGHT_CAP` is 16.
 - **G4 GPU particle simulation:** open.
 - **T1 particle and tween timings:** closed (`D-133`).
-- **T2 a `startup:` line:** open. Window, renderer, manifest, user startup and audio times per capture.
+- **T2 a `startup:` line:** open in part. The line and its `startup.<field>` metrics landed (redo 7.9); the `boot` row that owns them is open.
 - **M1 a counting allocator:** closed (redo 7.3: `CountingAlloc` in test binaries, the counter guards).
 - **Below the calibration band:** open. `physics` (6.07 ms `total` p95 against 14.58 at calibration), `physics-sparse` (3.73 against 10.11), `churn` (4.06 against 11.3) and `particles` (4.92 on 2026-10-04 against 11.6) run under the 8–16 ms band; recalibrating is a workload change; Open proposals. `integrated`'s line is closed: the row is retired (redo 7.3).
 - **RSS growth threshold:** open. Judge growth for `churn` only (32 KiB/s median, 16 KiB/s every run); Open proposals.

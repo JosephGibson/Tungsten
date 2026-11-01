@@ -5152,6 +5152,30 @@ impl core::marker::Unpin for tungsten_core::config::PresentModeConfig
 impl core::marker::UnsafeUnpin for tungsten_core::config::PresentModeConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::PresentModeConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::PresentModeConfig
+#[non_exhaustive] pub struct tungsten_core::config::AssetsConfig
+pub tungsten_core::config::AssetsConfig::hot_reload: core::option::Option<bool>
+pub tungsten_core::config::AssetsConfig::manifest: core::option::Option<std::path::PathBuf>
+impl tungsten_core::config::AssetsConfig
+pub fn tungsten_core::config::AssetsConfig::hot_reload_or(&self, bool) -> bool
+impl core::clone::Clone for tungsten_core::config::AssetsConfig
+pub fn tungsten_core::config::AssetsConfig::clone(&self) -> tungsten_core::config::AssetsConfig
+impl core::cmp::Eq for tungsten_core::config::AssetsConfig
+impl core::cmp::PartialEq for tungsten_core::config::AssetsConfig
+pub fn tungsten_core::config::AssetsConfig::eq(&self, &tungsten_core::config::AssetsConfig) -> bool
+impl core::default::Default for tungsten_core::config::AssetsConfig
+pub fn tungsten_core::config::AssetsConfig::default() -> tungsten_core::config::AssetsConfig
+impl core::fmt::Debug for tungsten_core::config::AssetsConfig
+pub fn tungsten_core::config::AssetsConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::config::AssetsConfig
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::AssetsConfig where tungsten_core::config::AssetsConfig: core::default::Default
+pub fn tungsten_core::config::AssetsConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::AssetsConfig
+impl core::marker::Send for tungsten_core::config::AssetsConfig
+impl core::marker::Sync for tungsten_core::config::AssetsConfig
+impl core::marker::Unpin for tungsten_core::config::AssetsConfig
+impl core::marker::UnsafeUnpin for tungsten_core::config::AssetsConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::AssetsConfig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::AssetsConfig
 #[non_exhaustive] pub struct tungsten_core::config::AudioConfig
 pub tungsten_core::config::AudioConfig::bus_volumes: std::collections::hash::map::HashMap<tungsten_core::audio::AudioBus, f32>
 pub tungsten_core::config::AudioConfig::master_volume: f32
@@ -5177,6 +5201,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::config::AudioConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::AudioConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::AudioConfig
 pub struct tungsten_core::config::Config
+pub tungsten_core::config::Config::assets: tungsten_core::config::AssetsConfig
 pub tungsten_core::config::Config::audio: tungsten_core::config::AudioConfig
 pub tungsten_core::config::Config::display: tungsten_core::display::DisplayConfig
 pub tungsten_core::config::Config::game: tungsten_core::config::GameConfig
@@ -16699,6 +16724,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::component_registry::ComponentR
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::ComponentRegistry
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::ComponentRegistry
 pub struct tungsten_core::Config
+pub tungsten_core::Config::assets: tungsten_core::config::AssetsConfig
 pub tungsten_core::Config::audio: tungsten_core::config::AudioConfig
 pub tungsten_core::Config::display: tungsten_core::display::DisplayConfig
 pub tungsten_core::Config::game: tungsten_core::config::GameConfig

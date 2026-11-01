@@ -102,6 +102,39 @@ impl core::marker::Unpin for tungsten::app::Exiting
 impl core::marker::UnsafeUnpin for tungsten::app::Exiting
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::Exiting
 impl core::panic::unwind_safe::UnwindSafe for tungsten::app::Exiting
+#[non_exhaustive] pub struct tungsten::app::StartupTimings
+pub tungsten::app::StartupTimings::audio: f64
+pub tungsten::app::StartupTimings::boot: f64
+pub tungsten::app::StartupTimings::boot_frames: u32
+pub tungsten::app::StartupTimings::first_frame: core::option::Option<f64>
+pub tungsten::app::StartupTimings::load: f64
+pub tungsten::app::StartupTimings::loaded: f64
+pub tungsten::app::StartupTimings::pack: core::option::Option<f64>
+pub tungsten::app::StartupTimings::renderer: f64
+pub tungsten::app::StartupTimings::slice_max: f64
+pub tungsten::app::StartupTimings::sounds: core::option::Option<f64>
+pub tungsten::app::StartupTimings::sprites: core::option::Option<f64>
+pub tungsten::app::StartupTimings::startup: f64
+pub tungsten::app::StartupTimings::window: f64
+impl core::clone::Clone for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::clone(&self) -> tungsten::app::StartupTimings
+impl core::cmp::PartialEq for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::eq(&self, &tungsten::app::StartupTimings) -> bool
+impl core::default::Default for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::default() -> tungsten::app::StartupTimings
+impl core::fmt::Debug for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::StartupTimings
+impl core::marker::StructuralPartialEq for tungsten::app::StartupTimings
+impl serde_core::ser::Serialize for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for tungsten::app::StartupTimings
+impl core::marker::Send for tungsten::app::StartupTimings
+impl core::marker::Sync for tungsten::app::StartupTimings
+impl core::marker::Unpin for tungsten::app::StartupTimings
+impl core::marker::UnsafeUnpin for tungsten::app::StartupTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::StartupTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::StartupTimings
 pub fn tungsten::app::request_exit(&mut tungsten_core::ecs::world::World)
 pub type tungsten::app::ExtractQuadsFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance>>
 pub type tungsten::app::ExtractSpritesFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>>
@@ -1625,6 +1658,39 @@ impl core::marker::Unpin for tungsten::state::SceneEntity
 impl core::marker::UnsafeUnpin for tungsten::state::SceneEntity
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::SceneEntity
 impl core::panic::unwind_safe::UnwindSafe for tungsten::state::SceneEntity
+#[non_exhaustive] pub struct tungsten::StartupTimings
+pub tungsten::StartupTimings::audio: f64
+pub tungsten::StartupTimings::boot: f64
+pub tungsten::StartupTimings::boot_frames: u32
+pub tungsten::StartupTimings::first_frame: core::option::Option<f64>
+pub tungsten::StartupTimings::load: f64
+pub tungsten::StartupTimings::loaded: f64
+pub tungsten::StartupTimings::pack: core::option::Option<f64>
+pub tungsten::StartupTimings::renderer: f64
+pub tungsten::StartupTimings::slice_max: f64
+pub tungsten::StartupTimings::sounds: core::option::Option<f64>
+pub tungsten::StartupTimings::sprites: core::option::Option<f64>
+pub tungsten::StartupTimings::startup: f64
+pub tungsten::StartupTimings::window: f64
+impl core::clone::Clone for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::clone(&self) -> tungsten::app::StartupTimings
+impl core::cmp::PartialEq for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::eq(&self, &tungsten::app::StartupTimings) -> bool
+impl core::default::Default for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::default() -> tungsten::app::StartupTimings
+impl core::fmt::Debug for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::StartupTimings
+impl core::marker::StructuralPartialEq for tungsten::app::StartupTimings
+impl serde_core::ser::Serialize for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for tungsten::app::StartupTimings
+impl core::marker::Send for tungsten::app::StartupTimings
+impl core::marker::Sync for tungsten::app::StartupTimings
+impl core::marker::Unpin for tungsten::app::StartupTimings
+impl core::marker::UnsafeUnpin for tungsten::app::StartupTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::StartupTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::StartupTimings
 pub struct tungsten::StateContext<'a>
 pub tungsten::StateContext::state_id: tungsten::state::StateId
 pub tungsten::StateContext::world: &'a mut tungsten_core::ecs::world::World

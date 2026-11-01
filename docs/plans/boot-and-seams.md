@@ -1,6 +1,6 @@
-# Boot loading, sprite sheets, sound reload and the small seams (boot-and-seams) — draft
+# Boot loading, sprite sheets, sound reload and the small seams (boot-and-seams) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** The second of redo 7.9's two plans (phase 7's Step 7 and §2.8; the redo's 7.9 row and §5.4): the window shows a boot group and its progress while the rest of the assets load in main-thread slices, measured first by a startup line (T2) and after by a `boot` row; sprite sheets with anchors; sounds that hot reload; voices with pan, buses that duck, loops that follow their entities and music per state; animation rates, one-shot clips that end their entity and frame sounds; particles with depth, run-time control, start colours, clips, stretch, surface stops, attractors and their emitters' states; sprites that flip about their anchor with mirrored normals, lit sprites that flash, unlit sprites; tile layers among sprites, tinted and unlit; extract slots under and over the base's tiles; repeating backdrops; fragment-only materials and a stock glow; flat quads, segments, beams and public draw helpers; text outlines and shadows; prefab sprite variants; the manifest and hot reload from `Config`; sprite metadata in the headless harness. It lands Step 7's other 30 rows (§2.1).
 - **non-goals:**
   - 01 on these systems (7.13): its sheets, anchors, loops, music, particles, flips, extracts, materials, labels, variants and sprite mocks; this plan changes 01 only through its shell copy (Q7).
