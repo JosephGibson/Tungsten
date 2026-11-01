@@ -1690,6 +1690,35 @@ fn a_new_materials_resource_restamps_the_tiles() {
     }
 }
 
+#[test]
+fn a_nan_material_restamps_the_tiles_once() {
+    // The cache compares the World's materials with the ones it resolved
+    // against; a NaN coefficient in code-built materials, equal to nothing,
+    // once made every step see new materials and restamp the tiles.
+    use crate::physics::{PhysicsMaterial, PhysicsMaterials};
+    let mut world = seed_world();
+    world.insert_resource(PhysicsMaterials::new([(
+        "mud".to_owned(),
+        PhysicsMaterial {
+            friction: f32::NAN,
+            ..Default::default()
+        },
+    )]));
+    spawn_map(
+        &mut world,
+        "floor",
+        Vec2::new(0.0, 90.0),
+        8,
+        vec![vec![0; 8]],
+    );
+    physics_step(&mut world);
+    let version = world.resource::<PhysicsBuffers>().tiles_version();
+    for _ in 0..3 {
+        physics_step(&mut world);
+    }
+    assert_eq!(world.resource::<PhysicsBuffers>().tiles_version(), version);
+}
+
 /// How far a box of friction 0.5 launched at 300 px/s along a floor of
 /// friction 0.5 slides under gravity 900 before it stops: a static box's
 /// top, or a row of tiles whose material `stone` has friction 0.5.
