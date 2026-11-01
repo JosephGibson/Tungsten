@@ -6247,6 +6247,94 @@ fn a_body_leaving_a_sleeper_ends_their_contact() {
     assert!(is_sleeping(&world, sleeper), "the sleeper never woke");
 }
 
+/// The ends the record sends over 10 steps for a crate (half 8) resting on a
+/// static box floor or a tile row (top y 90), spawned before or after it,
+/// turned static after `settle` steps and then `change`d (0 moved away, 1
+/// shrunk, 2 its floor moved away), and the begins it owes them for.
+fn frozen_crate_ends(
+    tiles: bool,
+    crate_first: bool,
+    settle: usize,
+    change: u8,
+) -> (Vec<ContactEnded>, Vec<ContactBegan>) {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let spawn_crate = |world: &mut World| {
+        let collider = Collider::aabb(Vec2::splat(8.0));
+        spawn_body(
+            world,
+            RigidBody::dynamic(),
+            collider,
+            Vec2::new(0.0, 81.0),
+            Vec2::ZERO,
+        )
+    };
+    let early = crate_first.then(|| spawn_crate(&mut world));
+    let floor = if tiles {
+        spawn_map(
+            &mut world,
+            "floor",
+            Vec2::new(-512.0, 90.0),
+            64,
+            vec![vec![0; 64]],
+        );
+        None
+    } else {
+        let collider = Collider::aabb(Vec2::new(200.0, 10.0));
+        Some(spawn_static(&mut world, collider, Vec2::new(0.0, 100.0)))
+    };
+    let crate_ = early.unwrap_or_else(|| spawn_crate(&mut world));
+    let (began, ended) = step_contacts(&mut world, settle);
+    assert!(!began.is_empty() && ended.is_empty(), "{began:?} {ended:?}");
+    world.get_mut::<RigidBody>(crate_).unwrap().kind = BodyKind::Static;
+    let (b, e) = step_contacts(&mut world, 2);
+    assert!(
+        b.is_empty() && e.is_empty(),
+        "the freeze alone sent {b:?} {e:?}"
+    );
+    match change {
+        0 => world.get_mut::<Position>(crate_).unwrap().0 = Vec2::new(0.0, -500.0),
+        1 => *world.get_mut::<Collider>(crate_).unwrap() = Collider::aabb(Vec2::splat(2.0)),
+        _ => world.get_mut::<Position>(floor.unwrap()).unwrap().0 = Vec2::new(0.0, 700.0),
+    }
+    let (_, ended) = step_contacts(&mut world, 10);
+    (ended, began)
+}
+
+#[test]
+fn a_body_turned_static_ends_its_contacts_once_apart() {
+    // A crate resting on a floor, turned static: no substep solves its
+    // pairs, so the record once kept them touching while it or its floor
+    // moved away or it shrank, and sent no `ContactEnded`. Asleep or awake
+    // at the freeze, each begun pair ends once its sides no longer overlap.
+    for tiles in [false, true] {
+        for crate_first in [false, true] {
+            for settle in [60, 6] {
+                for change in 0..3u8 {
+                    if tiles && change == 2 {
+                        continue;
+                    }
+                    let (ended, began) = frozen_crate_ends(tiles, crate_first, settle, change);
+                    let owed: Vec<ContactEnded> = began
+                        .iter()
+                        .map(|b| {
+                            let end = ContactEnded::new(b.a, b.b);
+                            match b.tile {
+                                Some(tile) => end.with_tile(tile),
+                                None => end,
+                            }
+                        })
+                        .collect();
+                    assert_eq!(
+                        ended, owed,
+                        "tiles {tiles}, crate first {crate_first}, settle {settle}, change {change}"
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// The ends and begins of a ball's floor contact over 30 steps after a
 /// striker closing at 240 px/s from `gap` px off wakes it, the ball asleep
 /// on a floor wide enough that it never leaves it, at 1/60 s and gravity

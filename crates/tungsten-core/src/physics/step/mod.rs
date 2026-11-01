@@ -2064,6 +2064,11 @@ fn kinematic_state(proxy: &Proxy, layers: Layers) -> u64 {
     }) | 1
 }
 
+/// Whether a proxy is static or a tile: neither dynamic nor kinematic.
+fn fixed(proxy: &Proxy) -> bool {
+    !proxy.is_dynamic && !proxy.kinematic
+}
+
 /// Whether a proxy cannot move in the step: static, a tile, asleep through
 /// it, or a kinematic body at rest.
 fn immovable(proxy: &Proxy) -> bool {
@@ -2258,9 +2263,10 @@ impl ContactRecord {
 
     /// The step's end: a pair it touched and the last did not begins; one it
     /// did not touch ends, unless its sides are both immovable through the
-    /// step and neither changed, or they still overlap, or a side is one the
-    /// last substep woke, sorted in `woken`, and they still overlap. Begins
-    /// come in first-touch order, ends in the record's.
+    /// step and neither changed (two static or tile sides: while they
+    /// overlap), or they still overlap, or a side is one the last substep
+    /// woke, sorted in `woken`, and they still overlap. Begins come in
+    /// first-touch order, ends in the record's.
     #[allow(clippy::too_many_arguments)]
     fn finish(
         &mut self,
@@ -2317,7 +2323,13 @@ impl ContactRecord {
                         ends(entry, ended);
                         return false;
                     }
-                } else if (state(a), state(b)) != (entry.a_state, entry.b_state) && !overlaps() {
+                } else if ((state(a), state(b)) != (entry.a_state, entry.b_state)
+                    || fixed(&proxies[a]) && fixed(&proxies[b]))
+                    && !overlaps()
+                {
+                    // Two fixed sides, a body turned static against its
+                    // floor, keep touching while they overlap: no state of
+                    // theirs tells a move, and no substep solves them.
                     ends(entry, ended);
                     return false;
                 }
