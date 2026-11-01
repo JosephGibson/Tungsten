@@ -392,6 +392,23 @@ fn slope_contacts_clamp_at_a_masked_endpoint() {
 }
 
 #[test]
+fn a_zero_height_box_meets_a_slope_face() {
+    // A box of half (4, 0) 1.414 px over a 45 bl cell's face: at a zero
+    // extent the sum's first edge has zero length, and its 0 / 0 once
+    // seeded the nearest-feature search, losing the contact or reading a
+    // false deep one under a masked side.
+    let poly = polygon(2, Vec2::splat(8.0), HALF);
+    for mask in [FACE_ALL, FACE_ALL & !FACE_BOTTOM, FACE_ALL & !FACE_RIGHT] {
+        let contact = box_contact(Vec2::new(10.0, 4.0), Vec2::new(4.0, 0.0), &poly, mask, 4.0);
+        assert!(
+            contact.is_some_and(|c| c.normal.abs_diff_eq(poly.normal, 1e-4)
+                && (c.penetration + std::f32::consts::SQRT_2).abs() < 1e-3),
+            "mask {mask:#06b}: {contact:?}"
+        );
+    }
+}
+
+#[test]
 fn a_wide_cells_slope_face_is_never_read_as_a_side() {
     // A 2:1 low cell 64 x 16 has a face normal of (-0.124, -0.992), past the
     // 0.99 an axis side's test once took, so its face read as the top and

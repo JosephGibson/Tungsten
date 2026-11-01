@@ -255,10 +255,15 @@ pub(in crate::physics) fn box_contact(
             penetration: -separation(k),
         });
     }
-    // The nearest feature of the sum: an edge's inside or a vertex.
+    // The nearest feature of the sum: an edge's inside or a vertex. A box
+    // of zero extent leaves an edge of zero length, whose vertex its
+    // neighbours' ends reach.
     let mut best: Option<(f32, usize, f32)> = None;
     for k in 0..5 {
         let (p, q) = (vertices[k], vertices[(k + 1) % 5]);
+        if (q - p).length_squared() == 0.0 {
+            continue;
+        }
         let along = (center - p).dot(q - p) / (q - p).length_squared();
         let t = along.clamp(0.0, 1.0);
         let distance = center.distance(p + (q - p) * t);

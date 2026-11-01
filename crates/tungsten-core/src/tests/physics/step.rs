@@ -6883,6 +6883,35 @@ fn a_box_slides_down_a_frictionless_slope() {
 }
 
 #[test]
+fn a_fast_flat_box_stops_on_a_slope_over_a_floor() {
+    // A 45 bl cell (x 16..32, y 64..80) over a floor row whose top under it
+    // is masked. A box of half (4, 0), or (4, 1), falling onto the face at
+    // 2,400 or 4,800 px/s: the safety net skips a body of zero extent, so
+    // the slope's speculative contact is all that stops it, and it does.
+    let rows = ["....", "....", "....", "....", ".b..", "####"];
+    for half in [Vec2::new(4.0, 0.0), Vec2::new(4.0, 1.0)] {
+        for speed in [2_400.0, 4_800.0] {
+            let mut world = one_way_world(slope_map(&rows));
+            let body = spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                Collider::aabb(half),
+                Vec2::new(26.0, 20.0),
+                Vec2::new(0.0, speed),
+            );
+            for _ in 0..20 {
+                physics_step(&mut world);
+            }
+            let at = world.get::<Position>(body).unwrap().0;
+            assert!(
+                !(at.y > 96.0 && at.x > 0.0 && at.x < 64.0),
+                "half {half} at {speed} px/s passed through the cells to {at}"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_body_lands_on_a_wide_cells_slope_face() {
     // The outline test's 2:1 floor on cells `width` x 16: row 0 [., .,
     // 2:1 low, 2:1 high], row 1 [low, high, #, #]. A box or circle of half 4
