@@ -56,7 +56,7 @@ No break ledger, no level C or its API critique, no rule that prefab and scene f
 ## Releases
 
 - Cut when something is worth shipping, not per change. A release per milestone forced a version, a changelog section and a decision entry onto every stop.
-- `just release minor '<summary>'` ([`scripts/release.py`](../scripts/release.py)) refuses a dirty tree, the wrong branch and a long subject, then cuts, runs the checks in order and commits the cut; the owner's block tags, pushes the tag, starts the next branch and opens the pull request ([release guide](releases.md), `D-227`). Run by hand, the chain's ten checks were the step a release could skip or run on a stale cut.
+- `just release minor '<summary>'` ([`scripts/release.py`](../scripts/release.py)) refuses a dirty tree, the wrong branch, a long subject and a HEAD whose CI run didn't pass (`D-232`), then cuts, runs the checks in order and commits the cut; the owner's block tags, pushes the tag, starts the next branch and opens the pull request ([release guide](releases.md), `D-227`). Run by hand, the chain's ten checks were the step a release could skip or run on a stale cut; with no step reading CI, three tags in a row named commits it had failed.
 - A change to `release.yml`, or to `release.py`'s packaging, is rehearsed (`just release rehearsal`, then the owner's tag push) before the next final tag, since a final tag publishes on its push with no merge left to stop it.
 - A minor or major release runs a benchmark sitting against the previous tag before its cut; plans run none of their own, their counter guards being the check (`D-226`). Per-milestone sittings cost each plan a quiet hour and caught structural costs late, and a release-to-release sitting still dates any regression.
 

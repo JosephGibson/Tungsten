@@ -15,11 +15,14 @@
                       lines. `just release minor` also refreshes Cargo.lock.
   run KIND [SUMMARY]  `just release` (D-227). `minor`: on the branch named for the next
                       minor after the newest vX.Y.Z tag on HEAD's history, a clean tree
-                      and a subject of 72 characters at most, the docs ratchet, the cut
-                      and the lock refresh, then CHECKS in order; the four cut files are
-                      committed as `chore(release): X.Y.Z SUMMARY` and the preflight
-                      prints the agent's push and the owner's block. A failed check
-                      leaves the cut uncommitted, and a rerun resumes at the checks.
+                      and a subject of 72 characters at most, CI's newest run on HEAD,
+                      the pushed branch tip, passed (waited for while it runs, D-232),
+                      then the docs ratchet, the cut and the lock refresh, then CHECKS
+                      in order; the four cut files are committed as
+                      `chore(release): X.Y.Z SUMMARY` and the preflight prints the
+                      agent's push and the owner's block. A failed check leaves the
+                      cut uncommitted, and a rerun asks CI again and resumes at the
+                      checks.
                       `rehearsal`: a unique v0.0.0-test.YYYYMMDD.gSHA on HEAD, checked,
                       and the preflight's rehearsal block; no cut or commit. Other kinds
                       wait for the redo's 9.8. --dry-run prints the chain, writing nothing.
@@ -84,6 +87,8 @@ LOCK = ("cargo", "update", "--workspace", "--offline")
 CHECKS = (("just", "check"), ("just", "ctx"), ("just", "repo-check"), ("just", "api-check"),
           ("just", "script-test"), ("just", "smoke"), ("just", "perf", "counters"), ("just", "notices"),
           ("just", "template-check"), ("git", "diff", "--check"))
+# The chain's first step, before the cut and again at a resume (D-232).
+CI_GATE = "ci.yml's newest run on HEAD, the pushed branch tip, passed (D-232)"
 UNRELEASED = "## [Unreleased]"
 UNRELEASED_RE = re.compile(r"^## \[Unreleased\][ \t]*$", re.M)
 RELEASE_RE = re.compile(r"^## \[([^\]]*)\] - (\d{4}-\d{2}-\d{2})$", re.ASCII)
@@ -386,16 +391,37 @@ def run_step(root, command):
     return subprocess.run(command, cwd=root).returncode == 0
 
 
-def run_preflight(root, version, rehearsal=False):
-    """release-preflight.py on VERSION against origin's push destination; its exit code."""
+def load_preflight():
+    """release-preflight.py, whose file name isn't a module name."""
     spec = importlib.util.spec_from_file_location("release_preflight", Path(__file__).with_name("release-preflight.py"))
     pre = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(pre)
+    return pre
+
+
+def run_preflight(root, version, rehearsal=False):
+    """release-preflight.py on VERSION against origin's push destination; its exit code."""
+    pre = load_preflight()
     repo = pre.github_repository(git(root, "remote", "get-url", "--push", "origin"))
     return pre.main([version, "--repo", repo, "--root", str(root), *(["--rehearsal"] if rehearsal else [])])
 
 
-def release_run(root, kind, summary=None, dry_run=False, date=None, step=run_step, preflight=run_preflight):
+def run_ci_gate(root):
+    """release-preflight.py's CI gate on HEAD, origin's tip of the checked-out branch (D-232); True when
+    CI passed there."""
+    pre = load_preflight()
+    try:
+        repo = pre.github_repository(git(root, "remote", "get-url", "--push", "origin"))
+        errors = pre.ci_gate(root, repo, "origin", git(root, "branch", "--show-current"), git(root, "rev-parse", "HEAD"))
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as exc:
+        errors = [f"the CI lookup failed: {exc}"]
+    for error in errors:
+        print(f"ERROR: {error}", file=sys.stderr)
+    return not errors
+
+
+def release_run(root, kind, summary=None, dry_run=False, date=None, step=run_step, preflight=run_preflight,
+                ci=run_ci_gate):
     """`just release KIND`; returns errors. Refuses before writing anything (D-227)."""
     if kind not in KINDS:
         return [f"release kind {kind!r} isn't switched on: `minor` cuts the next minor and `rehearsal` checks a "
@@ -454,6 +480,9 @@ def release_run(root, kind, summary=None, dry_run=False, date=None, step=run_ste
         return True
 
     chain = []
+    if stage in ("cut", "checks"):
+        # CI ran the tip this cuts on Windows and at another checkout path, which the chain can't (D-232).
+        chain.append((CI_GATE, lambda: ci(root)))
     if stage == "cut":
         chain += [(shlex.join(RATCHET), lambda: step(root, RATCHET)),
                   (f"release.py cut {version}", cut_step),
@@ -473,6 +502,9 @@ def release_run(root, kind, summary=None, dry_run=False, date=None, step=run_ste
         return []
     for label, action in chain:
         if not action():
+            if label == CI_GATE:
+                return [f"CI hasn't passed on HEAD; {'nothing is cut' if stage == 'cut' else 'the cut stays uncommitted'}"
+                        f": fix it, push and rerun `just release minor {shlex.quote(summary)}`"]
             if label.startswith(("just docs-ratchet", "release.py cut")):
                 return [f"{label} failed; nothing is committed"]
             if label.startswith("release-preflight"):

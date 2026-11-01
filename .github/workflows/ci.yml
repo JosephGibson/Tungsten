@@ -1,7 +1,7 @@
 # CPU-only checks shared with local work (see AGENTS.md), and the CPU tests on
 # Windows (W7a, D-121). GPU, audio and perf checks need real hardware and stay
 # local; this workflow sets no performance thresholds and changes no branch
-# protection.
+# protection. `just release minor` waits for its run on HEAD to pass (D-232).
 name: CI
 
 on:

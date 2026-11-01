@@ -3,7 +3,8 @@
 
 Requires git, authenticated gh and network access. Use release.py check for
 offline/shallow-CI checks. A pushed tag publishes; a version branch's pull request
-is main's merge and publishes nothing. See docs/releases.md (D-074, D-227).
+is main's merge and publishes nothing. `ci_gate`, as read-only, is `just release
+minor`'s first step (D-232). See docs/releases.md (D-074, D-227).
 """
 
 import argparse
@@ -13,10 +14,17 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 import release
+
+# `ci_gate` (D-232): seconds between looks, how long a pushed commit's run may take to
+# appear, and the longest wait for one to finish (the jobs time out at 60 and 90 minutes).
+CI_POLL = 30
+CI_APPEAR = 3 * 60
+CI_WAIT = 2 * 60 * 60
 
 
 def run(root, *args, optional=False):
@@ -66,6 +74,49 @@ def github_repository(url):
 def is_ancestor(root, older, newer):
     """False also when `older` hasn't been fetched."""
     return run(root, "git", "merge-base", "--is-ancestor", older, newer, optional=True).returncode == 0
+
+
+def ci_runs(root, repo, sha):
+    """ci.yml's push and manual runs on SHA, newest first. A pull request's run names its head
+    commit but normally tests a synthetic merge commit, so it doesn't count."""
+    found = api(root, f"repos/{repo}/actions/workflows/ci.yml/runs?head_sha={sha}&per_page=100")
+    runs = [r for r in found["workflow_runs"] if r["head_sha"] == sha and r["event"] in ("push", "workflow_dispatch")]
+    return sorted(runs, key=lambda r: r["id"], reverse=True)
+
+
+def ci_gate(root, repo, remote, branch, sha, sleep=time.sleep, clock=time.monotonic):
+    """Errors unless ci.yml's newest run on SHA, the pushed tip of BRANCH, passed (D-232); cancelled
+    runs don't count. Waits while that run is queued or running, and for a pushed commit's run to appear."""
+    url = git(root, "remote", "get-url", "--push", remote)
+    tip = git(root, "ls-remote", "--", url, f"refs/heads/{branch}").split("\t")[0] or None
+    if tip != sha:
+        return [f"{remote}/{branch} is at {tip[:12] if tip else 'nothing'}, not HEAD {sha[:12]}: push the branch "
+                f"(`git push {remote} {branch}`) so CI checks the commit the release cuts on"]
+    start, waiting = clock(), None
+    while True:
+        run = next((r for r in ci_runs(root, repo, sha) if r["conclusion"] != "cancelled"), None)
+        if run and run["status"] == "completed":
+            break
+        elapsed = clock() - start
+        if run is None and elapsed >= CI_APPEAR:
+            return [f"no CI run on {sha[:12]} that wasn't cancelled, {CI_APPEAR // 60} minutes after its push: the "
+                    f"owner starts one (`gh workflow run ci.yml --repo {repo} --ref {branch}`)"]
+        if elapsed >= CI_WAIT:
+            return [f"CI run {run['id']} on {sha[:12]} is still {run['status']} after {CI_WAIT // 60} minutes: "
+                    f"{run['html_url']}"]
+        if run and waiting != run["id"]:
+            waiting = run["id"]
+            print(f"CI run {run['id']} on {sha[:12]} is {run['status']}; waiting for it: {run['html_url']}", flush=True)
+        sleep(CI_POLL)
+    if run["conclusion"] == "success":
+        print(f"CI passed on {sha[:12]}: {run['html_url']}")
+        return []
+    jobs = api(root, f"repos/{repo}/actions/runs/{run['id']}/jobs?filter=latest&per_page=100")["jobs"]
+    failed = [job["name"] for job in jobs if job["conclusion"] not in ("success", "skipped")]
+    return [f"CI run {run['id']} on {sha[:12]} concluded {run['conclusion']}"
+            + (f" ({', '.join(failed)})" if failed else "")
+            + f": {run['html_url']}; fix it and push, or the owner reruns a transient failure "
+            f"(`gh run rerun {run['id']} --repo {repo} --failed`), then run the release again"]
 
 
 def foreign_commits(root, sha, base_tip):
@@ -196,12 +247,7 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
     matches = [r for r in runs["workflow_runs"] if r["head_sha"] == sha and r["conclusion"] != "skipped"
                and r["head_branch"] == tag and r["event"] in ("push", "workflow_dispatch")]
     matches.sort(key=lambda r: r["id"], reverse=True)
-    ci = api(root, f"repos/{repo}/actions/workflows/ci.yml/runs?head_sha={sha}&per_page=100")
-    # pull_request head_sha names the contributor commit, but checkout normally
-    # tests a synthetic merge commit. Only report runs that check out this SHA.
-    checks = [r for r in ci["workflow_runs"] if r["head_sha"] == sha
-              and r["event"] in ("push", "workflow_dispatch")]
-    checks.sort(key=lambda r: r["id"], reverse=True)
+    checks = ci_runs(root, repo, sha)
     info.append("CI (informational): " + (f"{checks[0]['html_url']} — {checks[0]['conclusion'] or checks[0]['status']}"
                                           if checks else "no run for this commit"))
     if not remote_tag and tip != sha:

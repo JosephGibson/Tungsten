@@ -937,7 +937,9 @@ class Run(unittest.TestCase):
         self.git("init", "-q", "--bare", str(base / "origin.git"))
         self.git("remote", "add", "origin", str(base / "origin.git"))
         self.git("switch", "-q", "-c", "0.27")
-        self.steps, self.preflights, self.failing = [], [], None
+        self.steps, self.preflights, self.failing, self.ci_passes = [], [], None, True
+
+    CI = ("ci",)  # the CI gate's place among the steps
 
     def git(self, *args):
         return rel.git(self.root, *args)
@@ -952,10 +954,14 @@ class Run(unittest.TestCase):
         self.preflights.append((version, rehearsal))
         return 0
 
+    def ci(self, root):
+        self.steps.append(self.CI)
+        return self.ci_passes
+
     def release(self, kind, summary=None, dry_run=False):
         out = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-            errors = rel.release_run(self.root, kind, summary, dry_run, DATE, self.step, self.preflight)
+            errors = rel.release_run(self.root, kind, summary, dry_run, DATE, self.step, self.preflight, self.ci)
         return errors, out.getvalue()
 
     def snapshot(self):
@@ -965,7 +971,7 @@ class Run(unittest.TestCase):
     def test_minor_cuts_checks_and_commits_its_four_paths(self):
         errors, out = self.release("minor", "lighting and tools")
         self.assertEqual(errors, [], out)
-        self.assertEqual(self.steps, [rel.RATCHET, rel.LOCK, *rel.CHECKS])
+        self.assertEqual(self.steps, [self.CI, rel.RATCHET, rel.LOCK, *rel.CHECKS])
         self.assertEqual(self.git("log", "-1", "--format=%s"), "chore(release): 0.27.0 lighting and tools")
         self.assertEqual(sorted(self.git("show", "--name-only", "--format=", "HEAD").split()),
                          sorted(rel.CUT_PATHS))
@@ -1019,9 +1025,24 @@ class Run(unittest.TestCase):
         errors, out = self.release("minor", "lighting")
         self.assertEqual(errors, [], out)
         self.assertIn("the cut is in place; resuming at the checks", out)
-        self.assertEqual(self.steps, list(rel.CHECKS))
+        self.assertEqual(self.steps, [self.CI, *rel.CHECKS])
         self.assertEqual(self.git("log", "-1", "--format=%s"), "chore(release): 0.27.0 lighting")
         self.assertEqual(self.git("rev-parse", "HEAD~1"), head)
+
+    def test_ci_that_hasnt_passed_on_head_refuses_before_any_write_and_again_at_a_resume(self):
+        before = self.snapshot()
+        self.ci_passes = False
+        errors, _ = self.release("minor", "lighting")
+        self.assertIn("CI hasn't passed on HEAD; nothing is cut", " ".join(errors))
+        self.assertEqual((self.snapshot(), self.steps, self.preflights), (before, [self.CI], []))
+        # A cut a failed check left in place asks CI again before the checks resume.
+        self.ci_passes, self.failing = True, ("just", "smoke")
+        self.release("minor", "lighting")
+        self.ci_passes, self.failing, self.steps = False, None, []
+        errors, _ = self.release("minor", "lighting")
+        self.assertIn("CI hasn't passed on HEAD; the cut stays uncommitted", " ".join(errors))
+        self.assertEqual((self.steps, self.preflights), ([self.CI], []))
+        self.assertEqual(sorted(rel.changed_paths(self.root)), sorted(rel.CUT_PATHS))
 
     def test_a_dirty_tree_outside_the_cut_is_refused(self):
         (self.root / "README.md").write_text("# Engine, edited\n")
@@ -1034,6 +1055,7 @@ class Run(unittest.TestCase):
         errors, out = self.release("minor", dry_run=True)
         self.assertEqual(errors, [], out)
         self.assertIn("Release 0.27.0 (minor)", out)
+        self.assertIn(f"  {rel.CI_GATE}\n", out)
         for command in (rel.RATCHET, rel.LOCK, *rel.CHECKS):
             self.assertIn(f"  {' '.join(command)}\n", out)
         self.assertIn("chore(release): 0.27.0 <summary>", out)

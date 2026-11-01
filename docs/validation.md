@@ -1,6 +1,6 @@
 # Validation selection
 
-This guide owns the detailed change-to-check matrix (`D-140`). [AGENTS](../AGENTS.md) owns repository constraints; the [1.0 workflow](plans/1.0/workflow.md#5-what-every-milestone-owes-before-its-release) and [release guide](releases.md#ordinary-release) add their milestone/release gates. CI is informational and CPU-only (`D-070`); local hardware evidence remains necessary when the change requires it.
+This guide owns the detailed change-to-check matrix (`D-140`). [AGENTS](../AGENTS.md) owns repository constraints; the [1.0 workflow](plans/1.0/workflow.md#5-what-every-milestone-owes-before-its-release) and [release guide](releases.md#ordinary-release) add their milestone/release gates. CI is informational and CPU-only (`D-070`), blocking only `just release minor`'s cut (`D-232`); local hardware evidence remains necessary when the change requires it.
 
 ## Edit loop and handoff
 
