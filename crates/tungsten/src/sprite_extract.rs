@@ -327,6 +327,22 @@ fn view_bounds(world: &World) -> Option<(Vec2, Vec2)> {
     Some(camera.visible_world_aabb(width as f32, height as f32))
 }
 
+/// Where an anchored sprite's quad starts from its entity's position (redo
+/// 7.9): `R(c − a) − (c − a) − a`, `a` the anchor scaled with the sprite and
+/// `c` the quad's centre. The anchor lands on the position, and the shader's
+/// turn about the centre turns the quad about the anchor.
+#[inline]
+fn anchor_offset(anchor: [f32; 2], scale: Vec2, size: Vec2, rotation: f32) -> Vec2 {
+    let anchor = Vec2::from(anchor) * scale;
+    let arm = size * 0.5 - anchor;
+    let turned = if rotation == 0.0 {
+        arm
+    } else {
+        Vec2::from_angle(rotation).rotate(arm)
+    };
+    turned - arm - anchor
+}
+
 /// Whether a quad at top-left `position` with `size` (either sign) lies wholly
 /// outside `view`. A rotated quad turns about its centre, so its bound is the
 /// square of half-side `(|w| + |h|) / 2` there, which covers every angle. A
@@ -451,7 +467,7 @@ fn extract_into(
                 }
             };
 
-            let position = match parallax {
+            let mut position = match parallax {
                 Some(layer) => {
                     parallax_world_position(t.position, layer.scroll_factor, camera_position)
                 }
@@ -461,6 +477,9 @@ fn extract_into(
                 asset.width as f32 * t.scale.x,
                 asset.height as f32 * t.scale.y,
             );
+            if let Some(anchor) = asset.anchor {
+                position += anchor_offset(anchor, t.scale, size, t.rotation);
+            }
             let order = painter_order(s.z_order, e.id());
             in_painter_order &= order >= last_order;
             last_order = order;

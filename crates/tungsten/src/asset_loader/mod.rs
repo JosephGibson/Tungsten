@@ -22,7 +22,9 @@ mod prefab;
 mod reload;
 mod scene;
 
-pub use atlas::{AtlasRegistry, load_sprites, rebuild_atlas_for_filter, reload_sprite};
+pub use atlas::{
+    AtlasRegistry, load_sprites, rebuild_atlas_for_filter, reload_sprite, reload_sprite_file,
+};
 pub use prefab::{load_prefabs, reload_data, reload_prefab};
 pub(crate) use reload::reload_json_files;
 pub use reload::{

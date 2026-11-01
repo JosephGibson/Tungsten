@@ -357,3 +357,48 @@ fn a_games_asset_check_finds_the_manifest_sprites() {
         errors[0].message
     );
 }
+
+#[test]
+fn check_reports_a_sheet_whose_frame_does_not_fit() {
+    let game = Folder::new();
+    game.png("assets/walk.png", 32);
+    game.png("assets/walk_n.png", 16);
+    let root = game.write(
+        "assets/manifest.json",
+        r#"{"sheets": {
+            "walk": {"path": "walk.png", "frame": [16, 16]},
+            "lit": {"path": "walk.png", "frame": [16, 16], "count": 2, "normal_map": "walk_n.png"},
+            "wide": {"path": "walk.png", "frame": [48, 16]}
+        }}"#,
+    );
+    let mut app = game_world();
+    let errors = check_files(app.world_mut(), &[root], &game.0);
+    let report: Vec<String> = errors
+        .iter()
+        .map(|e| format!("{}: {}", e.file.display(), e.message))
+        .collect();
+    assert_eq!(errors.len(), 2, "{report:#?}");
+    assert!(
+        report
+            .iter()
+            .any(|line| line.starts_with("assets/manifest.json: ")
+                && line.contains("sheet 'wide' is invalid")
+                && line.contains("larger than its image (32x32)")),
+        "{report:#?}"
+    );
+    // The sheet's normal map is cut as the image is, so it must match it.
+    assert!(
+        report
+            .iter()
+            .any(|line| line.starts_with("assets/walk_n.png: ") && line.contains("normal_map")),
+        "{report:#?}"
+    );
+    // Each frame that fits registers at its cell's size.
+    let sprites = app.world_mut().resource::<AssetRegistry>();
+    for n in 0..4 {
+        let frame = sprites.get_sprite(&format!("walk_{n}")).expect("a frame");
+        assert_eq!((frame.width, frame.height), (16, 16));
+        assert_eq!(frame.rect, Some([n % 2 * 16, n / 2 * 16, 16, 16]));
+    }
+    assert!(sprites.get_sprite("wide_0").is_none());
+}

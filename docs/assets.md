@@ -6,7 +6,8 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 
 | Type | Location | Section | Required |
 | --- | --- | --- | --- |
-| Sprite | `assets/sprites/` | `sprites` | ID, filter `nearest`/`linear`; optional `normal_map`, `emissive_mask`, `nine_slice` (`[left, top, right, bottom]` in source pixels, for UI images; `D-148`) |
+| Sprite | `assets/sprites/` | `sprites` | ID, filter `nearest`/`linear`; optional `normal_map`, `emissive_mask`, `nine_slice` (`[left, top, right, bottom]` in source pixels, for UI images; `D-148`) and `anchor` (`[x, y]` in source pixels: the point drawn at the entity's position, scaled with it and turned about; unset, the sprite draws from its top-left and turns about its centre) |
+| Sheet | `assets/sprites/` | `sheets` | ID, `path` (a PNG), `frame` (a cell's `[width, height]`); optional `count` (the first cells; every whole cell by default), `filter`, `normal_map` and `emissive_mask` (the image's size, cut as it is) and `anchor` (in a frame's pixels); its cells, left to right then top to bottom, register as sprites `<sheet>_<n>` from 0, which animations and prefabs name as sprites; a frame ID another entry takes, a `count` past the cells or a `frame` larger than the image fails the load |
 | Animation | `assets/animations/` | `animations` | ID; sprite IDs must exist |
 | Font | `assets/fonts/<Fam>/` | `fonts` | ID |
 | Font family | manifest only | `font_families` | family ID, `faces` (`fonts` IDs) (`D-115`) |

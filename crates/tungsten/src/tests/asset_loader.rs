@@ -1367,3 +1367,92 @@ fn the_loader_inserts_physics_names_and_a_reload_replaces_them() {
     assert_eq!(materials.get("mud").map(|mud| mud.friction), Some(0.9));
     assert_eq!(materials.version(), 1);
 }
+
+/// Four 16 × 16 cells, each one colour, as a 32 × 32 sheet at `dir/walk.png`
+/// and as four files `dir/walk_<n>.png`; the colour of cell `n`.
+fn write_walk_frames(dir: &Path, shade: u8) -> [[u8; 4]; 4] {
+    let colours = [
+        [shade, 0, 0, 255],
+        [0, shade, 0, 255],
+        [0, 0, shade, 255],
+        [shade, shade, 0, 128],
+    ];
+    let mut sheet = image::RgbaImage::new(32, 32);
+    for (n, colour) in colours.iter().enumerate() {
+        let (cx, cy) = (n as u32 % 2 * 16, n as u32 / 2 * 16);
+        for y in 0..16 {
+            for x in 0..16 {
+                sheet.put_pixel(cx + x, cy + y, image::Rgba(*colour));
+            }
+        }
+        image::RgbaImage::from_pixel(16, 16, image::Rgba(*colour))
+            .save(dir.join(format!("walk_{n}.png")))
+            .unwrap();
+    }
+    sheet.save(dir.join("walk.png")).unwrap();
+    colours
+}
+
+#[test]
+fn a_sheets_frames_pack_as_their_own_images_would() {
+    let dir = tempdir();
+    write_walk_frames(&dir, 200);
+    let sheet = dir.join("sheet.json");
+    write(
+        &sheet,
+        r#"{"sheets": {"walk": {"path": "walk.png", "frame": [16, 16]}}}"#,
+    );
+    let files = dir.join("files.json");
+    write(
+        &files,
+        r#"{"sprites": {
+            "walk_0": {"path": "walk_0.png"}, "walk_1": {"path": "walk_1.png"},
+            "walk_2": {"path": "walk_2.png"}, "walk_3": {"path": "walk_3.png"}
+        }}"#,
+    );
+    let pack = |manifest: &Path| {
+        let manifest = ResolvedManifest::load(manifest).unwrap();
+        let [nearest, linear] = super::atlas::decode_sprites(&manifest).unwrap();
+        assert!(linear.is_empty());
+        let (pack, canvases) = super::atlas::pack_pages(&nearest, 256);
+        let mut placed: Vec<_> = pack
+            .sprites
+            .iter()
+            .map(|p| (p.id.clone(), p.page, p.x, p.y, p.width, p.height))
+            .collect();
+        placed.sort();
+        (pack.pages, placed, canvases.albedo)
+    };
+    let (sheet_pages, sheet_placed, sheet_albedo) = pack(&sheet);
+    let (file_pages, file_placed, file_albedo) = pack(&files);
+    assert_eq!(sheet_placed.len(), 4);
+    assert_eq!(sheet_pages, file_pages);
+    assert_eq!(sheet_placed, file_placed, "the same cells, so the same UVs");
+    assert!(sheet_albedo == file_albedo, "the same pixels on the pages");
+}
+
+#[test]
+fn a_sheet_edit_crops_every_frame_from_one_decode() {
+    let dir = tempdir();
+    write_walk_frames(&dir, 200);
+    // The edit: every cell a new shade, cut from one decode of the file.
+    let colours = write_walk_frames(&dir, 90);
+    let rects: Vec<_> = (0..4)
+        .map(|n| Some([n % 2 * 16, n / 2 * 16, 16, 16]))
+        .chain([Some([24, 24, 16, 16])])
+        .collect();
+    let cuts = super::atlas::reload_cuts(&dir.join("walk.png"), None, None, &rects, |_, why| {
+        panic!("no sibling: {why}")
+    })
+    .unwrap();
+    for (n, colour) in colours.iter().enumerate() {
+        let cut = cuts[n].as_ref().expect("a cell inside the image");
+        assert_eq!((cut.width, cut.height), (16, 16));
+        assert!(cut.rgba.chunks(4).all(|texel| texel == colour), "frame {n}");
+        assert!(cut.normal.is_none() && cut.emissive.is_none());
+    }
+    assert!(
+        cuts[4].is_none(),
+        "a frame that leaves the image cuts nothing"
+    );
+}

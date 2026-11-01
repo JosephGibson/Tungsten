@@ -1540,3 +1540,87 @@ fn warned_ids_mark_each_id_once() {
     assert!(warned.contains(low) && warned.contains(high));
     assert!(!warned.contains(SpriteAssetId::new(4)));
 }
+
+/// One 16 × 16 sprite `id` anchored at `anchor`, drawn by an entity at
+/// `transform`: its one instance.
+fn anchored_instance(anchor: Option<[f32; 2]>, transform: Transform) -> SpriteInstance {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "troll", FilterMode::Nearest);
+    world
+        .resource_mut::<AssetRegistry>()
+        .set_sprite_frame("troll", None, anchor);
+    let e = world.spawn();
+    world.insert(e, transform);
+    let sprite = Sprite::new(intern(&mut world, "troll"));
+    world.insert(e, sprite);
+    world.insert(e, Visibility { visible: true });
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 1);
+    batches[0].instances[0]
+}
+
+/// Where the instance draws the point `local` (in its quad's pixels, the
+/// quad turned about its centre as the sprite shader turns it).
+fn drawn_at(instance: &SpriteInstance, local: Vec2) -> Vec2 {
+    let size = Vec2::from(instance.size);
+    let centre = Vec2::from(instance.position) + size * 0.5;
+    centre + Vec2::from_angle(instance.rotation).rotate(local - size * 0.5)
+}
+
+#[test]
+fn an_anchor_draws_its_point_at_the_entity() {
+    let at = Vec2::new(100.0, 50.0);
+    let instance = anchored_instance(
+        Some([8.0, 15.0]),
+        Transform {
+            position: at,
+            scale: Vec2::splat(2.0),
+            ..Transform::default()
+        },
+    );
+    // The anchor scales with the sprite: (8, 15) × 2 above-left of the entity.
+    assert_eq!(instance.position, [84.0, 20.0]);
+    assert_eq!(instance.size, [32.0, 32.0]);
+    assert_eq!(drawn_at(&instance, Vec2::new(16.0, 30.0)), at);
+}
+
+#[test]
+fn an_anchored_sprite_turns_about_its_anchor() {
+    let at = Vec2::new(100.0, 50.0);
+    let anchor = Vec2::new(8.0, 15.0);
+    for rotation in [0.5, std::f32::consts::FRAC_PI_2, 2.0, -1.0] {
+        let instance = anchored_instance(
+            Some(anchor.into()),
+            Transform {
+                position: at,
+                rotation,
+                ..Transform::default()
+            },
+        );
+        assert_eq!(instance.rotation, rotation);
+        // The anchor stays on the entity, and the top-left corner turns
+        // about it.
+        assert!(
+            drawn_at(&instance, anchor).distance(at) < 1e-4,
+            "{rotation}"
+        );
+        let corner = at + Vec2::from_angle(rotation).rotate(-anchor);
+        assert!(
+            drawn_at(&instance, Vec2::ZERO).distance(corner) < 1e-4,
+            "{rotation}"
+        );
+    }
+}
+
+#[test]
+fn a_sprite_without_an_anchor_draws_as_before() {
+    let transform = Transform {
+        position: Vec2::new(100.0, 50.0),
+        rotation: 0.75,
+        scale: Vec2::new(-2.0, 1.5),
+    };
+    let instance = anchored_instance(None, transform);
+    assert_eq!(instance.position, [100.0, 50.0]);
+    assert_eq!(instance.size, [-32.0, 24.0]);
+    assert_eq!(instance.rotation, 0.75);
+}

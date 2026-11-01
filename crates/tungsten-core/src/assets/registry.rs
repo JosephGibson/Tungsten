@@ -30,6 +30,12 @@ pub struct SpriteAsset {
     /// M2 nine-slice insets `[left, top, right, bottom]` in source pixels;
     /// `None` draws the sprite stretched.
     pub nine_slice: Option<[u32; 4]>,
+    /// A sheet frame's `[x, y, width, height]` in `path` (redo 7.9); `None`
+    /// for a whole file.
+    pub rect: Option<[u32; 4]>,
+    /// The point drawn at the entity's position and turned about, `[x, y]`
+    /// in source pixels; `None` draws from the top-left.
+    pub anchor: Option<[f32; 2]>,
 }
 
 /// Dense sprite handle, minted by [`AssetRegistry`]; stable for the registry's life.
@@ -48,7 +54,9 @@ pub struct AssetRegistry {
     sprites: Vec<Option<SpriteAsset>>,
     sprite_names: Vec<String>,
     sprite_id_by_name: HashMap<String, SpriteAssetId>,
-    path_to_sprite_id: HashMap<PathBuf, SpriteAssetId>,
+    /// Every sprite on a source path, in registration order: a sheet's
+    /// frames share one.
+    path_to_sprite_id: HashMap<PathBuf, Vec<SpriteAssetId>>,
     /// Rises on every change to a registered sprite; see [`Self::sprite_epoch`].
     sprite_epoch: u64,
 }
@@ -137,12 +145,14 @@ impl AssetRegistry {
             Some(sprite_id) => sprite_id,
             None => self.intern_new_sprite(id),
         };
-        self.path_to_sprite_id.insert(path.clone(), sprite_id);
-        if let Some(np) = &normal_path {
-            self.path_to_sprite_id.insert(np.clone(), sprite_id);
-        }
-        if let Some(ep) = &emissive_path {
-            self.path_to_sprite_id.insert(ep.clone(), sprite_id);
+        for source in std::iter::once(&path)
+            .chain(&normal_path)
+            .chain(&emissive_path)
+        {
+            let ids = self.path_to_sprite_id.entry(source.clone()).or_default();
+            if !ids.contains(&sprite_id) {
+                ids.push(sprite_id);
+            }
         }
         self.sprites[sprite_id.index() as usize] = Some(SpriteAsset {
             atlas,
@@ -155,6 +165,8 @@ impl AssetRegistry {
             emissive_path,
             lit_atlas,
             nine_slice: None,
+            rect: None,
+            anchor: None,
         });
         self.sprite_epoch += 1;
         sprite_id
@@ -179,10 +191,18 @@ impl AssetRegistry {
             .map(|(name, _)| name.as_str())
     }
 
-    /// Sprite name for a source path (albedo, normal or emissive).
+    /// Sprite name for a source path (albedo, normal or emissive): the
+    /// first registered on it.
     #[must_use]
     pub fn sprite_name_for_path(&self, path: &Path) -> Option<&str> {
-        self.sprite_name(*self.path_to_sprite_id.get(path)?)
+        self.sprite_name(*self.sprite_ids_for_path(path).first()?)
+    }
+
+    /// Every sprite registered on a source path (albedo, normal or
+    /// emissive), in registration order: each frame of a sheet (redo 7.9).
+    #[must_use]
+    pub fn sprite_ids_for_path(&self, path: &Path) -> &[SpriteAssetId] {
+        self.path_to_sprite_id.get(path).map_or(&[], Vec::as_slice)
     }
 
     /// Update atlas/UV/dimensions after hot reload.
@@ -220,9 +240,21 @@ impl AssetRegistry {
         }
     }
 
+    /// Sets a registered sprite's sheet frame and anchor (redo 7.9), as the
+    /// loader carries them from the manifest; an unregistered ID does
+    /// nothing.
+    pub fn set_sprite_frame(&mut self, id: &str, rect: Option<[u32; 4]>, anchor: Option<[f32; 2]>) {
+        if let Some(asset) = self.get_sprite_mut(id) {
+            asset.rect = rect;
+            asset.anchor = anchor;
+            self.sprite_epoch += 1;
+        }
+    }
+
     /// A count that rises whenever a registered sprite changes: on
     /// [`Self::register_sprite`], [`Self::update_sprite_entry`],
-    /// [`Self::update_sprite_lit_atlas`] and [`Self::set_sprite_nine_slice`],
+    /// [`Self::update_sprite_lit_atlas`], [`Self::set_sprite_nine_slice`] and
+    /// [`Self::set_sprite_frame`],
     /// never on interning. A retained UI paint list repaints when it moved,
     /// since a repack may have moved a UV.
     #[must_use]

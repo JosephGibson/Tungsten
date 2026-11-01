@@ -449,6 +449,9 @@ pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsLayer::reason:
 pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsMaterial
 pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsMaterial::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsMaterial::reason: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::InvalidSheet
+pub tungsten_core::assets::manifest::ManifestError::InvalidSheet::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::InvalidSheet::reason: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Io
 pub tungsten_core::assets::manifest::ManifestError::Io::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Io::source: core::io::error::Error
@@ -692,6 +695,7 @@ pub tungsten_core::assets::manifest::RawManifest::physics_layers: std::collectio
 pub tungsten_core::assets::manifest::RawManifest::physics_materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::PhysicsMaterialEntry>
 pub tungsten_core::assets::manifest::RawManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::PrefabEntry>
 pub tungsten_core::assets::manifest::RawManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ShaderEntry>
+pub tungsten_core::assets::manifest::RawManifest::sheets: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SheetEntry>
 pub tungsten_core::assets::manifest::RawManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SoundEntry>
 pub tungsten_core::assets::manifest::RawManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SpriteEntry>
 pub tungsten_core::assets::manifest::RawManifest::tilemaps: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::TilemapEntry>
@@ -894,11 +898,13 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedSoun
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedSound
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedSound
 pub struct tungsten_core::assets::manifest::ResolvedSprite
+pub tungsten_core::assets::manifest::ResolvedSprite::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::manifest::ResolvedSprite::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::manifest::ResolvedSprite::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::manifest::ResolvedSprite::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::manifest::ResolvedSprite::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::manifest::ResolvedSprite::path: std::path::PathBuf
+pub tungsten_core::assets::manifest::ResolvedSprite::rect: core::option::Option<[u32; 4]>
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedSprite
 pub fn tungsten_core::assets::manifest::ResolvedSprite::clone(&self) -> tungsten_core::assets::manifest::ResolvedSprite
 impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedSprite
@@ -955,6 +961,27 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ShaderEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ShaderEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ShaderEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ShaderEntry
+pub struct tungsten_core::assets::manifest::SheetEntry
+pub tungsten_core::assets::manifest::SheetEntry::anchor: core::option::Option<[f32; 2]>
+pub tungsten_core::assets::manifest::SheetEntry::count: core::option::Option<u32>
+pub tungsten_core::assets::manifest::SheetEntry::emissive_mask: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::manifest::SheetEntry::filter: tungsten_core::assets::manifest::FilterMode
+pub tungsten_core::assets::manifest::SheetEntry::frame: [u32; 2]
+pub tungsten_core::assets::manifest::SheetEntry::normal_map: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::manifest::SheetEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::SheetEntry
+pub fn tungsten_core::assets::manifest::SheetEntry::clone(&self) -> tungsten_core::assets::manifest::SheetEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::SheetEntry
+pub fn tungsten_core::assets::manifest::SheetEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::SheetEntry
+pub fn tungsten_core::assets::manifest::SheetEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::SheetEntry
+impl core::marker::Send for tungsten_core::assets::manifest::SheetEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::SheetEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::SheetEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::SheetEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::SheetEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::SheetEntry
 #[non_exhaustive] pub struct tungsten_core::assets::manifest::SoundEntry
 pub tungsten_core::assets::manifest::SoundEntry::bus: tungsten_core::audio::AudioBus
 pub tungsten_core::assets::manifest::SoundEntry::looping: bool
@@ -975,6 +1002,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::SoundEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::SoundEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::SoundEntry
 pub struct tungsten_core::assets::manifest::SpriteEntry
+pub tungsten_core::assets::manifest::SpriteEntry::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::manifest::SpriteEntry::emissive_mask: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::manifest::SpriteEntry::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::manifest::SpriteEntry::nine_slice: core::option::Option<[u32; 4]>
@@ -1532,10 +1560,12 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, 
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_ids_for_path(&self, &std::path::Path) -> &[tungsten_core::assets::registry::SpriteAssetId]
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
@@ -1570,6 +1600,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::FontRegistry
 pub struct tungsten_core::assets::registry::SpriteAsset
+pub tungsten_core::assets::registry::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::registry::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
 pub tungsten_core::assets::registry::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::registry::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
@@ -1578,6 +1609,7 @@ pub tungsten_core::assets::registry::SpriteAsset::lit_atlas: core::option::Optio
 pub tungsten_core::assets::registry::SpriteAsset::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::registry::SpriteAsset::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::registry::SpriteAsset::path: std::path::PathBuf
+pub tungsten_core::assets::registry::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::registry::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::assets::registry::SpriteAsset::width: u32
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
@@ -2498,6 +2530,9 @@ pub tungsten_core::assets::ManifestError::InvalidPhysicsLayer::reason: alloc::st
 pub tungsten_core::assets::ManifestError::InvalidPhysicsMaterial
 pub tungsten_core::assets::ManifestError::InvalidPhysicsMaterial::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::InvalidPhysicsMaterial::reason: alloc::string::String
+pub tungsten_core::assets::ManifestError::InvalidSheet
+pub tungsten_core::assets::ManifestError::InvalidSheet::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::InvalidSheet::reason: alloc::string::String
 pub tungsten_core::assets::ManifestError::Io
 pub tungsten_core::assets::ManifestError::Io::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Io::source: core::io::error::Error
@@ -3012,10 +3047,12 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, 
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_ids_for_path(&self, &std::path::Path) -> &[tungsten_core::assets::registry::SpriteAssetId]
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
@@ -4164,6 +4201,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::audio::SoundRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::audio::SoundRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::SoundRegistry
 pub struct tungsten_core::assets::SpriteAsset
+pub tungsten_core::assets::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
 pub tungsten_core::assets::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
@@ -4172,6 +4210,7 @@ pub tungsten_core::assets::SpriteAsset::lit_atlas: core::option::Option<tungsten
 pub tungsten_core::assets::SpriteAsset::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::SpriteAsset::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::SpriteAsset::path: std::path::PathBuf
+pub tungsten_core::assets::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::assets::SpriteAsset::width: u32
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
@@ -15077,6 +15116,9 @@ pub tungsten_core::ManifestError::InvalidPhysicsLayer::reason: alloc::string::St
 pub tungsten_core::ManifestError::InvalidPhysicsMaterial
 pub tungsten_core::ManifestError::InvalidPhysicsMaterial::id: alloc::string::String
 pub tungsten_core::ManifestError::InvalidPhysicsMaterial::reason: alloc::string::String
+pub tungsten_core::ManifestError::InvalidSheet
+pub tungsten_core::ManifestError::InvalidSheet::id: alloc::string::String
+pub tungsten_core::ManifestError::InvalidSheet::reason: alloc::string::String
 pub tungsten_core::ManifestError::Io
 pub tungsten_core::ManifestError::Io::path: alloc::string::String
 pub tungsten_core::ManifestError::Io::source: core::io::error::Error
@@ -16371,10 +16413,12 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, 
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_ids_for_path(&self, &std::path::Path) -> &[tungsten_core::assets::registry::SpriteAssetId]
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
@@ -19453,6 +19497,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::components::Sprite
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Sprite
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Sprite
 pub struct tungsten_core::SpriteAsset
+pub tungsten_core::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
 pub tungsten_core::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
@@ -19461,6 +19506,7 @@ pub tungsten_core::SpriteAsset::lit_atlas: core::option::Option<tungsten_core::a
 pub tungsten_core::SpriteAsset::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::SpriteAsset::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::SpriteAsset::path: std::path::PathBuf
+pub tungsten_core::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::SpriteAsset::width: u32
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset

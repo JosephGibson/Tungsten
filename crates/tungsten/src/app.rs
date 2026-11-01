@@ -1111,23 +1111,18 @@ impl App {
             let ext = canon.extension().and_then(|e| e.to_str()).unwrap_or("");
             match ext {
                 "png" | "jpg" | "jpeg" => {
-                    // Drop registry borrow before `reload_sprite(&mut World)`.
-                    let id_filter = {
-                        let reg = self
-                            .world
-                            .get_resource::<AssetRegistry>()
-                            .expect("AssetRegistry resource missing");
-                        reg.sprite_name_for_path(&canon)
-                            .and_then(|id| reg.get_sprite(id).map(|a| (id.to_string(), a.filter)))
-                    };
-                    if let Some((id, filter)) = id_filter {
-                        if let Err(e) = asset_loader::reload_sprite(
-                            &id,
-                            &canon,
-                            filter,
-                            &mut self.world,
-                            renderer,
-                        ) {
+                    // Redo 7.9: every sprite on the file, a sheet's frames
+                    // from one decode.
+                    let registered = self
+                        .world
+                        .get_resource::<AssetRegistry>()
+                        .expect("AssetRegistry resource missing")
+                        .sprite_name_for_path(&canon)
+                        .map(ToString::to_string);
+                    if let Some(id) = registered {
+                        if let Err(e) =
+                            asset_loader::reload_sprite_file(&canon, &mut self.world, renderer)
+                        {
                             log::error!("Sprite reload '{id}': {e}");
                         }
                     } else {

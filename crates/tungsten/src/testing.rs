@@ -30,13 +30,16 @@
 
 #![deny(missing_docs)]
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
-use tungsten_core::assets::{ResolvedManifest, TextureHandle};
+use tungsten_core::assets::{FilterMode, ResolvedManifest, TextureHandle};
 use tungsten_core::script::{Ending, Report, Script};
 use tungsten_core::ui::PaintList;
-use tungsten_core::{AudioCommand, Binding, EventQueue, InputState, MaterialRegistry, World};
+use tungsten_core::{
+    AssetRegistry, AudioCommand, Binding, EventQueue, InputState, MaterialRegistry, World,
+};
 use tungsten_render::{
     DebugLineInstance, LightUbo, MeshParticleBatch, QuadInstance, SpriteBatch, TextSection,
     WorldLabelRun,
@@ -150,6 +153,55 @@ impl Harness {
         asset_loader::load_tilemaps(&manifest, world)?;
         asset_loader::load_particles(&manifest, world)?;
         asset_loader::load_prefabs(&manifest, world)
+    }
+
+    /// Registers the metadata of each sprite and sheet frame the manifest
+    /// at `path` names, with no pixels (redo 7.9): its size from its
+    /// image's header, lit when it names a normal map, its anchor, frame
+    /// and nine-slice, on one spare texture handle per filter with full UVs,
+    /// as `tungsten check` registers them. [`load_manifest`](Self::load_manifest)
+    /// registers no sprite, so a test that draws a manifest's sprites
+    /// headless calls this once, after it.
+    ///
+    /// # Errors
+    ///
+    /// The manifest's load error, or an image whose header does not read.
+    ///
+    /// # Panics
+    ///
+    /// When a sprite it names is registered already (`D-017`).
+    pub fn register_sprites(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        let manifest = ResolvedManifest::load(path)?;
+        let handles = [
+            self.allocate_texture_handle(),
+            self.allocate_texture_handle(),
+        ];
+        let mut ids: Vec<&String> = manifest.sprites.keys().collect();
+        ids.sort();
+        let mut sizes: HashMap<&Path, (u32, u32)> = HashMap::new();
+        for id in &ids {
+            let file = manifest.sprites[*id].path.as_path();
+            if !sizes.contains_key(file) {
+                let size = image::image_dimensions(file)
+                    .map_err(|e| anyhow::anyhow!("Failed to read '{}': {e}", file.display()))?;
+                sizes.insert(file, size);
+            }
+        }
+        let registry = self.app.world_mut().resource_mut::<AssetRegistry>();
+        registry.intern_sprites(ids.iter().map(|id| id.as_str()));
+        for id in ids {
+            let sprite = &manifest.sprites[id];
+            let atlas = handles[usize::from(sprite.filter == FilterMode::Linear)];
+            asset_loader::check::register_metadata(
+                registry,
+                id,
+                sprite,
+                sizes[sprite.path.as_path()],
+                atlas,
+                sprite.normal_path.is_some(),
+            );
+        }
+        Ok(())
     }
 
     /// Sets the real dt, in seconds, that each later frame advances

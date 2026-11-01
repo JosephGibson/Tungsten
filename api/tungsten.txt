@@ -201,6 +201,7 @@ pub fn tungsten::asset_loader::reload_particle(&str, &std::path::Path, &mut tung
 pub fn tungsten::asset_loader::reload_prefab(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_shader(&str, &std::path::Path, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_sprite(&str, &std::path::Path, tungsten_core::assets::manifest::FilterMode, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_sprite_file(&std::path::Path, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_tilemap(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_ui_theme(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_ui_themes_from_manifest(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World)
@@ -927,6 +928,7 @@ pub fn tungsten::testing::Harness::frame(&self) -> u64
 pub fn tungsten::testing::Harness::load_manifest(&mut self, impl core::convert::AsRef<std::path::Path>) -> anyhow::Result<()>
 pub fn tungsten::testing::Harness::new(tungsten::app::App) -> Self
 pub fn tungsten::testing::Harness::press_action(&mut self, &str)
+pub fn tungsten::testing::Harness::register_sprites(&mut self, impl core::convert::AsRef<std::path::Path>) -> anyhow::Result<()>
 pub fn tungsten::testing::Harness::release_action(&mut self, &str)
 pub fn tungsten::testing::Harness::request_close(&mut self)
 pub fn tungsten::testing::Harness::run_script(&mut self, &tungsten_core::script::Script) -> tungsten_core::script::Report

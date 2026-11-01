@@ -768,3 +768,77 @@ fn exiting_never_follows_engine_exit() {
         "its later stages never ran"
     );
 }
+
+#[test]
+fn register_sprites_gives_each_sprite_and_frame_its_size() {
+    let dir =
+        std::env::temp_dir().join(format!("tungsten_register_sprites_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    image::RgbaImage::new(12, 20)
+        .save(dir.join("hero.png"))
+        .unwrap();
+    image::RgbaImage::new(12, 20)
+        .save(dir.join("hero_n.png"))
+        .unwrap();
+    image::RgbaImage::new(64, 32)
+        .save(dir.join("walk.png"))
+        .unwrap();
+    std::fs::write(
+        dir.join("manifest.json"),
+        r#"{"sprites": {
+                "hero": {"path": "hero.png", "normal_map": "hero_n.png", "anchor": [6, 19]},
+                "panel": {"path": "hero.png", "filter": "linear", "nine_slice": [2, 2, 2, 2]}
+            },
+            "sheets": {"walk": {"path": "walk.png", "frame": [32, 16], "count": 3}}}"#,
+    )
+    .unwrap();
+    let mut harness = Harness::new(app());
+    harness.register_sprites(dir.join("manifest.json")).unwrap();
+    let world = harness.app.world();
+    let sprites = world.resource::<AssetRegistry>();
+    let hero = sprites.get_sprite("hero").unwrap();
+    assert_eq!((hero.width, hero.height), (12, 20));
+    assert_eq!(hero.anchor, Some([6.0, 19.0]));
+    assert_eq!(
+        hero.lit_atlas,
+        Some(hero.atlas),
+        "a normal map draws it lit"
+    );
+    assert_eq!(hero.uv, UvRect::FULL);
+    let panel = sprites.get_sprite("panel").unwrap();
+    assert_eq!(panel.nine_slice, Some([2, 2, 2, 2]));
+    assert_eq!(panel.lit_atlas, None);
+    assert_ne!(panel.atlas, hero.atlas, "one handle per filter");
+    for n in 0..3 {
+        let frame = sprites.get_sprite(&format!("walk_{n}")).unwrap();
+        assert_eq!((frame.width, frame.height), (32, 16));
+        assert_eq!(frame.atlas, hero.atlas);
+    }
+    assert!(sprites.get_sprite("walk_3").is_none());
+    // Names take IDs in sorted order, as a window's load interns them.
+    let id = |name: &str| sprites.sprite_id(name).unwrap().index();
+    assert!(id("hero") < id("panel") && id("panel") < id("walk_0"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn load_manifest_still_registers_no_sprite() {
+    let dir = std::env::temp_dir().join(format!("tungsten_load_no_sprites_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    image::RgbaImage::new(8, 8)
+        .save(dir.join("hero.png"))
+        .unwrap();
+    std::fs::write(
+        dir.join("manifest.json"),
+        r#"{"sprites": {"hero": {"path": "hero.png"}},
+            "sheets": {"walk": {"path": "hero.png", "frame": [4, 4]}}}"#,
+    )
+    .unwrap();
+    let mut harness = Harness::new(app());
+    harness.load_manifest(dir.join("manifest.json")).unwrap();
+    let sprites = harness.app.world().resource::<AssetRegistry>();
+    assert_eq!(sprites.sprite_names().count(), 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}

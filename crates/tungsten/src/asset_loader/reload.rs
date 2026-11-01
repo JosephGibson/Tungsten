@@ -568,6 +568,28 @@ pub fn reload_manifest(
                     );
                 }
             }
+            // Redo 7.9: so do sheet frames and anchors; a frame that moved
+            // or changed size repacks its filter class.
+            for (id, entry) in &new_manifest.sprites {
+                let Some(asset) = registry.get_sprite(id) else {
+                    continue;
+                };
+                if (asset.rect, asset.anchor) == (entry.rect, entry.anchor) {
+                    continue;
+                }
+                if asset.rect != entry.rect {
+                    match entry.filter {
+                        FilterMode::Nearest => gained_nearest = true,
+                        FilterMode::Linear => gained_linear = true,
+                    }
+                }
+                registry.set_sprite_frame(id, entry.rect, entry.anchor);
+                log::info!(
+                    "Manifest reload: sprite '{id}' frame is now {:?}, anchor {:?}",
+                    entry.rect,
+                    entry.anchor
+                );
+            }
         }
         if gained_nearest
             && let Err(e) = rebuild_atlas_for_filter(FilterMode::Nearest, world, renderer)

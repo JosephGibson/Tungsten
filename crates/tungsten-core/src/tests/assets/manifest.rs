@@ -82,6 +82,8 @@ fn merge_success() {
             normal_path: None,
             emissive_path: None,
             nine_slice: None,
+            rect: None,
+            anchor: None,
         },
     );
 
@@ -94,6 +96,8 @@ fn merge_success() {
             normal_path: None,
             emissive_path: None,
             nine_slice: None,
+            rect: None,
+            anchor: None,
         },
     );
 
@@ -113,6 +117,8 @@ fn merge_duplicate_sprite_is_error() {
             normal_path: None,
             emissive_path: None,
             nine_slice: None,
+            rect: None,
+            anchor: None,
         },
     );
 
@@ -125,6 +131,8 @@ fn merge_duplicate_sprite_is_error() {
             normal_path: None,
             emissive_path: None,
             nine_slice: None,
+            rect: None,
+            anchor: None,
         },
     );
 
@@ -1257,4 +1265,130 @@ fn a_path_may_climb_only_within_its_manifests_folder() {
     ] {
         assert_eq!(stays_inside(Path::new(rel)), inside, "{rel}");
     }
+}
+
+/// A file at `name` holding only a PNG's signature and header, `width` ×
+/// `height`: all a sheet's frames read.
+fn write_png_header(dir: &Path, name: &str, width: u32, height: u32) -> PathBuf {
+    let path = dir.join(name);
+    let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+    bytes.extend_from_slice(&width.to_be_bytes());
+    bytes.extend_from_slice(&height.to_be_bytes());
+    bytes.extend_from_slice(&[8, 6, 0, 0, 0]);
+    std::fs::write(&path, bytes).unwrap();
+    path
+}
+
+#[test]
+fn a_sheet_lists_a_frame_per_cell_named_by_its_index() {
+    let tmp = tempdir();
+    // Three cells across, two down; a strip past the last row is no cell.
+    write_png_header(&tmp, "walk.png", 48, 40);
+    write_png_header(&tmp, "walk_n.png", 48, 40);
+    let path = write_manifest(
+        &tmp,
+        r#"{"sheets": {
+            "walk": {"path": "walk.png", "frame": [16, 16], "filter": "linear", "normal_map": "walk_n.png", "anchor": [8, 15]},
+            "jump": {"path": "walk.png", "frame": [16, 16], "count": 4}
+        }}"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    let walk: Vec<_> = (0..6).map(|n| &m.sprites[&format!("walk_{n}")]).collect();
+    assert!(!m.sprites.contains_key("walk_6"));
+    let rects: Vec<_> = walk.iter().map(|frame| frame.rect.unwrap()).collect();
+    assert_eq!(
+        rects,
+        [
+            [0, 0, 16, 16],
+            [16, 0, 16, 16],
+            [32, 0, 16, 16],
+            [0, 16, 16, 16],
+            [16, 16, 16, 16],
+            [32, 16, 16, 16],
+        ]
+    );
+    for frame in &walk {
+        assert_eq!(frame.filter, FilterMode::Linear);
+        assert_eq!(frame.anchor, Some([8.0, 15.0]));
+        assert!(frame.normal_path.as_ref().unwrap().ends_with("walk_n.png"));
+        assert!(frame.path.ends_with("walk.png"));
+    }
+    // `count` takes the first cells only.
+    assert!(m.sprites.contains_key("jump_3") && !m.sprites.contains_key("jump_4"));
+    assert_eq!(m.sprites["jump_3"].rect, Some([0, 16, 16, 16]));
+    assert_eq!(m.sprites["jump_0"].anchor, None);
+}
+
+#[test]
+fn a_sheet_count_past_its_cells_fails() {
+    let tmp = tempdir();
+    write_png_header(&tmp, "walk.png", 32, 16);
+    let path = write_manifest(
+        &tmp,
+        r#"{"sheets": {"walk": {"path": "walk.png", "frame": [16, 16], "count": 3}}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::InvalidSheet { id, reason } if id == "walk" && reason.contains("`count` 3 is past its 2 cells")),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_frame_larger_than_its_image_fails() {
+    let tmp = tempdir();
+    write_png_header(&tmp, "walk.png", 16, 16);
+    write_file(&tmp, "not_a_png.png");
+    for (sheet, why) in [
+        (
+            r#"{"path": "walk.png", "frame": [20, 16]}"#,
+            "larger than its image (16x16)",
+        ),
+        (
+            r#"{"path": "walk.png", "frame": [0, 16]}"#,
+            "at least 1 x 1",
+        ),
+        (
+            r#"{"path": "not_a_png.png", "frame": [16, 16]}"#,
+            "cannot read",
+        ),
+    ] {
+        let path = write_manifest(&tmp, &format!(r#"{{"sheets": {{"walk": {sheet}}}}}"#));
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(
+            matches!(&err, ManifestError::InvalidSheet { reason, .. } if reason.contains(why)),
+            "{sheet}: {err}"
+        );
+    }
+}
+
+#[test]
+fn a_sheet_frame_another_entry_names_fails_the_merge() {
+    let tmp = tempdir();
+    let (a, b) = (tmp.join("a"), tmp.join("b"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    write_png_header(&a, "walk.png", 64, 16);
+    write_file(&b, "walk_2.png");
+    let root_a = write_manifest(
+        &a,
+        r#"{"sheets": {"walk": {"path": "walk.png", "frame": [16, 16]}}}"#,
+    );
+    let root_b = write_manifest(&b, r#"{"sprites": {"walk_2": {"path": "walk_2.png"}}}"#);
+    let err = ResolvedManifest::load_and_merge_many(&[&root_a, &root_b]).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::DuplicateId { id } if id == "walk_2"),
+        "{err}"
+    );
+    // In one manifest too.
+    write_file(&a, "walk_1.png");
+    let one = write_manifest(
+        &a,
+        r#"{"sprites": {"walk_1": {"path": "walk_1.png"}}, "sheets": {"walk": {"path": "walk.png", "frame": [16, 16]}}}"#,
+    );
+    let err = ResolvedManifest::load(&one).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::DuplicateId { id } if id == "walk_1"),
+        "{err}"
+    );
 }
