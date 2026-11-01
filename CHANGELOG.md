@@ -26,7 +26,7 @@ Summary: the roadmap redo's Phase 7 steps 7.8 and 7.9: runtime terrain, with til
 - **Example 01's saves** migrate a schema at a time through `migrate_step`; its records stay at schema 23 until 7.13.
 - **The kit** orders a step's work by save ID while the World saves.
 - **The Phase 7 plan** (`docs/plans/phase-7.md`): one track, the UI steps after 7.9; 7.10's motion plan, with PA-3, PA-4 and PA-9 moved to 8.7; what 7.8 and 7.9 did not land (impulses and the controller's slope and push rules, the kit's loops on entities, music per state, sprite variants, text outlines, the resting index) moved to 7.10, 7.11, 7.12, 7.17 and 7.14.
-- **Records**: DESIGN, the LLM index, `docs/assets.md`, `docs/perf/benchmarks.md` and known issues (four rows added: the template's windowed scripted runs, a hand-edited save naming an entity both changed and gone, a slope cast's vertex tie and the `rigid_body` row of the component table; the kit's unsaved request queues dropped). The runtime terrain, physics on terrain, saves and seams and boot and seams plans are deleted, done.
+- **Records**: DESIGN, the LLM index, `docs/assets.md`, `docs/perf/benchmarks.md` and known issues (six rows added: the template's windowed scripted runs, a hand-edited save naming an entity both changed and gone, a slope cast's vertex tie, the `rigid_body` row of the component table, and the release sitting's physics regressions, the contact record that `PhysicsPlugin`'s queues keep on doubling 01's pit `physics_step`; the kit's unsaved request queues dropped). The runtime terrain, physics on terrain, saves and seams and boot and seams plans are deleted, done.
 
 ### Fixed
 
