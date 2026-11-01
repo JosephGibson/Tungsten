@@ -4555,16 +4555,25 @@ impl core::marker::UnsafeUnpin for tungsten_core::audio::AudioBus
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::AudioBus
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::AudioBus
 #[non_exhaustive] pub enum tungsten_core::audio::AudioCommand
+#[non_exhaustive] pub tungsten_core::audio::AudioCommand::DuckBus
+pub tungsten_core::audio::AudioCommand::DuckBus::bus: tungsten_core::audio::AudioBus
+pub tungsten_core::audio::AudioCommand::DuckBus::fade: f32
+pub tungsten_core::audio::AudioCommand::DuckBus::gain: f32
 #[non_exhaustive] pub tungsten_core::audio::AudioCommand::Play
 pub tungsten_core::audio::AudioCommand::Play::fade: f32
 pub tungsten_core::audio::AudioCommand::Play::handle: tungsten_core::assets::audio::AudioHandle
 pub tungsten_core::audio::AudioCommand::Play::looping: bool
+pub tungsten_core::audio::AudioCommand::Play::pan: tungsten_core::audio::Pan
 pub tungsten_core::audio::AudioCommand::Play::voice: tungsten_core::audio::Voice
 pub tungsten_core::audio::AudioCommand::Play::volume: f32
 #[non_exhaustive] pub tungsten_core::audio::AudioCommand::SetBusVolume
 pub tungsten_core::audio::AudioCommand::SetBusVolume::bus: tungsten_core::audio::AudioBus
 pub tungsten_core::audio::AudioCommand::SetBusVolume::volume: f32
 pub tungsten_core::audio::AudioCommand::SetMasterVolume(f32)
+#[non_exhaustive] pub tungsten_core::audio::AudioCommand::SetVoicePan
+pub tungsten_core::audio::AudioCommand::SetVoicePan::fade: f32
+pub tungsten_core::audio::AudioCommand::SetVoicePan::pan: tungsten_core::audio::Pan
+pub tungsten_core::audio::AudioCommand::SetVoicePan::voice: tungsten_core::audio::Voice
 #[non_exhaustive] pub tungsten_core::audio::AudioCommand::SetVoiceVolume
 pub tungsten_core::audio::AudioCommand::SetVoiceVolume::fade: f32
 pub tungsten_core::audio::AudioCommand::SetVoiceVolume::voice: tungsten_core::audio::Voice
@@ -4592,13 +4601,16 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::AudioCommand
 pub struct tungsten_core::audio::AudioCommands
 impl tungsten_core::audio::AudioCommands
 pub fn tungsten_core::audio::AudioCommands::drain(&mut self) -> alloc::vec::Vec<tungsten_core::audio::AudioCommand>
+pub fn tungsten_core::audio::AudioCommands::duck_bus(&mut self, tungsten_core::audio::AudioBus, f32, f32)
 pub fn tungsten_core::audio::AudioCommands::new() -> Self
 pub fn tungsten_core::audio::AudioCommands::play(&mut self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::Voice
 pub fn tungsten_core::audio::AudioCommands::play_faded(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool, f32) -> tungsten_core::audio::Voice
 pub fn tungsten_core::audio::AudioCommands::play_looping(&mut self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::play_panned(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool, f32) -> tungsten_core::audio::Voice
 pub fn tungsten_core::audio::AudioCommands::play_with(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool) -> tungsten_core::audio::Voice
 pub fn tungsten_core::audio::AudioCommands::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, f32)
 pub fn tungsten_core::audio::AudioCommands::set_master_volume(&mut self, f32)
+pub fn tungsten_core::audio::AudioCommands::set_voice_pan(&mut self, tungsten_core::audio::Voice, f32, f32)
 pub fn tungsten_core::audio::AudioCommands::set_voice_volume(&mut self, tungsten_core::audio::Voice, f32, f32)
 pub fn tungsten_core::audio::AudioCommands::stop(&mut self, tungsten_core::assets::audio::AudioHandle)
 pub fn tungsten_core::audio::AudioCommands::stop_all(&mut self)
@@ -4612,6 +4624,31 @@ impl core::marker::Unpin for tungsten_core::audio::AudioCommands
 impl core::marker::UnsafeUnpin for tungsten_core::audio::AudioCommands
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::AudioCommands
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::AudioCommands
+pub struct tungsten_core::audio::Pan(_)
+impl tungsten_core::audio::Pan
+pub const tungsten_core::audio::Pan::CENTRE: tungsten_core::audio::Pan
+pub fn tungsten_core::audio::Pan::get(self) -> f32
+pub fn tungsten_core::audio::Pan::new(f32) -> Self
+impl core::clone::Clone for tungsten_core::audio::Pan
+pub fn tungsten_core::audio::Pan::clone(&self) -> tungsten_core::audio::Pan
+impl core::cmp::Eq for tungsten_core::audio::Pan
+impl core::cmp::PartialEq for tungsten_core::audio::Pan
+pub fn tungsten_core::audio::Pan::eq(&self, &tungsten_core::audio::Pan) -> bool
+impl core::default::Default for tungsten_core::audio::Pan
+pub fn tungsten_core::audio::Pan::default() -> tungsten_core::audio::Pan
+impl core::fmt::Debug for tungsten_core::audio::Pan
+pub fn tungsten_core::audio::Pan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::audio::Pan
+pub fn tungsten_core::audio::Pan::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::audio::Pan
+impl core::marker::StructuralPartialEq for tungsten_core::audio::Pan
+impl core::marker::Freeze for tungsten_core::audio::Pan
+impl core::marker::Send for tungsten_core::audio::Pan
+impl core::marker::Sync for tungsten_core::audio::Pan
+impl core::marker::Unpin for tungsten_core::audio::Pan
+impl core::marker::UnsafeUnpin for tungsten_core::audio::Pan
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::Pan
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::Pan
 pub struct tungsten_core::audio::Voice(_)
 impl core::clone::Clone for tungsten_core::audio::Voice
 pub fn tungsten_core::audio::Voice::clone(&self) -> tungsten_core::audio::Voice
@@ -4632,6 +4669,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::audio::Voice
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::Voice
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::Voice
 pub const tungsten_core::audio::MAX_VOICES: u32
+pub fn tungsten_core::audio::play(&mut tungsten_core::World, &str, f32) -> core::option::Option<tungsten_core::audio::Voice>
 pub mod tungsten_core::camera
 pub enum tungsten_core::camera::CameraMode
 pub tungsten_core::camera::CameraMode::Follow(tungsten_core::Entity)
@@ -14378,16 +14416,25 @@ impl core::marker::UnsafeUnpin for tungsten_core::audio::AudioBus
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::AudioBus
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::AudioBus
 #[non_exhaustive] pub enum tungsten_core::AudioCommand
+#[non_exhaustive] pub tungsten_core::AudioCommand::DuckBus
+pub tungsten_core::AudioCommand::DuckBus::bus: tungsten_core::audio::AudioBus
+pub tungsten_core::AudioCommand::DuckBus::fade: f32
+pub tungsten_core::AudioCommand::DuckBus::gain: f32
 #[non_exhaustive] pub tungsten_core::AudioCommand::Play
 pub tungsten_core::AudioCommand::Play::fade: f32
 pub tungsten_core::AudioCommand::Play::handle: tungsten_core::assets::audio::AudioHandle
 pub tungsten_core::AudioCommand::Play::looping: bool
+pub tungsten_core::AudioCommand::Play::pan: tungsten_core::audio::Pan
 pub tungsten_core::AudioCommand::Play::voice: tungsten_core::audio::Voice
 pub tungsten_core::AudioCommand::Play::volume: f32
 #[non_exhaustive] pub tungsten_core::AudioCommand::SetBusVolume
 pub tungsten_core::AudioCommand::SetBusVolume::bus: tungsten_core::audio::AudioBus
 pub tungsten_core::AudioCommand::SetBusVolume::volume: f32
 pub tungsten_core::AudioCommand::SetMasterVolume(f32)
+#[non_exhaustive] pub tungsten_core::AudioCommand::SetVoicePan
+pub tungsten_core::AudioCommand::SetVoicePan::fade: f32
+pub tungsten_core::AudioCommand::SetVoicePan::pan: tungsten_core::audio::Pan
+pub tungsten_core::AudioCommand::SetVoicePan::voice: tungsten_core::audio::Voice
 #[non_exhaustive] pub tungsten_core::AudioCommand::SetVoiceVolume
 pub tungsten_core::AudioCommand::SetVoiceVolume::fade: f32
 pub tungsten_core::AudioCommand::SetVoiceVolume::voice: tungsten_core::audio::Voice
@@ -16493,13 +16540,16 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::A
 pub struct tungsten_core::AudioCommands
 impl tungsten_core::audio::AudioCommands
 pub fn tungsten_core::audio::AudioCommands::drain(&mut self) -> alloc::vec::Vec<tungsten_core::audio::AudioCommand>
+pub fn tungsten_core::audio::AudioCommands::duck_bus(&mut self, tungsten_core::audio::AudioBus, f32, f32)
 pub fn tungsten_core::audio::AudioCommands::new() -> Self
 pub fn tungsten_core::audio::AudioCommands::play(&mut self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::Voice
 pub fn tungsten_core::audio::AudioCommands::play_faded(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool, f32) -> tungsten_core::audio::Voice
 pub fn tungsten_core::audio::AudioCommands::play_looping(&mut self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::play_panned(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool, f32) -> tungsten_core::audio::Voice
 pub fn tungsten_core::audio::AudioCommands::play_with(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool) -> tungsten_core::audio::Voice
 pub fn tungsten_core::audio::AudioCommands::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, f32)
 pub fn tungsten_core::audio::AudioCommands::set_master_volume(&mut self, f32)
+pub fn tungsten_core::audio::AudioCommands::set_voice_pan(&mut self, tungsten_core::audio::Voice, f32, f32)
 pub fn tungsten_core::audio::AudioCommands::set_voice_volume(&mut self, tungsten_core::audio::Voice, f32, f32)
 pub fn tungsten_core::audio::AudioCommands::stop(&mut self, tungsten_core::assets::audio::AudioHandle)
 pub fn tungsten_core::audio::AudioCommands::stop_all(&mut self)

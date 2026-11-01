@@ -5,7 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::assets::AudioHandle;
+use crate::World;
+use crate::assets::{AudioHandle, SoundRegistry};
 
 /// The voices the mixer plays at once, and the largest voice limit a sound
 /// takes in the manifest (`max_voices`).
@@ -52,6 +53,36 @@ impl AudioBus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Voice(u64);
 
+/// Where a voice sits between the speakers (redo 7.9): -1 (left) to 1
+/// (right), 0 centred, the default, kept in steps of 1/16,384, so an
+/// [`AudioCommand`] stays 24 bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Pan(i16);
+
+impl Pan {
+    /// Steps per unit.
+    const STEPS: f32 = 16_384.0;
+    /// Both speakers alike.
+    pub const CENTRE: Pan = Pan(0);
+
+    /// `pan` clamped to -1..=1, to the nearest step; one that is not finite
+    /// is centred.
+    #[must_use]
+    pub fn new(pan: f32) -> Self {
+        if pan.is_finite() {
+            Self((pan.clamp(-1.0, 1.0) * Self::STEPS).round() as i16)
+        } else {
+            Self::CENTRE
+        }
+    }
+
+    /// The pan, -1 to 1.
+    #[must_use]
+    pub fn get(self) -> f32 {
+        f32::from(self.0) / Self::STEPS
+    }
+}
+
 /// A command for the mixer. A match outside this crate needs a wildcard arm,
 /// since later commands are additions, and code outside it builds one
 /// through [`AudioCommands`].
@@ -72,6 +103,8 @@ pub enum AudioCommand {
         /// Seconds over which the voice rises from 0 to `volume`; 0 starts
         /// it at `volume`.
         fade: f32,
+        /// Where it sits between the speakers (redo 7.9).
+        pan: Pan,
     },
     /// Stop active instances of sound.
     Stop {
@@ -108,6 +141,28 @@ pub enum AudioCommand {
         /// Its volume.
         volume: f32,
     },
+    /// Move `voice`'s pan to `pan` over `fade` seconds (redo 7.9).
+    #[non_exhaustive]
+    SetVoicePan {
+        /// The voice.
+        voice: Voice,
+        /// Its new pan.
+        pan: Pan,
+        /// Seconds over which it moves there.
+        fade: f32,
+    },
+    /// Move `bus`'s duck to `gain` over `fade` seconds (redo 7.9): a gain,
+    /// 0 to 1 and 1 by default, on top of the player's volume, which stays
+    /// as set.
+    #[non_exhaustive]
+    DuckBus {
+        /// The bus.
+        bus: AudioBus,
+        /// Its duck, 0 to 1.
+        gain: f32,
+        /// Seconds over which it moves there.
+        fade: f32,
+    },
 }
 
 /// Per-frame audio command queue resource.
@@ -131,18 +186,30 @@ impl AudioCommands {
 
     /// Play once; returns the voice it starts.
     pub fn play(&mut self, handle: AudioHandle) -> Voice {
-        self.push_play(handle, 1.0, false, 0.0)
+        self.push_play(handle, 1.0, false, 0.0, Pan::CENTRE)
     }
 
     /// Play looping; returns the voice it starts.
     pub fn play_looping(&mut self, handle: AudioHandle) -> Voice {
-        self.push_play(handle, 1.0, true, 0.0)
+        self.push_play(handle, 1.0, true, 0.0, Pan::CENTRE)
     }
 
     /// Play with explicit volume/loop; returns the voice it starts. A volume
     /// that is not finite or is negative plays at 0.
     pub fn play_with(&mut self, handle: AudioHandle, volume: f32, looping: bool) -> Voice {
-        self.push_play(handle, sanitize_volume(volume), looping, 0.0)
+        self.push_play(handle, sanitize_volume(volume), looping, 0.0, Pan::CENTRE)
+    }
+
+    /// Play at `pan`, -1 (left) to 1 (right), clamped, a pan that is not
+    /// finite centred (redo 7.9); returns the voice it starts.
+    pub fn play_panned(
+        &mut self,
+        handle: AudioHandle,
+        volume: f32,
+        looping: bool,
+        pan: f32,
+    ) -> Voice {
+        self.push_play(handle, sanitize_volume(volume), looping, 0.0, Pan::new(pan))
     }
 
     /// Play rising from 0 to `volume` over `seconds`, in one command, so the
@@ -174,6 +241,7 @@ impl AudioCommands {
             sanitize_volume(volume),
             looping,
             sanitize_seconds(seconds),
+            Pan::CENTRE,
         )
     }
 
@@ -204,6 +272,27 @@ impl AudioCommands {
         });
     }
 
+    /// Move `voice`'s pan to `pan` over `seconds` (redo 7.9), clamped as
+    /// [`play_panned`](Self::play_panned)'s.
+    pub fn set_voice_pan(&mut self, voice: Voice, pan: f32, seconds: f32) {
+        self.commands.push(AudioCommand::SetVoicePan {
+            voice,
+            pan: Pan::new(pan),
+            fade: sanitize_seconds(seconds),
+        });
+    }
+
+    /// Ducks `bus` to `gain`, 0 to 1, over `seconds` (redo 7.9): the bus
+    /// plays at the player's volume × its duck, the volume staying as set;
+    /// a duck of 1 lifts it.
+    pub fn duck_bus(&mut self, bus: AudioBus, gain: f32, seconds: f32) {
+        self.commands.push(AudioCommand::DuckBus {
+            bus,
+            gain: sanitize_volume(gain).min(1.0),
+            fade: sanitize_seconds(seconds),
+        });
+    }
+
     /// Set master volume; one that is not finite or is negative is 0.
     pub fn set_master_volume(&mut self, volume: f32) {
         self.commands
@@ -224,7 +313,14 @@ impl AudioCommands {
         std::mem::take(&mut self.commands)
     }
 
-    fn push_play(&mut self, handle: AudioHandle, volume: f32, looping: bool, fade: f32) -> Voice {
+    fn push_play(
+        &mut self,
+        handle: AudioHandle,
+        volume: f32,
+        looping: bool,
+        fade: f32,
+        pan: Pan,
+    ) -> Voice {
         let voice = Voice(self.next_voice);
         self.next_voice += 1;
         self.commands.push(AudioCommand::Play {
@@ -233,9 +329,22 @@ impl AudioCommands {
             volume,
             looping,
             fade,
+            pan,
         });
         voice
     }
+}
+
+/// Plays the manifest's sound `id` at its volume, looping as its entry
+/// says, faded in over `fade` seconds, centred (redo 7.9); its voice, or
+/// `None` when no sound has that ID or the World holds no
+/// [`SoundRegistry`] or [`AudioCommands`].
+pub fn play(world: &mut World, id: &str, fade: f32) -> Option<Voice> {
+    let sounds = world.get_resource::<SoundRegistry>()?;
+    let handle = sounds.get_by_id(id)?;
+    let (volume, looping) = (sounds.get_volume(handle), sounds.get_looping(handle));
+    let audio = world.get_resource_mut::<AudioCommands>()?;
+    Some(audio.play_faded(handle, volume, looping, fade))
 }
 
 /// A volume the mixer can multiply by: one that is not finite or is

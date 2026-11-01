@@ -1053,3 +1053,220 @@ fn a_lowered_limit_keeps_the_newest_loops_in_latch_and_mixer() {
             .any(|v| playing_loops(&mixer).contains(v))
     );
 }
+
+/// A 16-frame sound whose left and right differ in every frame.
+fn varied() -> MixSound {
+    let pcm = (0..16)
+        .flat_map(|i| [0.05 * i as f32, -0.03 * i as f32])
+        .collect();
+    MixSound {
+        pcm,
+        bus: bus_index(AudioBus::Music),
+        limit: 64,
+    }
+}
+
+#[test]
+fn a_centred_voice_mixes_as_before() {
+    let mut mixer = mixer_of(vec![varied()], 2);
+    let mut audio = AudioCommands::new();
+    audio.set_master_volume(0.8);
+    audio.set_bus_volume(AudioBus::Music, 0.5);
+    apply_all(&mut mixer, &audio.drain());
+    // The master's and the bus's ramps settle first.
+    render(&mut mixer, 20);
+    audio.play_with(AudioHandle(0), 0.7, false);
+    apply_all(&mut mixer, &audio.drain());
+    let out = render(&mut mixer, 16);
+    // Before pans and ducks: each sample × (voice × bus × master), in that
+    // order, sample for sample.
+    let pcm = varied().pcm;
+    let gain = 0.7_f32 * 0.5 * 0.8;
+    let expected: Vec<f32> = pcm.iter().map(|&sample| sample * gain).collect();
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn a_panned_voice_leans_to_its_side() {
+    for (pan, left, right) in [
+        (-1.0, 1.0, 0.0),
+        (1.0, 0.0, 1.0),
+        (0.5, 0.5, 1.0),
+        (-0.25, 1.0, 0.75),
+    ] {
+        let mut mixer = mixer_of(vec![tone(64)], 2);
+        let mut audio = AudioCommands::new();
+        audio.play_panned(AudioHandle(0), 1.0, false, pan);
+        apply_all(&mut mixer, &audio.drain());
+        let out = render(&mut mixer, 4);
+        assert_eq!(channel(&out, 2, 0), [left; 4], "pan {pan}: left");
+        assert_eq!(channel(&out, 2, 1), [right; 4], "pan {pan}: right");
+    }
+    // Past ±1 a pan clamps; one that is not finite is centred.
+    let mut audio = AudioCommands::new();
+    audio.play_panned(AudioHandle(0), 1.0, false, 3.0);
+    audio.play_panned(AudioHandle(0), 1.0, false, f32::NAN);
+    let pans: Vec<f32> = audio
+        .drain()
+        .iter()
+        .filter_map(|c| match *c {
+            AudioCommand::Play { pan, .. } => Some(pan.get()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(pans, [1.0, 0.0]);
+}
+
+#[test]
+fn a_pan_change_ramps() {
+    let mut mixer = mixer_of(vec![tone(64)], 2);
+    let mut audio = AudioCommands::new();
+    let voice = audio.play_looping(AudioHandle(0));
+    apply_all(&mut mixer, &audio.drain());
+    audio.set_voice_pan(voice, 1.0, 0.02);
+    apply_all(&mut mixer, &audio.drain());
+    // Over 20 frames the left falls from 1 to 0; the right stays whole.
+    let out = render(&mut mixer, 24);
+    let left = channel(&out, 2, 0);
+    assert_close(left[0], 1.0);
+    assert_close(left[10], 0.5);
+    assert!(left.windows(2).all(|pair| pair[1] <= pair[0]), "{left:?}");
+    assert_eq!(left[20..], [0.0; 4]);
+    assert_eq!(channel(&out, 2, 1), [1.0; 24]);
+}
+
+#[test]
+fn a_duck_scales_its_bus_and_keeps_the_players_volume() {
+    let music = sound(1_000, 1.0, 1.0, AudioBus::Music, 64);
+    let mut mixer = mixer_of(vec![music, tone(64)], 2);
+    let mut audio = AudioCommands::new();
+    audio.set_bus_volume(AudioBus::Music, 0.5);
+    audio.play_looping(AudioHandle(0));
+    audio.duck_bus(AudioBus::Music, 0.5, 0.0);
+    apply_all(&mut mixer, &audio.drain());
+    render(&mut mixer, 20);
+    assert_eq!(lefts(&mut mixer, 4), [0.25; 4], "volume × duck");
+    assert_eq!(
+        mixer.buses[bus_index(AudioBus::Music)].to,
+        0.5,
+        "the volume stays as set"
+    );
+    // Another bus is not ducked: 0.25 of music and 0.5 of effects.
+    audio.play_with(AudioHandle(1), 0.5, true);
+    apply_all(&mut mixer, &audio.drain());
+    assert_eq!(lefts(&mut mixer, 4), [0.75; 4]);
+    // A duck of 1 lifts it; the player's volume is still the bus's.
+    audio.stop_all();
+    audio.play_looping(AudioHandle(0));
+    audio.duck_bus(AudioBus::Music, 1.0, 0.0);
+    apply_all(&mut mixer, &audio.drain());
+    render(&mut mixer, 20);
+    assert_eq!(lefts(&mut mixer, 4), [0.5; 4]);
+}
+
+#[test]
+fn the_latch_replays_ducks() {
+    let (mut outbox, _ring) = outbox(vec![Some(64)]);
+    let mut audio = AudioCommands::new();
+    audio.duck_bus(AudioBus::Music, 0.3, 2.0);
+    audio.duck_bus(AudioBus::Effects, 1.0, 0.0);
+    for command in audio.drain() {
+        outbox.send(command);
+    }
+    outbox.lose();
+    let (producer, mut fresh) = RingBuffer::new(RING_CAPACITY);
+    outbox.reconnect(producer, vec![Some(64)]);
+    let ducks: Vec<(AudioBus, f32, f32)> = pop_all(&mut fresh)
+        .iter()
+        .filter_map(|c| match *c {
+            AudioCommand::DuckBus {
+                bus, gain, fade, ..
+            } => Some((bus, gain, fade)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ducks,
+        [(AudioBus::Music, 0.3, 0.0)],
+        "a duck under 1, at once"
+    );
+    // Lifted, it replays nothing.
+    audio.duck_bus(AudioBus::Music, 1.0, 0.5);
+    for command in audio.drain() {
+        outbox.send(command);
+    }
+    outbox.lose();
+    let (producer, mut lifted) = RingBuffer::new(RING_CAPACITY);
+    outbox.reconnect(producer, vec![Some(64)]);
+    assert!(
+        !pop_all(&mut lifted)
+            .iter()
+            .any(|c| matches!(c, AudioCommand::DuckBus { .. }))
+    );
+}
+
+#[test]
+fn latch_and_mixer_agree_over_every_six_command_pattern_with_pans_and_ducks() {
+    // Every sequence of six commands from: a one-shot, a loop, a pan of the
+    // newest voice, a duck of its bus; the mixer renders 20 frames between
+    // commands, so a one-shot ends first, or 1.
+    let mut checked = 0;
+    for between in [20, 1] {
+        for pattern in 0..4_u32.pow(6) {
+            let mut mixer = mixer_of(vec![sound(10, 0.1, 0.1, AudioBus::Effects, 2)], 2);
+            let mut latch = Latch::new(vec![Some(2)]);
+            let mut audio = AudioCommands::new();
+            let mut newest = None;
+            for step in 0..6 {
+                let value = step as f32 * 0.3 - 0.75;
+                match pattern / 4_u32.pow(step) % 4 {
+                    0 => newest = Some(audio.play(AudioHandle(0))),
+                    1 => newest = Some(audio.play_panned(AudioHandle(0), 1.0, true, -value)),
+                    2 => {
+                        if let Some(voice) = newest {
+                            audio.set_voice_pan(voice, value, 0.0);
+                        }
+                    }
+                    _ => audio.duck_bus(AudioBus::Effects, value.abs(), 0.0),
+                }
+                for command in audio.drain() {
+                    latch.admit(&command);
+                    mixer.apply(&command);
+                }
+                render(&mut mixer, between);
+                let context = format!("pattern {pattern}, step {step}, {between} frames between");
+                let latched: Vec<(Voice, f32)> = latch
+                    .loops
+                    .iter()
+                    .map(|l| match l.play {
+                        AudioCommand::Play { pan, .. } => (l.voice, pan.get()),
+                        _ => unreachable!("a latched loop is a play"),
+                    })
+                    .collect();
+                let playing: Vec<(Voice, f32)> = mixer
+                    .voices
+                    .iter()
+                    .flatten()
+                    .filter(|v| v.looping && !v.stopping)
+                    .map(|v| (v.voice, v.pan.to))
+                    .collect();
+                let mut playing = playing;
+                playing.sort_by_key(|(voice, _)| latched.iter().position(|(l, _)| l == voice));
+                assert_eq!(latched, playing, "{context}");
+                let duck = latch.ducks[bus_index(AudioBus::Effects)]
+                    .as_ref()
+                    .map_or(1.0, |c| match *c {
+                        AudioCommand::DuckBus { gain, .. } => gain,
+                        _ => unreachable!("a latched duck is a duck"),
+                    });
+                assert_eq!(
+                    duck,
+                    mixer.ducks[bus_index(AudioBus::Effects)].to,
+                    "{context}"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(checked, 2 * 4096 * 6);
+}
