@@ -294,14 +294,14 @@ pub(in crate::physics) fn box_contact(
             |edge: usize| (vertices[(edge + 1) % 5] - vertices[edge]).length_squared() == 0.0;
         let offset = center - vertices[l];
         if t > 0.0 && zero(l) {
-            let m = (l + 1) % 5;
-            if normals[l].perp_dot(offset) * normals[l].perp_dot(normals[m]) > 0.0 {
-                (j, l) = (l, m);
+            let after = (l + 1) % 5;
+            if normals[l].perp_dot(offset) * normals[l].perp_dot(normals[after]) > 0.0 {
+                (j, l) = (l, after);
             }
         } else if t <= 0.0 && zero(j) {
-            let i = (j + 4) % 5;
-            if normals[j].perp_dot(offset) * normals[j].perp_dot(normals[i]) > 0.0 {
-                (j, l) = (i, j);
+            let before = (j + 4) % 5;
+            if normals[j].perp_dot(offset) * normals[j].perp_dot(normals[before]) > 0.0 {
+                (j, l) = (before, j);
             }
         }
         let vertex = vertices[l];
