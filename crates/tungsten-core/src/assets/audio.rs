@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
@@ -185,6 +185,10 @@ pub struct SoundRegistry {
     id_map: HashMap<String, AudioHandle>,
     /// Manifest defaults by handle.
     defaults: HashMap<AudioHandle, SoundDefaults>,
+    /// Each sound's file (redo 7.9), so an edit to it reloads the sound.
+    paths: HashMap<PathBuf, AudioHandle>,
+    /// Rises on every change to a sound or its defaults (redo 7.9).
+    revision: u64,
 }
 
 impl SoundRegistry {
@@ -195,6 +199,8 @@ impl SoundRegistry {
             sounds: HashMap::new(),
             id_map: HashMap::new(),
             defaults: HashMap::new(),
+            paths: HashMap::new(),
+            revision: 0,
         }
     }
 
@@ -211,6 +217,7 @@ impl SoundRegistry {
     ) -> AudioHandle {
         let handle = AudioHandle(self.next_id);
         self.next_id += 1;
+        self.revision += 1;
         self.id_map.insert(id, handle);
         self.sounds.insert(handle, data);
         self.defaults.insert(
@@ -249,9 +256,62 @@ impl SoundRegistry {
 
     /// Puts a registered sound on `bus`; an unknown handle is ignored.
     pub fn set_bus(&mut self, handle: AudioHandle, bus: AudioBus) {
-        if let Some(defaults) = self.defaults.get_mut(&handle) {
+        if let Some(defaults) = self.defaults.get_mut(&handle)
+            && defaults.bus != bus
+        {
             defaults.bus = bus;
+            self.revision += 1;
         }
+    }
+
+    /// Sets a registered sound's manifest volume and loop (redo 7.9); an
+    /// unknown handle is ignored.
+    pub fn set_defaults(&mut self, handle: AudioHandle, volume: f32, looping: bool) {
+        if let Some(defaults) = self.defaults.get_mut(&handle)
+            && (defaults.volume != volume || defaults.looping != looping)
+        {
+            defaults.volume = volume;
+            defaults.looping = looping;
+            self.revision += 1;
+        }
+    }
+
+    /// Records the file a registered sound decodes from (redo 7.9), so an
+    /// edit to it reloads the sound; an unknown handle is ignored.
+    pub fn set_path(&mut self, handle: AudioHandle, path: PathBuf) {
+        if self.sounds.contains_key(&handle) {
+            self.paths.retain(|_, &mut owner| owner != handle);
+            self.paths.insert(path, handle);
+        }
+    }
+
+    /// The ID of the sound that decodes from `path`.
+    #[must_use]
+    pub fn id_for_path(&self, path: &Path) -> Option<&str> {
+        let handle = self.paths.get(path)?;
+        self.id_map
+            .iter()
+            .find(|(_, owner)| *owner == handle)
+            .map(|(id, _)| id.as_str())
+    }
+
+    /// Replaces a registered sound's samples, keeping its handle and its
+    /// defaults (redo 7.9); `false` for an unknown handle.
+    pub fn replace(&mut self, handle: AudioHandle, data: SoundData) -> bool {
+        let Some(sound) = self.sounds.get_mut(&handle) else {
+            return false;
+        };
+        *sound = data;
+        self.revision += 1;
+        true
+    }
+
+    /// A count that rises whenever a sound registers or its samples or
+    /// defaults change (redo 7.9): the app restarts the audio when it moved
+    /// since the mixer was built.
+    #[must_use]
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// The bus a sound plays on: its manifest `bus`, and
@@ -266,8 +326,12 @@ impl SoundRegistry {
     /// Sets the voices of a registered sound that play at once, clamped to
     /// `1..=MAX_VOICES`; an unknown handle is ignored.
     pub fn set_max_voices(&mut self, handle: AudioHandle, max_voices: u32) {
-        if let Some(defaults) = self.defaults.get_mut(&handle) {
-            defaults.max_voices = max_voices.clamp(1, MAX_VOICES);
+        let max_voices = max_voices.clamp(1, MAX_VOICES);
+        if let Some(defaults) = self.defaults.get_mut(&handle)
+            && defaults.max_voices != max_voices
+        {
+            defaults.max_voices = max_voices;
+            self.revision += 1;
         }
     }
 
@@ -278,6 +342,11 @@ impl SoundRegistry {
         self.defaults
             .get(&handle)
             .map_or(MAX_VOICES, |d| d.max_voices)
+    }
+
+    /// Every registered sound's ID, in no fixed order.
+    pub fn ids(&self) -> impl Iterator<Item = &str> {
+        self.id_map.keys().map(String::as_str)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (AudioHandle, &SoundData)> {

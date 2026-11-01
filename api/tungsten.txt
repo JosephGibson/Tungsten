@@ -347,6 +347,7 @@ pub fn tungsten::asset_loader::reload_material(&str, &mut tungsten_core::ecs::wo
 pub fn tungsten::asset_loader::reload_particle(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_prefab(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_shader(&str, &std::path::Path, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_sound(&std::path::Path, &mut tungsten_core::ecs::world::World) -> bool
 pub fn tungsten::asset_loader::reload_sprite(&str, &std::path::Path, tungsten_core::assets::manifest::FilterMode, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_sprite_file(&std::path::Path, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_tilemap(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>

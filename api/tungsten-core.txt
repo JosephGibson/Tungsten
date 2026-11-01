@@ -260,11 +260,17 @@ pub fn tungsten_core::assets::audio::SoundRegistry::get_by_id(&self, &str) -> co
 pub fn tungsten_core::assets::audio::SoundRegistry::get_looping(&self, tungsten_core::assets::audio::AudioHandle) -> bool
 pub fn tungsten_core::assets::audio::SoundRegistry::get_max_voices(&self, tungsten_core::assets::audio::AudioHandle) -> u32
 pub fn tungsten_core::assets::audio::SoundRegistry::get_volume(&self, tungsten_core::assets::audio::AudioHandle) -> f32
+pub fn tungsten_core::assets::audio::SoundRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten_core::assets::audio::SoundRegistry::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::assets::audio::SoundRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::audio::AudioHandle, &tungsten_core::assets::audio::SoundData)>
 pub fn tungsten_core::assets::audio::SoundRegistry::new() -> Self
 pub fn tungsten_core::assets::audio::SoundRegistry::register(&mut self, alloc::string::String, tungsten_core::assets::audio::SoundData, f32, bool) -> tungsten_core::assets::audio::AudioHandle
+pub fn tungsten_core::assets::audio::SoundRegistry::replace(&mut self, tungsten_core::assets::audio::AudioHandle, tungsten_core::assets::audio::SoundData) -> bool
+pub fn tungsten_core::assets::audio::SoundRegistry::revision(&self) -> u64
 pub fn tungsten_core::assets::audio::SoundRegistry::set_bus(&mut self, tungsten_core::assets::audio::AudioHandle, tungsten_core::audio::AudioBus)
+pub fn tungsten_core::assets::audio::SoundRegistry::set_defaults(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool)
 pub fn tungsten_core::assets::audio::SoundRegistry::set_max_voices(&mut self, tungsten_core::assets::audio::AudioHandle, u32)
+pub fn tungsten_core::assets::audio::SoundRegistry::set_path(&mut self, tungsten_core::assets::audio::AudioHandle, std::path::PathBuf)
 impl core::default::Default for tungsten_core::assets::audio::SoundRegistry
 pub fn tungsten_core::assets::audio::SoundRegistry::default() -> Self
 impl core::marker::Freeze for tungsten_core::assets::audio::SoundRegistry
@@ -4224,11 +4230,17 @@ pub fn tungsten_core::assets::audio::SoundRegistry::get_by_id(&self, &str) -> co
 pub fn tungsten_core::assets::audio::SoundRegistry::get_looping(&self, tungsten_core::assets::audio::AudioHandle) -> bool
 pub fn tungsten_core::assets::audio::SoundRegistry::get_max_voices(&self, tungsten_core::assets::audio::AudioHandle) -> u32
 pub fn tungsten_core::assets::audio::SoundRegistry::get_volume(&self, tungsten_core::assets::audio::AudioHandle) -> f32
+pub fn tungsten_core::assets::audio::SoundRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten_core::assets::audio::SoundRegistry::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::assets::audio::SoundRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::audio::AudioHandle, &tungsten_core::assets::audio::SoundData)>
 pub fn tungsten_core::assets::audio::SoundRegistry::new() -> Self
 pub fn tungsten_core::assets::audio::SoundRegistry::register(&mut self, alloc::string::String, tungsten_core::assets::audio::SoundData, f32, bool) -> tungsten_core::assets::audio::AudioHandle
+pub fn tungsten_core::assets::audio::SoundRegistry::replace(&mut self, tungsten_core::assets::audio::AudioHandle, tungsten_core::assets::audio::SoundData) -> bool
+pub fn tungsten_core::assets::audio::SoundRegistry::revision(&self) -> u64
 pub fn tungsten_core::assets::audio::SoundRegistry::set_bus(&mut self, tungsten_core::assets::audio::AudioHandle, tungsten_core::audio::AudioBus)
+pub fn tungsten_core::assets::audio::SoundRegistry::set_defaults(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool)
 pub fn tungsten_core::assets::audio::SoundRegistry::set_max_voices(&mut self, tungsten_core::assets::audio::AudioHandle, u32)
+pub fn tungsten_core::assets::audio::SoundRegistry::set_path(&mut self, tungsten_core::assets::audio::AudioHandle, std::path::PathBuf)
 impl core::default::Default for tungsten_core::assets::audio::SoundRegistry
 pub fn tungsten_core::assets::audio::SoundRegistry::default() -> Self
 impl core::marker::Freeze for tungsten_core::assets::audio::SoundRegistry
@@ -19400,11 +19412,17 @@ pub fn tungsten_core::assets::audio::SoundRegistry::get_by_id(&self, &str) -> co
 pub fn tungsten_core::assets::audio::SoundRegistry::get_looping(&self, tungsten_core::assets::audio::AudioHandle) -> bool
 pub fn tungsten_core::assets::audio::SoundRegistry::get_max_voices(&self, tungsten_core::assets::audio::AudioHandle) -> u32
 pub fn tungsten_core::assets::audio::SoundRegistry::get_volume(&self, tungsten_core::assets::audio::AudioHandle) -> f32
+pub fn tungsten_core::assets::audio::SoundRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten_core::assets::audio::SoundRegistry::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::assets::audio::SoundRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::audio::AudioHandle, &tungsten_core::assets::audio::SoundData)>
 pub fn tungsten_core::assets::audio::SoundRegistry::new() -> Self
 pub fn tungsten_core::assets::audio::SoundRegistry::register(&mut self, alloc::string::String, tungsten_core::assets::audio::SoundData, f32, bool) -> tungsten_core::assets::audio::AudioHandle
+pub fn tungsten_core::assets::audio::SoundRegistry::replace(&mut self, tungsten_core::assets::audio::AudioHandle, tungsten_core::assets::audio::SoundData) -> bool
+pub fn tungsten_core::assets::audio::SoundRegistry::revision(&self) -> u64
 pub fn tungsten_core::assets::audio::SoundRegistry::set_bus(&mut self, tungsten_core::assets::audio::AudioHandle, tungsten_core::audio::AudioBus)
+pub fn tungsten_core::assets::audio::SoundRegistry::set_defaults(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool)
 pub fn tungsten_core::assets::audio::SoundRegistry::set_max_voices(&mut self, tungsten_core::assets::audio::AudioHandle, u32)
+pub fn tungsten_core::assets::audio::SoundRegistry::set_path(&mut self, tungsten_core::assets::audio::AudioHandle, std::path::PathBuf)
 impl core::default::Default for tungsten_core::assets::audio::SoundRegistry
 pub fn tungsten_core::assets::audio::SoundRegistry::default() -> Self
 impl core::marker::Freeze for tungsten_core::assets::audio::SoundRegistry

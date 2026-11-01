@@ -33,7 +33,7 @@ pub use prefab::{load_prefabs, reload_data, reload_prefab};
 pub(crate) use reload::reload_json_files;
 pub use reload::{
     reload_action_map, reload_animation, reload_font, reload_manifest, reload_material,
-    reload_particle, reload_shader, reload_tilemap, reload_ui_theme,
+    reload_particle, reload_shader, reload_sound, reload_tilemap, reload_ui_theme,
     reload_ui_themes_from_manifest,
 };
 pub use scene::{load_scene, spawn_scene};
@@ -252,6 +252,8 @@ fn load_sound_unit(manifest: &ResolvedManifest, id: &str, world: &mut World) -> 
     );
     sound_registry.set_bus(handle, sound_entry.bus);
     sound_registry.set_max_voices(handle, sound_entry.max_voices);
+    // Redo 7.9: an edit to its file reloads it.
+    sound_registry.set_path(handle, sound_entry.path.clone());
     Ok(())
 }
 

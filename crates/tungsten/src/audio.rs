@@ -50,7 +50,7 @@ const VOICES: usize = MAX_VOICES as usize;
 /// outbox that feeds it. A stream the device lost is dropped and the
 /// default device opened again, every two seconds until one opens, and the
 /// latch's state replayed into it: the master, the buses and the loops,
-/// from their start.
+/// from their start. A sound reload restarts it the same way (redo 7.9).
 pub struct AudioSystem {
     /// The live stream; `None` while it is lost.
     stream: Option<cpal::Stream>,
@@ -170,7 +170,7 @@ impl AudioSystem {
                 } = fresh;
                 self.stream = stream;
                 self.health = health;
-                self.outbox.reconnect(outbox.producer);
+                self.outbox.reconnect(outbox.producer, outbox.latch.limits);
                 self.retry_at = None;
             }
             Err(error) => {
@@ -181,6 +181,20 @@ impl AudioSystem {
                 self.retry_at = Some(Instant::now() + REBUILD_RETRY);
             }
         }
+    }
+
+    /// Restarts on `sounds` (redo 7.9), as after a lost device: the stream
+    /// drops and the default device opens again with the registry's sounds,
+    /// the latch, refreshed to their voice limits, replaying the master, the
+    /// buses and the loops from their start; playing one-shots end. A device
+    /// that does not open is retried as a lost one is.
+    pub(crate) fn restart(&mut self, sounds: &SoundRegistry) {
+        log::info!("Audio: restarting on the reloaded sounds");
+        self.outbox.lose();
+        self.stream = None;
+        self.retry_at = Some(Instant::now());
+        self.rebuild_failed = false;
+        self.maintain(sounds);
     }
 
     /// Log the errors the stream counted, at most once a second.
@@ -777,6 +791,36 @@ impl Latch {
         }
     }
 
+    /// Takes a new table's voice limits (redo 7.9): drops the loops of a
+    /// sound that now plays nothing and keeps each sound's newest loops
+    /// within its new limit, as a fresh mixer keeps them when the replay
+    /// starts them in order.
+    fn refresh(&mut self, limits: Vec<Option<u32>>) {
+        self.limits = limits;
+        let mut kept: HashMap<AudioHandle, u32> = HashMap::new();
+        let mut keep = vec![false; self.loops.len()];
+        for (index, latched) in self.loops.iter().enumerate().rev() {
+            let Some(limit) = self
+                .limits
+                .get(latched.handle.0 as usize)
+                .copied()
+                .flatten()
+            else {
+                continue;
+            };
+            let count = kept.entry(latched.handle).or_insert(0);
+            if *count < limit {
+                *count += 1;
+                keep[index] = true;
+            }
+        }
+        let mut index = 0;
+        self.loops.retain(|_| {
+            index += 1;
+            keep[index - 1]
+        });
+    }
+
     /// The commands that bring a mixer to this state: the master volume,
     /// each set bus's volume, then every loop from its start under its own
     /// voice.
@@ -870,11 +914,13 @@ impl Outbox {
         self.waiting.clear();
     }
 
-    /// A new stream's ring: the latch's state goes into it first.
-    fn reconnect(&mut self, producer: Producer<AudioCommand>) {
+    /// A new stream's ring and its mixer's voice limits: the latch takes
+    /// the limits (redo 7.9), then its state goes into the ring first.
+    fn reconnect(&mut self, producer: Producer<AudioCommand>, limits: Vec<Option<u32>>) {
         self.producer = producer;
         self.lost = false;
         self.waiting.clear();
+        self.latch.refresh(limits);
         self.latch.replay(&mut self.waiting);
         self.flush();
     }

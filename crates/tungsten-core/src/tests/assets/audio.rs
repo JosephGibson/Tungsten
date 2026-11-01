@@ -129,3 +129,57 @@ fn the_registry_keeps_a_bus_and_a_voice_limit_per_sound_clamped() {
     assert_eq!(reg.get_bus(AudioHandle(99)), AudioBus::Effects);
     assert_eq!(reg.get_max_voices(AudioHandle(99)), 64);
 }
+
+fn pcm(value: f32) -> SoundData {
+    SoundData {
+        samples: vec![value; 8],
+        sample_rate: 8_000,
+        channels: 1,
+    }
+}
+
+#[test]
+fn a_replaced_sound_keeps_its_handle() {
+    let mut reg = SoundRegistry::new();
+    let step = reg.register("step".into(), pcm(0.5), 0.8, false);
+    reg.set_bus(step, AudioBus::Music);
+    let revision = reg.revision();
+    assert!(reg.replace(step, pcm(0.25)));
+    assert_eq!(reg.get_by_id("step"), Some(step));
+    assert_eq!(reg.get(step).unwrap().samples, vec![0.25; 8]);
+    // Its defaults stay; the revision moves.
+    assert_eq!(
+        (reg.get_volume(step), reg.get_bus(step)),
+        (0.8, AudioBus::Music)
+    );
+    assert!(reg.revision() > revision);
+    assert!(!reg.replace(AudioHandle(9), pcm(0.1)), "an unknown handle");
+
+    // Defaults move the revision only when they change.
+    let revision = reg.revision();
+    reg.set_defaults(step, 0.8, false);
+    reg.set_max_voices(step, 64);
+    assert_eq!(reg.revision(), revision);
+    reg.set_defaults(step, 0.6, true);
+    assert_eq!((reg.get_volume(step), reg.get_looping(step)), (0.6, true));
+    assert!(reg.revision() > revision);
+}
+
+#[test]
+fn a_sounds_path_maps_back_to_its_id() {
+    let mut reg = SoundRegistry::new();
+    let step = reg.register("step".into(), pcm(0.5), 1.0, false);
+    let hum = reg.register("hum".into(), pcm(0.5), 1.0, true);
+    reg.set_path(step, PathBuf::from("sounds/step.wav"));
+    reg.set_path(hum, PathBuf::from("sounds/hum.ogg"));
+    assert_eq!(reg.id_for_path(Path::new("sounds/step.wav")), Some("step"));
+    assert_eq!(reg.id_for_path(Path::new("sounds/hum.ogg")), Some("hum"));
+    assert_eq!(reg.id_for_path(Path::new("sounds/none.wav")), None);
+    // A new path replaces the old one.
+    reg.set_path(step, PathBuf::from("sounds/step2.wav"));
+    assert_eq!(reg.id_for_path(Path::new("sounds/step.wav")), None);
+    assert_eq!(reg.id_for_path(Path::new("sounds/step2.wav")), Some("step"));
+    let mut ids: Vec<&str> = reg.ids().collect();
+    ids.sort_unstable();
+    assert_eq!(ids, ["hum", "step"]);
+}

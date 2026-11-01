@@ -896,7 +896,7 @@ fn a_rebuild_sends_the_latch_replay_first_into_the_new_ring() {
         outbox.send(command);
     }
     let (producer, mut consumer) = RingBuffer::new(RING_CAPACITY);
-    outbox.reconnect(producer);
+    outbox.reconnect(producer, vec![Some(64)]);
     audio.set_master_volume(0.9);
     for command in audio.drain() {
         outbox.send(command);
@@ -921,4 +921,135 @@ fn a_rebuild_sends_the_latch_replay_first_into_the_new_ring() {
     assert_eq!(playing_loops(&mixer), [theme]);
     assert_eq!(mixer.master.at(0), 0.9);
     assert_eq!(mixer.buses[bus_index(AudioBus::Effects)].at(0), 0.5);
+}
+
+/// A registry of one mono sound, `value` in every sample, at the test rate.
+fn registry_of(value: f32) -> SoundRegistry {
+    let mut registry = SoundRegistry::new();
+    registry.register(
+        "hum".into(),
+        SoundData {
+            samples: vec![value; 2 * RATE as usize],
+            sample_rate: RATE,
+            channels: 1,
+        },
+        1.0,
+        true,
+    );
+    registry
+}
+
+#[test]
+fn a_mixer_rebuilt_from_the_registry_plays_the_new_samples() {
+    let mut registry = registry_of(0.5);
+    let mut audio = AudioCommands::new();
+    audio.play(AudioHandle(0));
+    let play: Vec<AudioCommand> = audio.drain();
+    let mut mixer = Mixer::new(prepare_sounds(&registry, RATE), RATE, 2);
+    apply_all(&mut mixer, &play);
+    assert!(
+        lefts(&mut mixer, 50)
+            .iter()
+            .all(|&s| (s - 0.5).abs() < 1e-6)
+    );
+    // A reload replaces the samples under the handle; the restarted
+    // mixer plays them.
+    assert!(registry.replace(
+        AudioHandle(0),
+        SoundData {
+            samples: vec![0.25; 2 * RATE as usize],
+            sample_rate: RATE,
+            channels: 1,
+        },
+    ));
+    let mut mixer = Mixer::new(prepare_sounds(&registry, RATE), RATE, 2);
+    apply_all(&mut mixer, &play);
+    assert!(
+        lefts(&mut mixer, 50)
+            .iter()
+            .all(|&s| (s - 0.25).abs() < 1e-6)
+    );
+}
+
+#[test]
+fn a_restart_replays_the_master_the_buses_and_the_loops() {
+    let (mut outbox, mut ring) = outbox(vec![Some(64), Some(64)]);
+    let mut audio = AudioCommands::new();
+    audio.set_master_volume(0.4);
+    audio.set_bus_volume(AudioBus::Music, 0.5);
+    let hum = audio.play_faded(AudioHandle(0), 0.7, true, 2.0);
+    audio.play(AudioHandle(1));
+    for command in audio.drain() {
+        outbox.send(command);
+    }
+    assert_eq!(pop_all(&mut ring).len(), 4);
+    // The restart: the stream drops, a new one opens on the reloaded
+    // sounds, and the latch replays into its ring.
+    outbox.lose();
+    let (producer, mut fresh) = RingBuffer::new(RING_CAPACITY);
+    outbox.reconnect(producer, vec![Some(64), Some(64)]);
+    let replay = pop_all(&mut fresh);
+    assert_eq!(masters(&replay), [0.4]);
+    assert!(replay.iter().any(|c| matches!(
+        c,
+        AudioCommand::SetBusVolume { bus: AudioBus::Music, volume, .. } if *volume == 0.5
+    )));
+    let loops: Vec<_> = replay.iter().filter_map(play_parts).collect();
+    assert_eq!(
+        loops,
+        [(AudioHandle(0), hum, 0.7, true, 0.0)],
+        "the loop from its start, the one-shot gone"
+    );
+}
+
+#[test]
+fn a_sound_added_by_a_reload_latches_its_loops() {
+    let (mut outbox, _ring) = outbox(vec![Some(64)]);
+    // The reload adds a second sound: the restart's mixer has two.
+    outbox.lose();
+    let (producer, _second) = RingBuffer::new(RING_CAPACITY);
+    outbox.reconnect(producer, vec![Some(64), Some(64)]);
+    let mut audio = AudioCommands::new();
+    let chime = audio.play_faded(AudioHandle(1), 0.6, true, 0.0);
+    for command in audio.drain() {
+        outbox.send(command);
+    }
+    // A second restart replays it.
+    outbox.lose();
+    let (producer, mut third) = RingBuffer::new(RING_CAPACITY);
+    outbox.reconnect(producer, vec![Some(64), Some(64)]);
+    let loops: Vec<_> = pop_all(&mut third).iter().filter_map(play_parts).collect();
+    assert_eq!(loops, [(AudioHandle(1), chime, 0.6, true, 0.0)]);
+}
+
+#[test]
+fn a_lowered_limit_keeps_the_newest_loops_in_latch_and_mixer() {
+    let (mut outbox, _ring) = outbox(vec![Some(64), Some(64)]);
+    let mut audio = AudioCommands::new();
+    let first = audio.play_faded(AudioHandle(0), 1.0, true, 0.0);
+    let other = audio.play_faded(AudioHandle(1), 1.0, true, 0.0);
+    let second = audio.play_faded(AudioHandle(0), 1.0, true, 0.0);
+    let third = audio.play_faded(AudioHandle(0), 1.0, true, 0.0);
+    let plays: Vec<AudioCommand> = audio.drain();
+    for command in plays.clone() {
+        outbox.send(command);
+    }
+    // The reload lowers sound 0 to two voices and leaves sound 1 playing
+    // nothing.
+    let limits = vec![Some(2), None];
+    outbox.lose();
+    let (producer, mut fresh) = RingBuffer::new(RING_CAPACITY);
+    outbox.reconnect(producer, limits);
+    let replay = pop_all(&mut fresh);
+    let latched: Vec<Voice> = replay.iter().filter_map(play_parts).map(|p| p.1).collect();
+    assert_eq!(latched, [second, third], "the newest within the new limit");
+    // A mixer of the new limits keeps the same loops of the original plays.
+    let mut mixer = Mixer::new(vec![Some(tone(2)), None], RATE, 2);
+    apply_all(&mut mixer, &plays);
+    assert_eq!(playing_loops(&mixer), [second, third]);
+    assert!(
+        ![first, other]
+            .iter()
+            .any(|v| playing_loops(&mixer).contains(v))
+    );
 }

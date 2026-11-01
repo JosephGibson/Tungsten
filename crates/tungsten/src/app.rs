@@ -359,6 +359,9 @@ pub struct App {
     last_frame: Option<Instant>,
     exit_on_escape: bool,
     audio: Option<AudioSystem>,
+    /// The `SoundRegistry` revision the mixer's sounds were prepared from;
+    /// a reload that moves it restarts the audio (redo 7.9).
+    audio_revision: u64,
     hot_reload: Option<HotReloadWatcher>,
     /// Directories given to `enable_hot_reload`; `run` starts the watcher.
     hot_reload_dirs: Option<Vec<PathBuf>>,
@@ -696,6 +699,7 @@ impl App {
             last_frame: None,
             exit_on_escape: true,
             audio: None,
+            audio_revision: 0,
             hot_reload: None,
             hot_reload_dirs: None,
             #[cfg(feature = "gamepad")]
@@ -1266,6 +1270,7 @@ impl App {
         if self.window.is_some()
             && let Some(sound_registry) = self.world.get_resource::<SoundRegistry>()
         {
+            self.audio_revision = sound_registry.revision();
             match AudioSystem::init(sound_registry) {
                 Ok(sys) => {
                     self.audio = Some(sys);
@@ -1498,6 +1503,10 @@ impl App {
                         log::debug!("Hot reload: no font registered for '{}'", canon.display());
                     }
                 }
+                // Redo 7.9: a sound decodes again; the audio restarts below.
+                "wav" | "ogg" | "mp3" | "aac" | "m4a" => {
+                    asset_loader::reload_sound(&canon, &mut self.world);
+                }
                 "tmj" => {
                     let id = self
                         .world
@@ -1534,6 +1543,22 @@ impl App {
         }
         if !json_paths.is_empty() {
             asset_loader::reload_json_files(&json_paths, &mut self.world, manifest_reloaded);
+        }
+        self.restart_audio_on_reloaded_sounds();
+    }
+
+    /// Redo 7.9: once a reload changed a sound or its defaults, the audio
+    /// restarts on the registry, as after a lost device (`D-053`).
+    fn restart_audio_on_reloaded_sounds(&mut self) {
+        let Some(sounds) = self.world.get_resource::<SoundRegistry>() else {
+            return;
+        };
+        if sounds.revision() == self.audio_revision {
+            return;
+        }
+        self.audio_revision = sounds.revision();
+        if let Some(audio) = self.audio.as_mut() {
+            audio.restart(sounds);
         }
     }
 

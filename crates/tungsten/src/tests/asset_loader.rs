@@ -1741,3 +1741,92 @@ fn a_unit_that_fails_fails_the_plan() {
     );
     assert!(format!("{err:#}").contains("run.json"), "{err:#}");
 }
+
+/// Two sounds loaded from a manifest at `dir`, as a window's load leaves
+/// them: `step` at 0.8 on effects, `hum` looping on music with 2 voices.
+fn sound_world(dir: &Path) -> World {
+    write_wav(&dir.join("step.wav"), 400);
+    write_wav(&dir.join("hum.wav"), 900);
+    let manifest = dir.join("sounds.json");
+    write(
+        &manifest,
+        r#"{"sounds": {"step": {"path": "step.wav", "volume": 0.8},
+            "hum": {"path": "hum.wav", "looping": true, "bus": "music", "max_voices": 2}}}"#,
+    );
+    let mut world = load_world();
+    load_sounds(&ResolvedManifest::load(&manifest).unwrap(), &mut world).unwrap();
+    world
+}
+
+#[test]
+fn a_manifest_reload_adds_sounds_and_refreshes_their_defaults() {
+    let dir = tempdir();
+    let mut world = sound_world(&dir);
+    let sounds = world.resource::<SoundRegistry>();
+    let (step, hum) = (
+        sounds.get_by_id("step").unwrap(),
+        sounds.get_by_id("hum").unwrap(),
+    );
+    let revision = sounds.revision();
+    write_wav(&dir.join("chime.wav"), 300);
+    let edited = dir.join("edited.json");
+    write(
+        &edited,
+        r#"{"sounds": {"step": {"path": "step.wav", "volume": 0.5, "max_voices": 4},
+            "hum": {"path": "hum.wav", "looping": false, "bus": "effects"},
+            "chime": {"path": "chime.wav", "bus": "music"}}}"#,
+    );
+    let removed =
+        reload::reload_manifest_sounds(&ResolvedManifest::load(&edited).unwrap(), &mut world);
+    assert!(removed.is_empty());
+    let sounds = world.resource::<SoundRegistry>();
+    // The kept sounds keep their handles and take their entries.
+    assert_eq!(sounds.get_by_id("step"), Some(step));
+    assert_eq!(
+        (sounds.get_volume(step), sounds.get_max_voices(step)),
+        (0.5, 4)
+    );
+    assert_eq!(sounds.get_by_id("hum"), Some(hum));
+    assert!(!sounds.get_looping(hum));
+    assert_eq!(sounds.get_bus(hum), tungsten_core::AudioBus::Effects);
+    assert_eq!(sounds.get_max_voices(hum), 64);
+    // The new one registers, on its path, with its entry.
+    let chime = sounds.get_by_id("chime").expect("a new sound registers");
+    assert_eq!(sounds.get(chime).unwrap().samples.len(), 300);
+    assert_eq!(sounds.get_bus(chime), tungsten_core::AudioBus::Music);
+    let chime_path = dir.join("chime.wav").canonicalize().unwrap();
+    assert_eq!(sounds.id_for_path(&chime_path), Some("chime"));
+    assert!(sounds.revision() > revision, "the app restarts the audio");
+
+    // An edit to a sound's file decodes it again under its handle.
+    write_wav(&dir.join("step.wav"), 1_000);
+    let step_path = dir.join("step.wav").canonicalize().unwrap();
+    assert!(reload::reload_sound(&step_path, &mut world));
+    let sounds = world.resource::<SoundRegistry>();
+    assert_eq!(sounds.get(step).unwrap().samples.len(), 1_000);
+    assert_eq!(sounds.get_volume(step), 0.5);
+    assert!(!reload::reload_sound(&dir.join("none.wav"), &mut world));
+}
+
+#[test]
+fn a_removed_sound_stays_and_warns() {
+    let dir = tempdir();
+    let mut world = sound_world(&dir);
+    let hum = world.resource::<SoundRegistry>().get_by_id("hum").unwrap();
+    let edited = dir.join("edited.json");
+    write(
+        &edited,
+        r#"{"sounds": {"step": {"path": "step.wav", "volume": 0.8}}}"#,
+    );
+    let removed =
+        reload::reload_manifest_sounds(&ResolvedManifest::load(&edited).unwrap(), &mut world);
+    assert_eq!(removed, ["hum"], "warned once, by ID");
+    let sounds = world.resource::<SoundRegistry>();
+    assert_eq!(
+        sounds.get_by_id("hum"),
+        Some(hum),
+        "it stays, as a removed sprite does"
+    );
+    assert_eq!(sounds.get(hum).unwrap().samples.len(), 900);
+    assert!(sounds.get_looping(hum));
+}
