@@ -199,6 +199,67 @@ pub(crate) fn instance_capacity(required: usize, stride: usize, max_buffer_size:
         .max(1)
 }
 
+/// Texture handles (`D-048`, redo 7.9): a counter rising from 0 for the
+/// textures a run keeps, and a reserved range falling from `u32::MAX`, which
+/// the counter never reaches, for textures dropped before the counter mints
+/// the rest, such as the boot group's pages. Dropping those leaves every
+/// counter handle as a run without them mints it.
+#[derive(Debug, Clone)]
+pub struct TextureHandles {
+    next: u32,
+    next_reserved: u32,
+}
+
+impl TextureHandles {
+    /// The reserved range's lowest handle; the counter stops below it.
+    pub const RESERVED_FLOOR: u32 = u32::MAX - 1023;
+
+    /// A counter at 0 and the reserved range at `u32::MAX`.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            next: 0,
+            next_reserved: u32::MAX,
+        }
+    }
+
+    /// The counter's next handle.
+    ///
+    /// # Panics
+    ///
+    /// When the counter reaches [`Self::RESERVED_FLOOR`].
+    pub fn allocate(&mut self) -> TextureHandle {
+        assert!(
+            self.next < Self::RESERVED_FLOOR,
+            "the texture handle counter reached the reserved range"
+        );
+        let handle = TextureHandle(self.next);
+        self.next += 1;
+        handle
+    }
+
+    /// The reserved range's next handle, falling from `u32::MAX`.
+    ///
+    /// # Panics
+    ///
+    /// When the 1,024 reserved handles are spent.
+    pub fn allocate_reserved(&mut self) -> TextureHandle {
+        assert!(
+            self.next_reserved >= Self::RESERVED_FLOOR,
+            "the reserved texture handles are spent"
+        );
+        let handle = TextureHandle(self.next_reserved);
+        self.next_reserved = self.next_reserved.wrapping_sub(1);
+        handle
+    }
+}
+
+impl Default for TextureHandles {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Textured sprite pipeline, samplers, and texture pool.
 pub struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
@@ -219,7 +280,8 @@ pub struct SpritePipeline {
     /// M29 parallel pool: keyed by the albedo page handle, holds three views
     /// + one bind group. Lit batches bind from this pool at group 1.
     lit_textures: HashMap<TextureHandle, GpuLitTextures>,
-    next_handle: u32,
+    /// Its counter mints every handle `allocate_texture_handle` gives.
+    handles: TextureHandles,
     /// Each material's UBO slots, one per batch of the material in a frame,
     /// with the bytes each holds (`D-101`).
     material_slots: HashMap<MaterialAssetId, ParamSlots<MaterialSlot>>,
@@ -407,7 +469,7 @@ impl SpritePipeline {
             sampler_linear,
             textures: HashMap::new(),
             lit_textures: HashMap::new(),
-            next_handle: 0,
+            handles: TextureHandles::new(),
             material_slots: HashMap::new(),
             material_batches: HashMap::new(),
             warned_instance_cap: false,
@@ -478,9 +540,7 @@ impl SpritePipeline {
 
     /// Mint renderer-owned texture handle.
     pub fn allocate_texture_handle(&mut self) -> TextureHandle {
-        let handle = TextureHandle(self.next_handle);
-        self.next_handle += 1;
-        handle
+        self.handles.allocate()
     }
 
     /// Remove texture and bind group from pool.

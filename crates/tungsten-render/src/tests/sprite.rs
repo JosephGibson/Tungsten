@@ -28,3 +28,32 @@ fn instance_capacity_stays_within_one_buffer() {
     assert_eq!(instance_capacity(10, 48, 100), 2);
     assert_eq!(instance_capacity(10, 48, 10), 1);
 }
+
+#[test]
+fn a_reserved_handle_never_comes_from_the_counter() {
+    let mut handles = TextureHandles::new();
+    let counted: Vec<u32> = (0..4).map(|_| handles.allocate().0).collect();
+    let reserved: Vec<u32> = (0..3).map(|_| handles.allocate_reserved().0).collect();
+    assert_eq!(counted, [0, 1, 2, 3]);
+    assert_eq!(reserved, [u32::MAX, u32::MAX - 1, u32::MAX - 2]);
+    // Reserved handles leave the counter where it was.
+    assert_eq!(handles.allocate().0, 4);
+    assert!(
+        reserved
+            .iter()
+            .all(|&h| h >= TextureHandles::RESERVED_FLOOR)
+    );
+
+    // The counter stops below the range, and the range stops at its floor.
+    let mut full = TextureHandles {
+        next: TextureHandles::RESERVED_FLOOR - 1,
+        next_reserved: TextureHandles::RESERVED_FLOOR,
+    };
+    assert_eq!(full.allocate().0, TextureHandles::RESERVED_FLOOR - 1);
+    assert_eq!(full.allocate_reserved().0, TextureHandles::RESERVED_FLOOR);
+    let mut counter = full.clone();
+    let counter = std::panic::catch_unwind(move || counter.allocate());
+    assert!(counter.is_err(), "the counter never reaches the range");
+    let range = std::panic::catch_unwind(move || full.allocate_reserved());
+    assert!(range.is_err(), "the range ends at its floor");
+}

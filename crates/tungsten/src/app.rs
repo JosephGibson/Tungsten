@@ -2,7 +2,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use glam::Vec2;
+
 use crate::asset_loader;
+use crate::asset_loader::{BootAssets, BootSprite, LoadPlan};
 use crate::audio::AudioSystem;
 use crate::capture::{Capture, parse_capture_config};
 use crate::crash::{self, CrashContext};
@@ -32,8 +35,8 @@ use log::LevelFilter;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tungsten_core::assets::{
-    FontRegistry, ParticleConfigRegistry, ParticleMeshRegistry, ShaderRegistry, SoundRegistry,
-    TilemapRegistry,
+    FontRegistry, LoadedManifest, ParticleConfigRegistry, ParticleMeshRegistry, ResolvedManifest,
+    ShaderRegistry, SoundRegistry, TilemapRegistry,
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
@@ -49,6 +52,7 @@ use tungsten_core::{
     TimeConfig, Transform, Visibility, World, WorldLabels, WorldRngSeed, system,
 };
 use tungsten_render::renderer::RenderError;
+use tungsten_render::sprite::TextureHandles;
 use tungsten_render::{
     DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, RenderOutcome, Renderer,
     SpriteBatch, TextSection, WorldLabelRun,
@@ -167,6 +171,180 @@ fn ms_since(since: Instant) -> f64 {
     since.elapsed().as_secs_f64() * 1000.0
 }
 
+/// A boot frame's progress (redo 7.9), which a boot view draws: the load's
+/// units done and in all, the boot group's assets, and the window.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct BootProgress<'a> {
+    /// Units run so far.
+    pub done: usize,
+    /// Units in all; 0 for a game with no manifest.
+    pub total: usize,
+    /// The boot group's sprites, on pages of their own, and its font.
+    pub assets: &'a BootAssets,
+    /// The window's size in physical pixels.
+    pub window: [u32; 2],
+    /// The window's scale factor.
+    pub scale: f32,
+}
+
+impl BootProgress<'_> {
+    /// Units done over units, 0 to 1; 1 with none.
+    #[must_use]
+    pub fn fraction(&self) -> f32 {
+        if self.total == 0 {
+            1.0
+        } else {
+            self.done as f32 / self.total as f32
+        }
+    }
+}
+
+/// What one boot frame draws (redo 7.9), in window pixels from the top-left,
+/// over the clear colour.
+#[derive(Default)]
+pub struct BootView {
+    /// Sprite batches, the boot group's pages among their textures.
+    pub sprites: Vec<SpriteBatch>,
+    /// Text, in the boot group's font or the engine's.
+    pub text: Vec<TextSection>,
+}
+
+/// A boot view [`App::set_boot_view`] sets.
+pub type BootViewFn = Box<dyn Fn(&World, &BootProgress<'_>) -> BootView>;
+
+/// How long a boot redraw runs units (redo 7.9); a unit that starts finishes.
+const BOOT_SLICE: Duration = Duration::from_millis(12);
+/// How often the boot view draws while units run.
+const BOOT_VIEW_EVERY: Duration = Duration::from_millis(33);
+
+/// Boot frames' pacing (redo 7.9): the first redraw draws the view before
+/// any unit runs; each later one runs units until `BOOT_SLICE` has passed,
+/// then draws the view when `BOOT_VIEW_EVERY` has passed since the last.
+#[derive(Debug, Default)]
+pub(crate) struct BootPacer {
+    /// When the view last drew; `None` before the first redraw.
+    viewed: Option<Instant>,
+    slice_max: Duration,
+}
+
+/// What one boot redraw did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BootStep {
+    /// Units it ran.
+    pub(crate) ran: usize,
+    /// Whether it draws the view.
+    pub(crate) view: bool,
+    /// Whether no unit is left: the boot ends.
+    pub(crate) done: bool,
+}
+
+impl BootPacer {
+    /// One boot redraw by `clock`: `run` runs the next unit, `None` when
+    /// none is left.
+    pub(crate) fn redraw(
+        &mut self,
+        clock: &mut dyn FnMut() -> Instant,
+        run: &mut dyn FnMut() -> Option<anyhow::Result<()>>,
+    ) -> anyhow::Result<BootStep> {
+        let start = clock();
+        let Some(viewed) = self.viewed else {
+            self.viewed = Some(start);
+            return Ok(BootStep {
+                ran: 0,
+                view: true,
+                done: false,
+            });
+        };
+        let mut ran = 0;
+        let mut now = start;
+        let done = loop {
+            match run() {
+                None => break true,
+                Some(result) => result?,
+            }
+            ran += 1;
+            now = clock();
+            if now.duration_since(start) >= BOOT_SLICE {
+                break false;
+            }
+        };
+        self.slice_max = self.slice_max.max(now.duration_since(start));
+        let view = !done && now.duration_since(viewed) >= BOOT_VIEW_EVERY;
+        if view {
+            self.viewed = Some(now);
+        }
+        Ok(BootStep { ran, view, done })
+    }
+
+    /// The longest stretch of units one redraw ran.
+    pub(crate) fn slice_max(&self) -> Duration {
+        self.slice_max
+    }
+}
+
+/// A windowed run's boot (redo 7.9): the merged manifest's plan, run in
+/// slices between boot frames before frame 1.
+#[derive(Default)]
+struct Boot {
+    /// `None` for a game with no manifest roots.
+    plan: Option<LoadPlan>,
+    assets: BootAssets,
+    pacer: BootPacer,
+    /// The manifests' merge, which the `load` phase counts.
+    merge_ms: f64,
+}
+
+/// The default boot view (redo 7.9): with a boot group, its logo at the
+/// window's centre at its size × the window's scale, the bar 16 units under
+/// it stretched to the progress, and with a font, `NN %` under the bar.
+fn default_boot_view(progress: &BootProgress<'_>) -> BootView {
+    let [width, height] = progress.window.map(|side| side as f32);
+    let scale = progress.scale;
+    let centre = Vec2::new(width, height) * 0.5;
+    let mut view = BootView::default();
+    let mut draw = |sprite: &BootSprite, at: Vec2, size: Vec2| {
+        let mut batch = SpriteBatch::new(sprite.texture, sprite.filter);
+        batch.instances.push(tungsten_render::SpriteInstance::whole(
+            at.into(),
+            size.into(),
+            0.0,
+            [255; 4],
+        ));
+        view.sprites.push(batch);
+    };
+    let size_of =
+        |sprite: &BootSprite| Vec2::new(sprite.size[0] as f32, sprite.size[1] as f32) * scale;
+    let mut below = centre.y;
+    if let Some(logo) = &progress.assets.logo {
+        let size = size_of(logo);
+        draw(logo, centre - size * 0.5, size);
+        below = centre.y + size.y * 0.5;
+    }
+    if let Some(bar) = &progress.assets.bar {
+        let size = size_of(bar);
+        let at = Vec2::new(centre.x - size.x * 0.5, below + 16.0 * scale);
+        draw(bar, at, Vec2::new(size.x * progress.fraction(), size.y));
+        below = at.y + size.y;
+    }
+    if let Some(font) = &progress.assets.font {
+        let font_size = 16.0 * scale;
+        let mut layout = tungsten_core::text::TextLayout::default();
+        layout.align = tungsten_core::text::TextAlign::Center;
+        view.text.push(TextSection {
+            content: format!("{:.0} %", progress.fraction() * 100.0),
+            font_id: font.clone(),
+            font_size,
+            line_height: 0.0,
+            color: [255; 4],
+            position: [0.0, below + 8.0 * scale],
+            bounds: Some([width, font_size * 2.0]),
+            layout,
+        });
+    }
+    view
+}
+
 /// Winit loop, ECS, and renderer owner.
 pub struct App {
     config: Config,
@@ -233,6 +411,11 @@ pub struct App {
     script_report: Option<PathBuf>,
     /// How the run started (redo 7.9).
     startup_clock: StartupClock,
+    /// The boot under way (redo 7.9): `resumed` starts it and frame 1
+    /// waits for it to end.
+    boot: Option<Boot>,
+    /// The view boot frames draw, [`App::set_boot_view`]'s.
+    boot_view: Option<BootViewFn>,
 }
 
 impl App {
@@ -546,6 +729,8 @@ impl App {
             }),
             script_report: env_path(env, REPORT_ENV),
             startup_clock: StartupClock::default(),
+            boot: None,
+            boot_view: None,
         };
         app.take_config_manifest()
             .inspect_err(|err| log::error!("{err}"))?;
@@ -740,6 +925,14 @@ impl App {
     /// Set post-renderer startup hook.
     pub fn on_startup(&mut self, f: impl FnOnce(&mut World, &mut Renderer) + 'static) {
         self.startup = Some(Box::new(f));
+    }
+
+    /// Replaces the view boot frames draw while the manifest loads (redo
+    /// 7.9), by default the boot group's logo, bar and percentage over the
+    /// clear colour: `f` returns each boot frame's sprite batches and text,
+    /// in window pixels, from the World and the load's progress.
+    pub fn set_boot_view(&mut self, f: impl Fn(&World, &BootProgress<'_>) -> BootView + 'static) {
+        self.boot_view = Some(Box::new(f));
     }
 
     /// D-052 manifest composition roots; D-017 duplicate IDs are fatal.
@@ -939,6 +1132,166 @@ impl App {
             .as_mut()
             .and_then(|capture| capture.finish(self.frames_rendered));
         self.fatal_error.take().or(capture_error)
+    }
+
+    /// Whether window key and pointer input is dropped: in a smoke or script
+    /// run, and while booting (redo 7.9).
+    pub(crate) fn drops_window_input(&self) -> bool {
+        self.smoke_frames_remaining.is_some() || self.script.is_some() || self.boot.is_some()
+    }
+
+    /// A setup or load failure ends the run: logged, kept as the fatal
+    /// error, the loop asked to exit.
+    fn fail_boot(&mut self, event_loop: &ActiveEventLoop, e: anyhow::Error) {
+        log::error!("Manifest composition failed: {e:#}");
+        self.fatal_error = Some(e.context("Manifest composition failed"));
+        event_loop.exit();
+    }
+
+    /// One boot redraw by `clock` (redo 7.9): the pacer's units and view;
+    /// the redraw that ends the plan finishes the boot, so the next is
+    /// frame 1. No stage runs, and nothing counts it as a frame: scripts,
+    /// smoke runs, captures and telemetry start at frame 1. A boot without
+    /// a renderer, which only a test makes, runs no unit.
+    ///
+    /// # Errors
+    ///
+    /// A unit's load error or the view's render error.
+    pub(crate) fn boot_redraw(&mut self, clock: &mut dyn FnMut() -> Instant) -> anyhow::Result<()> {
+        let Some(Boot { plan, pacer, .. }) = self.boot.as_mut() else {
+            return Ok(());
+        };
+        let world = &mut self.world;
+        let renderer = &mut self.renderer;
+        let step = pacer.redraw(clock, &mut || {
+            let plan = plan.as_mut().filter(|plan| !plan.is_finished())?;
+            let renderer = renderer.as_mut()?;
+            Some(plan.run_next(world, renderer).map(drop))
+        })?;
+        if step.done {
+            self.finish_boot();
+        } else if step.view {
+            self.draw_boot_view()?;
+        }
+        Ok(())
+    }
+
+    /// Draws and presents one boot frame: the boot view over the clear
+    /// colour. A presented one stamps `first_frame` when it is the first.
+    fn draw_boot_view(&mut self) -> anyhow::Result<()> {
+        let (Some(boot), Some(renderer)) = (&self.boot, &mut self.renderer) else {
+            return Ok(());
+        };
+        let window = [
+            renderer.surface_config.width,
+            renderer.surface_config.height,
+        ];
+        let scale = self
+            .world
+            .get_resource::<tungsten_core::ScaleFactor>()
+            .map_or(1.0, tungsten_core::ScaleFactor::get);
+        let (done, total) = boot
+            .plan
+            .as_ref()
+            .map_or((0, 0), |plan| (plan.done(), plan.units().len()));
+        let progress = BootProgress {
+            done,
+            total,
+            assets: &boot.assets,
+            window,
+            scale,
+        };
+        let view = match &self.boot_view {
+            Some(view) => view(&self.world, &progress),
+            None => default_boot_view(&progress),
+        };
+        let view_proj = CameraState::new().view_projection(window[0] as f32, window[1] as f32);
+        let outcome = renderer.render_frame_full(
+            &view_proj,
+            &[],
+            &view.sprites,
+            &[],
+            &[],
+            &view.text,
+            &PaintList::default(),
+            &PostStack::new(),
+        )?;
+        if matches!(outcome, RenderOutcome::Presented { .. }) {
+            self.startup_clock.timings.boot_frames += 1;
+            self.mark_presented();
+        }
+        Ok(())
+    }
+
+    /// The boot's end (redo 7.9): the boot pages drop, since the full pack
+    /// holds the group's sprites under the handles a load without them
+    /// mints; the manifest is kept as the loaded one; the startup hook
+    /// runs, audio starts, input that came while booting is dropped and the
+    /// frame clock resets, so the next redraw is frame 1.
+    pub(crate) fn finish_boot(&mut self) {
+        let Some(boot) = self.boot.take() else {
+            return;
+        };
+        if let Some(renderer) = &mut self.renderer {
+            for page in boot.assets.pages() {
+                renderer.drop_texture(page);
+            }
+        }
+        let timings = &mut self.startup_clock.timings;
+        timings.slice_max = boot.pacer.slice_max().as_secs_f64() * 1000.0;
+        let load = boot
+            .plan
+            .as_ref()
+            .map(LoadPlan::timings)
+            .unwrap_or_default();
+        timings.load = boot.merge_ms + load.units;
+        timings.sprites = Some(load.sprites);
+        timings.sounds = Some(load.sounds);
+        timings.pack = Some(load.pack);
+        if let Some(plan) = boot.plan {
+            self.world
+                .insert_resource(LoadedManifest::new(plan.into_manifest()));
+        }
+
+        let startup_start = Instant::now();
+        if let Some(startup) = self.startup.take()
+            && let Some(renderer) = &mut self.renderer
+        {
+            startup(&mut self.world, renderer);
+        }
+        self.startup_clock.timings.startup = ms_since(startup_start);
+
+        // Audio init after startup: SoundRegistry populated; with the window.
+        let audio_start = Instant::now();
+        if self.window.is_some()
+            && let Some(sound_registry) = self.world.get_resource::<SoundRegistry>()
+        {
+            match AudioSystem::init(sound_registry) {
+                Ok(sys) => {
+                    self.audio = Some(sys);
+                }
+                Err(e) => {
+                    log::warn!("Audio init failed (continuing without audio): {e}");
+                }
+            }
+        }
+        self.startup_clock.timings.audio = ms_since(audio_start);
+
+        // The pads' events queued while booting drain, and whatever is held
+        // releases, so no boot input reaches frame 1.
+        self.stage_gamepads();
+        if let Some(input) = self.world.get_resource_mut::<InputState>() {
+            let focused = input.focused();
+            input.set_focused(false);
+            input.set_focused(focused);
+            input.end_fixed_step();
+            input.begin_frame();
+        }
+        self.mark_loaded();
+
+        // Startup time, audio init's resampling included, excluded from
+        // first-frame dt; prevents first-substep tunneling.
+        self.last_frame = Some(Instant::now());
     }
 
     /// Redo 7.9: the load, the hook and audio are done; frame 1 may start.
@@ -2802,45 +3155,48 @@ impl ApplicationHandler for App {
         self.startup_clock.timings.renderer = ms_since(renderer_start);
 
         // D-052: merge manifests before user startup; duplicate IDs halt boot.
-        let load_start = Instant::now();
-        if !self.manifest_roots.is_empty()
-            && let Some(renderer) = &mut self.renderer
-            && let Err(e) =
-                asset_loader::load_all_merged(&self.manifest_roots, &mut self.world, renderer)
-        {
-            log::error!("Manifest composition failed: {e}");
-            self.fatal_error = Some(e.context("Manifest composition failed"));
-            event_loop.exit();
-            return;
-        }
-        self.startup_clock.timings.load = ms_since(load_start);
-
-        let startup_start = Instant::now();
-        if let Some(startup) = self.startup.take()
-            && let Some(renderer) = &mut self.renderer
-        {
-            startup(&mut self.world, renderer);
-        }
-        self.startup_clock.timings.startup = ms_since(startup_start);
-
-        // Audio init after startup: SoundRegistry populated.
-        let audio_start = Instant::now();
-        if let Some(sound_registry) = self.world.get_resource::<SoundRegistry>() {
-            match AudioSystem::init(sound_registry) {
-                Ok(sys) => {
-                    self.audio = Some(sys);
-                }
+        // Redo 7.9: the merged graph loads as a plan, in slices behind boot
+        // frames, its boot group first on pages of its own.
+        let merge_start = Instant::now();
+        let plan = if self.manifest_roots.is_empty() {
+            None
+        } else {
+            match ResolvedManifest::load_and_merge_many(&self.manifest_roots) {
+                Ok(merged) => Some(LoadPlan::new(merged, &mut self.world)),
                 Err(e) => {
-                    log::warn!("Audio init failed (continuing without audio): {e}");
+                    self.fail_boot(event_loop, e.into());
+                    return;
                 }
             }
+        };
+        let merge_ms = ms_since(merge_start);
+        let boot_start = Instant::now();
+        let assets = match (&plan, &mut self.renderer) {
+            (Some(plan), Some(renderer)) => {
+                match asset_loader::load_boot_group(
+                    plan.manifest(),
+                    renderer,
+                    &mut TextureHandles::new(),
+                ) {
+                    Ok(assets) => assets,
+                    Err(e) => {
+                        self.fail_boot(event_loop, e);
+                        return;
+                    }
+                }
+            }
+            _ => BootAssets::default(),
+        };
+        self.startup_clock.timings.boot = ms_since(boot_start);
+        self.boot = Some(Boot {
+            plan,
+            assets,
+            pacer: BootPacer::default(),
+            merge_ms,
+        });
+        if let Some(window) = &self.window {
+            window.request_redraw();
         }
-        self.startup_clock.timings.audio = ms_since(audio_start);
-        self.mark_loaded();
-
-        // Startup time, audio init's resampling included, excluded from
-        // first-frame dt; prevents first-substep tunneling.
-        self.last_frame = Some(Instant::now());
     }
 
     fn window_event(
@@ -2852,6 +3208,9 @@ impl ApplicationHandler for App {
         match event {
             // A redraw or a second close after the last frame runs nothing.
             WindowEvent::CloseRequested | WindowEvent::RedrawRequested if event_loop.exiting() => {}
+            // Redo 7.9: a close while booting ends the run at once, with no
+            // last frame, since nothing it would save has loaded.
+            WindowEvent::CloseRequested if self.boot.is_some() => event_loop.exit(),
             WindowEvent::CloseRequested => self.close_with_last_frame(event_loop),
             WindowEvent::Resized(size) => {
                 if let Some(renderer) = &mut self.renderer {
@@ -2876,12 +3235,13 @@ impl ApplicationHandler for App {
             // Smoke runs drop the window's input, so a resting pointer cannot
             // hover a pixel fixture; focus, resize and scale still apply
             // (`D-149`).
+            // Boot frames drop it too (redo 7.9).
             WindowEvent::KeyboardInput { .. }
             | WindowEvent::MouseInput { .. }
             | WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorLeft { .. }
             | WindowEvent::MouseWheel { .. }
-                if self.smoke_frames_remaining.is_some() || self.script.is_some() => {}
+                if self.drops_window_input() => {}
             // A script run drops the window's input as smoke does, and its
             // focus loss, so a game that pauses unfocused plays on.
             WindowEvent::Focused(false) if self.script.is_some() => {}
@@ -2928,6 +3288,15 @@ impl ApplicationHandler for App {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 input_bridge::apply_scale_factor(&mut self.world, scale_factor);
                 self.refresh_monitor();
+            }
+            WindowEvent::RedrawRequested if self.boot.is_some() => {
+                if let Err(e) = self.boot_redraw(&mut Instant::now) {
+                    self.fail_boot(event_loop, e);
+                    return;
+                }
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();

@@ -16,6 +16,7 @@ use tungsten_core::{AssetRegistry, TextureHandle};
 
 use super::reload::apply_nine_slice;
 use super::*;
+use tungsten_render::sprite::TextureHandles;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -1455,4 +1456,288 @@ fn a_sheet_edit_crops_every_frame_from_one_decode() {
         cuts[4].is_none(),
         "a frame that leaves the image cuts nothing"
     );
+}
+
+/// A 16-bit mono WAV of `samples` samples at 8 kHz.
+fn write_wav(path: &Path, samples: u32) {
+    let data = samples * 2;
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&(36 + data).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16u32.to_le_bytes());
+    bytes.extend_from_slice(&[1, 0, 1, 0]);
+    bytes.extend_from_slice(&8000u32.to_le_bytes());
+    bytes.extend_from_slice(&16000u32.to_le_bytes());
+    bytes.extend_from_slice(&[2, 0, 16, 0]);
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&data.to_le_bytes());
+    for i in 0..samples {
+        bytes.extend_from_slice(&((i % 64) as i16 * 100).to_le_bytes());
+    }
+    fs::write(path, bytes).unwrap();
+}
+
+/// A game folder with a manifest of every kind a plan has a unit for, a
+/// sheet among its sprites and a boot group; the manifest's path.
+fn plan_game(boot: &str) -> PathBuf {
+    let dir = tempdir();
+    write_walk_frames(&dir, 200);
+    image::RgbaImage::from_pixel(8, 12, image::Rgba([9, 9, 9, 255]))
+        .save(dir.join("hero.png"))
+        .unwrap();
+    image::RgbaImage::new(24, 6)
+        .save(dir.join("panel.png"))
+        .unwrap();
+    write(
+        &dir.join("run.json"),
+        r#"{"looping": true, "frames": [{"sprite": "walk_0", "duration_ms": 100}, {"sprite": "walk_3", "duration_ms": 100}]}"#,
+    );
+    write(
+        &dir.join("idle.json"),
+        r#"{"looping": false, "frames": [{"sprite": "hero", "duration_ms": 50}]}"#,
+    );
+    write(&dir.join("sans.ttf"), "not parsed headless");
+    write_wav(&dir.join("step.wav"), 400);
+    write_wav(&dir.join("hum.wav"), 900);
+    write(&dir.join("level.tmj"), &build_minimal_tmj("walk_1"));
+    write(
+        &dir.join("spark.json"),
+        &build_minimal_particle_json("hero"),
+    );
+    let manifest = dir.join("manifest.json");
+    write(
+        &manifest,
+        &format!(
+            r#"{{
+                "sprites": {{"hero": {{"path": "hero.png"}}, "panel": {{"path": "panel.png", "filter": "linear"}}}},
+                "sheets": {{"walk": {{"path": "walk.png", "frame": [16, 16], "anchor": [8, 15]}}}},
+                "animations": {{"run": {{"path": "run.json"}}, "idle": {{"path": "idle.json"}}}},
+                "fonts": {{"sans": {{"path": "sans.ttf"}}}},
+                "sounds": {{"step": {{"path": "step.wav"}}, "hum": {{"path": "hum.wav", "looping": true}}}},
+                "tilemaps": {{"level": {{"path": "level.tmj"}}}},
+                "particles": {{"spark": {{"path": "spark.json"}}}}
+                {boot}
+            }}"#
+        ),
+    );
+    manifest
+}
+
+/// What a load leaves in the World, as text that does not hang on map
+/// order: every sprite and page, animation, sound, map, particle config and
+/// font.
+fn loaded(world: &World, manifest: &ResolvedManifest) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let sprites = world.resource::<AssetRegistry>();
+    let mut names: Vec<&str> = sprites.sprite_names().collect();
+    names.sort_unstable();
+    for name in names {
+        let s = sprites.get_sprite(name).unwrap();
+        let id = sprites.sprite_id(name).unwrap().index();
+        let _ = writeln!(
+            out,
+            "sprite {name} #{id} {:?} {:?} {}x{} {:?} {:?} {:?} {:?}",
+            s.atlas, s.uv, s.width, s.height, s.filter, s.lit_atlas, s.rect, s.anchor
+        );
+    }
+    let atlas = world.resource::<AtlasRegistry>();
+    let mut sizes: Vec<_> = atlas
+        .page_sizes
+        .iter()
+        .map(|(h, p)| (h.0, p.width, p.height))
+        .collect();
+    sizes.sort_unstable();
+    let mut packed: Vec<_> = atlas
+        .packed
+        .values()
+        .map(|p| (p.id.clone(), p.page, p.x, p.y, p.width, p.height))
+        .collect();
+    packed.sort();
+    let _ = writeln!(
+        out,
+        "pages {:?} {:?} {sizes:?}\npacked {packed:?}",
+        atlas.nearest_pages, atlas.linear_pages
+    );
+    let animations = world.resource::<AnimationRegistry>();
+    let mut ids: Vec<&str> = animations.ids().collect();
+    ids.sort_unstable();
+    for id in ids {
+        let _ = writeln!(
+            out,
+            "animation {id} {}",
+            animations.get(id).unwrap().frames.len()
+        );
+    }
+    let sounds = world.resource::<SoundRegistry>();
+    let mut ids: Vec<&String> = manifest.sounds.keys().collect();
+    ids.sort();
+    for id in ids {
+        let handle = sounds.get_by_id(id).unwrap();
+        let _ = writeln!(
+            out,
+            "sound {id} {} {} {}",
+            sounds.get(handle).unwrap().samples.len(),
+            sounds.get_volume(handle),
+            sounds.get_looping(handle)
+        );
+    }
+    let maps = world.resource::<TilemapRegistry>();
+    let mut ids: Vec<&str> = maps.ids().collect();
+    ids.sort_unstable();
+    let particles = world.resource::<ParticleConfigRegistry>();
+    let mut configs: Vec<&str> = particles.names().collect();
+    configs.sort_unstable();
+    let fonts = world.resource::<FontRegistry>();
+    let _ = writeln!(
+        out,
+        "maps {ids:?} particles {configs:?} sans {}",
+        fonts.contains_id("sans")
+    );
+    out
+}
+
+/// A World as a window's start builds it, for a load to land in.
+fn load_world() -> World {
+    let mut app = crate::App::new(tungsten_core::Config::default()).unwrap();
+    std::mem::take(app.world_mut())
+}
+
+#[test]
+fn a_plan_lists_load_alls_units_in_order() {
+    let manifest = ResolvedManifest::load(plan_game("")).unwrap();
+    let path = |name: &str| manifest.sprites[name].path.clone();
+    let mut world = load_world();
+    let plan = LoadPlan::new(manifest.clone(), &mut world);
+    let mut files = vec![path("hero"), path("panel"), path("walk_0")];
+    files.sort();
+    let mut expected: Vec<LoadUnit> = files.into_iter().map(LoadUnit::Sprites).collect();
+    expected.extend([
+        LoadUnit::Pack(FilterMode::Nearest),
+        LoadUnit::Pack(FilterMode::Linear),
+        LoadUnit::Animation("idle".into()),
+        LoadUnit::Animation("run".into()),
+        LoadUnit::Font("sans".into()),
+        LoadUnit::FontFamilies,
+        LoadUnit::Themes,
+        LoadUnit::Shaders,
+        LoadUnit::Materials,
+        LoadUnit::Sound("hum".into()),
+        LoadUnit::Sound("step".into()),
+        LoadUnit::Tilemap("level".into()),
+        LoadUnit::ParticleMeshes,
+        LoadUnit::Particles,
+        LoadUnit::PhysicsNames,
+        LoadUnit::Prefabs,
+        LoadUnit::CrossChecks,
+    ]);
+    assert_eq!(plan.units(), expected.as_slice());
+    assert_eq!(plan.done(), 0);
+    // Every name, sheet frames included, is interned before any unit, in
+    // sorted order.
+    let sprites = world.resource::<AssetRegistry>();
+    let ids: Vec<u32> = ["hero", "panel", "walk_0", "walk_3"]
+        .iter()
+        .map(|name| sprites.sprite_id(name).unwrap().index())
+        .collect();
+    assert!(ids.windows(2).all(|pair| pair[0] < pair[1]), "{ids:?}");
+}
+
+#[test]
+fn a_plan_run_in_slices_registers_and_packs_what_load_all_does() {
+    let manifest = ResolvedManifest::load(plan_game("")).unwrap();
+    // All at once, as `load_all` runs them.
+    let mut at_once = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest.clone(), &mut at_once);
+    while plan.run_next_into(&mut at_once, &mut target).unwrap() {}
+    // A slice of one unit each, the World handed back between them.
+    let mut sliced = load_world();
+    let mut sliced_target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest.clone(), &mut sliced);
+    let mut slices = 0;
+    while !plan.is_finished() {
+        assert!(plan.run_next_into(&mut sliced, &mut sliced_target).unwrap());
+        slices += 1;
+    }
+    assert!(!plan.run_next_into(&mut sliced, &mut sliced_target).unwrap());
+    assert_eq!(slices, plan.units().len());
+    let text = loaded(&at_once, &manifest);
+    assert_eq!(text, loaded(&sliced, &manifest));
+    assert_eq!(target.uploads, sliced_target.uploads);
+    // The pack's pages are the counter's from 0, the sheet's frames on them.
+    assert!(text.contains("sprite walk_2 "), "{text}");
+    assert_eq!(target.uploads[0], TextureHandle(0));
+    let timings = plan.timings();
+    assert!(timings.units >= timings.sprites + timings.sounds + timings.pack);
+}
+
+#[test]
+fn the_boot_group_loads_first() {
+    let with_group = ResolvedManifest::load(plan_game(
+        r#", "boot": {"logo": "hero", "bar": "walk_1", "font": "sans"}"#,
+    ))
+    .unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let plan = LoadPlan::new(with_group.clone(), &mut world);
+    let assets = load_boot_group(plan.manifest(), &mut target, &mut TextureHandles::new()).unwrap();
+    // Before any unit: the logo and the bar each on a reserved page of its
+    // own, the bar cut from its sheet.
+    assert_eq!(plan.done(), 0);
+    let logo = assets.logo.unwrap();
+    let bar = assets.bar.unwrap();
+    assert_eq!(
+        (logo.texture, logo.size),
+        (TextureHandle(u32::MAX), [8, 12])
+    );
+    assert_eq!(
+        (bar.texture, bar.size),
+        (TextureHandle(u32::MAX - 1), [16, 16])
+    );
+    assert_eq!(assets.font.as_deref(), Some("sans"));
+    assert_eq!(assets.pages(), [logo.texture, bar.texture]);
+    assert_eq!(target.uploads, assets.pages());
+
+    // The full load then registers and packs what a load without the group
+    // does, under the counter's handles.
+    let mut plan = plan;
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    let plain = ResolvedManifest::load(plan_game("")).unwrap();
+    let mut plain_world = load_world();
+    let mut plain_target = HeadlessTarget::default();
+    let mut plain_plan = LoadPlan::new(plain.clone(), &mut plain_world);
+    while plain_plan
+        .run_next_into(&mut plain_world, &mut plain_target)
+        .unwrap()
+    {}
+    // The two folders differ, so compare without the paths.
+    assert_eq!(loaded(&world, &with_group), loaded(&plain_world, &plain));
+    assert_eq!(target.uploads[2..], plain_target.uploads[..]);
+}
+
+#[test]
+fn a_unit_that_fails_fails_the_plan() {
+    let manifest_path = plan_game("");
+    write(
+        &manifest_path.with_file_name("run.json"),
+        "{ not an animation",
+    );
+    let manifest = ResolvedManifest::load(&manifest_path).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest, &mut world);
+    let err = loop {
+        match plan.run_next_into(&mut world, &mut target) {
+            Ok(true) => {}
+            Ok(false) => panic!("the plan ended without the broken animation's error"),
+            Err(err) => break err,
+        }
+    };
+    assert!(
+        matches!(&plan.units()[plan.done()], LoadUnit::Animation(id) if id == "run"),
+        "the failing unit is not counted done: {:?}",
+        plan.units()[plan.done()]
+    );
+    assert!(format!("{err:#}").contains("run.json"), "{err:#}");
 }

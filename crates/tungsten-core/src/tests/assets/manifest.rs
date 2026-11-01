@@ -1392,3 +1392,68 @@ fn a_sheet_frame_another_entry_names_fails_the_merge() {
         "{err}"
     );
 }
+
+#[test]
+fn a_boot_group_names_existing_ids() {
+    let tmp = tempdir();
+    write_file(&tmp, "logo.png");
+    write_file(&tmp, "sans.ttf");
+    let path = write_manifest(
+        &tmp,
+        r#"{"sprites": {"logo": {"path": "logo.png"}}, "fonts": {"sans": {"path": "sans.ttf"}},
+            "boot": {"logo": "logo", "font": "sans"}}"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    assert_eq!(m.boot.logo.as_deref(), Some("logo"));
+    assert_eq!(
+        (m.boot.bar.as_deref(), m.boot.font.as_deref()),
+        (None, Some("sans"))
+    );
+    for (boot, field, id) in [
+        (r#"{"logo": "gone"}"#, "logo", "gone"),
+        (r#"{"bar": "logo2"}"#, "bar", "logo2"),
+        (r#"{"font": "serif"}"#, "font", "serif"),
+    ] {
+        let path = write_manifest(
+            &tmp,
+            &format!(r#"{{"sprites": {{"logo": {{"path": "logo.png"}}}}, "boot": {boot}}}"#),
+        );
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(
+            matches!(&err, ManifestError::UnknownBootAsset { field: f, id: i, .. } if *f == field && i == id),
+            "{boot}: {err}"
+        );
+    }
+    let path = write_manifest(&tmp, r#"{"boot": {"splash": "logo"}}"#);
+    assert!(matches!(
+        ResolvedManifest::load(&path).unwrap_err(),
+        ManifestError::Parse { .. }
+    ));
+    // Unset, the group is empty.
+    let path = write_manifest(&tmp, "{}");
+    assert!(ResolvedManifest::load(&path).unwrap().boot.is_empty());
+}
+
+#[test]
+fn two_roots_setting_a_boot_group_fail_the_merge() {
+    let tmp = tempdir();
+    let (a, b) = (tmp.join("a"), tmp.join("b"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    write_file(&a, "logo.png");
+    write_file(&b, "bar.png");
+    let root_a = write_manifest(
+        &a,
+        r#"{"sprites": {"logo": {"path": "logo.png"}}, "boot": {"logo": "logo"}}"#,
+    );
+    // A later root may name the first's sprite (`D-089`).
+    let plain_b = write_manifest(&b, r#"{"sprites": {"bar": {"path": "bar.png"}}}"#);
+    let merged = ResolvedManifest::load_and_merge_many(&[&root_a, &plain_b]).unwrap();
+    assert_eq!(merged.boot.logo.as_deref(), Some("logo"));
+    let root_b = write_manifest(
+        &b,
+        r#"{"sprites": {"bar": {"path": "bar.png"}}, "boot": {"bar": "bar"}}"#,
+    );
+    let err = ResolvedManifest::load_and_merge_many(&[&root_a, &root_b]).unwrap_err();
+    assert!(matches!(err, ManifestError::BootGroupTwice), "{err}");
+}

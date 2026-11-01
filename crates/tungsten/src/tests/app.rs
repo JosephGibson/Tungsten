@@ -1,5 +1,5 @@
 use super::{
-    App, FrameClock, FrameEnd, RedrawSchedule, StartupTimings, compose_post_stack,
+    App, Boot, BootPacer, FrameClock, FrameEnd, RedrawSchedule, StartupTimings, compose_post_stack,
     format_perf_physics_line, format_perf_systems_line, format_startup_line, frame_dt_secs,
     frame_interval_ms, is_action_map, is_reload_root, load_action_map_at_startup,
     manifest_reload_roots, redraw_schedule, resolve_startup_display, runtime_display_mode,
@@ -1028,4 +1028,126 @@ fn set_manifest_roots_and_enable_hot_reload_replace_the_configs() {
         Some(vec![PathBuf::from("game/assets")])
     );
     assert_eq!(app.manifest_path, Some(game));
+}
+
+#[test]
+fn boot_frames_run_slices_until_the_plan_ends() {
+    use std::cell::Cell;
+    // A clock the test sets: each unit takes 5 ms.
+    let start = Instant::now();
+    let now = Cell::new(start);
+    let mut clock = || now.get();
+    let mut left = 20;
+    let mut run = || {
+        if left == 0 {
+            return None;
+        }
+        left -= 1;
+        now.set(now.get() + Duration::from_millis(5));
+        Some(Ok(()))
+    };
+    let mut pacer = BootPacer::default();
+    let mut steps = Vec::new();
+    loop {
+        let step = pacer.redraw(&mut clock, &mut run).unwrap();
+        let at = now.get().duration_since(start).as_millis();
+        steps.push((step.ran, step.view, step.done, at));
+        if step.done {
+            break;
+        }
+    }
+    assert_eq!(
+        steps,
+        [
+            // The view before any unit runs.
+            (0, true, false, 0),
+            // 12 ms slices, a unit that starts finishing.
+            (3, false, false, 15),
+            (3, false, false, 30),
+            // A view once 33 ms have passed since the last.
+            (3, true, false, 45),
+            (3, false, false, 60),
+            (3, false, false, 75),
+            (3, true, false, 90),
+            // The last two units, and the plan ends.
+            (2, false, true, 100),
+        ]
+    );
+    assert_eq!(pacer.slice_max(), Duration::from_millis(15));
+}
+
+#[test]
+fn a_boot_frame_counts_for_no_script_smoke_or_capture() {
+    let env = |name: &str| (name == "TUNGSTEN_SMOKE_FRAMES").then(|| "3".into());
+    let mut app = App::build(
+        Config::default(),
+        crate::plugins::DefaultPlugins::set(),
+        &env,
+    )
+    .unwrap();
+    app.capture = Some(capture_frame(1));
+    let script = tungsten_core::script::Script::parse(
+        r#"{"version": 1, "frames": 1, "steps": [
+            {"frame": 1, "assert": {"probe": "frame", "op": "==", "value": 1}}
+        ]}"#,
+    )
+    .unwrap();
+    app.script = Some(crate::script::ScriptRunner::new(script, "boot.json", true));
+    app.resolve_schedule().unwrap();
+
+    // A boot with no manifest: its first redraw draws the view, the next
+    // ends it.
+    app.boot = Some(Boot::default());
+    app.boot_redraw(&mut Instant::now).unwrap();
+    assert!(app.boot.is_some());
+    app.boot_redraw(&mut Instant::now).unwrap();
+    assert!(
+        app.boot.is_none(),
+        "an empty plan ends on its second redraw"
+    );
+
+    // No stage ran, and nothing counted a frame.
+    assert!(!app.startup_done);
+    assert_eq!(app.frames_rendered, 0);
+    assert_eq!(app.smoke_frames_remaining, Some(3));
+    assert_eq!(app.world.resource::<Time>().frame(), 0);
+    assert!(app.capture.as_ref().unwrap().armed_for(1).is_some());
+    assert!(
+        app.world.has_resource::<StartupTimings>(),
+        "written once loaded"
+    );
+
+    // The next frame is frame 1, the script's first.
+    assert_eq!(headless_frame(&mut app), FrameEnd::Completed);
+    assert!(app.startup_done);
+    assert_eq!(app.world.resource::<Time>().frame(), 1);
+    let report = app.script.take().unwrap().finish(
+        &mut app.world,
+        tungsten_core::script::Ending::GameExit,
+        None,
+    );
+    assert!(report.passed, "{report:#?}");
+}
+
+#[test]
+fn input_during_boot_is_dropped() {
+    let mut app = App::new(Config::default()).unwrap();
+    assert!(!app.drops_window_input());
+    app.boot = Some(Boot::default());
+    assert!(
+        app.drops_window_input(),
+        "key and pointer events wait out the boot"
+    );
+    // Whatever is held when the boot ends releases with no edges, so frame
+    // 1 sees no boot input.
+    let focused = app.world.resource::<InputState>().focused();
+    app.world
+        .resource_mut::<InputState>()
+        .key_down(KeyCode::KeyA);
+    app.finish_boot();
+    assert!(!app.drops_window_input());
+    let input = app.world.resource::<InputState>();
+    assert!(!input.is_pressed(KeyCode::KeyA));
+    assert!(!input.just_pressed(KeyCode::KeyA) && !input.just_released(KeyCode::KeyA));
+    assert_eq!(input.focused(), focused);
 }

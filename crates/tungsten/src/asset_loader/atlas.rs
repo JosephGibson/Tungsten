@@ -14,6 +14,8 @@ use tungsten_core::assets::{
 use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
 
+use super::LoadTarget;
+
 /// Live atlas pages plus sprite packed rects for hot reload.
 #[derive(Debug, Default)]
 pub struct AtlasRegistry {
@@ -43,7 +45,7 @@ impl AtlasRegistry {
 
 /// Decoded CPU-side sprite awaiting atlas packing.
 pub(super) struct Decoded {
-    id: String,
+    pub(super) id: String,
     path: PathBuf,
     width: u32,
     height: u32,
@@ -148,7 +150,7 @@ impl DecodedFile {
 /// The sprites of `manifest` by the file they decode from, an image and its
 /// siblings: each file's sprites by ID, the files by path, so a load decodes
 /// each once, in one order every run.
-fn sprites_by_file(manifest: &ResolvedManifest) -> Vec<Vec<(&String, &ResolvedSprite)>> {
+pub(super) fn sprites_by_file(manifest: &ResolvedManifest) -> Vec<Vec<(&String, &ResolvedSprite)>> {
     let mut files: HashMap<(&Path, Option<&Path>, Option<&Path>), Vec<_>> = HashMap::new();
     for (id, sprite) in &manifest.sprites {
         let key = (
@@ -170,7 +172,9 @@ fn sprites_by_file(manifest: &ResolvedManifest) -> Vec<Vec<(&String, &ResolvedSp
 }
 
 /// One file's sprites decoded: the file once, each sprite cut from it.
-fn decode_file_sprites(sprites: &[(&String, &ResolvedSprite)]) -> anyhow::Result<Vec<Decoded>> {
+pub(super) fn decode_file_sprites(
+    sprites: &[(&String, &ResolvedSprite)],
+) -> anyhow::Result<Vec<Decoded>> {
     let (first_id, first) = sprites[0];
     let file = DecodedFile::open(
         &first.path,
@@ -388,7 +392,7 @@ fn blit_pages(pack: &PackResult, by_id: &HashMap<&str, &Decoded>, any_lit: bool)
 /// Upload each page canvas under its handle, plus the lit bundle when the
 /// pack has lit sprites.
 fn upload_pages(
-    renderer: &mut Renderer,
+    target: &mut dyn LoadTarget,
     handles: &[TextureHandle],
     pack: &PackResult,
     canvases: &PageCanvases,
@@ -396,9 +400,9 @@ fn upload_pages(
 ) {
     for (index, page) in pack.pages.iter().enumerate() {
         let albedo = &canvases.albedo[index];
-        renderer.upload_texture(handles[index], albedo, page.width, page.height, filter);
+        target.upload_texture(handles[index], albedo, page.width, page.height, filter);
         if !canvases.normal.is_empty() {
-            renderer.upload_lit_texture(
+            target.upload_lit_texture(
                 handles[index],
                 albedo,
                 &canvases.normal[index],
@@ -477,7 +481,7 @@ pub(super) fn pack_pages(decoded: &[Decoded], max_dim: u32) -> (PackResult, Page
 fn build_atlas_for_filter(
     filter: FilterMode,
     decoded: &[Decoded],
-    renderer: &mut Renderer,
+    target: &mut dyn LoadTarget,
     registry: &mut AssetRegistry,
     atlas_registry: &mut AtlasRegistry,
     max_dim: u32,
@@ -493,9 +497,9 @@ fn build_atlas_for_filter(
     let page_handles: Vec<TextureHandle> = pack
         .pages
         .iter()
-        .map(|_| renderer.allocate_texture_handle())
+        .map(|_| target.allocate_texture_handle())
         .collect();
-    upload_pages(renderer, &page_handles, &pack, &canvases, filter);
+    upload_pages(target, &page_handles, &pack, &canvases, filter);
 
     for packed in &pack.sprites {
         let src = by_id[packed.id.as_str()];
@@ -545,57 +549,62 @@ pub fn load_sprites(
     renderer: &mut Renderer,
 ) -> anyhow::Result<()> {
     let [decoded_nearest, decoded_linear] = decode_sprites(manifest)?;
-
     let max_dim = renderer.max_2d_texture_dimension();
     for decoded in [&decoded_nearest, &decoded_linear] {
         if let (_, Some(why)) = pack_inputs(decoded, max_dim) {
             anyhow::bail!("Failed to pack sprites: {why}");
         }
     }
-    let n_sprites = decoded_nearest.len() + decoded_linear.len();
+    // Sorted-name interning gives a manifest the same sprite IDs every run;
+    // the packer registers in `HashMap` order.
+    world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing")
+        .intern_sprites(manifest.sprites.keys().map(String::as_str));
+    let nearest = pack_filter(FilterMode::Nearest, &decoded_nearest, world, renderer)?;
+    let linear = pack_filter(FilterMode::Linear, &decoded_linear, world, renderer)?;
+    log::info!(
+        "Packed {} sprites → {} atlas pages ({nearest} nearest + {linear} linear)",
+        decoded_nearest.len() + decoded_linear.len(),
+        nearest + linear,
+    );
+    Ok(())
+}
 
+/// One filter class's decoded sprites packed, uploaded and registered on
+/// `AtlasRegistry`, refused when one is larger than a page; their names
+/// must be interned. The pages' count. A load unit (redo 7.9).
+pub(super) fn pack_filter(
+    filter: FilterMode,
+    decoded: &[Decoded],
+    world: &mut World,
+    target: &mut dyn LoadTarget,
+) -> anyhow::Result<usize> {
+    let max_dim = target.max_2d_texture_dimension();
+    if let (_, Some(why)) = pack_inputs(decoded, max_dim) {
+        anyhow::bail!("Failed to pack sprites: {why}");
+    }
     // Borrow split: `AtlasRegistry` plus `AssetRegistry`.
     let mut atlas_registry = world
         .get_resource_mut::<AtlasRegistry>()
         .map(std::mem::take)
         .unwrap_or_default();
-
-    let (nearest_handles, linear_handles) = {
+    let pages = {
         let registry = world
             .get_resource_mut::<AssetRegistry>()
             .expect("AssetRegistry resource missing");
-        // Sorted-name interning gives a manifest the same sprite IDs every run;
-        // the packer registers in `HashMap` order.
-        registry.intern_sprites(manifest.sprites.keys().map(String::as_str));
-        let n = build_atlas_for_filter(
-            FilterMode::Nearest,
-            &decoded_nearest,
-            renderer,
+        build_atlas_for_filter(
+            filter,
+            decoded,
+            target,
             registry,
             &mut atlas_registry,
             max_dim,
-        );
-        let l = build_atlas_for_filter(
-            FilterMode::Linear,
-            &decoded_linear,
-            renderer,
-            registry,
-            &mut atlas_registry,
-            max_dim,
-        );
-        (n, l)
+        )
+        .len()
     };
-
-    log::info!(
-        "Packed {} sprites → {} atlas pages ({} nearest + {} linear)",
-        n_sprites,
-        nearest_handles.len() + linear_handles.len(),
-        nearest_handles.len(),
-        linear_handles.len(),
-    );
-
     world.insert_resource(atlas_registry);
-    Ok(())
+    Ok(pages)
 }
 
 /// Hot-reload sprite; D-031 requires between-frame drain before handle drops.

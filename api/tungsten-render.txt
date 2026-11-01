@@ -937,6 +937,25 @@ impl core::marker::Unpin for tungsten_render::sprite::SpritePipeline
 impl core::marker::UnsafeUnpin for tungsten_render::sprite::SpritePipeline
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::sprite::SpritePipeline
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::sprite::SpritePipeline
+pub struct tungsten_render::sprite::TextureHandles
+impl tungsten_render::sprite::TextureHandles
+pub const tungsten_render::sprite::TextureHandles::RESERVED_FLOOR: u32
+pub fn tungsten_render::sprite::TextureHandles::allocate(&mut self) -> tungsten_core::assets::registry::TextureHandle
+pub fn tungsten_render::sprite::TextureHandles::allocate_reserved(&mut self) -> tungsten_core::assets::registry::TextureHandle
+pub fn tungsten_render::sprite::TextureHandles::new() -> Self
+impl core::clone::Clone for tungsten_render::sprite::TextureHandles
+pub fn tungsten_render::sprite::TextureHandles::clone(&self) -> tungsten_render::sprite::TextureHandles
+impl core::default::Default for tungsten_render::sprite::TextureHandles
+pub fn tungsten_render::sprite::TextureHandles::default() -> Self
+impl core::fmt::Debug for tungsten_render::sprite::TextureHandles
+pub fn tungsten_render::sprite::TextureHandles::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::sprite::TextureHandles
+impl core::marker::Send for tungsten_render::sprite::TextureHandles
+impl core::marker::Sync for tungsten_render::sprite::TextureHandles
+impl core::marker::Unpin for tungsten_render::sprite::TextureHandles
+impl core::marker::UnsafeUnpin for tungsten_render::sprite::TextureHandles
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::sprite::TextureHandles
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::sprite::TextureHandles
 pub mod tungsten_render::surface
 pub mod tungsten_render::targets
 pub enum tungsten_render::targets::TargetId

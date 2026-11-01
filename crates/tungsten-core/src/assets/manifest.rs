@@ -76,6 +76,19 @@ pub enum ManifestError {
     InvalidParticleMesh { id: String, reason: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
+    /// A second root that sets a boot group (redo 7.9).
+    #[error("two manifests set a `boot` group; one root sets it")]
+    BootGroupTwice,
+    /// A `boot` field naming an ID its section lacks (redo 7.9).
+    #[error("boot.{field} names unknown {section} '{id}'")]
+    UnknownBootAsset {
+        /// `logo`, `bar` or `font`.
+        field: &'static str,
+        /// `sprites` or `fonts`.
+        section: &'static str,
+        /// The ID it names.
+        id: String,
+    },
     /// A `sheets` entry whose frames do not fit its image (redo 7.9).
     #[error("sheet '{id}' is invalid: {reason}")]
     InvalidSheet {
@@ -385,6 +398,39 @@ pub struct RawManifest {
     /// names the render's (`D-058`).
     #[serde(default, deserialize_with = "unique_ids")]
     pub physics_materials: HashMap<String, PhysicsMaterialEntry>,
+    /// The boot group (redo 7.9): what the window shows while the rest
+    /// loads. One root at most sets it.
+    #[serde(default)]
+    pub boot: Option<BootGroup>,
+}
+
+/// The `boot` section (redo 7.9): the assets the window shows while the
+/// rest of the manifest loads, each optional and each an ID its section
+/// declares in the merged graph. Unknown keys fail the parse.
+///
+/// ```json
+/// "boot": { "logo": "studio_logo", "bar": "load_bar", "font": "sans" }
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BootGroup {
+    /// A sprite drawn at the window's centre.
+    #[serde(default)]
+    pub logo: Option<String>,
+    /// A sprite drawn under the logo, stretched to the progress.
+    #[serde(default)]
+    pub bar: Option<String>,
+    /// A font the progress prints in.
+    #[serde(default)]
+    pub font: Option<String>,
+}
+
+impl BootGroup {
+    /// Whether it names nothing.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.logo.is_none() && self.bar.is_none() && self.font.is_none()
+    }
 }
 
 /// A `physics_materials` entry: each coefficient optional, unknown fields
@@ -836,6 +882,8 @@ pub struct ResolvedManifest {
     pub physics_layers: HashMap<String, u32>,
     /// Physics materials by name.
     pub physics_materials: HashMap<String, PhysicsMaterial>,
+    /// The boot group, empty unless a root sets one (redo 7.9).
+    pub boot: BootGroup,
 }
 
 #[derive(Debug, Clone)]
@@ -1316,6 +1364,8 @@ impl ResolvedManifest {
                 Err(reason) => sink.report(ManifestError::InvalidPhysicsMaterial { id, reason })?,
             }
         }
+        // Redo 7.9: the boot group, its IDs checked on the whole graph.
+        result.boot = raw.boot.unwrap_or_default();
 
         // Sorted, so the mesh an error names does not depend on map order.
         let mut meshes: Vec<(String, ParticleMeshEntry)> =
@@ -1486,7 +1536,8 @@ impl ResolvedManifest {
             )?;
         }
         self.validate_font_refs(sink)?;
-        self.validate_shared_files(sink)
+        self.validate_shared_files(sink)?;
+        self.validate_boot(sink)
     }
 
     /// Each file backs one prefab or data entry, since an edit routes to
@@ -1654,9 +1705,45 @@ impl ResolvedManifest {
             }
             self.physics_materials.insert(id, material);
         }
+        // Redo 7.9: one root at most sets the boot group.
+        if !other.boot.is_empty() {
+            if self.boot.is_empty() {
+                self.boot = other.boot;
+            } else {
+                sink.report(ManifestError::BootGroupTwice)?;
+            }
+        }
         if check_refs {
             self.validate_font_refs(sink)?;
             self.validate_shared_files(sink)?;
+            self.validate_boot(sink)?;
+        }
+        Ok(())
+    }
+
+    /// The boot group's sprites and font must be declared in this graph
+    /// (redo 7.9, `D-089`).
+    fn validate_boot(&self, sink: &mut Sink<'_>) -> Result<(), ManifestError> {
+        let boot = &self.boot;
+        for (field, id) in [("logo", &boot.logo), ("bar", &boot.bar)] {
+            if let Some(id) = id
+                && !self.sprites.contains_key(id)
+            {
+                sink.report(ManifestError::UnknownBootAsset {
+                    field,
+                    section: "sprites",
+                    id: id.clone(),
+                })?;
+            }
+        }
+        if let Some(id) = &boot.font
+            && !self.fonts.contains_key(id)
+        {
+            sink.report(ManifestError::UnknownBootAsset {
+                field: "font",
+                section: "fonts",
+                id: id.clone(),
+            })?;
         }
         Ok(())
     }

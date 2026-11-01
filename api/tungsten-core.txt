@@ -435,6 +435,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FilterMode
 pub enum tungsten_core::assets::manifest::ManifestError
+pub tungsten_core::assets::manifest::ManifestError::BootGroupTwice
 pub tungsten_core::assets::manifest::ManifestError::DuplicateId
 pub tungsten_core::assets::manifest::ManifestError::DuplicateId::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::FontFamilyFaceMissing
@@ -512,6 +513,10 @@ pub tungsten_core::assets::manifest::ManifestError::SharedFile
 pub tungsten_core::assets::manifest::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::SharedFile::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::SharedFile::second: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::UnknownBootAsset
+pub tungsten_core::assets::manifest::ManifestError::UnknownBootAsset::field: &'static str
+pub tungsten_core::assets::manifest::ManifestError::UnknownBootAsset::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::UnknownBootAsset::section: &'static str
 pub tungsten_core::assets::manifest::ManifestError::UnknownFallbackFamily
 pub tungsten_core::assets::manifest::ManifestError::UnknownFallbackFamily::family: alloc::string::String
 impl core::error::Error for tungsten_core::assets::manifest::ManifestError
@@ -542,6 +547,31 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::AnimationEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::AnimationEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::AnimationEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::AnimationEntry
+pub struct tungsten_core::assets::manifest::BootGroup
+pub tungsten_core::assets::manifest::BootGroup::bar: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::manifest::BootGroup::font: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::manifest::BootGroup::logo: core::option::Option<alloc::string::String>
+impl tungsten_core::assets::manifest::BootGroup
+pub fn tungsten_core::assets::manifest::BootGroup::is_empty(&self) -> bool
+impl core::clone::Clone for tungsten_core::assets::manifest::BootGroup
+pub fn tungsten_core::assets::manifest::BootGroup::clone(&self) -> tungsten_core::assets::manifest::BootGroup
+impl core::cmp::Eq for tungsten_core::assets::manifest::BootGroup
+impl core::cmp::PartialEq for tungsten_core::assets::manifest::BootGroup
+pub fn tungsten_core::assets::manifest::BootGroup::eq(&self, &tungsten_core::assets::manifest::BootGroup) -> bool
+impl core::default::Default for tungsten_core::assets::manifest::BootGroup
+pub fn tungsten_core::assets::manifest::BootGroup::default() -> tungsten_core::assets::manifest::BootGroup
+impl core::fmt::Debug for tungsten_core::assets::manifest::BootGroup
+pub fn tungsten_core::assets::manifest::BootGroup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::manifest::BootGroup
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::BootGroup
+pub fn tungsten_core::assets::manifest::BootGroup::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::BootGroup
+impl core::marker::Send for tungsten_core::assets::manifest::BootGroup
+impl core::marker::Sync for tungsten_core::assets::manifest::BootGroup
+impl core::marker::Unpin for tungsten_core::assets::manifest::BootGroup
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::BootGroup
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::BootGroup
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::BootGroup
 #[non_exhaustive] pub struct tungsten_core::assets::manifest::DataEntry
 pub tungsten_core::assets::manifest::DataEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::DataEntry
@@ -684,6 +714,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::PrefabEntry
 pub struct tungsten_core::assets::manifest::RawManifest
 pub tungsten_core::assets::manifest::RawManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::AnimationEntry>
+pub tungsten_core::assets::manifest::RawManifest::boot: core::option::Option<tungsten_core::assets::manifest::BootGroup>
 pub tungsten_core::assets::manifest::RawManifest::data: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::manifest::DataEntry>>
 pub tungsten_core::assets::manifest::RawManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::manifest::RawManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::FontFamilyEntry>
@@ -777,6 +808,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
 pub struct tungsten_core::assets::manifest::ResolvedManifest
 pub tungsten_core::assets::manifest::ResolvedManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedAnimation>
+pub tungsten_core::assets::manifest::ResolvedManifest::boot: tungsten_core::assets::manifest::BootGroup
 pub tungsten_core::assets::manifest::ResolvedManifest::data: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedDataEntry>>
 pub tungsten_core::assets::manifest::ResolvedManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::manifest::ResolvedManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>
@@ -2516,6 +2548,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::LayerKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::LayerKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::LayerKind
 pub enum tungsten_core::assets::ManifestError
+pub tungsten_core::assets::ManifestError::BootGroupTwice
 pub tungsten_core::assets::ManifestError::DuplicateId
 pub tungsten_core::assets::ManifestError::DuplicateId::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::FontFamilyFaceMissing
@@ -2593,6 +2626,10 @@ pub tungsten_core::assets::ManifestError::SharedFile
 pub tungsten_core::assets::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::assets::ManifestError::SharedFile::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::SharedFile::second: alloc::string::String
+pub tungsten_core::assets::ManifestError::UnknownBootAsset
+pub tungsten_core::assets::ManifestError::UnknownBootAsset::field: &'static str
+pub tungsten_core::assets::ManifestError::UnknownBootAsset::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::UnknownBootAsset::section: &'static str
 pub tungsten_core::assets::ManifestError::UnknownFallbackFamily
 pub tungsten_core::assets::ManifestError::UnknownFallbackFamily::family: alloc::string::String
 impl core::error::Error for tungsten_core::assets::manifest::ManifestError
@@ -3811,6 +3848,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
 pub struct tungsten_core::assets::ResolvedManifest
 pub tungsten_core::assets::ResolvedManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedAnimation>
+pub tungsten_core::assets::ResolvedManifest::boot: tungsten_core::assets::manifest::BootGroup
 pub tungsten_core::assets::ResolvedManifest::data: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedDataEntry>>
 pub tungsten_core::assets::ResolvedManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::ResolvedManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>
@@ -15102,6 +15140,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::components::LightKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::LightKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::LightKind
 pub enum tungsten_core::ManifestError
+pub tungsten_core::ManifestError::BootGroupTwice
 pub tungsten_core::ManifestError::DuplicateId
 pub tungsten_core::ManifestError::DuplicateId::id: alloc::string::String
 pub tungsten_core::ManifestError::FontFamilyFaceMissing
@@ -15179,6 +15218,10 @@ pub tungsten_core::ManifestError::SharedFile
 pub tungsten_core::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::ManifestError::SharedFile::path: alloc::string::String
 pub tungsten_core::ManifestError::SharedFile::second: alloc::string::String
+pub tungsten_core::ManifestError::UnknownBootAsset
+pub tungsten_core::ManifestError::UnknownBootAsset::field: &'static str
+pub tungsten_core::ManifestError::UnknownBootAsset::id: alloc::string::String
+pub tungsten_core::ManifestError::UnknownBootAsset::section: &'static str
 pub tungsten_core::ManifestError::UnknownFallbackFamily
 pub tungsten_core::ManifestError::UnknownFallbackFamily::family: alloc::string::String
 impl core::error::Error for tungsten_core::assets::manifest::ManifestError
@@ -18672,6 +18715,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
 pub struct tungsten_core::ResolvedManifest
 pub tungsten_core::ResolvedManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedAnimation>
+pub tungsten_core::ResolvedManifest::boot: tungsten_core::assets::manifest::BootGroup
 pub tungsten_core::ResolvedManifest::data: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedDataEntry>>
 pub tungsten_core::ResolvedManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::ResolvedManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>
