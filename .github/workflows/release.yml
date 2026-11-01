@@ -7,7 +7,8 @@
 # per example under its player-facing name that runs the fastest build the CPU
 # supports, both builds and the files they read under data/, README.txt and the
 # license notices; no debug files, D-196), SHA256SUMS and the matching
-# changelog section as notes. A vX.Y.Z-<pre> tag without its own changelog
+# changelog section as notes, once the tag still names the commit it built.
+# A vX.Y.Z-<pre> tag without its own changelog
 # section is a rehearsal, published as a pre-release. Hosted runners have no
 # GPU: nothing with a window is launched. The one program run is the
 # crash-report probe, which needs none and reports without failing the run
@@ -96,9 +97,11 @@ jobs:
 
       # Same list as ci.yml. cpal needs pkg-config and ALSA headers; gilrs
       # links libudev through pkg-config (D-220). X11/Wayland, xkbcommon and
-      # Vulkan load at run time.
+      # Vulkan load at run time. Under a minute normally: a hung mirror held
+      # it for 85 minutes once, so it fails fast for a rerun of the job.
       - name: Install Linux build prerequisites
         if: runner.os == 'Linux'
+        timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev
@@ -197,6 +200,26 @@ jobs:
         run: |
           python3 -B scripts/release.py notes "$RELEASE_TAG" \
             --link-base "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$RELEASE_TAG" > release-notes.md
+
+      # A rerun of this job keeps the verify job's commit, so after the tag was
+      # re-pointed (docs/releases.md, Recover according to state) it would
+      # publish that commit's builds under a tag naming another one.
+      - name: The tag still names the built commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILT_SHA: ${{ needs.verify.outputs.sha }}
+        run: |
+          ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.type + " " + .object.sha')
+          kind=${ref%% *}
+          sha=${ref#* }
+          if [[ "$kind" == tag ]]; then
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq .object.sha)
+          fi
+          if [[ "$sha" != "$BUILT_SHA" ]]; then
+            echo "::error::$RELEASE_TAG names $sha, not $BUILT_SHA, which this run built; start a run on the tag (gh workflow run release.yml --ref $RELEASE_TAG)"
+            exit 1
+          fi
+          echo "$RELEASE_TAG names $BUILT_SHA"
 
       # gh stages assets in a draft before publication. Existing drafts/releases
       # need inspection before retrying this create step; see docs/releases.md.
