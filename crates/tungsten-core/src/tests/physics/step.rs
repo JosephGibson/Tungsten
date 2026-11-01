@@ -6883,6 +6883,63 @@ fn a_box_slides_down_a_frictionless_slope() {
 }
 
 #[test]
+fn a_body_lands_on_a_wide_cells_slope_face() {
+    // The outline test's 2:1 floor on cells `width` x 16: row 0 [., .,
+    // 2:1 low, 2:1 high], row 1 [low, high, #, #]. A box or circle of half 4
+    // let go 12 px over the middle of cell (0, 1)'s face, which runs from
+    // (width, 24) down to (0, 32), lands on it and never sinks 2 px under
+    // it while over the cell; widths 16 to 56 read the face's normal as a
+    // face, 57 and 64 did not.
+    for width in [16u32, 32, 56, 57, 64] {
+        for collider in [Collider::aabb(Vec2::splat(4.0)), Collider::circle(4.0)] {
+            let mut data = TilemapData::new(width, 16, 4, 2);
+            let solid = data.add_tile("solid");
+            let low = data.add_tile("low");
+            let high = data.add_tile("high");
+            for (tile, code) in [(low, 5), (high, 9)] {
+                data.set_tile_props(
+                    tile,
+                    TileProps {
+                        slope: Some(slope_kind(code)),
+                        ..TileProps::default()
+                    },
+                );
+            }
+            let layer = data.add_layer("solid", LayerKind::Collision);
+            for (col, row, tile) in [
+                (2, 0, low),
+                (3, 0, high),
+                (0, 1, low),
+                (1, 1, high),
+                (2, 1, solid),
+                (3, 1, solid),
+            ] {
+                data.set_tile(layer, col, row, tile);
+            }
+            let mut world = one_way_world(data);
+            let w = width as f32;
+            let face = |x: f32| 32.0 - 8.0 * x / w;
+            let start = Vec2::new(w * 0.5, face(w * 0.5) - 16.0);
+            let body = spawn_body(&mut world, RigidBody::dynamic(), collider, start, Vec2::ZERO);
+            let mut deepest = f32::MIN;
+            for _ in 0..60 {
+                physics_step(&mut world);
+                let at = world.get::<Position>(body).unwrap().0;
+                if at.x > 4.0 && at.x < w - 4.0 {
+                    deepest = deepest.max(at.y + 4.0 - face(at.x));
+                }
+            }
+            assert!(
+                deepest < 2.0,
+                "cells {width} x 16, {:?}: {deepest} px under the face, at {}",
+                collider.shape,
+                world.get::<Position>(body).unwrap().0
+            );
+        }
+    }
+}
+
+#[test]
 fn a_crate_on_a_ramps_apex_stays_finite() {
     // A box of friction 0.5 with its corner on the apex of a 45° ramp top
     // of friction 0.5 meets the slope cell's vertex at distance 0. Alone, or

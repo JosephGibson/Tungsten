@@ -103,16 +103,17 @@ pub(in crate::physics) fn polygon(code: u8, center: Vec2, half: Vec2) -> SlopePo
     }
 }
 
-/// The face bit of an axis-aligned outward normal; 0 for the slope's, whose
-/// components are at most 2 / √5.
+/// The face bit of an axis-aligned outward normal; 0 for the slope's. The
+/// polygon's sides and its sum's carry the axes exactly, while the slope's
+/// normal nears an axis on a wide or tall cell, so the test is exact.
 fn face_of(normal: Vec2) -> u8 {
-    if normal.x > 0.99 {
+    if normal == Vec2::X {
         FACE_RIGHT
-    } else if normal.x < -0.99 {
+    } else if normal == Vec2::NEG_X {
         FACE_LEFT
-    } else if normal.y > 0.99 {
+    } else if normal == Vec2::Y {
         FACE_BOTTOM
-    } else if normal.y < -0.99 {
+    } else if normal == Vec2::NEG_Y {
         FACE_TOP
     } else {
         0

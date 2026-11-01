@@ -392,6 +392,27 @@ fn slope_contacts_clamp_at_a_masked_endpoint() {
 }
 
 #[test]
+fn a_wide_cells_slope_face_is_never_read_as_a_side() {
+    // A 2:1 low cell 64 x 16 has a face normal of (-0.124, -0.992), past the
+    // 0.99 an axis side's test once took, so its face read as the top and
+    // the outline's mask 0 covered it. Each kind on cells up to 1:16 and
+    // 16:1 keeps its face a face, and a box overlapping the wide face meets
+    // it under mask 0.
+    for code in 1..=12u8 {
+        for (w, h) in [(16.0, 16.0), (64.0, 16.0), (256.0, 16.0), (16.0, 256.0)] {
+            let poly = polygon(code, Vec2::ZERO, Vec2::new(w, h) * 0.5);
+            assert_eq!(face_of(poly.normal), 0, "kind {code} on {w} x {h}: {}", poly.normal);
+        }
+    }
+    let wide = polygon(5, Vec2::new(32.0, 8.0), Vec2::new(32.0, 8.0));
+    let contact = box_contact(Vec2::new(32.0, 9.0), Vec2::splat(4.0), &wide, 0, 1.0);
+    assert!(
+        contact.is_some_and(|c| c.normal.abs_diff_eq(wide.normal, 1e-6)),
+        "{contact:?}"
+    );
+}
+
+#[test]
 fn a_contact_on_a_vertex_between_exposed_sides_has_a_unit_normal() {
     // A box whose corner sits on a ramp's apex meets the sum's vertex at its
     // centre, at distance 0, wherever the slope side's separation rounds
