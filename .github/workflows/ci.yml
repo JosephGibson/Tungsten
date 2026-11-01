@@ -102,7 +102,8 @@ jobs:
         run: cargo bench --workspace --no-run --profile dev --locked
 
       # The checks below run after an earlier one fails too, so one run
-      # reports every failing check; a failed install still stops them.
+      # reports every failing check; a failed install, or the first step's
+      # version check, still stops them.
       - name: Dependency policy
         if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
         run: just deps

@@ -358,7 +358,8 @@ class Preflight(unittest.TestCase):
         self.assertTrue(any("No release run found" in line for line in info))
 
     def test_ci_gate_reads_the_newest_push_run_past_cancelled_and_pull_request_runs(self):
-        self.ci_runs = [self.run_info("main", event="pull_request", conclusion="failure", id=9),
+        self.ci_runs = [self.run_info("main", sha="f" * 40, conclusion="failure", id=10),
+                        self.run_info("main", event="pull_request", conclusion="failure", id=9),
                         self.run_info("main", conclusion="cancelled", id=8),
                         self.run_info("main", id=7), self.run_info("main", conclusion="failure", id=6)]
         errors, out, slept = self.gate()
@@ -380,9 +381,31 @@ class Preflight(unittest.TestCase):
         self.assertEqual((errors, slept), ([], [pre.CI_POLL] * 3))
         self.assertEqual(out.count("is in_progress; waiting for it"), 1)
 
+    def test_ci_gate_reports_a_run_cancelled_while_it_waited(self):
+        self.ci_runs = [self.run_info("main", status="in_progress", conclusion=None, id=7)]
+        errors, _, slept = self.gate(polls=[[self.run_info("main", conclusion="cancelled", id=7)]])
+        self.assertIn(f"CI run 7 on {self.sha[:12]} was cancelled while the release waited for it", errors[0])
+        self.assertEqual(slept, [pre.CI_POLL])
+
+    def test_ci_gate_lets_a_failed_lookup_raise_mid_wait(self):
+        self.ci_runs = [self.run_info("main", status="queued", conclusion=None, id=7)]
+        lookups = []
+
+        def github(root, endpoint, missing=False):
+            lookups.append(endpoint)
+            if len(lookups) > 1:
+                raise ValueError("GitHub lookup failed: HTTP 502")
+            return self.github(root, endpoint, missing)
+
+        with patch.object(pre, "api", side_effect=github), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(ValueError, "HTTP 502"):
+                pre.ci_gate(self.root, "owner/repo", "origin", "main", self.sha, lambda seconds: None, lambda: 0.0)
+        self.assertEqual(len(lookups), 2)
+
     def test_ci_gate_gives_up_on_a_run_that_never_appears_or_never_finishes(self):
         errors, _, slept = self.gate()
         self.assertIn("no CI run on", errors[0])
+        self.assertIn(f"appeared within {pre.CI_APPEAR // 60} minutes", errors[0])
         self.assertIn("gh workflow run ci.yml --repo owner/repo --ref main", errors[0])
         self.assertEqual(sum(slept), pre.CI_APPEAR)
         self.ci_runs = [self.run_info("main", status="queued", conclusion=None, id=7)]
@@ -399,6 +422,11 @@ class Preflight(unittest.TestCase):
         self.assertIn(f"origin/main is at {self.sha[:12]}, not HEAD", errors[0])
         self.assertIn("`git push origin main`", errors[0])
         self.assertEqual((self.api_calls, slept), ([], []))
+        # A branch ahead of HEAD needs its commits integrated; a push would be refused.
+        self.git("push", "origin", "main")
+        errors, _, _ = self.gate(sha=self.sha)
+        self.assertIn(f"which HEAD {self.sha[:12]} doesn't hold: integrate the branch's commits", errors[0])
+        self.assertEqual(self.api_calls, [])
 
     def test_lightweight_and_conflicting_tag_objects_fail(self):
         self.git("tag", "v1.0.0")

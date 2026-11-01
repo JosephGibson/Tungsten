@@ -11,9 +11,11 @@ import re
 import shutil
 import struct
 import tempfile
+import types
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("release", Path(__file__).with_name("release.py"))
 rel = importlib.util.module_from_spec(spec)
@@ -1043,6 +1045,23 @@ class Run(unittest.TestCase):
         self.assertIn("CI hasn't passed on HEAD; the cut stays uncommitted", " ".join(errors))
         self.assertEqual((self.steps, self.preflights), ([self.CI], []))
         self.assertEqual(sorted(rel.changed_paths(self.root)), sorted(rel.CUT_PATHS))
+
+    def test_the_ci_gate_asks_about_head_on_origins_branch_and_refuses_when_the_lookup_fails(self):
+        calls = []
+        pre = types.SimpleNamespace(github_repository=lambda url: "owner/repo",
+                                    ci_gate=lambda *args: calls.append(args) or [])
+        with patch.object(rel, "load_preflight", return_value=pre):
+            self.assertTrue(rel.run_ci_gate(self.root))
+        self.assertEqual(calls, [(self.root, "owner/repo", "origin", "0.27", self.git("rev-parse", "HEAD"))])
+
+        def unreachable(*args):
+            raise ValueError("GitHub lookup failed: HTTP 502")
+
+        pre.ci_gate = unreachable
+        err = io.StringIO()
+        with patch.object(rel, "load_preflight", return_value=pre), contextlib.redirect_stderr(err):
+            self.assertFalse(rel.run_ci_gate(self.root))
+        self.assertIn("ERROR: the CI lookup failed: GitHub lookup failed: HTTP 502", err.getvalue())
 
     def test_a_dirty_tree_outside_the_cut_is_refused(self):
         (self.root / "README.md").write_text("# Engine, edited\n")

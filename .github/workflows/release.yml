@@ -216,7 +216,7 @@ jobs:
             sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq .object.sha)
           fi
           if [[ "$sha" != "$BUILT_SHA" ]]; then
-            echo "::error::$RELEASE_TAG names $sha, not $BUILT_SHA, which this run built; start a run on the tag (gh workflow run release.yml --ref $RELEASE_TAG)"
+            echo "::error::$RELEASE_TAG names $sha, not $BUILT_SHA, which this run built; a run on the tag as it stands publishes it (a re-pointing push starts one)"
             exit 1
           fi
           echo "$RELEASE_TAG names $BUILT_SHA"

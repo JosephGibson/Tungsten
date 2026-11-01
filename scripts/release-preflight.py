@@ -20,7 +20,7 @@ from urllib.parse import quote, urlsplit
 
 import release
 
-# `ci_gate` (D-232): seconds between looks, how long a pushed commit's run may take to
+# `ci_gate` (D-232), in seconds from its start: between looks, for a pushed commit's run to
 # appear, and the longest wait for one to finish (the jobs time out at 60 and 90 minutes).
 CI_POLL = 30
 CI_APPEAR = 3 * 60
@@ -90,6 +90,9 @@ def ci_gate(root, repo, remote, branch, sha, sleep=time.sleep, clock=time.monoto
     url = git(root, "remote", "get-url", "--push", remote)
     tip = git(root, "ls-remote", "--", url, f"refs/heads/{branch}").split("\t")[0] or None
     if tip != sha:
+        if tip and not is_ancestor(root, tip, sha):
+            return [f"{remote}/{branch} is at {tip[:12]}, which HEAD {sha[:12]} doesn't hold: integrate the branch's "
+                    f"commits (the owner fetches), then run the release again"]
         return [f"{remote}/{branch} is at {tip[:12] if tip else 'nothing'}, not HEAD {sha[:12]}: push the branch "
                 f"(`git push {remote} {branch}`) so CI checks the commit the release cuts on"]
     start, waiting = clock(), None
@@ -97,9 +100,12 @@ def ci_gate(root, repo, remote, branch, sha, sleep=time.sleep, clock=time.monoto
         run = next((r for r in ci_runs(root, repo, sha) if r["conclusion"] != "cancelled"), None)
         if run and run["status"] == "completed":
             break
+        if run is None and waiting is not None:
+            return [f"CI run {waiting} on {sha[:12]} was cancelled while the release waited for it, by a newer push "
+                    f"to {branch} or by hand: see what superseded it, then run the release again"]
         elapsed = clock() - start
         if run is None and elapsed >= CI_APPEAR:
-            return [f"no CI run on {sha[:12]} that wasn't cancelled, {CI_APPEAR // 60} minutes after its push: the "
+            return [f"no CI run on {sha[:12]} that wasn't cancelled appeared within {CI_APPEAR // 60} minutes: the "
                     f"owner starts one (`gh workflow run ci.yml --repo {repo} --ref {branch}`)"]
         if elapsed >= CI_WAIT:
             return [f"CI run {run['id']} on {sha[:12]} is still {run['status']} after {CI_WAIT // 60} minutes: "
