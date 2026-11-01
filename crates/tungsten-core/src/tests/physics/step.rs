@@ -344,6 +344,53 @@ fn sweep_net_covers_static_circles_via_bounding_square() {
 }
 
 #[test]
+fn sweep_net_lets_a_fast_body_slide_along_a_floor_it_touches() {
+    // A body faster than its smallest half extent a substep, launched along
+    // a floor it rests on at exactly 0 px: the net's sweep starts touching
+    // the floor, which is no hit, as an overlapping start is none, so the
+    // body slides instead of being held where it started. A static box and
+    // a tile row, a box and two circles, gravity 900 and 3,600, steps of
+    // 1/60 and 1/30 s.
+    for tiles in [false, true] {
+        for collider in [
+            Collider::aabb(Vec2::splat(4.0)),
+            Collider::circle(4.0),
+            Collider::circle(10.0),
+        ] {
+            for gravity in [900.0, 3_600.0] {
+                for (speed, dt) in [(1_200.0, 1.0 / 60.0), (3_000.0, 1.0 / 60.0), (600.0, 1.0 / 30.0)] {
+                    let mut world = seed_world();
+                    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, gravity);
+                    world.resource_mut::<Time>().advance_frame(dt);
+                    if tiles {
+                        let floor = vec![vec![0; 64]];
+                        spawn_map(&mut world, "floor", Vec2::new(-512.0, 90.0), 64, floor);
+                    } else {
+                        let floor = Collider::aabb(Vec2::new(600.0, 10.0));
+                        spawn_static(&mut world, floor, Vec2::new(0.0, 100.0));
+                    }
+                    let start = Vec2::new(-400.0, 90.0 - collider.shape.half_extents().y);
+                    let launch = Vec2::new(speed, 0.0);
+                    let body = spawn_body(&mut world, RigidBody::dynamic(), collider, start, launch);
+                    for _ in 0..30 {
+                        physics_step(&mut world);
+                        drain_events(&mut world);
+                    }
+                    let slid = world.get::<Position>(body).unwrap().0.x - start.x;
+                    let expected = speed * dt * 30.0;
+                    assert!(
+                        slid > 0.9 * expected,
+                        "{collider:?} on {} at {speed} px/s, dt {dt}, gravity {gravity}: \
+                         slid {slid} of {expected} px",
+                        if tiles { "tiles" } else { "a static box" }
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn sweep_net_restages_statics_when_the_proxy_set_changes() {
     // The sweep grid is staged per frame (D-080). After a static despawns and
     // two spawn, proxy indices shift: the old slab must stop clamping and the
