@@ -453,6 +453,8 @@ pub struct tungsten::extract::Extracts
 impl tungsten::extract::Extracts
 pub fn tungsten::extract::Extracts::add_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::extract::Extracts::add_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites_over_tiles(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites_under_tiles(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
 pub fn tungsten::extract::Extracts::add_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
 pub fn tungsten::extract::Extracts::replace_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::extract::Extracts::replace_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
@@ -1547,6 +1549,8 @@ pub struct tungsten::Extracts
 impl tungsten::extract::Extracts
 pub fn tungsten::extract::Extracts::add_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::extract::Extracts::add_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites_over_tiles(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites_under_tiles(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
 pub fn tungsten::extract::Extracts::add_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
 pub fn tungsten::extract::Extracts::replace_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::extract::Extracts::replace_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)

@@ -1,4 +1,8 @@
-//! Tilemap-to-sprite extraction; caller owns batch ordering.
+//! Tilemap-to-sprite extraction; caller owns batch ordering. A render
+//! layer's `LayerDraw` (redo 7.9) tints its tiles and, when unlit, draws a
+//! lit tileset on the stock pipeline; the default sprite base draws a layer
+//! with a `z` among the sprites, while these extracts keep every layer in
+//! file order.
 
 use tungsten_core::assets::{LayerKind, TextureHandle, TilemapRegistry};
 use tungsten_core::{
@@ -77,11 +81,26 @@ impl TilesetCache {
 ///
 /// A layer yields one batch per atlas page and lighting, in the order its
 /// visible tiles (row by row) first use each. A tile whose sprite has a lit
-/// atlas draws in a lit batch, as a sprite does (`D-061`). Every instance
+/// atlas draws in a lit batch, as a sprite does (`D-061`), unless its layer
+/// is unlit; each tile takes its layer's tint as its colour. Every instance
 /// has `z_norm` 0.
 #[must_use]
 pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
-    extract_layers(world, None)
+    extract_layers(world, None, None)
+}
+
+/// A layer the default sprite base draws among the sprites: its `z` and
+/// its batches.
+pub(crate) type RaisedLayer = (i32, Vec<SpriteBatch>);
+
+/// [`extract_tilemaps`] for the default sprite base: the layers without a
+/// `z`, while each layer with one goes into `raised`, map by map in file
+/// order, untouched when no layer has one.
+pub(crate) fn extract_tiles_raising(
+    world: &World,
+    raised: &mut Vec<RaisedLayer>,
+) -> Vec<SpriteBatch> {
+    extract_layers(world, None, Some(raised))
 }
 
 /// The named render layers of every tilemap, map by map, each map's layers in
@@ -90,11 +109,16 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
 /// render layer draws what it draws.
 #[must_use]
 pub fn extract_tilemap_layers(world: &World, layers: &[&str]) -> Vec<SpriteBatch> {
-    extract_layers(world, Some(layers))
+    extract_layers(world, Some(layers), None)
 }
 
-/// The tilemap extract: every render layer, or only those `names` lists.
-fn extract_layers(world: &World, names: Option<&[&str]>) -> Vec<SpriteBatch> {
+/// The tilemap extract: every render layer, or only those `names` lists;
+/// with `raised`, a layer with a `z` goes there instead.
+fn extract_layers(
+    world: &World,
+    names: Option<&[&str]>,
+    mut raised: Option<&mut Vec<RaisedLayer>>,
+) -> Vec<SpriteBatch> {
     let Some(tilemaps) = world.get_resource::<TilemapRegistry>() else {
         return vec![];
     };
@@ -149,17 +173,27 @@ fn extract_layers(world: &World, names: Option<&[&str]>) -> Vec<SpriteBatch> {
 
             tileset.begin(data.tileset.len());
 
-            for layer in &data.layers {
+            for (index, layer) in data.layers.iter().enumerate() {
                 if layer.kind != LayerKind::Render
                     || names.is_some_and(|names| !names.contains(&layer.name.as_str()))
                 {
                     continue;
                 }
+                let draw = data.layer_draw(index);
+                // A raised layer's batches are a list of their own; the
+                // others' go on in `out`, whose capacity hints they keep.
+                let (target, hints) = match (raised.as_deref_mut(), draw.z) {
+                    (Some(raised), Some(z)) => {
+                        raised.push((z, Vec::new()));
+                        (&mut raised.last_mut().unwrap().1, None)
+                    }
+                    _ => (&mut out, Some(&*batch_lens)),
+                };
 
                 // Per-layer batches preserve layer draw order: this layer's
-                // batches are `out[layer_start..]`, one per atlas page and
+                // batches are `target[layer_start..]`, one per atlas page and
                 // lighting.
-                let layer_start = out.len();
+                let layer_start = target.len();
                 let mut last: Option<(TextureHandle, bool, usize)> = None;
 
                 for row in row_start..row_end {
@@ -177,46 +211,55 @@ fn extract_layers(world: &World, names: Option<&[&str]>) -> Vec<SpriteBatch> {
                         }) else {
                             continue;
                         };
+                        let lit = sprite.lit && !draw.unlit;
 
                         let batch = match last {
-                            Some((atlas, lit, batch))
-                                if atlas == sprite.atlas && lit == sprite.lit =>
+                            Some((atlas, last_lit, batch))
+                                if atlas == sprite.atlas && last_lit == lit =>
                             {
                                 batch
                             }
                             _ => {
-                                let opened = out[layer_start..].iter().position(|batch| {
-                                    batch.texture == sprite.atlas && batch.lit == sprite.lit
+                                let opened = target[layer_start..].iter().position(|batch| {
+                                    batch.texture == sprite.atlas && batch.lit == lit
                                 });
                                 let batch = if let Some(offset) = opened {
                                     layer_start + offset
                                 } else {
-                                    let len =
-                                        batch_lens.get(out.len()).map_or(0, |&len| len as usize);
+                                    let len = hints
+                                        .and_then(|hints| hints.get(target.len()))
+                                        .map_or(0, |&len| len as usize);
                                     let mut batch = SpriteBatch::new(sprite.atlas, sprite.filter);
-                                    batch.lit = sprite.lit;
+                                    batch.lit = lit;
                                     batch.instances = pool.take(len);
-                                    out.push(batch);
-                                    out.len() - 1
+                                    target.push(batch);
+                                    target.len() - 1
                                 };
-                                last = Some((sprite.atlas, sprite.lit, batch));
+                                last = Some((sprite.atlas, lit, batch));
                                 batch
                             }
                         };
 
                         let world_x = instance.origin.x + (col as f32) * tw;
                         let world_y = instance.origin.y + (row as f32) * th;
-                        out[batch].instances.push(SpriteInstance {
+                        target[batch].instances.push(SpriteInstance {
                             position: [world_x, world_y],
                             size: [tw, th],
                             rotation: 0.0,
-                            color: [255; 4],
+                            color: draw.tint,
                             uv_min: sprite.uv_min,
                             uv_size: sprite.uv_size,
                             z_norm: 0.0,
                             _pad: 0.0,
                         });
                     }
+                }
+                // A raised layer with nothing in view takes no place.
+                if draw.z.is_some()
+                    && let Some(raised) = raised.as_deref_mut()
+                    && raised.last().is_some_and(|(_, batches)| batches.is_empty())
+                {
+                    raised.pop();
                 }
             }
         }

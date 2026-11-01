@@ -2253,6 +2253,30 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::TilemapError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TilemapError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TilemapError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TilemapError
+pub struct tungsten_core::assets::tilemap::LayerDraw
+pub tungsten_core::assets::tilemap::LayerDraw::tint: [u8; 4]
+pub tungsten_core::assets::tilemap::LayerDraw::unlit: bool
+pub tungsten_core::assets::tilemap::LayerDraw::z: core::option::Option<i32>
+impl tungsten_core::assets::tilemap::LayerDraw
+pub const tungsten_core::assets::tilemap::LayerDraw::DEFAULT: Self
+impl core::clone::Clone for tungsten_core::assets::tilemap::LayerDraw
+pub fn tungsten_core::assets::tilemap::LayerDraw::clone(&self) -> tungsten_core::assets::tilemap::LayerDraw
+impl core::cmp::Eq for tungsten_core::assets::tilemap::LayerDraw
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::LayerDraw
+pub fn tungsten_core::assets::tilemap::LayerDraw::eq(&self, &tungsten_core::assets::tilemap::LayerDraw) -> bool
+impl core::default::Default for tungsten_core::assets::tilemap::LayerDraw
+pub fn tungsten_core::assets::tilemap::LayerDraw::default() -> Self
+impl core::fmt::Debug for tungsten_core::assets::tilemap::LayerDraw
+pub fn tungsten_core::assets::tilemap::LayerDraw::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::tilemap::LayerDraw
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::LayerDraw
+impl core::marker::Freeze for tungsten_core::assets::tilemap::LayerDraw
+impl core::marker::Send for tungsten_core::assets::tilemap::LayerDraw
+impl core::marker::Sync for tungsten_core::assets::tilemap::LayerDraw
+impl core::marker::Unpin for tungsten_core::assets::tilemap::LayerDraw
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::LayerDraw
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::LayerDraw
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::LayerDraw
 pub struct tungsten_core::assets::tilemap::LayerPhysics
 pub tungsten_core::assets::tilemap::LayerPhysics::layers: u32
 pub tungsten_core::assets::tilemap::LayerPhysics::mask: u32
@@ -2376,10 +2400,12 @@ impl tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::add_layer(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::tilemap::LayerKind) -> usize
 pub fn tungsten_core::assets::tilemap::TilemapData::add_tile(&mut self, impl core::convert::Into<alloc::string::String>) -> tungsten_core::assets::tilemap::TileIndex
 pub fn tungsten_core::assets::tilemap::TilemapData::fill(&mut self, usize, tungsten_core::assets::tilemap::TileIndex)
+pub fn tungsten_core::assets::tilemap::TilemapData::layer_draw(&self, usize) -> tungsten_core::assets::tilemap::LayerDraw
 pub fn tungsten_core::assets::tilemap::TilemapData::layer_physics(&self, usize) -> tungsten_core::assets::tilemap::LayerPhysics
 pub fn tungsten_core::assets::tilemap::TilemapData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::tilemap::TilemapError>
 pub fn tungsten_core::assets::tilemap::TilemapData::new(u32, u32, u32, u32) -> Self
 pub fn tungsten_core::assets::tilemap::TilemapData::pixel_size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::assets::tilemap::TilemapData::set_layer_draw(&mut self, usize, tungsten_core::assets::tilemap::LayerDraw)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_layer_physics(&mut self, usize, tungsten_core::assets::tilemap::LayerPhysics)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile_props(&mut self, tungsten_core::assets::tilemap::TileIndex, tungsten_core::assets::tilemap::TileProps)
@@ -4484,10 +4510,12 @@ impl tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::add_layer(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::tilemap::LayerKind) -> usize
 pub fn tungsten_core::assets::tilemap::TilemapData::add_tile(&mut self, impl core::convert::Into<alloc::string::String>) -> tungsten_core::assets::tilemap::TileIndex
 pub fn tungsten_core::assets::tilemap::TilemapData::fill(&mut self, usize, tungsten_core::assets::tilemap::TileIndex)
+pub fn tungsten_core::assets::tilemap::TilemapData::layer_draw(&self, usize) -> tungsten_core::assets::tilemap::LayerDraw
 pub fn tungsten_core::assets::tilemap::TilemapData::layer_physics(&self, usize) -> tungsten_core::assets::tilemap::LayerPhysics
 pub fn tungsten_core::assets::tilemap::TilemapData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::tilemap::TilemapError>
 pub fn tungsten_core::assets::tilemap::TilemapData::new(u32, u32, u32, u32) -> Self
 pub fn tungsten_core::assets::tilemap::TilemapData::pixel_size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::assets::tilemap::TilemapData::set_layer_draw(&mut self, usize, tungsten_core::assets::tilemap::LayerDraw)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_layer_physics(&mut self, usize, tungsten_core::assets::tilemap::LayerPhysics)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile_props(&mut self, tungsten_core::assets::tilemap::TileIndex, tungsten_core::assets::tilemap::TileProps)
@@ -4998,6 +5026,29 @@ impl<'w> core::marker::UnsafeUnpin for tungsten_core::component_registry::SpawnC
 impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::SpawnContext<'w>
 impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::SpawnContext<'w>
 pub mod tungsten_core::components
+pub enum tungsten_core::components::BackdropRepeat
+pub tungsten_core::components::BackdropRepeat::None
+pub tungsten_core::components::BackdropRepeat::X
+pub tungsten_core::components::BackdropRepeat::Xy
+pub tungsten_core::components::BackdropRepeat::Y
+impl core::clone::Clone for tungsten_core::components::BackdropRepeat
+pub fn tungsten_core::components::BackdropRepeat::clone(&self) -> tungsten_core::components::BackdropRepeat
+impl core::cmp::Eq for tungsten_core::components::BackdropRepeat
+impl core::cmp::PartialEq for tungsten_core::components::BackdropRepeat
+pub fn tungsten_core::components::BackdropRepeat::eq(&self, &tungsten_core::components::BackdropRepeat) -> bool
+impl core::default::Default for tungsten_core::components::BackdropRepeat
+pub fn tungsten_core::components::BackdropRepeat::default() -> tungsten_core::components::BackdropRepeat
+impl core::fmt::Debug for tungsten_core::components::BackdropRepeat
+pub fn tungsten_core::components::BackdropRepeat::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::components::BackdropRepeat
+impl core::marker::StructuralPartialEq for tungsten_core::components::BackdropRepeat
+impl core::marker::Freeze for tungsten_core::components::BackdropRepeat
+impl core::marker::Send for tungsten_core::components::BackdropRepeat
+impl core::marker::Sync for tungsten_core::components::BackdropRepeat
+impl core::marker::Unpin for tungsten_core::components::BackdropRepeat
+impl core::marker::UnsafeUnpin for tungsten_core::components::BackdropRepeat
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::BackdropRepeat
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::BackdropRepeat
 pub enum tungsten_core::components::LightKind
 pub tungsten_core::components::LightKind::Directional
 pub tungsten_core::components::LightKind::Directional::angle: f32
@@ -5039,6 +5090,32 @@ impl core::marker::Unpin for tungsten_core::components::SquashTrigger
 impl core::marker::UnsafeUnpin for tungsten_core::components::SquashTrigger
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::SquashTrigger
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::SquashTrigger
+pub struct tungsten_core::components::Backdrop
+pub tungsten_core::components::Backdrop::drift: glam::f32::vec2::Vec2
+pub tungsten_core::components::Backdrop::factor: glam::f32::vec2::Vec2
+pub tungsten_core::components::Backdrop::fill: bool
+pub tungsten_core::components::Backdrop::foot: bool
+pub tungsten_core::components::Backdrop::repeat: tungsten_core::components::BackdropRepeat
+pub tungsten_core::components::Backdrop::sprite: tungsten_core::assets::registry::SpriteAssetId
+pub tungsten_core::components::Backdrop::tint: [u8; 4]
+pub tungsten_core::components::Backdrop::z_order: i32
+impl tungsten_core::components::Backdrop
+pub fn tungsten_core::components::Backdrop::new(tungsten_core::assets::registry::SpriteAssetId) -> Self
+impl core::clone::Clone for tungsten_core::components::Backdrop
+pub fn tungsten_core::components::Backdrop::clone(&self) -> tungsten_core::components::Backdrop
+impl core::cmp::PartialEq for tungsten_core::components::Backdrop
+pub fn tungsten_core::components::Backdrop::eq(&self, &tungsten_core::components::Backdrop) -> bool
+impl core::fmt::Debug for tungsten_core::components::Backdrop
+pub fn tungsten_core::components::Backdrop::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::components::Backdrop
+impl core::marker::StructuralPartialEq for tungsten_core::components::Backdrop
+impl core::marker::Freeze for tungsten_core::components::Backdrop
+impl core::marker::Send for tungsten_core::components::Backdrop
+impl core::marker::Sync for tungsten_core::components::Backdrop
+impl core::marker::Unpin for tungsten_core::components::Backdrop
+impl core::marker::UnsafeUnpin for tungsten_core::components::Backdrop
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Backdrop
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Backdrop
 pub struct tungsten_core::components::Light
 pub tungsten_core::components::Light::color: glam::f32::vec3::Vec3
 pub tungsten_core::components::Light::intensity: f32
@@ -20197,10 +20274,12 @@ impl tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::add_layer(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::tilemap::LayerKind) -> usize
 pub fn tungsten_core::assets::tilemap::TilemapData::add_tile(&mut self, impl core::convert::Into<alloc::string::String>) -> tungsten_core::assets::tilemap::TileIndex
 pub fn tungsten_core::assets::tilemap::TilemapData::fill(&mut self, usize, tungsten_core::assets::tilemap::TileIndex)
+pub fn tungsten_core::assets::tilemap::TilemapData::layer_draw(&self, usize) -> tungsten_core::assets::tilemap::LayerDraw
 pub fn tungsten_core::assets::tilemap::TilemapData::layer_physics(&self, usize) -> tungsten_core::assets::tilemap::LayerPhysics
 pub fn tungsten_core::assets::tilemap::TilemapData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::tilemap::TilemapError>
 pub fn tungsten_core::assets::tilemap::TilemapData::new(u32, u32, u32, u32) -> Self
 pub fn tungsten_core::assets::tilemap::TilemapData::pixel_size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::assets::tilemap::TilemapData::set_layer_draw(&mut self, usize, tungsten_core::assets::tilemap::LayerDraw)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_layer_physics(&mut self, usize, tungsten_core::assets::tilemap::LayerPhysics)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile_props(&mut self, tungsten_core::assets::tilemap::TileIndex, tungsten_core::assets::tilemap::TileProps)

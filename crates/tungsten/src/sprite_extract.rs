@@ -28,6 +28,11 @@
 //! a warning once per ID for as long as `ExtractScratch` lives (every
 //! `App`); the flags and the log sit in a cold helper outside the row loop.
 //!
+//! Redo 7.9 also draws a tile layer with a `z` among the sprites, for the
+//! default base: its batches before the first z-run at or above its `z`,
+//! each layer one place in the painter order, so under `gpu_depth` it takes
+//! that place's depth. Without such a layer nothing changes.
+//!
 //! Redo 7.9: a `SpriteFlip` holding `true` mirrors the instance by a negative
 //! UV width, about the sprite's anchor or, without one, in its own box; an
 //! `Unlit` sprite with maps draws on the stock pipeline; a lit sprite keeps
@@ -54,15 +59,16 @@ use std::hash::Hasher;
 
 use glam::{BVec2, Vec2};
 use tungsten_core::assets::{SpriteAssetId, TextureHandle};
-use tungsten_core::components::{SpriteFlip, Unlit};
+use tungsten_core::components::{Backdrop, BackdropRepeat, SpriteFlip, Unlit};
 use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
     AssetRegistry, CameraState, Entity, FilterMode, MaterialAssetId, OptionalColumn, ParallaxLayer,
-    Sprite, Transform, Visibility, World, parallax_world_position,
+    Sprite, Time, Transform, Visibility, World, parallax_world_position,
 };
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
 use crate::app::WindowSize;
+use crate::tilemap_extract::RaisedLayer;
 
 /// Hash of a `UniformOverrideBlock`'s 256-byte payload, used as a batch-split
 /// key so per-entity overrides cannot alias through one UBO upload.
@@ -196,6 +202,9 @@ enum SpriteWarning {
     /// A lit sprite carries this material; the lit shader draws it, taking
     /// only its block's flash lanes (`D-061`).
     LitMaterial(Option<MaterialAssetId>),
+    /// A backdrop of this sprite repeats past [`BACKDROP_COPIES`] over the
+    /// view, which drops the rest.
+    BackdropCopies,
 }
 
 /// Logs `warning` about sprite `id` the first time these buffers meet it.
@@ -223,6 +232,13 @@ fn warn_once(
                 );
             }
         }
+        SpriteWarning::BackdropCopies => {
+            if buffers.backdrop_copies.first(id) {
+                log::warn!(
+                    "backdrop sprite '{name}' repeats past {BACKDROP_COPIES} copies over the view; the rest draw nothing"
+                );
+            }
+        }
     }
 }
 
@@ -231,6 +247,7 @@ fn warn_once(
 pub(crate) struct SpriteWarnings {
     no_asset: WarnedIds,
     lit_material: WarnedIds,
+    backdrop_copies: WarnedIds,
 }
 
 /// Buffers of the default sprite extract and the tilemap extract.
@@ -310,7 +327,185 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
         return Vec::new();
     };
     let view = view_bounds(world);
-    ExtractScratch::with(world, |buffers| extract_into(world, assets, view, buffers))
+    ExtractScratch::with(world, |buffers| {
+        extract_into(world, assets, view, buffers, &mut [])
+    })
+}
+
+/// [`extract_sprites_default`] with `raised`, tile layers sorted by `z`,
+/// drawn among the sprites: each before the first sprite whose `z_order` is
+/// at or above its `z`, the rest after every sprite.
+pub(crate) fn extract_sprites_among(world: &World, raised: &mut [RaisedLayer]) -> Vec<SpriteBatch> {
+    let Some(assets) = world.get_resource::<AssetRegistry>() else {
+        return Vec::new();
+    };
+    let view = view_bounds(world);
+    ExtractScratch::with(world, |buffers| {
+        extract_into(world, assets, view, buffers, raised)
+    })
+}
+
+/// Most copies one backdrop draws in a frame.
+const BACKDROP_COPIES: usize = 1 << 16;
+
+/// The default base's backdrops ([`Backdrop`]), by `z_order` then entity:
+/// their copies over the camera's view, on the stock pipeline at the far
+/// plane. Empty, and no buffer touched, without a backdrop.
+pub(crate) fn extract_backdrops(world: &World) -> Vec<SpriteBatch> {
+    let mut found: Vec<(i32, u32, Backdrop, Transform)> = world
+        .query::<(Entity, &Backdrop, &Transform, Option<&Visibility>)>()
+        .filter(|(.., visibility)| visibility.is_none_or(|visibility| visibility.visible))
+        .map(|(entity, backdrop, transform, _)| {
+            (backdrop.z_order, entity.id(), *backdrop, *transform)
+        })
+        .collect();
+    let Some(assets) = world.get_resource::<AssetRegistry>() else {
+        return Vec::new();
+    };
+    if found.is_empty() {
+        return Vec::new();
+    }
+    found.sort_by_key(|&(z_order, entity, ..)| (z_order, entity));
+    let camera = world
+        .get_resource::<CameraState>()
+        .map_or(Vec2::ZERO, |camera| camera.position);
+    let view = view_bounds(world);
+    let elapsed = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
+    ExtractScratch::with(world, |buffers| {
+        let mut out: Vec<SpriteBatch> = Vec::new();
+        for (_, _, backdrop, transform) in found {
+            let Some(asset) = assets.sprite(backdrop.sprite) else {
+                warn_once(
+                    &mut buffers.warnings,
+                    assets,
+                    backdrop.sprite,
+                    SpriteWarning::NoAsset,
+                );
+                continue;
+            };
+            let size = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale.abs();
+            if size.x <= 0.0 || size.y <= 0.0 {
+                continue;
+            }
+            let uv_min = Vec2::from(asset.uv.min);
+            let uv_size = Vec2::from(asset.uv.max) - uv_min;
+            let batch = match out.last_mut() {
+                Some(batch) if batch.texture == asset.atlas && batch.filter == asset.filter => {
+                    batch
+                }
+                _ => {
+                    out.push(SpriteBatch::new(asset.atlas, asset.filter));
+                    out.last_mut().unwrap()
+                }
+            };
+            let copy = |position: Vec2, size: Vec2, uv_min: Vec2, uv_size: Vec2| SpriteInstance {
+                position: position.to_array(),
+                size: size.to_array(),
+                rotation: 0.0,
+                color: backdrop.tint,
+                uv_min: uv_min.to_array(),
+                uv_size: uv_size.to_array(),
+                z_norm: 1.0,
+                _pad: 0.0,
+            };
+            if backdrop.fill
+                && let Some((min, max)) = view
+            {
+                batch.instances.push(copy(min, max - min, uv_min, uv_size));
+                continue;
+            }
+            let (across, down) = match backdrop.repeat {
+                BackdropRepeat::None => (false, false),
+                BackdropRepeat::X => (true, false),
+                BackdropRepeat::Y => (false, true),
+                BackdropRepeat::Xy => (true, true),
+            };
+            // The drift on the game clock, within one copy along a repeat so
+            // a long run keeps its precision.
+            let drift = |speed: f32, period: f32, repeats: bool| {
+                let travelled = f64::from(speed) * elapsed;
+                let travelled = if repeats {
+                    travelled.rem_euclid(f64::from(period))
+                } else {
+                    travelled
+                };
+                travelled as f32
+            };
+            let origin = parallax_world_position(transform.position, backdrop.factor, camera)
+                + Vec2::new(
+                    drift(backdrop.drift.x, size.x, across),
+                    drift(backdrop.drift.y, size.y, down),
+                );
+            let span = |start: f32, step: f32, low: f32, high: f32, repeats: bool| {
+                if repeats {
+                    let first = ((low - start) / step).floor() as i64;
+                    first..((high - start) / step).ceil().max(first as f32 + 1.0) as i64
+                } else {
+                    0..1
+                }
+            };
+            let (columns, rows) = match view {
+                Some((min, max)) => (
+                    span(origin.x, size.x, min.x, max.x, across),
+                    span(origin.y, size.y, min.y, max.y, down),
+                ),
+                None => (0..1, 0..1),
+            };
+            let copies = columns.clone().count().saturating_mul(rows.clone().count());
+            if copies > BACKDROP_COPIES {
+                warn_once(
+                    &mut buffers.warnings,
+                    assets,
+                    backdrop.sprite,
+                    SpriteWarning::BackdropCopies,
+                );
+            }
+            let mut left = BACKDROP_COPIES;
+            'copies: for row in rows {
+                for column in columns.clone() {
+                    if left == 0 {
+                        break 'copies;
+                    }
+                    left -= 1;
+                    let at = origin + Vec2::new(column as f32, row as f32) * size;
+                    batch.instances.push(copy(at, size, uv_min, uv_size));
+                    // The foot: the last texel row's centre, stretched from
+                    // the copy's bottom to the view's.
+                    if backdrop.foot
+                        && !down
+                        && let Some((_, max)) = view
+                        && max.y > at.y + size.y
+                    {
+                        let row_centre = uv_min.y + uv_size.y * (1.0 - 0.5 / asset.height as f32);
+                        batch.instances.push(copy(
+                            Vec2::new(at.x, at.y + size.y),
+                            Vec2::new(size.x, max.y - at.y - size.y),
+                            Vec2::new(uv_min.x, row_centre),
+                            Vec2::new(uv_size.x, 0.0),
+                        ));
+                    }
+                }
+            }
+        }
+        out
+    })
+}
+
+/// A raised layer's `z` as the order bits [`painter_order`] gives a
+/// `z_order`.
+#[inline]
+fn raised_order(z: i32) -> u32 {
+    z as u32 ^ 0x8000_0000
+}
+
+/// Moves `layer`'s batches to the end of `out`, every tile at `z_norm`.
+fn place_layer(out: &mut Vec<SpriteBatch>, layer: &mut Vec<SpriteBatch>, z_norm: f32) {
+    for mut batch in layer.drain(..) {
+        for tile in &mut batch.instances {
+            tile.z_norm = z_norm;
+        }
+        out.push(batch);
+    }
 }
 
 /// The size render projects with: the surface size the app passed, else
@@ -373,6 +568,7 @@ fn extract_into(
     assets: &AssetRegistry,
     view: Option<(Vec2, Vec2)>,
     buffers: &mut ExtractBuffers,
+    raised: &mut [RaisedLayer],
 ) -> Vec<SpriteBatch> {
     let ExtractBuffers {
         keys,
@@ -557,7 +753,12 @@ fn extract_into(
 
     let total = keys.len();
     let mut out = std::mem::take(batch_list);
-    if total > 0 && in_painter_order && classes.len() == 1 && varying_bits >> 32 == 0 {
+    if total > 0
+        && in_painter_order
+        && classes.len() == 1
+        && varying_bits >> 32 == 0
+        && raised.is_empty()
+    {
         // One class in one z-run, already in painter order: the records are
         // the batch's instances, and their `z_norm` stands when pass 1
         // assumed the right count. The keys are in query order, so a kept
@@ -588,6 +789,10 @@ fn extract_into(
         // class opens a new batch in every z-run it appears in, at its first
         // sprite, culled or not; a span of sprites sharing z and class goes in
         // at once. A batch takes its instance vector at its first kept sprite.
+        // A raised layer goes in before the first z-run at or above its `z`,
+        // one place of `places` in the depth order.
+        let places = total + raised.len();
+        let mut layers_placed = 0;
         let mut run = 0u32;
         let mut run_z: Option<u32> = None;
         let mut start = 0;
@@ -611,6 +816,12 @@ fn extract_into(
             if run_z != Some(z) {
                 run_z = Some(z);
                 run += 1;
+                while let Some((layer_z, layer)) = raised.get_mut(layers_placed)
+                    && raised_order(*layer_z) <= z
+                {
+                    place_layer(&mut out, layer, z_norm(places, start + layers_placed));
+                    layers_placed += 1;
+                }
             }
             let class = &mut classes[first.class as usize];
             if class.run != run {
@@ -633,9 +844,10 @@ fn extract_into(
                     let len = sprite_batch_lens.get(batch).map_or(0, |&len| len as usize);
                     *instances = pool.take(len);
                 }
+                let first_place = start + layers_placed;
                 let gather = |(offset, key): (usize, &SortKey)| {
                     let mut instance = records[key.record as usize];
-                    instance.z_norm = z_norm(total, start + offset);
+                    instance.z_norm = z_norm(places, first_place + offset);
                     instance
                 };
                 if span_culled == 0 {
@@ -650,6 +862,10 @@ fn extract_into(
                 }
             }
             start = end;
+        }
+        while let Some((_, layer)) = raised.get_mut(layers_placed) {
+            place_layer(&mut out, layer, z_norm(places, total + layers_placed));
+            layers_placed += 1;
         }
         if culled > 0 {
             out.retain(|batch| !batch.instances.is_empty());

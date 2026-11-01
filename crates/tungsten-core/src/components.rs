@@ -101,6 +101,70 @@ pub struct SpriteFlip(pub bool);
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Unlit;
 
+/// A backdrop the default sprite base draws behind everything else (redo
+/// 7.9): `sprite` with its top-left corner at the entity's
+/// `Transform.position`, scaled by its `Transform.scale`, tinted, scrolled
+/// against the camera by `factor` as a [`ParallaxLayer`] is and moving
+/// `drift` world pixels a second on the game clock. `repeat` tiles it across
+/// the camera's view along x, y or both; `fill` stretches one copy over the
+/// view instead; `foot` stretches each copy's last texel row down to the
+/// view's bottom, for a strip of hills over a plain. Backdrops draw first,
+/// by `z_order`, then entity, on the stock pipeline at the far plane; an
+/// entity with a `Visibility` that is off draws none.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Backdrop {
+    /// The sprite it draws.
+    pub sprite: SpriteAssetId,
+    /// Multiplied into the sprite, as sRGB bytes.
+    pub tint: [u8; 4],
+    /// The parallax scroll factor per axis: `1.0` moves with the world,
+    /// `0.0` stays on screen.
+    pub factor: Vec2,
+    /// The axes it repeats along across the view.
+    pub repeat: BackdropRepeat,
+    /// One copy stretched over the view, its repeat and foot unused.
+    pub fill: bool,
+    /// World pixels a second, on the game clock.
+    pub drift: Vec2,
+    /// Each copy's last texel row stretched down to the view's bottom; not
+    /// with a repeat along y, which reaches it anyway.
+    pub foot: bool,
+    /// Its place among backdrops, lowest first.
+    pub z_order: i32,
+}
+
+impl Backdrop {
+    /// `sprite` once at the entity's point, untinted, moving with the world,
+    /// with no drift or foot.
+    #[must_use]
+    pub fn new(sprite: SpriteAssetId) -> Self {
+        Self {
+            sprite,
+            tint: [255; 4],
+            factor: Vec2::ONE,
+            repeat: BackdropRepeat::None,
+            fill: false,
+            drift: Vec2::ZERO,
+            foot: false,
+            z_order: 0,
+        }
+    }
+}
+
+/// The axes a [`Backdrop`] repeats along across the view.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BackdropRepeat {
+    /// Once, at its point.
+    #[default]
+    None,
+    /// Along x: a row across the view.
+    X,
+    /// Along y: a column down the view.
+    Y,
+    /// Along both: over the whole view.
+    Xy,
+}
+
 /// 2D forward light source (M29). Closed-enum kind per `D-054`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Light {

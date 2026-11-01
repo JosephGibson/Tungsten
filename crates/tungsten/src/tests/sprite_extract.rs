@@ -1163,7 +1163,7 @@ fn view_world() -> World {
 
 fn extract_at(world: &World, view: Option<(Vec2, Vec2)>) -> Vec<SpriteBatch> {
     let assets = world.get_resource::<AssetRegistry>().unwrap();
-    extract_into(world, assets, view, &mut ExtractBuffers::default())
+    extract_into(world, assets, view, &mut ExtractBuffers::default(), &mut [])
 }
 
 /// The uncull extract's batches less the instances culling drops, and less

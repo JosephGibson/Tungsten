@@ -1,4 +1,5 @@
 use super::*;
+use crate::extract_tilemaps;
 use crate::testing::Harness;
 use crate::{App, DebugHud};
 use glam::Vec2;
@@ -496,4 +497,224 @@ fn label_scale_snaps_to_eighths() {
     harness.step(1);
     // 1.1 * 1.5 = 1.65 snaps to 1.625.
     assert_eq!(drawn_labels(&harness)[0].scale, 1.625);
+}
+
+/// Sets layer 0 of the map `add_map` registered to draw at `z` among the
+/// sprites.
+fn raise(world: &mut World, z: i32) {
+    use tungsten_core::assets::tilemap::LayerDraw;
+    let tilemaps = world.resource_mut::<TilemapRegistry>();
+    let mut map = tilemaps.get("map").expect("the map").clone();
+    map.set_layer_draw(
+        0,
+        LayerDraw {
+            z: Some(z),
+            ..LayerDraw::DEFAULT
+        },
+    );
+    tilemaps.insert("map".to_string(), map);
+}
+
+/// A 2 × 1 map at `z` 1 on page 1 among three sprites, page 2 at
+/// `z_order` 0 and 1, page 3 at 2: each drawn batch's page and depths.
+fn raised_frame() -> Vec<(u32, Vec<f32>)> {
+    let mut app = new_app();
+    let world = app.world_mut();
+    register(world, "tile", 1);
+    let low = register(world, "low", 2);
+    let high = register(world, "high", 3);
+    add_map(world, "tile", 2, 1);
+    raise(world, 1);
+    spawn_sprite(world, high, Vec2::new(4.0, 4.0), 2);
+    spawn_sprite(world, low, Vec2::new(0.0, 0.0), 0);
+    spawn_sprite(world, low, Vec2::new(8.0, 0.0), 1);
+    let mut harness = Harness::new(app);
+    harness.step(1);
+    let draw = harness.draw().expect("a completed frame");
+    draw.sprites
+        .iter()
+        .map(|batch| {
+            let depths = batch.instances.iter().map(|tile| tile.z_norm).collect();
+            (batch.texture.0, depths)
+        })
+        .collect()
+}
+
+#[test]
+fn a_z_layer_draws_between_lower_and_higher_sprites() {
+    let drawn = raised_frame();
+    // The layer after the sprite under its `z`, before the one at it.
+    let pages: Vec<u32> = drawn.iter().map(|&(page, _)| page).collect();
+    assert_eq!(pages, [2, 1, 2, 3]);
+    assert_eq!(drawn[1].1.len(), 2, "both tiles");
+}
+
+#[test]
+fn a_z_layer_takes_its_places_depth_under_gpu_depth() {
+    // Four places, three sprites and the layer: the first drawn at 3/4,
+    // the last at 0, both tiles at the layer's one.
+    let depths: Vec<Vec<f32>> = raised_frame()
+        .into_iter()
+        .map(|(_, depths)| depths)
+        .collect();
+    assert_eq!(depths, [vec![0.75], vec![0.5, 0.5], vec![0.25], vec![0.0]]);
+}
+
+#[test]
+fn a_map_without_z_layers_draws_as_before() {
+    use tungsten_core::assets::tilemap::LayerDraw;
+    // A tinted, unlit layer without a `z` stays under every sprite, at the
+    // far plane, as the old base drew its tiles.
+    let mut app = new_app();
+    let world = app.world_mut();
+    register(world, "tile", 1);
+    let quad_id = register(world, "quad", 0);
+    add_map(world, "tile", 2, 1);
+    let tilemaps = world.resource_mut::<TilemapRegistry>();
+    let mut map = tilemaps.get("map").unwrap().clone();
+    map.set_layer_draw(
+        0,
+        LayerDraw {
+            unlit: true,
+            tint: [9, 8, 7, 6],
+            ..LayerDraw::DEFAULT
+        },
+    );
+    tilemaps.insert("map".to_string(), map);
+    spawn_sprite(world, quad_id, Vec2::new(40.0, 30.0), -5);
+    spawn_sprite(world, quad_id, Vec2::new(20.0, 30.0), 5);
+    let mut harness = Harness::new(app);
+    harness.step(1);
+    let draw = harness.draw().expect("a completed frame");
+    let mut expected = extract_tilemaps(harness.world());
+    for tile in expected.iter_mut().flat_map(|batch| &mut batch.instances) {
+        tile.z_norm = 1.0;
+    }
+    expected.extend(extract_sprites_default(harness.world()));
+    assert_eq!(draw_list(&draw.sprites), draw_list(&expected));
+    assert_eq!(draw.sprites[0].instances[0].color, [9, 8, 7, 6]);
+
+    // A raised layer out of view takes no place: the sprites keep their
+    // depths.
+    raise(harness.world_mut(), 0);
+    harness
+        .world_mut()
+        .resource_mut::<tungsten_core::CameraState>()
+        .position = Vec2::new(-5_000.0, 0.0);
+    harness.step(1);
+    let draw = harness.draw().expect("a completed frame");
+    assert_eq!(
+        draw_list(&draw.sprites),
+        draw_list(&extract_sprites_default(harness.world()))
+    );
+}
+
+#[test]
+fn under_and_over_tile_slots_draw_in_their_places() {
+    let slots = |app: &mut App| {
+        let extracts = app.world_mut().resource_mut::<Extracts>();
+        extracts.add_sprites(|_| vec![batch(32, 0.0)]);
+        extracts.add_sprites_over_tiles(|_| vec![batch(31, 0.5)]);
+        extracts.add_sprites_under_tiles(|_| vec![batch(30, 0.25)]);
+    };
+    let mut app = new_app();
+    let world = app.world_mut();
+    register(world, "tile", 1);
+    let quad_id = register(world, "quad", 0);
+    add_map(world, "tile", 1, 1);
+    spawn_sprite(world, quad_id, Vec2::new(40.0, 30.0), 0);
+    slots(&mut app);
+    let mut harness = Harness::new(app);
+    harness.step(1);
+    let draw = harness.draw().expect("a completed frame");
+    let placed: Vec<(u32, f32)> = draw
+        .sprites
+        .iter()
+        .map(|batch| (batch.texture.0, batch.instances[0].z_norm))
+        .collect();
+    // Under the tiles, the tiles, over them, the sprite, then the added;
+    // both slots at the far plane.
+    assert_eq!(
+        placed,
+        [(30, 1.0), (1, 1.0), (31, 1.0), (0, 0.0), (32, 0.0)]
+    );
+
+    // A replaced base draws after both slots, in their order.
+    let mut app = new_app();
+    slots(&mut app);
+    app.set_extract_sprites(|_| vec![batch(20, 0.0)]);
+    let mut harness = Harness::new(app);
+    harness.step(1);
+    let draw = harness.draw().expect("a completed frame");
+    let placed: Vec<(u32, f32)> = draw
+        .sprites
+        .iter()
+        .map(|batch| (batch.texture.0, batch.instances[0].z_norm))
+        .collect();
+    assert_eq!(placed, [(30, 1.0), (31, 1.0), (20, 0.0), (32, 0.0)]);
+}
+
+#[test]
+fn a_backdrop_repeats_across_the_view_and_runs_on_its_foot() {
+    use tungsten_core::components::{Backdrop, BackdropRepeat};
+    let mut app = new_app();
+    let world = app.world_mut();
+    let hills = register(world, "hills", 4);
+    let quad_id = register(world, "quad", 0);
+    spawn_sprite(world, quad_id, Vec2::new(40.0, 30.0), -100);
+    world.spawn_with((
+        Transform::from_position(Vec2::new(8.0, 600.0)),
+        Backdrop {
+            tint: [10, 20, 30, 255],
+            repeat: BackdropRepeat::X,
+            foot: true,
+            ..Backdrop::new(hills)
+        },
+    ));
+    let mut harness = Harness::new(app);
+    harness.step(1);
+    let draw = harness.draw().expect("a completed frame");
+    let (min, max) = {
+        let world = harness.world();
+        let (width, height) = crate::sprite_extract::render_viewport(world).unwrap();
+        world
+            .resource::<tungsten_core::CameraState>()
+            .visible_world_aabb(width as f32, height as f32)
+    };
+    // The backdrop first, under even a sprite at -100.
+    assert_eq!(draw.sprites[0].texture, TextureHandle(4));
+    assert_eq!(draw.sprites[1].texture, TextureHandle(0));
+    let copies: Vec<&SpriteInstance> = draw.sprites[0]
+        .instances
+        .iter()
+        .filter(|copy| copy.size == [16.0, 16.0])
+        .collect();
+    let feet: Vec<&SpriteInstance> = draw.sprites[0]
+        .instances
+        .iter()
+        .filter(|copy| copy.size != [16.0, 16.0])
+        .collect();
+    // Copies 16 px apart from 8 + 16k, from the one over the view's left
+    // edge to the one over its right, each with its foot.
+    let first = ((min.x - 8.0) / 16.0).floor() * 16.0 + 8.0;
+    assert_eq!(copies[0].position, [first, 600.0]);
+    assert!(copies.last().unwrap().position[0] + 16.0 >= max.x);
+    assert!(
+        copies
+            .windows(2)
+            .all(|pair| pair[1].position[0] - pair[0].position[0] == 16.0)
+    );
+    assert_eq!(feet.len(), copies.len());
+    let foot = feet[0];
+    assert_eq!(foot.position, [first, 616.0]);
+    assert_eq!(foot.size, [16.0, max.y - 616.0]);
+    // The last texel row's centre, held down the foot.
+    assert_eq!(foot.uv_min, [0.0, 1.0 - 0.5 / 16.0]);
+    assert_eq!(foot.uv_size, [1.0, 0.0]);
+    assert!(
+        draw.sprites[0]
+            .instances
+            .iter()
+            .all(|copy| copy.color == [10, 20, 30, 255] && copy.z_norm == 1.0)
+    );
 }

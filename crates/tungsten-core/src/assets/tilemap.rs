@@ -94,6 +94,9 @@ struct TiledLayer {
     offsetx: Option<f32>,
     #[serde(default)]
     offsety: Option<f32>,
+    /// Tiled's layer tint, `#rrggbb` or `#aarrggbb`.
+    #[serde(default)]
+    tintcolor: Option<String>,
 }
 
 /// One Tiled object as written; the load checks its fields
@@ -376,16 +379,48 @@ impl Default for LayerPhysics {
     }
 }
 
+/// How a render layer draws among the sprites (redo 7.9), from its Tiled
+/// properties `z` and `unlit` and its tint. The default, as without them,
+/// draws under every sprite, lit as its tiles are, untinted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LayerDraw {
+    /// Its place among the sprites by `Sprite.z_order`: after every sprite
+    /// of a lower one and before the rest. `None` draws under every sprite.
+    pub z: Option<i32>,
+    /// Its tiles draw on the stock sprite pipeline, maps or not.
+    pub unlit: bool,
+    /// Multiplied into each tile's colour, as sRGB bytes.
+    pub tint: [u8; 4],
+}
+
+impl LayerDraw {
+    /// Under every sprite, lit as its tiles are, untinted: a layer without
+    /// the properties.
+    pub const DEFAULT: Self = Self {
+        z: None,
+        unlit: false,
+        tint: [255; 4],
+    };
+}
+
+impl Default for LayerDraw {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// What a map holds beside its public fields: each tileset entry's
-/// properties, each layer's physics and its auto cells, an entry past a
-/// list reading the defaults, so a map built in code or written in bulk has
-/// none.
+/// properties, each layer's physics, how it draws and its auto cells, an
+/// entry past a list reading the defaults, so a map built in code or written
+/// in bulk has none.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct TerrainProps {
     /// By tileset entry, trailing defaults left off.
     pub(super) tiles: Vec<TileProps>,
     /// By layer, trailing defaults left off.
     pub(super) layers: Vec<LayerPhysics>,
+    /// By layer, trailing defaults left off.
+    pub(super) draws: Vec<LayerDraw>,
     /// By layer, a bit per cell in row-major order: the auto cells, which
     /// the auto-tiler re-picks; empty for a layer that never held a brush.
     pub(super) auto: Vec<Vec<u64>>,
@@ -724,6 +759,47 @@ impl TilemapData {
         }
     }
 
+    /// How render layer `layer` draws among the sprites; the defaults for a
+    /// layer that has none set or does not exist.
+    #[must_use]
+    pub fn layer_draw(&self, layer: usize) -> LayerDraw {
+        self.terrain
+            .draws
+            .get(layer)
+            .copied()
+            .unwrap_or(LayerDraw::DEFAULT)
+    }
+
+    /// Sets how render layer `layer` draws among the sprites.
+    ///
+    /// # Panics
+    ///
+    /// When `layer` is past the map's layers or is not a render layer.
+    #[track_caller]
+    pub fn set_layer_draw(&mut self, layer: usize, draw: LayerDraw) {
+        let count = self.layers.len();
+        match self.layers.get(layer) {
+            Some(found) if found.kind == LayerKind::Render => {}
+            Some(found) => panic!(
+                "TilemapData::set_layer_draw: layer {layer} ('{}') is not a render layer",
+                found.name
+            ),
+            None => {
+                panic!(
+                    "TilemapData::set_layer_draw: layer {layer} is past the map's {count} layers"
+                )
+            }
+        }
+        let draws = &mut self.terrain.draws;
+        if layer >= draws.len() {
+            draws.resize(layer + 1, LayerDraw::DEFAULT);
+        }
+        draws[layer] = draw;
+        while draws.last() == Some(&LayerDraw::DEFAULT) {
+            draws.pop();
+        }
+    }
+
     /// Load and validate Tiled `.tmj`; sprite existence checked by asset loader.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, TilemapError> {
         let file = path.as_ref();
@@ -800,6 +876,7 @@ impl TilemapData {
         let alignment = ts.objectalignment.as_deref().unwrap_or("unspecified");
         let mut layers: Vec<TilemapLayer> = Vec::new();
         let mut layer_physics: Vec<LayerPhysics> = Vec::new();
+        let mut layer_draws: Vec<LayerDraw> = Vec::new();
         let mut object_layers: Vec<ObjectLayer> = Vec::new();
         for tl in &tiled.layers {
             // Skipped with its group, a collision layer would go unnoticed.
@@ -847,6 +924,11 @@ impl TilemapData {
                 message: format!("layer '{}': {message}", tl.name),
             })?;
             layer_physics.push(physics);
+            let draw = layer_draw_of(tl, kind).map_err(|message| TilemapError::Invalid {
+                path: path.clone(),
+                message: format!("layer '{}': {message}", tl.name),
+            })?;
+            layer_draws.push(draw);
 
             let tiles: Vec<TileIndex> = data
                 .iter()
@@ -875,6 +957,9 @@ impl TilemapData {
         while layer_physics.last() == Some(&LayerPhysics::DEFAULT) {
             layer_physics.pop();
         }
+        while layer_draws.last() == Some(&LayerDraw::DEFAULT) {
+            layer_draws.pop();
+        }
         let data = TilemapData {
             tile_width: tiled.tilewidth,
             tile_height: tiled.tileheight,
@@ -886,6 +971,7 @@ impl TilemapData {
             terrain: TerrainProps {
                 tiles: tile_props,
                 layers: layer_physics,
+                draws: layer_draws,
                 auto: Vec::new(),
             },
         };
@@ -1053,6 +1139,56 @@ fn layer_physics_of(layer: &TiledLayer, kind: LayerKind) -> Result<LayerPhysics,
         *bits = layer_bits(list).map_err(|message| format!("`{name}` {message}"))?;
     }
     Ok(physics)
+}
+
+/// How `layer` draws: its `z` (an integer) and `unlit` (a bool), a render
+/// layer's properties, and its `tintcolor`, which a collision layer keeps
+/// for the editor's sake alone.
+fn layer_draw_of(layer: &TiledLayer, kind: LayerKind) -> Result<LayerDraw, String> {
+    let mut draw = LayerDraw::DEFAULT;
+    for property in &layer.properties {
+        let name = property.name.as_str();
+        if !matches!(name, "z" | "unlit") {
+            continue;
+        }
+        if kind != LayerKind::Render {
+            return Err(format!(
+                "`{name}` is a render layer's property, and this layer's `kind` is `collision`"
+            ));
+        }
+        if name == "z" {
+            let z = property.value.as_i64().and_then(|z| i32::try_from(z).ok());
+            draw.z =
+                Some(z.ok_or_else(|| {
+                    format!("`z` must be a whole number (got {})", property.value)
+                })?);
+        } else {
+            draw.unlit = property
+                .value
+                .as_bool()
+                .ok_or_else(|| format!("`unlit` must be a bool (got {})", property.value))?;
+        }
+    }
+    if let (LayerKind::Render, Some(tint)) = (kind, &layer.tintcolor) {
+        draw.tint = tiled_color(tint)
+            .ok_or_else(|| format!("`tintcolor` must be #rrggbb or #aarrggbb (got \"{tint}\")"))?;
+    }
+    Ok(draw)
+}
+
+/// Tiled's `#rrggbb` (opaque) or `#aarrggbb` as RGBA bytes.
+fn tiled_color(text: &str) -> Option<[u8; 4]> {
+    let hex = text.strip_prefix('#')?;
+    if !(hex.len() == 6 || hex.len() == 8) || !hex.is_ascii() {
+        return None;
+    }
+    let byte = |at: usize| u8::from_str_radix(&hex[at..at + 2], 16).ok();
+    let (alpha, rgb) = if hex.len() == 8 {
+        (byte(0)?, 2)
+    } else {
+        (255, 0)
+    };
+    Some([byte(rgb)?, byte(rgb + 2)?, byte(rgb + 4)?, alpha])
 }
 
 /// The bits of `list`, layer numbers 0 to 31 separated by commas, spaces

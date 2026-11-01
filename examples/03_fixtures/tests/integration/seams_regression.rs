@@ -12,7 +12,9 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use example_03_fixtures::seams::{FLASH_AT, LIT_AT, PIECE, TWIN_AT, UNLIT_AT};
+use example_03_fixtures::seams::{
+    FLASH_AT, GLASS_AT, LIT_AT, OVER_STRIP_AT, PIECE, STRIP_AT, TWIN_AT, UNDER_STRIP_AT, UNLIT_AT,
+};
 use glam::Vec2;
 
 /// The scene loads its manifests relative to the workspace root.
@@ -61,6 +63,18 @@ fn region(
     ys: Range<usize>,
 ) -> impl Iterator<Item = [u8; 4]> + '_ {
     let corner = centre - Vec2::splat(PIECE * 0.5);
+    let (left, top) = (corner.x as usize, corner.y as usize);
+    ys.flat_map(move |y| xs.clone().map(move |x| image.at(left + x, top + y)))
+}
+
+/// The pixels over columns `xs` and rows `ys` from `corner`, in capture
+/// pixels.
+fn area(
+    image: &Rgba,
+    corner: Vec2,
+    xs: Range<usize>,
+    ys: Range<usize>,
+) -> impl Iterator<Item = [u8; 4]> + '_ {
     let (left, top) = (corner.x as usize, corner.y as usize);
     ys.flat_map(move |y| xs.clone().map(move |x| image.at(left + x, top + y)))
 }
@@ -391,4 +405,87 @@ fn inflate(data: &[u8]) -> Vec<u8> {
         }
     }
     out
+}
+
+#[test]
+fn a_z_layer_covers_the_sprite_below_it() {
+    if !gated() {
+        return;
+    }
+    let image = capture();
+    let white = |[r, g, b, _]: [u8; 4]| r >= 250 && g >= 250 && b >= 250;
+    let red = |[r, g, b, _]: [u8; 4]| r >= 200 && g + 60 < r && b + 60 < r;
+    let yellow = |[r, g, b, _]: [u8; 4]| r >= 200 && g >= 180 && b + 60 < g;
+    // The strip over the red sprite's lower half, and on its own: white.
+    let red_left = (UNDER_STRIP_AT.x - STRIP_AT.x) as usize;
+    assert!(
+        area(image, STRIP_AT, red_left + 2..red_left + 30, 2..14).all(white),
+        "the strip over the red sprite"
+    );
+    assert!(
+        area(image, STRIP_AT, 2..14, 2..30).all(white),
+        "the strip alone"
+    );
+    // Above the strip the red sprite shows; the yellow one's upper half lies
+    // over the strip.
+    assert!(
+        area(image, UNDER_STRIP_AT, 2..30, 2..14).all(red),
+        "the red sprite above the strip"
+    );
+    assert!(
+        area(image, OVER_STRIP_AT, 2..30, 2..14).all(yellow),
+        "the yellow sprite over the strip"
+    );
+}
+
+#[test]
+fn a_tinted_unlit_layer_ignores_the_light() {
+    if !gated() {
+        return;
+    }
+    let image = capture();
+    // Two lit tiles beside the light, drawn flat: one colour across both
+    // halves of each tile and its red edge, its green the albedo's.
+    let pixels: Vec<[u8; 4]> = area(image, GLASS_AT, 2..62, 2..30).collect();
+    for channel in 0..3 {
+        let (low, high) = pixels.iter().fold((u8::MAX, 0), |(low, high), p| {
+            (low.min(p[channel]), high.max(p[channel]))
+        });
+        assert!(high - low <= 2, "channel {channel} spans {low} to {high}");
+    }
+    let [r, g, b, _] = pixels[0];
+    assert!(
+        g.abs_diff(128) <= 2 && r + 25 < g && b + 25 < g,
+        "({r}, {g}, {b})"
+    );
+}
+
+#[test]
+fn a_backdrop_fills_the_view() {
+    if !gated() {
+        return;
+    }
+    let image = capture();
+    // Every corner and the empty middle show the backdrop's dark teal, not
+    // the clear colour.
+    let spots = [
+        (2, 2),
+        (1277, 2),
+        (2, 717),
+        (1277, 717),
+        (1000, 400),
+        (640, 650),
+    ];
+    let first = image.at(spots[0].0, spots[0].1);
+    for (x, y) in spots {
+        let [r, g, b, _] = image.at(x, y);
+        assert!(
+            [r, g, b]
+                .iter()
+                .zip(&first)
+                .all(|(&c, &f)| c.abs_diff(f) <= 1),
+            "({x}, {y}): ({r}, {g}, {b})"
+        );
+        assert!(g > r + 30 && b > r + 30, "({x}, {y}): ({r}, {g}, {b})");
+    }
 }

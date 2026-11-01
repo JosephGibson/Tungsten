@@ -1002,3 +1002,111 @@ fn slope_tiles_load_and_refuse_one_way() {
     }));
     assert!(refused.is_err(), "the builder refuses a one-way slope");
 }
+
+/// A 2 × 1 map of tile `a` with `layers`.
+fn map_with_layers(layers: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "tilewidth": 16, "tileheight": 16, "width": 2, "height": 1,
+        "tilesets": [{ "firstgid": 1, "tiles": [
+            { "id": 0, "properties": [{ "name": "sprite_id", "type": "string", "value": "a" }] }
+        ]}],
+        "layers": layers,
+    })
+}
+
+#[test]
+fn a_layers_z_unlit_and_tint_read_from_tiled() {
+    let map = load_json(&map_with_layers(&serde_json::json!([
+        { "type": "tilelayer", "name": "ground", "data": [1, 1] },
+        { "type": "tilelayer", "name": "bridge", "data": [1, 0], "tintcolor": "#80ff8040",
+          "properties": [
+              { "name": "z", "type": "int", "value": -3 },
+              { "name": "unlit", "type": "bool", "value": true }
+          ] },
+        { "type": "tilelayer", "name": "haze", "data": [0, 1], "tintcolor": "#336699" },
+        { "type": "tilelayer", "name": "walls", "data": [1, 1], "tintcolor": "#zz0000",
+          "properties": [{ "name": "kind", "type": "string", "value": "collision" }] }
+    ])))
+    .unwrap();
+    assert_eq!(map.layer_draw(0), LayerDraw::DEFAULT);
+    // Tiled writes the alpha first.
+    assert_eq!(
+        map.layer_draw(1),
+        LayerDraw {
+            z: Some(-3),
+            unlit: true,
+            tint: [0xff, 0x80, 0x40, 0x80],
+        }
+    );
+    assert_eq!(
+        map.layer_draw(2),
+        LayerDraw {
+            tint: [0x33, 0x66, 0x99, 255],
+            ..LayerDraw::DEFAULT
+        }
+    );
+    assert_eq!(
+        map.layer_draw(3),
+        LayerDraw::DEFAULT,
+        "a collision layer's tint is the editor's"
+    );
+    for (layer, wanted) in [
+        (
+            serde_json::json!({ "type": "tilelayer", "name": "bridge", "data": [1, 1],
+                "properties": [{ "name": "z", "type": "float", "value": 1.5 }] }),
+            "`z` must be a whole number",
+        ),
+        (
+            serde_json::json!({ "type": "tilelayer", "name": "bridge", "data": [1, 1],
+                "properties": [{ "name": "unlit", "type": "string", "value": "yes" }] }),
+            "`unlit` must be a bool",
+        ),
+        (
+            serde_json::json!({ "type": "tilelayer", "name": "walls", "data": [1, 1],
+                "properties": [
+                    { "name": "kind", "type": "string", "value": "collision" },
+                    { "name": "z", "type": "int", "value": 2 }
+                ] }),
+            "`z` is a render layer's property",
+        ),
+        (
+            serde_json::json!({ "type": "tilelayer", "name": "bridge", "data": [1, 1],
+                "tintcolor": "#12345" }),
+            "`tintcolor` must be #rrggbb or #aarrggbb",
+        ),
+    ] {
+        let error = load_json(&map_with_layers(&serde_json::json!([layer])))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(wanted), "{error}");
+    }
+}
+
+#[test]
+fn a_layer_without_them_reads_as_before() {
+    let map = load_json(&map_with_layers(&serde_json::json!([
+        { "type": "tilelayer", "name": "ground", "data": [1, 0] },
+        { "type": "tilelayer", "name": "walls", "data": [0, 1],
+          "properties": [{ "name": "kind", "type": "string", "value": "collision" }] }
+    ])))
+    .unwrap();
+    assert_eq!(map.layers[0].tiles, [0, EMPTY_TILE]);
+    assert_eq!(map.layers[1].kind, LayerKind::Collision);
+    assert!(map.terrain.draws.is_empty(), "no entry for a default layer");
+    for layer in 0..3 {
+        assert_eq!(map.layer_draw(layer), LayerDraw::DEFAULT, "layer {layer}");
+    }
+    // A map built in code draws as before until a layer is set, and setting
+    // the defaults back leaves no entry.
+    let mut built = TilemapData::new(16, 16, 2, 1);
+    let ground = built.add_layer("ground", LayerKind::Render);
+    assert_eq!(built.layer_draw(ground), LayerDraw::DEFAULT);
+    let raised = LayerDraw {
+        z: Some(1),
+        ..LayerDraw::DEFAULT
+    };
+    built.set_layer_draw(ground, raised);
+    assert_eq!(built.layer_draw(ground), raised);
+    built.set_layer_draw(ground, LayerDraw::DEFAULT);
+    assert!(built.terrain.draws.is_empty());
+}
