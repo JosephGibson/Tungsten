@@ -316,8 +316,17 @@ impl RigidBody {
         self
     }
 
+    /// The body with restitution `restitution`, clamped to 0 to 1.
+    ///
+    /// # Panics
+    ///
+    /// When `restitution` is not finite.
     #[must_use]
     pub fn with_restitution(mut self, restitution: f32) -> Self {
+        assert!(
+            restitution.is_finite(),
+            "restitution must be finite (got {restitution})"
+        );
         self.restitution = restitution.clamp(0.0, 1.0);
         self
     }

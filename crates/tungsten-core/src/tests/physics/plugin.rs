@@ -350,6 +350,19 @@ fn with_mass_refuses_a_mass_without_a_finite_positive_inverse() {
 }
 
 #[test]
+fn with_restitution_refuses_a_value_that_is_not_finite() {
+    // A NaN restitution once passed the clamp and kept two NaN bodies from
+    // settling; `with_restitution` panics on it and on an infinite one, as
+    // `with_friction` does, and clamps the rest to 0 to 1.
+    for restitution in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let made = std::panic::catch_unwind(|| RigidBody::dynamic().with_restitution(restitution));
+        assert!(made.is_err(), "restitution {restitution} accepted");
+    }
+    assert_eq!(RigidBody::dynamic().with_restitution(2.0).restitution, 1.0);
+    assert_eq!(RigidBody::dynamic().with_restitution(-1.0).restitution, 0.0);
+}
+
+#[test]
 fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
     let world = physics_world();
     let circle = serde_json::json!({ "kind": "circle", "radius": 4.0 });
