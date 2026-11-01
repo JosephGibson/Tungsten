@@ -126,12 +126,6 @@ jobs:
     name: CPU tests (Windows)
     runs-on: windows-2025
     timeout-minutes: 90
-    env:
-      # rust-lld, which ships with rustc, links the test binaries as lld-link
-      # instead of MSVC's link.exe; rustc still hands it the MSVC libraries.
-      # Release builds keep link.exe. Set on the job: a linker change dirties
-      # every unit, so it has to reach the cache key, which hashes CARGO_* env.
-      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
     steps:
       # Before checkout: the image's git would give the tree's text files CRLF.
       - name: Keep committed line endings
