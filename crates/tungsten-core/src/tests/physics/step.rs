@@ -1927,6 +1927,45 @@ fn roll_of(world: &World, ball: Entity) -> (f32, f32) {
 }
 
 #[test]
+fn friction_and_rolling_bounds_that_overflow_stay_finite() {
+    // Frictions of 2e19 on both sides make a contact's `mu` overflow to
+    // infinity, and rolling of 1e38 on a ball of radius 10 its bound, which
+    // a contact without normal impulse once multiplied by 0 into NaN, so
+    // the solver's clamp panicked on the first step. Like a frictionless
+    // contact, one without normal impulse holds nothing; 1.8e19, the largest
+    // that does not overflow, is the control.
+    for (friction, rolling) in [(2.0e19, 0.0), (1.0, 1.0e38), (1.8e19, 0.0)] {
+        let (mut world, ball) = rolling_rig(friction, rolling, 100.0);
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        let at = world.get::<Position>(ball).unwrap().0;
+        assert!(at.is_finite(), "friction {friction}, rolling {rolling}: {at}");
+    }
+    // A body of friction `f32::MAX` on a static of friction 2.
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    world.insert(floor, RigidBody::r#static().with_friction(2.0));
+    let body = spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_friction(f32::MAX),
+        Collider::aabb(Vec2::splat(8.0)),
+        Vec2::new(0.0, 82.0),
+        Vec2::new(50.0, 0.0),
+    );
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    let at = world.get::<Position>(body).unwrap().0;
+    assert!(at.is_finite(), "friction f32::MAX on 2: {at}");
+}
+
+#[test]
 fn a_rolling_ball_rolls_without_slipping() {
     // Friction slows the slide and spins the disc until its rim keeps pace,
     // at two thirds of the launch speed.
