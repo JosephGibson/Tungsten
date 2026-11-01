@@ -6718,6 +6718,72 @@ fn a_box_slides_down_a_frictionless_slope() {
 }
 
 #[test]
+fn a_crate_on_a_ramps_apex_stays_finite() {
+    // A box of friction 0.5 with its corner on the apex of a 45° ramp top
+    // of friction 0.5 meets the slope cell's vertex at distance 0. Alone, or
+    // beside a ball resting on the floor spawned before or after it, at
+    // 900 and 3,600 px/s² and steps of 1/60 and 1/30 s, every body stays
+    // finite.
+    let rows = ["....", "....", "....", "a###", "####"];
+    for gravity in [900.0, 3_600.0] {
+        for dt in [1.0 / 60.0, 1.0 / 30.0] {
+            for ball_first in [None, Some(true), Some(false)] {
+                let mut data = slope_map(&rows);
+                data.set_tile_props(
+                    1,
+                    TileProps {
+                        slope: Some(slope_kind(1)),
+                        material: Some("stone".into()),
+                        ..TileProps::default()
+                    },
+                );
+                let mut world = one_way_world(data);
+                world.insert_resource(crate::physics::PhysicsMaterials::new([(
+                    "stone".to_owned(),
+                    crate::physics::PhysicsMaterial {
+                        friction: 0.5,
+                        ..Default::default()
+                    },
+                )]));
+                world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, gravity);
+                world.resource_mut::<Time>().advance_frame(dt);
+                let ball = |world: &mut World| {
+                    spawn_body(
+                        world,
+                        RigidBody::dynamic().with_friction(0.5),
+                        Collider::circle(4.0),
+                        Vec2::new(56.0, 43.99),
+                        Vec2::ZERO,
+                    )
+                };
+                let mut bodies = Vec::new();
+                if ball_first == Some(true) {
+                    bodies.push(ball(&mut world));
+                }
+                bodies.push(spawn_body(
+                    &mut world,
+                    RigidBody::dynamic().with_friction(0.5),
+                    Collider::aabb(Vec2::splat(8.0)),
+                    Vec2::new(8.0, 40.0),
+                    Vec2::ZERO,
+                ));
+                if ball_first == Some(false) {
+                    bodies.push(ball(&mut world));
+                }
+                physics_step(&mut world);
+                for body in bodies {
+                    let at = world.get::<Position>(body).unwrap().0;
+                    assert!(
+                        at.is_finite(),
+                        "gravity {gravity}, dt {dt}, ball first {ball_first:?}: {at}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn a_cell_changing_slope_wakes_its_sleepers() {
     // A box asleep on a full cell and one asleep on a 45° cell's foot: the
     // first cell turned to a 45° slope and the second to a 2:1 one, each

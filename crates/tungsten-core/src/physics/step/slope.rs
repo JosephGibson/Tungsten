@@ -119,6 +119,19 @@ fn face_of(normal: Vec2) -> u8 {
     }
 }
 
+/// The normal at a vertex between two exposed sides of outward normals
+/// `before` and `after`: `offset`, from the vertex to the centre, over its
+/// `distance`; their bisector where the centre sits on the vertex and that
+/// direction is 0 / 0, as a cast's tie takes it (`entered_normal`).
+fn vertex_normal(offset: Vec2, distance: f32, before: Vec2, after: Vec2) -> Vec2 {
+    let normal = offset / distance;
+    if normal.is_finite() && normal != Vec2::ZERO {
+        normal
+    } else {
+        (before + after).normalize()
+    }
+}
+
 /// Whether a side of outward `normal` may carry a contact under `mask`: the
 /// sloped face always, an axis side while its bit is exposed.
 fn exposed(normal: Vec2, mask: u8) -> bool {
@@ -271,7 +284,7 @@ pub(in crate::physics) fn box_contact(
         let vertex = vertices[l];
         match (exposed(normals[j], mask), exposed(normals[l], mask)) {
             (true, true) => Contact {
-                normal: (center - vertex) / distance,
+                normal: vertex_normal(center - vertex, distance, normals[j], normals[l]),
                 penetration: -distance,
             },
             (true, false) => Contact {
@@ -344,7 +357,7 @@ pub(in crate::physics) fn circle_contact(
         let vertex = poly.points[l];
         match (exposed(line(j).0, mask), exposed(line(l).0, mask)) {
             (true, true) => Contact {
-                normal: (center - vertex) / distance,
+                normal: vertex_normal(center - vertex, distance, line(j).0, line(l).0),
                 penetration: radius - distance,
             },
             (true, false) => Contact {

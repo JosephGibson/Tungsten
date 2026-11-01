@@ -392,6 +392,52 @@ fn slope_contacts_clamp_at_a_masked_endpoint() {
 }
 
 #[test]
+fn a_contact_on_a_vertex_between_exposed_sides_has_a_unit_normal() {
+    // A box whose corner sits on a ramp's apex meets the sum's vertex at its
+    // centre, at distance 0, wherever the slope side's separation rounds
+    // just above 0; a circle centred on a vertex always does. The normal is
+    // the two exposed sides' bisector there, never 0 / 0.
+    let unit = |normal: Vec2| (normal.length() - 1.0).abs() < 1e-5;
+    let mut bad = Vec::new();
+    for (code, half) in [(1u8, 8.0f32), (9, 8.0), (1, 6.0), (9, 6.0)] {
+        let half = Vec2::splat(half);
+        for row in 1..10 {
+            for col in 0..16 {
+                let corner = Vec2::new(col as f32, row as f32) * 16.0;
+                let poly = polygon(code, corner + HALF, HALF);
+                let apex = corner + Vec2::new(16.0, 0.0);
+                for mask in [FACE_TOP | FACE_LEFT, FACE_TOP, FACE_ALL] {
+                    let contact = box_contact(apex - half, half, &poly, mask, 1.0);
+                    if contact.is_some_and(|c| !unit(c.normal)) {
+                        bad.push(format!("box of half {half} on kind {code}'s apex {apex}, mask {mask:#06b}: {contact:?}"));
+                    }
+                }
+            }
+        }
+    }
+    for code in 1..=12u8 {
+        for row in 0..10 {
+            for col in 0..16 {
+                let corner = Vec2::new(col as f32, row as f32) * 16.0;
+                let poly = polygon(code, corner + HALF, HALF);
+                for &vertex in &poly.points[..poly.len] {
+                    let contact = circle_contact(vertex, 3.0, &poly, FACE_ALL, 0.0);
+                    if !contact.is_some_and(|c| unit(c.normal)) {
+                        bad.push(format!("circle on kind {code}'s vertex {vertex}: {contact:?}"));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{} contacts: {:?}",
+        bad.len(),
+        &bad[..bad.len().min(3)]
+    );
+}
+
+#[test]
 fn a_box_sweep_meets_a_slope_as_its_ray_on_the_sum_does() {
     // The sum built as the hull of every vertex plus every box corner, and a
     // ray of the box's centre clipped by each edge's half plane. Rounding is
