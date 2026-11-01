@@ -149,7 +149,8 @@ impl SpatialGrid {
         })
     }
 
-    /// Stage `id` for every overlapped cell; built lazily on the next query.
+    /// Stage `id`, a dense index ([`ProxyId`]), for every overlapped cell;
+    /// built lazily on the next query.
     pub fn insert(&mut self, id: ProxyId, aabb: &Aabb) {
         let (min_cell, max_cell) = self.cell_range(aabb);
         let span =
