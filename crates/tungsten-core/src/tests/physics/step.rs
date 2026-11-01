@@ -1620,6 +1620,71 @@ fn persistent_pairs_match_fresh_contacts_on_randomized_piles_bullets_and_wakes()
     assert!(repairs > 0, "the oracle never checked a repaired list");
 }
 
+#[test]
+fn a_new_materials_resource_restamps_the_tiles() {
+    // `PhysicsMaterials::new` starts at version 0, as the default does, so a
+    // new resource over one at the same version once kept the tiles'
+    // coefficients: a box of friction 1 slid on at 100 px/s on a floor whose
+    // material went from friction 0 to 1. Over a new resource or the
+    // default, the map spawned before the box or after it, the new one
+    // stops the box (μ · g = 900 px/s² stops it in 0.11 s).
+    use crate::physics::{PhysicsMaterial, PhysicsMaterials};
+    let ice = |friction: f32| {
+        PhysicsMaterials::new([(
+            "ice".to_owned(),
+            PhysicsMaterial {
+                friction,
+                ..Default::default()
+            },
+        )])
+    };
+    for (old, first) in [("new", ice(0.0)), ("default", PhysicsMaterials::default())] {
+        for map_first in [true, false] {
+            let mut world = seed_world();
+            world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+            world.insert_resource(first.clone());
+            let mut data = map_data(64, vec![vec![0; 64]]);
+            data.set_tile_props(
+                0,
+                TileProps {
+                    material: Some("ice".into()),
+                    ..TileProps::default()
+                },
+            );
+            world
+                .resource_mut::<TilemapRegistry>()
+                .insert("floor".into(), data);
+            let spawn_map = |world: &mut World| {
+                let map = world.spawn();
+                world.insert(map, TilemapInstance::new("floor", Vec2::new(-512.0, 90.0)));
+            };
+            if map_first {
+                spawn_map(&mut world);
+            }
+            let body = spawn_body(
+                &mut world,
+                RigidBody::dynamic().with_friction(1.0),
+                Collider::aabb(Vec2::splat(8.0)),
+                Vec2::new(-400.0, 82.0),
+                Vec2::new(100.0, 0.0),
+            );
+            if !map_first {
+                spawn_map(&mut world);
+            }
+            physics_step(&mut world);
+            world.insert_resource(ice(1.0));
+            for _ in 0..30 {
+                physics_step(&mut world);
+            }
+            let velocity = world.get::<Velocity>(body).unwrap().0;
+            assert!(
+                velocity.x.abs() < 1.0,
+                "over the {old} materials, map first {map_first}: still sliding at {velocity}"
+            );
+        }
+    }
+}
+
 /// How far a box of friction 0.5 launched at 300 px/s along a floor of
 /// friction 0.5 slides under gravity 900 before it stops: a static box's
 /// top, or a row of tiles whose material `stone` has friction 0.5.

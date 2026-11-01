@@ -127,8 +127,9 @@ pub struct PhysicsMaterial {
 
 /// The physics materials a game names in its manifests'
 /// `physics_materials`, by name. The asset loader inserts it and a manifest
-/// reload replaces its materials, moving its [`version`](Self::version) on,
-/// which the tile cache reads.
+/// reload replaces its materials, moving its [`version`](Self::version) on;
+/// the tile cache restamps the tiles whenever it changes, a new resource
+/// in its place included.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PhysicsMaterials {
     by_name: BTreeMap<String, PhysicsMaterial>,
