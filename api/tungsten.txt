@@ -275,6 +275,7 @@ pub fn tungsten::asset_loader::LoadPlan::is_finished(&self) -> bool
 pub fn tungsten::asset_loader::LoadPlan::manifest(&self) -> &tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten::asset_loader::LoadPlan::new(tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> Self
 pub fn tungsten::asset_loader::LoadPlan::run(self, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<tungsten_core::assets::manifest::ResolvedManifest>
+pub fn tungsten::asset_loader::LoadPlan::run_headless(self, &mut tungsten_core::ecs::world::World) -> anyhow::Result<tungsten_core::assets::manifest::ResolvedManifest>
 pub fn tungsten::asset_loader::LoadPlan::run_next(&mut self, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<bool>
 pub fn tungsten::asset_loader::LoadPlan::timings(&self) -> tungsten::asset_loader::LoadTimings
 pub fn tungsten::asset_loader::LoadPlan::units(&self) -> &[tungsten::asset_loader::LoadUnit]

@@ -6,7 +6,7 @@ The rows `just perf` measures (`D-078` as redo 7.3 amends it), each owning one c
 just perf list                                   # every row, its kind and repeats
 just perf run ecs                                # one capture
 just perf sitting --quick                        # the working tree against the last tag, CPU rows, informational
-cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the seven benchmarks
+cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the nine benchmarks
 TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 ```
 
@@ -14,10 +14,10 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 
 ## Harness
 
-- **Two kinds of row.** The seven benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
+- **Two kinds of row.** The nine benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
 - **The bench binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and builds the app through `bench_app`, which the counter guards build alike. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's knobs and presets as JSON and `=config` the resolved configuration, before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays. In an interactive run Tab relaunches the binary on the next benchmark, keeping the preset when it has it.
 - **Determinism.** Every random choice comes from `Pcg32::seeded(seed)` and dt is pinned, so one build replays one workload. No rendered text depends on wall-clock time. A capture's runs share a digest over the window's `physics:` and `bench:` lines.
-- **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest.
+- **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest; `boot` writes its own, seeded, under `target/bench-boot/`.
 - **Lean view.** `view.rs` is a culled, unsorted extract over `Position` plus `ViewSprite`. `physics`, `ecs` and `churn` draw through it, so their render cost stays flat as they scale; `gpu` and `particles` use the engine's extracts.
 - **Telemetry.** `counters.rs` logs `bench-config:` once and `bench:` counters every frame, on log target `bench`; a frame's `bench:` line prints in the next frame. The app logs one `startup:` line once loaded and presented (redo 7.9, `StartupTimings`): its phases and milestones in ms, `n/a` for one not measured, which `perf_stats.py` reads as one sample a run of `startup.<field>`.
 - **Engine hook.** `Bench::engine_config` runs before the window opens; `gpu` applies `aa` and `bloom_mips` there unless `TUNGSTEN_RENDER_MSAA`, `TUNGSTEN_RENDER_POST_AA` or `TUNGSTEN_RENDER_BLOOM_MAX_MIPS` is set. The runner clears those variables.
@@ -180,6 +180,24 @@ Owns a world save's capture (redo 7.9): `capture_world` over named objects and a
 - **Owned:** `system.save_snapshot` p50/p95 and `stage.update` p95.
 - **Guards:** `bench.saved constant` and `bench.bytes <= 3,080,192`, the first valid reading's 3,074,117 rounded up to 64 KiB.
 
+## `boot`
+
+Owns a boot on a game's assets (redo 7.9): the load plan's units in slices behind boot frames, from the window's opening to the first frame on the loaded game. Module: `boot.rs`.
+
+- **Workload.** Before its run the bench writes seeded assets under `target/bench-boot/<preset>/` and their manifest: PNG sprites of 16 to 96 px, eight-frame sheets of 16 to 64 px frames and 16-bit mono WAV sounds, five in 117 a minute long and the rest a quarter second, with a boot group of the root manifest's `sans`, `green_circle` and `blue_square`; a stamp of the configuration skips the writing when the files stand. The app then boots on the root manifest and that one. The frames after it draw nothing of the bench's.
+- **What it measures.** The `startup:` line (`StartupTimings`, one sample a run): `first_frame` and `loaded` from the window's opening, and `slice_max`, the longest boot slice; `boot_frames` and `slice_max` hang on the clock, so they stay on that line, outside the workload digest.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `sprites` | 2,700 | 1–20,000 | yes | PNG sprites, 16 to 96 px; 2,700 is example 01's scale |
+| `sheets` | 40 | 0–1,000 | yes | Eight-frame sheets of 16 to 64 px frames |
+| `sounds` | 117 | 0–2,000 | yes | 16-bit mono WAVs, five in 117 a minute long, the rest 0.25 s |
+
+- **Presets:** `min` (64 sprites, 4 sheets, 4 sounds, none a minute long) and `default`.
+- **Counters:** `bench:` `sprites`, `frames` (sheet frames), `sounds` and `units` (the load plan's), fixed by the seed.
+- **Owned:** `startup.first_frame`, `startup.loaded` and `startup.slice_max`, p50.
+- **Guards:** `bench.units constant`. No budget (9.1).
+
 ## `friction` and `slopes`
 
 `friction` owns `physics_step`'s friction and rolling rows; `slopes` its slope tiles' contacts (phase 7's piles). One benchmark, `piles`, whose `mode` knob names its row as `physics`' names `physics-sparse`. Warm-up 120 frames. Module: `piles.rs`.
@@ -241,6 +259,7 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `friction` | `guards_friction` | `piles` at `friction-min` | `Body` count = `bodies`, one paddle, one map; each window frame no body asleep or out of the bin and a circle spinning; instances = bodies and paddles in view plus visible art tiles |
 | `slopes` | `guards_slopes` | `piles` at `slopes-min` | `Body` count = `bodies`, no paddle, one map; each window frame no centre inside a slope cell's polygon and at least 60 returns over the last 60 frames; instances as `friction` |
 | `saves` | `guards_saves` | `saves` at `min` | records = `objects` + 1 + `spawns`; view instances |
+| `boot` | `guards_boot` | `boot` at `min`, its assets' load run by `LoadPlan::run_headless`, no frame stepped | the plan's units = `bench.units`; every sound the manifests name loaded, no sprite packed (the reading is the load's: its sprite batches read 0) |
 | `pit` | `example-01-platformer` `guards::the_full_pit_holds_its_counts` | `start_run`, 2,000 balls, 120 settle frames, `wake_foes`, a 60-frame window | the `pit` counts (headless 01 loads no sprite assets, so its batches read 0) |
 
 Each bench guard runs its row's warm-up and a 60-frame window at the configuration named, and asserts the row its configuration measures before any pin. A rise in a cost counter needs a fix or its cause in the change's plan. The template has none: `tungsten new` copies the template's tests into every game.
@@ -267,7 +286,7 @@ Each bench guard runs its row's warm-up and a 60-frame window at the configurati
 - **G3 more than 16 lights:** open. `LIGHT_CAP` is 16.
 - **G4 GPU particle simulation:** open.
 - **T1 particle and tween timings:** closed (`D-133`).
-- **T2 a `startup:` line:** open in part. The line and its `startup.<field>` metrics landed (redo 7.9); the `boot` row that owns them is open.
+- **T2 a `startup:` line:** closed (redo 7.9): the line, its `startup.<field>` metrics and the `boot` row that owns them.
 - **M1 a counting allocator:** closed (redo 7.3: `CountingAlloc` in test binaries, the counter guards).
 - **Below the calibration band:** open. `physics` (6.07 ms `total` p95 against 14.58 at calibration), `physics-sparse` (3.73 against 10.11), `churn` (4.06 against 11.3) and `particles` (4.92 on 2026-10-04 against 11.6) run under the 8–16 ms band; recalibrating is a workload change; Open proposals. `integrated`'s line is closed: the row is retired (redo 7.3).
 - **RSS growth threshold:** open. Judge growth for `churn` only (32 KiB/s median, 16 KiB/s every run); Open proposals.

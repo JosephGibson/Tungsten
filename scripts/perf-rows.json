@@ -675,6 +675,52 @@
       "workload_version": 1
     },
     {
+      "name": "boot",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "boot",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 2,
+      "frames": 30,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "startup.first_frame",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "startup.loaded",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "startup.slice_max",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "units",
+          "kind": "counter_const"
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "e01-pit",
       "package": "example-01-platformer",
       "folder": "examples/01_platformer",

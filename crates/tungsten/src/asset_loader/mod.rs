@@ -831,6 +831,61 @@ impl LoadTarget for Renderer {
     }
 }
 
+/// The target of [`LoadPlan::run_headless`], which runs only the units that
+/// reach no device.
+struct NoDevice;
+
+impl LoadTarget for NoDevice {
+    fn max_2d_texture_dimension(&self) -> u32 {
+        unreachable!("a headless load packs nothing")
+    }
+    fn allocate_texture_handle(&mut self) -> TextureHandle {
+        unreachable!("a headless load packs nothing")
+    }
+    fn upload_texture(&mut self, _: TextureHandle, _: &[u8], _: u32, _: u32, _: FilterMode) {
+        unreachable!("a headless load uploads nothing")
+    }
+    fn upload_lit_texture(
+        &mut self,
+        _: TextureHandle,
+        _: &[u8],
+        _: &[u8],
+        _: &[u8],
+        _: u32,
+        _: u32,
+        _: FilterMode,
+    ) {
+        unreachable!("a headless load uploads nothing")
+    }
+    fn load_font(&mut self, _: &str, _: Vec<u8>) {
+        unreachable!("a headless load loads no font")
+    }
+    fn set_font_families(&mut self, _: &HashMap<String, ResolvedFontFamily>, _: &[String]) {
+        unreachable!("a headless load loads no font")
+    }
+    fn resolve_or_allocate_shader_id(&mut self, _: &str) -> ShaderAssetId {
+        unreachable!("a headless load loads no shader")
+    }
+    fn white_texture(&mut self) -> TextureHandle {
+        unreachable!("a headless load packs nothing")
+    }
+    fn upload_shader(&mut self, _: &str, _: String) -> anyhow::Result<()> {
+        unreachable!("a headless load loads no shader")
+    }
+    fn upload_material(
+        &mut self,
+        _: MaterialAssetId,
+        _: &str,
+        _: &str,
+        _: MaterialUniformDefaults,
+    ) -> anyhow::Result<()> {
+        unreachable!("a headless load uploads nothing")
+    }
+    fn upload_particle_mesh(&mut self, _: ParticleMeshAssetId, _: &[[f32; 2]], _: &[u16]) {
+        unreachable!("a headless load uploads nothing")
+    }
+}
+
 /// A load target with no device (redo 7.9): handles from a counter at 0,
 /// as a renderer's, shader IDs by name, and every upload counted, not
 /// made.
@@ -1089,6 +1144,37 @@ impl LoadPlan {
     #[must_use]
     pub fn into_manifest(self) -> ResolvedManifest {
         self.manifest
+    }
+
+    /// Runs every unit left with no renderer (redo 7.9), as the `boot` row's
+    /// counter guard measures a load: sprite files decode and the sounds,
+    /// animations, themes, maps, particles, physics names and prefabs load
+    /// as a window's load does, while the packs, fonts, shaders, materials
+    /// and particle meshes, which need a device, are skipped, so no sprite
+    /// registers, and with them the cross-checks, which read the packed
+    /// sprites. It gives the manifest back.
+    ///
+    /// # Errors
+    ///
+    /// The first unit's error.
+    pub fn run_headless(mut self, world: &mut World) -> anyhow::Result<ResolvedManifest> {
+        while let Some(unit) = self.units.get(self.next) {
+            if matches!(
+                unit,
+                LoadUnit::Pack(_)
+                    | LoadUnit::Font(_)
+                    | LoadUnit::FontFamilies
+                    | LoadUnit::Shaders
+                    | LoadUnit::Materials
+                    | LoadUnit::ParticleMeshes
+                    | LoadUnit::CrossChecks
+            ) {
+                self.next += 1;
+                continue;
+            }
+            self.run_next_into(world, &mut NoDevice)?;
+        }
+        Ok(self.manifest)
     }
 
     /// `run_next` into any load target.

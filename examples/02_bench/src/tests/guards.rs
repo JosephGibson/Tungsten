@@ -15,8 +15,9 @@ use tungsten::core::{
     ParticleEmitter, Position, Sprite, TilemapInstance, Transform, Visibility, World,
     parallax_world_position,
 };
-use tungsten::testing::{CounterGuard, Harness};
+use tungsten::testing::{CounterGuard, Harness, allocations};
 
+use crate::boot;
 use crate::churn::Life;
 use crate::counters::BenchCounters;
 use crate::r#gen::{self, TextureSink};
@@ -439,4 +440,65 @@ fn guards_saves() {
         },
         view_drawable,
     );
+}
+
+/// `boot` at `min` (redo 7.9): the row's assets written as it writes them,
+/// the root manifest merged with theirs and run through the load plan with
+/// no renderer (`LoadPlan::run_headless`), once as a warm-up and once
+/// counted, the plan and the load's work asserted first. Its reading is the
+/// load's: no frame steps.
+#[test]
+fn guards_boot() {
+    let bench = knobs::select(BENCHES, Some("boot")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(cfg.row(), "boot");
+    let generated = boot::write_assets(&cfg).expect("the row's assets write");
+    let manifest = boot::merged_manifest(&generated).expect("the row's manifests load");
+    let counts = boot::BootCounts::new(&cfg, manifest.clone());
+    assert_eq!(
+        (counts.sprites, counts.frames, counts.sounds),
+        (
+            knob(&cfg, "sprites"),
+            knob(&cfg, "sheets") * 8,
+            knob(&cfg, "sounds")
+        )
+    );
+    // The warm-up: one load first, so the process's one-time setups, which
+    // another test may already have paid, stay out of the reading.
+    let mut warm = tungsten::App::new(Config::default()).expect("an app");
+    tungsten::asset_loader::LoadPlan::new(manifest.clone(), warm.world_mut())
+        .run_headless(warm.world_mut())
+        .expect("the plan runs headless");
+    let mut app = tungsten::App::new(Config::default()).expect("an app");
+    let world = app.world_mut();
+    let plan = tungsten::asset_loader::LoadPlan::new(manifest, world);
+    assert_eq!(plan.units().len() as u64, counts.units, "the plan's units");
+    let world_before = world.counters();
+    let before = allocations();
+    let manifest = plan.run_headless(world).expect("the plan runs headless");
+    let after = allocations();
+    let world_after = world.counters();
+    // Every sound the merged manifests name loaded, and no sprite packed.
+    let sounds = world.resource::<tungsten::core::assets::SoundRegistry>();
+    for id in manifest.sounds.keys() {
+        assert!(sounds.get_by_id(id).is_some(), "sound {id}");
+    }
+    assert!(
+        world
+            .resource::<AssetRegistry>()
+            .get_sprite("boot_sprite_0")
+            .is_none(),
+        "a headless load packs nothing"
+    );
+    let reading = CounterGuard {
+        allocations: after.count - before.count,
+        allocated_bytes: after.bytes - before.bytes,
+        archetype_moves: world_after.archetype_moves - world_before.archetype_moves,
+        spawned: world_after.spawned - world_before.spawned,
+        despawned: world_after.despawned - world_before.despawned,
+        events_sent: world_after.events_sent - world_before.events_sent,
+        max_sprite_batches: 0,
+        max_sprite_instances: 0,
+    };
+    reading.check(manifest_path("src/tests/guards/boot.json"));
 }

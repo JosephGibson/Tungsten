@@ -276,7 +276,7 @@ begin_section "Benchmarks (pkg: $bench_pkg)"
 for bench_row in physics:min physics:default physics:sparse-min physics:sparse \
   ecs:min ecs:default churn:min churn:default gpu:min gpu:default gpu:throughput \
   particles:min particles:default piles:friction-min piles:friction piles:slopes-min \
-  piles:slopes saves:min saves:default; do
+  piles:slopes saves:min saves:default boot:min boot:default; do
   bench="${bench_row%%:*}"
   preset="${bench_row#*:}"
   timing=()
@@ -286,7 +286,7 @@ for bench_row in physics:min physics:default physics:sparse-min physics:sparse \
   row "${bench} preset=${preset}${timing:+ timing=on}" "$log_dir/${bench_pkg}-${bench}-${preset}.log" "$bench_pkg" \
     TUNGSTEN_BENCH="$bench" TUNGSTEN_BENCH_PRESET="$preset" "${timing[@]}"
 done
-end_section "Benchmarks passed" "Benchmark failures" 19
+end_section "Benchmarks passed" "Benchmark failures" 21
 
 # Frame cap: 20 frames at display.frame_rate_cap = 20 must take at least 90%
 # of frames / cap (0.9 s). Uncapped, the `transition` scene's plain run takes

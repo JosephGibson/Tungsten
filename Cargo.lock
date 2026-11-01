@@ -807,6 +807,7 @@ version = "0.113.0"
 dependencies = [
  "anyhow",
  "glam",
+ "image",
  "log",
  "serde_json",
  "tungsten",
