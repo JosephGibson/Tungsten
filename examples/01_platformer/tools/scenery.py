@@ -11,8 +11,8 @@ import math
 from PIL import Image
 
 from art import PALETTE, rng_for
-from pixels import (Part, compose, despeckle, dither, fbm, grade, outline, packed_stones, ramp, shade, to_image,
-                    unit)
+from pixels import (Part, compose, despeckle, dither, fbm, grade, outline, packed_stones, ramp, shade, smoothstep,
+                    to_image, unit)
 from terrain import (BREAK_LIPS, COPING_TOP, DECK, FROND, LEAF, TILE, coursed, darker, ellipse, from_image,
                      line, rect, tinted)
 
@@ -3982,12 +3982,15 @@ def vent_rime(c, body):
             c[(x, y)] = 'χ' if dither(x, y, 0.5) else 'ψ'
 
 
-def flame(c, size, mouth_y, height, phase, seed, width0, width1, power=1.0, smoke=0.0):
+def flame(c, size, mouth_y, height, phase, seed, width0, width1, power=1.0, smoke=0.0, head=None):
     """A column of flame from (32, `mouth_y`) up `height` px into canvas
     `c`: its heat a widening column times noise that climbs with `phase`
     (px), so tongues lick off its edges and break from its head; banded
     from a dark red edge to a white core; smoke where it cools over its
-    upper half. Its root stays behind the vent's near lip."""
+    upper half. Its root stays behind the vent's near lip. With `head`, the
+    rise by which it is gone, it narrows over its upper half and breaks
+    into thinning tongues, its smoke thinning with it, so its top
+    dissipates inside the canvas."""
     w, h = size
     for y in range(h):
         rise = (mouth_y - y) / max(1.0, height)
@@ -3995,7 +3998,15 @@ def flame(c, size, mouth_y, height, phase, seed, width0, width1, power=1.0, smok
             continue
         hh = max(0.0, rise)
         cx = 32 + 2.4 * math.sin(y / 17 + phase / 23 + seed) * hh + 0.9 * math.sin(y / 6 + phase / 9)
-        half = width0 + (width1 - width0) * min(1.0, hh) ** 0.6 + 3.0 * max(0.0, 1 - hh * 9)
+        if head:
+            u = hh / head
+            taper = 1 - 0.5 * smoothstep((u - 0.55) / 0.45)
+            cap = 1 - smoothstep((u - 0.82) / 0.18)
+            wisps = 1 - smoothstep((u - 0.75) / 0.25)
+        else:
+            taper, wisps = 1.0, 1.0
+            fade = 1 - max(0.0, min(1.0, (hh - 0.7) / 0.45))
+        half = (width0 + (width1 - width0) * min(1.0, hh) ** 0.6) * taper + 3.0 * max(0.0, 1 - hh * 9)
         for x in range(w):
             if y > mouth_y - 3 and y > mouth_y - GEYSER_MOUTH[1] + near_lip(x) - 0.5:
                 continue
@@ -4003,13 +4014,18 @@ def flame(c, size, mouth_y, height, phase, seed, width0, width1, power=1.0, smok
             n = fbm((x - cx) / 7.5 + seed, (y + phase) / 9.0, ('flame', seed))
             m = fbm((x - cx) / 3.5 - seed, (y + phase * 1.4) / 4.0, ('lick', seed))
             body = max(0.0, 1 - dx * dx)
-            fade = 1 - max(0.0, min(1.0, (hh - 0.7) / 0.45))
+            if head:
+                # Its top ragged: tongues climbing to their own heights and
+                # torn off as they go, all gone by the head.
+                t = fbm((x - cx) / 4.5 + seed, (y + phase * 1.6) / 10, ('tongue', seed))
+                torn = 0.7 * smoothstep((u - 0.45) / 0.4)
+                fade = cap * (1 - smoothstep((u + torn * (0.5 - t) - 0.7) / 0.3))
             heat = power * body ** 0.8 * fade * (0.28 + 1.0 * n + 0.3 * m) - 0.2 * hh
             if heat > 0.16:
                 c[(x, y)] = ramp(min(0.999, (heat - 0.16) ** 1.3), FLAME, x, y, 0.12)
             elif smoke and hh > 0.35 and abs(dx) < 1.5:
                 s = fbm((x - cx) / 6 - seed, (y + phase * 0.6) / 7, ('smoke', seed)) * smoke
-                s *= min(1.0, (hh - 0.35) * 2.5) * max(0.0, 1 - abs(dx) / 1.5) * 1.6
+                s *= min(1.0, (hh - 0.35) * 2.5) * max(0.0, 1 - abs(dx) / 1.5) * 1.6 * wisps
                 if s > 0.5:
                     c.setdefault((x, y), 'ѐ' if s > 0.62 else 'ё')
 
@@ -4042,7 +4058,9 @@ def geyser_plume(frame):
     c = {}
     mouth_y = GEYSER_PLUME[1] - GEYSER_VENT[1] + GEYSER_MOUTH[1]
     height, w0, w1, power, smoke = PLUME_SHAPES[frame]
-    flame(c, GEYSER_PLUME, mouth_y, height, frame * 26.0, 3.1, w0, w1, power, smoke)
+    # Its head gone 4 px under the canvas's top, so no row of it is cut.
+    head = min(1.15, (mouth_y - 4) / height)
+    flame(c, GEYSER_PLUME, mouth_y, height, frame * 26.0, 3.1, w0, w1, power, smoke, head=head)
     embers(c, GEYSER_PLUME, mouth_y, height, frame * 26.0, 5, 10 if frame else 5, w1 * 0.7)
     return to_image(c, GEYSER_PLUME)
 
@@ -4154,12 +4172,13 @@ HUNG_PROPS = (
 HAZE = {'j': 'э', '^': 'ю', '&': 'я', '*': 'Б', 'p': 'Г', 'q': 'Д'}
 
 
-def haze(width, height, seed, strength, phase=0.0):
+def haze(width, height, seed, strength, phase=0.0, gaps=()):
     """Heat rising off the lava (e01hollow, round 3), at `phase` (0 to 1)
     through one rising loop: thin wisps in the palette's warm translucents,
     thickest just over the surface and fading as they climb, curling as
-    they go, the ends of the lava thinning them; frames at even phases
-    loop."""
+    they go, the ends of the lava and each of `gaps` (spans of the width,
+    0 to 1, where ground stands between pools) thinning them; frames at
+    even phases loop."""
     c = {}
     ramp_symbols = 'эюяБ'
     for y in range(height):
@@ -4167,6 +4186,8 @@ def haze(width, height, seed, strength, phase=0.0):
         for x in range(width):
             u = x / width
             ends = min(1.0, u / 0.15, (1 - u) / 0.15)
+            for u0, u1 in gaps:
+                ends = min(ends, max(0.0, (u0 - u) / 0.06, (u - u1) / 0.06))
             # Each wisp climbs its own height, so the top edge is ragged.
             reach = 0.45 + 0.55 * fbm(x / 46, 0.5, ('reach', seed))
             base = ends * max(0.0, 1 - rise / reach) ** 1.6 * strength
@@ -4195,8 +4216,9 @@ MISTS = ()
 # own.
 RISING = (
     ('plume', lambda t: plume(300, 170, 1.3, 1.5, t)),
-    # The heat off the lava lake and the shelf's lava (e01hollow, round 3).
-    ('haze', lambda t: haze(620, 150, 4.2, 0.55, t)),
+    # The heat off the lava lake and the shelf's lava (e01hollow, round 3),
+    # none over the lake's stepping stone, its 10 px pad's x 246 to 374.
+    ('haze', lambda t: haze(620, 150, 4.2, 0.55, t, gaps=((246 / 620, 374 / 620),))),
     ('haze_small', lambda t: haze(180, 100, 5.1, 0.5, t)),
 )
 MIST_FRAMES, MIST_MS = 6, 150

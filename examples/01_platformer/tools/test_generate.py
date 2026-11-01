@@ -550,8 +550,8 @@ HOLLOW_FAMILIES = {
 HOLLOW_STONE_FEET = {'small': 31, 'medium': 31, 'large': 63}
 HOLLOW_PARTICLES = {'geyser_embers': 16, 'geyser_burst': 24}
 HOLLOW_SOUNDS = {
-    'geyser_sputter': (.4, .7, .3, .7),
-    'geyser_erupt': (.6, 1.0, .3, .7),
+    'geyser_sputter': (.4, .7, .15, .7),
+    'geyser_erupt': (.6, 1.0, .15, .7),
     'stone_knock': (.08, .4, .3, .7),
 }
 
