@@ -22,6 +22,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::rng::KitRng;
+use crate::foundation::saved::order_of;
 use crate::foundation::stats::{STATS_APPLY, Stats};
 use crate::foundation::tags::{Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
@@ -632,7 +633,8 @@ impl Drainer {
                 .query::<(Entity, &AilmentBuckets)>()
                 .map(|(entity, _)| entity),
         );
-        self.entities.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.entities.sort_by_key(|&entity| order.key(entity));
         let entities = std::mem::take(&mut self.entities);
         for &entity in &entities {
             let threshold = threshold_of(world, entity);

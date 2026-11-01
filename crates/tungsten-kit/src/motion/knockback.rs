@@ -270,6 +270,7 @@ impl Plugin for KnockbackPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Knockback>(world, "Knockback");
+        world.register_saved::<Knockback>(KNOCKBACK_COMPONENT);
         describe(
             world,
             ComponentDescription::new(

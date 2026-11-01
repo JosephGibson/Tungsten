@@ -178,6 +178,12 @@ fn registry_register_and_replace_preserves_id() {
         color_over_life: None,
         alpha_over_life: None,
         tint: [1.0, 1.0, 1.0, 1.0],
+        z_order: 0,
+        clip: None,
+        stretch: 0.0,
+        stop: None,
+        attractor: None,
+        start_color: None,
     });
     let mut reg = ParticleConfigRegistry::new();
     let id = reg.register(
@@ -346,4 +352,93 @@ fn mesh_registry_insert_keeps_id_on_replace() {
     assert_eq!(reg.name_for_id(quad), Some("quad"));
     assert_eq!(reg.names().collect::<Vec<_>>(), ["tri", "quad"]);
     assert_eq!(reg.id_for_name("absent"), None);
+}
+
+/// The smallest config `config_round_trip` reads, with `extra` fields.
+fn config_with(extra: &str) -> ParticleConfig {
+    let src = format!(
+        r#"{{
+            "sprite": "spark",
+            "max_alive": 32,
+            "emission": {{ "kind": "burst", "count": 8 }},
+            "lifetime": {{ "min": 0.5, "max": 1.0 }},
+            "initial_velocity": {{ "kind": "radial", "speed": {{ "min": 10.0, "max": 20.0 }} }}
+            {extra}
+        }}"#
+    );
+    serde_json::from_str(&src).unwrap()
+}
+
+#[test]
+fn the_new_fields_default_to_todays_particle() {
+    let cfg = config_with("");
+    cfg.validate().unwrap();
+    assert_eq!((cfg.z_order, cfg.stretch), (0, 0.0));
+    assert!(cfg.clip.is_none() && cfg.stop.is_none() && cfg.attractor.is_none());
+    assert!(cfg.start_color.is_none());
+    // And each reads from the file.
+    let cfg = config_with(
+        r#", "z_order": 4, "clip": "spin", "stretch": 0.05,
+            "stop": { "mask": [0, "walls"] }, "attractor": { "pull": 300, "swirl": -40 },
+            "start_color": { "range": [[1, 0, 0, 1], [1, 1, 0, 1]] }"#,
+    );
+    cfg.validate().unwrap();
+    assert_eq!(
+        (cfg.z_order, cfg.clip.as_deref(), cfg.stretch),
+        (4, Some("spin"), 0.05)
+    );
+    let stop = cfg.stop.unwrap();
+    assert_eq!(
+        stop.mask,
+        [LayerRef::Number(0), LayerRef::Name("walls".into())]
+    );
+    assert_eq!(
+        cfg.attractor,
+        Some(ParticleAttractor {
+            pull: 300.0,
+            swirl: -40.0
+        })
+    );
+    assert!(matches!(cfg.start_color, Some(StartColor::Range(_))));
+    let curved = config_with(
+        r#", "start_color": { "by_direction": [[0, [1, 1, 1, 1]], [1, [0, 0, 0, 1]]] }"#,
+    );
+    curved.validate().unwrap();
+    assert!(matches!(
+        curved.start_color,
+        Some(StartColor::ByDirection(_))
+    ));
+}
+
+#[test]
+fn a_mesh_particle_with_a_z_order_clip_or_stretch_fails() {
+    let mesh = r#", "render": { "kind": "mesh", "mesh": "shard" }"#;
+    config_with(mesh).validate().unwrap();
+    for field in [r#""z_order": 2"#, r#""clip": "spin""#, r#""stretch": 0.1"#] {
+        let err = config_with(&format!("{mesh}, {field}"))
+            .validate()
+            .unwrap_err();
+        assert!(err.contains("D-093"), "{field}: {err}");
+    }
+}
+
+#[test]
+fn a_non_finite_attractor_fails() {
+    // JSON holds no NaN or infinity; a config built in code can.
+    for (pull, swirl) in [(f32::NAN, 0.0), (0.0, f32::INFINITY)] {
+        let mut cfg = config_with("");
+        cfg.attractor = Some(ParticleAttractor { pull, swirl });
+        assert!(
+            cfg.validate().unwrap_err().contains("attractor"),
+            "{pull} {swirl}"
+        );
+    }
+    let mut cfg = config_with("");
+    cfg.stretch = -1.0;
+    assert!(cfg.validate().unwrap_err().contains("stretch"));
+    let cfg = config_with(r#", "stop": { "mask": [32] }"#);
+    assert!(cfg.validate().unwrap_err().contains("stop.mask[0]"));
+    let mut cfg = config_with("");
+    cfg.start_color = Some(StartColor::Range([[f32::NAN, 0.0, 0.0, 1.0], [1.0; 4]]));
+    assert!(cfg.validate().unwrap_err().contains("start_color"));
 }

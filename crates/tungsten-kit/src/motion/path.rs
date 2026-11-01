@@ -272,6 +272,7 @@ impl Plugin for PathFollowerPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<PathFollower>(world, "PathFollower");
+        world.register_saved::<PathFollower>(PATH_FOLLOWER);
         describe(
             world,
             ComponentDescription::new(

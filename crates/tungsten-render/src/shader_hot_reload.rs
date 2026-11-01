@@ -3,7 +3,12 @@
 //! D-016 seam: keyed by `ShaderAssetId` (core-owned), holds `wgpu::ShaderModule`
 //! (render-owned). Validation runs against `wgpu::naga::front::wgsl` before the
 //! module is committed — failures leave the previous `Entry` intact.
+//!
+//! Redo 7.9: a module with an `fs_main` and no `vs_main`, a fragment-only
+//! material, compiles after [`MATERIAL_PRELUDE`]; the cache keeps its text as
+//! written.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use thiserror::Error;
@@ -12,6 +17,22 @@ use wgpu::naga::{
     front::wgsl as naga_wgsl,
     valid::{Capabilities, ValidationFlags, Validator},
 };
+
+/// The sprite contract a fragment-only material compiles after: the
+/// camera, texture and `Material` bindings, the instance layout and a
+/// `vs_main` passing the uv, the colour and the quad-local position.
+pub const MATERIAL_PRELUDE: &str = include_str!("shaders/material_prelude.wgsl");
+
+/// `wgsl` as it compiles: after [`MATERIAL_PRELUDE`] when it has an
+/// `fs_main` and no `vs_main`, as written otherwise.
+#[must_use]
+pub fn module_source(wgsl: &str) -> Cow<'_, str> {
+    if wgsl.contains("fn fs_main") && !wgsl.contains("fn vs_main") {
+        Cow::Owned(format!("{MATERIAL_PRELUDE}\n{wgsl}"))
+    } else {
+        Cow::Borrowed(wgsl)
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum ShaderError {
@@ -120,18 +141,20 @@ impl ShaderModuleCache {
 
     /// Naga first, then the module inside a validation error scope: wgpu
     /// checks more than Naga (bind group limits, the device's own parse), and
-    /// an error outside a scope reaches the default handler, which panics.
+    /// an error outside a scope reaches the default handler, which panics. A
+    /// fragment-only module compiles after the prelude ([`module_source`]).
     fn compile_and_validate(
         &self,
         device: &wgpu::Device,
         name: &str,
         wgsl: &str,
     ) -> Result<wgpu::ShaderModule, ShaderError> {
-        self.precheck(name, wgsl)?;
+        let source = module_source(wgsl);
+        self.precheck(name, &source)?;
         build_validated(device, || {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(name),
-                source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(wgsl)),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&source)),
             })
         })
         .map_err(|report| ShaderError::Validation {

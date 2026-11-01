@@ -1165,3 +1165,156 @@ fn the_first_registration_of_a_type_stands() {
     world.flush(buffer);
     assert_eq!(bolts(&world), [(1.0, Some(Team(7)), Some(Rank(2)), None)]);
 }
+
+#[test]
+fn a_spawn_from_a_saved_source_takes_the_next_id_its_area_and_its_prefab() {
+    use crate::save::{SaveId, SaveState, Saved, name};
+
+    let mut world = bolt_world();
+    let turret = world.spawn();
+    name(&mut world, turret, Some("cave"), "turret").unwrap();
+    let global = world.spawn();
+    name(&mut world, global, None, "player").unwrap();
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(turret, bolt_at(&mut world, 1.0));
+    buffer.spawn_prefab_from(global, bolt_at(&mut world, 2.0));
+    buffer.spawn_prefab_from(turret, bolt_at(&mut world, 3.0));
+    world.flush(buffer);
+
+    let mut spawned: Vec<(f32, SaveId, Option<String>, Option<String>)> = world
+        .query::<(&Transform, &Saved)>()
+        .filter(|(_, saved)| saved.prefab().is_some())
+        .map(|(transform, saved)| {
+            (
+                transform.position.x,
+                saved.id(),
+                saved.area().map(str::to_owned),
+                saved.prefab().map(str::to_owned),
+            )
+        })
+        .collect();
+    spawned.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let bolt = Some("bolt".to_owned());
+    assert_eq!(
+        spawned,
+        [
+            (1.0, SaveId(0), Some("cave".to_owned()), bolt.clone()),
+            (2.0, SaveId(1), None, bolt.clone()),
+            (3.0, SaveId(2), Some("cave".to_owned()), bolt),
+        ],
+        "IDs in queue order, each with its source's area"
+    );
+    assert_eq!(world.resource::<SaveState>().next_id(), 3);
+}
+
+#[test]
+fn an_unsaved_prefab_spawns_unsaved_from_a_saved_source() {
+    use crate::save::{Saved, name};
+
+    let mut world = bolt_world();
+    world.inherit_from_source::<Team>();
+    let turret = world.spawn_with((Team(3),));
+    name(&mut world, turret, Some("cave"), "turret").unwrap();
+    let plain = world.spawn_with((Team(4),));
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(turret, bolt_at(&mut world, 1.0).unsaved());
+    buffer.spawn_prefab_from(plain, bolt_at(&mut world, 2.0));
+    buffer.spawn_prefab(bolt_at(&mut world, 3.0));
+    world.flush(buffer);
+    assert_eq!(
+        bolts(&world),
+        [
+            (1.0, Some(Team(3)), None, None),
+            (2.0, Some(Team(4)), None, None),
+            (3.0, None, None, None),
+        ],
+        "each still inherits"
+    );
+    assert_eq!(
+        world.query::<&Saved>().count(),
+        1,
+        "the turret alone: an unsaved prefab, an unsaved source and no source take none"
+    );
+}
+
+#[test]
+fn a_world_that_never_named_spawns_as_before() {
+    use crate::save::Saved;
+
+    let mut world = bolt_world();
+    world.inherit_from_source::<Team>();
+    world.register_saved_resource::<u32>("counter");
+    let source = world.spawn_with((Team(1),));
+    let types = |world: &World| -> Vec<Vec<&'static str>> {
+        let mut entities: Vec<Entity> = world
+            .query::<(Entity, &Tag)>()
+            .map(|(entity, _)| entity)
+            .collect();
+        entities.sort_by_key(|entity| entity.id());
+        entities
+            .into_iter()
+            .map(|entity| {
+                world
+                    .component_types(entity)
+                    .into_iter()
+                    .map(|(_, name)| name)
+                    .collect()
+            })
+            .collect()
+    };
+    let before = world.counters();
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(source, bolt_at(&mut world, 1.0));
+    buffer.spawn_prefab(bolt_at(&mut world, 2.0));
+    world.flush(buffer);
+    assert!(!crate::save::saving(&world));
+    assert_eq!(world.query::<&Saved>().count(), 0);
+    let found = types(&world);
+    assert_eq!(found.len(), 2);
+    for spawned in &found {
+        assert!(
+            !spawned.iter().any(|name| name.ends_with("::Saved")),
+            "{spawned:?}"
+        );
+    }
+    assert_eq!(
+        found[0].len(),
+        found[1].len() + 1,
+        "the derived `Team` alone"
+    );
+    let after = world.counters();
+    assert_eq!(
+        after.archetype_moves - before.archetype_moves,
+        3,
+        "one move a spawn, one more for the derived `Team`, as before"
+    );
+}
+
+#[test]
+fn map_objects_spawn_with_their_names() {
+    let world = with_prefabs(
+        world(),
+        &[(
+            "slime",
+            json!({ "tag": "slime", "components": { "health": { "max": 3 } } }),
+        )],
+    );
+    let mut unnamed = object(3, "slime", [8.0, 8.0], json!({}));
+    unnamed.name = String::new();
+    let mut world = with_map(
+        world,
+        vec![
+            layer(
+                "enemies",
+                vec![object(1, "slime", [0.0, 0.0], json!({})), unnamed],
+            ),
+            layer("more", vec![object(2, "slime", [16.0, 0.0], json!({}))]),
+        ],
+    );
+    let prepared = world
+        .prepare_map_objects_named("level", Vec2::ZERO)
+        .unwrap();
+    let names: Vec<&str> = prepared.iter().map(|(_, name)| name.as_str()).collect();
+    assert_eq!(names, ["object1", "", "object2"], "in layer and file order");
+    assert!(prepared.iter().all(|(prefab, _)| prefab.id() == "slime"));
+}

@@ -87,6 +87,84 @@ impl Default for Visibility {
     }
 }
 
+/// Mirrors its entity's sprite left to right while it holds `true` (redo
+/// 7.9): about the sprite's anchor, or its centre without one, by a negative
+/// UV width, and a lit sprite's normals mirror with it. It stays on the
+/// entity while unflipped, so a turn moves no archetype; the kit's `Facing`
+/// writes it from its direction when asked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SpriteFlip(pub bool);
+
+/// Draws its entity's sprite on the stock sprite pipeline though the sprite
+/// has normal or emissive maps, so no light reaches it (redo 7.9): a far
+/// prop behind a lit scene.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Unlit;
+
+/// A backdrop the default sprite base draws behind everything else (redo
+/// 7.9): `sprite` with its top-left corner at the entity's
+/// `Transform.position`, scaled by its `Transform.scale`, tinted, scrolled
+/// against the camera by `factor` as a [`ParallaxLayer`] is and moving
+/// `drift` world pixels a second on the game clock. `repeat` tiles it across
+/// the camera's view along x, y or both; `fill` stretches one copy over the
+/// view instead; `foot` stretches each copy's last texel row down to the
+/// view's bottom, for a strip of hills over a plain. Backdrops draw first,
+/// by `z_order`, then entity, on the stock pipeline at the far plane; an
+/// entity with a `Visibility` that is off draws none.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Backdrop {
+    /// The sprite it draws.
+    pub sprite: SpriteAssetId,
+    /// Multiplied into the sprite, as sRGB bytes.
+    pub tint: [u8; 4],
+    /// The parallax scroll factor per axis: `1.0` moves with the world,
+    /// `0.0` stays on screen.
+    pub factor: Vec2,
+    /// The axes it repeats along across the view.
+    pub repeat: BackdropRepeat,
+    /// One copy stretched over the view, its repeat and foot unused.
+    pub fill: bool,
+    /// World pixels a second, on the game clock.
+    pub drift: Vec2,
+    /// Each copy's last texel row stretched down to the view's bottom; not
+    /// with a repeat along y, which reaches it anyway.
+    pub foot: bool,
+    /// Its place among backdrops, lowest first.
+    pub z_order: i32,
+}
+
+impl Backdrop {
+    /// `sprite` once at the entity's point, untinted, moving with the world,
+    /// with no drift or foot.
+    #[must_use]
+    pub fn new(sprite: SpriteAssetId) -> Self {
+        Self {
+            sprite,
+            tint: [255; 4],
+            factor: Vec2::ONE,
+            repeat: BackdropRepeat::None,
+            fill: false,
+            drift: Vec2::ZERO,
+            foot: false,
+            z_order: 0,
+        }
+    }
+}
+
+/// The axes a [`Backdrop`] repeats along across the view.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BackdropRepeat {
+    /// Once, at its point.
+    #[default]
+    None,
+    /// Along x: a row across the view.
+    X,
+    /// Along y: a column down the view.
+    Y,
+    /// Along both: over the whole view.
+    Xy,
+}
+
 /// 2D forward light source (M29). Closed-enum kind per `D-054`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Light {
@@ -137,11 +215,19 @@ impl Tag {
     }
 }
 
-/// Declarative particle emitter.
+/// Declarative particle emitter. Redo 7.9: a game steers a live one by
+/// `rate_scale`, `direction` and `paused`, and a changed `config` takes its
+/// snapshot at the next tick.
 #[derive(Debug, Clone, Copy)]
 pub struct ParticleEmitter {
     pub config: AssetId<ParticleConfig>,
     pub seed_override: Option<u64>,
+    /// Scales a continuous rate: 1 unless set.
+    pub rate_scale: f32,
+    /// Replaces a cone's or a vector's direction; `None` keeps the config's.
+    pub direction: Option<Vec2>,
+    /// While set, nothing emits; a burst not yet fired fires on resume.
+    pub paused: bool,
 }
 
 impl ParticleEmitter {
@@ -150,14 +236,17 @@ impl ParticleEmitter {
         Self {
             config,
             seed_override: None,
+            rate_scale: 1.0,
+            direction: None,
+            paused: false,
         }
     }
 
     #[must_use]
     pub fn with_seed(config: AssetId<ParticleConfig>, seed: u64) -> Self {
         Self {
-            config,
             seed_override: Some(seed),
+            ..Self::new(config)
         }
     }
 }
@@ -180,6 +269,9 @@ pub struct ParticleEmitterState {
     /// A `Burst` emitter has fired since it spawned or was last re-armed
     /// ([`ParticleEmitterState::rearm_burst`], `D-143`).
     pub burst_fired: bool,
+    /// The config the snapshot is of (redo 7.9): an emitter whose `config`
+    /// changes takes the new one's snapshot at its next tick.
+    pub snapshot_of: Option<AssetId<ParticleConfig>>,
 }
 
 impl ParticleEmitterState {
@@ -207,6 +299,7 @@ impl Default for ParticleEmitterState {
             first_tick_done: false,
             drain_reported: false,
             burst_fired: false,
+            snapshot_of: None,
         }
     }
 }

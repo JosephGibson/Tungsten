@@ -96,8 +96,8 @@ pub fn throw(
 fn gap(centre: Vec2, radius: f32, at: Vec2, shape: Shape) -> f32 {
     match shape {
         Shape::Circle { radius: other } => centre.distance(at) - radius - other,
-        Shape::Aabb { half_extents } => {
-            ((centre - at).abs() - half_extents)
+        other => {
+            ((centre - at).abs() - other.half_extents())
                 .max(Vec2::ZERO)
                 .length()
                 - radius

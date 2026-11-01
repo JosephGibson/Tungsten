@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
+use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{
     DataRef, DataRegistry, Entity, EventQueue, Inspectable, MissingAsset, Plugin, Schedule,
     SpawnContext, Time, World, system,
@@ -24,6 +25,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::register_rows_with;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::saved::order_of;
 use crate::foundation::stats::{Modifier, STATS_APPLY, Stats};
 use crate::foundation::tags::{Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
@@ -1779,6 +1781,147 @@ pub(crate) struct EffectRequests {
     requests: Vec<EffectRequest>,
 }
 
+/// The name a save holds [`EffectRequests`] under.
+const EFFECT_REQUESTS: &str = "effect_requests";
+
+/// `Effects` saved with each instance's source by save ID, under the
+/// instance's serial.
+fn effects_saved() -> SaveOptions<Effects> {
+    SaveOptions::<Effects>::new().refs(RefCodec {
+        save: |effects, out: &mut RefWriter<'_>| {
+            for instance in &effects.instances {
+                if let Some(source) = instance.source {
+                    out.put(&instance.serial.to_string(), source);
+                }
+            }
+        },
+        load: |effects, refs: &RefReader<'_>| {
+            for instance in &mut effects.instances {
+                if let Some(source) = refs.first(&instance.serial.to_string()) {
+                    instance.source = Some(source);
+                }
+            }
+        },
+        keys: |effects| {
+            effects
+                .instances
+                .iter()
+                .map(|instance| instance.serial.to_string())
+                .collect()
+        },
+    })
+}
+
+/// An [`EffectRequest`] in a save, its target and source by reference.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EffectRequestSave {
+    effect: DataRef<Effect>,
+    #[serde(default = "one_f32")]
+    scale: f32,
+}
+
+impl From<&EffectRequest> for EffectRequestSave {
+    fn from(request: &EffectRequest) -> Self {
+        Self {
+            effect: request.effect.clone(),
+            scale: request.scale,
+        }
+    }
+}
+
+impl From<EffectRequestSave> for EffectRequest {
+    fn from(saved: EffectRequestSave) -> Self {
+        Self {
+            target: Entity::PLACEHOLDER,
+            effect: saved.effect,
+            source: None,
+            scale: saved.scale,
+        }
+    }
+}
+
+/// [`EffectRequests`] in a save: the step's expiries and the rest.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EffectRequestsSave {
+    #[serde(default)]
+    expiries: Vec<EffectRequestSave>,
+    #[serde(default)]
+    requests: Vec<EffectRequestSave>,
+}
+
+impl From<&EffectRequests> for EffectRequestsSave {
+    fn from(requests: &EffectRequests) -> Self {
+        Self {
+            expiries: requests.expiries.iter().map(Into::into).collect(),
+            requests: requests.requests.iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<EffectRequestsSave> for EffectRequests {
+    fn from(saved: EffectRequestsSave) -> Self {
+        Self {
+            expiries: saved.expiries.into_iter().map(Into::into).collect(),
+            requests: saved.requests.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// The queued effect requests' lists by name, for their references' keys.
+fn effect_lists(requests: &EffectRequests) -> [(&'static str, &Vec<EffectRequest>); 2] {
+    [
+        ("expiry", &requests.expiries),
+        ("request", &requests.requests),
+    ]
+}
+
+/// The queued effect requests, saved so a request queued after a step's
+/// resolve resolves once after a load; each target and source by save ID.
+fn effect_requests_saved() -> SaveOptions<EffectRequests> {
+    SaveOptions::<EffectRequests>::form::<EffectRequestsSave>().refs(RefCodec {
+        save: |requests, out: &mut RefWriter<'_>| {
+            for (list, queued) in effect_lists(requests) {
+                for (index, request) in queued.iter().enumerate() {
+                    out.put(&format!("{list}.{index}.target"), request.target);
+                    if let Some(source) = request.source {
+                        out.put(&format!("{list}.{index}.source"), source);
+                    }
+                }
+            }
+        },
+        load: |requests, refs: &RefReader<'_>| {
+            for (list, queued) in [
+                ("expiry", &mut requests.expiries),
+                ("request", &mut requests.requests),
+            ] {
+                for (index, request) in queued.iter_mut().enumerate() {
+                    if let Some(target) = refs.first(&format!("{list}.{index}.target")) {
+                        request.target = target;
+                    }
+                    if let Some(source) = refs.first(&format!("{list}.{index}.source")) {
+                        request.source = Some(source);
+                    }
+                }
+            }
+        },
+        keys: |requests| {
+            effect_lists(requests)
+                .into_iter()
+                .flat_map(|(list, queued)| {
+                    (0..queued.len()).flat_map(move |index| {
+                        [
+                            format!("{list}.{index}.target"),
+                            format!("{list}.{index}.source"),
+                        ]
+                    })
+                })
+                .collect()
+        },
+    })
+}
+
 /// Queues `request`, in the expiries list when `expiry`; whether the World
 /// has the queue.
 fn queue_request(world: &mut World, request: EffectRequest, expiry: bool) -> bool {
@@ -2191,8 +2334,13 @@ impl EffectResolver {
         for request in self.expiries.drain(..) {
             resolve_effect(world, &request);
         }
-        self.requests
-            .sort_by_key(|request| (request.target.id(), request.source.map(Entity::id)));
+        let order = order_of(world);
+        self.requests.sort_by_key(|request| {
+            (
+                order.key(request.target),
+                request.source.map(|source| order.key(source)),
+            )
+        });
         for request in self.requests.drain(..) {
             resolve_effect(world, &request);
         }
@@ -2240,7 +2388,8 @@ impl Ticker {
                 .query::<(Entity, &Effects)>()
                 .map(|(entity, _)| entity),
         );
-        self.entities.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.entities.sort_by_key(|&entity| order.key(entity));
         let entities = std::mem::take(&mut self.entities);
         for &entity in &entities {
             self.tick_entity(world, entity, dt);
@@ -2476,6 +2625,8 @@ impl Plugin for EffectsPlugin {
         if !world.has_resource::<EffectRequests>() {
             world.insert_resource(EffectRequests::default());
         }
+        world.register_saved_with(EFFECTS, effects_saved());
+        world.register_saved_resource_with(EFFECT_REQUESTS, effect_requests_saved());
         world.register_data_kind_with_assets(EFFECTS, |effect: &Effect, world: &World| {
             effect.check(world)
         });

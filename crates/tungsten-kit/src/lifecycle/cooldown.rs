@@ -13,7 +13,8 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::rng::KitRng;
+use crate::foundation::rng::{KIT_RNG, KitRng};
+use crate::foundation::saved::{order_of, saving};
 use crate::foundation::stats::STATS_APPLY;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::foundation::{non_negative, positive};
@@ -312,6 +313,8 @@ impl Plugin for CooldownPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Cooldown>(world, "Cooldown");
+        world.register_saved::<Cooldown>(COOLDOWN);
+        world.register_saved_resource::<KitRng>(KIT_RNG);
         describe(
             world,
             ComponentDescription::new(
@@ -418,7 +421,8 @@ impl Ticker {
             }
         }
         if !self.jittered.is_empty() {
-            self.jittered.sort_by_key(|entity| entity.id());
+            let order = order_of(world);
+            self.jittered.sort_by_key(|&entity| order.key(entity));
             let mut rng = world.remove_resource::<KitRng>().unwrap_or_default();
             for &entity in &self.jittered {
                 let cooldown = world.get_mut::<Cooldown>(entity).unwrap();
@@ -430,6 +434,12 @@ impl Ticker {
                 }
             }
             world.insert_resource(rng);
+        }
+        // While saving, by save ID, so cues spawning from two cooldowns
+        // that elapse in one step give their spawns the same IDs.
+        if saving(world) {
+            let order = order_of(world);
+            self.elapsed.sort_by_key(|&(entity, ..)| order.key(entity));
         }
         for &(entity, elapses, capped) in &self.elapsed {
             if let Some(queue) = world.get_resource_mut::<EventQueue<CooldownElapsed>>() {

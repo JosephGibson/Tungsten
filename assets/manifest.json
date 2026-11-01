@@ -140,6 +140,9 @@
     "god_rays": {
       "path": "shaders/stock/god_rays.wgsl"
     },
+    "glow": {
+      "path": "shaders/stock/glow.wgsl"
+    },
     "smaa_edge": {
       "path": "shaders/stock/smaa_edge.wgsl"
     },

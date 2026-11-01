@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use tungsten_core::assets::{
     AnimationData, AnimationRegistry, DataRegistry, FilterMode, FontRegistry, LoadedManifest,
     MaterialRegistry, ParticleConfig, ParticleConfigRegistry, ParticleMeshRegistry, PrefabRegistry,
-    ResolvedManifest, SoundRegistry, StagedLoad, TextureHandle, TilemapData, TilemapRegistry,
-    UvRect,
+    ResolvedManifest, SoundData, SoundRegistry, StagedLoad, TextureHandle, TilemapData,
+    TilemapRegistry, UvRect,
 };
 use tungsten_core::ui::{Theme, ThemeFile, UiThemeRegistry, UiTree};
 use tungsten_core::{ActionMap, ActionMapError, AssetRegistry, World};
@@ -179,6 +179,20 @@ pub fn reload_animation(id: &str, path: &Path, world: &mut World) -> anyhow::Res
             return Ok(());
         }
     };
+    // Redo 7.9: a frame's sound must name a loaded sound.
+    let sounds = world.get_resource::<SoundRegistry>();
+    if let Some((i, sound)) = data.frames.iter().enumerate().find_map(|(i, frame)| {
+        frame
+            .sound
+            .as_ref()
+            .filter(|sound| sounds.is_none_or(|sounds| sounds.get_by_id(sound).is_none()))
+            .map(|sound| (i, sound))
+    }) {
+        log::error!(
+            "Hot reload animation '{id}': frame {i} references unknown sound ID '{sound}'; keeping the previous clip"
+        );
+        return Ok(());
+    }
 
     world
         .get_resource_mut::<AnimationRegistry>()
@@ -470,6 +484,92 @@ pub(crate) fn reload_new_tilemaps(
     added
 }
 
+/// Hot-reloads the sound whose file is `path` (redo 7.9): the file decodes
+/// again under the sound's handle, keeping its manifest defaults. The app
+/// restarts the audio once the frame's reloads are done, so the mixer plays
+/// the new samples. A file that does not decode keeps the old samples and
+/// logs why; `false` then, or when no sound decodes from `path`.
+pub fn reload_sound(path: &Path, world: &mut World) -> bool {
+    let Some(sounds) = world.get_resource_mut::<SoundRegistry>() else {
+        return false;
+    };
+    let Some(id) = sounds.id_for_path(path).map(ToString::to_string) else {
+        log::debug!("Hot reload: no sound registered for '{}'", path.display());
+        return false;
+    };
+    let handle = sounds
+        .get_by_id(&id)
+        .expect("a sound's path names a registered sound");
+    match SoundData::decode(path) {
+        Ok(data) => {
+            log::info!("Hot-reloaded sound '{id}' from '{}'", path.display());
+            sounds.replace(handle, data)
+        }
+        Err(e) => {
+            log::error!("Sound reload '{id}': {e}; keeping the previous samples");
+            false
+        }
+    }
+}
+
+/// A manifest reload's sounds (redo 7.9): each new ID decodes and
+/// registers; each kept one takes its entry's volume, loop, bus and voice
+/// limit, and its file decodes again when the entry names another; a
+/// removed one stays, warned, as a removed sprite does. The removed IDs,
+/// sorted.
+pub(crate) fn reload_manifest_sounds(
+    manifest: &ResolvedManifest,
+    world: &mut World,
+) -> Vec<String> {
+    let Some(mut sounds) = world.remove_resource::<SoundRegistry>() else {
+        return Vec::new();
+    };
+    let mut ids: Vec<&String> = manifest.sounds.keys().collect();
+    ids.sort();
+    for id in ids {
+        let entry = &manifest.sounds[id];
+        let handle = if let Some(handle) = sounds.get_by_id(id) {
+            if sounds.id_for_path(&entry.path) != Some(id.as_str()) {
+                match SoundData::decode(&entry.path) {
+                    Ok(data) => {
+                        sounds.replace(handle, data);
+                        sounds.set_path(handle, entry.path.clone());
+                    }
+                    Err(e) => log::error!("Manifest reload: sound '{id}': {e}; keeping it"),
+                }
+            }
+            sounds.set_defaults(handle, entry.volume, entry.looping);
+            handle
+        } else {
+            match SoundData::decode(&entry.path) {
+                Ok(data) => {
+                    log::info!("Manifest reload: new sound '{id}'");
+                    let handle = sounds.register(id.clone(), data, entry.volume, entry.looping);
+                    sounds.set_path(handle, entry.path.clone());
+                    handle
+                }
+                Err(e) => {
+                    log::error!("Manifest reload: new sound '{id}': {e}; skipping it");
+                    continue;
+                }
+            }
+        };
+        sounds.set_bus(handle, entry.bus);
+        sounds.set_max_voices(handle, entry.max_voices);
+    }
+    let mut removed: Vec<String> = sounds
+        .ids()
+        .filter(|id| !manifest.sounds.contains_key(*id))
+        .map(ToString::to_string)
+        .collect();
+    removed.sort_unstable();
+    for id in &removed {
+        log::warn!("Manifest reload: sound '{id}' removed — keeping stale");
+    }
+    world.insert_resource(sounds);
+    removed
+}
+
 /// Hot-reload manifest additions; removals stay stale and last-known-good wins.
 ///
 /// `roots` is the whole composition (`D-052`), whichever root changed: the
@@ -567,6 +667,28 @@ pub fn reload_manifest(
                         entry.nine_slice
                     );
                 }
+            }
+            // Redo 7.9: so do sheet frames and anchors; a frame that moved
+            // or changed size repacks its filter class.
+            for (id, entry) in &new_manifest.sprites {
+                let Some(asset) = registry.get_sprite(id) else {
+                    continue;
+                };
+                if (asset.rect, asset.anchor) == (entry.rect, entry.anchor) {
+                    continue;
+                }
+                if asset.rect != entry.rect {
+                    match entry.filter {
+                        FilterMode::Nearest => gained_nearest = true,
+                        FilterMode::Linear => gained_linear = true,
+                    }
+                }
+                registry.set_sprite_frame(id, entry.rect, entry.anchor);
+                log::info!(
+                    "Manifest reload: sprite '{id}' frame is now {:?}, anchor {:?}",
+                    entry.rect,
+                    entry.anchor
+                );
             }
         }
         if gained_nearest
@@ -707,23 +829,18 @@ pub fn reload_manifest(
         }
     }
 
+    // The physics layer names and materials, which the prefabs name.
+    super::load_physics_names(&new_manifest, world);
+
     // M51 prefabs and M61 data entries, in the startup order: after the
     // tilemaps and particle configs their components name, every file read
     // again and committed once; then the new maps' objects.
     reload_prefabs_and_data(&new_manifest, world, &new_maps);
 
-    // D-053: audio session-static; mixer owns cloned PCM.
-    {
-        let existing_count = world
-            .get_resource::<SoundRegistry>()
-            .map_or(0, |sr| sr.iter().count());
-        let new_count = new_manifest.sounds.len();
-        if existing_count != new_count {
-            log::debug!(
-                "Manifest reload: sound list changed ({existing_count} -> {new_count}) but audio is session-static; restart to pick up changes"
-            );
-        }
-    }
+    // Redo 7.9: new sounds load and the rest take their entries; the app
+    // restarts the audio on the changed registry once the frame's reloads
+    // are done.
+    reload_manifest_sounds(&new_manifest, world);
 
     // M26 materials: register new, refresh existing. Materials live inside
     // the manifest graph, so every manifest edit flows through this branch.

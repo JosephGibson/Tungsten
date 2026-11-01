@@ -15,6 +15,7 @@ fn clip(first: u32, frames: u32, duration_ms: u32) -> AnimationData {
             .map(|i| AnimationFrame {
                 sprite: SpriteAssetId::new(first + i),
                 duration_ms,
+                sound: None,
             })
             .collect(),
     }
@@ -330,4 +331,59 @@ fn a_save_keeps_its_state_and_clip() {
         animator
     );
     assert_eq!(Clips::from("idle".to_string()), Clips::one("idle"));
+}
+
+#[test]
+fn a_clip_set_without_left_shows_the_right_flipped() {
+    use tungsten_core::components::SpriteFlip;
+    let (mut world, mut schedule) = rig();
+    let set: Clips = serde_json::from_value(json!({ "right": "walk_right" })).unwrap();
+    assert_eq!(set, Clips::mirrored("walk_right"));
+    let runner = world.spawn_with((
+        CharacterAnimator::new("idle").with_move(set),
+        Velocity(Vec2::new(40.0, 0.0)),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    frame(&mut world, &mut schedule, 1.0 / 60.0);
+    assert_eq!(
+        shown(&world, runner),
+        ("move", "walk_right".into(), SpriteAssetId::new(20))
+    );
+    assert!(
+        world.get::<SpriteFlip>(runner).is_none(),
+        "facing right, nothing to flip yet"
+    );
+    // Facing left: the same clip, flipped, with no change of clip.
+    let playing = world.get::<AnimationState>(runner).unwrap().clone();
+    world.get_mut::<Velocity>(runner).unwrap().0 = Vec2::new(-40.0, 0.0);
+    frame(&mut world, &mut schedule, 1.0 / 60.0);
+    assert_eq!(shown(&world, runner).1, "walk_right");
+    assert_eq!(world.get::<SpriteFlip>(runner), Some(&SpriteFlip(true)));
+    assert_eq!(
+        world.get::<AnimationState>(runner).unwrap().frame_index,
+        playing.frame_index,
+        "the clip plays on"
+    );
+    // Stopped, the one-clip idle keeps the side it faced.
+    world.get_mut::<Velocity>(runner).unwrap().0 = Vec2::ZERO;
+    frame(&mut world, &mut schedule, 1.0 / 60.0);
+    assert_eq!(shown(&world, runner).1, "idle");
+    assert_eq!(world.get::<SpriteFlip>(runner), Some(&SpriteFlip(true)));
+    world.get_mut::<Velocity>(runner).unwrap().0 = Vec2::new(40.0, 0.0);
+    frame(&mut world, &mut schedule, 1.0 / 60.0);
+    assert_eq!(world.get::<SpriteFlip>(runner), Some(&SpriteFlip(false)));
+    // A set with both sides never writes a flip.
+    let walker = world.spawn_with((
+        CharacterAnimator::new("idle").with_move(Clips::sides("walk_left", "walk_right")),
+        Velocity(Vec2::new(-40.0, 0.0)),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    frame(&mut world, &mut schedule, 1.0 / 60.0);
+    assert_eq!(shown(&world, walker).1, "walk_left");
+    assert!(world.get::<SpriteFlip>(walker).is_none());
+    // The load checks `right` alone, and a save keeps the set as written.
+    assert_eq!(
+        serde_json::to_value(Clips::mirrored("walk_right")).unwrap(),
+        json!({ "right": "walk_right" })
+    );
 }

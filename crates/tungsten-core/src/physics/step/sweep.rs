@@ -1,12 +1,13 @@
 //! Safety-net slab sweep against statics (D-064) and the statics-only grid
 //! that answers it once a frame's queries outnumber the statics (D-080).
 
+use super::gather::TileCache;
 use super::pairs::PairGrid;
-use super::{Proxy, ProxyLayers};
+use super::{Proxy, ProxyLayers, TouchObs, tile_hit};
 use crate::physics::PhysicsConfig;
 use crate::physics::broadphase::{ProxyId, SpatialGrid, for_each_in_both};
 use crate::physics::collision::{
-    Aabb, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP, sweep_aabb_vs_aabb,
+    Aabb, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_ONE_WAY, FACE_RIGHT, FACE_TOP, sweep_aabb_vs_aabb,
 };
 use crate::physics::components::Shape;
 use crate::physics::events::CollisionEvent;
@@ -99,7 +100,9 @@ impl SweepGrid {
 /// Only statics can be hit, never a kinematic body, and only those whose
 /// layers meet the body's. The pair grid answers the query until the
 /// statics-only grid is worth staging (D-080); both return the same statics
-/// in the same order, so the first hit is the same.
+/// in the same order, so the first hit is the same. Each clamp's event names
+/// the speed it stopped and a tile's cell, and with `touches`, the contact
+/// record's, it is a touch too.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn speculative_pass(
     config: &PhysicsConfig,
@@ -110,8 +113,11 @@ pub(super) fn speculative_pass(
     static_grid: &mut SweepGrid,
     candidates: &mut Vec<ProxyId>,
     events: &mut Vec<CollisionEvent>,
+    tiles: &TileCache,
+    mut touches: Option<&mut Vec<TouchObs>>,
 ) {
     const BACKOFF: f32 = 1.0e-3;
+    let slack = 4.0 * config.linear_slop;
 
     // Tile proxies are never dynamic: only the entity proxies sweep.
     for a_idx in 0..bodies {
@@ -155,9 +161,20 @@ pub(super) fn speculative_pass(
                 // last-resort net.
                 Shape::Circle { radius } => Vec2::splat(radius),
             };
-            if let Some((t, n)) = sweep_aabb_vs_aabb(a_prev, a_cur, a_half, target.center, b_half) {
-                // Skip hits on internal tile faces.
-                let face_bit = if n.x < 0.0 {
+            // A slope cell is swept as its polygon, every other static as a
+            // box.
+            let hit = if target.slope != 0 {
+                let poly = super::slope::polygon(target.slope, target.center, b_half);
+                super::slope::box_sweep(a_prev, a_cur, a_half, &poly)
+            } else {
+                sweep_aabb_vs_aabb(a_prev, a_cur, a_half, target.center, b_half)
+            };
+            if let Some((t, n)) = hit {
+                // Skip hits on internal tile faces; a slope's face is always
+                // exposed.
+                let face_bit = if n.x != 0.0 && n.y != 0.0 {
+                    FACE_ALL
+                } else if n.x < 0.0 {
                     FACE_LEFT
                 } else if n.x > 0.0 {
                     FACE_RIGHT
@@ -166,7 +183,16 @@ pub(super) fn speculative_pass(
                 } else {
                     FACE_BOTTOM
                 };
-                if target.face_mask & face_bit == 0 {
+                if target.face_mask & face_bit == 0 && face_bit != FACE_ALL {
+                    continue;
+                }
+                // A one-way tile stops a body through its top face alone,
+                // one whose previous bottom lay above it, within the narrow
+                // phase's slack.
+                if target.face_mask & FACE_ONE_WAY != 0
+                    && (face_bit != FACE_TOP
+                        || a_prev.y + a_half.y > target.center.y - b_half.y + slack)
+                {
                     continue;
                 }
                 if best.is_none_or(|(best_t, _, _)| t < best_t) {
@@ -190,6 +216,15 @@ pub(super) fn speculative_pass(
             let impulse = -(1.0 + restitution) * v_along_normal;
             proxies[a_idx].velocity = v + normal * impulse;
         }
+        let speed = (-v_along_normal).max(0.0);
+        if let Some(touches) = touches.as_deref_mut() {
+            touches.push(TouchObs {
+                a: a_idx as u32,
+                b: b_idx as u32,
+                normal,
+                speed,
+            });
+        }
 
         if let Some(a_entity) = proxies[a_idx].entity {
             events.push(CollisionEvent {
@@ -197,6 +232,8 @@ pub(super) fn speculative_pass(
                 b: proxies[b_idx].entity,
                 normal,
                 penetration: 0.0,
+                speed,
+                tile: tile_hit(tiles, bodies, b_idx, &proxies[b_idx]),
             });
         }
     }

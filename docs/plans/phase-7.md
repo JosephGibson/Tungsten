@@ -11,20 +11,22 @@
   - This session: this file; `ROADMAP.md` (Now, Later's Phase 7 line); `docs/plans/arpg-design.md` (step 6, files to touch).
   - Each later step: its own plan file (`docs/plans/<topic>.md`), this file's §2 status cells and evidence row, `ROADMAP.md`, and what its plan lists.
   - The close: this file (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md` (§3's Phase 8 rows take §2.3's IDs), `docs/plans/arpg-design.md` (its pointer to this file).
-- **ordered steps:** (1) 7.2 agent tooling. (2) 7.3 benchmarks, part 1. (3) 7.4 H2. (4) 7.5 the analysis pass, its rows folded into §2. (5) 7.8 terrain and physics. (6) 7.17 the UI pass, in its own worktree from after step 1. (7) 7.9 saves and engine seams. (8) 7.20 screens as data, after step 6. (9) 7.10 the kit pass. (10) 7.18 camera rigs. (11) 7.11 template updates. (12) 7.12 level format, CLI, editor. (13) 7.13 01 on the new systems. (14) 7.14 the CPU pass. (15) 7.15 the GPU pass. (16) 7.16 agent guidance. (17) Close.
-- **done-when:** every row in §2.2 reads landed, closed, Later or 9.2 (§2.1), none open in a Phase 7 step, and every open row in §2.3 is carried into the redo's §3 by ID; every item on 7.14's and 7.15's lists reads done, dropped or stopped (§2.5); every step's done-when quoted in the evidence log; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
+- **ordered steps:** (1) 7.2 agent tooling. (2) 7.3 benchmarks, part 1. (3) 7.4 H2. (4) 7.5 the analysis pass, its rows folded into §2. (5) 7.8 terrain and physics. (7) 7.9 saves and engine seams. (6) 7.17 the UI pass, after step 7. (8) 7.20 screens as data, after step 6. (9) 7.10 the kit pass. (10) 7.18 camera rigs. (11) 7.11 template updates. (12) 7.12 level format, CLI, editor. (13) 7.13 01 on the new systems. (14) 7.14 the CPU pass. (15) 7.15 the GPU pass. (16) 7.16 agent guidance. (17) Close. One track, a step at a time in this order (§2.8): Step 7 runs before Step 6, and both keep their numbers, which plans cite.
+- **done-when:** every row in §2.2 reads landed, closed, Later or 9.2 (§2.1), none open in a Phase 7 step, and every open row in §2.3 is carried into the redo's §3 by ID; every item on 7.14's and 7.15's lists reads done, dropped or stopped (§2.5); every step's evidence row written by §3's rule; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
 
 Item `phase-7` in [ROADMAP.md](../../ROADMAP.md), from the redo's step 7.7 (§3, §5.8, §7.3, Q20). Written 2026-10-29 at `08111d5a`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md) and the [operating rules](../operating-rules.md), and differs from the skill in one way: each step is a redo step of a session or more with its own plan, so a session takes one step, never "every remaining step".
 
 ## Context digest
 
+At writing (`08111d5a`, 2026-10-29); the evidence log holds what has run since.
+
 - 0.112 is out with `qa6`, the quick wins (7.1) and the ARPG design (7.19). 7.2–7.5 have not run: no agent tooling, the old benchmark suite, no H2, no seam register (A15). 7.6 ran on 2026-10-23; the owner triaged 7.19 on 2026-10-29 with every row and question at its default.
 - 7.7 waits only for 7.19 (Q20), so it runs now, ahead of 7.2–7.5 in time but not in order. 7.5's register joins §2 at its triage by §2.4's rule, and 7.3's rows hold the lists' numbers (Q1).
 - The registers: the paper designs' §4 (P7-1–P7-20, P8-1–P8-17), the ARPG design's §15 (PA-1–PA-22), and the feedback plan's kit and engine gaps ([`example-01-feedback.md`](1.0/example-01-feedback.md) §6, K1–K31), which the redo's §3 cites and 7.5 seeds from.
 - The rule is §7.3's triage: a row goes to the step that builds the system it changes, so each system is built once (`D-218`). A row split across systems is split here (P7-2, P7-3).
-- Phase 7 is two tracks: the main track (7.2 → 7.16) and the UI track (7.17 → 7.20) in its own worktree beside 7.8–7.10, joining at 7.11 (the redo's fixed orders).
+- Phase 7 is one track since 2026-10-31: 7.17 and 7.20 run after 7.9 in this tree, not beside 7.8–7.10 in a worktree (§2.8).
 - Decisions: `D-215` (the redo), `D-218` (the fifth genre; 7.7 waits for 7.19), `D-172` (admission, amended by §5.3), `D-140` (routes), `D-070` (CI is CPU only; GPU and time rows stay local).
-- Later steps read this file: 7.10 its rows, PA-1–PA-11 among them, and PA-Q2's three movable rows (§2.8); 7.14 and 7.15 their lists (§2.5); 7.13 and 8.6 their tasks, 9.1 its stress rows (§2.6).
+- Later steps read this file: 7.10 its rows and its four plans' order, with PA-1–PA-11 but PA-3, PA-4 and PA-9, which moved to 8.7 (§2.3, §2.8); 7.14 and 7.15 their lists (§2.5); 7.13 and 8.6 their tasks, 9.1 its stress rows (§2.6).
 
 ## 1. Audit
 
@@ -69,67 +71,66 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | K25 | Air jumps priced, refused, counted at run time | Later | Later | Cost and refusal landed in `e01tomes`; the run-time and unlimited counts wait in Later |
 | S-103 | The hurt flash's vignette generated as a full-view sprite | Later | Later | no step builds the post passes |
 | S-182 | A test's press held over frames until a fixed step has read it | Later | Later | no step builds the harness's fixed-step stepping |
-| P7-1 | Tiles changed at runtime | 7.8 | open | Runtime terrain first (§5.1) |
-| P7-2 | Pushes and impacts: physics part | 7.8 | open | Impulses, radial impulses, contact speeds (§5.6) |
-| P7-3 | Something in range: sensor exit | 7.8 | open | `Interactable` is 8.1's (§2.3) |
-| K7 | A controller pushed by bodies | 7.8 | open | §5.6: pushed and riding; M84's shove onto impulses |
-| K14 | The query index rebuilt from every body | 7.8 | open | §5.6's cheaper index; its remaining cost is C1 (§2.5) |
-| K23 | Kinematic pairs never touch | 7.8 | open | Moving platforms against controllers |
-| K30 | A locked controller stops dead at a body | 7.8 | open | Named in §5.6 |
-| S-60 | Rays cast again from inside each body they meet (K31) | 7.8 | open | Built with the index; 8.2's sight rays use it |
-| S-16 | A fire hazard's touch swept by hand | 7.8 | open | + a swept sensor that counts a start overlap |
-| S-26 | Friction and rolling by hand | 7.8 | open | §5.6's friction first; rolling by Q1 |
-| S-65 | A body's world box worked out by hand | 7.8 | open | + `Collider::world_box` |
-| S-77 | An entity teleported by writing its positions by hand | 7.8 | open | + a core `teleport` |
-| S-99 | A controller's filter, shove and step set in code at each spawn and load | 7.8 | open | + a layer-mask filter in the controller's data and saved form |
-| S-112 | Iron's extra fall added to its velocity each step by hand | 7.8 | open | + a gravity scale on a body |
-| S-132 | A lift's trip held until every rider stands wholly on it | 7.8 | open | §5.6's riding: the carry cast against the world |
-| S-172 | A point's distance to a shape's surface (`surface_distance`) | 7.8 | open | + `Shape::distance` |
-| S-175 | Physics layer bits restated in Rust and in the generator | 7.8 | open | + named physics layers in data |
-| P7-8 | Saves of many areas | 7.9 | open | §5.5, G4; depends on P7-9 (landed) |
-| P7-10 | A tile layer's depth among sprites | 7.9 | open | |
-| P7-13 | Audio: looping cue voices, pan, bus ducking | 7.9 | open | Falloff landed as K29; Later's `SoundOnEvent` listener joins it |
-| P7-14 | Text outline (K5) | 7.9 | open | A field of 7.17's named text styles if 7.17 lands first |
-| P7-15 | A file per frame | 7.9 | open | Sprite sheets, with §5.4's boot loading |
-| K2 | A particle config's draw depth | 7.9 | open | |
-| K4 | An animation's playback rate | 7.9 | open | |
-| K9 | Lit sprites without the hit-flash material | 7.9 | open | |
-| S-38 | Emitters changed at run time by hand (K21) | 7.9 | open |  |
-| S-2 | Migrations setting saved bodies out of solids a map change added | 7.9 | open | + a restored body set out of solids to its nearest free spot, on 7.8's physics |
-| S-3 | Retunes carried into saves by hand | 7.9 | open | + saved state laid over the prefab's, so a retune reaches old saves unmigrated |
-| S-25 | Looks and a muzzle flash aged by hand each frame | 7.9 | open | + a light-intensity tween channel; the looks on `Lifetime` |
-| S-27 | A spray's stream as hand-made particles | 7.9 | open | + particle clips, a stretch along the velocity and a stop at a surface |
-| S-29 | A hole's particles and streaks steered into a spiral by hand | 7.9 | open | + a particle attractor: a pull and a swirl toward a point |
-| S-40 | Parallax strips as Rust tables, repeated and stretched by hand | 7.9 | open | + a repeating parallax layer under the tiles |
-| S-43 | Each source schema's `migrate` arm restating every later step's call | 7.9 | open | + migrations run a schema step at a time |
-| S-46 | Left-facing art as whole-frame mirrored twins | 7.9 | open | + a sprite flip about a pivot that mirrors lit normals |
-| S-58 | Art variants by hand | 7.9 | open | + a prefab's sprite variants picked per instance, kept through a save |
-| S-59 | A same-step order kept by hand across a load | 7.9 | open | + a same-step order by stable ID and a saved solver cache (backlog row 85) |
-| S-63 | Music per state run by hand | 7.9 | open | + music per state on the stack, with P7-13's ducking |
-| S-70 | Quad helpers for 01's own sprite extracts, copying the default extract | 7.9 | open | + public render helpers: an instance from a sprite, joined batches, the view box |
-| S-71 | A material restating the sprite contract to change its fragment | 7.9 | open | + fragment-only materials |
-| S-76 | The ice beam's core laid as tiles along the cone each frame | 7.9 | open | + a beam sprite tiled along a segment |
-| S-87 | One-shot clips spawned by hand, each with a lifetime restating its clip's length | 7.9 | open | + a one-shot clip that despawns as it ends |
-| S-89 | Newborn particles patched after spawn | 7.9 | open | + a particle's start colour by its direction or a range |
-| S-95 | Flat-colour rectangles and thick lines faked as sprite quads | 7.9 | open | + a flat-colour sprite instance and a segment helper |
-| S-97 | The far walls baked as tinted copies of the play layer's rock | 7.9 | open | + a tile layer's tint and an unlit flag |
-| S-101 | Save envelopes faked as text in the tests | 7.9 | open | + a `SaveSlots` writer for tests |
-| S-113 | A sound played on a walk's footfall frames by a watch of 01's | 7.9 | open | + frame cues on a clip |
-| S-117 | Soft glows drawn by a material of 01's own | 7.9 | open | + a stock glow material |
-| S-125 | The map's props set down at its markers by the run's code | 7.9 | open | + map props a save keeps, spawned by the level on a fresh run (known issue 38) |
-| S-137 | Sprite anchors restated as constants | 7.9 | open | + a sprite anchor in the manifest (Later's props' anchors as data) |
-| S-138 | A state's particles cleared by hand when it leaves | 7.9 | open | + particles owned by their emitter's state |
-| S-143 | The sprite base replaced by a copy of the engine's default | 7.9 | open | + extract contributions ordered under the default base, with P7-10 |
-| S-148 | Sprites mocked by hand in tests | 7.9 | open | + the headless load registers sprite metadata |
-| S-173 | A manifest sound played at its manifest volume by hand | 7.9 | open | + a play at the manifest's volume and loop |
-| S-179 | The manifest root and debug hot reload wired by hand in `main` | 7.9 | open | + the manifest root and hot reload from `Config` |
+| P7-1 | Tiles changed at runtime | 7.8 | landed `c31c8bfc` | `D-228`, the runtime terrain (§5.1) |
+| P7-2 | Pushes and impacts: physics part | 7.10 | open | 7.10m (§2.8): impulses, radial impulses and a kinematic body's push record; moved from 7.8 (physics-on-terrain's step 7 stopped: its push record counted the soft solver's push-out); contact speeds, begins and ends landed `992f75d2` (§5.6, `D-229`) |
+| P7-3 | Something in range: sensor exit | 7.8 | landed `e6c9bbe0` | `SensorExited`, `D-229`; `Interactable` is 8.1's (§2.3) |
+| K7 | A controller pushed by bodies | 7.10 | open | 7.10m; §5.6: pushed and riding; M84's shove onto impulses; moved from 7.8 (on P7-2's impulses, which did not land there) |
+| K14 | The query index rebuilt from every body | 7.14 | open | §5.6's cheaper index; its remaining cost is C1 (§2.5); moved from 7.8 (a resting grid kept across refreshes moved `terrain`'s pin as the cave's bodies shift between asleep and awake: beside C1) |
+| K23 | Kinematic pairs never touch | 7.10 | open | 7.10m: moving platforms against controllers; moved from 7.8 (with the controller's rules, behind step 12) |
+| K30 | A locked controller stops dead at a body | 7.10 | open | 7.10m; named in §5.6; moved from 7.8 (on P7-2's impulses) |
+| S-60 | Rays cast again from inside each body they meet (K31) | 7.8 | landed `5656e347` | `cast_ray_where`, `cast_shape_where`; 8.2's sight rays use them |
+| S-16 | A fire hazard's touch swept by hand | 7.8 | landed `e6c9bbe0` | `RigidBody::swept`, a start overlap counting |
+| S-26 | Friction and rolling by hand | 7.8 | landed `52202d87` | Friction `aae37231`, rolling circles `52202d87` |
+| S-65 | A body's world box worked out by hand | 7.8 | landed `79c0f268` | `Collider::world_box` |
+| S-77 | An entity teleported by writing its positions by hand | 7.8 | landed `79c0f268` | `physics::teleport` |
+| S-99 | A controller's filter, shove and step set in code at each spawn and load | 7.10 | open | + 7.10m: a layer-mask filter in the controller's data and saved form; moved from 7.8 with the controller on slopes and the drop through a one-way edge (physics-on-terrain's step 12 stopped at the slope casts' exact-contact entry, a known issue fixed ahead of them) |
+| S-112 | Iron's extra fall added to its velocity each step by hand | 7.8 | landed `79c0f268` | `RigidBody::gravity_scale` |
+| S-132 | A lift's trip held until every rider stands wholly on it | 7.10 | open | 7.10m; §5.6's riding: the carry cast against the world; moved from 7.8 (with the controller's rules) |
+| S-172 | A point's distance to a shape's surface (`surface_distance`) | 7.8 | landed `79c0f268` | `Shape::distance` |
+| S-175 | Physics layer bits restated in Rust and in the generator | 7.8 | landed `ddc3e3e4` | `physics_layers` in the manifests, names in `rigid_body`; a tile layer's names wait for 7.12 (Later) |
+| P7-8 | Saves of many areas | 7.9 | landed `1ec87ae6` | `D-230`: save identities, the registry, captures per area, kept areas, the kit's saves, the template on one-call saves (§5.5, G4); 01's captures and records move onto it at 7.13 |
+| P7-10 | A tile layer's depth among sprites | 7.9 | landed `b686d9fd` | a tile layer's `z` among sprites (`D-231`); 01's layers move at 7.13 |
+| P7-13 | Audio: looping cue voices, pan, bus ducking | 7.10 | open | Falloff landed as K29; Later's `SoundOnEvent` listener joins it; moved from 7.9 (the kit's loops on entities and the listener's pan needed files boot-and-seams' step 6 did not list; the engine's pan, ducks and plays by ID landed in `01826112`, `D-231`) |
+| P7-14 | Text outline (K5) | 7.17 | open | 7.9 lands first (§2.8), so 7.17's named text styles take the outline as a field; moved from 7.9 (`TextOverrides`' and `TextSection`'s new fields needed literals in files boot-and-seams' step 12 did not list) |
+| P7-15 | A file per frame | 7.9 | landed `a6c3d80a` | Sprite sheets, with §5.4's boot loading; sheets in `ce71db3c`, boot loading in `a6c3d80a` (`D-231`); 01's per-frame files move at 7.13 |
+| K2 | A particle config's draw depth | 7.9 | landed `e48bc6c1` | `z_order` on a particle config (`D-231`); 01's sites at 7.13 |
+| K4 | An animation's playback rate | 7.9 | landed `48000b85` | `AnimationState` speed (`D-231`); 01's sites at 7.13 |
+| K9 | Lit sprites without the hit-flash material | 7.9 | landed `0bdb8e33` | the lit shader takes the flash's lanes (`D-231`); 01's lit courier and foes at 7.13 |
+| S-38 | Emitters changed at run time by hand (K21) | 7.9 | landed `e48bc6c1` | `rate_scale`, `direction`, `paused` (`D-231`); 01's sites at 7.13 |
+| S-2 | Migrations setting saved bodies out of solids a map change added | 7.9 | landed `8278ab06` | `physics::free_spot`, the restore's last pass |
+| S-3 | Retunes carried into saves by hand | 7.9 | landed `b3b3b985` | a named entity's changes as patches over its fresh spawn |
+| S-25 | Looks and a muzzle flash aged by hand each frame | 7.9 | landed `0bdb8e33` | + a light-intensity tween channel; the looks on `Lifetime`; `light_intensity` (`D-231`); 01's looks at 7.13 |
+| S-27 | A spray's stream as hand-made particles | 7.9 | landed `e48bc6c1` | + particle clips, a stretch along the velocity and a stop at a surface; clips, `stretch`, `stop` (`D-231`); 01's spray at 7.13 |
+| S-29 | A hole's particles and streaks steered into a spiral by hand | 7.9 | landed `e48bc6c1` | + a particle attractor: a pull and a swirl toward a point; `attractor` (`D-231`); 01's hole at 7.13 |
+| S-40 | Parallax strips as Rust tables, repeated and stretched by hand | 7.9 | landed `b686d9fd` | + a repeating parallax layer under the tiles; `Backdrop` (`D-231`); 01's strips at 7.13 |
+| S-43 | Each source schema's `migrate` arm restating every later step's call | 7.9 | landed `e271a5ee` | `SaveData::migrate_step`; 01's arms at `93540b4a` |
+| S-46 | Left-facing art as whole-frame mirrored twins | 7.9 | landed `0bdb8e33` | + a sprite flip about a pivot that mirrors lit normals; `SpriteFlip`, `facing`'s `flip`, a clip set without `left` (`D-231`); 01's twins at 7.13 |
+| S-58 | Art variants by hand | 7.12 | open | + a prefab's sprite variants picked per instance, kept through a save; moved from 7.9 (`SceneSprite`'s `variants` needed a literal in a file boot-and-seams' step 13 did not list; 7.12 builds prefab data) |
+| S-59 | A same-step order kept by hand across a load | 7.9 | landed `93197b6c` | the kit's orders by save ID while saving; the physics step's order and a saved solver cache are one line in `ROADMAP.md`'s Later |
+| S-63 | Music per state run by hand | 7.11 | open | + music per state on the stack, with P7-13's ducking; moved from 7.9 (music per state and the template's tracks, with step 6's loops, needed files its list did not hold) |
+| S-70 | Quad helpers for 01's own sprite extracts, copying the default extract | 7.9 | landed `6a9e7881` | + public render helpers: an instance from a sprite, joined batches, the view box; `sprite_instance`, `Batches`, `view_box` (`D-231`); 01's extracts at 7.13 |
+| S-71 | A material restating the sprite contract to change its fragment | 7.9 | landed `6a9e7881` | + fragment-only materials; fragment-only materials (`D-231`); 01's materials at 7.13 |
+| S-76 | The ice beam's core laid as tiles along the cone each frame | 7.9 | landed `6a9e7881` | + a beam sprite tiled along a segment; `beam` (`D-231`); 01's ice beam at 7.13 |
+| S-87 | One-shot clips spawned by hand, each with a lifetime restating its clip's length | 7.9 | landed `48000b85` | + a one-shot clip that despawns as it ends; `despawn` at a one-shot's end (`D-231`); 01's clips at 7.13 |
+| S-89 | Newborn particles patched after spawn | 7.9 | landed `e48bc6c1` | + a particle's start colour by its direction or a range; `start_color` (`D-231`); 01's newborns at 7.13 |
+| S-95 | Flat-colour rectangles and thick lines faked as sprite quads | 7.9 | landed `6a9e7881` | + a flat-colour sprite instance and a segment helper; `engine_white`, `SpriteInstance::flat` and `segment` (`D-231`); 01's quads at 7.13 |
+| S-97 | The far walls baked as tinted copies of the play layer's rock | 7.9 | landed `b686d9fd` | + a tile layer's tint and an unlit flag; `Unlit` in `0bdb8e33`, a layer's tint and `unlit` in `b686d9fd` (`D-231`); 01's far walls at 7.13 |
+| S-101 | Save envelopes faked as text in the tests | 7.9 | landed `e271a5ee` | `SaveSlots::save_stamped`; the template's tests on it at `ef935f73`, 01's fixtures at 7.13 |
+| S-113 | A sound played on a walk's footfall frames by a watch of 01's | 7.9 | landed `48000b85` | + frame cues on a clip; a frame's `sound` (`D-231`); 01's footfalls at 7.13 |
+| S-117 | Soft glows drawn by a material of 01's own | 7.9 | landed `6a9e7881` | + a stock glow material; `engine_glow` (`D-231`); 01's glows at 7.13 |
+| S-125 | The map's props set down at its markers by the run's code | 7.9 | landed `ce42a2ae` | `World::spawn_area` names a map's named objects for saves; 01's props as classed objects at 7.13 |
+| S-137 | Sprite anchors restated as constants | 7.9 | landed `ce71db3c` | + a sprite anchor in the manifest (Later's props' anchors as data); a sprite's `anchor` (`D-231`); 01's constants at 7.13 |
+| S-138 | A state's particles cleared by hand when it leaves | 7.9 | landed `e48bc6c1` | + particles owned by their emitter's state; a state's exit takes its emitters' particles (`D-231`); 01's clears at 7.13 |
+| S-143 | The sprite base replaced by a copy of the engine's default | 7.9 | landed `b686d9fd` | + extract contributions ordered under the default base, with P7-10; tile slots and raised layers in the default base (`D-231`); 01's copied base at 7.13 |
+| S-148 | Sprites mocked by hand in tests | 7.9 | landed `ce71db3c` | + the headless load registers sprite metadata; `Harness::register_sprites` (`D-231`); 01's mocks at 7.13, the template's at 7.11 |
+| S-173 | A manifest sound played at its manifest volume by hand | 7.9 | landed `01826112` | + a play at the manifest's volume and loop; `audio::play` by ID (`D-231`); the template's shell took it here, 01's copy with it |
+| S-179 | The manifest root and debug hot reload wired by hand in `main` | 7.9 | landed `aa7c6689` | + the manifest root and hot reload from `Config`; `assets.manifest` and `assets.hot_reload` (`D-231`); the template took it here, 01 at 7.13 |
 | PA-1 | Lines scoped by tags | 7.10 | open | 7.10a (§2.8) |
 | PA-2 | Skill sheets and the snapshot | 7.10 | open | 7.10a |
 | PA-5 | Crit | 7.10 | open | 7.10a; every genre (PA-Q3) |
 | PA-6 | Conversion and extra | 7.10 | open | 7.10a |
 | PA-7 | Defender's side | 7.10 | open | 7.10a |
 | P7-7 | A hit's side | 7.10 | open | 7.10a, with PA-2's hit context |
-| PA-9 | Primary stats | 7.10 | open | 7.10a; movable to 8.7 (PA-Q2) |
 | PA-10 | World sources | 7.10 | open | 7.10a; 01's difficulty on it (PA-Q5) |
 | PA-11 | `explain` records | 7.10 | open | 7.10a; shared with chemistry's `explain` |
 | P7-4 | Statuses on tiles and things | 7.10 | open | 7.10b: §5.2, Q17's merge, Q11's names |
@@ -139,17 +140,15 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | S-36 | Saved countdowns hand-ticked on 01's own components (K11) | 7.13 | open | + moved from 7.10b (has: the kit's `Cooldown` saves and sends `CooldownElapsed`; `Lifetime`'s saved form and expiry stay a kit gap no 01 code needs) |
 | K27 | `Damaged` hides a shield's absorption | 7.10 | open | 7.10b, with K28's flash |
 | K28 | Every non-periodic hit flashes over a status tint | 7.10 | open | 7.10b: effect looks |
-| P7-2 | Pushes and impacts: kit part | 7.10 | open | 7.10c: impact damage, bodies as walls by layer; its blast is K10, in 7.10b |
+| P7-2 | Pushes and impacts: kit part | 7.10 | open | 7.10m (from 7.10c, 2026-10-31): impact damage and bodies as walls by layer, on the physics part; its blast is K10, in 7.10b |
 | S-4 | Radial blasts hand-rolled (K10) | 7.10 | open | 7.10b: chemistry's `blast` output (§5.2), which replaces 01's detonation (`elements/cascade.rs:634`); abilities fire it in 7.10c |
 | P7-6 | Ability fixes | 7.10 | open | 7.10c, with K8 |
 | K8 | `charges { all: true }` refills from the first charge | 7.10 | landed `4d51a071` | qa6, in 0.112; 01's own reload waits on P7-6's held trigger and refill countdown (the seam register's §4) |
-| PA-3 | Area and projectile speed read | 7.10 | open | 7.10c; movable to 8.7 (PA-Q2) |
-| PA-4 | Use time | 7.10 | open | 7.10c, with P7-6's held trigger; movable to 8.7 (PA-Q2) |
 | P7-19 | One-shot clips | 7.10 | open | 7.10c |
 | P7-20 | A hitbox by facing (K3) | 7.10 | open | 7.10c |
 | K3 | A hitbox that follows its owner's facing | 7.10 | open | 7.10c, in P7-20 |
-| K19 | The magnet and a falling bodiless pickup | 7.10 | open | 7.10c: motion on 7.8's physics |
-| K20 | A top-down mover's outside velocity; additive knockback | 7.10 | open | 7.10c: motion on 7.8's impulses |
+| K19 | The magnet and a falling bodiless pickup | 7.10 | open | 7.10m (from 7.10c): motion on 7.8's physics |
+| K20 | A top-down mover's outside velocity; additive knockback | 7.10 | open | 7.10m (from 7.10c): motion on its impulses |
 | K22 | A hotkey for `KitDebug`; hit shapes without the trace | 7.10 | open | 7.10c |
 | P7-18 | The kit's genre claims | 7.10 | open | 7.10c: `platformer`, `top_down`, `rpg`, `shooter`, `arpg`; `grid` and `shmup` dropped (G1–G3) |
 | S-1 | Status looks drawn by hand | 7.10 | open | 7.10b: §5.2's status looks, with an overlay clip and its glow |
@@ -177,13 +176,13 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | S-84 | A periodic hazard's phase cycle by hand | 7.10 | open | + 7.10c: timed transitions and a start offset on `StateMachine` |
 | S-86 | Fallen enemies brought back at their places by a hand-ticked timer each | 7.10 | open | + 7.10c: a spawner that spawns again after its spawn dies |
 | S-88 | Spawned prefabs moved by hand onto their source's body centre | 7.10 | open | + 7.10c: spawns centred on the source's body |
-| S-92 | A flyer's arrive at a point on a top-down mover among walls | 7.10 | open | + 7.10c: `steering` driving a `TopDownMover` |
+| S-92 | A flyer's arrive at a point on a top-down mover among walls | 7.10 | open | + 7.10m (from 7.10c): `steering` driving a `TopDownMover`, with K20 |
 | S-96 | A look held after its last trigger by a game-time stamp | 7.10 | open | + 7.10b: a cue for a fresh effect only |
 | S-105 | A spell's icon and cast gesture as per-spell arms | 7.10 | open | + 7.10c: an ability's icon and cast clip in its data |
 | S-110 | HUD flashes and a fade ticked by hand; a cooldown's end found by comparison | 7.10 | open | + 7.10c: an event as an ability's cooldown ends; the flashes as UI tracks |
 | S-121 | A shake's share worked out by hand from its distance | 7.10 | open | + 7.10b: a shake with falloff |
 | S-130 | A spell's cast, start and end sounds played from code | 7.10 | open | + 7.10c: `ability_used` rules by the ability's name; a held ability's start and end |
-| S-134 | Each enemy kind's knockback resist restated in its info table | 7.10 | open | + 7.10c: `Knockback::resist()` |
+| S-134 | Each enemy kind's knockback resist restated in its info table | 7.10 | open | + 7.10m (from 7.10c): `Knockback::resist()`, with K20's knockback |
 | S-135 | A refused use's reason mapped from `Used` and played from code | 7.10 | open | + 7.10c: an `ability_refused` cue event with its reason |
 | S-142 | A dead entity disarmed by hand | 7.10 | open | + 7.10c: a death policy that disarms the touch, the hitbox and the controller |
 | S-150 | A heading of 01's own on each enemy | 7.10 | open | + 7.10c: `Facing::face` toward a point |
@@ -334,6 +333,9 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | S-22 | Actors' bodies as 01's own data kind | 8.3 | open | + named points mirrored by facing and a body section in prefab data |
 | S-61 | A point per animation frame | 8.3 | open | per-frame anchors, as slices import |
 | S-69 | Lit sprites' normal maps and emissive masks derived by 01's tools | 8.3 | open | + normal maps and emissive masks derived by the pipeline |
+| PA-3 | Area and projectile speed read | 8.7 | open | Moved from 7.10 (PA-Q2, taken early on 2026-10-31: ARPG only, and the ARPG design's §16 moves it with no rework); §9.1's sheet reads 690 px/s |
+| PA-4 | Use time | 8.7 | open | Moved from 7.10 (PA-Q2, as PA-3); on P7-6's held trigger (7.10c); §9.1's use time reads 0.721 s |
+| PA-9 | Primary stats | 8.7 | open | Moved from 7.10 (PA-Q2, as PA-3); `per` lines on 7.10a's scoped lines |
 | PA-17 | Supports | 8.7 | open | `build` domain (PA-Q1) |
 | PA-18 | Passive tree | 8.7 | open | |
 | PA-19 | Item generation | 8.7 | open | |
@@ -348,7 +350,7 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 - 7.5 numbers its rows `S-1`, `S-2`, … (Q8); a row it re-reports from the K-rows keeps its K ID beside its S ID.
 - Its triage sends each row by §2.1's rule: a system a Phase 7 step builds → that step; a template row → 7.11; a fix only 01 needs → 7.13; a Phase 8 system → its 8.x step; anything else → Later as one line.
 - A performance workaround it finds joins the evidence of a §2.5 item, never the list; a cost no item covers waits for 9.2.
-- A row for a step already started (the UI track may have) goes to the first unstarted step that touches that system.
+- A row for a step already started goes to the first unstarted step that touches that system.
 - The triage's commit writes every row into §2.2 (Phase 7 steps, with `Later` or `9.2` in the step cell and status for the rest) or §2.3 (Phase 8 steps), so each S-ID has one disposition in the tables.
 
 ### 2.5 7.14's and 7.15's finite lists
@@ -408,13 +410,12 @@ The brief's kit survey still holds where a row rests on it: crit is a flag and `
 
 ### 2.8 Order, tracks and routes
 
-- **Main track:** 7.2 → 7.3 → 7.4 → 7.5 → 7.8 → 7.9 → 7.10 → 7.18 → 7.11 → 7.12 → 7.13 → 7.14 → 7.15 → 7.16.
-- **UI track,** in its own worktree, which the owner makes: 7.17 from after 7.2, then 7.20, both before 7.11. The tracks share only the template's saves (7.9); whichever lands second rebases.
-- **Fixed orders** (the redo's §3): 7.17 → 7.20 → 7.11; 7.18 after 7.10 and before 7.13; 7.5 before 7.8, so its rows reach the steps that build them.
+- **One track,** a step at a time in this tree (2026-10-31, the owner's choice): 7.2 → 7.3 → 7.4 → 7.5 → 7.8 → 7.9 → 7.17 → 7.20 → 7.10 → 7.18 → 7.11 → 7.12 → 7.13 → 7.14 → 7.15 → 7.16. The UI steps no longer run beside 7.8–7.10 in a worktree: a session beside the track would share the CPU with each close's timed rows and leave the owner a merge across version branches, and 7.9 changes the template's saves, the one file set they share. Steps 6 and 7 keep their numbers, which plans cite, so Step 7 (7.9) runs before Step 6 (7.17).
+- **Fixed orders** (the redo's §3): 7.9 → 7.17 → 7.20 → 7.11; 7.18 after 7.10 and before 7.13; 7.5 before 7.8, so its rows reach the steps that build them.
 - **Routes:** every step is large under `D-140` and writes its own plan with the tungsten-plan skill, except 7.16, which is medium unless its research spans sessions. Where a step needs several plans:
   - 7.8: runtime terrain, then physics with slopes and the controller last (the redo's 7.8 row).
   - 7.9: saves of many areas, then boot loading with sprite sheets and the small seams.
-  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-9–PA-11, P7-7; 7.5's S-12), the shapes the rest stand on; **7.10b** statuses and chemistry on them, with the blast its outputs need (P7-4, P7-5, PA-8, S-122 (K1), S-4 (K10), K27, K28; 7.5's S-1, S-39, S-41, S-48, S-51, S-56, S-79, S-96, S-121, S-154, S-165); **7.10c** abilities, 01's generic code, motion and the genre tags (P7-2's kit part, P7-6, K8, PA-3, PA-4, P7-19, P7-20, K3, K19, K20, K22, P7-18; 7.5's S-5, S-10, S-15, S-17, S-18, S-19, S-20, S-31, S-37, S-52, S-53, S-66, S-73, S-78, S-84, S-86, S-88, S-92, S-105, S-110, S-130, S-134, S-135, S-142, S-150, S-156, S-159, S-186). K11 moved to 7.13 as S-36, the kit's `Cooldown` already being its timer (§2.2). Each plan updates the kit's determinism pin where it changes what the hash serializes (§5). PA-3, PA-4 and PA-9 move to 8.7 when the plan holding them passes ten steps or its critique finds 7.10 too large (PA-Q2).
+  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-10, PA-11, P7-7; 7.5's S-12), the shapes the rest stand on; **7.10m**, the motion plan, after 7.10a, whose hits its impact damage and knockback carry: the impulses and the controller's rules 7.8 moved on, the known issues' slope-cast fix ahead of the slope rules, and the motion 7.10b's blast stands on (P7-2's physics and kit parts, K7, K19, K20, K23, K30; 7.5's S-92, S-99, S-132, S-134); **7.10b** statuses and chemistry on them, with the blast its outputs need (P7-4, P7-5, PA-8, S-122 (K1), S-4 (K10), K27, K28; 7.5's S-1, S-39, S-41, S-48, S-51, S-56, S-79, S-96, S-121, S-154, S-165); **7.10c** abilities, 01's generic code and the genre tags (P7-6, K8, P7-19, P7-20, K3, K22, P7-18; 7.5's S-5, S-10, S-15, S-17, S-18, S-19, S-20, S-31, S-37, S-52, S-53, S-66, S-73, S-78, S-84, S-86, S-88, S-105, S-110, S-130, S-135, S-142, S-150, S-156, S-159, S-186). K11 moved to 7.13 as S-36, the kit's `Cooldown` already being its timer (§2.2). Each plan updates the kit's determinism pin where it changes what the hash serializes (§5). The order is 7.10a → 7.10m → 7.10b → 7.10c (2026-10-31): 7.10m took the six rows 7.8 moved on, which no plan held, and 7.10c's motion; PA-3, PA-4 and PA-9 moved to 8.7 then, PA-Q2's move taken early (§2.3).
   - 7.12: the format and CLI, then the editor (the redo's 7.12 row).
 
 ## 3. Steps
@@ -423,10 +424,10 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 - No row of the step left open: `rg -n '^\| [^|]+ \| [^|]+ \| <step> \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0.
 - Its plan closed: deleted with its citations, `just repo-check` → passes.
-- This file's evidence row written in the step's closing commit, with the commit range and the step's done-when quoted from its plan.
+- This file's evidence row written in the step's closing commit, terse as the [plans README](README.md) asks, in about 800 characters: the verdict; the plan and its commit range; its own evidence log, cited by the last commit that held it; at most five key numbers from its done-when, the demo's among them; how many rows landed and moved (the tables name which); the capture paths.
 - From 7.8 on, a system step's benchmark row and counter guard in 7.3's runner (§5.8), except 7.18.
 
-**Hand-off:** each step ends with the next step's plan prompt, from tungsten-next's `plan` row with this file and the redo's row as its sources.
+**Hand-off:** each step ends with the plan prompt of the next step in §2.8's order, from tungsten-next's `step` row with this file and the redo's row as its sources.
 
 ### Step 1 (7.2): Agent tooling foundations
 
@@ -458,9 +459,9 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 - **Done-when:** the redo's 7.8 sketch; friction and slope piles as rows (§2.6).
 - **Moves:** the physics hashes, under 7.3's guards.
 
-### Step 6 (7.17): UI pass, UI track
+### Step 6 (7.17): UI pass
 
-- **Rows:** 7.5's S-9, S-28, S-33, S-42, S-45, S-62, S-64, S-67, S-81, S-82, S-91, S-93, S-94, S-102, S-104, S-108, S-109, S-114, S-116, S-123, S-127, S-133, S-139, S-149, S-152, S-153, S-155, S-157, S-162, S-163, S-171, S-183, S-187. **Design:** §5.9. After 7.2, in its own worktree, beside 7.8–7.10.
+- **Rows:** 7.5's S-9, S-28, S-33, S-42, S-45, S-62, S-64, S-67, S-81, S-82, S-91, S-93, S-94, S-102, S-104, S-108, S-109, S-114, S-116, S-123, S-127, S-133, S-139, S-149, S-152, S-153, S-155, S-157, S-162, S-163, S-171, S-183, S-187. **Design:** §5.9. After 7.9 (§2.8).
 - **Done-when:** the redo's 7.17 sketch, the shell's `tokei` count against `D-199`'s 2,900 measured, and the idle-screen counter guard.
 
 ### Step 7 (7.9): Saves and engine seams
@@ -468,16 +469,16 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 - **Rows:** P7-8, P7-10, P7-13, P7-14, P7-15, K2, K4, K9, S-38 (K21); 7.5's S-2, S-3, S-25, S-27, S-29, S-40, S-43, S-46, S-58, S-59, S-63, S-70, S-71, S-76, S-87, S-89, S-95, S-97, S-101, S-113, S-117, S-125, S-137, S-138, S-143, S-148, S-173, S-179. **Design:** §5.4, §5.5.
 - **Done-when:** the redo's 7.9 sketch, with §5.5's acceptance test (a restore into a world with other entity allocations, 01's save tests unchanged); the save snapshot and boot rows.
 
-### Step 8 (7.20): Screens as data, UI track
+### Step 8 (7.20): Screens as data
 
 - **Rows:** 7.5's S-72. **Design:** §5.11. After 7.17.
 - **Done-when:** the redo's 7.20 sketch and the reloaded-screen counter guard.
 
 ### Step 9 (7.10): Kit pass
 
-- **Rows:** the 68 rows §2.2 sends to 7.10, as 7.10a, 7.10b and 7.10c (§2.8). **Design:** §5.2, §5.3, the ARPG design's §3–§8 and §16.
-- **Done-when:** the redo's 7.10 sketch; the ARPG design's §16 row for 7.10 (§9.1's hit resolves to 32.07 in a kit test; 01's crit, blast share and difficulty are data with its tests' outcomes unchanged); the spread row at 12,000 bodies.
-- **Moves:** the kit's determinism pin, at most once per 7.10 plan, under 7.3's guards (§5).
+- **Rows:** every row §2.2 sends to 7.10, as 7.10a, 7.10m, 7.10b and 7.10c, in that order (§2.8). **Design:** §5.2, §5.3, §5.6 for 7.10m, the ARPG design's §3–§8 and §16.
+- **Done-when:** the redo's 7.10 sketch; the ARPG design's §16 row for 7.10 (§9.1's hit resolves to 32.07 in a kit test, its sheet's speed and use time being 8.7's with PA-3 and PA-4; 01's crit, blast share and difficulty are data with its tests' outcomes unchanged); the spread row at 12,000 bodies.
+- **Moves:** the kit's determinism pin, at most once per 7.10 plan, and the physics hashes in 7.10m, each under 7.3's guards (§5).
 
 ### Step 10 (7.18): Camera rigs
 
@@ -517,7 +518,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 ### Step 17: Close
 
 - **Files:** this plan (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md`, `docs/plans/arpg-design.md`, the follow-ups' homes.
-- **Change:** carry §2.3's open rows into the redo's §3 Phase 8 rows by ID (PA-12 and PA-13 into 8.1, PA-14–PA-16 into 8.2, P8-6's note into 8.1, PA-17–PA-22 named in 8.7); point the ARPG design at the redo; move open follow-ups to known issues or Later; delete this plan and its citations; take `phase-7` out of Now.
+- **Change:** carry §2.3's open rows into the redo's §3 Phase 8 rows by ID (PA-12 and PA-13 into 8.1, PA-14–PA-16 into 8.2, P8-6's note into 8.1, PA-3, PA-4, PA-9 and PA-17–PA-22 named in 8.7); point the ARPG design at the redo; move open follow-ups to known issues or Later; delete this plan and its citations; take `phase-7` out of Now.
 - **Done-when:** no Phase 7 step's row open (`rg -n '^\| [^|]+ \| [^|]+ \| 7\.[0-9]+ \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0, run before the deletion); every §2.2 row's status terminal (§2.1), each `Later` row a line in ROADMAP.md's Later, each `9.2` row in the redo's 9.2 lever list, and each list item done, dropped or stopped, as the last evidence row quotes; every open §2.3 row in the redo, moved and S-rows included (`rg -o -r '$1' '^\| ([A-Z0-9-]+) \| [^|]+ \| 8\.[0-9]+ \| open \|' docs/plans/phase-7.md | while read -r id; do rg -q "$id\b" docs/plans/roadmap-redo.md || echo "$id"; done` → prints nothing, run before the deletion); `just repo-check` → passes; example 01 runs.
 - **Ends with:** the commits made, the evidence quoted, what the owner should play, and the next prompt (8.1's plan).
 
@@ -527,11 +528,11 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 | --- | --- | --- |
 | Q1 | 7.7 ran before 7.2–7.5. Re-cut the order? | No: the redo's order stands; 7.5's rows join by §2.4, and the lists' numbers come from 7.3's rows at each pass's start |
 | Q2 | The K-rows the redo's §3 doesn't cite (K1, K11, K19–K23, K27, K28, K31) | The steps in §2.2; 7.5's triage may re-cut them with new evidence |
-| Q3 | 7.10 as three plans in dependency order | Yes, as §2.8; PA-3, PA-4 and PA-9 move to 8.7 on PA-Q2's trigger there |
+| Q3 | 7.10 as three plans in dependency order | Yes, as §2.8; four since 2026-10-31, 7.10m holding the motion 7.8 moved on, with PA-3, PA-4 and PA-9 moved to 8.7 (PA-Q2) |
 | Q4 | The lists' floor and target | A floor of 5 % of the row's time at the gate; a target of half the item's measured share; G6 behavioural |
 | Q5 | Where 7.15 measures 01 | A local GPU row of 01's areas in 7.3's set, M77's area survey made a row |
 | Q6 | Where Phase 8's assignments live after this plan | The redo's §3 rows by ID (step 17); the ARPG design stays until 8.7 closes |
-| Q7 | `phase-7` in Now for the whole phase | Yes, beside the step in work; with the UI track, Now holds three |
+| Q7 | `phase-7` in Now for the whole phase | Yes, beside the step in work; one track since 2026-10-31, so Now holds two |
 | Q8 | 7.5's row IDs | `S-1`, `S-2`, … |
 | Q9 | P8-6's schedules depend on P8-8's navigation, a step later | 8.1 resolves schedules by time and places NPCs without paths; walking between places waits for 8.2 |
 
@@ -539,18 +540,17 @@ Each question takes its stated default; the owner reviews the plan on their own 
 
 ## 5. Invariants
 
-- **May move:** a row's step, only by §2.1's move with its reason; a list item, only out, at its gate. The kit's determinism pin (`crates/tungsten/src/tests/kit_recipes/determinism.rs`) at most once per 7.10 plan, since it serializes effects and buckets (7.10b) and each genre's world (7.10c), each move with its cause in the evidence log; this splits §5.2's and the ARPG design's §16's "moves once" across 7.10's plans (Q3).
-- **Must not move:** the redo's fixed orders (§2.8); the lists' membership beyond the gate; the determinism test's two-run assertion, which holds at every commit. Engine invariants are each step's plan's: the physics hashes move only in 7.8, under 7.3's guards; the pinned containment hash, the row digests, `gpu-visual.png` and the post and transition regressions move only where a step's plan says so.
+- **May move:** a row's step, only by §2.1's move with its reason; a list item, only out, at its gate. The kit's determinism pin (`crates/tungsten/src/tests/kit_recipes/determinism.rs`) at most once per 7.10 plan, since it serializes effects and buckets (7.10b) and each genre's world (7.10m, 7.10c), each move with its cause in the evidence log; this splits §5.2's and the ARPG design's §16's "moves once" across 7.10's plans (Q3).
+- **Must not move:** the redo's fixed orders (§2.8); the lists' membership beyond the gate; the determinism test's two-run assertion, which holds at every commit. Engine invariants are each step's plan's: the physics hashes move only in 7.8 and with the rows 7.8 moved on (7.10m's, and K14 in 7.14's C1), each under 7.3's guards with its cause in the evidence log; the pinned containment hash, the row digests, `gpu-visual.png` and the post and transition regressions move only where a step's plan says so.
 
 ## 6. Stop conditions
 
-- A step's done-when fails: its rows stay open, steps that depend on it wait, and the other track carries on. A step's own plan handles its failed checks as the skill says.
+- A step's done-when fails: its rows stay open, steps that depend on it wait, and a later step that doesn't may run first, within §2.8's fixed orders. A step's own plan handles its failed checks as the skill says.
 - A row needs a system no Phase 7 step builds: it moves to Phase 8 or Later, with its reason.
 - A row's dependency lands after its step: it moves to the first step after the dependency.
-- 7.10 is too large: PA-Q2's trigger (§2.8).
+- A 7.10 plan passes ten steps or its critique finds it too large: it splits by §2.8's dependency order (PA-Q2's three rows have moved).
 - A list item can't reach its target: `stopped`, with the profile.
 - A new performance finding: 9.2, never the list.
-- Now would hold four items: the UI track waits.
 
 ## 7. Critique
 
@@ -571,6 +571,8 @@ Round 2: the same reviewer at xhigh, 2026-10-29, reading `a577dfc1` with the Cri
 | 2.1 | [MEDIUM] Moved rows can escape the Phase 8 handoff | §2.1 made `moved` terminal, and step 17 carried only §2.3's open rows and checked PA-12–PA-22 alone, so PA-3, PA-4 or PA-9 moved to 8.7 would be lost | accepted | §2.1: a move rewrites the step cell and keeps the row open, Phase 8 rows in §2.3; step 17 checks every open §2.3 ID against the redo |
 | 2.2 | [MEDIUM] A valid `9.2` disposition still violates the overall completion condition | The header's done-when listed landed, moved, closed and Later | accepted | The header accepts §2.1's terminal states, `9.2` included |
 
+Round 3, on the re-cut of 2026-10-31 (one track, 7.10m, PA-3, PA-4 and PA-9 to 8.7, the evidence rule): the same reviewer at xhigh, artifact-only, on the diff `35e1849c..0866a8c6`. Footer: `77.9 s, tokens in 31361 (cached 0), out 2070, usage 5h 59% → 64%, week 75% → 76%`. No concerns.
+
 ## Evidence log
 
 | Step | Date | Verdict | Key numbers | Paths |
@@ -579,9 +581,14 @@ Round 2: the same reviewer at xhigh, 2026-10-29, reading `a577dfc1` with the Cri
 | 2 (7.3) | 2026-10-29 | passed | `bench-runner`, commits `6664ed3b` (the plan) through `eea02d45` (world counters, `CounterGuard`), `a920cc49` (guards on the seven bench rows and 01's pit), `56b49dfa` (`scripts/perf.py`, `perf_stats.py`, `perf-rows.json`), `bb05f883` (a four-slot timestamp ring, `gpu_passes: from=N`, draw, upload and text counters), `38fd3929` (sittings: A/A, one rerun, quick, start check), `6c95b983` (the switch; `bench.py`, `bench_report.py` and `integrated` purged), `c0fc596d` (`D-226`), `ea98e798`, `cdaa4a3d` (a run's deadline), `3b2422b6`, `47bac794`, `4602f631` and the close; its done-when: `just perf list` lists 15 rows, every row this step names (01's full pit, the template frame, `ecs`, `particles`, `physics-sparse`, `gpu`, `gpu-throughput`, `e01-areas`' six areas); `just check` → passes, the guards included; `just perf counters` → gpu, gpu-throughput, template, e01-area-clearing ok; the first full sitting, base HEAD, every row `ok` in 2,320 s, provisional baselines saved as `provisional-0.113`; the GPU run's `total` against the timing run's fell from 1.28 to 1.01; the old runner gone, its findings in benchmarks.md's Levers for 9.2; per-milestone sittings retired (`D-226`); `just script-test`, `ctx`, `repo-check`, `api-check`, `docs-ratchet`, `smoke` (13/13 rows), `visual` → pass; `just perf run e01-pit --repeat 1` → valid, digest `7daaf2f10196ccad`; 01 through its own `cargo run` with a script → the player walks from x 368 to 1,212 in the Lantern clearing, health 100, passed; the plan deleted with its citations, its follow-up in known issues, out of Now | `perf-runs/20261029T163620Z-sitting` (the baseline), `perf-runs/20261029T171238Z-sitting`, `perf-runs/20261029T181822Z-sitting-quick`, `perf-runs/20261029T182915Z-counters`, `perf-runs/20261029T182922Z-e01-pit` |
 | 3 (7.4) | 2026-10-29 | passed | `health-h2`, commits `c8105ad6` (the plan) with its critique rounds `fe83ae90` and `ccd6195a`; `62ab8efe` (H1's overhead retaken: the example group at 20.7 % of tool calls and 16.5 % of output tokens against 22.1 % and 20.0 %, a median of 10 record files a release against 12); `a49de384` (the carried proposals: deny-list bans, exact allows, `.editorconfig` and `.gitattributes`, the demo rule, client checks on Claude Code 2.1.311 and Codex 0.160.0); `ef9486cf` (`just status`); `ceff7e09` (releases on a tag push, `just release minor` and `rehearsal`, `D-227`); `0a383dbb`, `b0868291`, `9d6e41e5`, `376218d2`, `b1ed7a26` (the decision, release, next and plan skills rewritten against no-skill baselines on 7.1–7.3's tasks, every lean skill passing its blind-graded checklists, three of them after one revision; 11,838 bytes against 23,239; 6.74M tokens); `b3204331` (the memory hubs pruned: 61, 42 and 13 links to 50, 14 and 8, files 168 to 117) and the close. Its done-when: every step's checks passed (its evidence log at `b3204331`); `just check` → 3,703 tests passed, 0 failed; `just script-test`, `just ctx`, `just repo-check`, `just deps` and `git diff --check` → exit 0; citations of the deleted plan → none; phase 7's status set in progress; the demo: `just status` → six sections, `phase-7.md: in progress · steps: 17 · evidence rows: 3 · last: step 3 (7.4), passed`; `just release rehearsal` → exit 0 and the owner's block, a rehearsal tag and its push; a fresh agent with the lean `tungsten-next` on the tree after the deletion → 7.5's plan as the `step` prompt (phase 7's Step 4, the redo's 7.5 row and §7.1) | `perf-runs/20261029-overhead-h1/`, `perf-runs/20261029-h2-skills/`, `perf-runs/20261029-h2-memory/` |
 | 4 (7.5) | 2026-10-30 | passed | `analysis-pass`, commits `3b01712d` (the plan), `203fad2d` (the register framed), `12ea9e55` (the reading and merge), `6c264e33` (the verified register), `088c903a` (the triage) and the close; its done-when: step 1 `shares.py --check` → 157 files, 86,471 lines, `unassigned 0, doubled 0`, and `check.py` on its fixture → exit 1 on the overlap and the Lines mismatch; step 2, nine readers (5.00M subagent tokens) → 253 rows and 86 entries, `shares.py --ledger` → `unread 0`, `check.py --sources` → 195 merged rows (15,622 lines) and 32 entries, `unaccounted 0, doubled 0`; step 3, thirteen verifiers (4.58M tokens) → rows 84 confirmed, 109 corrected, 2 dropped, entries 18 confirmed and 14 corrected, seeds 2 confirmed (K8, known issue 31) and 1 dropped (K25), bugs 8 confirmed and 1 dropped, `missing 0`, and `check.py --register` → 193 S-rows (15,810 lines) and 32 §4 entries (9,919 lines), `errors 0`; step 4, the S-IDs here and in the register `cmp`-equal, 193 each; `triage_check.py` → `errors 0`; the Later and 9.2 loops print nothing; K8 `landed 4d51a071`; the S-rows per disposition 7.8 10, 7.9 29, 7.10 42 (a 1, b 13, c 28), 7.17 33, 7.20 1, 7.18 2, 7.11 17, 7.12 5, 7.13 38, 7.14 6, 7.15 2, 8.2 1, 8.3 5, `Later` 2, `9.2` 0; every step's no-code check → exit 0. The close: seven bugs filed in known issues (the eighth, b6, was already Later's route-test line), known issue 31 removed (fixed by `1803bb7d`), F3 retaken; no 7.5 row open; `just check` → exit 0, 3,703 tests passed, 0 failed; `just ctx`, `just repo-check` and `git diff --check` → exit 0; citations of the plan → none; the demo: `just status` → `docs/plans/phase-7.md: in progress · steps: 17 · evidence rows: 4 · last: step 4 (7.5), passed`, Now without `analysis-pass` | `perf-runs/20261030-analysis-pass/` (`prompts/`, `readers/`, `merged.md`, `verify/`, the scripts, `overhead/`, `close/`) |
+| 5 (7.8), part 1 | 2026-10-30 | passed | `runtime-terrain`, commits `9180036e` (the plan), `2f325e87` (tile and collision-layer properties), `df0a1141` (tiles in their layer's physics layers), `630cb828` (edits in place, the journal, cell health), `beb08bd2` (the auto-tiler), `a9ca7b39` (region queries and sensors on the grids), `2361fa67` (the tile cache's cold state boxed, so `PhysicsBuffers` keeps its size in the guard pins), `efa93284` and `f32495aa` (step 6 stopped and revised: one contact a run softened 01's pit walls, centres past a wall face in 56 of 202 pit cases against 8 with cells, and no stiffened run contact restored it), `d2295cdb` (the outline traced per 16 × 16 chunk, casts on its runs, 01's index 10,093 cells to 298 runs), `920e2944` (one-way edges), `f1bf04e9` (the outline in the physics overlay), `beb7b081` (the `terrain` row and its guard), `c31c8bfc` (`D-228`) and the close; its done-when: every step's checks passed (its evidence log at `c31c8bfc`); `just check` → exit 0, 3,744 tests passed in 30 suites, 0 failed; `just physics-release` (determinism and containment hashes unchanged), `just api-check`, `just docs-ratchet`, `just perf-test`, `just ctx` and `just repo-check` and `git diff --check` → exit 0; `just smoke` → every section passed (benchmarks 13/13); `just perf counters` → gpu, gpu-throughput, template, e01-area-clearing ok; the demo: from `examples/01_platformer`, `tungsten run --script` (`start_run`, the player walking right from x 377, hopping the clearing's crates to x 949 and walking back to x 430 by frame 300) → exit 0, 4 asserts passed: `area` "Lantern clearing", the player standing on the ground (y 2210.99), x below 500; `tungsten render --after start_run --at 640,2240 --view 288 --overlay physics --frame 120` → exit 0, the floor's top face one outline line and none inside, a wider capture outlining the raised ledge and the floating platforms on their exposed faces; `just perf run terrain --repeat 1` → valid on the clean tree, digest `8675de67eeab6c93` as at step 9, `bench.edits constant` (32..32) and `bench.traced <= 256` (51..77) ok, `physics_step` p50 5.33 ms and p95 5.84 ms, `update` p95 6.16 ms; the plan's citation check run with `check-repo.py`'s exemption of `CHANGELOG.md`, whose released 0.113 notes name the plan; citations of the plan → none; P7-1 landed, the rest of Step 5's rows open for the physics plan | `perf-runs/20261030-runtime-terrain/` (the stop, the options measured, `close/`) |
+| 5 (7.8), part 2 | 2026-10-31 | passed | `physics-on-terrain`, commits `79c0f268` (body seams), `ddc3e3e4` (physics layer names and materials), `aae37231` (friction), `52202d87` (circles that roll), `992f75d2` (contact events), `e6c9bbe0` (sensor exits and swept sensors), `3b9b2762` (step 7 stopped: its push record counted the soft solver's push-out), `5656e347` (casts that pass refused hits), `a6c4251a` (step 9 stopped: the resting index moved `terrain`'s pin), `e9bba6e8` (slope tiles for bodies), `5ae9ab86` (slope tiles in queries and the overlay), `2e8108cb` (step 12 stopped: the slope casts let a box at an exact contact pass a masked vertex side), `be8ef6c6` (step 13 behind steps 7 and 12), `8d36de70` (the `friction` and `slopes` rows), `d0b0d477` (`D-229`) and the close; its done-when: every landed step's checks passed (its evidence log at `d0b0d477`); `just check` → exit 0, 3,793 tests passed in 30 suites, 0 failed; `just physics-release` (16 passed, the determinism and containment hashes unchanged), `just api-check`, `just docs-ratchet`, `just perf-test`, `just ctx`, `just repo-check` and `git diff --check` → exit 0; `just smoke` → every section passed (benchmarks 17/17, `piles` at its four presets); `just perf counters` → gpu, gpu-throughput, template, e01-area-clearing ok; the demo: from `examples/01_platformer`, `tungsten run --script` on part 1's script → exit 0, 300 frames, 4 asserts passed: `area` "Lantern clearing", the player standing on the ground (y 2210.99), x 430 below 500, its path as part 1's (x 377 at frame 30, 949 over the crates at 120, 430 by 270); `just perf run friction --repeat 1` → valid, digest `d95faee6785e4893` as at step 14, `bench.sleeping <= 0` and `bench.escaped <= 0` ok, `physics_step` p50 7.08 ms and p95 7.88 ms, `update` p95 7.94 ms; `just perf run slopes --repeat 1` → valid, digest `ee588679485534d1`, `bench.recycled >= 60` (299..483) and `bench.inside <= 0` ok, 2.30, 2.40 and 2.46 ms; Step 5's rows: P7-3, S-16, S-26, S-60, S-65, S-77, S-112, S-172 and S-175 landed, P7-2's impulses, K7, K23, K30, S-99 and S-132 moved to 7.10 and K14 to 7.14 (§6), none open; its follow-ups in known issues and Later; the plan deleted with its citations, out of Now | `perf-runs/20261031-physics-on-terrain/` (the stopped steps' patches and probes, `close/`), `perf-runs/20261031T082623Z-friction`, `perf-runs/20261031T082626Z-slopes` |
+| 7 (7.9), part 1 | 2026-10-31 | passed | `saves-and-seams`, commits `a9cb10c3` (save identities and the registry), `b3b3b985` (capture and restore; a save spawn's prefab ID rides the command stream, a `CommandBuffer` field having moved 02's `ecs` pin), `ce42a2ae` (areas, tiles, kept areas, pending references), `8278ab06` (the free spot), `e271a5ee` (`migrate_step`, `save_stamped`), `93540b4a` (01's arms a schema at a time), `8db2c754` (the kit's 28 saved components, codecs and request queues), `93197b6c` (orders by save ID), `ef935f73` (the template on one-call saves), `c8232257` (the `saves` row), `1ec87ae6` (`D-230`) and the close; its done-when: every step's checks passed; `just check`, `just physics-release` (hashes unchanged), `just api-check`, `just docs-ratchet`, `just perf-test`, `just ctx`, `just repo-check` and `git diff --check` → exit 0; the kit's pin, 01's `pit` and 02's ten pins unchanged, 01's tests untouched; `just smoke` → every section passed (benchmarks 19/19); `just perf counters` → gpu, gpu-throughput, template, e01-area-clearing ok; the demos: from `templates/basic`, `tungsten run --script` (`start_run`, x 624 at frame 9, `place_player` to x 900 at 30, `reload_run` at 90, x 900 at 89 and 150) → exit 0, 4 asserts passed, where a held `move_right` moves the player headless but not in the window, before this plan too (known issues), so the demo places it; from `examples/01_platformer`, `tungsten run --script` on 7.8's script → exit 0, 4 asserts passed, its path as 7.8's (x 377 at 30, 949 at 120, 430 by 270); `just perf run saves --repeat 1` → valid (diagnostic: `--allow-background` beside the owner's NoMachine session), digest `0ac30092c6b48f1c`, 12,101 records, `bytes` ≤ 3,080,192 ok, `save_snapshot` p50 26.2 ms, p95 29.2 ms; P7-8, S-2, S-3, S-43, S-59 (the kit's part; its rest in Later), S-101 and S-125 (the engine's part) landed, none open; the plan deleted with its citations, out of Now; Step 7's other rows and its part 2 are the second plan's | `perf-runs/20261031T215321Z-saves`, `perf-runs/20261031T220639Z-saves`, `perf-runs/20261031T220627Z-counters` |
+| 7 (7.9), part 2 | 2026-11-01 | passed | `boot-and-seams`, commits `aa7c6689` (the startup line, the manifest from `Config`), `ce71db3c` (sprite sheets and anchors, headless sprites), `a6c3d80a` (boot loading), `e1af0b5b` (sound reload), `01826112` (pan, ducks, plays by ID), `9c144ab9` (step 6 stopped: the kit's loops and music per state needed files outside its list), `48000b85` (animation speed, one-shot ends, frame sounds), `e48bc6c1` (particles), `0bdb8e33` (flips, lit flashes, unlit sprites, light tweens, the `seams` fixture), `b686d9fd` (tile layers among sprites, slots, backdrops), `6a9e7881` (fragment-only materials, `engine_glow`, `engine_white`, draw helpers), `81f4df88` and `c986cb2f` (steps 12 and 13 stopped: text outlines and sprite variants needed literals in files outside their lists), `0aa735d2` (the `boot` row and `guards_boot`), `6cc1055f` (`D-231`) and the close; its done-when: `just check` → exit 0; `just physics-release` 16 passed; `just api-check`, `just docs-ratchet` (no rise), `just perf-test` (45 OK), `just ctx`, `just repo-check` and `git diff --check` (the tree and `aa7c6689~1..HEAD`) → exit 0; `just smoke` passed every section (benchmarks 21/21, seams 1/1); `just perf counters` ok on its four rows; `just visual` passed its six suites, the goldens included; 01's demo from its folder (`tungsten run --script`, 7.8's script with the `startup` probe) → 300 frames, 5 asserts passed, `first_frame` 110.71 ms, `loaded` 728.36 ms, 9 boot frames (debug); the template's → 150 frames, 5 asserts passed, `first_frame` 68.83 ms, `loaded` 116.07 ms, 1 boot frame; `just perf run boot --repeat 1` → valid, digest `0d32539a6b42bedd` as at step 14; the drawing sheet copied; the 30 rows: 26 landed, P7-13's kit part to 7.10, S-63 to 7.11, P7-14 to 7.17, S-58 to 7.12; no pin moved but the default extract's digest, by design (its lit batches keep their blocks), the save snapshot and boot rows both landed | `perf-runs/20261101-boot-and-seams/` (`seams-sheet.png`, `demos/`, `startup/`, `step3/`, `step6-stopped/`), `perf-runs/20261101T045340Z-boot` |
 
 ## Follow-ups
 
 - **F1.** The paper designs' step 6 and its done-when ("7.7 has assigned every row of §4") are met by §2; its step 6 also says "7.13 and 8.5 take the weekly tasks", where the redo's §8 now says 7.13 and 8.6. Mark it at the next edit of that file, or at step 17.
 - **F2.** Done at 7.4: tungsten-next's `step` prompt hands a phase plan's next step its own plan, and its `run` prompt says "never a phase plan".
 - **F3.** Done at 7.5 (`perf-runs/20261030-analysis-pass/overhead/`, H1's classifier with 7.5's two sessions and its plan and register as its own files): the main sessions at 64.5 % of tool calls and 66.3 % of output tokens (45.4 % and 49.2 % with the plan and the register counted as 7.5's work), 11.5 % and 13.8 % with the subagents' 3,986 calls. A documents pass whose product is records, so read beside H2's retake of H1 with that caveat: the example group at 20.7 % of tool calls and 16.5 % of output tokens (baseline 22.1 % and 20.0 %), Phase 7's sessions at 30.5 % and 29.9 %, plan sessions 33–72 %.
+- **F4.** Done at 7.8's close (`perf-runs/20261031-overhead-7.8/`, F3's classifier on 7.8's seven sessions: two plans, four runs, one an 8-call false start, and a revision; 0.113's release left out): 28.8 % of tool calls and 18.5 % of output tokens touched records, against the example group's 20.7 % and 16.5 % at H2's retake. The runs took 13.0–20.6 % and 8.0–11.9 %; the plan sessions 54–55 % and 38–43 %, mostly their own plan file, 19–22 % of calls without it. With each session's own plan counted as its work, 7.8 took 15.3 % and 10.3 %.

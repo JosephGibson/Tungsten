@@ -31,8 +31,8 @@ use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::save::SaveError;
 use tungsten::core::ui::{UiEvent, UiRouter, UiTrack, UiTree, Visibility, WidgetId};
 use tungsten::core::{
-    ActionMap, AudioCommands, DisplayMode, DisplayState, EventQueue, InputState, RoutedInput,
-    SaveSlots, ScaleFactor, Schedule, Settings, SoundRegistry, Stage, Time, Voice, World, system,
+    ActionMap, DisplayMode, DisplayState, EventQueue, InputState, RoutedInput, SaveSlots,
+    ScaleFactor, Schedule, Settings, Stage, Time, Voice, World, system,
 };
 use tungsten::{
     DebugHud, Exiting, GameState, HudCorner, Plugin, RootCover, StateId, StateStack,
@@ -881,11 +881,7 @@ fn display_keys(world: &mut World) {
 /// Plays the manifest's sound `id` at its volume, looping as the manifest
 /// says, faded in over `fade` seconds; `None` when it names no such sound.
 pub fn play(world: &mut World, id: &str, fade: f32) -> Option<Voice> {
-    let registry = world.resource::<SoundRegistry>();
-    let handle = registry.get_by_id(id)?;
-    let (volume, looping) = (registry.get_volume(handle), registry.get_looping(handle));
-    let audio = world.resource_mut::<AudioCommands>();
-    Some(audio.play_faded(handle, volume, looping, fade))
+    tungsten::core::audio::play(world, id, fade)
 }
 
 /// The menu sounds for this frame's routing: a move when a navigation

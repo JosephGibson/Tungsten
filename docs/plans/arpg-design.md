@@ -598,13 +598,13 @@ Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the g
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PA-1 | Lines scoped by tags | AR2 (AR1) | 600 | A modifier has no scope; a stat has one value | `with`, `while`, `against` on lines; reads in a context; `Stats::get` unchanged for the empty one (§5) | foundation | — | 7.10 `+` |
 | PA-2 | Skill sheets and the snapshot | AR3, AR4 | 700 | No skill tags, level or bases; payloads take none of the user's values; hits carry no context | Skill tags, levels by curve, sheet stats, skill-local lines; a `Delivery` snapshot on what a use spawns; hits carrying context and state tags (§3.5, §6.2) | intent | PA-1 | 7.10 `+` |
-| PA-3 | Area and projectile speed read | AR5, AR6 | 90 | `area` and `projectile_speed` read by nothing | Read from the sheet: radius × √area, the spawn's speed | intent | PA-2 | 7.10 `+` |
-| PA-4 | Use time | AR14 (AR33) | 250 | Abilities fire at once; one speed for cooldowns only | Wind-up and recovery from `use_time` and `use_speed`; with P7-6's held trigger | intent | PA-2 | 7.10 `+` |
+| PA-3 | Area and projectile speed read | AR5, AR6 | 90 | `area` and `projectile_speed` read by nothing | Read from the sheet: radius × √area, the spawn's speed | intent | PA-2 | 8.7 `+` (moved from 7.10) |
+| PA-4 | Use time | AR14 (AR33) | 250 | Abilities fire at once; one speed for cooldowns only | Wind-up and recovery from `use_time` and `use_speed`; with P7-6's held trigger | intent | PA-2 | 8.7 `+` (moved from 7.10) |
 | PA-5 | Crit | AR13 | 60 | A flag only; kit hits never crit | `crit_chance` and `crit_multiplier`, drawn in the resolve's order for every request whose source has a chance (§6.4) | damage | PA-1 | 7.10 `+` |
 | PA-6 | Conversion and extra | AR11, AR12 | 300 | Conversion after scaling, with no history; no extra damage | For a sheet, conversion and extra at use, before scaling, with history per part, merged by type and history (§6.2); other requests keep today's conversion step | damage | PA-2 | 7.10 `+` |
 | PA-7 | Defender's side | AR18, AR19 | 120 | No damage taken by context; no floor; penetration on periodic hits | `damage_taken` by context; a floor per factor's tag on `resist`, before penetration; no penetration on periodic requests (§6.4, §6.5) | damage | PA-1 | 7.10 `+` |
 | PA-8 | Statuses from their user | AR16, AR17 | 210 | A DoT's rate is its own; a status's strength ignores its user | A DoT's rate from the hit's part and the snapshot's DoT sums, fixed at application; `status_effect` as the status's scale; statuses applied with instance lines as data, which an inline effect does in code today (P8-3 needs them too) | damage, chemistry | PA-2 | 7.10 `+` |
-| PA-9 | Primary stats | AR20 | 120 | No ordered stats; no line per point of another | `primary` stats resolved first; `per` lines on them only | foundation | PA-1 | 7.10 `+` `defer` |
+| PA-9 | Primary stats | AR20 | 120 | No ordered stats; no line per point of another | `primary` stats resolved first; `per` lines on them only | foundation | PA-1 | 8.7 `+` `defer` (moved from 7.10) |
 | PA-10 | World sources | AR29 | 60 | A scaling per kind of entity is each game's spawn code | A resource of named sources with a tag filter and lines, applied at spawn and to the living, live; 01's difficulty on it | foundation | PA-1 | 7.10 `+` |
 | PA-11 | `explain` records | (AR31) | — | The trace keeps amounts, not lines | Why-records while the trace is on, shared with chemistry's `explain` | foundation | PA-1 | 7.10 `+` |
 | PA-12 | Items with rolled lines | AR23, AR24 | 900 | Items are prefabs; an item's lines go on only by an effect built in code | 8.1's item instance holds base, level, rarity, seed and rolled lines; local lines fold into its block; the equipment status carries its global lines | items | PA-8 | 8.1 `+` |
@@ -621,7 +621,7 @@ Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the g
 
 The rows hold about 7,000 of the build sheet's 7,040 lines: AR33's 40 are P7-6's, already in 7.10's list, and AR1 and AR10 are data only.
 
-**Triage, 2026-10-29.** The owner kept every row at its default step: PA-1–PA-11 to 7.10, PA-12 and PA-13 to 8.1, PA-14–PA-16 to 8.2, PA-17–PA-22 to 8.7. PA-3, PA-4 and PA-9 may still move to 8.7 if 7.10's plan finds the step too large (PA-Q2, §16). PA-13's label styles the instance's rarity by name; 8.7's `rarities` kind (PA-19) is what rolls it. 7.7 assigns the rows by ID.
+**Triage, 2026-10-29.** The owner kept every row at its default step: PA-1–PA-11 to 7.10, PA-12 and PA-13 to 8.1, PA-14–PA-16 to 8.2, PA-17–PA-22 to 8.7. PA-3, PA-4 and PA-9 may still move to 8.7 if 7.10's plan finds the step too large (PA-Q2, §16); they moved on 2026-10-31 (`phase-7.md` §2.3). PA-13's label styles the instance's rarity by name; 8.7's `rarities` kind (PA-19) is what rolls it. 7.7 assigns the rows by ID.
 
 ## 16. Minimal implementation scope by step
 
@@ -629,12 +629,12 @@ Each step builds its rows in the domain the register names, as opt-in plugins wh
 
 | Step | Rows | What lands | Done when |
 | --- | --- | --- | --- |
-| 7.10 | PA-1–PA-11 | Scoped lines and contexts; skill sheets with the snapshot; area, projectile speed and use time read; crit for every hit; conversion and extra before scaling with history; damage taken and floors; DoT and status strength from their user; primary stats; world sources; why-records. The `arpg` genre tag and its first recipes | §9.1's hit resolves to 32.07 in a kit test; 01's crit, blast share and difficulty are data (§8) with no change to its tests' outcomes; the determinism hash moves once, under 7.3's guards |
+| 7.10 | PA-1, PA-2, PA-5–PA-8, PA-10, PA-11 | Scoped lines and contexts; skill sheets with the snapshot; crit for every hit; conversion and extra before scaling with history; damage taken and floors; DoT and status strength from their user; world sources; why-records. The `arpg` genre tag and its first recipes | §9.1's hit resolves to 32.07 in a kit test; 01's crit, blast share and difficulty are data (§8) with no change to its tests' outcomes; the determinism hash moves once, under 7.3's guards |
 | 8.1 | PA-12, PA-13 | Item instances with rolled lines, local and global; the equipment status; ground labels | An item from §4.6's JSON equips, shows its lines and saves round trip |
 | 8.2 | PA-14–PA-16 | Count with an arc, pierce from the sheet, chain and fork with the family bound, repeats | §9.1's cast lands 9 hits on a pack, 12 with the ring; a fork storm stays under the bound |
-| 8.7 | PA-17–PA-22 | Supports, passives, affix generation, uniques, monster level and rarity, `explain`, saves; recipes in `arpg` and one other genre; a sketch; the `arpg.*` rows | 8.7's sketch line: a new skill, support, affix or unique is data only; §12's five tasks pass on a `tungsten new` copy |
+| 8.7 | PA-3, PA-4, PA-9, PA-17–PA-22 | Area, projectile speed and use time read; primary stats; supports, passives, affix generation, uniques, monster level and rarity, `explain`, saves; recipes in `arpg` and one other genre; a sketch; the `arpg.*` rows | §9.1's sheet reads 690 px/s and a 0.721 s use time; 8.7's sketch line: a new skill, support, affix or unique is data only; §12's five tasks pass on a `tungsten new` copy |
 
-If 7.10 is too large, the `defer` rows (PA-9) and PA-3 and PA-4 can move to 8.7 with no rework; PA-1, PA-2, PA-5, PA-6, PA-7 and PA-8 change shapes 7.10 builds and cannot.
+The `defer` row (PA-9) and PA-3 and PA-4 moved to 8.7 on 2026-10-31 (PA-Q2), which takes them with no rework; PA-1, PA-2, PA-5, PA-6, PA-7 and PA-8 change shapes 7.10 builds and cannot move.
 
 ## 17. Trade-offs
 
@@ -656,7 +656,7 @@ If 7.10 is too large, the `defer` rows (PA-9) and PA-3 and PA-4 can move to 8.7 
 The owner accepted all six defaults on 2026-10-29: PA-Q2 and PA-Q5 through §15's triage, the other four as asked.
 
 - **PA-Q1. The new domain's name.** *Default: `build`* (T12). **Accepted.**
-- **PA-Q2. How large 7.10 grows.** Eleven rows land there by the brief's rule. *Default: all eleven; PA-3, PA-4 and PA-9 may move to 8.7 if 7.10's plan finds it too large* (§16). **Accepted.**
+- **PA-Q2. How large 7.10 grows.** Eleven rows land there by the brief's rule. *Default: all eleven; PA-3, PA-4 and PA-9 may move to 8.7 if 7.10's plan finds it too large* (§16). **Accepted.** **Taken 2026-10-31,** before 7.10's plans: the three moved to 8.7 when 7.10 took the motion rows 7.8 moved on (`phase-7.md` §2.3).
 - **PA-Q3. Crit in the kit for every genre.** *Default: yes, as a source's stats, drawn only where a chance is above 0* (§6.4), so 01's crit becomes data at 7.13. **Accepted.**
 - **PA-Q4. Saved items.** *Default: in full, with the seed* (T5). **Accepted.**
 - **PA-Q5. World sources in 7.10 rather than 8.7.** 01's difficulty uses them, and the `arpg` recipe's area modifiers, which meets the redo's §5.3 admission rule. *Default: 7.10.* **Accepted.**
@@ -691,3 +691,4 @@ These fixes were checked mechanically, not by a second round (the brief's stop).
 
 - **2026-10-28.** Read §7.3 and the sections it names, the paper designs' register, the plans README, the API snapshots and the kit's stats, damage pipeline, effects, abilities, hit grid, phases and source code, and 01's combat and enemies. Researched the mechanics on public wikis and guides (§2). Found two `D-218` entries in `DECISIONS.md` (the ARPG genre and a `game.id` rule); the `qa6` session in the same tree renumbered its rule to `D-219` (`f139bef`), so `D-218` here is the ARPG's. Drafted with a span checker and an arithmetic script in the scratchpad; the critique (gpt-6-astra, xhigh, on an 18,776-character extract) and a fresh-context verifier ran in parallel on the draft, and their findings were applied in that order.
 - **2026-10-29.** Step 5 in the 0.113 tree: the owner triaged §15's rows in four batches (7.10's fixed shapes, 7.10's movable rows, 8.1 and 8.2, 8.7) and answered §18's four open questions; PA-Q2 and PA-Q5 followed from the rows. Every row and question kept its default. The status moved to `in progress`, not `done`: step 6 is 7.7's, and it reads §15 before the plan is archived.
+- **2026-10-31.** PA-3, PA-4 and PA-9 moved to 8.7 before 7.10's plans (PA-Q2; §15, §16), when 7.10 took the motion rows 7.8 moved on (`phase-7.md` §2.3).

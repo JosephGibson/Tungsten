@@ -345,3 +345,40 @@ fn a_duration_written_past_new_is_sanitised() {
         assert!(world.get::<Tween>(entity).is_none(), "{duration}: removed");
     }
 }
+
+#[test]
+fn a_light_intensity_tween_writes_the_light() {
+    let mut world = make_world(0.05);
+    let lamp = world.spawn();
+    world.insert(lamp, Transform::default());
+    world.insert(lamp, tungsten_core::Light::point(glam::Vec3::ONE, 64.0));
+    world.insert(
+        lamp,
+        Tween::new(0.1, Easing::Linear)
+            .with_channel(TweenChannel::LightIntensity { from: 2.0, to: 0.0 }),
+    );
+    // A tween on an entity without a light writes nothing and never panics.
+    let dark = world.spawn();
+    world.insert(dark, Transform::default());
+    world.insert(
+        dark,
+        Tween::new(0.1, Easing::Linear)
+            .with_channel(TweenChannel::LightIntensity { from: 2.0, to: 0.0 }),
+    );
+    tween_tick_system(&mut world);
+    let intensity = world.get::<tungsten_core::Light>(lamp).unwrap().intensity;
+    assert!((intensity - 1.0).abs() < 1e-5, "{intensity}");
+    tween_tick_system(&mut world);
+    assert_eq!(
+        world.get::<tungsten_core::Light>(lamp).unwrap().intensity,
+        0.0
+    );
+    // An overshooting easing stops at 0.
+    world.insert(
+        lamp,
+        Tween::new(0.1, Easing::BackIn)
+            .with_channel(TweenChannel::LightIntensity { from: 0.0, to: 1.0 }),
+    );
+    tween_tick_system(&mut world);
+    assert!(world.get::<tungsten_core::Light>(lamp).unwrap().intensity >= 0.0);
+}

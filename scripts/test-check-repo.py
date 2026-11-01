@@ -57,6 +57,14 @@ class RepoChecks(unittest.TestCase):
                    '"font_families":{"sans":{"faces":["sans"]}},"font_fallback":["sans"]}')
         self.assertEqual(self.assets()[0], [])
 
+    def test_boot_group_names_ids_not_files(self):
+        self.write("assets/manifest.json", '{"sprites":{"hero":{"path":"sprites/hero.png","normal_map":"sprites/normal.png"}},'
+                   '"boot":{"logo":"hero","font":"sans"}}')
+        self.assertEqual(self.assets()[0], [])
+        self.write("assets/manifest.json", '{"sprites":{"hero":{"path":"sprites/hero.png","normal_map":"sprites/normal.png"}},'
+                   '"boot":{"logo":{"path":"sprites/hero.png"}}}')
+        self.assertIn("boot group names IDs", " ".join(self.assets()[0]))
+
     def test_duplicate_json_key_is_not_silently_overwritten(self):
         self.write("assets/manifest.json", '{"sprites":{},"sprites":{}}')
         self.assertIn("duplicate JSON key", " ".join(self.assets()[0]))

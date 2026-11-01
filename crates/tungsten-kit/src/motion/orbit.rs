@@ -266,6 +266,7 @@ impl Plugin for OrbitPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Orbit>(world, "Orbit");
+        world.register_saved::<Orbit>(ORBIT_COMPONENT);
         describe_target(world);
         describe(
             world,

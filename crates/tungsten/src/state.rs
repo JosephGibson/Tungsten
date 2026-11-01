@@ -284,15 +284,26 @@ impl Default for StateStack {
     }
 }
 
-/// Queue despawn for entities owned by `id`; removal waits for command flush.
+/// Queue despawn for entities owned by `id`, and the live particles whose
+/// emitter is one of them (redo 7.9), so a title's stars leave with the
+/// title; removal waits for command flush.
 pub fn despawn_scene_entities(world: &mut World, id: StateId) {
-    let targets: Vec<_> = world
+    let mut targets: Vec<_> = world
         .query::<(Entity, &SceneEntity)>()
         .filter_map(|(entity, marker)| (marker.state_id == id).then_some(entity))
         .collect();
     if targets.is_empty() {
         return;
     }
+    let owned: std::collections::HashSet<Entity> = targets.iter().copied().collect();
+    targets.extend(
+        world
+            .query::<(Entity, &tungsten_core::Particle)>()
+            .filter(|(entity, particle)| {
+                !owned.contains(entity) && particle.emitter.is_some_and(|e| owned.contains(&e))
+            })
+            .map(|(entity, _)| entity),
+    );
     let buf = world
         .get_resource_mut::<CommandBuffer>()
         .expect("CommandBuffer resource missing");

@@ -2,8 +2,11 @@ use super::pairs::{
     EMPTY_PAIR, PAIR_AWAKE, PAIR_MARGIN_SLOPS, build_pairs, collect_tripped, gravity_allowance,
 };
 use super::*;
+use crate::assets::tilemap::TerrainProps;
+use crate::assets::{
+    EMPTY_TILE, TileDamage, TileProps, TilemapData, TilemapLayer, TilemapRegistry,
+};
 use crate::assets::{LayerKind, TilemapInstance};
-use crate::assets::{TilemapData, TilemapLayer, TilemapRegistry};
 use crate::ecs::World;
 use crate::physics::components::RigidBodyBundle;
 
@@ -14,6 +17,7 @@ fn seed_world() -> World {
     world.insert_resource(time);
     world.insert_resource(EventQueue::<CollisionEvent>::new());
     world.insert_resource(EventQueue::<SensorEntered>::new());
+    world.insert_resource(EventQueue::<SensorExited>::new());
     world.insert_resource(PhysicsConfig::default());
     world.insert_resource(TilemapRegistry::new());
     world
@@ -84,6 +88,7 @@ fn tilemap_collision_layer_blocks_dynamic_body() {
             height: 1,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "solid".into(),
                 kind: LayerKind::Collision,
@@ -462,6 +467,7 @@ fn sweep_grid_returns_the_pair_grids_statics_in_order() {
                 height: 2,
                 tileset: vec!["solid".into()],
                 object_layers: Vec::new(),
+                terrain: TerrainProps::default(),
                 layers: vec![TilemapLayer {
                     name: "collision".into(),
                     kind: LayerKind::Collision,
@@ -512,6 +518,7 @@ fn sweep_grid_returns_the_pair_grids_statics_in_order() {
             &mut buffers.sensors,
             &mut buffers.tile_ids,
             &mut buffers.tiles,
+            &mut buffers.extra,
         );
         buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
         for proxy in buffers.proxies.iter_mut().step_by(4) {
@@ -597,6 +604,7 @@ fn zero_restitution_body_does_not_bounce_off_multi_tile_floor() {
             height: 1,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "collision".into(),
                 kind: LayerKind::Collision,
@@ -638,6 +646,7 @@ fn bouncy_ball_does_not_double_impulse_on_multi_tile_seam() {
             height: 1,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "collision".into(),
                 kind: LayerKind::Collision,
@@ -753,6 +762,7 @@ fn pile_of_balls_does_not_escape_bottom_right_corner() {
             height: H,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "collision".into(),
                 kind: LayerKind::Collision,
@@ -1563,6 +1573,320 @@ fn persistent_pairs_match_fresh_contacts_on_randomized_piles_bullets_and_wakes()
     assert!(repairs > 0, "the oracle never checked a repaired list");
 }
 
+/// How far a box of friction 0.5 launched at 300 px/s along a floor of
+/// friction 0.5 slides under gravity 900 before it stops: a static box's
+/// top, or a row of tiles whose material `stone` has friction 0.5.
+fn slide_distance(tiles: bool) -> f32 {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    if tiles {
+        world.insert_resource(crate::physics::PhysicsMaterials::new([(
+            "stone".to_owned(),
+            crate::physics::PhysicsMaterial {
+                friction: 0.5,
+                ..Default::default()
+            },
+        )]));
+        let mut data = map_data(64, vec![vec![0; 64]]);
+        data.set_tile_props(
+            0,
+            TileProps {
+                material: Some("stone".into()),
+                ..TileProps::default()
+            },
+        );
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("floor".into(), data);
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("floor", Vec2::new(-512.0, 90.0)));
+    } else {
+        let floor = spawn_static(
+            &mut world,
+            Collider::aabb(Vec2::new(600.0, 10.0)),
+            Vec2::new(0.0, 100.0),
+        );
+        world.insert(floor, RigidBody::r#static().with_friction(0.5));
+    }
+    let start = Vec2::new(-400.0, 90.0 - 8.0);
+    let body = spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_friction(0.5),
+        Collider::aabb(Vec2::splat(8.0)),
+        start,
+        Vec2::new(300.0, 0.0),
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let velocity = world.get::<Velocity>(body).unwrap().0;
+    assert!(velocity.length() < 1.0, "still sliding at {velocity}");
+    world.get::<Position>(body).unwrap().0.x - start.x
+}
+
+#[test]
+fn a_sliding_box_stops_where_coulomb_friction_says() {
+    // Decelerated at μ·g = 450 px/s², 300 px/s stops after v² / 2a = 100 px.
+    let distance = slide_distance(false);
+    assert!(
+        (distance - 100.0).abs() <= 3.0,
+        "slid {distance} px, Coulomb says 100"
+    );
+}
+
+#[test]
+fn a_tile_floor_takes_its_materials_friction() {
+    let (tiles, floor) = (slide_distance(true), slide_distance(false));
+    assert!(
+        (tiles - floor).abs() <= 0.01 * floor,
+        "slid {tiles} px on the tiles, {floor} px on the static floor"
+    );
+}
+
+#[test]
+fn a_box_rides_a_moving_platform_by_friction() {
+    for (friction, rides) in [(1.0, true), (0.0, false)] {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+        spawn_body(
+            &mut world,
+            RigidBody::kinematic().with_friction(friction),
+            Collider::aabb(Vec2::new(300.0, 10.0)),
+            Vec2::new(0.0, 100.0),
+            Vec2::new(100.0, 0.0),
+        );
+        let start = Vec2::new(0.0, 90.0 - 8.0);
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic().with_friction(friction),
+            Collider::aabb(Vec2::splat(8.0)),
+            start,
+            Vec2::ZERO,
+        );
+        for _ in 0..30 {
+            physics_step(&mut world);
+        }
+        let velocity = world.get::<Velocity>(body).unwrap().0;
+        let moved = world.get::<Position>(body).unwrap().0.x - start.x;
+        if rides {
+            assert!(
+                (velocity.x - 100.0).abs() < 1.0,
+                "friction 1: the box moves at {velocity} on a 100 px/s platform"
+            );
+        } else {
+            assert!(
+                velocity.x.abs() < 1.0 && moved.abs() < 1.0,
+                "no friction: the box moves at {velocity}, {moved} px on"
+            );
+        }
+    }
+}
+
+/// One 1/60 s step of `world` driven substep by substep as `physics_step`
+/// drives a world without sleep, sensors or loose bodies, with a pair
+/// rebuild forced before substep `rebuild`, when given.
+fn step_by_substeps(world: &mut World, rebuild: Option<u32>) {
+    let config = *world.resource::<PhysicsConfig>();
+    assert!(config.sleep_threshold <= 0.0, "the driver runs no sleep");
+    let dt = 1.0 / 60.0;
+    let mut buffers = world
+        .remove_resource::<PhysicsBuffers>()
+        .unwrap_or_default();
+    let kinematics = gather_proxies(
+        world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+        &mut buffers.extra,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    let substeps = substep_count(&config, dt, kinematics > 0);
+    let sub_dt = dt / substeps as f32;
+    buffers.pairs_invalidated = true;
+    buffers.static_grid.begin_frame();
+    buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
+    buffers.kept.clear();
+    buffers.events.clear();
+    for step in 0..substeps {
+        if rebuild == Some(step) {
+            buffers.pairs_invalidated = true;
+        }
+        let time_left = (dt - step as f32 * sub_dt).max(sub_dt);
+        substep(&config, sub_dt, time_left, &mut buffers, false);
+    }
+    sync_impulses(&mut buffers);
+    write_back(
+        world,
+        &buffers.proxies,
+        &mut buffers.sensors,
+        &buffers.extra,
+        dt,
+    );
+    world.insert_resource(buffers);
+}
+
+#[test]
+fn tangent_impulses_warm_start_across_a_rebuild() {
+    // A box slides on a belt at 10 px/s until friction 0.05 has it moving
+    // with the belt: its tangent impulse sits at its bound, warm-started
+    // each substep. A pair rebuild mid-step carries it by key, the
+    // impulse's bits as the pair index carries them.
+    let rig = || {
+        let mut world = seed_world();
+        let config = world.resource_mut::<PhysicsConfig>();
+        config.gravity = Vec2::new(0.0, 900.0);
+        config.sleep_threshold = 0.0;
+        spawn_body(
+            &mut world,
+            RigidBody::kinematic().with_friction(0.05),
+            Collider::aabb(Vec2::new(300.0, 10.0)),
+            Vec2::new(0.0, 100.0),
+            Vec2::new(10.0, 0.0),
+        );
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic().with_friction(0.05),
+            Collider::aabb(Vec2::splat(8.0)),
+            Vec2::new(0.0, 90.0 - 8.0),
+            Vec2::ZERO,
+        );
+        (world, body)
+    };
+    let ((mut kept, body), (mut rebuilt, _)) = (rig(), rig());
+    let tangent = |world: &World| {
+        let friction = &world.resource::<PhysicsBuffers>().extra.friction;
+        assert_eq!(friction.len(), 1, "one contact with friction");
+        friction[0].impulse
+    };
+    let mut sliding = 0;
+    for step in 0..20 {
+        step_by_substeps(&mut kept, None);
+        step_by_substeps(&mut rebuilt, Some(2));
+        assert_eq!(
+            body_bits(&kept, &[body]),
+            body_bits(&rebuilt, &[body]),
+            "step {step}: the rebuild moved the box"
+        );
+        let (a, b) = (tangent(&kept), tangent(&rebuilt));
+        assert_eq!(a.to_bits(), b.to_bits(), "step {step}: {a} against {b}");
+        sliding += usize::from(a != 0.0);
+    }
+    assert!(sliding >= 5, "the box slid for {sliding} steps");
+    assert!(
+        (kept.get::<Velocity>(body).unwrap().0.x - 10.0).abs() < 0.5,
+        "the box rides the belt"
+    );
+}
+
+/// A world under gravity 900 with a static floor of `friction` whose top
+/// is y = 90, and a rolling ball of radius 10 with `friction` and
+/// `rolling` resting on it, launched at `speed` px/s along it.
+fn rolling_rig(friction: f32, rolling: f32, speed: f32) -> (World, Entity) {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(2000.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    world.insert(floor, RigidBody::r#static().with_friction(friction));
+    let ball = world.spawn_with(
+        RigidBodyBundle::dynamic(Position::new(-1500.0, 80.0), Collider::circle(10.0))
+            .with_body(
+                RigidBody::dynamic()
+                    .with_friction(friction)
+                    .with_rolling(rolling),
+            )
+            .with_velocity(Velocity::new(speed, 0.0))
+            .with_spin(),
+    );
+    (world, ball)
+}
+
+/// A ball's speed along the floor and its rim speed, `ω · r`.
+fn roll_of(world: &World, ball: Entity) -> (f32, f32) {
+    let spin = world.get::<Spin>(ball).unwrap();
+    (
+        world.get::<Velocity>(ball).unwrap().0.x,
+        spin.angular_velocity * 10.0,
+    )
+}
+
+#[test]
+fn a_rolling_ball_rolls_without_slipping() {
+    // Friction slows the slide and spins the disc until its rim keeps pace,
+    // at two thirds of the launch speed.
+    let (mut world, ball) = rolling_rig(0.5, 0.0, 200.0);
+    for _ in 0..30 {
+        physics_step(&mut world);
+    }
+    let (speed, rim) = roll_of(&world, ball);
+    assert!(
+        (rim - speed).abs() <= 0.02 * speed,
+        "rolling at {speed} px/s with its rim at {rim}"
+    );
+    assert!(
+        (speed - 200.0 * 2.0 / 3.0).abs() < 2.0,
+        "a disc rolls on at two thirds of 200 px/s, not {speed}"
+    );
+}
+
+#[test]
+fn rolling_resistance_brings_a_ball_to_rest() {
+    // Rolling resistance 0.05 stops a roll; without it the roll goes on,
+    // and without friction the ball slides on unturned.
+    let (mut resisted, ball) = rolling_rig(0.5, 0.05, 60.0);
+    let (mut free, free_ball) = rolling_rig(0.5, 0.0, 60.0);
+    let (mut frictionless, slider) = rolling_rig(0.0, 0.05, 60.0);
+    for _ in 0..180 {
+        physics_step(&mut resisted);
+        physics_step(&mut free);
+        physics_step(&mut frictionless);
+    }
+    let (speed, rim) = roll_of(&resisted, ball);
+    assert!(
+        speed.abs() < 0.5 && rim.abs() < 0.5,
+        "still rolling at {speed} px/s, rim {rim}, after 3 s"
+    );
+    let (speed, rim) = roll_of(&free, free_ball);
+    assert!(
+        speed > 30.0 && (rim - speed).abs() < 1.0,
+        "free: {speed}, {rim}"
+    );
+    let (speed, rim) = roll_of(&frictionless, slider);
+    assert!(speed > 59.0 && rim == 0.0, "frictionless: {speed}, {rim}");
+}
+
+#[test]
+fn a_spinner_on_a_frictionless_floor_keeps_its_spin() {
+    // Its rim at 50 px/s keeps it awake past the sleep delay though it
+    // stands still: no friction couples the spin to the floor.
+    let (mut world, ball) = rolling_rig(0.0, 0.0, 0.0);
+    world.get_mut::<Spin>(ball).unwrap().angular_velocity = 5.0;
+    let mut angle = 0.0;
+    for step in 0..120 {
+        physics_step(&mut world);
+        let spin = *world.get::<Spin>(ball).unwrap();
+        assert!(
+            spin.angle > angle,
+            "step {step}: the angle stopped at {angle}"
+        );
+        angle = spin.angle;
+    }
+    assert!(
+        !is_sleeping(&world, ball),
+        "a spinner sleeps while its rim turns"
+    );
+    let speed = world.get::<Velocity>(ball).unwrap().0;
+    assert!(speed.length() < 1.0, "the spinner moved at {speed}");
+    assert!(
+        (angle - 10.0).abs() < 0.05,
+        "two seconds at 5 rad/s turned {angle}"
+    );
+}
+
 #[test]
 fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
     let mut world = seed_world();
@@ -1587,6 +1911,7 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     sleep_frame_start(&mut buffers, 4.0 * config.linear_slop);
@@ -1667,6 +1992,7 @@ fn lone_fast_body_trips_its_budget_and_rebuilds_before_narrow_phase() {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
@@ -1782,6 +2108,7 @@ fn oracle_buffers(world: &World) -> PhysicsBuffers {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
@@ -1928,6 +2255,7 @@ fn warm_start_forgets_disappearing_contacts_and_syncs_empty_final_substep() {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     buffers.reference_impulses = Some(ImpulseMap::default());
@@ -2434,6 +2762,7 @@ fn kinematic_body_passes_static_bodies_tiles_and_kinematic_bodies() {
             height: 1,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "solid".into(),
                 kind: LayerKind::Collision,
@@ -2766,15 +3095,115 @@ fn collider_less_kinematic_body_moves_by_its_velocity() {
 }
 
 #[test]
+fn teleport_moves_a_body_without_a_slide() {
+    let mut world = seed_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    let start = world.get::<Position>(top).unwrap().0;
+    world.insert(top, PrevPosition(start));
+    world.insert(top, Transform::from_position(start));
+    settle_to_sleep(&mut world, &[bottom, top]);
+    let at = Vec2::new(40.0, -50.0);
+    teleport(&mut world, top, at);
+    assert_eq!(world.get::<Position>(top).unwrap().0, at);
+    assert_eq!(world.get::<PrevPosition>(top).unwrap().0, at);
+    assert_eq!(world.get::<Transform>(top).unwrap().position, at);
+    assert_eq!(world.get::<Velocity>(top).unwrap().0, Vec2::ZERO);
+    assert!(!is_sleeping(&world, top), "a teleported sleeper wakes");
+    // Drawn at the point half a step on, and after the next step near it,
+    // never between the old point and the new.
+    let mut time = Time::new();
+    time.advance_frame(0.5 / 60.0);
+    assert_eq!(time.alpha(), 0.5);
+    world.insert_resource(time);
+    crate::physics::physics_sync(&mut world);
+    assert_eq!(world.get::<Transform>(top).unwrap().position, at);
+    world.resource_mut::<Time>().advance_frame(0.5 / 60.0);
+    crate::physics::physics_prev_snapshot(&mut world);
+    physics_step(&mut world);
+    crate::physics::physics_sync(&mut world);
+    let drawn = world.get::<Transform>(top).unwrap().position;
+    assert!(
+        drawn.distance(at) < 1.0,
+        "drawn at {drawn} a step after a teleport to {at}"
+    );
+}
+
+#[test]
+fn gravity_scale_scales_a_fall() {
+    const G: f32 = 900.0;
+    const STEPS: usize = 60;
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, G);
+    let substeps = world.resource::<PhysicsConfig>().substeps as usize;
+    let bodies: Vec<(f32, Entity, Entity)> = [0.0, 0.5, 1.0, 2.0, -1.0]
+        .into_iter()
+        .enumerate()
+        .map(|(i, scale)| {
+            let at = Vec2::new(100.0 * i as f32, 0.0);
+            let body = RigidBody::dynamic().with_gravity_scale(scale);
+            let solid = spawn_body(&mut world, body, Collider::circle(4.0), at, Vec2::ZERO);
+            let loose = world.spawn_with((Position(at), Velocity(Vec2::ZERO), body));
+            (scale, solid, loose)
+        })
+        .collect();
+    for _ in 0..STEPS {
+        physics_step(&mut world);
+    }
+    // Each integration adds the scaled gravity, then moves: n of them of
+    // `h` from rest fall `g · s · h² · n (n + 1) / 2`. A body with a
+    // collider is integrated each substep, a loose one once a step.
+    let fall =
+        |scale: f32, n: usize, h: f64| f64::from(G * scale) * h * h * (n * (n + 1)) as f64 / 2.0;
+    let dt = 1.0 / 60.0;
+    for (scale, solid, loose) in bodies {
+        for (entity, expected, what) in [
+            (
+                solid,
+                fall(scale, STEPS * substeps, dt / substeps as f64),
+                "body",
+            ),
+            (loose, fall(scale, STEPS, dt), "loose body"),
+        ] {
+            let y = f64::from(world.get::<Position>(entity).unwrap().0.y);
+            assert!(
+                (y - expected).abs() <= 1e-3 * expected.abs(),
+                "a {what} at scale {scale} fell {y}, the closed form {expected}"
+            );
+        }
+    }
+}
+
+#[test]
 fn proxy_stays_80_bytes_with_the_kinematic_flag() {
     assert_eq!(std::mem::size_of::<Proxy>(), 80);
 }
 
-/// Every sensor event sent by the last step, flushing the queue.
+/// Every sensor entry sent by the last step, flushing the queue, as
+/// `(sensor, other, tile)`: its point set to the origin.
 fn drain_sensor_events(world: &mut World) -> Vec<SensorEntered> {
     let events = world
         .get_resource_mut::<EventQueue<SensorEntered>>()
         .unwrap();
+    let sent = events
+        .iter_current()
+        .map(|event| event.with_point(Vec2::ZERO))
+        .collect();
+    events.flush();
+    sent
+}
+
+/// Every sensor entry sent by the last step, its point kept, flushing the
+/// queue.
+fn drain_sensor_entries(world: &mut World) -> Vec<SensorEntered> {
+    let events = world.resource_mut::<EventQueue<SensorEntered>>();
+    let sent = events.iter_current().copied().collect();
+    events.flush();
+    sent
+}
+
+/// Every sensor exit sent by the last step, flushing the queue.
+fn drain_sensor_exits(world: &mut World) -> Vec<SensorExited> {
+    let events = world.resource_mut::<EventQueue<SensorExited>>();
     let sent = events.iter_current().copied().collect();
     events.flush();
     sent
@@ -2801,6 +3230,7 @@ fn map_data(width: u32, layers: Vec<Vec<i32>>) -> TilemapData {
         height: layers[0].len() as u32 / width,
         tileset: vec!["solid".into()],
         object_layers: Vec::new(),
+        terrain: TerrainProps::default(),
         layers: layers
             .into_iter()
             .enumerate()
@@ -3077,22 +3507,35 @@ fn sensor_on_a_tile_of_a_moving_map_sends_one_event() {
         entered.extend(drain_sensor_events(&mut world));
         world.get_mut::<TilemapInstance>(map).unwrap().origin.x += 0.5;
     }
-    assert_eq!(entered, [SensorEntered::new(sensor, None)]);
+    let cell = TileHit {
+        map,
+        layer: 0,
+        col: 0,
+        row: 0,
+    };
+    assert_eq!(entered, [SensorEntered::new(sensor, None).with_tile(cell)]);
 }
 
 #[test]
 fn sensor_sees_another_layers_tile_at_the_same_cell_as_new() {
     let mut world = seed_world();
-    spawn_map(&mut world, "layers", Vec2::ZERO, 1, vec![vec![0], vec![-1]]);
+    let map = spawn_map(&mut world, "layers", Vec2::ZERO, 1, vec![vec![0], vec![-1]]);
     let sensor = spawn_sensor(
         &mut world,
         Collider::circle(4.0),
         Vec2::new(8.0, 8.0),
         Vec2::ZERO,
     );
-    let tile = [SensorEntered::new(sensor, None)];
+    let tile = |layer: usize| {
+        [SensorEntered::new(sensor, None).with_tile(TileHit {
+            map,
+            layer,
+            col: 0,
+            row: 0,
+        })]
+    };
     physics_step(&mut world);
-    assert_eq!(drain_sensor_events(&mut world), tile);
+    assert_eq!(drain_sensor_events(&mut world), tile(0));
     physics_step(&mut world);
     assert!(drain_sensor_events(&mut world).is_empty());
     // The cell's solid tile now comes from the other layer.
@@ -3101,7 +3544,7 @@ fn sensor_sees_another_layers_tile_at_the_same_cell_as_new() {
         .unwrap()
         .insert("layers".into(), map_data(1, vec![vec![-1], vec![0]]));
     physics_step(&mut world);
-    assert_eq!(drain_sensor_events(&mut world), tile);
+    assert_eq!(drain_sensor_events(&mut world), tile(1));
 }
 
 #[test]
@@ -3170,12 +3613,23 @@ fn sensor_events_follow_sensor_order_then_index_order() {
         Collider::aabb(Vec2::splat(4.0)),
         Vec2::new(20.0, 0.0),
     );
-    spawn_map(&mut world, "pair", Vec2::ZERO, 2, vec![vec![0, 0]]);
+    let map = spawn_map(&mut world, "pair", Vec2::ZERO, 2, vec![vec![0, 0]]);
     physics_step(&mut world);
+    let cell = |col: u32| TileHit {
+        map,
+        layer: 0,
+        col,
+        row: 0,
+    };
     let expected: Vec<_> = [first, second]
         .into_iter()
         .flat_map(|sensor| {
-            [Some(left), Some(right), None, None].map(|other| SensorEntered::new(sensor, other))
+            [
+                SensorEntered::new(sensor, Some(left)),
+                SensorEntered::new(sensor, Some(right)),
+                SensorEntered::new(sensor, None).with_tile(cell(0)),
+                SensorEntered::new(sensor, None).with_tile(cell(1)),
+            ]
         })
         .collect();
     assert_eq!(drain_sensor_events(&mut world), expected);
@@ -3519,6 +3973,7 @@ fn a_tile_support_removed_wakes_the_island_on_it() {
         height: 1,
         tileset: vec!["solid".into()],
         object_layers: Vec::new(),
+        terrain: TerrainProps::default(),
         layers: vec![TilemapLayer {
             name: "collision".into(),
             kind: LayerKind::Collision,
@@ -3701,6 +4156,120 @@ fn layers_a_mask_without_layer_0_falls_through_tiles_and_a_static_box() {
     let (y, events) = fall_through_floors(ghost, speed);
     assert_eq!(events, 0);
     assert!((y - speed * 0.5).abs() < 1.0e-2, "the body was held at {y}");
+}
+
+/// A 6 × 10 map of 16 px tiles: an upper floor on row 2 in collision layer
+/// `solid1`, in physics layer 1 meeting layer 1 alone, and a lower floor on
+/// row 8 in `solid0`, at the defaults.
+fn two_floor_map(world: &mut World) {
+    let mut lower = vec![-1; 60];
+    lower[48..54].fill(0);
+    let mut upper = vec![-1; 60];
+    upper[12..18].fill(0);
+    let mut map = map_data(6, vec![lower, upper]);
+    map.set_layer_physics(
+        1,
+        crate::assets::LayerPhysics {
+            layers: 1 << 1,
+            mask: 1 << 1,
+        },
+    );
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("floors".into(), map);
+    let instance = world.spawn();
+    world.insert(instance, TilemapInstance::new("floors", Vec2::ZERO));
+}
+
+#[test]
+fn a_tile_layer_meets_bodies_by_its_layers_and_mask() {
+    // Each 8 px box falls at 120 px/s for 2 s from y 8: it stops on the upper
+    // floor's top (y 32) when the two meet, else on the lower's (y 128).
+    let cases = [
+        ("the default body", RigidBody::dynamic(), 128.0),
+        (
+            "a body in layer 1",
+            RigidBody::dynamic().with_layers(1 << 1),
+            32.0,
+        ),
+        (
+            "a layer-1 body meeting layer 1",
+            layer_one(RigidBody::dynamic()),
+            32.0,
+        ),
+        (
+            "a body in layer 2",
+            RigidBody::dynamic().with_layers(1 << 2),
+            128.0,
+        ),
+    ];
+    for (name, body, floor) in cases {
+        let mut world = seed_world();
+        two_floor_map(&mut world);
+        let faller = spawn_body(
+            &mut world,
+            body,
+            Collider::aabb(Vec2::splat(4.0)),
+            Vec2::new(40.0, 8.0),
+            Vec2::new(0.0, 120.0),
+        );
+        for _ in 0..120 {
+            physics_step(&mut world);
+        }
+        let bottom = world.get::<Position>(faller).unwrap().0.y + 4.0;
+        assert!((bottom - floor).abs() < 0.5, "{name} ended at {bottom}");
+    }
+    // A layer-1 body whose mask lacks layer 0 passes the lower floor too.
+    let mut world = seed_world();
+    two_floor_map(&mut world);
+    let ghost = spawn_body(
+        &mut world,
+        layer_one(RigidBody::dynamic()),
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(40.0, 56.0),
+        Vec2::new(0.0, 120.0),
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let y = world.get::<Position>(ghost).unwrap().0.y;
+    assert!((y - 296.0).abs() < 1.0e-2, "the body was held at {y}");
+    // A sensor over both floors reports the tiles in a layer its mask
+    // holds: both by default, the upper floor's for layer 1.
+    for (mask, cells) in [
+        (RigidBody::ALL_LAYERS, &[(0, 8), (1, 2)][..]),
+        (1 << 1, &[(1, 2)][..]),
+        (1 << 2, &[][..]),
+    ] {
+        let mut world = seed_world();
+        two_floor_map(&mut world);
+        let map = world
+            .query::<(Entity, &TilemapInstance)>()
+            .next()
+            .unwrap()
+            .0;
+        let sensor = spawn_body(
+            &mut world,
+            RigidBody::sensor().with_mask(mask),
+            Collider::aabb(Vec2::new(4.0, 60.0)),
+            Vec2::new(40.0, 80.0),
+            Vec2::ZERO,
+        );
+        physics_step(&mut world);
+        let entered = drain_sensor_events(&mut world);
+        let expected: Vec<SensorEntered> = cells
+            .iter()
+            .map(|&(layer, row)| {
+                SensorEntered::new(sensor, None).with_tile(TileHit {
+                    map,
+                    layer,
+                    col: 2,
+                    row,
+                })
+            })
+            .collect();
+        assert_eq!(entered, expected, "mask {mask:#x}");
+    }
 }
 
 /// `pushed_body_arrives_at_a_static_wall_and_stops_its_pusher`'s rig, with
@@ -4134,12 +4703,14 @@ fn cache_map(tiles: Vec<i32>, decor: bool) -> TilemapData {
         height: 3,
         tileset: vec!["solid".into()],
         object_layers: Vec::new(),
+        terrain: TerrainProps::default(),
         layers,
     }
 }
 
 /// Gathers `world` into `buffers`, then asserts the tile proxies after the
-/// entity proxies, and their identities, are a fresh scan's.
+/// entity proxies, and their layers and identities, are a fresh scan's,
+/// and the outline's runs a fresh trace's.
 fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
     gather_proxies(
         world,
@@ -4148,13 +4719,14 @@ fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
-    let (mut fresh, mut ids, mut maps) = (Vec::new(), Vec::new(), Vec::new());
-    super::gather::gather_tilemap_proxies(world, &mut fresh, &mut ids, &mut maps);
+    let mut fresh = super::gather::TileArrays::default();
+    super::gather::gather_tilemap_proxies(world, &mut fresh);
     let tail = &buffers.proxies[buffers.bodies..];
-    assert_eq!(tail.len(), fresh.len(), "{when}: tile count");
-    for (at, (kept, scanned)) in tail.iter().zip(&fresh).enumerate() {
+    assert_eq!(tail.len(), fresh.proxies.len(), "{when}: tile count");
+    for (at, (kept, scanned)) in tail.iter().zip(&fresh.proxies).enumerate() {
         assert!(
             kept.key == scanned.key
                 && kept.center == scanned.center
@@ -4169,22 +4741,29 @@ fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
     if buffers.sensors.is_empty() {
         assert!(buffers.tile_ids.is_empty(), "{when}: no identities");
     } else {
-        assert_eq!(buffers.tile_ids, ids, "{when}: identities");
+        assert_eq!(buffers.tile_ids, fresh.ids, "{when}: identities");
     }
-    assert!(
-        buffers.layers.of[buffers.bodies..]
-            .iter()
-            .all(|layers| *layers == Layers::DEFAULT),
+    assert_eq!(buffers.tiles.ids, fresh.ids, "{when}: cached identities");
+    assert_eq!(
+        buffers.tiles.runs(),
+        super::gather::trace_tilemaps(world).runs(),
+        "{when}: runs"
+    );
+    assert_eq!(
+        buffers.layers.of[buffers.bodies..],
+        fresh.layers[..],
         "{when}: tile layers"
     );
 }
 
 #[test]
 fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
-    // Edited by a registry insert, moved, joined by a second map, given a
-    // render layer before its collision layer (which moves every
-    // identity), and despawned: after each the gathered tiles are a fresh
-    // scan's, and a frame with no change scans nothing.
+    // Edited by a registry insert and in place, broken, moved, joined by a
+    // second map, given a render layer before its collision layer (which
+    // moves every identity), its registry replaced by one of equal and of
+    // different content, and despawned: after each the gathered tiles are a
+    // fresh scan's, only the maps that changed are scanned, and a frame
+    // with no change scans nothing.
     let mut world = seed_world();
     let solid = |gaps: &[usize]| {
         (0..18)
@@ -4204,64 +4783,148 @@ fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
     ));
     let mut buffers = PhysicsBuffers::default();
     assert_tiles_fresh(&world, &mut buffers, "first");
-    assert_eq!(buffers.tiles.scans, 1);
+    assert_eq!(buffers.tiles.scans(), 1);
     assert_tiles_fresh(&world, &mut buffers, "unchanged");
-    assert_eq!(buffers.tiles.scans, 1, "an unchanged frame scans nothing");
+    assert_eq!(buffers.tiles.scans(), 1, "an unchanged frame scans nothing");
 
-    type Change<'a> = (&'static str, Box<dyn Fn(&mut World) + 'a>);
-    let changes: [Change<'_>; 5] = [
+    fn registry(world: &mut World) -> &mut TilemapRegistry {
+        world.get_resource_mut::<TilemapRegistry>().unwrap()
+    }
+    let breakable = |gaps: &[usize]| {
+        let mut data = cache_map(solid(gaps), false);
+        data.set_tile_props(
+            0,
+            TileProps {
+                health: Some(1.0),
+                ..TileProps::default()
+            },
+        );
+        data
+    };
+    type Change<'a> = (&'static str, usize, Box<dyn Fn(&mut World) + 'a>);
+    let changes: [Change<'_>; 13] = [
         (
-            "edited",
-            Box::new(|world: &mut World| {
-                world
-                    .get_resource_mut::<TilemapRegistry>()
-                    .unwrap()
-                    .insert("a".into(), cache_map(solid(&[2, 9, 13]), false));
+            "edited by an insert",
+            1,
+            Box::new(move |world: &mut World| {
+                registry(world).insert("a".into(), cache_map(solid(&[2, 9, 13]), false));
+            }),
+        ),
+        (
+            "edited in place",
+            1,
+            Box::new(move |world: &mut World| {
+                assert!(registry(world).set_tile("a", 0, 4, 1, EMPTY_TILE));
+            }),
+        ),
+        (
+            "written and written back",
+            0,
+            Box::new(move |world: &mut World| {
+                registry(world).set_tile("a", 0, 2, 0, 0);
+                registry(world).set_tile("a", 0, 2, 0, EMPTY_TILE);
+            }),
+        ),
+        (
+            "made breakable",
+            1,
+            Box::new(move |world: &mut World| {
+                registry(world).insert("a".into(), breakable(&[2, 9, 13]));
+            }),
+        ),
+        (
+            "damaged",
+            0,
+            Box::new(move |world: &mut World| {
+                let damage = registry(world).damage_tile("a", 0, 0, 2, 0.5);
+                assert_eq!(damage, TileDamage::Damaged { health: 0.5 });
+            }),
+        ),
+        (
+            "broken",
+            1,
+            Box::new(move |world: &mut World| {
+                let damage = registry(world).damage_tile("a", 0, 0, 2, 0.5);
+                assert_eq!(damage, TileDamage::Broken { tile: EMPTY_TILE });
             }),
         ),
         (
             "moved",
+            1,
             Box::new(move |world: &mut World| {
                 world.get_mut::<TilemapInstance>(map).unwrap().origin = Vec2::new(-40.0, 8.0);
             }),
         ),
         (
             "joined",
+            1,
             Box::new(|world: &mut World| {
-                world
-                    .get_resource_mut::<TilemapRegistry>()
-                    .unwrap()
-                    .insert("b".into(), cache_map(solid(&[0]), false));
+                registry(world).insert("b".into(), cache_map(solid(&[0]), false));
                 let second = world.spawn();
                 world.insert(second, TilemapInstance::new("b", Vec2::new(64.0, 0.0)));
             }),
         ),
         (
+            "the second edited in place",
+            1,
+            Box::new(move |world: &mut World| {
+                assert!(registry(world).set_tile("b", 0, 0, 0, 0));
+            }),
+        ),
+        (
             "decor before collision",
+            1,
+            Box::new(move |world: &mut World| {
+                registry(world).insert("a".into(), cache_map(solid(&[2, 9, 13]), true));
+            }),
+        ),
+        (
+            "a registry of equal content",
+            0,
             Box::new(|world: &mut World| {
-                world
-                    .get_resource_mut::<TilemapRegistry>()
-                    .unwrap()
-                    .insert("a".into(), cache_map(solid(&[2, 9, 13]), true));
+                let old = world.get_resource::<TilemapRegistry>().unwrap();
+                let mut equal = TilemapRegistry::new();
+                for id in ["b", "a"] {
+                    equal.insert(id.into(), old.get(id).unwrap().clone());
+                }
+                world.insert_resource(equal);
+            }),
+        ),
+        (
+            "a registry of different content",
+            1,
+            Box::new(|world: &mut World| {
+                let old = world.get_resource::<TilemapRegistry>().unwrap();
+                let mut other = TilemapRegistry::new();
+                other.insert("a".into(), cache_map(solid(&[1]), true));
+                other.insert("b".into(), old.get("b").unwrap().clone());
+                world.insert_resource(other);
             }),
         ),
         (
             "despawned",
+            0,
             Box::new(move |world: &mut World| {
                 world.despawn(map);
             }),
         ),
     ];
     let mut scans = 1;
-    let mut version = buffers.tiles.version;
-    for (when, change) in changes {
+    let mut version = buffers.tiles.version();
+    for (when, scanned, change) in changes {
         let ids_before = buffers.tile_ids.clone();
+        let tiles_before = buffers.tiles.len();
         change(&mut world);
         assert_tiles_fresh(&world, &mut buffers, when);
-        scans += 1;
-        assert_eq!(buffers.tiles.scans, scans, "{when}: one scan");
-        assert!(buffers.tiles.version > version, "{when}: a new version");
-        version = buffers.tiles.version;
+        scans += scanned;
+        assert_eq!(buffers.tiles.scans(), scans, "{when}: maps scanned");
+        let changed = scanned > 0 || buffers.tiles.len() != tiles_before;
+        assert_eq!(
+            buffers.tiles.version() > version,
+            changed,
+            "{when}: a new version only for a change"
+        );
+        version = buffers.tiles.version();
         if when == "decor before collision" {
             assert_ne!(
                 buffers.tile_ids, ids_before,
@@ -4269,8 +4932,110 @@ fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
             );
         }
         assert_tiles_fresh(&world, &mut buffers, when);
-        assert_eq!(buffers.tiles.scans, scans, "{when}: then no more");
+        assert_eq!(buffers.tiles.scans(), scans, "{when}: then no more");
     }
+}
+
+#[test]
+fn an_edit_rescans_its_map_alone() {
+    let mut world = seed_world();
+    let full = || vec![0; 18];
+    for (id, x) in [("a", 0.0), ("b", 200.0)] {
+        world
+            .get_resource_mut::<TilemapRegistry>()
+            .unwrap()
+            .insert(id.into(), cache_map(full(), false));
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new(id, Vec2::new(x, 0.0)));
+    }
+    let mut buffers = PhysicsBuffers::default();
+    assert_tiles_fresh(&world, &mut buffers, "first");
+    assert_eq!(buffers.tiles.scans(), 2);
+    let b_before: Vec<[u32; 2]> = buffers.tiles.proxies[18..]
+        .iter()
+        .map(|proxy| proxy.center.to_array().map(f32::to_bits))
+        .collect();
+    let version = buffers.tiles.version();
+    assert!(
+        world
+            .get_resource_mut::<TilemapRegistry>()
+            .unwrap()
+            .set_tile("a", 0, 3, 1, EMPTY_TILE)
+    );
+    assert_tiles_fresh(&world, &mut buffers, "a edited");
+    assert_eq!(buffers.tiles.scans(), 3, "map a alone scanned again");
+    assert!(buffers.tiles.version() > version);
+    assert_eq!(buffers.tiles.len(), 35);
+    let b_after: Vec<[u32; 2]> = buffers.tiles.proxies[17..]
+        .iter()
+        .map(|proxy| proxy.center.to_array().map(f32::to_bits))
+        .collect();
+    assert_eq!(b_after, b_before, "map b's proxies kept");
+    assert_tiles_fresh(&world, &mut buffers, "unchanged");
+    assert_eq!(buffers.tiles.scans(), 3);
+}
+
+#[test]
+fn an_edited_cell_collides_at_the_next_step() {
+    // A 6 px box rests on a 3-cell floor of 16 px tiles, its top at y 32;
+    // the cell under it is cleared, then filled again under a second box
+    // falling through the gap.
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let mut tiles = vec![-1; 9];
+    tiles[6..9].fill(0);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("floor".into(), map_data(3, vec![tiles]));
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("floor", Vec2::ZERO));
+    let resting = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(6.0)),
+        Vec2::new(24.0, 20.0),
+        Vec2::ZERO,
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let y = |world: &World, body: Entity| world.get::<Position>(body).unwrap().0.y;
+    let rest = y(&world, resting);
+    assert!((rest + 6.0 - 32.0).abs() < 0.5, "resting at {rest}");
+    assert!(
+        world
+            .resource_mut::<TilemapRegistry>()
+            .set_tile("floor", 0, 1, 2, EMPTY_TILE)
+    );
+    physics_step(&mut world);
+    assert!(y(&world, resting) > rest, "it falls at the next step");
+    for _ in 0..30 {
+        physics_step(&mut world);
+    }
+    assert!(y(&world, resting) > 48.0, "through the gap");
+    // A box falling through the gap meets the cell filled before it gets
+    // there.
+    let falling = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(6.0)),
+        Vec2::new(24.0, -40.0),
+        Vec2::ZERO,
+    );
+    for _ in 0..5 {
+        physics_step(&mut world);
+    }
+    assert!(y(&world, falling) + 6.0 < 32.0, "still above the floor");
+    assert!(
+        world
+            .resource_mut::<TilemapRegistry>()
+            .set_tile("floor", 0, 1, 2, 0)
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let landed = y(&world, falling);
+    assert!((landed + 6.0 - 32.0).abs() < 0.5, "landed at {landed}");
 }
 
 #[test]
@@ -4313,27 +5078,27 @@ fn a_changed_linear_slop_restages_the_tile_grid() {
 }
 
 /// The step's sensor pairs and new pairs as a test of every proxy and tile
-/// finds them, from the buffers after the step: each sensor in gather order
-/// against the entity proxies, then the tiles, in a layer its mask holds.
-fn sensor_oracle(buffers: &PhysicsBuffers) -> (Vec<u128>, Vec<(u64, u64)>) {
+/// finds them, from the world after the step: each sensor in gather order
+/// against the entity proxies, then a fresh scan's tile cells, in a layer
+/// its mask holds.
+fn sensor_oracle(world: &World) -> (Vec<u128>, Vec<(u64, u64)>) {
     use crate::physics::query::shapes_overlap;
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    let mut fresh = super::gather::TileArrays::default();
+    super::gather::gather_tilemap_proxies(world, &mut fresh);
     let mut pairs = Vec::new();
     let mut order = Vec::new();
-    let tiles = buffers.proxies.len() - buffers.bodies;
     for sensor in &buffers.sensors {
         let others = buffers.proxies[..buffers.bodies]
             .iter()
             .zip(&buffers.layers.of)
             .map(|(proxy, layers)| (proxy, proxy.key, layers.layers));
-        let tile_ids = if buffers.tile_ids.len() == tiles {
-            buffers.tile_ids.clone()
-        } else {
-            vec![0; tiles]
-        };
-        let tiles = buffers.proxies[buffers.bodies..]
+        let tiles = fresh
+            .proxies
             .iter()
-            .zip(tile_ids)
-            .map(|(proxy, id)| (proxy, id, Layers::DEFAULT.layers));
+            .zip(&fresh.ids)
+            .zip(&fresh.layers)
+            .map(|((proxy, &id), layers)| (proxy, id, layers.layers));
         for (proxy, identity, layers) in others.chain(tiles) {
             if sensor.layers.mask & layers != 0
                 && shapes_overlap(sensor.shape, sensor.center, proxy.shape, proxy.center)
@@ -4348,12 +5113,83 @@ fn sensor_oracle(buffers: &PhysicsBuffers) -> (Vec<u128>, Vec<(u64, u64)>) {
 }
 
 #[test]
+fn a_sensor_retests_only_the_cells_an_edit_changed() {
+    // A still sensor over 15 cells of a 6 × 3 map of 16 px tiles, its
+    // collision layer after a render layer: the first pass tests the 15, an
+    // unchanged step none, an edit the solid cells it wrote under the
+    // sensor, and a moved map every cell under it.
+    let mut world = seed_world();
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert("a".into(), cache_map(vec![0; 18], true));
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("a", Vec2::ZERO));
+    let sensor = world.spawn_with(RigidBodyBundle::sensor(
+        Position(Vec2::new(40.0, 24.0)),
+        Collider::aabb(Vec2::new(28.0, 20.0)),
+    ));
+    let step = |world: &mut World| {
+        physics_step(world);
+        let entered = drain_sensor_events(world).len();
+        let (want, _) = sensor_oracle(world);
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        assert_eq!(buffers.sensor_pairs, want, "the pairs");
+        (buffers.sensor_cells, entered, buffers.sensor_pairs.len())
+    };
+    assert_eq!(step(&mut world), (15, 15, 15), "the first pass");
+    assert_eq!(step(&mut world), (0, 0, 15), "an unchanged step");
+    let edit = |world: &mut World, layer: usize, col: u32, row: u32, tile: i32| {
+        assert!(
+            world
+                .get_resource_mut::<TilemapRegistry>()
+                .unwrap()
+                .set_tile("a", layer, col, row, tile)
+        );
+    };
+    edit(&mut world, 1, 2, 1, EMPTY_TILE);
+    assert_eq!(
+        step(&mut world),
+        (0, 0, 14),
+        "a cleared cell drops its pair"
+    );
+    edit(&mut world, 1, 2, 1, 0);
+    assert_eq!(step(&mut world), (1, 1, 15), "a filled cell is tested");
+    edit(&mut world, 1, 5, 0, EMPTY_TILE);
+    edit(&mut world, 1, 5, 0, 0);
+    edit(&mut world, 1, 5, 2, EMPTY_TILE);
+    assert_eq!(step(&mut world), (0, 0, 15), "edits outside the sensor");
+    edit(&mut world, 0, 2, 1, EMPTY_TILE);
+    assert_eq!(step(&mut world), (0, 0, 15), "a render layer's edit");
+    edit(&mut world, 1, 1, 1, EMPTY_TILE);
+    edit(&mut world, 1, 3, 1, EMPTY_TILE);
+    edit(&mut world, 1, 3, 1, 0);
+    assert_eq!(
+        step(&mut world),
+        (1, 0, 14),
+        "a cell written twice is tested once"
+    );
+    world.get_mut::<TilemapInstance>(map).unwrap().origin.x = 8.0;
+    let (tested, _, pairs) = step(&mut world);
+    assert_eq!(
+        (tested, pairs),
+        (pairs, 11),
+        "a moved map's cells, all tested"
+    );
+    assert_eq!(step(&mut world), (0, 0, 11));
+    // A sensor that moved tests every cell under it.
+    world.get_mut::<Position>(sensor).unwrap().0.x += 1.0;
+    let (tested, entered, pairs) = step(&mut world);
+    assert_eq!((tested, entered), (pairs, 0));
+}
+
+#[test]
 fn kept_sensor_tile_pairs_are_what_testing_every_tile_finds() {
     // A still sensor keeps its tile pairs from step to step, one that moves
     // every third step and one whose mask leaves out the tiles' layer test
-    // again; a body falls through them, the map is edited and a step runs
-    // without sensors. Every step's pairs and new-pair events are a full
-    // test's (`sensor_oracle`).
+    // again; a body falls through them, the map is replaced and edited in
+    // place and a step runs without sensors. Every step's pairs and new-pair
+    // events are a full test's (`sensor_oracle`).
     let mut world = seed_world();
     let gaps = |gaps: &[usize]| {
         (0..18)
@@ -4394,6 +5230,26 @@ fn kept_sensor_tile_pairs_are_what_testing_every_tile_finds() {
                 .unwrap()
                 .insert("a".into(), cache_map(gaps(&[3, 8, 14]), false));
         }
+        // Registry edits under the still sensor, under the mover's path and
+        // outside both.
+        let edit = match step {
+            8 => Some((3, 1, EMPTY_TILE)),
+            10 => Some((3, 1, 0)),
+            12 => Some((0, 2, EMPTY_TILE)),
+            24 => Some((2, 0, EMPTY_TILE)),
+            25 => Some((5, 0, EMPTY_TILE)),
+            26 => Some((2, 0, 0)),
+            36 => Some((4, 2, EMPTY_TILE)),
+            _ => None,
+        };
+        if let Some((col, row, tile)) = edit {
+            assert!(
+                world
+                    .get_resource_mut::<TilemapRegistry>()
+                    .unwrap()
+                    .set_tile("a", 0, col, row, tile)
+            );
+        }
         let sensorless = step == 30;
         if sensorless {
             for sensor in [still, mover, masked] {
@@ -4418,8 +5274,8 @@ fn kept_sensor_tile_pairs_are_what_testing_every_tile_finds() {
         if sensorless {
             continue;
         }
+        let (want, order) = sensor_oracle(&world);
         let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
-        let (want, order) = sensor_oracle(buffers);
         assert_eq!(buffers.sensor_pairs, want, "step {step}: the pairs");
         let new: Vec<(u64, u64)> = order
             .into_iter()
@@ -4501,4 +5357,1428 @@ fn both_pair_grid_layouts_build_the_same_pairs() {
         assert_eq!(built[0], built[1], "seed {seed}");
         assert!(built[0].len() > 40, "seed {seed}: too few pairs");
     }
+}
+
+/// A seeded map for the outline's oracles: a render layer, then two
+/// collision layers of 16 or 64 px cells, 8 to 40 across and 6 to 30 down,
+/// filling toward the bottom in three materials, `stone` breakable at
+/// health 2, none one-way; the second collision layer in physics layer 1.
+fn outline_map(rng: &mut crate::Pcg32) -> TilemapData {
+    let tile = if rng.next_u32().is_multiple_of(2) {
+        16
+    } else {
+        64
+    };
+    let (width, height) = (8 + rng.next_u32() % 33, 6 + rng.next_u32() % 25);
+    let mut data = TilemapData::new(tile, tile, width, height);
+    let plain = data.add_tile("plain");
+    let sand = data.add_tile("sand");
+    let stone = data.add_tile("stone");
+    data.set_tile_props(
+        sand,
+        TileProps {
+            material: Some("sand".into()),
+            ..TileProps::default()
+        },
+    );
+    data.set_tile_props(
+        stone,
+        TileProps {
+            material: Some("stone".into()),
+            health: Some(2.0),
+            ..TileProps::default()
+        },
+    );
+    let decor = data.add_layer("decor", LayerKind::Render);
+    data.fill(decor, plain);
+    for index in 0..2 {
+        let layer = data.add_layer(format!("solid{index}"), LayerKind::Collision);
+        for row in 0..height {
+            for col in 0..width {
+                // Rows fill more toward the bottom, so floors and walls form.
+                if rng.next_f32_unit() < 0.25 + 0.5 * (row as f32 / height as f32) {
+                    let tile = [plain, plain, sand, stone][rng.next_u32() as usize % 4];
+                    data.set_tile(layer, col, row, tile);
+                }
+            }
+        }
+        if index == 1 {
+            data.set_layer_physics(
+                layer,
+                crate::assets::LayerPhysics {
+                    layers: 1 << 1,
+                    mask: RigidBody::ALL_LAYERS,
+                },
+            );
+        }
+    }
+    data
+}
+
+/// Every field of a proxy as bits, in declaration order.
+fn proxy_bits(proxy: &Proxy) -> [u64; 19] {
+    let bits = |v: Vec2| [u64::from(v.x.to_bits()), u64::from(v.y.to_bits())];
+    let (kind, extent) = match proxy.shape {
+        Shape::Aabb { half_extents } => (0, half_extents),
+        Shape::Circle { radius } => (1, Vec2::splat(radius)),
+    };
+    let entity = proxy.entity.map_or(u64::MAX, |entity| {
+        (u64::from(entity.generation) << 32) | u64::from(entity.index)
+    });
+    let [cx, cy] = bits(proxy.center);
+    let [px, py] = bits(proxy.prev_center);
+    let [vx, vy] = bits(proxy.velocity);
+    let [ox, oy] = bits(proxy.offset);
+    let [ex, ey] = bits(extent);
+    [
+        entity,
+        proxy.key,
+        cx,
+        cy,
+        px,
+        py,
+        vx,
+        vy,
+        ox,
+        oy,
+        kind,
+        ex,
+        ey,
+        u64::from(proxy.is_dynamic),
+        u64::from(proxy.has_velocity),
+        u64::from(proxy.inv_mass.to_bits()),
+        u64::from(proxy.restitution.to_bits()),
+        u64::from(proxy.face_mask),
+        u64::from(proxy.sleeping)
+            | u64::from(proxy.kinematic) << 1
+            | u64::from(proxy.kept_awake) << 2,
+    ]
+}
+
+/// Gathers `world` into `buffers`, then asserts the step's tile proxies,
+/// their layers and their sensor identities are the per-cell gather's,
+/// field by field and in order.
+fn assert_tiles_today(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
+    gather_proxies(
+        world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+        &mut buffers.extra,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    let mut today = super::gather::TileArrays::default();
+    super::gather::gather_tilemap_proxies(world, &mut today);
+    let kept: Vec<_> = buffers.proxies[buffers.bodies..]
+        .iter()
+        .map(proxy_bits)
+        .collect();
+    let want: Vec<_> = today.proxies.iter().map(proxy_bits).collect();
+    assert_eq!(kept.len(), want.len(), "{when}: tile count");
+    for (at, (kept, want)) in kept.iter().zip(&want).enumerate() {
+        assert_eq!(kept, want, "{when}: tile {at}");
+    }
+    assert_eq!(
+        buffers.layers.of[buffers.bodies..],
+        today.layers[..],
+        "{when}: layers"
+    );
+    assert_eq!(buffers.tiles.ids, today.ids, "{when}: identities");
+}
+
+#[test]
+fn the_step_keeps_todays_tile_proxies() {
+    // Two maps of two collision layers each, edited through the registry in
+    // runs of one to four writes, a cell broken, one map replaced and one
+    // moved: after each change the step's tile proxies, their layers and
+    // their sensor identities are the per-cell gather's.
+    for seed in 0..200 {
+        let mut rng = crate::Pcg32::seeded(0x0B0C_5000 + seed);
+        let mut world = seed_world();
+        let mut maps = Vec::new();
+        for (id, x) in [("a", -900.0), ("b", 1_800.0)] {
+            let data = outline_map(&mut rng);
+            world
+                .resource_mut::<TilemapRegistry>()
+                .insert(id.into(), data);
+            let map = world.spawn();
+            let origin = Vec2::new(
+                x + rng.next_range(-64.0, 64.0),
+                rng.next_range(-200.0, 200.0),
+            );
+            world.insert(map, TilemapInstance::new(id, origin.round()));
+            maps.push(map);
+        }
+        let mut buffers = PhysicsBuffers::default();
+        assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: first"));
+        for run in 0..10 {
+            for _ in 0..=rng.next_u32() % 4 {
+                let id = ["a", "b"][rng.next_u32() as usize % 2];
+                let data = world.resource::<TilemapRegistry>().get(id).unwrap();
+                let (width, height) = (data.width, data.height);
+                let (layer, col, row) = (
+                    rng.next_u32() as usize % 3,
+                    rng.next_u32() % width,
+                    rng.next_u32() % height,
+                );
+                let tile = [EMPTY_TILE, EMPTY_TILE, 0, 1, 2][rng.next_u32() as usize % 5];
+                assert!(
+                    world
+                        .resource_mut::<TilemapRegistry>()
+                        .set_tile(id, layer, col, row, tile)
+                );
+            }
+            assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: run {run}"));
+        }
+        // A stone cell broken, when the map has one.
+        let data = world.resource::<TilemapRegistry>().get("a").unwrap();
+        let stone = (1..3).find_map(|layer| {
+            (0..data.height).find_map(|row| {
+                (0..data.width)
+                    .find(|&col| data.tile_at(layer, col, row) == Some(2))
+                    .map(|col| (layer, col, row))
+            })
+        });
+        if let Some((layer, col, row)) = stone {
+            let damage = world
+                .resource_mut::<TilemapRegistry>()
+                .damage_tile("a", layer, col, row, 2.0);
+            assert_eq!(damage, TileDamage::Broken { tile: EMPTY_TILE });
+            assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: broken"));
+        }
+        let replacement = outline_map(&mut rng);
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("b".into(), replacement);
+        assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: replaced"));
+        world.get_mut::<TilemapInstance>(maps[0]).unwrap().origin += Vec2::new(16.0, -64.0);
+        assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: moved"));
+    }
+}
+
+#[test]
+fn an_edit_retraces_its_chunk_and_neighbours_only() {
+    // A 48 × 48 block of 16 px cells, 3 × 3 chunks, under a render layer: a
+    // write re-traces the chunk of the cell and those of its four
+    // neighbours, and a render or same-tile write none.
+    let mut world = seed_world();
+    let mut data = TilemapData::new(16, 16, 48, 48);
+    let solid = data.add_tile("solid");
+    let decor = data.add_layer("decor", LayerKind::Render);
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    data.fill(layer, solid);
+    data.fill(decor, solid);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("block".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("block", Vec2::ZERO));
+    physics_step(&mut world);
+    let traces = |world: &World| world.resource::<PhysicsBuffers>().terrain_traces();
+    assert_eq!(traces(&world), 9, "every chunk at first");
+    let cases = [
+        ("a chunk's interior cell", 1, 24, 24, 1),
+        ("a cell on a chunk's right edge", 1, 31, 24, 2),
+        ("a cell on a chunk's top edge", 1, 20, 16, 2),
+        ("a chunk's corner cell", 1, 31, 31, 3),
+        ("the map's corner cell", 1, 47, 47, 1),
+        ("a cell of the render layer", 0, 31, 31, 0),
+    ];
+    for (name, layer, col, row, chunks) in cases {
+        let before = traces(&world);
+        for tile in [EMPTY_TILE, solid] {
+            assert!(
+                world
+                    .resource_mut::<TilemapRegistry>()
+                    .set_tile("block", layer, col, row, tile)
+            );
+            physics_step(&mut world);
+        }
+        assert_eq!(traces(&world) - before, 2 * chunks, "{name}");
+    }
+    // A write that changes no tile journals nothing and traces nothing.
+    let before = traces(&world);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .set_tile("block", 1, 5, 5, solid);
+    physics_step(&mut world);
+    assert_eq!(traces(&world), before);
+}
+
+/// A map of 16 px cells drawn by rows of letters, `#` solid, `=` one-way
+/// and `.` empty, in one collision layer.
+fn one_way_map(rows: &[&str]) -> TilemapData {
+    let (width, height) = (rows[0].len() as u32, rows.len() as u32);
+    let mut data = TilemapData::new(16, 16, width, height);
+    let solid = data.add_tile("solid");
+    let ledge = data.add_tile("ledge");
+    data.set_tile_props(
+        ledge,
+        TileProps {
+            one_way: true,
+            ..TileProps::default()
+        },
+    );
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    for (row, letters) in rows.iter().enumerate() {
+        for (col, letter) in letters.chars().enumerate() {
+            let tile = match letter {
+                '#' => solid,
+                '=' => ledge,
+                _ => continue,
+            };
+            data.set_tile(layer, col as u32, row as u32, tile);
+        }
+    }
+    data
+}
+
+/// `world` under 900 px/s² of gravity with `data` placed at the origin.
+fn one_way_world(data: TilemapData) -> World {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("ledges".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("ledges", Vec2::ZERO));
+    world
+}
+
+#[test]
+fn a_body_lands_on_a_one_way_edge_and_passes_it_from_below() {
+    // A one-way ledge from x 48 to 160, its top face at y 80, over a floor
+    // whose top is at y 144, with one-way cells on the floor from x 192 to
+    // 256: a ball dropped on the ledge rests on it, one launched up from the
+    // floor passes it and lands on it, and a box sliding along the floor
+    // passes the cells on it at its speed.
+    let mut world = one_way_world(one_way_map(&[
+        "..............................",
+        "..............................",
+        "..............................",
+        "..............................",
+        "..............................",
+        "...=======....................",
+        "..............................",
+        "..............................",
+        "............====..............",
+        "##############################",
+    ]));
+    let dropped = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(6.0),
+        Vec2::new(136.0, 20.0),
+        Vec2::ZERO,
+    );
+    let launched = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(6.0),
+        Vec2::new(72.0, 138.0),
+        Vec2::new(0.0, -500.0),
+    );
+    let slider = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(5.0)),
+        Vec2::new(150.0, 139.0),
+        Vec2::new(60.0, 0.0),
+    );
+    let at = |world: &World, body: Entity| world.get::<Position>(body).unwrap().0;
+    let mut highest = f32::MAX;
+    for _ in 0..180 {
+        physics_step(&mut world);
+        highest = highest.min(at(&world, launched).y);
+        let slid = at(&world, slider);
+        assert!(
+            (slid.y - 139.0).abs() < 0.5,
+            "the box left the floor at {slid}"
+        );
+    }
+    let rest = at(&world, dropped).y + 6.0;
+    assert!(
+        (rest - 80.0).abs() < 0.5,
+        "the dropped ball rests at {rest}"
+    );
+    assert!(
+        highest + 6.0 < 80.0,
+        "the launched ball rose past the ledge: {highest}"
+    );
+    let landed = at(&world, launched).y + 6.0;
+    assert!((landed - 80.0).abs() < 0.5, "and landed on it at {landed}");
+    let slid = at(&world, slider);
+    let speed = world.get::<Velocity>(slider).unwrap().0;
+    assert!(slid.x > 261.0, "the box passed the cells: {slid}");
+    assert!((speed.x - 60.0).abs() < 1.0e-3, "at its speed: {speed}");
+}
+
+#[test]
+fn a_stack_rests_on_a_one_way_edge() {
+    // Ten 12 px boxes dropped in a column onto a one-way ledge whose top face
+    // is at y 160, nothing under it: after 600 steps every box rests above
+    // the face.
+    let mut rows = vec!["...................."; 16];
+    rows[10] = ".....==========.....";
+    let mut world = one_way_world(one_way_map(&rows));
+    let boxes: Vec<Entity> = (0..10)
+        .map(|i| {
+            spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                Collider::aabb(Vec2::splat(6.0)),
+                Vec2::new(160.0, 150.0 - 14.0 * i as f32),
+                Vec2::ZERO,
+            )
+        })
+        .collect();
+    let mut deepest = f32::MIN;
+    for _ in 0..600 {
+        physics_step(&mut world);
+        for &body in &boxes {
+            let bottom = world.get::<Position>(body).unwrap().0.y + 6.0;
+            deepest = deepest.max(bottom);
+        }
+    }
+    assert!(deepest < 160.0 + 1.0, "a box sank to {deepest}");
+    let bottom = world.get::<Position>(boxes[0]).unwrap().0.y + 6.0;
+    assert!(
+        (bottom - 160.0).abs() < 1.0,
+        "the stack stands on the face: {bottom}"
+    );
+}
+
+#[test]
+fn a_cell_turned_one_way_wakes_its_sleepers() {
+    // A 6 px box asleep on a solid cell's top inside the one-way cell over
+    // it, and a 12 px box asleep on the floor against a solid cell's side:
+    // each cell set one-way through the registry, both boxes are awake at
+    // the next step, and the first falls through its cell, now covered, to
+    // the floor.
+    let mut world = one_way_world(one_way_map(&[
+        "............",
+        "............",
+        "............",
+        "............",
+        "..=.........",
+        "..#.........",
+        "........#...",
+        "############",
+    ]));
+    let small = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(3.0)),
+        Vec2::new(40.0, 77.0),
+        Vec2::ZERO,
+    );
+    let beside = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(6.0)),
+        Vec2::new(122.0, 106.0),
+        Vec2::ZERO,
+    );
+    for _ in 0..90 {
+        physics_step(&mut world);
+    }
+    let sleeping = |world: &World, body: Entity| {
+        world
+            .get_resource::<PhysicsBuffers>()
+            .unwrap()
+            .is_sleeping(body)
+    };
+    assert!(
+        sleeping(&world, small) && sleeping(&world, beside),
+        "both asleep"
+    );
+    let small_y = world.get::<Position>(small).unwrap().0.y;
+    assert!(
+        (small_y + 3.0 - 80.0).abs() < 0.5,
+        "on the cell at {small_y}"
+    );
+    for (col, row) in [(2, 5), (8, 6)] {
+        assert!(
+            world
+                .resource_mut::<TilemapRegistry>()
+                .set_tile("ledges", 0, col, row, 1)
+        );
+    }
+    physics_step(&mut world);
+    assert!(!sleeping(&world, small), "the small box woke");
+    assert!(!sleeping(&world, beside), "the box beside the cell woke");
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    let fallen = world.get::<Position>(small).unwrap().0.y + 3.0;
+    assert!(
+        (fallen - 112.0).abs() < 0.5,
+        "it fell to the floor: {fallen}"
+    );
+}
+
+/// [`seed_world`] with the contact record's queues, so the step keeps it.
+fn record_world() -> World {
+    let mut world = seed_world();
+    world.insert_resource(EventQueue::<ContactBegan>::new());
+    world.insert_resource(EventQueue::<ContactEnded>::new());
+    world
+}
+
+/// Every begin and end the last step sent, flushing both queues.
+fn drain_contacts(world: &mut World) -> (Vec<ContactBegan>, Vec<ContactEnded>) {
+    let began = world.resource_mut::<EventQueue<ContactBegan>>();
+    let sent_began: Vec<ContactBegan> = began.iter_current().copied().collect();
+    began.flush();
+    let ended = world.resource_mut::<EventQueue<ContactEnded>>();
+    let sent_ended: Vec<ContactEnded> = ended.iter_current().copied().collect();
+    ended.flush();
+    (sent_began, sent_ended)
+}
+
+/// Steps `world` `steps` times, gathering every begin and end.
+fn step_contacts(world: &mut World, steps: usize) -> (Vec<ContactBegan>, Vec<ContactEnded>) {
+    let (mut began, mut ended) = (Vec::new(), Vec::new());
+    for _ in 0..steps {
+        physics_step(world);
+        let (b, e) = drain_contacts(world);
+        began.extend(b);
+        ended.extend(e);
+        world.resource_mut::<EventQueue<CollisionEvent>>().flush();
+    }
+    (began, ended)
+}
+
+#[test]
+fn contacts_begin_and_end_once_per_touch() {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 40.0));
+    let (began, ended) = step_contacts(&mut world, 200);
+    assert_eq!(began.len(), 1, "{began:?}");
+    let begin = began[0];
+    assert_eq!((begin.a, begin.b, begin.tile), (ball, Some(floor), None));
+    assert!((begin.normal - Vec2::NEG_Y).length() < 1e-6, "{begin:?}");
+    assert!(begin.speed > 100.0, "a 30 px fall lands at {}", begin.speed);
+    assert!(ended.is_empty(), "{ended:?}");
+    assert!(is_sleeping(&world, ball), "the ball rests asleep");
+    // Launched off: one end, and nothing while it flies.
+    world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(0.0, -600.0);
+    wake(&mut world, ball);
+    let (began, ended) = step_contacts(&mut world, 30);
+    assert!(began.is_empty(), "{began:?}");
+    assert_eq!(ended, [ContactEnded::new(ball, Some(floor))]);
+}
+
+/// A ball of radius 10 at 300 px/s along x, `gap` px short of a static
+/// wall at the step's start, with `restitution`: its begins and ends over
+/// 60 steps without gravity.
+fn impact(gap: f32, restitution: f32) -> (Entity, Entity, Vec<ContactBegan>, Vec<ContactEnded>) {
+    let mut world = record_world();
+    let wall = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(10.0, 100.0)),
+        Vec2::new(100.0, 0.0),
+    );
+    let ball = spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_restitution(restitution),
+        Collider::circle(10.0),
+        Vec2::new(90.0 - 10.0 - gap, 0.0),
+        Vec2::new(300.0, 0.0),
+    );
+    let (began, ended) = step_contacts(&mut world, 60);
+    (ball, wall, began, ended)
+}
+
+#[test]
+fn a_contact_begins_at_its_impact_speed() {
+    for restitution in [0.0, 0.5] {
+        for gap in [0.5, 3.0, 12.0] {
+            let (ball, wall, began, ended) = impact(gap, restitution);
+            assert_eq!(
+                began.len(),
+                1,
+                "gap {gap}, restitution {restitution}: {began:?}"
+            );
+            let begin = began[0];
+            assert_eq!((begin.a, begin.b), (ball, Some(wall)));
+            assert!(
+                (begin.speed - 300.0).abs() <= 3.0,
+                "gap {gap}, restitution {restitution}: began at {}",
+                begin.speed
+            );
+            // The bounced ball leaves once; the inelastic one stays.
+            let ends = usize::from(restitution > 0.0);
+            assert_eq!(ended.len(), ends, "gap {gap}, restitution {restitution}");
+        }
+    }
+}
+
+#[test]
+fn a_knocked_ball_begins_at_its_knock_speed() {
+    // A ball resting `gap` px from a wall is struck by an equal one at
+    // `speed`; the pair's begin reads the knock, not the rest its contact
+    // was built in. At 0.5 px the at-rest margin holds the wall's contact;
+    // at 1.5 px only the arrival pass meets the wall in time.
+    for (gap, speed) in [(0.5, 600.0), (1.5, 1_200.0)] {
+        let mut world = record_world();
+        let wall = spawn_static(
+            &mut world,
+            Collider::aabb(Vec2::new(10.0, 100.0)),
+            Vec2::new(100.0, 0.0),
+        );
+        let target = spawn_ball(&mut world, Vec2::new(90.0 - 10.0 - gap, 0.0));
+        let striker = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::circle(10.0),
+            Vec2::new(90.0 - 10.0 - gap - 22.0, 0.0),
+            Vec2::new(speed, 0.0),
+        );
+        let (began, _) = step_contacts(&mut world, 10);
+        let wall_begins: Vec<&ContactBegan> = began.iter().filter(|b| b.b == Some(wall)).collect();
+        assert_eq!(wall_begins.len(), 1, "gap {gap}: {began:?}");
+        let begin = wall_begins[0];
+        assert_eq!(begin.a, target, "gap {gap}");
+        assert!(
+            begin.speed > 100.0 && begin.speed <= speed / 2.0 * 1.03,
+            "gap {gap}: struck at {speed}, the wall's begin at {}",
+            begin.speed
+        );
+        assert!(began.iter().any(|b| b.a == striker || b.b == Some(striker)));
+        if gap > 1.0 {
+            let clamps = world.resource::<PhysicsBuffers>().arrival.clamps;
+            assert!(clamps > 0, "the arrival pass clamped nothing");
+        }
+    }
+}
+
+#[test]
+fn a_sleeping_pile_neither_ends_nor_begins() {
+    let mut world = record_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    let (began, _) = step_contacts(&mut world, 150);
+    assert_eq!(began.len(), 2, "floor and stack: {began:?}");
+    assert!(is_sleeping(&world, bottom) && is_sleeping(&world, top));
+    // Woken, it settles and sleeps again, touching throughout.
+    wake(&mut world, bottom);
+    assert!(!is_sleeping(&world, bottom));
+    let (began, ended) = step_contacts(&mut world, 150);
+    assert!(began.is_empty() && ended.is_empty(), "{began:?} {ended:?}");
+    assert!(is_sleeping(&world, bottom), "the pile sleeps again");
+
+    // A ball asleep on a still kinematic deck keeps its contact while the
+    // deck is written a hair aside, and ends it when the deck goes.
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let deck = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::new(60.0, 8.0)),
+        Vec2::new(0.0, 108.0),
+        Vec2::ZERO,
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 90.0));
+    let (began, _) = step_contacts(&mut world, 120);
+    assert_eq!(began.len(), 1, "{began:?}");
+    assert!(is_sleeping(&world, ball), "the ball sleeps on the deck");
+    let at = world.get::<Position>(deck).unwrap().0;
+    teleport(&mut world, deck, at + Vec2::new(0.25, 0.0));
+    let (began, ended) = step_contacts(&mut world, 2);
+    assert!(began.is_empty() && ended.is_empty(), "{began:?} {ended:?}");
+    assert!(is_sleeping(&world, ball), "a kinematic write wakes nothing");
+    teleport(&mut world, deck, at + Vec2::new(0.0, 400.0));
+    let (began, ended) = step_contacts(&mut world, 2);
+    assert!(began.is_empty(), "{began:?}");
+    assert_eq!(ended, [ContactEnded::new(ball, Some(deck))]);
+}
+
+#[test]
+fn a_body_leaving_a_sleeper_ends_their_contact() {
+    // Below the wake threshold the sleeper stays asleep, so only the
+    // awake body's solve can tell the touch is over.
+    let mut world = record_world();
+    let sleeper = spawn_ball(&mut world, Vec2::ZERO);
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    assert!(is_sleeping(&world, sleeper));
+    let mover = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(10.0),
+        Vec2::new(20.0, 0.0),
+        Vec2::new(-5.0, 0.0),
+    );
+    let (began, ended) = step_contacts(&mut world, 3);
+    assert_eq!(began.len(), 1, "{began:?}");
+    assert!(ended.is_empty(), "{ended:?}");
+    world.get_mut::<Velocity>(mover).unwrap().0 = Vec2::new(10.0, 0.0);
+    let (began, ended) = step_contacts(&mut world, 20);
+    assert!(began.is_empty(), "{began:?}");
+    assert_eq!(ended.len(), 1, "{ended:?}");
+    let end = ended[0];
+    assert!(
+        (end.a, end.b) == (mover, Some(sleeper)) || (end.a, end.b) == (sleeper, Some(mover)),
+        "{end:?}"
+    );
+    assert!(is_sleeping(&world, sleeper), "the sleeper never woke");
+}
+
+#[test]
+fn a_despawned_body_ends_its_contacts() {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 79.0));
+    let (began, _) = step_contacts(&mut world, 30);
+    assert_eq!(began.len(), 1);
+    world.despawn(ball);
+    let (began, ended) = step_contacts(&mut world, 2);
+    assert!(began.is_empty());
+    assert_eq!(ended, [ContactEnded::new(ball, Some(floor))]);
+}
+
+#[test]
+fn contact_events_name_the_tile_cell() {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    // Two collision layers of a 3 × 3 map, each solid at column 1, row 2
+    // alone, so the ball's pairs are that cell's in each layer.
+    let mut cell_row = vec![-1; 9];
+    cell_row[7] = 0;
+    let layers = || vec![cell_row.clone(), cell_row.clone()];
+    let map = spawn_map(&mut world, "two", Vec2::ZERO, 3, layers());
+    // A ball of radius 6 over the cell's middle (x 16..32).
+    let ball = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(6.0),
+        Vec2::new(24.0, 20.0),
+        Vec2::ZERO,
+    );
+    let mut collisions = Vec::new();
+    let (mut began, mut ended) = (Vec::new(), Vec::new());
+    for _ in 0..120 {
+        physics_step(&mut world);
+        collisions.extend(drain_events(&mut world));
+        let (b, e) = drain_contacts(&mut world);
+        began.extend(b);
+        ended.extend(e);
+    }
+    let cell = |map: Entity, layer: usize| TileHit {
+        map,
+        layer,
+        col: 1,
+        row: 2,
+    };
+    assert!(ended.is_empty(), "{ended:?}");
+    let begun: Vec<Option<TileHit>> = began.iter().map(|b| b.tile).collect();
+    assert_eq!(
+        begun,
+        [Some(cell(map, 0)), Some(cell(map, 1))],
+        "a pair a layer"
+    );
+    assert!(began.iter().all(|b| b.a == ball && b.b.is_none()));
+    assert!(
+        collisions
+            .iter()
+            .any(|c| c.a == ball && c.tile == Some(cell(map, 1))),
+        "the collision events name the cell"
+    );
+    // The map replaced in place, layer 1 emptied: its pair ends, layer 0's
+    // stands.
+    world.resource_mut::<TilemapRegistry>().insert(
+        "two".into(),
+        map_data(3, vec![cell_row.clone(), vec![-1; 9]]),
+    );
+    let (began, ended) = step_contacts(&mut world, 3);
+    assert!(began.is_empty(), "{began:?}");
+    assert_eq!(
+        ended,
+        [ContactEnded::new(ball, None).with_tile(cell(map, 1))]
+    );
+    // Another map in its place: the old pair ends, the new ones begin.
+    world.despawn(map);
+    let other = spawn_map(&mut world, "two", Vec2::ZERO, 3, layers());
+    let (began, ended) = step_contacts(&mut world, 3);
+    assert_eq!(
+        ended,
+        [ContactEnded::new(ball, None).with_tile(cell(map, 0))]
+    );
+    let begun: Vec<Option<TileHit>> = began.iter().map(|b| b.tile).collect();
+    assert_eq!(begun, [Some(cell(other, 0)), Some(cell(other, 1))]);
+}
+
+#[test]
+fn collision_events_carry_their_builds_speed() {
+    // A resting ball's contact is built at rest.
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 79.0));
+    for _ in 0..20 {
+        physics_step(&mut world);
+        drain_events(&mut world);
+    }
+    world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::ZERO;
+    physics_step(&mut world);
+    let resting = drain_events(&mut world);
+    assert!(!resting.is_empty());
+    assert!(resting.iter().all(|event| event.speed < 1.0), "{resting:?}");
+    // The safety net's clamp names the speed it stopped.
+    let mut world = record_world();
+    spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(2.0, 50.0)),
+        Vec2::new(50.0, 0.0),
+    );
+    spawn_ball(&mut world, Vec2::ZERO);
+    let config = *world.resource::<PhysicsConfig>();
+    let mut buffers = PhysicsBuffers::default();
+    gather_proxies(
+        &world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+        &mut buffers.extra,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    buffers.static_grid.begin_frame();
+    build_pairs(&config, 1.0 / 240.0, 1.0 / 60.0, &mut buffers);
+    let ball_index = buffers.proxies.iter().position(|p| p.is_dynamic).unwrap();
+    let proxy = &mut buffers.proxies[ball_index];
+    proxy.prev_center = Vec2::ZERO;
+    proxy.center = Vec2::new(100.0, 0.0);
+    proxy.velocity = Vec2::new(6_000.0, 0.0);
+    let PhysicsBuffers {
+        proxies,
+        bodies,
+        layers,
+        grid,
+        static_grid,
+        candidates,
+        events,
+        tiles,
+        ..
+    } = &mut buffers;
+    speculative_pass(
+        &config,
+        proxies,
+        *bodies,
+        layers,
+        grid,
+        static_grid,
+        candidates,
+        events,
+        tiles,
+        None,
+    );
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!((events[0].penetration, events[0].speed), (0.0, 6_000.0));
+}
+
+#[test]
+fn a_sensor_reports_each_exit() {
+    let mut world = seed_world();
+    let map = spawn_map(&mut world, "floor", Vec2::new(-8.0, 30.0), 1, vec![vec![0]]);
+    let sensor = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::new(20.0, 30.0)),
+        Vec2::new(0.0, 10.0),
+        Vec2::ZERO,
+    );
+    let small = Collider::aabb(Vec2::splat(2.0));
+    let leaving = spawn_static(&mut world, small, Vec2::new(-10.0, 0.0));
+    let doomed = spawn_static(&mut world, small, Vec2::ZERO);
+    let masked = spawn_body(
+        &mut world,
+        RigidBody::r#static().with_layers(1 << 1),
+        small,
+        Vec2::new(10.0, 0.0),
+        Vec2::ZERO,
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_events(&mut world).len(),
+        4,
+        "three bodies and a cell"
+    );
+    assert!(drain_sensor_exits(&mut world).is_empty());
+    let mut exits = Vec::new();
+    world.get_mut::<Position>(leaving).unwrap().0 = Vec2::new(500.0, 0.0);
+    physics_step(&mut world);
+    exits.push(drain_sensor_exits(&mut world));
+    world.despawn(doomed);
+    physics_step(&mut world);
+    exits.push(drain_sensor_exits(&mut world));
+    world.get_mut::<RigidBody>(sensor).unwrap().mask = RigidBody::ALL_LAYERS & !(1 << 1);
+    physics_step(&mut world);
+    exits.push(drain_sensor_exits(&mut world));
+    assert!(
+        world
+            .resource_mut::<TilemapRegistry>()
+            .set_tile("floor", 0, 0, 0, EMPTY_TILE)
+    );
+    physics_step(&mut world);
+    exits.push(drain_sensor_exits(&mut world));
+    let cell = TileHit {
+        map,
+        layer: 0,
+        col: 0,
+        row: 0,
+    };
+    assert_eq!(
+        exits,
+        [
+            vec![SensorExited::new(sensor, Some(leaving))],
+            vec![SensorExited::new(sensor, Some(doomed))],
+            vec![SensorExited::new(sensor, Some(masked))],
+            vec![SensorExited::new(sensor, None).with_tile(cell)],
+        ]
+    );
+    assert!(
+        drain_sensor_events(&mut world).is_empty(),
+        "no entry on the way"
+    );
+}
+
+/// A sensor circle of radius 4, swept or plain, at `at` moving at
+/// `velocity`, without gravity.
+fn spawn_sweeper(world: &mut World, swept: bool, at: Vec2, velocity: Vec2) -> Entity {
+    let body = if swept {
+        RigidBody::sensor().with_swept()
+    } else {
+        RigidBody::sensor()
+    };
+    spawn_body(world, body, Collider::circle(4.0), at, velocity)
+}
+
+#[test]
+fn a_swept_sensor_meets_what_it_passes() {
+    // At 3,000 px/s it moves 50 px a step, from x -25 past a ball at the
+    // origin to 25: they first touch with the sensor at x -8.
+    for swept in [true, false] {
+        let mut world = seed_world();
+        let ball = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::circle(4.0),
+            Vec2::ZERO,
+            Vec2::ZERO,
+        );
+        let sensor = spawn_sweeper(
+            &mut world,
+            swept,
+            Vec2::new(-25.0, 0.0),
+            Vec2::new(3_000.0, 0.0),
+        );
+        physics_step(&mut world);
+        let entered = drain_sensor_entries(&mut world);
+        physics_step(&mut world);
+        let exited = drain_sensor_exits(&mut world);
+        if swept {
+            assert_eq!(
+                entered,
+                [SensorEntered::new(sensor, Some(ball)).with_point(Vec2::ZERO)]
+            );
+            assert_eq!(exited, [SensorExited::new(sensor, Some(ball))]);
+        } else {
+            assert!(
+                entered.is_empty() && exited.is_empty(),
+                "a plain sensor saw it"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_swept_sensor_follows_a_bounce() {
+    // A ball at 3,000 px/s crosses a still sensor, bounces off the wall
+    // beyond and crosses back within one step, outside the sensor at both
+    // of the step's ends.
+    for swept in [true, false] {
+        let mut world = seed_world();
+        spawn_static(
+            &mut world,
+            Collider::aabb(Vec2::new(10.0, 50.0)),
+            Vec2::new(100.0, 0.0),
+        );
+        let ball = spawn_body(
+            &mut world,
+            RigidBody::dynamic().with_restitution(1.0),
+            Collider::circle(4.0),
+            Vec2::new(60.0, 0.0),
+            Vec2::new(3_000.0, 0.0),
+        );
+        let sensor = spawn_body(
+            &mut world,
+            if swept {
+                RigidBody::sensor().with_swept()
+            } else {
+                RigidBody::sensor()
+            },
+            Collider::aabb(Vec2::splat(1.0)),
+            Vec2::new(80.0, 0.0),
+            Vec2::ZERO,
+        );
+        physics_step(&mut world);
+        let at = world.get::<Position>(ball).unwrap().0;
+        let velocity = world.get::<Velocity>(ball).unwrap().0;
+        assert!(
+            at.x + 4.0 < 79.0 && velocity.x < 0.0,
+            "the ball came back: at {at}, {velocity}"
+        );
+        let entered = drain_sensor_entries(&mut world);
+        if swept {
+            assert_eq!(entered.len(), 1, "{entered:?}");
+            assert_eq!((entered[0].sensor, entered[0].other), (sensor, Some(ball)));
+        } else {
+            assert!(entered.is_empty(), "a plain sensor saw it");
+        }
+    }
+}
+
+#[test]
+fn a_swept_sensor_meets_a_body_knocked_through_it() {
+    // A resting ball struck at 3,000 px/s flies across a still sensor 12 px
+    // on within the step, past the box its pairs were staged with.
+    let mut world = seed_world();
+    let target = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(4.0),
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(4.0),
+        Vec2::new(-10.0, 0.0),
+        Vec2::new(3_000.0, 0.0),
+    );
+    let sensor = spawn_body(
+        &mut world,
+        RigidBody::sensor().with_swept(),
+        Collider::aabb(Vec2::splat(1.0)),
+        Vec2::new(12.0, 0.0),
+        Vec2::ZERO,
+    );
+    physics_step(&mut world);
+    let at = world.get::<Position>(target).unwrap().0;
+    assert!(
+        at.x - 4.0 > 13.0,
+        "the ball stopped short of the far side, at {at}"
+    );
+    let entered = drain_sensor_entries(&mut world);
+    assert!(
+        entered
+            .iter()
+            .any(|e| (e.sensor, e.other) == (sensor, Some(target))),
+        "{entered:?}"
+    );
+}
+
+#[test]
+fn a_swept_sensor_counts_a_start_overlap() {
+    // Overlapping a ball and a static box where its step starts: met at
+    // once, each at its centre.
+    let mut world = seed_world();
+    let ball = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(4.0),
+        Vec2::new(2.0, 0.0),
+        Vec2::ZERO,
+    );
+    let post = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(3.0)),
+        Vec2::new(-3.0, 2.0),
+    );
+    let sensor = spawn_sweeper(&mut world, true, Vec2::ZERO, Vec2::new(0.0, 3_000.0));
+    physics_step(&mut world);
+    let entered = drain_sensor_entries(&mut world);
+    assert_eq!(
+        entered,
+        [
+            SensorEntered::new(sensor, Some(ball)).with_point(Vec2::new(2.0, 0.0)),
+            SensorEntered::new(sensor, Some(post)).with_point(Vec2::new(-3.0, 2.0)),
+        ]
+    );
+}
+
+#[test]
+fn sensor_events_name_their_cells() {
+    // A plain sensor over two cells names each at its centre, and both on
+    // its way out; a swept one names the cell it crosses within a step.
+    let mut world = seed_world();
+    let map = spawn_map(&mut world, "pair", Vec2::ZERO, 2, vec![vec![0, 0]]);
+    let cell = |col: u32| TileHit {
+        map,
+        layer: 0,
+        col,
+        row: 0,
+    };
+    let plain = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::new(12.0, 4.0)),
+        Vec2::new(16.0, 8.0),
+        Vec2::ZERO,
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_entries(&mut world),
+        [
+            SensorEntered::new(plain, None)
+                .with_tile(cell(0))
+                .with_point(Vec2::new(8.0, 8.0)),
+            SensorEntered::new(plain, None)
+                .with_tile(cell(1))
+                .with_point(Vec2::new(24.0, 8.0)),
+        ]
+    );
+    world.get_mut::<Position>(plain).unwrap().0 = Vec2::new(16.0, 400.0);
+    physics_step(&mut world);
+    // Exits come in pair order, which a tile's identity hash sets.
+    let mut exits = drain_sensor_exits(&mut world);
+    exits.sort_by_key(|exit| exit.tile.map(|tile| tile.col));
+    assert_eq!(
+        exits,
+        [
+            SensorExited::new(plain, None).with_tile(cell(0)),
+            SensorExited::new(plain, None).with_tile(cell(1)),
+        ]
+    );
+    // From above the map to below it within one step, over column 1.
+    let swept = spawn_sweeper(
+        &mut world,
+        true,
+        Vec2::new(24.0, -20.0),
+        Vec2::new(0.0, 3_000.0),
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_entries(&mut world),
+        [SensorEntered::new(swept, None)
+            .with_tile(cell(1))
+            .with_point(Vec2::new(24.0, 8.0))]
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_exits(&mut world),
+        [SensorExited::new(swept, None).with_tile(cell(1))]
+    );
+}
+
+/// The slope of kind `code`, 1 to 12: its rise times four plus its corner,
+/// plus 1.
+fn slope_kind(code: u8) -> crate::assets::Slope {
+    use crate::assets::{SlopeCorner, SlopeRise};
+    let rises = [SlopeRise::Full, SlopeRise::Low, SlopeRise::High];
+    let corners = [
+        SlopeCorner::BottomRight,
+        SlopeCorner::BottomLeft,
+        SlopeCorner::TopRight,
+        SlopeCorner::TopLeft,
+    ];
+    let at = usize::from(code - 1);
+    crate::assets::Slope {
+        rise: rises[at / 4],
+        corner: corners[at % 4],
+    }
+}
+
+/// A map of 16 px cells drawn by rows of letters in one collision layer:
+/// `#` solid, `a` to `l` slope kinds 1 to 12 (tiles 1 to 12) and `.` empty.
+fn slope_map(rows: &[&str]) -> TilemapData {
+    let (width, height) = (rows[0].len() as u32, rows.len() as u32);
+    let mut data = TilemapData::new(16, 16, width, height);
+    data.add_tile("solid");
+    for code in 1..=12 {
+        let tile = data.add_tile(format!("slope{code}"));
+        data.set_tile_props(
+            tile,
+            TileProps {
+                slope: Some(slope_kind(code)),
+                ..TileProps::default()
+            },
+        );
+    }
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    for (row, letters) in rows.iter().enumerate() {
+        for (col, letter) in letters.chars().enumerate() {
+            let tile = match letter {
+                '#' => 0,
+                'a'..='l' => i32::from(letter as u8 - b'a') + 1,
+                _ => continue,
+            };
+            data.set_tile(layer, col as u32, row as u32, tile);
+        }
+    }
+    data
+}
+
+/// How deep a body overlaps slope kind `code`'s cell centred at `cell`: a
+/// box's least overlap by SAT on x, y and the slope's normal, a circle's
+/// radius past its centre's signed distance to the polygon; 0 or less when
+/// apart. Whether its centre is inside comes with it.
+fn slope_depth(code: u8, cell: Vec2, collider: Collider, center: Vec2) -> (f32, bool) {
+    let poly = slope::polygon(code, cell, Vec2::splat(8.0));
+    let points = &poly.points[..poly.len];
+    let inside = (0..poly.len).all(|i| (center - points[i]).dot(poly.normals[i]) < 0.0);
+    let depth = match collider.shape {
+        Shape::Circle { radius } => {
+            let distance = (0..poly.len)
+                .map(|i| {
+                    let (p, q) = (points[i], points[(i + 1) % poly.len]);
+                    let t = ((center - p).dot(q - p) / (q - p).length_squared()).clamp(0.0, 1.0);
+                    center.distance(p + (q - p) * t)
+                })
+                .fold(f32::INFINITY, f32::min);
+            radius + if inside { distance } else { -distance }
+        }
+        Shape::Aabb { half_extents } => [Vec2::X, Vec2::Y, poly.normal]
+            .into_iter()
+            .map(|axis| {
+                let reach = half_extents.x * axis.x.abs() + half_extents.y * axis.y.abs();
+                let along = points.iter().map(|p| p.dot(axis));
+                let low = along.clone().fold(f32::INFINITY, f32::min);
+                let high = along.fold(f32::NEG_INFINITY, f32::max);
+                (center.dot(axis) + reach).min(high) - (center.dot(axis) - reach).max(low)
+            })
+            .fold(f32::INFINITY, f32::min),
+    };
+    (depth, inside)
+}
+
+#[test]
+fn piles_stay_out_of_slopes() {
+    // For each kind, 500 boxes and circles of 2.5 to 5 px poured five at a
+    // time every other step from a spout 116 px over a 20-cell bin's field
+    // of that kind's cells, staggered so the pile presses on every side of
+    // them: over 600 steps no centre enters a polygon and no body sinks
+    // 2 px into one. Full cells in their place read 1.21 px at most.
+    std::thread::scope(|scope| {
+        let runs: Vec<_> = (1..=12u8)
+            .map(|code| {
+                scope.spawn(move || {
+                    let letter = char::from(b'a' + code - 1);
+                    let mut rows = vec![format!("#{}#", ".".repeat(20)); 40];
+                    for row in (26..39).step_by(3) {
+                        let shift = (row / 3) % 2;
+                        rows[row] = (0..22)
+                            .map(|col| match col {
+                                0 | 21 => '#',
+                                _ if col % 4 == 1 + shift * 2 => letter,
+                                _ => '.',
+                            })
+                            .collect();
+                    }
+                    rows.push("#".repeat(22));
+                    let mut cells = Vec::new();
+                    for (row, line) in rows.iter().enumerate() {
+                        for (col, tile) in line.chars().enumerate() {
+                            if tile == letter {
+                                cells.push(Vec2::new(col as f32, row as f32) * 16.0 + 8.0);
+                            }
+                        }
+                    }
+                    let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+                    let mut world = one_way_world(slope_map(&rows));
+                    let mut rng = crate::Pcg32::seeded(0x5_1095 + u64::from(code));
+                    let mut bodies: Vec<(Entity, Collider)> = Vec::new();
+                    let mut deepest = (f32::MIN, 0, Vec2::ZERO);
+                    for step in 0..600 {
+                        if bodies.len() < 500 && step % 2 == 0 {
+                            for lane in 0..5 {
+                                let size = rng.next_range(2.5, 5.0);
+                                let collider = if bodies.len().is_multiple_of(2) {
+                                    Collider::aabb(Vec2::new(size, rng.next_range(2.5, 5.0)))
+                                } else {
+                                    Collider::circle(size)
+                                };
+                                let x = 28.0 + 59.2 * (lane as f32 + rng.next_range(0.2, 0.8));
+                                let body = spawn_body(
+                                    &mut world,
+                                    RigidBody::dynamic(),
+                                    collider,
+                                    Vec2::new(x, 300.0),
+                                    Vec2::ZERO,
+                                );
+                                bodies.push((body, collider));
+                            }
+                        }
+                        physics_step(&mut world);
+                        for &(body, collider) in &bodies {
+                            let center = world.get::<Position>(body).unwrap().0;
+                            for &cell in &cells {
+                                if (center - cell).abs().max_element() > 16.0 {
+                                    continue;
+                                }
+                                let (depth, inside) = slope_depth(code, cell, collider, center);
+                                assert!(!inside, "kind {code}, step {step}: {center} in {cell}");
+                                if depth > deepest.0 {
+                                    deepest = (depth, step, center);
+                                }
+                            }
+                        }
+                    }
+                    let low = bodies
+                        .iter()
+                        .filter(|&&(body, _)| world.get::<Position>(body).unwrap().0.y > 400.0)
+                        .count();
+                    (code, deepest, low)
+                })
+            })
+            .collect();
+        for run in runs {
+            let (code, (depth, step, center), low) = run.join().unwrap();
+            assert!(
+                depth < 2.0,
+                "kind {code}: {depth} px deep at step {step}, {center}"
+            );
+            assert!(low > 450, "kind {code}: {low} bodies reached the field");
+        }
+    });
+}
+
+#[test]
+fn a_box_slides_down_a_frictionless_slope() {
+    // A ramp of twelve 45° cells, its face y = 192 − x: an 8 px box let go
+    // on it at x 150 slides down at g · sin 45° along the face, crossing
+    // the cells' seams without a bump.
+    let rows: Vec<String> = (0..12)
+        .map(|row| {
+            (0..12)
+                .map(|col| match (col + row).cmp(&11) {
+                    std::cmp::Ordering::Equal => 'a',
+                    std::cmp::Ordering::Greater => '#',
+                    std::cmp::Ordering::Less => '.',
+                })
+                .collect()
+        })
+        .collect();
+    let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+    let mut world = one_way_world(slope_map(&rows));
+    let start = Vec2::new(150.0, 192.0 - 150.0 - 8.0);
+    let body = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(4.0)),
+        start,
+        Vec2::ZERO,
+    );
+    let along = Vec2::new(-1.0, 1.0).normalize();
+    let mut slowest = f32::MAX;
+    for step in 1..=30 {
+        physics_step(&mut world);
+        let at = world.get::<Position>(body).unwrap().0;
+        let corner = at + Vec2::splat(4.0);
+        assert!(
+            (corner.x + corner.y - 192.0).abs() / 2f32.sqrt() < 0.5,
+            "step {step}: the box left the face at {at}"
+        );
+        let velocity = world.get::<Velocity>(body).unwrap().0;
+        let expected = 900.0 * std::f32::consts::FRAC_1_SQRT_2 * step as f32 / 60.0;
+        slowest = slowest.min(velocity.dot(along) / expected);
+    }
+    let velocity = world.get::<Velocity>(body).unwrap().0;
+    let speed = velocity.dot(along);
+    let expected = 900.0 * std::f32::consts::FRAC_1_SQRT_2 * 0.5;
+    assert!(
+        (speed - expected).abs() <= 0.03 * expected,
+        "{speed} px/s along the face after 0.5 s, g · sin 45° gives {expected}"
+    );
+    assert!(
+        velocity.perp_dot(along).abs() < 0.01 * expected,
+        "off the face's line: {velocity}"
+    );
+    assert!(slowest > 0.9, "a seam slowed it to {slowest} of its speed");
+    let moved = start.x - world.get::<Position>(body).unwrap().0.x;
+    assert!(moved > 50.0, "it crossed cells: {moved} px");
+}
+
+#[test]
+fn a_cell_changing_slope_wakes_its_sleepers() {
+    // A box asleep on a full cell and one asleep on a 45° cell's foot: the
+    // first cell turned to a 45° slope and the second to a 2:1 one, each
+    // through the registry, both boxes are awake at the next step and the
+    // first slides off its cell.
+    let mut world = one_way_world(slope_map(&[
+        "............",
+        "............",
+        "............",
+        "..#.....a...",
+        "############",
+    ]));
+    let on_full = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(3.0)),
+        Vec2::new(40.0, 45.0),
+        Vec2::ZERO,
+    );
+    // The 45° cell's foot: its face meets the floor at x 128, so a box
+    // left of it rests on the floor against the face's lower end.
+    let on_slope = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(3.0),
+        Vec2::new(141.0, 54.0),
+        Vec2::ZERO,
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let sleeping = |world: &World, body: Entity| {
+        world
+            .get_resource::<PhysicsBuffers>()
+            .unwrap()
+            .is_sleeping(body)
+    };
+    assert!(
+        sleeping(&world, on_full) && sleeping(&world, on_slope),
+        "both asleep: {:?}, {:?}",
+        world.get::<Position>(on_full).unwrap().0,
+        world.get::<Position>(on_slope).unwrap().0
+    );
+    let rested = world.get::<Position>(on_full).unwrap().0;
+    assert!(
+        (rested.y + 3.0 - 48.0).abs() < 0.5,
+        "on the cell at {rested}"
+    );
+    for (col, row, tile) in [(2, 3, 1), (8, 3, 5)] {
+        assert!(
+            world
+                .resource_mut::<TilemapRegistry>()
+                .set_tile("ledges", 0, col, row, tile)
+        );
+    }
+    physics_step(&mut world);
+    assert!(!sleeping(&world, on_full), "the box on the full cell woke");
+    assert!(!sleeping(&world, on_slope), "the ball on the slope woke");
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    let slid = world.get::<Position>(on_full).unwrap().0;
+    assert!(slid.x < rested.x - 8.0, "it slid off its cell: {slid}");
 }

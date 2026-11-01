@@ -5,6 +5,10 @@
 //! ```json
 //! { "envelope": 1, "slot": "autosave", "schema": 2, "engine_version": "0.73.0", "saved_at_ms": 1760400000000, "data": { "…": "the game's type" } }
 //! ```
+//!
+//! Saves of the World itself: the entities a game names ([`name`]) and a
+//! run's spawns from them carry a [`SaveId`], and the components and
+//! resources a [`SaveRegistry`] holds are what a save writes.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,6 +19,21 @@ use thiserror::Error;
 
 use crate::config::GameConfig;
 use crate::persist::{WriteError, write_atomic};
+
+pub(crate) mod area;
+pub(crate) mod id;
+pub(crate) mod patch;
+pub(crate) mod registry;
+pub(crate) mod world;
+
+pub use area::{AreaError, enter_area};
+pub use id::{AUTHORED, NameError, SaveId, SaveState, Saved, name, order_key, saving};
+pub use registry::{
+    MigrationStep, RefCodec, RefReader, RefWriter, Refs, SaveOptions, SaveRegistry,
+};
+pub use world::{
+    CaptureError, FORMAT, RestoreError, RestoreReport, WorldSave, capture_world, restore_world,
+};
 
 /// The JSON value [`SaveData::migrate`] rewrites, re-exported so a game
 /// needs no `serde_json` dependency of its own to write a migration.
@@ -39,35 +58,85 @@ const SLOT_NAME_MAX_LEN: usize = 64;
 /// }
 ///
 /// impl SaveData for Progress {
-///     const SCHEMA: u32 = 2;
+///     const SCHEMA: u32 = 3;
 ///
-///     fn migrate(
+///     fn migrate_step(
 ///         from: u32,
 ///         mut data: Value,
 ///     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-///         // Schema 1 had no gems.
-///         if from == 1 {
-///             data["gems"] = 0.into();
-///             return Ok(data);
+///         match from {
+///             // Schema 1 had no gems.
+///             1 => data["gems"] = 0.into(),
+///             // Schema 2 counted levels from 0.
+///             2 => data["level"] = (data["level"].as_u64().ok_or("no level")? + 1).into(),
+///             _ => return Err(format!("no migration from schema {from}").into()),
 ///         }
-///         Err(format!("no migration from schema {from}").into())
+///         Ok(data)
 ///     }
 /// }
 /// ```
 pub trait SaveData: Serialize + DeserializeOwned {
-    /// This type's schema; bump it when the type changes shape.
+    /// This type's schema; bump it when the type changes shape, and add the
+    /// step from the old one to [`migrate_step`](Self::migrate_step).
     const SCHEMA: u32;
 
-    /// Rewrites `data`, saved under the older schema `from`, into this
-    /// schema's shape. The default refuses every older schema.
+    /// Rewrites `data`, saved under schema `from`, into schema `from + 1`'s
+    /// shape: one schema's change. The default refuses every schema.
     ///
     /// # Errors
     ///
-    /// Whatever the game's migration reports; [`SaveSlots::load`] returns it
-    /// as [`SaveError::Migration`].
-    fn migrate(from: u32, data: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    /// Whatever the game's step reports; [`SaveSlots::load`] returns it as
+    /// [`SaveError::Migration`].
+    fn migrate_step(
+        from: u32,
+        data: Value,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let _ = data;
-        Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into())
+        Err(format!("schema {from} has no migration to schema {}", from + 1).into())
+    }
+
+    /// Rewrites `data`, saved under the older schema `from`, into this
+    /// schema's shape: by default [`migrate_step`](Self::migrate_step) once
+    /// per schema from `from` up to [`SCHEMA`](Self::SCHEMA). A type that
+    /// overrides it keeps its own.
+    ///
+    /// # Errors
+    ///
+    /// The first step's error; [`SaveSlots::load`] returns it as
+    /// [`SaveError::Migration`].
+    fn migrate(
+        from: u32,
+        mut data: Value,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        for schema in from..Self::SCHEMA {
+            data = Self::migrate_step(schema, data)?;
+        }
+        Ok(data)
+    }
+}
+
+/// What [`SaveSlots::save_stamped`] writes in place of this build's: a
+/// schema, an engine version and a time, for a test's older save.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct SaveStamp {
+    /// The schema the data is under.
+    pub schema: u32,
+    /// The engine version that saved it.
+    pub engine_version: String,
+    /// When: Unix milliseconds.
+    pub saved_at_ms: u64,
+}
+
+impl SaveStamp {
+    /// A stamp of `schema`, `engine_version` and `saved_at_ms`.
+    #[must_use]
+    pub fn new(schema: u32, engine_version: impl Into<String>, saved_at_ms: u64) -> Self {
+        Self {
+            schema,
+            engine_version: engine_version.into(),
+            saved_at_ms,
+        }
     }
 }
 
@@ -187,7 +256,7 @@ struct EnvelopeOut<'a, T> {
     envelope: u32,
     slot: &'a str,
     schema: u32,
-    engine_version: &'static str,
+    engine_version: &'a str,
     saved_at_ms: u64,
     data: &'a T,
 }
@@ -231,13 +300,34 @@ impl SaveSlots {
     /// [`SaveError::NoFolder`], [`SaveError::InvalidName`],
     /// [`SaveError::Serialize`] or [`SaveError::Write`].
     pub fn save<T: SaveData>(&self, slot: &str, data: &T) -> Result<(), SaveError> {
+        let stamp = SaveStamp::new(
+            T::SCHEMA,
+            env!("CARGO_PKG_VERSION"),
+            now_ms(SystemTime::now()),
+        );
+        self.save_stamped(slot, data, &stamp)
+    }
+
+    /// Saves `data` in `slot` as [`save`](Self::save) does, under `stamp`'s
+    /// schema, engine version and time: a test's save from an older build,
+    /// written as one is, so it lists and loads as one does.
+    ///
+    /// # Errors
+    ///
+    /// As [`save`](Self::save).
+    pub fn save_stamped<T: Serialize>(
+        &self,
+        slot: &str,
+        data: &T,
+        stamp: &SaveStamp,
+    ) -> Result<(), SaveError> {
         let path = self.slot_path(slot)?;
         let envelope = EnvelopeOut {
             envelope: ENVELOPE,
             slot,
-            schema: T::SCHEMA,
-            engine_version: env!("CARGO_PKG_VERSION"),
-            saved_at_ms: now_ms(SystemTime::now()),
+            schema: stamp.schema,
+            engine_version: &stamp.engine_version,
+            saved_at_ms: stamp.saved_at_ms,
             data,
         };
         let mut json =
@@ -251,7 +341,8 @@ impl SaveSlots {
     }
 
     /// Loads `slot` as `T`: data saved under `T::SCHEMA` directly, under an
-    /// older schema through [`SaveData::migrate`] once. A failed load never
+    /// older schema through [`SaveData::migrate`], by default a step a
+    /// schema. A failed load never
     /// panics and never changes the file.
     ///
     /// # Errors

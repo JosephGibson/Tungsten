@@ -171,3 +171,46 @@ fn a_save_keeps_the_direction_and_refuses_bad_values() {
 fn a_turn_offset_that_is_not_finite_panics() {
     let _ = Facing::new().turning(f32::INFINITY);
 }
+
+#[test]
+fn facing_with_flip_writes_the_sprite_flip() {
+    use tungsten_core::components::SpriteFlip;
+    let (mut world, mut schedule) = rig();
+    let runner = world.spawn_with((
+        Facing::new().horizontal().flipping(),
+        Velocity(Vec2::new(30.0, 0.0)),
+    ));
+    let plain = world.spawn_with((Facing::new(), Velocity(Vec2::new(-30.0, 0.0))));
+    present(&mut world, &mut schedule);
+    assert!(
+        world.get::<SpriteFlip>(runner).is_none(),
+        "facing right inserts nothing"
+    );
+    world.get_mut::<Velocity>(runner).unwrap().0 = Vec2::new(-30.0, 0.0);
+    present(&mut world, &mut schedule);
+    assert_eq!(world.get::<SpriteFlip>(runner), Some(&SpriteFlip(true)));
+    // Straight down keeps the side; right unflips and the flip stays.
+    world.get_mut::<Velocity>(runner).unwrap().0 = Vec2::new(0.0, 30.0);
+    present(&mut world, &mut schedule);
+    assert_eq!(world.get::<SpriteFlip>(runner), Some(&SpriteFlip(true)));
+    world.get_mut::<Velocity>(runner).unwrap().0 = Vec2::new(30.0, 0.0);
+    present(&mut world, &mut schedule);
+    assert_eq!(world.get::<SpriteFlip>(runner), Some(&SpriteFlip(false)));
+    assert!(world.get::<SpriteFlip>(plain).is_none(), "no flip asked");
+    // From data, and a save keeps it while a facing without it saves as
+    // before.
+    let registry = world.resource::<tungsten_core::ComponentRegistry>();
+    assert!(registry.names().any(|name| name == "facing"));
+    let saved = serde_json::to_value(Facing::new().flipping()).unwrap();
+    assert_eq!(saved["flip"], json!(true));
+    assert_eq!(
+        serde_json::from_value::<Facing>(saved).unwrap(),
+        Facing::new().flipping()
+    );
+    assert!(
+        serde_json::to_value(Facing::new())
+            .unwrap()
+            .get("flip")
+            .is_none()
+    );
+}

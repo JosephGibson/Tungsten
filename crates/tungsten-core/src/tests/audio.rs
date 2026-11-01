@@ -140,9 +140,13 @@ fn play_faded_queues_one_play_carrying_its_fade() {
             volume,
             looping,
             fade,
+            pan,
         } => {
             assert_eq!((*handle, *played), (AudioHandle(7), voice));
-            assert_eq!((*volume, *looping, *fade), (0.8, true, 2.0));
+            assert_eq!(
+                (*volume, *looping, *fade, *pan),
+                (0.8, true, 2.0, Pan::CENTRE)
+            );
         }
         other => panic!("unexpected {other:?}"),
     }
@@ -220,4 +224,67 @@ fn audio_bus_all_names_and_default() {
         assert_eq!(serde_json::from_value::<AudioBus>(json).unwrap(), bus);
     }
     assert!(serde_json::from_value::<AudioBus>(serde_json::json!("voice")).is_err());
+}
+
+/// A World with one sound, `theme`, at 0.6 and looping, and the queue.
+fn world_with_theme() -> World {
+    let mut world = World::new();
+    let mut sounds = SoundRegistry::new();
+    let data = crate::assets::SoundData {
+        samples: vec![0.0; 8],
+        sample_rate: 8_000,
+        channels: 1,
+    };
+    sounds.register("theme".into(), data, 0.6, true);
+    world.insert_resource(sounds);
+    world.insert_resource(AudioCommands::new());
+    world
+}
+
+#[test]
+fn play_takes_the_manifests_volume_and_loop() {
+    let mut world = world_with_theme();
+    let voice = play(&mut world, "theme", 1.5).expect("a known ID plays");
+    let drained = world.resource_mut::<AudioCommands>().drain();
+    assert_eq!(drained.len(), 1);
+    match &drained[0] {
+        AudioCommand::Play {
+            handle,
+            voice: played,
+            volume,
+            looping,
+            fade,
+            pan,
+        } => {
+            assert_eq!((*handle, *played), (AudioHandle(0), voice));
+            assert_eq!(
+                (*volume, *looping, *fade, *pan),
+                (0.6, true, 1.5, Pan::CENTRE)
+            );
+        }
+        other => panic!("expected a play, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_unknown_id_plays_nothing() {
+    let mut world = world_with_theme();
+    assert_eq!(play(&mut world, "boss", 0.0), None);
+    assert!(world.resource_mut::<AudioCommands>().drain().is_empty());
+    // A World without the registry or the queue plays nothing either.
+    assert_eq!(play(&mut World::new(), "theme", 0.0), None);
+}
+
+#[test]
+fn a_pan_keeps_halves_and_quarters_and_clamps() {
+    for pan in [-1.0, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0] {
+        assert_eq!(Pan::new(pan).get(), pan);
+    }
+    assert_eq!(Pan::new(3.0).get(), 1.0);
+    assert_eq!(Pan::new(-3.0).get(), -1.0);
+    assert_eq!(Pan::new(f32::NAN), Pan::CENTRE);
+    assert_eq!(Pan::default(), Pan::CENTRE);
+    assert!((Pan::new(0.3).get() - 0.3).abs() < 1e-4);
+    // A command stays 24 bytes with its pan.
+    assert_eq!(std::mem::size_of::<AudioCommand>(), 24);
 }

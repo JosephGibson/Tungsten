@@ -6,6 +6,7 @@ use thiserror::Error;
 use crate::assets::material::MaterialUniformDefaults;
 use crate::assets::particle::ParticleMesh;
 use crate::audio::{AudioBus, MAX_VOICES};
+use crate::physics::PhysicsMaterial;
 
 #[derive(Debug, Error)]
 pub enum ManifestError {
@@ -75,10 +76,59 @@ pub enum ManifestError {
     InvalidParticleMesh { id: String, reason: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
+    /// A second root that sets a boot group (redo 7.9).
+    #[error("two manifests set a `boot` group; one root sets it")]
+    BootGroupTwice,
+    /// A `boot` field naming an ID its section lacks (redo 7.9).
+    #[error("boot.{field} names unknown {section} '{id}'")]
+    UnknownBootAsset {
+        /// `logo`, `bar` or `font`.
+        field: &'static str,
+        /// `sprites` or `fonts`.
+        section: &'static str,
+        /// The ID it names.
+        id: String,
+    },
+    /// A `sheets` entry whose frames do not fit its image (redo 7.9).
+    #[error("sheet '{id}' is invalid: {reason}")]
+    InvalidSheet {
+        /// The sheet's ID.
+        id: String,
+        /// What does not fit.
+        reason: String,
+    },
     #[error("font family '{family}' references unknown font '{face}'")]
     FontFamilyFaceMissing { family: String, face: String },
     #[error("font_fallback names unknown font family '{family}'")]
     UnknownFallbackFamily { family: String },
+    /// A `physics_layers` entry's name is not `[a-z][a-z0-9_]*` or its
+    /// layer is not 0 to 31.
+    #[error("physics layer '{name}' is invalid: {reason}")]
+    InvalidPhysicsLayer {
+        /// The name the entry gives.
+        name: String,
+        /// What is wrong with it.
+        reason: String,
+    },
+    /// Two `physics_layers` names give one layer, in one manifest or across
+    /// them.
+    #[error("physics layer {layer} is named both '{first}' and '{second}'")]
+    PhysicsLayerTaken {
+        /// The layer, 0 to 31.
+        layer: u32,
+        /// The name that took it first, or the smaller in one manifest.
+        first: String,
+        /// The other name.
+        second: String,
+    },
+    /// A `physics_materials` entry's coefficient is out of range.
+    #[error("physics material '{id}' is invalid: {reason}")]
+    InvalidPhysicsMaterial {
+        /// The material's name.
+        id: String,
+        /// What is wrong with it.
+        reason: String,
+    },
     /// An entry's path is absolute or climbs out of its manifest's folder
     /// with `..`; every load refuses it, so a watcher never watches outside.
     #[error("{id} names '{path}', which is absolute or leaves its manifest's folder")]
@@ -230,12 +280,82 @@ fn resolve_file(
     Ok(Some(full_path))
 }
 
+/// A sprite's or sheet's files as its entry names them.
+struct SpriteFiles<'a> {
+    section: &'static str,
+    path: &'a str,
+    normal_map: Option<&'a str>,
+    emissive_mask: Option<&'a str>,
+}
+
+impl SpriteFiles<'_> {
+    /// The image and its siblings resolved against `base_dir`, or `None`
+    /// once the sink kept a file that did not resolve.
+    #[allow(clippy::type_complexity)] // the three paths `ResolvedSprite` keeps
+    fn resolve(
+        &self,
+        base_dir: &Path,
+        id: &str,
+        sink: &mut Sink<'_>,
+    ) -> Result<Option<(PathBuf, Option<PathBuf>, Option<PathBuf>)>, ManifestError> {
+        let section = self.section;
+        let full_path = resolve_file(
+            base_dir,
+            self.path,
+            sink,
+            || format!("{section}.{id}"),
+            |path| ManifestError::MissingFile {
+                id: id.to_string(),
+                path,
+            },
+        )?;
+        let normal_path = match self.normal_map {
+            Some(rel) => Some(resolve_file(
+                base_dir,
+                rel,
+                sink,
+                || format!("{section}.{id}.normal_map"),
+                |path| ManifestError::MissingNormalMapFile {
+                    id: id.to_string(),
+                    path,
+                },
+            )?),
+            None => None,
+        };
+        let emissive_path = match self.emissive_mask {
+            Some(rel) => Some(resolve_file(
+                base_dir,
+                rel,
+                sink,
+                || format!("{section}.{id}.emissive_mask"),
+                |path| ManifestError::MissingEmissiveMaskFile {
+                    id: id.to_string(),
+                    path,
+                },
+            )?),
+            None => None,
+        };
+        let (Some(full_path), Some(normal_path), Some(emissive_path)) = (
+            full_path,
+            normal_path.map_or(Some(None), |p| p.map(Some)),
+            emissive_path.map_or(Some(None), |p| p.map(Some)),
+        ) else {
+            return Ok(None);
+        };
+        Ok(Some((full_path, normal_path, emissive_path)))
+    }
+}
+
 /// Raw manifest JSON. An ID repeated inside one section is a parse error
 /// (`D-017`); `merge` refuses one repeated across manifests.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct RawManifest {
     #[serde(default, deserialize_with = "unique_ids")]
     pub sprites: HashMap<String, SpriteEntry>,
+    /// Sprite sheets (redo 7.9): each frame registers as sprite
+    /// `<sheet>_<n>`, so its IDs share the `sprites` namespace.
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub sheets: HashMap<String, SheetEntry>,
     #[serde(default, deserialize_with = "unique_ids")]
     pub animations: HashMap<String, AnimationEntry>,
     #[serde(default, deserialize_with = "unique_ids")]
@@ -269,6 +389,92 @@ pub struct RawManifest {
     /// error; a plugin registers each kind.
     #[serde(default, deserialize_with = "data_sections")]
     pub data: BTreeMap<String, BTreeMap<String, DataEntry>>,
+    /// Physics layer names: a name, `[a-z][a-z0-9_]*`, and its layer, 0 to
+    /// 31 (`D-178`). A name or a layer given twice, in one manifest or
+    /// across them, fails the load.
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub physics_layers: HashMap<String, u32>,
+    /// Physics materials: a name and its contact coefficients; `materials`
+    /// names the render's (`D-058`).
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub physics_materials: HashMap<String, PhysicsMaterialEntry>,
+    /// The boot group (redo 7.9): what the window shows while the rest
+    /// loads. One root at most sets it.
+    #[serde(default)]
+    pub boot: Option<BootGroup>,
+}
+
+/// The `boot` section (redo 7.9): the assets the window shows while the
+/// rest of the manifest loads, each optional and each an ID its section
+/// declares in the merged graph. Unknown keys fail the parse.
+///
+/// ```json
+/// "boot": { "logo": "studio_logo", "bar": "load_bar", "font": "sans" }
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BootGroup {
+    /// A sprite drawn at the window's centre.
+    #[serde(default)]
+    pub logo: Option<String>,
+    /// A sprite drawn under the logo, stretched to the progress.
+    #[serde(default)]
+    pub bar: Option<String>,
+    /// A font the progress prints in.
+    #[serde(default)]
+    pub font: Option<String>,
+}
+
+impl BootGroup {
+    /// Whether it names nothing.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.logo.is_none() && self.bar.is_none() && self.font.is_none()
+    }
+}
+
+/// A `physics_materials` entry: each coefficient optional, unknown fields
+/// failing. `friction` finite and at least 0, `= 0`; `restitution` in
+/// 0..=1, `= 0`; `rolling` finite and at least 0, `= 0`.
+#[derive(Debug, Clone, Copy, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PhysicsMaterialEntry {
+    /// Coulomb friction.
+    pub friction: Option<f32>,
+    /// Restitution.
+    pub restitution: Option<f32>,
+    /// Rolling resistance.
+    pub rolling: Option<f32>,
+}
+
+impl PhysicsMaterialEntry {
+    /// The material, or why a coefficient is out of range.
+    fn resolve(self) -> Result<PhysicsMaterial, String> {
+        let at_least_zero = |field: &str, value: Option<f32>| match value {
+            Some(value) if !(value.is_finite() && value >= 0.0) => Err(format!(
+                "`{field}` must be finite and at least 0 (got {value})"
+            )),
+            value => Ok(value.unwrap_or(0.0)),
+        };
+        let restitution = match self.restitution {
+            Some(value) if !(0.0..=1.0).contains(&value) => {
+                return Err(format!("`restitution` must be in 0..=1 (got {value})"));
+            }
+            value => value.unwrap_or(0.0),
+        };
+        Ok(PhysicsMaterial {
+            friction: at_least_zero("friction", self.friction)?,
+            restitution,
+            rolling: at_least_zero("rolling", self.rolling)?,
+        })
+    }
+}
+
+/// Whether `name` is `[a-z][a-z0-9_]*`.
+fn valid_layer_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    bytes.next().is_some_and(|b| b.is_ascii_lowercase())
+        && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -287,6 +493,91 @@ pub struct SpriteEntry {
     /// stretches the edges and the centre (Q5).
     #[serde(default)]
     pub nine_slice: Option<[u32; 4]>,
+    /// The point drawn at the entity's position and turned about, `[x, y]`
+    /// in source pixels (redo 7.9); unset, the sprite draws from its
+    /// top-left and turns about its centre.
+    #[serde(default)]
+    pub anchor: Option<[f32; 2]>,
+}
+
+/// A `sheets` entry (redo 7.9): one PNG cut into `frame`-sized cells, left
+/// to right, then top to bottom. The first `count` cells, every whole cell
+/// unless set, register as sprites `<sheet>_<n>` from 0, each with the
+/// sheet's filter, its siblings cropped alike and its anchor. Unknown keys
+/// fail the parse.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SheetEntry {
+    /// The image, relative to the manifest.
+    pub path: String,
+    /// A cell's `[width, height]` in pixels.
+    pub frame: [u32; 2],
+    /// How many cells are frames, from the first.
+    #[serde(default)]
+    pub count: Option<u32>,
+    /// Every frame's filter, `nearest` unless set.
+    #[serde(default = "default_filter")]
+    pub filter: FilterMode,
+    /// A normal map of the image's size, cut as the image is.
+    #[serde(default)]
+    pub normal_map: Option<String>,
+    /// An emissive mask of the image's size, cut as the image is.
+    #[serde(default)]
+    pub emissive_mask: Option<String>,
+    /// Each frame's anchor, `[x, y]` in a frame's pixels.
+    #[serde(default)]
+    pub anchor: Option<[f32; 2]>,
+}
+
+/// The cells a sheet of `frame`-sized cells over the PNG at `path` takes
+/// as frames, `[x, y, width, height]` each, read from its header: the
+/// first `count`, else every whole cell.
+fn sheet_frames(path: &Path, frame: [u32; 2], count: Option<u32>) -> Result<Vec<[u32; 4]>, String> {
+    let [frame_w, frame_h] = frame;
+    if frame_w == 0 || frame_h == 0 {
+        return Err("`frame` must be at least 1 x 1".into());
+    }
+    let (width, height) = png_size(path)?;
+    if frame_w > width || frame_h > height {
+        return Err(format!(
+            "`frame` {frame_w}x{frame_h} is larger than its image ({width}x{height})"
+        ));
+    }
+    let (columns, rows) = (width / frame_w, height / frame_h);
+    let cells = columns * rows;
+    let count = count.unwrap_or(cells);
+    if count == 0 {
+        return Err("`count` must be at least 1".into());
+    }
+    if count > cells {
+        return Err(format!(
+            "`count` {count} is past its {cells} cells ({columns} x {rows} of {frame_w}x{frame_h})"
+        ));
+    }
+    Ok((0..count)
+        .map(|n| {
+            [
+                n % columns * frame_w,
+                n / columns * frame_h,
+                frame_w,
+                frame_h,
+            ]
+        })
+        .collect())
+}
+
+/// A PNG's `(width, height)` from its header, without decoding it.
+fn png_size(path: &Path) -> Result<(u32, u32), String> {
+    use std::io::Read;
+    let mut head = [0u8; 24];
+    std::fs::File::open(path)
+        .and_then(|mut file| file.read_exact(&mut head))
+        .map_err(|e| format!("cannot read '{}': {e}", path.display()))?;
+    if head[..8] != *b"\x89PNG\r\n\x1a\n" || head[12..16] != *b"IHDR" {
+        return Err(format!("'{}' is not a PNG", path.display()));
+    }
+    let word = |at: usize| u32::from_be_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]]);
+    Ok((word(16), word(20)))
 }
 
 /// A `ui_themes` entry: the theme file's path, relative to the manifest.
@@ -587,6 +878,12 @@ pub struct ResolvedManifest {
     pub prefabs: HashMap<String, ResolvedPrefab>,
     /// Data entries by kind, then ID (M61).
     pub data: BTreeMap<String, BTreeMap<String, ResolvedDataEntry>>,
+    /// Physics layer names and their layers, 0 to 31 (`D-178`).
+    pub physics_layers: HashMap<String, u32>,
+    /// Physics materials by name.
+    pub physics_materials: HashMap<String, PhysicsMaterial>,
+    /// The boot group, empty unless a root sets one (redo 7.9).
+    pub boot: BootGroup,
 }
 
 #[derive(Debug, Clone)]
@@ -597,6 +894,11 @@ pub struct ResolvedSprite {
     pub emissive_path: Option<PathBuf>,
     /// Nine-slice insets `[left, top, right, bottom]` in source pixels.
     pub nine_slice: Option<[u32; 4]>,
+    /// A sheet frame's `[x, y, width, height]` in its file (redo 7.9);
+    /// `None` for a whole file.
+    pub rect: Option<[u32; 4]>,
+    /// The point drawn at the entity's position, in source pixels.
+    pub anchor: Option<[f32; 2]>,
 }
 
 /// A UI theme: the theme file's resolved path.
@@ -753,48 +1055,16 @@ impl ResolvedManifest {
         let mut result = ResolvedManifest::default();
 
         for (id, entry) in raw.sprites {
-            let full_path = resolve_file(
-                base_dir,
-                &entry.path,
-                sink,
-                || format!("sprites.{id}"),
-                |path| ManifestError::MissingFile {
-                    id: id.clone(),
-                    path,
-                },
-            )?;
-            let normal_path = match &entry.normal_map {
-                Some(rel) => Some(resolve_file(
-                    base_dir,
-                    rel,
-                    sink,
-                    || format!("sprites.{id}.normal_map"),
-                    |path| ManifestError::MissingNormalMapFile {
-                        id: id.clone(),
-                        path,
-                    },
-                )?),
-                None => None,
+            let files = SpriteFiles {
+                section: "sprites",
+                path: &entry.path,
+                normal_map: entry.normal_map.as_deref(),
+                emissive_mask: entry.emissive_mask.as_deref(),
             };
-            let emissive_path = match &entry.emissive_mask {
-                Some(rel) => Some(resolve_file(
-                    base_dir,
-                    rel,
-                    sink,
-                    || format!("sprites.{id}.emissive_mask"),
-                    |path| ManifestError::MissingEmissiveMaskFile {
-                        id: id.clone(),
-                        path,
-                    },
-                )?),
-                None => None,
-            };
-            // A sprite with a sibling that did not resolve is left out.
-            let (Some(full_path), Some(normal_path), Some(emissive_path)) = (
-                full_path,
-                normal_path.map_or(Some(None), |p| p.map(Some)),
-                emissive_path.map_or(Some(None), |p| p.map(Some)),
-            ) else {
+            // A sprite with a file that did not resolve is left out.
+            let Some((full_path, normal_path, emissive_path)) =
+                files.resolve(base_dir, &id, sink)?
+            else {
                 continue;
             };
             result.sprites.insert(
@@ -805,8 +1075,54 @@ impl ResolvedManifest {
                     normal_path,
                     emissive_path,
                     nine_slice: entry.nine_slice,
+                    rect: None,
+                    anchor: entry.anchor,
                 },
             );
+        }
+
+        // Redo 7.9: each sheet's frames, after the sprites whose IDs they
+        // must not take (`D-017`).
+        let mut sheets: Vec<(String, SheetEntry)> = raw.sheets.into_iter().collect();
+        sheets.sort_by(|a, b| a.0.cmp(&b.0));
+        for (id, entry) in sheets {
+            let files = SpriteFiles {
+                section: "sheets",
+                path: &entry.path,
+                normal_map: entry.normal_map.as_deref(),
+                emissive_mask: entry.emissive_mask.as_deref(),
+            };
+            let Some((full_path, normal_path, emissive_path)) =
+                files.resolve(base_dir, &id, sink)?
+            else {
+                continue;
+            };
+            let frames = match sheet_frames(&full_path, entry.frame, entry.count) {
+                Ok(frames) => frames,
+                Err(reason) => {
+                    sink.report(ManifestError::InvalidSheet { id, reason })?;
+                    continue;
+                }
+            };
+            for (n, rect) in frames.into_iter().enumerate() {
+                let frame_id = format!("{id}_{n}");
+                if result.sprites.contains_key(&frame_id) {
+                    sink.report(ManifestError::DuplicateId { id: frame_id })?;
+                    continue;
+                }
+                result.sprites.insert(
+                    frame_id,
+                    ResolvedSprite {
+                        path: full_path.clone(),
+                        filter: entry.filter,
+                        normal_path: normal_path.clone(),
+                        emissive_path: emissive_path.clone(),
+                        nine_slice: None,
+                        rect: Some(rect),
+                        anchor: entry.anchor,
+                    },
+                );
+            }
         }
 
         for (id, entry) in raw.animations {
@@ -1011,6 +1327,46 @@ impl ResolvedManifest {
             );
         }
 
+        // Sorted, so the layer or material an error names does not depend
+        // on map order; a layer two names give keeps the smaller name.
+        let mut layers: Vec<(String, u32)> = raw.physics_layers.into_iter().collect();
+        layers.sort();
+        for (name, layer) in layers {
+            let reason = if !valid_layer_name(&name) {
+                Some("a name must match [a-z][a-z0-9_]*".to_owned())
+            } else if layer >= u32::BITS {
+                Some(format!("a layer must be 0 to 31 (got {layer})"))
+            } else {
+                None
+            };
+            if let Some(reason) = reason {
+                sink.report(ManifestError::InvalidPhysicsLayer { name, reason })?;
+                continue;
+            }
+            if let Some((first, _)) = result.physics_layers.iter().find(|&(_, &l)| l == layer) {
+                sink.report(ManifestError::PhysicsLayerTaken {
+                    layer,
+                    first: first.clone(),
+                    second: name,
+                })?;
+                continue;
+            }
+            result.physics_layers.insert(name, layer);
+        }
+        let mut materials: Vec<(String, PhysicsMaterialEntry)> =
+            raw.physics_materials.into_iter().collect();
+        materials.sort_by(|a, b| a.0.cmp(&b.0));
+        for (id, entry) in materials {
+            match entry.resolve() {
+                Ok(material) => {
+                    result.physics_materials.insert(id, material);
+                }
+                Err(reason) => sink.report(ManifestError::InvalidPhysicsMaterial { id, reason })?,
+            }
+        }
+        // Redo 7.9: the boot group, its IDs checked on the whole graph.
+        result.boot = raw.boot.unwrap_or_default();
+
         // Sorted, so the mesh an error names does not depend on map order.
         let mut meshes: Vec<(String, ParticleMeshEntry)> =
             raw.particle_meshes.into_iter().collect();
@@ -1180,7 +1536,8 @@ impl ResolvedManifest {
             )?;
         }
         self.validate_font_refs(sink)?;
-        self.validate_shared_files(sink)
+        self.validate_shared_files(sink)?;
+        self.validate_boot(sink)
     }
 
     /// Each file backs one prefab or data entry, since an edit routes to
@@ -1319,9 +1676,74 @@ impl ResolvedManifest {
             }
         }
         append_fallback(&mut self.font_fallback, other.font_fallback);
+        // Sorted, so the name an error gives does not depend on map order.
+        let mut layers: Vec<(String, u32)> = other.physics_layers.into_iter().collect();
+        layers.sort();
+        for (name, layer) in layers {
+            if self.physics_layers.contains_key(&name) {
+                sink.report(ManifestError::DuplicateId {
+                    id: format!("physics_layers.{name}"),
+                })?;
+                continue;
+            }
+            if let Some((first, _)) = self.physics_layers.iter().find(|&(_, &l)| l == layer) {
+                sink.report(ManifestError::PhysicsLayerTaken {
+                    layer,
+                    first: first.clone(),
+                    second: name,
+                })?;
+                continue;
+            }
+            self.physics_layers.insert(name, layer);
+        }
+        for (id, material) in other.physics_materials {
+            if self.physics_materials.contains_key(&id) {
+                sink.report(ManifestError::DuplicateId {
+                    id: format!("physics_materials.{id}"),
+                })?;
+                continue;
+            }
+            self.physics_materials.insert(id, material);
+        }
+        // Redo 7.9: one root at most sets the boot group.
+        if !other.boot.is_empty() {
+            if self.boot.is_empty() {
+                self.boot = other.boot;
+            } else {
+                sink.report(ManifestError::BootGroupTwice)?;
+            }
+        }
         if check_refs {
             self.validate_font_refs(sink)?;
             self.validate_shared_files(sink)?;
+            self.validate_boot(sink)?;
+        }
+        Ok(())
+    }
+
+    /// The boot group's sprites and font must be declared in this graph
+    /// (redo 7.9, `D-089`).
+    fn validate_boot(&self, sink: &mut Sink<'_>) -> Result<(), ManifestError> {
+        let boot = &self.boot;
+        for (field, id) in [("logo", &boot.logo), ("bar", &boot.bar)] {
+            if let Some(id) = id
+                && !self.sprites.contains_key(id)
+            {
+                sink.report(ManifestError::UnknownBootAsset {
+                    field,
+                    section: "sprites",
+                    id: id.clone(),
+                })?;
+            }
+        }
+        if let Some(id) = &boot.font
+            && !self.fonts.contains_key(id)
+        {
+            sink.report(ManifestError::UnknownBootAsset {
+                field: "font",
+                section: "fonts",
+                id: id.clone(),
+            })?;
         }
         Ok(())
     }

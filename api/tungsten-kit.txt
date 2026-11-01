@@ -693,6 +693,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Children
 pub struct tungsten_kit::prelude::Clips
 impl tungsten_kit::Clips
 pub fn tungsten_kit::Clips::four(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Clips::mirrored(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::one(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::sides(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_kit::Clips
@@ -1536,6 +1537,7 @@ pub struct tungsten_kit::prelude::Facing
 impl tungsten_kit::Facing
 pub fn tungsten_kit::Facing::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Facing::eight_way(self) -> Self
+pub fn tungsten_kit::Facing::flipping(self) -> Self
 pub fn tungsten_kit::Facing::four_way(self) -> Self
 pub fn tungsten_kit::Facing::from_aim(self) -> Self
 pub fn tungsten_kit::Facing::from_intent(self) -> Self
@@ -1830,6 +1832,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::HitShape
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HitShape
 pub struct tungsten_kit::prelude::Hitbox
 impl tungsten_kit::Hitbox
+pub fn tungsten_kit::Hitbox::activation(&self) -> u32
 pub fn tungsten_kit::Hitbox::arm(&mut self)
 pub fn tungsten_kit::Hitbox::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
 pub fn tungsten_kit::Hitbox::damage(&self) -> f32
@@ -1858,10 +1861,9 @@ pub fn tungsten_kit::Hitbox::with_window(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::clone(&self) -> tungsten_kit::Hitbox
 impl core::cmp::PartialEq for tungsten_kit::Hitbox
-pub fn tungsten_kit::Hitbox::eq(&self, &tungsten_kit::Hitbox) -> bool
+pub fn tungsten_kit::Hitbox::eq(&self, &Self) -> bool
 impl core::fmt::Debug for tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tungsten_kit::Hitbox
 impl serde_core::ser::Serialize for tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl tungsten_core::inspect::Inspectable for tungsten_kit::Hitbox
@@ -4423,6 +4425,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Children
 pub struct tungsten_kit::Clips
 impl tungsten_kit::Clips
 pub fn tungsten_kit::Clips::four(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Clips::mirrored(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::one(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::sides(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_kit::Clips
@@ -5315,6 +5318,7 @@ pub struct tungsten_kit::Facing
 impl tungsten_kit::Facing
 pub fn tungsten_kit::Facing::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Facing::eight_way(self) -> Self
+pub fn tungsten_kit::Facing::flipping(self) -> Self
 pub fn tungsten_kit::Facing::four_way(self) -> Self
 pub fn tungsten_kit::Facing::from_aim(self) -> Self
 pub fn tungsten_kit::Facing::from_intent(self) -> Self
@@ -5628,6 +5632,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::HitShape
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HitShape
 pub struct tungsten_kit::Hitbox
 impl tungsten_kit::Hitbox
+pub fn tungsten_kit::Hitbox::activation(&self) -> u32
 pub fn tungsten_kit::Hitbox::arm(&mut self)
 pub fn tungsten_kit::Hitbox::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
 pub fn tungsten_kit::Hitbox::damage(&self) -> f32
@@ -5656,10 +5661,9 @@ pub fn tungsten_kit::Hitbox::with_window(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::clone(&self) -> tungsten_kit::Hitbox
 impl core::cmp::PartialEq for tungsten_kit::Hitbox
-pub fn tungsten_kit::Hitbox::eq(&self, &tungsten_kit::Hitbox) -> bool
+pub fn tungsten_kit::Hitbox::eq(&self, &Self) -> bool
 impl core::fmt::Debug for tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tungsten_kit::Hitbox
 impl serde_core::ser::Serialize for tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl tungsten_core::inspect::Inspectable for tungsten_kit::Hitbox
@@ -7544,6 +7548,7 @@ pub const tungsten_kit::STEERING: &str
 pub const tungsten_kit::TOP_DOWN_MOVER: &str
 pub const tungsten_kit::TRANSFORM_PROPAGATE: &str
 pub const tungsten_kit::TRANSFORM_PROPAGATE_LATE: &str
+pub const tungsten_kit::UNSAVED_COMPONENTS: &[(&str, &str)]
 pub const tungsten_kit::WRAP: &str
 pub const tungsten_kit::ZONE_TICK: &str
 pub fn tungsten_kit::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>

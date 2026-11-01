@@ -15,12 +15,17 @@ use tungsten::core::{
     ParticleEmitter, Position, Sprite, TilemapInstance, Transform, Visibility, World,
     parallax_world_position,
 };
-use tungsten::testing::{CounterGuard, Harness};
+use tungsten::testing::{CounterGuard, Harness, allocations};
 
+use crate::boot;
 use crate::churn::Life;
+use crate::counters::BenchCounters;
 use crate::r#gen::{self, TextureSink};
 use crate::knobs::{self, BenchConfig};
 use crate::physics::Ball;
+use crate::piles::{self, PileCounts};
+use crate::saves::SaveCounts;
+use crate::terrain::{self, TerrainCounts};
 use crate::view::{self, ViewSprite};
 use crate::{BENCHES, bench_app, gpu, particles};
 
@@ -70,7 +75,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
         .collect();
     let mut textures = HeadlessTextures(handles.into_iter());
     match cfg.bench.name {
-        "physics" | "ecs" | "churn" => {
+        "physics" | "ecs" | "churn" | "saves" => {
             r#gen::register_view_textures(harness.world_mut(), &mut textures);
         }
         "particles" => {
@@ -83,6 +88,8 @@ fn harness(cfg: &BenchConfig) -> Harness {
                 .expect("the bench manifest loads headless");
             gpu::startup(harness.world_mut(), &mut textures, cfg);
         }
+        "terrain" => terrain::startup(harness.world_mut(), &mut textures, cfg),
+        "piles" => piles::startup(harness.world_mut(), &mut textures, cfg),
         other => panic!("no guard startup for bench {other}"),
     }
     harness
@@ -151,6 +158,17 @@ fn gpu_drawable(world: &World) -> u64 {
 /// each frame's extracted instances against `drawable`. The checks run
 /// between counted frames, so their allocations stay out of the reading.
 fn measure(harness: &mut Harness, warmup: u32, drawable: fn(&World) -> u64) -> CounterGuard {
+    measure_checking(harness, warmup, drawable, |_, _| {})
+}
+
+/// [`measure`], calling `check` with the World and the window frame's index
+/// after each frame.
+fn measure_checking(
+    harness: &mut Harness,
+    warmup: u32,
+    drawable: fn(&World) -> u64,
+    mut check: impl FnMut(&World, u32),
+) -> CounterGuard {
     let mut total = CounterGuard::measure(harness, warmup, 0);
     for frame in 0..WINDOW {
         let one = CounterGuard::measure(harness, 0, 1);
@@ -160,6 +178,7 @@ fn measure(harness: &mut Harness, warmup: u32, drawable: fn(&World) -> u64) -> C
             "window frame {frame}: the extract drew {} instances of {expected} drawable",
             one.max_sprite_instances
         );
+        check(harness.world(), frame);
         total.allocations += one.allocations;
         total.allocated_bytes += one.allocated_bytes;
         total.archetype_moves += one.archetype_moves;
@@ -285,4 +304,201 @@ fn guards_gpu_throughput() {
         gpu_populations,
         gpu_drawable,
     );
+}
+
+/// `terrain`'s drawable instances: the bodies in view and the art layer's
+/// visible tiles.
+/// The lean view's drawable quads and the visible tiles of the map's art
+/// layer.
+fn tiled_drawable(world: &World) -> u64 {
+    view_drawable(world) + u64::from(gpu::visible_tiles(world))
+}
+
+/// The last frame's edits, refills and chunks traced.
+fn terrain_edits(world: &World) -> (u64, u64, u64) {
+    let counts = &world.resource::<BenchCounters<TerrainCounts>>().counts;
+    (
+        u64::from(counts.edits),
+        u64::from(counts.refills),
+        u64::from(counts.traced),
+    )
+}
+
+#[test]
+fn guards_terrain() {
+    let bench = knobs::select(BENCHES, Some("terrain")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(
+        cfg.row(),
+        "terrain",
+        "the configuration measures another row"
+    );
+    let mut harness = harness(&cfg);
+    let world = harness.world();
+    assert_eq!(
+        count::<terrain::Body>(world),
+        knob(&cfg, "bodies"),
+        "bodies"
+    );
+    assert_eq!(
+        count::<terrain::Sensor>(world),
+        knob(&cfg, "sensors"),
+        "sensors"
+    );
+    assert_eq!(count::<TilemapInstance>(world), 1, "the map");
+    // Past the first refills, the warm-up's last frame and the window's
+    // break and refill `edits` cells each and trace at most the 8 × `edits`
+    // chunks around them.
+    CounterGuard::measure(&mut harness, cfg.bench.warmup, 0);
+    let edits = knob(&cfg, "edits");
+    let check = |(broken, refilled, traced): (u64, u64, u64), when: &str| {
+        assert_eq!((broken, refilled), (edits, edits), "{when}: edits");
+        assert!(
+            traced > 0 && traced <= 8 * edits,
+            "{when}: {traced} chunks traced"
+        );
+    };
+    check(terrain_edits(harness.world()), "warm-up");
+    let reading = measure(&mut harness, 0, tiled_drawable);
+    check(terrain_edits(harness.world()), "window");
+    assert!(
+        reading.max_sprite_instances > 0,
+        "terrain: the guard drew nothing"
+    );
+    reading.check(manifest_path("src/tests/guards/terrain.json"));
+}
+
+/// One `piles` guard: `row` at `preset`, its bodies, paddles and map counted
+/// first, and `frame` checking each window frame's counters before the pin.
+fn guard_piles(row: &str, preset: &str, paddles: u64, frame: fn(&PileCounts, u32)) {
+    let bench = knobs::select(BENCHES, Some("piles")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some(preset), None, None).expect("a configuration");
+    assert_eq!(cfg.row(), row, "the configuration measures another row");
+    let mut harness = harness(&cfg);
+    let world = harness.world();
+    assert_eq!(count::<piles::Body>(world), knob(&cfg, "bodies"), "bodies");
+    assert_eq!(count::<piles::Paddle>(world), paddles, "the paddle");
+    assert_eq!(count::<TilemapInstance>(world), 1, "the map");
+    let reading = measure_checking(
+        &mut harness,
+        cfg.bench.warmup,
+        tiled_drawable,
+        |world, at| {
+            frame(&world.resource::<BenchCounters<PileCounts>>().counts, at);
+        },
+    );
+    assert!(
+        reading.max_sprite_instances > 0,
+        "{row}: the guard drew nothing"
+    );
+    reading.check(manifest_path(&format!("src/tests/guards/{row}.json")));
+}
+
+#[test]
+fn guards_friction() {
+    // Stirred by the paddle, nothing sleeps and nothing leaves the bin.
+    guard_piles("friction", "friction-min", 1, |counts, at| {
+        assert_eq!(
+            (counts.sleeping, counts.escaped),
+            (0, 0),
+            "window frame {at}: sleeping and escaped"
+        );
+        assert!(counts.spinning > 0, "window frame {at}: no circle spins");
+    });
+}
+
+#[test]
+fn guards_slopes() {
+    // The stream returns at least 60 bodies a second to the band, and no
+    // body's centre is inside a slope cell's polygon.
+    guard_piles("slopes", "slopes-min", 0, |counts, at| {
+        assert_eq!(counts.inside, 0, "window frame {at}: inside a slope");
+        assert!(
+            counts.recycled >= 60,
+            "window frame {at}: {} returned over the last 60 frames",
+            counts.recycled
+        );
+    });
+}
+
+#[test]
+fn guards_saves() {
+    guard(
+        "saves",
+        ("saves", "min", None),
+        |world, cfg| {
+            let records = knob(cfg, "objects") + 1 + knob(cfg, "spawns");
+            assert_eq!(
+                count::<tungsten::core::save::Saved>(world),
+                records,
+                "records"
+            );
+            assert!(
+                world.has_resource::<BenchCounters<SaveCounts>>(),
+                "the counters"
+            );
+        },
+        view_drawable,
+    );
+}
+
+/// `boot` at `min` (redo 7.9): the row's assets written as it writes them,
+/// the root manifest merged with theirs and run through the load plan with
+/// no renderer (`LoadPlan::run_headless`), once as a warm-up and once
+/// counted, the plan and the load's work asserted first. Its reading is the
+/// load's: no frame steps.
+#[test]
+fn guards_boot() {
+    let bench = knobs::select(BENCHES, Some("boot")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(cfg.row(), "boot");
+    let generated = boot::write_assets(&cfg).expect("the row's assets write");
+    let manifest = boot::merged_manifest(&generated).expect("the row's manifests load");
+    let counts = boot::BootCounts::new(&cfg, manifest.clone());
+    assert_eq!(
+        (counts.sprites, counts.frames, counts.sounds),
+        (
+            knob(&cfg, "sprites"),
+            knob(&cfg, "sheets") * 8,
+            knob(&cfg, "sounds")
+        )
+    );
+    // The warm-up: one load first, so the process's one-time setups, which
+    // another test may already have paid, stay out of the reading.
+    let mut warm = tungsten::App::new(Config::default()).expect("an app");
+    tungsten::asset_loader::LoadPlan::new(manifest.clone(), warm.world_mut())
+        .run_headless(warm.world_mut())
+        .expect("the plan runs headless");
+    let mut app = tungsten::App::new(Config::default()).expect("an app");
+    let world = app.world_mut();
+    let plan = tungsten::asset_loader::LoadPlan::new(manifest, world);
+    assert_eq!(plan.units().len() as u64, counts.units, "the plan's units");
+    let world_before = world.counters();
+    let before = allocations();
+    let manifest = plan.run_headless(world).expect("the plan runs headless");
+    let after = allocations();
+    let world_after = world.counters();
+    // Every sound the merged manifests name loaded, and no sprite packed.
+    let sounds = world.resource::<tungsten::core::assets::SoundRegistry>();
+    for id in manifest.sounds.keys() {
+        assert!(sounds.get_by_id(id).is_some(), "sound {id}");
+    }
+    assert!(
+        world
+            .resource::<AssetRegistry>()
+            .get_sprite("boot_sprite_0")
+            .is_none(),
+        "a headless load packs nothing"
+    );
+    let reading = CounterGuard {
+        allocations: after.count - before.count,
+        allocated_bytes: after.bytes - before.bytes,
+        archetype_moves: world_after.archetype_moves - world_before.archetype_moves,
+        spawned: world_after.spawned - world_before.spawned,
+        despawned: world_after.despawned - world_before.despawned,
+        events_sent: world_after.events_sent - world_before.events_sent,
+        max_sprite_batches: 0,
+        max_sprite_instances: 0,
+    };
+    reading.check(manifest_path("src/tests/guards/boot.json"));
 }

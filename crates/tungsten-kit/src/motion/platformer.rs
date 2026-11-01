@@ -846,9 +846,10 @@ impl PlatformerController {
         {
             return None;
         }
+        // A box, and any later shape, reaches no further.
         let round = match shape {
             Shape::Circle { radius } => CLIMB_ROUND_REACH * radius,
-            Shape::Aabb { .. } => 0.0,
+            _ => 0.0,
         };
         let across = rest.abs().max(CLIMB_REACH * self.step_height + round);
         climb(
@@ -923,6 +924,7 @@ impl Plugin for PlatformerControllerPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<PlatformerController>(world, "PlatformerController");
+        world.register_saved::<PlatformerController>(PLATFORMER_CONTROLLER_COMPONENT);
         describe(
             world,
             ComponentDescription::new(

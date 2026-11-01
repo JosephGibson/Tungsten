@@ -511,3 +511,30 @@ fn a_fatal_error_ends_the_report_failed_and_the_report_round_trips() {
     let err = load_script(&bad).unwrap_err().to_string();
     assert!(err.contains("steps[0].captur"), "{err}");
 }
+
+#[test]
+fn the_startup_probe_reads_the_timings() {
+    // Headless, no window started: null.
+    let mut harness = Harness::new(app());
+    let report = harness.run_script(&script(1, &json!([{ "frame": 1, "probe": "startup" }])));
+    assert_eq!(probes(&report, "startup"), [(1, &Value::Null)]);
+
+    let timings = crate::StartupTimings {
+        load: 12.5,
+        first_frame: Some(45.0),
+        loaded: 40.0,
+        ..Default::default()
+    };
+    let mut app = app();
+    app.world_mut().insert_resource(timings);
+    let mut harness = Harness::new(app);
+    let report = harness.run_script(&script(
+        1,
+        &json!([
+            { "frame": 1, "probe": "startup" },
+            { "frame": 1, "assert": { "probe": "startup", "path": "/loaded", "op": "==", "value": 40.0 } },
+        ]),
+    ));
+    assert!(report.passed, "{report:#?}");
+    assert_eq!(probes(&report, "startup"), [(1, &json!(timings))]);
+}

@@ -521,7 +521,7 @@ fn reference_extract(world: &World) -> Vec<SpriteBatch> {
             per_key.insert(key, i);
             let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
             batch.material_id = effective_material;
-            batch.uniform_overrides = if lit { None } else { override_block.copied() };
+            batch.uniform_overrides = override_block.copied();
             batch.lit = lit;
             out.push(batch);
             i
@@ -797,16 +797,18 @@ fn golden_world_covers_every_sprite_kind() {
 
 #[test]
 fn default_extract_output_is_pinned() {
-    // Counts and digest of the pre-rewrite extract on this world.
+    // Counts and digest of the pre-rewrite extract on this world; redo 7.9's
+    // lit batches keep their sprites' blocks, which moved the digest from
+    // 0x7cec_8f23_3d8b_fd57 and left every batch and instance as it was.
     let world = golden_world(1, 600);
     let batches = extract_sprites_default(&world);
     let instances: usize = batches.iter().map(|b| b.instances.len()).sum();
     assert_eq!(batches.len(), 69);
     assert_eq!(instances, 420);
-    assert_eq!(fnv1a(&batch_bytes(&batches)), 0x7cec_8f23_3d8b_fd57);
+    assert_eq!(fnv1a(&batch_bytes(&batches)), 0xce55_3b86_48da_bffc);
     assert_eq!(
         fnv1a(&batch_bytes(&reference_extract(&world))),
-        0x7cec_8f23_3d8b_fd57
+        0xce55_3b86_48da_bffc
     );
 }
 
@@ -1161,7 +1163,7 @@ fn view_world() -> World {
 
 fn extract_at(world: &World, view: Option<(Vec2, Vec2)>) -> Vec<SpriteBatch> {
     let assets = world.get_resource::<AssetRegistry>().unwrap();
-    extract_into(world, assets, view, &mut ExtractBuffers::default())
+    extract_into(world, assets, view, &mut ExtractBuffers::default(), &mut [])
 }
 
 /// The uncull extract's batches less the instances culling drops, and less
@@ -1539,4 +1541,393 @@ fn warned_ids_mark_each_id_once() {
     assert!(!warned.first(low));
     assert!(warned.contains(low) && warned.contains(high));
     assert!(!warned.contains(SpriteAssetId::new(4)));
+}
+
+/// One 16 × 16 sprite `id` anchored at `anchor`, drawn by an entity at
+/// `transform`: its one instance.
+fn anchored_instance(anchor: Option<[f32; 2]>, transform: Transform) -> SpriteInstance {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "troll", FilterMode::Nearest);
+    world
+        .resource_mut::<AssetRegistry>()
+        .set_sprite_frame("troll", None, anchor);
+    let e = world.spawn();
+    world.insert(e, transform);
+    let sprite = Sprite::new(intern(&mut world, "troll"));
+    world.insert(e, sprite);
+    world.insert(e, Visibility { visible: true });
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 1);
+    batches[0].instances[0]
+}
+
+/// Where the instance draws the point `local` (in its quad's pixels, the
+/// quad turned about its centre as the sprite shader turns it).
+fn drawn_at(instance: &SpriteInstance, local: Vec2) -> Vec2 {
+    let size = Vec2::from(instance.size);
+    let centre = Vec2::from(instance.position) + size * 0.5;
+    centre + Vec2::from_angle(instance.rotation).rotate(local - size * 0.5)
+}
+
+#[test]
+fn an_anchor_draws_its_point_at_the_entity() {
+    let at = Vec2::new(100.0, 50.0);
+    let instance = anchored_instance(
+        Some([8.0, 15.0]),
+        Transform {
+            position: at,
+            scale: Vec2::splat(2.0),
+            ..Transform::default()
+        },
+    );
+    // The anchor scales with the sprite: (8, 15) × 2 above-left of the entity.
+    assert_eq!(instance.position, [84.0, 20.0]);
+    assert_eq!(instance.size, [32.0, 32.0]);
+    assert_eq!(drawn_at(&instance, Vec2::new(16.0, 30.0)), at);
+}
+
+#[test]
+fn an_anchored_sprite_turns_about_its_anchor() {
+    let at = Vec2::new(100.0, 50.0);
+    let anchor = Vec2::new(8.0, 15.0);
+    for rotation in [0.5, std::f32::consts::FRAC_PI_2, 2.0, -1.0] {
+        let instance = anchored_instance(
+            Some(anchor.into()),
+            Transform {
+                position: at,
+                rotation,
+                ..Transform::default()
+            },
+        );
+        assert_eq!(instance.rotation, rotation);
+        // The anchor stays on the entity, and the top-left corner turns
+        // about it.
+        assert!(
+            drawn_at(&instance, anchor).distance(at) < 1e-4,
+            "{rotation}"
+        );
+        let corner = at + Vec2::from_angle(rotation).rotate(-anchor);
+        assert!(
+            drawn_at(&instance, Vec2::ZERO).distance(corner) < 1e-4,
+            "{rotation}"
+        );
+    }
+}
+
+#[test]
+fn a_sprite_without_an_anchor_draws_as_before() {
+    let transform = Transform {
+        position: Vec2::new(100.0, 50.0),
+        rotation: 0.75,
+        scale: Vec2::new(-2.0, 1.5),
+    };
+    let instance = anchored_instance(None, transform);
+    assert_eq!(instance.position, [100.0, 50.0]);
+    assert_eq!(instance.size, [-32.0, 24.0]);
+    assert_eq!(instance.rotation, 0.75);
+}
+
+/// One 16 × 16 sprite anchored at `anchor`, drawn by an entity at
+/// `transform` with `flip` (no `SpriteFlip` for `None`): its one instance.
+fn flipped_instance(
+    anchor: Option<[f32; 2]>,
+    transform: Transform,
+    flip: Option<bool>,
+) -> SpriteInstance {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "troll", FilterMode::Nearest);
+    world
+        .resource_mut::<AssetRegistry>()
+        .set_sprite_frame("troll", None, anchor);
+    let e = spawn_visible(&mut world, "troll", transform.position, 0);
+    world.insert(e, transform);
+    if let Some(flip) = flip {
+        world.insert(e, tungsten_core::components::SpriteFlip(flip));
+    }
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 1);
+    batches[0].instances[0]
+}
+
+#[test]
+fn a_flipped_sprite_mirrors_about_its_anchor() {
+    let at = Vec2::new(100.0, 50.0);
+    let transform = Transform {
+        position: at,
+        scale: Vec2::splat(2.0),
+        ..Transform::default()
+    };
+    let unflipped = flipped_instance(Some([4.0, 15.0]), transform, Some(false));
+    assert_eq!(unflipped.position, [92.0, 20.0]);
+    assert_eq!(
+        (unflipped.uv_min, unflipped.uv_size),
+        ([0.0, 0.0], [1.0, 1.0])
+    );
+    // The mirrored image puts the anchor's texel at x = (16 − 4) × 2 of the
+    // quad, and that point lands on the entity.
+    let flipped = flipped_instance(Some([4.0, 15.0]), transform, Some(true));
+    assert_eq!(flipped.position, [76.0, 20.0]);
+    assert_eq!(flipped.size, [32.0, 32.0]);
+    assert_eq!((flipped.uv_min, flipped.uv_size), ([1.0, 0.0], [-1.0, 1.0]));
+    assert_eq!(drawn_at(&flipped, Vec2::new(24.0, 30.0)), at);
+    // Turned, it turns about the mirrored anchor, which stays on the entity.
+    for rotation in [0.5, std::f32::consts::FRAC_PI_2, -2.0] {
+        let turned = flipped_instance(
+            Some([4.0, 15.0]),
+            Transform {
+                rotation,
+                ..transform
+            },
+            Some(true),
+        );
+        assert!(
+            drawn_at(&turned, Vec2::new(24.0, 30.0)).distance(at) < 1e-4,
+            "{rotation}"
+        );
+    }
+}
+
+#[test]
+fn a_flipped_sprite_without_an_anchor_keeps_its_box() {
+    let transform = Transform {
+        position: Vec2::new(100.0, 50.0),
+        rotation: 0.75,
+        scale: Vec2::new(2.0, 1.5),
+    };
+    let plain = flipped_instance(None, transform, None);
+    let flipped = flipped_instance(None, transform, Some(true));
+    assert_eq!(
+        (flipped.position, flipped.size, flipped.rotation),
+        (plain.position, plain.size, plain.rotation)
+    );
+    assert_eq!((flipped.uv_min, flipped.uv_size), ([1.0, 0.0], [-1.0, 1.0]));
+    // An unflipped `SpriteFlip` draws as no flip at all.
+    let unflipped = flipped_instance(None, transform, Some(false));
+    assert_eq!(
+        format!("{unflipped:?}"),
+        format!("{plain:?}"),
+        "SpriteFlip(false)"
+    );
+}
+
+#[test]
+fn an_unlit_sprite_draws_on_the_stock_pipeline() {
+    let mut world = world_with_registry();
+    register_lit_sprite(&mut world, "lit_quad");
+    let lit = spawn_visible(&mut world, "lit_quad", Vec2::ZERO, 0);
+    let unlit = spawn_visible(&mut world, "lit_quad", Vec2::new(40.0, 0.0), 1);
+    world.insert(unlit, tungsten_core::components::Unlit);
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 2);
+    assert!(batches[0].lit, "{lit:?} keeps its maps");
+    assert!(!batches[1].lit, "the unlit one draws on the stock pipeline");
+    // The albedo page is the one the stock pool holds under the same handle.
+    assert_eq!(batches[1].texture, TextureHandle(7));
+    assert_eq!(batches[1].instances[0].position, [40.0, 0.0]);
+}
+
+#[test]
+fn a_lit_sprite_keeps_its_flash_block() {
+    let mut world = world_with_registry();
+    register_lit_sprite(&mut world, "lit_quad");
+    let block = UniformOverrideBlock::from_slots(
+        [[1.0, 1.0, 1.0, 1.0], [0.0; 4], [0.0; 4], [0.0; 4]],
+        [0.5, 0.0, 0.0, 0.0],
+        [0; 4],
+    );
+    let flashing = spawn_visible(&mut world, "lit_quad", Vec2::ZERO, 0);
+    world.insert(flashing, block);
+    // The kit's flash also sets its material, which a lit sprite never runs.
+    world.get_mut::<Sprite>(flashing).unwrap().material_id = Some(MaterialAssetId(3));
+    spawn_visible(&mut world, "lit_quad", Vec2::new(40.0, 0.0), 1);
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 2);
+    assert!(batches[0].lit && batches[1].lit);
+    assert_eq!(batches[0].material_id, None);
+    assert_eq!(
+        batches[0].uniform_overrides.map(|b| b.to_bytes()),
+        Some(block.to_bytes())
+    );
+    assert!(batches[1].uniform_overrides.is_none(), "no block, no flash");
+}
+
+/// Registers `id`, `width` × `height` on page `page` with `uv`, lit when
+/// `lit`: its asset.
+fn helper_asset(
+    world: &mut World,
+    id: &str,
+    page: u32,
+    (width, height): (u32, u32),
+    uv: UvRect,
+    lit: bool,
+) -> tungsten_core::SpriteAsset {
+    let registry = world.resource_mut::<AssetRegistry>();
+    registry.register_sprite(
+        id.to_string(),
+        FilterMode::Nearest,
+        width,
+        height,
+        PathBuf::from(format!("test/{id}.png")),
+        TextureHandle(page),
+        uv,
+        lit.then(|| PathBuf::from(format!("test/{id}_n.png"))),
+        None,
+        lit.then_some(TextureHandle(page)),
+    );
+    registry.get_sprite(id).unwrap().clone()
+}
+
+#[test]
+fn sprite_instance_takes_the_assets_uvs() {
+    let mut world = world_with_registry();
+    let uv = UvRect {
+        min: [0.25, 0.5],
+        max: [0.5, 1.0],
+    };
+    let asset = helper_asset(&mut world, "gem", 2, (16, 16), uv, false);
+    let instance = sprite_instance(
+        &asset,
+        Vec2::new(10.0, 20.0),
+        Vec2::new(32.0, 8.0),
+        0.5,
+        [1, 2, 3, 4],
+        0.25,
+    );
+    assert_eq!(instance.uv_min, [0.25, 0.5]);
+    assert_eq!(instance.uv_size, [0.25, 0.5]);
+    assert_eq!(
+        (instance.position, instance.size, instance.rotation),
+        ([10.0, 20.0], [32.0, 8.0], 0.5)
+    );
+    assert_eq!((instance.color, instance.z_norm), ([1, 2, 3, 4], 0.25));
+}
+
+#[test]
+fn batches_join_like_drawn_instances() {
+    let mut world = world_with_registry();
+    let a = helper_asset(&mut world, "a", 0, (16, 16), UvRect::FULL, false);
+    let b = helper_asset(&mut world, "b", 1, (16, 16), UvRect::FULL, false);
+    let lit = helper_asset(&mut world, "lit", 0, (16, 16), UvRect::FULL, true);
+    let mut batches = Batches::new();
+    for asset in [&a, &a, &a, &b, &a, &lit, &lit] {
+        batches.push(
+            asset,
+            sprite_instance(asset, Vec2::ZERO, Vec2::ONE, 0.0, [255; 4], 0.0),
+        );
+    }
+    let drawn: Vec<(u32, bool, usize)> = batches
+        .into_batches()
+        .iter()
+        .map(|batch| (batch.texture.0, batch.lit, batch.instances.len()))
+        .collect();
+    // Push order kept: a page change opens a batch, as a change of lighting
+    // on the same page does.
+    assert_eq!(
+        drawn,
+        [(0, false, 3), (1, false, 1), (0, false, 1), (0, true, 2)]
+    );
+}
+
+#[test]
+fn view_box_is_the_default_extracts_cull_box() {
+    let mut world = world_with_registry();
+    assert_eq!(view_box(&world), None, "no camera, no size: nothing culls");
+    register_sprite(&mut world, "quad", FilterMode::Nearest);
+    let mut camera = CameraState::new();
+    camera.position = Vec2::new(100.0, 50.0);
+    world.insert_resource(camera);
+    world.insert_resource(WindowSize {
+        width: 320,
+        height: 240,
+    });
+    let (min, max) = view_box(&world).unwrap();
+    assert_eq!((min, max), camera.visible_world_aabb(320.0, 240.0));
+    // A 16 px sprite just past the box's right edge is culled; one touching
+    // it is kept.
+    spawn_visible(&mut world, "quad", Vec2::new(max.x + 0.5, min.y), 0);
+    spawn_visible(&mut world, "quad", Vec2::new(max.x - 16.0, min.y), 0);
+    let positions = instance_positions(&extract_sprites_default(&world));
+    assert_eq!(positions, [[max.x - 16.0, min.y]]);
+}
+
+#[test]
+fn a_segment_is_a_turned_flat_quad() {
+    let segment = SpriteInstance::segment([0.0, 0.0], [30.0, 40.0], 4.0, [9, 8, 7, 6], 0.5);
+    // A width longer than the 50 px span, centred on the midpoint.
+    assert_eq!(segment.size, [54.0, 4.0]);
+    assert_eq!(segment.position, [15.0 - 27.0, 20.0 - 2.0]);
+    assert!((segment.rotation - 40f32.atan2(30.0)).abs() < 1e-6);
+    assert_eq!((segment.uv_min, segment.uv_size), ([0.0, 0.0], [1.0, 1.0]));
+    assert_eq!((segment.color, segment.z_norm), ([9, 8, 7, 6], 0.5));
+    let flat = SpriteInstance::flat([1.0, 2.0], [3.0, 4.0], 0.0, [5; 4], 0.75);
+    assert_eq!(
+        (flat.position, flat.size, flat.uv_size, flat.z_norm),
+        ([1.0, 2.0], [3.0, 4.0], [1.0, 1.0], 0.75)
+    );
+}
+
+#[test]
+fn a_beam_tiles_its_sprite_and_cuts_the_last() {
+    let mut world = world_with_registry();
+    // 16 × 8 at a width of 8: tiles 16 long.
+    let asset = helper_asset(&mut world, "ray", 3, (16, 8), UvRect::FULL, false);
+    let laid = |offset: f32| {
+        let mut batches = Batches::new();
+        beam(
+            &mut batches,
+            &asset,
+            Vec2::new(0.0, 10.0),
+            Vec2::new(40.0, 10.0),
+            8.0,
+            offset,
+            [255; 4],
+            0.0,
+        );
+        let batches = batches.into_batches();
+        assert_eq!(batches.len(), 1, "one page, one batch");
+        batches[0]
+            .instances
+            .iter()
+            .map(|tile| {
+                (
+                    tile.position[0],
+                    tile.size[0],
+                    tile.uv_min[0],
+                    tile.uv_size[0],
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    // Two whole tiles, the last cut to half its length and its UV.
+    assert_eq!(
+        laid(0.0),
+        [
+            (0.0, 16.0, 0.0, 1.0),
+            (16.0, 16.0, 0.0, 1.0),
+            (32.0, 8.0, 0.0, 0.5)
+        ]
+    );
+    // Moved 4 px toward the end: the first cut from its start, the last
+    // from its end.
+    assert_eq!(
+        laid(4.0),
+        [
+            (0.0, 4.0, 0.75, 0.25),
+            (4.0, 16.0, 0.0, 1.0),
+            (20.0, 16.0, 0.0, 1.0),
+            (36.0, 4.0, 0.0, 0.25),
+        ]
+    );
+    let mut nothing = Batches::new();
+    beam(
+        &mut nothing,
+        &asset,
+        Vec2::ZERO,
+        Vec2::ZERO,
+        8.0,
+        0.0,
+        [255; 4],
+        0.0,
+    );
+    assert!(nothing.into_batches().is_empty(), "a point lays nothing");
 }

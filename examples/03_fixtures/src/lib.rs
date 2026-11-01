@@ -20,6 +20,8 @@
 //!   `TUNGSTEN_UI_LAB_BOUNDS`, `TUNGSTEN_UI_LAB_MAXIMIZE_WAIT`).
 //! - `lighting` ([`lighting`]): lit and unlit sprites under point and
 //!   directional lights, the M29 smoke row; no variables of its own.
+//! - `seams` ([`seams`]): a piece for each drawing seam of redo 7.9, whose
+//!   pixels `just visual` checks; no variables of its own.
 //!
 //! Like `02_bench`, every scene runs from the repository root on the root
 //! `tungsten.json` and `input.json`, and composes the root manifest with
@@ -27,11 +29,12 @@
 
 pub mod lighting;
 pub mod post;
+pub mod seams;
 pub mod transition;
 pub mod ui;
 
 /// The scenes `TUNGSTEN_FIXTURE` accepts.
-const SCENES: &str = "post, transition, ui, lighting";
+const SCENES: &str = "post, transition, ui, lighting, seams";
 
 /// Runs the scene `TUNGSTEN_FIXTURE` names, `ui` when it is unset; any other
 /// value fails with the list of scenes.
@@ -42,6 +45,7 @@ pub fn run() -> anyhow::Result<()> {
         "transition" => transition::run(),
         "ui" => ui::run(),
         "lighting" => lighting::run(),
+        "seams" => seams::run(),
         _ => anyhow::bail!("invalid TUNGSTEN_FIXTURE='{scene}': expected one of {SCENES}"),
     }
 }

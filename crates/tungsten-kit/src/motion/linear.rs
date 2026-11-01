@@ -186,6 +186,7 @@ impl Plugin for LinearMotionPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<LinearMotion>(world, "LinearMotion");
+        world.register_saved::<LinearMotion>(LINEAR_MOTION_COMPONENT);
         describe(
             world,
             ComponentDescription::new(

@@ -1,6 +1,6 @@
 # LLM Navigation Index
 
-Task → file map: read only the matching row's files. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub. `D-NNN` IDs resolve through [DECISION_INDEX.md](DECISION_INDEX.md); [the doc map](README.md) names canonical guides. Unit tests usually live in `crates/<crate>/src/tests/` (the module's `#[path]`).
+Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub. `D-NNN` IDs resolve through [DECISION_INDEX.md](DECISION_INDEX.md); [the doc map](README.md) names canonical guides. Unit tests usually live in `crates/<crate>/src/tests/` (the module's `#[path]`).
 
 ## Runtime and ECS
 
@@ -16,7 +16,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Tuple queries, `With`/`Without`, bundles, `spawn_with`, `RigidBodyBundle` (`D-130`, `D-135`) | `core/ecs/query.rs`, `core/ecs/bundle.rs`, `core/ecs/world.rs`, `core/tests/ecs/query.rs` |
 | Headless harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
 | Config, env overrides, settings (`D-159`) | `core/config.rs`, `core/settings.rs`, `core/display.rs`, `tungsten/settings.rs`, `tungsten.json` |
-| Logs, user folder, saves, crashes and target triple, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`, `D-160`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `core/save.rs`, `core/persist.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `crates/tungsten/build.rs`, `tools/crash-probe/` |
+| Logs, user folder, saves, crashes, target triple, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`, `D-160`, `D-230`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `core/save{.rs,/}`, `core/persist.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `crates/tungsten/build.rs`, `tools/crash-probe/` |
 | Display apply, fullscreen, vsync, frame cap, monitor (`D-043`, `D-184`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`, `D-159`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
 | Input state, raw stream, gamepads, their `gilrs` backend (`D-220`) and stick response (`D-221`), focus loss, modifiers, pointer leave, `ScaleFactor`, winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
@@ -25,7 +25,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |
 | Parallax, camera shake trauma, squash/stretch (`D-073`) | `core/components.rs`, `core/camera.rs`, `tungsten/game_feel.rs`, `tungsten/sprite_extract.rs` |
 | Particles, mesh particles (`D-049`–`D-051`, `D-093`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `render/mesh_particle.rs`, `examples/01_platformer/assets/particles/` |
-| Audio mixer, decode (`D-027`, `D-028`, `D-034`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/integration/audio_decode.rs` |
+| Audio mixer, pan, ducks, reload, decode (`D-027`, `D-028`, `D-034`, `D-231`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/integration/audio_decode.rs` |
 | Telemetry, perf lines (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `tungsten/app.rs`, `docs/perf/profiling-workflow.md` |
 | Perf runner, rows, sittings (`D-078`) | `scripts/perf.py`, `scripts/perf_stats.py`, `scripts/perf-rows.json`, `scripts/test-perf.py` |
 | Criterion micro-benchmarks | `crates/*/benches/`, `docs/perf/profiling-workflow.md` |
@@ -35,10 +35,10 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 
 | Task | Open |
 | --- | --- |
-| Manifest load, data entries, load path, GPU upload, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`, `D-171`) | `core/assets/manifest.rs`, `core/assets/data.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/` |
+| Manifest load, boot plan, data entries, load path, GPU upload, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`, `D-171`, `D-231`) | `core/assets/manifest.rs`, `core/assets/data.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/` |
 | Hot reload, file watch (`D-031`, `D-053`) | `tungsten/hot_reload.rs`, `tungsten/asset_loader/reload.rs` |
 | Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader/atlas.rs` |
-| Tilemaps, tile collision (`D-032`, `D-033`) | `core/assets/tilemap.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step/gather.rs` |
+| Tilemaps, tile collision (`D-032`, `D-033`, `D-228`) | `core/assets/tilemap.rs`, `core/assets/terrain.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step/gather.rs` |
 | Prefabs, spawn inheritance, Tiled objects, tilemap builder (`D-157`, `D-170`) | `core/assets/prefab.rs`, `core/assets/tilemap.rs`, `tungsten/asset_loader/prefab.rs` |
 | UI theme asset, nine-slice insets, letter spacing (`D-148`, `D-198`) | `core/ui/theme_file.rs`, `core/assets/manifest.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/tests/asset_loader.rs` |
 
@@ -46,7 +46,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 
 | Task | Open |
 | --- | --- |
-| Contacts, sleep, kinematic bodies, sensors, queries (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`, `D-154`, `D-156`) | `core/physics/step/`, `core/physics/collision.rs`, `core/physics/broadphase.rs`, `core/physics/query.rs` |
+| Contacts, sleep, kinematic bodies, sensors, queries (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`, `D-154`, `D-156`, `D-228`, `D-229`) | `core/physics/step/`, `core/physics/collision.rs`, `core/physics/broadphase.rs`, `core/physics/query.rs` |
 | Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/integration/physics_*.rs`; [validation](validation.md#change-to-check-matrix) routes release-only physics checks |
 
 ## Rendering
@@ -62,7 +62,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | UI tree, layout, focus, hits, routing, tracks, prompts, capture, prewarm (`D-124`, `D-125`, `D-149`, `D-163`, `D-164`) | `core/ui/`, `tungsten/testing/ui.rs`, `core/tests/ui/`, `tungsten/tests/ui_route.rs` |
 | UI paint list, overlay pipeline, text batches, layout stage, debug actions (`D-147`, `D-148`) | `core/ui/paint.rs`, `render/ui.rs`, `render/ui.wgsl`, `tungsten/app.rs`, `tungsten/ui_debug.rs`, `core/tests/ui/paint.rs`, `render/tests/ui.rs`, `render/tests/text_batches.rs` |
 | Render components, default sprite extract, `Extracts` channels (`D-042`, `D-086`, `D-113`, `D-114`, `D-138`) | `core/components.rs`, `tungsten/sprite_extract.rs`, `tungsten/extract.rs` |
-| Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
+| Materials, the fragment prelude, post-stack (`D-058`, `D-231`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |
 | Lighting (`D-061`) | `core/components.rs`, `core/lighting.rs`, `render/lighting.rs`, `render/lit_sprite.rs`, `assets/shaders/lit_sprite.wgsl`, `tungsten/light_extract.rs` |
@@ -76,8 +76,8 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 | Task | Open |
 | --- | --- |
 | Platformer, a game on the template run from its folder | `examples/01_platformer/README.md` (each mechanic's kit item), `examples/01_platformer/src/game.rs` and `examples/01_platformer/src/save.rs` (the seam), `examples/01_platformer/src/features/`, `examples/01_platformer/src/shell/` (the template's, copied), `examples/01_platformer/tests/game/` (`saves`, `playthrough`) |
-| Platformer art, level and layout regeneration; the actors' bodies as data | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/tools/content/`, `examples/01_platformer/tools/locks.json` (`D-223`), `examples/01_platformer/tools/actors.py` (`BODIES`), `examples/01_platformer/src/shared.rs` (`Body`) |
-| Benchmarks: workloads, knobs, guards | `examples/02_bench/src/<bench>.rs`, `examples/02_bench/src/knobs.rs`, `examples/02_bench/src/tests/guards.rs`, `docs/perf/benchmarks.md` |
+| Platformer art, level and layout regeneration; the actors' bodies as data | `examples/01_platformer/tools/{README.md,generate.py,level.py,level.json,content/,locks.json,actors.py}` (the locks `D-223`, the bodies `BODIES`), `examples/01_platformer/src/shared.rs` (`Body`) |
+| Benchmarks: workloads, knobs, guards, `boot`'s seeded assets | `examples/02_bench/src/<bench>.rs`, `examples/02_bench/src/knobs.rs`, `examples/02_bench/src/tests/guards.rs`, `docs/perf/benchmarks.md` |
 | Fixtures crate (`D-193`): scenes by `TUNGSTEN_FIXTURE`, pixel tests, UI sprite generator | `examples/03_fixtures/src/`, `examples/03_fixtures/tests/`, `examples/03_fixtures/tools/README.md` |
 | Template: shell, sample, seam; `tungsten` CLI (`D-181`–`D-183`, `D-187`, `D-199`) | `templates/basic/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `tungsten/describe.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |

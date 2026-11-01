@@ -349,6 +349,14 @@ pub enum TweenChannel {
         from: i32,
         to: i32,
     },
+    /// Drives the entity's `Light.intensity` (redo 7.9), so a look's light
+    /// fades with it; never below 0, though an easing overshoots.
+    LightIntensity {
+        /// The intensity at the tween's start.
+        from: f32,
+        /// The intensity at its end.
+        to: f32,
+    },
 }
 
 /// `Loop` and `PingPong` never emit `TweenComplete`.

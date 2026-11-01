@@ -6,7 +6,7 @@ use super::{Layers, PhysicsBuffers, Proxy};
 use crate::ecs::World;
 use crate::physics::PhysicsConfig;
 use crate::physics::collision::Aabb;
-use crate::physics::components::Velocity;
+use crate::physics::components::{Spin, Velocity};
 use glam::Vec2;
 
 fn hash_key(key: u64) -> u64 {
@@ -436,10 +436,12 @@ pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers, margin: f32) {
 /// Frame-end sleep pass (D-065): update per-body low-velocity timers from
 /// end-of-frame velocities, then sleep every island whose slowest member has
 /// been below the threshold for `time_to_sleep`, and this frame at least, so
-/// a `time_to_sleep` of 0 or less never sleeps a moving body. A member that touched a
+/// a `time_to_sleep` of 0 or less never sleeps a moving body. A spinner's
+/// timer runs only while its rim speed `|ω| · r` is under the threshold as
+/// well. A member that touched a
 /// moving kinematic body this frame restarts its timer and keeps its island
 /// awake, whatever `time_to_sleep` is. Members freeze with zeroed
-/// velocity. An island falling asleep while resting on an already sleeping
+/// velocity and spin. An island falling asleep while resting on an already sleeping
 /// island adopts that island's tag, so a later island wake (despawn deep in a
 /// pile) also lifts bodies that settled on top after it slept; bridging two
 /// sleeping islands merges their tags.
@@ -457,9 +459,17 @@ pub(super) fn sleep_frame_end(
         island_parent,
         island_min_timer,
         island_tag,
+        extra,
         ..
     } = buffers;
     let layers = &layers.of;
+    let spin = |index: usize| {
+        extra
+            .spin_of
+            .get(index)
+            .filter(|&&slot| slot != super::NO_SPIN)
+            .map(|&slot| &extra.spins[slot as usize])
+    };
 
     debug_assert_eq!(
         sleep.entries.len(),
@@ -477,11 +487,16 @@ pub(super) fn sleep_frame_end(
             continue;
         }
         let entry = &mut sleep.entries[index];
-        entry.timer = if proxy.velocity.length_squared() <= threshold_sq && !proxy.kept_awake {
-            entry.timer + dt
-        } else {
-            0.0
-        };
+        let rim_still = spin(index).is_none_or(|spin| {
+            let rim = spin.angular_velocity * spin.radius;
+            rim * rim <= threshold_sq
+        });
+        entry.timer =
+            if proxy.velocity.length_squared() <= threshold_sq && rim_still && !proxy.kept_awake {
+                entry.timer + dt
+            } else {
+                0.0
+            };
         let root = uf_find(island_parent, index as u32) as usize;
         let timer = if proxy.kept_awake {
             f32::NEG_INFINITY
@@ -542,6 +557,11 @@ pub(super) fn sleep_frame_end(
         entry.layers = layers[index];
         if let Some(vel) = world.get_mut::<Velocity>(entity) {
             vel.0 = Vec2::ZERO;
+        }
+        if spin(index).is_some()
+            && let Some(turn) = world.get_mut::<Spin>(entity)
+        {
+            turn.angular_velocity = 0.0;
         }
     }
 

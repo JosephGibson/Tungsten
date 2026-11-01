@@ -1,9 +1,11 @@
 //! Physics components: AABB/circle, static, dynamic and kinematic bodies and
-//! sensors, no rotation.
+//! sensors; a circle may spin ([`Spin`]), a box stays upright.
 
 use glam::Vec2;
 
 use crate::ecs::bundle::{Bundle, BundleSink};
+use crate::physics::PhysicsMaterial;
+use crate::physics::collision::Aabb;
 
 /// World-space position.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -41,13 +43,59 @@ impl Velocity {
     }
 }
 
-/// Axis-aligned collider shape.
+/// A spinning circle's turn (`D-033`): its angle in radians, which grows
+/// clockwise on screen (y down), its angular velocity in radians a second,
+/// and its angle before the last fixed step, which
+/// [`physics_prev_snapshot`](crate::physics::physics_prev_snapshot) copies
+/// and [`physics_sync`](crate::physics::physics_sync) draws `Transform`'s
+/// rotation from, as it does positions. The step spins a dynamic circle that
+/// [`rolls`](RigidBody::rolls) and has one: its contacts' friction turns it
+/// and rolling resistance slows it. Spawn it with the body ([`RigidBodyBundle::with_spin`]), since
+/// inserting it later moves the entity's archetype and reorders the solve
+/// (`D-066`). A sleeping spinner is frozen: a write to its `Spin` does not
+/// wake it; [`wake`](crate::physics::wake) does.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Spin {
+    /// Radians, clockwise on screen.
+    pub angle: f32,
+    /// Radians a second.
+    pub angular_velocity: f32,
+    /// The angle before the last fixed step.
+    pub prev_angle: f32,
+}
+
+/// Axis-aligned collider shape. A match outside this crate needs a wildcard
+/// arm, since later shapes are additions; [`half_extents`](Self::half_extents)
+/// bounds every one.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum Shape {
     /// Axis-aligned box.
     Aabb { half_extents: Vec2 },
     /// Circle radius.
     Circle { radius: f32 },
+}
+
+impl Shape {
+    /// Half the size of the shape's bounding box: a box's half extents, a
+    /// circle's radius on both axes.
+    #[must_use]
+    pub fn half_extents(&self) -> Vec2 {
+        match *self {
+            Self::Aabb { half_extents } => half_extents,
+            Self::Circle { radius } => Vec2::splat(radius),
+        }
+    }
+
+    /// How far a point `offset` from the shape's centre lies from its
+    /// surface: 0 on or inside it.
+    #[must_use]
+    pub fn distance(&self, offset: Vec2) -> f32 {
+        match *self {
+            Self::Aabb { half_extents } => (offset.abs() - half_extents).max(Vec2::ZERO).length(),
+            Self::Circle { radius } => (offset.length() - radius).max(0.0),
+        }
+    }
 }
 
 /// Collider shape plus local offset from `Position`.
@@ -79,6 +127,20 @@ impl Collider {
         self.offset = offset;
         self
     }
+
+    /// The collider's centre on a body at `position`: `position` plus its
+    /// offset.
+    #[must_use]
+    pub fn center(&self, position: Vec2) -> Vec2 {
+        position + self.offset
+    }
+
+    /// The collider's world box on a body at `position`: its shape's
+    /// bounding box about its centre, as the broadphase stages it.
+    #[must_use]
+    pub fn world_box(&self, position: Vec2) -> Aabb {
+        Aabb::new(self.center(position), self.shape.half_extents())
+    }
 }
 
 /// How a body moves and what its contacts do. A match outside this crate
@@ -88,7 +150,8 @@ impl Collider {
 pub enum BodyKind {
     /// Never moves; the immovable side of its contacts with dynamic bodies.
     Static,
-    /// Moved by gravity, its `Velocity` and its contacts; sleeps in islands.
+    /// Moved by gravity times its [`gravity_scale`](RigidBody::gravity_scale),
+    /// its `Velocity` and its contacts; sleeps in islands.
     Dynamic,
     /// Moved by its `Velocity` alone, each substep and without gravity; a
     /// contact never moves it. It pushes dynamic bodies as an immovable one
@@ -102,14 +165,16 @@ pub enum BodyKind {
     /// pass through it and no `CollisionEvent` names it. At the end of each
     /// step it sends a [`SensorEntered`](crate::physics::SensorEntered) for
     /// every static, dynamic or kinematic body or solid tile it has begun to
-    /// overlap in a layer its [`mask`](RigidBody::mask) holds; a body it
-    /// passes within one step goes unseen, and sensors do not detect
-    /// sensors. It never sleeps.
+    /// overlap in a layer its [`mask`](RigidBody::mask) holds, and a
+    /// [`SensorExited`](crate::physics::SensorExited) for each it no longer
+    /// overlaps; a body it passes within one step goes unseen unless it is
+    /// [`swept`](RigidBody::swept), and sensors do not detect sensors. It
+    /// never sleeps.
     Sensor,
 }
 
-/// Body mass/restitution state, and the layers the body is in and the layers
-/// it meets.
+/// Body mass, restitution, friction and rolling state, its gravity scale,
+/// and the layers the body is in and the layers it meets.
 ///
 /// Layers are bits of a `u32`, one per layer, 0 to 31. Two bodies touch only
 /// when each one's [`mask`](Self::mask) holds a layer the other is in
@@ -117,8 +182,11 @@ pub enum BodyKind {
 /// event or wake. A sensor reports a body or tile in a layer its own mask
 /// holds, whatever the other's mask, and a
 /// [`SpatialFilter`](crate::physics::SpatialFilter) sees what its mask holds.
-/// Tiles, and colliders without a `RigidBody`, are in layer 0 and meet every
-/// layer, so layer 0 is the world: a body whose mask lacks it passes them.
+/// Colliders without a `RigidBody` are in layer 0 and meet every layer, and
+/// so are tiles unless their collision layer names its own
+/// ([`LayerPhysics`](crate::LayerPhysics)), so layer 0 is the world: a body
+/// whose mask lacks it passes them. A tile meets bodies as a static body in
+/// its layer's layers does.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RigidBody {
     pub kind: BodyKind,
@@ -131,11 +199,31 @@ pub struct RigidBody {
     /// The layers the body meets; [`ALL_LAYERS`](Self::ALL_LAYERS) from every
     /// constructor.
     pub mask: u32,
+    /// The share of the world's gravity a dynamic body falls by, finite: 1
+    /// from every constructor, 0 floating, 2 twice as hard, and a negative
+    /// scale rising. Other kinds take no gravity.
+    pub gravity_scale: f32,
+    /// Coulomb friction, finite and at least 0: 0 from every constructor. A
+    /// contact's is the geometric mean of its two sides', a tile's from its
+    /// physics material.
+    pub friction: f32,
+    /// Rolling resistance, finite and at least 0: 0 from every
+    /// constructor. A contact's is the larger of its two sides'.
+    pub rolling: f32,
+    /// A circle that rolls: [`RigidBodyBundle`] spawns it with a [`Spin`],
+    /// which the step turns. False from every constructor; boxes stay
+    /// upright.
+    pub rolls: bool,
+    /// A swept sensor: it reports every body and tile it meets over its
+    /// step's move, not only those it overlaps at the step's end, so one
+    /// it passes within a step enters, and exits at the next. False from
+    /// every constructor; a sensor's alone.
+    pub swept: bool,
 }
 
 impl RigidBody {
-    /// Layer 0 alone, the world's layer: every constructor's `layers`, and
-    /// the layers of tiles and of colliders without a `RigidBody`.
+    /// Layer 0 alone, the world's layer: every constructor's `layers`, the
+    /// layers of colliders without a `RigidBody`, and tiles' by default.
     pub const DEFAULT_LAYERS: u32 = 1;
     /// Every layer: every constructor's `mask`.
     pub const ALL_LAYERS: u32 = u32::MAX;
@@ -149,6 +237,11 @@ impl RigidBody {
             restitution: 0.0,
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
+            gravity_scale: 1.0,
+            friction: 0.0,
+            rolling: 0.0,
+            rolls: false,
+            swept: false,
         }
     }
 
@@ -161,6 +254,11 @@ impl RigidBody {
             restitution: 0.0,
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
+            gravity_scale: 1.0,
+            friction: 0.0,
+            rolling: 0.0,
+            rolls: false,
+            swept: false,
         }
     }
 
@@ -176,6 +274,11 @@ impl RigidBody {
             restitution: 0.0,
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
+            gravity_scale: 1.0,
+            friction: 0.0,
+            rolling: 0.0,
+            rolls: false,
+            swept: false,
         }
     }
 
@@ -190,6 +293,11 @@ impl RigidBody {
             restitution: 0.0,
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
+            gravity_scale: 1.0,
+            friction: 0.0,
+            rolling: 0.0,
+            rolls: false,
+            swept: false,
         }
     }
 
@@ -220,6 +328,78 @@ impl RigidBody {
         self
     }
 
+    /// The body falling by `scale` times the world's gravity
+    /// ([`gravity_scale`](Self::gravity_scale)).
+    ///
+    /// # Panics
+    ///
+    /// When `scale` is not finite.
+    #[must_use]
+    pub fn with_gravity_scale(mut self, scale: f32) -> Self {
+        assert!(
+            scale.is_finite(),
+            "a gravity scale must be finite (got {scale})"
+        );
+        self.gravity_scale = scale;
+        self
+    }
+
+    /// The body with Coulomb friction `friction`, below 0 taken as 0
+    /// ([`friction`](Self::friction)).
+    ///
+    /// # Panics
+    ///
+    /// When `friction` is not finite.
+    #[must_use]
+    pub fn with_friction(mut self, friction: f32) -> Self {
+        assert!(
+            friction.is_finite(),
+            "friction must be finite (got {friction})"
+        );
+        self.friction = friction.max(0.0);
+        self
+    }
+
+    /// The body with rolling resistance `rolling`, below 0 taken as 0
+    /// ([`rolling`](Self::rolling)).
+    ///
+    /// # Panics
+    ///
+    /// When `rolling` is not finite.
+    #[must_use]
+    pub fn with_rolling(mut self, rolling: f32) -> Self {
+        assert!(
+            rolling.is_finite(),
+            "rolling must be finite (got {rolling})"
+        );
+        self.rolling = rolling.max(0.0);
+        self
+    }
+
+    /// The body with `material`'s friction, restitution and rolling.
+    #[must_use]
+    pub fn with_material(self, material: PhysicsMaterial) -> Self {
+        self.with_friction(material.friction)
+            .with_restitution(material.restitution)
+            .with_rolling(material.rolling)
+    }
+
+    /// The sensor swept over its step's move ([`swept`](Self::swept)).
+    ///
+    /// # Panics
+    ///
+    /// When the body is not a sensor.
+    #[must_use]
+    pub fn with_swept(mut self) -> Self {
+        assert!(
+            self.kind == BodyKind::Sensor,
+            "only a sensor is swept (got {:?})",
+            self.kind
+        );
+        self.swept = true;
+        self
+    }
+
     /// The contact rule: each body's mask holds a layer the other is in.
     #[must_use]
     pub fn meets(&self, other: &RigidBody) -> bool {
@@ -233,7 +413,8 @@ impl RigidBody {
 ///
 /// A dynamic or kinematic body or a sensor gets `Position`,
 /// [`PrevPosition`] at the same point, `Velocity`, `Collider` and
-/// `RigidBody`; a static one the same without `Velocity`. So every bundle
+/// `RigidBody`; a static one the same without `Velocity`; a body that
+/// [`rolls`](RigidBody::rolls) a [`Spin`] at rest too. So every bundle
 /// body is drawn interpolated; a game that wants a body without history
 /// spawns its components as a tuple.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -322,11 +503,28 @@ impl RigidBodyBundle {
         self.body.mask = mask;
         self
     }
+
+    /// The bundle with its circle rolling: spawned with a [`Spin`] at rest
+    /// ([`RigidBody::rolls`]).
+    ///
+    /// # Panics
+    ///
+    /// When the collider is not a circle.
+    #[must_use]
+    pub fn with_spin(mut self) -> Self {
+        assert!(
+            matches!(self.collider.shape, Shape::Circle { .. }),
+            "only a circle rolls; a box stays upright"
+        );
+        self.body.rolls = true;
+        self
+    }
 }
 
 impl Bundle for RigidBodyBundle {
     /// `Position`, `PrevPosition` at the same point, `Velocity` when there
-    /// is one, `Collider`, `RigidBody`.
+    /// is one, `Collider`, `RigidBody`, and a [`Spin`] at rest when the body
+    /// rolls.
     #[inline]
     fn put<S: BundleSink>(self, sink: &mut S) {
         sink.put(self.position);
@@ -335,6 +533,10 @@ impl Bundle for RigidBodyBundle {
             sink.put(velocity);
         }
         sink.put(self.collider);
+        let rolls = self.body.rolls;
         sink.put(self.body);
+        if rolls {
+            sink.put(Spin::default());
+        }
     }
 }

@@ -4,9 +4,10 @@
 //! World, past every error. `App::run` calls it in place of the window when
 //! `TUNGSTEN_CHECK` names a report file.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use tungsten_core::assets::manifest::ResolvedSprite;
 use tungsten_core::assets::{
     AnimationData, AnimationRegistry, MaterialRegistry, ParticleConfig, ParticleConfigRegistry,
     ParticleMeshRegistry, PrefabRegistry, ResolvedManifest, SceneData, SoundData, SoundRegistry,
@@ -189,7 +190,9 @@ pub(crate) fn check_files(
         }
     }
 
-    // 9. Data entries, then prefabs, in two phases; then each prefab's sprite.
+    // 9. The physics layer names and materials, which bodies name; then the
+    // data entries and prefabs, in two phases, and each prefab's sprite.
+    super::load_physics_names(&manifest, world);
     check_prefabs_and_data(&manifest, world, &mut errors);
 
     // 10. Each map's objects against the prefabs.
@@ -210,54 +213,94 @@ pub(crate) fn check_files(
     errors.finish(game_dir)
 }
 
-/// Decodes each sprite and its siblings against the albedo's size, then
-/// registers each sprite that decodes with a placeholder handle.
+/// Decodes each sprite's file once and its siblings against its size, and
+/// checks each sheet frame against the image (redo 7.9), then registers each
+/// sprite that decodes with a placeholder handle.
 fn check_sprites(manifest: &ResolvedManifest, world: &mut World, errors: &mut Errors) {
+    let mut sizes: HashMap<&Path, Option<(u32, u32)>> = HashMap::new();
     for id in sorted(manifest.sprites.keys()) {
         let sprite = &manifest.sprites[id];
-        let image = match image::open(&sprite.path) {
-            Ok(image) => image,
-            Err(e) => {
-                errors.push(
-                    &sprite.path,
-                    format!("Failed to decode '{}': {e}", sprite.path.display()),
-                );
-                continue;
-            }
+        let size = *sizes.entry(sprite.path.as_path()).or_insert_with(|| {
+            let image = match image::open(&sprite.path) {
+                Ok(image) => image,
+                Err(e) => {
+                    errors.push(
+                        &sprite.path,
+                        format!("Failed to decode '{}': {e}", sprite.path.display()),
+                    );
+                    return None;
+                }
+            };
+            let size = (image.width(), image.height());
+            drop(image);
+            decode_sprite_siblings(
+                sprite.normal_path.as_deref(),
+                sprite.emissive_path.as_deref(),
+                size,
+                |field, why| {
+                    let file = match field {
+                        "normal_map" => sprite.normal_path.as_ref(),
+                        _ => sprite.emissive_path.as_ref(),
+                    };
+                    errors.push(
+                        file.unwrap_or(&sprite.path),
+                        format!("sprite '{id}' {field} {why}"),
+                    );
+                },
+            );
+            Some(size)
+        });
+        let Some(size) = size else {
+            continue;
         };
-        let size = (image.width(), image.height());
-        drop(image);
-        decode_sprite_siblings(
-            sprite.normal_path.as_deref(),
-            sprite.emissive_path.as_deref(),
-            size,
-            |field, why| {
-                let file = match field {
-                    "normal_map" => sprite.normal_path.as_ref(),
-                    _ => sprite.emissive_path.as_ref(),
-                };
-                errors.push(
-                    file.unwrap_or(&sprite.path),
-                    format!("sprite '{id}' {field} {why}"),
-                );
-            },
-        );
-        let registry = asset_registry(world);
-        registry.register_sprite(
-            id.clone(),
-            sprite.filter,
-            size.0,
-            size.1,
-            sprite.path.clone(),
-            NO_TEXTURE,
-            UvRect::FULL,
-            sprite.normal_path.clone(),
-            sprite.emissive_path.clone(),
-            None,
-        );
-        if sprite.nine_slice.is_some() {
-            registry.set_sprite_nine_slice(id, sprite.nine_slice);
+        if let Some([x, y, width, height]) = sprite.rect
+            && (x + width > size.0 || y + height > size.1)
+        {
+            errors.push(
+                &sprite.path,
+                format!(
+                    "sprite '{id}''s frame {width}x{height} at ({x}, {y}) leaves its {}x{} image",
+                    size.0, size.1
+                ),
+            );
+            continue;
         }
+        register_metadata(asset_registry(world), id, sprite, size, NO_TEXTURE, false);
+    }
+}
+
+/// Registers sprite `id`'s metadata with no pixels behind it, as `tungsten
+/// check` and the headless harness do (redo 7.9): its size (its frame's, or
+/// `file`'s for a whole file), filter, siblings, nine-slice, frame and
+/// anchor, on `atlas` with full UVs, and lit on it when `lit`.
+pub(crate) fn register_metadata(
+    registry: &mut AssetRegistry,
+    id: &str,
+    sprite: &ResolvedSprite,
+    file: (u32, u32),
+    atlas: TextureHandle,
+    lit: bool,
+) {
+    let (width, height) = sprite
+        .rect
+        .map_or(file, |[_, _, width, height]| (width, height));
+    registry.register_sprite(
+        id.to_string(),
+        sprite.filter,
+        width,
+        height,
+        sprite.path.clone(),
+        atlas,
+        UvRect::FULL,
+        sprite.normal_path.clone(),
+        sprite.emissive_path.clone(),
+        lit.then_some(atlas),
+    );
+    if sprite.nine_slice.is_some() {
+        registry.set_sprite_nine_slice(id, sprite.nine_slice);
+    }
+    if sprite.rect.is_some() || sprite.anchor.is_some() {
+        registry.set_sprite_frame(id, sprite.rect, sprite.anchor);
     }
 }
 

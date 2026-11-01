@@ -11,8 +11,8 @@ use glam::Vec2;
 use tungsten_core::{CameraState, ScaleFactor, UiDebug, World, WorldLabels};
 use tungsten_render::{QuadInstance, SpriteBatch, TextSection, WorldLabelRun};
 
-use crate::sprite_extract::extract_sprites_default;
-use crate::tilemap_extract::extract_tilemaps;
+use crate::sprite_extract::{extract_backdrops, extract_sprites_among, extract_sprites_default};
+use crate::tilemap_extract::extract_tiles_raising;
 
 /// A channel's boxed closure: for sprites, quads and text, the
 /// `ExtractSpritesFn`, `ExtractQuadsFn` and `ExtractTextFn` of `tungsten::app`.
@@ -47,8 +47,10 @@ impl<T> Channel<T> {
 /// The frame's sprite, quad and text channels, a `World` resource that `App`
 /// always inserts. A channel draws its base, then its contributions in the
 /// order they were added. The base is the channel's default or the
-/// replacement a game set. The sprite default draws the tilemaps, then the
-/// `Sprite` entities; quads and text have no default.
+/// replacement a game set. The sprite default draws the backdrops, the
+/// under-tile contributions, the tile layers without a `z`, the over-tile
+/// contributions, then the `Sprite` entities with each layer that has a `z`
+/// among them (redo 7.9); quads and text have no default.
 ///
 /// A plugin adds in its `build`:
 /// `world.resource_mut::<Extracts>().add_text(score_text)`. `App` inserts
@@ -61,23 +63,32 @@ impl<T> Channel<T> {
 /// `gpu_depth` sort, an instance at `z_norm` 0, which hand-written extracts
 /// usually write, passes the depth test against everything drawn before it,
 /// so a contribution draws over the default. A nonzero `z_norm` is the
-/// caller's depth and is tested against the default's: its tiles sit at
-/// 1.0, the far plane, and its sprites in [0, 1), the last drawn at 0.
+/// caller's depth and is tested against the default's: its backdrops,
+/// under- and over-tile contributions and bottom tiles sit at 1.0, the far
+/// plane, where a later draw wins, and its sprites and raised layers in
+/// [0, 1), the last drawn at 0.
 ///
 /// Without the resource, which only its removal causes, the channels draw
 /// nothing.
 pub struct Extracts {
+    /// No base is the default base, which places the tile slots itself.
     sprites: Channel<SpriteBatch>,
+    /// What draws under and over the default base's bottom tiles.
+    under_tiles: Vec<ExtractFn<SpriteBatch>>,
+    over_tiles: Vec<ExtractFn<SpriteBatch>>,
     quads: Channel<QuadInstance>,
     text: Channel<TextSection>,
 }
 
 impl Default for Extracts {
-    /// Sprites: the tilemaps at the far plane, then the `Sprite` entities.
-    /// Quads and text: nothing.
+    /// Sprites: the backdrops and the bottom tiles at the far plane, then
+    /// the `Sprite` entities among the raised layers. Quads and text:
+    /// nothing.
     fn default() -> Self {
         Self {
-            sprites: Channel::new(Some(Box::new(default_sprites))),
+            sprites: Channel::new(None),
+            under_tiles: Vec::new(),
+            over_tiles: Vec::new(),
             quads: Channel::new(None),
             text: Channel::new(None),
         }
@@ -89,6 +100,22 @@ impl Extracts {
     /// after every sprite contribution added before it.
     pub fn add_sprites(&mut self, f: impl Fn(&World) -> Vec<SpriteBatch> + 'static) {
         self.sprites.added.push(Box::new(f));
+    }
+
+    /// Adds `f` under the default base's bottom tiles (redo 7.9): its batches
+    /// draw after the backdrops and before the tile layers without a `z`,
+    /// after every under-tile contribution added before it, at the far plane
+    /// under `gpu_depth`. Under a replaced base they draw before it.
+    pub fn add_sprites_under_tiles(&mut self, f: impl Fn(&World) -> Vec<SpriteBatch> + 'static) {
+        self.under_tiles.push(Box::new(f));
+    }
+
+    /// Adds `f` over the default base's bottom tiles (redo 7.9): its batches
+    /// draw after them and before the sprites, after every over-tile
+    /// contribution added before it, at the far plane under `gpu_depth`.
+    /// Under a replaced base they draw before it, after the under-tile ones.
+    pub fn add_sprites_over_tiles(&mut self, f: impl Fn(&World) -> Vec<SpriteBatch> + 'static) {
+        self.over_tiles.push(Box::new(f));
     }
 
     /// Adds `f` to the quad channel: its quads draw after the base's and
@@ -103,8 +130,9 @@ impl Extracts {
         self.text.added.push(Box::new(f));
     }
 
-    /// Replaces the sprite channel's base, by default the tilemaps then the
-    /// `Sprite` entities, with `f`; contributions stay. The last call wins.
+    /// Replaces the sprite channel's base, by default the backdrops, the
+    /// tilemaps and the `Sprite` entities, with `f`; contributions stay, the
+    /// under- and over-tile ones drawing before it. The last call wins.
     pub fn replace_sprites(&mut self, f: impl Fn(&World) -> Vec<SpriteBatch> + 'static) {
         self.sprites.base = Some(Box::new(f));
     }
@@ -123,7 +151,21 @@ impl Extracts {
 
     /// The sprite channel's batches for `world`'s frame.
     pub(crate) fn sprites(&self, world: &World) -> Vec<SpriteBatch> {
-        self.sprites.run(world)
+        let mut out = match &self.sprites.base {
+            None => default_sprites(world, &self.under_tiles, &self.over_tiles),
+            Some(base) if self.under_tiles.is_empty() && self.over_tiles.is_empty() => base(world),
+            Some(base) => {
+                let mut out = Vec::new();
+                run_at_far_plane(&self.under_tiles, world, &mut out);
+                run_at_far_plane(&self.over_tiles, world, &mut out);
+                out.extend(base(world));
+                out
+            }
+        };
+        for add in &self.sprites.added {
+            out.extend(add(world));
+        }
+        out
     }
 
     /// The quad channel's quads for `world`'s frame.
@@ -137,22 +179,55 @@ impl Extracts {
     }
 }
 
-/// The default sprite base: the tilemaps, then the `Sprite` entities. The
-/// tiles go to `z_norm` 1.0, the far plane, so under the `gpu_depth` sort
-/// every sprite still draws over them; the CPU sort has no depth test. With
-/// no tiles in view this is the sprite extract's vector unchanged.
-fn default_sprites(world: &World) -> Vec<SpriteBatch> {
-    let mut batches = extract_tilemaps(world);
-    if batches.is_empty() {
-        return extract_sprites_default(world);
+/// The default sprite base: the backdrops, the under-tile slot, the tile
+/// layers without a `z`, the over-tile slot, then the `Sprite` entities with
+/// each layer that has a `z` among them. All before the sprites go to
+/// `z_norm` 1.0, the far plane, so under the `gpu_depth` sort every sprite
+/// still draws over them; the CPU sort has no depth test. With no tiles in
+/// view and none of the rest this is the sprite extract's vector unchanged.
+fn default_sprites(
+    world: &World,
+    under: &[ExtractFn<SpriteBatch>],
+    over: &[ExtractFn<SpriteBatch>],
+) -> Vec<SpriteBatch> {
+    let mut raised = Vec::new();
+    let mut batches = extract_tiles_raising(world, &mut raised);
+    let backdrops = extract_backdrops(world);
+    if raised.is_empty() && backdrops.is_empty() && under.is_empty() && over.is_empty() {
+        if batches.is_empty() {
+            return extract_sprites_default(world);
+        }
+        at_far_plane(&mut batches);
+        batches.extend(extract_sprites_default(world));
+        return batches;
     }
-    for batch in &mut batches {
-        for tile in &mut batch.instances {
-            tile.z_norm = 1.0;
+    // Stable: layers of one `z` keep their maps' and files' order.
+    raised.sort_by_key(|&(z, _)| z);
+    let mut out = backdrops;
+    run_at_far_plane(under, world, &mut out);
+    at_far_plane(&mut batches);
+    out.extend(batches);
+    run_at_far_plane(over, world, &mut out);
+    out.extend(extract_sprites_among(world, &mut raised));
+    out
+}
+
+/// Every instance of `batches` at `z_norm` 1.0, the far plane.
+fn at_far_plane(batches: &mut [SpriteBatch]) {
+    for batch in batches {
+        for instance in &mut batch.instances {
+            instance.z_norm = 1.0;
         }
     }
-    batches.extend(extract_sprites_default(world));
-    batches
+}
+
+/// Each of `slots`' batches, in order, at the far plane onto `out`.
+fn run_at_far_plane(slots: &[ExtractFn<SpriteBatch>], world: &World, out: &mut Vec<SpriteBatch>) {
+    for slot in slots {
+        let mut batches = slot(world);
+        at_far_plane(&mut batches);
+        out.extend(batches);
+    }
 }
 
 /// The step a world label's drawn scale snaps to (Q17 of M54): glyphon keys

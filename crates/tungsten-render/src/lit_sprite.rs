@@ -2,6 +2,8 @@
 //! adds a third bind group (the lighting UBO) and binds a lit texture bundle
 //! at group 1. Compile-time `include_str!` matches `assets/shaders/lit_sprite.wgsl`
 //! so manifest hot-reload picks up body edits via `Renderer::reload_shader`.
+//! Redo 7.9 adds group 3, each batch's 256-byte uniform block, whose flash
+//! lanes (`vec4[0]`, `f32s[0]`) the shader mixes in as the stock flash does.
 
 use crate::sprite::SpritePipeline;
 
@@ -23,6 +25,8 @@ pub const LIT_SPRITE_SHADER_SOURCE: &str = include_str!("../../../assets/shaders
 pub struct LitSpritePipeline {
     pub pipeline: wgpu::RenderPipeline,
     pub pipeline_layout: wgpu::PipelineLayout,
+    /// Group 3: a batch's `UniformOverrideBlock`, 256 bytes (`D-101`).
+    pub flash_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl LitSpritePipeline {
@@ -38,9 +42,28 @@ impl LitSpritePipeline {
         sample_count: u32,
         depth_write: bool,
     ) -> Self {
+        let flash_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("lit_sprite_flash_bgl"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("lit_sprite_pipeline_layout"),
-            bind_group_layouts: &[Some(camera_bgl), Some(lit_texture_bgl), Some(lighting_bgl)],
+            bind_group_layouts: &[
+                Some(camera_bgl),
+                Some(lit_texture_bgl),
+                Some(lighting_bgl),
+                Some(&flash_bind_group_layout),
+            ],
             immediate_size: 0,
         });
         let pipeline = build_lit_sprite_pipeline(
@@ -54,6 +77,7 @@ impl LitSpritePipeline {
         Self {
             pipeline,
             pipeline_layout,
+            flash_bind_group_layout,
         }
     }
 

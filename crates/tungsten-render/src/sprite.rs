@@ -5,6 +5,7 @@ use tungsten_core::assets::{FilterMode, MaterialAssetId, TextureHandle};
 use tungsten_core::tween::UniformOverrideBlock;
 
 use crate::counters::{self, Counts};
+use crate::lit_sprite::LitSpritePipeline;
 use crate::material::{MaterialPipeline, MaterialSlot};
 use crate::post::ParamSlots;
 use crate::shader_hot_reload::build_validated;
@@ -62,6 +63,40 @@ impl SpriteInstance {
             z_norm: 0.0,
             _pad: 0.0,
         }
+    }
+
+    /// A flat-colour quad on the renderer's white texel (redo 7.9), the
+    /// reserved sprite `engine_white`: `size` from its top-left `position`,
+    /// turned about its centre by `rotation`.
+    #[must_use]
+    pub fn flat(
+        position: [f32; 2],
+        size: [f32; 2],
+        rotation: f32,
+        color: [u8; 4],
+        z_norm: f32,
+    ) -> Self {
+        Self {
+            z_norm,
+            ..Self::whole(position, size, rotation, color)
+        }
+    }
+
+    /// A line `width` thick from `from` to `to`, as a [`flat`](Self::flat)
+    /// quad turned along it, centred on its midpoint and a `width` longer, so
+    /// joined segments overlap at their ends.
+    #[must_use]
+    pub fn segment(from: [f32; 2], to: [f32; 2], width: f32, color: [u8; 4], z_norm: f32) -> Self {
+        let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+        let size = [dx.hypot(dy) + width, width];
+        let centre = [f32::midpoint(from[0], to[0]), f32::midpoint(from[1], to[1])];
+        Self::flat(
+            [centre[0] - size[0] * 0.5, centre[1] - size[1] * 0.5],
+            size,
+            dy.atan2(dx),
+            color,
+            z_norm,
+        )
     }
 }
 
@@ -199,6 +234,67 @@ pub(crate) fn instance_capacity(required: usize, stride: usize, max_buffer_size:
         .max(1)
 }
 
+/// Texture handles (`D-048`, redo 7.9): a counter rising from 0 for the
+/// textures a run keeps, and a reserved range falling from `u32::MAX`, which
+/// the counter never reaches, for textures dropped before the counter mints
+/// the rest, such as the boot group's pages. Dropping those leaves every
+/// counter handle as a run without them mints it.
+#[derive(Debug, Clone)]
+pub struct TextureHandles {
+    next: u32,
+    next_reserved: u32,
+}
+
+impl TextureHandles {
+    /// The reserved range's lowest handle; the counter stops below it.
+    pub const RESERVED_FLOOR: u32 = u32::MAX - 1023;
+
+    /// A counter at 0 and the reserved range at `u32::MAX`.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            next: 0,
+            next_reserved: u32::MAX,
+        }
+    }
+
+    /// The counter's next handle.
+    ///
+    /// # Panics
+    ///
+    /// When the counter reaches [`Self::RESERVED_FLOOR`].
+    pub fn allocate(&mut self) -> TextureHandle {
+        assert!(
+            self.next < Self::RESERVED_FLOOR,
+            "the texture handle counter reached the reserved range"
+        );
+        let handle = TextureHandle(self.next);
+        self.next += 1;
+        handle
+    }
+
+    /// The reserved range's next handle, falling from `u32::MAX`.
+    ///
+    /// # Panics
+    ///
+    /// When the 1,024 reserved handles are spent.
+    pub fn allocate_reserved(&mut self) -> TextureHandle {
+        assert!(
+            self.next_reserved >= Self::RESERVED_FLOOR,
+            "the reserved texture handles are spent"
+        );
+        let handle = TextureHandle(self.next_reserved);
+        self.next_reserved = self.next_reserved.wrapping_sub(1);
+        handle
+    }
+}
+
+impl Default for TextureHandles {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Textured sprite pipeline, samplers, and texture pool.
 pub struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
@@ -219,12 +315,18 @@ pub struct SpritePipeline {
     /// M29 parallel pool: keyed by the albedo page handle, holds three views
     /// + one bind group. Lit batches bind from this pool at group 1.
     lit_textures: HashMap<TextureHandle, GpuLitTextures>,
-    next_handle: u32,
+    /// Its counter mints every handle `allocate_texture_handle` gives.
+    handles: TextureHandles,
     /// Each material's UBO slots, one per batch of the material in a frame,
     /// with the bytes each holds (`D-101`).
     material_slots: HashMap<MaterialAssetId, ParamSlots<MaterialSlot>>,
     /// Batches of each material drawn so far this frame.
     material_batches: HashMap<MaterialAssetId, usize>,
+    /// Redo 7.9: the lit batches' group-3 slots, one per lit batch with a
+    /// uniform block in a frame, as material batches keep theirs (`D-101`),
+    /// and the zeroed slot every lit batch without one binds.
+    lit_flash_slots: ParamSlots<MaterialSlot>,
+    lit_no_flash: Option<MaterialSlot>,
     /// Whether a frame has outgrown the largest instance buffer, logged once.
     warned_instance_cap: bool,
     pub(crate) counts: Box<Counts>,
@@ -407,9 +509,11 @@ impl SpritePipeline {
             sampler_linear,
             textures: HashMap::new(),
             lit_textures: HashMap::new(),
-            next_handle: 0,
+            handles: TextureHandles::new(),
             material_slots: HashMap::new(),
             material_batches: HashMap::new(),
+            lit_flash_slots: ParamSlots::default(),
+            lit_no_flash: None,
             warned_instance_cap: false,
             counts,
         }
@@ -478,9 +582,7 @@ impl SpritePipeline {
 
     /// Mint renderer-owned texture handle.
     pub fn allocate_texture_handle(&mut self) -> TextureHandle {
-        let handle = TextureHandle(self.next_handle);
-        self.next_handle += 1;
-        handle
+        self.handles.allocate()
     }
 
     /// Remove texture and bind group from pool.
@@ -885,7 +987,9 @@ impl SpritePipeline {
     /// M29: when `batch.lit` is set, the renderer pulls the lit texture
     /// bundle from `self.lit_textures` (group 1, three views + sampler) and
     /// uses `lit_sprite_pipeline` + `lighting_bind_group` (group 2). `lit`
-    /// wins over `material_id` when both are present.
+    /// wins over `material_id` when both are present. Redo 7.9: a lit batch
+    /// binds its uniform block at group 3, the k-th lit batch with one slot
+    /// k, and a lit batch without one a zeroed block, so it draws as before.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -894,7 +998,7 @@ impl SpritePipeline {
         render_pass: &mut wgpu::RenderPass<'_>,
         batches: &[SpriteBatch],
         material_pipelines: &HashMap<MaterialAssetId, MaterialPipeline>,
-        lit_sprite_pipeline: Option<&wgpu::RenderPipeline>,
+        lit_sprite_pipeline: Option<&LitSpritePipeline>,
         lighting_bind_group: Option<&wgpu::BindGroup>,
     ) {
         let total_instances: usize = batches.iter().map(|batch| batch.instances.len()).sum();
@@ -912,6 +1016,7 @@ impl SpritePipeline {
             );
         }
         self.material_batches.clear();
+        let mut lit_flash_batches = 0;
         let instance_stride = std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress;
         // Each batch lands in the staging view as one slice copy, in batch
         // order, so draw ranges below index it the same way. No intermediate
@@ -1010,13 +1115,13 @@ impl SpritePipeline {
                         render_pass.set_pipeline(&material_pipeline.unwrap().pipeline);
                     }
                     PipelineKey::Lit => {
-                        render_pass.set_pipeline(lit_resources.unwrap().1);
+                        render_pass.set_pipeline(&lit_resources.unwrap().1.pipeline);
                     }
                 }
                 last_pipeline_key = Some(pipeline_key);
             }
 
-            if let Some((lit, _pipeline, lighting_bg)) = lit_resources {
+            if let Some((lit, pipeline, lighting_bg)) = lit_resources {
                 if batch.filter != lit.filter {
                     log::warn!(
                         "lit sprite batch filter {:?} != lit pool filter {:?} for handle {:?}",
@@ -1028,6 +1133,25 @@ impl SpritePipeline {
                 }
                 render_pass.set_bind_group(1, &lit.bind_group, &[]);
                 render_pass.set_bind_group(2, lighting_bg, &[]);
+                let layout = &pipeline.flash_bind_group_layout;
+                let flash = if let Some(block) = &batch.uniform_overrides {
+                    let payload = block.to_bytes();
+                    let (slot, stale) =
+                        self.lit_flash_slots.stage(lit_flash_batches, &payload, || {
+                            MaterialSlot::new(device, layout, "lit_flash")
+                        });
+                    lit_flash_batches += 1;
+                    if stale {
+                        counters::write_buffer(&self.counts, queue, &slot.ubo, 0, &payload);
+                    }
+                    slot
+                } else {
+                    self.lit_no_flash.get_or_insert_with(|| {
+                        // A new buffer reads as zeros: no flash.
+                        MaterialSlot::new(device, layout, "lit_no_flash")
+                    })
+                };
+                render_pass.set_bind_group(3, &flash.bind_group, &[]);
             } else {
                 let Some(gpu_tex) = self.textures.get(&batch.texture) else {
                     log::warn!("Missing GPU texture for handle {:?}", batch.texture);

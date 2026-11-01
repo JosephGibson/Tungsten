@@ -18,6 +18,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::saved::order_of;
 use crate::foundation::stats::Stats;
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags};
 use crate::foundation::trace::{TraceKind, trace};
@@ -296,6 +297,7 @@ impl Plugin for PickupPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Pickup>(world, "Pickup");
+        world.register_saved::<Pickup>(PICKUP);
         describe_hit_shape(world);
         describe(
             world,
@@ -382,7 +384,8 @@ impl Collector {
                 .filter(|(_, pickup)| !pickup.collected)
                 .map(|(entity, _)| entity),
         );
-        self.pickups.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.pickups.sort_by_key(|&entity| order.key(entity));
         for i in 0..self.pickups.len() {
             let entity = self.pickups[i];
             if world.has::<Despawning>(entity) {
@@ -504,7 +507,8 @@ impl Magnet {
                 !pickup.collected && pickup.magnet > 0.0 && !world.has::<Despawning>(*entity)
             })
             .collect();
-        magnets.sort_by_key(|(entity, _)| entity.id());
+        let order = order_of(world);
+        magnets.sort_by_key(|&(entity, _)| order.key(entity));
         for (entity, pickup) in magnets {
             let known = self
                 .filters
@@ -535,7 +539,8 @@ impl Magnet {
                 });
             }
         }
-        self.collectors.sort_by_key(|pull| pull.entity.id());
+        let order = order_of(world);
+        self.collectors.sort_by_key(|pull| order.key(pull.entity));
     }
 
     /// Bins the collectors `filter` passes in cells as wide as the largest

@@ -661,6 +661,7 @@ impl Plugin for StatsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Stats>(world, "Stats");
+        world.register_saved::<Stats>(STATS);
         describe(
             world,
             ComponentDescription::new(

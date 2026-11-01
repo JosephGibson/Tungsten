@@ -2,6 +2,7 @@
 //! game clock has passed.
 
 use serde::{Deserialize, Serialize};
+use tungsten_core::save::SaveOptions;
 use tungsten_core::{
     Entity, Inspectable, Plugin, Schedule, SpawnContext, Time, Timer, World, system,
 };
@@ -98,6 +99,7 @@ impl Plugin for LifetimePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Lifetime>(world, "Lifetime");
+        world.register_saved_with(LIFETIME, SaveOptions::<Lifetime>::form::<LifetimeSave>());
         describe(
             world,
             ComponentDescription::new(
@@ -127,6 +129,41 @@ impl Plugin for LifetimePlugin {
             Phase::Tick.join(system(LIFETIME_TICK, lifetime_tick)),
         );
         ensure_kit_despawn(schedule, world);
+    }
+}
+
+/// A [`Lifetime`] in a save: its seconds and how far it has come.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LifetimeSave {
+    seconds: f32,
+    elapsed: f32,
+}
+
+impl From<&Lifetime> for LifetimeSave {
+    fn from(lifetime: &Lifetime) -> Self {
+        Self {
+            seconds: lifetime.timer.duration(),
+            elapsed: lifetime.timer.elapsed(),
+        }
+    }
+}
+
+impl From<LifetimeSave> for Lifetime {
+    /// A seconds value that is not finite and at least 0 reads as 0.
+    fn from(saved: LifetimeSave) -> Self {
+        let seconds = finite_at_least_zero(saved.seconds);
+        let mut lifetime = Self::new(seconds);
+        lifetime.timer.tick(finite_at_least_zero(saved.elapsed));
+        lifetime
+    }
+}
+
+fn finite_at_least_zero(value: f32) -> f32 {
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        0.0
     }
 }
 

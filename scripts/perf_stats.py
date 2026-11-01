@@ -16,7 +16,7 @@ SCHEMA = 2
 # Companion lines attach to the latest `frame:` line before them; the others
 # describe the whole run.
 COMPANIONS = ("systems", "gpu_passes", "physics", "bench", "counters")
-LINE_RE = re.compile(r"^(frame|systems|gpu_passes|physics|bench-config|bench|counters|backend):(?:\s+|$)(.*)$")
+LINE_RE = re.compile(r"^(frame|systems|gpu_passes|physics|bench-config|bench|counters|backend|startup):(?:\s+|$)(.*)$")
 LOG_PREFIX_RE = re.compile(r"^\[[^\]]*\]\s*")
 BACKEND_RE = re.compile(
     r"^(\S+) adapter: (.+) present_mode: (\S+) max_frame_latency: (\d+) timestamp_query: (true|false)$"
@@ -37,6 +37,8 @@ class Frame:
     physics: dict | None = None
     bench: dict | None = None
     counters: dict | None = None
+    # The run's `startup:` line, on the first frame of a measured window.
+    startup: dict | None = None
     raw: dict = dataclasses.field(default_factory=dict)
 
 
@@ -45,6 +47,7 @@ class Log:
     frames: list
     backend: dict | None = None
     bench_config: str | None = None
+    startup: dict | None = None
     orphans: int = 0
 
 
@@ -97,6 +100,8 @@ def parse_log(text):
             frame.raw[tag] = rest
         elif tag == "bench-config":
             log.bench_config = rest
+        elif tag == "startup" and log.startup is None:
+            log.startup = parse_pairs(rest)
         elif tag == "backend" and log.backend is None:
             backend = BACKEND_RE.match(rest)
             if backend:
@@ -144,9 +149,10 @@ def group_stats(frames, pick):
 
 
 def cpu_stats(frames):
-    """A timing run's `cpu` block: stages, systems and counters. Counters
-    hold the `counters:` line's fields as they are, and the `bench:` and
-    `physics:` fields under `bench.` and `physics.`."""
+    """A timing run's `cpu` block: stages, systems, counters and startup.
+    Counters hold the `counters:` line's fields as they are, and the `bench:`
+    and `physics:` fields under `bench.` and `physics.`; startup holds the
+    `startup:` line's fields, one sample a run (redo 7.9)."""
 
     def counters(frame):
         values = dict(frame.counters or {})
@@ -158,6 +164,7 @@ def cpu_stats(frames):
         "stages": group_stats(frames, lambda frame: {**frame.stages, "unattributed": unattributed(frame.stages)}),
         "systems": group_stats(frames, lambda frame: frame.systems),
         "counters": group_stats(frames, counters),
+        "startup": group_stats(frames, lambda frame: frame.startup),
     }
 
 
@@ -265,6 +272,8 @@ def analyze(text, warmup, frames, guards, gpu=False):
     run on an adapter with timestamps, a window under 95% sampled."""
     log = parse_log(text)
     measured = log.frames[warmup : warmup + frames]
+    if measured:
+        measured[0].startup = log.startup
     problems = []
     if len(measured) < frames:
         problems.append(f"{len(measured)} measured frames of {frames} ({len(log.frames)} logged, {warmup} warm-up)")
@@ -378,6 +387,7 @@ METRIC_GROUPS = {
     "counter": ("cpu", "counters"),
     "gpu": ("gpu", "passes"),
     "gpustage": ("gpu", "stages"),
+    "startup": ("cpu", "startup"),
 }
 
 

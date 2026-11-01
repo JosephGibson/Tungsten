@@ -50,6 +50,9 @@ pub struct KitRng {
     rng: Pcg32,
 }
 
+/// The name a save holds [`KitRng`] under.
+pub(crate) const KIT_RNG: &str = "kit_rng";
+
 impl Default for KitRng {
     /// [`seeded`](Self::seeded) at [`DEFAULT_SEED`](Self::DEFAULT_SEED).
     fn default() -> Self {

@@ -432,6 +432,7 @@ impl Plugin for OscillatorPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Oscillator>(world, "Oscillator");
+        world.register_saved::<Oscillator>(OSCILLATOR_COMPONENT);
         let period = || FieldType::F32 {
             min: Bound::Exclusive(0.0),
             max: Bound::Open,

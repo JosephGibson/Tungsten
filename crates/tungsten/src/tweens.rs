@@ -4,12 +4,13 @@
 //!
 //! M26 also dispatches `UniformVec4Lane`/`UniformScalar`/`UniformInt` into
 //! `UniformOverrideBlock`; missing-block channels log and are skipped so a
-//! tween authored for an absent component never panics.
+//! tween authored for an absent component never panics. Redo 7.9 adds
+//! `LightIntensity`, written into the entity's `Light`.
 
 use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
-    CommandBuffer, Entity, EventQueue, Sprite, Time, Transform, Tween, TweenChannel, TweenComplete,
-    TweenDirection, TweenRepeat, World, lerp_f32, lerp_u8,
+    CommandBuffer, Entity, EventQueue, Light, Sprite, Time, Transform, Tween, TweenChannel,
+    TweenComplete, TweenDirection, TweenRepeat, World, lerp_f32, lerp_u8,
 };
 
 pub fn tween_tick_system(world: &mut World) {
@@ -220,6 +221,11 @@ fn apply_channels(world: &mut World, entity: Entity, channels: &[TweenChannel], 
                     block.i32s[slot.index()] = value;
                 } else {
                     log::debug!("tween UniformInt on entity {entity:?}: no UniformOverrideBlock");
+                }
+            }
+            TweenChannel::LightIntensity { from, to } => {
+                if let Some(light) = world.get_mut::<Light>(entity) {
+                    light.intensity = lerp_f32(*from, *to, k).max(0.0);
                 }
             }
         }

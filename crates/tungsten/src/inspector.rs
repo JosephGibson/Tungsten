@@ -11,7 +11,7 @@ use glam::Vec2;
 
 use tungsten_core::components::{Sprite, Tag, Transform, Visibility};
 use tungsten_core::input::{ActionMap, InputState, RawInput, RoutedInput};
-use tungsten_core::physics::{Collider, Position, Shape as ColliderShape, Velocity};
+use tungsten_core::physics::{Collider, Position, Velocity};
 use tungsten_core::text::TextAlign;
 use tungsten_core::ui::WidgetId;
 use tungsten_core::{AssetRegistry, CameraState, Entity, InspectRegistry, Inspectable, World};
@@ -328,12 +328,7 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
         world.query::<(Entity, &Collider, &Position, Option<&Transform>)>()
     {
         let centre = drawn.map_or(position.0, |transform| transform.position) + collider.offset;
-        let half = match collider.shape {
-            ColliderShape::Aabb { half_extents } => {
-                Vec2::new(half_extents.x.abs(), half_extents.y.abs())
-            }
-            ColliderShape::Circle { radius } => Vec2::splat(radius.abs()),
-        };
+        let half = collider.shape.half_extents().abs();
         try_hit_aabb(&mut best, entity, world_cursor, centre - half, half * 2.0);
     }
 

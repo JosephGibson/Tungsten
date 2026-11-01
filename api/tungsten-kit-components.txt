@@ -20,7 +20,7 @@ component aim: The direction the entity aims in, from its intent, the cursor, it
   field offset: [x, y] = [0.0, 0.0] — the aim's origin from the entity's point, in world pixels
   genres: top_down, shmup
   sample: { "from": "target", "target": { "nearest": { "all": ["team.player"] } } }
-component animation: An animated sprite: its current frame written into the entity's Sprite.
+component animation: An animated sprite: its current frame written into the entity's Sprite; optional `speed` (its rate, 1 unless set) and `despawn` (a finished one-shot ends the entity).
   field id: text — a manifest animation ID
   genres: platformer, top_down
   sample: { "id": "blink" }
@@ -28,10 +28,10 @@ component camera_target: The marker the camera follows: the lowest-indexed live 
   genres: platformer, top_down, shmup, grid
   sample: null
 component character_animator: Picks the entity's animation clip each frame: idle, move, rise or fall, by its facing when a clip is a set.
-  field idle: an animation ID, or { left, right, up, down } of animation IDs by facing — what it shows standing; the load checks each ID
-  field move: an animation ID, or { left, right, up, down } of animation IDs by facing = null — what it shows moving; `idle` when left out
-  field rise: an animation ID, or { left, right, up, down } of animation IDs by facing = null — what a platformer shows rising; `idle` when left out
-  field fall: an animation ID, or { left, right, up, down } of animation IDs by facing = null — what a platformer shows falling; `idle` when left out
+  field idle: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out — what it shows standing; the load checks each ID
+  field move: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out = null — what it shows moving; `idle` when left out
+  field rise: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out = null — what a platformer shows rising; `idle` when left out
+  field fall: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out = null — what a platformer shows falling; `idle` when left out
   field min_speed: f32 (>= 0) = 10.0 — world pixels per second from which it moves
   genres: platformer, top_down
   sample: { "idle": "hero_idle" }
@@ -102,6 +102,7 @@ component facing: The direction the entity faces, from its motion, intent or aim
   field turn: bool = false — writes the entity's rotation as the direction's angle plus `offset`
   field offset: f32 = 0.0 — radians added to the angle it turns to: π/2 for art drawn facing up
   field min_speed: f32 (>= 0) = 1.0 — world pixels per second under which it keeps facing
+  field flip: bool = false — writes the entity's sprite flip from the side it faces, for art drawn facing right
   genres: platformer, top_down, shmup
   sample: {}
 component flags: Named switches on the entity, which cues set or clear.
@@ -218,7 +219,7 @@ component projectile: Ends at its hitbox's first hit, its first wall or its rang
   field pierce: u32 = 0 — targets it passes before the next ends it
   field range: f32 (> 0) = null — world pixels it travels before it ends; none when left out
   field bounces: u32 = 0 — walls it turns at before the next ends it
-  field bounce_layers: list of u32 (<= 31) = null — physics layers whose walls it turns at while it has bounces left, tiles in layer 0; a wall outside them ends it; every layer when left out
+  field bounce_layers: list of u32 (<= 31) = null — physics layers whose walls it turns at while it has bounces left, a tile in its collision layer's; a wall outside them ends it; every layer when left out
   field pass_layers: list of u32 (<= 31) = [] — physics layers whose walls it passes as if open, before the bounce layers
   events: ProjectileExpired, ProjectileBounced, ProjectilePassed, Struck
   genres: top_down, platformer, shmup

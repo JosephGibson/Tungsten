@@ -314,6 +314,9 @@ impl At {
 /// `Debug` prints the ID.
 pub struct PreparedPrefab {
     id: String,
+    /// Whether a spawn from a saved source takes a save ID: prepared in a
+    /// World with save state, and not [`unsaved`](Self::unsaved).
+    saved: bool,
     transform: Transform,
     sprite: Option<Sprite>,
     visibility: Visibility,
@@ -339,6 +342,14 @@ impl PreparedPrefab {
             At::Pending(pending) => buffer.insert_bundle_pending(pending, bundle),
             At::Live(entity) => buffer.insert_bundle(entity, bundle),
         }));
+        self
+    }
+
+    /// Leaves it out of saves: a spawn from a saved source takes no save
+    /// ID, as a hierarchy's children or presentation a load restarts.
+    #[must_use]
+    pub fn unsaved(mut self) -> Self {
+        self.saved = false;
         self
     }
 
@@ -456,6 +467,7 @@ impl Built {
         });
         PreparedPrefab {
             id: self.id,
+            saved: crate::save::saving(world),
             transform: self.transform,
             sprite,
             visibility: Visibility {
@@ -631,7 +643,17 @@ impl World {
         map: &str,
         origin: impl Into<Vec2>,
     ) -> Result<Vec<PreparedPrefab>, PrefabError> {
-        let origin = origin.into();
+        let prepared = self.prepare_map_objects_named(map, origin.into())?;
+        Ok(prepared.into_iter().map(|(prefab, _)| prefab).collect())
+    }
+
+    /// [`prepare_map_objects`](Self::prepare_map_objects), each with its
+    /// object's name, empty when Tiled gave none.
+    pub(crate) fn prepare_map_objects_named(
+        &mut self,
+        map: &str,
+        origin: Vec2,
+    ) -> Result<Vec<(PreparedPrefab, String)>, PrefabError> {
         let built = {
             let data = self
                 .get_resource::<TilemapRegistry>()
@@ -653,12 +675,15 @@ impl World {
                 }
                 let next = Built::new(self, &object.class, prefab, components, position)
                     .map_err(|err| format!("prefab `{}`: {err}", object.class))?;
-                built.push(next);
+                built.push((next, object.name.clone()));
                 Ok(())
             })?;
             built
         };
-        Ok(built.into_iter().map(|next| next.intern(self)).collect())
+        Ok(built
+            .into_iter()
+            .map(|(next, name)| (next.intern(self), name))
+            .collect())
     }
 
     /// [`prepare_map_objects`](Self::prepare_map_objects), then spawns each
@@ -719,7 +744,10 @@ impl CommandBuffer {
     /// ([`World::inherit_from_source`], [`World::derive_from_source`]) gives
     /// from `source` as the flush finds it, in one more archetype move when
     /// anything is given. A source an earlier command despawned drops the
-    /// spawn: nothing of it remains.
+    /// spawn: nothing of it remains. A source with a save identity
+    /// ([`Saved`](crate::save::Saved)) gives the spawn the run's next save
+    /// ID, its area and the prefab's ID in the same move, unless the prefab
+    /// was prepared [`unsaved`](PreparedPrefab::unsaved).
     ///
     /// ```
     /// use serde_json::json;
@@ -744,8 +772,14 @@ impl CommandBuffer {
     /// assert_eq!(teams, [&Team(2), &Team(2)], "the turret's and the bolt's");
     /// ```
     pub fn spawn_prefab_from(&mut self, source: Entity, prefab: PreparedPrefab) -> PendingEntity {
+        // Only a World with save state names a run's spawns, so a World
+        // that never named records exactly what it did before.
+        let saved = prefab.saved.then(|| prefab.id.clone());
         let pending = self.spawn_prefab(prefab);
-        self.derive_pending(source, pending);
+        match saved {
+            Some(prefab) => self.derive_pending_saved(source, pending, prefab),
+            None => self.derive_pending(source, pending),
+        }
         pending
     }
 }

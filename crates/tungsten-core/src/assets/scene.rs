@@ -143,6 +143,13 @@ pub enum SceneTweenChannel {
         from: i32,
         to: i32,
     },
+    /// Drives the entity's `Light.intensity`, each end at least 0.
+    LightIntensity {
+        /// The intensity at the tween's start.
+        from: f32,
+        /// The intensity at its end.
+        to: f32,
+    },
 }
 
 impl From<SceneTweenChannel> for TweenChannel {
@@ -173,6 +180,9 @@ impl From<SceneTweenChannel> for TweenChannel {
             }
             SceneTweenChannel::UniformInt { slot, from, to } => {
                 TweenChannel::UniformInt { slot, from, to }
+            }
+            SceneTweenChannel::LightIntensity { from, to } => {
+                TweenChannel::LightIntensity { from, to }
             }
         }
     }
@@ -227,6 +237,13 @@ impl SceneTween {
                 && *lane > 3
             {
                 return Err(format!("uniform_vec4_lane lane must be 0..=3 (got {lane})"));
+            }
+            if let SceneTweenChannel::LightIntensity { from, to } = channel
+                && !(*from >= 0.0 && *to >= 0.0)
+            {
+                return Err(format!(
+                    "light_intensity from and to must be >= 0 (got {from} and {to})"
+                ));
             }
         }
         Ok(())

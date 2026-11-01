@@ -497,7 +497,7 @@ pub fn solid_tile(world: &World, point: Vec2) -> bool {
 fn touches(centre: Vec2, shape: Shape, point: Vec2, margin: f32) -> bool {
     match shape {
         Shape::Circle { radius } => point.distance_squared(centre) <= (radius + margin).powi(2),
-        Shape::Aabb { half_extents } => ((point - centre).abs() - half_extents)
+        other => ((point - centre).abs() - other.half_extents())
             .cmple(Vec2::splat(margin))
             .all(),
     }
@@ -939,8 +939,8 @@ fn ray_distance(start: Vec2, aim: Vec2, centre: Vec2, shape: Shape, range: f32) 
             let t = -b - discriminant.sqrt();
             (t >= 0.0).then_some(t)
         }
-        Shape::Aabb { half_extents } => {
-            let half = half_extents + Vec2::splat(BEAM_HALF_WIDTH);
+        other => {
+            let half = other.half_extents() + Vec2::splat(BEAM_HALF_WIDTH);
             let (mut near, mut far) = (0.0_f32, range);
             for axis in 0..2 {
                 if aim[axis].abs() < 1e-6 {
@@ -981,10 +981,7 @@ pub fn traced_near(world: &World, caster: Entity, centre: Vec2, radius: f32) -> 
         })
         .filter_map(|(entity, collider, at, _)| {
             let body = at.0 + collider.offset;
-            let half = match collider.shape {
-                Shape::Circle { radius } => Vec2::splat(radius),
-                Shape::Aabb { half_extents } => half_extents,
-            };
+            let half = collider.shape.half_extents();
             ((body - centre).abs().cmple(reach + half).all()).then(|| Traced {
                 entity,
                 centre: body,

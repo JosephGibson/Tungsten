@@ -359,6 +359,7 @@ impl Plugin for SteeringPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Steering>(world, "Steering");
+        world.register_saved::<Steering>(STEERING_COMPONENT);
         describe_target(world);
         describe(
             world,

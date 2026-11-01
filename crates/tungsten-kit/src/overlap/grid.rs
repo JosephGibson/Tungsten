@@ -8,6 +8,7 @@ use tungsten_core::{Entity, EventQueue, Transform, World};
 
 use crate::damage::health::Health;
 use crate::damage::pipeline::DamageRequest;
+use crate::foundation::saved::order_of;
 use crate::foundation::source::Source;
 use crate::foundation::tags::Tags;
 use crate::foundation::trace::{TraceKind, trace};
@@ -51,10 +52,7 @@ impl Sweep {
 
 /// A shape's half extents.
 pub(crate) fn half_extents(shape: Shape) -> Vec2 {
-    match shape {
-        Shape::Circle { radius } => Vec2::splat(radius),
-        Shape::Aabb { half_extents } => half_extents,
-    }
+    shape.half_extents()
 }
 
 /// Where `entity` stands over the step: a root with a `Position` from its
@@ -184,7 +182,8 @@ impl HitGrid {
                 self.entries.push(GridEntry { entity, sweep });
             }
         }
-        self.entries.sort_by_key(|entry| entry.entity.id());
+        let order = order_of(world);
+        self.entries.sort_by_key(|entry| order.key(entry.entity));
         for (index, entry) in self.entries.iter().enumerate() {
             let (min, max) = entry.sweep.bounds();
             self.bounds = Some(
@@ -339,6 +338,12 @@ fn span(a: Shape, b: Shape, start: DVec2, motion: DVec2) -> Span {
         | (Shape::Aabb { half_extents }, Shape::Circle { radius }) => {
             rounded(start, motion, half_extents.as_dvec2(), f64::from(radius))
         }
+        // A later shape meets as its box.
+        (a, b) => slab(
+            start,
+            motion,
+            (a.half_extents() + b.half_extents()).as_dvec2(),
+        ),
     }
 }
 
@@ -390,6 +395,8 @@ fn push_out(a: Shape, b: Shape, start: DVec2) -> DVec2 {
                 (start - start.clamp(-half, half)).normalize_or(DVec2::Y)
             }
         }
+        // A later shape pushes out as its box.
+        (a, b) => least((a.half_extents() + b.half_extents()).as_dvec2()),
     }
 }
 

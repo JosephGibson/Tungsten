@@ -140,10 +140,7 @@ struct Body {
 /// The crates, kegs and planks, in save-ID order.
 fn bodies(world: &World) -> Vec<Body> {
     let body = |entity: Entity, at: &Position, collider: &Collider, id: Option<&SaveId>| {
-        let half = match collider.shape {
-            Shape::Aabb { half_extents } => half_extents,
-            Shape::Circle { radius } => Vec2::splat(radius),
-        };
+        let half = collider.shape.half_extents();
         Body {
             id: id.copied(),
             entity,
@@ -227,8 +224,8 @@ pub fn heat(world: &mut World) {
         .query::<(&Lava, &Transform, &ContactDamage)>()
         .filter(|(lava, ..)| lava.crust.is_none())
         .filter_map(|(_, at, touch)| match touch.shape()?.shape() {
-            Shape::Aabb { half_extents } => Some((at.position + touch.offset(), half_extents)),
             Shape::Circle { .. } => None,
+            other => Some((at.position + touch.offset(), other.half_extents())),
         })
         .collect();
     for prop in &props {

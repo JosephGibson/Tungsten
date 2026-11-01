@@ -53,3 +53,23 @@ fn place_player_with_no_run_fails_its_step() {
         "action `place_player`: no run"
     );
 }
+
+#[test]
+fn reload_run_keeps_the_run() {
+    // The player placed once, then the run saved in memory and continued:
+    // the loaded run's player stands where the save left it, not at the
+    // start (624, 344).
+    let report = run(r#"{
+        "version": 1,
+        "frames": 60,
+        "steps": [
+            { "frame": 2, "action": "start_run" },
+            { "frame": 10, "action": "place_player", "args": { "at": [300, 150] } },
+            { "frame": 20, "action": "reload_run" },
+            { "frame": 21, "probe": "states" },
+            { "frame": 60, "assert": { "probe": "player", "path": "/position", "op": "~=", "value": [300, 150], "tolerance": 0.5 } },
+            { "frame": 60, "assert": { "probe": "player", "path": "/health/0", "op": ">", "value": 0 } }
+        ]
+    }"#);
+    assert!(report.passed, "{report:#?}");
+}

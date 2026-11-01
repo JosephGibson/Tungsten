@@ -8,6 +8,7 @@ use tungsten_core::{Entity, Plugin, Schedule, Time, World, system};
 
 use crate::foundation::inspect::register_rows_with;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::saved::order_of;
 
 /// A hook a state runs: the world and the entity whose machine it is.
 type Hook = fn(&mut World, Entity);
@@ -356,7 +357,8 @@ fn visit_all<S: Copy + Eq + 'static>(
             .query::<(Entity, &StateMachine<S>)>()
             .map(|(entity, _)| entity),
     );
-    entities.sort_unstable_by_key(|entity| entity.id());
+    let order = order_of(world);
+    entities.sort_unstable_by_key(|&entity| order.key(entity));
     for &entity in entities.iter() {
         visit(world, hooks, entity, dt);
     }

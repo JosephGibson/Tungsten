@@ -115,6 +115,13 @@ impl InsertQueues {
         self.queues[queue as usize].drop_next();
     }
 
+    /// Take the oldest value of type `T`, from its queue.
+    pub(super) fn take<T: 'static>(&mut self) -> Option<T> {
+        let queue = *self.index.get(&TypeId::of::<T>())?;
+        let typed: &mut dyn Any = &mut *self.queues[queue as usize];
+        typed.downcast_mut::<TypedQueue<T>>()?.0.pop_front()
+    }
+
     /// Drop every queued value, keeping the queues and their storage.
     pub(super) fn clear(&mut self) {
         for queue in &mut self.queues {
@@ -151,7 +158,16 @@ pub(super) enum Command {
         source: Entity,
         target: CommandTarget,
     },
+    /// [`Command::Derive`] for a spawn that takes a save ID from a saved
+    /// source; its prefab's ID is the oldest [`SavedPrefab`] queued.
+    DeriveSaved {
+        source: Entity,
+        target: CommandTarget,
+    },
 }
+
+/// The prefab ID a [`Command::DeriveSaved`] reads at the flush.
+pub(super) struct SavedPrefab(pub(super) String);
 
 impl Command {
     /// Whether this is an insert on `target`.
@@ -294,6 +310,20 @@ impl CommandBuffer {
     pub(crate) fn derive_pending(&mut self, source: Entity, pending: PendingEntity) {
         let target = self.pending_target(pending);
         self.commands.push(Command::Derive { source, target });
+    }
+
+    /// [`derive_pending`](Self::derive_pending) for a spawn of `prefab` that
+    /// takes a save ID when its source has one: the prefab's ID waits in
+    /// the values' queue of its own type, so the buffer grows no field.
+    pub(crate) fn derive_pending_saved(
+        &mut self,
+        source: Entity,
+        pending: PendingEntity,
+        prefab: String,
+    ) {
+        let target = self.pending_target(pending);
+        self.values.push(SavedPrefab(prefab));
+        self.commands.push(Command::DeriveSaved { source, target });
     }
 }
 

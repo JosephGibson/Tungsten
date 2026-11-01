@@ -1070,3 +1070,44 @@ fn audio_refuses_out_of_range_non_finite_unknown_bus_and_unknown_key() {
         );
     }
 }
+
+#[test]
+fn the_assets_section_names_no_manifest_by_default() {
+    let assets = Config::default().assets;
+    assert_eq!(assets.manifest, None);
+    assert_eq!(assets.hot_reload, None);
+    // Unset, the reload follows the build.
+    assert!(assets.hot_reload_or(true));
+    assert!(!assets.hot_reload_or(false));
+
+    let (_, loaded) = load_json(
+        "assets-named",
+        r#"{ "assets": { "manifest": "assets/manifest.json", "hot_reload": false } }"#,
+    );
+    let assets = loaded.expect("a valid assets section").assets;
+    assert_eq!(
+        assets.manifest.as_deref(),
+        Some(std::path::Path::new("assets/manifest.json"))
+    );
+    assert!(!assets.hot_reload_or(true), "a set reload wins");
+}
+
+#[test]
+fn an_unknown_assets_key_fails() {
+    for (tag, json) in [
+        (
+            "assets-unknown-key",
+            r#"{ "assets": { "manifests": "assets/manifest.json" } }"#,
+        ),
+        (
+            "assets-not-a-bool",
+            r#"{ "assets": { "hot_reload": "yes" } }"#,
+        ),
+    ] {
+        let (_, loaded) = load_json(tag, json);
+        assert!(
+            matches!(loaded, Err(ConfigError::Parse { .. })),
+            "{tag}: {loaded:?}"
+        );
+    }
+}

@@ -23,6 +23,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::rng::KitRng;
+use crate::foundation::saved::order_of;
 use crate::foundation::stats::Stats;
 use crate::foundation::tags::{TagFilter, Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
@@ -1341,7 +1342,8 @@ impl Scratch {
                         Some((entity, at))
                     }),
             );
-            found.sort_by_key(|(entity, _)| entity.id());
+            let order = order_of(world);
+            found.sort_by_key(|&(entity, _)| order.key(entity));
             self.used += 1;
             self.used - 1
         };
@@ -1579,7 +1581,10 @@ impl Ticker {
                 .query::<(Entity, &Abilities)>()
                 .map(|(entity, _)| entity),
         );
-        self.scratch.entities.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.scratch
+            .entities
+            .sort_by_key(|&entity| order.key(entity));
         let entities = std::mem::take(&mut self.scratch.entities);
         for &entity in &entities {
             self.tick_entity(world, entity, dt);
@@ -1680,6 +1685,7 @@ impl Plugin for AbilitiesPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Abilities>(world, "Abilities");
+        world.register_saved::<Abilities>(ABILITIES);
         describe_target(world);
         describe_abilities(world);
         world.register_event::<AbilityUsed>();

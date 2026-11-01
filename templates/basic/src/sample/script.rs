@@ -1,6 +1,7 @@
-//! The sample's script hooks (redo 7.2): `start_run` and `place_player` for
-//! a script to call, `player` for it to read, each with the line `tungsten
-//! describe` prints. A game adds its own the same way, from its plugin.
+//! The sample's script hooks (redo 7.2): `start_run`, `place_player` and
+//! `reload_run` for a script to call, `player` for it to read, each with
+//! the line `tungsten describe` prints. A game adds its own the same way,
+//! from its plugin.
 
 use serde::Deserialize;
 use tungsten::core::{Position, PrevPosition, Velocity, World};
@@ -64,6 +65,15 @@ pub fn register(world: &mut World) {
             if let Some(velocity) = world.get_mut::<Velocity>(player) {
                 velocity.0 = Default::default();
             }
+            Ok(())
+        },
+    );
+    world.add_script_action(
+        "reload_run",
+        "Saves the run in memory and continues it as Continue does, with no user folder.",
+        |world, _| {
+            let save = crate::save::capture(world).ok_or("no run to save")?;
+            shell::start_run(world, save.into(), None);
             Ok(())
         },
     );

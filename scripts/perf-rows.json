@@ -489,6 +489,238 @@
       "workload_version": 1
     },
     {
+      "name": "terrain",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "terrain",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 120,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "edits",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "traced",
+          "kind": "counter_max",
+          "max": 256
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "friction",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "piles",
+        "preset": "friction"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 120,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "sleeping",
+          "kind": "counter_max",
+          "max": 0
+        },
+        {
+          "counter": "escaped",
+          "kind": "counter_max",
+          "max": 0
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "slopes",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "piles",
+        "preset": "slopes"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 120,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "recycled",
+          "kind": "counter_min",
+          "min": 60
+        },
+        {
+          "counter": "inside",
+          "kind": "counter_max",
+          "max": 0
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "saves",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "saves",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 60,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.save_snapshot",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "saved",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "bytes",
+          "kind": "counter_max",
+          "max": 3080192
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "boot",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "boot",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 2,
+      "frames": 30,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "startup.first_frame",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "startup.loaded",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "startup.slice_max",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "units",
+          "kind": "counter_const"
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "e01-pit",
       "package": "example-01-platformer",
       "folder": "examples/01_platformer",

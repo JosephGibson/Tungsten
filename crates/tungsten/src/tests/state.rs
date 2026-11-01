@@ -968,3 +968,73 @@ fn a_hook_reads_its_own_state_as_active_at_its_own_depth() {
     assert_eq!(stack(&world).active_id(), Some("menu"));
     assert_eq!(stack(&world).depth(), 1);
 }
+
+#[test]
+fn a_states_exit_takes_its_emitters_particles() {
+    use std::sync::Arc;
+    use tungsten_core::Particle;
+    use tungsten_core::assets::{
+        BlendMode, EmissionKind, InitialVelocity, ParticleConfig, ParticleRender, Range,
+    };
+    let mut world = make_world();
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    stack_mut(&mut world).request_push(TestState::new("menu", hooks.clone(), false));
+    state_dispatcher_system(&mut world);
+    flush(&mut world);
+    let config = Arc::new(ParticleConfig {
+        sprite: "star".into(),
+        render: ParticleRender::Quad,
+        max_alive: 8,
+        seed: Some(1),
+        blend: BlendMode::Alpha,
+        emission: EmissionKind::Burst {
+            count: 1,
+            once: true,
+        },
+        lifetime: Range::single(5.0),
+        initial_velocity: InitialVelocity::Radial {
+            speed: Range::single(1.0),
+        },
+        gravity: [0.0, 0.0],
+        drag_per_sec: 0.0,
+        angular_velocity: Range::single(0.0),
+        start_scale: Range::single(1.0),
+        scale_over_life: None,
+        color_over_life: None,
+        alpha_over_life: None,
+        tint: [1.0; 4],
+        z_order: 0,
+        clip: None,
+        stretch: 0.0,
+        stop: None,
+        attractor: None,
+        start_color: None,
+    });
+    let particle = |emitter| Particle {
+        config: config.clone(),
+        emitter,
+        age: 0.0,
+        lifetime: 5.0,
+        velocity: glam::Vec2::ZERO,
+        angular_velocity: 0.0,
+        start_scale: 1.0,
+        base_rgba: [1.0; 4],
+    };
+    // The menu's emitter and a stray one, each with a particle out.
+    let stars = world.spawn_with((SceneEntity { state_id: "menu" },));
+    let stray = world.spawn();
+    let star = world.spawn_with((particle(Some(stars)),));
+    let other = world.spawn_with((particle(Some(stray)),));
+    let orphan = world.spawn_with((particle(None),));
+    stack_mut(&mut world).request_pop();
+    state_dispatcher_system(&mut world);
+    flush(&mut world);
+    assert!(
+        !world.is_alive(stars) && !world.is_alive(star),
+        "the stars leave with the menu"
+    );
+    assert!(
+        world.is_alive(other) && world.is_alive(orphan),
+        "others age out as before"
+    );
+}

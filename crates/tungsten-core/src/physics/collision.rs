@@ -8,6 +8,10 @@ pub const FACE_BOTTOM: u8 = 1 << 1;
 pub const FACE_LEFT: u8 = 1 << 2;
 pub const FACE_RIGHT: u8 = 1 << 3;
 pub const FACE_ALL: u8 = FACE_TOP | FACE_BOTTOM | FACE_LEFT | FACE_RIGHT;
+/// A one-way tile's flag beside its face bits: solid through its top face
+/// alone, from above. The public face masks and the masked functions read
+/// bits 0 to 3 only, so they ignore it.
+pub(crate) const FACE_ONE_WAY: u8 = 1 << 4;
 
 /// Contact normal moves `a` out of `b`.
 #[derive(Debug, Clone, Copy, PartialEq)]

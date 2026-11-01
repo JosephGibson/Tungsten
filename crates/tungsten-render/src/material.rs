@@ -7,6 +7,11 @@
 //! frame (`MaterialSlot`, `D-101`). Vertex + instance layouts
 //! come from `SpritePipeline::vertex_layouts`, so a `SpriteBatch` can be
 //! drawn through either pipeline without repacking its instance buffer.
+//!
+//! Redo 7.9: a material module with an `fs_main` and no `vs_main` compiles
+//! after the material prelude, which writes this contract once
+//! (`shader_hot_reload::MATERIAL_PRELUDE`); the stock glow, the reserved
+//! material `engine_glow`, is one.
 
 use tungsten_core::assets::{MaterialAssetId, MaterialUniformDefaults};
 

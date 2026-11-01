@@ -106,10 +106,7 @@ pub const ATTACK_SECS: f32 = 0.4;
 
 /// A shape's half extents.
 fn half(shape: Shape) -> Vec2 {
-    match shape {
-        Shape::Aabb { half_extents } => half_extents,
-        Shape::Circle { radius } => Vec2::splat(radius),
-    }
+    shape.half_extents()
 }
 
 /// What `troll` holds.

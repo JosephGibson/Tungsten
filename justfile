@@ -41,12 +41,13 @@ bench-build:
 smoke:
     ./scripts/smoke-examples.sh
 
-# Pixel tests: the reference PNGs (reference machine only), then the post-stack, transition and UI overlay regressions.
+# Pixel tests: the reference PNGs (reference machine only), then the post-stack, transition, UI overlay and drawing-seam regressions.
 visual:
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regression --locked -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test integration --locked post_regression:: -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test integration --locked transition_regression:: -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test integration --locked ui_regression:: -- --nocapture
+    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test integration --locked seams_regression:: -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p tungsten-template-basic --test game --locked -- visual:: --nocapture
 
 # Benchmark runner (redo 7.3); arguments go to scripts/perf.py, e.g. `just perf list`, `just perf run ecs`, `just perf sitting --quick`, `just perf counters`.

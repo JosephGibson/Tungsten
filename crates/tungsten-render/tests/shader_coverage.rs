@@ -1,7 +1,8 @@
 //! Workspace-wide WGSL coverage: every shader under the render crate's
 //! sources, `assets/shaders/` and each example's `assets/shaders/` passes Naga
-//! validation, and every compiled-in shader with a manifest-tracked mirror
-//! matches it byte for byte (`D-057`).
+//! validation, a fragment-only material after the material prelude, and every
+//! compiled-in shader with a manifest-tracked mirror matches it byte for byte
+//! (`D-057`).
 //!
 //! Naga success is not GPU or pixel correctness; the smoke and visual checks
 //! cover that.
@@ -10,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use tungsten_render::shader_hot_reload::{MATERIAL_PRELUDE, module_source};
 use tungsten_render::validate_wgsl_source;
 
 const RENDER_SRC: &str = "crates/tungsten-render/src";
@@ -96,7 +98,7 @@ fn check(repo: &Path) -> Result<Inventory, Vec<String>> {
                 }
             }
         }
-        source += &text;
+        source += &module_source(&text);
         if let Err(e) = validate_wgsl_source(&shown(rel), &source) {
             errors.push(e.to_string());
         }
@@ -263,4 +265,22 @@ fn messages_show_windows_paths_with_forward_slashes() {
 fn checker_rejects_empty_discovery() {
     let files = [("crates/tungsten-render/src/quad.wgsl", VALID)];
     expect_error("empty", &files, "no .wgsl files found under assets/shaders");
+}
+
+#[test]
+fn the_prelude_validates_alone_and_before_a_fragment() {
+    validate_wgsl_source("material_prelude.wgsl", MATERIAL_PRELUDE).unwrap();
+    let fragment = "@fragment\nfn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {\n    \
+        return textureSample(sprite_tex, sprite_sampler, in.uv) * in.color * material.v0;\n}\n";
+    // Alone it names what only the prelude declares; after it, it validates.
+    assert!(validate_wgsl_source("fragment", fragment).is_err());
+    let compiled = module_source(fragment);
+    assert!(compiled.starts_with(MATERIAL_PRELUDE));
+    validate_wgsl_source("fragment", &compiled).unwrap();
+    // A whole module, and a helper with no entry point, compile as written.
+    let whole = "@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }\n\
+        @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }\n";
+    assert_eq!(module_source(whole), whole);
+    let helper = "fn half(x: f32) -> f32 { return x * 0.5; }\n";
+    assert_eq!(module_source(helper), helper);
 }

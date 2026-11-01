@@ -11,14 +11,24 @@ use std::sync::Arc;
 
 use glam::Vec2;
 
+use tungsten_core::assets::particle::{LayerRef, ParticleStop, StartColor};
+use tungsten_core::physics::{PhysicsLayers, SpatialFilter, cast_ray};
 use tungsten_core::{
-    AssetRegistry, CommandBuffer, Curve, EmissionKind, Entity, EventQueue, InitialVelocity,
-    MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId, ParticleMeshRegistry,
-    ParticleRender, Range, Sprite, SpriteAssetId, Time, Transform, Visibility, With, World,
-    WorldRngSeed,
+    AnimationRegistry, AssetRegistry, CommandBuffer, Curve, EmissionKind, Entity, EventQueue,
+    InitialVelocity, MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig,
+    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId,
+    ParticleMeshRegistry, ParticleRender, Range, Sprite, SpriteAssetId, Time, Transform,
+    Visibility, With, World, WorldRngSeed,
 };
 use tungsten_render::{MeshParticleBatch, MeshParticleInstance};
+
+/// Redo 7.9: the attracting emitters' positions this frame, which
+/// `particle_emit_system` fills and the tick reads; inserted with the first
+/// attracting emitter and kept, so a warm frame allocates nothing.
+#[derive(Default)]
+pub(crate) struct ParticleScratch {
+    attractors: Vec<(Entity, Vec2)>,
+}
 
 /// Discrete emission event; `count` is post-budget clipping.
 #[derive(Debug, Clone, Copy)]
@@ -97,12 +107,32 @@ pub fn particle_emit_system(world: &mut World) {
             With<Transform>,
         )>()
         .collect::<Vec<_>>();
+    if let Some(scratch) = world.get_resource_mut::<ParticleScratch>() {
+        scratch.attractors.clear();
+    }
 
     for emitter_ent in emitter_entities {
-        let (config_id, seed_override) = match world.get::<ParticleEmitter>(emitter_ent) {
-            Some(em) => (em.config, em.seed_override),
-            None => continue,
+        let Some(emitter) = world.get::<ParticleEmitter>(emitter_ent).copied() else {
+            continue;
         };
+        let (config_id, seed_override) = (emitter.config, emitter.seed_override);
+
+        // Redo 7.9: a changed config takes its snapshot now, keeping the
+        // emitter's random stream; a reload alone changes no live emitter.
+        let changed = world
+            .get::<ParticleEmitterState>(emitter_ent)
+            .is_some_and(|s| s.first_tick_done && s.snapshot_of.is_some_and(|of| of != config_id));
+        if changed {
+            let snapshot = world
+                .get_resource::<ParticleConfigRegistry>()
+                .and_then(|r| r.get(config_id).cloned());
+            if let (Some(snapshot), Some(state)) =
+                (snapshot, world.get_mut::<ParticleEmitterState>(emitter_ent))
+            {
+                state.config_snapshot = Some(snapshot);
+                state.snapshot_of = Some(config_id);
+            }
+        }
 
         // Config snapshot resolved once, on first tick.
         let needs_snapshot = world
@@ -130,6 +160,7 @@ pub fn particle_emit_system(world: &mut World) {
                 state.config_snapshot = Some(snapshot);
                 state.rng = tungsten_core::Pcg32::seeded(seed);
                 state.first_tick_done = true;
+                state.snapshot_of = Some(config_id);
             }
         }
 
@@ -143,8 +174,17 @@ pub fn particle_emit_system(world: &mut World) {
         let Some(origin) = world.get::<Transform>(emitter_ent).map(|t| t.position) else {
             continue;
         };
+        if snapshot.attractor.is_some() {
+            if world.get_resource::<ParticleScratch>().is_none() {
+                world.insert_resource(ParticleScratch::default());
+            }
+            world
+                .resource_mut::<ParticleScratch>()
+                .attractors
+                .push((emitter_ent, origin));
+        }
 
-        let (to_emit, is_discrete) = plan_emission(world, emitter_ent, dt, &snapshot);
+        let (to_emit, is_discrete) = plan_emission(world, emitter_ent, dt, &snapshot, &emitter);
 
         if to_emit == 0 {
             maybe_emit_drained(world, emitter_ent);
@@ -191,8 +231,14 @@ pub fn particle_emit_system(world: &mut World) {
         };
 
         for _ in 0..n_eff {
-            let (particle, transform, draw) =
-                build_particle(world, emitter_ent, &snapshot, origin, render);
+            let (particle, transform, draw) = build_particle(
+                world,
+                emitter_ent,
+                &snapshot,
+                origin,
+                render,
+                emitter.direction,
+            );
             let pending = buf.spawn();
             buf.insert_pending(pending, particle);
             buf.insert_pending(pending, transform);
@@ -235,11 +281,21 @@ pub fn particle_tick_system(world: &mut World) {
     let Some(mut buf) = world.remove_resource::<CommandBuffer>() else {
         return;
     };
+    // Redo 7.9: the attracting emitters' positions, empty without one; the
+    // loops' queries keep their columns, since each further element
+    // allocates per call.
+    let attractors = world
+        .get_resource_mut::<ParticleScratch>()
+        .map(|scratch| std::mem::take(&mut scratch.attractors))
+        .unwrap_or_default();
+    let (mut clips, mut stretches) = (false, false);
 
     for (entity, p, t, s) in
         world.query_mut::<(Entity, &mut Particle, &mut Transform, &mut Sprite)>()
     {
-        match integrate_particle(p, t, dt) {
+        clips |= p.config.clip.is_some();
+        stretches |= p.config.stretch > 0.0;
+        match integrate_particle(p, t, dt, attraction(p, &attractors)) {
             Some(color) => s.color = color,
             None => buf.despawn(entity),
         }
@@ -248,13 +304,107 @@ pub fn particle_tick_system(world: &mut World) {
     for (entity, p, t, m) in
         world.query_mut::<(Entity, &mut Particle, &mut Transform, &mut MeshParticle)>()
     {
-        match integrate_particle(p, t, dt) {
+        match integrate_particle(p, t, dt, attraction(p, &attractors)) {
             Some(color) => m.color = color,
             None => buf.despawn(entity),
         }
     }
 
     world.insert_resource(buf);
+    if let Some(scratch) = world.get_resource_mut::<ParticleScratch>() {
+        scratch.attractors = attractors;
+    }
+    if clips {
+        show_clip_frames(world);
+    }
+    if stretches {
+        stretch_along_velocity(world);
+    }
+}
+
+/// The emitter position an attracting particle pulls toward this frame.
+#[inline(always)]
+fn attraction(p: &Particle, attractors: &[(Entity, Vec2)]) -> Option<Vec2> {
+    p.config.attractor?;
+    let emitter = p.emitter?;
+    attractors
+        .iter()
+        .find(|(e, _)| *e == emitter)
+        .map(|(_, at)| *at)
+}
+
+/// Redo 7.9: each clip particle shows its clip's frame for its age, looping
+/// as the clip does, a one-shot holding its last.
+fn show_clip_frames(world: &mut World) {
+    let Some(clips) = world.remove_resource::<AnimationRegistry>() else {
+        return;
+    };
+    for (p, s) in world.query_mut::<(&Particle, &mut Sprite)>() {
+        if let Some(sprite) = p
+            .config
+            .clip
+            .as_deref()
+            .and_then(|clip| clip_frame(&clips, clip, p.age))
+        {
+            s.asset_id = sprite;
+        }
+    }
+    world.insert_resource(clips);
+}
+
+/// The sprite `clip` shows `age` seconds in; `None` for an unknown or empty
+/// clip.
+fn clip_frame(clips: &AnimationRegistry, clip: &str, age: f32) -> Option<SpriteAssetId> {
+    let clip = clips.get(clip)?;
+    let last = clip.frames.last()?;
+    let total = clip.total_duration_ms().max(1) as f32;
+    let mut at = age.max(0.0) * 1000.0;
+    if clip.looping {
+        at %= total;
+    } else if at >= total {
+        return Some(last.sprite);
+    }
+    for frame in &clip.frames {
+        let duration = (frame.duration_ms as f32).max(1.0);
+        if at < duration {
+            return Some(frame.sprite);
+        }
+        at -= duration;
+    }
+    Some(last.sprite)
+}
+
+/// Redo 7.9: each stretching particle lies along its velocity, its length
+/// grown by |v| × `stretch` pixels; its angular velocity is ignored.
+fn stretch_along_velocity(world: &mut World) {
+    let Some(sprites) = world.remove_resource::<AssetRegistry>() else {
+        return;
+    };
+    for (p, t, s) in world.query_mut::<(&Particle, &mut Transform, &Sprite)>() {
+        if p.config.stretch > 0.0 {
+            stretch(t, p.velocity, p.config.stretch, &sprites, s.asset_id);
+        }
+    }
+    world.insert_resource(sprites);
+}
+
+/// Lays `t` along `velocity`, its x scale lengthened by |v| × `stretch`
+/// pixels of the sprite's width.
+fn stretch(
+    t: &mut Transform,
+    velocity: Vec2,
+    stretch: f32,
+    sprites: &AssetRegistry,
+    sprite: SpriteAssetId,
+) {
+    let width = sprites
+        .sprite(sprite)
+        .map_or(1.0, |asset| asset.width.max(1) as f32);
+    let speed = velocity.length();
+    if speed > 0.0 {
+        t.rotation = velocity.y.atan2(velocity.x);
+    }
+    t.scale.x += speed * stretch / width;
 }
 
 /// Ages and integrates one particle. Returns its new color, or `None` when it
@@ -262,7 +412,12 @@ pub fn particle_tick_system(world: &mut World) {
 /// `particle_tick_system`: an outlined copy costs the sprite loop a call per
 /// particle.
 #[inline(always)]
-fn integrate_particle(p: &mut Particle, t: &mut Transform, dt: f32) -> Option<[u8; 4]> {
+fn integrate_particle(
+    p: &mut Particle,
+    t: &mut Transform,
+    dt: f32,
+    attractor_at: Option<Vec2>,
+) -> Option<[u8; 4]> {
     let age_new = p.age + dt;
     if age_new >= p.lifetime {
         return None;
@@ -271,7 +426,12 @@ fn integrate_particle(p: &mut Particle, t: &mut Transform, dt: f32) -> Option<[u
     let u = (age_new / p.lifetime).clamp(0.0, 1.0);
 
     let drag_factor = (-p.config.drag_per_sec * dt).exp();
-    let gravity = Vec2::new(p.config.gravity[0], p.config.gravity[1]);
+    let mut gravity = Vec2::new(p.config.gravity[0], p.config.gravity[1]);
+    // Redo 7.9: the pull toward the live emitter, and the swirl across it.
+    if let (Some(at), Some(attractor)) = (attractor_at, p.config.attractor) {
+        let toward = (at - t.position).normalize_or_zero();
+        gravity += toward * attractor.pull + toward.perp() * attractor.swirl;
+    }
     let new_vel = (p.velocity + gravity * dt) * drag_factor;
 
     p.age = age_new;
@@ -308,7 +468,13 @@ fn plan_emission(
     emitter_ent: Entity,
     dt: f32,
     cfg: &Arc<ParticleConfig>,
+    emitter: &ParticleEmitter,
 ) -> (u32, bool) {
+    // Redo 7.9: a paused emitter holds every timer, so a burst not yet
+    // fired fires on resume.
+    if emitter.paused {
+        return (0, false);
+    }
     let Some(state) = world.get_mut::<ParticleEmitterState>(emitter_ent) else {
         return (0, false);
     };
@@ -331,7 +497,12 @@ fn plan_emission(
             (count, true)
         }
         EmissionKind::Continuous { rate_hz } => {
-            state.continuous_accum += rate_hz * dt;
+            let scale = if emitter.rate_scale.is_finite() {
+                emitter.rate_scale.max(0.0)
+            } else {
+                1.0
+            };
+            state.continuous_accum += rate_hz * scale * dt;
             let n = state.continuous_accum.floor().max(0.0) as u32;
             state.continuous_accum -= n as f32;
             (n, false)
@@ -412,12 +583,21 @@ fn build_particle(
     cfg: &Arc<ParticleConfig>,
     origin: Vec2,
     render: SpawnRender,
+    direction: Option<Vec2>,
 ) -> (Particle, Transform, ParticleDraw) {
     let state = world.get_mut::<ParticleEmitterState>(emitter_ent).unwrap();
     let lifetime = sample_range(&mut state.rng, cfg.lifetime).max(1.0e-4);
     let start_scale = sample_range(&mut state.rng, cfg.start_scale).max(0.0);
     let angular_velocity = sample_range(&mut state.rng, cfg.angular_velocity);
-    let velocity = sample_initial_velocity(&mut state.rng, &cfg.initial_velocity);
+    let velocity = sample_initial_velocity(&mut state.rng, &cfg.initial_velocity, direction);
+    // Redo 7.9: only a start-colour range draws, after the rest, so every
+    // existing stream stays.
+    let start_draw =
+        matches!(cfg.start_color, Some(StartColor::Range(_))).then(|| state.rng.next_f32_unit());
+    let lifetime = match &cfg.stop {
+        Some(stop) => stopped_lifetime(world, stop, origin, velocity, cfg.drag_per_sec, lifetime),
+        None => lifetime,
+    };
 
     let mut rgba = match cfg.color_over_life.as_ref() {
         Some(c) => c.sample(0.0),
@@ -426,7 +606,13 @@ fn build_particle(
     if let Some(alpha_curve) = cfg.alpha_over_life.as_ref() {
         rgba[3] *= alpha_curve.sample(0.0);
     }
-    let base_rgba = [cfg.tint[0], cfg.tint[1], cfg.tint[2], cfg.tint[3]];
+    let start = start_colour(cfg.start_color.as_ref(), start_draw, velocity);
+    let base_rgba = [
+        cfg.tint[0] * start[0],
+        cfg.tint[1] * start[1],
+        cfg.tint[2] * start[2],
+        cfg.tint[3] * start[3],
+    ];
     let initial_color = [
         (rgba[0] * base_rgba[0] * 255.0).clamp(0.0, 255.0) as u8,
         (rgba[1] * base_rgba[1] * 255.0).clamp(0.0, 255.0) as u8,
@@ -444,18 +630,36 @@ fn build_particle(
         start_scale,
         base_rgba,
     };
-    let transform = Transform {
+    let mut transform = Transform {
         position: origin,
         rotation: 0.0,
         scale: Vec2::splat(start_scale),
     };
     let draw = match render {
-        SpawnRender::Quad(asset_id) => ParticleDraw::Sprite(Sprite {
-            asset_id,
-            color: initial_color,
-            z_order: 0,
-            material_id: None,
-        }),
+        SpawnRender::Quad(asset_id) => {
+            // Redo 7.9: the newborn draws at its depth, its clip's first
+            // frame and its stretch from its spawn.
+            let asset_id = cfg
+                .clip
+                .as_deref()
+                .and_then(|clip| {
+                    world
+                        .get_resource::<AnimationRegistry>()
+                        .and_then(|c| clip_frame(c, clip, 0.0))
+                })
+                .unwrap_or(asset_id);
+            if cfg.stretch > 0.0
+                && let Some(sprites) = world.get_resource::<AssetRegistry>()
+            {
+                stretch(&mut transform, velocity, cfg.stretch, sprites, asset_id);
+            }
+            ParticleDraw::Sprite(Sprite {
+                asset_id,
+                color: initial_color,
+                z_order: cfg.z_order,
+                material_id: None,
+            })
+        }
         SpawnRender::Mesh(mesh) => ParticleDraw::Mesh(MeshParticle {
             mesh,
             color: initial_color,
@@ -472,14 +676,79 @@ fn sample_range(rng: &mut tungsten_core::Pcg32, r: Range) -> f32 {
     }
 }
 
-fn sample_initial_velocity(rng: &mut tungsten_core::Pcg32, iv: &InitialVelocity) -> Vec2 {
+/// Redo 7.9: the newborn's colour factor: a range's draw between its two
+/// colours, or a direction curve at the velocity's angle in turns.
+fn start_colour(start: Option<&StartColor>, draw: Option<f32>, velocity: Vec2) -> [f32; 4] {
+    match start {
+        Some(StartColor::Range([a, b])) => {
+            let t = draw.unwrap_or(0.0);
+            std::array::from_fn(|i| a[i] + (b[i] - a[i]) * t)
+        }
+        Some(StartColor::ByDirection(curve)) => {
+            let turns = velocity.y.atan2(velocity.x) / std::f32::consts::TAU;
+            curve.sample(turns.rem_euclid(1.0))
+        }
+        None => [1.0; 4],
+    }
+}
+
+/// Redo 7.9: a stopping particle's lifetime: where a ray along its first
+/// velocity meets a body or tile on the stop's layers, the time it takes to
+/// get there with its drag, gravity not counted; else its own lifetime.
+fn stopped_lifetime(
+    world: &World,
+    stop: &ParticleStop,
+    origin: Vec2,
+    velocity: Vec2,
+    drag: f32,
+    lifetime: f32,
+) -> f32 {
+    let speed = velocity.length();
+    if speed <= 0.0 {
+        return lifetime;
+    }
+    let layers = world.get_resource::<PhysicsLayers>();
+    let mask = stop.mask.iter().fold(0u32, |mask, layer| match layer {
+        LayerRef::Number(n) => mask | (1 << n.min(&31)),
+        LayerRef::Name(name) => layers
+            .and_then(|layers| layers.layer(name))
+            .map_or(mask, |n| mask | (1 << n.min(31))),
+    });
+    let reach = if drag > 0.0 {
+        speed / drag * (1.0 - (-drag * lifetime).exp())
+    } else {
+        speed * lifetime
+    };
+    let filter = SpatialFilter::new().with_sensors(false).with_mask(mask);
+    let Some(hit) = cast_ray(world, origin, velocity / speed, reach, &filter) else {
+        return lifetime;
+    };
+    let time = if drag > 0.0 {
+        let left = 1.0 - hit.distance * drag / speed;
+        if left <= 0.0 {
+            return lifetime;
+        }
+        -left.ln() / drag
+    } else {
+        hit.distance / speed
+    };
+    time.clamp(1.0e-4, lifetime)
+}
+
+fn sample_initial_velocity(
+    rng: &mut tungsten_core::Pcg32,
+    iv: &InitialVelocity,
+    turned: Option<Vec2>,
+) -> Vec2 {
     match iv {
         InitialVelocity::Cone {
             direction,
             spread_deg,
             speed,
         } => {
-            let base = Vec2::new(direction[0], direction[1]).normalize_or_zero();
+            let base = turned
+                .unwrap_or(Vec2::new(direction[0], direction[1]))
+                .normalize_or_zero();
             let spread_rad = spread_deg.to_radians();
             let jitter = rng.next_range(-spread_rad * 0.5, spread_rad * 0.5);
             let (sj, cj) = jitter.sin_cos();
@@ -488,7 +757,9 @@ fn sample_initial_velocity(rng: &mut tungsten_core::Pcg32, iv: &InitialVelocity)
         }
         InitialVelocity::Radial { speed } => rng.next_unit_vec2() * sample_range(rng, *speed),
         InitialVelocity::Vector { direction, speed } => {
-            let base = Vec2::new(direction[0], direction[1]).normalize_or_zero();
+            let base = turned
+                .unwrap_or(Vec2::new(direction[0], direction[1]))
+                .normalize_or_zero();
             base * sample_range(rng, *speed)
         }
     }
@@ -516,6 +787,7 @@ pub fn spawn_particle_via(
     start_scale: f32,
 ) {
     let base = config.tint;
+    let z_order = config.z_order;
     let particle = Particle {
         config,
         emitter: emitter_ent,
@@ -541,7 +813,7 @@ pub fn spawn_particle_via(
         Sprite {
             asset_id: sprite,
             color: [255, 255, 255, 255],
-            z_order: 0,
+            z_order,
             material_id: None,
         },
     );

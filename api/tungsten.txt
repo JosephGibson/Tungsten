@@ -60,10 +60,13 @@ pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnc
 pub fn tungsten::app::App::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten::app::App::register_saved<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
+pub fn tungsten::app::App::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
 pub fn tungsten::app::App::resolve_schedule(&mut self) -> anyhow::Result<()>
 pub fn tungsten::app::App::run(self) -> anyhow::Result<()>
 pub fn tungsten::app::App::schedule(&self) -> &tungsten_core::schedule::Schedule
+pub fn tungsten::app::App::set_boot_view(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World, &tungsten::app::BootProgress<'_>) -> tungsten::app::BootView + 'static)
 pub fn tungsten::app::App::set_exit_on_escape(&mut self, bool)
 pub fn tungsten::app::App::set_extract_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::app::App::set_extract_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
@@ -82,6 +85,38 @@ impl core::marker::Unpin for tungsten::app::App
 impl core::marker::UnsafeUnpin for tungsten::app::App
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::app::App
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
+#[non_exhaustive] pub struct tungsten::app::BootProgress<'a>
+pub tungsten::app::BootProgress::assets: &'a tungsten::asset_loader::BootAssets
+pub tungsten::app::BootProgress::done: usize
+pub tungsten::app::BootProgress::scale: f32
+pub tungsten::app::BootProgress::total: usize
+pub tungsten::app::BootProgress::window: [u32; 2]
+impl tungsten::app::BootProgress<'_>
+pub fn tungsten::app::BootProgress<'_>::fraction(&self) -> f32
+impl<'a> core::clone::Clone for tungsten::app::BootProgress<'a>
+pub fn tungsten::app::BootProgress<'a>::clone(&self) -> tungsten::app::BootProgress<'a>
+impl<'a> core::fmt::Debug for tungsten::app::BootProgress<'a>
+pub fn tungsten::app::BootProgress<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::Freeze for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::Send for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::Sync for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::Unpin for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten::app::BootProgress<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten::app::BootProgress<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten::app::BootProgress<'a>
+pub struct tungsten::app::BootView
+pub tungsten::app::BootView::sprites: alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub tungsten::app::BootView::text: alloc::vec::Vec<tungsten_render::text::TextSection>
+impl core::default::Default for tungsten::app::BootView
+pub fn tungsten::app::BootView::default() -> tungsten::app::BootView
+impl core::marker::Freeze for tungsten::app::BootView
+impl core::marker::Send for tungsten::app::BootView
+impl core::marker::Sync for tungsten::app::BootView
+impl core::marker::Unpin for tungsten::app::BootView
+impl core::marker::UnsafeUnpin for tungsten::app::BootView
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::BootView
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::BootView
 #[non_exhaustive] pub struct tungsten::app::Exiting
 pub tungsten::app::Exiting::reason: tungsten::app::ExitReason
 impl core::clone::Clone for tungsten::app::Exiting
@@ -100,12 +135,77 @@ impl core::marker::Unpin for tungsten::app::Exiting
 impl core::marker::UnsafeUnpin for tungsten::app::Exiting
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::Exiting
 impl core::panic::unwind_safe::UnwindSafe for tungsten::app::Exiting
+#[non_exhaustive] pub struct tungsten::app::StartupTimings
+pub tungsten::app::StartupTimings::audio: f64
+pub tungsten::app::StartupTimings::boot: f64
+pub tungsten::app::StartupTimings::boot_frames: u32
+pub tungsten::app::StartupTimings::first_frame: core::option::Option<f64>
+pub tungsten::app::StartupTimings::load: f64
+pub tungsten::app::StartupTimings::loaded: f64
+pub tungsten::app::StartupTimings::pack: core::option::Option<f64>
+pub tungsten::app::StartupTimings::renderer: f64
+pub tungsten::app::StartupTimings::slice_max: f64
+pub tungsten::app::StartupTimings::sounds: core::option::Option<f64>
+pub tungsten::app::StartupTimings::sprites: core::option::Option<f64>
+pub tungsten::app::StartupTimings::startup: f64
+pub tungsten::app::StartupTimings::window: f64
+impl core::clone::Clone for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::clone(&self) -> tungsten::app::StartupTimings
+impl core::cmp::PartialEq for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::eq(&self, &tungsten::app::StartupTimings) -> bool
+impl core::default::Default for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::default() -> tungsten::app::StartupTimings
+impl core::fmt::Debug for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::StartupTimings
+impl core::marker::StructuralPartialEq for tungsten::app::StartupTimings
+impl serde_core::ser::Serialize for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for tungsten::app::StartupTimings
+impl core::marker::Send for tungsten::app::StartupTimings
+impl core::marker::Sync for tungsten::app::StartupTimings
+impl core::marker::Unpin for tungsten::app::StartupTimings
+impl core::marker::UnsafeUnpin for tungsten::app::StartupTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::StartupTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::StartupTimings
 pub fn tungsten::app::request_exit(&mut tungsten_core::ecs::world::World)
+pub type tungsten::app::BootViewFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World, &tungsten::app::BootProgress<'_>) -> tungsten::app::BootView>
 pub type tungsten::app::ExtractQuadsFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance>>
 pub type tungsten::app::ExtractSpritesFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>>
 pub type tungsten::app::ExtractTextFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection>>
 pub type tungsten::app::StartupFn = alloc::boxed::Box<dyn core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer)>
 pub mod tungsten::asset_loader
+#[non_exhaustive] pub enum tungsten::asset_loader::LoadUnit
+pub tungsten::asset_loader::LoadUnit::Animation(alloc::string::String)
+pub tungsten::asset_loader::LoadUnit::CrossChecks
+pub tungsten::asset_loader::LoadUnit::Font(alloc::string::String)
+pub tungsten::asset_loader::LoadUnit::FontFamilies
+pub tungsten::asset_loader::LoadUnit::Materials
+pub tungsten::asset_loader::LoadUnit::Pack(tungsten_core::assets::manifest::FilterMode)
+pub tungsten::asset_loader::LoadUnit::ParticleMeshes
+pub tungsten::asset_loader::LoadUnit::Particles
+pub tungsten::asset_loader::LoadUnit::PhysicsNames
+pub tungsten::asset_loader::LoadUnit::Prefabs
+pub tungsten::asset_loader::LoadUnit::Shaders
+pub tungsten::asset_loader::LoadUnit::Sound(alloc::string::String)
+pub tungsten::asset_loader::LoadUnit::Sprites(std::path::PathBuf)
+pub tungsten::asset_loader::LoadUnit::Themes
+pub tungsten::asset_loader::LoadUnit::Tilemap(alloc::string::String)
+impl core::clone::Clone for tungsten::asset_loader::LoadUnit
+pub fn tungsten::asset_loader::LoadUnit::clone(&self) -> tungsten::asset_loader::LoadUnit
+impl core::cmp::Eq for tungsten::asset_loader::LoadUnit
+impl core::cmp::PartialEq for tungsten::asset_loader::LoadUnit
+pub fn tungsten::asset_loader::LoadUnit::eq(&self, &tungsten::asset_loader::LoadUnit) -> bool
+impl core::fmt::Debug for tungsten::asset_loader::LoadUnit
+pub fn tungsten::asset_loader::LoadUnit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten::asset_loader::LoadUnit
+impl core::marker::Freeze for tungsten::asset_loader::LoadUnit
+impl core::marker::Send for tungsten::asset_loader::LoadUnit
+impl core::marker::Sync for tungsten::asset_loader::LoadUnit
+impl core::marker::Unpin for tungsten::asset_loader::LoadUnit
+impl core::marker::UnsafeUnpin for tungsten::asset_loader::LoadUnit
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::LoadUnit
+impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::LoadUnit
 pub struct tungsten::asset_loader::AtlasRegistry
 pub tungsten::asset_loader::AtlasRegistry::linear_pages: alloc::vec::Vec<tungsten_core::assets::registry::TextureHandle>
 pub tungsten::asset_loader::AtlasRegistry::nearest_pages: alloc::vec::Vec<tungsten_core::assets::registry::TextureHandle>
@@ -125,6 +225,89 @@ impl core::marker::Unpin for tungsten::asset_loader::AtlasRegistry
 impl core::marker::UnsafeUnpin for tungsten::asset_loader::AtlasRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::AtlasRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::AtlasRegistry
+pub struct tungsten::asset_loader::BootAssets
+pub tungsten::asset_loader::BootAssets::bar: core::option::Option<tungsten::asset_loader::BootSprite>
+pub tungsten::asset_loader::BootAssets::font: core::option::Option<alloc::string::String>
+pub tungsten::asset_loader::BootAssets::logo: core::option::Option<tungsten::asset_loader::BootSprite>
+impl tungsten::asset_loader::BootAssets
+pub fn tungsten::asset_loader::BootAssets::pages(&self) -> alloc::vec::Vec<tungsten_core::assets::registry::TextureHandle>
+impl core::clone::Clone for tungsten::asset_loader::BootAssets
+pub fn tungsten::asset_loader::BootAssets::clone(&self) -> tungsten::asset_loader::BootAssets
+impl core::cmp::PartialEq for tungsten::asset_loader::BootAssets
+pub fn tungsten::asset_loader::BootAssets::eq(&self, &tungsten::asset_loader::BootAssets) -> bool
+impl core::default::Default for tungsten::asset_loader::BootAssets
+pub fn tungsten::asset_loader::BootAssets::default() -> tungsten::asset_loader::BootAssets
+impl core::fmt::Debug for tungsten::asset_loader::BootAssets
+pub fn tungsten::asset_loader::BootAssets::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten::asset_loader::BootAssets
+impl core::marker::Freeze for tungsten::asset_loader::BootAssets
+impl core::marker::Send for tungsten::asset_loader::BootAssets
+impl core::marker::Sync for tungsten::asset_loader::BootAssets
+impl core::marker::Unpin for tungsten::asset_loader::BootAssets
+impl core::marker::UnsafeUnpin for tungsten::asset_loader::BootAssets
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::BootAssets
+impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::BootAssets
+pub struct tungsten::asset_loader::BootSprite
+pub tungsten::asset_loader::BootSprite::filter: tungsten_core::assets::manifest::FilterMode
+pub tungsten::asset_loader::BootSprite::size: [u32; 2]
+pub tungsten::asset_loader::BootSprite::texture: tungsten_core::assets::registry::TextureHandle
+pub tungsten::asset_loader::BootSprite::uv: tungsten_core::assets::atlas::UvRect
+impl core::clone::Clone for tungsten::asset_loader::BootSprite
+pub fn tungsten::asset_loader::BootSprite::clone(&self) -> tungsten::asset_loader::BootSprite
+impl core::cmp::PartialEq for tungsten::asset_loader::BootSprite
+pub fn tungsten::asset_loader::BootSprite::eq(&self, &tungsten::asset_loader::BootSprite) -> bool
+impl core::fmt::Debug for tungsten::asset_loader::BootSprite
+pub fn tungsten::asset_loader::BootSprite::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::asset_loader::BootSprite
+impl core::marker::StructuralPartialEq for tungsten::asset_loader::BootSprite
+impl core::marker::Freeze for tungsten::asset_loader::BootSprite
+impl core::marker::Send for tungsten::asset_loader::BootSprite
+impl core::marker::Sync for tungsten::asset_loader::BootSprite
+impl core::marker::Unpin for tungsten::asset_loader::BootSprite
+impl core::marker::UnsafeUnpin for tungsten::asset_loader::BootSprite
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::BootSprite
+impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::BootSprite
+pub struct tungsten::asset_loader::LoadPlan
+impl tungsten::asset_loader::LoadPlan
+pub fn tungsten::asset_loader::LoadPlan::done(&self) -> usize
+pub fn tungsten::asset_loader::LoadPlan::into_manifest(self) -> tungsten_core::assets::manifest::ResolvedManifest
+pub fn tungsten::asset_loader::LoadPlan::is_finished(&self) -> bool
+pub fn tungsten::asset_loader::LoadPlan::manifest(&self) -> &tungsten_core::assets::manifest::ResolvedManifest
+pub fn tungsten::asset_loader::LoadPlan::new(tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> Self
+pub fn tungsten::asset_loader::LoadPlan::run(self, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<tungsten_core::assets::manifest::ResolvedManifest>
+pub fn tungsten::asset_loader::LoadPlan::run_headless(self, &mut tungsten_core::ecs::world::World) -> anyhow::Result<tungsten_core::assets::manifest::ResolvedManifest>
+pub fn tungsten::asset_loader::LoadPlan::run_next(&mut self, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<bool>
+pub fn tungsten::asset_loader::LoadPlan::timings(&self) -> tungsten::asset_loader::LoadTimings
+pub fn tungsten::asset_loader::LoadPlan::units(&self) -> &[tungsten::asset_loader::LoadUnit]
+impl core::marker::Freeze for tungsten::asset_loader::LoadPlan
+impl core::marker::Send for tungsten::asset_loader::LoadPlan
+impl core::marker::Sync for tungsten::asset_loader::LoadPlan
+impl core::marker::Unpin for tungsten::asset_loader::LoadPlan
+impl core::marker::UnsafeUnpin for tungsten::asset_loader::LoadPlan
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::LoadPlan
+impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::LoadPlan
+#[non_exhaustive] pub struct tungsten::asset_loader::LoadTimings
+pub tungsten::asset_loader::LoadTimings::pack: f64
+pub tungsten::asset_loader::LoadTimings::sounds: f64
+pub tungsten::asset_loader::LoadTimings::sprites: f64
+pub tungsten::asset_loader::LoadTimings::units: f64
+impl core::clone::Clone for tungsten::asset_loader::LoadTimings
+pub fn tungsten::asset_loader::LoadTimings::clone(&self) -> tungsten::asset_loader::LoadTimings
+impl core::cmp::PartialEq for tungsten::asset_loader::LoadTimings
+pub fn tungsten::asset_loader::LoadTimings::eq(&self, &tungsten::asset_loader::LoadTimings) -> bool
+impl core::default::Default for tungsten::asset_loader::LoadTimings
+pub fn tungsten::asset_loader::LoadTimings::default() -> tungsten::asset_loader::LoadTimings
+impl core::fmt::Debug for tungsten::asset_loader::LoadTimings
+pub fn tungsten::asset_loader::LoadTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::asset_loader::LoadTimings
+impl core::marker::StructuralPartialEq for tungsten::asset_loader::LoadTimings
+impl core::marker::Freeze for tungsten::asset_loader::LoadTimings
+impl core::marker::Send for tungsten::asset_loader::LoadTimings
+impl core::marker::Sync for tungsten::asset_loader::LoadTimings
+impl core::marker::Unpin for tungsten::asset_loader::LoadTimings
+impl core::marker::UnsafeUnpin for tungsten::asset_loader::LoadTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::LoadTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::LoadTimings
 pub struct tungsten::asset_loader::UiThemePaths
 impl tungsten::asset_loader::UiThemePaths
 pub fn tungsten::asset_loader::UiThemePaths::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
@@ -140,6 +323,9 @@ impl core::marker::Unpin for tungsten::asset_loader::UiThemePaths
 impl core::marker::UnsafeUnpin for tungsten::asset_loader::UiThemePaths
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::UiThemePaths
 impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::UiThemePaths
+pub const tungsten::asset_loader::ENGINE_GLOW: &str
+pub const tungsten::asset_loader::ENGINE_WHITE: &str
+pub fn tungsten::asset_loader::engine_glow_defaults() -> tungsten_core::assets::material::MaterialUniformDefaults
 pub fn tungsten::asset_loader::load_all(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_all_merged(&[impl core::convert::AsRef<std::path::Path>], &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_animations(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
@@ -147,6 +333,7 @@ pub fn tungsten::asset_loader::load_fonts(&tungsten_core::assets::manifest::Reso
 pub fn tungsten::asset_loader::load_materials(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_particle_meshes(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_particles(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_physics_names(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::asset_loader::load_prefabs(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_scene(&tungsten_core::ecs::world::World, &std::path::Path) -> anyhow::Result<tungsten_core::assets::scene::SceneData>
 pub fn tungsten::asset_loader::load_shaders(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
@@ -164,7 +351,9 @@ pub fn tungsten::asset_loader::reload_material(&str, &mut tungsten_core::ecs::wo
 pub fn tungsten::asset_loader::reload_particle(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_prefab(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_shader(&str, &std::path::Path, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_sound(&std::path::Path, &mut tungsten_core::ecs::world::World) -> bool
 pub fn tungsten::asset_loader::reload_sprite(&str, &std::path::Path, tungsten_core::assets::manifest::FilterMode, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_sprite_file(&std::path::Path, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_tilemap(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_ui_theme(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_ui_themes_from_manifest(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World)
@@ -268,6 +457,8 @@ pub struct tungsten::extract::Extracts
 impl tungsten::extract::Extracts
 pub fn tungsten::extract::Extracts::add_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::extract::Extracts::add_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites_over_tiles(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites_under_tiles(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
 pub fn tungsten::extract::Extracts::add_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
 pub fn tungsten::extract::Extracts::replace_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::extract::Extracts::replace_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
@@ -593,7 +784,24 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten::post_aa::PostAaState
 impl core::panic::unwind_safe::UnwindSafe for tungsten::post_aa::PostAaState
 pub fn tungsten::post_aa::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten_core::config::PostAaMode)
 pub mod tungsten::sprite_extract
+pub struct tungsten::sprite_extract::Batches
+impl tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::Batches::into_batches(self) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub fn tungsten::sprite_extract::Batches::new() -> Self
+pub fn tungsten::sprite_extract::Batches::push(&mut self, &tungsten_core::assets::registry::SpriteAsset, tungsten_render::sprite::SpriteInstance)
+impl core::default::Default for tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::Batches::default() -> tungsten::sprite_extract::Batches
+impl core::marker::Freeze for tungsten::sprite_extract::Batches
+impl core::marker::Send for tungsten::sprite_extract::Batches
+impl core::marker::Sync for tungsten::sprite_extract::Batches
+impl core::marker::Unpin for tungsten::sprite_extract::Batches
+impl core::marker::UnsafeUnpin for tungsten::sprite_extract::Batches
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::sprite_extract::Batches
+impl core::panic::unwind_safe::UnwindSafe for tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::beam(&mut tungsten::sprite_extract::Batches, &tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32, [u8; 4], f32)
 pub fn tungsten::sprite_extract::extract_sprites_default(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub fn tungsten::sprite_extract::sprite_instance(&tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, [u8; 4], f32) -> tungsten_render::sprite::SpriteInstance
+pub fn tungsten::sprite_extract::view_box(&tungsten_core::ecs::world::World) -> core::option::Option<(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)>
 pub mod tungsten::state
 #[non_exhaustive] pub enum tungsten::state::RootCover
 pub tungsten::state::RootCover::Hide
@@ -891,6 +1099,7 @@ pub fn tungsten::testing::Harness::frame(&self) -> u64
 pub fn tungsten::testing::Harness::load_manifest(&mut self, impl core::convert::AsRef<std::path::Path>) -> anyhow::Result<()>
 pub fn tungsten::testing::Harness::new(tungsten::app::App) -> Self
 pub fn tungsten::testing::Harness::press_action(&mut self, &str)
+pub fn tungsten::testing::Harness::register_sprites(&mut self, impl core::convert::AsRef<std::path::Path>) -> anyhow::Result<()>
 pub fn tungsten::testing::Harness::release_action(&mut self, &str)
 pub fn tungsten::testing::Harness::request_close(&mut self)
 pub fn tungsten::testing::Harness::run_script(&mut self, &tungsten_core::script::Script) -> tungsten_core::script::Report
@@ -1160,10 +1369,13 @@ pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnc
 pub fn tungsten::app::App::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten::app::App::register_saved<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
+pub fn tungsten::app::App::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
 pub fn tungsten::app::App::resolve_schedule(&mut self) -> anyhow::Result<()>
 pub fn tungsten::app::App::run(self) -> anyhow::Result<()>
 pub fn tungsten::app::App::schedule(&self) -> &tungsten_core::schedule::Schedule
+pub fn tungsten::app::App::set_boot_view(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World, &tungsten::app::BootProgress<'_>) -> tungsten::app::BootView + 'static)
 pub fn tungsten::app::App::set_exit_on_escape(&mut self, bool)
 pub fn tungsten::app::App::set_extract_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::app::App::set_extract_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
@@ -1182,6 +1394,52 @@ impl core::marker::Unpin for tungsten::app::App
 impl core::marker::UnsafeUnpin for tungsten::app::App
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::app::App
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
+pub struct tungsten::Batches
+impl tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::Batches::into_batches(self) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub fn tungsten::sprite_extract::Batches::new() -> Self
+pub fn tungsten::sprite_extract::Batches::push(&mut self, &tungsten_core::assets::registry::SpriteAsset, tungsten_render::sprite::SpriteInstance)
+impl core::default::Default for tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::Batches::default() -> tungsten::sprite_extract::Batches
+impl core::marker::Freeze for tungsten::sprite_extract::Batches
+impl core::marker::Send for tungsten::sprite_extract::Batches
+impl core::marker::Sync for tungsten::sprite_extract::Batches
+impl core::marker::Unpin for tungsten::sprite_extract::Batches
+impl core::marker::UnsafeUnpin for tungsten::sprite_extract::Batches
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::sprite_extract::Batches
+impl core::panic::unwind_safe::UnwindSafe for tungsten::sprite_extract::Batches
+#[non_exhaustive] pub struct tungsten::BootProgress<'a>
+pub tungsten::BootProgress::assets: &'a tungsten::asset_loader::BootAssets
+pub tungsten::BootProgress::done: usize
+pub tungsten::BootProgress::scale: f32
+pub tungsten::BootProgress::total: usize
+pub tungsten::BootProgress::window: [u32; 2]
+impl tungsten::app::BootProgress<'_>
+pub fn tungsten::app::BootProgress<'_>::fraction(&self) -> f32
+impl<'a> core::clone::Clone for tungsten::app::BootProgress<'a>
+pub fn tungsten::app::BootProgress<'a>::clone(&self) -> tungsten::app::BootProgress<'a>
+impl<'a> core::fmt::Debug for tungsten::app::BootProgress<'a>
+pub fn tungsten::app::BootProgress<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::Freeze for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::Send for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::Sync for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::Unpin for tungsten::app::BootProgress<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten::app::BootProgress<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten::app::BootProgress<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten::app::BootProgress<'a>
+pub struct tungsten::BootView
+pub tungsten::BootView::sprites: alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub tungsten::BootView::text: alloc::vec::Vec<tungsten_render::text::TextSection>
+impl core::default::Default for tungsten::app::BootView
+pub fn tungsten::app::BootView::default() -> tungsten::app::BootView
+impl core::marker::Freeze for tungsten::app::BootView
+impl core::marker::Send for tungsten::app::BootView
+impl core::marker::Sync for tungsten::app::BootView
+impl core::marker::Unpin for tungsten::app::BootView
+impl core::marker::UnsafeUnpin for tungsten::app::BootView
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::BootView
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::BootView
 pub struct tungsten::CameraPlugin
 impl core::clone::Clone for tungsten::plugins::CameraPlugin
 pub fn tungsten::plugins::CameraPlugin::clone(&self) -> tungsten::plugins::CameraPlugin
@@ -1326,6 +1584,8 @@ pub struct tungsten::Extracts
 impl tungsten::extract::Extracts
 pub fn tungsten::extract::Extracts::add_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::extract::Extracts::add_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites_over_tiles(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites_under_tiles(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
 pub fn tungsten::extract::Extracts::add_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
 pub fn tungsten::extract::Extracts::replace_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::extract::Extracts::replace_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
@@ -1620,6 +1880,39 @@ impl core::marker::Unpin for tungsten::state::SceneEntity
 impl core::marker::UnsafeUnpin for tungsten::state::SceneEntity
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::SceneEntity
 impl core::panic::unwind_safe::UnwindSafe for tungsten::state::SceneEntity
+#[non_exhaustive] pub struct tungsten::StartupTimings
+pub tungsten::StartupTimings::audio: f64
+pub tungsten::StartupTimings::boot: f64
+pub tungsten::StartupTimings::boot_frames: u32
+pub tungsten::StartupTimings::first_frame: core::option::Option<f64>
+pub tungsten::StartupTimings::load: f64
+pub tungsten::StartupTimings::loaded: f64
+pub tungsten::StartupTimings::pack: core::option::Option<f64>
+pub tungsten::StartupTimings::renderer: f64
+pub tungsten::StartupTimings::slice_max: f64
+pub tungsten::StartupTimings::sounds: core::option::Option<f64>
+pub tungsten::StartupTimings::sprites: core::option::Option<f64>
+pub tungsten::StartupTimings::startup: f64
+pub tungsten::StartupTimings::window: f64
+impl core::clone::Clone for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::clone(&self) -> tungsten::app::StartupTimings
+impl core::cmp::PartialEq for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::eq(&self, &tungsten::app::StartupTimings) -> bool
+impl core::default::Default for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::default() -> tungsten::app::StartupTimings
+impl core::fmt::Debug for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::StartupTimings
+impl core::marker::StructuralPartialEq for tungsten::app::StartupTimings
+impl serde_core::ser::Serialize for tungsten::app::StartupTimings
+pub fn tungsten::app::StartupTimings::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for tungsten::app::StartupTimings
+impl core::marker::Send for tungsten::app::StartupTimings
+impl core::marker::Sync for tungsten::app::StartupTimings
+impl core::marker::Unpin for tungsten::app::StartupTimings
+impl core::marker::UnsafeUnpin for tungsten::app::StartupTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::StartupTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::StartupTimings
 pub struct tungsten::StateContext<'a>
 pub tungsten::StateContext::state_id: tungsten::state::StateId
 pub tungsten::StateContext::world: &'a mut tungsten_core::ecs::world::World
@@ -1804,6 +2097,8 @@ impl core::marker::UnsafeUnpin for tungsten::plugins::UiPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::UiPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::UiPlugin
 pub const tungsten::ENGINE_FONT_ID: &str
+pub const tungsten::ENGINE_GLOW: &str
+pub const tungsten::ENGINE_WHITE: &str
 pub trait tungsten::GameState: 'static
 pub fn tungsten::GameState::id(&self) -> tungsten::state::StateId
 pub fn tungsten::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -1812,6 +2107,7 @@ pub fn tungsten::GameState::on_pause(&mut self, &mut tungsten::state::StateConte
 pub fn tungsten::GameState::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::update(&mut self, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::apply_settings(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::beam(&mut tungsten::sprite_extract::Batches, &tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32, [u8; 4], f32)
 pub fn tungsten::camera_update_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::despawn_scene_entities(&mut tungsten_core::ecs::world::World, tungsten::state::StateId)
 pub fn tungsten::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo
@@ -1829,10 +2125,13 @@ pub fn tungsten::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten
 pub fn tungsten::shake_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::shipped_volume(&tungsten_core::ecs::world::World, core::option::Option<tungsten_core::audio::AudioBus>) -> f32
 pub fn tungsten::spawn_mesh_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, tungsten_core::assets::particle::ParticleMeshAssetId, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)
+pub fn tungsten::sprite_instance(&tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, [u8; 4], f32) -> tungsten_render::sprite::SpriteInstance
 pub fn tungsten::squash_stretch_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::squash_stretch_trigger_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::tween_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::ui_debug_toggle_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::ui_state_roots_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::view_box(&tungsten_core::ecs::world::World) -> core::option::Option<(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)>
+pub type tungsten::BootViewFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World, &tungsten::app::BootProgress<'_>) -> tungsten::app::BootView>
 pub type tungsten::StateId = &'static str

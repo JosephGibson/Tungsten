@@ -15,7 +15,9 @@ use crate::damage::defense::{
     shield_description, shield_tick,
 };
 use crate::damage::kinds::{DamageKinds, register_types};
-use crate::damage::pipeline::{DAMAGE_RESOLVE, DamageRequest, Healed, Requests, Resolver};
+use crate::damage::pipeline::{
+    DAMAGE_REQUESTS, DAMAGE_RESOLVE, DamageRequest, Healed, Requests, Resolver, requests_saved,
+};
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
     describe, round_trip,
@@ -647,8 +649,9 @@ pub fn damage(world: &mut World, target: Entity, amount: f32) -> Hit {
 /// `tween_tick`.
 ///
 /// Without `damage_flash` in the `MaterialRegistry` nothing flashes and
-/// the tick warns once. A lit sprite draws without its material, so it
-/// does not flash, and a flashing sprite is a batch of its own.
+/// the tick warns once. A lit sprite never runs the material's shader,
+/// but the lit shader mixes in the block's same colour and amount, so it
+/// flashes too (redo 7.9); a flashing sprite is a batch of its own.
 ///
 /// Scene name `hit_flash`: `{ "color": [1, 1, 1, 1], "seconds": 0.1 }`,
 /// both optional with those defaults.
@@ -809,6 +812,10 @@ impl Plugin for HealthPlugin {
         register_rows::<HitFlash>(world, "HitFlash");
         register_rows::<Resist>(world, "Resist");
         register_rows::<Shield>(world, "Shield");
+        world.register_saved::<Health>(HEALTH);
+        world.register_saved::<Resist>(RESIST);
+        world.register_saved::<Shield>(SHIELD);
+        world.register_saved_resource_with(DAMAGE_REQUESTS, requests_saved());
         describe(
             world,
             ComponentDescription::new(

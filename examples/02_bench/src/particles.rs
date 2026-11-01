@@ -215,6 +215,12 @@ fn particle_config(index: u32, target: f64) -> (ParticleConfig, Option<f32>) {
         })),
         alpha_over_life: Some(curve(2 + (index + 2) % 5, |t| (1.0 - t) * (0.6 + 0.4 * t))),
         tint: [1.0, 1.0, 1.0, 1.0],
+        z_order: 0,
+        clip: None,
+        stretch: 0.0,
+        stop: None,
+        attractor: None,
+        start_color: None,
     };
     if let Err(err) = config.validate() {
         panic!("generated particle config {index} is invalid: {err}");
@@ -351,6 +357,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
                         .map(|&sprite| AnimationFrame {
                             sprite,
                             duration_ms,
+                            sound: None,
                         })
                         .collect(),
                 },

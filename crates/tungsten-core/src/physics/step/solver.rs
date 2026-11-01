@@ -1,10 +1,11 @@
 //! Warm-started soft contact solver (D-063) and the signed-distance narrow
 //! phase that admits speculative contacts (D-064).
 
-use super::{ContactConstraint, Proxy};
+use super::slope;
+use super::{ContactConstraint, FrictionConstraint, NO_SPIN, Proxy, RollingConstraint, SpinState};
 use crate::physics::PhysicsConfig;
 use crate::physics::collision::{
-    Aabb, Contact, aabb_vs_aabb_speculative, aabb_vs_circle_speculative,
+    Aabb, Contact, FACE_ONE_WAY, aabb_vs_aabb_speculative, aabb_vs_circle_speculative,
     circle_vs_circle_speculative,
 };
 use crate::physics::components::Shape;
@@ -89,6 +90,134 @@ pub(super) fn solve_contacts(
     }
 }
 
+/// A contact's tangent: its normal turned a quarter, `(−n.y, n.x)`.
+#[inline(always)]
+pub(super) fn tangent(normal: Vec2) -> Vec2 {
+    Vec2::new(-normal.y, normal.x)
+}
+
+/// A tangent impulse `impulse` of `row`'s contact: along the tangent on the
+/// two bodies, and on a spinning side's spin, `−2 · impulse · inv_m / r`
+/// (its contact point sits `r` from its centre against the normal, its
+/// moment of inertia is `m r² / 2`).
+#[inline]
+pub(super) fn apply_tangent(
+    proxies: &mut [Proxy],
+    spins: &mut [SpinState],
+    contact: &ContactConstraint,
+    row: &FrictionConstraint,
+    impulse: f32,
+) {
+    apply_impulse(proxies, contact, tangent(contact.normal) * impulse);
+    for (slot, inv) in [(row.spin_a, contact.inv_a), (row.spin_b, contact.inv_b)] {
+        if slot != NO_SPIN && inv > 0.0 {
+            let spin = &mut spins[slot as usize];
+            spin.angular_velocity -= 2.0 * impulse * inv / spin.radius;
+        }
+    }
+}
+
+/// A side's rim speed along its contact's tangent, `r · ω`, which a spin of
+/// `slot` subtracts from the tangent relative velocity; 0 for no spin.
+#[inline]
+fn rim(spins: &[SpinState], slot: u32) -> f32 {
+    if slot == NO_SPIN {
+        0.0
+    } else {
+        let spin = &spins[slot as usize];
+        spin.radius * spin.angular_velocity
+    }
+}
+
+/// One Gauss-Seidel pass of Coulomb friction after a normal pass: each
+/// constraint's impulse removes its contact's tangent relative velocity, a
+/// kinematic side's included and each spinning side's rim speed, its
+/// accumulated value within `±mu` times the contact's normal impulse. An
+/// empty list does nothing.
+pub(super) fn solve_friction(
+    proxies: &mut [Proxy],
+    spins: &mut [SpinState],
+    contacts: &[ContactConstraint],
+    friction: &mut [FrictionConstraint],
+) {
+    for row in friction.iter_mut() {
+        let contact = &contacts[row.contact as usize];
+        let t = tangent(contact.normal);
+        let a = contact.a as usize;
+        let b = contact.b as usize;
+        let vt = (proxies[a].velocity - proxies[b].velocity).dot(t)
+            - rim(spins, row.spin_a)
+            - rim(spins, row.spin_b);
+        let bound = row.mu * contact.impulse;
+        let new_impulse = (row.impulse - row.tangent_mass * vt).clamp(-bound, bound);
+        let delta = new_impulse - row.impulse;
+        row.impulse = new_impulse;
+        if delta != 0.0 {
+            apply_tangent(proxies, spins, contact, row, delta);
+        }
+    }
+}
+
+/// One Gauss-Seidel pass of rolling resistance after the friction pass:
+/// each constraint's angular impulse opposes its spinning side's spin
+/// relative to the other side's, its accumulated value within `±bound`
+/// times the contact's normal impulse. An empty list does nothing.
+pub(super) fn solve_rolling(
+    spins: &mut [SpinState],
+    contacts: &[ContactConstraint],
+    rolling: &mut [RollingConstraint],
+) {
+    let spin_of = |spins: &[SpinState], slot: u32| {
+        if slot == NO_SPIN {
+            0.0
+        } else {
+            spins[slot as usize].angular_velocity
+        }
+    };
+    for row in rolling.iter_mut() {
+        let contact = &contacts[row.contact as usize];
+        let relative = spin_of(spins, row.spin_a) - spin_of(spins, row.spin_b);
+        let bound = row.bound * contact.impulse;
+        let new_impulse = (row.impulse - row.mass * relative).clamp(-bound, bound);
+        let delta = new_impulse - row.impulse;
+        row.impulse = new_impulse;
+        if delta == 0.0 {
+            continue;
+        }
+        for (slot, inv, sign) in [
+            (row.spin_a, contact.inv_a, 1.0),
+            (row.spin_b, contact.inv_b, -1.0),
+        ] {
+            if slot != NO_SPIN && inv > 0.0 {
+                let spin = &mut spins[slot as usize];
+                spin.angular_velocity += sign * delta * 2.0 * inv / (spin.radius * spin.radius);
+            }
+        }
+    }
+}
+
+/// [`masked_contact`] against a slope tile: a box's or a circle's contact
+/// with its polygon.
+#[cold]
+#[inline(never)]
+fn slope_contact(
+    a: &Proxy,
+    a_center: Vec2,
+    b: &Proxy,
+    b_center: Vec2,
+    margin: f32,
+) -> Option<Contact> {
+    let poly = slope::polygon(b.slope, b_center, b.half_extents());
+    match a.shape {
+        Shape::Circle { radius } => {
+            slope::circle_contact(a_center, radius, &poly, b.face_mask, margin)
+        }
+        Shape::Aabb { half_extents } => {
+            slope::box_contact(a_center, half_extents, &poly, b.face_mask, margin)
+        }
+    }
+}
+
 /// Restitution from the approach velocity stored at contact build; contacts
 /// slower than the threshold stay inelastic so piles can settle.
 pub(super) fn apply_restitution(
@@ -123,6 +252,8 @@ pub(super) fn narrow_phase(a: &Proxy, b: &Proxy, margin: f32) -> Option<Contact>
 }
 
 /// `narrow_phase` with the two bodies placed at `a_center` and `b_center`.
+/// A one-way tile `b` gives a contact only from above: one pushing `a` up
+/// with its bottom at most a quarter cell below the tile's top face.
 #[inline(always)]
 pub(super) fn narrow_phase_at(
     a: &Proxy,
@@ -131,6 +262,52 @@ pub(super) fn narrow_phase_at(
     b_center: Vec2,
     margin: f32,
 ) -> Option<Contact> {
+    let contact = masked_contact(a, a_center, b, b_center, margin)?;
+    if b.face_mask & FACE_ONE_WAY != 0
+        && !one_way_holds(
+            a,
+            a_center,
+            b,
+            b_center,
+            contact.normal,
+            0.5 * b.half_extents().y,
+        )
+    {
+        return None;
+    }
+    Some(contact)
+}
+
+/// Whether the one-way tile `b` at `b_center` holds `a` at `a_center` with a
+/// contact along `normal`: one pushing it up, its bottom at most `depth`
+/// below the tile's top face.
+#[inline(always)]
+pub(super) fn one_way_holds(
+    a: &Proxy,
+    a_center: Vec2,
+    b: &Proxy,
+    b_center: Vec2,
+    normal: Vec2,
+    depth: f32,
+) -> bool {
+    let bottom = a_center.y + a.half_extents().y;
+    let top = b_center.y - b.half_extents().y;
+    normal.y < 0.0 && bottom <= top + depth
+}
+
+/// The signed-distance contact of `a` at `a_center` against `b` at
+/// `b_center`, a tile by its face mask and a slope tile by its polygon.
+#[inline(always)]
+fn masked_contact(
+    a: &Proxy,
+    a_center: Vec2,
+    b: &Proxy,
+    b_center: Vec2,
+    margin: f32,
+) -> Option<Contact> {
+    if b.slope != 0 {
+        return slope_contact(a, a_center, b, b_center, margin);
+    }
     match (a.shape, b.shape) {
         (
             Shape::Aabb {

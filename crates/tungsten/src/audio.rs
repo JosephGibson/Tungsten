@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 use tungsten_core::assets::{AudioHandle, SoundData, SoundRegistry};
-use tungsten_core::audio::{AudioBus, AudioCommand, MAX_VOICES, Voice};
+use tungsten_core::audio::{AudioBus, AudioCommand, MAX_VOICES, Pan, Voice};
 
 /// The command ring's capacity (`D-034`), allocated once at init. A
 /// callback takes at most this many commands before it renders.
@@ -50,7 +50,7 @@ const VOICES: usize = MAX_VOICES as usize;
 /// outbox that feeds it. A stream the device lost is dropped and the
 /// default device opened again, every two seconds until one opens, and the
 /// latch's state replayed into it: the master, the buses and the loops,
-/// from their start.
+/// from their start. A sound reload restarts it the same way (redo 7.9).
 pub struct AudioSystem {
     /// The live stream; `None` while it is lost.
     stream: Option<cpal::Stream>,
@@ -170,7 +170,7 @@ impl AudioSystem {
                 } = fresh;
                 self.stream = stream;
                 self.health = health;
-                self.outbox.reconnect(outbox.producer);
+                self.outbox.reconnect(outbox.producer, outbox.latch.limits);
                 self.retry_at = None;
             }
             Err(error) => {
@@ -181,6 +181,20 @@ impl AudioSystem {
                 self.retry_at = Some(Instant::now() + REBUILD_RETRY);
             }
         }
+    }
+
+    /// Restarts on `sounds` (redo 7.9), as after a lost device: the stream
+    /// drops and the default device opens again with the registry's sounds,
+    /// the latch, refreshed to their voice limits, replaying the master, the
+    /// buses and the loops from their start; playing one-shots end. A device
+    /// that does not open is retried as a lost one is.
+    pub(crate) fn restart(&mut self, sounds: &SoundRegistry) {
+        log::info!("Audio: restarting on the reloaded sounds");
+        self.outbox.lose();
+        self.stream = None;
+        self.retry_at = Some(Instant::now());
+        self.rebuild_failed = false;
+        self.maintain(sounds);
     }
 
     /// Log the errors the stream counted, at most once a second.
@@ -439,6 +453,8 @@ struct PlayingVoice {
     /// Start order: the lower, the older.
     started: u64,
     gain: Ramp,
+    /// Its pan, -1 (left) to 1 (right) (redo 7.9).
+    pan: Ramp,
     /// Fading to 0 after a stop: it counts toward no limit, takes no
     /// command, and frees its slot when the ramp ends.
     stopping: bool,
@@ -459,6 +475,8 @@ pub(crate) struct Mixer {
     /// Exactly `MAX_VOICES` slots.
     voices: Vec<Option<PlayingVoice>>,
     buses: [Ramp; BUSES],
+    /// Each bus's duck, on top of its volume (redo 7.9).
+    ducks: [Ramp; BUSES],
     master: Ramp,
     channels: usize,
     sample_rate: u32,
@@ -473,6 +491,7 @@ impl Mixer {
             sounds,
             voices: vec![None; VOICES],
             buses: [Ramp::at_rest(1.0); BUSES],
+            ducks: [Ramp::at_rest(1.0); BUSES],
             master: Ramp::at_rest(1.0),
             channels: channels.max(1),
             sample_rate,
@@ -512,8 +531,9 @@ impl Mixer {
                 volume,
                 looping,
                 fade,
+                pan,
                 ..
-            } => self.play(handle, voice, volume, looping, fade),
+            } => self.play(handle, voice, volume, looping, fade, pan),
             AudioCommand::Stop { handle } => {
                 self.stop_where(|playing| playing.handle == handle, self.min_ramp);
             }
@@ -543,6 +563,22 @@ impl Mixer {
                 self.buses[bus_index(bus)]
                     .retarget(playable_volume(volume).min(1.0), self.min_ramp);
             }
+            AudioCommand::SetVoicePan {
+                voice, pan, fade, ..
+            } => {
+                let frames = self.frames(fade).max(self.min_ramp);
+                for playing in self.voices.iter_mut().flatten() {
+                    if playing.playing() && playing.voice == voice {
+                        playing.pan.retarget(pan.get(), frames);
+                    }
+                }
+            }
+            AudioCommand::DuckBus {
+                bus, gain, fade, ..
+            } => {
+                let frames = self.frames(fade).max(self.min_ramp);
+                self.ducks[bus_index(bus)].retarget(playable_volume(gain).min(1.0), frames);
+            }
             _ => {}
         }
     }
@@ -551,7 +587,15 @@ impl Mixer {
     /// at once, or its oldest loop when none of its one-shots plays. Then it
     /// takes a free slot, else a stopping voice's, else the oldest one-shot's
     /// of any sound; with every slot holding a playing loop it is dropped.
-    fn play(&mut self, handle: AudioHandle, voice: Voice, volume: f32, looping: bool, fade: f32) {
+    fn play(
+        &mut self,
+        handle: AudioHandle,
+        voice: Voice,
+        volume: f32,
+        looping: bool,
+        fade: f32,
+        pan: Pan,
+    ) {
         let Some(sound) = self.sounds.get(handle.0 as usize).and_then(Option::as_ref) else {
             return;
         };
@@ -595,6 +639,7 @@ impl Mixer {
             looping,
             started: self.next_start,
             gain,
+            pan: Ramp::at_rest(pan.get()),
             stopping: false,
         });
         self.next_start += 1;
@@ -630,6 +675,7 @@ impl Mixer {
             sounds,
             voices,
             buses,
+            ducks,
             master,
             channels,
             ..
@@ -646,6 +692,7 @@ impl Mixer {
             };
             let length = sound.pcm.len() / 2;
             let bus = buses[voice.bus];
+            let duck = ducks[voice.bus];
             let mut ended = false;
             for frame in 0..frames {
                 if voice.stopping && voice.gain.done_at(frame) {
@@ -660,9 +707,11 @@ impl Mixer {
                         break;
                     }
                 }
-                let gain = voice.gain.at(frame) * bus.at(frame) * master.at(frame);
-                let left = sound.pcm[voice.cursor * 2] * gain;
-                let right = sound.pcm[voice.cursor * 2 + 1] * gain;
+                let gain = voice.gain.at(frame) * bus.at(frame) * duck.at(frame) * master.at(frame);
+                // Balance (redo 7.9): a centred voice mixes as before.
+                let pan = voice.pan.at(frame);
+                let left = sound.pcm[voice.cursor * 2] * gain * (1.0 - pan).min(1.0);
+                let right = sound.pcm[voice.cursor * 2 + 1] * gain * (1.0 + pan).min(1.0);
                 let out = &mut output[frame * channels..];
                 if channels == 1 {
                     out[0] += f32::midpoint(left, right);
@@ -673,11 +722,12 @@ impl Mixer {
                 voice.cursor += 1;
             }
             voice.gain.advance(frames);
+            voice.pan.advance(frames);
             if ended {
                 *slot = None;
             }
         }
-        for bus in buses.iter_mut() {
+        for bus in buses.iter_mut().chain(ducks.iter_mut()) {
             bus.advance(frames);
         }
         master.advance(frames);
@@ -708,6 +758,8 @@ pub(crate) struct Latch {
     master: Option<f32>,
     /// The last `SetBusVolume` each bus took.
     buses: [Option<AudioCommand>; BUSES],
+    /// Each bus's duck under 1, which a replay sets again (redo 7.9).
+    ducks: [Option<AudioCommand>; BUSES],
     loops: Vec<LatchedLoop>,
 }
 
@@ -717,6 +769,7 @@ impl Latch {
             limits,
             master: None,
             buses: std::array::from_fn(|_| None),
+            ducks: std::array::from_fn(|_| None),
             loops: Vec::new(),
         }
     }
@@ -773,18 +826,66 @@ impl Latch {
             AudioCommand::SetBusVolume { bus, .. } => {
                 self.buses[bus_index(bus)] = Some(command.clone());
             }
+            AudioCommand::SetVoicePan { voice, pan, .. } => {
+                for latched in self.loops.iter_mut().filter(|l| l.voice == voice) {
+                    if let AudioCommand::Play { pan: last, .. } = &mut latched.play {
+                        *last = pan;
+                    }
+                }
+            }
+            AudioCommand::DuckBus { bus, gain, .. } => {
+                // A duck under 1 replays at once; 1 needs nothing.
+                self.ducks[bus_index(bus)] = (playable_volume(gain) < 1.0).then(|| {
+                    let mut duck = command.clone();
+                    if let AudioCommand::DuckBus { fade, .. } = &mut duck {
+                        *fade = 0.0;
+                    }
+                    duck
+                });
+            }
             _ => {}
         }
     }
 
+    /// Takes a new table's voice limits (redo 7.9): drops the loops of a
+    /// sound that now plays nothing and keeps each sound's newest loops
+    /// within its new limit, as a fresh mixer keeps them when the replay
+    /// starts them in order.
+    fn refresh(&mut self, limits: Vec<Option<u32>>) {
+        self.limits = limits;
+        let mut kept: HashMap<AudioHandle, u32> = HashMap::new();
+        let mut keep = vec![false; self.loops.len()];
+        for (index, latched) in self.loops.iter().enumerate().rev() {
+            let Some(limit) = self
+                .limits
+                .get(latched.handle.0 as usize)
+                .copied()
+                .flatten()
+            else {
+                continue;
+            };
+            let count = kept.entry(latched.handle).or_insert(0);
+            if *count < limit {
+                *count += 1;
+                keep[index] = true;
+            }
+        }
+        let mut index = 0;
+        self.loops.retain(|_| {
+            index += 1;
+            keep[index - 1]
+        });
+    }
+
     /// The commands that bring a mixer to this state: the master volume,
-    /// each set bus's volume, then every loop from its start under its own
-    /// voice.
+    /// each set bus's volume and duck, then every loop from its start under
+    /// its own voice and pan.
     fn replay(&self, out: &mut VecDeque<AudioCommand>) {
         if let Some(master) = self.master {
             out.push_back(AudioCommand::SetMasterVolume(master));
         }
         out.extend(self.buses.iter().flatten().cloned());
+        out.extend(self.ducks.iter().flatten().cloned());
         out.extend(self.loops.iter().map(|latched| latched.play.clone()));
     }
 }
@@ -870,11 +971,13 @@ impl Outbox {
         self.waiting.clear();
     }
 
-    /// A new stream's ring: the latch's state goes into it first.
-    fn reconnect(&mut self, producer: Producer<AudioCommand>) {
+    /// A new stream's ring and its mixer's voice limits: the latch takes
+    /// the limits (redo 7.9), then its state goes into the ring first.
+    fn reconnect(&mut self, producer: Producer<AudioCommand>, limits: Vec<Option<u32>>) {
         self.producer = producer;
         self.lost = false;
         self.waiting.clear();
+        self.latch.refresh(limits);
         self.latch.replay(&mut self.waiting);
         self.flush();
     }

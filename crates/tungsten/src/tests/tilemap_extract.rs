@@ -516,3 +516,77 @@ fn an_unknown_tilemap_id_is_warned_about_once() {
     let warned = ExtractScratch::with(&world, |buffers| buffers.unknown_tilemaps.clone());
     assert_eq!(warned, ["missing"]);
 }
+
+/// Sets how layer `layer` of `world`'s one map draws.
+fn set_draw(world: &mut World, layer: usize, draw: tungsten_core::assets::tilemap::LayerDraw) {
+    let tilemaps = world.resource_mut::<TilemapRegistry>();
+    let mut map = tilemaps.get("map").expect("the map").clone();
+    map.set_layer_draw(layer, draw);
+    tilemaps.insert("map".to_string(), map);
+}
+
+#[test]
+fn a_tinted_layer_tints_its_tiles() {
+    use tungsten_core::assets::tilemap::LayerDraw;
+    let mut world = world_with_map(
+        Vec2::ZERO,
+        &["ground"],
+        2,
+        vec![
+            layer("ground", LayerKind::Render, vec![0, 0]),
+            layer("haze", LayerKind::Render, vec![0, -1]),
+        ],
+    );
+    register(&mut world, "ground", 0, FilterMode::Nearest, UvRect::FULL);
+    let tint = [0x33, 0x66, 0x99, 0x80];
+    set_draw(
+        &mut world,
+        1,
+        LayerDraw {
+            tint,
+            ..LayerDraw::DEFAULT
+        },
+    );
+    let batches = extract_tilemaps(&world);
+    let colours: Vec<[u8; 4]> = batches
+        .iter()
+        .flat_map(|batch| batch.instances.iter().map(|tile| tile.color))
+        .collect();
+    assert_eq!(colours, [[255; 4], [255; 4], tint], "only the haze's tile");
+}
+
+#[test]
+fn an_unlit_layer_draws_unlit() {
+    use tungsten_core::assets::tilemap::LayerDraw;
+    let mut world = world_with_map(
+        Vec2::ZERO,
+        &["glow"],
+        2,
+        vec![
+            layer("near", LayerKind::Render, vec![0, 0]),
+            layer("far", LayerKind::Render, vec![0, 0]),
+        ],
+    );
+    register_as(
+        &mut world,
+        "glow",
+        0,
+        FilterMode::Nearest,
+        UvRect::FULL,
+        true,
+    );
+    set_draw(
+        &mut world,
+        1,
+        LayerDraw {
+            unlit: true,
+            ..LayerDraw::DEFAULT
+        },
+    );
+    let batches = extract_tilemaps(&world);
+    assert_eq!(batches.len(), 2, "a batch a layer");
+    assert!(batches[0].lit, "the lit tileset draws lit");
+    assert!(!batches[1].lit, "the unlit layer on the stock pipeline");
+    assert_eq!(batches[1].texture, TextureHandle(0), "its albedo page");
+    assert_eq!(batches[1].instances.len(), 2);
+}

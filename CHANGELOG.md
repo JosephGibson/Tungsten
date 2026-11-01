@@ -6,6 +6,36 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-11-01
+
+Summary: the roadmap redo's Phase 7 steps 7.8 and 7.9: runtime terrain, with tiles edited in place, auto-tiled and one-way (`D-228`), and physics on it, with friction, rolling circles, contact and sensor events, predicate casts and slope tiles (`D-229`); saves of many areas, the World saved by name per area (`D-230`); and boot loading in slices, with sprite sheets, sound reload and the small seams 7.5's register named (`D-231`). 7.17, the UI pass, is next. 01's save stays at schema 23; the template's moves to 4.
+
+### Added
+
+- **Runtime terrain** (`D-228`, `tungsten_core::assets::tilemap`, `assets::terrain`, `physics/step/outline.rs`): tileset properties `material`, `health`, `broken`, `one_way`, the auto-tile `style`, `mask` and `weight`, and a collision layer's `layers` and `mask`; `TilemapRegistry::set_tile` and `damage_tile` edit a map in place through a journal that `cursor` and `changes_since` read back; brushes auto-tile by their open sides; the solid region is traced per 16 × 16 chunk and re-traced around written cells, contacts staying on the cells and casts meeting the runs; one-way edges are solid from above; `SpatialHit::tile` and `layers` name what a cast met; the physics overlay draws the outline.
+- **Physics on the terrain** (`D-229`): the manifests' `physics_layers` and `physics_materials`, with `rigid_body` naming its layers and a `material`; Coulomb friction (0 by default), a kinematic platform carrying what rides it; opt-in rolling circles (`RigidBody::rolls`, `Spin`); `ContactBegan` and `ContactEnded` with closing speeds and a tile's cell; `SensorExited` and swept sensors; `cast_ray_where` and `cast_shape_where`, which pass the hits a predicate refuses; 45° and 2:1 slope tiles in contacts, the safety net and queries; `RigidBody::gravity_scale`, `physics::teleport`, `Collider::world_box` and `Shape::distance`.
+- **Saves of many areas** (`D-230`, `tungsten_core::save`): `save::name` gives an entity a `SaveId` in an area, and a saved source's spawns take one at the flush; `SaveRegistry` (`register_saved`, `register_saved_resource`, `register_saved_with` for versions, migration steps, saved forms and reference codecs), filled by physics, the app and the kit (28 of its 45 components, its RNG, counters, flags and request queues); `capture_world` writes a `WorldSave` of patches over each named entity's fresh spawn, spawns whole, gone names, tile edits and resources, byte-equal across two captures; `restore_world` checks everything first, resolves references by save ID and sets bodies out of solids at `physics::free_spot`; kept areas, `World::spawn_area` and `enter_area`; `SaveData::migrate_step`, `SaveSlots::save_stamped` and `TilemapRegistry::revert`.
+- **Boot loading** (`D-231`, `LoadPlan`): the manifest loads in 12 ms slices behind a boot view drawn between them (`App::set_boot_view`), a manifest `boot` group (`logo`, `bar`, `font`) first; one `startup:` line under `TUNGSTEN_PERF_LOG` and a `startup` script probe; `tungsten.json`'s `assets.manifest` and `assets.hot_reload`.
+- **Assets and audio** (`D-231`): a `sheets` manifest section cuts one file into frames, and a sprite's `anchor` is the point drawn at its entity; an edited sound file reloads, the audio restarting as after a lost device; `Pan`, `SetVoicePan`, `DuckBus` and `audio::play` by manifest ID.
+- **Animation, particles and sprites** (`D-231`): a clip's speed, a despawn at a one-shot's end and frame sounds; a particle config's `z_order`, `clip`, `stretch`, `stop`, `attractor` and `start_color`, an emitter's `rate_scale`, `direction` and `paused`, and a state's exit taking its emitters' particles; `SpriteFlip`, `Unlit`, lit sprites that flash and `TweenChannel::LightIntensity`; the kit's `Facing` flips, and a `CharacterAnimator` without `left` shows `right` flipped.
+- **Tiles, backdrops and materials** (`D-231`): a tile layer's Tiled `z`, `unlit` and `tintcolor` place it among the sprites; `Extracts::add_sprites_under_tiles` and `add_sprites_over_tiles`; `Backdrop` with parallax, repeat, fill and drift; fragment-only material modules, the reserved `engine_glow` and `engine_white`; `SpriteInstance::flat` and `segment`, and `sprite_instance`, `Batches`, `view_box` and `beam` for a game's own extract; 03's `seams` fixture checks each piece by its pixels.
+- **Benchmark rows** (`docs/perf/benchmarks.md`): `terrain`, `friction`, `slopes`, `saves` and `boot`, each with its counter guard.
+
+### Changed
+
+- **`Shape` is `#[non_exhaustive]`** (`D-229`): a match on it outside core takes a wildcard arm.
+- **The template's saves** (`D-230`): `SaveGame` holds the run's `WorldSave` at schema 4, through `capture_world` and `restore_world`; gameplay names the entities a save keeps, older sample saves read as older, and a `reload_run` script hook reloads the run. `docs/getting-started.md`'s saves section follows it.
+- **Example 01's saves** migrate a schema at a time through `migrate_step`; its records stay at schema 23 until 7.13.
+- **The kit** orders a step's work by save ID while the World saves.
+- **The Phase 7 plan** (`docs/plans/phase-7.md`): one track, the UI steps after 7.9; 7.10's motion plan, with PA-3, PA-4 and PA-9 moved to 8.7; what 7.8 and 7.9 did not land (impulses and the controller's slope and push rules, the kit's loops on entities, music per state, sprite variants, text outlines, the resting index) moved to 7.10, 7.11, 7.12, 7.17 and 7.14.
+- **Records**: DESIGN, the LLM index, `docs/assets.md`, `docs/perf/benchmarks.md` and known issues (six rows added: the template's windowed scripted runs, a hand-edited save naming an entity both changed and gone, a slope cast's vertex tie, the `rigid_body` row of the component table, and the release sitting's physics regressions, the contact record that `PhysicsPlugin`'s queues keep on doubling 01's pit `physics_step`; the kit's unsaved request queues dropped). The runtime terrain, physics on terrain, saves and seams and boot and seams plans are deleted, done.
+
+### Fixed
+
+- **The kit's requests across a save** (`D-230`): a damage, heal or effect request queued after a step's resolve lands once after a load, the kit saving its queues.
+- **The bench's physics overlay** (`examples/02_bench`): the physics rows run without interpolation, so the overlay draws where the lean view draws the bodies.
+- **Windows CI** (0.113's pull request #118): `tungsten render`'s tests build their expected paths with `Path::join`, as the script does, which writes `\` on Windows; the Windows job runs every crate's tests past a failing one (`--no-fail-fast`), so a failure no longer hides the crates after it.
+
 ## [0.113.0] - 2026-10-30
 
 Summary: the roadmap redo's Phase 7 steps 7.2 to 7.5: scripted runs, with `tungsten run --script`, `render` and `describe` (7.2, `D-225`); the benchmark runner, judged in sittings, with counter guards and GPU timings read without a stall (7.3, `D-226`); H2's releases on a tag push through `just release`, `just status` and the lean skills (7.4, `D-227`); and the analysis pass, whose seam register is triaged into the Phase 7 plan (7.5). 7.8's runtime terrain plan is written. 01's save stays at schema 23.

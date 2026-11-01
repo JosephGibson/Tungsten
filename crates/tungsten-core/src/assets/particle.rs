@@ -250,6 +250,51 @@ pub enum ParticleRender {
     Mesh { mesh: String },
 }
 
+/// A physics layer a [`ParticleStop`] names (redo 7.9): its number, 0 to
+/// 31, or a manifest `physics_layers` name, checked once the names load.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum LayerRef {
+    /// The layer's number.
+    Number(u32),
+    /// A manifest physics layer name.
+    Name(String),
+}
+
+/// Where a particle's life ends against a surface (redo 7.9): at spawn, a
+/// ray along its first velocity over the bodies and tiles on `mask` ends
+/// its life where it would reach one, drag counted and gravity not.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParticleStop {
+    /// The layers whose bodies and tiles stop it.
+    pub mask: Vec<LayerRef>,
+}
+
+/// A pull toward the live emitter's position (redo 7.9), in px/s²: `pull`
+/// toward it, `swirl` perpendicular to the pull.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParticleAttractor {
+    /// Toward the emitter; negative pushes away.
+    #[serde(default)]
+    pub pull: f32,
+    /// Across the pull, turning counterclockwise for a positive one.
+    #[serde(default)]
+    pub swirl: f32,
+}
+
+/// A newborn's colour, multiplied into `tint` (redo 7.9).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartColor {
+    /// One random draw between two colours: `{ "range": [a, b] }`.
+    Range([[f32; 4]; 2]),
+    /// The first velocity's angle in turns, 0 at +x, through a curve: no
+    /// draw.
+    ByDirection(Curve<[f32; 4]>),
+}
+
 /// Particle-system config.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ParticleConfig {
@@ -283,6 +328,28 @@ pub struct ParticleConfig {
     /// Spawn-time RGBA multiplier.
     #[serde(default = "default_white_rgba")]
     pub tint: [f32; 4],
+    /// Redo 7.9: a quad particle's `Sprite.z_order` from its spawn; 0
+    /// unless set.
+    #[serde(default)]
+    pub z_order: i32,
+    /// Redo 7.9: an animation ID; a quad particle shows the clip's frame
+    /// for its age, looping as the clip does, a one-shot holding its last.
+    #[serde(default)]
+    pub clip: Option<String>,
+    /// Redo 7.9, seconds: a quad particle's length along its velocity grows
+    /// by |v| × `stretch` pixels and it turns with the velocity, its
+    /// angular velocity ignored; 0, none.
+    #[serde(default)]
+    pub stretch: f32,
+    /// Redo 7.9: the surfaces that end a particle's life.
+    #[serde(default)]
+    pub stop: Option<ParticleStop>,
+    /// Redo 7.9: a pull toward the live emitter.
+    #[serde(default)]
+    pub attractor: Option<ParticleAttractor>,
+    /// Redo 7.9: the newborn's colour, multiplied into `tint`.
+    #[serde(default)]
+    pub start_color: Option<StartColor>,
 }
 
 impl ParticleConfig {
@@ -405,6 +472,50 @@ impl ParticleConfig {
         }
         if let Some(c) = &self.color_over_life {
             validate_rgba_curve(c, "color_over_life")?;
+        }
+        self.validate_redo_7_9_fields()
+    }
+
+    /// The redo 7.9 fields: finite values, a stretch of at least 0, layer
+    /// numbers 0 to 31, and no `z_order`, `clip` or `stretch` on a mesh
+    /// particle, which draws over every sprite (`D-093`). Clips and layer
+    /// names are checked against the World at load.
+    fn validate_redo_7_9_fields(&self) -> Result<(), String> {
+        if !self.stretch.is_finite() || self.stretch < 0.0 {
+            return Err("stretch must be finite and >= 0".into());
+        }
+        if let Some(attractor) = &self.attractor
+            && !(attractor.pull.is_finite() && attractor.swirl.is_finite())
+        {
+            return Err("attractor.pull and attractor.swirl must be finite".into());
+        }
+        match &self.start_color {
+            Some(StartColor::Range(colours)) => {
+                if colours.iter().flatten().any(|c| !c.is_finite()) {
+                    return Err("start_color.range must be finite".into());
+                }
+            }
+            Some(StartColor::ByDirection(curve)) => {
+                validate_rgba_curve(curve, "start_color.by_direction")?;
+            }
+            None => {}
+        }
+        if let Some(stop) = &self.stop {
+            for (i, layer) in stop.mask.iter().enumerate() {
+                if let LayerRef::Number(n) = layer
+                    && *n > 31
+                {
+                    return Err(format!("stop.mask[{i}] must be a layer from 0 to 31"));
+                }
+            }
+        }
+        if matches!(self.render, ParticleRender::Mesh { .. })
+            && (self.z_order != 0 || self.clip.is_some() || self.stretch != 0.0)
+        {
+            return Err(
+                "z_order, clip and stretch are a quad particle's; a mesh particle draws over every sprite (D-093)"
+                    .into(),
+            );
         }
         Ok(())
     }

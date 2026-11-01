@@ -27,18 +27,20 @@ pub mod ui;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
-    BlendMode, Curve, DataEntry, DataError, DataRef, DataRegistry, EMPTY_TILE, EmissionKind,
-    FilterMode, FontEntry, FontFamilyEntry, FontRegistry, InitialVelocity, LayerKind, Lerp,
-    LoadedManifest, ManifestError, MapObject, MaterialAssetId, MaterialRegistry,
-    MaterialUniformDefaults, ObjectLayer, ParticleActive, ParticleBudget, ParticleConfig,
-    ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
-    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, PrefabData, PrefabEntry, PrefabError,
-    PrefabRegistry, PreparedPrefab, Range, ResolvedDataEntry, ResolvedFont, ResolvedFontFamily,
-    ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab,
-    ResolvedSound, ResolvedUiTheme, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
-    SceneTween, SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry, SoundRegistry,
-    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileIndex, TilemapData,
-    TilemapInstance, TilemapLayer, TilemapRegistry, UiThemeEntry, WorldRngSeed,
+    BlendMode, CellChange, ChangedCells, Curve, DataEntry, DataError, DataRef, DataRegistry,
+    EMPTY_TILE, EmissionKind, FilterMode, FontEntry, FontFamilyEntry, FontRegistry,
+    InitialVelocity, LayerKind, LayerPhysics, Lerp, LoadedManifest, ManifestError, MapCursor,
+    MapObject, MaterialAssetId, MaterialRegistry, MaterialUniformDefaults, ObjectLayer,
+    ParticleActive, ParticleBudget, ParticleConfig, ParticleConfigError, ParticleConfigRegistry,
+    ParticleEntry, ParticleMesh, ParticleMeshAssetId, ParticleMeshEntry, ParticleMeshRegistry,
+    ParticleRender, PrefabData, PrefabEntry, PrefabError, PrefabRegistry, PreparedPrefab, Range,
+    ResolvedDataEntry, ResolvedFont, ResolvedFontFamily, ResolvedManifest, ResolvedMaterial,
+    ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab, ResolvedSound, ResolvedUiTheme,
+    SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,
+    SceneTweenRepeat, Slope, SlopeCorner, SlopeRise, SoundData, SoundEntry, SoundRegistry,
+    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileChanges,
+    TileDamage, TileIndex, TileProps, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry,
+    UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioBus, AudioCommand, AudioCommands, MAX_VOICES, Voice};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
@@ -71,9 +73,10 @@ pub use input::{
 pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP};
 pub use physics::{
-    Aabb, BodyKind, Collider, CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig,
-    PhysicsPlugin, Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, Shape,
-    SpatialFilter, SpatialGrid, SpatialHit, Velocity, aabb_vs_aabb, aabb_vs_circle,
+    Aabb, BodyKind, Collider, CollisionEvent, Contact, ContactBegan, ContactEnded, PhysicsBuffers,
+    PhysicsConfig, PhysicsLayers, PhysicsMaterial, PhysicsMaterials, PhysicsPlugin, Position,
+    PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, SensorExited, Shape, SpatialFilter,
+    SpatialGrid, SpatialHit, Spin, TerrainFace, Velocity, aabb_vs_aabb, aabb_vs_circle,
     circle_vs_circle, physics_prev_snapshot, physics_step, physics_sync,
 };
 pub use post::{
@@ -83,7 +86,7 @@ pub use post::{
     TonemapParams, VignetteParams, WipeRadialParams,
 };
 pub use rng::{Pcg32, splitmix64};
-pub use save::{SaveData, SaveSlots};
+pub use save::{SaveData, SaveId, SaveOptions, SaveRegistry, SaveSlots, SaveStamp, Saved};
 pub use schedule::{Plugin, PluginSet, Schedule, ScheduleError, Stage, SystemDesc, system};
 pub use settings::{FrameRateCap, Settings, UserFolder};
 pub use text::{

@@ -19,7 +19,8 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::rng::KitRng;
+use crate::foundation::rng::{KIT_RNG, KitRng};
+use crate::foundation::saved::order_of;
 use crate::foundation::tags::valid_tag;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::intent::ability::{ABILITIES, Abilities, Ability};
@@ -612,7 +613,8 @@ impl Ticker {
         self.entities.clear();
         self.entities
             .extend(world.query::<(Entity, &Level)>().map(|(entity, _)| entity));
-        self.entities.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.entities.sort_by_key(|&entity| order.key(entity));
         let entities = std::mem::take(&mut self.entities);
         for &entity in &entities {
             tick_entity(world, entity);
@@ -761,6 +763,8 @@ impl Plugin for LevelPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Level>(world, "Level");
+        world.register_saved::<Level>(LEVEL);
+        world.register_saved_resource::<KitRng>(KIT_RNG);
         register_curves(world);
         describe_level(world);
         world.register_event::<LevelUp>();

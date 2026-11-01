@@ -229,3 +229,39 @@ fn the_sprite_epoch_rises_on_every_change_and_never_on_interning() {
     assert_eq!(reg.sprite_epoch(), 5);
     assert!(reg.sprite(reg.sprite_id("a").unwrap()).is_none());
 }
+
+#[test]
+fn a_sheets_path_maps_to_every_frame() {
+    let mut reg = AssetRegistry::new();
+    for n in 0..3 {
+        register(
+            &mut reg,
+            &format!("walk_{n}"),
+            FilterMode::Nearest,
+            16,
+            16,
+            "walk.png",
+        );
+    }
+    register(&mut reg, "rock", FilterMode::Nearest, 8, 8, "rock.png");
+    let names: Vec<&str> = reg
+        .sprite_ids_for_path(Path::new("walk.png"))
+        .iter()
+        .map(|&id| reg.sprite_name(id).unwrap())
+        .collect();
+    assert_eq!(names, ["walk_0", "walk_1", "walk_2"]);
+    // The first registered still answers the one-name lookup.
+    assert_eq!(
+        reg.sprite_name_for_path(Path::new("walk.png")),
+        Some("walk_0")
+    );
+    assert_eq!(reg.sprite_ids_for_path(Path::new("rock.png")).len(), 1);
+    assert!(reg.sprite_ids_for_path(Path::new("none.png")).is_empty());
+
+    reg.set_sprite_frame("walk_1", Some([16, 0, 16, 16]), Some([8.0, 15.0]));
+    let frame = reg.get_sprite("walk_1").unwrap();
+    assert_eq!(
+        (frame.rect, frame.anchor),
+        (Some([16, 0, 16, 16]), Some([8.0, 15.0]))
+    );
+}

@@ -179,3 +179,22 @@ fn slot_enum_indices_are_dense() {
     assert_eq!(ScalarSlot::F2.index(), 2);
     assert_eq!(IntSlot::I1.index(), 1);
 }
+
+#[test]
+fn light_intensity_reads_from_a_scene() {
+    let tween: crate::assets::SceneTween = serde_json::from_str(
+        r#"{ "duration": 0.25, "channels": [{ "kind": "light_intensity", "from": 2.0, "to": 0.0 }] }"#,
+    )
+    .unwrap();
+    tween.validate().unwrap();
+    assert_eq!(
+        tween.into_tween().channels,
+        [TweenChannel::LightIntensity { from: 2.0, to: 0.0 }]
+    );
+    let dimmer: crate::assets::SceneTween = serde_json::from_str(
+        r#"{ "duration": 0.25, "channels": [{ "kind": "light_intensity", "from": -1.0, "to": 1.0 }] }"#,
+    )
+    .unwrap();
+    let error = dimmer.validate().unwrap_err();
+    assert!(error.contains("light_intensity"), "{error}");
+}

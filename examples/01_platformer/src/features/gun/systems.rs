@@ -226,10 +226,7 @@ struct Swept {
 
 /// A shape's half extents.
 fn half_of(shape: Shape) -> Vec2 {
-    match shape {
-        Shape::Circle { radius } => Vec2::splat(radius),
-        Shape::Aabb { half_extents } => half_extents,
-    }
+    shape.half_extents()
 }
 
 /// The step's balls, iron blocks, crates and kegs whose sweep, from
@@ -398,8 +395,8 @@ fn contacts(swept: &[Swept], from: Vec2, to: Vec2, stopping: bool) -> Vec<Contac
                 circle_contact(start, motion, radius + BULLET_RADIUS),
                 start.length() <= radius + BULLET_RADIUS,
             ),
-            Shape::Aabb { half_extents } => {
-                let half = half_extents + Vec2::splat(BULLET_RADIUS);
+            other => {
+                let half = other.half_extents() + Vec2::splat(BULLET_RADIUS);
                 (
                     box_contact(start, motion, half),
                     start.abs().cmple(half).all(),

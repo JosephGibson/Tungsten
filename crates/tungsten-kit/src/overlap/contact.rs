@@ -6,6 +6,7 @@ use std::collections::HashSet;
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
+use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{
     Entity, Inspectable, Plugin, Schedule, SpawnContext, Time, With, World, system,
 };
@@ -19,6 +20,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::saved::order_of;
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags};
 use crate::foundation::{non_negative, optional_vec2, positive};
 use crate::lifecycle::ended::Despawning;
@@ -256,6 +258,82 @@ impl TryFrom<ContactDamageFields> for ContactDamage {
             timed: Vec::new(),
         })
     }
+}
+
+/// A [`ContactDamage`] in a save: its scene form, its clock and each
+/// touch's last hit and meeting on it, the codec writing each touch's
+/// target by save ID under the touch's index.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ContactSave {
+    contact: ContactDamage,
+    clock: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    touches: Vec<[f64; 2]>,
+}
+
+impl From<&ContactDamage> for ContactSave {
+    fn from(contact: &ContactDamage) -> Self {
+        Self {
+            contact: contact.clone(),
+            clock: contact.clock,
+            touches: contact
+                .timed
+                .iter()
+                .map(|timed| [timed.hit, timed.met])
+                .collect(),
+        }
+    }
+}
+
+impl From<ContactSave> for ContactDamage {
+    /// Each touch waits for its target from the codec; a clock that is not
+    /// finite reads as 0.
+    fn from(saved: ContactSave) -> Self {
+        let clock = if saved.clock.is_finite() {
+            saved.clock
+        } else {
+            0.0
+        };
+        Self {
+            clock,
+            timed: saved
+                .touches
+                .into_iter()
+                .map(|[hit, met]| Timed {
+                    target: Entity::PLACEHOLDER,
+                    hit,
+                    met,
+                })
+                .collect(),
+            ..saved.contact
+        }
+    }
+}
+
+/// `ContactDamage` saved with its clock and touches. A touch whose target
+/// does not resolve is dropped: none waits for an area, since a hazard
+/// meets its target again.
+fn contact_saved() -> SaveOptions<ContactDamage> {
+    SaveOptions::<ContactDamage>::form::<ContactSave>().refs(RefCodec {
+        save: |contact, out: &mut RefWriter<'_>| {
+            for (index, timed) in contact.timed.iter().enumerate() {
+                out.put(&index.to_string(), timed.target);
+            }
+        },
+        load: |contact, refs: &RefReader<'_>| {
+            for (index, timed) in contact.timed.iter_mut().enumerate() {
+                if let Some(target) = refs.first(&index.to_string()) {
+                    timed.target = target;
+                }
+            }
+            contact
+                .timed
+                .retain(|timed| timed.target != Entity::PLACEHOLDER);
+            sort_by_target(&mut contact.timed);
+        },
+        keys: |_| Vec::new(),
+    })
 }
 
 impl From<ContactDamage> for ContactDamageFields {
@@ -532,8 +610,7 @@ impl ContactDamage {
                 met: clock - f64::from(touch.since_met),
             });
         }
-        // `due` finds a target by its index.
-        self.timed.sort_by_key(|timed| timed.target.id());
+        sort_by_target(&mut self.timed);
     }
 
     /// Sets the damage a `damage` stat gives; one that is not finite and at
@@ -543,6 +620,12 @@ impl ContactDamage {
             self.damage = damage;
         }
     }
+}
+
+/// Sorts touches by their target's index, which `due` finds a target by:
+/// a lookup's order, not a step's, so it stays by index while saving.
+fn sort_by_target(timed: &mut [Timed]) {
+    timed.sort_by_key(|timed| timed.target.id());
 }
 
 /// The seconds from `then` to `clock`, as an `f32` of at least 0.
@@ -663,6 +746,7 @@ impl Plugin for ContactDamagePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<ContactDamage>(world, "ContactDamage");
+        world.register_saved_with(CONTACT_DAMAGE_COMPONENT, contact_saved());
         describe_hit_shape(world);
         describe(
             world,
@@ -760,7 +844,8 @@ impl ContactRunner {
         self.hitters.clear();
         self.hitters
             .extend(world.query_filtered::<Entity, With<ContactDamage>>());
-        self.hitters.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.hitters.sort_by_key(|&entity| order.key(entity));
         for i in 0..self.hitters.len() {
             let hitter = self.hitters[i];
             if world.has::<Despawning>(hitter) {

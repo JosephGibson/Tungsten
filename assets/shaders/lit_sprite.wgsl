@@ -11,6 +11,9 @@
 //   group(1) @binding(2): emissive (Rgba8Unorm, premultiplied RGB)
 //   group(1) @binding(3): sampler (filtering)
 //   group(2) @binding(0): LightUbo (16 lights + count + ambient)
+//   group(3) @binding(0): the batch's 256-byte uniform block; its flash
+//                         lanes, v0 and f.x, as the stock damage flash reads
+//                         them (redo 7.9), zero for a batch without one
 
 struct Camera {
     projection: mat4x4<f32>,
@@ -41,6 +44,19 @@ struct LightUbo {
 @group(2) @binding(0)
 var<uniform> lighting: LightUbo;
 
+// `UniformOverrideBlock`'s public lanes; the reserved tail is not read.
+struct Flash {
+    v0: vec4<f32>,
+    v1: vec4<f32>,
+    v2: vec4<f32>,
+    v3: vec4<f32>,
+    f: vec4<f32>,
+    i: vec4<i32>,
+};
+
+@group(3) @binding(0)
+var<uniform> flash: Flash;
+
 struct VertexInput {
     @location(0) position: vec2<f32>,
     @location(1) uv: vec2<f32>,
@@ -61,6 +77,8 @@ struct VertexOutput {
     @location(0) tex_coord: vec2<f32>,
     @location(1) tint: vec4<f32>,
     @location(2) world_pos: vec2<f32>,
+    // -1 for a flipped sprite (a negative UV width), whose normals mirror.
+    @location(3) @interpolate(flat) mirror: f32,
 };
 
 @vertex
@@ -82,6 +100,7 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     out.tex_coord = instance.inst_uv_min + vertex.uv * instance.inst_uv_size;
     out.tint = instance.inst_tint;
     out.world_pos = world_pos;
+    out.mirror = select(1.0, -1.0, instance.inst_uv_size.x < 0.0);
     return out;
 }
 
@@ -91,7 +110,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let n_sample = textureSample(t_normal, s_lit, in.tex_coord).xyz * 2.0 - vec3<f32>(1.0);
     // 2D shader treats `(n.xy, n.z)` as world-axis normals; sprite plane is
     // assumed parallel to the world plane (no per-fragment tangent frame).
-    let n = normalize(n_sample);
+    // A flipped sprite's texels run right to left, so its normals' x turns.
+    let n = normalize(vec3<f32>(n_sample.x * in.mirror, n_sample.yz));
 
     var rgb = albedo.rgb * lighting.ambient.rgb;
     let count = lighting.count_pad.x;
@@ -121,5 +141,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let emissive = textureSample(t_emissive, s_lit, in.tex_coord).rgb;
     rgb = rgb + emissive;
+    // The flash mixes the lit colour toward v0's, as the stock flash mixes
+    // the sprite's; uniform per batch, so no amount leaves today's pixel.
+    let amount = clamp(flash.f.x, 0.0, 1.0) * flash.v0.a;
+    if (amount > 0.0) {
+        rgb = mix(rgb, flash.v0.rgb, amount);
+    }
     return vec4<f32>(rgb, albedo.a);
 }

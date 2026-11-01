@@ -268,7 +268,7 @@ fn spawn_static(
 ) -> Entity {
     let (half, texture) = match collider.shape {
         Shape::Circle { radius } => (Vec2::splat(radius), ViewTexture::Disc),
-        Shape::Aabb { half_extents } => (half_extents, ViewTexture::Rect),
+        other => (other.half_extents(), ViewTexture::Rect),
     };
     let entity = world.spawn();
     world.insert(entity, Position(center));

@@ -1,8 +1,8 @@
 use super::{
-    App, FrameClock, FrameEnd, RedrawSchedule, compose_post_stack, format_perf_physics_line,
-    format_perf_systems_line, frame_dt_secs, frame_interval_ms, is_action_map, is_reload_root,
-    load_action_map_at_startup, manifest_reload_roots, redraw_schedule, resolve_startup_display,
-    runtime_display_mode,
+    App, Boot, BootPacer, FrameClock, FrameEnd, RedrawSchedule, StartupTimings, compose_post_stack,
+    format_perf_physics_line, format_perf_systems_line, format_startup_line, frame_dt_secs,
+    frame_interval_ms, is_action_map, is_reload_root, load_action_map_at_startup,
+    manifest_reload_roots, redraw_schedule, resolve_startup_display, runtime_display_mode,
 };
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -53,6 +53,46 @@ fn m30_game_feel_events_are_pre_registered() {
         app.world
             .get_resource::<EventQueue<SquashEvent>>()
             .is_some()
+    );
+}
+
+#[test]
+fn the_app_registers_transform_and_visibility_and_a_games_own() {
+    use serde::{Deserialize, Serialize};
+    use tungsten_core::save::SaveRegistry;
+    use tungsten_core::{Position, Transform, Visibility};
+
+    #[derive(Serialize, Deserialize)]
+    struct Gold(u32);
+
+    #[derive(Serialize, Deserialize)]
+    struct Weather {
+        raining: bool,
+    }
+
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.register_saved::<Gold>("gold");
+    app.register_saved::<Gold>("gold");
+    app.register_saved_resource::<Weather>("weather");
+    let registry = app.world.resource::<SaveRegistry>();
+    assert_eq!(registry.component_name::<Transform>(), Some("transform"));
+    assert_eq!(registry.component_name::<Visibility>(), Some("visibility"));
+    assert_eq!(
+        registry.component_name::<Position>(),
+        Some("position"),
+        "the default plugins' physics"
+    );
+    assert_eq!(registry.component_name::<Gold>(), Some("gold"));
+    assert_eq!(registry.resource_name::<Weather>(), Some("weather"));
+    assert_eq!(registry.component_version("gold"), Some(1));
+
+    let bare = App::with_plugins(Config::default(), tungsten_core::PluginSet::new())
+        .expect("App::with_plugins failed");
+    let registry = bare.world.resource::<SaveRegistry>();
+    assert_eq!(
+        registry.component_names().collect::<Vec<_>>(),
+        ["transform", "visibility"],
+        "the app's own whichever plugins run"
     );
 }
 
@@ -885,4 +925,229 @@ fn startup_queues_shipped_volumes_below_one() {
         .err()
         .expect("App::new accepted a NaN master volume");
     assert!(err.to_string().contains("audio.master_volume"), "{err}");
+}
+
+#[test]
+fn the_startup_line_names_every_timing() {
+    let timings = StartupTimings {
+        window: 1.0,
+        renderer: 2.5,
+        boot: 0.0,
+        load: 30.25,
+        sprites: None,
+        sounds: None,
+        pack: None,
+        startup: 4.0,
+        audio: 5.0,
+        first_frame: Some(61.5),
+        loaded: 50.0,
+        boot_frames: 0,
+        slice_max: 0.0,
+    };
+    let line = format_startup_line(&timings);
+    assert_eq!(
+        line,
+        "startup: window=1.00ms renderer=2.50ms boot=0.00ms load=30.25ms sprites=n/a \
+         sounds=n/a pack=n/a startup=4.00ms audio=5.00ms first_frame=61.50ms loaded=50.00ms \
+         boot_frames=0 slice_max=0.00ms"
+    );
+    // Every field the `startup` probe returns, by name.
+    let fields = serde_json::to_value(timings).unwrap();
+    for name in fields.as_object().unwrap().keys() {
+        assert!(
+            line.contains(&format!(" {name}=")),
+            "{name} missing: {line}"
+        );
+    }
+}
+
+/// A config whose `assets` section names `manifest`, its reload as given.
+fn config_naming(manifest: &Path, hot_reload: Option<bool>) -> Config {
+    let mut config = Config::default();
+    config.assets.manifest = Some(manifest.to_path_buf());
+    config.assets.hot_reload = hot_reload;
+    config
+}
+
+#[test]
+fn a_config_without_a_manifest_sets_no_root() {
+    let app = App::new(Config::default()).unwrap();
+    assert!(app.manifest_roots.is_empty());
+    assert_eq!(app.hot_reload_dirs, None);
+    assert_eq!(app.manifest_path, None);
+}
+
+#[test]
+fn a_named_manifest_becomes_the_root_with_debug_reload() {
+    let dir = user_tempdir("named_manifest");
+    let folder = dir.join("assets");
+    let manifest = folder.join("manifest.json");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(&manifest, "{}").unwrap();
+
+    // Unset, the reload follows the build: on in a debug build.
+    let app = App::new(config_naming(&manifest, None)).unwrap();
+    assert_eq!(app.manifest_roots, std::slice::from_ref(&manifest));
+    let debug = cfg!(debug_assertions);
+    assert_eq!(app.hot_reload_dirs, debug.then(|| vec![folder.clone()]));
+    assert_eq!(app.manifest_path, debug.then(|| manifest.clone()));
+
+    let app = App::new(config_naming(&manifest, Some(true))).unwrap();
+    assert_eq!(app.hot_reload_dirs, Some(vec![folder]));
+    assert_eq!(app.manifest_path, Some(manifest.clone()));
+
+    let app = App::new(config_naming(&manifest, Some(false))).unwrap();
+    assert_eq!(app.manifest_roots, [manifest]);
+    assert_eq!(app.hot_reload_dirs, None);
+    assert_eq!(app.manifest_path, None);
+}
+
+#[test]
+fn a_named_manifest_that_is_missing_fails_the_app() {
+    let dir = user_tempdir("missing_manifest");
+    let err = App::new(config_naming(&dir.join("manifest.json"), None))
+        .err()
+        .expect("App::new accepted a missing manifest");
+    assert!(err.to_string().contains("assets.manifest"), "{err}");
+}
+
+#[test]
+fn set_manifest_roots_and_enable_hot_reload_replace_the_configs() {
+    let dir = user_tempdir("replaced_manifest");
+    let manifest = dir.join("manifest.json");
+    std::fs::write(&manifest, "{}").unwrap();
+    let mut app = App::new(config_naming(&manifest, Some(true))).unwrap();
+    assert_eq!(app.hot_reload_dirs, Some(vec![dir.clone()]));
+
+    let game = PathBuf::from("game/assets/manifest.json");
+    app.set_manifest_roots(vec![game.clone()]);
+    assert_eq!(app.manifest_roots, std::slice::from_ref(&game));
+    app.enable_hot_reload(&[PathBuf::from("game/assets")], game.clone());
+    assert_eq!(
+        app.hot_reload_dirs,
+        Some(vec![PathBuf::from("game/assets")])
+    );
+    assert_eq!(app.manifest_path, Some(game));
+}
+
+#[test]
+fn boot_frames_run_slices_until_the_plan_ends() {
+    use std::cell::Cell;
+    // A clock the test sets: each unit takes 5 ms.
+    let start = Instant::now();
+    let now = Cell::new(start);
+    let mut clock = || now.get();
+    let mut left = 20;
+    let mut run = || {
+        if left == 0 {
+            return None;
+        }
+        left -= 1;
+        now.set(now.get() + Duration::from_millis(5));
+        Some(Ok(()))
+    };
+    let mut pacer = BootPacer::default();
+    let mut steps = Vec::new();
+    loop {
+        let step = pacer.redraw(&mut clock, &mut run).unwrap();
+        let at = now.get().duration_since(start).as_millis();
+        steps.push((step.ran, step.view, step.done, at));
+        if step.done {
+            break;
+        }
+    }
+    assert_eq!(
+        steps,
+        [
+            // The view before any unit runs.
+            (0, true, false, 0),
+            // 12 ms slices, a unit that starts finishing.
+            (3, false, false, 15),
+            (3, false, false, 30),
+            // A view once 33 ms have passed since the last.
+            (3, true, false, 45),
+            (3, false, false, 60),
+            (3, false, false, 75),
+            (3, true, false, 90),
+            // The last two units, and the plan ends.
+            (2, false, true, 100),
+        ]
+    );
+    assert_eq!(pacer.slice_max(), Duration::from_millis(15));
+}
+
+#[test]
+fn a_boot_frame_counts_for_no_script_smoke_or_capture() {
+    let env = |name: &str| (name == "TUNGSTEN_SMOKE_FRAMES").then(|| "3".into());
+    let mut app = App::build(
+        Config::default(),
+        crate::plugins::DefaultPlugins::set(),
+        &env,
+    )
+    .unwrap();
+    app.capture = Some(capture_frame(1));
+    let script = tungsten_core::script::Script::parse(
+        r#"{"version": 1, "frames": 1, "steps": [
+            {"frame": 1, "assert": {"probe": "frame", "op": "==", "value": 1}}
+        ]}"#,
+    )
+    .unwrap();
+    app.script = Some(crate::script::ScriptRunner::new(script, "boot.json", true));
+    app.resolve_schedule().unwrap();
+
+    // A boot with no manifest: its first redraw draws the view, the next
+    // ends it.
+    app.boot = Some(Boot::default());
+    app.boot_redraw(&mut Instant::now).unwrap();
+    assert!(app.boot.is_some());
+    app.boot_redraw(&mut Instant::now).unwrap();
+    assert!(
+        app.boot.is_none(),
+        "an empty plan ends on its second redraw"
+    );
+
+    // No stage ran, and nothing counted a frame.
+    assert!(!app.startup_done);
+    assert_eq!(app.frames_rendered, 0);
+    assert_eq!(app.smoke_frames_remaining, Some(3));
+    assert_eq!(app.world.resource::<Time>().frame(), 0);
+    assert!(app.capture.as_ref().unwrap().armed_for(1).is_some());
+    assert!(
+        app.world.has_resource::<StartupTimings>(),
+        "written once loaded"
+    );
+
+    // The next frame is frame 1, the script's first.
+    assert_eq!(headless_frame(&mut app), FrameEnd::Completed);
+    assert!(app.startup_done);
+    assert_eq!(app.world.resource::<Time>().frame(), 1);
+    let report = app.script.take().unwrap().finish(
+        &mut app.world,
+        tungsten_core::script::Ending::GameExit,
+        None,
+    );
+    assert!(report.passed, "{report:#?}");
+}
+
+#[test]
+fn input_during_boot_is_dropped() {
+    let mut app = App::new(Config::default()).unwrap();
+    assert!(!app.drops_window_input());
+    app.boot = Some(Boot::default());
+    assert!(
+        app.drops_window_input(),
+        "key and pointer events wait out the boot"
+    );
+    // Whatever is held when the boot ends releases with no edges, so frame
+    // 1 sees no boot input.
+    let focused = app.world.resource::<InputState>().focused();
+    app.world
+        .resource_mut::<InputState>()
+        .key_down(KeyCode::KeyA);
+    app.finish_boot();
+    assert!(!app.drops_window_input());
+    let input = app.world.resource::<InputState>();
+    assert!(!input.is_pressed(KeyCode::KeyA));
+    assert!(!input.just_pressed(KeyCode::KeyA) && !input.just_released(KeyCode::KeyA));
+    assert_eq!(input.focused(), focused);
 }

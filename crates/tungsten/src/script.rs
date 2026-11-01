@@ -24,7 +24,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use glam::{Vec2, Vec3};
-use serde_json::json;
+use serde_json::{Value, json};
 use tungsten_core::script::{
     CameraView, CaptureReport, Cursor, Ending, FailedStep, LogReport, Occurrence, ProbeReport,
     Report, Script, ScriptHooks, ScriptRun, SheetKind, SheetStep, SpawnStep, Unreached, Verb,
@@ -124,7 +124,8 @@ pub(crate) fn verdict(report: &Report) -> String {
     )
 }
 
-/// The engine's script hooks: core's probes, then `states` and `log`.
+/// The engine's script hooks: core's probes, then `states`, `log` and
+/// `startup`.
 pub(crate) fn engine_hooks() -> ScriptHooks {
     let mut hooks = ScriptHooks::new();
     hooks.add_probe(
@@ -146,6 +147,15 @@ pub(crate) fn engine_hooks() -> ScriptHooks {
                 .get_resource::<ScriptLog>()
                 .map_or((0, 0), ScriptLog::since_start);
             Ok(json!({ "errors": errors, "warnings": warnings }))
+        },
+    );
+    hooks.add_probe(
+        "startup",
+        "How the run started, in ms (`StartupTimings`): its phases and milestones; null before it loaded or without a window.",
+        |world, _| {
+            Ok(world
+                .get_resource::<crate::StartupTimings>()
+                .map_or(Value::Null, |timings| json!(timings)))
         },
     );
     hooks

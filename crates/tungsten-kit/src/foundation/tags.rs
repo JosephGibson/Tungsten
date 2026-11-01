@@ -463,6 +463,7 @@ impl Plugin for TagsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Tags>(world, "Tags");
+        world.register_saved::<Tags>(TAGS);
         describe_kind(
             world,
             TAGS,

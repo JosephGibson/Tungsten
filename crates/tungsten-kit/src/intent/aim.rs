@@ -267,6 +267,7 @@ impl Plugin for AimPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Aim>(world, "Aim");
+        world.register_saved::<Aim>(AIM_COMPONENT);
         describe_target(world);
         describe(
             world,

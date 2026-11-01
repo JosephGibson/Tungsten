@@ -214,6 +214,14 @@ row "lighting" "$log_dir/${fixtures_pkg}-lighting.log" "$fixtures_pkg" \
   TUNGSTEN_FIXTURE=lighting
 end_section "Lighting passed" "Lighting failures" 1
 
+# Redo 7.9: seams row over the `seams` scene. A lit sprite and its flipped
+# twin, a flashing lit sprite and an unlit one take the lit pipeline's flash
+# block and mirrored normals; `just visual` checks their pixels.
+begin_section "Redo 7.9 seams fixture matrix (pkg: $fixtures_pkg, scene=seams)"
+row "seams" "$log_dir/${fixtures_pkg}-seams.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=seams
+end_section "Seams passed" "Seams failures" 1
+
 # M30: game-feel rows. The `post` row pins the fixture env so trauma and
 # every squash envelope are armed at startup — a three-frame run would not
 # otherwise reach a collision. The default example discovery row already
@@ -267,7 +275,8 @@ bench_pkg="example-02-bench"
 begin_section "Benchmarks (pkg: $bench_pkg)"
 for bench_row in physics:min physics:default physics:sparse-min physics:sparse \
   ecs:min ecs:default churn:min churn:default gpu:min gpu:default gpu:throughput \
-  particles:min particles:default; do
+  particles:min particles:default piles:friction-min piles:friction piles:slopes-min \
+  piles:slopes saves:min saves:default boot:min boot:default; do
   bench="${bench_row%%:*}"
   preset="${bench_row#*:}"
   timing=()
@@ -277,7 +286,7 @@ for bench_row in physics:min physics:default physics:sparse-min physics:sparse \
   row "${bench} preset=${preset}${timing:+ timing=on}" "$log_dir/${bench_pkg}-${bench}-${preset}.log" "$bench_pkg" \
     TUNGSTEN_BENCH="$bench" TUNGSTEN_BENCH_PRESET="$preset" "${timing[@]}"
 done
-end_section "Benchmarks passed" "Benchmark failures" 13
+end_section "Benchmarks passed" "Benchmark failures" 21
 
 # Frame cap: 20 frames at display.frame_rate_cap = 20 must take at least 90%
 # of frames / cap (0.9 s). Uncapped, the `transition` scene's plain run takes

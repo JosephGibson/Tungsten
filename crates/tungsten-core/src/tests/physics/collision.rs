@@ -227,3 +227,46 @@ fn aabb_overlap_and_union() {
     assert!((u.min().x - (-1.0)).abs() < 1e-5);
     assert!((u.max().x - 2.5).abs() < 1e-5);
 }
+
+#[test]
+fn shape_distance_and_world_box_match_each_shape() {
+    use crate::physics::{Collider, Shape};
+
+    let boxed = Shape::Aabb {
+        half_extents: Vec2::new(4.0, 2.0),
+    };
+    let round = Shape::Circle { radius: 3.0 };
+    assert_eq!(boxed.half_extents(), Vec2::new(4.0, 2.0));
+    assert_eq!(round.half_extents(), Vec2::splat(3.0));
+    // Inside or on the surface: 0.
+    for offset in [
+        Vec2::ZERO,
+        Vec2::new(4.0, 0.0),
+        Vec2::new(-3.0, 1.5),
+        Vec2::new(4.0, -2.0),
+    ] {
+        assert_eq!(boxed.distance(offset), 0.0, "{offset}");
+    }
+    for offset in [Vec2::ZERO, Vec2::new(0.0, -3.0), Vec2::new(1.0, 1.0)] {
+        assert_eq!(round.distance(offset), 0.0, "{offset}");
+    }
+    // Outside: past a face, past a corner, and from a circle.
+    assert_eq!(boxed.distance(Vec2::new(7.0, 1.0)), 3.0);
+    assert_eq!(boxed.distance(Vec2::new(0.0, -6.0)), 4.0);
+    assert_eq!(boxed.distance(Vec2::new(-7.0, 6.0)), 5.0);
+    assert_eq!(round.distance(Vec2::new(-6.0, 8.0)), 7.0);
+
+    let at = Vec2::new(10.0, 20.0);
+    let collider = Collider::aabb(Vec2::new(4.0, 2.0)).with_offset(Vec2::new(1.0, -1.0));
+    assert_eq!(collider.center(at), Vec2::new(11.0, 19.0));
+    assert_eq!(
+        collider.world_box(at),
+        Aabb::new(Vec2::new(11.0, 19.0), Vec2::new(4.0, 2.0))
+    );
+    let ball = Collider::circle(3.0);
+    assert_eq!(ball.center(at), at);
+    assert_eq!(
+        ball.world_box(at),
+        Aabb::from_min_max(Vec2::new(7.0, 17.0), Vec2::new(13.0, 23.0))
+    );
+}
