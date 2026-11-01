@@ -2466,6 +2466,62 @@ fn arrival_counts(world: &World) -> (usize, usize) {
 }
 
 #[test]
+fn a_knocked_body_keeps_its_side_of_a_neighbour_listed_first() {
+    // Q (radius 6) at x 24, R (6) at 10 moving at 840 px/s, P (10) at 45
+    // and a heavy S (6, mass 1,000) at 63 closing at 5,800 px/s: S knocks P
+    // toward Q, and both are listed in one arrival round. With Q listed
+    // first and its own reach short of P's pair box, P once skipped their
+    // pair as Q's and passed through Q. In every spawn order, at 1/60 and
+    // 1/30 s, P ends on its side of Q.
+    const Q: usize = 0;
+    const P: usize = 2;
+    let spec = [
+        (24.0, 0.0, 6.0, 1.0),
+        (10.0, 840.0, 6.0, 1.0),
+        (45.0, 0.0, 10.0, 1.0),
+        (63.0, -5_800.0, 6.0, 1_000.0),
+    ];
+    let mut orders = Vec::new();
+    for a in 0..4 {
+        for b in 0..4 {
+            for c in 0..4 {
+                for d in 0..4 {
+                    let order = [a, b, c, d];
+                    if (0..4).all(|i| order.contains(&i)) {
+                        orders.push(order);
+                    }
+                }
+            }
+        }
+    }
+    for dt in [1.0 / 60.0, 1.0 / 30.0] {
+        for order in &orders {
+            let mut world = seed_world();
+            world.resource_mut::<Time>().advance_frame(dt);
+            let mut bodies = [None; 4];
+            for &which in order {
+                let (x, vx, radius, mass) = spec[which];
+                bodies[which] = Some(spawn_body(
+                    &mut world,
+                    RigidBody::dynamic().with_mass(mass),
+                    Collider::circle(radius),
+                    Vec2::new(x, 0.0),
+                    Vec2::new(vx, 0.0),
+                ));
+            }
+            physics_step(&mut world);
+            let x = |which: usize| world.get::<Position>(bodies[which].unwrap()).unwrap().0.x;
+            assert!(
+                x(P) > x(Q),
+                "dt {dt}, spawn order {order:?}: P at {} past Q at {}",
+                x(P),
+                x(Q)
+            );
+        }
+    }
+}
+
+#[test]
 fn settled_stack_never_enters_the_arrival_pass() {
     // Warm starts and gravity cancel in a resting pile, so no body's velocity
     // moves by the arrival threshold and the pass lists nobody (D-092).

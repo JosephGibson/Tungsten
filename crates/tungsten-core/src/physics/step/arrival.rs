@@ -131,6 +131,17 @@ fn arrival_inv(proxy: &Proxy) -> f32 {
     }
 }
 
+/// Whether the round's `pairs` hold the one that the body listed at `listed`
+/// built with `body`. Each body pushes its pairs, itself first, as it is
+/// reached in list order, so its own pairs follow one another there.
+fn built_pair(pairs: &[ArrivalPair], slot: &[u32], listed: u32, body: u32) -> bool {
+    let from = pairs.partition_point(|pair| slot[pair.x as usize] < listed);
+    pairs[from..]
+        .iter()
+        .take_while(|pair| slot[pair.x as usize] == listed)
+        .any(|pair| pair.y == body)
+}
+
 /// Where a proxy was when the substep began. The pass runs after position
 /// integration, which moved the awake dynamic and the kinematic ones.
 fn arrival_center(proxy: &Proxy) -> Vec2 {
@@ -263,9 +274,11 @@ pub(super) fn arrival_pass(
             for &other_id in candidates.iter() {
                 let other = other_id as usize;
                 // Two bodies of one round share a pair: the one listed first
-                // has it.
+                // has it, when its own reach found this one; a slower body's
+                // smaller box can miss it.
                 if state[other] & ARRIVAL_LISTED != 0
                     && (round_start..at).contains(&(slot[other] as usize))
+                    && built_pair(pairs, slot, slot[other], body as u32)
                 {
                     continue;
                 }
