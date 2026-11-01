@@ -5,6 +5,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 ## Now
 
 - `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 (`tungsten run --script`, `render` and `describe`), 7.3 (`just perf`'s sittings, counter guards and GPU counters, `D-226`), 7.4 (H2: `just status`, releases on a tag push with `just release`, `D-227`, and the lean skills) and 7.5 (the analysis pass: [the seam register](docs/plans/seam-register.md)'s 193 verified S-rows, triaged into the plan's tables) have landed, and 7.8, terrain and physics (`D-228`, `D-229`; impulses and the controller's slope and push rules moved to 7.10, the resting index to 7.14), have landed; 7.9's first plan, saves of many areas (`D-230`), has landed, and its second plan, boot loading, sprite sheets, sound hot reload and the small seams, is next; Phase 7 runs a step at a time.
+- `boot-and-seams`: redo 7.9's second plan: assets loaded in main-thread slices behind a boot view, measured by a startup line and a `boot` row; sprite sheets with anchors; sound hot reload; pan, ducks, loops on entities and music per state; the small seams in animation, particles, sprites, tile layers, materials and text ([plan](docs/plans/boot-and-seams.md)); it closes Step 7.
 
 ## Next
 
