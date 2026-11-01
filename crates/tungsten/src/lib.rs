@@ -40,6 +40,7 @@ pub use app::{
     App, BootProgress, BootView, BootViewFn, ExitReason, Exiting, StartupTimings, WindowSize,
     request_exit,
 };
+pub use asset_loader::{ENGINE_GLOW, ENGINE_WHITE};
 pub use camera::camera_update_system;
 pub use debug_hud::{DebugHud, HudActiveState, HudCorner, HudRow, hud_toggle_system};
 pub use debug_views::{LogConsole, UiInspector};
@@ -62,7 +63,7 @@ pub use plugins::{
 };
 pub use post_aa::{PostAaState, request_post_aa};
 pub use settings::{apply_settings, shipped_volume};
-pub use sprite_extract::extract_sprites_default;
+pub use sprite_extract::{Batches, beam, extract_sprites_default, sprite_instance, view_box};
 pub use state::{
     GameState, RootCover, SceneEntity, StateContext, StateId, StateStack, despawn_scene_entities,
     state_dispatcher_system, ui_state_roots_system,

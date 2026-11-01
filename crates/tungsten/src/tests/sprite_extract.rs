@@ -1750,3 +1750,184 @@ fn a_lit_sprite_keeps_its_flash_block() {
     );
     assert!(batches[1].uniform_overrides.is_none(), "no block, no flash");
 }
+
+/// Registers `id`, `width` × `height` on page `page` with `uv`, lit when
+/// `lit`: its asset.
+fn helper_asset(
+    world: &mut World,
+    id: &str,
+    page: u32,
+    (width, height): (u32, u32),
+    uv: UvRect,
+    lit: bool,
+) -> tungsten_core::SpriteAsset {
+    let registry = world.resource_mut::<AssetRegistry>();
+    registry.register_sprite(
+        id.to_string(),
+        FilterMode::Nearest,
+        width,
+        height,
+        PathBuf::from(format!("test/{id}.png")),
+        TextureHandle(page),
+        uv,
+        lit.then(|| PathBuf::from(format!("test/{id}_n.png"))),
+        None,
+        lit.then_some(TextureHandle(page)),
+    );
+    registry.get_sprite(id).unwrap().clone()
+}
+
+#[test]
+fn sprite_instance_takes_the_assets_uvs() {
+    let mut world = world_with_registry();
+    let uv = UvRect {
+        min: [0.25, 0.5],
+        max: [0.5, 1.0],
+    };
+    let asset = helper_asset(&mut world, "gem", 2, (16, 16), uv, false);
+    let instance = sprite_instance(
+        &asset,
+        Vec2::new(10.0, 20.0),
+        Vec2::new(32.0, 8.0),
+        0.5,
+        [1, 2, 3, 4],
+        0.25,
+    );
+    assert_eq!(instance.uv_min, [0.25, 0.5]);
+    assert_eq!(instance.uv_size, [0.25, 0.5]);
+    assert_eq!(
+        (instance.position, instance.size, instance.rotation),
+        ([10.0, 20.0], [32.0, 8.0], 0.5)
+    );
+    assert_eq!((instance.color, instance.z_norm), ([1, 2, 3, 4], 0.25));
+}
+
+#[test]
+fn batches_join_like_drawn_instances() {
+    let mut world = world_with_registry();
+    let a = helper_asset(&mut world, "a", 0, (16, 16), UvRect::FULL, false);
+    let b = helper_asset(&mut world, "b", 1, (16, 16), UvRect::FULL, false);
+    let lit = helper_asset(&mut world, "lit", 0, (16, 16), UvRect::FULL, true);
+    let mut batches = Batches::new();
+    for asset in [&a, &a, &a, &b, &a, &lit, &lit] {
+        batches.push(
+            asset,
+            sprite_instance(asset, Vec2::ZERO, Vec2::ONE, 0.0, [255; 4], 0.0),
+        );
+    }
+    let drawn: Vec<(u32, bool, usize)> = batches
+        .into_batches()
+        .iter()
+        .map(|batch| (batch.texture.0, batch.lit, batch.instances.len()))
+        .collect();
+    // Push order kept: a page change opens a batch, as a change of lighting
+    // on the same page does.
+    assert_eq!(
+        drawn,
+        [(0, false, 3), (1, false, 1), (0, false, 1), (0, true, 2)]
+    );
+}
+
+#[test]
+fn view_box_is_the_default_extracts_cull_box() {
+    let mut world = world_with_registry();
+    assert_eq!(view_box(&world), None, "no camera, no size: nothing culls");
+    register_sprite(&mut world, "quad", FilterMode::Nearest);
+    let mut camera = CameraState::new();
+    camera.position = Vec2::new(100.0, 50.0);
+    world.insert_resource(camera);
+    world.insert_resource(WindowSize {
+        width: 320,
+        height: 240,
+    });
+    let (min, max) = view_box(&world).unwrap();
+    assert_eq!((min, max), camera.visible_world_aabb(320.0, 240.0));
+    // A 16 px sprite just past the box's right edge is culled; one touching
+    // it is kept.
+    spawn_visible(&mut world, "quad", Vec2::new(max.x + 0.5, min.y), 0);
+    spawn_visible(&mut world, "quad", Vec2::new(max.x - 16.0, min.y), 0);
+    let positions = instance_positions(&extract_sprites_default(&world));
+    assert_eq!(positions, [[max.x - 16.0, min.y]]);
+}
+
+#[test]
+fn a_segment_is_a_turned_flat_quad() {
+    let segment = SpriteInstance::segment([0.0, 0.0], [30.0, 40.0], 4.0, [9, 8, 7, 6], 0.5);
+    // A width longer than the 50 px span, centred on the midpoint.
+    assert_eq!(segment.size, [54.0, 4.0]);
+    assert_eq!(segment.position, [15.0 - 27.0, 20.0 - 2.0]);
+    assert!((segment.rotation - 40f32.atan2(30.0)).abs() < 1e-6);
+    assert_eq!((segment.uv_min, segment.uv_size), ([0.0, 0.0], [1.0, 1.0]));
+    assert_eq!((segment.color, segment.z_norm), ([9, 8, 7, 6], 0.5));
+    let flat = SpriteInstance::flat([1.0, 2.0], [3.0, 4.0], 0.0, [5; 4], 0.75);
+    assert_eq!(
+        (flat.position, flat.size, flat.uv_size, flat.z_norm),
+        ([1.0, 2.0], [3.0, 4.0], [1.0, 1.0], 0.75)
+    );
+}
+
+#[test]
+fn a_beam_tiles_its_sprite_and_cuts_the_last() {
+    let mut world = world_with_registry();
+    // 16 × 8 at a width of 8: tiles 16 long.
+    let asset = helper_asset(&mut world, "ray", 3, (16, 8), UvRect::FULL, false);
+    let laid = |offset: f32| {
+        let mut batches = Batches::new();
+        beam(
+            &mut batches,
+            &asset,
+            Vec2::new(0.0, 10.0),
+            Vec2::new(40.0, 10.0),
+            8.0,
+            offset,
+            [255; 4],
+            0.0,
+        );
+        let batches = batches.into_batches();
+        assert_eq!(batches.len(), 1, "one page, one batch");
+        batches[0]
+            .instances
+            .iter()
+            .map(|tile| {
+                (
+                    tile.position[0],
+                    tile.size[0],
+                    tile.uv_min[0],
+                    tile.uv_size[0],
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    // Two whole tiles, the last cut to half its length and its UV.
+    assert_eq!(
+        laid(0.0),
+        [
+            (0.0, 16.0, 0.0, 1.0),
+            (16.0, 16.0, 0.0, 1.0),
+            (32.0, 8.0, 0.0, 0.5)
+        ]
+    );
+    // Moved 4 px toward the end: the first cut from its start, the last
+    // from its end.
+    assert_eq!(
+        laid(4.0),
+        [
+            (0.0, 4.0, 0.75, 0.25),
+            (4.0, 16.0, 0.0, 1.0),
+            (20.0, 16.0, 0.0, 1.0),
+            (36.0, 4.0, 0.0, 0.25),
+        ]
+    );
+    let mut nothing = Batches::new();
+    beam(
+        &mut nothing,
+        &asset,
+        Vec2::ZERO,
+        Vec2::ZERO,
+        8.0,
+        0.0,
+        [255; 4],
+        0.0,
+    );
+    assert!(nothing.into_batches().is_empty(), "a point lays nothing");
+}

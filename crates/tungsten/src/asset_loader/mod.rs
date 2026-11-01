@@ -41,6 +41,73 @@ pub(crate) use scene::{
     register_extract_components, register_particle_emitter, register_squash_stretch,
 };
 
+/// The reserved sprite every load registers after the manifest's (redo 7.9):
+/// the renderer's 1 × 1 white texel, which flat quads, segments and the
+/// stock glow draw on. A manifest sprite of this name fails the load.
+pub const ENGINE_WHITE: &str = "engine_white";
+
+/// The reserved material every load registers after the manifest's (redo
+/// 7.9): the stock glow, its shader `glow`, compiled in. A manifest material
+/// of this name fails the load.
+pub const ENGINE_GLOW: &str = "engine_glow";
+
+/// The stock glow's shader, compiled in and listed by the root manifest.
+const GLOW_SHADER: &str = "glow";
+
+/// `engine_glow`'s defaults: white, falloff 2, no core boost or dither, peak
+/// alpha 1 (`v0` and `f32s`, as its shader reads them).
+#[must_use]
+pub fn engine_glow_defaults() -> MaterialUniformDefaults {
+    MaterialUniformDefaults {
+        vec4: [[1.0; 4], [0.0; 4], [0.0; 4], [0.0; 4]],
+        f32s: [2.0, 0.0, 0.0, 1.0],
+        ..MaterialUniformDefaults::default()
+    }
+}
+
+/// Allocates the reserved `engine_glow` in `materials`, after the
+/// manifest's, and returns its ID.
+pub(crate) fn allocate_engine_glow(materials: &mut MaterialRegistry) -> MaterialAssetId {
+    materials.allocate(
+        ENGINE_GLOW,
+        PathBuf::new(),
+        GLOW_SHADER.to_string(),
+        engine_glow_defaults(),
+    )
+}
+
+/// A manifest that names a reserved sprite or material.
+fn check_reserved(manifest: &ResolvedManifest) -> anyhow::Result<()> {
+    if manifest.sprites.contains_key(ENGINE_WHITE) {
+        anyhow::bail!("sprite '{ENGINE_WHITE}' is reserved by the engine; rename it");
+    }
+    if manifest.materials.contains_key(ENGINE_GLOW) {
+        anyhow::bail!("material '{ENGINE_GLOW}' is reserved by the engine; rename it");
+    }
+    Ok(())
+}
+
+/// Registers the reserved `engine_white` on the target's white texel, once.
+fn register_engine_white(world: &mut World, target: &mut dyn LoadTarget) {
+    let registry = world.resource_mut::<AssetRegistry>();
+    if registry.get_sprite(ENGINE_WHITE).is_some() {
+        return;
+    }
+    let texel = target.white_texture();
+    registry.register_sprite(
+        ENGINE_WHITE.to_string(),
+        FilterMode::Nearest,
+        1,
+        1,
+        PathBuf::new(),
+        texel,
+        UvRect::FULL,
+        None,
+        None,
+        None,
+    );
+}
+
 /// Theme file paths by `ui_themes` ID (M46, `D-148`): the hot reload's
 /// reverse lookup, as [`FontRegistry`] is for fonts.
 #[derive(Debug, Default)]
@@ -387,6 +454,12 @@ fn load_materials_into(
         }
         log::info!("Loaded material '{id}' (shader={})", material.shader);
     }
+    // The stock glow, after the manifest's, so their IDs stay.
+    let glow = allocate_engine_glow(&mut registry);
+    if let Err(e) = renderer.upload_material(glow, ENGINE_GLOW, GLOW_SHADER, engine_glow_defaults())
+    {
+        log::error!("load_materials '{ENGINE_GLOW}': {e}");
+    }
 
     world.insert_resource(registry);
 }
@@ -669,6 +742,8 @@ pub(crate) trait LoadTarget {
         fallback: &[String],
     );
     fn resolve_or_allocate_shader_id(&mut self, id: &str) -> ShaderAssetId;
+    /// The 1 × 1 white texel's handle, made on first use.
+    fn white_texture(&mut self) -> TextureHandle;
     fn upload_shader(&mut self, id: &str, source: String) -> anyhow::Result<()>;
     fn upload_material(
         &mut self,
@@ -729,6 +804,9 @@ impl LoadTarget for Renderer {
     fn resolve_or_allocate_shader_id(&mut self, id: &str) -> ShaderAssetId {
         Renderer::resolve_or_allocate_shader_id(self, id)
     }
+    fn white_texture(&mut self) -> TextureHandle {
+        Renderer::white_texture(self)
+    }
     fn upload_shader(&mut self, id: &str, source: String) -> anyhow::Result<()> {
         Renderer::upload_shader(self, id, source)
             .map(|_| ())
@@ -760,6 +838,7 @@ impl LoadTarget for Renderer {
 #[derive(Debug, Default)]
 pub(crate) struct HeadlessTarget {
     handles: TextureHandles,
+    white: Option<TextureHandle>,
     shader_ids: HashMap<String, ShaderAssetId>,
     /// The handles uploaded to, in order.
     pub(crate) uploads: Vec<TextureHandle>,
@@ -793,6 +872,15 @@ impl LoadTarget for HeadlessTarget {
     fn resolve_or_allocate_shader_id(&mut self, id: &str) -> ShaderAssetId {
         let next = ShaderAssetId(self.shader_ids.len() as u32);
         *self.shader_ids.entry(id.to_string()).or_insert(next)
+    }
+    fn white_texture(&mut self) -> TextureHandle {
+        if let Some(white) = self.white {
+            return white;
+        }
+        let white = self.handles.allocate();
+        self.uploads.push(white);
+        self.white = Some(white);
+        white
     }
     fn upload_shader(&mut self, _: &str, _: String) -> anyhow::Result<()> {
         Ok(())
@@ -888,6 +976,11 @@ impl LoadPlan {
             .get_resource_mut::<AssetRegistry>()
             .expect("AssetRegistry resource missing")
             .intern_sprites(manifest.sprites.keys().map(String::as_str));
+        // Redo 7.9: the reserved white texel after the manifest's names, so
+        // theirs stay.
+        world
+            .resource_mut::<AssetRegistry>()
+            .intern_sprite(ENGINE_WHITE);
         world.insert_resource(AnimationRegistry::new());
         world.insert_resource(FontRegistry::new());
         world.insert_resource(SoundRegistry::new());
@@ -1009,6 +1102,9 @@ impl LoadPlan {
         };
         let start = Instant::now();
         let manifest = &self.manifest;
+        if self.next == 0 {
+            check_reserved(manifest)?;
+        }
         match &unit {
             LoadUnit::Sprites(_) => {
                 let file = self.units[..self.next]
@@ -1032,6 +1128,10 @@ impl LoadPlan {
                     "Packed {} {filter:?} sprites → {pages} atlas pages",
                     decoded.len()
                 );
+                // The last pack: the reserved white texel after every page.
+                if *filter == FilterMode::Linear {
+                    register_engine_white(world, target);
+                }
             }
             LoadUnit::Animation(id) => load_animation_unit(manifest, id, world)?,
             LoadUnit::Font(id) => load_font_unit(manifest, id, world, target)?,

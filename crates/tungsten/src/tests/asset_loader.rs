@@ -1880,3 +1880,77 @@ fn an_unknown_frame_sound_fails_the_load() {
     assert_eq!(idle.frames.len(), before);
     assert!(idle.frames[0].sound.is_none());
 }
+
+#[test]
+fn engine_white_takes_an_id_after_the_manifests() {
+    let manifest = ResolvedManifest::load(plan_game("")).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest.clone(), &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    let sprites = world.resource::<AssetRegistry>();
+    // The manifest's names keep their sorted IDs; the white texel follows.
+    let mut names: Vec<&String> = manifest.sprites.keys().collect();
+    names.sort();
+    for (index, name) in names.iter().enumerate() {
+        assert_eq!(
+            sprites.sprite_id(name).unwrap().index() as usize,
+            index,
+            "{name}"
+        );
+    }
+    let white = sprites.sprite_id(ENGINE_WHITE).unwrap();
+    assert_eq!(white.index() as usize, names.len());
+    let texel = sprites.sprite(white).unwrap();
+    assert_eq!((texel.width, texel.height), (1, 1));
+    assert_eq!(
+        (texel.filter, texel.uv, texel.lit_atlas),
+        (FilterMode::Nearest, UvRect::FULL, None)
+    );
+    // Its texture, made after every page, is the target's last upload.
+    assert_eq!(target.uploads.last(), Some(&texel.atlas));
+    // The reserved glow follows the manifest's materials, on its shader.
+    let materials = world.resource::<MaterialRegistry>();
+    let glow = materials.get(ENGINE_GLOW).expect("engine_glow");
+    assert_eq!(materials.shader_name_for_id(glow), Some("glow"));
+    assert_eq!(
+        materials.defaults_for_id(glow).unwrap().f32s,
+        engine_glow_defaults().f32s
+    );
+}
+
+#[test]
+fn a_manifest_engine_glow_material_fails_the_load() {
+    let dir = tempdir();
+    write(
+        &dir.join("tint.wgsl"),
+        "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+    );
+    image::RgbaImage::new(2, 2)
+        .save(dir.join("dot.png"))
+        .unwrap();
+    for (section, wanted) in [
+        (
+            r#""materials": { "engine_glow": { "shader": "tint" } }"#,
+            "material 'engine_glow' is reserved",
+        ),
+        (
+            r#""sprites": { "engine_white": { "path": "dot.png" } }"#,
+            "sprite 'engine_white' is reserved",
+        ),
+    ] {
+        let manifest = dir.join("manifest.json");
+        write(
+            &manifest,
+            &format!(r#"{{ "shaders": {{ "tint": {{ "path": "tint.wgsl" }} }}, {section} }}"#),
+        );
+        let manifest = ResolvedManifest::load(&manifest).unwrap();
+        let mut world = load_world();
+        let mut target = HeadlessTarget::default();
+        let mut plan = LoadPlan::new(manifest, &mut world);
+        let err = plan.run_next_into(&mut world, &mut target).unwrap_err();
+        assert!(format!("{err:#}").contains(wanted), "{err:#}");
+        assert_eq!(plan.done(), 0, "before any unit");
+        assert!(target.uploads.is_empty(), "nothing uploaded");
+    }
+}

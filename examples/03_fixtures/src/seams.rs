@@ -22,20 +22,28 @@
 //! - a layer of `seams_lit` tiles beside the light, unlit and tinted green,
 //!   so it draws flat;
 //! - a `Backdrop` of `seams_white` tinted dark teal, repeated over the view
-//!   behind everything.
+//!   behind everything;
+//! - an orange glow, the reserved `engine_white` under the stock
+//!   fragment-only material `engine_glow`;
+//! - a magenta flat quad, `engine_white` scaled by its `Transform`, and a
+//!   cyan segment, `SpriteInstance::segment` from an extract of the scene's
+//!   own;
+//! - a beam of `seams_ray`, a 16 × 8 strip yellow then blue, laid by
+//!   `beam` along a segment from the same extract.
 
 use std::path::PathBuf;
 
 use glam::{Vec2, Vec3};
-use tungsten::App;
 use tungsten::core::assets::tilemap::LayerDraw;
-use tungsten::core::assets::{LayerKind, TilemapRegistry};
+use tungsten::core::assets::{LayerKind, MaterialRegistry, TilemapRegistry};
 use tungsten::core::components::{Backdrop, BackdropRepeat, SpriteFlip, Unlit};
 use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
     AmbientLight, AssetRegistry, Config, Entity, Light, Sprite, TilemapData, TilemapInstance,
     Transform, Visibility, World,
 };
+use tungsten::render::SpriteInstance;
+use tungsten::{App, Batches, ENGINE_GLOW, ENGINE_WHITE, Extracts, beam};
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/03_fixtures/assets/manifest.json";
@@ -68,6 +76,21 @@ pub const GLASS_AT: Vec2 = Vec2::new(160.0, 560.0);
 pub const GLASS_TINT: [u8; 4] = [128, 255, 128, 255];
 /// The backdrop's tint.
 pub const BACKDROP_TINT: [u8; 4] = [8, 40, 48, 255];
+/// The glow's centre and side, and its colour, linear.
+pub const GLOW_AT: Vec2 = Vec2::new(1000.0, 220.0);
+pub const GLOW_SIDE: f32 = 96.0;
+pub const GLOW_COLOR: [f32; 4] = [1.0, 0.6, 0.2, 1.0];
+/// The flat quad's top-left corner and size, magenta.
+pub const FLAT_AT: Vec2 = Vec2::new(720.0, 300.0);
+pub const FLAT_SIZE: Vec2 = Vec2::new(48.0, 24.0);
+/// The segment's ends and width, cyan.
+pub const SEGMENT_FROM: Vec2 = Vec2::new(800.0, 300.0);
+pub const SEGMENT_TO: Vec2 = Vec2::new(880.0, 360.0);
+pub const SEGMENT_WIDTH: f32 = 6.0;
+/// The beam's ends and width: its strip's tiles 16 px long.
+pub const BEAM_FROM: Vec2 = Vec2::new(720.0, 420.0);
+pub const BEAM_TO: Vec2 = Vec2::new(1000.0, 420.0);
+pub const BEAM_WIDTH: f32 = 8.0;
 
 /// Runs the `seams` scene: the root config and both manifests, no systems of
 /// its own.
@@ -158,6 +181,76 @@ fn spawn_scene(world: &mut World) {
             ..Backdrop::new(white)
         },
     ));
+
+    spawn_glow(world);
+    let texel = world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprite(ENGINE_WHITE);
+    let mut flat = Sprite::new(texel);
+    flat.color = [255, 0, 255, 255];
+    world.spawn_with((
+        Transform {
+            position: FLAT_AT,
+            rotation: 0.0,
+            scale: FLAT_SIZE,
+        },
+        flat,
+        Visibility::default(),
+    ));
+    world.resource_mut::<Extracts>().add_sprites(lines);
+}
+
+/// The glow: `engine_white` at the glow's side under `engine_glow`, its
+/// colour and falloff in its block.
+fn spawn_glow(world: &mut World) {
+    let texel = world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprite(ENGINE_WHITE);
+    let mut sprite = Sprite::new(texel);
+    sprite.material_id = world.resource::<MaterialRegistry>().get(ENGINE_GLOW);
+    world.spawn_with((
+        Transform {
+            position: GLOW_AT - Vec2::splat(GLOW_SIDE * 0.5),
+            rotation: 0.0,
+            scale: Vec2::splat(GLOW_SIDE),
+        },
+        sprite,
+        Visibility::default(),
+        UniformOverrideBlock::from_slots(
+            [GLOW_COLOR, [0.0; 4], [0.0; 4], [0.0; 4]],
+            [2.0, 0.0, 0.0, 1.0],
+            [0; 4],
+        ),
+    ));
+}
+
+/// The scene's own extract: the segment on the white texel, then the beam.
+fn lines(world: &World) -> Vec<tungsten::render::SpriteBatch> {
+    let assets = world.resource::<AssetRegistry>();
+    let mut batches = Batches::new();
+    if let Some(texel) = assets.get_sprite(ENGINE_WHITE) {
+        let segment = SpriteInstance::segment(
+            SEGMENT_FROM.to_array(),
+            SEGMENT_TO.to_array(),
+            SEGMENT_WIDTH,
+            [0, 255, 255, 255],
+            0.0,
+        );
+        batches.push(texel, segment);
+    }
+    if let Some(ray) = assets.get_sprite("seams_ray") {
+        beam(
+            &mut batches,
+            ray,
+            BEAM_FROM,
+            BEAM_TO,
+            BEAM_WIDTH,
+            0.0,
+            [255; 4],
+            0.0,
+        );
+    }
+    batches.into_batches()
 }
 
 /// Spawns `seams_white` at 32 px, its top-left at `at`, tinted `color`, at

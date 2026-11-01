@@ -64,6 +64,40 @@ impl SpriteInstance {
             _pad: 0.0,
         }
     }
+
+    /// A flat-colour quad on the renderer's white texel (redo 7.9), the
+    /// reserved sprite `engine_white`: `size` from its top-left `position`,
+    /// turned about its centre by `rotation`.
+    #[must_use]
+    pub fn flat(
+        position: [f32; 2],
+        size: [f32; 2],
+        rotation: f32,
+        color: [u8; 4],
+        z_norm: f32,
+    ) -> Self {
+        Self {
+            z_norm,
+            ..Self::whole(position, size, rotation, color)
+        }
+    }
+
+    /// A line `width` thick from `from` to `to`, as a [`flat`](Self::flat)
+    /// quad turned along it, centred on its midpoint and a `width` longer, so
+    /// joined segments overlap at their ends.
+    #[must_use]
+    pub fn segment(from: [f32; 2], to: [f32; 2], width: f32, color: [u8; 4], z_norm: f32) -> Self {
+        let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+        let size = [dx.hypot(dy) + width, width];
+        let centre = [f32::midpoint(from[0], to[0]), f32::midpoint(from[1], to[1])];
+        Self::flat(
+            [centre[0] - size[0] * 0.5, centre[1] - size[1] * 0.5],
+            size,
+            dy.atan2(dx),
+            color,
+            z_norm,
+        )
+    }
 }
 
 impl Default for SpriteInstance {

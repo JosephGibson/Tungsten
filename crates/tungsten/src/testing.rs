@@ -148,6 +148,8 @@ impl Harness {
                 material.uniform_defaults,
             );
         }
+        // The reserved stock glow after the manifest's, as a load gives it.
+        asset_loader::allocate_engine_glow(&mut materials);
         world.insert_resource(materials);
         asset_loader::load_sounds(&manifest, world)?;
         asset_loader::load_tilemaps(&manifest, world)?;
@@ -159,7 +161,8 @@ impl Harness {
     /// at `path` names, with no pixels (redo 7.9): its size from its
     /// image's header, lit when it names a normal map, its anchor, frame
     /// and nine-slice, on one spare texture handle per filter with full UVs,
-    /// as `tungsten check` registers them. [`load_manifest`](Self::load_manifest)
+    /// as `tungsten check` registers them, then the reserved 1 × 1
+    /// `engine_white` once, as a load does. [`load_manifest`](Self::load_manifest)
     /// registers no sprite, so a test that draws a manifest's sprites
     /// headless calls this once, after it.
     ///
@@ -199,6 +202,20 @@ impl Harness {
                 sizes[sprite.path.as_path()],
                 atlas,
                 sprite.normal_path.is_some(),
+            );
+        }
+        if registry.get_sprite(asset_loader::ENGINE_WHITE).is_none() {
+            registry.register_sprite(
+                asset_loader::ENGINE_WHITE.to_string(),
+                FilterMode::Nearest,
+                1,
+                1,
+                std::path::PathBuf::new(),
+                handles[0],
+                tungsten_core::assets::UvRect::FULL,
+                None,
+                None,
+                None,
             );
         }
         Ok(())

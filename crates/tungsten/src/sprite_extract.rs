@@ -63,7 +63,7 @@ use tungsten_core::components::{Backdrop, BackdropRepeat, SpriteFlip, Unlit};
 use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
     AssetRegistry, CameraState, Entity, FilterMode, MaterialAssetId, OptionalColumn, ParallaxLayer,
-    Sprite, Time, Transform, Visibility, World, parallax_world_position,
+    Sprite, SpriteAsset, Time, Transform, Visibility, World, parallax_world_position,
 };
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
@@ -519,6 +519,144 @@ pub(crate) fn render_viewport(world: &World) -> Option<(u32, u32)> {
                 .get_resource::<WindowSize>()
                 .map(|size| (size.width, size.height))
         })
+}
+
+/// The world box the default extract culls by (redo 7.9): the camera's
+/// visible box at the size render projects with. `None`, which culls
+/// nothing, without a camera or a size. A game's own extract culls by it.
+#[must_use]
+pub fn view_box(world: &World) -> Option<(Vec2, Vec2)> {
+    view_bounds(world)
+}
+
+/// The instance that draws `asset` over `size` from its top-left
+/// `position`, turned by `rotation` about its centre, tinted `color`, at
+/// `z_norm` (redo 7.9): the asset's UVs, as the default extract writes
+/// them, for a game's own extract.
+#[must_use]
+pub fn sprite_instance(
+    asset: &SpriteAsset,
+    position: Vec2,
+    size: Vec2,
+    rotation: f32,
+    color: [u8; 4],
+    z_norm: f32,
+) -> SpriteInstance {
+    SpriteInstance {
+        position: position.to_array(),
+        size: size.to_array(),
+        rotation,
+        color,
+        uv_min: asset.uv.min,
+        uv_size: [
+            asset.uv.max[0] - asset.uv.min[0],
+            asset.uv.max[1] - asset.uv.min[1],
+        ],
+        z_norm,
+        _pad: 0.0,
+    }
+}
+
+/// Sprite batches built an instance at a time, for a game's own extract
+/// (redo 7.9): an instance joins the last batch when it draws alike, on the
+/// same page, filter and lighting, and opens one otherwise, so the batches
+/// draw in push order.
+#[derive(Default)]
+pub struct Batches {
+    batches: Vec<SpriteBatch>,
+}
+
+impl Batches {
+    /// No batches yet.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Pushes `instance`, drawn from `asset`'s page with its filter and
+    /// lighting.
+    pub fn push(&mut self, asset: &SpriteAsset, instance: SpriteInstance) {
+        let lit = asset.lit_atlas.is_some();
+        match self.batches.last_mut() {
+            Some(batch)
+                if batch.texture == asset.atlas
+                    && batch.filter == asset.filter
+                    && batch.lit == lit =>
+            {
+                batch.instances.push(instance);
+            }
+            _ => {
+                let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+                batch.lit = lit;
+                batch.instances.push(instance);
+                self.batches.push(batch);
+            }
+        }
+    }
+
+    /// The batches, in push order.
+    #[must_use]
+    pub fn into_batches(self) -> Vec<SpriteBatch> {
+        self.batches
+    }
+}
+
+/// Most tiles one [`beam`] lays.
+const BEAM_TILES: usize = 1 << 16;
+
+/// Lays `asset` along the segment from `from` to `to`, `width` across (redo
+/// 7.9): tiles of the sprite's own aspect at that width, turned along the
+/// segment, their pattern moved `offset` world pixels toward `to`, so a
+/// growing offset scrolls it; the tiles at the ends are cut short by their
+/// UVs where the segment ends. A segment or width of 0 lays nothing.
+#[allow(clippy::too_many_arguments)] // a beam's own description
+pub fn beam(
+    batches: &mut Batches,
+    asset: &SpriteAsset,
+    from: Vec2,
+    to: Vec2,
+    width: f32,
+    offset: f32,
+    color: [u8; 4],
+    z_norm: f32,
+) {
+    let along = to - from;
+    let length = along.length();
+    if !(length > 0.0 && width > 0.0 && asset.width > 0 && asset.height > 0 && offset.is_finite()) {
+        return;
+    }
+    let direction = along / length;
+    let rotation = direction.y.atan2(direction.x);
+    let tile = asset.width as f32 * width / asset.height as f32;
+    let uv_min = Vec2::from(asset.uv.min);
+    let uv_size = Vec2::from(asset.uv.max) - uv_min;
+    let mut start = offset.rem_euclid(tile);
+    if start > 0.0 {
+        start -= tile;
+    }
+    for _ in 0..BEAM_TILES {
+        if start >= length {
+            break;
+        }
+        let (near, far) = (start.max(0.0), (start + tile).min(length));
+        let (u0, u1) = ((near - start) / tile, (far - start) / tile);
+        let centre = from + direction * (near + far) * 0.5;
+        let size = Vec2::new(far - near, width);
+        batches.push(
+            asset,
+            SpriteInstance {
+                position: (centre - size * 0.5).to_array(),
+                size: size.to_array(),
+                rotation,
+                color,
+                uv_min: [uv_min.x + u0 * uv_size.x, uv_min.y],
+                uv_size: [(u1 - u0) * uv_size.x, uv_size.y],
+                z_norm,
+                _pad: 0.0,
+            },
+        );
+        start += tile;
+    }
 }
 
 /// The world-space box render shows: the camera's visible box at

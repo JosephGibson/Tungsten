@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use example_03_fixtures::seams::{
-    FLASH_AT, GLASS_AT, LIT_AT, OVER_STRIP_AT, PIECE, STRIP_AT, TWIN_AT, UNDER_STRIP_AT, UNLIT_AT,
+    BEAM_FROM, BEAM_TO, FLASH_AT, FLAT_AT, FLAT_SIZE, GLASS_AT, GLOW_AT, GLOW_SIDE, LIT_AT,
+    OVER_STRIP_AT, PIECE, SEGMENT_FROM, SEGMENT_TO, SEGMENT_WIDTH, STRIP_AT, TWIN_AT,
+    UNDER_STRIP_AT, UNLIT_AT,
 };
 use glam::Vec2;
 
@@ -487,5 +489,96 @@ fn a_backdrop_fills_the_view() {
             "({x}, {y}): ({r}, {g}, {b})"
         );
         assert!(g > r + 30 && b > r + 30, "({x}, {y}): ({r}, {g}, {b})");
+    }
+}
+
+/// The capture's pixel at `at`, rounded down to whole pixels.
+fn pixel(image: &Rgba, at: Vec2) -> [u8; 4] {
+    image.at(at.x as usize, at.y as usize)
+}
+
+/// Whether `pixel`'s colour is `rgb` within 1 a channel.
+fn is(pixel: [u8; 4], rgb: [u8; 3]) -> bool {
+    pixel
+        .iter()
+        .zip(&rgb)
+        .all(|(&c, &want)| c.abs_diff(want) <= 1)
+}
+
+#[test]
+fn a_fragment_only_glow_draws_its_falloff() {
+    if !gated() {
+        return;
+    }
+    let image = capture();
+    // Full strength at the centre: its colour (1, 0.6, 0.2) in sRGB.
+    let [r, g, b, _] = pixel(image, GLOW_AT);
+    assert!(
+        r >= 250 && g.abs_diff(203) <= 3 && b.abs_diff(124) <= 3,
+        "({r}, {g}, {b})"
+    );
+    // Fading out along a radius to the backdrop past its circle, which the
+    // quad's corner shows.
+    let radius = GLOW_SIDE * 0.5;
+    let reds: Vec<u8> = [0.0, 0.25, 0.5, 0.75, 0.95]
+        .iter()
+        .map(|&d| pixel(image, GLOW_AT + Vec2::new(radius * d, 0.0))[0])
+        .collect();
+    assert!(reds.windows(2).all(|pair| pair[0] > pair[1]), "{reds:?}");
+    let backdrop = image.at(2, 2);
+    let corner = pixel(image, GLOW_AT + Vec2::splat(radius * 0.9));
+    assert!(
+        is(corner, [backdrop[0], backdrop[1], backdrop[2]]),
+        "{corner:?}"
+    );
+    assert!(reds[4] > backdrop[0], "a trace of glow inside the circle");
+}
+
+#[test]
+fn a_flat_quad_and_a_segment_draw_their_colour() {
+    if !gated() {
+        return;
+    }
+    let image = capture();
+    let (width, height) = (FLAT_SIZE.x as usize, FLAT_SIZE.y as usize);
+    assert!(
+        area(image, FLAT_AT, 2..width - 2, 2..height - 2).all(|p| is(p, [255, 0, 255])),
+        "the flat quad's magenta"
+    );
+    // Cyan along the segment, its ends included; off to its side, not.
+    let along = SEGMENT_TO - SEGMENT_FROM;
+    for t in [0.0, 0.25, 0.5, 0.75, 1.0] {
+        let at = SEGMENT_FROM + along * t;
+        assert!(
+            is(pixel(image, at), [0, 255, 255]),
+            "at {t}: {:?}",
+            pixel(image, at)
+        );
+    }
+    let side = along.perp().normalize() * (SEGMENT_WIDTH * 1.5);
+    let off = pixel(image, SEGMENT_FROM + along * 0.5 + side);
+    assert!(!is(off, [0, 255, 255]), "beside the segment: {off:?}");
+}
+
+#[test]
+fn a_beam_spans_its_segment() {
+    if !gated() {
+        return;
+    }
+    let image = capture();
+    let yellow = |p: [u8; 4]| is(p, [255, 255, 0]);
+    let blue = |p: [u8; 4]| is(p, [0, 0, 255]);
+    // Its strip from end to end: yellow then blue, 8 px each.
+    let y = BEAM_FROM.y as usize;
+    for x in (BEAM_FROM.x as usize + 1)..(BEAM_TO.x as usize - 1) {
+        let p = image.at(x, y);
+        let in_tile = (x - BEAM_FROM.x as usize) % 16;
+        let want = if in_tile < 8 { yellow(p) } else { blue(p) };
+        assert!(want, "x {x}: {p:?}");
+    }
+    // Nothing past either end.
+    for x in [BEAM_FROM.x as usize - 3, BEAM_TO.x as usize + 3] {
+        let p = image.at(x, y);
+        assert!(!yellow(p) && !blue(p), "x {x}: {p:?}");
     }
 }

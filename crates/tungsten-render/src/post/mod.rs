@@ -59,6 +59,13 @@ pub(crate) const STOCK_SHADERS: [(&str, &str); 17] = [
     ("god_rays", include_str!("../shaders/stock/god_rays.wgsl")),
 ];
 
+/// The stock materials' shaders (redo 7.9), compiled in as the stock post
+/// shaders are and mirrored in `assets/shaders/stock/`: `Renderer::new`
+/// seeds them after `STOCK_SHADERS`, and the umbrella binds `glow` to the
+/// reserved material `engine_glow`.
+pub(crate) const STOCK_MATERIAL_SHADERS: [(&str, &str); 1] =
+    [("glow", include_str!("../shaders/stock/glow.wgsl"))];
+
 /// Row of `STOCK_SHADERS` that draws `pass`. Bloom has none: it owns four
 /// stage shaders and records its own passes.
 fn stock_index(pass: &PostPass) -> Option<usize> {

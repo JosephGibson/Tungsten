@@ -772,6 +772,7 @@ pub fn tungsten_render::renderer::Renderer::upload_material(&mut self, tungsten_
 pub fn tungsten_render::renderer::Renderer::upload_particle_mesh(&mut self, tungsten_core::assets::particle::ParticleMeshAssetId, &[[f32; 2]], &[u16])
 pub fn tungsten_render::renderer::Renderer::upload_shader(&mut self, &str, alloc::string::String) -> core::result::Result<tungsten_core::assets::shader::ShaderAssetId, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::upload_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::renderer::Renderer::white_texture(&mut self) -> tungsten_core::assets::registry::TextureHandle
 pub fn tungsten_render::renderer::Renderer::write_subtexture(&self, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, u32, u32)
 pub fn tungsten_render::renderer::Renderer::write_subtexture_lit(&self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, u32, u32)
 impl tungsten_render::renderer::Renderer
@@ -867,6 +868,8 @@ impl core::marker::Unpin for tungsten_render::shader_hot_reload::ShaderModuleCac
 impl core::marker::UnsafeUnpin for tungsten_render::shader_hot_reload::ShaderModuleCache
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::shader_hot_reload::ShaderModuleCache
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::shader_hot_reload::ShaderModuleCache
+pub const tungsten_render::shader_hot_reload::MATERIAL_PRELUDE: &str
+pub fn tungsten_render::shader_hot_reload::module_source(&str) -> alloc::borrow::Cow<'_, str>
 pub fn tungsten_render::shader_hot_reload::validate_wgsl_source(&str, &str) -> core::result::Result<(), tungsten_render::shader_hot_reload::ShaderError>
 pub mod tungsten_render::sprite
 pub struct tungsten_render::sprite::SpriteBatch
@@ -896,6 +899,8 @@ pub tungsten_render::sprite::SpriteInstance::uv_size: [f32; 2]
 pub tungsten_render::sprite::SpriteInstance::z_norm: f32
 impl tungsten_render::sprite::SpriteInstance
 pub fn tungsten_render::sprite::SpriteInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+pub fn tungsten_render::sprite::SpriteInstance::flat([f32; 2], [f32; 2], f32, [u8; 4], f32) -> Self
+pub fn tungsten_render::sprite::SpriteInstance::segment([f32; 2], [f32; 2], f32, [u8; 4], f32) -> Self
 pub fn tungsten_render::sprite::SpriteInstance::whole([f32; 2], [f32; 2], f32, [u8; 4]) -> Self
 impl bytemuck::pod::Pod for tungsten_render::sprite::SpriteInstance
 impl bytemuck::zeroable::Zeroable for tungsten_render::sprite::SpriteInstance
@@ -1925,6 +1930,7 @@ pub fn tungsten_render::renderer::Renderer::upload_material(&mut self, tungsten_
 pub fn tungsten_render::renderer::Renderer::upload_particle_mesh(&mut self, tungsten_core::assets::particle::ParticleMeshAssetId, &[[f32; 2]], &[u16])
 pub fn tungsten_render::renderer::Renderer::upload_shader(&mut self, &str, alloc::string::String) -> core::result::Result<tungsten_core::assets::shader::ShaderAssetId, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::upload_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::renderer::Renderer::white_texture(&mut self) -> tungsten_core::assets::registry::TextureHandle
 pub fn tungsten_render::renderer::Renderer::write_subtexture(&self, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, u32, u32)
 pub fn tungsten_render::renderer::Renderer::write_subtexture_lit(&self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, u32, u32)
 impl tungsten_render::renderer::Renderer
@@ -2107,6 +2113,8 @@ pub tungsten_render::SpriteInstance::uv_size: [f32; 2]
 pub tungsten_render::SpriteInstance::z_norm: f32
 impl tungsten_render::sprite::SpriteInstance
 pub fn tungsten_render::sprite::SpriteInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+pub fn tungsten_render::sprite::SpriteInstance::flat([f32; 2], [f32; 2], f32, [u8; 4], f32) -> Self
+pub fn tungsten_render::sprite::SpriteInstance::segment([f32; 2], [f32; 2], f32, [u8; 4], f32) -> Self
 pub fn tungsten_render::sprite::SpriteInstance::whole([f32; 2], [f32; 2], f32, [u8; 4]) -> Self
 impl bytemuck::pod::Pod for tungsten_render::sprite::SpriteInstance
 impl bytemuck::zeroable::Zeroable for tungsten_render::sprite::SpriteInstance

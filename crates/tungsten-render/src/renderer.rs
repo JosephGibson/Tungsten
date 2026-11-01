@@ -27,7 +27,7 @@ use crate::post::smaa::{
     SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
     SmaaPipeline, SmaaShaderIds,
 };
-use crate::post::{PostStackRenderer, STOCK_SHADERS};
+use crate::post::{PostStackRenderer, STOCK_MATERIAL_SHADERS, STOCK_SHADERS};
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{
     PendingCapture, ScreenshotError, aligned_bytes_per_row, capture_for_frame, strip_row_padding,
@@ -119,8 +119,12 @@ const SUBMIT_BEFORE_ACQUIRE: bool = true;
 
 /// Cache id of the first stock post shader. Ids 0-10 belong to the sprite,
 /// SMAA, bloom and lit-sprite shaders that `Renderer::new` seeds by number;
-/// the rows of `STOCK_SHADERS` follow, then the shaders a manifest adds.
+/// the rows of `STOCK_SHADERS` follow, then those of
+/// `STOCK_MATERIAL_SHADERS`, then the shaders a manifest adds.
 const STOCK_SHADER_ID_BASE: u32 = 11;
+
+/// Cache id of the first stock material shader (redo 7.9).
+const STOCK_MATERIAL_SHADER_ID_BASE: u32 = STOCK_SHADER_ID_BASE + STOCK_SHADERS.len() as u32;
 
 /// WGPU renderer state.
 pub struct Renderer {
@@ -196,6 +200,8 @@ pub struct Renderer {
     camera_written: Option<[u8; 64]>,
     /// Payload last written to the lighting UBO.
     lights_written: Option<LightUbo>,
+    /// The 1 × 1 white texel's handle, once made (redo 7.9).
+    white_texture: Option<TextureHandle>,
 }
 
 impl Renderer {
@@ -503,6 +509,14 @@ impl Renderer {
                 .expect("compile-time stock post shader must validate");
         }
 
+        // The stock materials' shaders (redo 7.9), after the post rows.
+        for (index, &(name, source)) in STOCK_MATERIAL_SHADERS.iter().enumerate() {
+            let id = ShaderAssetId(STOCK_MATERIAL_SHADER_ID_BASE + index as u32);
+            shader_cache
+                .upload(&device, id, name, source.to_string())
+                .expect("compile-time stock material shader must validate");
+        }
+
         let post_stack = PostStackRenderer::new(
             &device,
             format,
@@ -609,6 +623,10 @@ impl Renderer {
         for (&(name, _), &id) in STOCK_SHADERS.iter().zip(&stock_shader_ids) {
             shader_ids.insert(name.to_string(), id);
         }
+        for (index, &(name, _)) in STOCK_MATERIAL_SHADERS.iter().enumerate() {
+            let id = ShaderAssetId(STOCK_MATERIAL_SHADER_ID_BASE + index as u32);
+            shader_ids.insert(name.to_string(), id);
+        }
 
         Ok(Self {
             instance,
@@ -642,7 +660,7 @@ impl Renderer {
             materials: HashMap::new(),
             pending_materials: PendingMaterials::default(),
             shader_ids,
-            next_shader_id: STOCK_SHADER_ID_BASE + STOCK_SHADERS.len() as u32,
+            next_shader_id: STOCK_MATERIAL_SHADER_ID_BASE + STOCK_MATERIAL_SHADERS.len() as u32,
             timestamp_support,
             gpu_timings,
             cpu_timings: CpuFrameTimings::default(),
@@ -653,6 +671,7 @@ impl Renderer {
             pending_capture: None,
             camera_written: None,
             lights_written: None,
+            white_texture: None,
         })
     }
 
@@ -695,6 +714,20 @@ impl Renderer {
     /// Mint renderer-owned texture handle.
     pub fn allocate_texture_handle(&mut self) -> TextureHandle {
         self.sprite_pipeline.allocate_texture_handle()
+    }
+
+    /// The 1 × 1 white texel (redo 7.9): its handle minted and its pixel
+    /// uploaded on first use, then kept. The umbrella registers it as the
+    /// reserved sprite `engine_white`, which flat quads, segments and the
+    /// stock glow draw on.
+    pub fn white_texture(&mut self) -> TextureHandle {
+        if let Some(handle) = self.white_texture {
+            return handle;
+        }
+        let handle = self.allocate_texture_handle();
+        self.upload_texture(handle, &[255; 4], 1, 1, FilterMode::Nearest);
+        self.white_texture = Some(handle);
+        handle
     }
 
     /// Drop texture pool entry and bind group. Also drops the matching M29

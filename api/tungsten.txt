@@ -322,6 +322,9 @@ impl core::marker::Unpin for tungsten::asset_loader::UiThemePaths
 impl core::marker::UnsafeUnpin for tungsten::asset_loader::UiThemePaths
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::UiThemePaths
 impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::UiThemePaths
+pub const tungsten::asset_loader::ENGINE_GLOW: &str
+pub const tungsten::asset_loader::ENGINE_WHITE: &str
+pub fn tungsten::asset_loader::engine_glow_defaults() -> tungsten_core::assets::material::MaterialUniformDefaults
 pub fn tungsten::asset_loader::load_all(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_all_merged(&[impl core::convert::AsRef<std::path::Path>], &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_animations(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
@@ -780,7 +783,24 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten::post_aa::PostAaState
 impl core::panic::unwind_safe::UnwindSafe for tungsten::post_aa::PostAaState
 pub fn tungsten::post_aa::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten_core::config::PostAaMode)
 pub mod tungsten::sprite_extract
+pub struct tungsten::sprite_extract::Batches
+impl tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::Batches::into_batches(self) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub fn tungsten::sprite_extract::Batches::new() -> Self
+pub fn tungsten::sprite_extract::Batches::push(&mut self, &tungsten_core::assets::registry::SpriteAsset, tungsten_render::sprite::SpriteInstance)
+impl core::default::Default for tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::Batches::default() -> tungsten::sprite_extract::Batches
+impl core::marker::Freeze for tungsten::sprite_extract::Batches
+impl core::marker::Send for tungsten::sprite_extract::Batches
+impl core::marker::Sync for tungsten::sprite_extract::Batches
+impl core::marker::Unpin for tungsten::sprite_extract::Batches
+impl core::marker::UnsafeUnpin for tungsten::sprite_extract::Batches
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::sprite_extract::Batches
+impl core::panic::unwind_safe::UnwindSafe for tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::beam(&mut tungsten::sprite_extract::Batches, &tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32, [u8; 4], f32)
 pub fn tungsten::sprite_extract::extract_sprites_default(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub fn tungsten::sprite_extract::sprite_instance(&tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, [u8; 4], f32) -> tungsten_render::sprite::SpriteInstance
+pub fn tungsten::sprite_extract::view_box(&tungsten_core::ecs::world::World) -> core::option::Option<(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)>
 pub mod tungsten::state
 #[non_exhaustive] pub enum tungsten::state::RootCover
 pub tungsten::state::RootCover::Hide
@@ -1373,6 +1393,20 @@ impl core::marker::Unpin for tungsten::app::App
 impl core::marker::UnsafeUnpin for tungsten::app::App
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::app::App
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
+pub struct tungsten::Batches
+impl tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::Batches::into_batches(self) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub fn tungsten::sprite_extract::Batches::new() -> Self
+pub fn tungsten::sprite_extract::Batches::push(&mut self, &tungsten_core::assets::registry::SpriteAsset, tungsten_render::sprite::SpriteInstance)
+impl core::default::Default for tungsten::sprite_extract::Batches
+pub fn tungsten::sprite_extract::Batches::default() -> tungsten::sprite_extract::Batches
+impl core::marker::Freeze for tungsten::sprite_extract::Batches
+impl core::marker::Send for tungsten::sprite_extract::Batches
+impl core::marker::Sync for tungsten::sprite_extract::Batches
+impl core::marker::Unpin for tungsten::sprite_extract::Batches
+impl core::marker::UnsafeUnpin for tungsten::sprite_extract::Batches
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::sprite_extract::Batches
+impl core::panic::unwind_safe::UnwindSafe for tungsten::sprite_extract::Batches
 #[non_exhaustive] pub struct tungsten::BootProgress<'a>
 pub tungsten::BootProgress::assets: &'a tungsten::asset_loader::BootAssets
 pub tungsten::BootProgress::done: usize
@@ -2062,6 +2096,8 @@ impl core::marker::UnsafeUnpin for tungsten::plugins::UiPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::UiPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::UiPlugin
 pub const tungsten::ENGINE_FONT_ID: &str
+pub const tungsten::ENGINE_GLOW: &str
+pub const tungsten::ENGINE_WHITE: &str
 pub trait tungsten::GameState: 'static
 pub fn tungsten::GameState::id(&self) -> tungsten::state::StateId
 pub fn tungsten::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -2070,6 +2106,7 @@ pub fn tungsten::GameState::on_pause(&mut self, &mut tungsten::state::StateConte
 pub fn tungsten::GameState::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::update(&mut self, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::apply_settings(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::beam(&mut tungsten::sprite_extract::Batches, &tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32, [u8; 4], f32)
 pub fn tungsten::camera_update_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::despawn_scene_entities(&mut tungsten_core::ecs::world::World, tungsten::state::StateId)
 pub fn tungsten::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo
@@ -2087,11 +2124,13 @@ pub fn tungsten::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten
 pub fn tungsten::shake_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::shipped_volume(&tungsten_core::ecs::world::World, core::option::Option<tungsten_core::audio::AudioBus>) -> f32
 pub fn tungsten::spawn_mesh_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, tungsten_core::assets::particle::ParticleMeshAssetId, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)
+pub fn tungsten::sprite_instance(&tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, [u8; 4], f32) -> tungsten_render::sprite::SpriteInstance
 pub fn tungsten::squash_stretch_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::squash_stretch_trigger_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::tween_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::ui_debug_toggle_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::ui_state_roots_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::view_box(&tungsten_core::ecs::world::World) -> core::option::Option<(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)>
 pub type tungsten::BootViewFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World, &tungsten::app::BootProgress<'_>) -> tungsten::app::BootView>
 pub type tungsten::StateId = &'static str
