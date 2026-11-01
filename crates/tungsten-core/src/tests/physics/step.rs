@@ -6895,3 +6895,48 @@ fn a_cell_changing_slope_wakes_its_sleepers() {
     let slid = world.get::<Position>(on_full).unwrap().0;
     assert!(slid.x < rested.x - 8.0, "it slid off its cell: {slid}");
 }
+
+#[test]
+fn a_map_inserted_again_with_a_tile_turned_slope_reaches_the_step() {
+    // A box resting on a full cell (x 16..32, y 32..48); the map inserted
+    // again under its ID with only that tile turned a 45° slope, whose face
+    // runs from (32, 32) to (16, 48). The insert is another map to the
+    // step's cache, so the box drops onto the face and slides down it.
+    for gravity in [900.0, 3_600.0] {
+        let mut data = TilemapData::new(16, 16, 4, 4);
+        let ramp = data.add_tile("ramp");
+        let layer = data.add_layer("solid", LayerKind::Collision);
+        data.set_tile(layer, 1, 2, ramp);
+        let mut world = one_way_world(data.clone());
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, gravity);
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::aabb(Vec2::splat(4.0)),
+            Vec2::new(24.0, 27.9),
+            Vec2::ZERO,
+        );
+        for _ in 0..10 {
+            physics_step(&mut world);
+        }
+        let rested = world.get::<Position>(body).unwrap().0;
+        data.set_tile_props(
+            ramp,
+            TileProps {
+                slope: Some(slope_kind(1)),
+                ..TileProps::default()
+            },
+        );
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("ledges".into(), data);
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        let end = world.get::<Position>(body).unwrap().0;
+        assert!(
+            end.y > 30.0,
+            "gravity {gravity}: rested at {rested}, still at {end} on the old full cell"
+        );
+    }
+}

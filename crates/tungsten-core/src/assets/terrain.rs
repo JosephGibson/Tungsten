@@ -629,6 +629,7 @@ fn fingerprint(data: &TilemapData) -> u64 {
         fold.add_option_str(props.style.as_deref());
         fold.add(props.mask.map_or(u64::MAX, u64::from));
         fold.add(u64::from(props.weight));
+        fold.add(props.slope.map_or(0, |slope| u64::from(slope.code())));
     }
     let width = (data.width as usize).max(1);
     let mut cells = 0;
