@@ -613,6 +613,25 @@ fn cross_check(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result
                 "Particle config '{id}' references unknown {kind} ID '{name}'",
             ));
         }
+        // Redo 7.9: its clip and its stop's layer names, the physics names
+        // loaded.
+        if let Some(clip) = &cfg.clip
+            && anim_registry.get(clip).is_none()
+        {
+            return Err(anyhow::anyhow!(
+                "Particle config '{id}' references unknown clip ID '{clip}'"
+            ));
+        }
+        let layers = world.get_resource::<PhysicsLayers>();
+        for layer in cfg.stop.iter().flat_map(|stop| &stop.mask) {
+            if let tungsten_core::assets::particle::LayerRef::Name(name) = layer
+                && layers.is_none_or(|layers| layers.layer(name).is_none())
+            {
+                return Err(anyhow::anyhow!(
+                    "Particle config '{id}' stop names unknown physics layer '{name}'"
+                ));
+            }
+        }
     }
 
     prefab::check_all_map_objects(world)

@@ -170,8 +170,8 @@ pub(crate) fn register_particle_emitter(world: &mut World) {
                 .expect("the asset check found the config in this World");
             (
                 ParticleEmitter {
-                    config,
                     seed_override: def.seed,
+                    ..ParticleEmitter::new(config)
                 },
                 ParticleEmitterState::default(),
             )

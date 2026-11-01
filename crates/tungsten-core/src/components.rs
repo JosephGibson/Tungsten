@@ -137,11 +137,19 @@ impl Tag {
     }
 }
 
-/// Declarative particle emitter.
+/// Declarative particle emitter. Redo 7.9: a game steers a live one by
+/// `rate_scale`, `direction` and `paused`, and a changed `config` takes its
+/// snapshot at the next tick.
 #[derive(Debug, Clone, Copy)]
 pub struct ParticleEmitter {
     pub config: AssetId<ParticleConfig>,
     pub seed_override: Option<u64>,
+    /// Scales a continuous rate: 1 unless set.
+    pub rate_scale: f32,
+    /// Replaces a cone's or a vector's direction; `None` keeps the config's.
+    pub direction: Option<Vec2>,
+    /// While set, nothing emits; a burst not yet fired fires on resume.
+    pub paused: bool,
 }
 
 impl ParticleEmitter {
@@ -150,14 +158,17 @@ impl ParticleEmitter {
         Self {
             config,
             seed_override: None,
+            rate_scale: 1.0,
+            direction: None,
+            paused: false,
         }
     }
 
     #[must_use]
     pub fn with_seed(config: AssetId<ParticleConfig>, seed: u64) -> Self {
         Self {
-            config,
             seed_override: Some(seed),
+            ..Self::new(config)
         }
     }
 }
@@ -180,6 +191,9 @@ pub struct ParticleEmitterState {
     /// A `Burst` emitter has fired since it spawned or was last re-armed
     /// ([`ParticleEmitterState::rearm_burst`], `D-143`).
     pub burst_fired: bool,
+    /// The config the snapshot is of (redo 7.9): an emitter whose `config`
+    /// changes takes the new one's snapshot at its next tick.
+    pub snapshot_of: Option<AssetId<ParticleConfig>>,
 }
 
 impl ParticleEmitterState {
@@ -207,6 +221,7 @@ impl Default for ParticleEmitterState {
             first_tick_done: false,
             drain_reported: false,
             burst_fired: false,
+            snapshot_of: None,
         }
     }
 }

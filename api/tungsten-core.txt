@@ -1253,6 +1253,26 @@ impl core::marker::Unpin for tungsten_core::assets::particle::InitialVelocity
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::InitialVelocity
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::InitialVelocity
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::InitialVelocity
+pub enum tungsten_core::assets::particle::LayerRef
+pub tungsten_core::assets::particle::LayerRef::Name(alloc::string::String)
+pub tungsten_core::assets::particle::LayerRef::Number(u32)
+impl core::clone::Clone for tungsten_core::assets::particle::LayerRef
+pub fn tungsten_core::assets::particle::LayerRef::clone(&self) -> tungsten_core::assets::particle::LayerRef
+impl core::cmp::Eq for tungsten_core::assets::particle::LayerRef
+impl core::cmp::PartialEq for tungsten_core::assets::particle::LayerRef
+pub fn tungsten_core::assets::particle::LayerRef::eq(&self, &tungsten_core::assets::particle::LayerRef) -> bool
+impl core::fmt::Debug for tungsten_core::assets::particle::LayerRef
+pub fn tungsten_core::assets::particle::LayerRef::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::particle::LayerRef
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::particle::LayerRef
+pub fn tungsten_core::assets::particle::LayerRef::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::particle::LayerRef
+impl core::marker::Send for tungsten_core::assets::particle::LayerRef
+impl core::marker::Sync for tungsten_core::assets::particle::LayerRef
+impl core::marker::Unpin for tungsten_core::assets::particle::LayerRef
+impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::LayerRef
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::LayerRef
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::LayerRef
 pub enum tungsten_core::assets::particle::ParticleConfigError
 pub tungsten_core::assets::particle::ParticleConfigError::Io
 pub tungsten_core::assets::particle::ParticleConfigError::Io::path: alloc::string::String
@@ -1299,6 +1319,22 @@ impl core::marker::Unpin for tungsten_core::assets::particle::ParticleRender
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::ParticleRender
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::ParticleRender
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleRender
+pub enum tungsten_core::assets::particle::StartColor
+pub tungsten_core::assets::particle::StartColor::ByDirection(tungsten_core::assets::particle::Curve<[f32; 4]>)
+pub tungsten_core::assets::particle::StartColor::Range([[f32; 4]; 2])
+impl core::clone::Clone for tungsten_core::assets::particle::StartColor
+pub fn tungsten_core::assets::particle::StartColor::clone(&self) -> tungsten_core::assets::particle::StartColor
+impl core::fmt::Debug for tungsten_core::assets::particle::StartColor
+pub fn tungsten_core::assets::particle::StartColor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::particle::StartColor
+pub fn tungsten_core::assets::particle::StartColor::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::particle::StartColor
+impl core::marker::Send for tungsten_core::assets::particle::StartColor
+impl core::marker::Sync for tungsten_core::assets::particle::StartColor
+impl core::marker::Unpin for tungsten_core::assets::particle::StartColor
+impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::StartColor
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::StartColor
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::StartColor
 pub struct tungsten_core::assets::particle::AssetId<T>
 impl<T> tungsten_core::assets::particle::AssetId<T>
 pub fn tungsten_core::assets::particle::AssetId<T>::index(self) -> u32
@@ -1353,6 +1389,28 @@ impl core::marker::Unpin for tungsten_core::assets::particle::ParticleActive
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::ParticleActive
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::ParticleActive
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleActive
+pub struct tungsten_core::assets::particle::ParticleAttractor
+pub tungsten_core::assets::particle::ParticleAttractor::pull: f32
+pub tungsten_core::assets::particle::ParticleAttractor::swirl: f32
+impl core::clone::Clone for tungsten_core::assets::particle::ParticleAttractor
+pub fn tungsten_core::assets::particle::ParticleAttractor::clone(&self) -> tungsten_core::assets::particle::ParticleAttractor
+impl core::cmp::PartialEq for tungsten_core::assets::particle::ParticleAttractor
+pub fn tungsten_core::assets::particle::ParticleAttractor::eq(&self, &tungsten_core::assets::particle::ParticleAttractor) -> bool
+impl core::default::Default for tungsten_core::assets::particle::ParticleAttractor
+pub fn tungsten_core::assets::particle::ParticleAttractor::default() -> tungsten_core::assets::particle::ParticleAttractor
+impl core::fmt::Debug for tungsten_core::assets::particle::ParticleAttractor
+pub fn tungsten_core::assets::particle::ParticleAttractor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::particle::ParticleAttractor
+impl core::marker::StructuralPartialEq for tungsten_core::assets::particle::ParticleAttractor
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::particle::ParticleAttractor
+pub fn tungsten_core::assets::particle::ParticleAttractor::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::particle::ParticleAttractor
+impl core::marker::Send for tungsten_core::assets::particle::ParticleAttractor
+impl core::marker::Sync for tungsten_core::assets::particle::ParticleAttractor
+impl core::marker::Unpin for tungsten_core::assets::particle::ParticleAttractor
+impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::ParticleAttractor
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::ParticleAttractor
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleAttractor
 pub struct tungsten_core::assets::particle::ParticleBudget
 pub tungsten_core::assets::particle::ParticleBudget::global_cap: u32
 impl tungsten_core::assets::particle::ParticleBudget
@@ -1374,7 +1432,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::P
 pub struct tungsten_core::assets::particle::ParticleConfig
 pub tungsten_core::assets::particle::ParticleConfig::alpha_over_life: core::option::Option<tungsten_core::assets::particle::Curve<f32>>
 pub tungsten_core::assets::particle::ParticleConfig::angular_velocity: tungsten_core::assets::particle::Range
+pub tungsten_core::assets::particle::ParticleConfig::attractor: core::option::Option<tungsten_core::assets::particle::ParticleAttractor>
 pub tungsten_core::assets::particle::ParticleConfig::blend: tungsten_core::assets::particle::BlendMode
+pub tungsten_core::assets::particle::ParticleConfig::clip: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::particle::ParticleConfig::color_over_life: core::option::Option<tungsten_core::assets::particle::Curve<[f32; 4]>>
 pub tungsten_core::assets::particle::ParticleConfig::drag_per_sec: f32
 pub tungsten_core::assets::particle::ParticleConfig::emission: tungsten_core::assets::particle::EmissionKind
@@ -1386,8 +1446,12 @@ pub tungsten_core::assets::particle::ParticleConfig::render: tungsten_core::asse
 pub tungsten_core::assets::particle::ParticleConfig::scale_over_life: core::option::Option<tungsten_core::assets::particle::Curve<f32>>
 pub tungsten_core::assets::particle::ParticleConfig::seed: core::option::Option<u64>
 pub tungsten_core::assets::particle::ParticleConfig::sprite: alloc::string::String
+pub tungsten_core::assets::particle::ParticleConfig::start_color: core::option::Option<tungsten_core::assets::particle::StartColor>
 pub tungsten_core::assets::particle::ParticleConfig::start_scale: tungsten_core::assets::particle::Range
+pub tungsten_core::assets::particle::ParticleConfig::stop: core::option::Option<tungsten_core::assets::particle::ParticleStop>
+pub tungsten_core::assets::particle::ParticleConfig::stretch: f32
 pub tungsten_core::assets::particle::ParticleConfig::tint: [f32; 4]
+pub tungsten_core::assets::particle::ParticleConfig::z_order: i32
 impl tungsten_core::assets::particle::ParticleConfig
 pub fn tungsten_core::assets::particle::ParticleConfig::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<alloc::sync::Arc<Self>, tungsten_core::assets::particle::ParticleConfigError>
 pub fn tungsten_core::assets::particle::ParticleConfig::validate(&self) -> core::result::Result<(), alloc::string::String>
@@ -1471,6 +1535,25 @@ impl core::marker::Unpin for tungsten_core::assets::particle::ParticleMeshRegist
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::ParticleMeshRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::ParticleMeshRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleMeshRegistry
+pub struct tungsten_core::assets::particle::ParticleStop
+pub tungsten_core::assets::particle::ParticleStop::mask: alloc::vec::Vec<tungsten_core::assets::particle::LayerRef>
+impl core::clone::Clone for tungsten_core::assets::particle::ParticleStop
+pub fn tungsten_core::assets::particle::ParticleStop::clone(&self) -> tungsten_core::assets::particle::ParticleStop
+impl core::cmp::Eq for tungsten_core::assets::particle::ParticleStop
+impl core::cmp::PartialEq for tungsten_core::assets::particle::ParticleStop
+pub fn tungsten_core::assets::particle::ParticleStop::eq(&self, &tungsten_core::assets::particle::ParticleStop) -> bool
+impl core::fmt::Debug for tungsten_core::assets::particle::ParticleStop
+pub fn tungsten_core::assets::particle::ParticleStop::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::particle::ParticleStop
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::particle::ParticleStop
+pub fn tungsten_core::assets::particle::ParticleStop::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::particle::ParticleStop
+impl core::marker::Send for tungsten_core::assets::particle::ParticleStop
+impl core::marker::Sync for tungsten_core::assets::particle::ParticleStop
+impl core::marker::Unpin for tungsten_core::assets::particle::ParticleStop
+impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::ParticleStop
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::ParticleStop
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleStop
 pub struct tungsten_core::assets::particle::Range
 pub tungsten_core::assets::particle::Range::max: f32
 pub tungsten_core::assets::particle::Range::min: f32
@@ -3637,7 +3720,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::P
 pub struct tungsten_core::assets::ParticleConfig
 pub tungsten_core::assets::ParticleConfig::alpha_over_life: core::option::Option<tungsten_core::assets::particle::Curve<f32>>
 pub tungsten_core::assets::ParticleConfig::angular_velocity: tungsten_core::assets::particle::Range
+pub tungsten_core::assets::ParticleConfig::attractor: core::option::Option<tungsten_core::assets::particle::ParticleAttractor>
 pub tungsten_core::assets::ParticleConfig::blend: tungsten_core::assets::particle::BlendMode
+pub tungsten_core::assets::ParticleConfig::clip: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::ParticleConfig::color_over_life: core::option::Option<tungsten_core::assets::particle::Curve<[f32; 4]>>
 pub tungsten_core::assets::ParticleConfig::drag_per_sec: f32
 pub tungsten_core::assets::ParticleConfig::emission: tungsten_core::assets::particle::EmissionKind
@@ -3649,8 +3734,12 @@ pub tungsten_core::assets::ParticleConfig::render: tungsten_core::assets::partic
 pub tungsten_core::assets::ParticleConfig::scale_over_life: core::option::Option<tungsten_core::assets::particle::Curve<f32>>
 pub tungsten_core::assets::ParticleConfig::seed: core::option::Option<u64>
 pub tungsten_core::assets::ParticleConfig::sprite: alloc::string::String
+pub tungsten_core::assets::ParticleConfig::start_color: core::option::Option<tungsten_core::assets::particle::StartColor>
 pub tungsten_core::assets::ParticleConfig::start_scale: tungsten_core::assets::particle::Range
+pub tungsten_core::assets::ParticleConfig::stop: core::option::Option<tungsten_core::assets::particle::ParticleStop>
+pub tungsten_core::assets::ParticleConfig::stretch: f32
 pub tungsten_core::assets::ParticleConfig::tint: [f32; 4]
+pub tungsten_core::assets::ParticleConfig::z_order: i32
 impl tungsten_core::assets::particle::ParticleConfig
 pub fn tungsten_core::assets::particle::ParticleConfig::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<alloc::sync::Arc<Self>, tungsten_core::assets::particle::ParticleConfigError>
 pub fn tungsten_core::assets::particle::ParticleConfig::validate(&self) -> core::result::Result<(), alloc::string::String>
@@ -5026,6 +5115,9 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Part
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Particle
 pub struct tungsten_core::components::ParticleEmitter
 pub tungsten_core::components::ParticleEmitter::config: tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleConfig>
+pub tungsten_core::components::ParticleEmitter::direction: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_core::components::ParticleEmitter::paused: bool
+pub tungsten_core::components::ParticleEmitter::rate_scale: f32
 pub tungsten_core::components::ParticleEmitter::seed_override: core::option::Option<u64>
 impl tungsten_core::components::ParticleEmitter
 pub fn tungsten_core::components::ParticleEmitter::new(tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleConfig>) -> Self
@@ -5054,6 +5146,7 @@ pub tungsten_core::components::ParticleEmitterState::first_tick_done: bool
 pub tungsten_core::components::ParticleEmitterState::pulse_timer: f32
 pub tungsten_core::components::ParticleEmitterState::pulses_fired: u32
 pub tungsten_core::components::ParticleEmitterState::rng: tungsten_core::rng::Pcg32
+pub tungsten_core::components::ParticleEmitterState::snapshot_of: core::option::Option<tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleConfig>>
 impl tungsten_core::components::ParticleEmitterState
 pub fn tungsten_core::components::ParticleEmitterState::rearm_burst(&mut self)
 impl core::clone::Clone for tungsten_core::components::ParticleEmitterState
@@ -18162,7 +18255,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::P
 pub struct tungsten_core::ParticleConfig
 pub tungsten_core::ParticleConfig::alpha_over_life: core::option::Option<tungsten_core::assets::particle::Curve<f32>>
 pub tungsten_core::ParticleConfig::angular_velocity: tungsten_core::assets::particle::Range
+pub tungsten_core::ParticleConfig::attractor: core::option::Option<tungsten_core::assets::particle::ParticleAttractor>
 pub tungsten_core::ParticleConfig::blend: tungsten_core::assets::particle::BlendMode
+pub tungsten_core::ParticleConfig::clip: core::option::Option<alloc::string::String>
 pub tungsten_core::ParticleConfig::color_over_life: core::option::Option<tungsten_core::assets::particle::Curve<[f32; 4]>>
 pub tungsten_core::ParticleConfig::drag_per_sec: f32
 pub tungsten_core::ParticleConfig::emission: tungsten_core::assets::particle::EmissionKind
@@ -18174,8 +18269,12 @@ pub tungsten_core::ParticleConfig::render: tungsten_core::assets::particle::Part
 pub tungsten_core::ParticleConfig::scale_over_life: core::option::Option<tungsten_core::assets::particle::Curve<f32>>
 pub tungsten_core::ParticleConfig::seed: core::option::Option<u64>
 pub tungsten_core::ParticleConfig::sprite: alloc::string::String
+pub tungsten_core::ParticleConfig::start_color: core::option::Option<tungsten_core::assets::particle::StartColor>
 pub tungsten_core::ParticleConfig::start_scale: tungsten_core::assets::particle::Range
+pub tungsten_core::ParticleConfig::stop: core::option::Option<tungsten_core::assets::particle::ParticleStop>
+pub tungsten_core::ParticleConfig::stretch: f32
 pub tungsten_core::ParticleConfig::tint: [f32; 4]
+pub tungsten_core::ParticleConfig::z_order: i32
 impl tungsten_core::assets::particle::ParticleConfig
 pub fn tungsten_core::assets::particle::ParticleConfig::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<alloc::sync::Arc<Self>, tungsten_core::assets::particle::ParticleConfigError>
 pub fn tungsten_core::assets::particle::ParticleConfig::validate(&self) -> core::result::Result<(), alloc::string::String>
@@ -18218,6 +18317,9 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleConfigRegistry
 pub struct tungsten_core::ParticleEmitter
 pub tungsten_core::ParticleEmitter::config: tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleConfig>
+pub tungsten_core::ParticleEmitter::direction: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_core::ParticleEmitter::paused: bool
+pub tungsten_core::ParticleEmitter::rate_scale: f32
 pub tungsten_core::ParticleEmitter::seed_override: core::option::Option<u64>
 impl tungsten_core::components::ParticleEmitter
 pub fn tungsten_core::components::ParticleEmitter::new(tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleConfig>) -> Self
@@ -18246,6 +18348,7 @@ pub tungsten_core::ParticleEmitterState::first_tick_done: bool
 pub tungsten_core::ParticleEmitterState::pulse_timer: f32
 pub tungsten_core::ParticleEmitterState::pulses_fired: u32
 pub tungsten_core::ParticleEmitterState::rng: tungsten_core::rng::Pcg32
+pub tungsten_core::ParticleEmitterState::snapshot_of: core::option::Option<tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleConfig>>
 impl tungsten_core::components::ParticleEmitterState
 pub fn tungsten_core::components::ParticleEmitterState::rearm_burst(&mut self)
 impl core::clone::Clone for tungsten_core::components::ParticleEmitterState

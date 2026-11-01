@@ -46,6 +46,12 @@ fn make_config() -> Arc<ParticleConfig> {
             points: vec![(0.0, 0.0), (0.15, 1.0), (1.0, 0.0)],
         }),
         tint: [1.0, 1.0, 1.0, 1.0],
+        z_order: 0,
+        clip: None,
+        stretch: 0.0,
+        stop: None,
+        attractor: None,
+        start_color: None,
     })
 }
 

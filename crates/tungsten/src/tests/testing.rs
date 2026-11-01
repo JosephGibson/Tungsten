@@ -58,6 +58,12 @@ fn burst_config() -> ParticleConfig {
         color_over_life: None,
         alpha_over_life: None,
         tint: [1.0, 1.0, 1.0, 1.0],
+        z_order: 0,
+        clip: None,
+        stretch: 0.0,
+        stop: None,
+        attractor: None,
+        start_color: None,
     }
 }
 
