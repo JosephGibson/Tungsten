@@ -26,10 +26,10 @@
 //!
 //! Broadphase pairs persist across substeps under per-proxy travel budgets
 //! (D-075). Each build stages fresh, symmetrically inflated AABBs for the
-//! remaining frame. A proxy that exhausts its budget has its own pairs
-//! rebuilt before the next narrow phase (D-081); a contact wake, or too many
-//! exhausted budgets at once, rebuilds the whole list. Narrow phase, solve,
-//! islands and events stay per substep.
+//! remaining frame. A proxy that exhausts its budget, or that a contact woke,
+//! has its own pairs rebuilt before the next narrow phase (D-081, D-234); too
+//! many of them at once rebuild the whole list. Narrow phase, solve, islands
+//! and events stay per substep.
 //!
 //! Body state is gathered into the dense proxy array **once per frame**
 //! through a columnar 4-way ECS query (`query2_opt2`, no per-entity random
@@ -369,8 +369,9 @@ pub struct PhysicsBuffers {
     repair_impulses: ImpulseMap,
     /// Scratch for filling `repair_impulses`.
     removed_impulses: Vec<(u128, f32)>,
-    /// Set by gather (new proxy set) or a contact wake; consumed before the
-    /// next substep's narrow phase. Proxies never change mid-frame today.
+    /// Set at frame start, for the gather's new proxy set; consumed before
+    /// the first substep's narrow phase. Proxies never change mid-frame
+    /// today, and a contact wake is repaired (D-234).
     pairs_invalidated: bool,
     #[cfg(test)]
     pair_builds: usize,
@@ -1135,7 +1136,6 @@ fn substep(
         layers,
         repaired,
         repair_grid,
-        pairs_invalidated,
         pairs,
         events,
         candidates,
@@ -1239,9 +1239,10 @@ fn substep(
             } else {
                 relative.dot(contact.normal) < -wake_threshold
             };
+            // A woken body keeps the list: it moves now without its awake
+            // pair flag, so the next refresh repairs it (D-234).
             if wakes {
                 proxies[b_idx].sleeping = false;
-                *pairs_invalidated = true;
                 let entry = &mut sleep.entries[b_idx];
                 entry.sleeping = false;
                 entry.timer = 0.0;

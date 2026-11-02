@@ -2117,12 +2117,13 @@ fn a_spinner_on_a_frictionless_floor_keeps_its_spin() {
 }
 
 #[test]
-fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
+fn contact_woken_body_pairs_with_its_static_floor_in_waking_frame() {
     let mut world = seed_world();
     let (bottom, top) = spawn_sleeping_stack(&mut world);
     settle_to_sleep(&mut world, &[bottom, top]);
     // Hit the bottom body horizontally, below the top body: the first
-    // build must omit sleeper-floor, then include it immediately after wake.
+    // build must omit sleeper-floor, and the refresh after the wake must
+    // pair it (D-234).
     let y = world.get::<Position>(bottom).unwrap().0.y;
     let bullet = world.spawn();
     world.insert(bullet, Position(Vec2::new(-20.0, y)));
@@ -2168,10 +2169,10 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
         "impact must wake this substep"
     );
     assert!(
-        buffers.pairs_invalidated,
-        "wake must invalidate even if travel fits"
+        !buffers.pairs_invalidated,
+        "a wake leaves the list to the next refresh"
     );
-    let builds = buffers.pair_builds;
+    let refreshes = buffers.pair_builds + buffers.pair_repairs;
     for step in 1..config.substeps {
         substep(
             &config,
@@ -2189,13 +2190,148 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
             "woken body fell through its floor"
         );
     }
-    assert!(buffers.pair_builds > builds);
+    assert!(buffers.pair_builds + buffers.pair_repairs > refreshes);
     assert!(
         buffers
             .contacts
             .iter()
             .any(|c| c.a as usize == bottom_idx && c.b as usize == floor_idx)
     );
+}
+
+/// A settled pile of 18 balls asleep on a floor and a ball dropped on its
+/// top at 600 px/s from 1 px above; with `diluted`, forty still kinematic
+/// boxes far off, which count among the awake bodies and touch nothing.
+/// Returns the next frame gathered by hand as `physics_step` starts one,
+/// both oracles armed.
+fn dropped_on_a_sleeping_pile(diluted: bool) -> (PhysicsConfig, PhysicsBuffers) {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(0.0, 110.0)));
+    world.insert(floor, Collider::aabb(Vec2::new(80.0, 8.0)));
+    world.insert(floor, RigidBody::r#static());
+    let mut pile = Vec::new();
+    for i in 0..18 {
+        let (col, row) = ((i % 6) as f32, (i / 6) as f32);
+        let ball = world.spawn();
+        world.insert(
+            ball,
+            Position(Vec2::new(col * 12.5 - 31.25, 96.0 - row * 12.5)),
+        );
+        world.insert(ball, Velocity(Vec2::ZERO));
+        world.insert(ball, Collider::circle(6.0));
+        world.insert(ball, RigidBody::dynamic());
+        pile.push(ball);
+    }
+    if diluted {
+        for i in 0..40 {
+            let still = world.spawn();
+            world.insert(still, Position(Vec2::new(2000.0 + 20.0 * i as f32, 0.0)));
+            world.insert(still, Collider::aabb(Vec2::splat(4.0)));
+            world.insert(still, RigidBody::kinematic());
+        }
+    }
+    settle_to_sleep(&mut world, &pile);
+    let top = pile
+        .iter()
+        .map(|&ball| world.get::<Position>(ball).unwrap().0)
+        .min_by(|a, b| a.y.total_cmp(&b.y))
+        .unwrap();
+    let dropped = world.spawn();
+    world.insert(dropped, Position(Vec2::new(top.x, top.y - 11.0)));
+    world.insert(dropped, Velocity(Vec2::new(0.0, 600.0)));
+    world.insert(dropped, Collider::circle(4.0));
+    world.insert(dropped, RigidBody::dynamic());
+    let config = *world.get_resource::<PhysicsConfig>().unwrap();
+    let mut buffers = world.remove_resource::<PhysicsBuffers>().unwrap();
+    gather_proxies(
+        &world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+        &mut buffers.extra,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    sleep_frame_start(&mut buffers, 4.0 * config.linear_slop);
+    buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
+    buffers.events.clear();
+    buffers.pairs_invalidated = true;
+    buffers.static_grid.begin_frame();
+    buffers.check_pair_contacts = true;
+    buffers.reference_impulses = Some(buffers.impulses.clone());
+    (config, buffers)
+}
+
+/// Runs the frame `buffers` holds by hand, substep after substep as
+/// `physics_step` does, and returns, for each substep after the first, the
+/// sleepers the substep before woke and the builds and repairs its refresh
+/// ran.
+fn run_woken_frame(config: &PhysicsConfig, buffers: &mut PhysicsBuffers) -> Vec<[usize; 3]> {
+    let dt = 1.0 / 60.0;
+    let sub_dt = dt / config.substeps as f32;
+    let mut refreshes = Vec::new();
+    let mut woken = 0;
+    for step in 0..config.substeps {
+        let (builds, repairs) = (buffers.pair_builds, buffers.pair_repairs);
+        let asleep: Vec<bool> = buffers.proxies[..buffers.bodies]
+            .iter()
+            .map(|proxy| proxy.sleeping)
+            .collect();
+        substep(config, sub_dt, dt - step as f32 * sub_dt, buffers, true);
+        if step > 0 {
+            refreshes.push([
+                woken,
+                buffers.pair_builds - builds,
+                buffers.pair_repairs - repairs,
+            ]);
+        }
+        woken = asleep
+            .iter()
+            .zip(&buffers.proxies)
+            .filter(|&(&was, proxy)| was && !proxy.sleeping)
+            .count();
+    }
+    refreshes
+}
+
+#[test]
+fn a_contact_woken_sleeper_is_repaired_instead_of_rebuilt() {
+    // D-234: a ball dropped on a sleeping pile wakes it contact by contact.
+    // The refresh after each wake repairs the woken balls, the frame keeps
+    // its one build, and both oracles hold every substep.
+    let (config, mut buffers) = dropped_on_a_sleeping_pile(true);
+    let builds = buffers.pair_builds;
+    let refreshes = run_woken_frame(&config, &mut buffers);
+    assert!(
+        refreshes.iter().any(|&[woken, ..]| woken > 0),
+        "the drop woke no sleeper: {refreshes:?}"
+    );
+    for &[woken, builds, repairs] in &refreshes {
+        assert_eq!(builds, 0, "a refresh rebuilt: {refreshes:?}");
+        if woken > 0 {
+            assert_eq!(repairs, 1, "a wake went unrepaired: {refreshes:?}");
+        }
+    }
+    assert_eq!(buffers.pair_builds - builds, 1, "one build a frame");
+    assert_eq!(buffers.checked_substeps, config.substeps as usize);
+}
+
+#[test]
+fn a_wake_past_a_quarter_of_the_awake_bodies_rebuilds() {
+    // Without the kinematic boxes the dropped ball is the only awake body,
+    // so the ball it wakes is more than a quarter of them: the refresh after
+    // the wake rebuilds, D-081's fall-back over D-234's union.
+    let (config, mut buffers) = dropped_on_a_sleeping_pile(false);
+    let refreshes = run_woken_frame(&config, &mut buffers);
+    let &[woken, builds, repairs] = refreshes
+        .iter()
+        .find(|&&[woken, ..]| woken > 0)
+        .expect("the drop woke no sleeper");
+    assert_eq!((builds, repairs), (1, 0), "{woken} woken: {refreshes:?}");
+    assert_eq!(buffers.checked_substeps, config.substeps as usize);
 }
 
 #[test]

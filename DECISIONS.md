@@ -718,6 +718,7 @@ Cells without a verdict read `improved`. Two variants were measured and dropped.
 
 ## D-081 — Physics pair list is repaired for tripped proxies instead of rebuilt
 **Amended by D-154:** the budgets and the tripped set only; a kinematic proxy takes an awake dynamic proxy's budget without the gravity term, initiates and is repaired as one, and never trips, since its velocity is fixed within a frame.
+**Amended by D-234:** the build after a contact wake only; the woken proxy joins the tripped set and is repaired, the quarter rule counting it with the tripped ones.
 **Date:** 2026-10-01
 **Decision:** A proxy that runs out of travel budget gets its own pairs rebuilt; the pair list, the grid and every other proxy's budget stay. `D-075`'s build still runs at frame start, after a contact wake and when the proxy set changes.
 
@@ -3568,3 +3569,15 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - No pin moved. 01's pit guard reads its pin (72,637 allocations, 69,118,796 bytes, 12 events) with the record off and, its queues registered by hand, on: in its window, after the settle, the record began and ended no pair and reused its buffers. 02's twelve guards hold; its physics rows step by hand without the plugin. The physics hashes hold, and `e01-pit`'s digest with them: the record writes nothing back to the bodies.
 - The sitting against the tree before it (`perf-runs/20261101T193400Z-sitting/`, A/A `unchanged`): `e01-pit`'s `physics_step` p50 42.70 → 24.67 and 42.69 → 24.59 ms, `total` p50 52.19 → 34.10 and 52.12 → 34.00 ms and p95 64.84 → 49.82 and 64.98 → 49.55 ms, each `improved` in both pairs; `physics` `unchanged`.
 - Tests: core's `physics::plugin::tests::the_plugin_leaves_the_contact_queues_to_the_game` and `physics::step::tests::the_record_waits_for_a_game_to_register_a_contact_queue`.
+
+## D-234 — A contact-woken body is repaired into the pair list instead of rebuilding it
+**Date:** 2026-11-01
+**Decision:** A contact wake leaves the pair list valid. The woken body moves from then on without the awake flag its last build gave it, so the next substep's refresh lists it with `D-081`'s tripped proxies, in proxy order and once, and the repair re-pairs it as `D-081`'s steps 1–5 state: its pairs as a sleeper leave with their carried impulses by key, it takes an awake radius from its velocity and the time left, joins the repaired set, and pairs with sleepers, statics and tiles as their querier and with awake bodies in index order. The quarter rule counts the woken with the tripped against the awake bodies, so a wide wake still rebuilds. A wake at frame start or through `wake` comes before the frame's build, as before.
+**Why:** `e01-pit`'s p95 frame built its pair list three times at `a2662f05`, twice after contact wakes, and its 20 highest frames about four times, three after wakes; the builds were 44–49 % of their `physics_step` (`perf-runs/20261101-physics-tail/plan/`). `D-081`'s completeness argument covers a woken member unchanged: its anchor is its repair, the main grid holds it under its sleeper's cells and the repair grid under its new box, so every overlap of its new box is found, and the per-substep oracles check it.
+**Consequences:**
+- Amends `D-081` as its marker line says.
+- Pair order: a repaired list keeps its old pairs first and the woken bodies' after them, so the solver's order after a mid-frame wake changes, and with it the trajectories such a wake touches; the step stays deterministic. A wake in a frame's last substep meets the next frame's build, as before.
+- Digests: `e01-pit` `983a44e067921c44` → `06b1dfb5fd81f9fb` and `terrain` `8675de67eeab6c93` → `dd23131d25896489`; `physics`, `physics-sparse`, `friction`, `slopes` and `template` hold theirs, and `physics_determinism`'s `EXPECTED` holds (`0x088e_c07a_73c1_b168`): its pile has no wake a later substep repairs.
+- Pins: 02's `terrain` guard's `events_sent` 7,924 → 7,926; the other guards and 01's pit guard hold.
+- The sitting against the tree before it (`perf-runs/20261102T013307Z-sitting/`, every A/A `unchanged`): `e01-pit`'s `total` p95 43.51 → 36.38 and 43.22 → 36.27 ms and p99 55.52 → 40.76 and 54.88 → 40.96 ms, `improved` in both pairs, p50 `unchanged`; its 20 highest frames' `physics_step` 41.3 → 31.3 ms. `terrain`'s `physics_step` p50 4.91 → 4.71 and 4.93 → 4.73 ms, `improved`; the other five rows `unchanged`.
+- Tests: core's `physics::step::tests::a_contact_woken_sleeper_is_repaired_instead_of_rebuilt` and `a_wake_past_a_quarter_of_the_awake_bodies_rebuilds`; `contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame` is `contact_woken_body_pairs_with_its_static_floor_in_waking_frame`, without its pin on an invalidated list.

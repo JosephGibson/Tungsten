@@ -209,11 +209,13 @@ pub(super) struct PairBudget {
 pub(super) const PAIR_MARGIN_SLOPS: f32 = 2.0;
 
 /// A repair is cheaper than a rebuild only for a minority: more than one
-/// tripped proxy in this many awake bodies rebuilds instead (D-081).
+/// tripped or woken proxy in this many awake bodies rebuilds instead (D-081,
+/// D-234).
 const REBUILD_ONE_IN: usize = 4;
 
 /// `PhysicsBuffers::pair_flags` bit: a moving proxy (an awake dynamic or a
-/// kinematic body) at the last build.
+/// kinematic body) at its last build or repair; a moving proxy without it
+/// is one a contact woke since (D-234).
 pub(super) const PAIR_AWAKE: u8 = 1;
 /// `pair_flags` bit: member of the repair in progress.
 const PAIR_TRIPPED: u8 = 1 << 1;
@@ -241,9 +243,10 @@ fn awake_pair_radius(
     speed * time_left + gravity_allowance + (PAIR_MARGIN_SLOPS + 2.0) * config.linear_slop
 }
 
-/// Keep the pair list complete for the coming narrow phase (D-081): build it
-/// when it is invalid, reuse it while every budget holds, and otherwise
-/// repair the tripped proxies, or rebuild when too many tripped.
+/// Keep the pair list complete for the coming narrow phase (D-081, D-234):
+/// build it when it is invalid, reuse it while every budget holds and no
+/// contact woke a sleeper, and otherwise repair the tripped and woken
+/// proxies, or rebuild when too many need it.
 pub(super) fn refresh_pairs(
     config: &PhysicsConfig,
     sub_dt: f32,
@@ -277,8 +280,8 @@ pub(super) fn build_pairs(
     time_left: f32,
     buffers: &mut PhysicsBuffers,
 ) {
-    // Rebuilds can reorder/reverse pairs or introduce new ones after a wake.
-    // Transfer only the immediately preceding substep's live impulses by key.
+    // Rebuilds can reorder/reverse pairs or introduce new ones. Transfer only
+    // the immediately preceding substep's live impulses by key.
     sync_impulses(buffers);
     let PhysicsBuffers {
         proxies,
@@ -410,8 +413,9 @@ pub(super) fn build_pairs(
 }
 
 /// Collect, in proxy order, the moving proxies whose budget does not cover
-/// the coming substep, and return the moving count. Solver impulses and
-/// gravity can change velocity after a build, so predicted travel alone is
+/// the coming substep and those a contact woke since their last build or
+/// repair (D-234), and return the moving count. Solver impulses and gravity
+/// can change velocity after a build, so predicted travel alone is
 /// insufficient: accumulated actual travel must fit as well. A kinematic
 /// proxy's velocity cannot change within a frame, so it never trips.
 pub(super) fn collect_tripped(
@@ -423,6 +427,7 @@ pub(super) fn collect_tripped(
         proxies,
         bodies,
         pair_budgets,
+        pair_flags,
         tripped,
         ..
     } = buffers;
@@ -430,25 +435,30 @@ pub(super) fn collect_tripped(
     let slack = 2.0 * config.linear_slop;
     let mut awake = 0;
     // Tile proxies never move, so the entity proxies are every candidate.
-    for (index, (proxy, budget)) in proxies[..*bodies]
+    for (index, ((proxy, budget), &flags)) in proxies[..*bodies]
         .iter()
         .zip(pair_budgets.iter())
+        .zip(pair_flags.iter())
         .enumerate()
     {
         if !proxy.moves() {
             continue;
         }
         awake += 1;
-        if budget.travel + proxy.velocity.length() * sub_dt + slack > budget.radius {
+        if flags & PAIR_AWAKE == 0
+            || budget.travel + proxy.velocity.length() * sub_dt + slack > budget.radius
+        {
             tripped.push(index as u32);
         }
     }
     awake
 }
 
-/// Re-pair the tripped proxies in place of a rebuild (D-081). Every other
-/// proxy keeps its pairs, inflated AABB and budget, and the pair grid is not
-/// restaged. As in a build, proxies whose layers do not meet are not paired.
+/// Re-pair the tripped and woken proxies in place of a rebuild (D-081,
+/// D-234). Every other proxy keeps its pairs, inflated AABB and budget, and
+/// the pair grid is not restaged. A woken member is awake from here on, so
+/// it pairs with sleepers and statics as its querier. As in a build, proxies
+/// whose layers do not meet are not paired.
 fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &mut PhysicsBuffers) {
     let PhysicsBuffers {
         proxies,
@@ -477,7 +487,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
     } = &mut **extra;
     let friction_on = !frictions.is_empty();
     for &member in tripped.iter() {
-        pair_flags[member as usize] |= PAIR_TRIPPED;
+        pair_flags[member as usize] |= PAIR_TRIPPED | PAIR_AWAKE;
     }
 
     // Remove the members' pairs, keeping the order of the rest, and remember
