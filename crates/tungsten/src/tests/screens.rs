@@ -409,3 +409,39 @@ fn a_registered_screen_opens_by_id() {
     harness.step(1);
     assert_eq!(stack(&harness).active_id(), Some("settings"));
 }
+
+/// The idle-screen guard (redo 7.17): a screen past its entrance lays out
+/// nothing while nothing changes; a focus move only repaints, and one
+/// label's new text lays out its root alone.
+#[test]
+fn an_idle_screen_lays_out_no_root() {
+    let (mut harness, heard) = harness();
+    opened(&mut harness, Menu::new("menu", PLAIN, &heard));
+    let before = harness.layout_totals();
+    harness.step(60);
+    assert_eq!(
+        harness.layout_totals(),
+        before,
+        "60 frames without input lay nothing out"
+    );
+    let focused = harness.tree().focused();
+    assert!(
+        harness
+            .focus_next()
+            .is_some_and(|next| Some(next) != focused)
+    );
+    harness.step(1);
+    assert_eq!(
+        harness.layout_totals(),
+        before,
+        "a focused look repaints only"
+    );
+    let other = harness.find("Other").expect("a button");
+    assert!(harness.tree_mut().set_plain_text(other, "Others"));
+    harness.step(1);
+    assert_eq!(
+        harness.layout_totals().roots_laid_out,
+        before.roots_laid_out + 1,
+        "a new text lays out its root"
+    );
+}

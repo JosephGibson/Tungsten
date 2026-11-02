@@ -13208,6 +13208,11 @@ impl core::fmt::Debug for tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::LayoutStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tungsten_core::ui::tree::LayoutStats
 impl core::marker::StructuralPartialEq for tungsten_core::ui::tree::LayoutStats
+impl core::ops::arith::Add for tungsten_core::ui::tree::LayoutStats
+pub type tungsten_core::ui::tree::LayoutStats::Output = tungsten_core::ui::tree::LayoutStats
+pub fn tungsten_core::ui::tree::LayoutStats::add(self, Self) -> Self
+impl core::ops::arith::AddAssign for tungsten_core::ui::tree::LayoutStats
+pub fn tungsten_core::ui::tree::LayoutStats::add_assign(&mut self, Self)
 impl core::marker::Freeze for tungsten_core::ui::tree::LayoutStats
 impl core::marker::Send for tungsten_core::ui::tree::LayoutStats
 impl core::marker::Sync for tungsten_core::ui::tree::LayoutStats
@@ -13343,6 +13348,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_drag_handle(&mut self, tungsten_core
 pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::dump_json(&self) -> alloc::string::String
 pub fn tungsten_core::ui::tree::UiTree::dump_layout(&self) -> alloc::string::String
 pub fn tungsten_core::ui::tree::UiTree::layer_viewport(&self, tungsten_core::ui::node::UiLayer) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
@@ -14237,6 +14243,11 @@ impl core::fmt::Debug for tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::LayoutStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tungsten_core::ui::tree::LayoutStats
 impl core::marker::StructuralPartialEq for tungsten_core::ui::tree::LayoutStats
+impl core::ops::arith::Add for tungsten_core::ui::tree::LayoutStats
+pub type tungsten_core::ui::tree::LayoutStats::Output = tungsten_core::ui::tree::LayoutStats
+pub fn tungsten_core::ui::tree::LayoutStats::add(self, Self) -> Self
+impl core::ops::arith::AddAssign for tungsten_core::ui::tree::LayoutStats
+pub fn tungsten_core::ui::tree::LayoutStats::add_assign(&mut self, Self)
 impl core::marker::Freeze for tungsten_core::ui::tree::LayoutStats
 impl core::marker::Send for tungsten_core::ui::tree::LayoutStats
 impl core::marker::Sync for tungsten_core::ui::tree::LayoutStats
@@ -15026,6 +15037,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_drag_handle(&mut self, tungsten_core
 pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::dump_json(&self) -> alloc::string::String
 pub fn tungsten_core::ui::tree::UiTree::dump_layout(&self) -> alloc::string::String
 pub fn tungsten_core::ui::tree::UiTree::layer_viewport(&self, tungsten_core::ui::node::UiLayer) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
@@ -21417,6 +21429,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_drag_handle(&mut self, tungsten_core
 pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::dump_json(&self) -> alloc::string::String
 pub fn tungsten_core::ui::tree::UiTree::dump_layout(&self) -> alloc::string::String
 pub fn tungsten_core::ui::tree::UiTree::layer_viewport(&self, tungsten_core::ui::node::UiLayer) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats

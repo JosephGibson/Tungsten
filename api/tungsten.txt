@@ -1241,28 +1241,36 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::Harness
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::testing::Harness
 pub struct tungsten::testing::UiHarness
 impl tungsten::testing::UiHarness
+pub fn tungsten::testing::UiHarness::assert_fits(&mut self, &str)
+pub fn tungsten::testing::UiHarness::assert_fits_one_line(&mut self, &str, &[tungsten_core::ui::id::WidgetId])
 pub fn tungsten::testing::UiHarness::click(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten::testing::UiHarness::dump(&self) -> alloc::string::String
 pub fn tungsten::testing::UiHarness::dump_paint(&mut self) -> alloc::string::String
 pub fn tungsten::testing::UiHarness::find(&self, &str) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten::testing::UiHarness::find_key(&self, tungsten_core::ui::id::UiKey) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::focus(&mut self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten::testing::UiHarness::focus_next(&mut self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::focus_prev(&mut self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten::testing::UiHarness::front_modal(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::harness(&self) -> &tungsten::testing::Harness
 pub fn tungsten::testing::UiHarness::harness_mut(&mut self) -> &mut tungsten::testing::Harness
 pub fn tungsten::testing::UiHarness::hit(&self, f32, f32) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::key_down(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten::testing::UiHarness::key_up(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten::testing::UiHarness::layout(&mut self) -> tungsten_core::ui::tree::LayoutStats
+pub fn tungsten::testing::UiHarness::layout_totals(&self) -> tungsten_core::ui::tree::LayoutStats
+pub fn tungsten::testing::UiHarness::named(&self, &str) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::new(tungsten::app::App) -> Self
 pub fn tungsten::testing::UiHarness::paint(&mut self) -> tungsten_core::ui::paint::PaintList
 pub fn tungsten::testing::UiHarness::pointer_down(&mut self)
 pub fn tungsten::testing::UiHarness::pointer_to(&mut self, f32, f32)
 pub fn tungsten::testing::UiHarness::pointer_up(&mut self)
 pub fn tungsten::testing::UiHarness::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
+pub fn tungsten::testing::UiHarness::shows(&self, &str) -> bool
 pub fn tungsten::testing::UiHarness::step(&mut self, u32) -> u32
 pub fn tungsten::testing::UiHarness::text(&self) -> &tungsten_core::ui::measure::FixedAdvanceMeasure
 pub fn tungsten::testing::UiHarness::tree(&self) -> &tungsten_core::ui::tree::UiTree
+pub fn tungsten::testing::UiHarness::tree_json(&self) -> alloc::string::String
 pub fn tungsten::testing::UiHarness::tree_mut(&mut self) -> &mut tungsten_core::ui::tree::UiTree
 pub fn tungsten::testing::UiHarness::wheel(&mut self, f32)
 pub fn tungsten::testing::UiHarness::world(&self) -> &tungsten_core::ecs::world::World

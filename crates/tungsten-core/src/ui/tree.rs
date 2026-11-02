@@ -76,6 +76,27 @@ pub struct LayoutStats {
     pub commits: u32,
 }
 
+impl std::ops::Add for LayoutStats {
+    type Output = Self;
+
+    /// The two passes' counts summed, saturating (redo 7.17): a harness's
+    /// totals over many layouts.
+    fn add(self, other: Self) -> Self {
+        Self {
+            roots_laid_out: self.roots_laid_out.saturating_add(other.roots_laid_out),
+            nodes_laid_out: self.nodes_laid_out.saturating_add(other.nodes_laid_out),
+            measure_calls: self.measure_calls.saturating_add(other.measure_calls),
+            commits: self.commits.saturating_add(other.commits),
+        }
+    }
+}
+
+impl std::ops::AddAssign for LayoutStats {
+    fn add_assign(&mut self, other: Self) {
+        *self = *self + other;
+    }
+}
+
 /// The work a widget waits on, from [`UiTree::widget_dirty`] (M57).
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

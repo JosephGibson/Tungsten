@@ -7,8 +7,9 @@
 //! one layout behind; [`UiHarness::paint`] paints it now (M46).
 
 use glam::Vec2;
+use tungsten_core::text::TextNodeStore as _;
 use tungsten_core::ui::{
-    FixedAdvanceMeasure, LayoutStats, PaintList, Rect, UiDebug, UiTree, WidgetId,
+    FixedAdvanceMeasure, LayoutStats, PaintList, Rect, UiDebug, UiKey, UiTree, Visibility, WidgetId,
 };
 use tungsten_core::{AssetRegistry, KeyCode, MouseButton, ScaleFactor, World};
 
@@ -25,6 +26,8 @@ use crate::app::{App, WindowSize};
 pub struct UiHarness {
     harness: Harness,
     text: FixedAdvanceMeasure,
+    /// Every layout's counts, summed (redo 7.17).
+    totals: LayoutStats,
 }
 
 impl UiHarness {
@@ -40,6 +43,7 @@ impl UiHarness {
         Self {
             harness,
             text: FixedAdvanceMeasure::default(),
+            totals: LayoutStats::default(),
         }
     }
 
@@ -116,11 +120,28 @@ impl UiHarness {
                 Vec2::new(size.width as f32, size.height as f32) / scale
             });
         let text = &mut self.text;
-        self.harness
+        let stats = self
+            .harness
             .world_mut()
             .get_resource_mut::<UiTree>()
             .expect("UiHarness: the UiTree resource was removed")
-            .layout(viewport, text)
+            .layout(viewport, text);
+        self.totals += stats;
+        stats
+    }
+
+    /// The counts of every layout this harness ran, summed (redo 7.17): an
+    /// idle screen's guard reads that a frame laid out no root.
+    #[must_use]
+    pub fn layout_totals(&self) -> LayoutStats {
+        self.totals
+    }
+
+    /// The tree as JSON ([`UiTree::dump_json`]): each node's ID, kind, key,
+    /// accessible name, text, rect, focus and whether it shows.
+    #[must_use]
+    pub fn tree_json(&self) -> String {
+        self.tree().dump_json()
     }
 
     /// The widget under (`x`, `y`) in window pixels, after the last layout.
@@ -181,20 +202,173 @@ impl UiHarness {
         self.harness.input_mut().key_up(key);
     }
 
-    /// The first widget whose accessible name is `name`, in tree order:
-    /// roots in order, each depth first, so a button comes before its
-    /// label.
-    #[must_use]
-    pub fn find(&self, name: &str) -> Option<WidgetId> {
+    /// The shown roots from the front: the last painted first.
+    fn shown_roots(&self) -> impl Iterator<Item = WidgetId> + '_ {
         let tree = self.tree();
-        let mut stack: Vec<WidgetId> = tree.roots().iter().rev().copied().collect();
+        tree.roots()
+            .iter()
+            .rev()
+            .copied()
+            .filter(|root| tree.visibility(*root) == Some(Visibility::Visible))
+    }
+
+    /// The first of `id`'s subtree, `id` included, depth first, that
+    /// `take` takes, through visible widgets only when `visible`.
+    fn first_under(
+        &self,
+        id: WidgetId,
+        visible: bool,
+        take: impl Fn(&UiTree, WidgetId) -> bool,
+    ) -> Option<WidgetId> {
+        let tree = self.tree();
+        let mut stack = vec![id];
         while let Some(id) = stack.pop() {
-            if tree.accessible_name(id) == Some(name) {
+            if visible && tree.visibility(id) != Some(Visibility::Visible) {
+                continue;
+            }
+            if take(tree, id) {
                 return Some(id);
             }
             stack.extend(tree.children(id).iter().rev().copied());
         }
         None
+    }
+
+    /// The front-most shown modal root (redo 7.17): the screen on top.
+    #[must_use]
+    pub fn front_modal(&self) -> Option<WidgetId> {
+        let tree = self.tree();
+        self.shown_roots().find(|root| tree.modal(*root))
+    }
+
+    /// The first control named `name` that can take focus, in the shown
+    /// roots from the front, each depth first (redo 7.17): a toast's root
+    /// above a screen is looked past, as is a covered screen.
+    #[must_use]
+    pub fn find(&self, name: &str) -> Option<WidgetId> {
+        self.shown_roots().find_map(|root| {
+            self.first_under(root, true, |tree, id| {
+                tree.accessible_name(id) == Some(name) && tree.can_focus(id)
+            })
+        })
+    }
+
+    /// The widget named `name` on [`Self::front_modal`], enabled or not
+    /// (redo 7.17).
+    #[must_use]
+    pub fn named(&self, name: &str) -> Option<WidgetId> {
+        let root = self.front_modal()?;
+        self.first_under(root, false, |tree, id| {
+            tree.accessible_name(id) == Some(name)
+        })
+    }
+
+    /// Whether a label or a button on [`Self::front_modal`] reads `text`
+    /// (redo 7.17).
+    #[must_use]
+    pub fn shows(&self, text: &str) -> bool {
+        self.front_modal().is_some_and(|root| {
+            self.first_under(root, false, |tree, id| {
+                tree.text(id).is_some() && tree.plain_text(id) == text
+            })
+            .is_some()
+        })
+    }
+
+    /// The widget keyed `key` in the shown roots from the front (redo 7.17).
+    #[must_use]
+    pub fn find_key(&self, key: UiKey) -> Option<WidgetId> {
+        self.shown_roots()
+            .find_map(|root| self.first_under(root, true, |tree, id| tree.key(id) == Some(key)))
+    }
+
+    /// Lays the tree out and panics, naming `what`, when the shown UI does
+    /// not fit (redo 7.17): a shown root outside the viewport; a shown box
+    /// outside its parent across, or down unless a scroll panel above it
+    /// scrolls it; a focusable control outside the viewport unless a scroll
+    /// panel above it scrolls it. Measured at the harness's fixed advance,
+    /// so glyph widths are approximate.
+    pub fn assert_fits(&mut self, what: &str) {
+        self.assert_fits_one_line(what, &[]);
+    }
+
+    /// [`Self::assert_fits`], and each of `labels` committed on one line.
+    pub fn assert_fits_one_line(&mut self, what: &str, labels: &[WidgetId]) {
+        self.layout();
+        let scale = self.scale();
+        let viewport = self
+            .harness
+            .world()
+            .get_resource::<WindowSize>()
+            .map_or(Vec2::ZERO, |size| {
+                Vec2::new(size.width as f32, size.height as f32) / scale
+            });
+        let tree = self.tree();
+        let inside = |inner: f32, outer: f32| inner >= outer - 0.01;
+        let in_view = |rect: Rect| {
+            inside(rect.min.x, 0.0)
+                && inside(rect.min.y, 0.0)
+                && inside(viewport.x, rect.max.x)
+                && inside(viewport.y, rect.max.y)
+        };
+        let mut checked = 0;
+        for &root in tree.roots() {
+            if tree.visibility(root) != Some(Visibility::Visible) {
+                continue;
+            }
+            let Some(rect) = tree.rect(root) else {
+                continue;
+            };
+            assert!(
+                in_view(rect),
+                "{what}: root {root:?} at {rect:?} outside {viewport:?}"
+            );
+            let mut stack = vec![(root, false)];
+            while let Some((id, scrolled)) = stack.pop() {
+                let Some(parent) = tree.rect(id) else {
+                    continue;
+                };
+                let scrolls = scrolled || tree.scroll_max(id).is_some();
+                for &child in tree.children(id) {
+                    if tree.visibility(child) != Some(Visibility::Visible) {
+                        continue;
+                    }
+                    let Some(rect) = tree.rect(child) else {
+                        continue;
+                    };
+                    let across =
+                        inside(rect.min.x, parent.min.x) && inside(parent.max.x, rect.max.x);
+                    let down = scrolls
+                        || (inside(rect.min.y, parent.min.y) && inside(parent.max.y, rect.max.y));
+                    assert!(
+                        across && down,
+                        "{what}: {:?} ({:?}) at {rect:?} outside its parent at {parent:?}",
+                        tree.accessible_name(child),
+                        tree.plain_text(child)
+                    );
+                    assert!(
+                        scrolls || !tree.focusable(child) || in_view(rect),
+                        "{what}: {:?} at {rect:?} outside {viewport:?}",
+                        tree.accessible_name(child)
+                    );
+                    checked += 1;
+                    stack.push((child, scrolls));
+                }
+            }
+        }
+        assert!(checked > 0, "{what}: nothing shown");
+        for &label in labels {
+            let lines = tree
+                .text_node(label)
+                .and_then(|node| self.text.committed(node))
+                .map(|metrics| metrics.line_count);
+            assert_eq!(
+                lines,
+                Some(1),
+                "{what}: {:?} on one line",
+                tree.plain_text(label)
+            );
+        }
     }
 
     /// Copies `WindowSize` into the `ScaleFactor`'s window size.

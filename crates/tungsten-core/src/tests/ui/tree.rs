@@ -758,3 +758,21 @@ fn contrast_ratio_of_black_and_white_is_21() {
     let grey = contrast_ratio([0x77, 0x77, 0x77, 255], white);
     assert!((grey - 4.48).abs() < 0.01, "{grey}");
 }
+
+#[test]
+fn layout_stats_add_field_by_field_saturating() {
+    let one = LayoutStats {
+        roots_laid_out: 1,
+        nodes_laid_out: 4,
+        measure_calls: 2,
+        commits: 3,
+    };
+    let mut sum = one + one;
+    assert_eq!(sum.nodes_laid_out, 8);
+    sum += LayoutStats {
+        roots_laid_out: u32::MAX,
+        ..LayoutStats::default()
+    };
+    assert_eq!(sum.roots_laid_out, u32::MAX, "saturating");
+    assert_eq!((sum.measure_calls, sum.commits), (4, 6));
+}
