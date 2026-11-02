@@ -20,8 +20,11 @@
 //! named windows' places, and [`WidgetDirty`], what a widget waits on. M58
 //! gives the debug layers a scale of their own, raises a pressed window,
 //! paints [`UiShadow`]s as meshes, keeps a line limit in the measure double
-//! and a zoom in the placements file. Nothing here draws: the render crate
-//! consumes the paint list.
+//! and a zoom in the placements file. The UI pass (redo 7.17) adds widget
+//! keys, bare groups, named text styles, sizes and sounds in the theme,
+//! text outlines and shadows, shrinking labels and [`widgets`], the
+//! template shell's builders. Nothing here draws: the render crate consumes
+//! the paint list.
 
 pub mod anim;
 pub mod control;
@@ -41,6 +44,7 @@ pub mod style;
 pub mod theme;
 pub mod theme_file;
 pub mod tree;
+pub mod widgets;
 pub mod window;
 
 pub use anim::{UiProperty, UiTrack, ui_animate_system};

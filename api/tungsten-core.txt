@@ -13268,6 +13268,74 @@ impl core::marker::Unpin for tungsten_core::ui::tree::WidgetDirty
 impl core::marker::UnsafeUnpin for tungsten_core::ui::tree::WidgetDirty
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::tree::WidgetDirty
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::tree::WidgetDirty
+pub mod tungsten_core::ui::widgets
+pub struct tungsten_core::ui::widgets::Menu
+pub tungsten_core::ui::widgets::Menu::buttons: alloc::vec::Vec<tungsten_core::ui::id::WidgetId>
+pub tungsten_core::ui::widgets::Menu::card: tungsten_core::ui::id::WidgetId
+pub tungsten_core::ui::widgets::Menu::heading: tungsten_core::ui::id::WidgetId
+pub tungsten_core::ui::widgets::Menu::root: tungsten_core::ui::id::WidgetId
+impl tungsten_core::ui::widgets::Menu
+pub fn tungsten_core::ui::widgets::Menu::new(&mut tungsten_core::ui::tree::UiTree, &str, &[(&str, &str)]) -> Self
+impl core::clone::Clone for tungsten_core::ui::widgets::Menu
+pub fn tungsten_core::ui::widgets::Menu::clone(&self) -> tungsten_core::ui::widgets::Menu
+impl core::fmt::Debug for tungsten_core::ui::widgets::Menu
+pub fn tungsten_core::ui::widgets::Menu::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::widgets::Menu
+impl core::marker::Send for tungsten_core::ui::widgets::Menu
+impl core::marker::Sync for tungsten_core::ui::widgets::Menu
+impl core::marker::Unpin for tungsten_core::ui::widgets::Menu
+impl core::marker::UnsafeUnpin for tungsten_core::ui::widgets::Menu
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::widgets::Menu
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::widgets::Menu
+pub struct tungsten_core::ui::widgets::Meter
+pub tungsten_core::ui::widgets::Meter::fill: tungsten_core::ui::id::WidgetId
+pub tungsten_core::ui::widgets::Meter::track: tungsten_core::ui::id::WidgetId
+impl tungsten_core::ui::widgets::Meter
+pub fn tungsten_core::ui::widgets::Meter::set(&self, &mut tungsten_core::ui::tree::UiTree, f32, [u8; 4])
+impl core::clone::Clone for tungsten_core::ui::widgets::Meter
+pub fn tungsten_core::ui::widgets::Meter::clone(&self) -> tungsten_core::ui::widgets::Meter
+impl core::cmp::Eq for tungsten_core::ui::widgets::Meter
+impl core::cmp::PartialEq for tungsten_core::ui::widgets::Meter
+pub fn tungsten_core::ui::widgets::Meter::eq(&self, &tungsten_core::ui::widgets::Meter) -> bool
+impl core::fmt::Debug for tungsten_core::ui::widgets::Meter
+pub fn tungsten_core::ui::widgets::Meter::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::widgets::Meter
+impl core::marker::StructuralPartialEq for tungsten_core::ui::widgets::Meter
+impl core::marker::Freeze for tungsten_core::ui::widgets::Meter
+impl core::marker::Send for tungsten_core::ui::widgets::Meter
+impl core::marker::Sync for tungsten_core::ui::widgets::Meter
+impl core::marker::Unpin for tungsten_core::ui::widgets::Meter
+impl core::marker::UnsafeUnpin for tungsten_core::ui::widgets::Meter
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::widgets::Meter
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::widgets::Meter
+pub fn tungsten_core::ui::widgets::button(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::caption_row(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::choice_row(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str, &str) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::column(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::danger(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId)
+pub fn tungsten_core::ui::widgets::display(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str, &str) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::fill(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, [u8; 4])
+pub fn tungsten_core::ui::widgets::focus_first(&mut tungsten_core::ui::tree::UiTree, impl core::iter::traits::collect::IntoIterator<Item = tungsten_core::ui::id::WidgetId>)
+pub fn tungsten_core::ui::widgets::group(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle, tungsten_core::ui::style::Align) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::heading(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str, bool) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::meter(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, f32, f32) -> tungsten_core::ui::widgets::Meter
+pub fn tungsten_core::ui::widgets::mono(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId)
+pub fn tungsten_core::ui::widgets::name(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str)
+pub fn tungsten_core::ui::widgets::note(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::prompt_row(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::radial(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::restyle(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, impl core::ops::function::FnOnce(&mut tungsten_core::ui::theme::TextOverrides))
+pub fn tungsten_core::ui::widgets::row(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::screen(&mut tungsten_core::ui::tree::UiTree, f32) -> (tungsten_core::ui::id::WidgetId, tungsten_core::ui::id::WidgetId)
+pub fn tungsten_core::ui::widgets::select_tab(&mut tungsten_core::ui::tree::UiTree, &[tungsten_core::ui::id::WidgetId], usize)
+pub fn tungsten_core::ui::widgets::set_radial(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, f32, [u8; 4])
+pub fn tungsten_core::ui::widgets::set_width(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::Sizing)
+pub fn tungsten_core::ui::widgets::show(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::widgets::size(&tungsten_core::ui::tree::UiTree, &str) -> f32
+pub fn tungsten_core::ui::widgets::slider_row(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str, tungsten_core::ui::control::SliderRange) -> (tungsten_core::ui::id::WidgetId, tungsten_core::ui::id::WidgetId)
+pub fn tungsten_core::ui::widgets::small(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::widgets::tab_rail(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &[&str]) -> (alloc::vec::Vec<tungsten_core::ui::id::WidgetId>, alloc::vec::Vec<tungsten_core::ui::id::WidgetId>)
+pub fn tungsten_core::ui::widgets::toggle_row(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str, bool) -> tungsten_core::ui::id::WidgetId
 pub mod tungsten_core::ui::window
 pub struct tungsten_core::ui::window::WindowPlacements
 impl tungsten_core::ui::window::WindowPlacements
