@@ -16765,6 +16765,9 @@
     },
     "settings": {
       "path": "ui/screens/settings.json"
+    },
+    "title": {
+      "path": "ui/screens/title.json"
     }
   },
   "ui_themes": {

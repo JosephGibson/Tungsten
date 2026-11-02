@@ -1,0 +1,218 @@
+{
+  "root": {
+    "card": {
+      "layout": {
+        "align_items": "center",
+        "gap": "title_gap",
+        "max_width": "none"
+      },
+      "overrides": {
+        "background": "#00000000",
+        "border_width": 0
+      }
+    },
+    "children": [
+      {
+        "bind": {
+          "text": "game_title"
+        },
+        "kind": "display",
+        "layout": {
+          "width": "100%"
+        },
+        "style": "title"
+      },
+      {
+        "children": [
+          {
+            "bind": {
+              "visible": "title_main"
+            },
+            "children": [
+              {
+                "bind": {
+                  "enabled": "has_newest"
+                },
+                "children": [
+                  {
+                    "bind": {
+                      "visible": "has_newest"
+                    },
+                    "children": [
+                      {
+                        "bind": {
+                          "text": "newest_slot"
+                        },
+                        "kind": "small",
+                        "overrides": {
+                          "text": {
+                            "wrap": "none"
+                          }
+                        }
+                      },
+                      {
+                        "bind": {
+                          "text": "newest_age"
+                        },
+                        "kind": "small",
+                        "mono": true,
+                        "overrides": {
+                          "text": {
+                            "wrap": "none"
+                          }
+                        }
+                      }
+                    ],
+                    "kind": "row",
+                    "layout": {
+                      "justify_content": "center"
+                    }
+                  }
+                ],
+                "key": "continue",
+                "kind": "button",
+                "layout": {
+                  "padding": {
+                    "x": "button_padding_x",
+                    "y": "title_button_padding_y"
+                  }
+                },
+                "text": "Continue"
+              },
+              {
+                "key": "new_game",
+                "kind": "button",
+                "layout": {
+                  "padding": {
+                    "x": "button_padding_x",
+                    "y": "title_button_padding_y"
+                  }
+                },
+                "text": "New Game"
+              },
+              {
+                "bind": {
+                  "enabled": "saving_on"
+                },
+                "key": "load",
+                "kind": "button",
+                "layout": {
+                  "padding": {
+                    "x": "button_padding_x",
+                    "y": "title_button_padding_y"
+                  }
+                },
+                "text": "Load"
+              },
+              {
+                "key": "settings",
+                "kind": "button",
+                "layout": {
+                  "padding": {
+                    "x": "button_padding_x",
+                    "y": "title_button_padding_y"
+                  }
+                },
+                "text": "Settings"
+              },
+              {
+                "key": "quit",
+                "kind": "button",
+                "layout": {
+                  "padding": {
+                    "x": "button_padding_x",
+                    "y": "title_button_padding_y"
+                  }
+                },
+                "text": "Quit"
+              }
+            ],
+            "key": "main",
+            "kind": "column",
+            "layout": {
+              "gap": "title_gap",
+              "width": "title_menu_width"
+            }
+          },
+          {
+            "bind": {
+              "visible": "title_picker"
+            },
+            "children": [
+              {
+                "centred": true,
+                "kind": "heading",
+                "text": "Difficulty"
+              },
+              {
+                "kind": "mount",
+                "layout": {
+                  "direction": "row"
+                },
+                "mount": "difficulty_cards"
+              },
+              {
+                "key": "back",
+                "kind": "button",
+                "layout": {
+                  "align_self": "center",
+                  "width": "title_menu_width"
+                },
+                "text": "Back"
+              }
+            ],
+            "key": "picker",
+            "kind": "column",
+            "layout": {
+              "gap": "title_gap",
+              "width": "wide_width"
+            }
+          }
+        ],
+        "kind": "column",
+        "layout": {
+          "align_items": "center",
+          "margin": {
+            "top": "title_space"
+          }
+        }
+      }
+    ],
+    "kind": "screen",
+    "over": [
+      {
+        "children": [
+          {
+            "bind": {
+              "text": "version"
+            },
+            "kind": "small"
+          },
+          {
+            "bind": {
+              "visible": "saving_off"
+            },
+            "kind": "small",
+            "text": "Saving is off"
+          }
+        ],
+        "kind": "panel",
+        "layout": {
+          "anchor": {
+            "corner": "bottom_start",
+            "offset": [
+              "spacing.lg",
+              "spacing.lg"
+            ]
+          }
+        },
+        "overrides": {
+          "background": "#00000000",
+          "border_width": 0
+        }
+      }
+    ],
+    "width": "menu_width"
+  },
+  "version": 1
+}

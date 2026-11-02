@@ -253,6 +253,7 @@ impl Plugin for ShellPlugin {
             .enabled("saving_on", saving_on)
             .visible("saving_off", saving_off);
         settings::bind(bindings);
+        title::bind(bindings);
         let unset = world.resource::<Settings>().ui_scale().is_none();
         if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
             scale.set_reference_height(Some(theme::REFERENCE_HEIGHT));
