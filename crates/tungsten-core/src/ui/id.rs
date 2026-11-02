@@ -28,3 +28,33 @@ impl WidgetId {
         self.generation
     }
 }
+
+/// A widget's key: the 64-bit FNV-1a hash of a name, so a Rust `const` and a
+/// data file naming the same name name the same key. Set one with
+/// [`UiTree::set_key`](super::UiTree::set_key); a keyed widget's
+/// activations, double clicks, focus gains and value changes carry it, and
+/// [`UiTree::find_key`](super::UiTree::find_key) finds it again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct UiKey(u64);
+
+impl UiKey {
+    /// The key of `name`: FNV-1a 64 over its bytes.
+    #[must_use]
+    pub const fn new(name: &str) -> Self {
+        let bytes = name.as_bytes();
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+        let mut at = 0;
+        while at < bytes.len() {
+            hash ^= bytes[at] as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            at += 1;
+        }
+        Self(hash)
+    }
+
+    /// The hash.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}

@@ -7,9 +7,9 @@ use glam::Vec2;
 use crate::assets::SpriteAssetId;
 use crate::text::{StyledText, TextNodeId};
 
-use super::WidgetId;
 use super::control::Control;
 use super::geometry::Rect;
+use super::id::{UiKey, WidgetId};
 use super::scroll::ScrollState;
 use super::style::LayoutStyle;
 use super::theme::{ResolvedStyle, StyleOverrides};
@@ -292,6 +292,11 @@ pub(crate) struct Node {
     pub(crate) focus_wrap: bool,
     /// The node's own style overrides, applied after the kind's variant.
     pub(crate) overrides: StyleOverrides,
+    /// Panels: whether the kind's surface and border are skipped, so only
+    /// the node's own overrides paint.
+    pub(crate) bare: bool,
+    /// The widget's key and the name it was made from.
+    pub(crate) key: Option<(UiKey, Box<str>)>,
     /// The last resolution; `None` before the first.
     pub(crate) resolved: Option<ResolvedStyle>,
     /// Whether the next resolution pass must resolve this node.
@@ -363,6 +368,8 @@ impl Node {
             focus_neighbors: None,
             focus_wrap: false,
             overrides: StyleOverrides::default(),
+            bare: false,
+            key: None,
             resolved: None,
             style_dirty: true,
             style_dirty_subtree: true,

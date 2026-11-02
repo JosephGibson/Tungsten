@@ -6,8 +6,8 @@
 //! scale and a root's fade mark paint (M56), as a mesh's triangles do (M57),
 //! and a shadow and raising a root (M58); the debug scale marks the debug
 //! roots for layout (M58); hover, press and focus visibility mark the
-//! widgets' styles; roles, names, the behaviour flags and a root's freeze
-//! mark nothing.
+//! widgets' styles; roles, names, keys, the behaviour flags and a root's
+//! freeze mark nothing.
 
 use std::collections::HashSet;
 
@@ -17,7 +17,7 @@ use crate::assets::SpriteAssetId;
 use crate::text::{FontEpoch, StyledText, TextNodeId, TextStyle};
 
 use super::anim::RunningTrack;
-use super::id::WidgetId;
+use super::id::{UiKey, WidgetId};
 use super::node::{
     CursorIcon, ImageContent, Node, Role, TextContent, UiLayer, UiShadow, UiVertex, Visibility,
     WidgetKind,
@@ -33,6 +33,15 @@ pub(crate) const MIN_SCALE: f32 = 1.0 / 64.0;
 struct Slot {
     generation: u32,
     node: Option<Node>,
+}
+
+/// Something [`UiTree`] warns about once.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum Warned {
+    /// An image named a sprite the registry had not registered.
+    Sprite(SpriteAssetId),
+    /// A key set twice under one root.
+    Key(UiKey),
 }
 
 /// Counts from one style resolution pass.
@@ -92,9 +101,10 @@ pub struct UiTree {
     pub(crate) theme_id: Option<String>,
     /// The viewport of the last layout pass; `None` before the first.
     pub(crate) viewport: Option<Vec2>,
-    /// Sprites an image named that the registry had not registered, each
-    /// warned about once.
-    pub(crate) warned_sprites: HashSet<SpriteAssetId>,
+    /// What the tree warned about, each once. One set, so a new kind of
+    /// warning leaves the tree's size alone: the app re-inserts the tree
+    /// each frame it paints.
+    pub(crate) warned: HashSet<Warned>,
     /// The widget holding keyboard focus.
     pub(crate) focused: Option<WidgetId>,
     /// Text nodes of removed labels, freed at the next layout.
@@ -309,6 +319,15 @@ impl UiTree {
     /// A panel under `parent`. Panics when `parent` is not in the tree.
     pub fn panel(&mut self, parent: WidgetId, style: LayoutStyle) -> WidgetId {
         self.add_child(parent, WidgetKind::Panel, style)
+    }
+
+    /// A layout-only panel under `parent`: a bare panel ([`Self::set_bare`]),
+    /// which paints no surface and no border under any theme, only what its
+    /// own overrides set. Panics when `parent` is not in the tree.
+    pub fn group(&mut self, parent: WidgetId, style: LayoutStyle) -> WidgetId {
+        let id = self.panel(parent, style);
+        self.set_bare(id, true);
+        id
     }
 
     /// A label under `parent` with `text`. Panics when `parent` is not in
@@ -630,6 +649,16 @@ impl UiTree {
             .map(|content| &content.text)
     }
 
+    /// A label's or a button's text, its spans joined, whatever accessible
+    /// name is set; empty for a widget that holds no text.
+    #[must_use]
+    pub fn plain_text(&self, id: WidgetId) -> String {
+        self.text_holder(id)
+            .and_then(|target| self.node(target)?.text.as_ref())
+            .map(|content| content.flat.clone())
+            .unwrap_or_default()
+    }
+
     // ---- text scale (M56) ----
 
     /// Sets the scale every label's text size and line height take, and the
@@ -740,6 +769,16 @@ impl UiTree {
     #[must_use]
     pub fn layout_style(&self, id: WidgetId) -> Option<&LayoutStyle> {
         self.node(id).map(|node| &node.layout_style)
+    }
+
+    /// Edits the layout style in place: `edit` runs on a copy, which is set,
+    /// marking layout, only when it differs. Does nothing for an invalid ID.
+    pub fn edit_layout(&mut self, id: WidgetId, edit: impl FnOnce(&mut LayoutStyle)) {
+        let Some(mut style) = self.layout_style(id).cloned() else {
+            return;
+        };
+        edit(&mut style);
+        self.set_layout_style(id, style);
     }
 
     // ---- paint-only properties (M56) ----
@@ -1236,6 +1275,99 @@ impl UiTree {
         self.node(id).map(|node| &node.overrides)
     }
 
+    /// Edits the node's own overrides in place: `edit` runs on a copy, which
+    /// is set, marking the style and paint, only when it differs, so a
+    /// background set this way keeps the text overrides. Does nothing for an
+    /// invalid ID.
+    pub fn edit_overrides(&mut self, id: WidgetId, edit: impl FnOnce(&mut StyleOverrides)) {
+        let Some(mut overrides) = self.overrides(id).cloned() else {
+            return;
+        };
+        edit(&mut overrides);
+        self.set_overrides(id, overrides);
+    }
+
+    /// Makes a panel bare, or not: a bare panel, a root or a scroll panel
+    /// among them, paints no surface and no border under any theme, only
+    /// what its own overrides set, and its kind's text still passes down.
+    /// Does nothing for a widget that is not a panel. Marks its style and
+    /// paint; an equal flag marks nothing.
+    pub fn set_bare(&mut self, id: WidgetId, bare: bool) {
+        let Some(node) = self
+            .node_mut(id)
+            .filter(|node| node.kind == WidgetKind::Panel)
+        else {
+            return;
+        };
+        if node.bare == bare {
+            return;
+        }
+        node.bare = bare;
+        self.mark_style_dirty(id);
+        self.mark_paint_dirty();
+    }
+
+    /// Whether `id` is a bare panel; `false` for any other widget or an
+    /// invalid ID.
+    #[must_use]
+    pub fn bare(&self, id: WidgetId) -> bool {
+        self.node(id).is_some_and(|node| node.bare)
+    }
+
+    // ---- keys ----
+
+    /// Keys `id` by `name` ([`UiKey::new`]): its activations, double clicks,
+    /// focus gains and value changes carry the key, and [`Self::find_key`]
+    /// finds it. The tree keeps the name for dumps. A key already on another
+    /// widget under the same root warns once per key; [`Self::find_key`]
+    /// then takes the first in tree order. Marks nothing.
+    pub fn set_key(&mut self, id: WidgetId, name: &str) {
+        let key = UiKey::new(name);
+        let Some(root) = self.root_of(id) else {
+            return;
+        };
+        if self.find_key(root, key).is_some_and(|other| other != id)
+            && self.warned.insert(Warned::Key(key))
+        {
+            log::warn!(
+                "UiTree: key `{name}` is set twice under root {root:?}; find_key takes the first"
+            );
+        }
+        if let Some(node) = self.node_mut(id) {
+            node.key = Some((key, name.into()));
+        }
+    }
+
+    /// The key set on `id`; `None` when none is set or for an invalid ID.
+    #[must_use]
+    pub fn key(&self, id: WidgetId) -> Option<UiKey> {
+        self.node(id)?.key.as_ref().map(|(key, _)| *key)
+    }
+
+    /// The name `id`'s key was made from; `None` when none is set or for an
+    /// invalid ID.
+    #[must_use]
+    pub fn key_name(&self, id: WidgetId) -> Option<&str> {
+        self.node(id)?.key.as_ref().map(|(_, name)| &**name)
+    }
+
+    /// The first widget keyed `key` in `under`'s subtree, `under` included,
+    /// depth first in sibling order; `None` when none is.
+    #[must_use]
+    pub fn find_key(&self, under: WidgetId, key: UiKey) -> Option<WidgetId> {
+        let mut stack = vec![under];
+        while let Some(id) = stack.pop() {
+            let Some(node) = self.node(id) else {
+                continue;
+            };
+            if node.key.as_ref().is_some_and(|(own, _)| *own == key) {
+                return Some(id);
+            }
+            stack.extend(node.children.iter().rev());
+        }
+        None
+    }
+
     /// The last resolution; `None` before the first [`Self::layout`].
     #[must_use]
     pub fn resolved_style(&self, id: WidgetId) -> Option<&ResolvedStyle> {
@@ -1350,13 +1482,19 @@ impl UiTree {
         let mut text_changed = false;
         if node.style_dirty || parent_text_changed {
             let layers = self.style_layers(id, node);
-            let resolved = theme::resolve_layers(
+            let mut resolved = theme::resolve_layers(
                 &self.theme,
                 node.kind,
                 &layers,
                 &node.overrides,
                 parent_text,
             );
+            if node.bare {
+                let own = &node.overrides;
+                resolved.background = own.background.unwrap_or_default();
+                resolved.border = own.border.unwrap_or_default();
+                resolved.border_width = own.border_width.unwrap_or_default();
+            }
             let (changed_text, changed_measure, changed_visual) = match &node.resolved {
                 Some(old) => (
                     old.text != resolved.text,

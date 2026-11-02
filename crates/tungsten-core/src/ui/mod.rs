@@ -48,7 +48,7 @@ pub use control::SliderRange;
 pub use event::{UiEvent, UiValue};
 pub use focus::NavDirection;
 pub use geometry::Rect;
-pub use id::WidgetId;
+pub use id::{UiKey, WidgetId};
 pub use measure::{FixedAdvanceMeasure, MeasureCounts};
 pub use node::{CursorIcon, Role, UiLayer, UiShadow, UiVertex, Visibility, WidgetKind};
 pub use paint::{ClipRect, PaintCommand, PaintList, UiDebug, to_physical};

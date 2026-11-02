@@ -337,6 +337,7 @@ fn value_changed_returns_the_last_value_of_the_current_window() {
     let mut queue = EventQueue::<UiEvent>::new();
     queue.send(UiEvent::ValueChanged {
         widget: slider,
+        key: None,
         value: UiValue::Number(2.0),
     });
     queue.flush();
@@ -347,14 +348,17 @@ fn value_changed_returns_the_last_value_of_the_current_window() {
     );
     queue.send(UiEvent::ValueChanged {
         widget: slider,
+        key: None,
         value: UiValue::Number(3.0),
     });
     queue.send(UiEvent::ValueChanged {
         widget: toggle,
+        key: None,
         value: UiValue::Bool(true),
     });
     queue.send(UiEvent::ValueChanged {
         widget: slider,
+        key: None,
         value: UiValue::Number(4.0),
     });
     assert_eq!(queue.value_changed(slider), Some(UiValue::Number(4.0)));

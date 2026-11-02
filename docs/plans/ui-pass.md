@@ -1,6 +1,6 @@
-# The UI pass: the template's widgets and screens in the engine (ui-pass) — draft
+# The UI pass: the template's widgets and screens in the engine (ui-pass)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Redo 7.17 (phase 7's Step 6; the redo's 7.17 row and §5.9): the template's widgets become the engine's. Core takes the tree-only builders (the screen card, named text styles, choice, slider and toggle rows, the tab rail, `Menu`, layout-only groups, a meter and a radial fill), styles edited in place, a key per widget carried in `UiEvent`, named text styles, sizes and sounds in the theme file, text outlines and shadows, shrinking text and the commit-width fix; the umbrella takes a modal screen helper, confirm, toasts, a reset transition, held clocks and state-owned resources; `UiHarness` takes both games' queries and `assert_fits`; the shell, 01's copy and the fixtures delete their copies; agents get a tree dump, a screen rendered by name and `tungsten new screen`; an idle screen lays out no root, guarded. It lands Step 6's rows but S-162 and S-149, which move (§2.1).
 - **non-goals:**
   - 7.20's screen files, bindings and schema; 8.1's tooltips, popups, text input and drag and drop; localisation and accessibility (§5.9's Waits).
@@ -357,5 +357,6 @@ Round 2 (due: round 1 changed the clock hold, the guard's control, step 15's com
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-02 | passed | `ui::` 261 passed, the 9 named among them; `ui_route::` ok; the workspace build, fmt, `just lint` and `api-check` exit 0; 02's `guards` 12 passed; 01 443 passed; the kit's pin 1 and `kit_recipes::` 93 passed. Departure: the tree's warn-once sets are one, `warned: HashSet<Warned>`, since the app re-inserts `UiTree` each frame it paints and its size sits in 01's `pit` pin: a second 48-byte set read `allocated_bytes` 69,118,796 → 69,121,676 (60 frames × 48). `UiEvent`'s key (20 → 32 bytes) left the pin as it was | — |
 
 ## Follow-ups

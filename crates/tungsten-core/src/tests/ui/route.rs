@@ -1,7 +1,7 @@
 use super::*;
 use crate::input::{Modifiers, StickResponse};
 use crate::ui::{
-    Anchor, FixedAdvanceMeasure, LayoutStyle, Rect, Sizing, SliderRange, UiLayer, Visibility,
+    Anchor, FixedAdvanceMeasure, LayoutStyle, Rect, Sizing, SliderRange, UiKey, UiLayer, Visibility,
 };
 
 /// The logical viewport every rig lays out in.
@@ -21,7 +21,7 @@ fn activations(events: &[UiEvent]) -> Vec<WidgetId> {
     events
         .iter()
         .filter_map(|event| match event {
-            UiEvent::Activated { widget } => Some(*widget),
+            UiEvent::Activated { widget, .. } => Some(*widget),
             _ => None,
         })
         .collect()
@@ -157,12 +157,18 @@ fn a_move_press_and_release_in_one_stream_click_where_the_move_put_the_pointer()
                 widget: b,
                 button: LEFT
             },
-            UiEvent::FocusGained { widget: b },
+            UiEvent::FocusGained {
+                widget: b,
+                key: None
+            },
             UiEvent::Released {
                 widget: b,
                 button: LEFT
             },
-            UiEvent::Activated { widget: b },
+            UiEvent::Activated {
+                widget: b,
+                key: None
+            },
         ]
     );
     assert!(!activations(&events).contains(&a));
@@ -344,7 +350,11 @@ fn one_click_or_accept_press_activates_once() {
     assert_eq!(
         rig.queue()
             .iter()
-            .filter(|event| **event == UiEvent::Activated { widget: b })
+            .filter(|event| **event
+                == UiEvent::Activated {
+                    widget: b,
+                    key: None
+                })
             .count(),
         1,
         "where iter() sees it in a second"
@@ -478,7 +488,10 @@ fn under_a_shown_modal_every_press_is_the_uis_and_a_debug_root_above_still_hits(
     let events = rig.frame(|input| input.key_down(KeyCode::KeyW));
     assert_eq!(
         events,
-        [UiEvent::FocusGained { widget: ok }],
+        [UiEvent::FocusGained {
+            widget: ok,
+            key: None
+        }],
         "the modal takes focus on its first focusable widget"
     );
     assert!(
@@ -571,13 +584,22 @@ fn a_second_click_on_the_same_widget_soon_and_near_is_a_double_click() {
     assert_eq!(
         &events[events.len() - 2..],
         [
-            UiEvent::Activated { widget: a },
-            UiEvent::DoubleClicked { widget: a },
+            UiEvent::Activated {
+                widget: a,
+                key: None
+            },
+            UiEvent::DoubleClicked {
+                widget: a,
+                key: None
+            },
         ]
     );
     let events = rig.click(a);
     assert!(
-        !events.contains(&UiEvent::DoubleClicked { widget: a }),
+        !events.contains(&UiEvent::DoubleClicked {
+            widget: a,
+            key: None
+        }),
         "a third click starts a pair again"
     );
 
@@ -586,23 +608,34 @@ fn a_second_click_on_the_same_widget_soon_and_near_is_a_double_click() {
         rig.frame(|_| {});
     }
     let events = rig.click(a);
-    assert!(events.contains(&UiEvent::DoubleClicked { widget: a }));
+    assert!(events.contains(&UiEvent::DoubleClicked {
+        widget: a,
+        key: None
+    }));
     rig.click(a);
     for _ in 0..16 {
         rig.frame(|_| {});
     }
-    assert!(!rig.click(a).contains(&UiEvent::DoubleClicked { widget: a }));
+    assert!(!rig.click(a).contains(&UiEvent::DoubleClicked {
+        widget: a,
+        key: None
+    }));
 
     let near = rig.centre(a);
     rig.click_px(near + Vec2::new(5.0, 0.0));
     assert!(
-        !rig.click_px(near)
-            .contains(&UiEvent::DoubleClicked { widget: a }),
+        !rig.click_px(near).contains(&UiEvent::DoubleClicked {
+            widget: a,
+            key: None
+        }),
         "5 units apart"
     );
     rig.click(b);
     assert!(
-        !rig.click(a).contains(&UiEvent::DoubleClicked { widget: a }),
+        !rig.click(a).contains(&UiEvent::DoubleClicked {
+            widget: a,
+            key: None
+        }),
         "another widget between"
     );
 }
@@ -671,13 +704,22 @@ fn the_cursor_is_the_nearest_one_set_under_the_pointer_or_on_the_captured_widget
 fn a_focus_change_by_the_game_is_reported_at_the_next_routing() {
     let (mut rig, _root, a, b) = Rig::new();
     rig.tree_mut().focus(a);
-    assert_eq!(rig.frame(|_| {}), [UiEvent::FocusGained { widget: a }]);
+    assert_eq!(
+        rig.frame(|_| {}),
+        [UiEvent::FocusGained {
+            widget: a,
+            key: None
+        }]
+    );
     rig.tree_mut().focus(b);
     assert_eq!(
         rig.frame(|_| {}),
         [
             UiEvent::FocusLost { widget: a },
-            UiEvent::FocusGained { widget: b },
+            UiEvent::FocusGained {
+                widget: b,
+                key: None
+            },
         ]
     );
     assert!(rig.frame(|_| {}).is_empty());
@@ -1003,7 +1045,7 @@ fn values(events: &[UiEvent]) -> Vec<(WidgetId, UiValue)> {
     events
         .iter()
         .filter_map(|event| match event {
-            UiEvent::ValueChanged { widget, value } => Some((*widget, *value)),
+            UiEvent::ValueChanged { widget, value, .. } => Some((*widget, *value)),
             _ => None,
         })
         .collect()
@@ -1062,14 +1104,21 @@ fn a_click_and_an_accept_press_flip_a_toggle_after_its_activation() {
                 widget: toggle,
                 button: LEFT
             },
-            UiEvent::FocusGained { widget: toggle },
+            UiEvent::FocusGained {
+                widget: toggle,
+                key: None
+            },
             UiEvent::Released {
                 widget: toggle,
                 button: LEFT
             },
-            UiEvent::Activated { widget: toggle },
+            UiEvent::Activated {
+                widget: toggle,
+                key: None
+            },
             UiEvent::ValueChanged {
                 widget: toggle,
+                key: None,
                 value: UiValue::Bool(true)
             },
         ]
@@ -1082,12 +1131,19 @@ fn a_click_and_an_accept_press_flip_a_toggle_after_its_activation() {
     assert_eq!(
         events[2..],
         [
-            UiEvent::Activated { widget: toggle },
+            UiEvent::Activated {
+                widget: toggle,
+                key: None
+            },
             UiEvent::ValueChanged {
                 widget: toggle,
+                key: None,
                 value: UiValue::Bool(false)
             },
-            UiEvent::DoubleClicked { widget: toggle },
+            UiEvent::DoubleClicked {
+                widget: toggle,
+                key: None
+            },
         ]
     );
     assert_eq!(rig.tree().toggled(toggle), Some(false));
@@ -1098,9 +1154,13 @@ fn a_click_and_an_accept_press_flip_a_toggle_after_its_activation() {
     assert_eq!(
         events,
         [
-            UiEvent::Activated { widget: toggle },
+            UiEvent::Activated {
+                widget: toggle,
+                key: None
+            },
             UiEvent::ValueChanged {
                 widget: toggle,
+                key: None,
                 value: UiValue::Bool(true)
             },
         ]
@@ -1125,9 +1185,13 @@ fn a_press_sets_a_slider_from_the_pointer_and_moves_follow_past_both_ends() {
                 widget: slider,
                 button: LEFT
             },
-            UiEvent::FocusGained { widget: slider },
+            UiEvent::FocusGained {
+                widget: slider,
+                key: None
+            },
             UiEvent::ValueChanged {
                 widget: slider,
+                key: None,
                 value: UiValue::Number(3.0)
             },
         ],
@@ -1710,4 +1774,105 @@ fn each_routing_gives_the_routed_view_the_raw_inputs_stick_response() {
         .set_stick_response(response);
     ui_route_system(&mut world);
     assert_eq!(world.resource::<RoutedInput>().stick_response(), response);
+}
+
+#[test]
+fn an_activation_carries_its_widgets_key() {
+    const SAVE: UiKey = UiKey::new("save");
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.tree_mut().set_key(a, "save");
+    let events = rig.click(a);
+    assert!(events.contains(&UiEvent::Activated {
+        widget: a,
+        key: Some(SAVE)
+    }));
+    assert!(events.contains(&UiEvent::FocusGained {
+        widget: a,
+        key: Some(SAVE)
+    }));
+    assert_eq!(rig.queue().activated_key(SAVE), Some(a));
+    let events = rig.click(a);
+    assert!(events.contains(&UiEvent::DoubleClicked {
+        widget: a,
+        key: Some(SAVE)
+    }));
+
+    // An unkeyed widget's events carry none, and the key reads nothing.
+    let events = rig.click(b);
+    assert!(events.contains(&UiEvent::Activated {
+        widget: b,
+        key: None
+    }));
+    assert_eq!(rig.queue().activated_key(SAVE), None);
+    assert_eq!(rig.queue().activated_key(UiKey::new("b")), None);
+}
+
+#[test]
+fn a_value_change_carries_its_key() {
+    const MUSIC: UiKey = UiKey::new("music");
+    const MUTE: UiKey = UiKey::new("mute");
+    let range = SliderRange::new(0.0, 10.0).with_step(1.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 5.0);
+    let root = rig.tree().root_of(slider).expect("in the tree");
+    let toggle = rig.tree_mut().toggle(root, false);
+    rig.tree_mut()
+        .set_layout_style(toggle, at(10.0, 120.0, 20.0, 20.0));
+    rig.tree_mut().set_key(slider, "music");
+    rig.tree_mut().set_key(toggle, "mute");
+    rig.layout();
+
+    let x = Rig::along(0.3);
+    let events = rig.frame(|input| {
+        input.update_cursor_position(x, 20.0);
+        input.mouse_down(LEFT);
+    });
+    assert!(events.contains(&UiEvent::ValueChanged {
+        widget: slider,
+        key: Some(MUSIC),
+        value: UiValue::Number(3.0)
+    }));
+    assert_eq!(
+        rig.queue().value_changed_key(MUSIC),
+        Some(UiValue::Number(3.0))
+    );
+    assert_eq!(rig.queue().value_changed_key(MUTE), None);
+    rig.frame(|input| input.mouse_up(LEFT));
+
+    rig.click(toggle);
+    assert_eq!(
+        rig.queue().value_changed_key(MUTE),
+        Some(UiValue::Bool(true))
+    );
+    assert_eq!(rig.queue().activated_key(MUTE), Some(toggle));
+}
+
+#[test]
+fn find_key_takes_the_first_in_tree_order() {
+    const ROW: UiKey = UiKey::new("row");
+    let (mut rig, root, a, b) = Rig::new();
+    let tree = rig.tree_mut();
+    let column = tree.group(root, LayoutStyle::column());
+    let deep = tree.button(column, "deep");
+    // `a` comes first among the root's children, so first in tree order,
+    // though `deep` was keyed first; the duplicate warns once.
+    tree.set_key(deep, "row");
+    tree.set_key(b, "row");
+    tree.set_key(a, "row");
+    assert_eq!(tree.find_key(root, ROW), Some(a));
+    assert_eq!(
+        tree.find_key(column, ROW),
+        Some(deep),
+        "inside its subtree only"
+    );
+    assert_eq!(tree.find_key(b, ROW), Some(b), "a widget finds itself");
+    assert_eq!(tree.find_key(root, UiKey::new("none")), None);
+
+    tree.remove(a);
+    assert_eq!(
+        tree.find_key(root, ROW),
+        Some(b),
+        "depth first in sibling order"
+    );
+    tree.remove(b);
+    assert_eq!(tree.find_key(root, ROW), Some(deep));
 }

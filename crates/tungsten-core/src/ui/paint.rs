@@ -22,7 +22,7 @@ use std::ops::Range;
 
 use glam::Vec2;
 
-use crate::assets::{AssetRegistry, FilterMode, SpriteAsset, SpriteAssetId, TextureHandle, UvRect};
+use crate::assets::{AssetRegistry, FilterMode, SpriteAsset, TextureHandle, UvRect};
 use crate::text::TextNodeId;
 
 use super::control::{self, Control};
@@ -30,7 +30,7 @@ use super::geometry::{Rect, UiTransform};
 use super::id::WidgetId;
 use super::node::{Node, UiLayer, UiShadow, UiVertex, Visibility, WidgetKind};
 use super::scroll::{self, THUMB_WIDTH, children_transform};
-use super::tree::{MIN_SCALE, UiTree};
+use super::tree::{MIN_SCALE, UiTree, Warned};
 
 /// The border colour of the layout-bounds overlay.
 const BOUNDS_OUTLINE: [u8; 4] = [255, 64, 255, 255];
@@ -787,7 +787,7 @@ impl UiTree {
             });
         out.clips.push(to_physical(viewport, scale));
 
-        let mut warned = std::mem::take(&mut self.warned_sprites);
+        let mut warned = std::mem::take(&mut self.warned);
         let mut bounds = Vec::new();
         let mut stack: Vec<PaintStep> = Vec::new();
         for i in 0..self.roots.len() {
@@ -835,7 +835,7 @@ impl UiTree {
                 });
             }
         }
-        self.warned_sprites = warned;
+        self.warned = warned;
         self.paint_dirty = false;
     }
 
@@ -856,7 +856,7 @@ impl UiTree {
         sprites: &AssetRegistry,
         out: &mut PaintList,
         bounds: &mut Vec<Rect>,
-        warned: &mut HashSet<SpriteAssetId>,
+        warned: &mut HashSet<Warned>,
         stack: &mut Vec<PaintStep>,
     ) {
         let Some(node) = self.node(id) else {
@@ -925,7 +925,7 @@ impl UiTree {
                             );
                         }
                         None => {
-                            if warned.insert(image.sprite) {
+                            if warned.insert(Warned::Sprite(image.sprite)) {
                                 log::warn!(
                                     "UiTree: image {id:?} names sprite {} ({:?}), which is not registered; it draws nothing",
                                     image.sprite.index(),

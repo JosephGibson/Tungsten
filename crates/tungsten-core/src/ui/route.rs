@@ -980,7 +980,10 @@ impl Routing<'_> {
                 && from.distance(at) <= settings.double_click_distance
         });
         if double {
-            self.router.events.push(UiEvent::DoubleClicked { widget });
+            let key = self.tree.key(widget);
+            self.router
+                .events
+                .push(UiEvent::DoubleClicked { widget, key });
             self.router.last_click = None;
         } else {
             self.router.last_click = Some((widget, clock, at));
@@ -1259,11 +1262,13 @@ impl Routing<'_> {
     /// An activation: `Activated`, then a toggle flips and reports its new
     /// state.
     fn activate(&mut self, widget: WidgetId) {
-        self.router.events.push(UiEvent::Activated { widget });
+        let key = self.tree.key(widget);
+        self.router.events.push(UiEvent::Activated { widget, key });
         if let Some(on) = self.tree.toggled(widget) {
             self.tree.set_toggled(widget, !on);
             self.router.events.push(UiEvent::ValueChanged {
                 widget,
+                key,
                 value: UiValue::Bool(!on),
             });
         }
@@ -1274,8 +1279,10 @@ impl Routing<'_> {
         if self.tree.set_slider_value(widget, value)
             && let Some(value) = self.tree.slider_value(widget)
         {
+            let key = self.tree.key(widget);
             self.router.events.push(UiEvent::ValueChanged {
                 widget,
+                key,
                 value: UiValue::Number(value),
             });
         }
@@ -1297,7 +1304,10 @@ impl Routing<'_> {
             self.router.events.push(UiEvent::FocusLost { widget });
         }
         if let Some(widget) = focused {
-            self.router.events.push(UiEvent::FocusGained { widget });
+            let key = self.tree.key(widget);
+            self.router
+                .events
+                .push(UiEvent::FocusGained { widget, key });
         }
         self.router.reported_focus = focused;
     }

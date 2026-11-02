@@ -7,7 +7,7 @@ use crate::assets::{AssetRegistry, SpriteAssetId};
 use crate::text::TextNodeStore as _;
 use crate::ui::theme::{StyleOverrides, WidgetState};
 use crate::ui::{
-    Anchor, FixedAdvanceMeasure, LayoutStats, LayoutStyle, Sizing, SliderRange, UiVertex,
+    Anchor, FixedAdvanceMeasure, LayoutStats, LayoutStyle, Sizing, SliderRange, Theme, UiVertex,
     Visibility,
 };
 
@@ -552,11 +552,11 @@ fn an_unregistered_sprite_draws_nothing_and_warns_once() {
     tree.image(root, pending, Vec2::new(32.0, 32.0), fixed(32.0, 32.0));
     let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
     assert_eq!(kinds(&list), "R");
-    assert_eq!(tree.warned_sprites.len(), 1);
+    assert_eq!(tree.warned.len(), 1);
     let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
     assert_eq!(kinds(&list), "R");
     assert_eq!(
-        tree.warned_sprites.len(),
+        tree.warned.len(),
         1,
         "the second paint warns again for no ID"
     );
@@ -1770,4 +1770,87 @@ fn a_shadow_paints_one_mesh_before_its_box_fading_to_transparent() {
         let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
         assert_eq!(kinds(&list), "R", "{color:?} {blur}");
     }
+}
+
+/// A theme whose panels show in every state: a filled, bordered surface,
+/// a fill when hovered and a border when focused.
+fn loud_panels() -> Theme {
+    let mut theme = Theme::default();
+    let panel = &mut theme.kinds.panel;
+    panel.normal.background = [200, 10, 10, 255];
+    panel.normal.border = [10, 200, 10, 255];
+    panel.normal.border_width = 3.0;
+    panel.hovered.background = Some([10, 10, 200, 255]);
+    panel.focused.border = Some([250, 250, 250, 255]);
+    panel.focused.border_width = Some(2.0);
+    theme
+}
+
+#[test]
+fn a_group_paints_nothing_under_any_theme() {
+    let mut tree = UiTree::new();
+    tree.set_theme(loud_panels());
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let group = tree.group(root, at(10.0, 10.0, 100.0, 40.0));
+    let inner = tree.panel(group, fixed(20.0, 20.0));
+    assert!(tree.bare(group) && !tree.bare(inner));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        rects(&list),
+        [rect(10.0, 10.0, 20.0, 20.0)],
+        "only the plain panel inside paints"
+    );
+
+    tree.set_hovered(Some(group));
+    tree.set_focusable(group, true);
+    tree.focus(group);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        kinds(&list),
+        "R",
+        "hovered and focused, the group still paints nothing"
+    );
+
+    // Its own overrides paint, and nothing of the kind's comes with them.
+    tree.edit_overrides(group, |own| own.background = Some([1, 2, 3, 255]));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    let PaintCommand::Rect {
+        rect: drawn,
+        fill,
+        border_width,
+        ..
+    } = list.commands[0]
+    else {
+        panic!("the group's box paints first: {list:?}");
+    };
+    assert_eq!(
+        (drawn, fill, border_width),
+        (rect(10.0, 10.0, 100.0, 40.0), [1, 2, 3, 255], 0.0)
+    );
+}
+
+#[test]
+fn a_bare_root_paints_nothing() {
+    let mut tree = UiTree::new();
+    tree.set_theme(loud_panels());
+    let root = tree.add_root(UiLayer::Game, fixed(300.0, 200.0));
+    let scroll = tree.scroll_panel(root, fixed(100.0, 100.0));
+    let label = tree.label(root, "x");
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        kinds(&list),
+        "RRT",
+        "the plain root and scroll panel paint their boxes"
+    );
+
+    tree.set_bare(root, true);
+    tree.set_bare(scroll, true);
+    tree.set_bare(label, true);
+    assert!(!tree.bare(label), "only a panel turns bare");
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "T", "only the label's text paints");
+
+    tree.set_bare(root, false);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "RT");
 }

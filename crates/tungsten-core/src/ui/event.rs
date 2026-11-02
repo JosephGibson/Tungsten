@@ -8,13 +8,15 @@ use crate::ecs::EventQueue;
 use crate::input::{Binding, MouseButton};
 
 use super::anim::UiProperty;
-use super::id::WidgetId;
+use super::id::{UiKey, WidgetId};
 
 /// Something that happened to a widget at a routing (`D-149`). A
 /// widget's events come only while it is the target of the pointer or of
 /// focus: the nearest enabled interactive ancestor-or-self of the hit, or
 /// the focused widget. Read a click with [`EventQueue::activated`], which
-/// sees each activation in one frame only.
+/// sees each activation in one frame only, or a keyed widget's with
+/// [`EventQueue::activated_key`]; the router fills each event's key from
+/// the tree.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UiEvent {
@@ -60,6 +62,8 @@ pub enum UiEvent {
     Activated {
         /// The widget.
         widget: WidgetId,
+        /// Its key, when it has one.
+        key: Option<UiKey>,
     },
     /// A second click activated the widget soon after and near the first.
     /// Follows that click's `Activated`.
@@ -67,12 +71,16 @@ pub enum UiEvent {
     DoubleClicked {
         /// The widget.
         widget: WidgetId,
+        /// Its key, when it has one.
+        key: Option<UiKey>,
     },
     /// The widget took keyboard focus, through the UI or the game.
     #[non_exhaustive]
     FocusGained {
         /// The widget.
         widget: WidgetId,
+        /// Its key, when it has one.
+        key: Option<UiKey>,
     },
     /// The widget lost keyboard focus.
     #[non_exhaustive]
@@ -95,6 +103,8 @@ pub enum UiEvent {
     ValueChanged {
         /// The toggle or slider.
         widget: WidgetId,
+        /// Its key, when it has one.
+        key: Option<UiKey>,
         /// Its new value.
         value: UiValue,
     },
@@ -197,9 +207,9 @@ impl UiEvent {
             | Self::Pressed { widget, .. }
             | Self::Released { widget, .. }
             | Self::PressCancelled { widget }
-            | Self::Activated { widget }
-            | Self::DoubleClicked { widget }
-            | Self::FocusGained { widget }
+            | Self::Activated { widget, .. }
+            | Self::DoubleClicked { widget, .. }
+            | Self::FocusGained { widget, .. }
             | Self::FocusLost { widget }
             | Self::ValueChanged { widget, .. }
             | Self::AnimationFinished { widget, .. }
@@ -220,7 +230,21 @@ impl EventQueue<UiEvent> {
     #[must_use]
     pub fn activated(&self, widget: WidgetId) -> bool {
         self.iter_current()
-            .any(|event| matches!(event, UiEvent::Activated { widget: w } if *w == widget))
+            .any(|event| matches!(event, UiEvent::Activated { widget: w, .. } if *w == widget))
+    }
+
+    /// The widget keyed `key` that was activated at this frame's routing;
+    /// `None` when none was. Reads [`iter_current`](Self::iter_current), as
+    /// [`activated`](Self::activated) does.
+    #[must_use]
+    pub fn activated_key(&self, key: UiKey) -> Option<WidgetId> {
+        self.iter_current().find_map(|event| match *event {
+            UiEvent::Activated {
+                widget,
+                key: Some(own),
+            } if own == key => Some(widget),
+            _ => None,
+        })
     }
 
     /// The value `widget` took last at this frame's routing; `None` when it
@@ -231,7 +255,26 @@ impl EventQueue<UiEvent> {
     pub fn value_changed(&self, widget: WidgetId) -> Option<UiValue> {
         self.iter_current()
             .filter_map(|event| match *event {
-                UiEvent::ValueChanged { widget: w, value } if w == widget => Some(value),
+                UiEvent::ValueChanged {
+                    widget: w, value, ..
+                } if w == widget => Some(value),
+                _ => None,
+            })
+            .last()
+    }
+
+    /// The value the widget keyed `key` took last at this frame's routing;
+    /// `None` when it took none. Reads [`iter_current`](Self::iter_current),
+    /// as [`value_changed`](Self::value_changed) does.
+    #[must_use]
+    pub fn value_changed_key(&self, key: UiKey) -> Option<UiValue> {
+        self.iter_current()
+            .filter_map(|event| match *event {
+                UiEvent::ValueChanged {
+                    key: Some(own),
+                    value,
+                    ..
+                } if own == key => Some(value),
                 _ => None,
             })
             .last()

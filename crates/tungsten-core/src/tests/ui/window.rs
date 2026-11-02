@@ -141,7 +141,10 @@ fn the_pointer_moving_within_the_threshold_moves_nothing() {
                 widget: handle,
                 button: LEFT
             },
-            UiEvent::Activated { widget: handle },
+            UiEvent::Activated {
+                widget: handle,
+                key: None
+            },
         ],
         "a press that never dragged clicks"
     );
@@ -206,7 +209,10 @@ fn a_release_after_a_drag_sends_window_moved_and_activates_nothing() {
                 widget: handle,
                 button: LEFT
             },
-            UiEvent::Activated { widget: handle },
+            UiEvent::Activated {
+                widget: handle,
+                key: None
+            },
         ],
         "the drag left no click to pair a double click with"
     );
@@ -228,7 +234,10 @@ fn a_click_on_a_handle_without_a_drag_activates_it() {
                 widget: handle,
                 button: LEFT
             },
-            UiEvent::Activated { widget: handle },
+            UiEvent::Activated {
+                widget: handle,
+                key: None
+            },
         ]
     );
 }
