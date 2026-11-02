@@ -23,7 +23,7 @@ use std::ops::Range;
 use glam::Vec2;
 
 use crate::assets::{AssetRegistry, FilterMode, SpriteAsset, TextureHandle, UvRect};
-use crate::text::TextNodeId;
+use crate::text::{TextNodeId, TextStyle, effect_copies};
 
 use super::control::{self, Control};
 use super::geometry::{Rect, UiTransform};
@@ -191,6 +191,46 @@ fn text_command(
         scale: layer * text_scale,
         clip,
     })
+}
+
+/// Pushes a label's text `command` after the copies its style's shadow and
+/// outline draw under it (P7-14), each the command moved by the copy's
+/// whole-pixel offset, in the copy's colour faded by `alpha`, through the
+/// node's plain view when a span carries a colour of its own. The copies'
+/// boxes make the label's paint box, which the clip and the text batches
+/// see; its layout stays as it was.
+fn push_text(
+    out: &mut PaintList,
+    node: &Node,
+    command: PaintCommand,
+    text: &TextStyle,
+    alpha: f32,
+) {
+    if let PaintCommand::Text {
+        node: id,
+        rect,
+        scale,
+        clip,
+        ..
+    } = command
+        && (text.outline.is_some() || text.shadow.is_some())
+    {
+        let coloured = node
+            .text
+            .as_ref()
+            .is_some_and(|content| content.text.spans.iter().any(|span| span.color.is_some()));
+        let copy = if coloured { id.plain() } else { id };
+        for (offset, color) in effect_copies(text.outline, text.shadow, out.scale * scale) {
+            out.commands.push(PaintCommand::Text {
+                node: copy,
+                rect: Rect::new(rect.min + offset, rect.max + offset),
+                color: faded(color, alpha),
+                scale,
+                clip,
+            });
+        }
+    }
+    out.commands.push(command);
 }
 
 /// What a node inherits from its ancestors in a paint walk.
@@ -907,9 +947,10 @@ impl UiTree {
         match node.kind {
             WidgetKind::Label => {
                 let color = faded(resolved.text.color, alpha);
-                out.commands.extend(text_command(
-                    node, rect, transform, unit, layer, color, clip,
-                ));
+                if let Some(command) = text_command(node, rect, transform, unit, layer, color, clip)
+                {
+                    push_text(out, node, command, &resolved.text, alpha);
+                }
             }
             WidgetKind::Image => {
                 if let Some(image) = node.image {

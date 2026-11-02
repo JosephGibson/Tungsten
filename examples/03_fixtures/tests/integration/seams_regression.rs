@@ -6,7 +6,8 @@
 //! frames, frame 5 at 1280x720, once for the module; the capture,
 //! `tungsten-seams-regression.png` in the temporary folder, is the drawing
 //! sheet. The scene draws world pixels one to one, so a piece's quad spans
-//! `PIECE` pixels about its centre.
+//! `PIECE` pixels about its centre; its two labels sit in the top corners,
+//! found by their colours at whatever UI scale the capture takes.
 
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -581,4 +582,90 @@ fn a_beam_spans_its_segment() {
         let p = image.at(x, y);
         assert!(!yellow(p) && !blue(p), "x {x}: {p:?}");
     }
+}
+
+/// The bounding box, as its first and one-past-last column and row, and the
+/// count of the pixels in columns `xs` and rows `ys` that `class` takes.
+fn bounds_of(
+    image: &Rgba,
+    xs: Range<usize>,
+    ys: Range<usize>,
+    class: impl Fn([u8; 4]) -> bool,
+) -> Option<([usize; 2], [usize; 2], usize)> {
+    let mut found: Option<([usize; 2], [usize; 2], usize)> = None;
+    for y in ys {
+        for x in xs.clone() {
+            if class(image.at(x, y)) {
+                let (min, max, count) = found.get_or_insert(([x, y], [x + 1, y + 1], 0));
+                *min = [min[0].min(x), min[1].min(y)];
+                *max = [max[0].max(x + 1), max[1].max(y + 1)];
+                *count += 1;
+            }
+        }
+    }
+    found
+}
+
+/// The labels' white text, their green outline and their blue shadow, each
+/// past its antialiased edge.
+fn white(pixel: [u8; 4]) -> bool {
+    pixel[..3].iter().all(|&c| c > 200)
+}
+
+fn green(pixel: [u8; 4]) -> bool {
+    pixel[1] > 150 && pixel[0] < 100 && pixel[2] < 100
+}
+
+fn blue(pixel: [u8; 4]) -> bool {
+    pixel[2] > 150 && pixel[0] < 100 && pixel[1] < 100
+}
+
+#[test]
+fn an_outlined_label_rings_its_glyphs() {
+    if !gated() {
+        eprintln!("skipping: set TUNGSTEN_VISUAL_REGRESSION=1");
+        return;
+    }
+    // The top left, clear of the pieces at any UI scale up to 2.
+    let image = capture();
+    let (xs, ys) = (0..680, 0..200);
+    let (text_min, text_max, texts) =
+        bounds_of(image, xs.clone(), ys.clone(), white).expect("the text");
+    let (ring_min, ring_max, rings) = bounds_of(image, xs, ys, green).expect("the outline");
+    assert!(
+        texts > 50 && rings > 50,
+        "{texts} text and {rings} outline pixels"
+    );
+    assert!(
+        ring_min[0] < text_min[0]
+            && ring_min[1] < text_min[1]
+            && ring_max[0] > text_max[0]
+            && ring_max[1] > text_max[1],
+        "the outline rings the text on every side: text {text_min:?}–{text_max:?}, outline {ring_min:?}–{ring_max:?}"
+    );
+}
+
+#[test]
+fn a_shadowed_label_casts_down_right() {
+    if !gated() {
+        eprintln!("skipping: set TUNGSTEN_VISUAL_REGRESSION=1");
+        return;
+    }
+    // The top right, past the strip and above the glow.
+    let image = capture();
+    let (xs, ys) = (880..1280, 0..160);
+    let (text_min, text_max, texts) =
+        bounds_of(image, xs.clone(), ys.clone(), white).expect("the text");
+    let (cast_min, cast_max, casts) = bounds_of(image, xs, ys, blue).expect("the shadow");
+    assert!(
+        texts > 50 && casts > 50,
+        "{texts} text and {casts} shadow pixels"
+    );
+    assert!(
+        cast_min[0] > text_min[0]
+            && cast_min[1] > text_min[1]
+            && cast_max[0] > text_max[0]
+            && cast_max[1] > text_max[1],
+        "the shadow lies down and right of the text: text {text_min:?}–{text_max:?}, shadow {cast_min:?}–{cast_max:?}"
+    );
 }

@@ -483,3 +483,51 @@ fn the_style_colour_is_not_baked_into_glyphs_and_a_span_colour_is() {
     );
     assert!(colours[3..].iter().all(Option::is_none));
 }
+
+#[test]
+fn a_coloured_span_outlines_in_the_outline_colour() {
+    let mut engine = engine();
+    let style = mono();
+    let mut red = TextSpan::new("red");
+    red.color = Some([255, 0, 0, 255]);
+    let text = StyledText {
+        spans: vec![red, TextSpan::new("rest")],
+    };
+    let node = engine.create_node();
+    engine.set_text(node, &text, &style);
+    engine.commit_layout(node, Vec2::new(200.0, LINE_HEIGHT));
+    let colours = |buffer: &glyphon::Buffer| -> Vec<Option<glyphon::Color>> {
+        buffer
+            .layout_runs()
+            .flat_map(|run| run.glyphs.iter().map(|g| g.color_opt).collect::<Vec<_>>())
+            .collect()
+    };
+
+    // Before a pass readies it, the plain view draws nothing.
+    let nodes = NodeAreas::new(&engine.nodes, engine.epoch);
+    assert!(nodes.area(node.plain()).is_none());
+    engine.prepare_plain([node.plain()]);
+    let nodes = NodeAreas::new(&engine.nodes, engine.epoch);
+    let (own, revision) = nodes.area(node).expect("committed");
+    let (plain, plain_revision) = nodes.area(node.plain()).expect("readied");
+    assert_eq!(revision, plain_revision, "one node, one revision");
+    assert!(colours(own).contains(&Some(glyphon::Color::rgba(255, 0, 0, 255))));
+    let plain_colours = colours(plain);
+    assert_eq!(plain_colours.len(), colours(own).len(), "the same glyphs");
+    assert!(
+        plain_colours.iter().all(Option::is_none),
+        "every glyph takes the copy's colour"
+    );
+
+    // A node with no coloured span draws its own buffer as its plain view,
+    // and a pass that names no plain view drops the buffers.
+    let uncoloured = node_with(&mut engine, "plain", &style);
+    engine.commit_layout(uncoloured, Vec2::new(200.0, LINE_HEIGHT));
+    engine.prepare_plain([uncoloured.plain()]);
+    let nodes = NodeAreas::new(&engine.nodes, engine.epoch);
+    let (own, _) = nodes.area(uncoloured).expect("committed");
+    let (plain, _) = nodes.area(uncoloured.plain()).expect("its own buffer");
+    assert!(std::ptr::eq(own, plain));
+    assert!(nodes.area(node.plain()).is_none(), "dropped once unnamed");
+    assert!(!engine.nodes.plain_held, "nothing held after the sweep");
+}

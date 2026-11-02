@@ -429,3 +429,61 @@ fn an_unknown_token_name_is_refused_with_its_path() {
         assert!(err.contains("raised"), "the error lists the names: {err}");
     }
 }
+
+#[test]
+fn outline_and_shadow_read_from_a_theme_file() {
+    use crate::text::{TextOutline, TextShadow};
+    use glam::Vec2;
+    let theme = theme_of(
+        r##"{
+          "tokens": { "colors": { "background": "#101010" } },
+          "text_styles": {
+            "title": { "size": 56, "outline": { "color": "#000000c0", "width": 1.5 } },
+            "died": { "shadow": { "color": "background", "offset": [2, 3] } }
+          }
+        }"##,
+    );
+    let title = theme.text_style("title").expect("the file's");
+    assert_eq!(title.outline, Some(TextOutline::new([0, 0, 0, 0xc0], 1.5)));
+    assert_eq!(title.shadow, None);
+    assert_eq!(title.text.size, Some(56.0));
+    let died = theme.text_style("died").expect("the file's");
+    assert_eq!(
+        died.shadow,
+        Some(TextShadow::new(
+            [0x10, 0x10, 0x10, 255],
+            Vec2::new(2.0, 3.0)
+        )),
+        "a token's name for its colour"
+    );
+
+    for (bad, says) in [
+        (
+            r##"{ "kinds": { "label": { "normal": { "text": { "outline": { "color": "#000000", "width": 1 } } } } } }"##,
+            "kinds.label.normal.text.outline",
+        ),
+        (
+            r##"{ "kinds": { "button": { "hovered": { "text": { "shadow": { "color": "#000000", "offset": [1, 1] } } } } } }"##,
+            "kinds.button.hovered.text.shadow",
+        ),
+        (
+            r#"{ "text_styles": { "x": { "outline": { "color": "gold", "width": 1 } } } }"#,
+            "text_styles.x.outline.color",
+        ),
+        (
+            r##"{ "text_styles": { "x": { "outline": { "color": "#000000", "width": -1 } } } }"##,
+            "outline width",
+        ),
+        (
+            r##"{ "text_styles": { "x": { "outline": { "color": "#000000" } } } }"##,
+            "width",
+        ),
+        (
+            r##"{ "text_styles": { "x": { "shadow": { "color": "#000000", "offset": [1, 1], "blur": 2 } } } }"##,
+            "blur",
+        ),
+    ] {
+        let err = ThemeFile::from_json(bad).unwrap_err().to_string();
+        assert!(err.contains(says), "{bad}: {err}");
+    }
+}

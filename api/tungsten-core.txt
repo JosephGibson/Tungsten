@@ -11036,9 +11036,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextMetric
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextMetrics
 pub struct tungsten_core::text::TextNodeId
 impl tungsten_core::text::TextNodeId
+pub const fn tungsten_core::text::TextNodeId::base(self) -> Self
 pub const fn tungsten_core::text::TextNodeId::generation(self) -> u32
 pub const fn tungsten_core::text::TextNodeId::index(self) -> u32
+pub const fn tungsten_core::text::TextNodeId::is_plain(self) -> bool
 pub const fn tungsten_core::text::TextNodeId::new(u32, u32) -> Self
+pub const fn tungsten_core::text::TextNodeId::plain(self) -> Self
 impl core::clone::Clone for tungsten_core::text::TextNodeId
 pub fn tungsten_core::text::TextNodeId::clone(&self) -> tungsten_core::text::TextNodeId
 impl core::cmp::Eq for tungsten_core::text::TextNodeId
@@ -11057,6 +11060,48 @@ impl core::marker::Unpin for tungsten_core::text::TextNodeId
 impl core::marker::UnsafeUnpin for tungsten_core::text::TextNodeId
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextNodeId
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextNodeId
+pub struct tungsten_core::text::TextOutline
+pub tungsten_core::text::TextOutline::color: [u8; 4]
+pub tungsten_core::text::TextOutline::width: f32
+impl tungsten_core::text::TextOutline
+pub fn tungsten_core::text::TextOutline::draws(self) -> bool
+pub const fn tungsten_core::text::TextOutline::new([u8; 4], f32) -> Self
+impl core::clone::Clone for tungsten_core::text::TextOutline
+pub fn tungsten_core::text::TextOutline::clone(&self) -> tungsten_core::text::TextOutline
+impl core::cmp::PartialEq for tungsten_core::text::TextOutline
+pub fn tungsten_core::text::TextOutline::eq(&self, &tungsten_core::text::TextOutline) -> bool
+impl core::fmt::Debug for tungsten_core::text::TextOutline
+pub fn tungsten_core::text::TextOutline::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::text::TextOutline
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextOutline
+impl core::marker::Freeze for tungsten_core::text::TextOutline
+impl core::marker::Send for tungsten_core::text::TextOutline
+impl core::marker::Sync for tungsten_core::text::TextOutline
+impl core::marker::Unpin for tungsten_core::text::TextOutline
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextOutline
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextOutline
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextOutline
+pub struct tungsten_core::text::TextShadow
+pub tungsten_core::text::TextShadow::color: [u8; 4]
+pub tungsten_core::text::TextShadow::offset: glam::f32::vec2::Vec2
+impl tungsten_core::text::TextShadow
+pub fn tungsten_core::text::TextShadow::draws(self) -> bool
+pub const fn tungsten_core::text::TextShadow::new([u8; 4], glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_core::text::TextShadow
+pub fn tungsten_core::text::TextShadow::clone(&self) -> tungsten_core::text::TextShadow
+impl core::cmp::PartialEq for tungsten_core::text::TextShadow
+pub fn tungsten_core::text::TextShadow::eq(&self, &tungsten_core::text::TextShadow) -> bool
+impl core::fmt::Debug for tungsten_core::text::TextShadow
+pub fn tungsten_core::text::TextShadow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::text::TextShadow
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextShadow
+impl core::marker::Freeze for tungsten_core::text::TextShadow
+impl core::marker::Send for tungsten_core::text::TextShadow
+impl core::marker::Sync for tungsten_core::text::TextShadow
+impl core::marker::Unpin for tungsten_core::text::TextShadow
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextShadow
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextShadow
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextShadow
 #[non_exhaustive] pub struct tungsten_core::text::TextSpan
 pub tungsten_core::text::TextSpan::color: core::option::Option<[u8; 4]>
 pub tungsten_core::text::TextSpan::italic: core::option::Option<bool>
@@ -11090,6 +11135,8 @@ pub tungsten_core::text::TextStyle::family: alloc::string::String
 pub tungsten_core::text::TextStyle::italic: bool
 pub tungsten_core::text::TextStyle::layout: tungsten_core::text::TextLayout
 pub tungsten_core::text::TextStyle::line_height: f32
+pub tungsten_core::text::TextStyle::outline: core::option::Option<tungsten_core::text::TextOutline>
+pub tungsten_core::text::TextStyle::shadow: core::option::Option<tungsten_core::text::TextShadow>
 pub tungsten_core::text::TextStyle::size: f32
 pub tungsten_core::text::TextStyle::weight: u16
 impl tungsten_core::text::TextStyle
@@ -11097,6 +11144,8 @@ pub fn tungsten_core::text::TextStyle::new(impl core::convert::Into<alloc::strin
 pub fn tungsten_core::text::TextStyle::with_color(self, [u8; 4]) -> Self
 pub fn tungsten_core::text::TextStyle::with_italic(self, bool) -> Self
 pub fn tungsten_core::text::TextStyle::with_layout(self, tungsten_core::text::TextLayout) -> Self
+pub fn tungsten_core::text::TextStyle::with_outline(self, tungsten_core::text::TextOutline) -> Self
+pub fn tungsten_core::text::TextStyle::with_shadow(self, tungsten_core::text::TextShadow) -> Self
 pub fn tungsten_core::text::TextStyle::with_weight(self, u16) -> Self
 impl core::clone::Clone for tungsten_core::text::TextStyle
 pub fn tungsten_core::text::TextStyle::clone(&self) -> tungsten_core::text::TextStyle
@@ -11119,16 +11168,20 @@ pub tungsten_core::text::WorldLabel::font_id: alloc::string::String
 pub tungsten_core::text::WorldLabel::font_size: f32
 pub tungsten_core::text::WorldLabel::line_height: f32
 pub tungsten_core::text::WorldLabel::offset: glam::f32::vec2::Vec2
+pub tungsten_core::text::WorldLabel::outline: core::option::Option<tungsten_core::text::TextOutline>
 pub tungsten_core::text::WorldLabel::pivot: glam::f32::vec2::Vec2
 pub tungsten_core::text::WorldLabel::scale: f32
+pub tungsten_core::text::WorldLabel::shadow: core::option::Option<tungsten_core::text::TextShadow>
 pub tungsten_core::text::WorldLabel::text: alloc::string::String
 impl tungsten_core::text::WorldLabel
 pub fn tungsten_core::text::WorldLabel::new(impl core::convert::Into<alloc::string::String>, glam::f32::vec2::Vec2, impl core::convert::Into<alloc::string::String>, f32) -> Self
 pub fn tungsten_core::text::WorldLabel::with_color(self, [u8; 4]) -> Self
 pub fn tungsten_core::text::WorldLabel::with_line_height(self, f32) -> Self
 pub fn tungsten_core::text::WorldLabel::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::text::WorldLabel::with_outline(self, tungsten_core::text::TextOutline) -> Self
 pub fn tungsten_core::text::WorldLabel::with_pivot(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_core::text::WorldLabel::with_scale(self, f32) -> Self
+pub fn tungsten_core::text::WorldLabel::with_shadow(self, tungsten_core::text::TextShadow) -> Self
 impl core::clone::Clone for tungsten_core::text::WorldLabel
 pub fn tungsten_core::text::WorldLabel::clone(&self) -> tungsten_core::text::WorldLabel
 impl core::cmp::PartialEq for tungsten_core::text::WorldLabel
@@ -11183,6 +11236,7 @@ pub fn tungsten_core::ui::measure::FixedAdvanceMeasure::create_node(&mut self) -
 pub fn tungsten_core::ui::measure::FixedAdvanceMeasure::font_epoch(&self) -> tungsten_core::text::FontEpoch
 pub fn tungsten_core::ui::measure::FixedAdvanceMeasure::remove_node(&mut self, tungsten_core::text::TextNodeId)
 pub fn tungsten_core::ui::measure::FixedAdvanceMeasure::set_text(&mut self, tungsten_core::text::TextNodeId, &tungsten_core::text::StyledText, &tungsten_core::text::TextStyle)
+pub fn tungsten_core::text::effect_copies(core::option::Option<tungsten_core::text::TextOutline>, core::option::Option<tungsten_core::text::TextShadow>, f32) -> impl core::iter::traits::iterator::Iterator<Item = (glam::f32::vec2::Vec2, [u8; 4])>
 pub mod tungsten_core::time
 pub enum tungsten_core::time::TimerMode
 pub tungsten_core::time::TimerMode::Once
@@ -12640,7 +12694,11 @@ impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::KindStyles
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::KindStyles
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::KindStyles
 pub struct tungsten_core::ui::theme::NamedStyle
+pub tungsten_core::ui::theme::NamedStyle::outline: core::option::Option<tungsten_core::text::TextOutline>
+pub tungsten_core::ui::theme::NamedStyle::shadow: core::option::Option<tungsten_core::text::TextShadow>
 pub tungsten_core::ui::theme::NamedStyle::text: tungsten_core::ui::theme::TextOverrides
+impl tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::apply(&self, &mut tungsten_core::text::TextStyle)
 impl core::clone::Clone for tungsten_core::ui::theme::NamedStyle
 pub fn tungsten_core::ui::theme::NamedStyle::clone(&self) -> tungsten_core::ui::theme::NamedStyle
 impl core::cmp::PartialEq for tungsten_core::ui::theme::NamedStyle
@@ -14034,7 +14092,11 @@ impl core::marker::UnsafeUnpin for tungsten_core::ui::measure::MeasureCounts
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::measure::MeasureCounts
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::measure::MeasureCounts
 pub struct tungsten_core::ui::NamedStyle
+pub tungsten_core::ui::NamedStyle::outline: core::option::Option<tungsten_core::text::TextOutline>
+pub tungsten_core::ui::NamedStyle::shadow: core::option::Option<tungsten_core::text::TextShadow>
 pub tungsten_core::ui::NamedStyle::text: tungsten_core::ui::theme::TextOverrides
+impl tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::apply(&self, &mut tungsten_core::text::TextStyle)
 impl core::clone::Clone for tungsten_core::ui::theme::NamedStyle
 pub fn tungsten_core::ui::theme::NamedStyle::clone(&self) -> tungsten_core::ui::theme::NamedStyle
 impl core::cmp::PartialEq for tungsten_core::ui::theme::NamedStyle
@@ -20384,9 +20446,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextMetric
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextMetrics
 pub struct tungsten_core::TextNodeId
 impl tungsten_core::text::TextNodeId
+pub const fn tungsten_core::text::TextNodeId::base(self) -> Self
 pub const fn tungsten_core::text::TextNodeId::generation(self) -> u32
 pub const fn tungsten_core::text::TextNodeId::index(self) -> u32
+pub const fn tungsten_core::text::TextNodeId::is_plain(self) -> bool
 pub const fn tungsten_core::text::TextNodeId::new(u32, u32) -> Self
+pub const fn tungsten_core::text::TextNodeId::plain(self) -> Self
 impl core::clone::Clone for tungsten_core::text::TextNodeId
 pub fn tungsten_core::text::TextNodeId::clone(&self) -> tungsten_core::text::TextNodeId
 impl core::cmp::Eq for tungsten_core::text::TextNodeId
@@ -20438,6 +20503,8 @@ pub tungsten_core::TextStyle::family: alloc::string::String
 pub tungsten_core::TextStyle::italic: bool
 pub tungsten_core::TextStyle::layout: tungsten_core::text::TextLayout
 pub tungsten_core::TextStyle::line_height: f32
+pub tungsten_core::TextStyle::outline: core::option::Option<tungsten_core::text::TextOutline>
+pub tungsten_core::TextStyle::shadow: core::option::Option<tungsten_core::text::TextShadow>
 pub tungsten_core::TextStyle::size: f32
 pub tungsten_core::TextStyle::weight: u16
 impl tungsten_core::text::TextStyle
@@ -20445,6 +20512,8 @@ pub fn tungsten_core::text::TextStyle::new(impl core::convert::Into<alloc::strin
 pub fn tungsten_core::text::TextStyle::with_color(self, [u8; 4]) -> Self
 pub fn tungsten_core::text::TextStyle::with_italic(self, bool) -> Self
 pub fn tungsten_core::text::TextStyle::with_layout(self, tungsten_core::text::TextLayout) -> Self
+pub fn tungsten_core::text::TextStyle::with_outline(self, tungsten_core::text::TextOutline) -> Self
+pub fn tungsten_core::text::TextStyle::with_shadow(self, tungsten_core::text::TextShadow) -> Self
 pub fn tungsten_core::text::TextStyle::with_weight(self, u16) -> Self
 impl core::clone::Clone for tungsten_core::text::TextStyle
 pub fn tungsten_core::text::TextStyle::clone(&self) -> tungsten_core::text::TextStyle
@@ -21411,16 +21480,20 @@ pub tungsten_core::WorldLabel::font_id: alloc::string::String
 pub tungsten_core::WorldLabel::font_size: f32
 pub tungsten_core::WorldLabel::line_height: f32
 pub tungsten_core::WorldLabel::offset: glam::f32::vec2::Vec2
+pub tungsten_core::WorldLabel::outline: core::option::Option<tungsten_core::text::TextOutline>
 pub tungsten_core::WorldLabel::pivot: glam::f32::vec2::Vec2
 pub tungsten_core::WorldLabel::scale: f32
+pub tungsten_core::WorldLabel::shadow: core::option::Option<tungsten_core::text::TextShadow>
 pub tungsten_core::WorldLabel::text: alloc::string::String
 impl tungsten_core::text::WorldLabel
 pub fn tungsten_core::text::WorldLabel::new(impl core::convert::Into<alloc::string::String>, glam::f32::vec2::Vec2, impl core::convert::Into<alloc::string::String>, f32) -> Self
 pub fn tungsten_core::text::WorldLabel::with_color(self, [u8; 4]) -> Self
 pub fn tungsten_core::text::WorldLabel::with_line_height(self, f32) -> Self
 pub fn tungsten_core::text::WorldLabel::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::text::WorldLabel::with_outline(self, tungsten_core::text::TextOutline) -> Self
 pub fn tungsten_core::text::WorldLabel::with_pivot(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_core::text::WorldLabel::with_scale(self, f32) -> Self
+pub fn tungsten_core::text::WorldLabel::with_shadow(self, tungsten_core::text::TextShadow) -> Self
 impl core::clone::Clone for tungsten_core::text::WorldLabel
 pub fn tungsten_core::text::WorldLabel::clone(&self) -> tungsten_core::text::WorldLabel
 impl core::cmp::PartialEq for tungsten_core::text::WorldLabel

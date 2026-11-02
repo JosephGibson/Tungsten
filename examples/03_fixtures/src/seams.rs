@@ -29,7 +29,10 @@
 //!   cyan segment, `SpriteInstance::segment` from an extract of the scene's
 //!   own;
 //! - a beam of `seams_ray`, a 16 × 8 strip yellow then blue, laid by
-//!   `beam` along a segment from the same extract.
+//!   `beam` along a segment from the same extract;
+//! - two white UI labels on black panels, `Outline` at the top left in a
+//!   named style with a green outline and `Shadow` at the top right in one
+//!   with a blue shadow down and right.
 
 use std::path::PathBuf;
 
@@ -37,7 +40,11 @@ use glam::{Vec2, Vec3};
 use tungsten::core::assets::tilemap::LayerDraw;
 use tungsten::core::assets::{LayerKind, MaterialRegistry, TilemapRegistry};
 use tungsten::core::components::{Backdrop, BackdropRepeat, SpriteFlip, Unlit};
+use tungsten::core::text::{TextOutline, TextShadow};
 use tungsten::core::tween::UniformOverrideBlock;
+use tungsten::core::ui::{
+    Anchor, LayoutStyle, NamedStyle, StyleOverrides, TextOverrides, Theme, UiLayer, UiTree,
+};
 use tungsten::core::{
     AmbientLight, AssetRegistry, Config, Entity, Light, Sprite, TilemapData, TilemapInstance,
     Transform, Visibility, World,
@@ -87,6 +94,14 @@ pub const FLAT_SIZE: Vec2 = Vec2::new(48.0, 24.0);
 pub const SEGMENT_FROM: Vec2 = Vec2::new(800.0, 300.0);
 pub const SEGMENT_TO: Vec2 = Vec2::new(880.0, 360.0);
 pub const SEGMENT_WIDTH: f32 = 6.0;
+/// The labels' text, outline and shadow colours, the outline's width and
+/// the shadow's offset in UI units, and the labels' size.
+pub const LABEL_TEXT: [u8; 4] = [255, 255, 255, 255];
+pub const OUTLINE: [u8; 4] = [0, 255, 0, 255];
+pub const OUTLINE_WIDTH: f32 = 2.0;
+pub const SHADOW: [u8; 4] = [0, 0, 255, 255];
+pub const SHADOW_OFFSET: Vec2 = Vec2::new(3.0, 3.0);
+pub const LABEL_SIZE: [f32; 2] = [32.0, 40.0];
 /// The beam's ends and width: its strip's tiles 16 px long.
 pub const BEAM_FROM: Vec2 = Vec2::new(720.0, 420.0);
 pub const BEAM_TO: Vec2 = Vec2::new(1000.0, 420.0);
@@ -198,6 +213,69 @@ fn spawn_scene(world: &mut World) {
         Visibility::default(),
     ));
     world.resource_mut::<Extracts>().add_sprites(lines);
+    spawn_labels(world.resource_mut::<UiTree>());
+}
+
+/// The outlined and the shadowed label, each on a black panel in a corner:
+/// the theme names their styles.
+fn spawn_labels(tree: &mut UiTree) {
+    let mut theme = Theme::default();
+    let text = TextOverrides {
+        size: Some(LABEL_SIZE[0]),
+        line_height: Some(LABEL_SIZE[1]),
+        color: Some(LABEL_TEXT),
+        ..TextOverrides::default()
+    };
+    let styles = [
+        (
+            "seams_outlined",
+            NamedStyle {
+                text: text.clone(),
+                outline: Some(TextOutline::new(OUTLINE, OUTLINE_WIDTH)),
+                ..NamedStyle::default()
+            },
+        ),
+        (
+            "seams_shadowed",
+            NamedStyle {
+                text,
+                shadow: Some(TextShadow::new(SHADOW, SHADOW_OFFSET)),
+                ..NamedStyle::default()
+            },
+        ),
+    ];
+    for (name, style) in styles {
+        theme.names.text_styles.insert(name.to_owned(), style);
+    }
+    tree.set_theme(theme);
+    for (anchor, offset, caption, style) in [
+        (
+            Anchor::TopStart,
+            Vec2::new(16.0, 16.0),
+            "Outline",
+            "seams_outlined",
+        ),
+        (
+            Anchor::TopEnd,
+            Vec2::new(16.0, 16.0),
+            "Shadow",
+            "seams_shadowed",
+        ),
+    ] {
+        let mut layout = LayoutStyle::default().anchored(anchor, offset);
+        layout.padding = tungsten::core::ui::Edges::all(12.0);
+        let root = tree.add_root(UiLayer::Game, layout);
+        tree.set_overrides(
+            root,
+            StyleOverrides {
+                background: Some([0, 0, 0, 255]),
+                border_width: Some(0.0),
+                ..StyleOverrides::default()
+            },
+        );
+        let label = tree.label(root, caption);
+        tree.set_text_style(label, Some(style));
+    }
 }
 
 /// The glow: `engine_white` at the glow's side under `engine_glow`, its

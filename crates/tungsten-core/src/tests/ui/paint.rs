@@ -1854,3 +1854,182 @@ fn a_bare_root_paints_nothing() {
     let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
     assert_eq!(kinds(&list), "RT");
 }
+
+/// A tree whose theme names `ringed`, a 2-unit green outline, and `cast`, a
+/// blue shadow 3 right and 4 down, holding one label in each, at known
+/// places; their text is white.
+fn effect_tree() -> (UiTree, WidgetId, WidgetId) {
+    use crate::text::{TextOutline, TextShadow};
+    use crate::ui::NamedStyle;
+    let mut theme = Theme::default();
+    let ringed = NamedStyle {
+        outline: Some(TextOutline::new([0, 255, 0, 255], 2.0)),
+        ..NamedStyle::default()
+    };
+    let cast = NamedStyle {
+        shadow: Some(TextShadow::new([0, 0, 255, 255], Vec2::new(3.0, 4.0))),
+        ..NamedStyle::default()
+    };
+    theme.names.text_styles.insert("ringed".to_owned(), ringed);
+    theme.names.text_styles.insert("cast".to_owned(), cast);
+    let mut tree = UiTree::new();
+    tree.set_theme(theme);
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let outlined = tree.label(root, "ab");
+    tree.set_layout_style(outlined, at(100.0, 100.0, 16.0, 20.0));
+    tree.set_text_style(outlined, Some("ringed"));
+    let shadowed = tree.label(root, "cd");
+    tree.set_layout_style(shadowed, at(300.0, 100.0, 16.0, 20.0));
+    tree.set_text_style(shadowed, Some("cast"));
+    (tree, outlined, shadowed)
+}
+
+/// The text commands of `list`: each one's node, box and colour.
+fn texts(list: &PaintList) -> Vec<(TextNodeId, Rect, [u8; 4])> {
+    list.commands
+        .iter()
+        .filter_map(|command| match *command {
+            PaintCommand::Text {
+                node, rect, color, ..
+            } => Some((node, rect, color)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_nodes_outline_reaches_its_paint_command() {
+    let (mut tree, outlined, shadowed) = effect_tree();
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    let texts = texts(&list);
+    assert_eq!(
+        texts.len(),
+        8 + 1 + 1 + 1,
+        "eight outline copies, the text, a shadow, the text"
+    );
+    let green = [0, 255, 0, 255];
+    let label = rect(100.0, 100.0, 16.0, 20.0);
+    let offsets: Vec<Vec2> = texts[..8]
+        .iter()
+        .map(|(_, copy, color)| {
+            assert_eq!(*color, green, "the outline's colour");
+            copy.min - label.min
+        })
+        .collect();
+    assert_eq!(
+        offsets,
+        [
+            [-2.0, 0.0],
+            [2.0, 0.0],
+            [0.0, -2.0],
+            [0.0, 2.0],
+            [-2.0, -2.0],
+            [2.0, -2.0],
+            [-2.0, 2.0],
+            [2.0, 2.0]
+        ]
+        .map(Vec2::from),
+        "sides, then corners, at its width"
+    );
+    let node = tree
+        .node(outlined)
+        .and_then(|node| node.text_id)
+        .expect("committed");
+    assert!(
+        texts[..9].iter().all(|(id, ..)| *id == node),
+        "plain spans copy the node itself"
+    );
+    assert_eq!(
+        (texts[8].1, texts[8].2),
+        (label, [235, 235, 240, 255]),
+        "the text last"
+    );
+    let (_, shadow, blue) = texts[9];
+    assert_eq!(blue, [0, 0, 255, 255]);
+    assert_eq!(
+        shadow.min - rect(300.0, 100.0, 16.0, 20.0).min,
+        Vec2::new(3.0, 4.0)
+    );
+    let _ = shadowed;
+
+    // A coloured span draws its copies through the node's plain view, and
+    // the copies scale with the paint.
+    let mut text = crate::text::StyledText::from("a");
+    text.spans
+        .push(crate::text::TextSpan::new("b").with_color([255, 0, 0, 255]));
+    tree.set_text(outlined, text);
+    let list = paint(&mut tree, 2.0, UiDebug::default(), &AssetRegistry::new());
+    let copies = self::texts(&list);
+    let texts = copies;
+    assert!(texts[..8].iter().all(|(id, ..)| *id == node.plain()));
+    assert_eq!(
+        texts[8].0, node,
+        "the text draws the node, its colours kept"
+    );
+    assert_eq!(
+        texts[1].1.min - texts[8].1.min,
+        Vec2::new(4.0, 0.0),
+        "2 units at scale 2"
+    );
+}
+
+#[test]
+fn an_outlined_text_grows_its_paint_box_and_keeps_its_layout() {
+    let (mut tree, outlined, shadowed) = effect_tree();
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        tree.rect(outlined),
+        Some(rect(100.0, 100.0, 16.0, 20.0)),
+        "its layout stays"
+    );
+    let union = |range: std::ops::Range<usize>| {
+        texts(&list)[range]
+            .iter()
+            .map(|(_, rect, _)| *rect)
+            .reduce(|a, b| Rect::new(a.min.min(b.min), a.max.max(b.max)))
+            .expect("commands")
+    };
+    assert_eq!(
+        union(0..9),
+        rect(98.0, 98.0, 20.0, 24.0),
+        "2 units on every side"
+    );
+    assert_eq!(tree.rect(shadowed), Some(rect(300.0, 100.0, 16.0, 20.0)));
+    assert_eq!(
+        union(9..11),
+        rect(300.0, 100.0, 19.0, 24.0),
+        "the offset on its sides"
+    );
+
+    // Neither draws as before: one command each.
+    tree.set_text_style(outlined, None);
+    tree.set_text_style(shadowed, None);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "TT");
+}
+
+#[test]
+fn a_later_panel_over_an_outline_closes_the_batch_before_it() {
+    let (mut tree, outlined, _) = effect_tree();
+    let root = tree.root_of(outlined).expect("in the tree");
+    // A panel painted after both labels, inside the outline's band 2 units
+    // right of the outlined label's box and clear of the box itself, then a
+    // label after it.
+    tree.panel(root, at(117.0, 100.0, 10.0, 10.0));
+    let later = tree.label(root, "e");
+    tree.set_layout_style(later, at(500.0, 100.0, 8.0, 20.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "TTTTTTTTTTTRT");
+    assert_eq!(
+        list.text_batches(),
+        [0..11, 12..13],
+        "the band closes the batch"
+    );
+
+    // Without the outline the panel touches no text and the batch stays open.
+    tree.set_text_style(outlined, None);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "TTTRT");
+    let batches = list.text_batches();
+    assert_eq!((batches.len(), batches[0].clone()), (1, 0..5));
+}

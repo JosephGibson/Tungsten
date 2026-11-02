@@ -13,11 +13,11 @@ use serde::Deserialize;
 use serde::de::{self, Deserializer};
 use thiserror::Error;
 
-use crate::text::{EllipsisAt, TextAlign, TextOverflow, TextWrap};
+use crate::text::{EllipsisAt, TextAlign, TextOutline, TextOverflow, TextShadow, TextWrap};
 
 use super::theme::{
-    ColorTokens, KindStyle, KindStyles, StyleOverrides, TextOverrides, Theme, ThemeNames,
-    ThemeSounds, Tokens, VisualStyle,
+    ColorTokens, KindStyle, KindStyles, NamedStyle, StyleOverrides, TextOverrides, Theme,
+    ThemeNames, ThemeSounds, Tokens, VisualStyle,
 };
 
 /// Why a theme file did not load.
@@ -47,7 +47,9 @@ pub enum ThemeFileError {
 /// kind (`panel`, `label`, `button`, `image`, `toggle`, `slider`), a
 /// `normal` look and the `focused`, `disabled`, `hovered` and `pressed`
 /// variants, each merged over the kind's built-in one; `text_styles` holds
-/// text objects by name, each merged over the built-in style of its name;
+/// text objects by name, each merged over the built-in style of its name,
+/// which alone take an `outline` (`{ "color", "width" }`) and a `shadow`
+/// (`{ "color", "offset": [x, y] }`) in the text's units;
 /// `sizes` holds sizes by name in UI units, finite and at least 0; `sounds`
 /// holds the `focus`, `activate` and `back` sounds' manifest IDs. A colour
 /// field takes `#rrggbb`, `#rrggbbaa` or a colour token's name
@@ -114,9 +116,14 @@ impl ThemeFile {
                 let path = |field: &str| format!("kinds.{kind}.{state}.{field}");
                 resolve(&mut overrides.background, &tokens, &|| path("background"))?;
                 resolve(&mut overrides.border, &tokens, &|| path("border"))?;
-                overrides
-                    .text
-                    .resolve(&tokens, &|field| path(&format!("text.{field}")))?;
+                let text = &mut overrides.text;
+                if let Some(field) = text.paint_only() {
+                    return Err(format!(
+                        "{}: an {field} belongs to a named style, in text_styles",
+                        path(&format!("text.{field}"))
+                    ));
+                }
+                text.resolve(&tokens, &|field| path(&format!("text.{field}")))?;
             }
         }
         for (name, text) in &mut self.text_styles {
@@ -154,7 +161,7 @@ impl ThemeFile {
         }
         let mut names = ThemeNames::for_tokens(&tokens);
         for (name, file) in self.text_styles {
-            file.apply(&mut names.text_styles.entry(name).or_default().text);
+            file.apply_named(names.text_styles.entry(name).or_default());
         }
         names.sizes = self.sizes;
         names.sounds = ThemeSounds {
@@ -547,9 +554,63 @@ struct TextFile {
     wrap: Option<WrapFile>,
     overflow: Option<OverflowFile>,
     letter_spacing: Option<f32>,
+    outline: Option<OutlineFile>,
+    shadow: Option<ShadowFile>,
+}
+
+/// A text object's `outline`: its colour and width, both required.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OutlineFile {
+    color: Color,
+    #[serde(deserialize_with = "effect_length")]
+    width: f32,
+}
+
+/// A text object's `shadow`: its colour and `[x, y]` offset, both required.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ShadowFile {
+    color: Color,
+    offset: [f32; 2],
+}
+
+/// An outline's width: finite and at least 0; 0 draws none.
+fn effect_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let value = f32::deserialize(deserializer)?;
+    if value.is_finite() && value >= 0.0 {
+        Ok(value)
+    } else {
+        Err(de::Error::custom(format!(
+            "outline width {value} is not a finite number at or above 0"
+        )))
+    }
 }
 
 impl TextFile {
+    /// The first paint-only field set, which only a named style takes.
+    fn paint_only(&self) -> Option<&'static str> {
+        if self.outline.is_some() {
+            Some("outline")
+        } else if self.shadow.is_some() {
+            Some("shadow")
+        } else {
+            None
+        }
+    }
+
+    /// [`Self::apply`] into a named style, the paint-only fields included.
+    fn apply_named(self, style: &mut NamedStyle) {
+        if let Some(outline) = &self.outline {
+            style.outline = Some(TextOutline::new(outline.color.rgba(), outline.width));
+        }
+        if let Some(shadow) = &self.shadow {
+            let offset = shadow.offset.into();
+            style.shadow = Some(TextShadow::new(shadow.color.rgba(), offset));
+        }
+        self.apply(&mut style.text);
+    }
+
     /// Turns the colour fields' token names into colours, an unknown one an
     /// error at `path` of the field.
     fn resolve(
@@ -557,7 +618,24 @@ impl TextFile {
         tokens: &ColorTokens,
         path: &dyn Fn(&str) -> String,
     ) -> Result<(), String> {
-        resolve(&mut self.color, tokens, &|| path("color"))
+        resolve(&mut self.color, tokens, &|| path("color"))?;
+        if let Some(outline) = &mut self.outline {
+            let mut color = Some(outline.color.clone());
+            resolve(&mut color, tokens, &|| path("outline.color"))?;
+            outline.color = color.unwrap_or(Color::Rgba([0; 4]));
+        }
+        if let Some(shadow) = &mut self.shadow {
+            if !shadow.offset.iter().all(|value| value.is_finite()) {
+                return Err(format!(
+                    "{}: a shadow's offset is finite",
+                    path("shadow.offset")
+                ));
+            }
+            let mut color = Some(shadow.color.clone());
+            resolve(&mut color, tokens, &|| path("shadow.color"))?;
+            shadow.color = color.unwrap_or(Color::Rgba([0; 4]));
+        }
+        Ok(())
     }
 
     fn apply(self, text: &mut TextOverrides) {

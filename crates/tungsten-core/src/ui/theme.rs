@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::text::{TextAlign, TextOverflow, TextStyle, TextWrap};
+use crate::text::{TextAlign, TextOutline, TextOverflow, TextShadow, TextStyle, TextWrap};
 
 use super::node::WidgetKind;
 
@@ -115,16 +115,39 @@ impl ThemeNames {
 }
 
 /// A named text style: the text overrides a node naming it layers between
-/// its state variants and its own overrides.
+/// its state variants and its own overrides, and the paint-only parts only
+/// a named style carries, which pass down as text properties do: a theme's
+/// kinds and a node's own overrides keep the size they have, since the app
+/// re-inserts the tree, theme and all, each frame it paints.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NamedStyle {
     /// The text properties it sets.
     pub text: TextOverrides,
+    /// The outline it draws around the text (P7-14), in the text's units.
+    pub outline: Option<TextOutline>,
+    /// The shadow it draws under the text (P7-14), in the text's units.
+    pub shadow: Option<TextShadow>,
+}
+
+impl NamedStyle {
+    /// Applies the set properties to `style`, the paint-only ones included.
+    pub fn apply(&self, style: &mut TextStyle) {
+        self.text.apply(style);
+        if let Some(outline) = self.outline {
+            style.outline = Some(outline);
+        }
+        if let Some(shadow) = self.shadow {
+            style.shadow = Some(shadow);
+        }
+    }
 }
 
 impl From<TextOverrides> for NamedStyle {
     fn from(text: TextOverrides) -> Self {
-        Self { text }
+        Self {
+            text,
+            ..Self::default()
+        }
     }
 }
 
@@ -169,7 +192,7 @@ fn built_in_text_styles(tokens: &Tokens) -> BTreeMap<String, NamedStyle> {
         ("danger", text_color(tokens.colors.danger)),
     ]
     .into_iter()
-    .map(|(name, text)| (name.to_owned(), NamedStyle { text }))
+    .map(|(name, text)| (name.to_owned(), NamedStyle::from(text)))
     .collect()
 }
 
@@ -847,7 +870,7 @@ pub(crate) fn resolve_layers(
         variant.text.apply(&mut text);
     }
     if let Some(named) = named {
-        named.text.apply(&mut text);
+        named.apply(&mut text);
     }
     overrides.apply_visual(&mut visual);
     overrides.text.apply(&mut text);

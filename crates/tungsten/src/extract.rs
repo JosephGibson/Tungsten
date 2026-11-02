@@ -8,6 +8,7 @@
 //! and mesh particles.
 
 use glam::Vec2;
+use tungsten_core::text::effect_copies;
 use tungsten_core::{CameraState, ScaleFactor, UiDebug, World, WorldLabels};
 use tungsten_render::{QuadInstance, SpriteBatch, TextSection, WorldLabelRun};
 
@@ -250,7 +251,8 @@ pub(crate) struct WorldLabelCounts {
 /// Drains the frame's [`WorldLabels`] and projects each through the camera
 /// onto the `viewport`, in physical pixels: the anchor's screen point plus
 /// the offset times the scale factor. It culls a label whose point lies
-/// outside the viewport grown by the cull margin, keeps the first `cap`
+/// outside the viewport grown by the cull margin, and by how far its
+/// outline and shadow reach (P7-14), keeps the first `cap`
 /// survivors in push order and snaps each one's scale to
 /// [`LABEL_SCALE_STEP`]. While `UiDebug::hide_game_layers` is set it drains
 /// and keeps nothing. Without the resource it does nothing.
@@ -286,6 +288,9 @@ pub(crate) fn extract_world_labels(
     for label in labels.drain() {
         let point = camera.world_to_screen(label.anchor) + label.offset * scale;
         let drawn_scale = (label.scale * scale / LABEL_SCALE_STEP).round() * LABEL_SCALE_STEP;
+        let reach = effect_copies(label.outline, label.shadow, drawn_scale)
+            .fold(Vec2::ZERO, |reach, (offset, _)| reach.max(offset.abs()));
+        let (min, max) = (min - reach, max + reach);
         // Written so that a NaN point or scale culls.
         let inside = point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y;
         if !(inside && drawn_scale > 0.0 && drawn_scale.is_finite()) {
@@ -305,6 +310,8 @@ pub(crate) fn extract_world_labels(
         run.pivot = label.pivot.to_array();
         run.scale = drawn_scale;
         run.color = label.color;
+        run.outline = label.outline;
+        run.shadow = label.shadow;
         runs.push(run);
     }
     counts.kept = runs.len() as u32;
