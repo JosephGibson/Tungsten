@@ -6,7 +6,7 @@ use std::path::Path;
 
 use tungsten::core::post::{PostPass, PostStack, VignetteParams};
 use tungsten::core::text::{TextAlign, TextNodeStore};
-use tungsten::core::ui::{ThemeFile, UiTree, Visibility, WidgetId};
+use tungsten::core::ui::{ThemeFile, UiTree, Visibility, WidgetId, widgets};
 use tungsten::core::{
     InputState, KeyCode, SaveSlots, Schedule, Stage, Time, UserFolder, World, system,
 };
@@ -24,7 +24,7 @@ use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::title::TITLE;
 use tungsten_template_basic::shell::toast::{self, TOAST_SECS, Toasts};
 use tungsten_template_basic::shell::{
-    AUTOSAVES, Difficulty, RunStart, RunState, request_autosave, theme, widgets,
+    AUTOSAVES, Difficulty, RunStart, RunState, request_autosave, theme,
 };
 
 use super::saves::{gems_left, newer_slot, player_of, set_gems, set_player};
@@ -344,13 +344,13 @@ fn continue_names_its_slot_and_age() {
     // The button's own label, then the line under it.
     let texts: Vec<String> = descendants(tree, resume)[1..]
         .iter()
-        .map(|id| widgets::text_of(tree, *id))
+        .map(|id| tree.plain_text(*id))
         .filter(|text| !text.is_empty())
         .collect();
     assert_eq!(texts, ["Continue", "Autosave 2 ·", "just now"]);
     let age = descendants(tree, resume)
         .into_iter()
-        .find(|id| widgets::text_of(tree, *id) == "just now")
+        .find(|id| tree.plain_text(*id) == "just now")
         .unwrap();
     let style = &tree.resolved_style(age).unwrap().text;
     assert_eq!(style.family, "engine_mono", "the age in mono");
@@ -441,7 +441,7 @@ fn the_picker_shows_a_card_for_each_difficulty() {
         let [name, pips, facts] = tree.children(card) else {
             panic!("{difficulty:?}: a name, a rank and the facts");
         };
-        assert_eq!(widgets::text_of(tree, *name), difficulty.label());
+        assert_eq!(tree.plain_text(*name), difficulty.label());
         let filled = tree
             .children(*pips)
             .iter()
@@ -452,7 +452,7 @@ fn the_picker_shows_a_card_for_each_difficulty() {
         let lines: Vec<String> = tree
             .children(*facts)
             .iter()
-            .map(|id| widgets::text_of(tree, *id))
+            .map(|id| tree.plain_text(*id))
             .collect();
         assert_eq!(lines, [note], "{difficulty:?}");
     }
@@ -770,12 +770,12 @@ fn the_hud_shows_health_gems_and_the_bound_pause_key() {
     harness.step(1);
     let hud = *harness.world().resource::<Hud>();
     let tree = harness.tree();
-    assert_eq!(widgets::text_of(tree, hud.health), "4 / 5");
+    assert_eq!(tree.plain_text(hud.health), "4 / 5");
     assert_eq!(
-        widgets::text_of(tree, hud.gems),
+        tree.plain_text(hud.gems),
         format!("Gems 0 / {}", GEM_STARTS.len())
     );
-    let prompt = widgets::text_of(tree, hud.prompt);
+    let prompt = tree.plain_text(hud.prompt);
     assert!(
         prompt.contains("P Pause") && !prompt.contains("Mute"),
         "{prompt:?}"
@@ -875,7 +875,7 @@ fn a_hard_run_shows_its_max_health() {
     start_at(&mut harness, Difficulty::Hard);
     harness.step(1);
     let hud = *harness.world().resource::<Hud>();
-    assert_eq!(widgets::text_of(harness.tree(), hud.health), "3 / 3");
+    assert_eq!(harness.tree().plain_text(hud.health), "3 / 3");
 }
 
 /// The front-most shown modal root: the screen on top, or the curtain.
@@ -892,7 +892,7 @@ fn front(harness: &UiHarness) -> Option<WidgetId> {
 fn labelled(tree: &UiTree, root: WidgetId, text: &str) -> Option<WidgetId> {
     let mut stack = vec![root];
     while let Some(id) = stack.pop() {
-        if widgets::text_of(tree, id) == text {
+        if tree.plain_text(id) == text {
             return Some(id);
         }
         stack.extend(tree.children(id).iter().copied());
@@ -919,34 +919,48 @@ fn the_title_is_one_serif_line_above_the_menu() {
     let title = labelled(tree, root, &super::info().title).expect("the game's name");
     let text = &tree.resolved_style(title).unwrap().text;
     assert_eq!(text.family, "serif");
-    assert_eq!([text.size, text.line_height], theme::TITLE);
+    let style = &tree
+        .theme()
+        .text_style("title")
+        .expect("the title style")
+        .text;
+    assert_eq!(
+        [Some(text.size), Some(text.line_height)],
+        [style.size, style.line_height]
+    );
     let node = tree.text_node(title).unwrap();
     assert_eq!(harness.text().committed(node).unwrap().line_count, 1);
     let menu = harness.rect(find(&harness, "New Game").unwrap()).unwrap();
     assert!(
-        harness.rect(title).unwrap().max.y + theme::TITLE_SPACE <= menu.min.y,
+        harness.rect(title).unwrap().max.y + widgets::size(tree, "title_space") <= menu.min.y,
         "well above the menu"
     );
     let width = menu.max.x - menu.min.x;
     assert!(
-        (width - theme::TITLE_MENU_WIDTH).abs() < 0.5,
+        (width - widgets::size(tree, "title_menu_width")).abs() < 0.5,
         "narrower: {width}"
     );
     // The version and "Saving is off", small in the corner.
     let viewport = harness.rect(root).unwrap();
+    let margin = tree.theme().tokens.spacing.lg;
+    let small = &tree
+        .theme()
+        .text_style("small")
+        .expect("the small style")
+        .text;
     let version = format!("Version {}", super::info().version);
     for (line, caption) in [version.as_str(), "Saving is off"].iter().enumerate() {
         let label = labelled(tree, root, caption).expect("a corner line");
         let rect = harness.rect(label).unwrap();
-        assert_eq!(rect.min.x, theme::MARGIN, "{caption}");
+        assert_eq!(rect.min.x, margin, "{caption}");
         assert!(rect.min.y > menu.max.y, "{caption} below the menu");
         let style = &tree.resolved_style(label).unwrap().text;
         assert_eq!(
-            (style.size, style.line_height),
-            (theme::SMALL[0], theme::SMALL[1])
+            (Some(style.size), Some(style.line_height)),
+            (small.size, small.line_height)
         );
         if line == 1 {
-            assert_eq!(rect.max.y, viewport.max.y - theme::MARGIN, "at the bottom");
+            assert_eq!(rect.max.y, viewport.max.y - margin, "at the bottom");
         }
     }
 }
@@ -958,7 +972,9 @@ fn pause_and_dialogs_show_over_a_scrim_with_the_screen_below_drawn() {
     let hud = harness.world().resource::<Hud>().root;
     tap(&mut harness, "state_pause");
     let pause = front(&harness).unwrap();
-    let background = harness.tree().theme().tokens.colors.background;
+    let colors = harness.tree().theme().tokens.colors;
+    let [r, g, b, _] = colors.background;
+    assert_eq!(colors.scrim, [r, g, b, 184], "the background at 72 %");
     let scrim = |harness: &UiHarness, root| {
         let style = harness.tree().resolved_style(root).unwrap();
         let rect = harness.rect(root).unwrap();
@@ -978,10 +994,9 @@ fn pause_and_dialogs_show_over_a_scrim_with_the_screen_below_drawn() {
         window.width as f32 / scale,
         window.height as f32 / scale,
     ];
-    let [r, g, b, _] = background;
     assert_eq!(
         scrim(&harness, pause),
-        ([r, g, b, theme::SCRIM_ALPHA], viewport),
+        (colors.scrim, viewport),
         "pause dims the whole window"
     );
     let tree = harness.tree();
@@ -1011,7 +1026,7 @@ fn pause_and_dialogs_show_over_a_scrim_with_the_screen_below_drawn() {
         "pause stays drawn"
     );
     assert!(tree.frozen(pause), "and takes no input");
-    assert_eq!(scrim(&harness, confirm).0, [r, g, b, theme::SCRIM_ALPHA]);
+    assert_eq!(scrim(&harness, confirm).0, colors.scrim);
     press(&mut harness, "Stay");
     assert_eq!(front(&harness), Some(pause));
     assert!(!harness.tree().frozen(pause));
@@ -1397,7 +1412,7 @@ fn delete_buttons_and_low_health_use_danger() {
     start(&mut harness);
     let accent = harness.tree().theme().tokens.colors.accent;
     let fill = |harness: &UiHarness| {
-        let hud = harness.world().resource::<Hud>().fill;
+        let hud = harness.world().resource::<Hud>().bar.fill;
         harness.tree().resolved_style(hud).unwrap().background
     };
     assert_eq!(fill(&harness), accent, "full health");

@@ -1,22 +1,22 @@
 //! The sample's HUD: a root gameplay owns, drawn and frozen under a pause
-//! (`RootCover::Show`), with a health bar, in the theme's danger colour at a
-//! third of max health or less, and its "current / max", the gems counted,
-//! both in the mono family, and a prompt row that names the bound keys for
-//! the last device.
+//! (`RootCover::Show`), with a health bar, a meter in the theme's danger
+//! colour at a third of max health or less, and its "current / max", the
+//! gems counted, both in the mono family, and a prompt row that names the
+//! bound keys for the last device.
 
 use tungsten::core::World;
-use tungsten::core::ui::{Anchor, LayoutStyle, Sizing, UiLayer, UiTree, WidgetId};
+use tungsten::core::ui::widgets::{self, Meter};
+use tungsten::core::ui::{Anchor, LayoutStyle, UiLayer, UiTree, WidgetId};
 use tungsten::kit::{Counters, Health};
 
 use super::{GEM_STARTS, SampleRun};
-use crate::shell::{theme, widgets};
 
 /// The HUD's widgets: a `World` resource while gameplay runs.
 #[derive(Debug, Clone, Copy)]
 pub struct Hud {
     pub root: WidgetId,
-    /// The health bar's fill, as wide as the health left.
-    pub fill: WidgetId,
+    /// The health bar, its fill as wide as the health left.
+    pub bar: Meter,
     /// "current / max".
     pub health: WidgetId,
     /// "Gems n / 3".
@@ -30,23 +30,15 @@ const BAR: [f32; 2] = [120.0, 10.0];
 
 /// Builds the HUD at the top left, pointer-transparent.
 pub fn build(tree: &mut UiTree) -> Hud {
+    let spacing = tree.theme().tokens.spacing;
     let style = LayoutStyle::column()
-        .with_gap(theme::GAP)
-        .with_padding(theme::GAP)
-        .anchored(Anchor::TopStart, [theme::MARGIN; 2].into());
+        .with_gap(spacing.sm)
+        .with_padding(spacing.sm)
+        .anchored(Anchor::TopStart, [spacing.lg; 2].into());
     let root = tree.add_root(UiLayer::Game, style);
     tree.set_hit_testable(root, false);
     let row = widgets::row(tree, root);
-    let track = tree.panel(
-        row,
-        LayoutStyle::row().with_size(Sizing::Px(BAR[0]), Sizing::Px(BAR[1])),
-    );
-    let fill = tree.panel(
-        track,
-        LayoutStyle::default().with_size(Sizing::Percent(100.0), Sizing::Fill),
-    );
-    let accent = tree.theme().tokens.colors.accent;
-    widgets::fill(tree, fill, accent);
+    let bar = widgets::meter(tree, row, BAR[0], BAR[1]);
     let health = tree.label(row, "");
     let gems = tree.label(root, "");
     widgets::mono(tree, health);
@@ -58,7 +50,7 @@ pub fn build(tree: &mut UiTree) -> Hud {
     );
     Hud {
         root,
-        fill,
+        bar,
         health,
         gems,
         prompt,
@@ -86,17 +78,5 @@ pub fn update(world: &mut World) {
     tree.set_plain_text(hud.gems, &gems);
     let colors = tree.theme().tokens.colors;
     let color = [colors.accent, colors.danger][usize::from(current * 3.0 <= max)];
-    if tree.overrides(hud.fill).and_then(|style| style.background) != Some(color) {
-        widgets::fill(tree, hud.fill, color);
-    }
-    let width = Sizing::Percent((current / max * 100.0).clamp(0.0, 100.0));
-    if tree
-        .layout_style(hud.fill)
-        .is_some_and(|style| style.width != width)
-    {
-        tree.set_layout_style(
-            hud.fill,
-            LayoutStyle::default().with_size(width, Sizing::Fill),
-        );
-    }
+    hud.bar.set(tree, current / max, color);
 }

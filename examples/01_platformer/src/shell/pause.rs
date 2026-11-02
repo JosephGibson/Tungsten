@@ -5,7 +5,7 @@
 //! still ran the steps it owed. `ui_cancel`, Resume or `state_pause` closes
 //! it, once a frame.
 
-use tungsten::core::ui::UiTree;
+use tungsten::core::ui::{UiKey, UiTree};
 use tungsten::core::{Time, World};
 use tungsten::{GameState, StateContext, StateId};
 
@@ -16,6 +16,11 @@ use super::{
 };
 
 pub const PAUSE: StateId = "pause";
+const SAVE: UiKey = UiKey::new("save");
+const LOAD: UiKey = UiKey::new("load");
+const SETTINGS: UiKey = UiKey::new("settings");
+const QUIT_TITLE: UiKey = UiKey::new("quit_title");
+const QUIT_GAME: UiKey = UiKey::new("quit_game");
 
 /// The pause screen.
 #[derive(Default)]
@@ -30,15 +35,15 @@ impl GameState for PauseState {
     }
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
-        let captions = [
-            "Resume",
-            "Save",
-            "Load",
-            "Settings",
-            "Quit to Title",
-            "Quit Game",
+        let items = [
+            ("resume", "Resume"),
+            ("save", "Save"),
+            ("load", "Load"),
+            ("settings", "Settings"),
+            ("quit_title", "Quit to Title"),
+            ("quit_game", "Quit Game"),
         ];
-        let menu = Menu::new(ctx.world, "Paused", &captions);
+        let menu = Menu::new(ctx.world, "Paused", &items);
         let saving = saving_on(ctx.world);
         let tree = ctx.world.resource_mut::<UiTree>();
         tree.set_enabled(menu.buttons[1], saving);
@@ -62,12 +67,12 @@ impl GameState for PauseState {
         let Some(menu) = self.menu.as_mut().filter(|_| idle(world)) else {
             return;
         };
-        match menu.pick(world) {
-            Some(1) => push(world, SavesState::new(Mode::Save)),
-            Some(2) => push(world, SavesState::new(Mode::Load)),
-            Some(3) => push(world, SettingsState::new(0)),
-            Some(4) => quit_to_title(world),
-            Some(5) => quit_game(world),
+        match menu.chosen(world) {
+            Some(SAVE) => push(world, SavesState::new(Mode::Save)),
+            Some(LOAD) => push(world, SavesState::new(Mode::Load)),
+            Some(SETTINGS) => push(world, SettingsState::new(0)),
+            Some(QUIT_TITLE) => quit_to_title(world),
+            Some(QUIT_GAME) => quit_game(world),
             Some(_) => pop(world),
             None if cancelled(world, menu.root) || pressed(world, "state_pause", false) => {
                 pop(world);

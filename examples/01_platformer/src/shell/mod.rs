@@ -24,12 +24,14 @@ pub mod settings;
 pub mod theme;
 pub mod title;
 pub mod toast;
-pub mod widgets;
 
 use serde::{Deserialize, Serialize};
 use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::save::SaveError;
-use tungsten::core::ui::{UiEvent, UiRouter, UiTrack, UiTree, Visibility, WidgetId};
+use tungsten::core::ui::{
+    LayoutStyle, Sizing, UiEvent, UiKey, UiLayer, UiRouter, UiTrack, UiTree, Visibility, WidgetId,
+    widgets,
+};
 use tungsten::core::{
     ActionMap, DisplayMode, DisplayState, EventQueue, InputState, RoutedInput, SaveSlots,
     ScaleFactor, Schedule, Settings, Stage, Time, Voice, World, system,
@@ -243,7 +245,6 @@ impl Plugin for ShellPlugin {
         world.insert_resource(self.info.clone());
         world.insert_resource(Shell::default());
         world.insert_resource(toast::Toasts::default());
-        world.insert_resource(widgets::Capped::default());
         options::load(world);
         let unset = world.resource::<Settings>().ui_scale().is_none();
         if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
@@ -350,10 +351,22 @@ fn set_flow(world: &mut World, state: impl GameState, run: Option<RunState>) {
     }
     let replace = Box::new(move |stack: &mut StateStack| stack.request_replace(state));
     let tree = world.resource_mut::<UiTree>();
-    let curtain = widgets::curtain(tree);
+    let curtain = curtain_root(tree);
     tree.animate(curtain, UiTrack::opacity(0.0, 1.0, theme::CURTAIN_IN_SECS));
     let flow = Some(Flow { replace, run });
     world.resource_mut::<Shell>().change = Some(Change::Curtain(curtain, 0.0, flow));
+}
+
+/// The run change's curtain: a modal root over every screen in the theme's
+/// background, which the shell fades in and out.
+fn curtain_root(tree: &mut UiTree) -> WidgetId {
+    let full = Sizing::Percent(100.0);
+    let style = LayoutStyle::column().with_size(full, full);
+    let root = tree.add_root(UiLayer::GamePopup, style);
+    tree.set_modal(root, true);
+    let background = tree.theme().tokens.colors.background;
+    widgets::fill(tree, root, background);
+    root
 }
 
 /// Whether a [`goto`] waits for the curtain, or its run for the replace.
@@ -711,8 +724,8 @@ fn quit(world: &mut World, question: &str, then: impl FnOnce(&mut World) + 'stat
 }
 
 /// A menu screen a state owns: a modal root with a centred heading,
-/// "Saving is off" without a user folder, and a column of buttons, sliding
-/// in.
+/// "Saving is off" without a user folder, and a column of keyed buttons,
+/// sliding in.
 pub struct Menu {
     pub root: WidgetId,
     pub heading: WidgetId,
@@ -722,18 +735,22 @@ pub struct Menu {
 }
 
 impl Menu {
-    pub fn new(world: &mut World, heading: &str, captions: &[&str]) -> Self {
+    /// The menu `heading` over a button per `(key, caption)` of `items`.
+    pub fn new(world: &mut World, heading: &str, items: &[(&str, &str)]) -> Self {
         let saving = saving_on(world);
         let tree = world.resource_mut::<UiTree>();
-        let (root, card) = widgets::screen(tree, theme::MENU_WIDTH);
+        let width = widgets::size(tree, "menu_width");
+        let (root, card) = widgets::screen(tree, width);
         let heading = widgets::heading(tree, card, heading, true);
         if !saving {
             widgets::note(tree, card, "Saving is off");
         }
-        let buttons = captions
-            .iter()
-            .map(|caption| widgets::button(tree, card, caption));
-        let buttons = buttons.collect();
+        let button = |(key, caption): &(&str, &str)| {
+            let button = widgets::button(tree, card, caption);
+            tree.set_key(button, key);
+            button
+        };
+        let buttons = items.iter().map(button).collect();
         enter(world, root);
         let opened = None;
         let menu = Self {
@@ -753,12 +770,12 @@ impl Menu {
         widgets::focus_first(world.resource_mut::<UiTree>(), candidates);
     }
 
-    /// The button activated at this routing, which then takes focus back
-    /// when the screen above closes.
-    pub fn pick(&mut self, world: &World) -> Option<usize> {
-        let at = clicked(world, &self.buttons)?;
-        self.opened = Some(self.buttons[at]);
-        Some(at)
+    /// The key of the button activated on the menu at this routing, which
+    /// then takes focus back when the screen above closes.
+    pub fn chosen(&mut self, world: &World) -> Option<UiKey> {
+        let (button, key) = activated(world, self.root)?;
+        self.opened = Some(button);
+        Some(key)
     }
 }
 
@@ -826,7 +843,6 @@ fn post(world: &mut World, tail: Vec<PostPass>, swap: bool) {
 /// safe answer, the menu sounds, the pause key, focus loss and the post
 /// stack.
 fn frame(world: &mut World) {
-    widgets::recap(world);
     display_keys(world);
     let real = world.resource::<Time>().real_delta();
     let died = world.resource_mut::<Shell>().died.as_mut().map(|secs| {
@@ -894,14 +910,13 @@ fn menu_sounds(world: &mut World) {
     let navigated = navigation
         .iter()
         .any(|action| pressed(world, action, false));
-    let tree = world.resource::<UiTree>();
     let mut heard = [false; 3];
     for event in events(world) {
         match event {
             UiEvent::FocusGained { .. } => heard[0] |= navigated,
-            UiEvent::Activated { widget, .. } if tree.accessible_name(widget) == Some("Back") => {
-                heard[2] = true;
-            }
+            UiEvent::Activated {
+                key: Some(BACK), ..
+            } => heard[2] = true,
             UiEvent::Activated { .. } => heard[1] = true,
             UiEvent::Cancel { .. } => heard[2] = true,
             _ => {}
@@ -983,11 +998,22 @@ pub fn events(world: &World) -> Vec<UiEvent> {
     events.iter_current().copied().collect()
 }
 
-/// The first of `buttons` activated at this routing.
+/// The key every screen's Back button takes, which plays the back sound.
+pub const BACK: UiKey = UiKey::new("back");
+
+/// The keyed control on `root` activated at this routing, with its key.
 #[must_use]
-pub fn clicked(world: &World, buttons: &[WidgetId]) -> Option<usize> {
-    let events = world.resource::<EventQueue<UiEvent>>();
-    buttons.iter().position(|button| events.activated(*button))
+pub fn activated(world: &World, root: WidgetId) -> Option<(WidgetId, UiKey)> {
+    let tree = world.resource::<UiTree>();
+    let mut events = world.resource::<EventQueue<UiEvent>>().iter_current();
+    events.find_map(|event| match *event {
+        UiEvent::Activated {
+            widget,
+            key: Some(key),
+            ..
+        } if tree.root_of(widget) == Some(root) => Some((widget, key)),
+        _ => None,
+    })
 }
 
 /// Whether `ui_cancel` backed out of `root` at this routing.

@@ -158,7 +158,7 @@ pub fn shows(harness: &UiHarness, text: &str) -> bool {
     };
     let mut stack = vec![root];
     while let Some(id) = stack.pop() {
-        if game_shell::widgets::text_of(tree, id) == text {
+        if tree.plain_text(id) == text {
             return true;
         }
         stack.extend(tree.children(id).iter().copied());

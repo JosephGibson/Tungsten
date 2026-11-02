@@ -11,7 +11,7 @@ use tungsten::core::ui::Visibility;
 use tungsten::core::{ScaleFactor, Settings, UserFolder};
 use tungsten::kit::damage;
 use tungsten::testing::UiHarness;
-use tungsten_template_basic::shell::{theme, widgets};
+use tungsten_template_basic::shell::theme;
 
 use super::{harness, harness_with, player_entity, press, settle, start, tap, user_folder};
 
@@ -190,7 +190,7 @@ fn assert_rules(harness: &mut UiHarness, what: &str) {
                     across && down,
                     "{what}: {:?} ({:?}) at {rect:?} outside its parent at {parent:?}",
                     tree.accessible_name(child),
-                    widgets::text_of(tree, child)
+                    tree.plain_text(child)
                 );
                 checked += 1;
                 stack.push((child, scrolls));
@@ -203,7 +203,7 @@ fn assert_rules(harness: &mut UiHarness, what: &str) {
     let lines = tree.roots().iter().filter_map(|root| {
         let card = *tree.children(*root).first()?;
         let label = *tree.children(card).first()?;
-        let text = widgets::text_of(tree, label);
+        let text = tree.plain_text(label);
         (text == super::info().title || text == "YOU DIED").then_some((label, text))
     });
     for (label, text) in lines.filter(|_| tree.visibility(tree.roots()[0]).is_some()) {

@@ -22,18 +22,18 @@ use tungsten::core::post::{BloomParams, PostPass, PostStack};
 use tungsten::core::save::{self, SaveState, Saved, restore_world};
 use tungsten::core::ui::UiTree;
 use tungsten::core::{
-    AudioCommands, CameraController, CameraState, DataRef, Entity, PreparedPrefab, Schedule,
-    SoundRegistry, Stage, Time, Timer, Voice, WindowSize, With, World, system,
+    AudioCommands, CameraController, CameraState, DataRef, Entity, PreparedPrefab, ScaleFactor,
+    Schedule, SoundRegistry, Stage, Time, Timer, Voice, WindowSize, With, World, system,
 };
 use tungsten::kit::{Counters, EffectRequest, Health, Stats, Tags};
-use tungsten::{GameState, Plugin, RootCover, SceneEntity, StateContext, StateId};
+use tungsten::{GameState, Plugin, SceneEntity, StateContext, StateId};
 
 use crate::game::GAMEPLAY;
 use crate::save::SaveGame;
 use crate::shell::game_over::GAME_OVER;
 use crate::shell::options::GameOptions;
 use crate::shell::pause::PAUSE;
-use crate::shell::{self, Difficulty, RunStart, theme};
+use crate::shell::{self, Difficulty, RunStart};
 use components::Player;
 
 /// The sample's code-built level, the area its placed entities are named
@@ -224,13 +224,17 @@ impl Plugin for SamplePlugin {
     }
 }
 
-/// The camera's zoom for the window: its height over the shell's reference
-/// height, so a taller window shows the same play space larger.
+/// The camera's zoom for the window: its height over the UI's reference
+/// height (`D-184`), so a taller window shows the same play space larger.
 fn zoom(world: &World) -> f32 {
     let height = world
         .get_resource::<WindowSize>()
         .map_or(720, |size| size.height);
-    (height as f32 / theme::REFERENCE_HEIGHT).max(f32::EPSILON)
+    let reference = world
+        .get_resource::<ScaleFactor>()
+        .and_then(ScaleFactor::reference_height)
+        .unwrap_or(720.0);
+    (height as f32 / reference).max(f32::EPSILON)
 }
 
 /// Pause's music: when pause comes on top, the run's voice falls to 0 and
@@ -379,10 +383,8 @@ impl GameState for GameplayState {
             run,
             ..Music::default()
         });
-        let tree = world.resource_mut::<UiTree>();
-        let hud = hud::build(tree);
-        theme::slide_in(tree, hud.root);
-        shell::stack(world).own_root(hud.root, RootCover::Show);
+        let hud = hud::build(world.resource_mut::<UiTree>());
+        shell::enter(world, hud.root);
         world.insert_resource(hud);
         hud::update(world);
         world.insert_resource(PostStack(vec![PostPass::Bloom(BLOOM)]));

@@ -11,7 +11,7 @@
 
 use tungsten::core::post::PostPass;
 use tungsten::core::ui::{
-    Align, Justify, LayoutStyle, Sizing, UiLayer, UiTree, Visibility, WidgetId,
+    Align, Justify, LayoutStyle, Sizing, UiKey, UiLayer, UiTree, Visibility, WidgetId, widgets,
 };
 use tungsten::core::{AudioCommands, Easing, Voice, World};
 use tungsten::{GameState, RootCover, StateContext, StateId, TransitionEffect};
@@ -20,10 +20,13 @@ use super::saves::{Mode, SavesState};
 use super::title::TitleState;
 use super::{
     Change, Menu, RunStart, Shell, SlotState, goto, idle, play, push, read_slots, run, saving_on,
-    stack, start_run, theme, widgets,
+    stack, start_run, theme,
 };
 
 pub const GAME_OVER: StateId = "game_over";
+const RETRY: UiKey = UiKey::new("retry");
+const LOAD: UiKey = UiKey::new("load");
+const QUIT_TITLE: UiKey = UiKey::new("quit_title");
 
 /// The game-over screen and its music.
 #[derive(Default)]
@@ -87,37 +90,43 @@ impl GameState for GameOverState {
         let world = &mut *ctx.world;
         let saving = saving_on(world);
         let tree = world.resource_mut::<UiTree>();
+        let spacing = tree.theme().tokens.spacing;
         // A clear modal root: the band across it, the buttons under it.
         let full = Sizing::Percent(100.0);
         let mut style = LayoutStyle::column()
             .with_size(full, full)
-            .with_gap(2.0 * theme::PADDING);
+            .with_gap(2.0 * spacing.lg);
         (style.align_items, style.justify_content) = (Align::Center, Justify::Center);
         let root = tree.add_root(UiLayer::GamePopup, style);
         tree.set_modal(root, true);
         widgets::fill(tree, root, [0; 4]);
         let band = LayoutStyle::column().with_size(full, Sizing::Auto);
-        let band = tree.panel(root, band.with_padding(theme::PADDING));
+        let band = tree.panel(root, band.with_padding(spacing.lg));
         widgets::fill(tree, band, theme::DIED_BAND);
-        let heading = widgets::display(tree, band, "YOU DIED", theme::DIED);
+        let heading = widgets::display(tree, band, "YOU DIED", "died");
         widgets::restyle(tree, heading, |text| {
             text.color = Some(theme::DIED_RED);
             text.letter_spacing = Some(theme::DIED_SPACING);
         });
-        let card = LayoutStyle::column().with_gap(theme::GAP);
-        let width = Sizing::Px(theme::MENU_WIDTH);
+        let card = LayoutStyle::column().with_gap(spacing.sm);
+        let width = Sizing::Px(widgets::size(tree, "menu_width"));
         let card = tree.panel(root, card.with_size(width, Sizing::Auto));
         widgets::fill(tree, card, [0; 4]);
-        let captions = ["Retry", "Load", "Quit to Title"];
-        let buttons: Vec<_> = captions
-            .iter()
-            .map(|caption| widgets::button(tree, card, caption))
-            .collect();
+        let items = [
+            ("retry", "Retry"),
+            ("load", "Load"),
+            ("quit_title", "Quit to Title"),
+        ];
+        let button = |(key, caption): &(&str, &str)| {
+            let button = widgets::button(tree, card, caption);
+            tree.set_key(button, key);
+            button
+        };
+        let buttons: Vec<_> = items.iter().map(button).collect();
         tree.set_enabled(buttons[1], saving);
         tree.set_visibility(card, Visibility::Hidden);
         theme::fade_in(tree, band, theme::DIED_SECS);
         stack(world).own_root(root, RootCover::Show);
-        widgets::capped(world, heading, theme::DIED, theme::DIED_CAP);
         let shell = world.resource_mut::<Shell>();
         (shell.change, shell.died) = (Some(Change::Entrance(0.0, card)), Some(0.0));
         let [sting, music] = theme::GAME_OVER_SOUNDS;
@@ -150,10 +159,10 @@ impl GameState for GameOverState {
         let Some(menu) = self.menu.as_mut().filter(|_| idle(world)) else {
             return;
         };
-        match menu.pick(world) {
-            Some(0) => retry(world),
-            Some(1) => push(world, SavesState::new(Mode::Load)),
-            Some(2) => goto(world, TitleState::default()),
+        match menu.chosen(world) {
+            Some(RETRY) => retry(world),
+            Some(LOAD) => push(world, SavesState::new(Mode::Load)),
+            Some(QUIT_TITLE) => goto(world, TitleState::default()),
             _ => {}
         }
     }

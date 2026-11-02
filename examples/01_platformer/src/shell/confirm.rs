@@ -5,13 +5,14 @@
 //! callback changed the run through `goto`, which takes the dialog too.
 
 use tungsten::core::text::TextAlign;
-use tungsten::core::ui::{UiTree, WidgetId};
+use tungsten::core::ui::{UiKey, UiTree, WidgetId, widgets};
 use tungsten::core::{Time, Timer, World};
 use tungsten::{Exiting, GameState, StateContext, StateId};
 
-use super::{cancelled, clicked, enter, flow_pending, idle, pop, theme, widgets};
+use super::{activated, cancelled, enter, flow_pending, idle, pop};
 
 pub const CONFIRM: StateId = "confirm";
+const YES: UiKey = UiKey::new("yes");
 
 type Answer = Box<dyn FnOnce(&mut World)>;
 
@@ -24,7 +25,7 @@ pub struct ConfirmState {
     on_no: Option<Answer>,
     /// The real-clock timer that picks the safe answer when it ends.
     countdown: Option<Timer>,
-    ui: Option<[WidgetId; 4]>,
+    ui: Option<[WidgetId; 2]>,
 }
 
 impl ConfirmState {
@@ -94,7 +95,8 @@ impl GameState for ConfirmState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let tree = ctx.world.resource_mut::<UiTree>();
-        let (root, card) = widgets::screen(tree, theme::MENU_WIDTH);
+        let width = widgets::size(tree, "menu_width");
+        let (root, card) = widgets::screen(tree, width);
         let question = tree.label(card, self.question.as_str());
         let count = widgets::note(tree, card, "");
         for label in [question, count] {
@@ -105,16 +107,18 @@ impl GameState for ConfirmState {
             tree.set_plain_text(count, &count_text(timer));
         }
         let yes = widgets::button(tree, card, self.yes);
+        tree.set_key(yes, "yes");
         let no = widgets::button(tree, card, self.no);
+        tree.set_key(no, "no");
         tree.focus(no);
         enter(ctx.world, root);
-        self.ui = Some([root, yes, no, count]);
+        self.ui = Some([root, count]);
     }
 
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
 
     fn update(&mut self, world: &mut World) {
-        let Some([root, yes, no, count]) = self.ui else {
+        let Some([root, count]) = self.ui else {
             return;
         };
         // The run's last frame takes the safe answer, so an unkept display
@@ -134,9 +138,8 @@ impl GameState for ConfirmState {
                 return self.answer(world, false);
             }
         }
-        match clicked(world, &[yes, no]) {
-            Some(0) => self.answer(world, true),
-            Some(_) => self.answer(world, false),
+        match activated(world, root) {
+            Some((_, key)) => self.answer(world, key == YES),
             None if cancelled(world, root) => self.answer(world, false),
             None => {}
         }

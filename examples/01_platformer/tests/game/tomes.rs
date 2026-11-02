@@ -15,7 +15,6 @@ use example_01_platformer::features::tomes::{BOOK_CENTRE, INTERACT, Tome, TomeKi
 use example_01_platformer::features::toys::{self, IRON_HALF};
 use example_01_platformer::features::{gun, lightning};
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shell::widgets;
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::ui::Visibility;
@@ -105,13 +104,13 @@ fn a_books_panel_shows_within_reach_and_hides_beyond() {
         Some(Visibility::Visible),
         "at 60 px"
     );
-    assert_eq!(widgets::text_of(tree, panel.name), "The Demonic Pact");
+    assert_eq!(tree.plain_text(panel.name), "The Demonic Pact");
     assert_eq!(
-        widgets::text_of(tree, panel.gives),
+        tree.plain_text(panel.gives),
         "A shield of 50 over your health, back 3 s after a hit"
     );
     assert_eq!(
-        widgets::text_of(tree, panel.costs),
+        tree.plain_text(panel.costs),
         "Half your maximum health, for good"
     );
     // 70 px off, it hides; back within reach, it shows again.

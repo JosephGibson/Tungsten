@@ -14,7 +14,9 @@
 use std::num::NonZeroU32;
 
 use tungsten::core::settings::SettingsError;
-use tungsten::core::ui::{Align, Sizing, SliderRange, UiEvent, UiTree, UiValue, WidgetId};
+use tungsten::core::ui::{
+    Align, Sizing, SliderRange, UiEvent, UiKey, UiTree, UiValue, WidgetId, widgets,
+};
 use tungsten::core::{
     AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, Settings, World,
 };
@@ -24,13 +26,15 @@ use super::confirm::{self, ConfirmState};
 use super::keybindings::{self, KeybindingsState};
 use super::options::{self, GameOptions};
 use super::{
-    Difficulty, RunState, Shell, apply_settings, enter, events, idle, pop, pressed, push, theme,
-    toast, widgets,
+    BACK, Difficulty, RunState, Shell, apply_settings, enter, events, idle, pop, pressed, push,
+    theme, toast,
 };
 
 pub const SETTINGS: StateId = "settings";
-/// The tabs, in order.
+/// The tabs, in order, and their keys.
 pub const TABS: [&str; 5] = ["Display", "Audio", "Interface", "Controls", "Gameplay"];
+const TAB_KEYS: [&str; 5] = ["display", "audio", "interface", "controls", "gameplay"];
+const RESET_TAB: UiKey = UiKey::new("reset_tab");
 /// The Gameplay tab.
 pub const GAMEPLAY_TAB: usize = 4;
 /// The window sizes offered without a monitor to read, smallest first; the
@@ -84,29 +88,62 @@ pub const UI_SCALES: std::ops::RangeInclusive<f32> = 0.5..=2.0;
 const UI_SCALE: Kind = Kind::Slider(*UI_SCALES.start(), *UI_SCALES.end(), 0.25);
 const TEXT_SCALE: Kind = Kind::Slider(*TEXT.start(), *TEXT.end(), 0.25);
 
-/// Every row: its tab, its caption and how it is built.
-const ROWS: [(Row, usize, &str, Kind); 20] = [
-    (Row::Mode, 0, "Window mode", Kind::Choice),
-    (Row::Size, 0, "Window size", Kind::Choice),
-    (Row::Vsync, 0, "VSync", Kind::Toggle),
-    (Row::Cap, 0, "Frame rate limit", CAP),
-    (Row::Uncapped, 0, "Uncapped", Kind::Toggle),
-    (Row::Bloom, 0, "Bloom", Kind::Toggle),
-    (Row::Apply, 0, "Apply", Kind::Button),
-    (Row::Master, 1, "Master", PERCENT),
-    (Row::Music, 1, "Music", PERCENT),
-    (Row::Effects, 1, "Effects", PERCENT),
-    (Row::MuteUnfocused, 1, "Mute when unfocused", Kind::Toggle),
-    (Row::UiScale, 2, "UI scale", UI_SCALE),
-    (Row::TextScale, 2, "Text scale", TEXT_SCALE),
-    (Row::Keys, 3, "Keybindings…", Kind::Button),
-    (Row::ResetKeys, 3, "Reset all bindings", Kind::Button),
-    (Row::Difficulty, 4, "Difficulty", Kind::Choice),
-    (Row::Shake, 4, "Screen shake", PERCENT),
-    (Row::Damage, 4, "Damage numbers", Kind::Toggle),
-    (Row::PauseUnfocused, 4, "Pause when unfocused", Kind::Toggle),
-    (Row::Autosave, 4, "Autosave", Kind::Toggle),
+/// Every row: its tab, its control's key, its caption and how it is built.
+const ROWS: [(Row, usize, &str, &str, Kind); 20] = [
+    (Row::Mode, 0, "window_mode", "Window mode", Kind::Choice),
+    (Row::Size, 0, "window_size", "Window size", Kind::Choice),
+    (Row::Vsync, 0, "vsync", "VSync", Kind::Toggle),
+    (Row::Cap, 0, "frame_rate_limit", "Frame rate limit", CAP),
+    (Row::Uncapped, 0, "uncapped", "Uncapped", Kind::Toggle),
+    (Row::Bloom, 0, "bloom", "Bloom", Kind::Toggle),
+    (Row::Apply, 0, "apply", "Apply", Kind::Button),
+    (Row::Master, 1, "master", "Master", PERCENT),
+    (Row::Music, 1, "music", "Music", PERCENT),
+    (Row::Effects, 1, "effects", "Effects", PERCENT),
+    (
+        Row::MuteUnfocused,
+        1,
+        "mute_unfocused",
+        "Mute when unfocused",
+        Kind::Toggle,
+    ),
+    (Row::UiScale, 2, "ui_scale", "UI scale", UI_SCALE),
+    (Row::TextScale, 2, "text_scale", "Text scale", TEXT_SCALE),
+    (Row::Keys, 3, "keybindings", "Keybindings…", Kind::Button),
+    (
+        Row::ResetKeys,
+        3,
+        "reset_bindings",
+        "Reset all bindings",
+        Kind::Button,
+    ),
+    (Row::Difficulty, 4, "difficulty", "Difficulty", Kind::Choice),
+    (Row::Shake, 4, "screen_shake", "Screen shake", PERCENT),
+    (
+        Row::Damage,
+        4,
+        "damage_numbers",
+        "Damage numbers",
+        Kind::Toggle,
+    ),
+    (
+        Row::PauseUnfocused,
+        4,
+        "pause_unfocused",
+        "Pause when unfocused",
+        Kind::Toggle,
+    ),
+    (Row::Autosave, 4, "autosave", "Autosave", Kind::Toggle),
 ];
+
+impl Row {
+    /// The row whose control is keyed `key`.
+    fn of(key: Option<UiKey>) -> Option<Self> {
+        let key = key?;
+        let row = ROWS.iter().find(|(_, _, name, ..)| UiKey::new(name) == key);
+        row.map(|(row, ..)| *row)
+    }
+}
 
 struct Ui {
     root: WidgetId,
@@ -117,8 +154,6 @@ struct Ui {
     rows: Vec<WidgetId>,
     /// Each slider's readout.
     readouts: Vec<(WidgetId, WidgetId)>,
-    reset: WidgetId,
-    back: WidgetId,
 }
 
 impl Ui {
@@ -533,13 +568,17 @@ impl GameState for SettingsState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let tree = ctx.world.resource_mut::<UiTree>();
-        let (root, card) = widgets::screen(tree, theme::WIDE_WIDTH);
+        let width = widgets::size(tree, "wide_width");
+        let (root, card) = widgets::screen(tree, width);
         widgets::heading(tree, card, "Settings", false);
         let body = widgets::row(tree, card);
         let mut style = tree.layout_style(body).cloned().unwrap_or_default();
         style.align_items = Align::Start;
         tree.set_layout_style(body, style);
         let (tabs, bars) = widgets::tab_rail(tree, body, &TABS);
+        for (tab, key) in tabs.iter().zip(TAB_KEYS) {
+            tree.set_key(*tab, key);
+        }
         let panels: Vec<WidgetId> = TABS.iter().map(|_| widgets::column(tree, body)).collect();
         for panel in &panels {
             widgets::set_width(tree, *panel, Sizing::Fill);
@@ -547,30 +586,36 @@ impl GameState for SettingsState {
         let mut readouts = Vec::new();
         let rows = ROWS
             .iter()
-            .map(|&(row, tab, caption, kind)| match kind {
-                Kind::Choice => widgets::choice_row(tree, panels[tab], caption, ""),
-                Kind::Toggle => widgets::toggle_row(tree, panels[tab], caption, false),
-                Kind::Button => {
-                    let button = widgets::button(tree, panels[tab], caption);
-                    // Apply sits small at the tab's foot, under the values.
-                    if row == Row::Apply {
-                        let mut style = tree.layout_style(button).cloned().unwrap_or_default();
-                        style.align_self = Some(Align::End);
-                        tree.set_layout_style(button, style);
+            .map(|&(row, tab, key, caption, kind)| {
+                let control = match kind {
+                    Kind::Choice => widgets::choice_row(tree, panels[tab], caption, ""),
+                    Kind::Toggle => widgets::toggle_row(tree, panels[tab], caption, false),
+                    Kind::Button => {
+                        let button = widgets::button(tree, panels[tab], caption);
+                        // Apply sits small at the tab's foot, under the values.
+                        if row == Row::Apply {
+                            let mut style = tree.layout_style(button).cloned().unwrap_or_default();
+                            style.align_self = Some(Align::End);
+                            tree.set_layout_style(button, style);
+                        }
+                        button
                     }
-                    button
-                }
-                Kind::Slider(least, most, step) => {
-                    let range = SliderRange::new(least, most).with_step(step);
-                    let row = widgets::slider_row(tree, panels[tab], caption, range);
-                    readouts.push(row);
-                    row.0
-                }
+                    Kind::Slider(least, most, step) => {
+                        let range = SliderRange::new(least, most).with_step(step);
+                        let row = widgets::slider_row(tree, panels[tab], caption, range);
+                        readouts.push(row);
+                        row.0
+                    }
+                };
+                tree.set_key(control, key);
+                control
             })
             .collect();
         let actions = widgets::row(tree, card);
         let reset = widgets::button(tree, actions, "Reset tab");
+        tree.set_key(reset, "reset_tab");
         let back = widgets::button(tree, actions, "Back");
+        tree.set_key(back, "back");
         let ui = Ui {
             root,
             tabs,
@@ -578,8 +623,6 @@ impl GameState for SettingsState {
             panels,
             rows,
             readouts,
-            reset,
-            back,
         };
         tree.set_slider_value(ui.control(Row::Cap), FPS_REST as f32);
         self.ui = Some(ui);
@@ -604,8 +647,7 @@ impl GameState for SettingsState {
         if !idle(world) {
             return;
         }
-        let (root, reset, back, tabs, rows) =
-            (ui.root, ui.reset, ui.back, ui.tabs.clone(), ui.rows.clone());
+        let root = ui.root;
         let step = match ["ui_next", "ui_prev"].map(|key| pressed(world, key, false)) {
             [true, false] => 1,
             [false, true] => TABS.len() - 1,
@@ -616,30 +658,30 @@ impl GameState for SettingsState {
             self.select(world.resource_mut::<UiTree>(), tab);
         }
         let (events, mut stale) = (events(world), false);
-        let row_of = |widget: WidgetId| {
-            rows.iter()
-                .position(|id| *id == widget)
-                .map(|at| ROWS[at].0)
-        };
+        let tab_of = |key: UiKey| TAB_KEYS.iter().position(|tab| UiKey::new(tab) == key);
         for event in events {
+            let keyed = |widget| Row::of(world.resource::<UiTree>().key(widget));
             match event {
-                UiEvent::Activated { widget, .. } if widget == back => return Self::leave(world),
+                UiEvent::Activated {
+                    key: Some(BACK), ..
+                } => return Self::leave(world),
                 UiEvent::Cancel { scope, .. } if scope == root => return Self::leave(world),
-                UiEvent::Activated { widget, .. } if widget == reset => self.reset(world),
-                UiEvent::Activated { widget, .. } if tabs.contains(&widget) => {
-                    let tab = tabs.iter().position(|tab| *tab == widget).unwrap_or(0);
-                    self.select(world.resource_mut::<UiTree>(), tab);
-                }
+                UiEvent::Activated {
+                    key: Some(RESET_TAB),
+                    ..
+                } => self.reset(world),
                 // The rows refresh after the loop, once this routing's
                 // `ValueChanged` has applied a toggle's new value.
-                UiEvent::Activated { widget, .. } => {
-                    if let Some(row) = row_of(widget) {
+                UiEvent::Activated { key, .. } => {
+                    if let Some(tab) = key.and_then(tab_of) {
+                        self.select(world.resource_mut::<UiTree>(), tab);
+                    } else if let Some(row) = Row::of(key) {
                         self.activate(world, row);
                         stale = true;
                     }
                 }
                 UiEvent::Pressed { widget, .. }
-                    if matches!(row_of(widget), Some(Row::UiScale | Row::TextScale)) =>
+                    if matches!(keyed(widget), Some(Row::UiScale | Row::TextScale)) =>
                 {
                     self.held = Some(widget);
                 }
@@ -647,15 +689,17 @@ impl GameState for SettingsState {
                     if self.held == Some(widget) =>
                 {
                     self.held = None;
+                    let row = keyed(widget).unwrap_or(Row::UiScale);
                     let value = world
                         .resource::<UiTree>()
                         .slider_value(widget)
                         .unwrap_or(1.0);
-                    let row = row_of(widget).unwrap_or(Row::UiScale);
                     self.set(world, row, UiValue::Number(value));
                 }
-                UiEvent::ValueChanged { widget, value, .. } => {
-                    let Some(row) = row_of(widget) else {
+                UiEvent::ValueChanged {
+                    widget, key, value, ..
+                } => {
+                    let Some(row) = Row::of(key) else {
                         continue;
                     };
                     if let Some(number) = value.as_number() {

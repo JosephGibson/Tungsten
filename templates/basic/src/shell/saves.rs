@@ -16,15 +16,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tungsten::core::save::SaveError;
 use tungsten::core::text::{TextAlign, TextWrap};
-use tungsten::core::ui::{Align, Direction, Justify, Sizing, UiTree, WidgetId};
+use tungsten::core::ui::{Align, Direction, Justify, Sizing, UiKey, UiTree, WidgetId, widgets};
 use tungsten::core::{SaveSlots, World};
 use tungsten::{GameState, StateContext, StateId};
 
 use super::confirm::{self, ConfirmState};
 use super::options::GameOptions;
 use super::{
-    AUTOSAVES, SLOTS, Shell, SlotState, cancelled, clicked, enter, idle, load, pop, read_slots,
-    save_to, theme, toast, version_note, widgets,
+    AUTOSAVES, BACK, SLOTS, Shell, SlotState, activated, cancelled, enter, idle, load, pop,
+    read_slots, save_to, toast, version_note,
 };
 use crate::save;
 
@@ -105,6 +105,8 @@ impl SavesState {
             let name = slot_name(slot);
             widgets::name(tree, *button, &name);
             widgets::name(tree, *delete, &format!("Delete {name}"));
+            tree.set_key(*button, slot);
+            tree.set_key(*delete, &delete_key(slot));
             tree.set_text(*button, name.as_str());
             let empty = matches!(state, SlotState::Empty);
             let usable = matches!(state, SlotState::Ready(..)) || (empty && saving);
@@ -146,7 +148,7 @@ impl SavesState {
     }
 
     /// The row at `at` activated.
-    fn pick(&mut self, world: &mut World, at: usize) {
+    fn use_row(&mut self, world: &mut World, at: usize) {
         let Some(Some((slot, state))) = self.rows.get(at) else {
             return;
         };
@@ -166,6 +168,11 @@ impl SavesState {
     }
 }
 
+/// The key of `slot`'s Delete; its row's button takes the slot's name.
+fn delete_key(slot: &str) -> String {
+    format!("delete.{slot}")
+}
+
 /// A save row under `parent`: a button holding the slot's name and, beside
 /// it at the end, smaller, muted and in mono, its details; then Delete, as
 /// tall as the row.
@@ -175,9 +182,10 @@ fn save_row(tree: &mut UiTree, parent: WidgetId) -> [WidgetId; 2] {
     style.align_items = Align::Stretch;
     tree.set_layout_style(row, style);
     let button = widgets::button(tree, row, "");
+    let gap = 2.0 * tree.theme().tokens.spacing.sm;
     let mut style = tree.layout_style(button).cloned().unwrap_or_default();
     (style.width, style.direction) = (Sizing::Fill, Direction::Row);
-    (style.align_items, style.gap) = (Align::Center, 2.0 * theme::GAP);
+    (style.align_items, style.gap) = (Align::Center, gap);
     tree.set_layout_style(button, style);
     // The name on one line at its own width, the details in the rest: a
     // box sized to its text can commit an ulp short and wrap (known issues).
@@ -283,7 +291,8 @@ impl GameState for SavesState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let tree = ctx.world.resource_mut::<UiTree>();
-        let (root, card) = widgets::screen(tree, theme::WIDE_WIDTH);
+        let width = widgets::size(tree, "wide_width");
+        let (root, card) = widgets::screen(tree, width);
         let heading = ["Load", "Save"][usize::from(self.mode == Mode::Save)];
         widgets::heading(tree, card, heading, false);
         // Rows for the autosaves and the old shell's, then the slots; the
@@ -294,6 +303,7 @@ impl GameState for SavesState {
         widgets::small(tree, card, "Slots");
         rows.extend((AUTOSAVES.len()..SLOTS.len()).map(|_| save_row(tree, card)));
         let back = widgets::button(tree, card, "Back");
+        tree.set_key(back, "back");
         enter(ctx.world, root);
         self.ui = Some((root, rows, note, back));
         self.refresh(ctx.world);
@@ -308,26 +318,33 @@ impl GameState for SavesState {
 
     fn update(&mut self, world: &mut World) {
         self.quiet_deletes(world);
-        let Some((root, rows, _, back)) = self.ui.clone().filter(|_| idle(world)) else {
+        let Some(root) = self.ui.as_ref().map(|ui| ui.0).filter(|_| idle(world)) else {
             return;
         };
-        let buttons: Vec<WidgetId> = rows.iter().flatten().copied().chain([back]).collect();
-        let pick = clicked(world, &buttons);
-        self.opened = pick.map(|at| buttons[at]).or(self.opened);
-        match pick {
-            Some(at) if at == buttons.len() - 1 => pop(world),
-            Some(at) if at % 2 == 0 => self.pick(world, at / 2),
-            Some(at) => {
-                let Some(Some((slot, _))) = self.rows.get(at / 2) else {
-                    return;
-                };
-                let slot = *slot;
-                let question = format!("Delete {}?", slot_name(slot));
-                let ask = ConfirmState::new(&question, "Delete", "Cancel");
-                confirm::ask(world, ask.on_yes(move |world| delete(world, slot)));
+        let Some((button, key)) = activated(world, root) else {
+            if cancelled(world, root) {
+                pop(world);
             }
-            None if cancelled(world, root) => pop(world),
-            None => {}
+            return;
+        };
+        self.opened = Some(button);
+        if key == BACK {
+            return pop(world);
         }
+        // A row's button takes its slot's key, its Delete the delete key.
+        let shown = self.rows.iter().enumerate();
+        let shown = shown.filter_map(|(at, row)| Some((at, row.as_ref()?.0)));
+        let Some((at, slot, used)) = shown
+            .map(|(at, slot)| (at, slot, UiKey::new(slot) == key))
+            .find(|&(_, slot, used)| used || UiKey::new(&delete_key(slot)) == key)
+        else {
+            return;
+        };
+        if used {
+            return self.use_row(world, at);
+        }
+        let question = format!("Delete {}?", slot_name(slot));
+        let ask = ConfirmState::new(&question, "Delete", "Cancel");
+        confirm::ask(world, ask.on_yes(move |world| delete(world, slot)));
     }
 }

@@ -24,7 +24,7 @@ use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::saves::SAVES;
 use tungsten_template_basic::shell::toast::Toasts;
 use tungsten_template_basic::shell::{
-    self, AUTOSAVES, OLD_AUTOSAVE, RunState, SlotState, request_autosave, widgets,
+    self, AUTOSAVES, OLD_AUTOSAVE, RunState, SlotState, request_autosave,
 };
 
 use super::{
@@ -443,14 +443,14 @@ fn set_saved_at(dir: &Path, slot: &str, ms: u64) {
 
 fn row_text(harness: &UiHarness, name: &str) -> String {
     let row = named(harness, name).unwrap_or_else(|| panic!("no row '{name}'"));
-    widgets::text_of(harness.tree(), row)
+    harness.tree().plain_text(row)
 }
 
 /// The details under the row named `name`: its button's second label.
 fn details(harness: &UiHarness, name: &str) -> String {
     let row = named(harness, name).unwrap_or_else(|| panic!("no row '{name}'"));
     let tree = harness.tree();
-    widgets::text_of(tree, tree.children(row)[1])
+    tree.plain_text(tree.children(row)[1])
 }
 
 #[test]
@@ -1041,9 +1041,9 @@ fn layout_texts(harness: &UiHarness) -> Vec<String> {
         }
         let parent = tree.parent(id).and_then(|parent| tree.kind(parent));
         match tree.kind(id) {
-            Some(WidgetKind::Button) => texts.push(widgets::text_of(tree, id)),
+            Some(WidgetKind::Button) => texts.push(tree.plain_text(id)),
             Some(WidgetKind::Label) if parent != Some(WidgetKind::Button) => {
-                texts.push(widgets::text_of(tree, id));
+                texts.push(tree.plain_text(id));
             }
             _ => {}
         }

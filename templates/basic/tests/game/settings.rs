@@ -4,7 +4,7 @@
 use std::num::NonZeroU32;
 
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
-use tungsten::core::ui::{UiTree, WidgetKind};
+use tungsten::core::ui::{UiTree, WidgetKind, widgets};
 use tungsten::core::{
     AudioBus, AudioCommand, CameraController, DisplayMode, DisplayState, FrameRateCap, InputState,
     KeyCode, MonitorInfo, Resolution, SaveSlots, ScaleFactor, Settings, Time, UserFolder,
@@ -20,7 +20,7 @@ use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::settings::{self, SETTINGS};
 use tungsten_template_basic::shell::title::TitleState;
-use tungsten_template_basic::shell::{AUTOSAVES, Difficulty, theme, widgets};
+use tungsten_template_basic::shell::{AUTOSAVES, Difficulty, theme};
 
 use super::{
     click, find, harness, harness_with, health, named, player_entity, press, settle, start, tap,
@@ -63,7 +63,9 @@ fn nudge(harness: &mut UiHarness, name: &str, action: &str) {
 }
 
 fn row_text(harness: &UiHarness, name: &str) -> String {
-    widgets::text_of(harness.tree(), named(harness, name).expect("a row"))
+    harness
+        .tree()
+        .plain_text(named(harness, name).expect("a row"))
 }
 
 /// Opens Settings from the title, on its Display tab.
@@ -279,7 +281,7 @@ fn readout(harness: &UiHarness, name: &str) -> String {
     let slider = named(harness, name).expect("a slider");
     let row = tree.parent(slider).unwrap();
     let readout = *tree.children(row).last().unwrap();
-    widgets::text_of(tree, readout)
+    tree.plain_text(readout)
 }
 
 fn fps(n: u32) -> Option<FrameRateCap> {
@@ -724,7 +726,8 @@ fn sliders_have_a_smaller_outlined_thumb() {
     let slider = find(&harness, "UI scale").unwrap();
     harness.layout();
     let height = harness.rect(slider).unwrap().height();
-    assert_eq!(height, theme::SLIDER_LINE, "at text 100 %");
+    let line = widgets::size(harness.tree(), "slider_line");
+    assert_eq!(height, line, "at text 100 %");
     let border = |harness: &UiHarness| {
         let style = harness.tree().resolved_style(slider).unwrap();
         (style.border, style.border_width)

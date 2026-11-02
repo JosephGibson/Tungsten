@@ -12,7 +12,6 @@ use example_01_platformer::features::spells::hud::Hud;
 use example_01_platformer::features::spells::{
     SLOT_ACTIONS, SUMMON_NEXT, SUMMON_PREV, SUMMONS, slot_of, summon_type,
 };
-use example_01_platformer::shell::widgets::text_of;
 use glam::Vec2;
 use tungsten::core::ui::Visibility;
 use tungsten::core::ui::WidgetId;
@@ -40,7 +39,7 @@ fn hearts_reflect_every_hp_value_immediately_at_constant_screen_size() {
             }
             harness.step(1);
             assert_eq!(
-                text_of(harness.tree(), hud.health.text),
+                harness.tree().plain_text(hud.health.text),
                 format!("{hp} / 100")
             );
             let width = harness.rect(hud.health.fill).unwrap().size().x;
@@ -107,7 +106,7 @@ fn cycling_the_summon_type_names_the_slots_icon() {
         let shown = sprite(&mut harness, SUMMONS[selected].icon);
         assert_eq!(harness.tree().image_sprite(icon), Some(shown), "{action}");
         // Its name over slot 0, capitalised, on a plate that shows.
-        let name = text_of(harness.tree(), hud.name).to_lowercase();
+        let name = harness.tree().plain_text(hud.name).to_lowercase();
         assert_eq!(name, SUMMONS[selected].name, "{action}");
         assert!(
             harness.tree().opacity(hud.name_plate) == Some(1.0),
@@ -133,11 +132,11 @@ fn full_mana_reads_100_of_100_on_one_line() {
         assert!(room.is_some_and(|room| room >= 84.0), "{room:?}");
     }
     harness.step(1);
-    assert_eq!(text_of(harness.tree(), hud.mana.text), "100 / 100");
-    assert_eq!(text_of(harness.tree(), hud.health.text), "100 / 100");
+    assert_eq!(harness.tree().plain_text(hud.mana.text), "100 / 100");
+    assert_eq!(harness.tree().plain_text(hud.health.text), "100 / 100");
     damage(harness.world_mut(), player, 12.5);
     harness.step(1);
-    assert_eq!(text_of(harness.tree(), hud.health.text), "88 / 100");
+    assert_eq!(harness.tree().plain_text(hud.health.text), "88 / 100");
 }
 
 #[test]
@@ -148,7 +147,7 @@ fn each_slot_shows_its_live_key_and_a_rebind_at_once() {
     let keys: Vec<String> = hud
         .slots
         .iter()
-        .map(|slot| text_of(harness.tree(), slot.key))
+        .map(|slot| harness.tree().plain_text(slot.key))
         .collect();
     assert_eq!(
         keys,
@@ -162,7 +161,7 @@ fn each_slot_shows_its_live_key_and_a_rebind_at_once() {
         .resource_mut::<ActionMap>()
         .replace_bindings(SLOT_ACTIONS[0], vec![left]);
     harness.step(1);
-    assert_eq!(text_of(harness.tree(), hud.slots[0].key), "LMB");
+    assert_eq!(harness.tree().plain_text(hud.slots[0].key), "LMB");
 }
 
 #[test]
@@ -267,8 +266,8 @@ fn the_shield_reads_its_share_of_the_bar_and_its_plus_and_hides_at_zero() {
     for (current, share, plus) in [(50.0, 1.0, "+50"), (25.0, 0.5, "+25")] {
         harness.world_mut().insert(player, shield(current));
         harness.step(1);
-        assert_eq!(text_of(harness.tree(), hud.health.text), "50 / 50");
-        assert_eq!(text_of(harness.tree(), hud.shield.text), plus);
+        assert_eq!(harness.tree().plain_text(hud.health.text), "50 / 50");
+        assert_eq!(harness.tree().plain_text(hud.shield.text), plus);
         let well = harness.rect(hud.health.well).unwrap().size().x;
         let layer = harness.rect(hud.shield.fill).unwrap().size().x;
         assert!(
