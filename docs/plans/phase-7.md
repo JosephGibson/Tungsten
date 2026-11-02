@@ -214,12 +214,11 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | S-127 | A health meter hand-built from a track and a fill panel | 7.17 | open | the meter |
 | S-133 | A scale slider applied at its release by hand | 7.17 | open | + a slider's value committed on release |
 | S-139 | The shell's theme applied by hand from the registry at the title | 7.17 | open | + the manifest's starting theme |
-| S-149 | The template's shell assets copied into 01 by its generator each run | 7.17 | open | + the shell's assets in the engine; the hit-flash material with the kit |
+| S-149 | The template's shell assets copied into 01 by its generator each run | 7.11 | open | + the shell's assets in the engine; the hit-flash material with the kit; moved from 7.17 (they reach a game by `tungsten new`'s copy and 01's generator, the template's packaging) |
 | S-152 | A label kept on one line by turning its wrap off or widening its box | 7.17 | open | shrink-to-fit text, or the wrap fix (known issue 32) |
 | S-153 | A UI panel placed over a world point by hand | 7.17 | open | + a UI root anchored to a world point |
 | S-155 | A pressed widget identified by its position in a list | 7.17 | open | a typed key per widget |
 | S-157 | The game clock paused and resumed by hand under a covering screen | 7.17 | open | + a state that holds the game clock while covered |
-| S-162 | Columns lined up across rows by hand, with no grid layout | 7.17 | open | + a grid layout |
 | S-163 | A run's resources removed one by one as gameplay exits | 7.17 | open | + state-owned resources |
 | S-171 | A label's text read back by joining its spans by hand | 7.17 | open | + `UiTree::plain_text` |
 | S-183 | Panels used as layout groups, painted clear by hand | 7.17 | open | the layout-only group |
@@ -317,6 +316,7 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | P8-17 | A cone light kind | 8.1 | open | The redo's 8.1 row holds it |
 | PA-12 | Items with rolled lines | 8.1 | open | After PA-8 (7.10) |
 | PA-13 | Ground items | 8.1 | open | Styled by rarity name; 8.7's `rarities` rolls it |
+| S-162 | Columns lined up across rows by hand, with no grid layout | 8.1 | open | + a grid layout; moved from 7.17 (`D-124` keeps grid layout out until a user needs it; 8.1's inventory and shops are the first) |
 | P8-8 | Navigation | 8.2 | open | On P7-1 (7.8); platform links for 8.4 |
 | P8-9 | Perception | 8.2 | open | On P7-4, P7-5 (7.10) and K31 (7.8) |
 | P8-10 | Squads and cover | 8.2 | open | |

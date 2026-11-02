@@ -59,7 +59,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | Pass order, direct present, late acquire (`D-087`, `D-145`) | `render/passes/order.rs`, `render/renderer.rs`, `render/surface_acquire.rs`, `render/screenshot.rs` |
 | Text engine, layout cache, world labels, retained nodes, font families, fallback (`D-085`, `D-115`–`D-117`, `D-123`, `D-161`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/engine_font.rs` |
 | Neutral text types, world labels, `TextMeasure`, `TextNodeStore` (`D-117`, `D-125`) | `core/text.rs` |
-| UI tree, layout, focus, hits, routing, tracks, prompts, capture, prewarm (`D-124`, `D-125`, `D-149`, `D-163`, `D-164`) | `core/ui/`, `tungsten/testing/ui.rs`, `core/tests/ui/`, `tungsten/tests/ui_route.rs` |
+| UI tree, layout, focus, hits, routing, tracks, prompts, capture, prewarm, keys, widgets (`D-124`, `D-125`, `D-149`, `D-163`, `D-164`, `D-235`) | `core/ui/`, `tungsten/testing/ui.rs`, `core/tests/ui/`, `tungsten/tests/ui_route.rs` |
 | UI paint list, overlay pipeline, text batches, layout stage, debug actions (`D-147`, `D-148`) | `core/ui/paint.rs`, `render/ui.rs`, `render/ui.wgsl`, `tungsten/app.rs`, `tungsten/ui_debug.rs`, `core/tests/ui/paint.rs`, `render/tests/ui.rs`, `render/tests/text_batches.rs` |
 | Render components, default sprite extract, `Extracts` channels (`D-042`, `D-086`, `D-113`, `D-114`, `D-138`) | `core/components.rs`, `tungsten/sprite_extract.rs`, `tungsten/extract.rs` |
 | Materials, the fragment prelude, post-stack (`D-058`, `D-231`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/` |
