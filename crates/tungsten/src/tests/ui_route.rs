@@ -784,3 +784,129 @@ fn a_drag_through_the_app_moves_a_window_and_sends_window_moved() {
         CursorIcon::Move
     );
 }
+
+/// The menu sounds the frame's routing played, by manifest ID.
+#[derive(Default)]
+struct Heard(Vec<String>);
+
+/// Drains the audio commands the frame queued and records each play's ID,
+/// before the app's own drain at the frame's end.
+fn record_plays(world: &mut World) {
+    let commands = world.resource_mut::<tungsten_core::AudioCommands>().drain();
+    let sounds = world.resource::<tungsten_core::SoundRegistry>();
+    let ids: Vec<String> = commands
+        .iter()
+        .filter_map(|command| match command {
+            tungsten_core::AudioCommand::Play { handle, .. } => ["ui_move", "ui_select", "ui_back"]
+                .into_iter()
+                .find(|id| sounds.get_by_id(id) == Some(*handle))
+                .map(str::to_owned),
+            _ => None,
+        })
+        .collect();
+    world.resource_mut::<Heard>().0.extend(ids);
+}
+
+/// A harness whose theme names the three menu sounds, registered silent,
+/// holding buttons `a` and `back` (keyed `back`) at the top left, `a`
+/// focused; the sounds each frame plays land in [`Heard`].
+fn sounding() -> (UiHarness, WidgetId, WidgetId) {
+    let mut app = app();
+    app.add_system_named("record_plays", record_plays);
+    let mut harness = UiHarness::new(app);
+    let world = harness.world_mut();
+    let mut sounds = tungsten_core::SoundRegistry::new();
+    for id in ["ui_move", "ui_select", "ui_back"] {
+        let silence = tungsten_core::assets::audio::SoundData {
+            samples: vec![0.0; 64],
+            sample_rate: 48_000,
+            channels: 1,
+        };
+        sounds.register(id.to_owned(), silence, 1.0, false);
+    }
+    world.insert_resource(sounds);
+    world.insert_resource(Heard::default());
+    let mut theme = tungsten_core::ui::Theme::default();
+    theme.names.sounds = tungsten_core::ui::ThemeSounds {
+        focus: Some("ui_move".to_owned()),
+        activate: Some("ui_select".to_owned()),
+        back: Some("ui_back".to_owned()),
+    };
+    let tree = harness.tree_mut();
+    tree.set_theme(theme);
+    let root = tree.add_root(UiLayer::Game, at(0.0, 0.0, 300.0, 200.0));
+    let a = tree.button(root, "A");
+    tree.set_layout_style(a, at(20.0, 20.0, 100.0, 40.0));
+    let back = tree.button(root, "Back");
+    tree.set_layout_style(back, at(20.0, 80.0, 100.0, 40.0));
+    tree.set_key(back, "back");
+    harness.layout();
+    harness.focus(a);
+    harness.step(1);
+    harness.world_mut().resource_mut::<Heard>().0.clear();
+    (harness, a, back)
+}
+
+/// Steps one frame and takes what it played.
+fn heard(harness: &mut UiHarness) -> Vec<String> {
+    harness.step(1);
+    std::mem::take(&mut harness.world_mut().resource_mut::<Heard>().0)
+}
+
+#[test]
+fn menu_sounds_play_once_a_frame_by_cause() {
+    let (mut harness, a, back) = sounding();
+    harness.key_down(KeyCode::ArrowDown);
+    assert_eq!(
+        heard(&mut harness),
+        ["ui_move"],
+        "a navigation press moved focus"
+    );
+    harness.key_up(KeyCode::ArrowDown);
+    assert!(heard(&mut harness).is_empty());
+
+    harness.click(a);
+    assert_eq!(
+        heard(&mut harness),
+        ["ui_select"],
+        "an activation, its focus by the pointer silent"
+    );
+    harness.click(back);
+    assert_eq!(
+        heard(&mut harness),
+        ["ui_back"],
+        "a back button backs out, nothing else"
+    );
+
+    // Two activations in one frame play one sound.
+    harness.focus(a);
+    harness.step(1);
+    harness.click(a);
+    harness.key_down(KeyCode::Enter);
+    let played = heard(&mut harness);
+    assert_eq!(played, ["ui_select"], "{played:?}");
+    harness.key_up(KeyCode::Enter);
+    harness.step(1);
+
+    // A cancel with focus shown plays back.
+    harness.key_down(KeyCode::ArrowDown);
+    harness.step(1);
+    harness.key_up(KeyCode::ArrowDown);
+    harness.step(1);
+    harness.world_mut().resource_mut::<Heard>().0.clear();
+    harness.key_down(KeyCode::Escape);
+    assert_eq!(heard(&mut harness), ["ui_back"]);
+}
+
+#[test]
+fn a_focus_set_by_the_game_plays_no_move() {
+    let (mut harness, _a, back) = sounding();
+    harness.focus(back);
+    assert!(heard(&mut harness).is_empty(), "the game's own focus move");
+    // Without sounds in the theme nothing plays.
+    harness
+        .tree_mut()
+        .set_theme(tungsten_core::ui::Theme::default());
+    harness.key_down(KeyCode::ArrowUp);
+    assert!(heard(&mut harness).is_empty());
+}

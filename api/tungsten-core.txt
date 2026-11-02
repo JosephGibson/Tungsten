@@ -6582,6 +6582,8 @@ pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::animation_f
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::input_captured(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::input::action_map::Binding>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_changed(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::event::UiValue>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_changed_key(&self, tungsten_core::ui::id::UiKey) -> core::option::Option<tungsten_core::ui::event::UiValue>
+pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_committed(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::event::UiValue>
+pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_committed_key(&self, tungsten_core::ui::id::UiKey) -> core::option::Option<tungsten_core::ui::event::UiValue>
 impl<T> tungsten_core::EventQueue<T>
 pub fn tungsten_core::EventQueue<T>::flush(&mut self)
 pub fn tungsten_core::EventQueue<T>::is_empty(&self) -> bool
@@ -6899,6 +6901,7 @@ pub tungsten_core::input::action_map::Binding::Scroll
 pub tungsten_core::input::action_map::Binding::Scroll::direction: tungsten_core::input::ScrollDirection
 impl tungsten_core::input::action_map::Binding
 pub fn tungsten_core::input::action_map::Binding::label(self) -> alloc::borrow::Cow<'static, str>
+pub fn tungsten_core::input::action_map::Binding::short_label(self) -> alloc::borrow::Cow<'static, str>
 impl core::clone::Clone for tungsten_core::input::action_map::Binding
 pub fn tungsten_core::input::action_map::Binding::clone(&self) -> tungsten_core::input::action_map::Binding
 impl core::cmp::Eq for tungsten_core::input::action_map::Binding
@@ -7045,6 +7048,7 @@ pub tungsten_core::input::Binding::Scroll
 pub tungsten_core::input::Binding::Scroll::direction: tungsten_core::input::ScrollDirection
 impl tungsten_core::input::action_map::Binding
 pub fn tungsten_core::input::action_map::Binding::label(self) -> alloc::borrow::Cow<'static, str>
+pub fn tungsten_core::input::action_map::Binding::short_label(self) -> alloc::borrow::Cow<'static, str>
 impl core::clone::Clone for tungsten_core::input::action_map::Binding
 pub fn tungsten_core::input::action_map::Binding::clone(&self) -> tungsten_core::input::action_map::Binding
 impl core::cmp::Eq for tungsten_core::input::action_map::Binding
@@ -7574,6 +7578,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::StickResp
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::StickResponse
 pub const tungsten_core::input::STICK_PRESS: f32
 pub const tungsten_core::input::STICK_RELEASE: f32
+pub fn tungsten_core::input::just_pressed(&tungsten_core::World, &str) -> bool
+pub fn tungsten_core::input::pressed(&tungsten_core::World, &str) -> bool
 pub mod tungsten_core::inspect
 pub struct tungsten_core::inspect::InspectRegistry
 impl tungsten_core::inspect::InspectRegistry
@@ -11766,6 +11772,10 @@ pub tungsten_core::ui::event::UiEvent::Scrolled::widget: tungsten_core::ui::id::
 pub tungsten_core::ui::event::UiEvent::ValueChanged::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::event::UiEvent::ValueChanged::value: tungsten_core::ui::event::UiValue
 pub tungsten_core::ui::event::UiEvent::ValueChanged::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::event::UiEvent::ValueCommitted
+pub tungsten_core::ui::event::UiEvent::ValueCommitted::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::event::UiEvent::ValueCommitted::value: tungsten_core::ui::event::UiValue
+pub tungsten_core::ui::event::UiEvent::ValueCommitted::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::event::UiEvent::WindowMoved
 pub tungsten_core::ui::event::UiEvent::WindowMoved::window: tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::event::UiEvent
@@ -12323,9 +12333,12 @@ pub struct tungsten_core::ui::route::UiRouter
 impl tungsten_core::ui::route::UiRouter
 pub fn tungsten_core::ui::route::UiRouter::cancel_capture(&mut self)
 pub fn tungsten_core::ui::route::UiRouter::capture_next_input(&mut self, tungsten_core::ui::id::WidgetId)
+pub fn tungsten_core::ui::route::UiRouter::capture_next_input_for(&mut self, tungsten_core::ui::id::WidgetId, f32)
+pub fn tungsten_core::ui::route::UiRouter::capture_remaining(&self) -> core::option::Option<f32>
 pub fn tungsten_core::ui::route::UiRouter::capturing(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::cursor(&self) -> tungsten_core::ui::node::CursorIcon
 pub fn tungsten_core::ui::route::UiRouter::last_device(&self) -> tungsten_core::ui::route::InputDevice
+pub fn tungsten_core::ui::route::UiRouter::moved_focus(&self) -> bool
 pub fn tungsten_core::ui::route::UiRouter::pointer_over_ui(&self) -> bool
 pub fn tungsten_core::ui::route::UiRouter::settings(&self) -> &tungsten_core::ui::route::UiRouteSettings
 pub fn tungsten_core::ui::route::UiRouter::settings_mut(&mut self) -> &mut tungsten_core::ui::route::UiRouteSettings
@@ -12341,6 +12354,7 @@ impl core::marker::Unpin for tungsten_core::ui::route::UiRouter
 impl core::marker::UnsafeUnpin for tungsten_core::ui::route::UiRouter
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::route::UiRouter
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::route::UiRouter
+pub const tungsten_core::ui::route::BACK_KEY: tungsten_core::ui::id::UiKey
 pub const tungsten_core::ui::route::UI_ACCEPT: &str
 pub const tungsten_core::ui::route::UI_CANCEL: &str
 pub const tungsten_core::ui::route::UI_DOWN: &str
@@ -13720,6 +13734,10 @@ pub tungsten_core::ui::UiEvent::Scrolled::widget: tungsten_core::ui::id::WidgetI
 pub tungsten_core::ui::UiEvent::ValueChanged::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::UiEvent::ValueChanged::value: tungsten_core::ui::event::UiValue
 pub tungsten_core::ui::UiEvent::ValueChanged::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::UiEvent::ValueCommitted
+pub tungsten_core::ui::UiEvent::ValueCommitted::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::UiEvent::ValueCommitted::value: tungsten_core::ui::event::UiValue
+pub tungsten_core::ui::UiEvent::ValueCommitted::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::UiEvent::WindowMoved
 pub tungsten_core::ui::UiEvent::WindowMoved::window: tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::event::UiEvent
@@ -14620,9 +14638,12 @@ pub struct tungsten_core::ui::UiRouter
 impl tungsten_core::ui::route::UiRouter
 pub fn tungsten_core::ui::route::UiRouter::cancel_capture(&mut self)
 pub fn tungsten_core::ui::route::UiRouter::capture_next_input(&mut self, tungsten_core::ui::id::WidgetId)
+pub fn tungsten_core::ui::route::UiRouter::capture_next_input_for(&mut self, tungsten_core::ui::id::WidgetId, f32)
+pub fn tungsten_core::ui::route::UiRouter::capture_remaining(&self) -> core::option::Option<f32>
 pub fn tungsten_core::ui::route::UiRouter::capturing(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::cursor(&self) -> tungsten_core::ui::node::CursorIcon
 pub fn tungsten_core::ui::route::UiRouter::last_device(&self) -> tungsten_core::ui::route::InputDevice
+pub fn tungsten_core::ui::route::UiRouter::moved_focus(&self) -> bool
 pub fn tungsten_core::ui::route::UiRouter::pointer_over_ui(&self) -> bool
 pub fn tungsten_core::ui::route::UiRouter::settings(&self) -> &tungsten_core::ui::route::UiRouteSettings
 pub fn tungsten_core::ui::route::UiRouter::settings_mut(&mut self) -> &mut tungsten_core::ui::route::UiRouteSettings
@@ -14971,6 +14992,7 @@ impl core::marker::Unpin for tungsten_core::ui::window::WindowPlacements
 impl core::marker::UnsafeUnpin for tungsten_core::ui::window::WindowPlacements
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::window::WindowPlacements
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::window::WindowPlacements
+pub const tungsten_core::ui::BACK_KEY: tungsten_core::ui::id::UiKey
 pub const tungsten_core::ui::UI_ACCEPT: &str
 pub const tungsten_core::ui::UI_CANCEL: &str
 pub const tungsten_core::ui::UI_DOWN: &str
@@ -15124,6 +15146,7 @@ pub tungsten_core::Binding::Scroll
 pub tungsten_core::Binding::Scroll::direction: tungsten_core::input::ScrollDirection
 impl tungsten_core::input::action_map::Binding
 pub fn tungsten_core::input::action_map::Binding::label(self) -> alloc::borrow::Cow<'static, str>
+pub fn tungsten_core::input::action_map::Binding::short_label(self) -> alloc::borrow::Cow<'static, str>
 impl core::clone::Clone for tungsten_core::input::action_map::Binding
 pub fn tungsten_core::input::action_map::Binding::clone(&self) -> tungsten_core::input::action_map::Binding
 impl core::cmp::Eq for tungsten_core::input::action_map::Binding
@@ -16868,6 +16891,10 @@ pub tungsten_core::UiEvent::Scrolled::widget: tungsten_core::ui::id::WidgetId
 pub tungsten_core::UiEvent::ValueChanged::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::UiEvent::ValueChanged::value: tungsten_core::ui::event::UiValue
 pub tungsten_core::UiEvent::ValueChanged::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::UiEvent::ValueCommitted
+pub tungsten_core::UiEvent::ValueCommitted::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::UiEvent::ValueCommitted::value: tungsten_core::ui::event::UiValue
+pub tungsten_core::UiEvent::ValueCommitted::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::UiEvent::WindowMoved
 pub tungsten_core::UiEvent::WindowMoved::window: tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::event::UiEvent
@@ -17932,6 +17959,8 @@ pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::animation_f
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::input_captured(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::input::action_map::Binding>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_changed(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::event::UiValue>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_changed_key(&self, tungsten_core::ui::id::UiKey) -> core::option::Option<tungsten_core::ui::event::UiValue>
+pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_committed(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::event::UiValue>
+pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_committed_key(&self, tungsten_core::ui::id::UiKey) -> core::option::Option<tungsten_core::ui::event::UiValue>
 impl<T> tungsten_core::EventQueue<T>
 pub fn tungsten_core::EventQueue<T>::flush(&mut self)
 pub fn tungsten_core::EventQueue<T>::is_empty(&self) -> bool
@@ -20987,9 +21016,12 @@ pub struct tungsten_core::UiRouter
 impl tungsten_core::ui::route::UiRouter
 pub fn tungsten_core::ui::route::UiRouter::cancel_capture(&mut self)
 pub fn tungsten_core::ui::route::UiRouter::capture_next_input(&mut self, tungsten_core::ui::id::WidgetId)
+pub fn tungsten_core::ui::route::UiRouter::capture_next_input_for(&mut self, tungsten_core::ui::id::WidgetId, f32)
+pub fn tungsten_core::ui::route::UiRouter::capture_remaining(&self) -> core::option::Option<f32>
 pub fn tungsten_core::ui::route::UiRouter::capturing(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::cursor(&self) -> tungsten_core::ui::node::CursorIcon
 pub fn tungsten_core::ui::route::UiRouter::last_device(&self) -> tungsten_core::ui::route::InputDevice
+pub fn tungsten_core::ui::route::UiRouter::moved_focus(&self) -> bool
 pub fn tungsten_core::ui::route::UiRouter::pointer_over_ui(&self) -> bool
 pub fn tungsten_core::ui::route::UiRouter::settings(&self) -> &tungsten_core::ui::route::UiRouteSettings
 pub fn tungsten_core::ui::route::UiRouter::settings_mut(&mut self) -> &mut tungsten_core::ui::route::UiRouteSettings

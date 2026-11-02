@@ -1121,6 +1121,11 @@ fn a_click_and_an_accept_press_flip_a_toggle_after_its_activation() {
                 key: None,
                 value: UiValue::Bool(true)
             },
+            UiEvent::ValueCommitted {
+                widget: toggle,
+                key: None,
+                value: UiValue::Bool(true)
+            },
         ]
     );
     assert_eq!(rig.tree().toggled(toggle), Some(true));
@@ -1136,6 +1141,11 @@ fn a_click_and_an_accept_press_flip_a_toggle_after_its_activation() {
                 key: None
             },
             UiEvent::ValueChanged {
+                widget: toggle,
+                key: None,
+                value: UiValue::Bool(false)
+            },
+            UiEvent::ValueCommitted {
                 widget: toggle,
                 key: None,
                 value: UiValue::Bool(false)
@@ -1159,6 +1169,11 @@ fn a_click_and_an_accept_press_flip_a_toggle_after_its_activation() {
                 key: None
             },
             UiEvent::ValueChanged {
+                widget: toggle,
+                key: None,
+                value: UiValue::Bool(true)
+            },
+            UiEvent::ValueCommitted {
                 widget: toggle,
                 key: None,
                 value: UiValue::Bool(true)
@@ -1875,4 +1890,182 @@ fn find_key_takes_the_first_in_tree_order() {
     );
     tree.remove(b);
     assert_eq!(tree.find_key(root, ROW), Some(deep));
+}
+
+/// The `ValueCommitted` events, in order.
+fn commits(events: &[UiEvent]) -> Vec<(WidgetId, UiValue)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            UiEvent::ValueCommitted { widget, value, .. } => Some((*widget, *value)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_slider_commits_once_at_its_drags_end() {
+    let range = SliderRange::new(0.0, 10.0).with_step(1.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 5.0);
+    let x = Rig::along(0.3);
+    let events = rig.frame(|input| {
+        input.update_cursor_position(x, 20.0);
+        input.mouse_down(LEFT);
+    });
+    assert_eq!(values(&events), [(slider, UiValue::Number(3.0))]);
+    assert!(commits(&events).is_empty(), "nothing while the press holds");
+    for fraction in [0.6, 0.8] {
+        let x = Rig::along(fraction);
+        let events = rig.frame(|input| input.update_cursor_position(x, 20.0));
+        assert!(!values(&events).is_empty() && commits(&events).is_empty());
+    }
+    let events = rig.frame(|input| input.mouse_up(LEFT));
+    assert_eq!(
+        commits(&events),
+        [(slider, UiValue::Number(8.0))],
+        "once, at its end"
+    );
+    assert_eq!(
+        rig.queue().value_committed(slider),
+        Some(UiValue::Number(8.0))
+    );
+    let events = rig.frame(|_| {});
+    assert!(commits(&events).is_empty());
+}
+
+#[test]
+fn a_key_step_commits_at_once() {
+    let range = SliderRange::new(0.0, 10.0).with_step(1.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 9.0);
+    rig.tree_mut().set_key(slider, "volume");
+    rig.tree_mut().focus(slider);
+    let events = rig.frame(|input| input.key_down(KeyCode::ArrowRight));
+    assert_eq!(values(&events), [(slider, UiValue::Number(10.0))]);
+    assert_eq!(
+        commits(&events),
+        [(slider, UiValue::Number(10.0))],
+        "with the step"
+    );
+    assert_eq!(
+        rig.queue().value_committed_key(UiKey::new("volume")),
+        Some(UiValue::Number(10.0))
+    );
+    rig.frame(|input| input.key_up(KeyCode::ArrowRight));
+    let events = rig.tap(KeyCode::ArrowRight);
+    assert!(
+        commits(&events).is_empty(),
+        "at its end nothing moves or commits"
+    );
+
+    // A toggle commits beside its change.
+    let root = rig.tree().root_of(slider).expect("in the tree");
+    let toggle = rig.tree_mut().toggle(root, false);
+    rig.tree_mut()
+        .set_layout_style(toggle, at(10.0, 120.0, 20.0, 20.0));
+    rig.layout();
+    let events = rig.click(toggle);
+    assert_eq!(commits(&events), [(toggle, UiValue::Bool(true))]);
+    let at_change = events
+        .iter()
+        .position(|event| matches!(event, UiEvent::ValueChanged { .. }));
+    let at_commit = events
+        .iter()
+        .position(|event| matches!(event, UiEvent::ValueCommitted { .. }));
+    assert!(at_change < at_commit, "after its change");
+}
+
+#[test]
+fn an_unmoved_drag_commits_nothing() {
+    let range = SliderRange::new(0.0, 10.0).with_step(1.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 5.0);
+    let x = Rig::along(0.5);
+    let events = rig.frame(|input| {
+        input.update_cursor_position(x, 20.0);
+        input.mouse_down(LEFT);
+    });
+    assert!(values(&events).is_empty(), "the press lands on its value");
+    let events = rig.frame(|input| input.mouse_up(LEFT));
+    assert!(commits(&events).is_empty());
+    // Moved away and back, the press ends where it began.
+    let events = rig.frame(|input| {
+        input.update_cursor_position(x, 20.0);
+        input.mouse_down(LEFT);
+    });
+    assert!(commits(&events).is_empty());
+    rig.frame(|input| input.update_cursor_position(Rig::along(0.9), 20.0));
+    rig.frame(|input| input.update_cursor_position(x, 20.0));
+    let events = rig.frame(|input| input.mouse_up(LEFT));
+    assert!(commits(&events).is_empty());
+    assert_eq!(rig.tree().slider_value(slider), Some(5.0));
+}
+
+#[test]
+fn a_timed_capture_cancels_after_its_seconds() {
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.world
+        .resource_mut::<UiRouter>()
+        .capture_next_input_for(a, 0.5);
+    assert_eq!(rig.router().capture_remaining(), Some(0.5));
+    for frame in 1..16 {
+        let events = rig.frame(|_| {});
+        assert!(
+            !events.contains(&UiEvent::CaptureCancelled { widget: a }),
+            "frame {frame}"
+        );
+    }
+    assert_eq!(rig.router().capture_remaining(), Some(DT));
+    let events = rig.frame(|_| {});
+    assert_eq!(
+        events,
+        [UiEvent::CaptureCancelled { widget: a }],
+        "at 0.5 s"
+    );
+    assert_eq!(rig.router().capturing(), None);
+    assert_eq!(rig.router().capture_remaining(), None);
+
+    // A press inside the time ends it at once and no cancel follows; an
+    // untimed capture waits as long as it takes.
+    rig.world
+        .resource_mut::<UiRouter>()
+        .capture_next_input_for(b, 0.5);
+    let events = rig.frame(|input| input.key_down(KeyCode::KeyJ));
+    assert!(matches!(events[..], [UiEvent::InputCaptured { widget, .. }] if widget == b));
+    for _ in 0..20 {
+        assert!(rig.frame(|_| {}).is_empty());
+    }
+    rig.world.resource_mut::<UiRouter>().capture_next_input(a);
+    for _ in 0..40 {
+        rig.frame(|_| {});
+    }
+    assert_eq!(rig.router().capturing(), Some(a));
+    assert_eq!(rig.router().capture_remaining(), None);
+}
+
+#[test]
+fn a_back_button_sends_cancel_for_its_root() {
+    let (mut rig, root, a, b) = Rig::new();
+    rig.tree_mut().set_key(b, "back");
+    let events = rig.click(b);
+    let at_activation = events
+        .iter()
+        .position(|event| {
+            *event
+                == UiEvent::Activated {
+                    widget: b,
+                    key: Some(BACK_KEY),
+                }
+        })
+        .expect("activated");
+    assert_eq!(
+        events.get(at_activation + 1),
+        Some(&UiEvent::Cancel { scope: root }),
+        "then its root's cancel"
+    );
+    let events = rig.click(a);
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, UiEvent::Cancel { .. })),
+        "another button sends none"
+    );
 }

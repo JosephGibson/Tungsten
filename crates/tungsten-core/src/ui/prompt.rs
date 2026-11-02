@@ -1,6 +1,7 @@
 //! Binding-aware prompts (M56): a label's text built from a template whose
 //! `{action:NAME}` placeholders show the binding the player would press,
-//! for the device they last used. [`ui_route_system`](super::ui_route_system)
+//! for the device they last used, and whose `{short:NAME}` placeholders
+//! show it in three characters at most (redo 7.17). [`ui_route_system`](super::ui_route_system)
 //! resolves them after each routing; a prompt whose device kind and
 //! bindings are unchanged costs slice compares and no allocation.
 
@@ -12,15 +13,18 @@ use super::tree::UiTree;
 
 /// What a placeholder shows for an action with no binding (Q8).
 const UNBOUND: &str = "Unbound";
-const OPEN: &str = "{action:";
+/// The placeholders' openings: the binding's label, its short label.
+const OPENINGS: [(&str, bool); 2] = [("{action:", false), ("{short:", true)];
 
 /// One piece of a template.
 #[derive(Debug, Clone, PartialEq)]
 enum Part {
     Literal(String),
-    /// An action, and the bindings its label was last built from.
+    /// An action, whether its label is the short one, and the bindings it
+    /// was last built from.
     Action {
         name: String,
+        short: bool,
         seen: Vec<Binding>,
     },
 }
@@ -36,15 +40,19 @@ pub(crate) struct Prompt {
     pad: Option<bool>,
 }
 
-/// Splits `template` into literals and `{action:NAME}` placeholders; every
-/// other brace is literal, as is a placeholder with an empty name or one
-/// left open.
+/// Splits `template` into literals and `{action:NAME}` and `{short:NAME}`
+/// placeholders; every other brace is literal, as is a placeholder with an
+/// empty name or one left open.
 fn parse(template: &str) -> Vec<Part> {
     let mut parts = Vec::new();
     let mut literal = String::new();
     let mut rest = template;
-    while let Some(at) = rest.find(OPEN) {
-        let after = &rest[at + OPEN.len()..];
+    while let Some((at, open, short)) = OPENINGS
+        .iter()
+        .filter_map(|(open, short)| rest.find(open).map(|at| (at, *open, *short)))
+        .min_by_key(|(at, ..)| *at)
+    {
+        let after = &rest[at + open.len()..];
         let name = after.find('}').map(|end| &after[..end]);
         match name {
             Some(name) if !name.is_empty() && !name.contains('{') => {
@@ -54,12 +62,13 @@ fn parse(template: &str) -> Vec<Part> {
                 }
                 parts.push(Part::Action {
                     name: name.to_owned(),
+                    short,
                     seen: Vec::new(),
                 });
                 rest = &after[name.len() + 1..];
             }
             _ => {
-                literal.push_str(&rest[..at + OPEN.len()]);
+                literal.push_str(&rest[..at + open.len()]);
                 rest = after;
             }
         }
@@ -119,7 +128,7 @@ impl Prompt {
     fn stale(&self, map: Option<&ActionMap>, pad: bool) -> bool {
         self.pad != Some(pad)
             || self.parts.iter().any(|part| match part {
-                Part::Action { name, seen } => bindings_of(map, name) != seen.as_slice(),
+                Part::Action { name, seen, .. } => bindings_of(map, name) != seen.as_slice(),
                 Part::Literal(_) => false,
             })
     }
@@ -131,11 +140,12 @@ impl Prompt {
         for part in &mut self.parts {
             match part {
                 Part::Literal(literal) => text.push_str(literal),
-                Part::Action { name, seen } => {
+                Part::Action { name, short, seen } => {
                     let bindings = bindings_of(map, name);
                     seen.clear();
                     seen.extend_from_slice(bindings);
                     match chosen(bindings, pad) {
+                        Some(binding) if *short => text.push_str(&binding.short_label()),
                         Some(binding) => text.push_str(&binding.label()),
                         None => text.push_str(UNBOUND),
                     }
@@ -149,7 +159,8 @@ impl Prompt {
 impl UiTree {
     /// Gives a label, or a button's label, a prompt (M56): `template`'s
     /// `{action:NAME}` placeholders show the binding of `NAME` for the
-    /// device the player last used, every other brace literal. Keys and the
+    /// device the player last used, its `{short:NAME}` placeholders that
+    /// binding's [`Binding::short_label`], every other brace literal. Keys and the
     /// pointer show a key, else a mouse button, else the wheel; a gamepad
     /// shows a pad button, else a stick direction; else the first binding
     /// of any kind, else `Unbound`. The routing resolves it after each

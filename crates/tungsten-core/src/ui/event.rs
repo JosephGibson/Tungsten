@@ -108,6 +108,20 @@ pub enum UiEvent {
         /// Its new value.
         value: UiValue,
     },
+    /// A control's value to apply (redo 7.17): a slider's once the press
+    /// that dragged it ends, when the press moved it; a key or pad step's
+    /// at once; a toggle's after its `ValueChanged`. A game applies here a
+    /// value whose change costs, such as the UI scale. Read it with
+    /// [`EventQueue::value_committed`].
+    #[non_exhaustive]
+    ValueCommitted {
+        /// The toggle or slider.
+        widget: WidgetId,
+        /// Its key, when it has one.
+        key: Option<UiKey>,
+        /// The value.
+        value: UiValue,
+    },
     /// A capture started with
     /// [`UiRouter::capture_next_input`](super::UiRouter::capture_next_input)
     /// took the next key, mouse button, pad button or stick direction press
@@ -212,6 +226,7 @@ impl UiEvent {
             | Self::FocusGained { widget, .. }
             | Self::FocusLost { widget }
             | Self::ValueChanged { widget, .. }
+            | Self::ValueCommitted { widget, .. }
             | Self::AnimationFinished { widget, .. }
             | Self::InputCaptured { widget, .. }
             | Self::CaptureCancelled { widget }
@@ -271,6 +286,37 @@ impl EventQueue<UiEvent> {
         self.iter_current()
             .filter_map(|event| match *event {
                 UiEvent::ValueChanged {
+                    key: Some(own),
+                    value,
+                    ..
+                } if own == key => Some(value),
+                _ => None,
+            })
+            .last()
+    }
+
+    /// The value `widget` committed last at this frame's routing; `None`
+    /// when it committed none. Reads [`iter_current`](Self::iter_current),
+    /// as [`activated`](Self::activated) does.
+    #[must_use]
+    pub fn value_committed(&self, widget: WidgetId) -> Option<UiValue> {
+        self.iter_current()
+            .filter_map(|event| match *event {
+                UiEvent::ValueCommitted {
+                    widget: w, value, ..
+                } if w == widget => Some(value),
+                _ => None,
+            })
+            .last()
+    }
+
+    /// The value the widget keyed `key` committed last at this frame's
+    /// routing; `None` when it committed none.
+    #[must_use]
+    pub fn value_committed_key(&self, key: UiKey) -> Option<UiValue> {
+        self.iter_current()
+            .filter_map(|event| match *event {
+                UiEvent::ValueCommitted {
                     key: Some(own),
                     value,
                     ..

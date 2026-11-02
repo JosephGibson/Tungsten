@@ -64,11 +64,13 @@ fn templates_split_into_literals_and_placeholders() {
             Part::Literal("Press ".into()),
             Part::Action {
                 name: "jump".into(),
+                short: false,
                 seen: Vec::new()
             },
             Part::Literal(" or ".into()),
             Part::Action {
                 name: "dash".into(),
+                short: false,
                 seen: Vec::new()
             },
             Part::Literal("!".into()),
@@ -151,5 +153,22 @@ fn a_prompt_rebuilds_when_its_bindings_or_the_device_change_and_not_otherwise() 
     assert!(
         !tree.set_prompt(root, "{action:jump}"),
         "a panel holds no text"
+    );
+}
+
+#[test]
+fn a_short_placeholder_follows_the_last_device() {
+    let map = map(&[("jump", vec![SPACE, PAD_A]), ("aim", vec![LEFT, STICK_UP])]);
+    let (mut tree, label) = labelled("{short:jump} Jump  {short:aim} / {action:aim}");
+    resolve(&mut tree, &map, InputDevice::Keyboard);
+    assert_eq!(text(&tree, label), "Spc Jump  LMB / Left Mouse");
+    resolve(&mut tree, &map, InputDevice::Gamepad);
+    assert_eq!(text(&tree, label), "A Jump  LSU / Left Stick Up");
+    resolve(&mut tree, &map, InputDevice::Pointer);
+    assert_eq!(text(&tree, label), "Spc Jump  LMB / Left Mouse");
+    assert_eq!(
+        parse("{short:}{short:x"),
+        [Part::Literal("{short:}{short:x".into())],
+        "an empty or open one is literal"
     );
 }

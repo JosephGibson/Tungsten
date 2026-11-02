@@ -1396,6 +1396,35 @@ impl std::ops::DerefMut for RoutedInput {
     }
 }
 
+/// Whether `action` is held (redo 7.17), through the world's [`ActionMap`]:
+/// in [`RoutedInput`], what the UI left to the game, when the world holds
+/// one, else in [`InputState`]; `false` without a map or input.
+#[must_use]
+pub fn pressed(world: &crate::ecs::World, action: &str) -> bool {
+    read_action(world, |map, input| map.is_pressed(input, action))
+}
+
+/// Whether `action` was pressed this frame, read as [`pressed`] reads.
+#[must_use]
+pub fn just_pressed(world: &crate::ecs::World, action: &str) -> bool {
+    read_action(world, |map, input| map.just_pressed(input, action))
+}
+
+/// `read` over the world's action map and the input the game sees.
+fn read_action(
+    world: &crate::ecs::World,
+    read: impl FnOnce(&ActionMap, &InputState) -> bool,
+) -> bool {
+    let Some(map) = world.get_resource::<ActionMap>() else {
+        return false;
+    };
+    let input = match world.get_resource::<RoutedInput>() {
+        Some(routed) => Some(&**routed),
+        None => world.get_resource::<InputState>(),
+    };
+    input.is_some_and(|input| read(map, input))
+}
+
 #[cfg(test)]
 #[path = "tests/input.rs"]
 mod tests;
