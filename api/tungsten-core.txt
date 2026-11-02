@@ -12645,6 +12645,7 @@ pub fn tungsten_core::ui::screen_build::actions(&tungsten_core::World, tungsten_
 pub fn tungsten_core::ui::screen_build::build(&mut tungsten_core::World, &str) -> core::option::Option<tungsten_core::ui::screen_build::BuiltScreen>
 pub fn tungsten_core::ui::screen_build::node(&tungsten_core::World, tungsten_core::ui::id::WidgetId, &str) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::screen_build::refresh(&mut tungsten_core::World, tungsten_core::ui::id::WidgetId)
+pub fn tungsten_core::ui::screen_build::reload(&mut tungsten_core::World, &str)
 pub fn tungsten_core::ui::screen_build::revision(&tungsten_core::World, tungsten_core::ui::id::WidgetId) -> core::option::Option<u32>
 pub type tungsten_core::ui::screen_build::ActionFn = fn(&mut tungsten_core::World, tungsten_core::ui::screen_build::UiAction)
 pub type tungsten_core::ui::screen_build::FillBinding = fn(&tungsten_core::World) -> f32

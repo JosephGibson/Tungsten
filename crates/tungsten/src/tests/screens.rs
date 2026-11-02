@@ -875,3 +875,144 @@ fn an_idle_data_screen_lays_out_no_root() {
         "once"
     );
 }
+
+// ---- the reload guards (redo 7.20) ----
+
+static RELOAD_DIRS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// A harness whose `ui_screens` are `files` (ID, JSON) written under a
+/// fresh folder and loaded as a manifest loads them, so a reload finds them
+/// by path; returns each file's path.
+fn reload_harness(files: &[(&str, &str)]) -> (UiHarness, Vec<std::path::PathBuf>) {
+    let n = RELOAD_DIRS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let dir = std::env::temp_dir().join(format!("tungsten_screens_{}_{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut manifest = tungsten_core::assets::ResolvedManifest::default();
+    let mut paths = Vec::new();
+    for (id, json) in files {
+        let path = dir.join(format!("{id}.json"));
+        std::fs::write(&path, json).unwrap();
+        manifest.ui_screens.insert(
+            (*id).to_owned(),
+            tungsten_core::assets::manifest::ResolvedUiScreen { path: path.clone() },
+        );
+        paths.push(path);
+    }
+    let mut harness = data_harness(&[], true);
+    crate::asset_loader::load_ui_screens(&manifest, harness.world_mut()).unwrap();
+    (harness, paths)
+}
+
+/// Writes `json` to `path` and reloads it as the watcher's batch would.
+fn rewrite(harness: &mut UiHarness, path: &std::path::Path, json: &str) {
+    std::fs::write(path, json).unwrap();
+    let errors =
+        crate::asset_loader::reload_json_files(&[path.to_path_buf()], harness.world_mut(), false);
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+/// How many nodes `root`'s subtree holds, `root` included.
+fn nodes_under(tree: &UiTree, root: WidgetId) -> u32 {
+    1 + tree
+        .children(root)
+        .iter()
+        .map(|child| nodes_under(tree, *child))
+        .sum::<u32>()
+}
+
+/// The reload guard (redo 7.20): a changed file rebuilds its screen under
+/// the same root, and the next layout lays out that root alone, the
+/// covered screen untouched; focus lands on the new node with the old key.
+#[test]
+fn a_reloaded_screen_lays_out_only_its_root() {
+    let under = file(r#"{"kind": "button", "key": "go", "text": "Go"}"#);
+    let top = file(
+        r#"{"kind": "button", "key": "first", "text": "First"},
+           {"kind": "button", "key": "ok", "text": "OK"}"#,
+    );
+    let (mut harness, paths) = reload_harness(&[("under", &under), ("top", &top)]);
+    opened_file(&mut harness, "under");
+    opened_file(&mut harness, "top");
+    let ok = keyed(&harness, "ok");
+    assert!(harness.focus(ok));
+    harness.step(2);
+    let before = harness.layout_totals();
+    let top_root = front(&harness);
+    rewrite(
+        &mut harness,
+        &paths[1],
+        &file(
+            r#"{"kind": "label", "text": "Reloaded"},
+               {"kind": "button", "key": "first", "text": "First"},
+               {"kind": "button", "key": "ok", "text": "Okay"}"#,
+        ),
+    );
+    harness.step(1);
+    let after = harness.layout_totals();
+    assert_eq!(
+        after.roots_laid_out,
+        before.roots_laid_out + 1,
+        "one root more"
+    );
+    assert_eq!(
+        after.nodes_laid_out - before.nodes_laid_out,
+        nodes_under(harness.tree(), top_root),
+        "only the top root's nodes"
+    );
+    assert_eq!(front(&harness), top_root, "the root kept");
+    let new_ok = keyed(&harness, "ok");
+    assert_ne!(new_ok, ok);
+    assert_eq!(harness.tree().focused(), Some(new_ok));
+    assert!(harness.shows("Okay") && harness.shows("Reloaded"));
+    harness.step(5);
+    assert_eq!(harness.layout_totals(), after, "and idle again");
+}
+
+/// A covered screen's reload: its root lays out, focus stays on the top
+/// screen, and closing the top screen focuses the covered one's new node
+/// with its opener's key.
+#[test]
+fn a_covered_screens_reload_keeps_focus_and_its_opener() {
+    let under = file(
+        r#"{"kind": "button", "key": "first", "text": "First"},
+           {"kind": "button", "key": "open", "text": "Open", "on": {"push": "top"}}"#,
+    );
+    let top = file(r#"{"kind": "button", "key": "x", "text": "X"}"#);
+    let (mut harness, paths) = reload_harness(&[("under", &under), ("top", &top)]);
+    opened_file(&mut harness, "under");
+    let opener = keyed(&harness, "open");
+    accept(&mut harness, opener);
+    harness.step(12);
+    assert_eq!(stack(&harness).active_id(), Some("top"));
+    let x = keyed(&harness, "x");
+    assert_eq!(harness.tree().focused(), Some(x));
+    let before = harness.layout_totals();
+    rewrite(
+        &mut harness,
+        &paths[0],
+        &file(
+            r#"{"kind": "label", "text": "Again"},
+               {"kind": "button", "key": "first", "text": "First"},
+               {"kind": "button", "key": "open", "text": "Open it", "on": {"push": "top"}}"#,
+        ),
+    );
+    harness.step(1);
+    assert_eq!(
+        harness.layout_totals().roots_laid_out,
+        before.roots_laid_out + 1,
+        "the covered root lays out"
+    );
+    assert_eq!(harness.tree().focused(), Some(x), "focus stays on top");
+    tap(&mut harness, KeyCode::Escape);
+    harness.step(12);
+    assert_eq!(stack(&harness).active_id(), Some("under"));
+    let new_opener = harness.find_key(UiKey::new("open")).expect("rebuilt");
+    assert_ne!(new_opener, opener);
+    assert_eq!(
+        harness.tree().focused(),
+        Some(new_opener),
+        "the opener found again by its key"
+    );
+    assert_eq!(harness.tree().plain_text(new_opener), "Open it");
+}

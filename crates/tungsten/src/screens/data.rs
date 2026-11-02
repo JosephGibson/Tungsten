@@ -27,6 +27,11 @@ pub struct DataScreen {
     screen: Option<ModalScreen>,
     /// The controls that show the setting they write.
     settings: Vec<(WidgetId, ScreenSetting)>,
+    /// The screen's revision when its controls were last read: a reload
+    /// rebuilds them under new IDs.
+    revision: u32,
+    /// The opener's key, to find it again after a reload.
+    opener_key: Option<String>,
 }
 
 impl DataScreen {
@@ -39,7 +44,22 @@ impl DataScreen {
             id,
             screen: None,
             settings: Vec::new(),
+            revision: 0,
+            opener_key: None,
         }
+    }
+
+    /// Reads the screen's controls again when a reload raised its revision:
+    /// the setting controls, and the opener by its key.
+    fn sync(&mut self, world: &World, screen: &mut ModalScreen) {
+        let revision = screen_build::revision(world, screen.root).unwrap_or(self.revision);
+        if revision == self.revision {
+            return;
+        }
+        self.revision = revision;
+        self.settings = setting_controls(world, screen.root);
+        let opener = self.opener_key.as_deref();
+        screen.opener = opener.and_then(|key| screen_build::node(world, screen.root, key));
     }
 
     /// Writes each setting control's setting, the captured control's left
@@ -75,13 +95,7 @@ impl GameState for DataScreen {
             return;
         };
         let screen = ModalScreen::adopt(world, built.root, built.card);
-        self.settings = screen_build::actions(world, built.root)
-            .into_iter()
-            .filter_map(|(widget, keyed)| match keyed.action {
-                ScreenAction::Setting(setting) if !keyed.value_bound => Some((widget, setting)),
-                _ => None,
-            })
-            .collect();
+        self.settings = setting_controls(world, built.root);
         self.show_settings(world);
         screen.resume(world);
         self.screen = Some(screen);
@@ -90,23 +104,42 @@ impl GameState for DataScreen {
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
-        if let Some(screen) = &self.screen {
-            screen.resume(ctx.world);
-        }
+        let Some(mut screen) = self.screen else {
+            return;
+        };
+        self.sync(ctx.world, &mut screen);
+        self.screen = Some(screen);
+        screen.resume(ctx.world);
     }
 
     fn update(&mut self, world: &mut World) {
         let Some(mut screen) = self.screen else {
             return;
         };
-        if screen.ready(world) {
-            let activated = run_actions(world, screen.root);
-            screen.opener = activated.or(screen.opener);
+        self.sync(world, &mut screen);
+        if screen.ready(world)
+            && let Some(activated) = run_actions(world, screen.root)
+        {
+            screen.opener = Some(activated);
+            let tree = world.resource::<UiTree>();
+            self.opener_key = tree.key_name(activated).map(str::to_owned);
         }
         self.screen = Some(screen);
         screen_build::refresh(world, screen.root);
         self.show_settings(world);
     }
+}
+
+/// The controls of the screen at `root` that show the setting they write:
+/// those with no value binding naming another.
+fn setting_controls(world: &World, root: WidgetId) -> Vec<(WidgetId, ScreenSetting)> {
+    screen_build::actions(world, root)
+        .into_iter()
+        .filter_map(|(widget, keyed)| match keyed.action {
+            ScreenAction::Setting(setting) if !keyed.value_bound => Some((widget, setting)),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Runs the action of each control on `root` used at this routing, one

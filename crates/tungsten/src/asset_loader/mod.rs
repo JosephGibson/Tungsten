@@ -33,8 +33,8 @@ pub use prefab::{load_prefabs, reload_data, reload_prefab};
 pub(crate) use reload::reload_json_files;
 pub use reload::{
     reload_action_map, reload_animation, reload_font, reload_manifest, reload_material,
-    reload_particle, reload_shader, reload_sound, reload_tilemap, reload_ui_theme,
-    reload_ui_themes_from_manifest,
+    reload_particle, reload_shader, reload_sound, reload_tilemap, reload_ui_screen,
+    reload_ui_screens_from_manifest, reload_ui_theme, reload_ui_themes_from_manifest,
 };
 pub use scene::{load_scene, spawn_scene};
 pub(crate) use scene::{

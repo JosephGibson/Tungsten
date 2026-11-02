@@ -620,3 +620,115 @@ fn a_tab_rails_value_selects_its_bar() {
     assert_eq!(bars(&world), [hidden, hidden, shown]);
     assert_eq!(tree(&world).plain_text(tabs[1]), "Audio");
 }
+
+/// Replaces `id`'s file in the world's registry, as a reload's load does.
+fn replace(world: &mut World, id: &str, json: &str) {
+    let file = ScreenFile::from_json(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+    world.resource_mut::<UiScreenRegistry>().insert(id, file);
+}
+
+#[test]
+fn a_reload_keeps_the_root_and_focus_by_key() {
+    let (mut world, built) = built(
+        r#"{"kind": "button", "key": "a", "text": "A"}, {"kind": "button", "key": "b", "text": "B"}"#,
+    );
+    let b = keyed(&world, built.root, "b");
+    assert!(world.resource_mut::<UiTree>().focus(b));
+    replace(
+        &mut world,
+        "menu",
+        &screen(
+            r#"{"kind": "label", "text": "new"}, {"kind": "button", "key": "b", "text": "Bee"},
+               {"kind": "button", "key": "a", "text": "A"}"#,
+        ),
+    );
+    reload(&mut world, "menu");
+    let view = tree(&world);
+    assert!(
+        view.contains(built.root) && view.contains(built.card),
+        "kept"
+    );
+    assert!(!view.contains(b), "its nodes rebuilt");
+    assert_eq!(view.children(built.card).len(), 3);
+    let new_b = keyed(&world, built.root, "b");
+    assert_eq!(view.focused(), Some(new_b), "focus on the old key");
+    assert_eq!(view.plain_text(new_b), "Bee");
+
+    // A key the new file drops: the root's first that can take focus.
+    replace(
+        &mut world,
+        "menu",
+        &screen(r#"{"kind": "label", "text": "x"}, {"kind": "button", "key": "c", "text": "C"}"#),
+    );
+    reload(&mut world, "menu");
+    let c = keyed(&world, built.root, "c");
+    assert_eq!(tree(&world).focused(), Some(c));
+
+    // Focus under another root stays there.
+    let other = world
+        .resource_mut::<UiTree>()
+        .add_root(UiLayer::Game, LayoutStyle::default());
+    let elsewhere = world.resource_mut::<UiTree>().button(other, "elsewhere");
+    assert!(world.resource_mut::<UiTree>().focus(elsewhere));
+    reload(&mut world, "menu");
+    assert_eq!(tree(&world).focused(), Some(elsewhere));
+}
+
+#[test]
+fn a_reload_calls_mounts_again_and_raises_the_revision() {
+    let (mut world, built) = built(
+        r#"{"kind": "mount", "key": "cards", "mount": "cards"},
+           {"kind": "label", "key": "label", "bind": {"text": "text"}}"#,
+    );
+    assert_eq!(revision(&world, built.root), Some(0));
+    let first = world.resource::<Mounted>().0.clone();
+    world.resource_mut::<Values>().text = "bound".into();
+    replace(
+        &mut world,
+        "menu",
+        &screen(
+            r#"{"kind": "label", "text": "before"},
+               {"kind": "mount", "key": "cards", "mount": "cards"},
+               {"kind": "label", "key": "label", "bind": {"text": "text"}}"#,
+        ),
+    );
+    reload(&mut world, "menu");
+    assert_eq!(revision(&world, built.root), Some(1));
+    let mounted = &world.resource::<Mounted>().0;
+    assert_eq!(mounted.len(), 2, "called again");
+    assert_eq!(mounted[1], keyed(&world, built.root, "cards"));
+    assert_ne!(mounted[1], first[0]);
+    assert_eq!(
+        tree(&world).plain_text(keyed(&world, built.root, "label")),
+        "bound",
+        "the bindings refreshed"
+    );
+    reload(&mut world, "menu");
+    assert_eq!(revision(&world, built.root), Some(2));
+    assert_eq!(revision(&world, WidgetId::new(999, 0)), None);
+}
+
+#[test]
+fn a_changed_layer_waits_for_the_next_build() {
+    let popup = r#"{"version": 1, "root": {"kind": "root", "layer": "game_popup", "modal": true,
+                    "children": [{"kind": "label", "key": "label", "text": "x"}]}}"#;
+    let mut world = world(&[("menu", popup)]);
+    let built = build(&mut world, "menu").expect("built");
+    let label = keyed(&world, built.root, "label");
+    replace(
+        &mut world,
+        "menu",
+        r#"{"version": 1, "root": {"kind": "root", "layer": "game", "modal": true,
+            "children": [{"kind": "label", "key": "label", "text": "y"}]}}"#,
+    );
+    reload(&mut world, "menu");
+    assert_eq!(revision(&world, built.root), Some(0), "not rebuilt");
+    assert!(tree(&world).contains(label));
+    assert!(warned(&world).contains("shape menu"));
+    let again = build(&mut world, "menu").expect("built");
+    assert_eq!(tree(&world).layer(again.root), Some(UiLayer::Game));
+    assert_eq!(
+        tree(&world).plain_text(keyed(&world, again.root, "label")),
+        "y"
+    );
+}

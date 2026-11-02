@@ -3,8 +3,9 @@
 //! records the live screen in [`UiScreens`]; [`refresh`] writes the game's
 //! bindings ([`UiBindings`]) into it compare-on-write, so an equal value
 //! marks nothing, rebuilds a repeat's rows only when they change and leaves
-//! the control the router has captured alone; [`action`], [`revision`] and
-//! [`node`] answer the screen's owner. A binding is a plain `fn` a plugin
+//! the control the router has captured alone; [`reload`] rebuilds every
+//! live screen of a changed file under its root, keeping focus by key;
+//! [`action`], [`revision`] and [`node`] answer the screen's owner. A binding is a plain `fn` a plugin
 //! registers by name in its `build`; none takes arguments, so a screen's
 //! state that a binding shows lives in a resource its state owns.
 
@@ -248,9 +249,31 @@ impl UiScreens {
 struct Live {
     id: String,
     root: WidgetId,
+    /// A `screen`'s card; a bare root itself.
+    card: WidgetId,
+    shape: Shape,
     revision: u32,
     part: Part,
     repeats: Vec<Repeat>,
+}
+
+/// What a reload cannot change under a kept root: its kind, layer and
+/// modality.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Shape {
+    kind: Kind,
+    layer: Option<LayerName>,
+    modal: bool,
+}
+
+impl Shape {
+    fn of(root: &Node) -> Self {
+        Self {
+            kind: root.kind,
+            layer: root.layer,
+            modal: root.modal,
+        }
+    }
 }
 
 /// What a build records of a file's body or of a repeat's rows.
@@ -323,6 +346,8 @@ pub fn build(world: &mut World, id: &str) -> Option<BuiltScreen> {
     screens.live.push(Live {
         id: id.to_owned(),
         root: built.root,
+        card: built.card,
+        shape: Shape::of(&file.root),
         revision: 0,
         part,
         repeats,
@@ -367,6 +392,100 @@ pub fn refresh(world: &mut World, root: WidgetId) {
         at += 1;
         write(world, bound, captured);
     }
+}
+
+/// Rebuilds every live screen built from `id` with the file the registry
+/// now holds, a hot reload's: the root kept, so its state's ownership,
+/// cover, tracks and slide stand; every child of the root and its card
+/// removed and built again from the file, the root's and the card's own
+/// `layout` and `overrides` edited in place; mounts called again, the
+/// bindings refreshed and the revision raised. Focus moves only when it lay
+/// under the root: to the new node with the focused node's key, else to the
+/// root's first that can take focus. A root of the other kind, or a
+/// changed `layer` or `modal`, waits for the next build and warns once.
+/// Entries whose root is gone are pruned.
+pub fn reload(world: &mut World, id: &str) {
+    let Some(file) = world
+        .get_resource::<UiScreenRegistry>()
+        .and_then(|registry| registry.get(id))
+        .cloned()
+    else {
+        return;
+    };
+    let bindings = world
+        .get_resource::<UiBindings>()
+        .cloned()
+        .unwrap_or_default();
+    let Some(mut screens) = world.remove_resource::<UiScreens>() else {
+        return;
+    };
+    let tree = world.resource_mut::<UiTree>();
+    screens.live.retain(|live| tree.contains(live.root));
+    let shape = Shape::of(&file.root);
+    let (mut mounts, mut warnings, mut rebuilt) = (Vec::new(), Vec::new(), Vec::new());
+    for live in screens.live.iter_mut().filter(|live| live.id == id) {
+        if live.shape != shape {
+            warnings.push((
+                format!("shape {id}"),
+                format!(
+                    "ui screen '{id}': its root's kind, layer or modal changed; its open screens keep theirs until built again"
+                ),
+            ));
+            continue;
+        }
+        let focused = tree
+            .focused()
+            .filter(|focused| tree.root_of(*focused) == Some(live.root));
+        let key = focused.and_then(|focused| tree.key_name(focused).map(str::to_owned));
+        let mut body = tree.children(live.card).to_vec();
+        if live.card != live.root {
+            let over = tree.children(live.root).iter().copied();
+            body.extend(over.filter(|child| *child != live.card));
+        }
+        for child in body {
+            tree.remove(child);
+        }
+        let mut builder = Builder::new(&bindings, id);
+        builder.body(tree, live.root, live.card, &file.root);
+        live.part = std::mem::take(&mut builder.part);
+        live.repeats = std::mem::take(&mut builder.repeats);
+        live.revision += 1;
+        mounts.append(&mut builder.mounts);
+        warnings.append(&mut builder.warnings);
+        rebuilt.push((live.root, focused.map(|_| key)));
+    }
+    for (once, message) in warnings {
+        screens.warn(once, &message);
+    }
+    world.insert_resource(screens);
+    for (mount, node) in mounts {
+        mount(world, node);
+    }
+    for (root, focus) in rebuilt {
+        refresh(world, root);
+        if let Some(key) = focus {
+            let tree = world.resource_mut::<UiTree>();
+            let keyed = key.and_then(|key| tree.find_key(root, UiKey::new(&key)));
+            let target = keyed
+                .filter(|node| tree.can_focus(*node))
+                .or_else(|| first_focusable(tree, root));
+            if let Some(target) = target {
+                tree.focus(target);
+            }
+        }
+    }
+}
+
+/// The first node under `root`, depth first, that can take focus.
+fn first_focusable(tree: &UiTree, root: WidgetId) -> Option<WidgetId> {
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        if tree.can_focus(id) {
+            return Some(id);
+        }
+        stack.extend(tree.children(id).iter().rev());
+    }
+    None
 }
 
 /// The live screen built at `root`.
@@ -539,7 +658,7 @@ pub fn actions(world: &World, root: WidgetId) -> Vec<(WidgetId, KeyedAction)> {
 }
 
 /// The revision of the screen built at `root`: 0 when built, raised by
-/// each reload of its file. A node read by key is read again after a
+/// each [`reload`] of its file. A node read by key is read again after a
 /// revision rises, since a reload rebuilds the nodes under new IDs.
 #[must_use]
 pub fn revision(world: &World, root: WidgetId) -> Option<u32> {
@@ -591,16 +710,7 @@ impl<'a> Builder<'a> {
     fn root(&mut self, tree: &mut UiTree, node: &Node) -> BuiltScreen {
         let (root, card) = if node.kind == Kind::Screen {
             let width = node.width.as_ref().map_or(0.0, |width| length(tree, width));
-            let (root, card) = widgets::screen(tree, width);
-            if let Some(file) = &node.card {
-                if let Some(layout) = &file.layout {
-                    apply_layout(tree, card, layout);
-                }
-                if let Some(overrides) = &file.overrides {
-                    apply_overrides(tree, card, overrides);
-                }
-            }
-            (root, card)
+            widgets::screen(tree, width)
         } else {
             let layer = match node.layer {
                 Some(LayerName::Game) => UiLayer::Game,
@@ -612,6 +722,25 @@ impl<'a> Builder<'a> {
             }
             (root, root)
         };
+        self.body(tree, root, card, node);
+        BuiltScreen { root, card }
+    }
+
+    /// The root node's own fields and everything under it: a `screen`'s
+    /// card fields, its children in the card and `over` under the root.
+    fn body(&mut self, tree: &mut UiTree, root: WidgetId, card: WidgetId, node: &Node) {
+        if node.kind == Kind::Screen {
+            let width = node.width.as_ref().map_or(0.0, |width| length(tree, width));
+            tree.edit_layout(card, |style| style.max_width = Some(width));
+            if let Some(file) = &node.card {
+                if let Some(layout) = &file.layout {
+                    apply_layout(tree, card, layout);
+                }
+                if let Some(overrides) = &file.overrides {
+                    apply_overrides(tree, card, overrides);
+                }
+            }
+        }
         self.common(tree, root, node, false);
         for child in &node.children {
             self.node(tree, card, child, false);
@@ -619,7 +748,6 @@ impl<'a> Builder<'a> {
         for child in &node.over {
             self.node(tree, root, child, false);
         }
-        BuiltScreen { root, card }
     }
 
     /// Builds `node` under `parent` and its children; `row_node` when it is
