@@ -854,6 +854,7 @@ pub fn tungsten::state::StateStack::active_id(&self) -> core::option::Option<tun
 pub fn tungsten::state::StateStack::depth(&self) -> usize
 pub fn tungsten::state::StateStack::is_transitioning(&self) -> bool
 pub fn tungsten::state::StateStack::new() -> Self
+pub fn tungsten::state::StateStack::own_resource<T: 'static>(&mut self)
 pub fn tungsten::state::StateStack::own_root(&mut self, tungsten_core::ui::id::WidgetId, tungsten::state::RootCover)
 pub fn tungsten::state::StateStack::request_pop(&mut self)
 pub fn tungsten::state::StateStack::request_pop_transition(&mut self, tungsten::transition::Transition) -> bool
@@ -861,6 +862,8 @@ pub fn tungsten::state::StateStack::request_push(&mut self, impl tungsten::state
 pub fn tungsten::state::StateStack::request_push_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
 pub fn tungsten::state::StateStack::request_replace(&mut self, impl tungsten::state::GameState)
 pub fn tungsten::state::StateStack::request_replace_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::request_reset_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::request_reset_transition_with(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World) + 'static) -> bool
 pub fn tungsten::state::StateStack::transition_cover(&self) -> f32
 pub fn tungsten::state::StateStack::transition_pass(&self) -> core::option::Option<tungsten_core::post::PostPass>
 pub fn tungsten::state::StateStack::transition_state(&self) -> core::option::Option<tungsten::transition::TransitionState>
@@ -874,6 +877,7 @@ impl core::marker::UnsafeUnpin for tungsten::state::StateStack
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateStack
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateStack
 pub trait tungsten::state::GameState: 'static
+pub fn tungsten::state::GameState::holds_clock(&self) -> bool
 pub fn tungsten::state::GameState::id(&self) -> tungsten::state::StateId
 pub fn tungsten::state::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::state::GameState::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -1946,6 +1950,7 @@ pub fn tungsten::state::StateStack::active_id(&self) -> core::option::Option<tun
 pub fn tungsten::state::StateStack::depth(&self) -> usize
 pub fn tungsten::state::StateStack::is_transitioning(&self) -> bool
 pub fn tungsten::state::StateStack::new() -> Self
+pub fn tungsten::state::StateStack::own_resource<T: 'static>(&mut self)
 pub fn tungsten::state::StateStack::own_root(&mut self, tungsten_core::ui::id::WidgetId, tungsten::state::RootCover)
 pub fn tungsten::state::StateStack::request_pop(&mut self)
 pub fn tungsten::state::StateStack::request_pop_transition(&mut self, tungsten::transition::Transition) -> bool
@@ -1953,6 +1958,8 @@ pub fn tungsten::state::StateStack::request_push(&mut self, impl tungsten::state
 pub fn tungsten::state::StateStack::request_push_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
 pub fn tungsten::state::StateStack::request_replace(&mut self, impl tungsten::state::GameState)
 pub fn tungsten::state::StateStack::request_replace_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::request_reset_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::request_reset_transition_with(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World) + 'static) -> bool
 pub fn tungsten::state::StateStack::transition_cover(&self) -> f32
 pub fn tungsten::state::StateStack::transition_pass(&self) -> core::option::Option<tungsten_core::post::PostPass>
 pub fn tungsten::state::StateStack::transition_state(&self) -> core::option::Option<tungsten::transition::TransitionState>
@@ -2100,6 +2107,7 @@ pub const tungsten::ENGINE_FONT_ID: &str
 pub const tungsten::ENGINE_GLOW: &str
 pub const tungsten::ENGINE_WHITE: &str
 pub trait tungsten::GameState: 'static
+pub fn tungsten::GameState::holds_clock(&self) -> bool
 pub fn tungsten::GameState::id(&self) -> tungsten::state::StateId
 pub fn tungsten::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)

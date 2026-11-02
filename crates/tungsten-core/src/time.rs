@@ -5,7 +5,9 @@
 //! clock takes the dt the loop gives it: elapsed wall time capped at 0.1 s
 //! (`D-088`), 1/60 s in smoke runs, or the test harness's dt as given
 //! (`D-110`). The game clock is the real dt times the [scale](Time::scale),
-//! zero while [paused](Time::is_paused). Systems read [`Time::delta`];
+//! zero while [paused](Time::is_paused) or [held](Time::is_held): the
+//! game's pause and the state stack's hold, kept apart so neither undoes
+//! the other. Systems read [`Time::delta`];
 //! anything that must run over a pause, such as a screen transition, reads
 //! [`Time::real_delta`].
 //!
@@ -25,6 +27,14 @@
 //!
 //! A [`Timer`] is a plain value that a component or resource owns and ticks
 //! with whichever clock its owner picks; there is no timer system.
+
+/// What stops the game clock: the game's pause and the state stack's hold,
+/// kept apart so neither undoes the other (redo 7.17).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ClockStop {
+    paused: bool,
+    held: bool,
+}
 
 /// The frame's clocks and the fixed-step accumulator: a `World` resource the
 /// app inserts and advances once a frame, before any stage runs.
@@ -55,7 +65,8 @@ pub struct Time {
     elapsed: f64,
     frame: u64,
     scale: f32,
-    paused: bool,
+    /// The game's pause and the state stack's hold (redo 7.17).
+    stop: ClockStop,
     /// The step setting; `frame_step` takes it at each `advance_frame`.
     fixed_step: f32,
     max_steps_per_frame: u32,
@@ -89,7 +100,7 @@ impl Time {
             elapsed: 0.0,
             frame: 0,
             scale: 1.0,
-            paused: false,
+            stop: ClockStop::default(),
             fixed_step: DEFAULT_FIXED_STEP,
             max_steps_per_frame: DEFAULT_MAX_STEPS_PER_FRAME,
             interpolate: true,
@@ -108,14 +119,14 @@ impl Time {
     /// The app's clock stage calls it once a frame with the loop's dt
     /// (capped, pinned, or the harness's); a world driven by hand calls it in
     /// that stage's place. A negative or non-finite `real_dt` counts as zero.
-    /// The game dt is `real_dt` times the scale, zero while paused, and
-    /// saturates at `f32::MAX`.
+    /// The game dt is `real_dt` times the scale, zero while paused or held,
+    /// and saturates at `f32::MAX`.
     ///
     /// The accumulator adds the game dt, saturating at `f32::MAX`, then gives
     /// up one step at a time while it holds a whole step, until the bound's
     /// steps have run or a step no longer changes it. Whole steps still left
     /// are dropped and the remainder kept, so `alpha` stays in `[0, 1)`. A
-    /// paused frame adds nothing, runs no step and holds `alpha`.
+    /// paused or held frame adds nothing, runs no step and holds `alpha`.
     pub fn advance_frame(&mut self, real_dt: f32) {
         let real_dt = if real_dt.is_finite() && real_dt > 0.0 {
             real_dt
@@ -123,7 +134,8 @@ impl Time {
             0.0
         };
         self.real_delta = real_dt;
-        self.game_delta = if self.paused {
+        let stopped = self.stop.paused || self.stop.held;
+        self.game_delta = if stopped {
             0.0
         } else {
             (real_dt * self.scale).min(f32::MAX)
@@ -135,7 +147,7 @@ impl Time {
         self.frame_step = self.fixed_step;
         self.steps_this_frame = 0;
         self.dropped_this_frame = 0.0;
-        if !self.paused {
+        if !stopped {
             self.step_accumulator();
         }
     }
@@ -225,23 +237,38 @@ impl Time {
     /// Whether the game clock is paused.
     #[must_use]
     pub fn is_paused(&self) -> bool {
-        self.paused
+        self.stop.paused
     }
 
     /// Stops the game clock from the next frame on: its dt is zero and its
     /// elapsed time holds. Real time keeps running.
     pub fn pause(&mut self) {
-        self.paused = true;
+        self.stop.paused = true;
     }
 
     /// Restarts the game clock from the next frame on.
     pub fn resume(&mut self) {
-        self.paused = false;
+        self.stop.paused = false;
     }
 
     /// Pauses or resumes the game clock from the next frame on.
     pub fn set_paused(&mut self, paused: bool) {
-        self.paused = paused;
+        self.stop.paused = paused;
+    }
+
+    /// Holds the game clock, or lets it go, from the next frame on (redo
+    /// 7.17): the state stack's flag while a state that holds its clock is
+    /// covered, beside the game's own pause. The game clock runs only while
+    /// neither is on, and a pause or resume the game makes under a hold is
+    /// still the game's once the hold ends.
+    pub fn set_held(&mut self, held: bool) {
+        self.stop.held = held;
+    }
+
+    /// Whether the state stack holds the game clock.
+    #[must_use]
+    pub fn is_held(&self) -> bool {
+        self.stop.held
     }
 
     /// The fixed step in game seconds: 1/60 s, the smoke pin, unless set.
