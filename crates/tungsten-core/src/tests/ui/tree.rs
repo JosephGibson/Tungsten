@@ -741,3 +741,20 @@ fn ui_key_new_is_fnv1a_of_its_name() {
         "a key marks nothing"
     );
 }
+
+#[test]
+fn contrast_ratio_of_black_and_white_is_21() {
+    use crate::ui::contrast_ratio;
+    let (black, white) = ([0, 0, 0, 255], [255, 255, 255, 255]);
+    assert!((contrast_ratio(black, white) - 21.0).abs() < 1e-4);
+    assert_eq!(contrast_ratio(white, black), contrast_ratio(black, white));
+    assert_eq!(contrast_ratio(white, white), 1.0);
+    assert_eq!(
+        contrast_ratio([9, 9, 9, 0], [9, 9, 9, 255]),
+        1.0,
+        "alpha is ignored"
+    );
+    // WCAG's often-quoted #777777 on white: 4.48:1.
+    let grey = contrast_ratio([0x77, 0x77, 0x77, 255], white);
+    assert!((grey - 4.48).abs() < 0.01, "{grey}");
+}

@@ -12545,9 +12545,15 @@ pub tungsten_core::ui::theme::ColorTokens::border: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::danger: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::disabled_text: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::focus: [u8; 4]
+pub tungsten_core::ui::theme::ColorTokens::raised: [u8; 4]
+pub tungsten_core::ui::theme::ColorTokens::scrim: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::surface: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::text: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::text_muted: [u8; 4]
+impl tungsten_core::ui::theme::ColorTokens
+pub const tungsten_core::ui::theme::ColorTokens::NAMES: [&'static str; 12]
+pub fn tungsten_core::ui::theme::ColorTokens::named(&self, &str) -> core::option::Option<[u8; 4]>
+pub const fn tungsten_core::ui::theme::ColorTokens::scrim_of([u8; 4]) -> [u8; 4]
 impl core::clone::Clone for tungsten_core::ui::theme::ColorTokens
 pub fn tungsten_core::ui::theme::ColorTokens::clone(&self) -> tungsten_core::ui::theme::ColorTokens
 impl core::cmp::Eq for tungsten_core::ui::theme::ColorTokens
@@ -12633,6 +12639,26 @@ impl core::marker::Unpin for tungsten_core::ui::theme::KindStyles
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::KindStyles
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::KindStyles
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::KindStyles
+pub struct tungsten_core::ui::theme::NamedStyle
+pub tungsten_core::ui::theme::NamedStyle::text: tungsten_core::ui::theme::TextOverrides
+impl core::clone::Clone for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::clone(&self) -> tungsten_core::ui::theme::NamedStyle
+impl core::cmp::PartialEq for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::eq(&self, &tungsten_core::ui::theme::NamedStyle) -> bool
+impl core::convert::From<tungsten_core::ui::theme::TextOverrides> for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::from(tungsten_core::ui::theme::TextOverrides) -> Self
+impl core::default::Default for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::default() -> tungsten_core::ui::theme::NamedStyle
+impl core::fmt::Debug for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::theme::NamedStyle
+impl core::marker::Freeze for tungsten_core::ui::theme::NamedStyle
+impl core::marker::Send for tungsten_core::ui::theme::NamedStyle
+impl core::marker::Sync for tungsten_core::ui::theme::NamedStyle
+impl core::marker::Unpin for tungsten_core::ui::theme::NamedStyle
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::NamedStyle
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::NamedStyle
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::NamedStyle
 pub struct tungsten_core::ui::theme::RadiusTokens
 pub tungsten_core::ui::theme::RadiusTokens::lg: f32
 pub tungsten_core::ui::theme::RadiusTokens::md: f32
@@ -12742,6 +12768,8 @@ impl core::clone::Clone for tungsten_core::ui::theme::TextOverrides
 pub fn tungsten_core::ui::theme::TextOverrides::clone(&self) -> tungsten_core::ui::theme::TextOverrides
 impl core::cmp::PartialEq for tungsten_core::ui::theme::TextOverrides
 pub fn tungsten_core::ui::theme::TextOverrides::eq(&self, &tungsten_core::ui::theme::TextOverrides) -> bool
+impl core::convert::From<tungsten_core::ui::theme::TextOverrides> for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::from(tungsten_core::ui::theme::TextOverrides) -> Self
 impl core::default::Default for tungsten_core::ui::theme::TextOverrides
 pub fn tungsten_core::ui::theme::TextOverrides::default() -> tungsten_core::ui::theme::TextOverrides
 impl core::fmt::Debug for tungsten_core::ui::theme::TextOverrides
@@ -12777,10 +12805,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::TextT
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::TextTokens
 pub struct tungsten_core::ui::theme::Theme
 pub tungsten_core::ui::theme::Theme::kinds: tungsten_core::ui::theme::KindStyles
+pub tungsten_core::ui::theme::Theme::names: alloc::boxed::Box<tungsten_core::ui::theme::ThemeNames>
 pub tungsten_core::ui::theme::Theme::tokens: tungsten_core::ui::theme::Tokens
 impl tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::theme::Theme::base_text(&self) -> tungsten_core::text::TextStyle
 pub fn tungsten_core::ui::theme::Theme::kind(&self, tungsten_core::ui::node::WidgetKind) -> &tungsten_core::ui::theme::KindStyle
+pub fn tungsten_core::ui::theme::Theme::size(&self, &str, f32) -> f32
+pub fn tungsten_core::ui::theme::Theme::sounds(&self) -> &tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::Theme::text_style(&self, &str) -> core::option::Option<&tungsten_core::ui::theme::NamedStyle>
 impl core::clone::Clone for tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::theme::Theme::clone(&self) -> tungsten_core::ui::theme::Theme
 impl core::cmp::PartialEq for tungsten_core::ui::theme::Theme
@@ -12825,6 +12857,49 @@ impl core::marker::Unpin for tungsten_core::ui::theme::ThemeEpoch
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::ThemeEpoch
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::ThemeEpoch
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::ThemeEpoch
+pub struct tungsten_core::ui::theme::ThemeNames
+pub tungsten_core::ui::theme::ThemeNames::sizes: alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>
+pub tungsten_core::ui::theme::ThemeNames::sounds: tungsten_core::ui::theme::ThemeSounds
+pub tungsten_core::ui::theme::ThemeNames::text_styles: alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::ui::theme::NamedStyle>
+impl tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::for_tokens(&tungsten_core::ui::theme::Tokens) -> Self
+impl core::clone::Clone for tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::clone(&self) -> tungsten_core::ui::theme::ThemeNames
+impl core::cmp::PartialEq for tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::eq(&self, &tungsten_core::ui::theme::ThemeNames) -> bool
+impl core::default::Default for tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::default() -> tungsten_core::ui::theme::ThemeNames
+impl core::fmt::Debug for tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::theme::ThemeNames
+impl core::marker::Freeze for tungsten_core::ui::theme::ThemeNames
+impl core::marker::Send for tungsten_core::ui::theme::ThemeNames
+impl core::marker::Sync for tungsten_core::ui::theme::ThemeNames
+impl core::marker::Unpin for tungsten_core::ui::theme::ThemeNames
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::ThemeNames
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::ThemeNames
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::ThemeNames
+pub struct tungsten_core::ui::theme::ThemeSounds
+pub tungsten_core::ui::theme::ThemeSounds::activate: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::theme::ThemeSounds::back: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::theme::ThemeSounds::focus: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::ThemeSounds::clone(&self) -> tungsten_core::ui::theme::ThemeSounds
+impl core::cmp::Eq for tungsten_core::ui::theme::ThemeSounds
+impl core::cmp::PartialEq for tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::ThemeSounds::eq(&self, &tungsten_core::ui::theme::ThemeSounds) -> bool
+impl core::default::Default for tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::ThemeSounds::default() -> tungsten_core::ui::theme::ThemeSounds
+impl core::fmt::Debug for tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::ThemeSounds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::Freeze for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::Send for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::Sync for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::Unpin for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::ThemeSounds
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::ThemeSounds
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::ThemeSounds
 pub struct tungsten_core::ui::theme::Tokens
 pub tungsten_core::ui::theme::Tokens::colors: tungsten_core::ui::theme::ColorTokens
 pub tungsten_core::ui::theme::Tokens::fonts: tungsten_core::ui::theme::FontTokens
@@ -12867,6 +12942,7 @@ impl core::marker::Unpin for tungsten_core::ui::theme::VisualStyle
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::VisualStyle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::VisualStyle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::VisualStyle
+pub fn tungsten_core::ui::theme::contrast_ratio([u8; 4], [u8; 4]) -> f32
 pub fn tungsten_core::ui::theme::resolve(&tungsten_core::ui::theme::Theme, tungsten_core::ui::node::WidgetKind, tungsten_core::ui::theme::WidgetState, &tungsten_core::ui::theme::StyleOverrides, &tungsten_core::text::TextStyle) -> tungsten_core::ui::theme::ResolvedStyle
 pub mod tungsten_core::ui::theme_file
 pub enum tungsten_core::ui::theme_file::ThemeFileError
@@ -13031,6 +13107,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_scale(&mut self, tungsten_core::ui::
 pub fn tungsten_core::ui::tree::UiTree::set_shadow(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::node::UiShadow>)
 pub fn tungsten_core::ui::tree::UiTree::set_text(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_text_scale(&mut self, f32)
+pub fn tungsten_core::ui::tree::UiTree::set_text_style(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<&str>)
 pub fn tungsten_core::ui::tree::UiTree::set_theme(&mut self, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_theme_asset(&mut self, &str, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_translation(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2)
@@ -13038,6 +13115,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_visibility(&mut self, tungsten_core:
 pub fn tungsten_core::ui::tree::UiTree::shadow(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::UiShadow>
 pub fn tungsten_core::ui::tree::UiTree::text(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::text::StyledText>
 pub fn tungsten_core::ui::tree::UiTree::text_scale(&self) -> f32
+pub fn tungsten_core::ui::tree::UiTree::text_style(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&str>
 pub fn tungsten_core::ui::tree::UiTree::theme(&self) -> &tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::tree::UiTree::theme_epoch(&self) -> tungsten_core::ui::theme::ThemeEpoch
 pub fn tungsten_core::ui::tree::UiTree::theme_id(&self) -> core::option::Option<&str>
@@ -13726,9 +13804,15 @@ pub tungsten_core::ui::ColorTokens::border: [u8; 4]
 pub tungsten_core::ui::ColorTokens::danger: [u8; 4]
 pub tungsten_core::ui::ColorTokens::disabled_text: [u8; 4]
 pub tungsten_core::ui::ColorTokens::focus: [u8; 4]
+pub tungsten_core::ui::ColorTokens::raised: [u8; 4]
+pub tungsten_core::ui::ColorTokens::scrim: [u8; 4]
 pub tungsten_core::ui::ColorTokens::surface: [u8; 4]
 pub tungsten_core::ui::ColorTokens::text: [u8; 4]
 pub tungsten_core::ui::ColorTokens::text_muted: [u8; 4]
+impl tungsten_core::ui::theme::ColorTokens
+pub const tungsten_core::ui::theme::ColorTokens::NAMES: [&'static str; 12]
+pub fn tungsten_core::ui::theme::ColorTokens::named(&self, &str) -> core::option::Option<[u8; 4]>
+pub const fn tungsten_core::ui::theme::ColorTokens::scrim_of([u8; 4]) -> [u8; 4]
 impl core::clone::Clone for tungsten_core::ui::theme::ColorTokens
 pub fn tungsten_core::ui::theme::ColorTokens::clone(&self) -> tungsten_core::ui::theme::ColorTokens
 impl core::cmp::Eq for tungsten_core::ui::theme::ColorTokens
@@ -13949,6 +14033,26 @@ impl core::marker::Unpin for tungsten_core::ui::measure::MeasureCounts
 impl core::marker::UnsafeUnpin for tungsten_core::ui::measure::MeasureCounts
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::measure::MeasureCounts
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::measure::MeasureCounts
+pub struct tungsten_core::ui::NamedStyle
+pub tungsten_core::ui::NamedStyle::text: tungsten_core::ui::theme::TextOverrides
+impl core::clone::Clone for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::clone(&self) -> tungsten_core::ui::theme::NamedStyle
+impl core::cmp::PartialEq for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::eq(&self, &tungsten_core::ui::theme::NamedStyle) -> bool
+impl core::convert::From<tungsten_core::ui::theme::TextOverrides> for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::from(tungsten_core::ui::theme::TextOverrides) -> Self
+impl core::default::Default for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::default() -> tungsten_core::ui::theme::NamedStyle
+impl core::fmt::Debug for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::theme::NamedStyle
+impl core::marker::Freeze for tungsten_core::ui::theme::NamedStyle
+impl core::marker::Send for tungsten_core::ui::theme::NamedStyle
+impl core::marker::Sync for tungsten_core::ui::theme::NamedStyle
+impl core::marker::Unpin for tungsten_core::ui::theme::NamedStyle
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::NamedStyle
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::NamedStyle
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::NamedStyle
 pub struct tungsten_core::ui::PaintList
 pub tungsten_core::ui::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
 pub tungsten_core::ui::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
@@ -14133,6 +14237,8 @@ impl core::clone::Clone for tungsten_core::ui::theme::TextOverrides
 pub fn tungsten_core::ui::theme::TextOverrides::clone(&self) -> tungsten_core::ui::theme::TextOverrides
 impl core::cmp::PartialEq for tungsten_core::ui::theme::TextOverrides
 pub fn tungsten_core::ui::theme::TextOverrides::eq(&self, &tungsten_core::ui::theme::TextOverrides) -> bool
+impl core::convert::From<tungsten_core::ui::theme::TextOverrides> for tungsten_core::ui::theme::NamedStyle
+pub fn tungsten_core::ui::theme::NamedStyle::from(tungsten_core::ui::theme::TextOverrides) -> Self
 impl core::default::Default for tungsten_core::ui::theme::TextOverrides
 pub fn tungsten_core::ui::theme::TextOverrides::default() -> tungsten_core::ui::theme::TextOverrides
 impl core::fmt::Debug for tungsten_core::ui::theme::TextOverrides
@@ -14168,10 +14274,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::TextT
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::TextTokens
 pub struct tungsten_core::ui::Theme
 pub tungsten_core::ui::Theme::kinds: tungsten_core::ui::theme::KindStyles
+pub tungsten_core::ui::Theme::names: alloc::boxed::Box<tungsten_core::ui::theme::ThemeNames>
 pub tungsten_core::ui::Theme::tokens: tungsten_core::ui::theme::Tokens
 impl tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::theme::Theme::base_text(&self) -> tungsten_core::text::TextStyle
 pub fn tungsten_core::ui::theme::Theme::kind(&self, tungsten_core::ui::node::WidgetKind) -> &tungsten_core::ui::theme::KindStyle
+pub fn tungsten_core::ui::theme::Theme::size(&self, &str, f32) -> f32
+pub fn tungsten_core::ui::theme::Theme::sounds(&self) -> &tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::Theme::text_style(&self, &str) -> core::option::Option<&tungsten_core::ui::theme::NamedStyle>
 impl core::clone::Clone for tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::theme::Theme::clone(&self) -> tungsten_core::ui::theme::Theme
 impl core::cmp::PartialEq for tungsten_core::ui::theme::Theme
@@ -14236,6 +14346,49 @@ impl core::marker::Unpin for tungsten_core::ui::theme_file::ThemeFile
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::ThemeFile
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::ThemeFile
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::ThemeFile
+pub struct tungsten_core::ui::ThemeNames
+pub tungsten_core::ui::ThemeNames::sizes: alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>
+pub tungsten_core::ui::ThemeNames::sounds: tungsten_core::ui::theme::ThemeSounds
+pub tungsten_core::ui::ThemeNames::text_styles: alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::ui::theme::NamedStyle>
+impl tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::for_tokens(&tungsten_core::ui::theme::Tokens) -> Self
+impl core::clone::Clone for tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::clone(&self) -> tungsten_core::ui::theme::ThemeNames
+impl core::cmp::PartialEq for tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::eq(&self, &tungsten_core::ui::theme::ThemeNames) -> bool
+impl core::default::Default for tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::default() -> tungsten_core::ui::theme::ThemeNames
+impl core::fmt::Debug for tungsten_core::ui::theme::ThemeNames
+pub fn tungsten_core::ui::theme::ThemeNames::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::theme::ThemeNames
+impl core::marker::Freeze for tungsten_core::ui::theme::ThemeNames
+impl core::marker::Send for tungsten_core::ui::theme::ThemeNames
+impl core::marker::Sync for tungsten_core::ui::theme::ThemeNames
+impl core::marker::Unpin for tungsten_core::ui::theme::ThemeNames
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::ThemeNames
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::ThemeNames
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::ThemeNames
+pub struct tungsten_core::ui::ThemeSounds
+pub tungsten_core::ui::ThemeSounds::activate: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::ThemeSounds::back: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::ThemeSounds::focus: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::ThemeSounds::clone(&self) -> tungsten_core::ui::theme::ThemeSounds
+impl core::cmp::Eq for tungsten_core::ui::theme::ThemeSounds
+impl core::cmp::PartialEq for tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::ThemeSounds::eq(&self, &tungsten_core::ui::theme::ThemeSounds) -> bool
+impl core::default::Default for tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::ThemeSounds::default() -> tungsten_core::ui::theme::ThemeSounds
+impl core::fmt::Debug for tungsten_core::ui::theme::ThemeSounds
+pub fn tungsten_core::ui::theme::ThemeSounds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::Freeze for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::Send for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::Sync for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::Unpin for tungsten_core::ui::theme::ThemeSounds
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::ThemeSounds
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::ThemeSounds
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::ThemeSounds
 pub struct tungsten_core::ui::Tokens
 pub tungsten_core::ui::Tokens::colors: tungsten_core::ui::theme::ColorTokens
 pub tungsten_core::ui::Tokens::fonts: tungsten_core::ui::theme::FontTokens
@@ -14502,6 +14655,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_scale(&mut self, tungsten_core::ui::
 pub fn tungsten_core::ui::tree::UiTree::set_shadow(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::node::UiShadow>)
 pub fn tungsten_core::ui::tree::UiTree::set_text(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_text_scale(&mut self, f32)
+pub fn tungsten_core::ui::tree::UiTree::set_text_style(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<&str>)
 pub fn tungsten_core::ui::tree::UiTree::set_theme(&mut self, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_theme_asset(&mut self, &str, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_translation(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2)
@@ -14509,6 +14663,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_visibility(&mut self, tungsten_core:
 pub fn tungsten_core::ui::tree::UiTree::shadow(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::UiShadow>
 pub fn tungsten_core::ui::tree::UiTree::text(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::text::StyledText>
 pub fn tungsten_core::ui::tree::UiTree::text_scale(&self) -> f32
+pub fn tungsten_core::ui::tree::UiTree::text_style(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&str>
 pub fn tungsten_core::ui::tree::UiTree::theme(&self) -> &tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::tree::UiTree::theme_epoch(&self) -> tungsten_core::ui::theme::ThemeEpoch
 pub fn tungsten_core::ui::tree::UiTree::theme_id(&self) -> core::option::Option<&str>
@@ -14692,6 +14847,7 @@ pub const tungsten_core::ui::UI_NEXT: &str
 pub const tungsten_core::ui::UI_PREV: &str
 pub const tungsten_core::ui::UI_RIGHT: &str
 pub const tungsten_core::ui::UI_UP: &str
+pub fn tungsten_core::ui::contrast_ratio([u8; 4], [u8; 4]) -> f32
 pub fn tungsten_core::ui::to_physical(tungsten_core::ui::geometry::Rect, f32) -> tungsten_core::ui::paint::ClipRect
 pub fn tungsten_core::ui::ui_animate_system(&mut tungsten_core::World)
 pub fn tungsten_core::ui::ui_route_system(&mut tungsten_core::World)
@@ -20853,6 +21009,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_scale(&mut self, tungsten_core::ui::
 pub fn tungsten_core::ui::tree::UiTree::set_shadow(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::node::UiShadow>)
 pub fn tungsten_core::ui::tree::UiTree::set_text(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_text_scale(&mut self, f32)
+pub fn tungsten_core::ui::tree::UiTree::set_text_style(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<&str>)
 pub fn tungsten_core::ui::tree::UiTree::set_theme(&mut self, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_theme_asset(&mut self, &str, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_translation(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2)
@@ -20860,6 +21017,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_visibility(&mut self, tungsten_core:
 pub fn tungsten_core::ui::tree::UiTree::shadow(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::UiShadow>
 pub fn tungsten_core::ui::tree::UiTree::text(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::text::StyledText>
 pub fn tungsten_core::ui::tree::UiTree::text_scale(&self) -> f32
+pub fn tungsten_core::ui::tree::UiTree::text_style(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&str>
 pub fn tungsten_core::ui::tree::UiTree::theme(&self) -> &tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::tree::UiTree::theme_epoch(&self) -> tungsten_core::ui::theme::ThemeEpoch
 pub fn tungsten_core::ui::tree::UiTree::theme_id(&self) -> core::option::Option<&str>

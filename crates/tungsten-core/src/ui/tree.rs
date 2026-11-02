@@ -42,6 +42,8 @@ pub(crate) enum Warned {
     Sprite(SpriteAssetId),
     /// A key set twice under one root.
     Key(UiKey),
+    /// A text style name the theme lacked at a resolution.
+    Style(Box<str>),
 }
 
 /// Counts from one style resolution pass.
@@ -97,8 +99,10 @@ pub struct UiTree {
     pub(crate) theme: Theme,
     pub(crate) theme_epoch: ThemeEpoch,
     /// The `ui_themes` ID the theme came from, for a reload to re-apply
-    /// (Q9); `None` for the built-in theme or one set by hand.
-    pub(crate) theme_id: Option<String>,
+    /// (Q9); `None` for the built-in theme or one set by hand. A boxed
+    /// `str`, as the scales below are bare: the tree keeps its size, which
+    /// the app re-inserts each frame it paints.
+    pub(crate) theme_id: Option<Box<str>>,
     /// The viewport of the last layout pass; `None` before the first.
     pub(crate) viewport: Option<Vec2>,
     /// What the tree warned about, each once. One set, so a new kind of
@@ -127,12 +131,12 @@ pub struct UiTree {
     pub(crate) tracks: Vec<RunningTrack>,
     /// Labels' prompts (M56).
     pub(crate) prompts: Vec<Prompt>,
-    /// The text scale (M56); `None` is 1.
-    pub(crate) text_scale: Option<f32>,
+    /// The text scale (M56); 0, never set, reads 1.
+    pub(crate) text_scale: f32,
     /// Roots whose text runs the next [`Self::paint_prewarm`] paints (M56).
     pub(crate) prewarm_roots: Vec<WidgetId>,
-    /// The debug layers' scale as set (M58); `None` is 1.
-    pub(crate) debug_scale: Option<f32>,
+    /// The debug layers' scale as set (M58); 0, never set, reads 1.
+    pub(crate) debug_scale: f32,
     /// The debug scale of the last layout pass, which the debug roots' rects
     /// are in; `None` before the first.
     pub(crate) laid_debug_scale: Option<f32>,
@@ -677,7 +681,7 @@ impl UiTree {
         if self.text_scale() == scale {
             return;
         }
-        self.text_scale = Some(scale);
+        self.text_scale = scale;
         for slot in &mut self.slots {
             if let Some(node) = &mut slot.node
                 && !node.layer.is_debug()
@@ -692,7 +696,11 @@ impl UiTree {
     /// The text scale; 1 on a new tree.
     #[must_use]
     pub fn text_scale(&self) -> f32 {
-        self.text_scale.unwrap_or(1.0)
+        if self.text_scale > 0.0 {
+            self.text_scale
+        } else {
+            1.0
+        }
     }
 
     /// The text scale labels and controls on `layer` take: the text scale on
@@ -723,7 +731,7 @@ impl UiTree {
         if self.debug_scale() == scale {
             return;
         }
-        self.debug_scale = Some(scale);
+        self.debug_scale = scale;
         for slot in &mut self.slots {
             if let Some(node) = &mut slot.node
                 && node.layer.is_debug()
@@ -737,7 +745,11 @@ impl UiTree {
     /// The debug layers' scale; 1 on a new tree.
     #[must_use]
     pub fn debug_scale(&self) -> f32 {
-        self.debug_scale.unwrap_or(1.0)
+        if self.debug_scale > 0.0 {
+            self.debug_scale
+        } else {
+            1.0
+        }
     }
 
     /// How many tree units one unit of a root on `layer` spans in the last
@@ -1225,7 +1237,7 @@ impl UiTree {
     /// [`Self::set_theme`] with the `ui_themes` ID `theme` was loaded from,
     /// so a reload of that asset re-applies it to this tree (Q9).
     pub fn set_theme_asset(&mut self, id: &str, theme: Theme) {
-        self.theme_id = Some(id.to_owned());
+        self.theme_id = Some(id.into());
         self.apply_theme(theme);
     }
 
@@ -1312,6 +1324,30 @@ impl UiTree {
     #[must_use]
     pub fn bare(&self, id: WidgetId) -> bool {
         self.node(id).is_some_and(|node| node.bare)
+    }
+
+    /// Names the theme text style `id` takes, or clears it with `None`: the
+    /// style is a layer between the state variants and the node's own
+    /// overrides, applied at `id` alone, whose text then passes down as any
+    /// text does; it is not applied again under it. A name the theme lacks
+    /// warns once at the resolution that meets it and applies nothing.
+    /// Marks the style; an equal name marks nothing.
+    pub fn set_text_style(&mut self, id: WidgetId, name: Option<&str>) {
+        let Some(node) = self.node_mut(id) else {
+            return;
+        };
+        if node.text_style.as_deref() == name {
+            return;
+        }
+        node.text_style = name.map(Into::into);
+        self.mark_style_dirty(id);
+    }
+
+    /// The text style `id` names; `None` when it names none or for an
+    /// invalid ID.
+    #[must_use]
+    pub fn text_style(&self, id: WidgetId) -> Option<&str> {
+        self.node(id)?.text_style.as_deref()
     }
 
     // ---- keys ----
@@ -1482,10 +1518,14 @@ impl UiTree {
         let mut text_changed = false;
         if node.style_dirty || parent_text_changed {
             let layers = self.style_layers(id, node);
+            let style = node.text_style.as_deref();
+            let named = style.and_then(|name| self.theme.text_style(name));
+            let missing = style.filter(|_| named.is_none()).map(str::to_owned);
             let mut resolved = theme::resolve_layers(
                 &self.theme,
                 node.kind,
                 &layers,
+                named,
                 &node.overrides,
                 parent_text,
             );
@@ -1518,6 +1558,11 @@ impl UiTree {
                 self.mark_layout_dirty(id);
             } else if changed_text || changed_visual {
                 self.paint_dirty = true;
+            }
+            if let Some(name) = missing
+                && self.warned.insert(Warned::Style(name.as_str().into()))
+            {
+                log::warn!("UiTree: the theme has no text style `{name}`; {id:?} applies none");
             }
             text_changed = changed_text;
         }

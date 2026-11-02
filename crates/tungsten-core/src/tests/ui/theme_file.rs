@@ -302,3 +302,130 @@ fn danger_reads_from_colors_and_defaults() {
     // No built-in kind reads it, so the kinds are the default theme's.
     assert_eq!(theme.kinds, default.kinds);
 }
+
+#[test]
+fn text_styles_sizes_and_sounds_read_from_a_theme_file() {
+    let theme = theme_of(
+        r##"{
+          "tokens": { "colors": { "background": "#102030", "text_muted": "#808080" },
+                      "fonts": { "heading": "serif" },
+                      "text": { "size": 16, "line_height": 22, "heading_size": 26 } },
+          "text_styles": { "heading": { "size": 20, "line_height": 28 },
+                           "title": { "family": "serif", "size": 56, "line_height": 64,
+                                      "color": "#ffffff" } },
+          "sizes": { "menu_width": 260, "button_padding_x": 14.5 },
+          "sounds": { "focus": "ui_move", "back": "ui_back" }
+        }"##,
+    );
+    let heading = &theme.text_style("heading").expect("built in").text;
+    assert_eq!(
+        heading.family.as_deref(),
+        Some("serif"),
+        "from the file's tokens"
+    );
+    assert_eq!(
+        (heading.size, heading.line_height),
+        (Some(20.0), Some(28.0)),
+        "the file's fields over the built-in style"
+    );
+    let title = &theme.text_style("title").expect("the file's own").text;
+    assert_eq!(title.color, Some([255, 255, 255, 255]));
+    assert_eq!(title.size, Some(56.0));
+    let note = &theme.text_style("note").expect("built in").text;
+    assert_eq!(
+        note.color,
+        Some([0x80, 0x80, 0x80, 255]),
+        "the built-ins follow the file's tokens"
+    );
+    let small = &theme.text_style("small").expect("built in").text;
+    assert_eq!((small.size, small.line_height), (Some(13.0), Some(18.0)));
+    assert_eq!(theme.size("menu_width", 0.0), 260.0);
+    assert_eq!(theme.size("button_padding_x", 0.0), 14.5);
+    assert_eq!(theme.size("missing", 7.0), 7.0);
+    assert_eq!(theme.sounds().focus.as_deref(), Some("ui_move"));
+    assert_eq!(theme.sounds().activate, None);
+    assert_eq!(theme.sounds().back.as_deref(), Some("ui_back"));
+    assert_eq!(
+        theme.tokens.colors.scrim,
+        [0x10, 0x20, 0x30, 184],
+        "an unset scrim follows the file's background"
+    );
+    assert_eq!(theme.tokens.colors.raised, theme.tokens.colors.surface);
+
+    let built_in = Theme::default();
+    let names: Vec<&str> = built_in
+        .names
+        .text_styles
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(names, ["danger", "heading", "mono", "note", "small"]);
+    assert!(built_in.names.sizes.is_empty());
+    assert_eq!(*built_in.sounds(), ThemeSounds::default());
+    for bad in [
+        r#"{ "sizes": { "gap": -1 } }"#,
+        r#"{ "sizes": { "gap": 1e39 } }"#,
+        r#"{ "sounds": { "hover": "ui_move" } }"#,
+        r#"{ "text_styles": { "x": { "font": "mono" } } }"#,
+        r#"{ "text_styles": { "x": { "line_height": 0 } } }"#,
+    ] {
+        assert!(ThemeFile::from_json(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn a_colour_field_takes_a_token_name() {
+    let theme = theme_of(
+        r##"{
+          "tokens": { "colors": { "surface": "#15171d", "raised": "#1e2129", "focus": "accent" } },
+          "kinds": { "button": { "normal": { "background": "surface", "text": { "color": "text" } },
+                                 "hovered": { "background": "raised", "border": "scrim" } } },
+          "text_styles": { "warning": { "color": "danger" } }
+        }"##,
+    );
+    let colors = theme.tokens.colors;
+    assert_eq!(colors.focus, colors.accent, "a token reads a literal token");
+    let button = &theme.kinds.button;
+    assert_eq!(button.normal.background, [0x15, 0x17, 0x1d, 255]);
+    assert_eq!(button.normal.text.color, Some(colors.text));
+    assert_eq!(button.hovered.background, Some([0x1e, 0x21, 0x29, 255]));
+    assert_eq!(button.hovered.border, Some(colors.scrim));
+    let warning = &theme.text_style("warning").expect("the file's own").text;
+    assert_eq!(warning.color, Some(colors.danger));
+    let literal =
+        theme_of(r##"{ "kinds": { "button": { "normal": { "background": "#15171d" } } } }"##);
+    let named = theme_of(
+        r##"{ "tokens": { "colors": { "surface": "#15171d" } },
+             "kinds": { "button": { "normal": { "background": "surface" } } } }"##,
+    );
+    assert_eq!(
+        literal.kinds.button.normal.background,
+        named.kinds.button.normal.background
+    );
+}
+
+#[test]
+fn an_unknown_token_name_is_refused_with_its_path() {
+    for (bad, path) in [
+        (
+            r#"{ "kinds": { "button": { "hovered": { "background": "surfce" } } } }"#,
+            "kinds.button.hovered.background",
+        ),
+        (
+            r#"{ "kinds": { "slider": { "normal": { "text": { "color": "primary" } } } } }"#,
+            "kinds.slider.normal.text.color",
+        ),
+        (
+            r#"{ "text_styles": { "title": { "color": "gold" } } }"#,
+            "text_styles.title.color",
+        ),
+        (
+            r#"{ "tokens": { "colors": { "focus": "Accent" } } }"#,
+            "tokens.colors.focus",
+        ),
+    ] {
+        let err = ThemeFile::from_json(bad).unwrap_err().to_string();
+        assert!(err.contains(path), "{bad}: {err}");
+        assert!(err.contains("raised"), "the error lists the names: {err}");
+    }
+}

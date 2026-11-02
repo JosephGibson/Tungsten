@@ -297,6 +297,8 @@ pub(crate) struct Node {
     pub(crate) bare: bool,
     /// The widget's key and the name it was made from.
     pub(crate) key: Option<(UiKey, Box<str>)>,
+    /// The theme text style the node names, layered before its overrides.
+    pub(crate) text_style: Option<Box<str>>,
     /// The last resolution; `None` before the first.
     pub(crate) resolved: Option<ResolvedStyle>,
     /// Whether the next resolution pass must resolve this node.
@@ -370,6 +372,7 @@ impl Node {
             overrides: StyleOverrides::default(),
             bare: false,
             key: None,
+            text_style: None,
             resolved: None,
             style_dirty: true,
             style_dirty_subtree: true,

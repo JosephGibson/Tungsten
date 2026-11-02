@@ -1,6 +1,10 @@
 //! The style model (`D-125`, w01 §14): theme tokens, per-kind defaults with
-//! state variants and per-node overrides. Non-text properties never inherit;
-//! text properties pass down the tree. No selectors.
+//! state variants, named text styles and per-node overrides. Non-text
+//! properties never inherit; text properties pass down the tree. No
+//! selectors: a named style applies at the node that names it, not to the
+//! nodes under it, which inherit its text as they inherit any.
+
+use std::collections::BTreeMap;
 
 use crate::text::{TextAlign, TextOverflow, TextStyle, TextWrap};
 
@@ -14,14 +18,24 @@ pub struct Theme {
     pub tokens: Tokens,
     /// One style per widget kind.
     pub kinds: KindStyles,
+    /// Text styles, sizes and sounds by name. Behind one pointer: the tree
+    /// holds its theme, and the app re-inserts the tree each frame it
+    /// paints, so what a theme names leaves the theme's size alone.
+    pub names: Box<ThemeNames>,
 }
 
 impl Default for Theme {
-    /// The built-in theme: a dark surface, the `sans` and `mono` families.
+    /// The built-in theme: a dark surface, the `sans` and `mono` families,
+    /// the built-in text styles, no sizes and no sounds.
     fn default() -> Self {
         let tokens = Tokens::default();
         let kinds = KindStyles::for_tokens(&tokens);
-        Self { tokens, kinds }
+        let names = Box::new(ThemeNames::for_tokens(&tokens));
+        Self {
+            tokens,
+            kinds,
+            names,
+        }
     }
 }
 
@@ -38,6 +52,24 @@ impl Theme {
         .with_color(self.tokens.colors.text)
     }
 
+    /// The size named `name`, else `default`.
+    #[must_use]
+    pub fn size(&self, name: &str, default: f32) -> f32 {
+        self.names.sizes.get(name).copied().unwrap_or(default)
+    }
+
+    /// The text style named `name`; `None` when the theme has none.
+    #[must_use]
+    pub fn text_style(&self, name: &str) -> Option<&NamedStyle> {
+        self.names.text_styles.get(name)
+    }
+
+    /// The menu sounds.
+    #[must_use]
+    pub fn sounds(&self) -> &ThemeSounds {
+        &self.names.sounds
+    }
+
     /// The style of `kind`.
     #[must_use]
     pub fn kind(&self, kind: WidgetKind) -> &KindStyle {
@@ -51,6 +83,124 @@ impl Theme {
             WidgetKind::Slider => &self.kinds.slider,
         }
     }
+}
+
+/// What a [`Theme`] names: text styles, sizes and the menu sounds.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ThemeNames {
+    /// Text styles by name, which a node takes with
+    /// [`UiTree::set_text_style`](super::UiTree::set_text_style): the
+    /// built-in ones ([`Self::for_tokens`]) and a theme file's.
+    pub text_styles: BTreeMap<String, NamedStyle>,
+    /// Sizes by name, in UI units, read with [`Theme::size`]; none built in.
+    pub sizes: BTreeMap<String, f32>,
+    /// The menu sounds the UI plays.
+    pub sounds: ThemeSounds,
+}
+
+impl ThemeNames {
+    /// The built-in names for `tokens`: no sizes, no sounds, and the text
+    /// styles `heading` (the heading family at the heading size, its line
+    /// height in the body's proportion), `note` (the muted colour), `small`
+    /// (13 on 18, muted), `mono` (the mono family) and `danger` (the danger
+    /// colour).
+    #[must_use]
+    pub fn for_tokens(tokens: &Tokens) -> Self {
+        Self {
+            text_styles: built_in_text_styles(tokens),
+            sizes: BTreeMap::new(),
+            sounds: ThemeSounds::default(),
+        }
+    }
+}
+
+/// A named text style: the text overrides a node naming it layers between
+/// its state variants and its own overrides.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NamedStyle {
+    /// The text properties it sets.
+    pub text: TextOverrides,
+}
+
+impl From<TextOverrides> for NamedStyle {
+    fn from(text: TextOverrides) -> Self {
+        Self { text }
+    }
+}
+
+/// [`ThemeNames::for_tokens`]' text styles.
+fn built_in_text_styles(tokens: &Tokens) -> BTreeMap<String, NamedStyle> {
+    let text = &tokens.text;
+    let heading_line = text.heading_size * text.line_height / text.size;
+    let muted = Some(tokens.colors.text_muted);
+    [
+        (
+            "heading",
+            TextOverrides {
+                family: Some(tokens.fonts.heading.clone()),
+                size: Some(text.heading_size),
+                line_height: Some(heading_line).filter(|line| line.is_finite() && *line > 0.0),
+                ..TextOverrides::default()
+            },
+        ),
+        (
+            "note",
+            TextOverrides {
+                color: muted,
+                ..TextOverrides::default()
+            },
+        ),
+        (
+            "small",
+            TextOverrides {
+                size: Some(13.0),
+                line_height: Some(18.0),
+                color: muted,
+                ..TextOverrides::default()
+            },
+        ),
+        (
+            "mono",
+            TextOverrides {
+                family: Some(tokens.fonts.mono.clone()),
+                ..TextOverrides::default()
+            },
+        ),
+        ("danger", text_color(tokens.colors.danger)),
+    ]
+    .into_iter()
+    .map(|(name, text)| (name.to_owned(), NamedStyle { text }))
+    .collect()
+}
+
+/// The menu sounds, by manifest sound ID; an unset one plays nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ThemeSounds {
+    /// A focus move a navigation press made.
+    pub focus: Option<String>,
+    /// An activation.
+    pub activate: Option<String>,
+    /// A cancel, or a back button's activation.
+    pub back: Option<String>,
+}
+
+/// WCAG's contrast ratio of two opaque sRGB colours, 1 to 21; alpha is
+/// ignored.
+#[must_use]
+pub fn contrast_ratio(a: [u8; 4], b: [u8; 4]) -> f32 {
+    let luminance = |color: [u8; 4]| {
+        let channel = |value: u8| {
+            let value = f32::from(value) / 255.0;
+            if value <= 0.040_45 {
+                value / 12.92
+            } else {
+                ((value + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
+    };
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 
 /// The theme's token groups.
@@ -92,13 +242,21 @@ pub struct ColorTokens {
     /// Destructive actions and warnings, such as a Delete button's text or
     /// a low-health bar (`D-184`). No built-in kind uses it.
     pub danger: [u8; 4],
+    /// A modal screen's veil over the screens below; built in, the
+    /// background at alpha 184. No built-in kind uses it.
+    pub scrim: [u8; 4],
+    /// A hovered or focused control's fill; built in, the surface. No
+    /// built-in kind uses it.
+    pub raised: [u8; 4],
 }
 
 impl Default for ColorTokens {
     fn default() -> Self {
+        let background = [18, 18, 22, 255];
+        let surface = [32, 33, 40, 255];
         Self {
-            background: [18, 18, 22, 255],
-            surface: [32, 33, 40, 255],
+            background,
+            surface,
             border: [70, 72, 84, 255],
             text: [235, 235, 240, 255],
             text_muted: [160, 162, 175, 255],
@@ -107,7 +265,55 @@ impl Default for ColorTokens {
             focus: [255, 196, 64, 255],
             disabled_text: [120, 122, 135, 255],
             danger: [255, 107, 107, 255],
+            scrim: Self::scrim_of(background),
+            raised: surface,
         }
+    }
+}
+
+impl ColorTokens {
+    /// The tokens' names, which a theme file's colour fields take in place
+    /// of a colour.
+    pub const NAMES: [&'static str; 12] = [
+        "background",
+        "surface",
+        "border",
+        "text",
+        "text_muted",
+        "accent",
+        "accent_text",
+        "focus",
+        "disabled_text",
+        "danger",
+        "scrim",
+        "raised",
+    ];
+
+    /// The colour of the token named `name`; `None` for a name not in
+    /// [`Self::NAMES`].
+    #[must_use]
+    pub fn named(&self, name: &str) -> Option<[u8; 4]> {
+        Some(match name {
+            "background" => self.background,
+            "surface" => self.surface,
+            "border" => self.border,
+            "text" => self.text,
+            "text_muted" => self.text_muted,
+            "accent" => self.accent,
+            "accent_text" => self.accent_text,
+            "focus" => self.focus,
+            "disabled_text" => self.disabled_text,
+            "danger" => self.danger,
+            "scrim" => self.scrim,
+            "raised" => self.raised,
+            _ => return None,
+        })
+    }
+
+    /// The built-in scrim over `background`: its colour at alpha 184.
+    #[must_use]
+    pub const fn scrim_of(background: [u8; 4]) -> [u8; 4] {
+        [background[0], background[1], background[2], 184]
     }
 }
 
@@ -619,15 +825,16 @@ pub fn resolve(
     overrides: &StyleOverrides,
     parent_text: &TextStyle,
 ) -> ResolvedStyle {
-    resolve_layers(theme, kind, &[state], overrides, parent_text)
+    resolve_layers(theme, kind, &[state], None, overrides, parent_text)
 }
 
 /// [`resolve`] with each of `states`' variants applied in order, the tree's
-/// layers; `Normal` applies nothing.
+/// layers, then the node's `named` text style; `Normal` applies nothing.
 pub(crate) fn resolve_layers(
     theme: &Theme,
     kind: WidgetKind,
     states: &[WidgetState],
+    named: Option<&NamedStyle>,
     overrides: &StyleOverrides,
     parent_text: &TextStyle,
 ) -> ResolvedStyle {
@@ -638,6 +845,9 @@ pub(crate) fn resolve_layers(
     for variant in states.iter().filter_map(|state| kind_style.variant(*state)) {
         variant.apply_visual(&mut visual);
         variant.text.apply(&mut text);
+    }
+    if let Some(named) = named {
+        named.text.apply(&mut text);
     }
     overrides.apply_visual(&mut visual);
     overrides.text.apply(&mut text);

@@ -3,9 +3,10 @@
 //! The manifest's `ui_themes` section names the files; [`UiThemeRegistry`]
 //! holds the loaded themes by ID for a tree to apply and a reload to
 //! replace. Colours are `#rrggbb` or `#rrggbbaa`, authored in sRGB and kept
-//! as `[u8; 4]`; the pipelines decode them (Q8).
+//! as `[u8; 4]`; the pipelines decode them (Q8). Any colour field may name a
+//! colour token instead, resolved once the file's tokens are known.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use serde::Deserialize;
@@ -15,7 +16,8 @@ use thiserror::Error;
 use crate::text::{EllipsisAt, TextAlign, TextOverflow, TextWrap};
 
 use super::theme::{
-    KindStyle, KindStyles, StyleOverrides, TextOverrides, Theme, Tokens, VisualStyle,
+    ColorTokens, KindStyle, KindStyles, StyleOverrides, TextOverrides, Theme, ThemeNames,
+    ThemeSounds, Tokens, VisualStyle,
 };
 
 /// Why a theme file did not load.
@@ -29,7 +31,8 @@ pub enum ThemeFileError {
         /// The read error.
         source: std::io::Error,
     },
-    /// The file is not a theme: bad JSON, an unknown field or a bad colour.
+    /// The file is not a theme: bad JSON, an unknown field, a bad colour or
+    /// an unknown token name.
     #[error("invalid ui theme '{path}': {source}")]
     Parse {
         /// The file.
@@ -43,13 +46,22 @@ pub enum ThemeFileError {
 /// theme's value. `tokens` holds the token groups; `kinds` holds, per widget
 /// kind (`panel`, `label`, `button`, `image`, `toggle`, `slider`), a
 /// `normal` look and the `focused`, `disabled`, `hovered` and `pressed`
-/// variants, each merged over the kind's built-in one. An unknown field is
-/// an error.
+/// variants, each merged over the kind's built-in one; `text_styles` holds
+/// text objects by name, each merged over the built-in style of its name;
+/// `sizes` holds sizes by name in UI units, finite and at least 0; `sounds`
+/// holds the `focus`, `activate` and `back` sounds' manifest IDs. A colour
+/// field takes `#rrggbb`, `#rrggbbaa` or a colour token's name
+/// ([`ColorTokens::NAMES`]), read from the tokens the file makes; a name in
+/// `tokens.colors` reads the file's literal colours. An unknown field or
+/// token name is an error, the name's with its field path.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ThemeFile {
     tokens: TokensFile,
     kinds: KindsFile,
+    text_styles: BTreeMap<String, TextFile>,
+    sizes: BTreeMap<String, f32>,
+    sounds: SoundsFile,
 }
 
 impl ThemeFile {
@@ -66,13 +78,51 @@ impl ThemeFile {
         })
     }
 
-    /// Parses theme JSON: one object, as the file format describes.
+    /// Parses theme JSON: one object, as the file format describes, its
+    /// token names resolved.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         let value: serde_json::Value = serde_json::from_str(json)?;
         if !value.is_object() {
             return Err(de::Error::custom("a theme file is a JSON object"));
         }
-        serde_json::from_value(value)
+        let mut file: Self = serde_json::from_value(value)?;
+        file.resolve_names().map_err(de::Error::custom)?;
+        Ok(file)
+    }
+
+    /// Checks the sizes and turns every colour token's name into the
+    /// token's colour: the token fields' first, against the file's literal
+    /// colours, then the rest against the tokens the file makes.
+    fn resolve_names(&mut self) -> Result<(), String> {
+        for (name, size) in &self.sizes {
+            if !(size.is_finite() && *size >= 0.0) {
+                return Err(format!(
+                    "sizes.{name}: {size} is not a finite number at or above 0"
+                ));
+            }
+        }
+        let literal = self.tokens.colors.tokens();
+        for (name, value) in self.tokens.colors.fields() {
+            resolve(value, &literal, &|| format!("tokens.colors.{name}"))?;
+        }
+        let tokens = self.tokens.colors.tokens();
+        for (kind, file) in self.kinds.fields() {
+            let Some(file) = file else {
+                continue;
+            };
+            for (state, overrides) in file.fields() {
+                let path = |field: &str| format!("kinds.{kind}.{state}.{field}");
+                resolve(&mut overrides.background, &tokens, &|| path("background"))?;
+                resolve(&mut overrides.border, &tokens, &|| path("border"))?;
+                overrides
+                    .text
+                    .resolve(&tokens, &|field| path(&format!("text.{field}")))?;
+            }
+        }
+        for (name, text) in &mut self.text_styles {
+            text.resolve(&tokens, &|field| format!("text_styles.{name}.{field}"))?;
+        }
+        Ok(())
     }
 
     /// The theme: the built-in tokens under this file's, the kind styles
@@ -102,19 +152,76 @@ impl ThemeFile {
                 file.apply(kind);
             }
         }
-        Theme { tokens, kinds }
+        let mut names = ThemeNames::for_tokens(&tokens);
+        for (name, file) in self.text_styles {
+            file.apply(&mut names.text_styles.entry(name).or_default().text);
+        }
+        names.sizes = self.sizes;
+        names.sounds = ThemeSounds {
+            focus: self.sounds.focus,
+            activate: self.sounds.activate,
+            back: self.sounds.back,
+        };
+        Theme {
+            tokens,
+            kinds,
+            names: Box::new(names),
+        }
     }
 }
 
-/// An sRGB colour parsed from `#rrggbb` or `#rrggbbaa`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Color([u8; 4]);
+/// A colour field's value: an sRGB colour parsed from `#rrggbb` or
+/// `#rrggbbaa`, or a colour token's name, which
+/// [`ThemeFile::from_json`] turns into the token's colour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Color {
+    Rgba([u8; 4]),
+    Token(String),
+}
+
+impl Color {
+    /// The colour; a name left unresolved, which no parsed file holds, reads
+    /// transparent.
+    fn rgba(&self) -> [u8; 4] {
+        match self {
+            Self::Rgba(rgba) => *rgba,
+            Self::Token(_) => [0; 4],
+        }
+    }
+}
 
 impl<'de> Deserialize<'de> for Color {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        parse_color(&text).map(Color).map_err(de::Error::custom)
+        if text.starts_with('#') {
+            parse_color(&text)
+                .map(Color::Rgba)
+                .map_err(de::Error::custom)
+        } else {
+            Ok(Color::Token(text))
+        }
     }
+}
+
+/// Turns `color`, when it names a token, into that token's colour in
+/// `tokens`; an unknown name is an error naming `path`.
+fn resolve(
+    color: &mut Option<Color>,
+    tokens: &ColorTokens,
+    path: &dyn Fn() -> String,
+) -> Result<(), String> {
+    let Some(Color::Token(name)) = color else {
+        return Ok(());
+    };
+    let Some(rgba) = tokens.named(name) else {
+        return Err(format!(
+            "{}: colour '{name}' is not #rrggbb, #rrggbbaa or a colour token's name ({})",
+            path(),
+            ColorTokens::NAMES.join(", ")
+        ));
+    };
+    *color = Some(Color::Rgba(rgba));
+    Ok(())
 }
 
 /// A `line_height`: finite and above zero, since the text engine cannot lay a
@@ -155,23 +262,7 @@ struct TokensFile {
 
 impl TokensFile {
     fn apply(self, tokens: &mut Tokens) {
-        let colors = &mut tokens.colors;
-        for (value, slot) in [
-            (self.colors.background, &mut colors.background),
-            (self.colors.surface, &mut colors.surface),
-            (self.colors.border, &mut colors.border),
-            (self.colors.text, &mut colors.text),
-            (self.colors.text_muted, &mut colors.text_muted),
-            (self.colors.accent, &mut colors.accent),
-            (self.colors.accent_text, &mut colors.accent_text),
-            (self.colors.focus, &mut colors.focus),
-            (self.colors.disabled_text, &mut colors.disabled_text),
-            (self.colors.danger, &mut colors.danger),
-        ] {
-            if let Some(Color(color)) = value {
-                *slot = color;
-            }
-        }
+        tokens.colors = self.colors.tokens();
         let spacing = &mut tokens.spacing;
         for (value, slot) in [
             (self.spacing.xs, &mut spacing.xs),
@@ -231,6 +322,70 @@ struct ColorsFile {
     focus: Option<Color>,
     disabled_text: Option<Color>,
     danger: Option<Color>,
+    scrim: Option<Color>,
+    raised: Option<Color>,
+}
+
+impl ColorsFile {
+    /// Each field by its token's name.
+    fn fields(&mut self) -> [(&'static str, &mut Option<Color>); 12] {
+        [
+            ("background", &mut self.background),
+            ("surface", &mut self.surface),
+            ("border", &mut self.border),
+            ("text", &mut self.text),
+            ("text_muted", &mut self.text_muted),
+            ("accent", &mut self.accent),
+            ("accent_text", &mut self.accent_text),
+            ("focus", &mut self.focus),
+            ("disabled_text", &mut self.disabled_text),
+            ("danger", &mut self.danger),
+            ("scrim", &mut self.scrim),
+            ("raised", &mut self.raised),
+        ]
+    }
+
+    /// The colour tokens: the built-in ones under this file's colours, an
+    /// unset scrim the background's and an unset raised fill the surface.
+    /// Names not yet resolved are left out.
+    fn tokens(&self) -> ColorTokens {
+        let mut tokens = ColorTokens::default();
+        let mut file = self.clone();
+        let (scrim, raised) = (self.scrim.is_some(), self.raised.is_some());
+        for (name, value) in file.fields() {
+            if let Some(Color::Rgba(rgba)) = value
+                && let Some(slot) = token_slot(&mut tokens, name)
+            {
+                *slot = *rgba;
+            }
+        }
+        if !scrim {
+            tokens.scrim = ColorTokens::scrim_of(tokens.background);
+        }
+        if !raised {
+            tokens.raised = tokens.surface;
+        }
+        tokens
+    }
+}
+
+/// The token named `name` in `tokens`.
+fn token_slot<'a>(tokens: &'a mut ColorTokens, name: &str) -> Option<&'a mut [u8; 4]> {
+    Some(match name {
+        "background" => &mut tokens.background,
+        "surface" => &mut tokens.surface,
+        "border" => &mut tokens.border,
+        "text" => &mut tokens.text,
+        "text_muted" => &mut tokens.text_muted,
+        "accent" => &mut tokens.accent,
+        "accent_text" => &mut tokens.accent_text,
+        "focus" => &mut tokens.focus,
+        "disabled_text" => &mut tokens.disabled_text,
+        "danger" => &mut tokens.danger,
+        "scrim" => &mut tokens.scrim,
+        "raised" => &mut tokens.raised,
+        _ => return None,
+    })
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -280,6 +435,29 @@ struct KindsFile {
     slider: Option<KindFile>,
 }
 
+impl KindsFile {
+    /// Each kind by its name.
+    fn fields(&mut self) -> [(&'static str, &mut Option<KindFile>); 6] {
+        [
+            ("panel", &mut self.panel),
+            ("label", &mut self.label),
+            ("button", &mut self.button),
+            ("image", &mut self.image),
+            ("toggle", &mut self.toggle),
+            ("slider", &mut self.slider),
+        ]
+    }
+}
+
+/// The `sounds` object: the menu sounds' manifest IDs.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct SoundsFile {
+    focus: Option<String>,
+    activate: Option<String>,
+    back: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct KindFile {
@@ -291,6 +469,17 @@ struct KindFile {
 }
 
 impl KindFile {
+    /// Each state's overrides by its name.
+    fn fields(&mut self) -> [(&'static str, &mut OverridesFile); 5] {
+        [
+            ("normal", &mut self.normal),
+            ("focused", &mut self.focused),
+            ("disabled", &mut self.disabled),
+            ("hovered", &mut self.hovered),
+            ("pressed", &mut self.pressed),
+        ]
+    }
+
     fn apply(self, kind: &mut KindStyle) {
         self.normal.apply_visual(&mut kind.normal);
         self.focused.apply_overrides(&mut kind.focused);
@@ -312,11 +501,11 @@ struct OverridesFile {
 
 impl OverridesFile {
     fn apply_visual(self, visual: &mut VisualStyle) {
-        if let Some(Color(background)) = self.background {
-            visual.background = background;
+        if let Some(background) = &self.background {
+            visual.background = background.rgba();
         }
-        if let Some(Color(border)) = self.border {
-            visual.border = border;
+        if let Some(border) = &self.border {
+            visual.border = border.rgba();
         }
         if let Some(border_width) = self.border_width {
             visual.border_width = border_width;
@@ -328,11 +517,11 @@ impl OverridesFile {
     }
 
     fn apply_overrides(self, overrides: &mut StyleOverrides) {
-        if let Some(Color(background)) = self.background {
-            overrides.background = Some(background);
+        if let Some(background) = &self.background {
+            overrides.background = Some(background.rgba());
         }
-        if let Some(Color(border)) = self.border {
-            overrides.border = Some(border);
+        if let Some(border) = &self.border {
+            overrides.border = Some(border.rgba());
         }
         if let Some(border_width) = self.border_width {
             overrides.border_width = Some(border_width);
@@ -361,6 +550,16 @@ struct TextFile {
 }
 
 impl TextFile {
+    /// Turns the colour fields' token names into colours, an unknown one an
+    /// error at `path` of the field.
+    fn resolve(
+        &mut self,
+        tokens: &ColorTokens,
+        path: &dyn Fn(&str) -> String,
+    ) -> Result<(), String> {
+        resolve(&mut self.color, tokens, &|| path("color"))
+    }
+
     fn apply(self, text: &mut TextOverrides) {
         if let Some(family) = self.family {
             text.family = Some(family);
@@ -377,8 +576,8 @@ impl TextFile {
         if let Some(italic) = self.italic {
             text.italic = Some(italic);
         }
-        if let Some(Color(color)) = self.color {
-            text.color = Some(color);
+        if let Some(color) = &self.color {
+            text.color = Some(color.rgba());
         }
         if let Some(align) = self.align {
             text.align = Some(align.into());
