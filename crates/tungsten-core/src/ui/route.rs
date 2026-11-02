@@ -285,6 +285,14 @@ impl UiRouter {
         &mut self.settings
     }
 
+    /// The widget a primary press captured, from the press to its release
+    /// or cancel: a slider's drag keeps it while the pointer leaves the
+    /// slider, which the pressed look does not (redo 7.20).
+    #[must_use]
+    pub fn captured(&self) -> Option<WidgetId> {
+        self.captured
+    }
+
     /// The device of the last key, button, stick or wheel input routed;
     /// `Keyboard` before any.
     #[must_use]

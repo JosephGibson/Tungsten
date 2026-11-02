@@ -24,20 +24,24 @@ use super::style::{Align, Edges, Justify, LayoutStyle, Sizing};
 use super::theme::TextOverrides;
 use super::tree::UiTree;
 
-/// The theme's size `name`, else the template's number for it.
+/// The sizes [`size`] gives where the theme names none: the template's
+/// numbers, which a screen file may name too.
+pub const SIZES: [(&str, f32); 7] = [
+    ("button_padding_x", 14.0),
+    ("button_padding_y", 5.0),
+    ("control_width", 170.0),
+    ("readout_width", 64.0),
+    ("slider_line", 18.0),
+    ("menu_width", 260.0),
+    ("tab_bar", 3.0),
+];
+
+/// The theme's size `name`, else its number in [`SIZES`], else 0.
 #[must_use]
 pub fn size(tree: &UiTree, name: &str) -> f32 {
-    let default = match name {
-        "button_padding_x" => 14.0,
-        "button_padding_y" => 5.0,
-        "control_width" => 170.0,
-        "readout_width" => 64.0,
-        "slider_line" => 18.0,
-        "menu_width" => 260.0,
-        "tab_bar" => 3.0,
-        _ => 0.0,
-    };
-    tree.theme().size(name, default)
+    let default = SIZES.iter().find(|(each, _)| *each == name);
+    tree.theme()
+        .size(name, default.map_or(0.0, |(_, value)| *value))
 }
 
 /// A modal screen: a root on the popup layer filling the viewport with the

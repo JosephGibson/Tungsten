@@ -318,3 +318,16 @@ fn builders_follow_the_theme_sizes() {
         Some(Sizing::Px(5.0))
     );
 }
+
+#[test]
+fn a_size_the_theme_lacks_is_its_default_in_the_table() {
+    let mut tree = UiTree::new();
+    for (name, value) in SIZES {
+        assert_eq!(size(&tree, name), value, "{name}");
+    }
+    assert_eq!(size(&tree, "unknown"), 0.0);
+    let mut theme = Theme::default();
+    theme.names.sizes.insert("menu_width".into(), 300.0);
+    tree.set_theme(theme);
+    assert_eq!(size(&tree, "menu_width"), 300.0, "the theme's own first");
+}

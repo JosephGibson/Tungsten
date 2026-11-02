@@ -12489,6 +12489,7 @@ pub fn tungsten_core::ui::route::UiRouter::cancel_capture(&mut self)
 pub fn tungsten_core::ui::route::UiRouter::capture_next_input(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::route::UiRouter::capture_next_input_for(&mut self, tungsten_core::ui::id::WidgetId, f32)
 pub fn tungsten_core::ui::route::UiRouter::capture_remaining(&self) -> core::option::Option<f32>
+pub fn tungsten_core::ui::route::UiRouter::captured(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::capturing(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::cursor(&self) -> tungsten_core::ui::node::CursorIcon
 pub fn tungsten_core::ui::route::UiRouter::last_device(&self) -> tungsten_core::ui::route::InputDevice
@@ -12518,6 +12519,140 @@ pub const tungsten_core::ui::route::UI_PREV: &str
 pub const tungsten_core::ui::route::UI_RIGHT: &str
 pub const tungsten_core::ui::route::UI_UP: &str
 pub fn tungsten_core::ui::route::ui_route_system(&mut tungsten_core::World)
+pub mod tungsten_core::ui::screen_build
+pub struct tungsten_core::ui::screen_build::BuiltScreen
+pub tungsten_core::ui::screen_build::BuiltScreen::card: tungsten_core::ui::id::WidgetId
+pub tungsten_core::ui::screen_build::BuiltScreen::root: tungsten_core::ui::id::WidgetId
+impl core::clone::Clone for tungsten_core::ui::screen_build::BuiltScreen
+pub fn tungsten_core::ui::screen_build::BuiltScreen::clone(&self) -> tungsten_core::ui::screen_build::BuiltScreen
+impl core::cmp::Eq for tungsten_core::ui::screen_build::BuiltScreen
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::BuiltScreen
+pub fn tungsten_core::ui::screen_build::BuiltScreen::eq(&self, &tungsten_core::ui::screen_build::BuiltScreen) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_build::BuiltScreen
+pub fn tungsten_core::ui::screen_build::BuiltScreen::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::Freeze for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::Send for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::Sync for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::Unpin for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::BuiltScreen
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::BuiltScreen
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::BuiltScreen
+pub struct tungsten_core::ui::screen_build::KeyedAction
+pub tungsten_core::ui::screen_build::KeyedAction::action: tungsten_core::ui::screen_file::ScreenAction
+pub tungsten_core::ui::screen_build::KeyedAction::key: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::screen_build::KeyedAction::on_commit: bool
+pub tungsten_core::ui::screen_build::KeyedAction::row: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::screen_build::KeyedAction::value_bound: bool
+impl core::clone::Clone for tungsten_core::ui::screen_build::KeyedAction
+pub fn tungsten_core::ui::screen_build::KeyedAction::clone(&self) -> tungsten_core::ui::screen_build::KeyedAction
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::KeyedAction
+pub fn tungsten_core::ui::screen_build::KeyedAction::eq(&self, &tungsten_core::ui::screen_build::KeyedAction) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_build::KeyedAction
+pub fn tungsten_core::ui::screen_build::KeyedAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::Freeze for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::Send for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::Sync for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::Unpin for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::KeyedAction
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::KeyedAction
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::KeyedAction
+pub struct tungsten_core::ui::screen_build::UiAction
+pub tungsten_core::ui::screen_build::UiAction::key: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::screen_build::UiAction::row: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::screen_build::UiAction::value: core::option::Option<tungsten_core::ui::event::UiValue>
+impl core::clone::Clone for tungsten_core::ui::screen_build::UiAction
+pub fn tungsten_core::ui::screen_build::UiAction::clone(&self) -> tungsten_core::ui::screen_build::UiAction
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::UiAction
+pub fn tungsten_core::ui::screen_build::UiAction::eq(&self, &tungsten_core::ui::screen_build::UiAction) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_build::UiAction
+pub fn tungsten_core::ui::screen_build::UiAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::UiAction
+impl core::marker::Freeze for tungsten_core::ui::screen_build::UiAction
+impl core::marker::Send for tungsten_core::ui::screen_build::UiAction
+impl core::marker::Sync for tungsten_core::ui::screen_build::UiAction
+impl core::marker::Unpin for tungsten_core::ui::screen_build::UiAction
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::UiAction
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::UiAction
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::UiAction
+pub struct tungsten_core::ui::screen_build::UiBindings
+impl tungsten_core::ui::screen_build::UiBindings
+pub fn tungsten_core::ui::screen_build::UiBindings::action(&mut self, &'static str, tungsten_core::ui::screen_build::ActionFn) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::action_named(&self, &str) -> core::option::Option<tungsten_core::ui::screen_build::ActionFn>
+pub fn tungsten_core::ui::screen_build::UiBindings::enabled(&mut self, &'static str, tungsten_core::ui::screen_build::FlagBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::fill(&mut self, &'static str, tungsten_core::ui::screen_build::FillBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::mount(&mut self, &'static str, tungsten_core::ui::screen_build::MountFn) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::names(&self) -> tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_build::UiBindings::of(&mut tungsten_core::World) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::rows(&mut self, &'static str, tungsten_core::ui::screen_build::RowProvider) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::text(&mut self, &'static str, tungsten_core::ui::screen_build::TextBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::value(&mut self, &'static str, tungsten_core::ui::screen_build::ValueBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::visible(&mut self, &'static str, tungsten_core::ui::screen_build::FlagBinding) -> &mut Self
+impl core::clone::Clone for tungsten_core::ui::screen_build::UiBindings
+pub fn tungsten_core::ui::screen_build::UiBindings::clone(&self) -> tungsten_core::ui::screen_build::UiBindings
+impl core::default::Default for tungsten_core::ui::screen_build::UiBindings
+pub fn tungsten_core::ui::screen_build::UiBindings::default() -> tungsten_core::ui::screen_build::UiBindings
+impl core::fmt::Debug for tungsten_core::ui::screen_build::UiBindings
+pub fn tungsten_core::ui::screen_build::UiBindings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::screen_build::UiBindings
+impl core::marker::Send for tungsten_core::ui::screen_build::UiBindings
+impl core::marker::Sync for tungsten_core::ui::screen_build::UiBindings
+impl core::marker::Unpin for tungsten_core::ui::screen_build::UiBindings
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::UiBindings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::UiBindings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::UiBindings
+pub struct tungsten_core::ui::screen_build::UiRow
+pub tungsten_core::ui::screen_build::UiRow::fields: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub tungsten_core::ui::screen_build::UiRow::key: alloc::string::String
+impl tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::ui::screen_build::UiRow::with(self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::clone(&self) -> tungsten_core::ui::screen_build::UiRow
+impl core::cmp::Eq for tungsten_core::ui::screen_build::UiRow
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::eq(&self, &tungsten_core::ui::screen_build::UiRow) -> bool
+impl core::default::Default for tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::default() -> tungsten_core::ui::screen_build::UiRow
+impl core::fmt::Debug for tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::UiRow
+impl core::marker::Freeze for tungsten_core::ui::screen_build::UiRow
+impl core::marker::Send for tungsten_core::ui::screen_build::UiRow
+impl core::marker::Sync for tungsten_core::ui::screen_build::UiRow
+impl core::marker::Unpin for tungsten_core::ui::screen_build::UiRow
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::UiRow
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::UiRow
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::UiRow
+pub struct tungsten_core::ui::screen_build::UiScreens
+impl tungsten_core::ui::screen_build::UiScreens
+pub fn tungsten_core::ui::screen_build::UiScreens::roots(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::ui::id::WidgetId, &str)>
+impl core::default::Default for tungsten_core::ui::screen_build::UiScreens
+pub fn tungsten_core::ui::screen_build::UiScreens::default() -> tungsten_core::ui::screen_build::UiScreens
+impl core::fmt::Debug for tungsten_core::ui::screen_build::UiScreens
+pub fn tungsten_core::ui::screen_build::UiScreens::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::screen_build::UiScreens
+impl core::marker::Send for tungsten_core::ui::screen_build::UiScreens
+impl core::marker::Sync for tungsten_core::ui::screen_build::UiScreens
+impl core::marker::Unpin for tungsten_core::ui::screen_build::UiScreens
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::UiScreens
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::UiScreens
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::UiScreens
+pub fn tungsten_core::ui::screen_build::action(&tungsten_core::World, tungsten_core::ui::id::WidgetId, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::screen_build::KeyedAction>
+pub fn tungsten_core::ui::screen_build::actions(&tungsten_core::World, tungsten_core::ui::id::WidgetId) -> alloc::vec::Vec<(tungsten_core::ui::id::WidgetId, tungsten_core::ui::screen_build::KeyedAction)>
+pub fn tungsten_core::ui::screen_build::build(&mut tungsten_core::World, &str) -> core::option::Option<tungsten_core::ui::screen_build::BuiltScreen>
+pub fn tungsten_core::ui::screen_build::node(&tungsten_core::World, tungsten_core::ui::id::WidgetId, &str) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten_core::ui::screen_build::refresh(&mut tungsten_core::World, tungsten_core::ui::id::WidgetId)
+pub fn tungsten_core::ui::screen_build::revision(&tungsten_core::World, tungsten_core::ui::id::WidgetId) -> core::option::Option<u32>
+pub type tungsten_core::ui::screen_build::ActionFn = fn(&mut tungsten_core::World, tungsten_core::ui::screen_build::UiAction)
+pub type tungsten_core::ui::screen_build::FillBinding = fn(&tungsten_core::World) -> f32
+pub type tungsten_core::ui::screen_build::FlagBinding = fn(&tungsten_core::World) -> bool
+pub type tungsten_core::ui::screen_build::MountFn = fn(&mut tungsten_core::World, tungsten_core::ui::id::WidgetId)
+pub type tungsten_core::ui::screen_build::RowProvider = fn(&tungsten_core::World) -> alloc::vec::Vec<tungsten_core::ui::screen_build::UiRow>
+pub type tungsten_core::ui::screen_build::TextBinding = fn(&tungsten_core::World) -> alloc::string::String
+pub type tungsten_core::ui::screen_build::ValueBinding = fn(&tungsten_core::World) -> tungsten_core::ui::event::UiValue
 pub mod tungsten_core::ui::screen_file
 pub enum tungsten_core::ui::screen_file::ScreenAction
 pub tungsten_core::ui::screen_file::ScreenAction::Named(alloc::string::String)
@@ -13678,6 +13813,7 @@ impl core::marker::Unpin for tungsten_core::ui::widgets::Meter
 impl core::marker::UnsafeUnpin for tungsten_core::ui::widgets::Meter
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::widgets::Meter
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::widgets::Meter
+pub const tungsten_core::ui::widgets::SIZES: [(&str, f32); 7]
 pub fn tungsten_core::ui::widgets::button(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::widgets::caption_row(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::widgets::choice_row(&mut tungsten_core::ui::tree::UiTree, tungsten_core::ui::id::WidgetId, &str, &str) -> tungsten_core::ui::id::WidgetId
@@ -14348,6 +14484,25 @@ impl core::marker::Unpin for tungsten_core::ui::theme::WidgetState
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::WidgetState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::WidgetState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::WidgetState
+pub struct tungsten_core::ui::BuiltScreen
+pub tungsten_core::ui::BuiltScreen::card: tungsten_core::ui::id::WidgetId
+pub tungsten_core::ui::BuiltScreen::root: tungsten_core::ui::id::WidgetId
+impl core::clone::Clone for tungsten_core::ui::screen_build::BuiltScreen
+pub fn tungsten_core::ui::screen_build::BuiltScreen::clone(&self) -> tungsten_core::ui::screen_build::BuiltScreen
+impl core::cmp::Eq for tungsten_core::ui::screen_build::BuiltScreen
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::BuiltScreen
+pub fn tungsten_core::ui::screen_build::BuiltScreen::eq(&self, &tungsten_core::ui::screen_build::BuiltScreen) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_build::BuiltScreen
+pub fn tungsten_core::ui::screen_build::BuiltScreen::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::Freeze for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::Send for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::Sync for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::Unpin for tungsten_core::ui::screen_build::BuiltScreen
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::BuiltScreen
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::BuiltScreen
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::BuiltScreen
 pub struct tungsten_core::ui::ClipRect
 pub tungsten_core::ui::ClipRect::height: i32
 pub tungsten_core::ui::ClipRect::width: i32
@@ -14484,6 +14639,26 @@ impl core::marker::Unpin for tungsten_core::ui::theme::FontTokens
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::FontTokens
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::FontTokens
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::FontTokens
+pub struct tungsten_core::ui::KeyedAction
+pub tungsten_core::ui::KeyedAction::action: tungsten_core::ui::screen_file::ScreenAction
+pub tungsten_core::ui::KeyedAction::key: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::KeyedAction::on_commit: bool
+pub tungsten_core::ui::KeyedAction::row: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::KeyedAction::value_bound: bool
+impl core::clone::Clone for tungsten_core::ui::screen_build::KeyedAction
+pub fn tungsten_core::ui::screen_build::KeyedAction::clone(&self) -> tungsten_core::ui::screen_build::KeyedAction
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::KeyedAction
+pub fn tungsten_core::ui::screen_build::KeyedAction::eq(&self, &tungsten_core::ui::screen_build::KeyedAction) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_build::KeyedAction
+pub fn tungsten_core::ui::screen_build::KeyedAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::Freeze for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::Send for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::Sync for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::Unpin for tungsten_core::ui::screen_build::KeyedAction
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::KeyedAction
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::KeyedAction
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::KeyedAction
 pub struct tungsten_core::ui::KindStyle
 pub tungsten_core::ui::KindStyle::disabled: tungsten_core::ui::theme::StyleOverrides
 pub tungsten_core::ui::KindStyle::focused: tungsten_core::ui::theme::StyleOverrides
@@ -15101,6 +15276,50 @@ impl core::marker::Unpin for tungsten_core::ui::theme::Tokens
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::Tokens
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::Tokens
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::Tokens
+pub struct tungsten_core::ui::UiAction
+pub tungsten_core::ui::UiAction::key: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::UiAction::row: core::option::Option<alloc::string::String>
+pub tungsten_core::ui::UiAction::value: core::option::Option<tungsten_core::ui::event::UiValue>
+impl core::clone::Clone for tungsten_core::ui::screen_build::UiAction
+pub fn tungsten_core::ui::screen_build::UiAction::clone(&self) -> tungsten_core::ui::screen_build::UiAction
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::UiAction
+pub fn tungsten_core::ui::screen_build::UiAction::eq(&self, &tungsten_core::ui::screen_build::UiAction) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_build::UiAction
+pub fn tungsten_core::ui::screen_build::UiAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::UiAction
+impl core::marker::Freeze for tungsten_core::ui::screen_build::UiAction
+impl core::marker::Send for tungsten_core::ui::screen_build::UiAction
+impl core::marker::Sync for tungsten_core::ui::screen_build::UiAction
+impl core::marker::Unpin for tungsten_core::ui::screen_build::UiAction
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::UiAction
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::UiAction
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::UiAction
+pub struct tungsten_core::ui::UiBindings
+impl tungsten_core::ui::screen_build::UiBindings
+pub fn tungsten_core::ui::screen_build::UiBindings::action(&mut self, &'static str, tungsten_core::ui::screen_build::ActionFn) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::action_named(&self, &str) -> core::option::Option<tungsten_core::ui::screen_build::ActionFn>
+pub fn tungsten_core::ui::screen_build::UiBindings::enabled(&mut self, &'static str, tungsten_core::ui::screen_build::FlagBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::fill(&mut self, &'static str, tungsten_core::ui::screen_build::FillBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::mount(&mut self, &'static str, tungsten_core::ui::screen_build::MountFn) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::names(&self) -> tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_build::UiBindings::of(&mut tungsten_core::World) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::rows(&mut self, &'static str, tungsten_core::ui::screen_build::RowProvider) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::text(&mut self, &'static str, tungsten_core::ui::screen_build::TextBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::value(&mut self, &'static str, tungsten_core::ui::screen_build::ValueBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::visible(&mut self, &'static str, tungsten_core::ui::screen_build::FlagBinding) -> &mut Self
+impl core::clone::Clone for tungsten_core::ui::screen_build::UiBindings
+pub fn tungsten_core::ui::screen_build::UiBindings::clone(&self) -> tungsten_core::ui::screen_build::UiBindings
+impl core::default::Default for tungsten_core::ui::screen_build::UiBindings
+pub fn tungsten_core::ui::screen_build::UiBindings::default() -> tungsten_core::ui::screen_build::UiBindings
+impl core::fmt::Debug for tungsten_core::ui::screen_build::UiBindings
+pub fn tungsten_core::ui::screen_build::UiBindings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::screen_build::UiBindings
+impl core::marker::Send for tungsten_core::ui::screen_build::UiBindings
+impl core::marker::Sync for tungsten_core::ui::screen_build::UiBindings
+impl core::marker::Unpin for tungsten_core::ui::screen_build::UiBindings
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::UiBindings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::UiBindings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::UiBindings
 pub struct tungsten_core::ui::UiChain
 impl tungsten_core::ui::anim::UiChain
 pub fn tungsten_core::ui::anim::UiChain::links(&self) -> &[tungsten_core::ui::anim::UiTrack]
@@ -15198,6 +15417,7 @@ pub fn tungsten_core::ui::route::UiRouter::cancel_capture(&mut self)
 pub fn tungsten_core::ui::route::UiRouter::capture_next_input(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::route::UiRouter::capture_next_input_for(&mut self, tungsten_core::ui::id::WidgetId, f32)
 pub fn tungsten_core::ui::route::UiRouter::capture_remaining(&self) -> core::option::Option<f32>
+pub fn tungsten_core::ui::route::UiRouter::captured(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::capturing(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::cursor(&self) -> tungsten_core::ui::node::CursorIcon
 pub fn tungsten_core::ui::route::UiRouter::last_device(&self) -> tungsten_core::ui::route::InputDevice
@@ -15217,6 +15437,29 @@ impl core::marker::Unpin for tungsten_core::ui::route::UiRouter
 impl core::marker::UnsafeUnpin for tungsten_core::ui::route::UiRouter
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::route::UiRouter
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::route::UiRouter
+pub struct tungsten_core::ui::UiRow
+pub tungsten_core::ui::UiRow::fields: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub tungsten_core::ui::UiRow::key: alloc::string::String
+impl tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::ui::screen_build::UiRow::with(self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::clone(&self) -> tungsten_core::ui::screen_build::UiRow
+impl core::cmp::Eq for tungsten_core::ui::screen_build::UiRow
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::eq(&self, &tungsten_core::ui::screen_build::UiRow) -> bool
+impl core::default::Default for tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::default() -> tungsten_core::ui::screen_build::UiRow
+impl core::fmt::Debug for tungsten_core::ui::screen_build::UiRow
+pub fn tungsten_core::ui::screen_build::UiRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::UiRow
+impl core::marker::Freeze for tungsten_core::ui::screen_build::UiRow
+impl core::marker::Send for tungsten_core::ui::screen_build::UiRow
+impl core::marker::Sync for tungsten_core::ui::screen_build::UiRow
+impl core::marker::Unpin for tungsten_core::ui::screen_build::UiRow
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::UiRow
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::UiRow
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::UiRow
 pub struct tungsten_core::ui::UiScreenRegistry
 impl tungsten_core::ui::screen_file::UiScreenRegistry
 pub fn tungsten_core::ui::screen_file::UiScreenRegistry::contains(&self, &str) -> bool
@@ -15238,6 +15481,20 @@ impl core::marker::Unpin for tungsten_core::ui::screen_file::UiScreenRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::UiScreenRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::UiScreenRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::UiScreenRegistry
+pub struct tungsten_core::ui::UiScreens
+impl tungsten_core::ui::screen_build::UiScreens
+pub fn tungsten_core::ui::screen_build::UiScreens::roots(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::ui::id::WidgetId, &str)>
+impl core::default::Default for tungsten_core::ui::screen_build::UiScreens
+pub fn tungsten_core::ui::screen_build::UiScreens::default() -> tungsten_core::ui::screen_build::UiScreens
+impl core::fmt::Debug for tungsten_core::ui::screen_build::UiScreens
+pub fn tungsten_core::ui::screen_build::UiScreens::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::screen_build::UiScreens
+impl core::marker::Send for tungsten_core::ui::screen_build::UiScreens
+impl core::marker::Sync for tungsten_core::ui::screen_build::UiScreens
+impl core::marker::Unpin for tungsten_core::ui::screen_build::UiScreens
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::UiScreens
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::UiScreens
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::UiScreens
 #[non_exhaustive] pub struct tungsten_core::ui::UiShadow
 pub tungsten_core::ui::UiShadow::blur: f32
 pub tungsten_core::ui::UiShadow::color: [u8; 4]
@@ -21622,6 +21879,7 @@ pub fn tungsten_core::ui::route::UiRouter::cancel_capture(&mut self)
 pub fn tungsten_core::ui::route::UiRouter::capture_next_input(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::route::UiRouter::capture_next_input_for(&mut self, tungsten_core::ui::id::WidgetId, f32)
 pub fn tungsten_core::ui::route::UiRouter::capture_remaining(&self) -> core::option::Option<f32>
+pub fn tungsten_core::ui::route::UiRouter::captured(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::capturing(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::cursor(&self) -> tungsten_core::ui::node::CursorIcon
 pub fn tungsten_core::ui::route::UiRouter::last_device(&self) -> tungsten_core::ui::route::InputDevice

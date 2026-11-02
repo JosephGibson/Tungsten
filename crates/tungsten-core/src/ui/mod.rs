@@ -24,8 +24,8 @@
 //! keys, bare groups, named text styles, sizes and sounds in the theme,
 //! text outlines and shadows, shrinking labels and [`widgets`], the
 //! template shell's builders. Screens as data (redo 7.20) add screen files,
-//! the manifest's `ui_screens`. Nothing here draws: the render crate
-//! consumes the paint list.
+//! the manifest's `ui_screens`, built with the game's bindings. Nothing here
+//! draws: the render crate consumes the paint list.
 
 pub mod anim;
 pub mod control;
@@ -40,6 +40,7 @@ pub mod node;
 pub mod paint;
 pub mod prompt;
 pub mod route;
+pub mod screen_build;
 pub mod screen_file;
 pub mod scroll;
 pub mod style;
@@ -64,6 +65,7 @@ pub use route::{
     BACK_KEY, InputDevice, UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT,
     UI_UP, UiRouteSettings, UiRouter, ui_route_system,
 };
+pub use screen_build::{BuiltScreen, KeyedAction, UiAction, UiBindings, UiRow, UiScreens};
 pub use screen_file::{
     SCREEN_VERSION, ScreenAction, ScreenError, ScreenFile, ScreenFileError, ScreenNames,
     ScreenSetting, UiScreenRegistry,
