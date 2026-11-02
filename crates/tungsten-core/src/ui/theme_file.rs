@@ -49,7 +49,8 @@ pub enum ThemeFileError {
 /// variants, each merged over the kind's built-in one; `text_styles` holds
 /// text objects by name, each merged over the built-in style of its name,
 /// which alone take an `outline` (`{ "color", "width" }`) and a `shadow`
-/// (`{ "color", "offset": [x, y] }`) in the text's units;
+/// (`{ "color", "offset": [x, y] }`) in the text's units and a `shrink`,
+/// the least share of its size a label shrinks to on one line, in (0, 1];
 /// `sizes` holds sizes by name in UI units, finite and at least 0; `sounds`
 /// holds the `focus`, `activate` and `back` sounds' manifest IDs. A colour
 /// field takes `#rrggbb`, `#rrggbbaa` or a colour token's name
@@ -117,7 +118,7 @@ impl ThemeFile {
                 resolve(&mut overrides.background, &tokens, &|| path("background"))?;
                 resolve(&mut overrides.border, &tokens, &|| path("border"))?;
                 let text = &mut overrides.text;
-                if let Some(field) = text.paint_only() {
+                if let Some(field) = text.named_only() {
                     return Err(format!(
                         "{}: an {field} belongs to a named style, in text_styles",
                         path(&format!("text.{field}"))
@@ -556,6 +557,18 @@ struct TextFile {
     letter_spacing: Option<f32>,
     outline: Option<OutlineFile>,
     shadow: Option<ShadowFile>,
+    #[serde(deserialize_with = "shrink")]
+    shrink: Option<f32>,
+}
+
+/// A `shrink`: in (0, 1]. `null` is no value.
+fn shrink<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f32>, D::Error> {
+    match Option::<f32>::deserialize(deserializer)? {
+        Some(value) if !(value > 0.0 && value <= 1.0) => Err(de::Error::custom(format!(
+            "shrink {value} is not in (0, 1]"
+        ))),
+        value => Ok(value),
+    }
 }
 
 /// A text object's `outline`: its colour and width, both required.
@@ -588,19 +601,25 @@ fn effect_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::E
 }
 
 impl TextFile {
-    /// The first paint-only field set, which only a named style takes.
-    fn paint_only(&self) -> Option<&'static str> {
+    /// The first field set that only a named style takes.
+    fn named_only(&self) -> Option<&'static str> {
         if self.outline.is_some() {
             Some("outline")
         } else if self.shadow.is_some() {
             Some("shadow")
+        } else if self.shrink.is_some() {
+            Some("shrink")
         } else {
             None
         }
     }
 
-    /// [`Self::apply`] into a named style, the paint-only fields included.
+    /// [`Self::apply`] into a named style, the fields only it takes
+    /// included.
     fn apply_named(self, style: &mut NamedStyle) {
+        if let Some(shrink) = self.shrink {
+            style.shrink = Some(shrink);
+        }
         if let Some(outline) = &self.outline {
             style.outline = Some(TextOutline::new(outline.color.rgba(), outline.width));
         }

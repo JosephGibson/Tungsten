@@ -487,3 +487,41 @@ fn outline_and_shadow_read_from_a_theme_file() {
         assert!(err.contains(says), "{bad}: {err}");
     }
 }
+
+#[test]
+fn shrink_reads_from_a_theme_file() {
+    let theme = theme_of(
+        r#"{ "text_styles": { "title": { "size": 56, "line_height": 64, "shrink": 0.5 },
+                              "died": { "shrink": 1 } } }"#,
+    );
+    let title = theme.text_style("title").expect("the file's");
+    assert_eq!(title.shrink, Some(0.5));
+    assert_eq!(title.text.size, Some(56.0));
+    assert_eq!(
+        theme.text_style("died").and_then(|style| style.shrink),
+        Some(1.0)
+    );
+    assert_eq!(
+        theme.text_style("heading").and_then(|style| style.shrink),
+        None,
+        "none built in"
+    );
+    for (bad, says) in [
+        (r#"{ "text_styles": { "x": { "shrink": 0 } } }"#, "shrink 0"),
+        (
+            r#"{ "text_styles": { "x": { "shrink": 1.5 } } }"#,
+            "shrink 1.5",
+        ),
+        (
+            r#"{ "text_styles": { "x": { "shrink": -0.5 } } }"#,
+            "shrink -0.5",
+        ),
+        (
+            r#"{ "kinds": { "label": { "normal": { "text": { "shrink": 0.5 } } } } }"#,
+            "kinds.label.normal.text.shrink",
+        ),
+    ] {
+        let err = ThemeFile::from_json(bad).unwrap_err().to_string();
+        assert!(err.contains(says), "{bad}: {err}");
+    }
+}

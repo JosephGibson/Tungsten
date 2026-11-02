@@ -127,6 +127,10 @@ pub struct NamedStyle {
     pub outline: Option<TextOutline>,
     /// The shadow it draws under the text (P7-14), in the text's units.
     pub shadow: Option<TextShadow>,
+    /// A label naming it, or the button it captions, keeps to one line and
+    /// shrinks to fit its box, down to this share of its size, in (0, 1]:
+    /// the layout reads it from the label's own style or its button's.
+    pub shrink: Option<f32>,
 }
 
 impl NamedStyle {

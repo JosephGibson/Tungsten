@@ -902,3 +902,138 @@ fn a_debug_root_lays_out_in_the_viewport_over_the_debug_scale_without_the_text_s
     assert_eq!(stats.roots_laid_out, 1, "the debug root alone");
     assert_eq!(tree.layer_viewport(UiLayer::Debug), Some(VIEWPORT * 2.0));
 }
+
+/// A tree whose theme names `fit`, 20 on 25 shrinking to `least` of that,
+/// holding a label of `text` in it in a column `width` wide; the double
+/// advances 10 a glyph at size 20, so ten glyphs are 100 wide.
+fn shrinking(least: f32, text: &str, width: f32) -> (UiTree, WidgetId) {
+    let mut theme = Theme::default();
+    let fit = crate::ui::NamedStyle {
+        text: TextOverrides {
+            size: Some(20.0),
+            line_height: Some(25.0),
+            ..TextOverrides::default()
+        },
+        shrink: Some(least),
+        ..crate::ui::NamedStyle::default()
+    };
+    theme.names.text_styles.insert("fit".to_owned(), fit);
+    let mut tree = UiTree::new();
+    tree.set_theme(theme);
+    let root = tree.add_root(
+        UiLayer::Game,
+        LayoutStyle::column().with_size(Sizing::Px(width), Sizing::Auto),
+    );
+    let label = tree.label(root, text);
+    tree.set_text_style(label, Some("fit"));
+    (tree, label)
+}
+
+/// The label's committed metrics after a layout through `store`.
+fn committed_of(
+    tree: &UiTree,
+    label: WidgetId,
+    store: &FixedAdvanceMeasure,
+) -> crate::text::TextMetrics {
+    let node = tree.text_node(label).expect("laid out");
+    store.committed(node).expect("committed")
+}
+
+#[test]
+fn a_shrinking_label_keeps_one_line_in_a_narrow_box() {
+    let (mut tree, label) = shrinking(0.25, "ABCDEFGHIJ", 50.0);
+    let mut store = store();
+    tree.layout(VIEWPORT, &mut store);
+    let committed = committed_of(&tree, label, &store);
+    assert_eq!(committed.line_count, 1, "one line");
+    assert!(near(committed.size.x, 50.0), "half its size: {committed:?}");
+    assert!(
+        near(committed.size.y, 12.5),
+        "its line height in proportion"
+    );
+    let rect = tree.rect(label).expect("laid out");
+    assert!(
+        near(rect.width(), 50.0) && near(rect.height(), 12.5),
+        "{rect:?}"
+    );
+
+    // A wider box grows it back to its size, no further.
+    let root = tree.root_of(label).expect("in the tree");
+    tree.edit_layout(root, |style| style.width = Sizing::Px(80.0));
+    tree.layout(VIEWPORT, &mut store);
+    let committed = committed_of(&tree, label, &store);
+    assert!(
+        near(committed.size.x, 80.0) && committed.line_count == 1,
+        "{committed:?}"
+    );
+    tree.edit_layout(root, |style| style.width = Sizing::Px(300.0));
+    tree.layout(VIEWPORT, &mut store);
+    let committed = committed_of(&tree, label, &store);
+    assert!(
+        near(committed.size.y, 25.0),
+        "its whole size: {committed:?}"
+    );
+}
+
+#[test]
+fn a_shrinking_label_stops_at_its_least_share() {
+    let (mut tree, label) = shrinking(0.5, "ABCDEFGHIJ", 20.0);
+    let mut store = store();
+    tree.layout(VIEWPORT, &mut store);
+    let committed = committed_of(&tree, label, &store);
+    assert_eq!(committed.line_count, 1, "still one line");
+    assert!(
+        near(committed.size.x, 50.0),
+        "half, past its box: {committed:?}"
+    );
+    assert!(near(committed.size.y, 12.5));
+    let rect = tree.rect(label).expect("laid out");
+    assert!(
+        near(rect.width(), 20.0),
+        "its box keeps the column's width: {rect:?}"
+    );
+}
+
+#[test]
+fn a_shrinking_label_that_fits_keeps_its_size() {
+    let (mut tree, label) = shrinking(0.25, "ABCDEFGHIJ", 300.0);
+    let mut store = store();
+    let stats = tree.layout(VIEWPORT, &mut store);
+    let committed = committed_of(&tree, label, &store);
+    assert_eq!(committed.line_count, 1);
+    assert!(near(committed.size.y, 25.0), "{committed:?}");
+    assert!(stats.commits >= 1);
+    // Laid out again with nothing changed, nothing is set again.
+    let before = store.counts;
+    tree.layout(VIEWPORT, &mut store);
+    assert_eq!(store.counts, before, "a clean root is not laid out");
+
+    // A plain label in the same box wraps as before.
+    let (mut tree, plain) = shrinking(0.25, "ABCDE FGHIJ", 60.0);
+    tree.set_text_style(plain, None);
+    tree.layout(VIEWPORT, &mut store);
+    assert_eq!(committed_of(&tree, plain, &store).line_count, 2);
+}
+
+#[test]
+fn a_label_sized_to_its_text_commits_one_line_at_an_inexact_advance() {
+    // The case a box sized to its text came up an ulp short in: at 0.6 em
+    // a glyph is 9.6 wide, so `frame 111` is 86.4, which a box from x 64
+    // holds only within rounding.
+    let mut store = FixedAdvanceMeasure::new(0.6);
+    let mut tree = UiTree::new();
+    let row = tree.add_root(
+        UiLayer::Game,
+        LayoutStyle::row().anchored(Anchor::TopStart, Vec2::new(64.0, 16.0)),
+    );
+    let label = tree.label(row, "frame 111");
+    tree.layout(VIEWPORT, &mut store);
+    let committed = committed_of(&tree, label, &store);
+    assert_eq!(committed.line_count, 1, "one line: {committed:?}");
+    assert!(near(committed.size.x, 86.4), "{committed:?}");
+    let rect = tree.rect(label).expect("laid out");
+    assert!(
+        near(rect.min.x, 64.0) && near(rect.width(), 86.4),
+        "{rect:?}"
+    );
+}

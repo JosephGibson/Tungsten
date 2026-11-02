@@ -12696,6 +12696,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::KindStyl
 pub struct tungsten_core::ui::theme::NamedStyle
 pub tungsten_core::ui::theme::NamedStyle::outline: core::option::Option<tungsten_core::text::TextOutline>
 pub tungsten_core::ui::theme::NamedStyle::shadow: core::option::Option<tungsten_core::text::TextShadow>
+pub tungsten_core::ui::theme::NamedStyle::shrink: core::option::Option<f32>
 pub tungsten_core::ui::theme::NamedStyle::text: tungsten_core::ui::theme::TextOverrides
 impl tungsten_core::ui::theme::NamedStyle
 pub fn tungsten_core::ui::theme::NamedStyle::apply(&self, &mut tungsten_core::text::TextStyle)
@@ -14094,6 +14095,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::measure::Measur
 pub struct tungsten_core::ui::NamedStyle
 pub tungsten_core::ui::NamedStyle::outline: core::option::Option<tungsten_core::text::TextOutline>
 pub tungsten_core::ui::NamedStyle::shadow: core::option::Option<tungsten_core::text::TextShadow>
+pub tungsten_core::ui::NamedStyle::shrink: core::option::Option<f32>
 pub tungsten_core::ui::NamedStyle::text: tungsten_core::ui::theme::TextOverrides
 impl tungsten_core::ui::theme::NamedStyle
 pub fn tungsten_core::ui::theme::NamedStyle::apply(&self, &mut tungsten_core::text::TextStyle)
