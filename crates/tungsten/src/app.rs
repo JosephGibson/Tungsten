@@ -354,6 +354,19 @@ struct WindowCursor {
     hidden: bool,
 }
 
+/// The debug HUD's corner `tungsten.json`'s `ui.hud_corner` names (redo
+/// 7.17).
+fn hud_corner(corner: tungsten_core::config::UiCorner) -> crate::debug_hud::HudCorner {
+    use crate::debug_hud::HudCorner;
+    use tungsten_core::config::UiCorner;
+    match corner {
+        UiCorner::TopRight => HudCorner::TopRight,
+        UiCorner::BottomLeft => HudCorner::BottomLeft,
+        UiCorner::BottomRight => HudCorner::BottomRight,
+        _ => HudCorner::TopLeft,
+    }
+}
+
 /// Winit loop, ECS, and renderer owner.
 pub struct App {
     config: Config,
@@ -428,6 +441,9 @@ pub struct App {
     boot: Option<Boot>,
     /// The view boot frames draw, [`App::set_boot_view`]'s.
     boot_view: Option<BootViewFn>,
+    /// `tungsten.json`'s `ui.theme` until its asset has loaded and the
+    /// tree took it (redo 7.17).
+    pending_theme: Option<String>,
 }
 
 impl App {
@@ -575,8 +591,16 @@ impl App {
         let action_map = load_action_map_at_startup(&input_map_path, user_bindings.as_deref())
             .inspect_err(|err| log::error!("{err:#}"))?;
         let mut scale_factor = tungsten_core::ScaleFactor::default();
-        if let Some(ui_scale) = settings.ui_scale() {
+        // The player's UI scale, else `tungsten.json`'s `ui` (redo 7.17),
+        // with its reference height and floor.
+        if let Some(ui_scale) = settings.ui_scale().or(config.ui.scale) {
             scale_factor.set_ui_scale(ui_scale);
+        }
+        if let Some(height) = config.ui.reference_height {
+            scale_factor.set_reference_height(Some(height));
+        }
+        if let Some([width, height]) = config.ui.min_viewport {
+            scale_factor.set_min_viewport(Some(Vec2::new(width, height)));
         }
         scale_factor.set_window_size(
             resolved_display.resolution.width,
@@ -647,7 +671,11 @@ impl App {
         world.insert_resource(PendingDisplay::default());
         world.insert_resource(DisplayTelemetry::from_state(&resolved_display, None));
         world.insert_resource(CommandBuffer::new());
-        world.insert_resource(DebugHud::new());
+        let mut debug_hud = DebugHud::new();
+        if let Some(corner) = config.ui.hud_corner {
+            debug_hud.corner = hud_corner(corner);
+        }
+        world.insert_resource(debug_hud);
         world.insert_resource(StateStack::new());
         world.insert_resource(HudActiveState::default());
         world.insert_resource(RenderCounts::default());
@@ -662,6 +690,19 @@ impl App {
         world.insert_resource(UiRouter::default());
         world.insert_resource(RoutedInput::default());
         world.insert_resource(UiThemeRegistry::new());
+        if let Some(cursor) = &config.ui.cursor {
+            let sprite = world
+                .resource_mut::<AssetRegistry>()
+                .intern_sprite(&cursor.sprite);
+            let arrow = tungsten_core::ui::PointerSprite::new(
+                sprite,
+                cursor.size.into(),
+                cursor.hotspot.into(),
+            );
+            world
+                .resource_mut::<UiTree>()
+                .set_pointer_sprite(Some(arrow));
+        }
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
         world.insert_resource(InspectorState::new());
@@ -697,6 +738,7 @@ impl App {
         });
         world.insert_resource(PendingPostAa::default());
 
+        let pending_theme = config.ui.theme.clone();
         let mut app = Self {
             config,
             window: None,
@@ -744,6 +786,7 @@ impl App {
             startup_clock: StartupClock::default(),
             boot: None,
             boot_view: None,
+            pending_theme,
         };
         app.take_config_manifest()
             .inspect_err(|err| log::error!("{err}"))?;
@@ -2080,7 +2123,29 @@ impl App {
     fn stage_hot_reload(&mut self) -> f32 {
         let hot_reload_start = Instant::now();
         self.process_hot_reload();
+        self.apply_configured_theme();
         hot_reload_start.elapsed().as_secs_f64() as f32 * 1000.0
+    }
+
+    /// Applies `tungsten.json`'s `ui.theme` to the tree once its asset has
+    /// loaded (redo 7.17); a later reload re-applies it as it does any
+    /// theme the tree follows (`D-148`), and a game may set another after.
+    fn apply_configured_theme(&mut self) {
+        let Some(id) = self.pending_theme.as_deref() else {
+            return;
+        };
+        let Some(theme) = self
+            .world
+            .get_resource::<UiThemeRegistry>()
+            .and_then(|registry| registry.get(id))
+            .cloned()
+        else {
+            return;
+        };
+        if let Some(tree) = self.world.get_resource_mut::<UiTree>() {
+            tree.set_theme_asset(id, theme);
+        }
+        self.pending_theme = None;
     }
 
     /// Lays the `UiTree` out at the window size in logical units (`D-127`)

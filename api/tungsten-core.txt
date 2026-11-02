@@ -5530,6 +5530,29 @@ impl core::marker::Unpin for tungsten_core::config::PresentModeConfig
 impl core::marker::UnsafeUnpin for tungsten_core::config::PresentModeConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::PresentModeConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::PresentModeConfig
+#[non_exhaustive] pub enum tungsten_core::config::UiCorner
+pub tungsten_core::config::UiCorner::BottomLeft
+pub tungsten_core::config::UiCorner::BottomRight
+pub tungsten_core::config::UiCorner::TopLeft
+pub tungsten_core::config::UiCorner::TopRight
+impl core::clone::Clone for tungsten_core::config::UiCorner
+pub fn tungsten_core::config::UiCorner::clone(&self) -> tungsten_core::config::UiCorner
+impl core::cmp::Eq for tungsten_core::config::UiCorner
+impl core::cmp::PartialEq for tungsten_core::config::UiCorner
+pub fn tungsten_core::config::UiCorner::eq(&self, &tungsten_core::config::UiCorner) -> bool
+impl core::fmt::Debug for tungsten_core::config::UiCorner
+pub fn tungsten_core::config::UiCorner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::config::UiCorner
+impl core::marker::StructuralPartialEq for tungsten_core::config::UiCorner
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::UiCorner
+pub fn tungsten_core::config::UiCorner::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::UiCorner
+impl core::marker::Send for tungsten_core::config::UiCorner
+impl core::marker::Sync for tungsten_core::config::UiCorner
+impl core::marker::Unpin for tungsten_core::config::UiCorner
+impl core::marker::UnsafeUnpin for tungsten_core::config::UiCorner
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::UiCorner
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::UiCorner
 #[non_exhaustive] pub struct tungsten_core::config::AssetsConfig
 pub tungsten_core::config::AssetsConfig::hot_reload: core::option::Option<bool>
 pub tungsten_core::config::AssetsConfig::manifest: core::option::Option<std::path::PathBuf>
@@ -5586,6 +5609,7 @@ pub tungsten_core::config::Config::game: tungsten_core::config::GameConfig
 pub tungsten_core::config::Config::logging: tungsten_core::config::LoggingConfig
 pub tungsten_core::config::Config::render: tungsten_core::config::RenderConfig
 pub tungsten_core::config::Config::time: tungsten_core::config::TimeConfig
+pub tungsten_core::config::Config::ui: tungsten_core::config::UiConfig
 pub tungsten_core::config::Config::window: tungsten_core::config::WindowConfig
 impl tungsten_core::config::Config
 pub fn tungsten_core::config::Config::apply_settings(&mut self, &tungsten_core::settings::Settings) -> core::result::Result<(), tungsten_core::config::ConfigError>
@@ -5750,6 +5774,51 @@ impl core::marker::Unpin for tungsten_core::config::TimeConfig
 impl core::marker::UnsafeUnpin for tungsten_core::config::TimeConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::TimeConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::TimeConfig
+#[non_exhaustive] pub struct tungsten_core::config::UiConfig
+pub tungsten_core::config::UiConfig::cursor: core::option::Option<tungsten_core::config::UiCursorConfig>
+pub tungsten_core::config::UiConfig::hud_corner: core::option::Option<tungsten_core::config::UiCorner>
+pub tungsten_core::config::UiConfig::min_viewport: core::option::Option<[f32; 2]>
+pub tungsten_core::config::UiConfig::reference_height: core::option::Option<f32>
+pub tungsten_core::config::UiConfig::scale: core::option::Option<f32>
+pub tungsten_core::config::UiConfig::theme: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::config::UiConfig
+pub fn tungsten_core::config::UiConfig::clone(&self) -> tungsten_core::config::UiConfig
+impl core::cmp::PartialEq for tungsten_core::config::UiConfig
+pub fn tungsten_core::config::UiConfig::eq(&self, &tungsten_core::config::UiConfig) -> bool
+impl core::default::Default for tungsten_core::config::UiConfig
+pub fn tungsten_core::config::UiConfig::default() -> tungsten_core::config::UiConfig
+impl core::fmt::Debug for tungsten_core::config::UiConfig
+pub fn tungsten_core::config::UiConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::config::UiConfig
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::UiConfig where tungsten_core::config::UiConfig: core::default::Default
+pub fn tungsten_core::config::UiConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::UiConfig
+impl core::marker::Send for tungsten_core::config::UiConfig
+impl core::marker::Sync for tungsten_core::config::UiConfig
+impl core::marker::Unpin for tungsten_core::config::UiConfig
+impl core::marker::UnsafeUnpin for tungsten_core::config::UiConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::UiConfig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::UiConfig
+#[non_exhaustive] pub struct tungsten_core::config::UiCursorConfig
+pub tungsten_core::config::UiCursorConfig::hotspot: [f32; 2]
+pub tungsten_core::config::UiCursorConfig::size: [f32; 2]
+pub tungsten_core::config::UiCursorConfig::sprite: alloc::string::String
+impl core::clone::Clone for tungsten_core::config::UiCursorConfig
+pub fn tungsten_core::config::UiCursorConfig::clone(&self) -> tungsten_core::config::UiCursorConfig
+impl core::cmp::PartialEq for tungsten_core::config::UiCursorConfig
+pub fn tungsten_core::config::UiCursorConfig::eq(&self, &tungsten_core::config::UiCursorConfig) -> bool
+impl core::fmt::Debug for tungsten_core::config::UiCursorConfig
+pub fn tungsten_core::config::UiCursorConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::config::UiCursorConfig
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::UiCursorConfig
+pub fn tungsten_core::config::UiCursorConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::UiCursorConfig
+impl core::marker::Send for tungsten_core::config::UiCursorConfig
+impl core::marker::Sync for tungsten_core::config::UiCursorConfig
+impl core::marker::Unpin for tungsten_core::config::UiCursorConfig
+impl core::marker::UnsafeUnpin for tungsten_core::config::UiCursorConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::UiCursorConfig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::UiCursorConfig
 pub struct tungsten_core::config::WindowConfig
 pub tungsten_core::config::WindowConfig::height: u32
 pub tungsten_core::config::WindowConfig::title: alloc::string::String
@@ -17660,6 +17729,7 @@ pub tungsten_core::Config::game: tungsten_core::config::GameConfig
 pub tungsten_core::Config::logging: tungsten_core::config::LoggingConfig
 pub tungsten_core::Config::render: tungsten_core::config::RenderConfig
 pub tungsten_core::Config::time: tungsten_core::config::TimeConfig
+pub tungsten_core::Config::ui: tungsten_core::config::UiConfig
 pub tungsten_core::Config::window: tungsten_core::config::WindowConfig
 impl tungsten_core::config::Config
 pub fn tungsten_core::config::Config::apply_settings(&mut self, &tungsten_core::settings::Settings) -> core::result::Result<(), tungsten_core::config::ConfigError>

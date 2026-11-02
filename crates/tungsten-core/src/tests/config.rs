@@ -1111,3 +1111,49 @@ fn an_unknown_assets_key_fails() {
         );
     }
 }
+
+#[test]
+fn the_ui_section_reads_each_field() {
+    let config: Config = serde_json::from_str(
+        r#"{ "ui": { "theme": "shell", "reference_height": 720, "min_viewport": [731, 411],
+                     "scale": 0.75, "hud_corner": "top_right",
+                     "cursor": { "sprite": "pointer", "size": [16, 16], "hotspot": [1, 2] } } }"#,
+    )
+    .expect("a ui section");
+    let ui = &config.ui;
+    assert_eq!(ui.theme.as_deref(), Some("shell"));
+    assert_eq!(ui.reference_height, Some(720.0));
+    assert_eq!(ui.min_viewport, Some([731.0, 411.0]));
+    assert_eq!(ui.scale, Some(0.75));
+    assert_eq!(ui.hud_corner, Some(UiCorner::TopRight));
+    let cursor = ui.cursor.as_ref().expect("a cursor");
+    assert_eq!(
+        (cursor.sprite.as_str(), cursor.size, cursor.hotspot),
+        ("pointer", [16.0, 16.0], [1.0, 2.0])
+    );
+    let corner: Config =
+        serde_json::from_str(r#"{ "ui": { "cursor": { "sprite": "x", "size": [8, 8] } } }"#)
+            .expect("a hotspot left out");
+    assert_eq!(
+        corner.ui.cursor.map(|cursor| cursor.hotspot),
+        Some([0.0, 0.0])
+    );
+    for bad in [
+        r#"{ "ui": { "themes": "x" } }"#,
+        r#"{ "ui": { "hud_corner": "middle" } }"#,
+        r#"{ "ui": { "cursor": { "sprite": "x" } } }"#,
+    ] {
+        assert!(serde_json::from_str::<Config>(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn an_absent_ui_section_keeps_the_defaults() {
+    let config: Config = serde_json::from_str("{}").expect("an empty config");
+    assert_eq!(config.ui, UiConfig::default());
+    let ui = UiConfig::default();
+    assert!(ui.theme.is_none() && ui.reference_height.is_none() && ui.min_viewport.is_none());
+    assert!(ui.scale.is_none() && ui.hud_corner.is_none() && ui.cursor.is_none());
+    let empty: Config = serde_json::from_str(r#"{ "ui": {} }"#).expect("an empty section");
+    assert_eq!(empty.ui, UiConfig::default());
+}

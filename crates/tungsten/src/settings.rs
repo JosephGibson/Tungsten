@@ -43,8 +43,12 @@ pub fn apply_settings(world: &mut World) {
     let Some(settings) = world.get_resource::<Settings>().cloned() else {
         return;
     };
+    // An unset UI scale applies as `tungsten.json`'s `ui.scale` (redo 7.17).
+    let shipped = world
+        .get_resource::<ShippedConfig>()
+        .and_then(|ShippedConfig(config)| config.ui.scale);
     if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
-        scale.set_ui_scale(settings.ui_scale().unwrap_or(1.0));
+        scale.set_ui_scale(settings.ui_scale().or(shipped).unwrap_or(1.0));
     }
     if let Some(tree) = world.get_resource_mut::<UiTree>() {
         tree.set_text_scale(settings.text_scale().unwrap_or(1.0));

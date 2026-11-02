@@ -523,3 +523,28 @@ fn an_app_starts_with_the_stick_response_its_settings_file_sets() {
     );
     assert!((half_push(world) - 0.25 / 0.75 * 0.5).abs() < 1e-6);
 }
+
+#[test]
+fn the_configured_scale_is_what_an_unset_setting_applies() {
+    let dir = tempdir();
+    let mut config = Config::default();
+    config.ui.scale = Some(0.75);
+    let mut app = app_at(&dir, config);
+    let ui_scale = |app: &App| app.world().resource::<ScaleFactor>().ui_scale();
+    assert_eq!(ui_scale(&app), 0.75, "at startup");
+    app.world_mut()
+        .resource_mut::<ScaleFactor>()
+        .set_ui_scale(2.0);
+    apply_settings(app.world_mut());
+    assert_eq!(
+        ui_scale(&app),
+        0.75,
+        "an apply keeps it for an unset setting"
+    );
+    app.world_mut()
+        .resource_mut::<Settings>()
+        .set_ui_scale(Some(1.25));
+    apply_settings(app.world_mut());
+    assert_eq!(ui_scale(&app), 1.25, "the player's own wins");
+    let _ = std::fs::remove_dir_all(&dir);
+}
