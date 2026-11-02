@@ -248,9 +248,11 @@ impl Plugin for ShellPlugin {
         options::load(world);
         // The screen files' names (`assets/ui/screens/`).
         let saving_off = |world: &World| !saving_on(world);
-        UiBindings::of(world)
+        let bindings = UiBindings::of(world);
+        bindings
             .enabled("saving_on", saving_on)
             .visible("saving_off", saving_off);
+        settings::bind(bindings);
         let unset = world.resource::<Settings>().ui_scale().is_none();
         if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
             scale.set_reference_height(Some(theme::REFERENCE_HEIGHT));

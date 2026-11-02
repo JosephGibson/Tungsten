@@ -10,13 +10,14 @@
 //! Display rows show the set value, else the live one, and the shell keeps
 //! the F11 and F9 keys' changes set; the volumes show the set value, else
 //! the one `tungsten.json` ships.
+//! The rows, their kinds, ranges and keys are `assets/ui/screens/settings.json`;
+//! their values are the bindings [`bind`] registers over a [`SettingsView`],
+//! and each control is handled by its key.
 
 use std::num::NonZeroU32;
 
 use tungsten::core::settings::SettingsError;
-use tungsten::core::ui::{
-    Align, Sizing, SliderRange, UiEvent, UiKey, UiTree, UiValue, WidgetId, widgets,
-};
+use tungsten::core::ui::{UiBindings, UiEvent, UiKey, UiTree, UiValue, WidgetId, screen_build};
 use tungsten::core::{
     AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, Settings, World,
 };
@@ -26,8 +27,8 @@ use super::confirm::{self, ConfirmState};
 use super::keybindings::{self, KeybindingsState};
 use super::options::{self, GameOptions};
 use super::{
-    BACK, Difficulty, RunState, Shell, apply_settings, enter, events, idle, pop, pressed, push,
-    theme, toast,
+    BACK, Difficulty, Menu, RunState, Shell, apply_settings, enter, events, idle, pop, pressed,
+    push, stack, theme, toast,
 };
 
 pub const SETTINGS: StateId = "settings";
@@ -44,147 +45,45 @@ pub const SIZES: [(u32, u32); 4] = [(1280, 720), (1600, 900), (1920, 1080), (256
 /// where it rests while Uncapped is on.
 pub const FPS: [f32; 3] = [60.0, 480.0, 5.0];
 pub const FPS_REST: u32 = 60;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Row {
-    Mode,
-    Size,
-    Vsync,
-    Cap,
-    Uncapped,
-    Bloom,
-    Apply,
-    Master,
-    Music,
-    Effects,
-    MuteUnfocused,
-    UiScale,
-    TextScale,
-    Keys,
-    ResetKeys,
-    Difficulty,
-    Shake,
-    Damage,
-    PauseUnfocused,
-    Autosave,
-}
-
-/// How a row is built: a button that cycles its value, a toggle, a slider
-/// (least, most, step) or a plain button.
-#[derive(Debug, Clone, Copy)]
-enum Kind {
-    Choice,
-    Toggle,
-    Slider(f32, f32, f32),
-    Button,
-}
-
-const PERCENT: Kind = Kind::Slider(0.0, 100.0, 5.0);
-const CAP: Kind = Kind::Slider(FPS[0], FPS[1], FPS[2]);
-const TEXT: std::ops::RangeInclusive<f32> = Settings::TEXT_SCALE_RANGE;
 /// The UI scales the shell offers: the engine's range to 2, since past it
 /// the floor (`D-184`) lays most windows out no differently.
 pub const UI_SCALES: std::ops::RangeInclusive<f32> = 0.5..=2.0;
-const UI_SCALE: Kind = Kind::Slider(*UI_SCALES.start(), *UI_SCALES.end(), 0.25);
-const TEXT_SCALE: Kind = Kind::Slider(*TEXT.start(), *TEXT.end(), 0.25);
 
-/// Every row: its tab, its control's key, its caption and how it is built.
-const ROWS: [(Row, usize, &str, &str, Kind); 20] = [
-    (Row::Mode, 0, "window_mode", "Window mode", Kind::Choice),
-    (Row::Size, 0, "window_size", "Window size", Kind::Choice),
-    (Row::Vsync, 0, "vsync", "VSync", Kind::Toggle),
-    (Row::Cap, 0, "frame_rate_limit", "Frame rate limit", CAP),
-    (Row::Uncapped, 0, "uncapped", "Uncapped", Kind::Toggle),
-    (Row::Bloom, 0, "bloom", "Bloom", Kind::Toggle),
-    (Row::Apply, 0, "apply", "Apply", Kind::Button),
-    (Row::Master, 1, "master", "Master", PERCENT),
-    (Row::Music, 1, "music", "Music", PERCENT),
-    (Row::Effects, 1, "effects", "Effects", PERCENT),
-    (
-        Row::MuteUnfocused,
-        1,
-        "mute_unfocused",
-        "Mute when unfocused",
-        Kind::Toggle,
-    ),
-    (Row::UiScale, 2, "ui_scale", "UI scale", UI_SCALE),
-    (Row::TextScale, 2, "text_scale", "Text scale", TEXT_SCALE),
-    (Row::Keys, 3, "keybindings", "Keybindings…", Kind::Button),
-    (
-        Row::ResetKeys,
-        3,
-        "reset_bindings",
-        "Reset all bindings",
-        Kind::Button,
-    ),
-    (Row::Difficulty, 4, "difficulty", "Difficulty", Kind::Choice),
-    (Row::Shake, 4, "screen_shake", "Screen shake", PERCENT),
-    (
-        Row::Damage,
-        4,
-        "damage_numbers",
-        "Damage numbers",
-        Kind::Toggle,
-    ),
-    (
-        Row::PauseUnfocused,
-        4,
-        "pause_unfocused",
-        "Pause when unfocused",
-        Kind::Toggle,
-    ),
-    (Row::Autosave, 4, "autosave", "Autosave", Kind::Toggle),
-];
-
-impl Row {
-    /// The row whose control is keyed `key`.
-    fn of(key: Option<UiKey>) -> Option<Self> {
-        let key = key?;
-        let row = ROWS.iter().find(|(_, _, name, ..)| UiKey::new(name) == key);
-        row.map(|(row, ..)| *row)
-    }
-}
-
-struct Ui {
-    root: WidgetId,
-    tabs: Vec<WidgetId>,
-    bars: Vec<WidgetId>,
-    panels: Vec<WidgetId>,
-    /// Each row's control, in [`ROWS`]' order.
-    rows: Vec<WidgetId>,
-    /// Each slider's readout.
-    readouts: Vec<(WidgetId, WidgetId)>,
-}
-
-impl Ui {
-    /// `row`'s control.
-    fn control(&self, row: Row) -> WidgetId {
-        let at = ROWS.iter().position(|(each, ..)| *each == row);
-        self.rows[at.unwrap_or_default()]
-    }
-}
-
-/// The settings screen, open on one tab.
-pub struct SettingsState {
+/// What the screen shows beyond `Settings` and the options: the open tab,
+/// the window mode and size picked and not yet applied, where the frame
+/// cap's slider rests while Uncapped is on, and the scale slider the
+/// pointer holds with its value, applied at the release so the UI is not
+/// rescaled under the pointer. A resource [`SettingsState`] owns; absent,
+/// the Display tab with nothing pending.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SettingsView {
     tab: usize,
-    ui: Option<Ui>,
-    /// The scale slider the pointer holds: it applies at the release, so
-    /// the UI is not rescaled under the pointer.
-    held: Option<WidgetId>,
-    /// The window mode and size picked and not yet applied.
     pending: (Option<DisplayMode>, Option<Resolution>),
+    rest: f32,
+    held: Option<(WidgetId, f32)>,
 }
 
-impl SettingsState {
-    #[must_use]
-    pub fn new(tab: usize) -> Self {
+impl Default for SettingsView {
+    fn default() -> Self {
+        let (tab, pending, rest, held) = (0, (None, None), FPS_REST as f32, None);
         Self {
             tab,
-            ui: None,
-            held: None,
-            pending: (None, None),
+            pending,
+            rest,
+            held,
         }
     }
+}
+
+fn view(world: &World) -> SettingsView {
+    world
+        .get_resource::<SettingsView>()
+        .copied()
+        .unwrap_or_default()
+}
+
+fn view_mut(world: &mut World) -> &mut SettingsView {
+    world.resource_mut::<SettingsView>()
 }
 
 /// Changes `Settings` with `edit` and applies them.
@@ -296,145 +195,181 @@ pub fn aspect(width: u32, height: u32) -> String {
     format!("{w}:{h}")
 }
 
-/// A slider's readout for `value`: a percent, the scales as percents of 1,
-/// or frames a second.
-fn readout(row: Row, value: f32) -> String {
-    match row {
-        Row::Cap => format!("{value:.0} fps"),
-        Row::UiScale | Row::TextScale => format!("{:.0}%", value * 100.0),
-        _ => format!("{value:.0}%"),
-    }
-}
-
 /// The value after `value` in `values`, the first when it is none of them.
 fn next<T: PartialEq + Copy>(values: &[T], value: T) -> T {
     let at = values.iter().position(|each| *each == value);
     values[at.map_or(0, |at| (at + 1) % values.len())]
 }
 
+/// Whether the window is fullscreen as picked, else as set or running.
+fn fullscreen(world: &World) -> bool {
+    let mode = view(world).pending.0;
+    mode.unwrap_or(display(world).display_mode) != DisplayMode::Windowed
+}
+
+/// The master volume (`bus` `None`) or a bus's, in percent: as set, else
+/// as `tungsten.json` ships it.
+fn volume(world: &World, bus: Option<AudioBus>) -> f32 {
+    let settings = world.resource::<Settings>();
+    let set = bus.map_or(settings.master_volume(), |bus| settings.bus_volume(bus));
+    set.unwrap_or_else(|| shipped_volume(world, bus)) * 100.0
+}
+
+/// A scale as set, else its default, or the held slider's value while the
+/// pointer holds the slider keyed `key`.
+fn scale(world: &World, key: &str) -> f32 {
+    let held = view(world)
+        .held
+        .filter(|(slider, _)| world.resource::<UiTree>().key_name(*slider) == Some(key));
+    let settings = world.resource::<Settings>();
+    let set = match key {
+        "ui_scale" => settings.ui_scale().unwrap_or(theme::UI_SCALE),
+        _ => settings.text_scale().unwrap_or(1.0),
+    };
+    held.map_or(set, |(_, value)| value)
+}
+
+/// The frame cap's slider: the cap as set or running, else where it rests.
+fn cap(world: &World) -> f32 {
+    display(world)
+        .frame_rate_cap
+        .map_or(view(world).rest, |fps| fps as f32)
+}
+
+fn options(world: &World) -> GameOptions {
+    *world.resource::<GameOptions>()
+}
+
+fn on(value: bool) -> UiValue {
+    UiValue::Bool(value)
+}
+
+fn number(value: f32) -> UiValue {
+    UiValue::Number(value)
+}
+
+/// The settings screen's bindings, which `assets/ui/screens/settings.json`
+/// names: each row's value as set, else as it runs, its readout, which rows
+/// are enabled, and which tab shows.
+pub(super) fn bind(bindings: &mut UiBindings) {
+    bindings
+        .text("window_mode", |w| {
+            ["Windowed", "Fullscreen"][usize::from(fullscreen(w))].to_owned()
+        })
+        .text("window_size", |w| {
+            let size = view(w).pending.1.unwrap_or(display(w).resolution);
+            let (width, height) = (size.width, size.height);
+            format!("{width}×{height} ({})", aspect(width, height))
+        })
+        .enabled("windowed", |w| !fullscreen(w))
+        .value("vsync", |w| on(display(w).vsync))
+        .value("frame_rate_limit", |w| number(cap(w)))
+        .text("frame_rate_text", |w| {
+            let floor = |fps: u32| (fps as f32).max(FPS[0]);
+            let fps = display(w).frame_rate_cap.map_or(view(w).rest, floor);
+            format!("{fps:.0} fps")
+        })
+        .enabled("capped", |w| display(w).frame_rate_cap.is_some())
+        .value("uncapped", |w| on(display(w).frame_rate_cap.is_none()))
+        .value("bloom", |w| on(options(w).bloom))
+        .enabled("pending", |w| view(w).pending != (None, None))
+        .value("master", |w| number(volume(w, None)))
+        .value("music", |w| number(volume(w, Some(AudioBus::Music))))
+        .value("effects", |w| number(volume(w, Some(AudioBus::Effects))))
+        .text("master_text", |w| format!("{:.0}%", volume(w, None)))
+        .text("music_text", |w| {
+            format!("{:.0}%", volume(w, Some(AudioBus::Music)))
+        })
+        .text("effects_text", |w| {
+            format!("{:.0}%", volume(w, Some(AudioBus::Effects)))
+        })
+        .value("mute_unfocused", |w| on(options(w).mute_unfocused))
+        .value("ui_scale", |w| {
+            number(
+                w.resource::<Settings>()
+                    .ui_scale()
+                    .unwrap_or(theme::UI_SCALE),
+            )
+        })
+        .value("text_scale", |w| {
+            number(w.resource::<Settings>().text_scale().unwrap_or(1.0))
+        })
+        .text("ui_scale_text", |w| {
+            format!("{:.0}%", scale(w, "ui_scale") * 100.0)
+        })
+        .text("text_scale_text", |w| {
+            format!("{:.0}%", scale(w, "text_scale") * 100.0)
+        })
+        .text("difficulty", |w| {
+            let run = w.get_resource::<RunState>();
+            run.map_or("Chosen at New Game", |run| run.difficulty.label())
+                .to_owned()
+        })
+        .enabled("in_run", |w| w.has_resource::<RunState>())
+        .value("screen_shake", |w| {
+            number(options(w).screen_shake() * 100.0)
+        })
+        .text("screen_shake_text", |w| {
+            format!("{:.0}%", options(w).screen_shake() * 100.0)
+        })
+        .value("damage_numbers", |w| on(options(w).damage_numbers))
+        .value("pause_unfocused", |w| on(options(w).pause_unfocused))
+        .value("autosave", |w| on(options(w).autosave))
+        .value("settings_tab", |w| number(view(w).tab as f32))
+        .visible("display_tab", |w| view(w).tab == 0)
+        .visible("audio_tab", |w| view(w).tab == 1)
+        .visible("interface_tab", |w| view(w).tab == 2)
+        .visible("controls_tab", |w| view(w).tab == 3)
+        .visible("gameplay_tab", |w| view(w).tab == GAMEPLAY_TAB);
+}
+
+/// The settings screen, open on one tab.
+pub struct SettingsState {
+    tab: usize,
+    root: Option<WidgetId>,
+}
+
 impl SettingsState {
-    fn select(&mut self, tree: &mut UiTree, tab: usize) {
-        let Some(ui) = &self.ui else {
+    #[must_use]
+    pub fn new(tab: usize) -> Self {
+        Self { tab, root: None }
+    }
+
+    /// Shows `tab` and focuses its button.
+    fn select(&self, world: &mut World, tab: usize) {
+        let Some(root) = self.root else {
             return;
         };
-        self.tab = tab;
-        for (at, panel) in ui.panels.iter().enumerate() {
-            widgets::show(tree, *panel, at == tab);
-        }
-        widgets::select_tab(tree, &ui.bars, tab);
-        tree.focus(ui.tabs[tab]);
-    }
-
-    /// Writes every row's value from the world.
-    fn refresh(&self, world: &mut World) {
-        let Some(ui) = &self.ui else {
-            return;
-        };
-        let (settings, display) = (world.resource::<Settings>().clone(), display(world));
-        let options = *world.resource::<GameOptions>();
-        let difficulty = world.get_resource::<RunState>().map(|run| run.difficulty);
-        let volume = |bus: Option<AudioBus>| {
-            let set = bus.map_or(settings.master_volume(), |bus| settings.bus_volume(bus));
-            set.unwrap_or_else(|| shipped_volume(world, bus)) * 100.0
-        };
-        let volumes = [None, Some(AudioBus::Music), Some(AudioBus::Effects)].map(volume);
-        let tree = world.resource_mut::<UiTree>();
-        let (mode, size) = self.pending;
-        let fullscreen = mode.unwrap_or(display.display_mode) != DisplayMode::Windowed;
-        let cap = display.frame_rate_cap;
-        for (&(row, ..), &id) in ROWS.iter().zip(&ui.rows) {
-            let value = match row {
-                Row::Mode => {
-                    let mode = if fullscreen { "Fullscreen" } else { "Windowed" };
-                    _ = tree.set_text(id, mode);
-                    continue;
-                }
-                Row::Size => {
-                    let Resolution { width, height } = size.unwrap_or(display.resolution);
-                    let text = format!("{width}×{height} ({})", aspect(width, height));
-                    tree.set_text(id, text.as_str());
-                    tree.set_enabled(id, !fullscreen);
-                    continue;
-                }
-                Row::Apply => {
-                    tree.set_enabled(id, mode.is_some() || size.is_some());
-                    continue;
-                }
-                Row::Cap => {
-                    // A cap applies as stored: off the grid it reads exactly,
-                    // under the floor it reads the floor the slider clamps it
-                    // to; under Uncapped the slider keeps its value, off.
-                    if let Some(fps) = cap {
-                        tree.set_slider_value(id, fps as f32);
-                    }
-                    let held = tree.slider_value(id).unwrap_or(0.0);
-                    let fps = cap.map_or(held, |fps| (fps as f32).max(FPS[0]));
-                    tree.set_enabled(id, cap.is_some());
-                    self.show(tree, id, readout(row, fps));
-                    continue;
-                }
-                Row::Difficulty => {
-                    let text = difficulty.map_or("Chosen at New Game", Difficulty::label);
-                    tree.set_text(id, text);
-                    tree.set_enabled(id, difficulty.is_some());
-                    continue;
-                }
-                Row::Keys | Row::ResetKeys => continue,
-                Row::Vsync => UiValue::Bool(display.vsync),
-                Row::Uncapped => UiValue::Bool(cap.is_none()),
-                Row::Bloom => UiValue::Bool(options.bloom),
-                Row::MuteUnfocused => UiValue::Bool(options.mute_unfocused),
-                Row::Damage => UiValue::Bool(options.damage_numbers),
-                Row::PauseUnfocused => UiValue::Bool(options.pause_unfocused),
-                Row::Autosave => UiValue::Bool(options.autosave),
-                Row::Master => UiValue::Number(volumes[0]),
-                Row::Music => UiValue::Number(volumes[1]),
-                Row::Effects => UiValue::Number(volumes[2]),
-                Row::UiScale => UiValue::Number(settings.ui_scale().unwrap_or(theme::UI_SCALE)),
-                Row::TextScale => UiValue::Number(settings.text_scale().unwrap_or(1.0)),
-                Row::Shake => UiValue::Number(options.screen_shake() * 100.0),
-            };
-            match value {
-                UiValue::Bool(on) => _ = tree.set_toggled(id, on),
-                _ => {
-                    let number = value.as_number().unwrap_or(0.0);
-                    tree.set_slider_value(id, number);
-                    self.show(tree, id, readout(row, number));
-                }
-            }
+        view_mut(world).tab = tab;
+        screen_build::refresh(world, root);
+        if let Some(button) = screen_build::node(world, root, TAB_KEYS[tab]) {
+            world.resource_mut::<UiTree>().focus(button);
         }
     }
 
-    /// Writes `text` into `slider`'s readout.
-    fn show(&self, tree: &mut UiTree, slider: WidgetId, text: String) {
-        let readouts = self.ui.iter().flat_map(|ui| &ui.readouts);
-        if let Some((_, label)) = readouts.into_iter().find(|(id, _)| *id == slider) {
-            tree.set_plain_text(*label, &text);
-        }
-    }
-
-    /// A row's button activated: the window mode and size are picked, the
-    /// value as it runs dropping the pick, and Apply sends the picks.
-    fn activate(&mut self, world: &mut World, row: Row) {
-        let display = display(world);
-        let (mode, size) = &mut self.pending;
-        match row {
-            Row::Mode => {
-                let mode_now = mode.unwrap_or(display.display_mode);
-                let picked = match mode_now {
+    /// The control keyed `key`'s button activated: the window mode and size
+    /// are picked, the value as it runs dropping the pick, and Apply sends
+    /// the picks.
+    fn activate(&self, world: &mut World, key: &str) {
+        let (display, (mode, size)) = (display(world), view(world).pending);
+        match key {
+            "window_mode" => {
+                let picked = match mode.unwrap_or(display.display_mode) {
                     DisplayMode::Windowed => DisplayMode::BorderlessFullscreen,
                     _ => DisplayMode::Windowed,
                 };
-                *mode = (picked != display.display_mode).then_some(picked);
+                view_mut(world).pending.0 = (picked != display.display_mode).then_some(picked);
             }
-            Row::Size => {
+            "window_size" => {
                 let picked = next(&window_sizes(world), size.unwrap_or(display.resolution));
-                *size = (picked != display.resolution).then_some(picked);
+                view_mut(world).pending.1 = (picked != display.resolution).then_some(picked);
             }
-            Row::Apply => {
-                let (mode, size) = std::mem::take(&mut self.pending);
-                if let Some(ui) = &self.ui {
-                    let first = ui.control(Row::Mode);
+            "apply" => {
+                let (mode, size) = std::mem::take(&mut view_mut(world).pending);
+                let first = self
+                    .root
+                    .and_then(|root| screen_build::node(world, root, "window_mode"));
+                if let Some(first) = first {
                     world.resource_mut::<UiTree>().focus(first);
                 }
                 change_display(world, |settings| {
@@ -446,13 +381,13 @@ impl SettingsState {
                     }
                 });
             }
-            Row::Difficulty => {
+            "difficulty" => {
                 if let Some(run) = world.get_resource_mut::<RunState>() {
                     run.difficulty = next(&Difficulty::ALL, run.difficulty);
                 }
             }
-            Row::Keys => push(world, KeybindingsState::default()),
-            Row::ResetKeys => {
+            "keybindings" => push(world, KeybindingsState::default()),
+            "reset_bindings" => {
                 keybindings::reset(world, None);
                 toast::toast(world, "Bindings reset");
             }
@@ -460,53 +395,60 @@ impl SettingsState {
         }
     }
 
-    /// A slider or toggle took `value`: the frame-rate limit the slider's,
-    /// or none while Uncapped is on.
-    fn set(&self, world: &mut World, row: Row, value: UiValue) {
+    /// The slider or toggle keyed `key` took `value`: the frame-rate limit
+    /// the slider's, or none while Uncapped is on, where the slider rests.
+    fn set(&self, world: &mut World, key: &str, value: UiValue) {
         let number = value.as_number().unwrap_or(0.0);
         let on = value.as_bool().unwrap_or(false);
         let fps = |fps: f32| NonZeroU32::new(fps as u32).map(FrameRateCap::Fps);
-        match row {
-            Row::Vsync => change(world, |settings| settings.set_vsync(Some(on))),
-            Row::Cap => change(world, |settings| settings.set_frame_rate_cap(fps(number))),
-            Row::Uncapped => {
-                let slider = self.ui.as_ref().map(|ui| ui.control(Row::Cap));
+        match key {
+            "vsync" => change(world, |settings| settings.set_vsync(Some(on))),
+            "frame_rate_limit" => {
+                change(world, |settings| settings.set_frame_rate_cap(fps(number)))
+            }
+            "uncapped" => {
+                let slider = self
+                    .root
+                    .and_then(|root| screen_build::node(world, root, "frame_rate_limit"));
                 let value = slider.and_then(|id| world.resource::<UiTree>().slider_value(id));
                 let cap = if on {
+                    view_mut(world).rest = value.unwrap_or(FPS_REST as f32);
                     Some(FrameRateCap::Uncapped)
                 } else {
                     value.and_then(fps)
                 };
                 change(world, |settings| settings.set_frame_rate_cap(cap));
             }
-            Row::Master => set_volume(world, None, number),
-            Row::Music => set_volume(world, Some(AudioBus::Music), number),
-            Row::Effects => set_volume(world, Some(AudioBus::Effects), number),
-            Row::UiScale | Row::TextScale => set_scale(world, row == Row::TextScale, number),
-            _ => {
+            "master" => set_volume(world, None, number),
+            "music" => set_volume(world, Some(AudioBus::Music), number),
+            "effects" => set_volume(world, Some(AudioBus::Effects), number),
+            "ui_scale" | "text_scale" => set_scale(world, key == "text_scale", number),
+            "mute_unfocused" | "damage_numbers" | "pause_unfocused" | "autosave" | "bloom"
+            | "screen_shake" => {
                 let options = world.resource_mut::<GameOptions>();
-                match row {
-                    Row::MuteUnfocused => options.mute_unfocused = on,
-                    Row::Damage => options.damage_numbers = on,
-                    Row::PauseUnfocused => options.pause_unfocused = on,
-                    Row::Autosave => options.autosave = on,
-                    Row::Bloom => options.bloom = on,
-                    Row::Shake => options.set_screen_shake(number / 100.0),
-                    _ => {}
+                match key {
+                    "mute_unfocused" => options.mute_unfocused = on,
+                    "damage_numbers" => options.damage_numbers = on,
+                    "pause_unfocused" => options.pause_unfocused = on,
+                    "autosave" => options.autosave = on,
+                    "bloom" => options.bloom = on,
+                    _ => options.set_screen_shake(number / 100.0),
                 }
                 options::apply(world);
             }
+            _ => {}
         }
     }
 
     /// Returns the open tab's values to unset or default, dropping the
     /// display's picks.
-    fn reset(&mut self, world: &mut World) {
-        if self.tab == 0 {
-            self.pending = (None, None);
+    fn reset(&self, world: &mut World) {
+        let tab = view(world).tab;
+        if tab == 0 {
+            view_mut(world).pending = (None, None);
         }
         let defaults = GameOptions::default();
-        change(world, |settings| match self.tab {
+        change(world, |settings| match tab {
             0 => {
                 settings.set_display_mode(None);
                 settings.set_resolution(None);
@@ -529,7 +471,7 @@ impl SettingsState {
         // Gameplay's rest.
         let options = world.resource_mut::<GameOptions>();
         let (mute_unfocused, bloom) = (options.mute_unfocused, options.bloom);
-        match self.tab {
+        match tab {
             0 => options.bloom = defaults.bloom,
             1 => options.mute_unfocused = defaults.mute_unfocused,
             3 => keybindings::reset(world, None),
@@ -540,7 +482,6 @@ impl SettingsState {
             }
             _ => {}
         }
-        self.refresh(world);
     }
 
     /// Writes `Settings` and the options, then closes.
@@ -567,69 +508,18 @@ impl GameState for SettingsState {
     }
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
-        let tree = ctx.world.resource_mut::<UiTree>();
-        let width = widgets::size(tree, "wide_width");
-        let (root, card) = widgets::screen(tree, width);
-        widgets::heading(tree, card, "Settings", false);
-        let body = widgets::row(tree, card);
-        let mut style = tree.layout_style(body).cloned().unwrap_or_default();
-        style.align_items = Align::Start;
-        tree.set_layout_style(body, style);
-        let (tabs, bars) = widgets::tab_rail(tree, body, &TABS);
-        for (tab, key) in tabs.iter().zip(TAB_KEYS) {
-            tree.set_key(*tab, key);
-        }
-        let panels: Vec<WidgetId> = TABS.iter().map(|_| widgets::column(tree, body)).collect();
-        for panel in &panels {
-            widgets::set_width(tree, *panel, Sizing::Fill);
-        }
-        let mut readouts = Vec::new();
-        let rows = ROWS
-            .iter()
-            .map(|&(row, tab, key, caption, kind)| {
-                let control = match kind {
-                    Kind::Choice => widgets::choice_row(tree, panels[tab], caption, ""),
-                    Kind::Toggle => widgets::toggle_row(tree, panels[tab], caption, false),
-                    Kind::Button => {
-                        let button = widgets::button(tree, panels[tab], caption);
-                        // Apply sits small at the tab's foot, under the values.
-                        if row == Row::Apply {
-                            let mut style = tree.layout_style(button).cloned().unwrap_or_default();
-                            style.align_self = Some(Align::End);
-                            tree.set_layout_style(button, style);
-                        }
-                        button
-                    }
-                    Kind::Slider(least, most, step) => {
-                        let range = SliderRange::new(least, most).with_step(step);
-                        let row = widgets::slider_row(tree, panels[tab], caption, range);
-                        readouts.push(row);
-                        row.0
-                    }
-                };
-                tree.set_key(control, key);
-                control
-            })
-            .collect();
-        let actions = widgets::row(tree, card);
-        let reset = widgets::button(tree, actions, "Reset tab");
-        tree.set_key(reset, "reset_tab");
-        let back = widgets::button(tree, actions, "Back");
-        tree.set_key(back, "back");
-        let ui = Ui {
-            root,
-            tabs,
-            bars,
-            panels,
-            rows,
-            readouts,
-        };
-        tree.set_slider_value(ui.control(Row::Cap), FPS_REST as f32);
-        self.ui = Some(ui);
-        self.select(tree, self.tab);
-        enter(ctx.world, root);
-        self.refresh(ctx.world);
-        ctx.world.resource_mut::<Shell>().settings_open = true;
+        let world = &mut *ctx.world;
+        let tab = self.tab;
+        world.insert_resource(SettingsView {
+            tab,
+            ..SettingsView::default()
+        });
+        stack(world).own_resource::<SettingsView>();
+        let root = Menu::build(world, "settings").root;
+        self.root = Some(root);
+        self.select(world, tab);
+        enter(world, root);
+        world.resource_mut::<Shell>().settings_open = true;
     }
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
@@ -637,85 +527,88 @@ impl GameState for SettingsState {
     }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
-        self.refresh(ctx.world);
+        if let Some(root) = self.root {
+            screen_build::refresh(ctx.world, root);
+        }
     }
 
     fn update(&mut self, world: &mut World) {
-        let Some(ui) = &self.ui else {
+        let Some(root) = self.root else {
             return;
         };
-        if !idle(world) {
+        if idle(world) && self.routed(world, root) {
             return;
         }
-        let root = ui.root;
+        screen_build::refresh(world, root);
+    }
+}
+
+impl SettingsState {
+    /// This routing's events and tab keys; `true` when the screen closed.
+    fn routed(&mut self, world: &mut World, root: WidgetId) -> bool {
         let step = match ["ui_next", "ui_prev"].map(|key| pressed(world, key, false)) {
             [true, false] => 1,
             [false, true] => TABS.len() - 1,
             _ => 0,
         };
         if step > 0 {
-            let tab = (self.tab + step) % TABS.len();
-            self.select(world.resource_mut::<UiTree>(), tab);
+            let tab = (view(world).tab + step) % TABS.len();
+            self.select(world, tab);
         }
-        let (events, mut stale) = (events(world), false);
         let tab_of = |key: UiKey| TAB_KEYS.iter().position(|tab| UiKey::new(tab) == key);
-        for event in events {
-            let keyed = |widget| Row::of(world.resource::<UiTree>().key(widget));
+        let key = |world: &World, widget| {
+            let tree = world.resource::<UiTree>();
+            tree.key_name(widget).unwrap_or_default().to_owned()
+        };
+        let scale = |name: &str| matches!(name, "ui_scale" | "text_scale");
+        for event in events(world) {
             match event {
                 UiEvent::Activated {
                     key: Some(BACK), ..
-                } => return Self::leave(world),
-                UiEvent::Cancel { scope, .. } if scope == root => return Self::leave(world),
+                } => {
+                    Self::leave(world);
+                    return true;
+                }
+                UiEvent::Cancel { scope, .. } if scope == root => {
+                    Self::leave(world);
+                    return true;
+                }
                 UiEvent::Activated {
                     key: Some(RESET_TAB),
                     ..
                 } => self.reset(world),
-                // The rows refresh after the loop, once this routing's
-                // `ValueChanged` has applied a toggle's new value.
-                UiEvent::Activated { key, .. } => {
-                    if let Some(tab) = key.and_then(tab_of) {
-                        self.select(world.resource_mut::<UiTree>(), tab);
-                    } else if let Some(row) = Row::of(key) {
-                        self.activate(world, row);
-                        stale = true;
-                    }
-                }
-                UiEvent::Pressed { widget, .. }
-                    if matches!(keyed(widget), Some(Row::UiScale | Row::TextScale)) =>
-                {
-                    self.held = Some(widget);
+                UiEvent::Activated {
+                    widget, key: id, ..
+                } => match id.and_then(tab_of) {
+                    Some(tab) => self.select(world, tab),
+                    None => self.activate(world, &key(world, widget)),
+                },
+                UiEvent::Pressed { widget, .. } if scale(&key(world, widget)) => {
+                    let value = world.resource::<UiTree>().slider_value(widget);
+                    view_mut(world).held = Some((widget, value.unwrap_or(1.0)));
                 }
                 UiEvent::Released { widget, .. } | UiEvent::PressCancelled { widget, .. }
-                    if self.held == Some(widget) =>
+                    if view(world).held.is_some_and(|(held, _)| held == widget) =>
                 {
-                    self.held = None;
-                    let row = keyed(widget).unwrap_or(Row::UiScale);
-                    let value = world
-                        .resource::<UiTree>()
-                        .slider_value(widget)
-                        .unwrap_or(1.0);
-                    self.set(world, row, UiValue::Number(value));
+                    view_mut(world).held = None;
+                    let value = world.resource::<UiTree>().slider_value(widget);
+                    let number = UiValue::Number(value.unwrap_or(1.0));
+                    self.set(world, &key(world, widget), number);
                 }
-                UiEvent::ValueChanged {
-                    widget, key, value, ..
-                } => {
-                    let Some(row) = Row::of(key) else {
-                        continue;
-                    };
-                    if let Some(number) = value.as_number() {
-                        // A held scale slider shows its value now and
-                        // applies it at the release.
-                        self.show(world.resource_mut::<UiTree>(), widget, readout(row, number));
-                    }
-                    if self.held != Some(widget) {
-                        self.set(world, row, value);
+                UiEvent::ValueChanged { widget, value, .. } => {
+                    // A held scale slider shows its value now and applies
+                    // it at the release.
+                    match view(world).held {
+                        Some((slider, draft)) if slider == widget => {
+                            let draft = value.as_number().unwrap_or(draft);
+                            view_mut(world).held = Some((slider, draft));
+                        }
+                        _ => self.set(world, &key(world, widget), value),
                     }
                 }
                 _ => {}
             }
         }
-        if stale {
-            self.refresh(world);
-        }
+        false
     }
 }

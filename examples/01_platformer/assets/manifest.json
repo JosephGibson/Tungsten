@@ -16762,6 +16762,9 @@
     },
     "pause": {
       "path": "ui/screens/pause.json"
+    },
+    "settings": {
+      "path": "ui/screens/settings.json"
     }
   },
   "ui_themes": {

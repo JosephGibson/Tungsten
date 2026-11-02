@@ -1,0 +1,326 @@
+{
+  "root": {
+    "children": [
+      {
+        "kind": "heading",
+        "text": "Settings"
+      },
+      {
+        "children": [
+          {
+            "bind": {
+              "value": "settings_tab"
+            },
+            "kind": "tab_rail",
+            "tabs": [
+              {
+                "caption": "Display",
+                "key": "display"
+              },
+              {
+                "caption": "Audio",
+                "key": "audio"
+              },
+              {
+                "caption": "Interface",
+                "key": "interface"
+              },
+              {
+                "caption": "Controls",
+                "key": "controls"
+              },
+              {
+                "caption": "Gameplay",
+                "key": "gameplay"
+              }
+            ]
+          },
+          {
+            "bind": {
+              "visible": "display_tab"
+            },
+            "children": [
+              {
+                "bind": {
+                  "text": "window_mode"
+                },
+                "caption": "Window mode",
+                "key": "window_mode",
+                "kind": "choice_row"
+              },
+              {
+                "bind": {
+                  "enabled": "windowed",
+                  "text": "window_size"
+                },
+                "caption": "Window size",
+                "key": "window_size",
+                "kind": "choice_row"
+              },
+              {
+                "bind": {
+                  "value": "vsync"
+                },
+                "caption": "VSync",
+                "key": "vsync",
+                "kind": "toggle_row"
+              },
+              {
+                "bind": {
+                  "enabled": "capped",
+                  "value": "frame_rate_limit"
+                },
+                "caption": "Frame rate limit",
+                "key": "frame_rate_limit",
+                "kind": "slider_row",
+                "range": {
+                  "max": 480,
+                  "min": 60,
+                  "step": 5
+                },
+                "readout": "frame_rate_text"
+              },
+              {
+                "bind": {
+                  "value": "uncapped"
+                },
+                "caption": "Uncapped",
+                "key": "uncapped",
+                "kind": "toggle_row"
+              },
+              {
+                "bind": {
+                  "value": "bloom"
+                },
+                "caption": "Bloom",
+                "key": "bloom",
+                "kind": "toggle_row"
+              },
+              {
+                "bind": {
+                  "enabled": "pending"
+                },
+                "key": "apply",
+                "kind": "button",
+                "layout": {
+                  "align_self": "end"
+                },
+                "text": "Apply"
+              }
+            ],
+            "key": "display_rows",
+            "kind": "column",
+            "layout": {
+              "width": "fill"
+            }
+          },
+          {
+            "bind": {
+              "visible": "audio_tab"
+            },
+            "children": [
+              {
+                "bind": {
+                  "value": "master"
+                },
+                "caption": "Master",
+                "key": "master",
+                "kind": "slider_row",
+                "range": {
+                  "max": 100,
+                  "min": 0,
+                  "step": 5
+                },
+                "readout": "master_text"
+              },
+              {
+                "bind": {
+                  "value": "music"
+                },
+                "caption": "Music",
+                "key": "music",
+                "kind": "slider_row",
+                "range": {
+                  "max": 100,
+                  "min": 0,
+                  "step": 5
+                },
+                "readout": "music_text"
+              },
+              {
+                "bind": {
+                  "value": "effects"
+                },
+                "caption": "Effects",
+                "key": "effects",
+                "kind": "slider_row",
+                "range": {
+                  "max": 100,
+                  "min": 0,
+                  "step": 5
+                },
+                "readout": "effects_text"
+              },
+              {
+                "bind": {
+                  "value": "mute_unfocused"
+                },
+                "caption": "Mute when unfocused",
+                "key": "mute_unfocused",
+                "kind": "toggle_row"
+              }
+            ],
+            "key": "audio_rows",
+            "kind": "column",
+            "layout": {
+              "width": "fill"
+            }
+          },
+          {
+            "bind": {
+              "visible": "interface_tab"
+            },
+            "children": [
+              {
+                "bind": {
+                  "value": "ui_scale"
+                },
+                "caption": "UI scale",
+                "key": "ui_scale",
+                "kind": "slider_row",
+                "range": {
+                  "max": 2,
+                  "min": 0.5,
+                  "step": 0.25
+                },
+                "readout": "ui_scale_text"
+              },
+              {
+                "bind": {
+                  "value": "text_scale"
+                },
+                "caption": "Text scale",
+                "key": "text_scale",
+                "kind": "slider_row",
+                "range": {
+                  "max": 2,
+                  "min": 0.5,
+                  "step": 0.25
+                },
+                "readout": "text_scale_text"
+              }
+            ],
+            "key": "interface_rows",
+            "kind": "column",
+            "layout": {
+              "width": "fill"
+            }
+          },
+          {
+            "bind": {
+              "visible": "controls_tab"
+            },
+            "children": [
+              {
+                "key": "keybindings",
+                "kind": "button",
+                "text": "Keybindings…"
+              },
+              {
+                "key": "reset_bindings",
+                "kind": "button",
+                "text": "Reset all bindings"
+              }
+            ],
+            "key": "controls_rows",
+            "kind": "column",
+            "layout": {
+              "width": "fill"
+            }
+          },
+          {
+            "bind": {
+              "visible": "gameplay_tab"
+            },
+            "children": [
+              {
+                "bind": {
+                  "enabled": "in_run",
+                  "text": "difficulty"
+                },
+                "caption": "Difficulty",
+                "key": "difficulty",
+                "kind": "choice_row"
+              },
+              {
+                "bind": {
+                  "value": "screen_shake"
+                },
+                "caption": "Screen shake",
+                "key": "screen_shake",
+                "kind": "slider_row",
+                "range": {
+                  "max": 100,
+                  "min": 0,
+                  "step": 5
+                },
+                "readout": "screen_shake_text"
+              },
+              {
+                "bind": {
+                  "value": "damage_numbers"
+                },
+                "caption": "Damage numbers",
+                "key": "damage_numbers",
+                "kind": "toggle_row"
+              },
+              {
+                "bind": {
+                  "value": "pause_unfocused"
+                },
+                "caption": "Pause when unfocused",
+                "key": "pause_unfocused",
+                "kind": "toggle_row"
+              },
+              {
+                "bind": {
+                  "value": "autosave"
+                },
+                "caption": "Autosave",
+                "key": "autosave",
+                "kind": "toggle_row"
+              }
+            ],
+            "key": "gameplay_rows",
+            "kind": "column",
+            "layout": {
+              "width": "fill"
+            }
+          }
+        ],
+        "kind": "row",
+        "layout": {
+          "align_items": "start"
+        }
+      },
+      {
+        "children": [
+          {
+            "key": "reset_tab",
+            "kind": "button",
+            "text": "Reset tab"
+          },
+          {
+            "key": "back",
+            "kind": "button",
+            "text": "Back"
+          }
+        ],
+        "kind": "row"
+      }
+    ],
+    "kind": "screen",
+    "width": "wide_width"
+  },
+  "version": 1
+}

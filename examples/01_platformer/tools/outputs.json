@@ -6291,6 +6291,7 @@
   "assets/tilemaps/level.tmj",
   "assets/ui/screens/game_over.json",
   "assets/ui/screens/pause.json",
+  "assets/ui/screens/settings.json",
   "assets/ui/themes/shell.json",
   "tools/outputs.json",
   "tools/tileset.json"
