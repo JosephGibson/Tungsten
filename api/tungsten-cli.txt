@@ -36,11 +36,13 @@ Options of run:
 Options of describe:
   --json            Print the description as JSON
 
-Options of render, one of --sheet, --scene and --at, and -o:
+Options of render, one of --sheet, --scene, --at and --screen, and -o:
   --sheet <items>   Items in a captioned grid on an empty stage, by commas:
                     prefab IDs, sprite:<id>, animation:<id>, particles:<id>
   --scene <file>    A scene file on an empty stage
   --at <x>,<y>      A point of the game's world, the camera's centre
+  --screen <id>     A screen file or a registered screen, opened after the
+                    --after actions
   --after <action>[=<json>]
                     An action the game registered, with its arguments, at
                     frame 2, the next at 3, and so on; repeatable

@@ -14,6 +14,7 @@
 //! | `action` | a name registered in [`ScriptHooks`], with `args` |
 //! | `spawn` | `{"prefab": id, "at": [x, y]}` |
 //! | `scene` | a scene file, relative to the game's folder |
+//! | `screen` | a `ui_screens` ID or a registered screen's name, opened as `tungsten::screens::open` opens it |
 //! | `stage` | `{}`, or `{"ambient": [r, g, b]}` |
 //! | `sheet` | `{"items": ["prefab:goblin", "sprite:icon"], "columns"?, "cell"?, "labels"?}` |
 //! | `camera` | `{"center": [x, y], "zoom": z}`, `{"center", "view_height": h}`, `{"fit": "staged"}` or `null` |
@@ -270,6 +271,9 @@ pub enum Verb {
     Spawn(SpawnStep),
     /// Spawns a scene file under the stage.
     Scene(String),
+    /// Opens a screen: a `ui_screens` file by its ID, or a screen a game
+    /// registered by name (redo 7.20).
+    Screen(String),
     /// Clears the game's states for an empty stage, held from its frame.
     Stage(StageStep),
     /// Stages and lays out items in a captioned grid.
@@ -302,6 +306,7 @@ impl Verb {
             Verb::Action(_) => "action",
             Verb::Spawn(_) => "spawn",
             Verb::Scene(_) => "scene",
+            Verb::Screen(_) => "screen",
             Verb::Stage(_) => "stage",
             Verb::Sheet(_) => "sheet",
             Verb::Camera(_) => "camera",
@@ -840,6 +845,8 @@ struct RawStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     scene: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    screen: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     stage: Option<StageStep>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sheet: Option<SheetStep>,
@@ -920,6 +927,9 @@ impl TryFrom<RawStep> for Step {
         if let Some(scene) = raw.scene {
             verbs.push(("scene", Verb::Scene(scene)));
         }
+        if let Some(id) = raw.screen {
+            verbs.push(("screen", Verb::Screen(id)));
+        }
         if let Some(stage) = raw.stage {
             verbs.push(("stage", Verb::Stage(stage)));
         }
@@ -983,7 +993,9 @@ impl TryFrom<RawStep> for Step {
 /// The checks of one verb's value beyond its shape.
 fn check_verb(verb: &Verb, repeats: bool) -> Result<(), String> {
     match verb {
-        Verb::Press(name) | Verb::Release(name) | Verb::Scene(name) => non_empty(name),
+        Verb::Press(name) | Verb::Release(name) | Verb::Scene(name) | Verb::Screen(name) => {
+            non_empty(name)
+        }
         Verb::Action(ActionStep { name, .. }) => hook_name(name),
         Verb::Probe(ProbeStep { name, path, .. }) => {
             hook_name(name)?;
@@ -1080,6 +1092,7 @@ impl From<Step> for RawStep {
             }
             Verb::Spawn(spawn) => raw.spawn = Some(spawn),
             Verb::Scene(scene) => raw.scene = Some(scene),
+            Verb::Screen(id) => raw.screen = Some(id),
             Verb::Stage(stage) => raw.stage = Some(stage),
             Verb::Sheet(sheet) => raw.sheet = Some(sheet),
             Verb::Camera(camera) => raw.camera = Some(camera),
