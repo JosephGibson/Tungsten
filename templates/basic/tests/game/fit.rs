@@ -6,8 +6,7 @@
 //! a matrix of six windows and scale extremes, box by box.
 
 use tungsten::WindowSize;
-use tungsten::core::text::TextNodeStore;
-use tungsten::core::ui::Visibility;
+use tungsten::core::ui::{Visibility, WidgetId};
 use tungsten::core::{ScaleFactor, Settings, UserFolder};
 use tungsten::kit::damage;
 use tungsten::testing::UiHarness;
@@ -150,70 +149,18 @@ fn set_scales(harness: &mut UiHarness, window: [u32; 2], [os, ui, text]: [f32; 3
     harness.layout();
 }
 
-/// The fit rules on the shown screens: every root inside the viewport, every
-/// visible widget's box inside its parent's, horizontally always and
-/// vertically unless a scroll panel above it scrolls it, and the title's
-/// name and game over's "YOU DIED", when shown, one line each.
-fn assert_rules(harness: &mut UiHarness, what: &str) {
-    harness.layout();
+/// The title's name and game over's "YOU DIED": each first in its root's
+/// first child (the title's card, game over's band), kept to one line by
+/// the fit rules wherever shown.
+fn one_liners(harness: &UiHarness) -> Vec<WidgetId> {
     let tree = harness.tree();
-    let window = *harness.world().resource::<WindowSize>();
-    let scale = harness.world().resource::<ScaleFactor>().get();
-    let viewport = [window.width as f32 / scale, window.height as f32 / scale];
-    let inside = |inner: f32, outer: f32| inner >= outer - 0.01;
-    let mut checked = 0;
-    for &root in tree.roots() {
-        if tree.visibility(root) != Some(Visibility::Visible) {
-            continue;
-        }
-        let rect = harness.rect(root).expect("a laid-out root");
-        assert!(
-            inside(rect.min.x, 0.0)
-                && inside(rect.min.y, 0.0)
-                && inside(viewport[0], rect.max.x)
-                && inside(viewport[1], rect.max.y),
-            "{what}: root {root:?} at {rect:?} outside {viewport:?}"
-        );
-        let mut stack = vec![(root, false)];
-        while let Some((id, scrolled)) = stack.pop() {
-            let parent = harness.rect(id).unwrap();
-            let scrolls = scrolled || tree.scroll_max(id).is_some();
-            for &child in tree.children(id) {
-                if tree.visibility(child) != Some(Visibility::Visible) {
-                    continue;
-                }
-                let rect = harness.rect(child).unwrap();
-                let across = inside(rect.min.x, parent.min.x) && inside(parent.max.x, rect.max.x);
-                let down = scrolls
-                    || (inside(rect.min.y, parent.min.y) && inside(parent.max.y, rect.max.y));
-                assert!(
-                    across && down,
-                    "{what}: {:?} ({:?}) at {rect:?} outside its parent at {parent:?}",
-                    tree.accessible_name(child),
-                    tree.plain_text(child)
-                );
-                checked += 1;
-                stack.push((child, scrolls));
-            }
-        }
-    }
-    assert!(checked > 0, "{what}: nothing shown");
-    // Each sits first in its root's first child: the title's card, game
-    // over's band.
-    let lines = tree.roots().iter().filter_map(|root| {
+    let first = |root: &WidgetId| {
         let card = *tree.children(*root).first()?;
         let label = *tree.children(card).first()?;
         let text = tree.plain_text(label);
-        (text == super::info().title || text == "YOU DIED").then_some((label, text))
-    });
-    for (label, text) in lines.filter(|_| tree.visibility(tree.roots()[0]).is_some()) {
-        let node = tree.text_node(label).unwrap();
-        let lines = harness
-            .text()
-            .committed(node)
-            .map(|metrics| metrics.line_count);
-        assert_eq!(lines, Some(1), "{what}: '{text}' on one line");
-    }
+        (text == super::info().title || text == "YOU DIED").then_some(label)
+    };
+    tree.roots().iter().filter_map(first).collect()
 }
 
 #[test]
@@ -232,7 +179,8 @@ fn every_screen_fits_at_the_scale_extremes() {
             "{entry}: {viewport:?}"
         );
         let check = |harness: &mut UiHarness, what: &str| {
-            assert_rules(harness, &format!("{what}, {entry}"));
+            let labels = one_liners(harness);
+            harness.assert_fits_one_line(&format!("{what}, {entry}"), &labels);
         };
         check(&mut harness, "title");
         press(&mut harness, "New Game");

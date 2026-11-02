@@ -1,8 +1,10 @@
 //! Small builder functions over `UiTree` that every screen shares: a modal
 //! screen root, a corner window, a heading, a button, a row of a caption
-//! and its control (a slider, a toggle or any widget), a prompt row. They
-//! compose the core's widget kinds (`D-125`) rather than adding new ones,
-//! so a game copies them and changes a number, not a widget. Their sizes
+//! and its control (a slider, a toggle or any widget); core's `fill`,
+//! `name` and `prompt_row` beside them, which paint as the lab's own did
+//! (redo 7.17). They compose the core's widget kinds (`D-125`) rather than
+//! adding new ones, so a game copies them and changes a number, not a
+//! widget. Their sizes
 //! come from [`crate::ui::theme`], which is what keeps every screen aligned: a
 //! menu column's buttons stretch to one width, setting rows share one
 //! caption column and one control column, and a row of action buttons
@@ -15,17 +17,9 @@ use tungsten::core::ui::{
     TextOverrides, UiLayer, UiTree, WidgetId,
 };
 
-use crate::ui::theme;
+pub use tungsten::core::ui::widgets::{fill, name, prompt_row};
 
-/// No fill and no border: a layout-only panel.
-#[must_use]
-pub fn transparent() -> StyleOverrides {
-    StyleOverrides {
-        background: Some([0, 0, 0, 0]),
-        border_width: Some(0.0),
-        ..StyleOverrides::default()
-    }
-}
+use crate::ui::theme;
 
 /// Style overrides that change only the text.
 #[must_use]
@@ -97,7 +91,7 @@ pub fn action_row(tree: &mut UiTree, parent: WidgetId, labels: &[&str]) -> Vec<W
     let mut style = LayoutStyle::row().with_gap(theme::ROW_GAP);
     style.justify_content = Justify::Center;
     let row = tree.panel(parent, style);
-    tree.set_overrides(row, transparent());
+    fill(tree, row, [0; 4]);
     labels
         .iter()
         .map(|label| {
@@ -159,20 +153,13 @@ pub fn caption_row(tree: &mut UiTree, parent: WidgetId, caption: &str) -> (Widge
     let mut style = LayoutStyle::row().with_gap(theme::ROW_GAP);
     style.align_items = Align::Center;
     let row = tree.panel(parent, style);
-    tree.set_overrides(row, transparent());
+    fill(tree, row, [0; 4]);
     let label = tree.label(row, caption);
     tree.set_layout_style(
         label,
         LayoutStyle::default().with_size(Sizing::Px(theme::CAPTION_WIDTH), Sizing::Auto),
     );
     (row, label)
-}
-
-/// Gives a control its caption as its accessible name and the pointer
-/// cursor.
-pub fn name_control(tree: &mut UiTree, control: WidgetId, caption: &str) {
-    tree.set_accessible_name(control, Some(caption.to_owned()));
-    tree.set_cursor(control, Some(CursorIcon::Pointer));
 }
 
 /// A setting row holding a slider [`theme::CONTROL_WIDTH`] wide after its
@@ -190,7 +177,7 @@ pub fn slider_row(
         slider,
         LayoutStyle::default().with_size(Sizing::Px(theme::CONTROL_WIDTH), Sizing::Auto),
     );
-    name_control(tree, slider, caption);
+    name(tree, slider, caption);
     (row, slider)
 }
 
@@ -204,21 +191,6 @@ pub fn toggle_row(
 ) -> (WidgetId, WidgetId) {
     let (row, _) = caption_row(tree, parent, caption);
     let toggle = tree.toggle(row, on);
-    name_control(tree, toggle, caption);
+    name(tree, toggle, caption);
     (row, toggle)
-}
-
-/// A prompt label under `parent` naming actions' bindings for the last
-/// device through `template` (`D-163`); it fills its row.
-pub fn prompt_row(tree: &mut UiTree, parent: WidgetId, template: &str) -> WidgetId {
-    let prompt = tree.label(parent, "");
-    tree.set_overrides(
-        prompt,
-        text(TextOverrides {
-            color: Some(theme::MUTED),
-            ..TextOverrides::default()
-        }),
-    );
-    tree.set_prompt(prompt, template);
-    prompt
 }

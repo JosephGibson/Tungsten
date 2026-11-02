@@ -155,13 +155,13 @@ pub fn build(tree: &mut UiTree, sprites: &mut AssetRegistry, confirm_open: bool)
     let mut body_style = LayoutStyle::row().with_gap(theme::SECTION_GAP);
     body_style.align_items = Align::Start;
     let body = tree.panel(root, body_style);
-    tree.set_overrides(body, widgets::transparent());
+    widgets::fill(tree, body, [0; 4]);
     let grid = grid::build(tree, body, sprites, &contents);
     let pane = detail::build(tree, body);
     let mut footer_style = LayoutStyle::row().with_gap(theme::ROW_GAP);
     footer_style.align_items = Align::Center;
     let footer = tree.panel(root, footer_style);
-    tree.set_overrides(footer, widgets::transparent());
+    widgets::fill(tree, footer, [0; 4]);
     let prompt = widgets::prompt_row(tree, footer, PROMPT);
     tree.set_layout_style(
         prompt,

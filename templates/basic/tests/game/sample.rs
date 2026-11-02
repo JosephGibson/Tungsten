@@ -868,7 +868,9 @@ fn the_run_music_fades_in_with_a_run_and_out_at_its_end() {
 
 /// The enabled control named `name` on the front-most screen.
 fn find_named(harness: &UiHarness, name: &str) -> tungsten::core::ui::WidgetId {
-    super::find(harness, name).unwrap_or_else(|| panic!("no control '{name}'"))
+    harness
+        .find(name)
+        .unwrap_or_else(|| panic!("no control '{name}'"))
 }
 
 #[test]

@@ -14,7 +14,7 @@ use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::keybindings::{COLUMNS, KEYBINDINGS};
 use tungsten_template_basic::shell::toast::Toasts;
 
-use super::{find, harness, harness_with, named, press, shows, start, top, user_folder};
+use super::{harness, harness_with, press, start, top, user_folder};
 
 const KEY: fn(KeyCode) -> Binding = |code| Binding::Key { code };
 
@@ -58,7 +58,7 @@ fn every_bindable_action_is_listed_and_no_ui_or_engine_action() {
         assert!(!action.starts_with("ui_") && !action.starts_with("engine_"));
         for column in COLUMNS {
             assert!(
-                named(&harness, &format!("{label} {column}")).is_some(),
+                harness.named(&format!("{label} {column}")).is_some(),
                 "{label} {column}"
             );
         }
@@ -75,9 +75,9 @@ fn every_bindable_action_is_listed_and_no_ui_or_engine_action() {
             "Shoot"
         ]
     );
-    let up = named(&harness, "Move up Primary").unwrap();
+    let up = harness.named("Move up Primary").unwrap();
     assert_eq!(harness.tree().plain_text(up), "Up");
-    let pad = named(&harness, "Move up Gamepad").unwrap();
+    let pad = harness.named("Move up Gamepad").unwrap();
     assert_eq!(harness.tree().plain_text(pad), "Left Stick Up");
 }
 
@@ -88,7 +88,7 @@ fn rebinding_primary_captures_a_key_and_survives_a_restart() {
     keybindings(&mut harness);
     press(&mut harness, "Move up Primary");
     assert!(capturing(harness.world()));
-    let cell = named(&harness, "Move up Primary").unwrap();
+    let cell = harness.named("Move up Primary").unwrap();
     assert!(harness.tree().plain_text(cell).starts_with("Press a key…"));
     key(&mut harness, KeyCode::KeyI);
     assert!(!capturing(harness.world()));
@@ -134,12 +134,12 @@ fn a_conflict_offers_swap_and_swap_exchanges_them() {
     key(&mut harness, KeyCode::ArrowDown);
     super::settle(&mut harness);
     assert_eq!(top(&harness), Some(CONFIRM));
-    assert!(shows(&harness, "Already used by Move down. Swap?"));
+    assert!(harness.shows("Already used by Move down. Swap?"));
     press(&mut harness, "Swap");
     assert_eq!(top(&harness), Some(KEYBINDINGS));
     assert_eq!(bindings(&harness, "move_up")[0], KEY(KeyCode::ArrowDown));
     assert_eq!(bindings(&harness, "move_down")[0], KEY(KeyCode::ArrowUp));
-    let down = named(&harness, "Move down Primary").unwrap();
+    let down = harness.named("Move down Primary").unwrap();
     assert_eq!(harness.tree().plain_text(down), "Up");
 }
 
@@ -174,7 +174,7 @@ fn a_capture_cancels_after_five_seconds() {
     let before = bindings(&harness, "state_pause");
     press(&mut harness, "Pause Gamepad");
     assert!(capturing(harness.world()));
-    let cell = named(&harness, "Pause Gamepad").unwrap();
+    let cell = harness.named("Pause Gamepad").unwrap();
     assert!(
         harness
             .tree()
@@ -188,7 +188,7 @@ fn a_capture_cancels_after_five_seconds() {
     assert_eq!(harness.tree().plain_text(cell), "Start");
     assert_eq!(bindings(&harness, "state_pause"), before);
     assert!(
-        find(&harness, "Back").is_some(),
+        harness.find("Back").is_some(),
         "the screen takes input again"
     );
 }

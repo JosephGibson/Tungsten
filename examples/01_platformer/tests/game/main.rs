@@ -60,7 +60,6 @@ use example_01_platformer::shared::{Body, Burst, despawn_tree};
 use example_01_platformer::shell::{self as game_shell, Difficulty, GameInfo, RunStart};
 use glam::Vec2;
 use tungsten::core::assets::UvRect;
-use tungsten::core::ui::{Visibility, WidgetId};
 use tungsten::core::{
     AssetRegistry, Bundle, CameraState, Collider, CollisionEvent, Config, Entity, EventQueue,
     FilterMode, ParticleConfigRegistry, ParticleEmitter, Position, PrevPosition, RigidBodyBundle,
@@ -157,27 +156,11 @@ pub fn tap(harness: &mut UiHarness, action: &str) {
     settle(harness);
 }
 
-/// The focusable control named `name` on the front-most shown screen.
-pub fn find(harness: &UiHarness, name: &str) -> Option<WidgetId> {
-    let tree = harness.tree();
-    tree.roots().iter().rev().find_map(|root| {
-        if tree.visibility(*root) != Some(Visibility::Visible) {
-            return None;
-        }
-        let mut stack = vec![*root];
-        while let Some(id) = stack.pop() {
-            if tree.accessible_name(id) == Some(name) && tree.can_focus(id) {
-                return Some(id);
-            }
-            stack.extend(tree.children(id).iter().rev().copied());
-        }
-        None
-    })
-}
-
 /// Focuses the control named `name` and activates it with `ui_accept`.
 pub fn press(harness: &mut UiHarness, name: &str) {
-    let id = find(harness, name).unwrap_or_else(|| panic!("no enabled control '{name}'"));
+    let id = harness
+        .find(name)
+        .unwrap_or_else(|| panic!("no enabled control '{name}'"));
     assert!(harness.focus(id), "'{name}' takes focus");
     tap(harness, "ui_accept");
 }
