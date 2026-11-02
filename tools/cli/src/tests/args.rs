@@ -245,3 +245,34 @@ fn the_usage_names_every_command_and_option() {
     assert!(!USAGE.ends_with('\n'));
     assert!(USAGE.lines().all(|line| line.len() <= 76));
 }
+
+#[test]
+fn schema_takes_a_format_and_an_output() {
+    assert_eq!(
+        parse_str(&["schema", "ui_screen"]),
+        Ok(Command::Schema(SchemaArgs {
+            name: "ui_screen".to_owned(),
+            out: None
+        }))
+    );
+    assert_eq!(
+        parse_str(&["schema", "ui_theme", "-o", "theme.schema.json"]),
+        Ok(Command::Schema(SchemaArgs {
+            name: "ui_theme".to_owned(),
+            out: Some(PathBuf::from("theme.schema.json"))
+        }))
+    );
+    assert_eq!(
+        parse_str(&["schema", "prefab"]),
+        Err(UsageError(
+            "unknown schema `prefab`: ui_screen or ui_theme".to_owned()
+        ))
+    );
+    assert_eq!(
+        parse_str(&["schema"]),
+        Err(UsageError(
+            "`schema` needs a format: ui_screen or ui_theme".to_owned()
+        ))
+    );
+    assert!(parse_str(&["schema", "ui_screen", "ui_theme"]).is_err());
+}

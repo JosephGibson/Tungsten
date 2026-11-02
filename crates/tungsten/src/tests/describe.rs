@@ -57,7 +57,7 @@ fn a_description_lists_components_with_kit_fields_hooks_and_manifest_ids() {
     app.run_describe(&out, &dir).unwrap();
     let description: Value = serde_json::from_str(&fs::read_to_string(&out).unwrap()).unwrap();
 
-    assert_eq!(description["version"], 1);
+    assert_eq!(description["version"], 2);
     assert_eq!(description["errors"], json!([]), "{description:#}");
     let components = description["components"].as_array().unwrap();
     let named = |name: &str| components.iter().find(|c| c["name"] == name).cloned();
@@ -146,4 +146,90 @@ fn a_describe_run_resolves_no_user_folder_and_leaves_a_damaged_settings_file() {
     assert!(app.world().resource::<SaveSlots>().dir().is_some());
     assert!(bad.exists(), "the control run quarantines the damaged file");
     let _ = fs::remove_dir_all(&user);
+}
+
+fn title(_: &World) -> String {
+    "Game".to_owned()
+}
+
+fn saving_on(_: &World) -> bool {
+    true
+}
+
+fn save(_: &mut World, _: tungsten_core::ui::UiAction) {}
+
+/// A registered screen, for the description's names.
+struct Blank;
+
+impl crate::GameState for Blank {
+    fn id(&self) -> crate::StateId {
+        "settings"
+    }
+
+    fn on_enter(&mut self, _ctx: &mut crate::StateContext) {}
+
+    fn on_exit(&mut self, _ctx: &mut crate::StateContext) {}
+
+    fn update(&mut self, _world: &mut World) {}
+}
+
+fn blank() -> Box<dyn crate::GameState> {
+    Box::new(Blank)
+}
+
+#[test]
+fn a_description_lists_screens_and_the_names_they_may_use() {
+    let dir = game_folder();
+    fs::remove_file(dir.join("assets/prefabs/goblin.json")).unwrap();
+    write(
+        &dir.join("assets/ui/screens/pause.json"),
+        r#"{"version": 1, "root": {"kind": "screen", "width": "menu_width", "children": [
+            {"kind": "display", "style": "heading", "bind": {"text": "title"}},
+            {"kind": "button", "key": "save", "text": "Save", "bind": {"enabled": "saving_on"},
+             "on": {"action": "save"}},
+            {"kind": "button", "key": "settings", "text": "Settings", "on": {"push": "settings"}}
+        ]}}"#,
+    );
+    write(
+        &dir.join("assets/manifest.json"),
+        r#"{
+            "sprites": { "dot": { "path": "sprites/dot.png" } },
+            "ui_screens": { "pause": { "path": "ui/screens/pause.json" } }
+        }"#,
+    );
+    let mut app = App::new(Config::default()).unwrap();
+    let world = app.world_mut();
+    tungsten_core::ui::UiBindings::of(world)
+        .text("title", title)
+        .enabled("saving_on", saving_on)
+        .action("save", save);
+    crate::screens::register(world, "settings", blank);
+    app.set_manifest_roots(vec![dir.join("assets/manifest.json")]);
+    let out = dir.join("describe.json");
+    app.run_describe(&out, &dir).unwrap();
+    let description: Value = serde_json::from_str(&fs::read_to_string(&out).unwrap()).unwrap();
+
+    assert_eq!(description["version"], 2);
+    assert_eq!(description["errors"], json!([]), "{description:#}");
+    assert_eq!(description["assets"]["ui_screens"], json!(["pause"]));
+    let ui = &description["ui"];
+    assert_eq!(ui["text"], json!(["title"]));
+    assert_eq!(ui["enabled"], json!(["saving_on"]));
+    assert_eq!(ui["actions"], json!(["save"]));
+    assert_eq!(ui["value"], json!([]));
+    assert_eq!(ui["screens"], json!(["settings"]));
+    assert_eq!(
+        description["screens"],
+        json!([{
+            "id": "pause",
+            "file": "assets/ui/screens/pause.json",
+            "keys": ["save", "settings"],
+            "uses": {
+                "text": ["title"], "value": [], "fill": [], "visible": [],
+                "enabled": ["saving_on"], "rows": [], "mounts": [], "actions": ["save"],
+                "styles": ["heading"], "sizes": ["menu_width"], "screens": ["settings"]
+            }
+        }])
+    );
+    let _ = fs::remove_dir_all(&dir);
 }

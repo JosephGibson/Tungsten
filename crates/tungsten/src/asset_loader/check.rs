@@ -13,11 +13,17 @@ use tungsten_core::assets::{
     ParticleMeshRegistry, PrefabRegistry, ResolvedManifest, SceneData, SoundData, SoundRegistry,
     StagedLoad, StagedLoadError, TilemapData, TilemapRegistry, UvRect,
 };
-use tungsten_core::ui::{ThemeFile, UiThemeRegistry};
+use tungsten_core::ui::{
+    ScreenFile, ScreenFileError, ScreenNames, Theme, ThemeFile, UiBindings, UiScreenRegistry,
+    UiThemeRegistry, UiTree, widgets,
+};
 use tungsten_core::{AssetRegistry, TextureHandle, World};
 
 use super::atlas::decode_sprite_siblings;
-use super::{UiThemePaths, missing_particle_render_ref, prefab, unknown_font_tokens};
+use super::{
+    UiScreenPaths, UiThemePaths, missing_particle_render_ref, prefab, unknown_font_tokens,
+};
+use crate::screens::ScreenRegistry;
 
 /// One error the check found: the file to fix, relative to the game's
 /// folder and `/`-separated, and what is wrong.
@@ -105,6 +111,10 @@ pub(crate) fn check_files(
     }
     world.insert_resource(themes);
     world.insert_resource(theme_paths);
+
+    // 4b. Screen files (redo 7.20), each against the names the plugins
+    // registered and the themes give.
+    check_screens(&manifest, world, &mut errors);
 
     // 5. Materials and particle meshes, as metadata: no renderer uploads them.
     let mut materials = world
@@ -211,6 +221,84 @@ pub(crate) fn check_files(
     check_scenes(roots, game_dir, world, &mut errors);
 
     errors.finish(game_dir)
+}
+
+/// Parses each `ui_screens` file, then holds every name it uses to the
+/// World's ([`screen_names`]), each error naming its field; inserts the
+/// registry and paths when the manifests list screens, as a load does.
+fn check_screens(manifest: &ResolvedManifest, world: &mut World, errors: &mut Errors) {
+    if manifest.ui_screens.is_empty() {
+        return;
+    }
+    let mut registry = UiScreenRegistry::new();
+    let mut paths = UiScreenPaths::default();
+    for id in sorted(manifest.ui_screens.keys()) {
+        let path = &manifest.ui_screens[id].path;
+        match ScreenFile::load(path) {
+            Ok(file) => {
+                registry.insert(id.clone(), file);
+                paths.register(id.clone(), path.clone());
+            }
+            Err(ScreenFileError::Parse { source, .. }) => {
+                errors.push(path, format!("ui screen '{id}': {source}"));
+            }
+            Err(e) => errors.push(path, format!("Failed to load ui screen '{id}': {e}")),
+        }
+    }
+    let names = screen_names(world, &registry);
+    for id in registry.ids() {
+        let path = &manifest.ui_screens[id].path;
+        for issue in registry
+            .get(id)
+            .map(|file| file.check(&names))
+            .unwrap_or_default()
+        {
+            errors.push(path, format!("ui screen '{id}': {issue}"));
+        }
+    }
+    world.insert_resource(registry);
+    world.insert_resource(paths);
+}
+
+/// The names a screen file may use in `world`: the bindings, providers,
+/// mounts and actions its [`UiBindings`] holds; the text styles and sizes
+/// the built-in theme, the tree's and every loaded theme name, with the
+/// widgets' size defaults; and the screens a `push` opens, the registered
+/// ones and `registry`'s files, those a data screen refuses apart.
+pub(crate) fn screen_names(world: &World, registry: &UiScreenRegistry) -> ScreenNames {
+    let mut names = world
+        .get_resource::<UiBindings>()
+        .map(UiBindings::names)
+        .unwrap_or_default();
+    let built_in = Theme::default();
+    let mut themes = vec![&built_in];
+    themes.extend(world.get_resource::<UiTree>().map(UiTree::theme));
+    if let Some(loaded) = world.get_resource::<UiThemeRegistry>() {
+        themes.extend(loaded.ids().into_iter().filter_map(|id| loaded.get(id)));
+    }
+    for theme in themes {
+        names.styles.extend(theme.names.text_styles.keys().cloned());
+        names.sizes.extend(theme.names.sizes.keys().cloned());
+    }
+    names
+        .sizes
+        .extend(widgets::SIZES.iter().map(|(name, _)| (*name).to_owned()));
+    if let Some(screens) = world.get_resource::<ScreenRegistry>() {
+        names
+            .screens
+            .extend(screens.ids().into_iter().map(str::to_owned));
+    }
+    for id in registry.ids() {
+        names.screens.insert(id.to_owned());
+        if registry
+            .get(id)
+            .and_then(ScreenFile::data_screen_refusal)
+            .is_some()
+        {
+            names.refused.insert(id.to_owned());
+        }
+    }
+    names
 }
 
 /// Decodes each sprite's file once and its siblings against its size, and

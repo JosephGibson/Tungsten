@@ -68,3 +68,49 @@ Assets:
         json!({ "enemy": ["troll"] })
     );
 }
+
+fn with_screens() -> Value {
+    let mut description = description();
+    description["ui"] = json!({
+        "text": ["game_title"],
+        "enabled": ["saving_on"],
+        "actions": [],
+        "screens": ["confirm"]
+    });
+    description["screens"] = json!([{
+        "id": "pause",
+        "file": "assets/ui/screens/pause.json",
+        "keys": ["resume", "save"],
+        "uses": { "enabled": ["saving_on"], "sizes": ["menu_width"], "text": [] }
+    }]);
+    description
+}
+
+#[test]
+fn describe_prints_screens() {
+    let text = render(&with_screens());
+    assert!(
+        text.ends_with(
+            "\
+UI names:
+  enabled (1): saving_on
+  screens (1): confirm
+  text (1): game_title
+Screens (1):
+  pause: assets/ui/screens/pause.json
+    keys (2): resume, save
+    enabled (1): saving_on
+    sizes (1): menu_width
+"
+        ),
+        "{text}"
+    );
+    let pause = named(&with_screens(), "pause");
+    assert_eq!(pause["screens"].as_array().unwrap().len(), 1);
+    assert!(!is_empty(&pause));
+    let saving = named(&with_screens(), "saving_on");
+    assert_eq!(saving["ui"]["enabled"], json!(["saving_on"]));
+    assert_eq!(saving["screens"], json!([]));
+    assert!(!is_empty(&saving));
+    assert!(is_empty(&named(&with_screens(), "nothing")));
+}

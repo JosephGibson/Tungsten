@@ -136,3 +136,51 @@ fn render_without_its_output_exits_2() {
         "{stderr}"
     );
 }
+
+#[test]
+fn schema_prints_each_format() {
+    for (name, title) in [
+        ("ui_screen", "Tungsten UI screen"),
+        ("ui_theme", "Tungsten UI theme"),
+    ] {
+        let output = tungsten().args(["schema", name]).output().unwrap();
+        assert_eq!(output.status.code(), Some(0), "{name}");
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            stdout.contains(&format!("\"title\": \"{title}\"")),
+            "{stdout}"
+        );
+        assert!(stdout.contains("draft/2020-12"), "{name}");
+    }
+}
+
+#[test]
+fn schema_writes_its_file() {
+    let dir = std::env::temp_dir().join(format!("tungsten-schema-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = dir.join("screen.schema.json");
+    let output = tungsten()
+        .args(["schema", "ui_screen", "-o"])
+        .arg(&out)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stdout.is_empty(), "the file, not stdout");
+    let text = std::fs::read_to_string(&out).unwrap();
+    assert!(text.starts_with('{') && text.ends_with("}\n"), "{text}");
+    assert!(text.contains("\"root_node\""));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_unknown_schema_exits_2_naming_both() {
+    let output = tungsten().args(["schema", "prefab"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("tungsten: unknown schema `prefab`: ui_screen or ui_theme\n"),
+        "{stderr}"
+    );
+}

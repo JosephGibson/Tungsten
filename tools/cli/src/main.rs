@@ -3,7 +3,7 @@
 //! the game reads and reports every error, `package` builds the game's
 //! release archives, `run` runs it from a script, `render` renders it to PNG
 //! and `describe` prints its components, script hooks and asset IDs (redo
-//! 7.2).
+//! 7.2); `schema` prints a file format's JSON Schema (redo 7.20).
 
 mod args;
 mod cargo;
@@ -15,6 +15,7 @@ mod notices;
 mod package;
 mod render;
 mod run;
+mod schema;
 
 /// The files `build.rs` embeds, by their path in the engine's repository.
 mod embedded {
@@ -62,6 +63,7 @@ fn main() -> ExitCode {
             "describe",
             current_dir().and_then(|dir| describe::run(&dir, &args)),
         ),
+        Command::Schema(args) => finish("schema", schema::run(&args)),
     }
 }
 

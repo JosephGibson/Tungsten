@@ -97,6 +97,17 @@ pub(crate) fn named(description: &Value, name: &str) -> Value {
             assets.insert(section.clone(), json!(ids(list)));
         }
     }
+    let mut ui = Map::new();
+    for (kind, list) in description["ui"].as_object().into_iter().flatten() {
+        ui.insert(kind.clone(), json!(ids(list)));
+    }
+    let screens: Vec<Value> = description["screens"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|screen| screen["id"] == name)
+        .cloned()
+        .collect();
     json!({
         "version": description["version"],
         "components": keep(&description["components"]),
@@ -107,6 +118,8 @@ pub(crate) fn named(description: &Value, name: &str) -> Value {
             "probes": keep(&description["script"]["probes"]),
         },
         "assets": assets,
+        "ui": ui,
+        "screens": screens,
         "errors": description["errors"],
     })
 }
@@ -117,6 +130,12 @@ fn is_empty(description: &Value) -> bool {
     SECTIONS.iter().all(|(key, _)| none(&description[key]))
         && none(&description["script"]["actions"])
         && none(&description["script"]["probes"])
+        && none(&description["screens"])
+        && description["ui"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .all(|(_, list)| none(list))
         && description["assets"]
             .as_object()
             .into_iter()
@@ -173,6 +192,29 @@ pub(crate) fn render(description: &Value) -> String {
     if !assets.is_empty() {
         let _ = writeln!(out, "Assets:");
         out.push_str(&assets);
+    }
+    // The names a screen file may use, by kind, then each screen file.
+    let mut ui = String::new();
+    for (kind, list) in description["ui"].as_object().into_iter().flatten() {
+        id_line(&mut ui, kind, list);
+    }
+    if !ui.is_empty() {
+        let _ = writeln!(out, "UI names:");
+        out.push_str(&ui);
+    }
+    let screens = description["screens"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if !screens.is_empty() {
+        let _ = writeln!(out, "Screens ({}):", screens.len());
+        for screen in &screens {
+            let _ = writeln!(out, "  {}: {}", text(&screen["id"]), text(&screen["file"]));
+            id_line(&mut out, "  keys", &screen["keys"]);
+            for (kind, list) in screen["uses"].as_object().into_iter().flatten() {
+                id_line(&mut out, &format!("  {kind}"), list);
+            }
+        }
     }
     let errors = description["errors"]
         .as_array()
