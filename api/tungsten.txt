@@ -783,6 +783,118 @@ impl core::marker::UnsafeUnpin for tungsten::post_aa::PostAaState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::post_aa::PostAaState
 impl core::panic::unwind_safe::UnwindSafe for tungsten::post_aa::PostAaState
 pub fn tungsten::post_aa::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten_core::config::PostAaMode)
+pub mod tungsten::screens
+pub struct tungsten::screens::Confirm
+impl tungsten::screens::Confirm
+pub fn tungsten::screens::Confirm::countdown(self, f32) -> Self
+pub fn tungsten::screens::Confirm::new(&str, &str, &str) -> Self
+pub fn tungsten::screens::Confirm::on_no(self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World) + 'static) -> Self
+pub fn tungsten::screens::Confirm::on_yes(self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World) + 'static) -> Self
+impl tungsten::state::GameState for tungsten::screens::Confirm
+pub fn tungsten::screens::Confirm::holds_clock(&self) -> bool
+pub fn tungsten::screens::Confirm::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::Confirm::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::update(&mut self, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::screens::Confirm
+impl !core::marker::Send for tungsten::screens::Confirm
+impl !core::marker::Sync for tungsten::screens::Confirm
+impl core::marker::Unpin for tungsten::screens::Confirm
+impl core::marker::UnsafeUnpin for tungsten::screens::Confirm
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::Confirm
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::screens::Confirm
+pub struct tungsten::screens::ModalScreen
+pub tungsten::screens::ModalScreen::card: tungsten_core::ui::id::WidgetId
+pub tungsten::screens::ModalScreen::root: tungsten_core::ui::id::WidgetId
+impl tungsten::screens::ModalScreen
+pub fn tungsten::screens::ModalScreen::open(&mut tungsten_core::ecs::world::World, f32) -> Self
+pub fn tungsten::screens::ModalScreen::resume(&self, &mut tungsten_core::ecs::world::World)
+pub fn tungsten::screens::ModalScreen::update(&mut self, &mut tungsten_core::ecs::world::World) -> core::option::Option<tungsten_core::ui::id::UiKey>
+impl core::clone::Clone for tungsten::screens::ModalScreen
+pub fn tungsten::screens::ModalScreen::clone(&self) -> tungsten::screens::ModalScreen
+impl core::fmt::Debug for tungsten::screens::ModalScreen
+pub fn tungsten::screens::ModalScreen::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::screens::ModalScreen
+impl core::marker::Freeze for tungsten::screens::ModalScreen
+impl core::marker::Send for tungsten::screens::ModalScreen
+impl core::marker::Sync for tungsten::screens::ModalScreen
+impl core::marker::Unpin for tungsten::screens::ModalScreen
+impl core::marker::UnsafeUnpin for tungsten::screens::ModalScreen
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::ModalScreen
+impl core::panic::unwind_safe::UnwindSafe for tungsten::screens::ModalScreen
+pub struct tungsten::screens::ScreenRegistry
+impl tungsten::screens::ScreenRegistry
+pub fn tungsten::screens::ScreenRegistry::ids(&self) -> alloc::vec::Vec<&'static str>
+impl core::default::Default for tungsten::screens::ScreenRegistry
+pub fn tungsten::screens::ScreenRegistry::default() -> tungsten::screens::ScreenRegistry
+impl core::marker::Freeze for tungsten::screens::ScreenRegistry
+impl core::marker::Send for tungsten::screens::ScreenRegistry
+impl core::marker::Sync for tungsten::screens::ScreenRegistry
+impl core::marker::Unpin for tungsten::screens::ScreenRegistry
+impl core::marker::UnsafeUnpin for tungsten::screens::ScreenRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::ScreenRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten::screens::ScreenRegistry
+pub struct tungsten::screens::Screens
+impl core::default::Default for tungsten::screens::Screens
+pub fn tungsten::screens::Screens::default() -> tungsten::screens::Screens
+impl core::fmt::Debug for tungsten::screens::Screens
+pub fn tungsten::screens::Screens::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::screens::Screens
+impl core::marker::Send for tungsten::screens::Screens
+impl core::marker::Sync for tungsten::screens::Screens
+impl core::marker::Unpin for tungsten::screens::Screens
+impl core::marker::UnsafeUnpin for tungsten::screens::Screens
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::Screens
+impl core::panic::unwind_safe::UnwindSafe for tungsten::screens::Screens
+pub struct tungsten::screens::ScreensPlugin
+impl core::clone::Clone for tungsten::screens::ScreensPlugin
+pub fn tungsten::screens::ScreensPlugin::clone(&self) -> tungsten::screens::ScreensPlugin
+impl core::default::Default for tungsten::screens::ScreensPlugin
+pub fn tungsten::screens::ScreensPlugin::default() -> tungsten::screens::ScreensPlugin
+impl core::fmt::Debug for tungsten::screens::ScreensPlugin
+pub fn tungsten::screens::ScreensPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::screens::ScreensPlugin
+impl tungsten_core::schedule::Plugin for tungsten::screens::ScreensPlugin
+pub fn tungsten::screens::ScreensPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::screens::ScreensPlugin
+impl core::marker::Send for tungsten::screens::ScreensPlugin
+impl core::marker::Sync for tungsten::screens::ScreensPlugin
+impl core::marker::Unpin for tungsten::screens::ScreensPlugin
+impl core::marker::UnsafeUnpin for tungsten::screens::ScreensPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::ScreensPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::screens::ScreensPlugin
+pub struct tungsten::screens::Toasts
+impl tungsten::screens::Toasts
+pub fn tungsten::screens::Toasts::texts(&self, &tungsten_core::ui::tree::UiTree) -> alloc::vec::Vec<alloc::string::String>
+impl core::default::Default for tungsten::screens::Toasts
+pub fn tungsten::screens::Toasts::default() -> tungsten::screens::Toasts
+impl core::fmt::Debug for tungsten::screens::Toasts
+pub fn tungsten::screens::Toasts::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::screens::Toasts
+impl core::marker::Send for tungsten::screens::Toasts
+impl core::marker::Sync for tungsten::screens::Toasts
+impl core::marker::Unpin for tungsten::screens::Toasts
+impl core::marker::UnsafeUnpin for tungsten::screens::Toasts
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::Toasts
+impl core::panic::unwind_safe::UnwindSafe for tungsten::screens::Toasts
+pub const tungsten::screens::CONFIRM: tungsten::state::StateId
+pub const tungsten::screens::POP_SECS: f32
+pub const tungsten::screens::PUSH_SECS: f32
+pub const tungsten::screens::RESET_SECS: [f32; 2]
+pub const tungsten::screens::SLIDE_UNITS: f32
+pub const tungsten::screens::TOAST_SECS: f32
+pub fn tungsten::screens::ask(&mut tungsten_core::ecs::world::World, tungsten::screens::Confirm) -> bool
+pub fn tungsten::screens::idle(&tungsten_core::ecs::world::World) -> bool
+pub fn tungsten::screens::open(&mut tungsten_core::ecs::world::World, &str) -> bool
+pub fn tungsten::screens::pop(&mut tungsten_core::ecs::world::World) -> bool
+pub fn tungsten::screens::push(&mut tungsten_core::ecs::world::World, impl tungsten::state::GameState) -> bool
+pub fn tungsten::screens::register(&mut tungsten_core::ecs::world::World, &'static str, tungsten::screens::MakeScreen)
+pub fn tungsten::screens::reset(&mut tungsten_core::ecs::world::World, impl tungsten::state::GameState, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World) + 'static) -> bool
+pub fn tungsten::screens::toast(&mut tungsten_core::ecs::world::World, impl core::convert::Into<alloc::string::String>)
+pub fn tungsten::screens::transitioning(&tungsten_core::ecs::world::World) -> bool
+pub type tungsten::screens::MakeScreen = fn() -> alloc::boxed::Box<dyn tungsten::state::GameState>
 pub mod tungsten::sprite_extract
 pub struct tungsten::sprite_extract::Batches
 impl tungsten::sprite_extract::Batches
@@ -884,6 +996,14 @@ pub fn tungsten::state::GameState::on_exit(&mut self, &mut tungsten::state::Stat
 pub fn tungsten::state::GameState::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::state::GameState::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::state::GameState::update(&mut self, &mut tungsten_core::ecs::world::World)
+impl tungsten::state::GameState for tungsten::screens::Confirm
+pub fn tungsten::screens::Confirm::holds_clock(&self) -> bool
+pub fn tungsten::screens::Confirm::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::Confirm::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::update(&mut self, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::state::despawn_scene_entities(&mut tungsten_core::ecs::world::World, tungsten::state::StateId)
 pub fn tungsten::state::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::state::ui_state_roots_system(&mut tungsten_core::ecs::world::World)
@@ -2114,6 +2234,14 @@ pub fn tungsten::GameState::on_exit(&mut self, &mut tungsten::state::StateContex
 pub fn tungsten::GameState::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::update(&mut self, &mut tungsten_core::ecs::world::World)
+impl tungsten::state::GameState for tungsten::screens::Confirm
+pub fn tungsten::screens::Confirm::holds_clock(&self) -> bool
+pub fn tungsten::screens::Confirm::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::Confirm::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::Confirm::update(&mut self, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::apply_settings(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::beam(&mut tungsten::sprite_extract::Batches, &tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32, [u8; 4], f32)
 pub fn tungsten::camera_update_system(&mut tungsten_core::ecs::world::World)
