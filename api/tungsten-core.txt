@@ -528,6 +528,9 @@ pub tungsten_core::assets::manifest::ManifestError::MissingSoundFile::path: allo
 pub tungsten_core::assets::manifest::ManifestError::MissingTilemapFile
 pub tungsten_core::assets::manifest::ManifestError::MissingTilemapFile::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingTilemapFile::path: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::MissingUiScreenFile
+pub tungsten_core::assets::manifest::ManifestError::MissingUiScreenFile::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::MissingUiScreenFile::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile
 pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile::path: alloc::string::String
@@ -765,6 +768,7 @@ pub tungsten_core::assets::manifest::RawManifest::sheets: std::collections::hash
 pub tungsten_core::assets::manifest::RawManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SoundEntry>
 pub tungsten_core::assets::manifest::RawManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SpriteEntry>
 pub tungsten_core::assets::manifest::RawManifest::tilemaps: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::TilemapEntry>
+pub tungsten_core::assets::manifest::RawManifest::ui_screens: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::UiScreenEntry>
 pub tungsten_core::assets::manifest::RawManifest::ui_themes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::UiThemeEntry>
 impl core::clone::Clone for tungsten_core::assets::manifest::RawManifest
 pub fn tungsten_core::assets::manifest::RawManifest::clone(&self) -> tungsten_core::assets::manifest::RawManifest
@@ -858,6 +862,7 @@ pub tungsten_core::assets::manifest::ResolvedManifest::shaders: std::collections
 pub tungsten_core::assets::manifest::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
 pub tungsten_core::assets::manifest::ResolvedManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSprite>
 pub tungsten_core::assets::manifest::ResolvedManifest::tilemaps: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedTilemap>
+pub tungsten_core::assets::manifest::ResolvedManifest::ui_screens: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedUiScreen>
 pub tungsten_core::assets::manifest::ResolvedManifest::ui_themes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedUiTheme>
 impl tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::manifest::ManifestError>
@@ -996,6 +1001,23 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedTilemap
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedTilemap
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedTilemap
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedTilemap
+pub struct tungsten_core::assets::manifest::ResolvedUiScreen
+pub tungsten_core::assets::manifest::ResolvedUiScreen::path: std::path::PathBuf
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedUiScreen
+pub fn tungsten_core::assets::manifest::ResolvedUiScreen::clone(&self) -> tungsten_core::assets::manifest::ResolvedUiScreen
+impl core::cmp::Eq for tungsten_core::assets::manifest::ResolvedUiScreen
+impl core::cmp::PartialEq for tungsten_core::assets::manifest::ResolvedUiScreen
+pub fn tungsten_core::assets::manifest::ResolvedUiScreen::eq(&self, &tungsten_core::assets::manifest::ResolvedUiScreen) -> bool
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedUiScreen
+pub fn tungsten_core::assets::manifest::ResolvedUiScreen::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::manifest::ResolvedUiScreen
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedUiScreen
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedUiScreen
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedUiScreen
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedUiScreen
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedUiScreen
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedUiScreen
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedUiScreen
 pub struct tungsten_core::assets::manifest::ResolvedUiTheme
 pub tungsten_core::assets::manifest::ResolvedUiTheme::path: std::path::PathBuf
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedUiTheme
@@ -1103,6 +1125,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::TilemapEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::TilemapEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::TilemapEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::TilemapEntry
+pub struct tungsten_core::assets::manifest::UiScreenEntry
+pub tungsten_core::assets::manifest::UiScreenEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::UiScreenEntry
+pub fn tungsten_core::assets::manifest::UiScreenEntry::clone(&self) -> tungsten_core::assets::manifest::UiScreenEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::UiScreenEntry
+pub fn tungsten_core::assets::manifest::UiScreenEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::UiScreenEntry
+pub fn tungsten_core::assets::manifest::UiScreenEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::UiScreenEntry
+impl core::marker::Send for tungsten_core::assets::manifest::UiScreenEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::UiScreenEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::UiScreenEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::UiScreenEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::UiScreenEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::UiScreenEntry
 pub struct tungsten_core::assets::manifest::UiThemeEntry
 pub tungsten_core::assets::manifest::UiThemeEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::UiThemeEntry
@@ -2753,6 +2790,9 @@ pub tungsten_core::assets::ManifestError::MissingSoundFile::path: alloc::string:
 pub tungsten_core::assets::ManifestError::MissingTilemapFile
 pub tungsten_core::assets::ManifestError::MissingTilemapFile::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingTilemapFile::path: alloc::string::String
+pub tungsten_core::assets::ManifestError::MissingUiScreenFile
+pub tungsten_core::assets::ManifestError::MissingUiScreenFile::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::MissingUiScreenFile::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingUiThemeFile
 pub tungsten_core::assets::ManifestError::MissingUiThemeFile::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingUiThemeFile::path: alloc::string::String
@@ -4027,6 +4067,7 @@ pub tungsten_core::assets::ResolvedManifest::shaders: std::collections::hash::ma
 pub tungsten_core::assets::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
 pub tungsten_core::assets::ResolvedManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSprite>
 pub tungsten_core::assets::ResolvedManifest::tilemaps: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedTilemap>
+pub tungsten_core::assets::ResolvedManifest::ui_screens: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedUiScreen>
 pub tungsten_core::assets::ResolvedManifest::ui_themes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedUiTheme>
 impl tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::manifest::ManifestError>
@@ -12477,6 +12518,188 @@ pub const tungsten_core::ui::route::UI_PREV: &str
 pub const tungsten_core::ui::route::UI_RIGHT: &str
 pub const tungsten_core::ui::route::UI_UP: &str
 pub fn tungsten_core::ui::route::ui_route_system(&mut tungsten_core::World)
+pub mod tungsten_core::ui::screen_file
+pub enum tungsten_core::ui::screen_file::ScreenAction
+pub tungsten_core::ui::screen_file::ScreenAction::Named(alloc::string::String)
+pub tungsten_core::ui::screen_file::ScreenAction::Pop
+pub tungsten_core::ui::screen_file::ScreenAction::Push(alloc::string::String)
+pub tungsten_core::ui::screen_file::ScreenAction::Setting(tungsten_core::ui::screen_file::ScreenSetting)
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::clone(&self) -> tungsten_core::ui::screen_file::ScreenAction
+impl core::cmp::Eq for tungsten_core::ui::screen_file::ScreenAction
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::eq(&self, &tungsten_core::ui::screen_file::ScreenAction) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenAction
+impl serde_core::ser::Serialize for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenAction
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenAction
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenAction
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenAction
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenAction
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenAction
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenAction
+pub enum tungsten_core::ui::screen_file::ScreenFileError
+pub tungsten_core::ui::screen_file::ScreenFileError::Io
+pub tungsten_core::ui::screen_file::ScreenFileError::Io::path: alloc::string::String
+pub tungsten_core::ui::screen_file::ScreenFileError::Io::source: core::io::error::Error
+pub tungsten_core::ui::screen_file::ScreenFileError::Parse
+pub tungsten_core::ui::screen_file::ScreenFileError::Parse::path: alloc::string::String
+pub tungsten_core::ui::screen_file::ScreenFileError::Parse::source: tungsten_core::ui::screen_file::ScreenError
+impl core::error::Error for tungsten_core::ui::screen_file::ScreenFileError
+pub fn tungsten_core::ui::screen_file::ScreenFileError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenFileError
+pub fn tungsten_core::ui::screen_file::ScreenFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::ui::screen_file::ScreenFileError
+pub fn tungsten_core::ui::screen_file::ScreenFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenFileError
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenFileError
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenFileError
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenFileError
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenFileError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenFileError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenFileError
+pub enum tungsten_core::ui::screen_file::ScreenSetting
+pub tungsten_core::ui::screen_file::ScreenSetting::EffectsVolume
+pub tungsten_core::ui::screen_file::ScreenSetting::MasterVolume
+pub tungsten_core::ui::screen_file::ScreenSetting::MusicVolume
+pub tungsten_core::ui::screen_file::ScreenSetting::TextScale
+pub tungsten_core::ui::screen_file::ScreenSetting::UiScale
+pub tungsten_core::ui::screen_file::ScreenSetting::Vsync
+impl tungsten_core::ui::screen_file::ScreenSetting
+pub const tungsten_core::ui::screen_file::ScreenSetting::ALL: [Self; 6]
+pub const fn tungsten_core::ui::screen_file::ScreenSetting::is_toggle(self) -> bool
+pub const fn tungsten_core::ui::screen_file::ScreenSetting::name(self) -> &'static str
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::clone(&self) -> tungsten_core::ui::screen_file::ScreenSetting
+impl core::cmp::Eq for tungsten_core::ui::screen_file::ScreenSetting
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::eq(&self, &tungsten_core::ui::screen_file::ScreenSetting) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenSetting
+impl serde_core::ser::Serialize for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenSetting
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenSetting
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenSetting
+pub struct tungsten_core::ui::screen_file::ScreenError
+pub tungsten_core::ui::screen_file::ScreenError::field: alloc::string::String
+pub tungsten_core::ui::screen_file::ScreenError::message: alloc::string::String
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenError
+pub fn tungsten_core::ui::screen_file::ScreenError::clone(&self) -> tungsten_core::ui::screen_file::ScreenError
+impl core::cmp::Eq for tungsten_core::ui::screen_file::ScreenError
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenError
+pub fn tungsten_core::ui::screen_file::ScreenError::eq(&self, &tungsten_core::ui::screen_file::ScreenError) -> bool
+impl core::error::Error for tungsten_core::ui::screen_file::ScreenError
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenError
+pub fn tungsten_core::ui::screen_file::ScreenError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::ui::screen_file::ScreenError
+pub fn tungsten_core::ui::screen_file::ScreenError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenError
+pub struct tungsten_core::ui::screen_file::ScreenFile
+pub tungsten_core::ui::screen_file::ScreenFile::version: u32
+impl tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::check(&self, &tungsten_core::ui::screen_file::ScreenNames) -> alloc::vec::Vec<tungsten_core::ui::screen_file::ScreenError>
+pub fn tungsten_core::ui::screen_file::ScreenFile::data_screen_refusal(&self) -> core::option::Option<&'static str>
+pub fn tungsten_core::ui::screen_file::ScreenFile::from_json(&str) -> core::result::Result<Self, tungsten_core::ui::screen_file::ScreenError>
+pub fn tungsten_core::ui::screen_file::ScreenFile::keys(&self) -> alloc::vec::Vec<alloc::string::String>
+pub fn tungsten_core::ui::screen_file::ScreenFile::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::ui::screen_file::ScreenFileError>
+pub fn tungsten_core::ui::screen_file::ScreenFile::to_canonical(&self) -> alloc::string::String
+pub fn tungsten_core::ui::screen_file::ScreenFile::uses(&self) -> tungsten_core::ui::screen_file::ScreenNames
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::clone(&self) -> tungsten_core::ui::screen_file::ScreenFile
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::eq(&self, &tungsten_core::ui::screen_file::ScreenFile) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenFile
+impl serde_core::ser::Serialize for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenFile
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenFile
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenFile
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenFile
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenFile
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenFile
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenFile
+pub struct tungsten_core::ui::screen_file::ScreenNames
+pub tungsten_core::ui::screen_file::ScreenNames::actions: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::enabled: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::fill: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::mounts: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::refused: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::rows: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::screens: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::sizes: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::styles: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::text: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::value: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::visible: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_file::ScreenNames::clone(&self) -> tungsten_core::ui::screen_file::ScreenNames
+impl core::cmp::Eq for tungsten_core::ui::screen_file::ScreenNames
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_file::ScreenNames::eq(&self, &tungsten_core::ui::screen_file::ScreenNames) -> bool
+impl core::default::Default for tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_file::ScreenNames::default() -> tungsten_core::ui::screen_file::ScreenNames
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_file::ScreenNames::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenNames
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenNames
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenNames
+pub struct tungsten_core::ui::screen_file::UiScreenRegistry
+impl tungsten_core::ui::screen_file::UiScreenRegistry
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::contains(&self, &str) -> bool
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::ui::screen_file::ScreenFile>
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::ids(&self) -> alloc::vec::Vec<&str>
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::insert(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::ui::screen_file::ScreenFile) -> core::option::Option<tungsten_core::ui::screen_file::ScreenFile>
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::intern(&mut self, &str) -> core::option::Option<&'static str>
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::len(&self) -> usize
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::new() -> Self
+impl core::default::Default for tungsten_core::ui::screen_file::UiScreenRegistry
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::default() -> tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::fmt::Debug for tungsten_core::ui::screen_file::UiScreenRegistry
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::marker::Send for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::marker::Sync for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::marker::Unpin for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::UiScreenRegistry
+pub const tungsten_core::ui::screen_file::SCREEN_VERSION: u32
+pub fn tungsten_core::ui::screen_file::json_schema() -> serde_json::value::Value
 pub mod tungsten_core::ui::scroll
 pub mod tungsten_core::ui::style
 #[non_exhaustive] pub enum tungsten_core::ui::style::Align
@@ -13191,6 +13414,7 @@ impl core::marker::Unpin for tungsten_core::ui::theme_file::UiThemeRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::UiThemeRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::UiThemeRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::json_schema() -> serde_json::value::Value
 pub mod tungsten_core::ui::tree
 pub struct tungsten_core::ui::tree::LayoutStats
 pub tungsten_core::ui::tree::LayoutStats::commits: u32
@@ -13782,6 +14006,85 @@ impl core::marker::Unpin for tungsten_core::ui::node::Role
 impl core::marker::UnsafeUnpin for tungsten_core::ui::node::Role
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::Role
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::Role
+pub enum tungsten_core::ui::ScreenAction
+pub tungsten_core::ui::ScreenAction::Named(alloc::string::String)
+pub tungsten_core::ui::ScreenAction::Pop
+pub tungsten_core::ui::ScreenAction::Push(alloc::string::String)
+pub tungsten_core::ui::ScreenAction::Setting(tungsten_core::ui::screen_file::ScreenSetting)
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::clone(&self) -> tungsten_core::ui::screen_file::ScreenAction
+impl core::cmp::Eq for tungsten_core::ui::screen_file::ScreenAction
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::eq(&self, &tungsten_core::ui::screen_file::ScreenAction) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenAction
+impl serde_core::ser::Serialize for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::ui::screen_file::ScreenAction
+pub fn tungsten_core::ui::screen_file::ScreenAction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenAction
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenAction
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenAction
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenAction
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenAction
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenAction
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenAction
+pub enum tungsten_core::ui::ScreenFileError
+pub tungsten_core::ui::ScreenFileError::Io
+pub tungsten_core::ui::ScreenFileError::Io::path: alloc::string::String
+pub tungsten_core::ui::ScreenFileError::Io::source: core::io::error::Error
+pub tungsten_core::ui::ScreenFileError::Parse
+pub tungsten_core::ui::ScreenFileError::Parse::path: alloc::string::String
+pub tungsten_core::ui::ScreenFileError::Parse::source: tungsten_core::ui::screen_file::ScreenError
+impl core::error::Error for tungsten_core::ui::screen_file::ScreenFileError
+pub fn tungsten_core::ui::screen_file::ScreenFileError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenFileError
+pub fn tungsten_core::ui::screen_file::ScreenFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::ui::screen_file::ScreenFileError
+pub fn tungsten_core::ui::screen_file::ScreenFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenFileError
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenFileError
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenFileError
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenFileError
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenFileError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenFileError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenFileError
+pub enum tungsten_core::ui::ScreenSetting
+pub tungsten_core::ui::ScreenSetting::EffectsVolume
+pub tungsten_core::ui::ScreenSetting::MasterVolume
+pub tungsten_core::ui::ScreenSetting::MusicVolume
+pub tungsten_core::ui::ScreenSetting::TextScale
+pub tungsten_core::ui::ScreenSetting::UiScale
+pub tungsten_core::ui::ScreenSetting::Vsync
+impl tungsten_core::ui::screen_file::ScreenSetting
+pub const tungsten_core::ui::screen_file::ScreenSetting::ALL: [Self; 6]
+pub const fn tungsten_core::ui::screen_file::ScreenSetting::is_toggle(self) -> bool
+pub const fn tungsten_core::ui::screen_file::ScreenSetting::name(self) -> &'static str
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::clone(&self) -> tungsten_core::ui::screen_file::ScreenSetting
+impl core::cmp::Eq for tungsten_core::ui::screen_file::ScreenSetting
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::eq(&self, &tungsten_core::ui::screen_file::ScreenSetting) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenSetting
+impl serde_core::ser::Serialize for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::ui::screen_file::ScreenSetting
+pub fn tungsten_core::ui::screen_file::ScreenSetting::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenSetting
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenSetting
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenSetting
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenSetting
 #[non_exhaustive] pub enum tungsten_core::ui::Sizing
 pub tungsten_core::ui::Sizing::Auto
 pub tungsten_core::ui::Sizing::Fill
@@ -14458,6 +14761,85 @@ impl core::marker::Unpin for tungsten_core::ui::theme::ResolvedStyle
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::ResolvedStyle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::ResolvedStyle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::ResolvedStyle
+pub struct tungsten_core::ui::ScreenError
+pub tungsten_core::ui::ScreenError::field: alloc::string::String
+pub tungsten_core::ui::ScreenError::message: alloc::string::String
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenError
+pub fn tungsten_core::ui::screen_file::ScreenError::clone(&self) -> tungsten_core::ui::screen_file::ScreenError
+impl core::cmp::Eq for tungsten_core::ui::screen_file::ScreenError
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenError
+pub fn tungsten_core::ui::screen_file::ScreenError::eq(&self, &tungsten_core::ui::screen_file::ScreenError) -> bool
+impl core::error::Error for tungsten_core::ui::screen_file::ScreenError
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenError
+pub fn tungsten_core::ui::screen_file::ScreenError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::ui::screen_file::ScreenError
+pub fn tungsten_core::ui::screen_file::ScreenError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenError
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenError
+pub struct tungsten_core::ui::ScreenFile
+pub tungsten_core::ui::ScreenFile::version: u32
+impl tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::check(&self, &tungsten_core::ui::screen_file::ScreenNames) -> alloc::vec::Vec<tungsten_core::ui::screen_file::ScreenError>
+pub fn tungsten_core::ui::screen_file::ScreenFile::data_screen_refusal(&self) -> core::option::Option<&'static str>
+pub fn tungsten_core::ui::screen_file::ScreenFile::from_json(&str) -> core::result::Result<Self, tungsten_core::ui::screen_file::ScreenError>
+pub fn tungsten_core::ui::screen_file::ScreenFile::keys(&self) -> alloc::vec::Vec<alloc::string::String>
+pub fn tungsten_core::ui::screen_file::ScreenFile::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::ui::screen_file::ScreenFileError>
+pub fn tungsten_core::ui::screen_file::ScreenFile::to_canonical(&self) -> alloc::string::String
+pub fn tungsten_core::ui::screen_file::ScreenFile::uses(&self) -> tungsten_core::ui::screen_file::ScreenNames
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::clone(&self) -> tungsten_core::ui::screen_file::ScreenFile
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::eq(&self, &tungsten_core::ui::screen_file::ScreenFile) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenFile
+impl serde_core::ser::Serialize for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::ui::screen_file::ScreenFile
+pub fn tungsten_core::ui::screen_file::ScreenFile::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenFile
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenFile
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenFile
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenFile
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenFile
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenFile
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenFile
+pub struct tungsten_core::ui::ScreenNames
+pub tungsten_core::ui::ScreenNames::actions: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::enabled: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::fill: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::mounts: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::refused: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::rows: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::screens: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::sizes: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::styles: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::text: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::value: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::visible: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_file::ScreenNames::clone(&self) -> tungsten_core::ui::screen_file::ScreenNames
+impl core::cmp::Eq for tungsten_core::ui::screen_file::ScreenNames
+impl core::cmp::PartialEq for tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_file::ScreenNames::eq(&self, &tungsten_core::ui::screen_file::ScreenNames) -> bool
+impl core::default::Default for tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_file::ScreenNames::default() -> tungsten_core::ui::screen_file::ScreenNames
+impl core::fmt::Debug for tungsten_core::ui::screen_file::ScreenNames
+pub fn tungsten_core::ui::screen_file::ScreenNames::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::Freeze for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::Send for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::Sync for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::Unpin for tungsten_core::ui::screen_file::ScreenNames
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::ScreenNames
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::ScreenNames
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::ScreenNames
 pub struct tungsten_core::ui::SliderRange
 impl tungsten_core::ui::control::SliderRange
 pub fn tungsten_core::ui::control::SliderRange::max(self) -> f32
@@ -14835,6 +15217,27 @@ impl core::marker::Unpin for tungsten_core::ui::route::UiRouter
 impl core::marker::UnsafeUnpin for tungsten_core::ui::route::UiRouter
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::route::UiRouter
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::route::UiRouter
+pub struct tungsten_core::ui::UiScreenRegistry
+impl tungsten_core::ui::screen_file::UiScreenRegistry
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::contains(&self, &str) -> bool
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::ui::screen_file::ScreenFile>
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::ids(&self) -> alloc::vec::Vec<&str>
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::insert(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::ui::screen_file::ScreenFile) -> core::option::Option<tungsten_core::ui::screen_file::ScreenFile>
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::intern(&mut self, &str) -> core::option::Option<&'static str>
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::len(&self) -> usize
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::new() -> Self
+impl core::default::Default for tungsten_core::ui::screen_file::UiScreenRegistry
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::default() -> tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::fmt::Debug for tungsten_core::ui::screen_file::UiScreenRegistry
+pub fn tungsten_core::ui::screen_file::UiScreenRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::marker::Send for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::marker::Sync for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::marker::Unpin for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_file::UiScreenRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_file::UiScreenRegistry
 #[non_exhaustive] pub struct tungsten_core::ui::UiShadow
 pub tungsten_core::ui::UiShadow::blur: f32
 pub tungsten_core::ui::UiShadow::color: [u8; 4]
@@ -15186,6 +15589,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::window::Wind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::window::WindowPlacements
 pub const tungsten_core::ui::BACK_KEY: tungsten_core::ui::id::UiKey
 pub const tungsten_core::ui::POINTER_KEY: tungsten_core::ui::id::UiKey
+pub const tungsten_core::ui::SCREEN_VERSION: u32
 pub const tungsten_core::ui::UI_ACCEPT: &str
 pub const tungsten_core::ui::UI_CANCEL: &str
 pub const tungsten_core::ui::UI_DOWN: &str
@@ -16097,6 +16501,9 @@ pub tungsten_core::ManifestError::MissingSoundFile::path: alloc::string::String
 pub tungsten_core::ManifestError::MissingTilemapFile
 pub tungsten_core::ManifestError::MissingTilemapFile::id: alloc::string::String
 pub tungsten_core::ManifestError::MissingTilemapFile::path: alloc::string::String
+pub tungsten_core::ManifestError::MissingUiScreenFile
+pub tungsten_core::ManifestError::MissingUiScreenFile::id: alloc::string::String
+pub tungsten_core::ManifestError::MissingUiScreenFile::path: alloc::string::String
 pub tungsten_core::ManifestError::MissingUiThemeFile
 pub tungsten_core::ManifestError::MissingUiThemeFile::id: alloc::string::String
 pub tungsten_core::ManifestError::MissingUiThemeFile::path: alloc::string::String
@@ -19668,6 +20075,7 @@ pub tungsten_core::ResolvedManifest::shaders: std::collections::hash::map::HashM
 pub tungsten_core::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
 pub tungsten_core::ResolvedManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSprite>
 pub tungsten_core::ResolvedManifest::tilemaps: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedTilemap>
+pub tungsten_core::ResolvedManifest::ui_screens: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedUiScreen>
 pub tungsten_core::ResolvedManifest::ui_themes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedUiTheme>
 impl tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::manifest::ManifestError>

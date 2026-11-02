@@ -1,6 +1,6 @@
-# Screens as data: screen files, bindings and the shell's static screens (screens-as-data) — draft
+# Screens as data: screen files, bindings and the shell's static screens (screens-as-data) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Redo 7.20 (phase 7's Step 8; the redo's 7.20 row and §5.11): a screen as a file in the manifest's `ui_screens`, a tree of 7.17's builders whose nodes carry a key, a layout and a named style, its text literal or bound. Bindings the game registers by name (text, a control's value, a meter's fill, visibility, enabled state, rows repeated from a provider) and Rust parts mounted under keyed nodes; a fixed action vocabulary (push a screen, pop, a named action, a setting) that a data screen in `tungsten::screens` runs; no expressions. A changed file rebuilds the live screen under its root, keeping focus by key; `tungsten check` validates every screen with field paths; `tungsten schema` exports JSON Schemas for screen and theme files; `describe` lists the screens and the names a file may use, and `tungsten render --screen` draws one. The template's pause, game over, settings (S-72) and title become files, and 01's copy follows (`D-197`). One format entry with a version field. Guards: a reloaded screen lays out only its own root, and an idle data screen lays out none.
 - **non-goals:**
   - The shell on `tungsten::screens` and its screens' actions: 7.11, with the eleven rows `D-235` moved there. The shell's files carry keys and bindings, and its Rust keeps its change machine and its handlers (§2.1, Q2).
@@ -304,5 +304,6 @@ Round 2 (due: round 1 changed the dispatch, the data screen's root rule, the rel
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-02 | landed | `ui::screen_file::tests` 14 listed (≥ 12) and the step's 30 named and module tests pass (`cargo test -p tungsten-core --lib` → 0); fmt → 0, `just lint` → 0, `cargo build --workspace --all-targets` → 0, `just repo-check` → 0, `just api` then `just api-check` → 0 (`api/tungsten-core.txt` +408); pins: 02 `guards` 12 passed, 01 443 passed, `rg -c '0x3334_9665_de0c_501a'` → 1 and `kit_recipes::` 93 passed; `just perf run boot --repeat 1` at the base → valid, digest `0d32539a6b42bedd` (functional only, `D-226`). A gap: re-exports of the two new manifest types in `assets/mod.rs` and `lib.rs`, outside the list, were dropped before the commit (both reach the types at `assets::manifest`); build, API and repo checks rerun after, the pins ran with them (re-exports only) | `perf-runs/20261102T162930Z-boot` |
 
 ## Follow-ups

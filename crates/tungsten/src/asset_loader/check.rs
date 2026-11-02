@@ -429,6 +429,7 @@ fn manifest_files(manifest: &ResolvedManifest) -> impl Iterator<Item = &PathBuf>
         .chain(manifest.particles.values().map(|e| &e.path))
         .chain(manifest.shaders.values().map(|e| &e.path))
         .chain(manifest.ui_themes.values().map(|e| &e.path))
+        .chain(manifest.ui_screens.values().map(|e| &e.path))
         .chain(manifest.prefabs.values().map(|e| &e.path))
         .chain(data)
 }

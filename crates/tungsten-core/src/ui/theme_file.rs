@@ -9,12 +9,14 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
-use serde::Deserialize;
 use serde::de::{self, Deserializer};
+use serde::{Deserialize, Serialize, Serializer};
+use serde_json::{Map, Value, json};
 use thiserror::Error;
 
 use crate::text::{EllipsisAt, TextAlign, TextOutline, TextOverflow, TextShadow, TextWrap};
 
+use super::screen_file::closed;
 use super::theme::{
     ColorTokens, KindStyle, KindStyles, NamedStyle, StyleOverrides, TextOverrides, Theme,
     ThemeNames, ThemeSounds, Tokens, VisualStyle,
@@ -182,7 +184,7 @@ impl ThemeFile {
 /// `#rrggbbaa`, or a colour token's name, which
 /// [`ThemeFile::from_json`] turns into the token's colour.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Color {
+pub(crate) enum Color {
     Rgba([u8; 4]),
     Token(String),
 }
@@ -194,6 +196,21 @@ impl Color {
         match self {
             Self::Rgba(rgba) => *rgba,
             Self::Token(_) => [0; 4],
+        }
+    }
+}
+
+/// `#rrggbb` when opaque, else `#rrggbbaa`; a token by its name.
+impl Serialize for Color {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Rgba([r, g, b, 255]) => {
+                serializer.serialize_str(&format!("#{r:02x}{g:02x}{b:02x}"))
+            }
+            Self::Rgba([r, g, b, a]) => {
+                serializer.serialize_str(&format!("#{r:02x}{g:02x}{b:02x}{a:02x}"))
+            }
+            Self::Token(name) => serializer.serialize_str(name),
         }
     }
 }
@@ -213,7 +230,7 @@ impl<'de> Deserialize<'de> for Color {
 
 /// Turns `color`, when it names a token, into that token's colour in
 /// `tokens`; an unknown name is an error naming `path`.
-fn resolve(
+pub(crate) fn resolve(
     color: &mut Option<Color>,
     tokens: &ColorTokens,
     path: &dyn Fn() -> String,
@@ -497,14 +514,21 @@ impl KindFile {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+/// An overrides object: a kind state's in a theme file, a node's own in a
+/// screen file.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-struct OverridesFile {
-    background: Option<Color>,
-    border: Option<Color>,
-    border_width: Option<f32>,
-    corner_radius: Option<f32>,
-    text: TextFile,
+pub(crate) struct OverridesFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) background: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) border: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) border_width: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) corner_radius: Option<f32>,
+    #[serde(skip_serializing_if = "TextFile::is_empty")]
+    pub(crate) text: TextFile,
 }
 
 impl OverridesFile {
@@ -524,7 +548,7 @@ impl OverridesFile {
         self.text.apply(&mut visual.text);
     }
 
-    fn apply_overrides(self, overrides: &mut StyleOverrides) {
+    pub(crate) fn apply_overrides(self, overrides: &mut StyleOverrides) {
         if let Some(background) = &self.background {
             overrides.background = Some(background.rgba());
         }
@@ -541,24 +565,40 @@ impl OverridesFile {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+/// A text object: a named style's in a theme file, or an overrides
+/// object's `text`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-struct TextFile {
-    family: Option<String>,
-    size: Option<f32>,
-    #[serde(deserialize_with = "line_height")]
-    line_height: Option<f32>,
-    weight: Option<u16>,
-    italic: Option<bool>,
-    color: Option<Color>,
-    align: Option<AlignFile>,
-    wrap: Option<WrapFile>,
-    overflow: Option<OverflowFile>,
-    letter_spacing: Option<f32>,
-    outline: Option<OutlineFile>,
-    shadow: Option<ShadowFile>,
-    #[serde(deserialize_with = "shrink")]
-    shrink: Option<f32>,
+pub(crate) struct TextFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) size: Option<f32>,
+    #[serde(
+        deserialize_with = "line_height",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) line_height: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) weight: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) italic: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) align: Option<AlignFile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) wrap: Option<WrapFile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) overflow: Option<OverflowFile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) letter_spacing: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) outline: Option<OutlineFile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) shadow: Option<ShadowFile>,
+    #[serde(deserialize_with = "shrink", skip_serializing_if = "Option::is_none")]
+    pub(crate) shrink: Option<f32>,
 }
 
 /// A `shrink`: in (0, 1]. `null` is no value.
@@ -572,18 +612,18 @@ fn shrink<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f32>, D::
 }
 
 /// A text object's `outline`: its colour and width, both required.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct OutlineFile {
+pub(crate) struct OutlineFile {
     color: Color,
     #[serde(deserialize_with = "effect_length")]
     width: f32,
 }
 
 /// A text object's `shadow`: its colour and `[x, y]` offset, both required.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ShadowFile {
+pub(crate) struct ShadowFile {
     color: Color,
     offset: [f32; 2],
 }
@@ -601,8 +641,12 @@ fn effect_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::E
 }
 
 impl TextFile {
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
     /// The first field set that only a named style takes.
-    fn named_only(&self) -> Option<&'static str> {
+    pub(crate) fn named_only(&self) -> Option<&'static str> {
         if self.outline.is_some() {
             Some("outline")
         } else if self.shadow.is_some() {
@@ -632,7 +676,7 @@ impl TextFile {
 
     /// Turns the colour fields' token names into colours, an unknown one an
     /// error at `path` of the field.
-    fn resolve(
+    pub(crate) fn resolve(
         &mut self,
         tokens: &ColorTokens,
         path: &dyn Fn(&str) -> String,
@@ -691,9 +735,9 @@ impl TextFile {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum AlignFile {
+pub(crate) enum AlignFile {
     Start,
     Center,
     End,
@@ -711,9 +755,9 @@ impl From<AlignFile> for TextAlign {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum WrapFile {
+pub(crate) enum WrapFile {
     None,
     Glyph,
     Word,
@@ -733,13 +777,13 @@ impl From<WrapFile> for TextWrap {
 
 /// `"clip"`, or `{ "ellipsis": { "at": "end", "lines": 2 } }` with `lines`
 /// optional.
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum OverflowFile {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub(crate) enum OverflowFile {
     Clip,
     Ellipsis {
         at: EllipsisAtFile,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         lines: Option<u32>,
     },
 }
@@ -756,9 +800,9 @@ impl From<OverflowFile> for TextOverflow {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum EllipsisAtFile {
+pub(crate) enum EllipsisAtFile {
     Start,
     Middle,
     End,
@@ -825,6 +869,181 @@ impl UiThemeRegistry {
     pub fn is_empty(&self) -> bool {
         self.themes.is_empty()
     }
+}
+
+/// The schema parts a theme file and a screen file share: `color`, `text`
+/// with its `outline`, `shadow`, `overflow` and `ellipsis`, and
+/// `overrides`.
+pub(crate) fn shared_schema_defs() -> Map<String, Value> {
+    let reference = |name: &str| json!({ "$ref": format!("#/$defs/{name}") });
+    let number = json!({ "type": "number" });
+    let mut defs = Map::new();
+    defs.insert(
+        "color".into(),
+        json!({ "anyOf": [
+            { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" },
+            { "enum": ColorTokens::NAMES },
+        ] }),
+    );
+    defs.insert(
+        "outline".into(),
+        closed(
+            &[
+                ("color", reference("color")),
+                ("width", json!({ "type": "number", "minimum": 0 })),
+            ],
+            &["color", "width"],
+        ),
+    );
+    let pair =
+        json!({ "type": "array", "prefixItems": [number, number], "minItems": 2, "maxItems": 2 });
+    defs.insert(
+        "shadow".into(),
+        closed(
+            &[("color", reference("color")), ("offset", pair)],
+            &["color", "offset"],
+        ),
+    );
+    defs.insert(
+        "ellipsis".into(),
+        closed(
+            &[
+                ("at", json!({ "enum": ["start", "middle", "end"] })),
+                ("lines", json!({ "type": "integer", "minimum": 0 })),
+            ],
+            &["at"],
+        ),
+    );
+    defs.insert(
+        "overflow".into(),
+        json!({ "oneOf": [
+            { "const": "clip" },
+            closed(&[("ellipsis", reference("ellipsis"))], &["ellipsis"]),
+        ] }),
+    );
+    defs.insert(
+        "text".into(),
+        closed(
+            &[
+                ("family", json!({ "type": "string" })),
+                ("size", number.clone()),
+                (
+                    "line_height",
+                    json!({ "type": "number", "exclusiveMinimum": 0 }),
+                ),
+                (
+                    "weight",
+                    json!({ "type": "integer", "minimum": 0, "maximum": 65535 }),
+                ),
+                ("italic", json!({ "type": "boolean" })),
+                ("color", reference("color")),
+                (
+                    "align",
+                    json!({ "enum": ["start", "center", "end", "justified"] }),
+                ),
+                (
+                    "wrap",
+                    json!({ "enum": ["none", "glyph", "word", "word_or_glyph"] }),
+                ),
+                ("overflow", reference("overflow")),
+                ("letter_spacing", number.clone()),
+                ("outline", reference("outline")),
+                ("shadow", reference("shadow")),
+                (
+                    "shrink",
+                    json!({ "type": "number", "exclusiveMinimum": 0, "maximum": 1 }),
+                ),
+            ],
+            &[],
+        ),
+    );
+    defs.insert(
+        "overrides".into(),
+        closed(
+            &[
+                ("background", reference("color")),
+                ("border", reference("color")),
+                ("border_width", number.clone()),
+                ("corner_radius", number),
+                ("text", reference("text")),
+            ],
+            &[],
+        ),
+    );
+    defs
+}
+
+/// The JSON Schema (draft 2020-12) of a theme file: every object closed
+/// (`additionalProperties: false`), the token groups, each kind's states,
+/// named text styles, sizes and sounds, the overrides and text objects
+/// shared with the screen file's schema.
+#[must_use]
+pub fn json_schema() -> Value {
+    let mut defs = shared_schema_defs();
+    let reference = |name: &str| json!({ "$ref": format!("#/$defs/{name}") });
+    let number = json!({ "type": "number" });
+    let text = json!({ "type": "string" });
+    let of = |names: &[&'static str], schema: &Value| {
+        let fields: Vec<(&str, Value)> = names.iter().map(|name| (*name, schema.clone())).collect();
+        closed(&fields, &[])
+    };
+    defs.insert(
+        "colors".into(),
+        of(&ColorTokens::NAMES, &reference("color")),
+    );
+    defs.insert(
+        "spacing".into(),
+        of(&["xs", "sm", "md", "lg", "xl"], &number),
+    );
+    defs.insert("radii".into(), of(&["none", "sm", "md", "lg"], &number));
+    defs.insert("fonts".into(), of(&["body", "heading", "mono"], &text));
+    defs.insert(
+        "text_tokens".into(),
+        closed(
+            &[
+                ("size", number.clone()),
+                (
+                    "line_height",
+                    json!({ "type": "number", "exclusiveMinimum": 0 }),
+                ),
+                ("heading_size", number),
+            ],
+            &[],
+        ),
+    );
+    defs.insert(
+        "tokens".into(),
+        closed(
+            &[
+                ("colors", reference("colors")),
+                ("spacing", reference("spacing")),
+                ("radii", reference("radii")),
+                ("fonts", reference("fonts")),
+                ("text", reference("text_tokens")),
+            ],
+            &[],
+        ),
+    );
+    let states = ["normal", "focused", "disabled", "hovered", "pressed"];
+    defs.insert("kind".into(), of(&states, &reference("overrides")));
+    let kinds = ["panel", "label", "button", "image", "toggle", "slider"];
+    defs.insert("kinds".into(), of(&kinds, &reference("kind")));
+    defs.insert("sounds".into(), of(&["focus", "activate", "back"], &text));
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Tungsten UI theme",
+        "description": "A theme file, listed in a manifest's ui_themes.",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "tokens": reference("tokens"),
+            "kinds": reference("kinds"),
+            "text_styles": { "type": "object", "additionalProperties": reference("text") },
+            "sizes": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+            "sounds": reference("sounds"),
+        },
+        "$defs": defs,
+    })
 }
 
 #[cfg(test)]

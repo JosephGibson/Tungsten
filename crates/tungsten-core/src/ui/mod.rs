@@ -23,8 +23,9 @@
 //! and a zoom in the placements file. The UI pass (redo 7.17) adds widget
 //! keys, bare groups, named text styles, sizes and sounds in the theme,
 //! text outlines and shadows, shrinking labels and [`widgets`], the
-//! template shell's builders. Nothing here draws: the render crate consumes
-//! the paint list.
+//! template shell's builders. Screens as data (redo 7.20) add screen files,
+//! the manifest's `ui_screens`. Nothing here draws: the render crate
+//! consumes the paint list.
 
 pub mod anim;
 pub mod control;
@@ -39,6 +40,7 @@ pub mod node;
 pub mod paint;
 pub mod prompt;
 pub mod route;
+pub mod screen_file;
 pub mod scroll;
 pub mod style;
 pub mod theme;
@@ -61,6 +63,10 @@ pub use paint::{ClipRect, PaintCommand, PaintList, UiDebug, to_physical};
 pub use route::{
     BACK_KEY, InputDevice, UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT,
     UI_UP, UiRouteSettings, UiRouter, ui_route_system,
+};
+pub use screen_file::{
+    SCREEN_VERSION, ScreenAction, ScreenError, ScreenFile, ScreenFileError, ScreenNames,
+    ScreenSetting, UiScreenRegistry,
 };
 pub use style::{Align, Anchor, Direction, Edges, Justify, LayoutStyle, Placement, Sizing};
 pub use theme::{

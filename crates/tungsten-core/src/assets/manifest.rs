@@ -40,6 +40,14 @@ pub enum ManifestError {
     MissingShaderFile { id: String, path: String },
     #[error("ui theme '{id}' references missing file: {path}")]
     MissingUiThemeFile { id: String, path: String },
+    /// A `ui_screens` entry names a file that does not exist (redo 7.20).
+    #[error("ui screen '{id}' references missing file: {path}")]
+    MissingUiScreenFile {
+        /// The screen's ID.
+        id: String,
+        /// The file the entry resolves to.
+        path: String,
+    },
     /// A `prefabs` entry names a file that does not exist (M51).
     #[error("prefab '{id}' references missing file: {path}")]
     MissingPrefabFile {
@@ -381,6 +389,9 @@ pub struct RawManifest {
     /// UI themes: a theme ID and the theme file it loads (M2, w01 §14).
     #[serde(default, deserialize_with = "unique_ids")]
     pub ui_themes: HashMap<String, UiThemeEntry>,
+    /// UI screens: a screen ID and the screen file it loads (redo 7.20).
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub ui_screens: HashMap<String, UiScreenEntry>,
     /// Prefabs: a prefab ID and the prefab file it loads (M51).
     #[serde(default, deserialize_with = "unique_ids")]
     pub prefabs: HashMap<String, PrefabEntry>,
@@ -583,6 +594,13 @@ fn png_size(path: &Path) -> Result<(u32, u32), String> {
 /// A `ui_themes` entry: the theme file's path, relative to the manifest.
 #[derive(Debug, Clone, Deserialize)]
 pub struct UiThemeEntry {
+    pub path: String,
+}
+
+/// A `ui_screens` entry: the screen file's path, relative to the manifest.
+#[derive(Debug, Clone, Deserialize)]
+pub struct UiScreenEntry {
+    /// The screen file's path.
     pub path: String,
 }
 
@@ -874,6 +892,8 @@ pub struct ResolvedManifest {
     pub font_fallback: Vec<String>,
     /// UI themes by ID (M2).
     pub ui_themes: HashMap<String, ResolvedUiTheme>,
+    /// UI screens by ID (redo 7.20).
+    pub ui_screens: HashMap<String, ResolvedUiScreen>,
     /// Prefabs by ID (M51).
     pub prefabs: HashMap<String, ResolvedPrefab>,
     /// Data entries by kind, then ID (M61).
@@ -904,6 +924,13 @@ pub struct ResolvedSprite {
 /// A UI theme: the theme file's resolved path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedUiTheme {
+    pub path: PathBuf,
+}
+
+/// A UI screen: the screen file's resolved path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedUiScreen {
+    /// The screen file.
     pub path: PathBuf,
 }
 
@@ -1269,6 +1296,25 @@ impl ResolvedManifest {
             result
                 .ui_themes
                 .insert(id, ResolvedUiTheme { path: full_path });
+        }
+
+        for (id, entry) in raw.ui_screens {
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("ui_screens.{id}"),
+                |path| ManifestError::MissingUiScreenFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
+            result
+                .ui_screens
+                .insert(id, ResolvedUiScreen { path: full_path });
         }
 
         for (id, entry) in raw.prefabs {
@@ -1662,6 +1708,7 @@ impl ResolvedManifest {
         merge_section(&mut self.particle_meshes, other.particle_meshes, sink)?;
         merge_section(&mut self.font_families, other.font_families, sink)?;
         merge_section(&mut self.ui_themes, other.ui_themes, sink)?;
+        merge_section(&mut self.ui_screens, other.ui_screens, sink)?;
         merge_section(&mut self.prefabs, other.prefabs, sink)?;
         for (kind, entries) in other.data {
             let section = self.data.entry(kind.clone()).or_default();

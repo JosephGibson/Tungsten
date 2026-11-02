@@ -830,6 +830,63 @@ fn load_manifest_missing_ui_theme_file() {
 }
 
 #[test]
+fn a_ui_screens_entry_resolves_and_a_duplicate_fails() {
+    let tmp = tempdir();
+    write_file(&tmp, "ui/screens/pause.json");
+    let path = write_manifest(
+        &tmp,
+        r#"{"ui_screens": {"pause": {"path": "ui/screens/pause.json"}}}"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    assert_eq!(m.ui_screens.len(), 1);
+    assert!(
+        m.ui_screens["pause"]
+            .path
+            .ends_with("ui/screens/pause.json")
+    );
+    assert!(m.ui_screens["pause"].path.is_absolute());
+
+    // Twice in one manifest is a parse error; across manifests, a merge's.
+    let twice = write_manifest(
+        &tmp,
+        r#"{"ui_screens": {"pause": {"path": "ui/screens/pause.json"},
+                           "pause": {"path": "ui/screens/pause.json"}}}"#,
+    );
+    assert!(ResolvedManifest::load(&twice).is_err());
+    let screen = ResolvedUiScreen {
+        path: "pause.json".into(),
+    };
+    let mut a = ResolvedManifest::default();
+    a.ui_screens.insert("pause".into(), screen.clone());
+    let mut b = ResolvedManifest::default();
+    b.ui_screens.insert("pause".into(), screen.clone());
+    let err = a.merge(b).unwrap_err();
+    assert!(matches!(err, ManifestError::DuplicateId { id } if id == "pause"));
+    let mut c = ResolvedManifest::default();
+    c.ui_screens.insert("settings".into(), screen);
+    a.merge(c).unwrap();
+    assert_eq!(a.ui_screens.len(), 2);
+}
+
+#[test]
+fn a_missing_ui_screen_file_names_its_id() {
+    let tmp = tempdir();
+    let path = write_manifest(
+        &tmp,
+        r#"{"ui_screens": {"pause": {"path": "ui/screens/pause.json"}}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::MissingUiScreenFile { id, path } if id == "pause" && path.ends_with("pause.json")),
+        "{err:?}"
+    );
+    assert!(
+        err.to_string()
+            .starts_with("ui screen 'pause' references missing file")
+    );
+}
+
+#[test]
 fn merge_duplicate_ui_theme_is_error() {
     let theme = ResolvedUiTheme {
         path: "dark.json".into(),

@@ -525,3 +525,75 @@ fn shrink_reads_from_a_theme_file() {
         assert!(err.contains(says), "{bad}: {err}");
     }
 }
+
+/// The names serde lists after "expected" in `message`.
+fn expected(message: &str) -> std::collections::BTreeSet<String> {
+    let after = message
+        .split_once("expected")
+        .unwrap_or_else(|| panic!("no expected list in {message}"))
+        .1;
+    after
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn the_theme_schema_lists_every_field_the_model_reads() {
+    let schema = json_schema();
+    assert_eq!(
+        schema["$schema"],
+        "https://json-schema.org/draft/2020-12/schema"
+    );
+    let defs = &schema["$defs"];
+    let properties = |def: &Value| -> std::collections::BTreeSet<String> {
+        def["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{def} has no properties"))
+            .keys()
+            .cloned()
+            .collect()
+    };
+    for (json, def) in [
+        (r#"{"zz": 1}"#, &schema),
+        (r#"{"tokens": {"zz": 1}}"#, &defs["tokens"]),
+        (
+            r##"{"tokens": {"colors": {"zz": "#000000"}}}"##,
+            &defs["colors"],
+        ),
+        (r#"{"tokens": {"spacing": {"zz": 1}}}"#, &defs["spacing"]),
+        (r#"{"tokens": {"radii": {"zz": 1}}}"#, &defs["radii"]),
+        (r#"{"tokens": {"fonts": {"zz": "a"}}}"#, &defs["fonts"]),
+        (r#"{"tokens": {"text": {"zz": 1}}}"#, &defs["text_tokens"]),
+        (r#"{"kinds": {"zz": {}}}"#, &defs["kinds"]),
+        (r#"{"kinds": {"button": {"zz": {}}}}"#, &defs["kind"]),
+        (
+            r#"{"kinds": {"button": {"normal": {"zz": 1}}}}"#,
+            &defs["overrides"],
+        ),
+        (r#"{"text_styles": {"a": {"zz": 1}}}"#, &defs["text"]),
+        (
+            r##"{"text_styles": {"a": {"outline": {"color": "#000000", "width": 1, "zz": 1}}}}"##,
+            &defs["outline"],
+        ),
+        (
+            r##"{"text_styles": {"a": {"shadow": {"color": "#000000", "offset": [1, 1], "zz": 1}}}}"##,
+            &defs["shadow"],
+        ),
+        (
+            r#"{"text_styles": {"a": {"overflow": {"ellipsis": {"at": "end", "zz": 1}}}}}"#,
+            &defs["ellipsis"],
+        ),
+        (r#"{"sounds": {"zz": "a"}}"#, &defs["sounds"]),
+    ] {
+        let error = ThemeFile::from_json(json).expect_err(json).to_string();
+        assert!(error.contains("unknown field `zz`"), "{json}: {error}");
+        assert_eq!(expected(&error), properties(def), "{json}");
+    }
+    assert_eq!(
+        schema["properties"]["text_styles"]["additionalProperties"]["$ref"],
+        "#/$defs/text"
+    );
+}
