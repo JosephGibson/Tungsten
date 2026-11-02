@@ -1,0 +1,76 @@
+{
+  "root": {
+    "children": [
+      {
+        "children": [
+          {
+            "kind": "display",
+            "overrides": {
+              "text": {
+                "color": "#be1420",
+                "letter_spacing": 0.2
+              }
+            },
+            "style": "died",
+            "text": "YOU DIED"
+          }
+        ],
+        "kind": "panel",
+        "layout": {
+          "padding": "spacing.lg",
+          "width": "100%"
+        },
+        "overrides": {
+          "background": "#000000c8",
+          "border_width": 0
+        }
+      },
+      {
+        "children": [
+          {
+            "key": "retry",
+            "kind": "button",
+            "text": "Retry"
+          },
+          {
+            "bind": {
+              "enabled": "saving_on"
+            },
+            "key": "load",
+            "kind": "button",
+            "text": "Load"
+          },
+          {
+            "key": "quit_title",
+            "kind": "button",
+            "text": "Quit to Title"
+          }
+        ],
+        "key": "card",
+        "kind": "panel",
+        "layout": {
+          "gap": "spacing.sm",
+          "width": "menu_width"
+        },
+        "overrides": {
+          "background": "#00000000",
+          "border_width": 0
+        }
+      }
+    ],
+    "kind": "root",
+    "layer": "game_popup",
+    "layout": {
+      "align_items": "center",
+      "height": "100%",
+      "justify_content": "center",
+      "width": "100%"
+    },
+    "modal": true,
+    "overrides": {
+      "background": "#00000000",
+      "border_width": 0
+    }
+  },
+  "version": 1
+}

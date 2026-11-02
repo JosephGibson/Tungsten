@@ -10,23 +10,23 @@
 //! the run fresh when it has none.
 
 use tungsten::core::post::PostPass;
-use tungsten::core::ui::{
-    Align, Justify, LayoutStyle, Sizing, UiKey, UiLayer, UiTree, Visibility, WidgetId, widgets,
-};
+use tungsten::core::ui::{UiKey, UiTree, Visibility, WidgetId, widgets};
 use tungsten::core::{AudioCommands, Easing, Voice, World};
 use tungsten::{GameState, RootCover, StateContext, StateId, TransitionEffect};
 
 use super::saves::{Mode, SavesState};
 use super::title::TitleState;
 use super::{
-    Change, Menu, RunStart, Shell, SlotState, goto, idle, play, push, read_slots, run, saving_on,
-    stack, start_run, theme,
+    Change, Menu, RunStart, Shell, SlotState, goto, idle, play, push, read_slots, run, stack,
+    start_run, theme,
 };
 
 pub const GAME_OVER: StateId = "game_over";
 const RETRY: UiKey = UiKey::new("retry");
 const LOAD: UiKey = UiKey::new("load");
 const QUIT_TITLE: UiKey = UiKey::new("quit_title");
+/// The panel holding the buttons, in `assets/ui/screens/game_over.json`.
+const CARD: UiKey = UiKey::new("card");
 
 /// The game-over screen and its music.
 #[derive(Default)]
@@ -54,11 +54,24 @@ pub fn passes(secs: f32) -> Vec<PostPass> {
     ]
 }
 
-/// The entrance ended: game over's buttons, `card`, show and fade in, the
-/// first that can take focus focused.
-pub(super) fn reveal(world: &mut World, card: WidgetId) {
+/// Game over's edits its file cannot say: twice `spacing.lg` between the
+/// band and the buttons, and during the entrance the band fading in and the
+/// buttons hidden until [`reveal`]; again after a reload rebuilds them.
+fn edit(tree: &mut UiTree, root: WidgetId, entering: bool) {
+    let gap = 2.0 * tree.theme().tokens.spacing.lg;
+    tree.edit_layout(root, |style| style.gap = gap);
+    let band = tree.children(root).first().copied();
+    if let (true, Some(band), Some(card)) = (entering, band, tree.find_key(root, CARD)) {
+        tree.set_visibility(card, Visibility::Hidden);
+        theme::fade_in(tree, band, theme::DIED_SECS);
+    }
+}
+
+/// The entrance ended: game over's buttons, its `root`'s card, show and
+/// fade in, the first that can take focus focused.
+pub(super) fn reveal(world: &mut World, root: WidgetId) {
     let tree = world.resource_mut::<UiTree>();
-    if tree.contains(card) {
+    if let Some(card) = tree.find_key(root, CARD) {
         tree.set_visibility(card, Visibility::Visible);
         theme::fade_in(tree, card, theme::DIED_BUTTONS_SECS);
         let buttons = tree.children(card).to_vec();
@@ -88,57 +101,16 @@ impl GameState for GameOverState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let world = &mut *ctx.world;
-        let saving = saving_on(world);
-        let tree = world.resource_mut::<UiTree>();
-        let spacing = tree.theme().tokens.spacing;
-        // A clear modal root: the band across it, the buttons under it.
-        let full = Sizing::Percent(100.0);
-        let mut style = LayoutStyle::column()
-            .with_size(full, full)
-            .with_gap(2.0 * spacing.lg);
-        (style.align_items, style.justify_content) = (Align::Center, Justify::Center);
-        let root = tree.add_root(UiLayer::GamePopup, style);
-        tree.set_modal(root, true);
-        widgets::fill(tree, root, [0; 4]);
-        let band = LayoutStyle::column().with_size(full, Sizing::Auto);
-        let band = tree.panel(root, band.with_padding(spacing.lg));
-        widgets::fill(tree, band, theme::DIED_BAND);
-        let heading = widgets::display(tree, band, "YOU DIED", "died");
-        widgets::restyle(tree, heading, |text| {
-            text.color = Some(theme::DIED_RED);
-            text.letter_spacing = Some(theme::DIED_SPACING);
-        });
-        let card = LayoutStyle::column().with_gap(spacing.sm);
-        let width = Sizing::Px(widgets::size(tree, "menu_width"));
-        let card = tree.panel(root, card.with_size(width, Sizing::Auto));
-        widgets::fill(tree, card, [0; 4]);
-        let items = [
-            ("retry", "Retry"),
-            ("load", "Load"),
-            ("quit_title", "Quit to Title"),
-        ];
-        let button = |(key, caption): &(&str, &str)| {
-            let button = widgets::button(tree, card, caption);
-            tree.set_key(button, key);
-            button
-        };
-        let buttons: Vec<_> = items.iter().map(button).collect();
-        tree.set_enabled(buttons[1], saving);
-        tree.set_visibility(card, Visibility::Hidden);
-        theme::fade_in(tree, band, theme::DIED_SECS);
-        stack(world).own_root(root, RootCover::Show);
+        // The band across a clear modal root, the buttons under it.
+        let menu = Menu::build(world, "game_over");
+        edit(world.resource_mut::<UiTree>(), menu.root, true);
+        stack(world).own_root(menu.root, RootCover::Show);
         let shell = world.resource_mut::<Shell>();
-        (shell.change, shell.died) = (Some(Change::Entrance(0.0, card)), Some(0.0));
+        (shell.change, shell.died) = (Some(Change::Entrance(0.0, menu.root)), Some(0.0));
         let [sting, music] = theme::GAME_OVER_SOUNDS;
         play(world, sting, 0.0);
         self.music = play(world, music, theme::GAME_OVER_FADE);
-        let opened = None;
-        self.menu = Some(Menu {
-            root,
-            heading,
-            buttons,
-            opened,
-        });
+        self.menu = Some(menu);
     }
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
@@ -156,6 +128,12 @@ impl GameState for GameOverState {
     }
 
     fn update(&mut self, world: &mut World) {
+        if let Some(menu) = self.menu.as_mut()
+            && menu.revised(world)
+        {
+            let entering = matches!(world.resource::<Shell>().change, Some(Change::Entrance(..)));
+            edit(world.resource_mut::<UiTree>(), menu.root, entering);
+        }
         let Some(menu) = self.menu.as_mut().filter(|_| idle(world)) else {
             return;
         };

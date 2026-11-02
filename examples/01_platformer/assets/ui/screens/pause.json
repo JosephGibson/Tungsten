@@ -1,0 +1,57 @@
+{
+  "root": {
+    "children": [
+      {
+        "centred": true,
+        "kind": "heading",
+        "text": "Paused"
+      },
+      {
+        "bind": {
+          "visible": "saving_off"
+        },
+        "kind": "note",
+        "text": "Saving is off"
+      },
+      {
+        "key": "resume",
+        "kind": "button",
+        "text": "Resume"
+      },
+      {
+        "bind": {
+          "enabled": "saving_on"
+        },
+        "key": "save",
+        "kind": "button",
+        "text": "Save"
+      },
+      {
+        "bind": {
+          "enabled": "saving_on"
+        },
+        "key": "load",
+        "kind": "button",
+        "text": "Load"
+      },
+      {
+        "key": "settings",
+        "kind": "button",
+        "text": "Settings"
+      },
+      {
+        "key": "quit_title",
+        "kind": "button",
+        "text": "Quit to Title"
+      },
+      {
+        "key": "quit_game",
+        "kind": "button",
+        "text": "Quit Game"
+      }
+    ],
+    "kind": "screen",
+    "width": "menu_width"
+  },
+  "version": 1
+}

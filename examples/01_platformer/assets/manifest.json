@@ -16756,6 +16756,14 @@
       "path": "tilemaps/level.tmj"
     }
   },
+  "ui_screens": {
+    "game_over": {
+      "path": "ui/screens/game_over.json"
+    },
+    "pause": {
+      "path": "ui/screens/pause.json"
+    }
+  },
   "ui_themes": {
     "shell": {
       "path": "ui/themes/shell.json"

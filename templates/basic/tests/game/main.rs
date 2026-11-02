@@ -3,12 +3,13 @@
 //! the sample's gameplay, `shell` the shell's screens and run, `saves` the
 //! save seam and its screen, `settings` the tabbed settings, `keys` the
 //! keybindings, `fit` every screen at six windows and the scale extremes,
-//! and `visual` the title's pixels.
+//! `screens` the shell's screen files and `visual` the title's pixels.
 
 mod fit;
 mod keys;
 mod sample;
 mod saves;
+mod screens;
 mod script;
 mod settings;
 mod shell;

@@ -146,6 +146,14 @@ class RepoChecks(unittest.TestCase):
         self.write("examples/01_game/src/shell/extra.rs", "// extra\n")
         self.assertEqual(copies(), ["examples/01_game/src/shell/extra.rs: not in templates/basic/src/shell/"])
         (self.root / "examples/01_game/src/shell/extra.rs").unlink()
+        screen = "assets/ui/screens/pause.json"
+        self.write(f"templates/basic/{screen}", '{"version": 1}\n')
+        self.assertEqual(copies(), [f"examples/01_game/{screen}: missing; templates/basic/assets/ui/screens/ has it"])
+        self.write(f"examples/01_game/{screen}", '{"version": 1}\n')
+        self.assertEqual(copies(), [], "an equal screen file")
+        self.write(f"examples/01_game/{screen}", '{"version": 2}\n')
+        self.assertEqual(copies(), [f"examples/01_game/{screen}: differs from templates/basic/assets/ui/screens/pause.json"])
+        self.write(f"examples/01_game/{screen}", '{"version": 1}\n')
         theme = "assets/ui/themes/shell.json"
         base = '{"tokens": {"colors": {"text": "#e9ebf1", "accent": "#f0a830cc"}, "size": 16}}\n'
         self.write(f"templates/basic/{theme}", base)

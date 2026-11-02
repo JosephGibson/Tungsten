@@ -29,8 +29,8 @@ use serde::{Deserialize, Serialize};
 use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::save::SaveError;
 use tungsten::core::ui::{
-    LayoutStyle, Sizing, UiEvent, UiKey, UiLayer, UiRouter, UiTrack, UiTree, Visibility, WidgetId,
-    widgets,
+    LayoutStyle, Sizing, UiBindings, UiEvent, UiKey, UiLayer, UiRouter, UiTrack, UiTree,
+    Visibility, WidgetId, screen_build, widgets,
 };
 use tungsten::core::{
     ActionMap, DisplayMode, DisplayState, EventQueue, InputState, RoutedInput, SaveSlots,
@@ -181,8 +181,8 @@ enum Change {
     /// A change of run: the curtain, its seconds so far and the flow, which
     /// applies once the curtain is opaque.
     Curtain(WidgetId, f32, Option<Flow>),
-    /// Game over's entrance: its seconds so far and its buttons, which show
-    /// once it ends.
+    /// Game over's entrance: its seconds so far and its root, whose buttons
+    /// show once it ends.
     Entrance(f32, WidgetId),
 }
 
@@ -246,6 +246,11 @@ impl Plugin for ShellPlugin {
         world.insert_resource(Shell::default());
         world.insert_resource(toast::Toasts::default());
         options::load(world);
+        // The screen files' names (`assets/ui/screens/`).
+        let saving_off = |world: &World| !saving_on(world);
+        UiBindings::of(world)
+            .enabled("saving_on", saving_on)
+            .visible("saving_off", saving_off);
         let unset = world.resource::<Settings>().ui_scale().is_none();
         if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
             scale.set_reference_height(Some(theme::REFERENCE_HEIGHT));
@@ -390,10 +395,10 @@ fn flow(world: &mut World) {
             stack(world).request_pop();
         }
         Some(Change::Curtain(root, secs, flow)) => curtain(world, root, secs + dt, flow),
-        Some(Change::Entrance(secs, card)) if secs + dt < theme::DIED_SECS => {
-            shell.change = Some(Change::Entrance(secs + dt, card));
+        Some(Change::Entrance(secs, root)) if secs + dt < theme::DIED_SECS => {
+            shell.change = Some(Change::Entrance(secs + dt, root));
         }
-        Some(Change::Entrance(_, card)) => game_over::reveal(world, card),
+        Some(Change::Entrance(_, root)) => game_over::reveal(world, root),
         change => shell.change = change,
     }
     toast::tick(world);
@@ -723,51 +728,55 @@ fn quit(world: &mut World, question: &str, then: impl FnOnce(&mut World) + 'stat
     confirm::ask(world, ask.on_yes(then));
 }
 
-/// A menu screen a state owns: a modal root with a centred heading,
-/// "Saving is off" without a user folder, and a column of keyed buttons,
-/// sliding in.
+/// A menu screen a state owns, built from its screen file in
+/// `assets/ui/screens/` (its keyed buttons, the bindings the shell
+/// registers), its handlers reading keys.
 pub struct Menu {
     pub root: WidgetId,
-    pub heading: WidgetId,
-    pub buttons: Vec<WidgetId>,
+    /// The file's revision the state last saw: a hot reload rebuilds it.
+    revision: u32,
     /// The button that opened the screen above, which takes focus back.
     opened: Option<WidgetId>,
 }
 
 impl Menu {
-    /// The menu `heading` over a button per `(key, caption)` of `items`.
-    pub fn new(world: &mut World, heading: &str, items: &[(&str, &str)]) -> Self {
-        let saving = saving_on(world);
-        let tree = world.resource_mut::<UiTree>();
-        let width = widgets::size(tree, "menu_width");
-        let (root, card) = widgets::screen(tree, width);
-        let heading = widgets::heading(tree, card, heading, true);
-        if !saving {
-            widgets::note(tree, card, "Saving is off");
-        }
-        let button = |(key, caption): &(&str, &str)| {
-            let button = widgets::button(tree, card, caption);
-            tree.set_key(button, key);
-            button
-        };
-        let buttons = items.iter().map(button).collect();
-        enter(world, root);
-        let opened = None;
-        let menu = Self {
-            root,
-            heading,
-            buttons,
-            opened,
-        };
+    /// The screen file `id` built, sliding in, its first button focused.
+    pub fn new(world: &mut World, id: &str) -> Self {
+        let menu = Self::build(world, id);
+        enter(world, menu.root);
         menu.focus(world);
         menu
     }
 
+    /// The screen file `id` built; an empty screen when it is not loaded.
+    pub fn build(world: &mut World, id: &str) -> Self {
+        let built = screen_build::build(world, id).map(|built| built.root);
+        let tree = world.resource_mut::<UiTree>();
+        let root = built.unwrap_or_else(|| widgets::screen(tree, 0.0).0);
+        let (revision, opened) = (0, None);
+        Self {
+            root,
+            revision,
+            opened,
+        }
+    }
+
+    /// Whether a reload rebuilt the screen since the last call.
+    pub fn revised(&mut self, world: &World) -> bool {
+        let revision = screen_build::revision(world, self.root).unwrap_or(self.revision);
+        std::mem::replace(&mut self.revision, revision) != revision
+    }
+
     /// Focuses the button that opened the screen above, else the first that
-    /// can take focus.
+    /// can take focus, depth first.
     pub fn focus(&self, world: &mut World) {
-        let candidates = self.opened.into_iter().chain(self.buttons.iter().copied());
-        widgets::focus_first(world.resource_mut::<UiTree>(), candidates);
+        let tree = world.resource_mut::<UiTree>();
+        let (mut stack, mut nodes) = (vec![self.root], Vec::new());
+        while let Some(id) = stack.pop() {
+            nodes.push(id);
+            stack.extend(tree.children(id).iter().rev());
+        }
+        widgets::focus_first(tree, self.opened.into_iter().chain(nodes));
     }
 
     /// The key of the button activated on the menu at this routing, which

@@ -167,7 +167,8 @@ def check_kit_catalogue(root, errors, notes):
 def check_shell_copies(root, errors, notes):
     """Each example's `src/shell/` is the template's byte for byte: the same
     files with the same bytes, so a game on the template keeps its shell
-    whole and a later shell can replace it (D-194). The shell's theme,
+    whole and a later shell can replace it (D-194), and so are its screen
+    files, `assets/ui/screens/` (redo 7.20). The shell's theme,
     `assets/ui/themes/shell.json`, keeps the template's structure: its text
     with every `#rrggbb` or `#rrggbbaa` masked is the template's, the same
     keys, values, order and layout, so a game wears its own colours
@@ -185,18 +186,25 @@ def check_shell_copies(root, errors, notes):
     def files(folder):
         return {p.relative_to(folder).as_posix(): p for p in folder.rglob("*") if p.is_file()}
 
-    want = files(template)
-    for shell in sorted(p for p in examples.glob("*/src/shell") if p.is_dir()):
-        rel, have = shell.relative_to(root).as_posix(), files(shell)
+    def compare(want, have, rel, origin):
         for name in sorted(want.keys() - have.keys()):
-            errors.append(f"{rel}/{name}: missing; templates/basic/src/shell/ has it")
+            errors.append(f"{rel}/{name}: missing; {origin} has it")
         for name in sorted(have.keys() - want.keys()):
-            errors.append(f"{rel}/{name}: not in templates/basic/src/shell/")
+            errors.append(f"{rel}/{name}: not in {origin}")
         for name in sorted(want.keys() & have.keys()):
             if want[name].read_bytes() != have[name].read_bytes():
-                errors.append(f"{rel}/{name}: differs from templates/basic/src/shell/{name}")
+                errors.append(f"{rel}/{name}: differs from {origin}{name}")
+
+    screens = "assets/ui/screens"
+    want, template_screens = files(template), root / "templates" / "basic" / screens
+    want_screens = files(template_screens) if template_screens.is_dir() else {}
+    for shell in sorted(p for p in examples.glob("*/src/shell") if p.is_dir()):
+        compare(want, files(shell), shell.relative_to(root).as_posix(), "templates/basic/src/shell/")
+        game = shell.parent.parent
+        copy = game / screens
+        compare(want_screens, files(copy) if copy.is_dir() else {},
+                f"{game.relative_to(root).as_posix()}/{screens}", f"templates/basic/{screens}/")
         if template_theme.is_file():
-            game = shell.parent.parent
             copy, name = game / theme, f"{game.relative_to(root).as_posix()}/{theme}"
             if not copy.is_file():
                 errors.append(f"{name}: missing; templates/basic has it")
