@@ -21,6 +21,7 @@ use example_01_platformer::shell::options::GameOptions;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, ResolvedManifest, TilemapData, TilemapLayer};
 use tungsten::core::post::{PostPass, PostStack};
+use tungsten::core::ui::contrast_ratio;
 use tungsten::core::{
     AnimationRegistry, AnimationState, AssetRegistry, CameraState, DataRegistry, Entity,
     InputState, Light, MaterialRegistry, Particle, ParticleBudget, ParticleConfigRegistry,
@@ -1318,24 +1319,6 @@ fn an_alert_shows_its_mark_and_stings_once() {
     assert_eq!(heard, 1, "no sting from a search");
 }
 
-/// WCAG's contrast ratio of two opaque sRGB colours, as the template's
-/// shell test computes it.
-fn contrast(a: [u8; 4], b: [u8; 4]) -> f32 {
-    let luminance = |c: [u8; 4]| {
-        let channel = |v: u8| {
-            let v = f32::from(v) / 255.0;
-            if v <= 0.04045 {
-                v / 12.92
-            } else {
-                ((v + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2])
-    };
-    let (la, lb) = (luminance(a), luminance(b));
-    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
-}
-
 #[test]
 fn the_theme_reads_in_its_own_colours() {
     // 01's theme, the template's structure in 01's colours, holds its own
@@ -1367,7 +1350,7 @@ fn the_theme_reads_in_its_own_colours() {
             6.4,
         ),
     ] {
-        let ratio = contrast(color, against);
+        let ratio = contrast_ratio(color, against);
         assert!(ratio >= least - 0.01, "{name}: {ratio:.2} < {least}");
         assert_eq!(color[3], 255, "{name} is opaque");
     }

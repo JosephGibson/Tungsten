@@ -641,6 +641,12 @@ impl ScriptRunner {
             Verb::Action(action) => ScriptHooks::call_action(world, &action.name, &action.args)?,
             Verb::Spawn(spawn) => return self.stage_or_now(world, at, Staged::Spawn(spawn)),
             Verb::Scene(scene) => return self.stage_or_now(world, at, Staged::Scene(scene)),
+            Verb::Screen(id) => {
+                if let Some(reason) = crate::screens::refusal(world, &id) {
+                    return Err(reason);
+                }
+                crate::screens::open(world, &id);
+            }
             Verb::Stage(stage) => {
                 match &mut self.stage {
                     Some(held) if held.reached => return Ok(Applied::Now),

@@ -1,9 +1,9 @@
-//! The shell's look, motion and sound in one place: the theme asset's ID
-//! and its apply, the spacing and sizes every screen shares, the fades and
-//! slides each screen change takes, and the manifest IDs of the menu
-//! sounds and the shell's music. Colours, borders, radii and font families
-//! live in `assets/ui/themes/shell.json`, which hot-reloads; layout is not
-//! themable, so spacing and sizes are constants here.
+//! The shell's motion and sound in one place: the theme asset's ID and its
+//! apply, the fades and slides each screen change takes, and the manifest
+//! IDs of the menu sounds and the shell's music. Colours, borders, radii,
+//! fonts, spacing, sizes and text styles live in
+//! `assets/ui/themes/shell.json`, which hot-reloads; a screen reads its
+//! spacing and sizes as it builds (`tungsten::core::ui::widgets::size`).
 
 use tungsten::core::ui::{UiThemeRegistry, UiTrack, UiTree, WidgetId};
 use tungsten::core::{Easing, World};
@@ -21,8 +21,6 @@ pub const SLIDE_UNITS: f32 = 6.0;
 /// and its fade out.
 pub const CURTAIN_IN_SECS: f32 = 0.10;
 pub const CURTAIN_OUT_SECS: f32 = 0.14;
-/// The scrim's alpha over the screen below: the theme's background at 72 %.
-pub const SCRIM_ALPHA: u8 = 184;
 /// The menu sounds, by manifest ID: a focus move a navigation press made,
 /// an activation, and a cancel or Back.
 pub const MENU_SOUNDS: [&str; 3] = ["ui_move", "ui_select", "ui_back"];
@@ -56,52 +54,6 @@ pub const UI_SCALE: f32 = 0.75;
 /// The smallest viewport the UI lays out in, in UI units, whatever the
 /// scales: a 1280 × 720 window at the OS scale 1.75.
 pub const MIN_VIEWPORT: [f32; 2] = [731.0, 411.0];
-
-/// Inside a screen, all round, in UI units.
-pub const PADDING: f32 = 16.0;
-/// Between two rows.
-pub const GAP: f32 = 8.0;
-/// Between a screen's edge and the HUD.
-pub const MARGIN: f32 = 16.0;
-/// A button's padding: horizontal, vertical.
-pub const BUTTON_PADDING: [f32; 2] = [14.0, 5.0];
-/// A menu's width, and a wide screen's: a card's design width, which a
-/// narrower viewport narrows.
-pub const MENU_WIDTH: f32 = 260.0;
-pub const WIDE_WIDTH: f32 = 600.0;
-/// A slider's width and the least width of a setting's choice, which holds
-/// no text or grows with it, and of a readout; a caption takes what is left
-/// and wraps.
-pub const CONTROL_WIDTH: f32 = 170.0;
-pub const READOUT_WIDTH: f32 = 64.0;
-/// A slider's line height, which sizes it: an 18-unit thumb, outlined by
-/// the theme, on a 4.5-unit track at text 100 %, beside a 22-unit caption.
-pub const SLIDER_LINE: f32 = 18.0;
-/// A heading's size and line height, in the heading family; body text is
-/// the theme's 16 on 22.
-pub const HEADING_SIZE: f32 = 20.0;
-pub const HEADING_LINE: f32 = 28.0;
-/// The title's size and line height, in the heading family, and the most
-/// its size grows to with the text scale, which still fits the floor's
-/// width on one line.
-pub const TITLE: [f32; 2] = [56.0, 64.0];
-pub const TITLE_CAP: f32 = 80.0;
-/// Between the title's buttons; the room between the name and them; the
-/// buttons' column, narrower than a menu's; and their padding, shallower.
-pub const TITLE_GAP: f32 = 14.0;
-pub const TITLE_SPACE: f32 = 40.0;
-pub const TITLE_MENU_WIDTH: f32 = 220.0;
-pub const TITLE_BUTTON_PADDING: [f32; 2] = [14.0, 3.0];
-/// The difficulty picker's cards: their padding all round, and the side of
-/// each square of a difficulty's rank.
-pub const CARD_PADDING: f32 = 12.0;
-pub const PIP: f32 = 10.0;
-/// Game over's "YOU DIED": its size and line height, in the heading family,
-/// and the most its size grows to, which keeps it to one line at the floor.
-pub const DIED: [f32; 2] = [64.0, 72.0];
-pub const DIED_CAP: f32 = 96.0;
-/// Small print: the title's version and "Saving is off".
-pub const SMALL: [f32; 2] = [13.0, 18.0];
 
 /// Applies the shell's theme to `world`'s tree when it is not already on;
 /// without the asset the built-in theme draws.

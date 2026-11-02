@@ -78,11 +78,11 @@ pub fn build(
             ..LayoutStyle::column().with_size(Sizing::Px(size.x), Sizing::Px(size.y))
         },
     );
-    tree.set_overrides(panel, widgets::transparent());
+    widgets::fill(tree, panel, [0; 4]);
     let mut slots = Vec::with_capacity(SLOTS);
     for chunk in contents.chunks(COLUMNS) {
         let row = tree.panel(panel, LayoutStyle::row().with_gap(theme::SLOT_GAP));
-        tree.set_overrides(row, widgets::transparent());
+        widgets::fill(tree, row, [0; 4]);
         for stack in chunk {
             slots.push(build_slot(tree, row, sprites, *stack));
         }

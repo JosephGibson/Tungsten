@@ -9,14 +9,16 @@ use tungsten_core::assets::{
     ResolvedManifest, SoundData, SoundRegistry, StagedLoad, TextureHandle, TilemapData,
     TilemapRegistry, UvRect,
 };
-use tungsten_core::ui::{Theme, ThemeFile, UiThemeRegistry, UiTree};
+use tungsten_core::ui::{
+    ScreenFile, Theme, ThemeFile, UiScreenRegistry, UiThemeRegistry, UiTree, screen_build,
+};
 use tungsten_core::{ActionMap, ActionMapError, AssetRegistry, World};
 use tungsten_render::Renderer;
 
 use super::prefab::{MANIFEST_HINT, failure, reload_prefabs_and_data};
 use super::{
-    UiThemePaths, diff_particle_meshes, missing_particle_render_ref, rebuild_atlas_for_filter,
-    warn_unknown_font_tokens,
+    UiScreenPaths, UiThemePaths, diff_particle_meshes, missing_particle_render_ref,
+    rebuild_atlas_for_filter, warn_unknown_font_tokens,
 };
 
 /// Hot-reload one `ui_themes` file (M46, `D-148`): the registry entry is
@@ -87,6 +89,73 @@ pub fn reload_ui_themes_from_manifest(new_manifest: &ResolvedManifest, world: &m
                 log::info!("Manifest reload: loaded new ui theme '{id}'");
             }
             Err(e) => log::error!("Manifest reload: new ui theme '{id}': {e}"),
+        }
+    }
+    world.insert_resource(paths);
+}
+
+/// Hot-reload one `ui_screens` file (redo 7.20): the registry entry is
+/// replaced and every live screen built from it rebuilt under its root,
+/// focus kept by key ([`screen_build::reload`]). A file that fails to load
+/// keeps the previous file and its screens with one error.
+pub fn reload_ui_screen(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
+    let file = match ScreenFile::load(path) {
+        Ok(file) => file,
+        Err(e) => {
+            log::error!("Hot reload ui screen '{id}': {e}; keeping the previous screen");
+            return Ok(());
+        }
+    };
+    store_ui_screen(id, file, world);
+    screen_build::reload(world, id);
+    log::info!("Hot-reloaded ui screen '{id}' from '{}'", path.display());
+    Ok(())
+}
+
+/// Stores `file` as `id` in the registry, inserting one when there is none.
+fn store_ui_screen(id: &str, file: ScreenFile, world: &mut World) {
+    if let Some(registry) = world.get_resource_mut::<UiScreenRegistry>() {
+        registry.insert(id, file);
+    } else {
+        let mut registry = UiScreenRegistry::new();
+        registry.insert(id, file);
+        world.insert_resource(registry);
+    }
+}
+
+/// The manifest reload's `ui_screens` diff (redo 7.20), as the themes': a
+/// new entry loads (a file that fails is one error and no entry), a removed
+/// one stays stale, an existing one keeps its file (a changed file arrives
+/// through [`reload_ui_screen`]); every entry's path is recorded for the
+/// watcher. A manifest graph that never listed screens inserts nothing.
+pub fn reload_ui_screens_from_manifest(new_manifest: &ResolvedManifest, world: &mut World) {
+    if new_manifest.ui_screens.is_empty() && !world.has_resource::<UiScreenPaths>() {
+        return;
+    }
+    let existing: Vec<String> = world
+        .get_resource::<UiScreenRegistry>()
+        .map(|registry| registry.ids().iter().map(ToString::to_string).collect())
+        .unwrap_or_default();
+    for id in &existing {
+        if !new_manifest.ui_screens.contains_key(id.as_str()) {
+            log::warn!("Manifest reload: ui screen '{id}' removed — keeping stale");
+        }
+    }
+    let mut ids: Vec<&String> = new_manifest.ui_screens.keys().collect();
+    ids.sort();
+    let mut paths = world.remove_resource::<UiScreenPaths>().unwrap_or_default();
+    for id in ids {
+        let entry = &new_manifest.ui_screens[id];
+        paths.register(id.clone(), entry.path.clone());
+        if existing.iter().any(|e| e == id) {
+            continue;
+        }
+        match ScreenFile::load(&entry.path) {
+            Ok(file) => {
+                store_ui_screen(id, file, world);
+                log::info!("Manifest reload: loaded new ui screen '{id}'");
+            }
+            Err(e) => log::error!("Manifest reload: new ui screen '{id}': {e}"),
         }
     }
     world.insert_resource(paths);
@@ -295,6 +364,9 @@ pub(crate) fn reload_json_files(
         let theme_id = world
             .get_resource::<UiThemePaths>()
             .and_then(|paths| paths.id_for_path(path).map(ToString::to_string));
+        let screen_id = world
+            .get_resource::<UiScreenPaths>()
+            .and_then(|paths| paths.id_for_path(path).map(ToString::to_string));
         let anim_id = world
             .get_resource::<AnimationRegistry>()
             .and_then(|ar| ar.id_for_path(path).map(ToString::to_string));
@@ -314,6 +386,10 @@ pub(crate) fn reload_json_files(
         if let Some(id) = theme_id {
             if let Err(e) = reload_ui_theme(&id, path, world) {
                 error(format!("Ui theme reload '{id}': {e}"));
+            }
+        } else if let Some(id) = screen_id {
+            if let Err(e) = reload_ui_screen(&id, path, world) {
+                error(format!("Ui screen reload '{id}': {e}"));
             }
         } else if let Some(id) = anim_id {
             if let Err(e) = reload_animation(&id, path, world) {
@@ -341,7 +417,7 @@ pub(crate) fn reload_json_files(
             }
         } else {
             log::debug!(
-                "Hot reload: no animation, particle, prefab, data entry or ui theme registered for '{}'",
+                "Hot reload: no animation, particle, prefab, data entry, ui theme or ui screen registered for '{}'",
                 path.display()
             );
         }
@@ -889,6 +965,8 @@ pub fn reload_manifest(
 
     // M46 ui themes: load new entries, keep removed ones stale.
     reload_ui_themes_from_manifest(&new_manifest, world);
+    // Redo 7.20 screen files: likewise.
+    reload_ui_screens_from_manifest(&new_manifest, world);
 
     // Keep diagnostics/reload diff graph current.
     world.insert_resource(tungsten_core::assets::LoadedManifest::new(

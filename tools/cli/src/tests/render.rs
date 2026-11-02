@@ -140,7 +140,18 @@ fn many_actions_lengthen_the_run_past_the_capture() {
 #[test]
 fn each_bad_flag_is_a_usage_error() {
     let cases: &[(&[&str], &str)] = &[
-        (&["-o", "a.png"], "needs one of --sheet, --scene and --at"),
+        (
+            &["-o", "a.png"],
+            "needs one of --sheet, --scene, --at and --screen",
+        ),
+        (
+            &["--screen", "pause", "--at", "1,2", "-o", "a.png"],
+            "not several",
+        ),
+        (
+            &["--screen", "pause", "--zoom", "2", "-o", "a.png"],
+            "go with --at",
+        ),
         (
             &["--sheet", "a", "--at", "1,2", "-o", "a.png"],
             "not several",
@@ -215,4 +226,42 @@ fn each_bad_flag_is_a_usage_error() {
         let err = render(args).unwrap_err();
         assert!(err.contains(message), "{args:?}: {err}");
     }
+}
+
+#[test]
+fn render_screen_writes_a_screen_step_after_its_actions() {
+    assert_eq!(
+        script_of(&[
+            "--after",
+            "start_run",
+            "--after",
+            "open_menu={\"slow\": true}",
+            "--screen",
+            "pause",
+            "-o",
+            "pause.png"
+        ]),
+        json!({
+            "version": 1, "frames": 60, "resolution": [1280, 720],
+            "steps": [
+                { "frame": 2, "action": "start_run" },
+                { "frame": 3, "action": "open_menu", "args": { "slow": true } },
+                { "frame": 4, "screen": "pause" },
+                { "frame": 60, "capture": game("pause.png") }
+            ]
+        })
+    );
+    // Alone, the screen opens at frame 2; a capture before it still runs
+    // the frames the screen needs.
+    assert_eq!(
+        script_of(&["--screen", "settings", "--frame", "1", "-o", "s.png"])["steps"],
+        json!([
+            { "frame": 2, "screen": "settings" },
+            { "frame": 1, "capture": game("s.png") }
+        ])
+    );
+    assert_eq!(
+        script_of(&["--screen", "settings", "--frame", "1", "-o", "s.png"])["frames"],
+        json!(2)
+    );
 }

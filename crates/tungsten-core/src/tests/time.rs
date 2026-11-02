@@ -417,3 +417,35 @@ fn a_zero_duration_repeating_timer_panics() {
 fn a_negative_duration_panics() {
     let _ = Timer::once(-1.0);
 }
+
+#[test]
+fn a_hold_zeroes_dt_beside_the_games_pause() {
+    let mut time = Time::new();
+    time.set_held(true);
+    time.advance_frame(0.1);
+    assert!(time.is_held() && !time.is_paused());
+    assert_eq!((time.delta(), time.real_delta()), (0.0, 0.1));
+    assert_eq!(
+        time.fixed_steps_this_frame(),
+        0,
+        "a held frame runs no step"
+    );
+    time.set_held(false);
+    time.advance_frame(0.1);
+    assert_eq!(time.delta(), 0.1);
+
+    // The game's pause and the hold are apart: lifting one leaves the other.
+    time.pause();
+    time.set_held(true);
+    time.set_held(false);
+    time.advance_frame(0.1);
+    assert!(time.is_paused());
+    assert_eq!(time.delta(), 0.0, "the game's pause stands");
+    time.set_held(true);
+    time.resume();
+    time.advance_frame(0.1);
+    assert_eq!(time.delta(), 0.0, "the hold stands");
+    time.set_held(false);
+    time.advance_frame(0.1);
+    assert_eq!(time.delta(), 0.1);
+}

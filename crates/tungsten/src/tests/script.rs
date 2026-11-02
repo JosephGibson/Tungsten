@@ -538,3 +538,64 @@ fn the_startup_probe_reads_the_timings() {
     assert!(report.passed, "{report:#?}");
     assert_eq!(probes(&report, "startup"), [(1, &json!(timings))]);
 }
+
+/// An app whose `ui_screens` are `files` (ID, JSON).
+fn screen_app(files: &[(&str, &str)]) -> App {
+    let mut app = app();
+    let mut registry = tungsten_core::ui::UiScreenRegistry::new();
+    for (id, json) in files {
+        let file = tungsten_core::ui::ScreenFile::from_json(json).expect("a screen file");
+        registry.insert(*id, file);
+    }
+    app.world_mut().insert_resource(registry);
+    app
+}
+
+#[test]
+fn a_screen_step_opens_a_screen_file() {
+    let pause = r#"{"version": 1, "root": {"kind": "screen", "width": 260,
+        "children": [{"kind": "button", "key": "resume", "text": "Resume", "on": "pop"}]}}"#;
+    let mut harness = Harness::new(screen_app(&[("pause", pause)]));
+    let report = harness.run_script(&script(
+        20,
+        &json!([
+            { "frame": 2, "screen": "pause" },
+            { "frame": 20, "assert": { "probe": "states", "op": "==", "value": ["pause"] } },
+        ]),
+    ));
+    assert!(report.passed, "{report:#?}");
+}
+
+#[test]
+fn a_refused_screen_step_fails_with_its_reason() {
+    let hud = r#"{"version": 1, "root": {"kind": "root", "layer": "game"}}"#;
+    let mut harness = Harness::new(screen_app(&[("hud", hud)]));
+    let report = harness.run_script(&script(
+        3,
+        &json!([
+            { "frame": 2, "screen": "hud" },
+            { "frame": 3, "screen": "nowhere" },
+        ]),
+    ));
+    assert!(!report.passed);
+    let failed: Vec<(u32, &str, &str)> = report
+        .failed_steps
+        .iter()
+        .map(|f| (f.frame, f.verb.as_str(), f.error.as_str()))
+        .collect();
+    assert_eq!(
+        failed,
+        [
+            (
+                2,
+                "screen",
+                "ui screen 'hud': its root is not modal on the popup layer"
+            ),
+            (
+                3,
+                "screen",
+                "no registered screen or ui_screens file is named 'nowhere'"
+            ),
+        ]
+    );
+}

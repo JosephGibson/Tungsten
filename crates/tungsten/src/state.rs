@@ -52,18 +52,34 @@ pub trait GameState: 'static {
     fn on_pause(&mut self, _ctx: &mut StateContext) {}
     fn on_resume(&mut self, _ctx: &mut StateContext) {}
     fn update(&mut self, world: &mut World);
+
+    /// Whether the game clock holds while another state covers this one
+    /// (redo 7.17): gameplay under a pause screen. The stack sets `Time`'s
+    /// hold, beside the game's own pause, at each dispatch.
+    fn holds_clock(&self) -> bool {
+        false
+    }
 }
+
+/// A reset's hook, run between the exits and the enter.
+type SwapHook = Box<dyn FnOnce(&mut World)>;
+
+/// What removes an owned resource from the World.
+pub(crate) type RemoveResource = fn(&mut World);
 
 pub(crate) enum StateCommand {
     Push(Box<dyn GameState>),
     Pop,
     Replace(Box<dyn GameState>),
+    /// Every state exits, top down, the hook runs, then the state enters
+    /// (redo 7.17).
+    Reset(Box<dyn GameState>, Option<SwapHook>),
 }
 
 impl StateCommand {
     /// Whether the command exits the top state.
     fn exits_top(&self) -> bool {
-        matches!(self, Self::Pop | Self::Replace(_))
+        matches!(self, Self::Pop | Self::Replace(_) | Self::Reset(..))
     }
 
     /// How many states at the top of the stack the dispatch has entered once
@@ -71,7 +87,7 @@ impl StateCommand {
     /// when that is none.
     fn entered_after(&self, entered: usize) -> usize {
         match self {
-            Self::Push(_) | Self::Replace(_) => entered + 1,
+            Self::Push(_) | Self::Replace(_) | Self::Reset(..) => entered + 1,
             Self::Pop => entered,
         }
     }
@@ -123,6 +139,9 @@ pub struct StateStack {
     /// The stack index and ID of the state whose hook or `update` runs, off
     /// the stack; `None` outside the dispatcher.
     pub(crate) dispatching: Option<(usize, StateId)>,
+    /// The resources states own (redo 7.17), by the owner's place on the
+    /// stack, each with what removes it.
+    pub(crate) owned_resources: Vec<(usize, RemoveResource)>,
 }
 
 impl StateStack {
@@ -135,7 +154,27 @@ impl StateStack {
             active_transition: None,
             owned_roots: Vec::new(),
             dispatching: None,
+            owned_resources: Vec::new(),
         }
+    }
+
+    /// Gives resource `T` to a state (redo 7.17): from a state's hook or
+    /// `update`, the state being dispatched; elsewhere the top state. `T`
+    /// leaves the World when that state exits, after its `on_exit`, as its
+    /// owned roots do. With an empty stack this warns and does nothing.
+    pub fn own_resource<T: 'static>(&mut self) {
+        let owner = match self.dispatching {
+            Some((index, _)) => index,
+            None if !self.stack.is_empty() => self.stack.len() - 1,
+            None => {
+                log::warn!(
+                    "StateStack::own_resource::<{}>: no state to own it",
+                    std::any::type_name::<T>()
+                );
+                return;
+            }
+        };
+        self.owned_resources.push((owner, remove_resource::<T>));
     }
 
     /// Gives `root` to a state (M56): from a state's hook or `update`, the
@@ -206,6 +245,30 @@ impl StateStack {
         transition: Transition,
     ) -> bool {
         self.queue_transition(StateCommand::Replace(Box::new(state)), transition)
+    }
+
+    /// Queue a reset behind `transition` (redo 7.17): on its boundary frame
+    /// every state exits, top down, as pops exit them (hooks, scene entities
+    /// and owned roots and resources), then `state` enters. `false`, and the
+    /// state is dropped, when a transition is queued or active.
+    pub fn request_reset_transition(
+        &mut self,
+        state: impl GameState,
+        transition: Transition,
+    ) -> bool {
+        self.queue_transition(StateCommand::Reset(Box::new(state), None), transition)
+    }
+
+    /// [`Self::request_reset_transition`], running `on_swap` between the
+    /// exits and the enter: where a run change stages the next run.
+    pub fn request_reset_transition_with(
+        &mut self,
+        state: impl GameState,
+        transition: Transition,
+        on_swap: impl FnOnce(&mut World) + 'static,
+    ) -> bool {
+        let command = StateCommand::Reset(Box::new(state), Some(Box::new(on_swap)));
+        self.queue_transition(command, transition)
     }
 
     fn queue_transition(&mut self, command: StateCommand, transition: Transition) -> bool {
@@ -348,6 +411,8 @@ pub fn state_dispatcher_system(world: &mut World) {
         stack.pending = held;
     }
 
+    sync_clock_hold(world);
+
     if let Some(mut top) = pop_top(world) {
         top.update(world);
         push_top(world, top);
@@ -486,13 +551,48 @@ fn sync_root(
     true
 }
 
-/// Removes the roots the state at `index` owns, after its exit, and ends
-/// its dispatch.
+/// Holds the game clock while a covered state holds its clock (redo
+/// 7.17): `Time`'s hold, beside the game's pause, from the next frame on.
+fn sync_clock_hold(world: &mut World) {
+    let Some(stack) = world.get_resource::<StateStack>() else {
+        return;
+    };
+    let covered = stack.stack.len().saturating_sub(1);
+    let held = stack.stack[..covered]
+        .iter()
+        .any(|state| state.holds_clock());
+    if let Some(time) = world.get_resource_mut::<Time>() {
+        time.set_held(held);
+    }
+}
+
+/// Removes resource `T`: what [`StateStack::own_resource`] keeps.
+fn remove_resource<T: 'static>(world: &mut World) {
+    world.remove_resource::<T>();
+}
+
+/// Removes the roots and resources the state at `index` owns, after its
+/// exit, and ends its dispatch.
 fn release_roots(world: &mut World, index: usize) {
     let Some(stack) = world.get_resource_mut::<StateStack>() else {
         return;
     };
     stack.dispatching = None;
+    if !stack.owned_resources.is_empty() {
+        let mut removers = Vec::new();
+        stack.owned_resources.retain(|&(owner, remove)| {
+            if owner == index {
+                removers.push(remove);
+            }
+            owner != index
+        });
+        for remove in removers {
+            remove(world);
+        }
+    }
+    let Some(stack) = world.get_resource_mut::<StateStack>() else {
+        return;
+    };
     if stack.owned_roots.is_empty() {
         return;
     }
@@ -575,6 +675,31 @@ fn apply_command(world: &mut World, cmd: StateCommand) {
                     .get_resource::<StateStack>()
                     .map_or(0, |s| s.stack.len());
                 release_roots(world, index);
+            }
+            let new_id = new_state.id();
+            dispatch_next(world, new_id);
+            new_state.on_enter(&mut StateContext {
+                world,
+                state_id: new_id,
+            });
+            push_top(world, new_state);
+        }
+        StateCommand::Reset(mut new_state, on_swap) => {
+            while let Some(mut old) = pop_top(world) {
+                let old_id = old.id();
+                despawn_scene_entities(world, old_id);
+                old.on_exit(&mut StateContext {
+                    world,
+                    state_id: old_id,
+                });
+                let index = world
+                    .get_resource::<StateStack>()
+                    .map_or(0, |s| s.stack.len());
+                release_roots(world, index);
+            }
+            sync_state_roots(world, 0);
+            if let Some(on_swap) = on_swap {
+                on_swap(world);
             }
             let new_id = new_state.id();
             dispatch_next(world, new_id);

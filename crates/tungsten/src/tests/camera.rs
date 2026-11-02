@@ -128,3 +128,66 @@ fn missing_controller_leaves_camera_untouched() {
     camera_update_system(&mut world);
     assert_eq!(camera_position(&world), Vec2::new(5.0, 7.0));
 }
+
+/// A world whose camera sits at the origin, holding a laid-out 40 by 20
+/// root anchored at `point` moved by `offset`: (world, root).
+fn anchored(point: Vec2, offset: Vec2) -> (World, tungsten_core::ui::WidgetId) {
+    use tungsten_core::ui::{FixedAdvanceMeasure, LayoutStyle, Sizing, UiLayer, UiTree};
+    let mut world = make_world(0.016);
+    world.insert_resource(CameraController::default());
+    let mut tree = UiTree::new();
+    let root = tree.add_root(
+        UiLayer::Game,
+        LayoutStyle::default().with_size(Sizing::Px(40.0), Sizing::Px(20.0)),
+    );
+    tree.layout(Vec2::new(800.0, 600.0), &mut FixedAdvanceMeasure::default());
+    tree.anchor_to_world(root, point, offset);
+    world.insert_resource(tree);
+    (world, root)
+}
+
+fn translation(world: &World, root: tungsten_core::ui::WidgetId) -> Option<Vec2> {
+    world
+        .resource::<tungsten_core::ui::UiTree>()
+        .translation(root)
+}
+
+#[test]
+fn a_world_anchored_root_follows_its_point() {
+    let (mut world, root) = anchored(Vec2::new(300.0, 200.0), Vec2::new(5.0, -10.0));
+    camera_update_system(&mut world);
+    assert_eq!(translation(&world, root), Some(Vec2::new(305.0, 190.0)));
+    world.resource_mut::<CameraState>().position = Vec2::new(100.0, 50.0);
+    camera_update_system(&mut world);
+    assert_eq!(
+        translation(&world, root),
+        Some(Vec2::new(205.0, 140.0)),
+        "it follows the view"
+    );
+    world
+        .resource_mut::<tungsten_core::ui::UiTree>()
+        .clear_world_anchor(root);
+    world.resource_mut::<CameraState>().position = Vec2::ZERO;
+    camera_update_system(&mut world);
+    assert_eq!(
+        translation(&world, root),
+        Some(Vec2::new(205.0, 140.0)),
+        "cleared, it stays"
+    );
+}
+
+#[test]
+fn a_world_anchored_root_stays_in_the_view() {
+    let (mut world, root) = anchored(Vec2::new(790.0, 595.0), Vec2::ZERO);
+    camera_update_system(&mut world);
+    assert_eq!(
+        translation(&world, root),
+        Some(Vec2::new(760.0, 580.0)),
+        "its last size inside the viewport"
+    );
+    world
+        .resource_mut::<tungsten_core::ui::UiTree>()
+        .anchor_to_world(root, Vec2::new(-50.0, -50.0), Vec2::ZERO);
+    camera_update_system(&mut world);
+    assert_eq!(translation(&world, root), Some(Vec2::ZERO));
+}

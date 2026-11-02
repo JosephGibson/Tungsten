@@ -53,7 +53,7 @@ def themed(text):
         if rgb not in THEME_COLORS:raise ValueError(f'{THEME}: template colour {rgb} has no colour of 01\'s (THEME_COLORS)')
         return THEME_COLORS[rgb]+alpha
     return re.sub(r'(#[0-9a-fA-F]{6})([0-9a-fA-F]{2})?\b',mapped,text)
-SHELL_SECTIONS=('fonts','font_families','font_fallback','ui_themes')
+SHELL_SECTIONS=('fonts','font_families','font_fallback','ui_themes','ui_screens')
 # 01's own face beside the template's: Source Serif 4 Bold, under the same
 # licence as its Regular, for the area titles, from the repository's fonts.
 SERIF_BOLD=ROOT.parent.parent/'assets'/'fonts'/'SourceSerif4'/'static'/'SourceSerif4-Bold.ttf'
@@ -885,8 +885,8 @@ def strings(*data):
 
 
 def content_family(made,sprites,lit):
-    """The shell's fonts, theme and damage-flash material, copied from the
-    template, 01's serif face, the content's prefabs and data, the glow
+    """The shell's fonts, theme, screen files and damage-flash material,
+    copied from the template, 01's serif face, the content's prefabs and data, the glow
     shader and materials, the ambient emitter's prefab and the particle
     configs: sources copied or written from this file."""
     template=json.loads((TEMPLATE/'assets/manifest.json').read_text())
@@ -898,6 +898,8 @@ def content_family(made,sprites,lit):
     made.entries.update(entries_of(shell))
     for path in SHELL_ASSETS:
         made.files['assets/'+path]=(TEMPLATE/'assets'/path).read_bytes()
+    for entry in template['ui_screens'].values():
+        made.files['assets/'+entry['path']]=(TEMPLATE/'assets'/entry['path']).read_bytes()
     made.files['assets/'+THEME]=themed((TEMPLATE/'assets'/THEME).read_text()).encode()
     made.files['assets/fonts/SourceSerif4/SourceSerif4-Bold.ttf']=SERIF_BOLD.read_bytes()
     for item in sorted(CONTENT.rglob('*')):

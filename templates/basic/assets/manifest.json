@@ -279,5 +279,19 @@
     "shell": {
       "path": "ui/themes/shell.json"
     }
+  },
+  "ui_screens": {
+    "game_over": {
+      "path": "ui/screens/game_over.json"
+    },
+    "pause": {
+      "path": "ui/screens/pause.json"
+    },
+    "settings": {
+      "path": "ui/screens/settings.json"
+    },
+    "title": {
+      "path": "ui/screens/title.json"
+    }
   }
 }

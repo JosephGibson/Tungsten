@@ -487,6 +487,12 @@ impl TextPipeline {
         height: u32,
     ) {
         self.viewport.update(queue, Resolution { width, height });
+        // The plain views the outline and shadow copies draw (P7-14).
+        self.engine
+            .prepare_plain(ui.commands.iter().filter_map(|command| match command {
+                PaintCommand::Text { node, .. } => Some(*node),
+                _ => None,
+            }));
 
         let ranges = ui.text_batches();
         let signatures: Vec<BatchSignature> = ranges

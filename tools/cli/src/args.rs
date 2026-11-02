@@ -28,6 +28,9 @@ Commands:
   render      Render the game to PNG through a script made from its flags:
               a contact sheet, a scene or a point of its world, once or as
               a loop of frames
+  schema <name>
+              Print the JSON Schema of the ui_screen or ui_theme file
+              format, from this command line's engine
 
 Options:
   -h, --help     Print this help
@@ -43,11 +46,13 @@ Options of run:
 Options of describe:
   --json            Print the description as JSON
 
-Options of render, one of --sheet, --scene and --at, and -o:
+Options of render, one of --sheet, --scene, --at and --screen, and -o:
   --sheet <items>   Items in a captioned grid on an empty stage, by commas:
                     prefab IDs, sprite:<id>, animation:<id>, particles:<id>
   --scene <file>    A scene file on an empty stage
   --at <x>,<y>      A point of the game's world, the camera's centre
+  --screen <id>     A screen file or a registered screen, opened after the
+                    --after actions
   --after <action>[=<json>]
                     An action the game registered, with its arguments, at
                     frame 2, the next at 3, and so on; repeatable
@@ -64,8 +69,11 @@ Options of render, one of --sheet, --scene and --at, and -o:
   --release         Run the game's release build
   -o <path>         The PNG, or with --loop the folder of NNNN.png frames
 
-Run every command but new in the game's folder. They need the game's
-engine to be the version of this command line.";
+Options of schema:
+  -o <path>         Write the schema to <path> instead
+
+Run every command but new and schema in the game's folder. They need
+the game's engine to be the version of this command line.";
 
 /// What the arguments ask for.
 #[derive(Debug, PartialEq)]
@@ -86,6 +94,17 @@ pub(crate) enum Command {
     Describe(DescribeArgs),
     /// Render the game in the current folder to PNG.
     Render(RenderArgs),
+    /// Print or write a file format's JSON Schema.
+    Schema(SchemaArgs),
+}
+
+/// `schema`'s format and option.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SchemaArgs {
+    /// The format: one of [`crate::schema::NAMES`].
+    pub(crate) name: String,
+    /// The file to write it to; stdout when `None`.
+    pub(crate) out: Option<PathBuf>,
 }
 
 /// `run`'s options.
@@ -129,6 +148,7 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
             ("--sheet", Some("<items>")),
             ("--scene", Some("<file>")),
             ("--at", Some("<x>,<y>")),
+            ("--screen", Some("<id>")),
             ("--after", Some("<action>")),
             ("--zoom", Some("<z>")),
             ("--view", Some("<height>")),
@@ -142,6 +162,7 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
             ("-o", Some("<path>")),
         ],
     ),
+    ("schema", &[("-o", Some("<path>"))]),
 ];
 
 /// The options a command may give more than once.
@@ -170,7 +191,9 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
     let rest: Vec<OsString> = args.collect();
     let name = command.to_string_lossy().into_owned();
     let (positional, options) = match name.as_str() {
-        "new" | "check" | "package" | "run" | "describe" | "render" => split(&name, rest)?,
+        "new" | "check" | "package" | "run" | "describe" | "render" | "schema" => {
+            split(&name, rest)?
+        }
         _ => return Err(UsageError(format!("unknown command `{name}`"))),
     };
     let flag = |option: &str| options.iter().any(|(o, _)| *o == option);
@@ -214,6 +237,26 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
                 .map(Command::Render)
                 .map_err(UsageError)
         }
+        "schema" => match <[OsString; 1]>::try_from(positional) {
+            Ok([format]) => {
+                let name = format.to_string_lossy().into_owned();
+                if !crate::schema::NAMES.contains(&name.as_str()) {
+                    return Err(UsageError(format!(
+                        "unknown schema `{name}`: {}",
+                        crate::schema::NAMES.join(" or ")
+                    )));
+                }
+                Ok(Command::Schema(SchemaArgs {
+                    name,
+                    out: value("-o"),
+                }))
+            }
+            Err(rest) if rest.is_empty() => Err(UsageError(format!(
+                "`schema` needs a format: {}",
+                crate::schema::NAMES.join(" or ")
+            ))),
+            Err(rest) => Err(extra("schema", &rest[1..])),
+        },
         "run" => Ok(Command::Run(RunArgs {
             script: value("--script")
                 .ok_or_else(|| UsageError("`run` needs --script <file>".to_owned()))?,

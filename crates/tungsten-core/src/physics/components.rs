@@ -301,14 +301,32 @@ impl RigidBody {
         }
     }
 
+    /// The body of mass `mass`, its [`inv_mass`](Self::inv_mass) the inverse.
+    ///
+    /// # Panics
+    ///
+    /// When `mass` is not finite and above 0 with a finite inverse.
     #[must_use]
     pub fn with_mass(mut self, mass: f32) -> Self {
-        self.inv_mass = if mass > 0.0 { 1.0 / mass } else { 0.0 };
+        assert!(
+            mass.is_finite() && mass > 0.0 && (1.0 / mass).is_finite(),
+            "mass must be finite and > 0 with a finite inverse (got {mass})"
+        );
+        self.inv_mass = 1.0 / mass;
         self
     }
 
+    /// The body with restitution `restitution`, clamped to 0 to 1.
+    ///
+    /// # Panics
+    ///
+    /// When `restitution` is not finite.
     #[must_use]
     pub fn with_restitution(mut self, restitution: f32) -> Self {
+        assert!(
+            restitution.is_finite(),
+            "restitution must be finite (got {restitution})"
+        );
         self.restitution = restitution.clamp(0.0, 1.0);
         self
     }

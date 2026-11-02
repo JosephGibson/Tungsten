@@ -26,8 +26,8 @@ use glam::Vec2;
 use tungsten::RootCover;
 use tungsten::core::text::{TextAlign, TextWrap};
 use tungsten::core::ui::{
-    Align, Anchor, Edges, Justify, LayoutStyle, Sizing, StyleOverrides, UiLayer, UiTree, UiVertex,
-    Visibility, WidgetId,
+    Align, Anchor, Edges, Justify, LayoutStyle, Sizing, SpacingTokens, StyleOverrides, UiLayer,
+    UiTree, UiVertex, Visibility, WidgetId, widgets,
 };
 use tungsten::core::{
     ActionMap, AssetRegistry, Binding, CameraState, DataRegistry, Entity, ScaleFactor,
@@ -42,7 +42,7 @@ use crate::features::gun::{self, MAGAZINE, RELOAD_SECS};
 use crate::features::level::systems::drawn_time;
 use crate::features::run::Run;
 use crate::features::tomes::{self, BOOK_CENTRE, TomeKind};
-use crate::shell::{self, theme, widgets};
+use crate::shell::{self, theme};
 
 /// A bar: its bordered track, the fill as wide as the share left, which
 /// clips the liquid's strip, a low bar's pulse and the bright edge where
@@ -203,8 +203,9 @@ const TRACK_ALPHA: u8 = 235;
 /// its peak.
 const PULSE_HZ: f32 = 2.0;
 const PULSE: f32 = 31.0;
-/// The room under the spell bar for one toast: its padding and its line.
-const TOAST_LANE: f32 = 2.0 * theme::GAP + 20.0;
+/// The room under the spell bar for one toast: its line, beside its padding,
+/// two of the theme's `spacing.sm`.
+const TOAST_LINE: f32 = 20.0;
 /// The icon tiles' art, in its pixels, and the share of it inside their
 /// bevel, which a sweep and a flash cover.
 const ICON: f32 = 36.0;
@@ -312,12 +313,23 @@ fn snap(units: f32, scale: f32) -> f32 {
 
 /// The bars' root at `scale`: its corner, padding and gap on whole screen
 /// pixels, so the liquids' tiles meet on whole pixels and no seam shows.
-fn meters_style(scale: f32) -> LayoutStyle {
-    let gap = snap(theme::GAP, scale);
+fn meters_style(spacing: SpacingTokens, scale: f32) -> LayoutStyle {
+    let gap = snap(spacing.sm, scale);
     LayoutStyle::column()
         .with_gap(gap)
         .with_padding(gap)
-        .anchored(Anchor::TopStart, Vec2::splat(snap(theme::MARGIN, scale)))
+        .anchored(Anchor::TopStart, Vec2::splat(snap(spacing.lg, scale)))
+}
+
+/// A label's or a button's text, its spans joined: the shell's old helper,
+/// kept so the HUD's comparisons allocate as before (`e01-pit`'s pin).
+fn text_of(tree: &UiTree, id: WidgetId) -> String {
+    let spans = tree.text(id).map(|styled| styled.spans.as_slice());
+    spans
+        .unwrap_or_default()
+        .iter()
+        .map(|span| span.text.as_str())
+        .collect()
 }
 
 /// Notes a press of the selected spell refused as not ready: its slot
@@ -377,17 +389,18 @@ fn build(
     art: Art,
     scale: f32,
 ) -> Hud {
-    let colors = tree.theme().tokens.colors;
-    let meters = tree.add_root(UiLayer::Game, meters_style(scale));
+    let (colors, spacing) = (tree.theme().tokens.colors, tree.theme().tokens.spacing);
+    let meters = tree.add_root(UiLayer::Game, meters_style(spacing, scale));
     tree.set_hit_testable(meters, false);
     widgets::fill(tree, meters, faded(colors.background, METERS_ALPHA));
     let health = meter(tree, meters, art.health, HEALTH_EDGE);
     let shield = shield_bar(tree, &health, art.shield);
     let mana = meter(tree, meters, art.mana, MANA_EDGE);
     let strip = strip(tree, meters, art);
-    let style = LayoutStyle::row().with_gap(theme::GAP).anchored(
+    let lane = 2.0 * spacing.sm + TOAST_LINE;
+    let style = LayoutStyle::row().with_gap(spacing.sm).anchored(
         Anchor::BottomCenter,
-        Vec2::new(0.0, theme::MARGIN + TOAST_LANE + theme::GAP),
+        Vec2::new(0.0, spacing.lg + lane + spacing.sm),
     );
     let bar = tree.add_root(UiLayer::Game, style);
     tree.set_hit_testable(bar, false);
@@ -425,7 +438,8 @@ fn build(
 /// the cartridges; and puts the bars on whole pixels.
 fn size(tree: &mut UiTree, hud: &Hud, scale: f32) {
     let texel = texel(scale);
-    tree.set_layout_style(hud.meters, meters_style(scale));
+    let spacing = tree.theme().tokens.spacing;
+    tree.set_layout_style(hud.meters, meters_style(spacing, scale));
     let tile = ICON * texel;
     for id in hud
         .slots
@@ -544,7 +558,8 @@ fn shield_bar(tree: &mut UiTree, health: &Meter, liquid: SpriteAssetId) -> Shiel
 /// The tomes' row under the bars, collapsed, its tiles in the icon
 /// family; [`size`] sizes them as the spell bar's.
 fn strip(tree: &mut UiTree, parent: WidgetId, art: Art) -> Strip {
-    let row = tree.panel(parent, LayoutStyle::row().with_gap(theme::GAP / 2.0));
+    let gap = tree.theme().tokens.spacing.sm / 2.0;
+    let row = tree.panel(parent, LayoutStyle::row().with_gap(gap));
     widgets::fill(tree, row, CLEAR);
     let tiles = art
         .tomes
@@ -555,18 +570,20 @@ fn strip(tree: &mut UiTree, parent: WidgetId, art: Art) -> Strip {
 
 /// The book's panel, a root of its own placed by [`panel`], hidden.
 fn book_panel(tree: &mut UiTree) -> Panel {
-    let colors = tree.theme().tokens.colors;
+    let (colors, spacing) = (tree.theme().tokens.colors, tree.theme().tokens.spacing);
     let style = LayoutStyle::column()
-        .with_gap(theme::GAP / 2.0)
-        .with_padding(theme::GAP)
+        .with_gap(spacing.sm / 2.0)
+        .with_padding(spacing.sm)
         .with_size(Sizing::Px(PANEL_WIDTH), Sizing::Auto)
         .anchored(Anchor::TopStart, Vec2::ZERO);
     let root = tree.add_root(UiLayer::Game, style);
     tree.set_hit_testable(root, false);
     let background = faded(colors.background, PANEL_ALPHA);
     edged(tree, root, colors.border, background, PANEL_BORDER);
-    let name = widgets::display(tree, root, "", PANEL_NAME);
-    widgets::restyle(tree, name, |text| text.align = None);
+    let name = widgets::heading(tree, root, "", false);
+    widgets::restyle(tree, name, |text| {
+        [text.size, text.line_height] = PANEL_NAME.map(Some);
+    });
     let gives = tree.label(root, "");
     let costs = tree.label(root, "");
     widgets::danger(tree, costs);
@@ -602,7 +619,7 @@ pub fn panel(world: &mut World, book: Option<(TomeKind, Vec2)>) {
         (panel.gives, kind.gives()),
         (panel.costs, kind.costs()),
     ] {
-        if widgets::text_of(tree, id) != text {
+        if text_of(tree, id) != text {
             tree.set_plain_text(id, text);
         }
     }
@@ -611,7 +628,7 @@ pub fn panel(world: &mut World, book: Option<(TomeKind, Vec2)>) {
         .rect(panel.root)
         .map_or(Vec2::new(PANEL_WIDTH, 0.0), |rect| rect.size());
     let view = tree.layer_viewport(UiLayer::Game).unwrap_or(size);
-    let margin = snap(theme::MARGIN, scale);
+    let margin = snap(tree.theme().tokens.spacing.lg, scale);
     let most = (view - size - Vec2::splat(margin)).max(Vec2::splat(margin));
     let corner =
         Vec2::new(at.x - size.x * 0.5, at.y - size.y - PANEL_LIFT).clamp(Vec2::splat(margin), most);
@@ -702,8 +719,8 @@ fn name_plate(tree: &mut UiTree, ring: WidgetId) -> (WidgetId, WidgetId) {
     let colors = tree.theme().tokens.colors;
     widgets::fill(tree, plate, faded(colors.background, NAME_ALPHA));
     let name = tree.label(plate, "");
+    tree.set_text_style(name, Some("small"));
     widgets::restyle(tree, name, |text| {
-        [text.size, text.line_height] = theme::SMALL.map(Some);
         text.color = Some(colors.text);
         text.wrap = Some(TextWrap::None);
     });
@@ -714,8 +731,8 @@ fn name_plate(tree: &mut UiTree, ring: WidgetId) -> (WidgetId, WidgetId) {
 /// The room that sets the gun apart from the spells, a thin divider in its
 /// middle in the theme's border colour.
 fn divider(tree: &mut UiTree, bar: WidgetId) {
-    let mut style =
-        LayoutStyle::row().with_size(Sizing::Px(APART - 2.0 * theme::GAP), Sizing::Auto);
+    let gap = tree.theme().tokens.spacing.sm;
+    let mut style = LayoutStyle::row().with_size(Sizing::Px(APART - 2.0 * gap), Sizing::Auto);
     style.align_items = Align::Center;
     style.justify_content = Justify::Center;
     let room = tree.panel(bar, style);
@@ -744,7 +761,7 @@ fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
             .anchored(Anchor::Center, Vec2::ZERO),
     );
     widgets::fill(tree, sweep, CLEAR);
-    let mut style = LayoutStyle::column().with_gap(theme::GAP / 2.0);
+    let mut style = LayoutStyle::column().with_gap(tree.theme().tokens.spacing.sm / 2.0);
     style.align_items = Align::Center;
     style.justify_content = Justify::Center;
     let column = tree.panel(bar, style);
@@ -939,7 +956,7 @@ pub fn update(world: &mut World) {
             CLEAR
         };
         edged(tree, slot.ring, ring, CLEAR, BORDER);
-        if widgets::text_of(tree, slot.key) != key {
+        if text_of(tree, slot.key) != key {
             tree.set_plain_text(slot.key, &key);
         }
         hud.ready[index] = (hud.ready[index] - dt).max(0.0);
@@ -994,7 +1011,7 @@ pub fn update(world: &mut World) {
     }
     hud.named = (hud.named - dt).max(0.0);
     let name = titled(summoned.name);
-    if widgets::text_of(tree, hud.name) != name {
+    if text_of(tree, hud.name) != name {
         tree.set_plain_text(hud.name, &name);
     }
     tree.set_opacity(hud.name_plate, (hud.named / NAMED_FADE).min(1.0));
@@ -1004,7 +1021,7 @@ pub fn update(world: &mut World) {
         } else {
             format!("{left} / {most}")
         };
-        if widgets::text_of(tree, hud.magazine.text) != readout {
+        if text_of(tree, hud.magazine.text) != readout {
             tree.set_plain_text(hud.magazine.text, &readout);
         }
         let shade = if reload.is_some() {
@@ -1062,7 +1079,7 @@ fn shield_fill(tree: &mut UiTree, bar: ShieldBar, share: f32, shield: f32, time:
         return;
     }
     let text = format!("+{held}");
-    if widgets::text_of(tree, bar.text) != text {
+    if text_of(tree, bar.text) != text {
         tree.set_plain_text(bar.text, &text);
     }
     let width = Sizing::Percent((share * 100.0).clamp(0.0, 100.0));
@@ -1090,7 +1107,7 @@ fn fill(
     texel: f32,
 ) {
     let text = format!("{shown} / {max}");
-    if widgets::text_of(tree, meter.text) != text {
+    if text_of(tree, meter.text) != text {
         tree.set_plain_text(meter.text, &text);
     }
     let width = Sizing::Percent((current / max.max(f32::EPSILON) * 100.0).clamp(0.0, 100.0));

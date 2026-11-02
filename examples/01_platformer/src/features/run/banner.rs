@@ -8,10 +8,10 @@
 
 use glam::Vec2;
 use tungsten::RootCover;
-use tungsten::core::ui::{Anchor, LayoutStyle, UiLayer, UiTree, WidgetId};
+use tungsten::core::ui::{Anchor, LayoutStyle, UiLayer, UiTree, WidgetId, widgets};
 use tungsten::core::{Time, World};
 
-use crate::shell::{self, theme, widgets};
+use crate::shell;
 
 /// How long a name shows, its fade in and its fade out, and how quickly a
 /// shown name gives way to a new one, in game seconds.
@@ -20,12 +20,11 @@ pub const BANNER_FADE_IN: f32 = 0.8;
 pub const BANNER_FADE_OUT: f32 = 1.2;
 pub const BANNER_SWAP: f32 = 0.25;
 /// The title's size and line height, its weight (the serif family's Bold
-/// face), its letter spacing in em, and the most units its size may reach
-/// as the text scale grows.
+/// face) and its letter spacing in em; the theme's `title` style keeps it
+/// to one line, shrinking it to fit.
 pub const TITLE_SIZE: [f32; 2] = [34.0, 42.0];
 pub const TITLE_WEIGHT: u16 = 700;
 pub const TITLE_SPACING: f32 = 0.12;
-pub const TITLE_CAP: f32 = 52.0;
 /// The shadow behind the title: a ring of copies two units out at a faint
 /// dark, and a drop below and right at a deeper one, painted in that order
 /// under the title.
@@ -52,7 +51,8 @@ pub struct Banner {
 /// with no fill or border.
 pub fn start(world: &mut World) {
     let tree = world.resource_mut::<UiTree>();
-    let style = LayoutStyle::column().anchored(Anchor::TopCenter, [0.0, theme::MARGIN].into());
+    let margin = tree.theme().tokens.spacing.lg;
+    let style = LayoutStyle::column().anchored(Anchor::TopCenter, [0.0, margin].into());
     let root = tree.add_root(UiLayer::Game, style);
     tree.set_hit_testable(root, false);
     widgets::fill(tree, root, [0; 4]);
@@ -82,9 +82,6 @@ pub fn start(world: &mut World) {
     }
     labels.push(title(tree, root));
     tree.set_opacity(root, 0.0);
-    for &label in &labels {
-        widgets::capped(world, label, TITLE_SIZE, TITLE_CAP);
-    }
     shell::stack(world).own_root(root, RootCover::Show);
     world.insert_resource(Banner {
         root,
@@ -98,8 +95,9 @@ pub fn start(world: &mut World) {
 
 /// One of the banner's labels: the heading face, bold and spaced.
 fn title(tree: &mut UiTree, root: WidgetId) -> WidgetId {
-    let label = widgets::display(tree, root, "", TITLE_SIZE);
+    let label = widgets::display(tree, root, "", "title");
     widgets::restyle(tree, label, |text| {
+        [text.size, text.line_height] = TITLE_SIZE.map(Some);
         text.weight = Some(TITLE_WEIGHT);
         text.letter_spacing = Some(TITLE_SPACING);
     });

@@ -4,7 +4,7 @@
 use std::num::NonZeroU32;
 
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
-use tungsten::core::ui::{UiTree, WidgetKind};
+use tungsten::core::ui::{UiKey, UiTree, WidgetId, WidgetKind, widgets};
 use tungsten::core::{
     AudioBus, AudioCommand, CameraController, DisplayMode, DisplayState, FrameRateCap, InputState,
     KeyCode, MonitorInfo, Resolution, SaveSlots, ScaleFactor, Settings, Time, UserFolder,
@@ -20,11 +20,11 @@ use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::settings::{self, SETTINGS};
 use tungsten_template_basic::shell::title::TitleState;
-use tungsten_template_basic::shell::{AUTOSAVES, Difficulty, theme, widgets};
+use tungsten_template_basic::shell::{AUTOSAVES, Difficulty, theme};
 
 use super::{
-    click, find, harness, harness_with, health, named, player_entity, press, settle, start, tap,
-    top, user_folder,
+    click, harness, harness_with, health, player_entity, press, settle, start, tap, top,
+    user_folder,
 };
 
 fn settings(harness: &UiHarness) -> &Settings {
@@ -57,13 +57,48 @@ fn set_focus(harness: &mut UiHarness, focused: bool) {
 
 /// Focuses the control named `name` and taps `action` on it.
 fn nudge(harness: &mut UiHarness, name: &str, action: &str) {
-    let id = find(harness, name).unwrap_or_else(|| panic!("no control '{name}'"));
+    let id = harness
+        .find(name)
+        .unwrap_or_else(|| panic!("no control '{name}'"));
     assert!(harness.focus(id));
     tap(harness, action);
 }
 
+/// The settings rows' keys by caption: a row's caption label takes its
+/// control's name, so the tests read the control by its key.
+const KEYS: [(&str, &str); 20] = [
+    ("Window mode", "window_mode"),
+    ("Window size", "window_size"),
+    ("VSync", "vsync"),
+    ("Frame rate limit", "frame_rate_limit"),
+    ("Uncapped", "uncapped"),
+    ("Bloom", "bloom"),
+    ("Apply", "apply"),
+    ("Master", "master"),
+    ("Music", "music"),
+    ("Effects", "effects"),
+    ("Mute when unfocused", "mute_unfocused"),
+    ("UI scale", "ui_scale"),
+    ("Text scale", "text_scale"),
+    ("Keybindings…", "keybindings"),
+    ("Reset all bindings", "reset_bindings"),
+    ("Difficulty", "difficulty"),
+    ("Screen shake", "screen_shake"),
+    ("Damage numbers", "damage_numbers"),
+    ("Pause when unfocused", "pause_unfocused"),
+    ("Autosave", "autosave"),
+];
+
+/// The control of the setting row captioned `caption`, enabled or not.
+fn control(harness: &UiHarness, caption: &str) -> Option<WidgetId> {
+    let (_, key) = KEYS.iter().find(|(name, _)| *name == caption)?;
+    harness.find_key(UiKey::new(key))
+}
+
 fn row_text(harness: &UiHarness, name: &str) -> String {
-    widgets::text_of(harness.tree(), named(harness, name).expect("a row"))
+    harness
+        .tree()
+        .plain_text(control(harness, name).expect("a row"))
 }
 
 /// Opens Settings from the title, on its Display tab.
@@ -133,18 +168,18 @@ fn retry_keeps_a_difficulty_changed_mid_run() {
 fn tabs_switch_with_the_tab_row_and_ui_next() {
     let mut harness = harness();
     from_title(&mut harness);
-    assert!(find(&harness, "Window mode").is_some());
+    assert!(harness.find("Window mode").is_some());
     press(&mut harness, "Audio");
-    assert!(find(&harness, "Master").is_some());
-    assert_eq!(find(&harness, "Window mode"), None, "one tab at a time");
+    assert!(harness.find("Master").is_some());
+    assert_eq!(harness.find("Window mode"), None, "one tab at a time");
     tap(&mut harness, "ui_next");
-    assert!(find(&harness, "UI scale").is_some(), "Interface");
+    assert!(harness.find("UI scale").is_some(), "Interface");
     tap(&mut harness, "ui_prev");
-    assert!(find(&harness, "Master").is_some(), "back to Audio");
+    assert!(harness.find("Master").is_some(), "back to Audio");
     tap(&mut harness, "ui_prev");
     tap(&mut harness, "ui_prev");
     assert!(
-        find(&harness, "Difficulty").is_none() && named(&harness, "Difficulty").is_some(),
+        harness.find("Difficulty").is_none() && harness.named("Difficulty").is_some(),
         "wraps to Gameplay"
     );
 }
@@ -154,19 +189,19 @@ fn pause_reaches_the_gameplay_options_through_settings() {
     let mut harness = harness();
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    assert_eq!(named(&harness, "Gameplay Options"), None, "not on pause");
+    assert_eq!(harness.named("Gameplay Options"), None, "not on pause");
     press(&mut harness, "Settings");
     assert_eq!(top(&harness), Some(SETTINGS));
     press(&mut harness, "Gameplay");
-    assert!(find(&harness, "Difficulty").is_some(), "on in a run");
-    assert_eq!(find(&harness, "Window mode"), None);
+    assert!(harness.find("Difficulty").is_some(), "on in a run");
+    assert_eq!(harness.find("Window mode"), None);
 }
 
 #[test]
 fn window_sizes_cycle_until_apply_sends_them() {
     let mut harness = harness();
     from_title(&mut harness);
-    assert_eq!(find(&harness, "Apply"), None, "nothing to apply");
+    assert_eq!(harness.find("Apply"), None, "nothing to apply");
     press(&mut harness, "Window size");
     press(&mut harness, "Reset tab");
     assert_eq!(
@@ -189,7 +224,7 @@ fn window_sizes_cycle_until_apply_sends_them() {
     press(&mut harness, "Revert");
     assert_eq!(settings(&harness).resolution(), None, "reverted");
     assert_eq!(row_text(&harness, "Window size"), "1280×720 (16:9)");
-    assert_eq!(find(&harness, "Apply"), None, "nothing left to apply");
+    assert_eq!(harness.find("Apply"), None, "nothing left to apply");
 }
 
 #[test]
@@ -263,10 +298,10 @@ fn window_size_is_disabled_in_fullscreen() {
     press(&mut harness, "Keep");
     assert_eq!(row_text(&harness, "Window size"), "1600×900 (16:9)");
     press(&mut harness, "Window mode");
-    assert_eq!(find(&harness, "Window size"), None, "off once picked");
+    assert_eq!(harness.find("Window size"), None, "off once picked");
     press(&mut harness, "Apply");
     press(&mut harness, "Keep");
-    assert_eq!(find(&harness, "Window size"), None, "off in fullscreen");
+    assert_eq!(harness.find("Window size"), None, "off in fullscreen");
     assert_eq!(
         settings(&harness).resolution().map(|size| size.width),
         Some(1600)
@@ -276,10 +311,10 @@ fn window_size_is_disabled_in_fullscreen() {
 /// The text of the readout after the slider named `name`.
 fn readout(harness: &UiHarness, name: &str) -> String {
     let tree = harness.tree();
-    let slider = named(harness, name).expect("a slider");
+    let slider = control(harness, name).expect("a slider");
     let row = tree.parent(slider).unwrap();
     let readout = *tree.children(row).last().unwrap();
-    widgets::text_of(tree, readout)
+    tree.plain_text(readout)
 }
 
 fn fps(n: u32) -> Option<FrameRateCap> {
@@ -287,7 +322,7 @@ fn fps(n: u32) -> Option<FrameRateCap> {
 }
 
 fn toggled(harness: &UiHarness, name: &str) -> Option<bool> {
-    harness.tree().toggled(named(harness, name)?)
+    harness.tree().toggled(control(harness, name)?)
 }
 
 /// The toggles a player can reach on the screen on top, by name, found by
@@ -387,11 +422,7 @@ fn the_frame_rate_limit_is_a_slider_and_an_uncapped_toggle() {
     // Unset: the template ships no cap, so Uncapped is on and the slider
     // rests at 60, off.
     assert_eq!(toggled(&harness, "Uncapped"), Some(true));
-    assert_eq!(
-        find(&harness, "Frame rate limit"),
-        None,
-        "off while Uncapped"
-    );
+    assert_eq!(harness.find("Frame rate limit"), None, "off while Uncapped");
     assert_eq!(readout(&harness, "Frame rate limit"), "60 fps");
     press(&mut harness, "Uncapped");
     assert_eq!(settings(&harness).frame_rate_cap(), fps(60));
@@ -403,7 +434,7 @@ fn the_frame_rate_limit_is_a_slider_and_an_uncapped_toggle() {
         settings(&harness).frame_rate_cap(),
         Some(FrameRateCap::Uncapped)
     );
-    assert_eq!(find(&harness, "Frame rate limit"), None);
+    assert_eq!(harness.find("Frame rate limit"), None);
     press(&mut harness, "Uncapped");
     assert_eq!(settings(&harness).frame_rate_cap(), fps(65), "the slider's");
     nudge(&mut harness, "Frame rate limit", "ui_right");
@@ -451,7 +482,7 @@ fn a_stored_cap_under_sixty_applies_and_reads_sixty() {
     );
     from_title(&mut harness);
     assert_eq!(toggled(&harness, "Uncapped"), Some(false));
-    let slider = named(&harness, "Frame rate limit").unwrap();
+    let slider = control(&harness, "Frame rate limit").unwrap();
     assert_eq!(harness.tree().slider_value(slider), Some(60.0));
     assert_eq!(readout(&harness, "Frame rate limit"), "60 fps");
     press(&mut harness, "Back");
@@ -539,7 +570,7 @@ fn every_slider_shows_its_value_as_it_moves() {
     assert_eq!(readout(&harness, "Text scale"), "75%");
     // A held scale slider shows its value at once and applies it at the
     // release, so the UI does not rescale under the pointer.
-    let slider = find(&harness, "UI scale").unwrap();
+    let slider = harness.find("UI scale").unwrap();
     let rect = harness.rect(slider).unwrap();
     let scale = harness.world().resource::<ScaleFactor>().get();
     let y = (rect.min.y + rect.max.y) * 0.5 * scale;
@@ -573,7 +604,7 @@ fn volumes_ship_at_eighty_percent_and_reset_to_it() {
     nudge(&mut harness, "Music", "ui_right");
     assert_eq!(settings(&harness).master_volume(), Some(0.75));
     assert_eq!(settings(&harness).bus_volume(AudioBus::Music), Some(0.85));
-    let reset = find(&harness, "Reset tab").unwrap();
+    let reset = harness.find("Reset tab").unwrap();
     assert!(harness.focus(reset));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
@@ -697,7 +728,7 @@ fn volumes_write_settings_and_audio_commands() {
     from_title(&mut harness);
     press(&mut harness, "Audio");
     // From the shipped 80 %, a step of 5.
-    let master = find(&harness, "Master").unwrap();
+    let master = harness.find("Master").unwrap();
     assert!(harness.focus(master));
     harness.harness_mut().press_action("ui_left");
     harness.step(1);
@@ -705,7 +736,7 @@ fn volumes_write_settings_and_audio_commands() {
     harness.harness_mut().release_action("ui_left");
     harness.step(1);
     assert_eq!(settings(&harness).master_volume(), Some(0.75));
-    let music = find(&harness, "Music").unwrap();
+    let music = harness.find("Music").unwrap();
     assert!(harness.focus(music));
     harness.harness_mut().press_action("ui_left");
     harness.step(1);
@@ -721,10 +752,11 @@ fn sliders_have_a_smaller_outlined_thumb() {
     let mut harness = harness();
     from_title(&mut harness);
     press(&mut harness, "Interface");
-    let slider = find(&harness, "UI scale").unwrap();
+    let slider = harness.find("UI scale").unwrap();
     harness.layout();
     let height = harness.rect(slider).unwrap().height();
-    assert_eq!(height, theme::SLIDER_LINE, "at text 100 %");
+    let line = widgets::size(harness.tree(), "slider_line");
+    assert_eq!(height, line, "at text 100 %");
     let border = |harness: &UiHarness| {
         let style = harness.tree().resolved_style(slider).unwrap();
         (style.border, style.border_width)
@@ -827,7 +859,7 @@ fn difficulty_is_off_outside_a_run_and_saved_with_it() {
     let mut harness = harness();
     from_title(&mut harness);
     press(&mut harness, "Gameplay");
-    assert_eq!(find(&harness, "Difficulty"), None);
+    assert_eq!(harness.find("Difficulty"), None);
     assert_eq!(row_text(&harness, "Difficulty"), "Chosen at New Game");
 
     let dir = user_folder("difficulty-saved");
@@ -950,7 +982,7 @@ fn a_close_while_keep_fades_out_keeps_the_display() {
     from_title(&mut harness);
     press(&mut harness, "Window mode");
     press(&mut harness, "Apply");
-    let keep = find(&harness, "Keep").unwrap();
+    let keep = harness.find("Keep").unwrap();
     assert!(harness.focus(keep));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);

@@ -69,7 +69,7 @@ pub fn build(tree: &mut UiTree, parent: WidgetId) -> Pane {
         let mut style = LayoutStyle::row().with_gap(theme::ROW_GAP);
         style.align_items = Align::Center;
         let row = tree.panel(root, style);
-        tree.set_overrides(row, widgets::transparent());
+        widgets::fill(tree, row, [0; 4]);
         row
     };
     let fill = LayoutStyle::default().with_size(Sizing::Fill, Sizing::Auto);

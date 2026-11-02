@@ -1,5 +1,6 @@
 use super::pairs::{
-    EMPTY_PAIR, PAIR_AWAKE, PAIR_MARGIN_SLOPS, build_pairs, collect_tripped, gravity_allowance,
+    EMPTY_PAIR, PAIR_AWAKE, PAIR_MARGIN_SLOPS, bounds_overlap, box_bounds, build_pairs,
+    collect_tripped, gravity_allowance, query_bounds,
 };
 use super::*;
 use crate::assets::tilemap::TerrainProps;
@@ -341,6 +342,58 @@ fn sweep_net_covers_static_circles_via_bounding_square() {
         "solver-injected velocity tunneled the static circle: {:?}",
         pos.0
     );
+}
+
+#[test]
+fn sweep_net_lets_a_fast_body_slide_along_a_floor_it_touches() {
+    // A body faster than its smallest half extent a substep, launched along
+    // a floor it rests on at exactly 0 px: the net's sweep starts touching
+    // the floor, which is no hit, as an overlapping start is none, so the
+    // body slides instead of being held where it started. A static box and
+    // a tile row, a box and two circles, gravity 900 and 3,600, steps of
+    // 1/60 and 1/30 s.
+    for tiles in [false, true] {
+        for collider in [
+            Collider::aabb(Vec2::splat(4.0)),
+            Collider::circle(4.0),
+            Collider::circle(10.0),
+        ] {
+            for gravity in [900.0, 3_600.0] {
+                for (speed, dt) in [
+                    (1_200.0, 1.0 / 60.0),
+                    (3_000.0, 1.0 / 60.0),
+                    (600.0, 1.0 / 30.0),
+                ] {
+                    let mut world = seed_world();
+                    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, gravity);
+                    world.resource_mut::<Time>().advance_frame(dt);
+                    if tiles {
+                        let floor = vec![vec![0; 64]];
+                        spawn_map(&mut world, "floor", Vec2::new(-512.0, 90.0), 64, floor);
+                    } else {
+                        let floor = Collider::aabb(Vec2::new(600.0, 10.0));
+                        spawn_static(&mut world, floor, Vec2::new(0.0, 100.0));
+                    }
+                    let start = Vec2::new(-400.0, 90.0 - collider.shape.half_extents().y);
+                    let launch = Vec2::new(speed, 0.0);
+                    let body =
+                        spawn_body(&mut world, RigidBody::dynamic(), collider, start, launch);
+                    for _ in 0..30 {
+                        physics_step(&mut world);
+                        drain_events(&mut world);
+                    }
+                    let slid = world.get::<Position>(body).unwrap().0.x - start.x;
+                    let expected = speed * dt * 30.0;
+                    assert!(
+                        slid > 0.9 * expected,
+                        "{collider:?} on {} at {speed} px/s, dt {dt}, gravity {gravity}: \
+                         slid {slid} of {expected} px",
+                        if tiles { "tiles" } else { "a static box" }
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -1430,6 +1483,16 @@ fn diagnostic_counts_track_the_last_step() {
 pub(super) fn assert_pair_contacts(config: &PhysicsConfig, sub_dt: f32, buffers: &PhysicsBuffers) {
     use std::collections::BTreeSet;
 
+    // The pair tests read the boxes' bounds, which follow every box.
+    let pair_bounds = &buffers.extra.pair_bounds;
+    assert_eq!(pair_bounds.len(), buffers.pair_aabbs.len());
+    for (aabb, bounds) in buffers.pair_aabbs.iter().zip(pair_bounds) {
+        assert_eq!(
+            bounds.to_array().map(f32::to_bits),
+            box_bounds(aabb).to_array().map(f32::to_bits),
+            "stale pair bounds"
+        );
+    }
     let proxies = &buffers.proxies;
     // A pair whose layers do not meet is never a contact.
     let contact_key = |a: usize, b: usize| {
@@ -1488,6 +1551,36 @@ pub(super) fn assert_pair_contacts(config: &PhysicsConfig, sub_dt: f32, buffers:
         persistent, exhaustive,
         "persistent pair list missed a contact"
     );
+}
+
+#[test]
+fn pair_bounds_answer_as_aabb_overlaps() {
+    // For every pair of these boxes, apart, touching, crossing or nested, at
+    // signed zeros, infinite or NaN, the one compare of the pair tests
+    // answers as `Aabb::overlaps` does.
+    let centers = [-0.5_f32, -0.0, 0.0, 1.0, f32::INFINITY, f32::NAN];
+    let extents = [0.0_f32, 0.5, 1.0, f32::NAN];
+    let axis: Vec<_> = centers
+        .iter()
+        .flat_map(|&c| extents.iter().map(move |&h| (c, h)))
+        .collect();
+    let boxes: Vec<_> = axis
+        .iter()
+        .flat_map(|&(cx, hx)| {
+            axis.iter()
+                .map(move |&(cy, hy)| Aabb::new(Vec2::new(cx, cy), Vec2::new(hx, hy)))
+        })
+        .collect();
+    for a in &boxes {
+        let query = query_bounds(a);
+        for b in &boxes {
+            assert_eq!(
+                bounds_overlap(query, box_bounds(b)),
+                a.overlaps(b),
+                "{a:?} against {b:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -1571,6 +1664,100 @@ fn persistent_pairs_match_fresh_contacts_on_randomized_piles_bullets_and_wakes()
         "every substep must run the equivalence oracle"
     );
     assert!(repairs > 0, "the oracle never checked a repaired list");
+}
+
+#[test]
+fn a_new_materials_resource_restamps_the_tiles() {
+    // `PhysicsMaterials::new` starts at version 0, as the default does, so a
+    // new resource over one at the same version once kept the tiles'
+    // coefficients: a box of friction 1 slid on at 100 px/s on a floor whose
+    // material went from friction 0 to 1. Over a new resource or the
+    // default, the map spawned before the box or after it, the new one
+    // stops the box (μ · g = 900 px/s² stops it in 0.11 s).
+    use crate::physics::{PhysicsMaterial, PhysicsMaterials};
+    let ice = |friction: f32| {
+        PhysicsMaterials::new([(
+            "ice".to_owned(),
+            PhysicsMaterial {
+                friction,
+                ..Default::default()
+            },
+        )])
+    };
+    for (old, first) in [("new", ice(0.0)), ("default", PhysicsMaterials::default())] {
+        for map_first in [true, false] {
+            let mut world = seed_world();
+            world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+            world.insert_resource(first.clone());
+            let mut data = map_data(64, vec![vec![0; 64]]);
+            data.set_tile_props(
+                0,
+                TileProps {
+                    material: Some("ice".into()),
+                    ..TileProps::default()
+                },
+            );
+            world
+                .resource_mut::<TilemapRegistry>()
+                .insert("floor".into(), data);
+            let spawn_map = |world: &mut World| {
+                let map = world.spawn();
+                world.insert(map, TilemapInstance::new("floor", Vec2::new(-512.0, 90.0)));
+            };
+            if map_first {
+                spawn_map(&mut world);
+            }
+            let body = spawn_body(
+                &mut world,
+                RigidBody::dynamic().with_friction(1.0),
+                Collider::aabb(Vec2::splat(8.0)),
+                Vec2::new(-400.0, 82.0),
+                Vec2::new(100.0, 0.0),
+            );
+            if !map_first {
+                spawn_map(&mut world);
+            }
+            physics_step(&mut world);
+            world.insert_resource(ice(1.0));
+            for _ in 0..30 {
+                physics_step(&mut world);
+            }
+            let velocity = world.get::<Velocity>(body).unwrap().0;
+            assert!(
+                velocity.x.abs() < 1.0,
+                "over the {old} materials, map first {map_first}: still sliding at {velocity}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_nan_material_restamps_the_tiles_once() {
+    // The cache compares the World's materials with the ones it resolved
+    // against; a NaN coefficient in code-built materials, equal to nothing,
+    // once made every step see new materials and restamp the tiles.
+    use crate::physics::{PhysicsMaterial, PhysicsMaterials};
+    let mut world = seed_world();
+    world.insert_resource(PhysicsMaterials::new([(
+        "mud".to_owned(),
+        PhysicsMaterial {
+            friction: f32::NAN,
+            ..Default::default()
+        },
+    )]));
+    spawn_map(
+        &mut world,
+        "floor",
+        Vec2::new(0.0, 90.0),
+        8,
+        vec![vec![0; 8]],
+    );
+    physics_step(&mut world);
+    let version = world.resource::<PhysicsBuffers>().tiles_version();
+    for _ in 0..3 {
+        physics_step(&mut world);
+    }
+    assert_eq!(world.resource::<PhysicsBuffers>().tiles_version(), version);
 }
 
 /// How far a box of friction 0.5 launched at 300 px/s along a floor of
@@ -1815,6 +2002,48 @@ fn roll_of(world: &World, ball: Entity) -> (f32, f32) {
 }
 
 #[test]
+fn friction_and_rolling_bounds_that_overflow_stay_finite() {
+    // Frictions of 2e19 on both sides make a contact's `mu` overflow to
+    // infinity, and rolling of 1e38 on a ball of radius 10 its bound, which
+    // a contact without normal impulse once multiplied by 0 into NaN, so
+    // the solver's clamp panicked on the first step. Like a frictionless
+    // contact, one without normal impulse holds nothing; 1.8e19, the largest
+    // that does not overflow, is the control.
+    for (friction, rolling) in [(2.0e19, 0.0), (1.0, 1.0e38), (1.8e19, 0.0)] {
+        let (mut world, ball) = rolling_rig(friction, rolling, 100.0);
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        let at = world.get::<Position>(ball).unwrap().0;
+        assert!(
+            at.is_finite(),
+            "friction {friction}, rolling {rolling}: {at}"
+        );
+    }
+    // A body of friction `f32::MAX` on a static of friction 2.
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    world.insert(floor, RigidBody::r#static().with_friction(2.0));
+    let body = spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_friction(f32::MAX),
+        Collider::aabb(Vec2::splat(8.0)),
+        Vec2::new(0.0, 82.0),
+        Vec2::new(50.0, 0.0),
+    );
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    let at = world.get::<Position>(body).unwrap().0;
+    assert!(at.is_finite(), "friction f32::MAX on 2: {at}");
+}
+
+#[test]
 fn a_rolling_ball_rolls_without_slipping() {
     // Friction slows the slide and spins the disc until its rim keeps pace,
     // at two thirds of the launch speed.
@@ -1888,12 +2117,13 @@ fn a_spinner_on_a_frictionless_floor_keeps_its_spin() {
 }
 
 #[test]
-fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
+fn contact_woken_body_pairs_with_its_static_floor_in_waking_frame() {
     let mut world = seed_world();
     let (bottom, top) = spawn_sleeping_stack(&mut world);
     settle_to_sleep(&mut world, &[bottom, top]);
     // Hit the bottom body horizontally, below the top body: the first
-    // build must omit sleeper-floor, then include it immediately after wake.
+    // build must omit sleeper-floor, and the refresh after the wake must
+    // pair it (D-234).
     let y = world.get::<Position>(bottom).unwrap().0.y;
     let bullet = world.spawn();
     world.insert(bullet, Position(Vec2::new(-20.0, y)));
@@ -1939,10 +2169,10 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
         "impact must wake this substep"
     );
     assert!(
-        buffers.pairs_invalidated,
-        "wake must invalidate even if travel fits"
+        !buffers.pairs_invalidated,
+        "a wake leaves the list to the next refresh"
     );
-    let builds = buffers.pair_builds;
+    let refreshes = buffers.pair_builds + buffers.pair_repairs;
     for step in 1..config.substeps {
         substep(
             &config,
@@ -1960,13 +2190,148 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
             "woken body fell through its floor"
         );
     }
-    assert!(buffers.pair_builds > builds);
+    assert!(buffers.pair_builds + buffers.pair_repairs > refreshes);
     assert!(
         buffers
             .contacts
             .iter()
             .any(|c| c.a as usize == bottom_idx && c.b as usize == floor_idx)
     );
+}
+
+/// A settled pile of 18 balls asleep on a floor and a ball dropped on its
+/// top at 600 px/s from 1 px above; with `diluted`, forty still kinematic
+/// boxes far off, which count among the awake bodies and touch nothing.
+/// Returns the next frame gathered by hand as `physics_step` starts one,
+/// both oracles armed.
+fn dropped_on_a_sleeping_pile(diluted: bool) -> (PhysicsConfig, PhysicsBuffers) {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(0.0, 110.0)));
+    world.insert(floor, Collider::aabb(Vec2::new(80.0, 8.0)));
+    world.insert(floor, RigidBody::r#static());
+    let mut pile = Vec::new();
+    for i in 0..18 {
+        let (col, row) = ((i % 6) as f32, (i / 6) as f32);
+        let ball = world.spawn();
+        world.insert(
+            ball,
+            Position(Vec2::new(col * 12.5 - 31.25, 96.0 - row * 12.5)),
+        );
+        world.insert(ball, Velocity(Vec2::ZERO));
+        world.insert(ball, Collider::circle(6.0));
+        world.insert(ball, RigidBody::dynamic());
+        pile.push(ball);
+    }
+    if diluted {
+        for i in 0..40 {
+            let still = world.spawn();
+            world.insert(still, Position(Vec2::new(2000.0 + 20.0 * i as f32, 0.0)));
+            world.insert(still, Collider::aabb(Vec2::splat(4.0)));
+            world.insert(still, RigidBody::kinematic());
+        }
+    }
+    settle_to_sleep(&mut world, &pile);
+    let top = pile
+        .iter()
+        .map(|&ball| world.get::<Position>(ball).unwrap().0)
+        .min_by(|a, b| a.y.total_cmp(&b.y))
+        .unwrap();
+    let dropped = world.spawn();
+    world.insert(dropped, Position(Vec2::new(top.x, top.y - 11.0)));
+    world.insert(dropped, Velocity(Vec2::new(0.0, 600.0)));
+    world.insert(dropped, Collider::circle(4.0));
+    world.insert(dropped, RigidBody::dynamic());
+    let config = *world.get_resource::<PhysicsConfig>().unwrap();
+    let mut buffers = world.remove_resource::<PhysicsBuffers>().unwrap();
+    gather_proxies(
+        &world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+        &mut buffers.extra,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    sleep_frame_start(&mut buffers, 4.0 * config.linear_slop);
+    buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
+    buffers.events.clear();
+    buffers.pairs_invalidated = true;
+    buffers.static_grid.begin_frame();
+    buffers.check_pair_contacts = true;
+    buffers.reference_impulses = Some(buffers.impulses.clone());
+    (config, buffers)
+}
+
+/// Runs the frame `buffers` holds by hand, substep after substep as
+/// `physics_step` does, and returns, for each substep after the first, the
+/// sleepers the substep before woke and the builds and repairs its refresh
+/// ran.
+fn run_woken_frame(config: &PhysicsConfig, buffers: &mut PhysicsBuffers) -> Vec<[usize; 3]> {
+    let dt = 1.0 / 60.0;
+    let sub_dt = dt / config.substeps as f32;
+    let mut refreshes = Vec::new();
+    let mut woken = 0;
+    for step in 0..config.substeps {
+        let (builds, repairs) = (buffers.pair_builds, buffers.pair_repairs);
+        let asleep: Vec<bool> = buffers.proxies[..buffers.bodies]
+            .iter()
+            .map(|proxy| proxy.sleeping)
+            .collect();
+        substep(config, sub_dt, dt - step as f32 * sub_dt, buffers, true);
+        if step > 0 {
+            refreshes.push([
+                woken,
+                buffers.pair_builds - builds,
+                buffers.pair_repairs - repairs,
+            ]);
+        }
+        woken = asleep
+            .iter()
+            .zip(&buffers.proxies)
+            .filter(|&(&was, proxy)| was && !proxy.sleeping)
+            .count();
+    }
+    refreshes
+}
+
+#[test]
+fn a_contact_woken_sleeper_is_repaired_instead_of_rebuilt() {
+    // D-234: a ball dropped on a sleeping pile wakes it contact by contact.
+    // The refresh after each wake repairs the woken balls, the frame keeps
+    // its one build, and both oracles hold every substep.
+    let (config, mut buffers) = dropped_on_a_sleeping_pile(true);
+    let builds = buffers.pair_builds;
+    let refreshes = run_woken_frame(&config, &mut buffers);
+    assert!(
+        refreshes.iter().any(|&[woken, ..]| woken > 0),
+        "the drop woke no sleeper: {refreshes:?}"
+    );
+    for &[woken, builds, repairs] in &refreshes {
+        assert_eq!(builds, 0, "a refresh rebuilt: {refreshes:?}");
+        if woken > 0 {
+            assert_eq!(repairs, 1, "a wake went unrepaired: {refreshes:?}");
+        }
+    }
+    assert_eq!(buffers.pair_builds - builds, 1, "one build a frame");
+    assert_eq!(buffers.checked_substeps, config.substeps as usize);
+}
+
+#[test]
+fn a_wake_past_a_quarter_of_the_awake_bodies_rebuilds() {
+    // Without the kinematic boxes the dropped ball is the only awake body,
+    // so the ball it wakes is more than a quarter of them: the refresh after
+    // the wake rebuilds, D-081's fall-back over D-234's union.
+    let (config, mut buffers) = dropped_on_a_sleeping_pile(false);
+    let refreshes = run_woken_frame(&config, &mut buffers);
+    let &[woken, builds, repairs] = refreshes
+        .iter()
+        .find(|&&[woken, ..]| woken > 0)
+        .expect("the drop woke no sleeper");
+    assert_eq!((builds, repairs), (1, 0), "{woken} woken: {refreshes:?}");
+    assert_eq!(buffers.checked_substeps, config.substeps as usize);
 }
 
 #[test]
@@ -2304,6 +2669,62 @@ fn arrival_counts(world: &World) -> (usize, usize) {
         .get_resource::<PhysicsBuffers>()
         .expect("physics buffers");
     (buffers.arrival.listed, buffers.arrival.clamps)
+}
+
+#[test]
+fn a_knocked_body_keeps_its_side_of_a_neighbour_listed_first() {
+    // Q (radius 6) at x 24, R (6) at 10 moving at 840 px/s, P (10) at 45
+    // and a heavy S (6, mass 1,000) at 63 closing at 5,800 px/s: S knocks P
+    // toward Q, and both are listed in one arrival round. With Q listed
+    // first and its own reach short of P's pair box, P once skipped their
+    // pair as Q's and passed through Q. In every spawn order, at 1/60 and
+    // 1/30 s, P ends on its side of Q.
+    const Q: usize = 0;
+    const P: usize = 2;
+    let spec = [
+        (24.0, 0.0, 6.0, 1.0),
+        (10.0, 840.0, 6.0, 1.0),
+        (45.0, 0.0, 10.0, 1.0),
+        (63.0, -5_800.0, 6.0, 1_000.0),
+    ];
+    let mut orders = Vec::new();
+    for a in 0..4 {
+        for b in 0..4 {
+            for c in 0..4 {
+                for d in 0..4 {
+                    let order = [a, b, c, d];
+                    if (0..4).all(|i| order.contains(&i)) {
+                        orders.push(order);
+                    }
+                }
+            }
+        }
+    }
+    for dt in [1.0 / 60.0, 1.0 / 30.0] {
+        for order in &orders {
+            let mut world = seed_world();
+            world.resource_mut::<Time>().advance_frame(dt);
+            let mut bodies = [None; 4];
+            for &which in order {
+                let (x, vx, radius, mass) = spec[which];
+                bodies[which] = Some(spawn_body(
+                    &mut world,
+                    RigidBody::dynamic().with_mass(mass),
+                    Collider::circle(radius),
+                    Vec2::new(x, 0.0),
+                    Vec2::new(vx, 0.0),
+                ));
+            }
+            physics_step(&mut world);
+            let x = |which: usize| world.get::<Position>(bodies[which].unwrap()).unwrap().0.x;
+            assert!(
+                x(P) > x(Q),
+                "dt {dt}, spawn order {order:?}: P at {} past Q at {}",
+                x(P),
+                x(Q)
+            );
+        }
+    }
 }
 
 #[test]
@@ -5877,6 +6298,51 @@ fn contacts_begin_and_end_once_per_touch() {
     assert_eq!(ended, [ContactEnded::new(ball, Some(floor))]);
 }
 
+/// A ball dropped 30 px onto a static floor in a World built with
+/// `PhysicsPlugin`, whose game registers `ContactBegan` when `listens`: the
+/// World after 60 steps, the ball, the floor and the begins sent.
+fn plugin_landing(listens: bool) -> (World, Entity, Entity, Vec<ContactBegan>) {
+    use crate::physics::PhysicsPlugin;
+    use crate::schedule::{Plugin, Schedule};
+
+    let mut world = seed_world();
+    PhysicsPlugin.build(&mut Schedule::new(), &mut world);
+    if listens {
+        world.register_event::<ContactBegan>();
+    }
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 40.0));
+    let mut began = Vec::new();
+    for _ in 0..60 {
+        physics_step(&mut world);
+        if let Some(queue) = world.get_resource_mut::<EventQueue<ContactBegan>>() {
+            began.extend(queue.iter_current().copied());
+            queue.flush();
+        }
+        world.resource_mut::<EventQueue<CollisionEvent>>().flush();
+    }
+    (world, ball, floor, began)
+}
+
+#[test]
+fn the_record_waits_for_a_game_to_register_a_contact_queue() {
+    let (world, ..) = plugin_landing(false);
+    assert!(!world.has_resource::<EventQueue<ContactBegan>>());
+    assert!(!world.has_resource::<EventQueue<ContactEnded>>());
+    let extra = &world.resource::<PhysicsBuffers>().extra;
+    assert!(!extra.record_on, "nothing listens");
+    assert!(extra.record.entries.is_empty(), "the landing left no pair");
+    let (world, ball, floor, began) = plugin_landing(true);
+    assert!(world.resource::<PhysicsBuffers>().extra.record_on);
+    assert_eq!(began.len(), 1, "{began:?}");
+    assert_eq!((began[0].a, began[0].b), (ball, Some(floor)));
+}
+
 /// A ball of radius 10 at 300 px/s along x, `gap` px short of a static
 /// wall at the step's start, with `restitution`: its begins and ends over
 /// 60 steps without gravity.
@@ -6030,6 +6496,221 @@ fn a_body_leaving_a_sleeper_ends_their_contact() {
         "{end:?}"
     );
     assert!(is_sleeping(&world, sleeper), "the sleeper never woke");
+}
+
+/// The ends the record sends over 10 steps for a crate (half 8) resting on a
+/// static box floor or a tile row (top y 90), spawned before or after it,
+/// turned static after `settle` steps and then `change`d (0 moved away, 1
+/// shrunk, 2 its floor moved away), and the begins it owes them for.
+fn frozen_crate_ends(
+    tiles: bool,
+    crate_first: bool,
+    settle: usize,
+    change: u8,
+) -> (Vec<ContactEnded>, Vec<ContactBegan>) {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let spawn_crate = |world: &mut World| {
+        let collider = Collider::aabb(Vec2::splat(8.0));
+        spawn_body(
+            world,
+            RigidBody::dynamic(),
+            collider,
+            Vec2::new(0.0, 81.0),
+            Vec2::ZERO,
+        )
+    };
+    let early = crate_first.then(|| spawn_crate(&mut world));
+    let floor = if tiles {
+        spawn_map(
+            &mut world,
+            "floor",
+            Vec2::new(-512.0, 90.0),
+            64,
+            vec![vec![0; 64]],
+        );
+        None
+    } else {
+        let collider = Collider::aabb(Vec2::new(200.0, 10.0));
+        Some(spawn_static(&mut world, collider, Vec2::new(0.0, 100.0)))
+    };
+    let crate_ = early.unwrap_or_else(|| spawn_crate(&mut world));
+    let (began, ended) = step_contacts(&mut world, settle);
+    assert!(!began.is_empty() && ended.is_empty(), "{began:?} {ended:?}");
+    world.get_mut::<RigidBody>(crate_).unwrap().kind = BodyKind::Static;
+    let (b, e) = step_contacts(&mut world, 2);
+    assert!(
+        b.is_empty() && e.is_empty(),
+        "the freeze alone sent {b:?} {e:?}"
+    );
+    match change {
+        0 => world.get_mut::<Position>(crate_).unwrap().0 = Vec2::new(0.0, -500.0),
+        1 => *world.get_mut::<Collider>(crate_).unwrap() = Collider::aabb(Vec2::splat(2.0)),
+        _ => world.get_mut::<Position>(floor.unwrap()).unwrap().0 = Vec2::new(0.0, 700.0),
+    }
+    let (_, ended) = step_contacts(&mut world, 10);
+    (ended, began)
+}
+
+#[test]
+fn a_body_turned_static_ends_its_contacts_once_apart() {
+    // A crate resting on a floor, turned static: no substep solves its
+    // pairs, so the record once kept them touching while it or its floor
+    // moved away or it shrank, and sent no `ContactEnded`. Asleep or awake
+    // at the freeze, each begun pair ends once its sides no longer overlap.
+    for tiles in [false, true] {
+        for crate_first in [false, true] {
+            for settle in [60, 6] {
+                for change in 0..3u8 {
+                    if tiles && change == 2 {
+                        continue;
+                    }
+                    let (ended, began) = frozen_crate_ends(tiles, crate_first, settle, change);
+                    let owed: Vec<ContactEnded> = began
+                        .iter()
+                        .map(|b| {
+                            let end = ContactEnded::new(b.a, b.b);
+                            match b.tile {
+                                Some(tile) => end.with_tile(tile),
+                                None => end,
+                            }
+                        })
+                        .collect();
+                    assert_eq!(
+                        ended, owed,
+                        "tiles {tiles}, crate first {crate_first}, settle {settle}, change {change}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// The ends and begins of a ball's floor contact over 30 steps after a
+/// striker closing at 240 px/s from `gap` px off wakes it, the ball asleep
+/// on a floor wide enough that it never leaves it, at 1/60 s and gravity
+/// 900. `order`: 0 the floor spawned first, 1 the ball first, 2 a far
+/// static first. `striker`: 0 a dynamic ball spawned at the strike, 1 one
+/// spawned first and parked asleep, then written into place, 2 a kinematic
+/// box.
+fn late_woken_floor_contact(order: u8, striker: u8, gap: f32) -> (usize, usize) {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor_collider = Collider::aabb(Vec2::new(1_200.0, 10.0));
+    let floor_at = Vec2::new(0.0, 100.0);
+    let parked = (striker == 1).then(|| spawn_ball(&mut world, Vec2::new(-150.0, 80.0)));
+    let (floor, ball) = match order {
+        0 => {
+            let floor = spawn_static(&mut world, floor_collider, floor_at);
+            (floor, spawn_ball(&mut world, Vec2::new(0.0, 80.0)))
+        }
+        1 => {
+            let ball = spawn_ball(&mut world, Vec2::new(0.0, 80.0));
+            (spawn_static(&mut world, floor_collider, floor_at), ball)
+        }
+        _ => {
+            let far = Collider::aabb(Vec2::splat(10.0));
+            spawn_static(&mut world, far, Vec2::new(5_000.0, -5_000.0));
+            let floor = spawn_static(&mut world, floor_collider, floor_at);
+            (floor, spawn_ball(&mut world, Vec2::new(0.0, 80.0)))
+        }
+    };
+    let _ = step_contacts(&mut world, 120);
+    assert!(
+        is_sleeping(&world, ball),
+        "the ball sleeps before the strike"
+    );
+    let rest = world.get::<Position>(ball).unwrap().0;
+    let at = Vec2::new(rest.x - 20.0 - gap, rest.y);
+    let velocity = Vec2::new(240.0, 0.0);
+    match (striker, parked) {
+        (1, Some(parked)) => {
+            world.get_mut::<Position>(parked).unwrap().0 = at;
+            world.get_mut::<Velocity>(parked).unwrap().0 = velocity;
+        }
+        (2, _) => {
+            spawn_kinematic(&mut world, Collider::aabb(Vec2::splat(10.0)), at, velocity);
+        }
+        _ => {
+            spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                Collider::circle(10.0),
+                at,
+                velocity,
+            );
+        }
+    }
+    let (began, ended) = step_contacts(&mut world, 30);
+    let names = |a: Entity, b: Option<Entity>| {
+        (a == ball && b == Some(floor)) || (a == floor && b == Some(ball))
+    };
+    assert!(
+        (world.get::<Position>(ball).unwrap().0.y - rest.y).abs() < 0.5,
+        "the ball stays on the floor"
+    );
+    (
+        ended.iter().filter(|e| names(e.a, e.b)).count(),
+        began.iter().filter(|b| names(b.a, b.b)).count(),
+    )
+}
+
+#[test]
+fn a_sleeper_woken_in_the_last_substep_keeps_its_floor_contact() {
+    // A substep moves the striker 1 px and the speculative margin is 1 px
+    // plus 4 · slop, so a gap in [4, 5) or [8, 9) wakes the ball in a
+    // step's last substep, the others earlier. No pair of the ball's was
+    // built while it slept, so none was solved in that step; the floor
+    // contact it still rests on neither ends nor begins again.
+    let mut failures = Vec::new();
+    for striker in 0..3_u8 {
+        for order in 0..3_u8 {
+            for gap in [3.5_f32, 4.0, 4.5, 4.75, 5.5, 6.5, 8.25, 9.5] {
+                let (ends, begins) = late_woken_floor_contact(order, striker, gap);
+                if ends + begins > 0 {
+                    failures.push((striker, order, gap, ends, begins));
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "(striker, order, gap, ends, begins) of a floor contact that never parted: {failures:?}"
+    );
+}
+
+#[test]
+fn a_late_woken_stack_keeps_its_resting_contacts() {
+    // A two-ball stack asleep on a floor; a ball 4.5 px off the bottom one
+    // at 240 px/s wakes it in the strike's last substep. Its floor contact
+    // and the top ball's on it do not end at the wake and begin again.
+    let mut world = record_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    let _ = step_contacts(&mut world, 150);
+    assert!(is_sleeping(&world, bottom) && is_sleeping(&world, top));
+    let rest = world.get::<Position>(bottom).unwrap().0;
+    spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(6.0),
+        Vec2::new(rest.x - 12.0 - 4.5, rest.y),
+        Vec2::new(240.0, 0.0),
+    );
+    let (_, ended) = step_contacts(&mut world, 1);
+    let (began, _) = step_contacts(&mut world, 1);
+    let rebegun: Vec<(Entity, Option<Entity>)> = ended
+        .iter()
+        .filter(|e| {
+            began
+                .iter()
+                .any(|b| (b.a, b.b) == (e.a, e.b) || (Some(b.a), b.b) == (e.b, Some(e.a)))
+        })
+        .map(|e| (e.a, e.b))
+        .collect();
+    assert!(
+        rebegun.is_empty(),
+        "pairs ended at the wake and begun the next step: {rebegun:?}"
+    );
 }
 
 #[test]
@@ -6718,6 +7399,215 @@ fn a_box_slides_down_a_frictionless_slope() {
 }
 
 #[test]
+fn a_fast_flat_box_stops_on_a_slope_over_a_floor() {
+    // A 45 bl cell (x 16..32, y 64..80) over a floor row whose top under it
+    // is masked. A box of half (4, 0), or (4, 1), falling onto the face at
+    // 2,400 or 4,800 px/s: the safety net skips a body of zero extent, so
+    // the slope's speculative contact is all that stops it, and it does.
+    let rows = ["....", "....", "....", "....", ".b..", "####"];
+    for half in [Vec2::new(4.0, 0.0), Vec2::new(4.0, 1.0)] {
+        for speed in [2_400.0, 4_800.0] {
+            let mut world = one_way_world(slope_map(&rows));
+            let body = spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                Collider::aabb(half),
+                Vec2::new(26.0, 20.0),
+                Vec2::new(0.0, speed),
+            );
+            for _ in 0..20 {
+                physics_step(&mut world);
+            }
+            let at = world.get::<Position>(body).unwrap().0;
+            assert!(
+                !(at.y > 96.0 && at.x > 0.0 && at.x < 64.0),
+                "half {half} at {speed} px/s passed through the cells to {at}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_flat_box_flying_into_a_ramps_foot_stays_out_of_it() {
+    // A 45 br cell (x 64..80, y 32..48) on a floor row: a box of half
+    // (4, 0) flying right 0.5 px over the floor into the ramp's foot, with
+    // no gravity. The safety net skips a body of zero extent, so the slope's
+    // speculative contact alone stops it, at 30 px a substep (3,600 px/s at
+    // 1/30 s) and at 0.1 s unbounded, the box spawned before or after
+    // another body.
+    let rows = ["........", "........", "....a...", "########"];
+    for (speed, dt, bound) in [(3_600.0, 1.0 / 30.0, 1.0 / 30.0), (2_400.0, 0.1, 0.0)] {
+        for other_first in [false, true] {
+            let mut world = one_way_world(slope_map(&rows));
+            {
+                let config = &mut *world.resource_mut::<PhysicsConfig>();
+                config.gravity = Vec2::ZERO;
+                config.max_step_dt = bound;
+            }
+            world.resource_mut::<Time>().advance_frame(dt);
+            let other = |world: &mut World| {
+                let collider = Collider::aabb(Vec2::splat(4.0));
+                spawn_body(
+                    world,
+                    RigidBody::dynamic(),
+                    collider,
+                    Vec2::splat(-400.0),
+                    Vec2::ZERO,
+                )
+            };
+            if other_first {
+                other(&mut world);
+            }
+            let collider = Collider::aabb(Vec2::new(4.0, 0.0));
+            let start = Vec2::new(20.0, 47.5);
+            let launch = Vec2::new(speed, 0.0);
+            let body = spawn_body(&mut world, RigidBody::dynamic(), collider, start, launch);
+            if !other_first {
+                other(&mut world);
+            }
+            for step in 0..12 {
+                physics_step(&mut world);
+                let at = world.get::<Position>(body).unwrap().0;
+                assert!(
+                    !(at.x > 84.0 && at.y > 32.0),
+                    "{speed} px/s at dt {dt}, other first {other_first}: \
+                     through the ramp to {at} at step {step}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_body_lands_on_a_wide_cells_slope_face() {
+    // The outline test's 2:1 floor on cells `width` x 16: row 0 [., .,
+    // 2:1 low, 2:1 high], row 1 [low, high, #, #]. A box or circle of half 4
+    // let go 12 px over the middle of cell (0, 1)'s face, which runs from
+    // (width, 24) down to (0, 32), lands on it and never sinks 2 px under
+    // it while over the cell; widths 16 to 56 read the face's normal as a
+    // face, 57 and 64 did not.
+    for width in [16u32, 32, 56, 57, 64] {
+        for collider in [Collider::aabb(Vec2::splat(4.0)), Collider::circle(4.0)] {
+            let mut data = TilemapData::new(width, 16, 4, 2);
+            let solid = data.add_tile("solid");
+            let low = data.add_tile("low");
+            let high = data.add_tile("high");
+            for (tile, code) in [(low, 5), (high, 9)] {
+                data.set_tile_props(
+                    tile,
+                    TileProps {
+                        slope: Some(slope_kind(code)),
+                        ..TileProps::default()
+                    },
+                );
+            }
+            let layer = data.add_layer("solid", LayerKind::Collision);
+            for (col, row, tile) in [
+                (2, 0, low),
+                (3, 0, high),
+                (0, 1, low),
+                (1, 1, high),
+                (2, 1, solid),
+                (3, 1, solid),
+            ] {
+                data.set_tile(layer, col, row, tile);
+            }
+            let mut world = one_way_world(data);
+            let w = width as f32;
+            let face = |x: f32| 32.0 - 8.0 * x / w;
+            let start = Vec2::new(w * 0.5, face(w * 0.5) - 16.0);
+            let body = spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                collider,
+                start,
+                Vec2::ZERO,
+            );
+            let mut deepest = f32::MIN;
+            for _ in 0..60 {
+                physics_step(&mut world);
+                let at = world.get::<Position>(body).unwrap().0;
+                if at.x > 4.0 && at.x < w - 4.0 {
+                    deepest = deepest.max(at.y + 4.0 - face(at.x));
+                }
+            }
+            assert!(
+                deepest < 2.0,
+                "cells {width} x 16, {:?}: {deepest} px under the face, at {}",
+                collider.shape,
+                world.get::<Position>(body).unwrap().0
+            );
+        }
+    }
+}
+
+#[test]
+fn a_crate_on_a_ramps_apex_stays_finite() {
+    // A box of friction 0.5 with its corner on the apex of a 45° ramp top
+    // of friction 0.5 meets the slope cell's vertex at distance 0. Alone, or
+    // beside a ball resting on the floor spawned before or after it, at
+    // 900 and 3,600 px/s² and steps of 1/60 and 1/30 s, every body stays
+    // finite.
+    let rows = ["....", "....", "....", "a###", "####"];
+    for gravity in [900.0, 3_600.0] {
+        for dt in [1.0 / 60.0, 1.0 / 30.0] {
+            for ball_first in [None, Some(true), Some(false)] {
+                let mut data = slope_map(&rows);
+                data.set_tile_props(
+                    1,
+                    TileProps {
+                        slope: Some(slope_kind(1)),
+                        material: Some("stone".into()),
+                        ..TileProps::default()
+                    },
+                );
+                let mut world = one_way_world(data);
+                world.insert_resource(crate::physics::PhysicsMaterials::new([(
+                    "stone".to_owned(),
+                    crate::physics::PhysicsMaterial {
+                        friction: 0.5,
+                        ..Default::default()
+                    },
+                )]));
+                world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, gravity);
+                world.resource_mut::<Time>().advance_frame(dt);
+                let ball = |world: &mut World| {
+                    spawn_body(
+                        world,
+                        RigidBody::dynamic().with_friction(0.5),
+                        Collider::circle(4.0),
+                        Vec2::new(56.0, 43.99),
+                        Vec2::ZERO,
+                    )
+                };
+                let mut bodies = Vec::new();
+                if ball_first == Some(true) {
+                    bodies.push(ball(&mut world));
+                }
+                bodies.push(spawn_body(
+                    &mut world,
+                    RigidBody::dynamic().with_friction(0.5),
+                    Collider::aabb(Vec2::splat(8.0)),
+                    Vec2::new(8.0, 40.0),
+                    Vec2::ZERO,
+                ));
+                if ball_first == Some(false) {
+                    bodies.push(ball(&mut world));
+                }
+                physics_step(&mut world);
+                for body in bodies {
+                    let at = world.get::<Position>(body).unwrap().0;
+                    assert!(
+                        at.is_finite(),
+                        "gravity {gravity}, dt {dt}, ball first {ball_first:?}: {at}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn a_cell_changing_slope_wakes_its_sleepers() {
     // A box asleep on a full cell and one asleep on a 45° cell's foot: the
     // first cell turned to a 45° slope and the second to a 2:1 one, each
@@ -6781,4 +7671,49 @@ fn a_cell_changing_slope_wakes_its_sleepers() {
     }
     let slid = world.get::<Position>(on_full).unwrap().0;
     assert!(slid.x < rested.x - 8.0, "it slid off its cell: {slid}");
+}
+
+#[test]
+fn a_map_inserted_again_with_a_tile_turned_slope_reaches_the_step() {
+    // A box resting on a full cell (x 16..32, y 32..48); the map inserted
+    // again under its ID with only that tile turned a 45° slope, whose face
+    // runs from (32, 32) to (16, 48). The insert is another map to the
+    // step's cache, so the box drops onto the face and slides down it.
+    for gravity in [900.0, 3_600.0] {
+        let mut data = TilemapData::new(16, 16, 4, 4);
+        let ramp = data.add_tile("ramp");
+        let layer = data.add_layer("solid", LayerKind::Collision);
+        data.set_tile(layer, 1, 2, ramp);
+        let mut world = one_way_world(data.clone());
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, gravity);
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::aabb(Vec2::splat(4.0)),
+            Vec2::new(24.0, 27.9),
+            Vec2::ZERO,
+        );
+        for _ in 0..10 {
+            physics_step(&mut world);
+        }
+        let rested = world.get::<Position>(body).unwrap().0;
+        data.set_tile_props(
+            ramp,
+            TileProps {
+                slope: Some(slope_kind(1)),
+                ..TileProps::default()
+            },
+        );
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("ledges".into(), data);
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        let end = world.get::<Position>(body).unwrap().0;
+        assert!(
+            end.y > 30.0,
+            "gravity {gravity}: rested at {rested}, still at {end} on the old full cell"
+        );
+    }
 }

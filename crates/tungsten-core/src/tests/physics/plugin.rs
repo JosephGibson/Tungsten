@@ -337,6 +337,32 @@ fn mass_on_a_kinematic_or_sensor_rigid_body_fails_naming_mass() {
 }
 
 #[test]
+fn with_mass_refuses_a_mass_without_a_finite_positive_inverse() {
+    // A mass of 0, below 0, NaN or infinite once gave a dynamic body an
+    // inverse of 0, which fell through statics and tiles, and a subnormal
+    // one an infinite inverse; `with_mass` panics on them, as the
+    // `rigid_body` loader refuses them.
+    for mass in [0.0, -1.0, f32::NAN, f32::INFINITY, 1.0e-39] {
+        let made = std::panic::catch_unwind(|| RigidBody::dynamic().with_mass(mass));
+        assert!(made.is_err(), "mass {mass} accepted");
+    }
+    assert_eq!(RigidBody::dynamic().with_mass(4.0).inv_mass, 0.25);
+}
+
+#[test]
+fn with_restitution_refuses_a_value_that_is_not_finite() {
+    // A NaN restitution once passed the clamp and kept two NaN bodies from
+    // settling; `with_restitution` panics on it and on an infinite one, as
+    // `with_friction` does, and clamps the rest to 0 to 1.
+    for restitution in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let made = std::panic::catch_unwind(|| RigidBody::dynamic().with_restitution(restitution));
+        assert!(made.is_err(), "restitution {restitution} accepted");
+    }
+    assert_eq!(RigidBody::dynamic().with_restitution(2.0).restitution, 1.0);
+    assert_eq!(RigidBody::dynamic().with_restitution(-1.0).restitution, 0.0);
+}
+
+#[test]
 fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
     let world = physics_world();
     let circle = serde_json::json!({ "kind": "circle", "radius": 4.0 });
@@ -776,14 +802,16 @@ fn rolls_is_for_circles() {
 }
 
 #[test]
-fn the_plugin_registers_the_contact_queues() {
+fn the_plugin_leaves_the_contact_queues_to_the_game() {
     use crate::ecs::EventQueue;
     use crate::physics::{ContactBegan, ContactEnded};
 
     let world = physics_world();
-    assert!(world.has_resource::<EventQueue<ContactBegan>>());
-    assert!(world.has_resource::<EventQueue<ContactEnded>>());
+    assert!(!world.has_resource::<EventQueue<ContactBegan>>());
+    assert!(!world.has_resource::<EventQueue<ContactEnded>>());
     assert!(world.has_resource::<EventQueue<CollisionEvent>>());
+    assert!(world.has_resource::<EventQueue<SensorEntered>>());
+    assert!(world.has_resource::<EventQueue<SensorExited>>());
 }
 
 #[test]

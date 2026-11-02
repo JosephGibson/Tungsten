@@ -609,3 +609,28 @@ fn core_probes_read_the_world() {
         Ok(json!({ "position": [10.0, 20.0], "zoom": 4.0, "rotation": 0.0 }))
     );
 }
+
+#[test]
+fn a_screen_step_parses_and_names_its_field() {
+    let script =
+        Script::parse(r#"{"version": 1, "frames": 5, "steps": [{"frame": 2, "screen": "pause"}]}"#)
+            .unwrap();
+    assert_eq!(script.steps[0].verb, Verb::Screen("pause".to_owned()));
+    assert_eq!(script.steps[0].verb.name(), "screen");
+    let text = serde_json::to_string(&script).unwrap();
+    assert!(text.contains(r#""screen":"pause""#), "{text}");
+    assert_eq!(Script::parse(&text).unwrap(), script);
+    let wrong =
+        Script::parse(r#"{"version": 1, "frames": 5, "steps": [{"frame": 2, "screen": 3}]}"#)
+            .unwrap_err();
+    assert_eq!(wrong.field, "steps[0].screen");
+    let empty =
+        Script::parse(r#"{"version": 1, "frames": 5, "steps": [{"frame": 2, "screen": ""}]}"#)
+            .unwrap_err();
+    assert_eq!(empty.field, "steps[0]");
+    let two = Script::parse(
+        r#"{"version": 1, "frames": 5, "steps": [{"frame": 2, "screen": "a", "scene": "b.json"}]}"#,
+    )
+    .unwrap_err();
+    assert!(two.message.contains("one verb"), "{two}");
+}

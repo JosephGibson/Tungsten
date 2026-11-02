@@ -575,6 +575,62 @@ impl AssetsConfig {
     }
 }
 
+/// A corner of the window: where the debug HUD sits (redo 7.17).
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UiCorner {
+    /// The top left.
+    TopLeft,
+    /// The top right.
+    TopRight,
+    /// The bottom left.
+    BottomLeft,
+    /// The bottom right.
+    BottomRight,
+}
+
+/// The pointer sprite `tungsten.json` names (redo 7.17): a sprite's
+/// manifest ID, its size and its hotspot, in UI units.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UiCursorConfig {
+    /// The sprite's manifest ID.
+    pub sprite: String,
+    /// Its size.
+    pub size: [f32; 2],
+    /// The point of it on the pointer, from its top-left; the corner when
+    /// left out.
+    #[serde(default)]
+    pub hotspot: [f32; 2],
+}
+
+/// `tungsten.json`'s `ui` (redo 7.17): the UI's theme, scale and floor.
+/// Each field is optional, and an absent one, or the whole section, keeps
+/// the engine's default.
+#[non_exhaustive]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct UiConfig {
+    /// A `ui_themes` ID the app applies once it has loaded; a reload
+    /// re-applies it as it does any theme asset (`D-148`).
+    pub theme: Option<String>,
+    /// The window height, in physical pixels, that lays the UI out at
+    /// scale 1 (`D-184`).
+    pub reference_height: Option<f32>,
+    /// The smallest viewport the UI lays out in, in UI units, whatever the
+    /// scales.
+    pub min_viewport: Option<[f32; 2]>,
+    /// The UI scale an unset `Settings::ui_scale` applies as.
+    pub scale: Option<f32>,
+    /// The corner the debug HUD sits in.
+    pub hud_corner: Option<UiCorner>,
+    /// The pointer sprite the app gives the tree at startup, which the game
+    /// shows.
+    pub cursor: Option<UiCursorConfig>,
+}
+
 /// Top-level engine configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
@@ -598,6 +654,9 @@ pub struct Config {
     /// The root manifest and its hot reload (redo 7.9).
     #[serde(default)]
     pub assets: AssetsConfig,
+    /// The UI's theme, scale and floor (redo 7.17).
+    #[serde(default)]
+    pub ui: UiConfig,
     /// What `load` would have logged before any logger exists (`D-119`).
     #[serde(skip)]
     load_warnings: Vec<String>,

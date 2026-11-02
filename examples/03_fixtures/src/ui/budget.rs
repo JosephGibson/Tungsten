@@ -95,11 +95,11 @@ pub fn build_budget_menu(tree: &mut UiTree, hidden: bool) -> BudgetMenu {
         },
     );
     let row = tree.panel(root, LayoutStyle::row().with_gap(10.0));
-    tree.set_overrides(row, widgets::transparent());
+    widgets::fill(tree, row, [0; 4]);
     let columns: Vec<WidgetId> = (0..4)
         .map(|_| {
             let column = tree.panel(row, LayoutStyle::column().with_gap(4.0));
-            tree.set_overrides(column, widgets::transparent());
+            widgets::fill(tree, column, [0; 4]);
             column
         })
         .collect();

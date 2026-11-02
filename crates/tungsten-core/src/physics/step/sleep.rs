@@ -72,7 +72,9 @@ pub(super) struct SleepTable {
     moved_supports: Vec<(usize, Support)>,
     /// Scratch: the old and new boxes of the supports that changed.
     changed_supports: Vec<Aabb>,
-    /// Scratch for the sorted comparison when supports appear or go.
+    /// The sorted comparison when supports appear or go: `sorted_old` is
+    /// scratch, `sorted_new` holds `supports` sorted, or is empty once
+    /// `supports` changes without it.
     sorted_old: Vec<Support>,
     sorted_new: Vec<Support>,
     #[cfg(test)]
@@ -297,6 +299,9 @@ impl SleepTable {
             count += 1;
         }
         if same_keys && count == self.supports.len() {
+            if !self.moved_supports.is_empty() {
+                self.sorted_new.clear();
+            }
             for &(index, new) in &self.moved_supports {
                 self.changed_supports.push(self.supports[index].aabb);
                 self.changed_supports.push(new.aabb);
@@ -305,13 +310,15 @@ impl SleepTable {
             return;
         }
         // A support appeared or went: every entry in only one of the two
-        // sorted lists changed.
-        self.sorted_old.clear();
-        self.sorted_old.extend_from_slice(&self.supports);
+        // sorted lists changed. `sorted_new` is empty or holds `supports`
+        // sorted, last frame's, so it becomes the old side without a sort.
+        if self.sorted_new.is_empty() {
+            self.sorted_new.extend_from_slice(&self.supports);
+            self.sorted_new.sort_unstable_by(support_order);
+        }
+        std::mem::swap(&mut self.sorted_old, &mut self.sorted_new);
         self.record_supports(proxies, layers);
-        self.sorted_new.clear();
         self.sorted_new.extend_from_slice(&self.supports);
-        self.sorted_old.sort_unstable_by(support_order);
         self.sorted_new.sort_unstable_by(support_order);
         let (mut i, mut j) = (0, 0);
         while i < self.sorted_old.len() || j < self.sorted_new.len() {
@@ -339,6 +346,7 @@ impl SleepTable {
 
     /// Records this frame's supports, in proxy order.
     fn record_supports(&mut self, proxies: &[Proxy], layers: &[Layers]) {
+        self.sorted_new.clear();
         self.supports.clear();
         self.supports.extend(
             proxies

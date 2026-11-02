@@ -11,7 +11,7 @@ use tungsten_core::assets::{
     TilemapData, TilemapLayer, TilemapRegistry, UvRect,
 };
 use tungsten_core::ecs::{Entity, World};
-use tungsten_core::ui::{Theme, UiThemeRegistry, UiTree};
+use tungsten_core::ui::{Theme, UiScreenRegistry, UiThemeRegistry, UiTree, screen_build};
 use tungsten_core::{AssetRegistry, TextureHandle};
 
 use super::reload::apply_nine_slice;
@@ -1953,4 +1953,157 @@ fn a_manifest_engine_glow_material_fails_the_load() {
         assert_eq!(plan.done(), 0, "before any unit");
         assert!(target.uploads.is_empty(), "nothing uploaded");
     }
+}
+
+// ---- redo 7.20: screen files ----
+
+/// Writes `screens` (ID, file text) under `dir` and lists them in
+/// `manifest`'s `ui_screens`.
+fn add_screens(manifest: &mut ResolvedManifest, dir: &Path, screens: &[(&str, &str)]) {
+    for (id, text) in screens {
+        let path = dir.join("ui").join("screens").join(format!("{id}.json"));
+        write(&path, text);
+        manifest.ui_screens.insert(
+            (*id).to_string(),
+            tungsten_core::assets::manifest::ResolvedUiScreen { path },
+        );
+    }
+}
+
+const PAUSE: &str = r#"{"version": 1, "root": {"kind": "screen", "width": 260,
+    "children": [{"kind": "button", "key": "resume", "text": "Resume", "on": "pop"}]}}"#;
+
+#[test]
+fn screen_files_load_in_the_themes_unit() {
+    let plain = ResolvedManifest::load(plan_game("")).unwrap();
+    let mut screens = plain.clone();
+    let dir = tempdir();
+    add_screens(&mut screens, &dir, &[("pause", PAUSE), ("over", PAUSE)]);
+    let units = |manifest: &ResolvedManifest| {
+        let mut world = load_world();
+        LoadPlan::new(manifest.clone(), &mut world).units().to_vec()
+    };
+    assert_eq!(
+        units(&screens),
+        units(&plain),
+        "screens add no unit to the plan"
+    );
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(screens.clone(), &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    assert_eq!(
+        world.resource::<UiScreenRegistry>().ids(),
+        ["over", "pause"]
+    );
+    let paths = world.resource::<UiScreenPaths>();
+    assert_eq!(
+        paths.id_for_path(&screens.ui_screens["pause"].path),
+        Some("pause")
+    );
+}
+
+#[test]
+fn a_manifest_without_screens_inserts_no_screen_resource() {
+    let manifest = ResolvedManifest::load(plan_game("")).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest, &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    assert!(!world.has_resource::<UiScreenRegistry>());
+    assert!(!world.has_resource::<UiScreenPaths>());
+    assert!(
+        world.has_resource::<UiThemeRegistry>(),
+        "the themes' as ever"
+    );
+}
+
+#[test]
+fn a_bad_screen_file_fails_the_load() {
+    let mut manifest = ResolvedManifest::default();
+    let dir = tempdir();
+    let bad = r#"{"version": 1, "root": {"kind": "screen", "width": 1, "childern": []}}"#;
+    add_screens(&mut manifest, &dir, &[("pause", PAUSE), ("broken", bad)]);
+    let mut world = World::new();
+    let error = load_ui_screens(&manifest, &mut world)
+        .expect_err("a bad file fails")
+        .to_string();
+    assert!(
+        error.starts_with("Failed to load ui screen 'broken': invalid ui screen"),
+        "{error}"
+    );
+    assert!(error.contains("root.childern: unknown field"), "{error}");
+}
+
+#[test]
+fn a_screen_reload_rebuilds_every_live_screen_of_its_file() {
+    let dir = tempdir();
+    let mut manifest = ResolvedManifest::default();
+    add_screens(&mut manifest, &dir, &[("pause", PAUSE)]);
+    let mut world = World::new();
+    world.insert_resource(UiTree::new());
+    load_ui_screens(&manifest, &mut world).unwrap();
+    let built = [(); 2].map(|()| screen_build::build(&mut world, "pause").expect("built"));
+    let path = manifest.ui_screens["pause"].path.clone();
+    write(&path, &PAUSE.replace("Resume", "Continue"));
+    let errors = reload_json_files(&[path], &mut world, false);
+    assert!(errors.is_empty(), "{errors:?}");
+    for screen in built {
+        assert_eq!(screen_build::revision(&world, screen.root), Some(1));
+        let resume = screen_build::node(&world, screen.root, "resume").expect("rebuilt");
+        assert_eq!(world.resource::<UiTree>().plain_text(resume), "Continue");
+    }
+}
+
+#[test]
+fn a_screen_file_that_fails_keeps_the_previous_screen() {
+    let dir = tempdir();
+    let mut manifest = ResolvedManifest::default();
+    add_screens(&mut manifest, &dir, &[("pause", PAUSE)]);
+    let mut world = World::new();
+    world.insert_resource(UiTree::new());
+    load_ui_screens(&manifest, &mut world).unwrap();
+    let built = screen_build::build(&mut world, "pause").expect("built");
+    let resume = screen_build::node(&world, built.root, "resume").unwrap();
+    let path = manifest.ui_screens["pause"].path.clone();
+    write(
+        &path,
+        r#"{"version": 1, "root": {"kind": "screen", "widht": 1}}"#,
+    );
+    reload_json_files(&[path], &mut world, false);
+    assert_eq!(screen_build::revision(&world, built.root), Some(0));
+    assert!(
+        world.resource::<UiTree>().contains(resume),
+        "the screen stands"
+    );
+    let kept = world.resource::<UiScreenRegistry>().get("pause").unwrap();
+    assert_eq!(
+        kept,
+        &tungsten_core::ui::ScreenFile::from_json(PAUSE).unwrap()
+    );
+}
+
+#[test]
+fn a_manifest_reload_loads_a_new_screen() {
+    let dir = tempdir();
+    let mut manifest = ResolvedManifest::default();
+    add_screens(&mut manifest, &dir, &[("pause", PAUSE)]);
+    let mut world = World::new();
+    load_ui_screens(&manifest, &mut world).unwrap();
+    let mut grown = manifest.clone();
+    add_screens(&mut grown, &dir, &[("over", PAUSE)]);
+    reload_ui_screens_from_manifest(&grown, &mut world);
+    assert_eq!(
+        world.resource::<UiScreenRegistry>().ids(),
+        ["over", "pause"]
+    );
+    let over = &grown.ui_screens["over"].path;
+    assert_eq!(
+        world.resource::<UiScreenPaths>().id_for_path(over),
+        Some("over")
+    );
+    // A graph that never listed screens inserts nothing.
+    let mut bare = World::new();
+    reload_ui_screens_from_manifest(&ResolvedManifest::default(), &mut bare);
+    assert!(!bare.has_resource::<UiScreenRegistry>() && !bare.has_resource::<UiScreenPaths>());
 }

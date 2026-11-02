@@ -103,19 +103,33 @@ pub(in crate::physics) fn polygon(code: u8, center: Vec2, half: Vec2) -> SlopePo
     }
 }
 
-/// The face bit of an axis-aligned outward normal; 0 for the slope's, whose
-/// components are at most 2 / √5.
+/// The face bit of an axis-aligned outward normal; 0 for the slope's. The
+/// polygon's sides and its sum's carry the axes exactly, while the slope's
+/// normal nears an axis on a wide or tall cell, so the test is exact.
 fn face_of(normal: Vec2) -> u8 {
-    if normal.x > 0.99 {
+    if normal == Vec2::X {
         FACE_RIGHT
-    } else if normal.x < -0.99 {
+    } else if normal == Vec2::NEG_X {
         FACE_LEFT
-    } else if normal.y > 0.99 {
+    } else if normal == Vec2::Y {
         FACE_BOTTOM
-    } else if normal.y < -0.99 {
+    } else if normal == Vec2::NEG_Y {
         FACE_TOP
     } else {
         0
+    }
+}
+
+/// The normal at a vertex between two exposed sides of outward normals
+/// `before` and `after`: `offset`, from the vertex to the centre, over its
+/// `distance`; their bisector where the centre sits on the vertex and that
+/// direction is 0 / 0, as a cast's tie takes it (`entered_normal`).
+fn vertex_normal(offset: Vec2, distance: f32, before: Vec2, after: Vec2) -> Vec2 {
+    let normal = offset / distance;
+    if normal.is_finite() && normal != Vec2::ZERO {
+        normal
+    } else {
+        (before + after).normalize()
     }
 }
 
@@ -183,9 +197,27 @@ impl SlopePolygon {
     /// running from vertex `k` to the next with outward normal `normals[k]`
     /// in angle order, y down.
     fn minkowski(&self, half: Vec2) -> ([Vec2; 5], [Vec2; 5]) {
-        let mut normals = [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y, self.normal];
-        let angle = |n: Vec2| n.y.atan2(n.x).rem_euclid(std::f32::consts::TAU);
-        normals.sort_by(|a, b| angle(*a).total_cmp(&angle(*b)));
+        // The axes stand in angle order (0, π/2, π, 3π/2), so a normal off
+        // both axes goes in by its quadrant, where the sort would put it;
+        // any other normal takes the sort.
+        let n = self.normal;
+        let normals = if n.x.abs() >= 1e-3 && n.y.abs() >= 1e-3 {
+            let at = match (n.x > 0.0, n.y > 0.0) {
+                (true, true) => 1,
+                (false, true) => 2,
+                (false, false) => 3,
+                (true, false) => 4,
+            };
+            let mut normals = [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y, Vec2::ZERO];
+            normals.copy_within(at..4, at + 1);
+            normals[at] = n;
+            normals
+        } else {
+            let mut normals = [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y, n];
+            let angle = |n: Vec2| n.y.atan2(n.x).rem_euclid(std::f32::consts::TAU);
+            normals.sort_by(|a, b| angle(*a).total_cmp(&angle(*b)));
+            normals
+        };
         let mut vertices = [Vec2::ZERO; 5];
         for (k, vertex) in vertices.iter_mut().enumerate() {
             // The vertex before edge `k`: between it and the edge before.
@@ -223,10 +255,15 @@ pub(in crate::physics) fn box_contact(
             penetration: -separation(k),
         });
     }
-    // The nearest feature of the sum: an edge's inside or a vertex.
+    // The nearest feature of the sum: an edge's inside or a vertex. A box
+    // of zero extent leaves an edge of zero length, whose vertex its
+    // neighbours' ends reach.
     let mut best: Option<(f32, usize, f32)> = None;
     for k in 0..5 {
         let (p, q) = (vertices[k], vertices[(k + 1) % 5]);
+        if (q - p).length_squared() == 0.0 {
+            continue;
+        }
         let along = (center - p).dot(q - p) / (q - p).length_squared();
         let t = along.clamp(0.0, 1.0);
         let distance = center.distance(p + (q - p) * t);
@@ -245,15 +282,32 @@ pub(in crate::physics) fn box_contact(
         }
     } else {
         // A vertex, between edge `j` and edge `l` after it.
-        let (j, l) = if t <= 0.0 {
+        let (mut j, mut l) = if t <= 0.0 {
             ((k + 4) % 5, k)
         } else {
             (k, (k + 1) % 5)
         };
+        // Beside an edge of zero length the vertex stands for two, and that
+        // edge's normal splits its cone: the sides are the half that holds
+        // the centre.
+        let zero =
+            |edge: usize| (vertices[(edge + 1) % 5] - vertices[edge]).length_squared() == 0.0;
+        let offset = center - vertices[l];
+        if t > 0.0 && zero(l) {
+            let after = (l + 1) % 5;
+            if normals[l].perp_dot(offset) * normals[l].perp_dot(normals[after]) > 0.0 {
+                (j, l) = (l, after);
+            }
+        } else if t <= 0.0 && zero(j) {
+            let before = (j + 4) % 5;
+            if normals[j].perp_dot(offset) * normals[j].perp_dot(normals[before]) > 0.0 {
+                (j, l) = (before, j);
+            }
+        }
         let vertex = vertices[l];
         match (exposed(normals[j], mask), exposed(normals[l], mask)) {
             (true, true) => Contact {
-                normal: (center - vertex) / distance,
+                normal: vertex_normal(center - vertex, distance, normals[j], normals[l]),
                 penetration: -distance,
             },
             (true, false) => Contact {
@@ -326,7 +380,7 @@ pub(in crate::physics) fn circle_contact(
         let vertex = poly.points[l];
         match (exposed(line(j).0, mask), exposed(line(l).0, mask)) {
             (true, true) => Contact {
-                normal: (center - vertex) / distance,
+                normal: vertex_normal(center - vertex, distance, line(j).0, line(l).0),
                 penetration: radius - distance,
             },
             (true, false) => Contact {

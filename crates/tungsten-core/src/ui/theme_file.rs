@@ -3,19 +3,23 @@
 //! The manifest's `ui_themes` section names the files; [`UiThemeRegistry`]
 //! holds the loaded themes by ID for a tree to apply and a reload to
 //! replace. Colours are `#rrggbb` or `#rrggbbaa`, authored in sRGB and kept
-//! as `[u8; 4]`; the pipelines decode them (Q8).
+//! as `[u8; 4]`; the pipelines decode them (Q8). Any colour field may name a
+//! colour token instead, resolved once the file's tokens are known.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
-use serde::Deserialize;
 use serde::de::{self, Deserializer};
+use serde::{Deserialize, Serialize, Serializer};
+use serde_json::{Map, Value, json};
 use thiserror::Error;
 
-use crate::text::{EllipsisAt, TextAlign, TextOverflow, TextWrap};
+use crate::text::{EllipsisAt, TextAlign, TextOutline, TextOverflow, TextShadow, TextWrap};
 
+use super::screen_file::closed;
 use super::theme::{
-    KindStyle, KindStyles, StyleOverrides, TextOverrides, Theme, Tokens, VisualStyle,
+    ColorTokens, KindStyle, KindStyles, NamedStyle, StyleOverrides, TextOverrides, Theme,
+    ThemeNames, ThemeSounds, Tokens, VisualStyle,
 };
 
 /// Why a theme file did not load.
@@ -29,7 +33,8 @@ pub enum ThemeFileError {
         /// The read error.
         source: std::io::Error,
     },
-    /// The file is not a theme: bad JSON, an unknown field or a bad colour.
+    /// The file is not a theme: bad JSON, an unknown field, a bad colour or
+    /// an unknown token name.
     #[error("invalid ui theme '{path}': {source}")]
     Parse {
         /// The file.
@@ -43,13 +48,25 @@ pub enum ThemeFileError {
 /// theme's value. `tokens` holds the token groups; `kinds` holds, per widget
 /// kind (`panel`, `label`, `button`, `image`, `toggle`, `slider`), a
 /// `normal` look and the `focused`, `disabled`, `hovered` and `pressed`
-/// variants, each merged over the kind's built-in one. An unknown field is
-/// an error.
+/// variants, each merged over the kind's built-in one; `text_styles` holds
+/// text objects by name, each merged over the built-in style of its name,
+/// which alone take an `outline` (`{ "color", "width" }`) and a `shadow`
+/// (`{ "color", "offset": [x, y] }`) in the text's units and a `shrink`,
+/// the least share of its size a label shrinks to on one line, in (0, 1];
+/// `sizes` holds sizes by name in UI units, finite and at least 0; `sounds`
+/// holds the `focus`, `activate` and `back` sounds' manifest IDs. A colour
+/// field takes `#rrggbb`, `#rrggbbaa` or a colour token's name
+/// ([`ColorTokens::NAMES`]), read from the tokens the file makes; a name in
+/// `tokens.colors` reads the file's literal colours. An unknown field or
+/// token name is an error, the name's with its field path.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ThemeFile {
     tokens: TokensFile,
     kinds: KindsFile,
+    text_styles: BTreeMap<String, TextFile>,
+    sizes: BTreeMap<String, f32>,
+    sounds: SoundsFile,
 }
 
 impl ThemeFile {
@@ -66,13 +83,56 @@ impl ThemeFile {
         })
     }
 
-    /// Parses theme JSON: one object, as the file format describes.
+    /// Parses theme JSON: one object, as the file format describes, its
+    /// token names resolved.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         let value: serde_json::Value = serde_json::from_str(json)?;
         if !value.is_object() {
             return Err(de::Error::custom("a theme file is a JSON object"));
         }
-        serde_json::from_value(value)
+        let mut file: Self = serde_json::from_value(value)?;
+        file.resolve_names().map_err(de::Error::custom)?;
+        Ok(file)
+    }
+
+    /// Checks the sizes and turns every colour token's name into the
+    /// token's colour: the token fields' first, against the file's literal
+    /// colours, then the rest against the tokens the file makes.
+    fn resolve_names(&mut self) -> Result<(), String> {
+        for (name, size) in &self.sizes {
+            if !(size.is_finite() && *size >= 0.0) {
+                return Err(format!(
+                    "sizes.{name}: {size} is not a finite number at or above 0"
+                ));
+            }
+        }
+        let literal = self.tokens.colors.tokens();
+        for (name, value) in self.tokens.colors.fields() {
+            resolve(value, &literal, &|| format!("tokens.colors.{name}"))?;
+        }
+        let tokens = self.tokens.colors.tokens();
+        for (kind, file) in self.kinds.fields() {
+            let Some(file) = file else {
+                continue;
+            };
+            for (state, overrides) in file.fields() {
+                let path = |field: &str| format!("kinds.{kind}.{state}.{field}");
+                resolve(&mut overrides.background, &tokens, &|| path("background"))?;
+                resolve(&mut overrides.border, &tokens, &|| path("border"))?;
+                let text = &mut overrides.text;
+                if let Some(field) = text.named_only() {
+                    return Err(format!(
+                        "{}: an {field} belongs to a named style, in text_styles",
+                        path(&format!("text.{field}"))
+                    ));
+                }
+                text.resolve(&tokens, &|field| path(&format!("text.{field}")))?;
+            }
+        }
+        for (name, text) in &mut self.text_styles {
+            text.resolve(&tokens, &|field| format!("text_styles.{name}.{field}"))?;
+        }
+        Ok(())
     }
 
     /// The theme: the built-in tokens under this file's, the kind styles
@@ -102,19 +162,91 @@ impl ThemeFile {
                 file.apply(kind);
             }
         }
-        Theme { tokens, kinds }
+        let mut names = ThemeNames::for_tokens(&tokens);
+        for (name, file) in self.text_styles {
+            file.apply_named(names.text_styles.entry(name).or_default());
+        }
+        names.sizes = self.sizes;
+        names.sounds = ThemeSounds {
+            focus: self.sounds.focus,
+            activate: self.sounds.activate,
+            back: self.sounds.back,
+        };
+        Theme {
+            tokens,
+            kinds,
+            names: Box::new(names),
+        }
     }
 }
 
-/// An sRGB colour parsed from `#rrggbb` or `#rrggbbaa`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Color([u8; 4]);
+/// A colour field's value: an sRGB colour parsed from `#rrggbb` or
+/// `#rrggbbaa`, or a colour token's name, which
+/// [`ThemeFile::from_json`] turns into the token's colour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Color {
+    Rgba([u8; 4]),
+    Token(String),
+}
+
+impl Color {
+    /// The colour; a name left unresolved, which no parsed file holds, reads
+    /// transparent.
+    fn rgba(&self) -> [u8; 4] {
+        match self {
+            Self::Rgba(rgba) => *rgba,
+            Self::Token(_) => [0; 4],
+        }
+    }
+}
+
+/// `#rrggbb` when opaque, else `#rrggbbaa`; a token by its name.
+impl Serialize for Color {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Rgba([r, g, b, 255]) => {
+                serializer.serialize_str(&format!("#{r:02x}{g:02x}{b:02x}"))
+            }
+            Self::Rgba([r, g, b, a]) => {
+                serializer.serialize_str(&format!("#{r:02x}{g:02x}{b:02x}{a:02x}"))
+            }
+            Self::Token(name) => serializer.serialize_str(name),
+        }
+    }
+}
 
 impl<'de> Deserialize<'de> for Color {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        parse_color(&text).map(Color).map_err(de::Error::custom)
+        if text.starts_with('#') {
+            parse_color(&text)
+                .map(Color::Rgba)
+                .map_err(de::Error::custom)
+        } else {
+            Ok(Color::Token(text))
+        }
     }
+}
+
+/// Turns `color`, when it names a token, into that token's colour in
+/// `tokens`; an unknown name is an error naming `path`.
+pub(crate) fn resolve(
+    color: &mut Option<Color>,
+    tokens: &ColorTokens,
+    path: &dyn Fn() -> String,
+) -> Result<(), String> {
+    let Some(Color::Token(name)) = color else {
+        return Ok(());
+    };
+    let Some(rgba) = tokens.named(name) else {
+        return Err(format!(
+            "{}: colour '{name}' is not #rrggbb, #rrggbbaa or a colour token's name ({})",
+            path(),
+            ColorTokens::NAMES.join(", ")
+        ));
+    };
+    *color = Some(Color::Rgba(rgba));
+    Ok(())
 }
 
 /// A `line_height`: finite and above zero, since the text engine cannot lay a
@@ -155,23 +287,7 @@ struct TokensFile {
 
 impl TokensFile {
     fn apply(self, tokens: &mut Tokens) {
-        let colors = &mut tokens.colors;
-        for (value, slot) in [
-            (self.colors.background, &mut colors.background),
-            (self.colors.surface, &mut colors.surface),
-            (self.colors.border, &mut colors.border),
-            (self.colors.text, &mut colors.text),
-            (self.colors.text_muted, &mut colors.text_muted),
-            (self.colors.accent, &mut colors.accent),
-            (self.colors.accent_text, &mut colors.accent_text),
-            (self.colors.focus, &mut colors.focus),
-            (self.colors.disabled_text, &mut colors.disabled_text),
-            (self.colors.danger, &mut colors.danger),
-        ] {
-            if let Some(Color(color)) = value {
-                *slot = color;
-            }
-        }
+        tokens.colors = self.colors.tokens();
         let spacing = &mut tokens.spacing;
         for (value, slot) in [
             (self.spacing.xs, &mut spacing.xs),
@@ -231,6 +347,70 @@ struct ColorsFile {
     focus: Option<Color>,
     disabled_text: Option<Color>,
     danger: Option<Color>,
+    scrim: Option<Color>,
+    raised: Option<Color>,
+}
+
+impl ColorsFile {
+    /// Each field by its token's name.
+    fn fields(&mut self) -> [(&'static str, &mut Option<Color>); 12] {
+        [
+            ("background", &mut self.background),
+            ("surface", &mut self.surface),
+            ("border", &mut self.border),
+            ("text", &mut self.text),
+            ("text_muted", &mut self.text_muted),
+            ("accent", &mut self.accent),
+            ("accent_text", &mut self.accent_text),
+            ("focus", &mut self.focus),
+            ("disabled_text", &mut self.disabled_text),
+            ("danger", &mut self.danger),
+            ("scrim", &mut self.scrim),
+            ("raised", &mut self.raised),
+        ]
+    }
+
+    /// The colour tokens: the built-in ones under this file's colours, an
+    /// unset scrim the background's and an unset raised fill the surface.
+    /// Names not yet resolved are left out.
+    fn tokens(&self) -> ColorTokens {
+        let mut tokens = ColorTokens::default();
+        let mut file = self.clone();
+        let (scrim, raised) = (self.scrim.is_some(), self.raised.is_some());
+        for (name, value) in file.fields() {
+            if let Some(Color::Rgba(rgba)) = value
+                && let Some(slot) = token_slot(&mut tokens, name)
+            {
+                *slot = *rgba;
+            }
+        }
+        if !scrim {
+            tokens.scrim = ColorTokens::scrim_of(tokens.background);
+        }
+        if !raised {
+            tokens.raised = tokens.surface;
+        }
+        tokens
+    }
+}
+
+/// The token named `name` in `tokens`.
+fn token_slot<'a>(tokens: &'a mut ColorTokens, name: &str) -> Option<&'a mut [u8; 4]> {
+    Some(match name {
+        "background" => &mut tokens.background,
+        "surface" => &mut tokens.surface,
+        "border" => &mut tokens.border,
+        "text" => &mut tokens.text,
+        "text_muted" => &mut tokens.text_muted,
+        "accent" => &mut tokens.accent,
+        "accent_text" => &mut tokens.accent_text,
+        "focus" => &mut tokens.focus,
+        "disabled_text" => &mut tokens.disabled_text,
+        "danger" => &mut tokens.danger,
+        "scrim" => &mut tokens.scrim,
+        "raised" => &mut tokens.raised,
+        _ => return None,
+    })
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -280,6 +460,29 @@ struct KindsFile {
     slider: Option<KindFile>,
 }
 
+impl KindsFile {
+    /// Each kind by its name.
+    fn fields(&mut self) -> [(&'static str, &mut Option<KindFile>); 6] {
+        [
+            ("panel", &mut self.panel),
+            ("label", &mut self.label),
+            ("button", &mut self.button),
+            ("image", &mut self.image),
+            ("toggle", &mut self.toggle),
+            ("slider", &mut self.slider),
+        ]
+    }
+}
+
+/// The `sounds` object: the menu sounds' manifest IDs.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct SoundsFile {
+    focus: Option<String>,
+    activate: Option<String>,
+    back: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct KindFile {
@@ -291,6 +494,17 @@ struct KindFile {
 }
 
 impl KindFile {
+    /// Each state's overrides by its name.
+    fn fields(&mut self) -> [(&'static str, &mut OverridesFile); 5] {
+        [
+            ("normal", &mut self.normal),
+            ("focused", &mut self.focused),
+            ("disabled", &mut self.disabled),
+            ("hovered", &mut self.hovered),
+            ("pressed", &mut self.pressed),
+        ]
+    }
+
     fn apply(self, kind: &mut KindStyle) {
         self.normal.apply_visual(&mut kind.normal);
         self.focused.apply_overrides(&mut kind.focused);
@@ -300,23 +514,30 @@ impl KindFile {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+/// An overrides object: a kind state's in a theme file, a node's own in a
+/// screen file.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-struct OverridesFile {
-    background: Option<Color>,
-    border: Option<Color>,
-    border_width: Option<f32>,
-    corner_radius: Option<f32>,
-    text: TextFile,
+pub(crate) struct OverridesFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) background: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) border: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) border_width: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) corner_radius: Option<f32>,
+    #[serde(skip_serializing_if = "TextFile::is_empty")]
+    pub(crate) text: TextFile,
 }
 
 impl OverridesFile {
     fn apply_visual(self, visual: &mut VisualStyle) {
-        if let Some(Color(background)) = self.background {
-            visual.background = background;
+        if let Some(background) = &self.background {
+            visual.background = background.rgba();
         }
-        if let Some(Color(border)) = self.border {
-            visual.border = border;
+        if let Some(border) = &self.border {
+            visual.border = border.rgba();
         }
         if let Some(border_width) = self.border_width {
             visual.border_width = border_width;
@@ -327,12 +548,12 @@ impl OverridesFile {
         self.text.apply(&mut visual.text);
     }
 
-    fn apply_overrides(self, overrides: &mut StyleOverrides) {
-        if let Some(Color(background)) = self.background {
-            overrides.background = Some(background);
+    pub(crate) fn apply_overrides(self, overrides: &mut StyleOverrides) {
+        if let Some(background) = &self.background {
+            overrides.background = Some(background.rgba());
         }
-        if let Some(Color(border)) = self.border {
-            overrides.border = Some(border);
+        if let Some(border) = &self.border {
+            overrides.border = Some(border.rgba());
         }
         if let Some(border_width) = self.border_width {
             overrides.border_width = Some(border_width);
@@ -344,23 +565,142 @@ impl OverridesFile {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+/// A text object: a named style's in a theme file, or an overrides
+/// object's `text`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-struct TextFile {
-    family: Option<String>,
-    size: Option<f32>,
-    #[serde(deserialize_with = "line_height")]
-    line_height: Option<f32>,
-    weight: Option<u16>,
-    italic: Option<bool>,
-    color: Option<Color>,
-    align: Option<AlignFile>,
-    wrap: Option<WrapFile>,
-    overflow: Option<OverflowFile>,
-    letter_spacing: Option<f32>,
+pub(crate) struct TextFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) size: Option<f32>,
+    #[serde(
+        deserialize_with = "line_height",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) line_height: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) weight: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) italic: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<Color>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) align: Option<AlignFile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) wrap: Option<WrapFile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) overflow: Option<OverflowFile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) letter_spacing: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) outline: Option<OutlineFile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) shadow: Option<ShadowFile>,
+    #[serde(deserialize_with = "shrink", skip_serializing_if = "Option::is_none")]
+    pub(crate) shrink: Option<f32>,
+}
+
+/// A `shrink`: in (0, 1]. `null` is no value.
+fn shrink<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f32>, D::Error> {
+    match Option::<f32>::deserialize(deserializer)? {
+        Some(value) if !(value > 0.0 && value <= 1.0) => Err(de::Error::custom(format!(
+            "shrink {value} is not in (0, 1]"
+        ))),
+        value => Ok(value),
+    }
+}
+
+/// A text object's `outline`: its colour and width, both required.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OutlineFile {
+    color: Color,
+    #[serde(deserialize_with = "effect_length")]
+    width: f32,
+}
+
+/// A text object's `shadow`: its colour and `[x, y]` offset, both required.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ShadowFile {
+    color: Color,
+    offset: [f32; 2],
+}
+
+/// An outline's width: finite and at least 0; 0 draws none.
+fn effect_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let value = f32::deserialize(deserializer)?;
+    if value.is_finite() && value >= 0.0 {
+        Ok(value)
+    } else {
+        Err(de::Error::custom(format!(
+            "outline width {value} is not a finite number at or above 0"
+        )))
+    }
 }
 
 impl TextFile {
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The first field set that only a named style takes.
+    pub(crate) fn named_only(&self) -> Option<&'static str> {
+        if self.outline.is_some() {
+            Some("outline")
+        } else if self.shadow.is_some() {
+            Some("shadow")
+        } else if self.shrink.is_some() {
+            Some("shrink")
+        } else {
+            None
+        }
+    }
+
+    /// [`Self::apply`] into a named style, the fields only it takes
+    /// included.
+    fn apply_named(self, style: &mut NamedStyle) {
+        if let Some(shrink) = self.shrink {
+            style.shrink = Some(shrink);
+        }
+        if let Some(outline) = &self.outline {
+            style.outline = Some(TextOutline::new(outline.color.rgba(), outline.width));
+        }
+        if let Some(shadow) = &self.shadow {
+            let offset = shadow.offset.into();
+            style.shadow = Some(TextShadow::new(shadow.color.rgba(), offset));
+        }
+        self.apply(&mut style.text);
+    }
+
+    /// Turns the colour fields' token names into colours, an unknown one an
+    /// error at `path` of the field.
+    pub(crate) fn resolve(
+        &mut self,
+        tokens: &ColorTokens,
+        path: &dyn Fn(&str) -> String,
+    ) -> Result<(), String> {
+        resolve(&mut self.color, tokens, &|| path("color"))?;
+        if let Some(outline) = &mut self.outline {
+            let mut color = Some(outline.color.clone());
+            resolve(&mut color, tokens, &|| path("outline.color"))?;
+            outline.color = color.unwrap_or(Color::Rgba([0; 4]));
+        }
+        if let Some(shadow) = &mut self.shadow {
+            if !shadow.offset.iter().all(|value| value.is_finite()) {
+                return Err(format!(
+                    "{}: a shadow's offset is finite",
+                    path("shadow.offset")
+                ));
+            }
+            let mut color = Some(shadow.color.clone());
+            resolve(&mut color, tokens, &|| path("shadow.color"))?;
+            shadow.color = color.unwrap_or(Color::Rgba([0; 4]));
+        }
+        Ok(())
+    }
+
     fn apply(self, text: &mut TextOverrides) {
         if let Some(family) = self.family {
             text.family = Some(family);
@@ -377,8 +717,8 @@ impl TextFile {
         if let Some(italic) = self.italic {
             text.italic = Some(italic);
         }
-        if let Some(Color(color)) = self.color {
-            text.color = Some(color);
+        if let Some(color) = &self.color {
+            text.color = Some(color.rgba());
         }
         if let Some(align) = self.align {
             text.align = Some(align.into());
@@ -395,9 +735,9 @@ impl TextFile {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum AlignFile {
+pub(crate) enum AlignFile {
     Start,
     Center,
     End,
@@ -415,9 +755,9 @@ impl From<AlignFile> for TextAlign {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum WrapFile {
+pub(crate) enum WrapFile {
     None,
     Glyph,
     Word,
@@ -437,13 +777,13 @@ impl From<WrapFile> for TextWrap {
 
 /// `"clip"`, or `{ "ellipsis": { "at": "end", "lines": 2 } }` with `lines`
 /// optional.
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum OverflowFile {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub(crate) enum OverflowFile {
     Clip,
     Ellipsis {
         at: EllipsisAtFile,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         lines: Option<u32>,
     },
 }
@@ -460,9 +800,9 @@ impl From<OverflowFile> for TextOverflow {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum EllipsisAtFile {
+pub(crate) enum EllipsisAtFile {
     Start,
     Middle,
     End,
@@ -529,6 +869,181 @@ impl UiThemeRegistry {
     pub fn is_empty(&self) -> bool {
         self.themes.is_empty()
     }
+}
+
+/// The schema parts a theme file and a screen file share: `color`, `text`
+/// with its `outline`, `shadow`, `overflow` and `ellipsis`, and
+/// `overrides`.
+pub(crate) fn shared_schema_defs() -> Map<String, Value> {
+    let reference = |name: &str| json!({ "$ref": format!("#/$defs/{name}") });
+    let number = json!({ "type": "number" });
+    let mut defs = Map::new();
+    defs.insert(
+        "color".into(),
+        json!({ "anyOf": [
+            { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" },
+            { "enum": ColorTokens::NAMES },
+        ] }),
+    );
+    defs.insert(
+        "outline".into(),
+        closed(
+            &[
+                ("color", reference("color")),
+                ("width", json!({ "type": "number", "minimum": 0 })),
+            ],
+            &["color", "width"],
+        ),
+    );
+    let pair =
+        json!({ "type": "array", "prefixItems": [number, number], "minItems": 2, "maxItems": 2 });
+    defs.insert(
+        "shadow".into(),
+        closed(
+            &[("color", reference("color")), ("offset", pair)],
+            &["color", "offset"],
+        ),
+    );
+    defs.insert(
+        "ellipsis".into(),
+        closed(
+            &[
+                ("at", json!({ "enum": ["start", "middle", "end"] })),
+                ("lines", json!({ "type": "integer", "minimum": 0 })),
+            ],
+            &["at"],
+        ),
+    );
+    defs.insert(
+        "overflow".into(),
+        json!({ "oneOf": [
+            { "const": "clip" },
+            closed(&[("ellipsis", reference("ellipsis"))], &["ellipsis"]),
+        ] }),
+    );
+    defs.insert(
+        "text".into(),
+        closed(
+            &[
+                ("family", json!({ "type": "string" })),
+                ("size", number.clone()),
+                (
+                    "line_height",
+                    json!({ "type": "number", "exclusiveMinimum": 0 }),
+                ),
+                (
+                    "weight",
+                    json!({ "type": "integer", "minimum": 0, "maximum": 65535 }),
+                ),
+                ("italic", json!({ "type": "boolean" })),
+                ("color", reference("color")),
+                (
+                    "align",
+                    json!({ "enum": ["start", "center", "end", "justified"] }),
+                ),
+                (
+                    "wrap",
+                    json!({ "enum": ["none", "glyph", "word", "word_or_glyph"] }),
+                ),
+                ("overflow", reference("overflow")),
+                ("letter_spacing", number.clone()),
+                ("outline", reference("outline")),
+                ("shadow", reference("shadow")),
+                (
+                    "shrink",
+                    json!({ "type": "number", "exclusiveMinimum": 0, "maximum": 1 }),
+                ),
+            ],
+            &[],
+        ),
+    );
+    defs.insert(
+        "overrides".into(),
+        closed(
+            &[
+                ("background", reference("color")),
+                ("border", reference("color")),
+                ("border_width", number.clone()),
+                ("corner_radius", number),
+                ("text", reference("text")),
+            ],
+            &[],
+        ),
+    );
+    defs
+}
+
+/// The JSON Schema (draft 2020-12) of a theme file: every object closed
+/// (`additionalProperties: false`), the token groups, each kind's states,
+/// named text styles, sizes and sounds, the overrides and text objects
+/// shared with the screen file's schema.
+#[must_use]
+pub fn json_schema() -> Value {
+    let mut defs = shared_schema_defs();
+    let reference = |name: &str| json!({ "$ref": format!("#/$defs/{name}") });
+    let number = json!({ "type": "number" });
+    let text = json!({ "type": "string" });
+    let of = |names: &[&'static str], schema: &Value| {
+        let fields: Vec<(&str, Value)> = names.iter().map(|name| (*name, schema.clone())).collect();
+        closed(&fields, &[])
+    };
+    defs.insert(
+        "colors".into(),
+        of(&ColorTokens::NAMES, &reference("color")),
+    );
+    defs.insert(
+        "spacing".into(),
+        of(&["xs", "sm", "md", "lg", "xl"], &number),
+    );
+    defs.insert("radii".into(), of(&["none", "sm", "md", "lg"], &number));
+    defs.insert("fonts".into(), of(&["body", "heading", "mono"], &text));
+    defs.insert(
+        "text_tokens".into(),
+        closed(
+            &[
+                ("size", number.clone()),
+                (
+                    "line_height",
+                    json!({ "type": "number", "exclusiveMinimum": 0 }),
+                ),
+                ("heading_size", number),
+            ],
+            &[],
+        ),
+    );
+    defs.insert(
+        "tokens".into(),
+        closed(
+            &[
+                ("colors", reference("colors")),
+                ("spacing", reference("spacing")),
+                ("radii", reference("radii")),
+                ("fonts", reference("fonts")),
+                ("text", reference("text_tokens")),
+            ],
+            &[],
+        ),
+    );
+    let states = ["normal", "focused", "disabled", "hovered", "pressed"];
+    defs.insert("kind".into(), of(&states, &reference("overrides")));
+    let kinds = ["panel", "label", "button", "image", "toggle", "slider"];
+    defs.insert("kinds".into(), of(&kinds, &reference("kind")));
+    defs.insert("sounds".into(), of(&["focus", "activate", "back"], &text));
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Tungsten UI theme",
+        "description": "A theme file, listed in a manifest's ui_themes.",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "tokens": reference("tokens"),
+            "kinds": reference("kinds"),
+            "text_styles": { "type": "object", "additionalProperties": reference("text") },
+            "sizes": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+            "sounds": reference("sounds"),
+        },
+        "$defs": defs,
+    })
 }
 
 #[cfg(test)]

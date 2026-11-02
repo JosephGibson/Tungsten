@@ -14,7 +14,9 @@ use glam::IVec2;
 #[cfg(test)]
 use glam::Vec2;
 
-/// Caller-owned proxy index.
+/// Caller-owned proxy index, dense: a grid keeps two tables of four bytes
+/// per id up to the largest id it has seen, never shrunk, so a caller with
+/// sparse keys maps them to dense indices first.
 pub type ProxyId = u32;
 
 /// A direct table may spend this many slots per staged cell ref: about the
@@ -132,7 +134,23 @@ impl SpatialGrid {
         self.cell_size
     }
 
-    /// Stage `id` for every overlapped cell; built lazily on the next query.
+    /// True when at most `few` records are staged and none covers a cell of
+    /// `query`: a query would visit nothing, so a caller can skip the walk.
+    pub(crate) fn misses_few(&self, query: &Aabb, few: usize) -> bool {
+        if self.staged.len() > few {
+            return false;
+        }
+        let (min_cell, max_cell) = self.cell_range(query);
+        !self.staged.iter().any(|staged| {
+            staged.min_cell.x <= max_cell.x
+                && staged.max_cell.x >= min_cell.x
+                && staged.min_cell.y <= max_cell.y
+                && staged.max_cell.y >= min_cell.y
+        })
+    }
+
+    /// Stage `id`, a dense index ([`ProxyId`]), for every overlapped cell;
+    /// built lazily on the next query.
     pub fn insert(&mut self, id: ProxyId, aabb: &Aabb) {
         let (min_cell, max_cell) = self.cell_range(aabb);
         let span =

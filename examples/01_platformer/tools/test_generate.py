@@ -7,7 +7,7 @@ import unittest
 import wave
 
 from art import PALETTE, STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
-from generate import FAMILIES as ASSET_FAMILIES, generate, hashed, lock_breaks, users
+from generate import FAMILIES as ASSET_FAMILIES, TEMPLATE, generate, hashed, lock_breaks, users
 from level import FAMILIES, build_level, opaque_tiles, tiled_text, validate_level
 from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
 
@@ -324,6 +324,18 @@ class FamilyTests(unittest.TestCase):
                 self.assertEqual(self.written(dest), {*self.paths[family], 'assets/manifest.json', 'tools/outputs.json'})
                 self.assertEqual(self.changed(dest), set())
 
+    def test_the_shells_screen_files_are_the_templates(self):
+        # The content family copies the template's `ui_screens`, the section
+        # and its files byte for byte, as `just repo-check` holds them.
+        screens = json.loads((TEMPLATE / 'assets/manifest.json').read_text())['ui_screens']
+        manifest = json.loads((self.full / 'assets/manifest.json').read_text())
+        self.assertEqual(manifest['ui_screens'], screens)
+        self.assertTrue(screens)
+        for entry in screens.values():
+            path = 'assets/' + entry['path']
+            self.assertIn(path, self.paths['content'])
+            self.assertEqual((self.full / path).read_bytes(), (TEMPLATE / path).read_bytes())
+
     def test_a_troll_drawn_otherwise_changes_with_its_family_what_a_full_run_changes(self):
         # One pixel of the troll's canvas changed in memory: `--family
         # troll` changes exactly what a full run does, its icons included,
@@ -550,8 +562,8 @@ HOLLOW_FAMILIES = {
 HOLLOW_STONE_FEET = {'small': 31, 'medium': 31, 'large': 63}
 HOLLOW_PARTICLES = {'geyser_embers': 16, 'geyser_burst': 24}
 HOLLOW_SOUNDS = {
-    'geyser_sputter': (.4, .7, .3, .7),
-    'geyser_erupt': (.6, 1.0, .3, .7),
+    'geyser_sputter': (.4, .7, .15, .7),
+    'geyser_erupt': (.6, 1.0, .15, .7),
     'stone_knock': (.08, .4, .3, .7),
 }
 

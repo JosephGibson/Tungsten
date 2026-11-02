@@ -3,8 +3,10 @@
 //! text colour) from a start value to an end value over a duration, eased
 //! and repeated with core's tween enums (`D-054`). [`ui_animate_system`]
 //! ticks them on the real clock (`D-129`), so a paused game animates its
-//! pause menu, and a finished track sends [`UiEvent::AnimationFinished`].
-//! None of the six properties relayouts.
+//! pause menu, or one marked [`UiTrack::on_game_clock`] on the game's, and
+//! a finished track sends [`UiEvent::AnimationFinished`]. A [`UiChain`]
+//! runs tracks on one property one after another (redo 7.17). None of the
+//! six properties relayouts.
 
 use glam::Vec2;
 
@@ -61,6 +63,8 @@ pub struct UiTrack {
     repeat: TweenRepeat,
     direction: TweenDirection,
     tag: u32,
+    /// Whether it ticks on the game clock (redo 7.17).
+    game_clock: bool,
 }
 
 impl UiTrack {
@@ -72,6 +76,32 @@ impl UiTrack {
             repeat: TweenRepeat::Once,
             direction: TweenDirection::Forward,
             tag: 0,
+            game_clock: false,
+        }
+    }
+
+    /// This track on the game clock (redo 7.17): it ticks on `Time::delta`,
+    /// so it holds while the game clock is paused or held, as the world
+    /// it marks does.
+    #[must_use]
+    pub fn on_game_clock(mut self) -> Self {
+        self.game_clock = true;
+        self
+    }
+
+    /// Whether the track ticks on the game clock.
+    #[must_use]
+    pub fn is_on_game_clock(&self) -> bool {
+        self.game_clock
+    }
+
+    /// A chain of this track then `next` (redo 7.17): `next` starts, from
+    /// its own start value, as this one ends, each sending its own
+    /// [`UiEvent::AnimationFinished`]. Start it with [`UiTree::animate_chain`].
+    #[must_use]
+    pub fn then(self, next: UiTrack) -> UiChain {
+        UiChain {
+            links: vec![self, next],
         }
     }
 
@@ -209,16 +239,52 @@ impl UiTrack {
     }
 }
 
+/// Tracks on one property that run one after another (redo 7.17), built
+/// with [`UiTrack::then`] and started with [`UiTree::animate_chain`]; a new
+/// track or chain on the property replaces what is left of it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UiChain {
+    links: Vec<UiTrack>,
+}
+
+impl UiChain {
+    /// This chain, then `next`.
+    #[must_use]
+    pub fn then(mut self, next: UiTrack) -> Self {
+        self.links.push(next);
+        self
+    }
+
+    /// The tracks, in the order they run.
+    #[must_use]
+    pub fn links(&self) -> &[UiTrack] {
+        &self.links
+    }
+}
+
 /// A running track and where it is on its timeline.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RunningTrack {
     pub(crate) widget: WidgetId,
     track: UiTrack,
     /// Seconds into the current cycle, or into the two-cycle span of a
-    /// `PingPong`; the remainder carries across cycles.
+    /// `PingPong`; the remainder carries across cycles. A chain's link that
+    /// waits for the one before it holds negative infinity, and one that
+    /// started at this tick [`STARTED`].
     elapsed: f32,
     /// Cycles completed, for `Times`.
     cycles: u32,
+}
+
+/// A chain link's `elapsed` at the tick its predecessor ended, so it first
+/// moves at the next.
+const STARTED: f32 = -1.0;
+
+impl RunningTrack {
+    /// Whether it is a chain's link still waiting for the one before it.
+    fn waits(&self) -> bool {
+        self.elapsed == f32::NEG_INFINITY
+    }
 }
 
 /// What one tick did to a track.
@@ -339,6 +405,41 @@ impl UiTree {
         true
     }
 
+    /// Starts `chain` on `id` (redo 7.17): its first track as
+    /// [`Self::animate`] starts one, replacing what runs on the property,
+    /// and each later one as the one before it ends. A chain is refused,
+    /// changing nothing, when a link is refused as [`Self::animate`] refuses
+    /// one or moves another property than the first. Returns whether it
+    /// started.
+    pub fn animate_chain(&mut self, id: WidgetId, chain: UiChain) -> bool {
+        let Some(first) = chain.links.first().copied() else {
+            return false;
+        };
+        let property = first.property();
+        if chain
+            .links
+            .iter()
+            .any(|link| !link.is_valid() || link.property() != property)
+        {
+            log::warn!(
+                "UiTree: refused a chain on {id:?} with a link that cannot run on its first's property"
+            );
+            return false;
+        }
+        if !self.animate(id, first) {
+            return false;
+        }
+        for link in chain.links.into_iter().skip(1) {
+            self.tracks.push(RunningTrack {
+                widget: id,
+                track: link,
+                elapsed: f32::NEG_INFINITY,
+                cycles: 0,
+            });
+        }
+        true
+    }
+
     /// Stops the track moving `property` on `id`, leaving the property
     /// where it is; no event. Does nothing when none runs.
     pub fn stop_animation(&mut self, id: WidgetId, property: UiProperty) {
@@ -352,49 +453,77 @@ impl UiTree {
         self.tracks.iter().any(|running| running.widget == id)
     }
 
-    /// Advances every track by `dt` real seconds and writes their values;
-    /// pushes an [`UiEvent::AnimationFinished`] per track that finished, in
-    /// start order. A `dt` that is not positive moves nothing.
-    pub(crate) fn tick_animations(&mut self, dt: f32, finished: &mut Vec<UiEvent>) {
+    /// Advances every track by `real` seconds, or by `game` seconds for one
+    /// on the game clock, and writes their values; pushes an
+    /// [`UiEvent::AnimationFinished`] per track that finished, in start
+    /// order, and starts the next link of a finished chain at its start
+    /// value. A `dt` that is not positive moves nothing.
+    pub(crate) fn tick_animations(&mut self, real: f32, game: f32, finished: &mut Vec<UiEvent>) {
         if self.tracks.is_empty() {
             return;
         }
-        let dt = if dt.is_finite() { dt } else { 0.0 };
+        let finite = |dt: f32| if dt.is_finite() { dt } else { 0.0 };
+        let (real, game) = (finite(real), finite(game));
         let mut tracks = std::mem::take(&mut self.tracks);
-        tracks.retain_mut(|running| {
+        let mut at = 0;
+        while at < tracks.len() {
+            let running = &mut tracks[at];
             if !self.contains(running.widget) {
-                return false;
+                tracks.remove(at);
+                continue;
+            }
+            if running.waits() {
+                at += 1;
+                continue;
+            }
+            if running.elapsed == STARTED {
+                running.elapsed = 0.0;
+                at += 1;
+                continue;
             }
             let track = running.track;
+            let widget = running.widget;
+            let dt = if track.game_clock { game } else { real };
             match running.step(dt) {
-                Step::Still => true,
+                Step::Still => at += 1,
                 Step::At(fraction) => {
-                    write(self, running.widget, &track, fraction);
-                    true
+                    write(self, widget, &track, fraction);
+                    at += 1;
                 }
                 Step::Finished => {
-                    write(self, running.widget, &track, track.end_fraction());
+                    write(self, widget, &track, track.end_fraction());
                     finished.push(UiEvent::AnimationFinished {
-                        widget: running.widget,
+                        widget,
                         property: track.property(),
                         tag: track.tag,
                     });
-                    false
+                    tracks.remove(at);
+                    let property = track.property();
+                    if let Some(next) = tracks[at..].iter_mut().find(|next| {
+                        next.widget == widget && next.waits() && next.track.property() == property
+                    }) {
+                        next.elapsed = STARTED;
+                        let link = next.track;
+                        write(self, widget, &link, link.start_fraction());
+                    }
                 }
             }
-        });
+        }
         self.tracks = tracks;
     }
 }
 
 /// Ticks every [`UiTree`] animation track on [`Time::real_delta`] (`D-129`),
-/// so tracks run while the game clock is paused, and sends
+/// so tracks run while the game clock is paused, or on [`Time::delta`] for
+/// a track [`UiTrack::on_game_clock`], and sends
 /// [`UiEvent::AnimationFinished`] for each that finished when
 /// `EventQueue<UiEvent>` is registered. The umbrella's `UiPlugin` registers
 /// it as `ui_animate`, after the routing. A world without a tree does
 /// nothing.
 pub fn ui_animate_system(world: &mut World) {
-    let dt = world.get_resource::<Time>().map_or(0.0, Time::real_delta);
+    let (dt, game) = world
+        .get_resource::<Time>()
+        .map_or((0.0, 0.0), |time| (time.real_delta(), time.delta()));
     let Some(tree) = world.get_resource_mut::<UiTree>() else {
         return;
     };
@@ -402,7 +531,7 @@ pub fn ui_animate_system(world: &mut World) {
         return;
     }
     let mut finished = Vec::new();
-    tree.tick_animations(dt, &mut finished);
+    tree.tick_animations(dt, game, &mut finished);
     if !finished.is_empty()
         && world.has_event::<UiEvent>()
         && let Some(queue) = world.get_resource_mut::<EventQueue<UiEvent>>()

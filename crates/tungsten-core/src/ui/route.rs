@@ -29,7 +29,7 @@ use crate::time::Time;
 use super::control;
 use super::event::{UiEvent, UiValue};
 use super::focus::NavDirection;
-use super::id::WidgetId;
+use super::id::{UiKey, WidgetId};
 use super::node::{CursorIcon, Role};
 use super::paint::UiDebug;
 use super::prompt;
@@ -206,6 +206,12 @@ struct Repeat {
     next: f64,
 }
 
+/// The key of a back button (redo 7.17): a widget keyed `back` also backs
+/// out of its root when activated, with [`UiEvent::Cancel`], which a modal
+/// screen pops on, and plays the theme's `back` sound in place of
+/// `activate`.
+pub const BACK_KEY: UiKey = UiKey::new("back");
+
 /// The routing state: a `World` resource that [`ui_route_system`] updates
 /// once a frame, in `pre_update`, and the game reads (`D-149`).
 ///
@@ -255,6 +261,13 @@ pub struct UiRouter {
     nav_actions: Vec<(Binding, u8)>,
     /// The widget a pending capture is for (M56).
     capture: Option<WidgetId>,
+    /// When a timed capture ends, in router clock seconds.
+    capture_until: Option<f64>,
+    /// A slider a primary press captured and its value before the press,
+    /// for the commit at its end.
+    drag_value: Option<(WidgetId, f32)>,
+    /// Whether a navigation press moved focus at the last routing.
+    moved_focus: bool,
     /// Events from between routings (a capture cancelled or replaced),
     /// sent at the next one.
     pending_events: Vec<UiEvent>,
@@ -270,6 +283,14 @@ impl UiRouter {
     /// The timing settings, to change; the next routing reads them.
     pub fn settings_mut(&mut self) -> &mut UiRouteSettings {
         &mut self.settings
+    }
+
+    /// The widget a primary press captured, from the press to its release
+    /// or cancel: a slider's drag keeps it while the pointer leaves the
+    /// slider, which the pressed look does not (redo 7.20).
+    #[must_use]
+    pub fn captured(&self) -> Option<WidgetId> {
+        self.captured
     }
 
     /// The device of the last key, button, stick or wheel input routed;
@@ -306,15 +327,42 @@ impl UiRouter {
     /// [`UiEvent::CaptureCancelled`], as one does on window focus loss or
     /// when the widget is removed, hidden, disabled or frozen.
     pub fn capture_next_input(&mut self, widget: WidgetId) {
+        self.capture_until = None;
         if let Some(previous) = self.capture.replace(widget) {
             self.pending_events
                 .push(UiEvent::CaptureCancelled { widget: previous });
         }
     }
 
+    /// [`Self::capture_next_input`] for at most `secs` real seconds (redo
+    /// 7.17): a capture still pending at the first routing past them ends
+    /// with [`UiEvent::CaptureCancelled`]; a value that is not finite and
+    /// positive ends it at the next routing.
+    pub fn capture_next_input_for(&mut self, widget: WidgetId, secs: f32) {
+        self.capture_next_input(widget);
+        let secs = if secs.is_finite() { secs.max(0.0) } else { 0.0 };
+        self.capture_until = Some(self.clock + f64::from(secs));
+    }
+
+    /// The real seconds a timed capture has left, at the last routing;
+    /// `None` without one.
+    #[must_use]
+    pub fn capture_remaining(&self) -> Option<f32> {
+        let until = self.capture.and(self.capture_until)?;
+        Some((until - self.clock).max(0.0) as f32)
+    }
+
+    /// Whether a navigation press moved focus at the last routing: what
+    /// the theme's `focus` sound plays on.
+    #[must_use]
+    pub fn moved_focus(&self) -> bool {
+        self.moved_focus
+    }
+
     /// Ends a pending capture; its [`UiEvent::CaptureCancelled`] comes at
     /// the next routing. Does nothing when none is pending.
     pub fn cancel_capture(&mut self) {
+        self.capture_until = None;
         if let Some(widget) = self.capture.take() {
             self.pending_events
                 .push(UiEvent::CaptureCancelled { widget });
@@ -364,6 +412,12 @@ impl UiRouter {
                     nav_actions.push((binding, ui_actions(map, binding)));
                 }
             }
+        }
+        self.moved_focus = false;
+        if let Some(until) = self.capture_until
+            && (self.capture.is_none() || self.clock >= until)
+        {
+            self.cancel_capture();
         }
         self.events.clear();
         self.events.append(&mut self.pending_events);
@@ -438,7 +492,8 @@ impl UiRouter {
 /// hover, press and focus and the [`UiRouter`]; resolves the tree's prompts
 /// against the [`ActionMap`] and the last device; sends [`UiEvent`]s when
 /// `EventQueue<UiEvent>` is registered; and feeds [`RoutedInput`], after
-/// its `begin_frame`, the input the UI did not take. A world without a
+/// its `begin_frame`, the input the UI did not take; then plays the
+/// theme's menu sounds for what it routed (redo 7.17). A world without a
 /// `UiRouter` gets one; without a `UiTree`, every input is the game's.
 pub fn ui_route_system(world: &mut World) {
     let mut router = world
@@ -449,6 +504,45 @@ pub fn ui_route_system(world: &mut World) {
     match world.get_resource_mut::<UiRouter>() {
         Some(slot) => *slot = router,
         None => world.insert_resource(router),
+    }
+    play_menu_sounds(world);
+}
+
+/// Plays the theme's menu sounds for the routing just done (redo 7.17):
+/// `focus` when a navigation press moved focus, `back` on a `Cancel`, a
+/// back button's included, and `activate` on any other activation, each at
+/// most once a frame, through [`audio::play`](crate::audio::play); a sound
+/// the theme leaves unset plays nothing. The routing's own end, not a
+/// system of its own: the app times every system each frame under a copy
+/// of its name.
+fn play_menu_sounds(world: &mut World) {
+    let (Some(tree), Some(router), Some(queue)) = (
+        world.get_resource::<UiTree>(),
+        world.get_resource::<UiRouter>(),
+        world.get_resource::<EventQueue<UiEvent>>(),
+    ) else {
+        return;
+    };
+    let sounds = tree.theme().sounds();
+    if sounds.focus.is_none() && sounds.activate.is_none() && sounds.back.is_none() {
+        return;
+    }
+    let mut heard = [false; 3];
+    for event in queue.iter_current() {
+        match *event {
+            UiEvent::FocusGained { .. } => heard[0] |= router.moved_focus,
+            UiEvent::Activated { key, .. } if key != Some(BACK_KEY) => heard[1] = true,
+            UiEvent::Cancel { .. } => heard[2] = true,
+            _ => {}
+        }
+    }
+    let play: Vec<String> = [&sounds.focus, &sounds.activate, &sounds.back]
+        .into_iter()
+        .zip(heard)
+        .filter_map(|(sound, heard)| sound.clone().filter(|_| heard))
+        .collect();
+    for sound in play {
+        crate::audio::play(world, &sound, 0.0);
     }
 }
 
@@ -812,6 +906,7 @@ impl Routing<'_> {
         self.router.events.push(UiEvent::Pressed { widget, button });
         if button == MouseButton::Left {
             self.router.captured = Some(widget);
+            self.router.drag_value = self.tree.slider_value(widget).map(|value| (widget, value));
             self.start_drag(widget);
             self.tree.focus(widget);
             self.sync_focus();
@@ -836,6 +931,7 @@ impl Routing<'_> {
                 self.router
                     .events
                     .push(UiEvent::Released { widget, button });
+                self.commit_drag(widget);
                 if !self.end_drag() && self.router.hovered == Some(widget) {
                     self.activate(widget);
                     self.double_click(widget);
@@ -980,7 +1076,10 @@ impl Routing<'_> {
                 && from.distance(at) <= settings.double_click_distance
         });
         if double {
-            self.router.events.push(UiEvent::DoubleClicked { widget });
+            let key = self.tree.key(widget);
+            self.router
+                .events
+                .push(UiEvent::DoubleClicked { widget, key });
             self.router.last_click = None;
         } else {
             self.router.last_click = Some((widget, clock, at));
@@ -992,6 +1091,7 @@ impl Routing<'_> {
     fn cancel_presses(&mut self) {
         if let Some(widget) = self.router.captured.take() {
             self.router.events.push(UiEvent::PressCancelled { widget });
+            self.commit_drag(widget);
             self.end_drag();
         }
         for &(_, widget) in &self.router.presses {
@@ -1009,6 +1109,7 @@ impl Routing<'_> {
         {
             self.router.captured = None;
             self.router.events.push(UiEvent::PressCancelled { widget });
+            self.commit_drag(widget);
             self.end_drag();
             self.tree.set_pressed(None);
         }
@@ -1125,11 +1226,13 @@ impl Routing<'_> {
         }
         self.router.ui_held.push(nav);
         if actions & (NEXT | PREV) != 0 && self.focus_in_play().is_some() {
+            let before = self.tree.focused();
             if actions & PREV != 0 || shift {
                 self.tree.focus_prev();
             } else {
                 self.tree.focus_next();
             }
+            self.router.moved_focus |= self.tree.focused() != before;
             self.sync_focus();
         }
         if let Some(&(_, dir)) = DIRECTIONS.iter().find(|(bit, _)| actions & bit != 0) {
@@ -1206,10 +1309,14 @@ impl Routing<'_> {
             self.tree.slider_range(focused),
             self.tree.slider_value(focused),
         ) {
-            self.set_slider(focused, range.key_step(value, up));
+            if self.set_slider(focused, range.key_step(value, up)) {
+                self.commit(focused);
+            }
             return;
         }
+        let before = self.tree.focused();
         self.tree.focus_direction(dir);
+        self.router.moved_focus |= self.tree.focused() != before;
         self.sync_focus();
     }
 
@@ -1256,28 +1363,69 @@ impl Routing<'_> {
 
     // ---- shared ----
 
-    /// An activation: `Activated`, then a toggle flips and reports its new
-    /// state.
+    /// An activation: `Activated`, then a toggle flips and reports and
+    /// commits its new state; a back button ([`BACK_KEY`]) then backs out of
+    /// its root with `Cancel`.
     fn activate(&mut self, widget: WidgetId) {
-        self.router.events.push(UiEvent::Activated { widget });
+        let key = self.tree.key(widget);
+        self.router.events.push(UiEvent::Activated { widget, key });
         if let Some(on) = self.tree.toggled(widget) {
             self.tree.set_toggled(widget, !on);
             self.router.events.push(UiEvent::ValueChanged {
                 widget,
+                key,
                 value: UiValue::Bool(!on),
             });
+            self.commit(widget);
+        }
+        if key == Some(BACK_KEY)
+            && let Some(scope) = self.tree.root_of(widget)
+        {
+            self.router.events.push(UiEvent::Cancel { scope });
         }
     }
 
-    /// Sets a slider's value and reports it when the stored value changed.
-    fn set_slider(&mut self, widget: WidgetId, value: f32) {
+    /// Sets a slider's value and reports it when the stored value changed;
+    /// whether it did.
+    fn set_slider(&mut self, widget: WidgetId, value: f32) -> bool {
         if self.tree.set_slider_value(widget, value)
             && let Some(value) = self.tree.slider_value(widget)
         {
+            let key = self.tree.key(widget);
             self.router.events.push(UiEvent::ValueChanged {
                 widget,
+                key,
                 value: UiValue::Number(value),
             });
+            return true;
+        }
+        false
+    }
+
+    /// Commits a toggle's or a slider's value as it stands.
+    fn commit(&mut self, widget: WidgetId) {
+        let value = match (self.tree.toggled(widget), self.tree.slider_value(widget)) {
+            (Some(on), _) => UiValue::Bool(on),
+            (None, Some(value)) => UiValue::Number(value),
+            (None, None) => return,
+        };
+        let key = self.tree.key(widget);
+        self.router
+            .events
+            .push(UiEvent::ValueCommitted { widget, key, value });
+    }
+
+    /// After the primary press on `widget` ended: a slider's value, committed
+    /// when the press moved it.
+    fn commit_drag(&mut self, widget: WidgetId) {
+        if let Some((slider, before)) = self.router.drag_value.take()
+            && slider == widget
+            && self
+                .tree
+                .slider_value(widget)
+                .is_some_and(|value| value != before)
+        {
+            self.commit(widget);
         }
     }
 
@@ -1297,7 +1445,10 @@ impl Routing<'_> {
             self.router.events.push(UiEvent::FocusLost { widget });
         }
         if let Some(widget) = focused {
-            self.router.events.push(UiEvent::FocusGained { widget });
+            let key = self.tree.key(widget);
+            self.router
+                .events
+                .push(UiEvent::FocusGained { widget, key });
         }
         self.router.reported_focus = focused;
     }

@@ -117,6 +117,89 @@ fn ray_hits_a_circle_with_point_normal_and_distance() {
 }
 
 #[test]
+fn a_box_cast_meets_a_far_slope_face_at_its_corner() {
+    // A box cast down onto the middle of a 45 br face reports its corner on
+    // the face. The face's ends were told from the other vertices by their
+    // reach along its normal to 1e-3 px, under the rounding of world
+    // coordinates from about 12,000 px, so there the point jumped 45 px to
+    // one end. A 200 x 50 map of 64 px cells, ramps in row 47.
+    let mut world = world();
+    let mut data = TilemapData::new(64, 64, 200, 50);
+    let ramp = data.add_tile("ramp");
+    data.set_tile_props(
+        ramp,
+        crate::assets::TileProps {
+            slope: Some(slope_kind(1)),
+            ..Default::default()
+        },
+    );
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    let cols = [3u32, 187, 199];
+    for col in cols {
+        data.set_tile(layer, col, 47, ramp);
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("far".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("far", Vec2::ZERO));
+    physics_step(&mut world);
+    let small = Shape::Aabb {
+        half_extents: Vec2::splat(4.0),
+    };
+    for col in cols {
+        let x0 = col as f32 * 64.0;
+        let from = Vec2::new(x0 + 28.0, 2_900.0);
+        let hit = cast_shape(&world, small, from, Vec2::Y, 500.0, &all()).unwrap();
+        assert!((hit.distance - 136.0).abs() < 1e-3, "col {col}: {hit:?}");
+        let normal = Vec2::new(-1.0, -1.0).normalize();
+        assert!(hit.normal.abs_diff_eq(normal, 1e-3), "col {col}: {hit:?}");
+        let corner = Vec2::new(x0 + 32.0, 3_040.0);
+        assert!(hit.point.abs_diff_eq(corner, 0.01), "col {col}: {hit:?}");
+    }
+}
+
+#[test]
+fn far_circles_keep_their_surface() {
+    // A circle's entry once took b² − c, two numbers near the distance
+    // squared whose difference lost the radius: at 10,000 px a ray met a
+    // post of radius 2 at its centre with no normal, and a cast at
+    // 20,000 px missed. Both meet the surface, and a head-on entry stays
+    // within a hundredth of a pixel of it out to 60,000 px.
+    let mut world = world();
+    let near = post(&mut world, Vec2::new(10_000.3, 0.0), 2.0);
+    let far = post(&mut world, Vec2::new(20_000.3, 50.0), 2.0);
+    physics_step(&mut world);
+    let ray = cast_ray(&world, Vec2::ZERO, Vec2::X, 20_000.0, &all()).unwrap();
+    assert_eq!(ray.entity, Some(near));
+    assert!(ray.normal.abs_diff_eq(Vec2::NEG_X, 1e-4), "{ray:?}");
+    assert!((ray.distance - 9_998.3).abs() < 0.01, "{ray:?}");
+    let shape = Shape::Circle { radius: 2.0 };
+    let cast = cast_shape(
+        &world,
+        shape,
+        Vec2::new(0.0, 50.0),
+        Vec2::X,
+        30_000.0,
+        &all(),
+    )
+    .expect("a head-on cast meets the far post");
+    assert_eq!(cast.entity, Some(far));
+    assert!(cast.normal.abs_diff_eq(Vec2::NEG_X, 1e-4), "{cast:?}");
+    assert!((cast.distance - 19_996.3).abs() < 0.01, "{cast:?}");
+    for radius in [0.5, 1.0, 2.0, 4.0] {
+        for step in 0..1_000 {
+            let d = 500.0 + step as f32 * 59.5;
+            let t = enter_circle(Vec2::ZERO, Vec2::X, Vec2::new(d, 0.0), radius, true);
+            assert!(
+                t.is_some_and(|t| (t - (d - radius)).abs() < 0.01),
+                "radius {radius} at {d}: {t:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn ray_hits_a_tile_and_never_an_internal_face() {
     let mut world = world();
     floor(&mut world, 10);

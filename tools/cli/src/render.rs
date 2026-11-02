@@ -1,7 +1,8 @@
 //! `tungsten render` (redo 7.2): a script written from the flags (a sheet, a
-//! scene or a point of the game's world, the actions before it, the camera,
-//! overlays, the UI and one capture or a loop) and run as `tungsten run`
-//! runs one, so a review sheet, a loop or an area still is one command.
+//! scene, a point of the game's world or a screen, the actions before it,
+//! the camera, overlays, the UI and one capture or a loop) and run as
+//! `tungsten run` runs one, so a review sheet, a loop, an area still or a
+//! screen is one command.
 
 use std::path::{Path, PathBuf};
 
@@ -21,6 +22,9 @@ pub(crate) enum Subject {
     Scene(PathBuf),
     /// A point of the game's own world, the camera's centre.
     At([f32; 2]),
+    /// A screen, opened by its `ui_screens` ID or registered name on the
+    /// frame after the `--after` actions (redo 7.20).
+    Screen(String),
 }
 
 /// How much of the world an `--at` shot shows.
@@ -96,7 +100,7 @@ pub(crate) fn run(dir: &Path, args: &RenderArgs) -> anyhow::Result<bool> {
 
 /// The script `args` asks for, its paths made absolute against `dir`: the
 /// subject, overlays and `ui` at frame 1, each `--after` action a frame
-/// from 2, then the capture or the loop.
+/// from 2, a screen on the frame after them, then the capture or the loop.
 pub(crate) fn script(dir: &Path, args: &RenderArgs) -> Value {
     let mut steps = Vec::new();
     match &args.subject {
@@ -114,6 +118,7 @@ pub(crate) fn script(dir: &Path, args: &RenderArgs) -> Value {
             };
             steps.push(json!({ "frame": 1, "camera": camera }));
         }
+        Subject::Screen(_) => {}
     }
     if args.overlay != OverlayStep::default() {
         steps.push(json!({ "frame": 1, "overlay": args.overlay }));
@@ -128,6 +133,11 @@ pub(crate) fn script(dir: &Path, args: &RenderArgs) -> Value {
         }
         steps.push(step);
     }
+    let mut opened = 0;
+    if let Subject::Screen(id) = &args.subject {
+        opened = args.after.len() as u32 + 2;
+        steps.push(json!({ "frame": opened, "screen": id }));
+    }
     let out = dir.join(&args.out);
     let last = match args.shot {
         Shot::Frame(frame) => {
@@ -139,7 +149,7 @@ pub(crate) fn script(dir: &Path, args: &RenderArgs) -> Value {
             to
         }
     };
-    let frames = last.max(args.after.len() as u32 + 1);
+    let frames = last.max(args.after.len() as u32 + 1).max(opened);
     json!({ "version": 1, "frames": frames, "resolution": args.size, "steps": steps })
 }
 
@@ -156,6 +166,7 @@ pub(crate) fn args(
         value("--at")
             .map(|at| pair(&at, ',', "--at").map(Subject::At))
             .transpose()?,
+        value("--screen").map(Subject::Screen),
     ]
     .into_iter()
     .flatten()
@@ -163,9 +174,11 @@ pub(crate) fn args(
     let subject = match <[Subject; 1]>::try_from(subjects) {
         Ok([subject]) => subject,
         Err(given) if given.is_empty() => {
-            return Err("`render` needs one of --sheet, --scene and --at".to_owned());
+            return Err("`render` needs one of --sheet, --scene, --at and --screen".to_owned());
         }
-        Err(_) => return Err("give one of --sheet, --scene and --at, not several".to_owned()),
+        Err(_) => {
+            return Err("give one of --sheet, --scene, --at and --screen, not several".to_owned());
+        }
     };
     let view = match (value("--zoom"), value("--view")) {
         (Some(_), Some(_)) => return Err("give --zoom or --view, not both".to_owned()),

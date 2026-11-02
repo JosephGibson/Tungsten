@@ -194,6 +194,98 @@ impl TextLayout {
     }
 }
 
+/// An outline around text (P7-14): eight copies of the glyphs `width`
+/// away on every side and corner, in `color`, drawn under the text.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextOutline {
+    /// The copies' colour, sRGB with straight alpha.
+    pub color: [u8; 4],
+    /// How far each copy sits from the text, in the text's units; a width
+    /// that is not finite and above 0 draws none.
+    pub width: f32,
+}
+
+impl TextOutline {
+    /// An outline `width` wide in `color`.
+    #[must_use]
+    pub const fn new(color: [u8; 4], width: f32) -> Self {
+        Self { color, width }
+    }
+
+    /// Whether it draws: a finite width above 0 and a colour not fully
+    /// transparent.
+    #[must_use]
+    pub fn draws(self) -> bool {
+        self.width.is_finite() && self.width > 0.0 && self.color[3] > 0
+    }
+}
+
+/// A shadow under text (P7-14): one copy of the glyphs moved by `offset`,
+/// in `color`, drawn under the text and its outline.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextShadow {
+    /// The copy's colour, sRGB with straight alpha.
+    pub color: [u8; 4],
+    /// How far the copy sits from the text, in the text's units, y down; a
+    /// zero or non-finite offset draws none.
+    pub offset: Vec2,
+}
+
+impl TextShadow {
+    /// A shadow moved by `offset` in `color`.
+    #[must_use]
+    pub const fn new(color: [u8; 4], offset: Vec2) -> Self {
+        Self { color, offset }
+    }
+
+    /// Whether it draws: a finite offset other than zero and a colour not
+    /// fully transparent.
+    #[must_use]
+    pub fn draws(self) -> bool {
+        self.offset.is_finite() && self.offset != Vec2::ZERO && self.color[3] > 0
+    }
+}
+
+/// The copies a text's `shadow` and `outline` draw under it, in drawing
+/// order: the shadow's, then the outline's eight (sides, then corners), each
+/// as its offset in physical pixels at `scale` physical pixels per unit,
+/// rounded to whole pixels, an outline's at least one, and its colour. A
+/// part that does not draw adds none.
+pub fn effect_copies(
+    outline: Option<TextOutline>,
+    shadow: Option<TextShadow>,
+    scale: f32,
+) -> impl Iterator<Item = (Vec2, [u8; 4])> {
+    let mut copies = [(Vec2::ZERO, [0; 4]); 9];
+    let mut count = 0;
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    if let Some(shadow) = shadow.filter(|shadow| shadow.draws()) {
+        copies[count] = ((shadow.offset * scale).round(), shadow.color);
+        count += 1;
+    }
+    if let Some(outline) = outline.filter(|outline| outline.draws()) {
+        let width = (outline.width * scale).round().max(1.0);
+        for [x, y] in [
+            [-1.0, 0.0],
+            [1.0, 0.0],
+            [0.0, -1.0],
+            [0.0, 1.0],
+            [-1.0, -1.0],
+            [1.0, -1.0],
+            [-1.0, 1.0],
+            [1.0, 1.0],
+        ] {
+            copies[count] = (Vec2::new(x, y) * width, outline.color);
+            count += 1;
+        }
+    }
+    copies.into_iter().take(count)
+}
+
 /// The base style of a block of text; spans may override parts of it.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
@@ -212,10 +304,16 @@ pub struct TextStyle {
     pub color: [u8; 4],
     /// Alignment, wrapping, overflow, hinting, spacing and features.
     pub layout: TextLayout,
+    /// The outline drawn around the glyphs (P7-14); paint only, so a text
+    /// node lays out as without it.
+    pub outline: Option<TextOutline>,
+    /// The shadow drawn under the glyphs (P7-14); paint only.
+    pub shadow: Option<TextShadow>,
 }
 
 impl TextStyle {
-    /// Regular, upright, white text in `family` with the default layout.
+    /// Regular, upright, white text in `family` with the default layout, no
+    /// outline and no shadow.
     #[must_use]
     pub fn new(family: impl Into<String>, size: f32, line_height: f32) -> Self {
         Self {
@@ -226,7 +324,23 @@ impl TextStyle {
             line_height,
             color: [255, 255, 255, 255],
             layout: TextLayout::default(),
+            outline: None,
+            shadow: None,
         }
+    }
+
+    /// This style with `outline`.
+    #[must_use]
+    pub fn with_outline(mut self, outline: TextOutline) -> Self {
+        self.outline = Some(outline);
+        self
+    }
+
+    /// This style with `shadow`.
+    #[must_use]
+    pub fn with_shadow(mut self, shadow: TextShadow) -> Self {
+        self.shadow = Some(shadow);
+        self
     }
 
     /// This style with `weight`.
@@ -367,18 +481,50 @@ impl TextMetrics {
 }
 
 /// A retained text node. The text engine mints IDs; a removed node's ID never
-/// names the node that later takes its slot.
+/// names the node that later takes its slot. An ID may name the node's plain
+/// view instead ([`Self::plain`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextNodeId {
     index: u32,
     generation: u32,
+    plain: bool,
 }
 
 impl TextNodeId {
     /// The ID of slot `index` at `generation`. For the engine that mints them.
     #[must_use]
     pub const fn new(index: u32, generation: u32) -> Self {
-        Self { index, generation }
+        Self {
+            index,
+            generation,
+            plain: false,
+        }
+    }
+
+    /// The node's plain view (P7-14): its committed layout drawn without its
+    /// spans' own colours, so an outline or shadow copy of a node with
+    /// coloured spans draws all in the copy's colour.
+    #[must_use]
+    pub const fn plain(self) -> Self {
+        Self {
+            plain: true,
+            ..self
+        }
+    }
+
+    /// Whether this names a node's plain view.
+    #[must_use]
+    pub const fn is_plain(self) -> bool {
+        self.plain
+    }
+
+    /// The node itself, for a plain view's ID.
+    #[must_use]
+    pub const fn base(self) -> Self {
+        Self {
+            plain: false,
+            ..self
+        }
     }
 
     /// The slot index.
@@ -494,6 +640,12 @@ pub struct WorldLabel {
     /// The label's own scale around its pivot, such as a pop; 1.0 by
     /// default. The extract snaps the drawn scale to steps of 1/8.
     pub scale: f32,
+    /// The outline drawn around it, in UI units; none by default. The
+    /// extract's cull margin grows by its width.
+    pub outline: Option<TextOutline>,
+    /// The shadow drawn under it, in UI units; none by default. The
+    /// extract's cull margin grows by its offset.
+    pub shadow: Option<TextShadow>,
 }
 
 impl WorldLabel {
@@ -516,6 +668,8 @@ impl WorldLabel {
             line_height: 0.0,
             color: [255, 255, 255, 255],
             scale: 1.0,
+            outline: None,
+            shadow: None,
         }
     }
 
@@ -551,6 +705,20 @@ impl WorldLabel {
     #[must_use]
     pub fn with_scale(mut self, scale: f32) -> Self {
         self.scale = scale;
+        self
+    }
+
+    /// This label with `outline`.
+    #[must_use]
+    pub fn with_outline(mut self, outline: TextOutline) -> Self {
+        self.outline = Some(outline);
+        self
+    }
+
+    /// This label with `shadow`.
+    #[must_use]
+    pub fn with_shadow(mut self, shadow: TextShadow) -> Self {
+        self.shadow = Some(shadow);
         self
     }
 }

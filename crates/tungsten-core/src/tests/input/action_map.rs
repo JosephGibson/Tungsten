@@ -915,3 +915,88 @@ fn the_stick_response_clamps_holds_across_frames_and_leaves_the_presses_raw() {
     });
     assert_eq!(input.stick_response(), StickResponse::DEFAULT);
 }
+
+#[test]
+fn short_labels_shorten_long_names() {
+    let key = |code| Binding::Key { code };
+    let pad = |button| Binding::GamepadButton { button };
+    for (binding, short) in [
+        (key(KeyCode::KeyW), "W"),
+        (key(KeyCode::Escape), "Esc"),
+        (key(KeyCode::Space), "Spc"),
+        (key(KeyCode::ShiftLeft), "LSh"),
+        (key(KeyCode::ControlRight), "RCt"),
+        (key(KeyCode::PageUp), "PaU"),
+        (key(KeyCode::Enter), "Ent"),
+        (
+            Binding::Mouse {
+                button: MouseButton::Left,
+            },
+            "LMB",
+        ),
+        (
+            Binding::Mouse {
+                button: MouseButton::Right,
+            },
+            "RMB",
+        ),
+        (
+            Binding::Scroll {
+                direction: ScrollDirection::Up,
+            },
+            "WhU",
+        ),
+        (pad(GamepadButton::South), "A"),
+        (pad(GamepadButton::LeftShoulder), "LB"),
+        (pad(GamepadButton::Start), "Sta"),
+        (pad(GamepadButton::DPadUp), "DUp"),
+        (pad(GamepadButton::DPadRight), "DRt"),
+        (
+            Binding::GamepadAxis {
+                axis: GamepadAxis::LeftStickY,
+                direction: AxisDirection::Positive,
+            },
+            "LSU",
+        ),
+        (
+            Binding::GamepadAxis {
+                axis: GamepadAxis::RightStickX,
+                direction: AxisDirection::Negative,
+            },
+            "RSL",
+        ),
+    ] {
+        assert_eq!(binding.short_label(), short, "{}", binding.label());
+        assert!(binding.short_label().chars().count() <= 3);
+    }
+}
+
+#[test]
+fn routed_just_pressed_reads_what_the_ui_left() {
+    let mut world = crate::ecs::World::new();
+    assert!(
+        !crate::input::just_pressed(&world, "jump"),
+        "no map, nothing"
+    );
+    world.insert_resource(ActionMap::default_map());
+    let mut raw = InputState::new();
+    raw.begin_frame();
+    raw.key_down(KeyCode::Space);
+    world.insert_resource(raw);
+    assert!(
+        crate::input::just_pressed(&world, "jump"),
+        "the raw input without a routed one"
+    );
+    assert!(crate::input::pressed(&world, "jump"));
+
+    // The UI took the press: the routed view the game reads has none.
+    let mut routed = crate::input::RoutedInput::default();
+    routed.begin_frame();
+    world.insert_resource(routed);
+    assert!(!crate::input::just_pressed(&world, "jump"));
+    assert!(!crate::input::pressed(&world, "jump"));
+    world
+        .resource_mut::<crate::input::RoutedInput>()
+        .key_down(KeyCode::Space);
+    assert!(crate::input::just_pressed(&world, "jump"), "one it left");
+}

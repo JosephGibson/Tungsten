@@ -11,9 +11,9 @@ use crate::component_registry::{MissingAsset, SpawnContext};
 use crate::components::Transform;
 use crate::ecs::World;
 use crate::physics::{
-    Collider, CollisionEvent, ContactBegan, ContactEnded, PhysicsBuffers, PhysicsLayers,
-    PhysicsMaterials, Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered,
-    SensorExited, Shape, Spin, Velocity, physics_step,
+    Collider, CollisionEvent, PhysicsBuffers, PhysicsLayers, PhysicsMaterials, Position,
+    PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, SensorExited, Shape, Spin, Velocity,
+    physics_step,
 };
 use crate::save::SaveOptions;
 use crate::schedule::{Plugin, Schedule, Stage, system};
@@ -28,8 +28,7 @@ pub const PHYSICS_SYNC: &str = "physics_sync";
 
 /// Registers [`PHYSICS_PREV_SNAPSHOT`] and [`PHYSICS_STEP`] after it in
 /// `FixedUpdate`, [`PHYSICS_SYNC`] in `PostUpdate`,
-/// `EventQueue<CollisionEvent>`, `EventQueue<ContactBegan>`,
-/// `EventQueue<ContactEnded>`, `EventQueue<SensorEntered>`,
+/// `EventQueue<CollisionEvent>`, `EventQueue<SensorEntered>`,
 /// `EventQueue<SensorExited>`, the saved components `position`, `velocity`
 /// and `spin` (each through a saved form of its own), and the
 /// `rigid_body` scene component, which
@@ -40,14 +39,16 @@ pub const PHYSICS_SYNC: &str = "physics_sync";
 /// registered first, so it heads the stage ahead of a game's fixed systems,
 /// which `DefaultPlugins` builds before. `PhysicsConfig` stays the app's
 /// resource, so a game edits it before or after adding the plugin.
+/// [`ContactBegan`](crate::physics::ContactBegan) and
+/// [`ContactEnded`](crate::physics::ContactEnded) are the game's to
+/// register: the step keeps the contact record only while either queue
+/// exists.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_event::<CollisionEvent>();
-        world.register_event::<ContactBegan>();
-        world.register_event::<ContactEnded>();
         world.register_event::<SensorEntered>();
         world.register_event::<SensorExited>();
         world.register_component_with_assets(RIGID_BODY, check_rigid_body, spawn_rigid_body);

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde::Deserialize;
+use tungsten_core::ui::{UiBindings, UiScreenRegistry, UiValue};
 use tungsten_core::{AssetRegistry, Config, MissingAsset, World};
 
 use super::*;
@@ -62,8 +63,17 @@ struct Loot {
     prefab: String,
 }
 
+fn title(_: &World) -> String {
+    "Game".to_owned()
+}
+
+fn on(_: &World) -> UiValue {
+    UiValue::Bool(true)
+}
+
 /// A World as a game's `main` builds it: the default and kit plugins, a
-/// test component and a data kind naming prefabs.
+/// test component, a data kind naming prefabs, and a screen's text and
+/// value bindings.
 fn game_world() -> App {
     let mut app = App::with_plugins(Config::default(), DefaultPlugins::set())
         .expect("App::with_plugins failed");
@@ -74,6 +84,7 @@ fn game_world() -> App {
     world.register_data_kind_with_assets::<Loot>("drops", |loot, world| {
         world.check_prefab_id("prefab", &loot.prefab)
     });
+    UiBindings::of(world).text("title", title).value("on", on);
     app
 }
 
@@ -113,8 +124,8 @@ fn particle(mesh: &str) -> String {
     )
 }
 
-/// Two roots in `game` and the files they name, with each of fourteen
-/// errors seeded when `broken`; `outside` holds a sprite outside the game's
+/// Two roots in `game` and the files they name, with each of twenty errors
+/// seeded when `broken`; `outside` holds a sprite outside the game's
 /// folder. Returns the roots.
 fn seed(game: &Folder, outside: &Folder, broken: bool) -> Vec<PathBuf> {
     let far = outside.png("outside.png", 16);
@@ -141,6 +152,11 @@ fn seed(game: &Folder, outside: &Folder, broken: bool) -> Vec<PathBuf> {
                 }},
                 "animations": {{"walk": {{"path": "anim/walk.json"}}}},
                 "ui_themes": {{"main": {{"path": "ui/theme.json"}}}},
+                "ui_screens": {{
+                    "menu": {{"path": "ui/screens/menu.json"}},
+                    "typo": {{"path": "ui/screens/typo.json"}},
+                    "hud": {{"path": "ui/screens/hud.json"}}
+                }},
                 "tilemaps": {{"level": {{"path": "maps/level.tmj"}}}},
                 "particle_meshes": {{"tri": {{"vertices": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], "indices": [0, 1, 2]}}}},
                 "particles": {{"spark": {{"path": "particles/spark.json"}}}},
@@ -177,6 +193,34 @@ fn seed(game: &Folder, outside: &Folder, broken: bool) -> Vec<PathBuf> {
             r#"{{"tokens": {{"fonts": {{"body": "engine_mono", "heading": "engine_mono", "mono": "{}"}}}}}}"#,
             pick("ghost", "engine_mono")
         ),
+    );
+    // A screen's unknown style and binding, a binding of the wrong kind, a
+    // push to nothing and one to a file a data screen refuses; another
+    // screen's misspelt field.
+    let menu = format!(
+        r#"{{"version": 1, "root": {{"kind": "screen", "width": "menu_width", "children": [
+            {{"kind": "display", "style": "{}", "bind": {{"text": "{}"}}}},
+            {{"kind": "toggle_row", "caption": "On", "bind": {{"value": "{}"}}}},
+            {{"kind": "button", "text": "Go", "on": {{"push": "{}"}}}},
+            {{"kind": "button", "text": "Back", "on": {{"push": "{}"}}}}
+        ]}}}}"#,
+        pick("loud", "heading"),
+        pick("ttle", "title"),
+        pick("title", "on"),
+        pick("nowhere", "typo"),
+        pick("hud", "menu"),
+    );
+    game.write("assets/ui/screens/menu.json", &menu);
+    game.write(
+        "assets/ui/screens/typo.json",
+        &format!(
+            r#"{{"version": 1, "root": {{"kind": "screen", "width": 1, "{}": []}}}}"#,
+            pick("childern", "children")
+        ),
+    );
+    game.write(
+        "assets/ui/screens/hud.json",
+        r#"{"version": 1, "root": {"kind": "root", "layer": "game"}}"#,
     );
     game.write("assets/maps/level.tmj", &tmj(pick("ghost", "hero")));
     game.write(
@@ -240,7 +284,7 @@ fn every_seeded_error_is_reported_with_its_file() {
         .iter()
         .map(|e| format!("{}: {}", e.file.display(), e.message))
         .collect();
-    assert_eq!(errors.len(), 14, "{report:#?}");
+    assert_eq!(errors.len(), 20, "{report:#?}");
     assert_eq!(
         files(&errors),
         [
@@ -256,6 +300,12 @@ fn every_seeded_error_is_reported_with_its_file() {
             "assets/scenes/far.json",
             "assets/scenes/typo.json",
             "assets/sprites/lit_n.png",
+            "assets/ui/screens/menu.json",
+            "assets/ui/screens/menu.json",
+            "assets/ui/screens/menu.json",
+            "assets/ui/screens/menu.json",
+            "assets/ui/screens/menu.json",
+            "assets/ui/screens/typo.json",
             "assets/ui/theme.json",
             "levels/manifest.json",
         ],
@@ -284,6 +334,26 @@ fn every_seeded_error_is_reported_with_its_file() {
     assert!(message("assets/sprites/lit_n.png").contains("normal_map dimensions"));
     assert!(message("levels/manifest.json").contains("duplicate asset ID 'hero'"));
     assert!(message("assets/prefabs/ghost.json").contains("unknown sprite ID 'ghost'"));
+    assert!(
+        message("assets/ui/screens/typo.json")
+            .starts_with("ui screen 'typo': root.childern: unknown field `childern`"),
+        "{report:#?}"
+    );
+    let screen: Vec<&str> = errors
+        .iter()
+        .filter(|e| e.file == Path::new("assets/ui/screens/menu.json"))
+        .map(|e| e.message.as_str())
+        .collect();
+    assert_eq!(
+        screen,
+        [
+            "ui screen 'menu': root.children[0].style: no text style 'loud'",
+            "ui screen 'menu': root.children[0].bind.text: no text binding 'ttle'",
+            "ui screen 'menu': root.children[1].bind.value: no value binding 'title'",
+            "ui screen 'menu': root.children[2].on.push: no screen to push 'nowhere'",
+            "ui screen 'menu': root.children[3].on.push: screen 'hud' is a file a data screen refuses: its root is not modal on the popup layer",
+        ]
+    );
     // No root is loaded as a scene, and the hidden folder is skipped.
     assert!(
         !errors
@@ -302,6 +372,10 @@ fn the_same_files_with_every_error_fixed_report_none() {
     let errors = check_files(app.world_mut(), &roots, &game.0);
     assert!(errors.is_empty(), "{errors:#?}");
     let world = app.world_mut();
+    assert_eq!(
+        world.resource::<UiScreenRegistry>().ids(),
+        ["hud", "menu", "typo"]
+    );
     assert!(
         world
             .resource::<AssetRegistry>()

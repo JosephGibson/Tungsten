@@ -6,7 +6,7 @@
 //! 16 × 16 chunks around the cells written (`outline`); each is in its
 //! collision layer's physics layers and takes its tile's physics material's
 //! restitution and friction, resolved when a map is traced and again when
-//! the `PhysicsMaterials` resource's version moves. The cache keeps the
+//! the `PhysicsMaterials` resource changes. The cache keeps the
 //! outline's runs beside them, which casts meet.
 
 use super::outline::{CHUNK, LayerCells, Run, TileClass, trace_chunk};
@@ -320,9 +320,10 @@ struct CacheState {
     frictions: Vec<f32>,
     /// Each tile proxy's rolling resistance, likewise.
     rollings: Vec<f32>,
-    /// The version of the World's `PhysicsMaterials` the maps' coefficients
-    /// were resolved against; `None` without the resource.
-    materials_version: Option<u64>,
+    /// The World's `PhysicsMaterials` the maps' coefficients were resolved
+    /// against, compared whole (`same_materials`), since a new resource
+    /// starts at version 0 as the last did; `None` without the resource.
+    materials: Option<PhysicsMaterials>,
     /// The arrays the last refresh replaced, kept for the next one to fill.
     spare: TileArrays,
     /// Maps traced, whole or in part, since the cache was made.
@@ -746,6 +747,33 @@ fn origin_bits(instance: &TilemapInstance) -> [u32; 2] {
     [instance.origin.x.to_bits(), instance.origin.y.to_bits()]
 }
 
+/// Whether the World's materials are the ones the cache resolved against,
+/// compared bit for bit: a NaN coefficient matches itself, so it restamps
+/// the tiles once rather than every step.
+fn same_materials(now: Option<&PhysicsMaterials>, then: Option<&PhysicsMaterials>) -> bool {
+    let bits = |material: &PhysicsMaterial| {
+        let PhysicsMaterial {
+            friction,
+            restitution,
+            rolling,
+        } = *material;
+        [friction.to_bits(), restitution.to_bits(), rolling.to_bits()]
+    };
+    match (now, then) {
+        (None, None) => true,
+        (Some(now), Some(then)) => {
+            now.version() == then.version()
+                && now.by_name.len() == then.by_name.len()
+                && now
+                    .by_name
+                    .iter()
+                    .zip(&then.by_name)
+                    .all(|((a, x), (b, y))| a == b && bits(x) == bits(y))
+        }
+        _ => false,
+    }
+}
+
 /// The physics material coefficients of each of `data`'s tileset entries,
 /// from its `material` and the World's `materials`: empty when no entry
 /// names a material `materials` holds, every tile then taking 0.
@@ -987,9 +1015,10 @@ impl TileCache {
         state.written_ids.clear();
         let registry = world.get_resource::<TilemapRegistry>();
         let materials = world.get_resource::<PhysicsMaterials>();
-        let materials_version = materials.map(PhysicsMaterials::version);
-        let restamp = materials_version != state.materials_version;
-        state.materials_version = materials_version;
+        let restamp = !same_materials(materials, state.materials.as_ref());
+        if restamp {
+            state.materials = materials.cloned();
+        }
         if !restamp && Self::matches(&state.maps, world, registry) {
             return;
         }

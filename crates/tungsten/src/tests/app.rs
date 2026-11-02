@@ -1151,3 +1151,96 @@ fn input_during_boot_is_dropped() {
     assert!(!input.just_pressed(KeyCode::KeyA) && !input.just_released(KeyCode::KeyA));
     assert_eq!(input.focused(), focused);
 }
+
+#[test]
+fn a_shown_pointer_sprite_hides_the_system_cursor() {
+    use tungsten_core::ui::{PointerSprite, UiTree};
+    let mut app = App::new(Config::default()).unwrap();
+    let sprite = app
+        .world
+        .resource_mut::<tungsten_core::AssetRegistry>()
+        .intern_sprite("cursor");
+    let arrow = PointerSprite::new(sprite, glam::Vec2::splat(16.0), glam::Vec2::new(1.0, 2.0));
+    app.world
+        .resource_mut::<UiTree>()
+        .set_pointer_sprite(Some(arrow));
+    app.stage_cursor();
+    assert!(!app.cursor_hidden(), "set but not shown");
+
+    app.world.resource_mut::<UiTree>().show_pointer_sprite(true);
+    app.world
+        .resource_mut::<tungsten_core::InputState>()
+        .update_cursor_position(120.0, 80.0);
+    app.stage_cursor();
+    assert!(app.cursor_hidden(), "shown, the system cursor hides");
+    let tree = app.world.resource::<UiTree>();
+    let root = tree
+        .roots()
+        .iter()
+        .copied()
+        .find(|root| tree.key(*root) == Some(tungsten_core::ui::POINTER_KEY))
+        .expect("the pointer's root");
+    assert_eq!(
+        tree.translation(root),
+        Some(glam::Vec2::new(120.0, 80.0)),
+        "at the pointer"
+    );
+
+    app.world
+        .resource_mut::<UiTree>()
+        .show_pointer_sprite(false);
+    app.stage_cursor();
+    assert!(!app.cursor_hidden(), "hidden again, the cursor shows");
+}
+
+#[test]
+fn the_configured_theme_applies_once_loaded() {
+    use tungsten_core::ui::{Theme, UiThemeRegistry, UiTree};
+    let mut config = Config::default();
+    config.ui.theme = Some("shell".to_owned());
+    let mut app = App::new(config).unwrap();
+    app.stage_hot_reload();
+    assert_eq!(
+        app.world.resource::<UiTree>().theme_id(),
+        None,
+        "not loaded yet"
+    );
+    let mut theme = Theme::default();
+    theme.tokens.colors.accent = [1, 2, 3, 255];
+    app.world
+        .resource_mut::<UiThemeRegistry>()
+        .insert("shell", theme.clone());
+    app.stage_hot_reload();
+    let tree = app.world.resource::<UiTree>();
+    assert_eq!(tree.theme_id(), Some("shell"), "applied once loaded");
+    assert_eq!(tree.theme().tokens.colors.accent, [1, 2, 3, 255]);
+
+    // Once: a theme the game sets after it stays.
+    app.world
+        .resource_mut::<UiTree>()
+        .set_theme(Theme::default());
+    app.stage_hot_reload();
+    assert_eq!(app.world.resource::<UiTree>().theme_id(), None);
+}
+
+#[test]
+fn the_configured_floor_and_reference_height_reach_the_scale_factor() {
+    let mut config = Config::default();
+    config.ui.reference_height = Some(720.0);
+    config.ui.min_viewport = Some([731.0, 411.0]);
+    config.ui.hud_corner = Some(tungsten_core::config::UiCorner::TopRight);
+    let app = App::new(config).unwrap();
+    let scale = app.world.resource::<tungsten_core::ScaleFactor>();
+    assert_eq!(scale.reference_height(), Some(720.0));
+    assert_eq!(scale.min_viewport(), Some(glam::Vec2::new(731.0, 411.0)));
+    let hud = app.world.resource::<crate::debug_hud::DebugHud>();
+    assert_eq!(hud.corner, crate::debug_hud::HudCorner::TopRight);
+
+    let plain = App::new(Config::default()).unwrap();
+    let scale = plain.world.resource::<tungsten_core::ScaleFactor>();
+    assert_eq!(
+        (scale.reference_height(), scale.min_viewport()),
+        (None, None),
+        "none unless set"
+    );
+}

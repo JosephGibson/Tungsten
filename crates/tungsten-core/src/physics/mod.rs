@@ -5,7 +5,8 @@
 //! dynamic bodies; a sensor moves the same way, collides with nothing and
 //! reports what it begins to overlap ([`SensorEntered`]). Contacts send
 //! [`CollisionEvent`]s with their closing speed and tile cell, and pairs
-//! their begins and ends ([`ContactBegan`], [`ContactEnded`]). Ray and shape
+//! their begins and ends ([`ContactBegan`], [`ContactEnded`]) once a game
+//! registers either queue. Ray and shape
 //! casts, overlaps and nearest-surface queries read the last step's bodies,
 //! sensors and tiles ([`cast_ray`], [`cast_shape`], [`overlap`],
 //! [`nearest`]). A game names its physics layers and materials in its
@@ -127,8 +128,9 @@ pub struct PhysicsMaterial {
 
 /// The physics materials a game names in its manifests'
 /// `physics_materials`, by name. The asset loader inserts it and a manifest
-/// reload replaces its materials, moving its [`version`](Self::version) on,
-/// which the tile cache reads.
+/// reload replaces its materials, moving its [`version`](Self::version) on;
+/// the tile cache restamps the tiles whenever it changes, a new resource
+/// in its place included.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PhysicsMaterials {
     by_name: BTreeMap<String, PhysicsMaterial>,

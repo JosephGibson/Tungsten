@@ -148,7 +148,7 @@ pub(super) fn solve_friction(
         let vt = (proxies[a].velocity - proxies[b].velocity).dot(t)
             - rim(spins, row.spin_a)
             - rim(spins, row.spin_b);
-        let bound = row.mu * contact.impulse;
+        let bound = finite_bound(row.mu * contact.impulse);
         let new_impulse = (row.impulse - row.tangent_mass * vt).clamp(-bound, bound);
         let delta = new_impulse - row.impulse;
         row.impulse = new_impulse;
@@ -156,6 +156,14 @@ pub(super) fn solve_friction(
             apply_tangent(proxies, spins, contact, row, delta);
         }
     }
+}
+
+/// A friction or rolling row's bound, its coefficient times the contact's
+/// normal impulse: 0 where an overflowed, infinite coefficient meets an
+/// impulse of 0, whose NaN would fail the clamp. A contact without normal
+/// impulse holds nothing; every other bound passes as it is.
+fn finite_bound(bound: f32) -> f32 {
+    if bound.is_nan() { 0.0 } else { bound }
 }
 
 /// One Gauss-Seidel pass of rolling resistance after the friction pass:
@@ -177,7 +185,7 @@ pub(super) fn solve_rolling(
     for row in rolling.iter_mut() {
         let contact = &contacts[row.contact as usize];
         let relative = spin_of(spins, row.spin_a) - spin_of(spins, row.spin_b);
-        let bound = row.bound * contact.impulse;
+        let bound = finite_bound(row.bound * contact.impulse);
         let new_impulse = (row.impulse - row.mass * relative).clamp(-bound, bound);
         let delta = new_impulse - row.impulse;
         row.impulse = new_impulse;

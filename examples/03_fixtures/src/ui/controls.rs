@@ -56,12 +56,12 @@ pub fn build_controls(tree: &mut UiTree) -> UiControls {
     let mut style = LayoutStyle::row().with_gap(theme::ROW_GAP);
     style.align_items = Align::Center;
     let row = tree.panel(window, style);
-    tree.set_overrides(row, widgets::transparent());
+    widgets::fill(tree, row, [0; 4]);
     let mut cell_style =
         LayoutStyle::row().with_size(Sizing::Px(theme::CAPTION_WIDTH), Sizing::Auto);
     cell_style.align_items = Align::Center;
     let cell = tree.panel(row, cell_style);
-    tree.set_overrides(cell, widgets::transparent());
+    widgets::fill(tree, cell, [0; 4]);
     let caption = tree.label(cell, "Volume");
     tree.set_layout_style(
         caption,
@@ -80,7 +80,7 @@ pub fn build_controls(tree: &mut UiTree) -> UiControls {
         volume,
         LayoutStyle::default().with_size(Sizing::Px(theme::CONTROL_WIDTH), Sizing::Auto),
     );
-    widgets::name_control(tree, volume, "Volume");
+    widgets::name(tree, volume, "Volume");
 
     let (_, locked) = widgets::toggle_row(tree, window, "Locked", false);
     tree.set_enabled(locked, false);

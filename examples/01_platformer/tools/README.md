@@ -82,8 +82,9 @@ the family makes. A code session never unlocks; a change to shared code that
 moves a locked file waits for the owner's unlock of each family it moves.
 
 The shell's assets come with its code: Inter and Source Serif 4 with their
-licence files, and the `damage_flash` shader and material are copied byte for
-byte from `templates/basic/assets/`, with their manifest entries, so `--check`
+licence files, the shell's screen files (`assets/ui/screens/`), and the
+`damage_flash` shader and material are copied byte for byte from
+`templates/basic/assets/`, with their manifest entries, so `--check`
 also catches drift from the template. The `shell` theme is the template's text in
 01's colours (01 (h), `generate.THEME_COLORS`): each of the template's colours
 maps to 01's, darker backgrounds and a vivid purple, so a key the template adds

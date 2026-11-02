@@ -65,6 +65,72 @@ impl Binding {
             }
         }
     }
+
+    /// [`Self::label`] in three characters at most (redo 7.17), for a tight
+    /// prompt's `{short:NAME}`: a label that fits as written; a mouse button
+    /// as `LMB`, `RMB`, `MMB` or `M<n>`; `Spc` for the space bar; a D-pad
+    /// direction as `DUp`, `DDn`, `DLf` or `DRt`; a stick direction as its
+    /// stick and its way's initial (`LSU`, `RSL`); a side and a key as the
+    /// side's initial and the key's first two letters (`LSh`); another
+    /// two-word label as its first word's first two letters and its second's
+    /// initial (`WhU`); else its first three.
+    #[must_use]
+    pub fn short_label(self) -> Cow<'static, str> {
+        match self {
+            Self::GamepadButton { button } => {
+                let short = match button {
+                    GamepadButton::DPadUp => "DUp",
+                    GamepadButton::DPadDown => "DDn",
+                    GamepadButton::DPadLeft => "DLf",
+                    GamepadButton::DPadRight => "DRt",
+                    _ => return shorten(&self.label()),
+                };
+                Cow::Borrowed(short)
+            }
+            Self::GamepadAxis { axis, direction } => {
+                let stick = match axis {
+                    GamepadAxis::LeftStickX | GamepadAxis::LeftStickY => 'L',
+                    _ => 'R',
+                };
+                let way = match (axis, direction) {
+                    (
+                        GamepadAxis::LeftStickX | GamepadAxis::RightStickX,
+                        AxisDirection::Negative,
+                    ) => 'L',
+                    (GamepadAxis::LeftStickX | GamepadAxis::RightStickX, _) => 'R',
+                    (_, AxisDirection::Negative) => 'D',
+                    _ => 'U',
+                };
+                Cow::Owned(format!("{stick}S{way}"))
+            }
+            _ => shorten(&self.label()),
+        }
+    }
+}
+
+/// `label` in three characters at most, by [`Binding::short_label`]'s rule
+/// for keys, mouse buttons, the wheel and pad buttons.
+fn shorten(label: &str) -> Cow<'static, str> {
+    if label.chars().count() <= 3 {
+        return Cow::Owned(label.to_owned());
+    }
+    match label {
+        "Left Mouse" => return Cow::Borrowed("LMB"),
+        "Right Mouse" => return Cow::Borrowed("RMB"),
+        "Middle Mouse" => return Cow::Borrowed("MMB"),
+        "Space" => return Cow::Borrowed("Spc"),
+        _ => {}
+    }
+    if let Some(button) = label.strip_prefix("Mouse ") {
+        return Cow::Owned(format!("M{button}"));
+    }
+    let first = |word: &str, n: usize| word.chars().take(n).collect::<String>();
+    let words: Vec<&str> = label.split(' ').collect();
+    Cow::Owned(match words[..] {
+        [side @ ("Left" | "Right"), key] => format!("{}{}", first(side, 1), first(key, 2)),
+        [one, two] => format!("{}{}", first(one, 2), first(two, 1)),
+        _ => first(label, 3),
+    })
 }
 
 /// String action names mapped to physical bindings.

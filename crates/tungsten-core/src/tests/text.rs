@@ -126,3 +126,50 @@ fn world_label_builders_set_their_fields() {
     assert_eq!(drained[1].text, "b");
     assert!(labels.is_empty());
 }
+
+#[test]
+fn a_world_label_takes_an_outline() {
+    let outline = TextOutline::new([0, 0, 0, 255], 1.5);
+    let shadow = TextShadow::new([0, 0, 0, 128], Vec2::new(2.0, 2.0));
+    let label = WorldLabel::new("12", Vec2::ZERO, "mono", 16.0);
+    assert_eq!(
+        (label.outline, label.shadow),
+        (None, None),
+        "none by default"
+    );
+    let label = label.with_outline(outline).with_shadow(shadow);
+    assert_eq!((label.outline, label.shadow), (Some(outline), Some(shadow)));
+
+    // Its copies at 2 physical pixels per unit: the shadow, then eight.
+    let copies: Vec<_> = effect_copies(label.outline, label.shadow, 2.0).collect();
+    assert_eq!(copies.len(), 9);
+    assert_eq!(copies[0], (Vec2::new(4.0, 4.0), [0, 0, 0, 128]));
+    assert_eq!(
+        copies[1],
+        (Vec2::new(-3.0, 0.0), [0, 0, 0, 255]),
+        "1.5 × 2 rounds to 3"
+    );
+    assert_eq!(copies[8].0, Vec2::new(3.0, 3.0));
+    // A thin outline keeps a pixel; a part that does not draw adds none.
+    let thin = TextOutline::new([0, 0, 0, 255], 0.1);
+    assert_eq!(
+        effect_copies(Some(thin), None, 1.0).nth(1),
+        Some((Vec2::new(1.0, 0.0), [0, 0, 0, 255]))
+    );
+    for none in [
+        TextOutline::new([0, 0, 0, 255], 0.0),
+        TextOutline::new([0, 0, 0, 0], 2.0),
+        TextOutline::new([0, 0, 0, 255], f32::NAN),
+    ] {
+        assert!(!none.draws());
+        assert_eq!(effect_copies(Some(none), None, 1.0).count(), 0);
+    }
+    assert_eq!(
+        effect_copies(None, Some(TextShadow::new([0; 4], Vec2::ONE)), 1.0).count(),
+        0
+    );
+    assert_eq!(
+        effect_copies(None, Some(TextShadow::new([9; 4], Vec2::ZERO)), 1.0).count(),
+        0
+    );
+}

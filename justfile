@@ -137,7 +137,7 @@ release-check *args:
 release-preflight version *args:
     python3 -B scripts/release-preflight.py "$@"
 
-# The release (D-227): `minor 'summary'` cuts the next minor after the docs ratchet, runs the checks in order, commits the cut and runs the preflight, resuming at the checks after a failure; `rehearsal` checks a fresh rehearsal tag; --dry-run prints the chain.
+# The release (D-227): `minor 'summary'` waits for CI to pass on HEAD (D-232), cuts the next minor after the docs ratchet, runs the checks in order, commits the cut and runs the preflight, resuming at the checks after a failure; `rehearsal` checks a fresh rehearsal tag; --dry-run prints the chain.
 release kind *args:
     python3 -B scripts/release.py run "$@"
 

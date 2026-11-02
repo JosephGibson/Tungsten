@@ -505,3 +505,56 @@ fn the_prewarms_areas_are_the_lists_runs_at_their_boxes_and_scales() {
     assert_eq!(placed, [(10.0, 20.0, 2.0), (200.0, 300.0, 3.0)]);
     assert_eq!(area_glyphs(&areas), 4);
 }
+
+#[test]
+fn an_outline_is_not_cut_at_its_text_box() {
+    // A label's outline copies, as the paint list gives them: the node at
+    // its box moved 2 px left and right, in the outline's colour, then the
+    // text. Each draws inside its own box, so a copy reaches 2 px past the
+    // text's box and is cut only by the clip.
+    let mut engine = engine();
+    let node = committed_node(&mut engine, "ab");
+    let at = rect(100.0, 100.0, 40.0, 20.0);
+    let moved = |dx: f32| Rect::new(at.min + Vec2::new(dx, 0.0), at.max + Vec2::new(dx, 0.0));
+    let copy = |dx: f32| PaintCommand::Text {
+        node,
+        rect: moved(dx),
+        color: [0, 0, 0, 255],
+        scale: 1.0,
+        clip: 0,
+    };
+    let list = PaintList {
+        scale: 1.0,
+        clips: vec![clip(0, 0, 400, 300), clip(0, 0, 141, 300)],
+        commands: vec![copy(-2.0), copy(2.0), text(node, at, 0), {
+            let mut cut = copy(2.0);
+            if let PaintCommand::Text { clip, .. } = &mut cut {
+                *clip = 1;
+            }
+            cut
+        }],
+        vertices: Vec::new(),
+    };
+    let (_, nodes) = engine.batch_parts();
+    let mut areas = Vec::new();
+    batch_areas(&list, 0..4, &nodes, &mut areas);
+    let bounds: Vec<_> = areas
+        .iter()
+        .map(|area| (area.left, area.bounds.left, area.bounds.right))
+        .collect();
+    assert_eq!(
+        bounds,
+        [
+            (98.0, 98, 138),
+            (102.0, 102, 142),
+            (100.0, 100, 140),
+            (102.0, 102, 141)
+        ],
+        "each copy within its own box; a clip still cuts it"
+    );
+    assert!(
+        areas
+            .iter()
+            .all(|area| std::ptr::eq(area.buffer, areas[0].buffer))
+    );
+}

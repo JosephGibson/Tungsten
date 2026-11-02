@@ -134,6 +134,7 @@ impl Harness {
         let world = self.app.world_mut();
         asset_loader::load_animations(&manifest, world)?;
         asset_loader::load_ui_themes(&manifest, world)?;
+        asset_loader::load_ui_screens(&manifest, world)?;
         let mut materials = world
             .remove_resource::<MaterialRegistry>()
             .unwrap_or_default();

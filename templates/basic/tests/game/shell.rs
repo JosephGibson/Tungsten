@@ -6,7 +6,7 @@ use std::path::Path;
 
 use tungsten::core::post::{PostPass, PostStack, VignetteParams};
 use tungsten::core::text::{TextAlign, TextNodeStore};
-use tungsten::core::ui::{ThemeFile, UiTree, Visibility, WidgetId};
+use tungsten::core::ui::{ThemeFile, UiTree, Visibility, WidgetId, contrast_ratio, widgets};
 use tungsten::core::{
     InputState, KeyCode, SaveSlots, Schedule, Stage, Time, UserFolder, World, system,
 };
@@ -24,13 +24,13 @@ use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::title::TITLE;
 use tungsten_template_basic::shell::toast::{self, TOAST_SECS, Toasts};
 use tungsten_template_basic::shell::{
-    AUTOSAVES, Difficulty, RunStart, RunState, request_autosave, theme, widgets,
+    AUTOSAVES, Difficulty, RunStart, RunState, request_autosave, theme,
 };
 
 use super::saves::{gems_left, newer_slot, player_of, set_gems, set_player};
 use super::{
-    act, find, harness, harness_with, health, heard, player_entity, player_position, plays, press,
-    settle, shows, slot_file, start, start_at, stops, tap, top, user_folder,
+    act, harness, harness_with, health, heard, player_entity, player_position, plays, press,
+    settle, slot_file, start, start_at, stops, tap, top, user_folder,
 };
 
 fn depth(harness: &UiHarness) -> usize {
@@ -88,13 +88,13 @@ fn autosave_bytes(dir: &Path) -> [Option<Vec<u8>>; 3] {
 fn title_focuses_continue_only_with_a_save() {
     let harness = harness();
     assert_eq!(top(&harness), Some(TITLE));
-    assert_eq!(find(&harness, "Continue"), None, "disabled with no save");
-    assert_eq!(focused(&harness), find(&harness, "New Game"));
+    assert_eq!(harness.find("Continue"), None, "disabled with no save");
+    assert_eq!(focused(&harness), harness.find("New Game"));
 
     let dir = user_folder("title-continue");
     leave_autosave(&dir);
     let harness = harness_with(UserFolder::At(dir.clone()));
-    let resume = find(&harness, "Continue").expect("enabled over a save");
+    let resume = harness.find("Continue").expect("enabled over a save");
     assert_eq!(focused(&harness), Some(resume));
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -104,7 +104,7 @@ fn new_game_picks_a_difficulty_and_writes_a_fresh_autosave() {
     let dir = user_folder("new-game");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     press(&mut harness, "New Game");
-    assert_eq!(focused(&harness), find(&harness, "Normal"), "Normal first");
+    assert_eq!(focused(&harness), harness.find("Normal"), "Normal first");
     press(&mut harness, "Hard");
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
     assert_eq!(health(&harness, player_entity(&harness)), (3.0, 3.0));
@@ -125,21 +125,14 @@ fn new_game_asks_first_over_an_autosave() {
     press(&mut harness, "New Game");
     press(&mut harness, "Normal");
     assert_eq!(top(&harness), Some(CONFIRM));
-    assert!(shows(
-        &harness,
-        "Start a new game? Its autosaves will replace the oldest ones."
-    ));
-    assert_eq!(
-        focused(&harness),
-        find(&harness, "Cancel"),
-        "the safe answer"
-    );
+    assert!(harness.shows("Start a new game? Its autosaves will replace the oldest ones."));
+    assert_eq!(focused(&harness), harness.find("Cancel"), "the safe answer");
     press(&mut harness, "Cancel");
     assert_eq!(top(&harness), Some(TITLE));
     assert_eq!(autosave_bytes(&dir), bytes, "the autosaves stay");
     assert_eq!(
         focused(&harness),
-        find(&harness, "Normal"),
+        harness.find("Normal"),
         "focus comes back"
     );
 
@@ -168,7 +161,7 @@ fn state_pause_opens_pause_and_holds_the_game_clock() {
     tap(&mut harness, "state_pause");
     assert_eq!(top(&harness), Some(PAUSE));
     assert!(paused(&harness), "gameplay holds the clock while covered");
-    assert_eq!(focused(&harness), find(&harness, "Resume"));
+    assert_eq!(focused(&harness), harness.find("Resume"));
     assert!(harness.world().has_resource::<Hud>(), "the HUD stays");
 }
 
@@ -210,7 +203,7 @@ fn quit_to_title_autosaves_and_returns_to_the_title() {
     harness.step(1);
     std::fs::remove_file(slot_file(&dir, AUTOSAVES[1])).unwrap();
     press(&mut harness, "Quit to Title");
-    assert!(shows(&harness, "Quit to the title?"), "one question");
+    assert!(harness.shows("Quit to the title?"), "one question");
     press(&mut harness, "Quit");
     assert_eq!(top(&harness), Some(TITLE));
     assert_eq!(depth(&harness), 1);
@@ -245,15 +238,15 @@ fn quit_to_title_asks_once_and_names_lost_progress_only_when_the_autosave_failed
     std::fs::remove_file(slot_file(&dir, AUTOSAVES[1])).unwrap();
     press(&mut harness, "Quit to Title");
     assert_eq!(top(&harness), Some(CONFIRM));
-    assert!(shows(&harness, "Quit to the title?") && !shows(&harness, lost));
+    assert!(harness.shows("Quit to the title?") && !harness.shows(lost));
     assert!(
         slot_file(&dir, AUTOSAVES[1]).is_file(),
         "saved before asking"
     );
-    assert_eq!(focused(&harness), find(&harness, "Stay"), "the safe answer");
+    assert_eq!(focused(&harness), harness.find("Stay"), "the safe answer");
     press(&mut harness, "Stay");
     assert_eq!(top(&harness), Some(PAUSE));
-    assert_eq!(focused(&harness), find(&harness, "Quit to Title"));
+    assert_eq!(focused(&harness), harness.find("Quit to Title"));
     let _ = std::fs::remove_dir_all(&dir);
 
     // No user folder: the autosave fails, so the question names the loss.
@@ -261,7 +254,7 @@ fn quit_to_title_asks_once_and_names_lost_progress_only_when_the_autosave_failed
     start(&mut harness);
     tap(&mut harness, "state_pause");
     press(&mut harness, "Quit to Title");
-    assert!(shows(&harness, lost), "no user folder");
+    assert!(harness.shows(lost), "no user folder");
     press(&mut harness, "Stay");
 
     // Read-only autosaves: three from a newer build.
@@ -275,7 +268,7 @@ fn quit_to_title_asks_once_and_names_lost_progress_only_when_the_autosave_failed
     start(&mut harness);
     tap(&mut harness, "state_pause");
     press(&mut harness, "Quit to Title");
-    assert!(shows(&harness, lost), "read-only autosaves");
+    assert!(harness.shows(lost), "read-only autosaves");
     for (slot, newer) in AUTOSAVES.into_iter().zip(&newer) {
         assert_eq!(
             &std::fs::read_to_string(slot_file(&dir, slot)).unwrap(),
@@ -298,7 +291,7 @@ fn quit_game_asks_first_from_pause_and_title() {
     harness.step(1);
     std::fs::remove_file(slot_file(&dir, AUTOSAVES[1])).unwrap();
     press(&mut harness, "Quit Game");
-    assert!(shows(&harness, "Quit the game?"));
+    assert!(harness.shows("Quit the game?"));
     assert!(
         slot_file(&dir, AUTOSAVES[1]).is_file(),
         "saved before asking"
@@ -314,7 +307,7 @@ fn quit_game_asks_first_from_pause_and_title() {
     // From the title: the same question; Stay stays.
     let mut harness = super::harness();
     press(&mut harness, "Quit");
-    assert!(shows(&harness, "Quit the game?"));
+    assert!(harness.shows("Quit the game?"));
     assert!(!harness.harness().exit_requested());
     press(&mut harness, "Stay");
     assert_eq!(top(&harness), Some(TITLE));
@@ -340,17 +333,17 @@ fn continue_names_its_slot_and_age() {
     leave_autosave(&dir);
     let harness = harness_with(UserFolder::At(dir.clone()));
     let tree = harness.tree();
-    let resume = find(&harness, "Continue").unwrap();
+    let resume = harness.find("Continue").unwrap();
     // The button's own label, then the line under it.
     let texts: Vec<String> = descendants(tree, resume)[1..]
         .iter()
-        .map(|id| widgets::text_of(tree, *id))
+        .map(|id| tree.plain_text(*id))
         .filter(|text| !text.is_empty())
         .collect();
     assert_eq!(texts, ["Continue", "Autosave 2 ·", "just now"]);
     let age = descendants(tree, resume)
         .into_iter()
-        .find(|id| widgets::text_of(tree, *id) == "just now")
+        .find(|id| tree.plain_text(*id) == "just now")
         .unwrap();
     let style = &tree.resolved_style(age).unwrap().text;
     assert_eq!(style.family, "engine_mono", "the age in mono");
@@ -378,10 +371,7 @@ fn continue_asks_before_an_older_save() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     press(&mut harness, "Continue");
     assert_eq!(top(&harness), Some(CONFIRM));
-    assert!(shows(
-        &harness,
-        "Slot 1 was saved by an older version, 0.0.1. Load it?"
-    ));
+    assert!(harness.shows("Slot 1 was saved by an older version, 0.0.1. Load it?"));
     press(&mut harness, "Load");
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
     assert_eq!(player_position(&harness), Some([41.0, 42.0]));
@@ -422,7 +412,7 @@ fn the_picker_shows_a_card_for_each_difficulty() {
     let tree = harness.tree();
     assert_eq!(
         tree.focused(),
-        find(&harness, "Normal"),
+        harness.find("Normal"),
         "Normal has the focus"
     );
     let accent = tree.theme().tokens.colors.accent;
@@ -437,11 +427,11 @@ fn the_picker_shows_a_card_for_each_difficulty() {
         assert_eq!(game::difficulty_note(difficulty), note);
         // The card is the difficulty's button: its name, its rank and the
         // note's facts, a line each.
-        let card = find(&harness, difficulty.label()).unwrap();
+        let card = harness.find(difficulty.label()).unwrap();
         let [name, pips, facts] = tree.children(card) else {
             panic!("{difficulty:?}: a name, a rank and the facts");
         };
-        assert_eq!(widgets::text_of(tree, *name), difficulty.label());
+        assert_eq!(tree.plain_text(*name), difficulty.label());
         let filled = tree
             .children(*pips)
             .iter()
@@ -452,7 +442,7 @@ fn the_picker_shows_a_card_for_each_difficulty() {
         let lines: Vec<String> = tree
             .children(*facts)
             .iter()
-            .map(|id| widgets::text_of(tree, *id))
+            .map(|id| tree.plain_text(*id))
             .collect();
         assert_eq!(lines, [note], "{difficulty:?}");
     }
@@ -466,9 +456,9 @@ fn game_over_reads_you_died_on_a_crimson_band() {
     kill(&mut harness);
     assert!(paused(&harness));
     assert!(harness.world().is_alive(player), "the dead stay under it");
-    assert_eq!(focused(&harness), find(&harness, "Retry"));
+    assert_eq!(focused(&harness), harness.find("Retry"));
     // "YOU DIED" in spaced crimson serif on a dark band across the screen.
-    let root = front(&harness).expect("game over's root");
+    let root = harness.front_modal().expect("game over's root");
     let tree = harness.tree();
     let heading = labelled(tree, root, "YOU DIED").expect("the heading");
     let text = &tree.resolved_style(heading).unwrap().text;
@@ -494,11 +484,11 @@ fn game_overs_buttons_wait_for_its_entrance() {
         assert!(tungsten_template_basic::shell::transitioning(
             harness.world()
         ));
-        assert_eq!(find(&harness, "Retry"), None, "frame {frame}");
+        assert_eq!(harness.find("Retry"), None, "frame {frame}");
         harness.step(1);
     }
     settle(&mut harness);
-    let retry = find(&harness, "Retry");
+    let retry = harness.find("Retry");
     assert!(retry.is_some());
     assert_eq!(focused(&harness), retry, "Retry, once the entrance ends");
 }
@@ -604,7 +594,7 @@ fn retry_with_the_old_dead_player_still_queued_stays_in_gameplay() {
     let mut harness = harness();
     start(&mut harness);
     kill(&mut harness);
-    let retry = find(&harness, "Retry").unwrap();
+    let retry = harness.find("Retry").unwrap();
     assert!(harness.focus(retry));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
@@ -747,7 +737,7 @@ fn losing_focus_during_a_screen_change_pauses_after_it() {
     // While pause closes: it opens again over gameplay, once.
     set_focused(&mut harness, true);
     harness.step(1);
-    let resume = find(&harness, "Resume").unwrap();
+    let resume = harness.find("Resume").unwrap();
     assert!(harness.focus(resume));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
@@ -770,33 +760,16 @@ fn the_hud_shows_health_gems_and_the_bound_pause_key() {
     harness.step(1);
     let hud = *harness.world().resource::<Hud>();
     let tree = harness.tree();
-    assert_eq!(widgets::text_of(tree, hud.health), "4 / 5");
+    assert_eq!(tree.plain_text(hud.health), "4 / 5");
     assert_eq!(
-        widgets::text_of(tree, hud.gems),
+        tree.plain_text(hud.gems),
         format!("Gems 0 / {}", GEM_STARTS.len())
     );
-    let prompt = widgets::text_of(tree, hud.prompt);
+    let prompt = tree.plain_text(hud.prompt);
     assert!(
         prompt.contains("P Pause") && !prompt.contains("Mute"),
         "{prompt:?}"
     );
-}
-
-/// WCAG's contrast ratio of two opaque sRGB colours.
-fn contrast(a: [u8; 4], b: [u8; 4]) -> f32 {
-    let luminance = |c: [u8; 4]| {
-        let channel = |v: u8| {
-            let v = f32::from(v) / 255.0;
-            if v <= 0.04045 {
-                v / 12.92
-            } else {
-                ((v + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2])
-    };
-    let (la, lb) = (luminance(a), luminance(b));
-    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 
 #[test]
@@ -828,7 +801,7 @@ fn the_theme_meets_contrast_and_has_square_corners() {
             5.8,
         ),
     ] {
-        let ratio = contrast(color, against);
+        let ratio = contrast_ratio(color, against);
         assert!(ratio >= least - 0.01, "{name}: {ratio:.2} < {least}");
         assert_eq!(color[3], 255, "{name} is opaque");
     }
@@ -875,24 +848,14 @@ fn a_hard_run_shows_its_max_health() {
     start_at(&mut harness, Difficulty::Hard);
     harness.step(1);
     let hud = *harness.world().resource::<Hud>();
-    assert_eq!(widgets::text_of(harness.tree(), hud.health), "3 / 3");
-}
-
-/// The front-most shown modal root: the screen on top, or the curtain.
-fn front(harness: &UiHarness) -> Option<WidgetId> {
-    let tree = harness.tree();
-    tree.roots()
-        .iter()
-        .rev()
-        .copied()
-        .find(|root| tree.modal(*root) && tree.visibility(*root) == Some(Visibility::Visible))
+    assert_eq!(harness.tree().plain_text(hud.health), "3 / 3");
 }
 
 /// The first widget under `root` whose text reads `text`.
 fn labelled(tree: &UiTree, root: WidgetId, text: &str) -> Option<WidgetId> {
     let mut stack = vec![root];
     while let Some(id) = stack.pop() {
-        if widgets::text_of(tree, id) == text {
+        if tree.plain_text(id) == text {
             return Some(id);
         }
         stack.extend(tree.children(id).iter().copied());
@@ -915,38 +878,52 @@ fn steps_to_idle(harness: &mut UiHarness) -> u32 {
 fn the_title_is_one_serif_line_above_the_menu() {
     let harness = harness();
     let tree = harness.tree();
-    let root = front(&harness).expect("the title's root");
+    let root = harness.front_modal().expect("the title's root");
     let title = labelled(tree, root, &super::info().title).expect("the game's name");
     let text = &tree.resolved_style(title).unwrap().text;
     assert_eq!(text.family, "serif");
-    assert_eq!([text.size, text.line_height], theme::TITLE);
+    let style = &tree
+        .theme()
+        .text_style("title")
+        .expect("the title style")
+        .text;
+    assert_eq!(
+        [Some(text.size), Some(text.line_height)],
+        [style.size, style.line_height]
+    );
     let node = tree.text_node(title).unwrap();
     assert_eq!(harness.text().committed(node).unwrap().line_count, 1);
-    let menu = harness.rect(find(&harness, "New Game").unwrap()).unwrap();
+    let menu = harness.rect(harness.find("New Game").unwrap()).unwrap();
     assert!(
-        harness.rect(title).unwrap().max.y + theme::TITLE_SPACE <= menu.min.y,
+        harness.rect(title).unwrap().max.y + widgets::size(tree, "title_space") <= menu.min.y,
         "well above the menu"
     );
     let width = menu.max.x - menu.min.x;
     assert!(
-        (width - theme::TITLE_MENU_WIDTH).abs() < 0.5,
+        (width - widgets::size(tree, "title_menu_width")).abs() < 0.5,
         "narrower: {width}"
     );
     // The version and "Saving is off", small in the corner.
     let viewport = harness.rect(root).unwrap();
+    let margin = tree.theme().tokens.spacing.lg;
+    let small = &tree
+        .theme()
+        .text_style("small")
+        .expect("the small style")
+        .text;
     let version = format!("Version {}", super::info().version);
     for (line, caption) in [version.as_str(), "Saving is off"].iter().enumerate() {
         let label = labelled(tree, root, caption).expect("a corner line");
         let rect = harness.rect(label).unwrap();
-        assert_eq!(rect.min.x, theme::MARGIN, "{caption}");
+        assert_eq!(rect.min.x, margin, "{caption}");
         assert!(rect.min.y > menu.max.y, "{caption} below the menu");
         let style = &tree.resolved_style(label).unwrap().text;
         assert_eq!(
-            (style.size, style.line_height),
-            (theme::SMALL[0], theme::SMALL[1])
+            (Some(style.size), Some(style.line_height)),
+            (small.size, small.line_height)
         );
         if line == 1 {
-            assert_eq!(rect.max.y, viewport.max.y - theme::MARGIN, "at the bottom");
+            assert_eq!(rect.max.y, viewport.max.y - margin, "at the bottom");
         }
     }
 }
@@ -957,8 +934,10 @@ fn pause_and_dialogs_show_over_a_scrim_with_the_screen_below_drawn() {
     start(&mut harness);
     let hud = harness.world().resource::<Hud>().root;
     tap(&mut harness, "state_pause");
-    let pause = front(&harness).unwrap();
-    let background = harness.tree().theme().tokens.colors.background;
+    let pause = harness.front_modal().unwrap();
+    let colors = harness.tree().theme().tokens.colors;
+    let [r, g, b, _] = colors.background;
+    assert_eq!(colors.scrim, [r, g, b, 184], "the background at 72 %");
     let scrim = |harness: &UiHarness, root| {
         let style = harness.tree().resolved_style(root).unwrap();
         let rect = harness.rect(root).unwrap();
@@ -978,10 +957,9 @@ fn pause_and_dialogs_show_over_a_scrim_with_the_screen_below_drawn() {
         window.width as f32 / scale,
         window.height as f32 / scale,
     ];
-    let [r, g, b, _] = background;
     assert_eq!(
         scrim(&harness, pause),
-        ([r, g, b, theme::SCRIM_ALPHA], viewport),
+        (colors.scrim, viewport),
         "pause dims the whole window"
     );
     let tree = harness.tree();
@@ -1002,7 +980,7 @@ fn pause_and_dialogs_show_over_a_scrim_with_the_screen_below_drawn() {
     // No user folder, so Quit to Title asks over the pause card.
     press(&mut harness, "Quit to Title");
     assert_eq!(top(&harness), Some(CONFIRM));
-    let confirm = front(&harness).unwrap();
+    let confirm = harness.front_modal().unwrap();
     assert_ne!(confirm, pause);
     let tree = harness.tree();
     assert_eq!(
@@ -1011,9 +989,9 @@ fn pause_and_dialogs_show_over_a_scrim_with_the_screen_below_drawn() {
         "pause stays drawn"
     );
     assert!(tree.frozen(pause), "and takes no input");
-    assert_eq!(scrim(&harness, confirm).0, [r, g, b, theme::SCRIM_ALPHA]);
+    assert_eq!(scrim(&harness, confirm).0, colors.scrim);
     press(&mut harness, "Stay");
-    assert_eq!(front(&harness), Some(pause));
+    assert_eq!(harness.front_modal(), Some(pause));
     assert!(!harness.tree().frozen(pause));
 }
 
@@ -1032,7 +1010,7 @@ fn menu_changes_take_their_times() {
     assert_eq!(top(&harness), Some(PAUSE));
     assert!(tungsten_template_basic::shell::idle(harness.world()));
     // A pop: the card fades out over 0.08 s, then the screen below acts.
-    let resume = find(&harness, "Resume").unwrap();
+    let resume = harness.find("Resume").unwrap();
     assert!(harness.focus(resume));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
@@ -1046,7 +1024,7 @@ fn menu_changes_take_their_times() {
     // A run change: the curtain's 0.24 s, from the question's Quit.
     tap(&mut harness, "state_pause");
     press(&mut harness, "Quit to Title");
-    let quit = find(&harness, "Quit").unwrap();
+    let quit = harness.find("Quit").unwrap();
     assert!(harness.focus(quit));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
@@ -1066,12 +1044,12 @@ fn a_run_change_fades_through_the_curtain_and_autosaves_the_new_run_once() {
     let dir = user_folder("curtain-autosave");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     press(&mut harness, "New Game");
-    let normal = find(&harness, "Normal").unwrap();
+    let normal = harness.find("Normal").unwrap();
     assert!(harness.focus(normal));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
     harness.harness_mut().release_action("ui_accept");
-    let curtain = front(&harness).expect("the curtain");
+    let curtain = harness.front_modal().expect("the curtain");
     let tree = harness.tree();
     assert!(tree.children(curtain).is_empty(), "a bare root");
     assert_eq!(
@@ -1128,7 +1106,7 @@ fn load_under_the_curtain(dir: &Path) -> (UiHarness, [f32; 2]) {
         .unwrap();
     tap(&mut harness, "state_pause");
     press(&mut harness, "Load");
-    let slot = find(&harness, "Slot 1").unwrap();
+    let slot = harness.find("Slot 1").unwrap();
     assert!(harness.focus(slot));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
@@ -1321,7 +1299,7 @@ fn autosave_off_writes_no_automatic_or_requested_save() {
     assert_eq!(autosave_bytes(&dir), none, "pause");
     press(&mut harness, "Quit to Title");
     let lost = "Quit to the title? Progress since your last save will be lost.";
-    assert!(shows(&harness, lost), "quitting names the loss");
+    assert!(harness.shows(lost), "quitting names the loss");
     assert_eq!(autosave_bytes(&dir), none, "quit");
     press(&mut harness, "Stay");
     press(&mut harness, "Resume");
@@ -1364,7 +1342,7 @@ fn one_screen_change_at_a_time() {
     assert_eq!(top(&harness), Some(PAUSE));
     assert_eq!(depth(&harness), 2, "one pause");
     // A closing pause takes no second change: Resume twice pops once.
-    let resume = find(&harness, "Resume").unwrap();
+    let resume = harness.find("Resume").unwrap();
     assert!(harness.focus(resume));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
@@ -1385,7 +1363,7 @@ fn delete_buttons_and_low_health_use_danger() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     let danger = harness.tree().theme().tokens.colors.danger;
     press(&mut harness, "Load");
-    let delete = find(&harness, "Delete Autosave 2").expect("a save to delete");
+    let delete = harness.find("Delete Autosave 2").expect("a save to delete");
     assert_eq!(
         harness.tree().resolved_style(delete).unwrap().text.color,
         danger
@@ -1397,7 +1375,7 @@ fn delete_buttons_and_low_health_use_danger() {
     start(&mut harness);
     let accent = harness.tree().theme().tokens.colors.accent;
     let fill = |harness: &UiHarness| {
-        let hud = harness.world().resource::<Hud>().fill;
+        let hud = harness.world().resource::<Hud>().bar.fill;
         harness.tree().resolved_style(hud).unwrap().background
     };
     assert_eq!(fill(&harness), accent, "full health");
@@ -1443,7 +1421,7 @@ fn menu_sounds_play_on_move_activate_and_back() {
         [moved],
         "a press that moves focus"
     );
-    let settings = find(&harness, "Settings").unwrap();
+    let settings = harness.find("Settings").unwrap();
     assert!(harness.focus(settings));
     assert_eq!(once(&mut harness, "ui_accept"), [selected], "an activation");
     assert_eq!(
@@ -1453,7 +1431,7 @@ fn menu_sounds_play_on_move_activate_and_back() {
     assert_eq!(once(&mut harness, "ui_cancel"), [back], "a cancel");
     assert_eq!(top(&harness), Some(TITLE));
     press(&mut harness, "Settings");
-    let leave = find(&harness, "Back").unwrap();
+    let leave = harness.find("Back").unwrap();
     assert!(harness.focus(leave));
     assert_eq!(once(&mut harness, "ui_accept"), [back], "Back is a back");
     // Focus a screen moves itself makes no sound.
@@ -1484,7 +1462,7 @@ fn the_title_plays_its_song_until_a_run_starts() {
     );
     tap(&mut harness, "state_pause");
     press(&mut harness, "Quit to Title");
-    let quit = find(&harness, "Quit").unwrap();
+    let quit = harness.find("Quit").unwrap();
     assert!(harness.focus(quit));
     let back = act(&mut harness, "ui_accept");
     assert_eq!(
@@ -1512,7 +1490,7 @@ fn game_over_plays_its_sting_and_music_until_the_run_ends() {
     assert_eq!(music.len(), 1, "game over's music");
     let (music, looping, fade) = music[0];
     assert!(looping && fade == theme::GAME_OVER_FADE);
-    let quit = find(&harness, "Quit to Title").unwrap();
+    let quit = harness.find("Quit to Title").unwrap();
     assert!(harness.focus(quit));
     let ended = act(&mut harness, "ui_accept");
     assert!(

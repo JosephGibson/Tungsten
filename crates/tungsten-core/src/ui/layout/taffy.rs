@@ -6,7 +6,12 @@
 //! each dirty root: a root is small, and the text engine caches shaping per
 //! node, so a clean root costs nothing and a dirty one costs its solve. A
 //! scroll panel (M57) hides its vertical overflow, so it can be shorter than
-//! its content, and the walk sets its largest offset.
+//! its content, and the walk sets its largest offset. A label commits at the
+//! content size the solve gave it, and at its text's width when the solve
+//! landed a rounding error under it, so a box sized to its text never wraps
+//! it. A shrinking label (its named style's `shrink`) keeps to one line and
+//! commits at the largest scale its content box holds, never under its
+//! least share.
 
 use std::collections::HashMap;
 
@@ -15,7 +20,7 @@ use taffy::prelude::*;
 use taffy::style_helpers::{auto, length, percent};
 use taffy::{AvailableSpace, Display, FlexDirection, NodeId, Overflow, Position, TaffyTree};
 
-use crate::text::{MeasureWidth, TextNodeStore};
+use crate::text::{MeasureWidth, TextMetrics, TextNodeStore, TextStyle, TextWrap};
 
 use super::super::geometry::Rect;
 use super::super::id::WidgetId;
@@ -285,7 +290,7 @@ fn place(
     id: WidgetId,
     parent_pos: Vec2,
     parent_size: Vec2,
-    text_leaves: &mut Vec<(WidgetId, Rect)>,
+    text_leaves: &mut Vec<(WidgetId, Vec2)>,
 ) {
     let Some(taffy_node) = map.get(&id) else {
         return;
@@ -310,18 +315,21 @@ fn place(
     let children = node.children.clone();
     let is_label = node.kind == WidgetKind::Label;
     let scrolls = node.scroll.is_some();
+    // The content size the solve gave a label, its box less border and
+    // padding, kept apart from its rect: `max - min` at a far position can
+    // land an ulp under it.
     let content = is_label.then(|| {
         let (padding, border) = (layout.padding, layout.border);
         let start = Vec2::new(padding.left + border.left, padding.top + border.top);
         let end = Vec2::new(padding.right + border.right, padding.bottom + border.bottom);
-        Rect::from_pos_size(pos + start, (size - start - end).max(Vec2::ZERO))
+        (pos + start, (size - start - end).max(Vec2::ZERO))
     });
     if let Some(node) = tree.node_mut(id) {
         node.rect = Some(Rect::from_pos_size(pos, size));
-        node.content = content;
+        node.content = content.map(|(at, size)| Rect::from_pos_size(at, size));
     }
-    if let Some(content) = content {
-        text_leaves.push((id, content));
+    if let Some((_, size)) = content {
+        text_leaves.push((id, size));
     }
     for child in &children {
         place(tree, taffy, map, *child, pos, size, text_leaves);
@@ -364,6 +372,65 @@ fn clear_rects(tree: &mut UiTree, id: WidgetId) {
     }
 }
 
+/// A label's least share of its text size when it shrinks to fit: its named
+/// style's `shrink`, else the named style's of the button it captions;
+/// `None` for a label that wraps instead.
+fn shrink_of(tree: &UiTree, id: WidgetId) -> Option<f32> {
+    let node = tree
+        .node(id)
+        .filter(|node| node.kind == WidgetKind::Label)?;
+    let named = |node: &super::super::node::Node| {
+        let name = node.text_style.as_deref()?;
+        tree.theme().text_style(name)?.shrink
+    };
+    named(node).or_else(|| {
+        let parent = tree.node(node.parent?)?;
+        (parent.kind == WidgetKind::Button)
+            .then(|| named(parent))
+            .flatten()
+    })
+}
+
+/// The style a shrinking label lays out in: its resolved text at
+/// `text_scale` times `fit`, on one line.
+fn one_line(resolved: &TextStyle, text_scale: f32, fit: f32) -> TextStyle {
+    let mut style = resolved.clone();
+    style.size *= text_scale * fit;
+    style.line_height *= text_scale * fit;
+    style.layout.wrap = TextWrap::None;
+    style
+}
+
+/// Sets each shrinking label under `id` at its full size on one line, so
+/// the solve measures its whole line; the commit scales it down after.
+fn unshrink(tree: &UiTree, id: WidgetId, text_scale: f32, store: &mut dyn TextNodeStore) {
+    let Some(node) = tree.node(id) else {
+        return;
+    };
+    if node.visibility == Visibility::Collapsed {
+        return;
+    }
+    if shrink_of(tree, id).is_some()
+        && let (Some(text_node), Some(content), Some(resolved)) =
+            (node.text_id, &node.text, &node.resolved)
+    {
+        store.set_text(
+            text_node,
+            &content.text,
+            &one_line(&resolved.text, text_scale, 1.0),
+        );
+    }
+    for child in &node.children {
+        unshrink(tree, *child, text_scale, store);
+    }
+}
+
+/// How far a solved content width may fall under its text's measured width
+/// and still hold it on one line: a rounding error's worth.
+fn holds(content: f32, text: f32) -> bool {
+    text <= content + text.abs().max(1.0) * 1e-5
+}
+
 /// Lays `root` out in a `viewport`-sized parent, its controls' line height
 /// times `text_scale` (its layer's, M58), writes the rects and commits
 /// every text leaf once.
@@ -376,6 +443,7 @@ pub(crate) fn lay_out_root(
 ) -> RootLayout {
     let mut result = RootLayout::default();
     clear_rects(tree, root);
+    unshrink(tree, root, text_scale, store);
 
     let mut taffy: TaffyTree<WidgetId> = TaffyTree::new();
     taffy.disable_rounding();
@@ -389,6 +457,9 @@ pub(crate) fn lay_out_root(
     result.nodes = map.len() as u32;
 
     let mut measure_calls = 0_u32;
+    // Each label's unwrapped width as the solve measured it, for the
+    // commit.
+    let mut natural: HashMap<WidgetId, TextMetrics> = HashMap::new();
     taffy
         .compute_layout_with_measure(
             viewport_node,
@@ -402,7 +473,10 @@ pub(crate) fn lay_out_root(
                     style,
                     |_, _| 0.0,
                     |known, space| {
-                        let Some(node) = context.and_then(|id| tree.node(*id)) else {
+                        let Some(id) = context.map(|id| *id) else {
+                            return Size::ZERO;
+                        };
+                        let Some(node) = tree.node(id) else {
                             return Size::ZERO;
                         };
                         if let (Some(width), Some(height)) = (known.width, known.height) {
@@ -432,6 +506,23 @@ pub(crate) fn lay_out_root(
                             return Size::ZERO;
                         };
                         measure_calls += 1;
+                        if let Some(least) = shrink_of(tree, id) {
+                            // One line at most the space's width, never
+                            // under its least share, its height in
+                            // proportion.
+                            let line = store.measure(text_node, None, MeasureWidth::MaxContent);
+                            natural.insert(id, line);
+                            let room = known.width.or(match space.width {
+                                AvailableSpace::Definite(width) => Some(width),
+                                AvailableSpace::MinContent => Some(0.0),
+                                AvailableSpace::MaxContent => None,
+                            });
+                            let fit = shrink_fit(line.size.x, room, least);
+                            return Size {
+                                width: known.width.unwrap_or(line.size.x * fit),
+                                height: known.height.unwrap_or(line.size.y * fit),
+                            };
+                        }
                         // A known width is the border box's; the available
                         // width is then the content box's, where the text
                         // commits (M56).
@@ -440,6 +531,9 @@ pub(crate) fn lay_out_root(
                             _ => width,
                         });
                         let metrics = store.measure(text_node, width, available(space.width));
+                        if width.is_none() && space.width == AvailableSpace::MaxContent {
+                            natural.insert(id, metrics);
+                        }
                         Size {
                             width: known.width.unwrap_or(metrics.size.x),
                             height: known.height.unwrap_or(metrics.size.y),
@@ -462,11 +556,43 @@ pub(crate) fn lay_out_root(
         &mut text_leaves,
     );
     for (id, content) in text_leaves {
-        let Some(text_node) = tree.node(id).and_then(|node| node.text_id) else {
+        let Some(node) = tree.node(id) else {
             continue;
         };
-        store.commit_layout(text_node, content.size());
+        let Some(text_node) = node.text_id else {
+            continue;
+        };
+        let line = natural.get(&id).map(|metrics| metrics.size.x);
+        let mut width = content.x;
+        if let Some(least) = shrink_of(tree, id) {
+            let fit = shrink_fit(line.unwrap_or(0.0), Some(content.x), least);
+            if fit < 1.0
+                && let (Some(text), Some(resolved)) = (&node.text, &node.resolved)
+            {
+                store.set_text(
+                    text_node,
+                    &text.text,
+                    &one_line(&resolved.text, text_scale, fit),
+                );
+            }
+            width = width.max(line.unwrap_or(0.0) * fit);
+        } else if let Some(line) = line
+            && line > width
+            && holds(width, line)
+        {
+            width = line;
+        }
+        store.commit_layout(text_node, Vec2::new(width, content.y));
         result.commits += 1;
     }
     result
+}
+
+/// The scale a shrinking line `width` wide takes in `room`: the largest at
+/// most 1 at which it fits, at least `least`; 1 without room or a width.
+fn shrink_fit(width: f32, room: Option<f32>, least: f32) -> f32 {
+    match room {
+        Some(room) if width > 0.0 && !holds(room, width) => (room / width).clamp(least, 1.0),
+        _ => 1.0,
+    }
 }

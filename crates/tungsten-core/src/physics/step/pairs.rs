@@ -7,7 +7,7 @@ use super::gather::TileCache;
 use crate::physics::PhysicsConfig;
 use crate::physics::broadphase::{ProxyId, SpatialGrid, for_each_in_both};
 use crate::physics::collision::Aabb;
-use glam::Vec2;
+use glam::{Vec2, Vec4};
 
 /// The pair grid: the entity proxies, staged at every pair build, and the
 /// tile proxies, staged once for each tile cache version, cell size and
@@ -71,22 +71,53 @@ impl PairGrid {
     }
 
     /// Stage `tiles`' proxies at `cell_size`, each box grown by `radius`,
-    /// unless the grid holds them so already.
-    pub(super) fn stage_tiles(&mut self, tiles: &TileCache, cell_size: f32, radius: f32) {
+    /// and their [`box_bounds`] into `bounds`, unless the grid holds them so
+    /// already.
+    pub(super) fn stage_tiles(
+        &mut self,
+        tiles: &TileCache,
+        cell_size: f32,
+        radius: f32,
+        bounds: &mut Vec<Vec4>,
+    ) {
         let key = (tiles.version(), cell_size.to_bits(), radius.to_bits());
         if self.staged == Some(key) {
             return;
         }
         self.tiles.set_cell_size(cell_size);
         self.tile_aabbs.clear();
+        bounds.clear();
         for (ordinal, proxy) in tiles.proxies.iter().enumerate() {
             let mut aabb = proxy.world_aabb();
             aabb.half_extents += Vec2::splat(radius);
             self.tile_aabbs.push(aabb);
+            bounds.push(box_bounds(&aabb));
             self.tiles.insert(ordinal as ProxyId, &aabb);
         }
         self.staged = Some(key);
     }
+}
+
+/// A pair box's bounds as the pair tests read them, computed once where the
+/// box is set: its min in `x, y` and its negated max in `z, w`, the sums
+/// [`Aabb::overlaps`] takes from the box.
+pub(super) fn box_bounds(aabb: &Aabb) -> Vec4 {
+    let (min, max) = (aabb.min(), aabb.max());
+    Vec4::new(min.x, min.y, -max.x, -max.y)
+}
+
+/// A querier's side of [`box_bounds`]: its max and its negated min. Each
+/// lane above a candidate's bounds is one of [`Aabb::overlaps`]' four strict
+/// tests, since negation is exact, so one compare answers as it does.
+pub(super) fn query_bounds(aabb: &Aabb) -> Vec4 {
+    let (min, max) = (aabb.min(), aabb.max());
+    Vec4::new(max.x, max.y, -min.x, -min.y)
+}
+
+/// [`Aabb::overlaps`] of a querier's box and a candidate's.
+#[inline(always)]
+pub(super) fn bounds_overlap(query: Vec4, bounds: Vec4) -> bool {
+    query.cmpgt(bounds).all()
 }
 
 /// Sentinel for empty slots; unreachable as a real key because a pair key
@@ -178,11 +209,13 @@ pub(super) struct PairBudget {
 pub(super) const PAIR_MARGIN_SLOPS: f32 = 2.0;
 
 /// A repair is cheaper than a rebuild only for a minority: more than one
-/// tripped proxy in this many awake bodies rebuilds instead (D-081).
+/// tripped or woken proxy in this many awake bodies rebuilds instead (D-081,
+/// D-234).
 const REBUILD_ONE_IN: usize = 4;
 
 /// `PhysicsBuffers::pair_flags` bit: a moving proxy (an awake dynamic or a
-/// kinematic body) at the last build.
+/// kinematic body) at its last build or repair; a moving proxy without it
+/// is one a contact woke since (D-234).
 pub(super) const PAIR_AWAKE: u8 = 1;
 /// `pair_flags` bit: member of the repair in progress.
 const PAIR_TRIPPED: u8 = 1 << 1;
@@ -210,9 +243,10 @@ fn awake_pair_radius(
     speed * time_left + gravity_allowance + (PAIR_MARGIN_SLOPS + 2.0) * config.linear_slop
 }
 
-/// Keep the pair list complete for the coming narrow phase (D-081): build it
-/// when it is invalid, reuse it while every budget holds, and otherwise
-/// repair the tripped proxies, or rebuild when too many tripped.
+/// Keep the pair list complete for the coming narrow phase (D-081, D-234):
+/// build it when it is invalid, reuse it while every budget holds and no
+/// contact woke a sleeper, and otherwise repair the tripped and woken
+/// proxies, or rebuild when too many need it.
 pub(super) fn refresh_pairs(
     config: &PhysicsConfig,
     sub_dt: f32,
@@ -246,8 +280,8 @@ pub(super) fn build_pairs(
     time_left: f32,
     buffers: &mut PhysicsBuffers,
 ) {
-    // Rebuilds can reorder/reverse pairs or introduce new ones after a wake.
-    // Transfer only the immediately preceding substep's live impulses by key.
+    // Rebuilds can reorder/reverse pairs or introduce new ones. Transfer only
+    // the immediately preceding substep's live impulses by key.
     sync_impulses(buffers);
     let PhysicsBuffers {
         proxies,
@@ -262,14 +296,21 @@ pub(super) fn build_pairs(
         repaired,
         pairs,
         pairs_invalidated,
+        extra,
         ..
     } = buffers;
+    let super::StepExtra {
+        pair_bounds,
+        tile_bounds,
+        ..
+    } = &mut **extra;
     let bodies = *bodies;
     if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
         grid.bodies.set_cell_size(config.broadphase_cell_size);
     }
     grid.bodies.clear();
     pair_aabbs.clear();
+    pair_bounds.clear();
     pair_budgets.clear();
     pair_flags.clear();
     repaired.clear();
@@ -299,6 +340,7 @@ pub(super) fn build_pairs(
         let mut aabb = proxy.world_aabb();
         aabb.half_extents += Vec2::splat(radius);
         pair_aabbs.push(aabb);
+        pair_bounds.push(box_bounds(&aabb));
         pair_budgets.push(PairBudget {
             radius,
             travel: 0.0,
@@ -310,7 +352,7 @@ pub(super) fn build_pairs(
     // once for the cache and kept across builds, and into the entity grid
     // too, after the entity proxies, when the moving proxies' queries
     // outnumber them.
-    grid.stage_tiles(tiles, grid.cell_size(), static_radius);
+    grid.stage_tiles(tiles, grid.cell_size(), static_radius, tile_bounds);
     grid.tile_base = bodies as ProxyId;
     grid.split = tiles.len() > moving;
     #[cfg(test)]
@@ -329,6 +371,7 @@ pub(super) fn build_pairs(
     }
     static_grid.statics += tiles.len();
     pair_aabbs.extend_from_slice(&grid.tile_aabbs);
+    pair_bounds.extend_from_slice(tile_bounds);
     pair_budgets.resize(
         proxies.len(),
         PairBudget {
@@ -341,13 +384,14 @@ pub(super) fn build_pairs(
         if pair_flags[a_idx] & PAIR_AWAKE == 0 {
             continue;
         }
+        let query = query_bounds(aabb);
         grid.for_each_in(aabb, Some(a_idx as ProxyId), |b_id| {
             let b_idx = b_id as usize;
             // An awake candidate at or below this index runs its own query.
             if pair_flags[b_idx] & PAIR_AWAKE != 0 && b_idx <= a_idx {
                 return;
             }
-            if aabb.overlaps(&pair_aabbs[b_idx]) && layers.meet(a_idx, b_idx) {
+            if bounds_overlap(query, pair_bounds[b_idx]) && layers.meet(a_idx, b_idx) {
                 pairs.push((a_idx as u32, b_id));
             }
         });
@@ -369,8 +413,9 @@ pub(super) fn build_pairs(
 }
 
 /// Collect, in proxy order, the moving proxies whose budget does not cover
-/// the coming substep, and return the moving count. Solver impulses and
-/// gravity can change velocity after a build, so predicted travel alone is
+/// the coming substep and those a contact woke since their last build or
+/// repair (D-234), and return the moving count. Solver impulses and gravity
+/// can change velocity after a build, so predicted travel alone is
 /// insufficient: accumulated actual travel must fit as well. A kinematic
 /// proxy's velocity cannot change within a frame, so it never trips.
 pub(super) fn collect_tripped(
@@ -382,6 +427,7 @@ pub(super) fn collect_tripped(
         proxies,
         bodies,
         pair_budgets,
+        pair_flags,
         tripped,
         ..
     } = buffers;
@@ -389,25 +435,30 @@ pub(super) fn collect_tripped(
     let slack = 2.0 * config.linear_slop;
     let mut awake = 0;
     // Tile proxies never move, so the entity proxies are every candidate.
-    for (index, (proxy, budget)) in proxies[..*bodies]
+    for (index, ((proxy, budget), &flags)) in proxies[..*bodies]
         .iter()
         .zip(pair_budgets.iter())
+        .zip(pair_flags.iter())
         .enumerate()
     {
         if !proxy.moves() {
             continue;
         }
         awake += 1;
-        if budget.travel + proxy.velocity.length() * sub_dt + slack > budget.radius {
+        if flags & PAIR_AWAKE == 0
+            || budget.travel + proxy.velocity.length() * sub_dt + slack > budget.radius
+        {
             tripped.push(index as u32);
         }
     }
     awake
 }
 
-/// Re-pair the tripped proxies in place of a rebuild (D-081). Every other
-/// proxy keeps its pairs, inflated AABB and budget, and the pair grid is not
-/// restaged. As in a build, proxies whose layers do not meet are not paired.
+/// Re-pair the tripped and woken proxies in place of a rebuild (D-081,
+/// D-234). Every other proxy keeps its pairs, inflated AABB and budget, and
+/// the pair grid is not restaged. A woken member is awake from here on, so
+/// it pairs with sleepers and statics as its querier. As in a build, proxies
+/// whose layers do not meet are not paired.
 fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &mut PhysicsBuffers) {
     let PhysicsBuffers {
         proxies,
@@ -431,11 +482,12 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         pair_tangents,
         repair_tangents,
         removed_tangents,
+        pair_bounds,
         ..
     } = &mut **extra;
     let friction_on = !frictions.is_empty();
     for &member in tripped.iter() {
-        pair_flags[member as usize] |= PAIR_TRIPPED;
+        pair_flags[member as usize] |= PAIR_TRIPPED | PAIR_AWAKE;
     }
 
     // Remove the members' pairs, keeping the order of the rest, and remember
@@ -505,6 +557,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         let mut aabb = proxy.world_aabb();
         aabb.half_extents += Vec2::splat(radius);
         pair_aabbs[index] = aabb;
+        pair_bounds[index] = box_bounds(&aabb);
         pair_budgets[index] = PairBudget {
             radius,
             travel: 0.0,
@@ -529,6 +582,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
     let carried_tangents = !removed_tangents.is_empty();
     for &member in tripped.iter() {
         let aabb = &pair_aabbs[member as usize];
+        let query = query_bounds(aabb);
         let member_key = proxies[member as usize].key;
         let mut admit = |a: u32, b: u32, other: u32| {
             pairs.push((a, b));
@@ -551,7 +605,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         grid.for_each_in(aabb, Some(member), |other| {
             let flags = pair_flags[other as usize];
             if flags & PAIR_REPAIRED != 0
-                || !aabb.overlaps(&pair_aabbs[other as usize])
+                || !bounds_overlap(query, pair_bounds[other as usize])
                 || !layers.meet(member as usize, other as usize)
             {
                 return;
@@ -566,7 +620,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
             // A pair between two members is added by the lower one.
             let member_too = pair_flags[other as usize] & PAIR_TRIPPED != 0;
             if (member_too && other < member)
-                || !aabb.overlaps(&pair_aabbs[other as usize])
+                || !bounds_overlap(query, pair_bounds[other as usize])
                 || !layers.meet(member as usize, other as usize)
             {
                 return;

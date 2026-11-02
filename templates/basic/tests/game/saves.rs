@@ -24,12 +24,12 @@ use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::saves::SAVES;
 use tungsten_template_basic::shell::toast::Toasts;
 use tungsten_template_basic::shell::{
-    self, AUTOSAVES, OLD_AUTOSAVE, RunState, SlotState, request_autosave, widgets,
+    self, AUTOSAVES, OLD_AUTOSAVE, RunState, SlotState, request_autosave,
 };
 
 use super::{
-    find, harness_with, health, named, player_entity, player_position, press, settle, shows,
-    slot_file, start, tap, top, user_folder,
+    harness_with, health, player_entity, player_position, press, settle, slot_file, start, tap,
+    top, user_folder,
 };
 
 /// A save's data as its file holds it, read whole.
@@ -359,7 +359,7 @@ fn a_slot_that_fails_to_load_is_never_overwritten() {
     let newer = newer_slot(&dir, AUTOSAVES[0]);
 
     let mut harness = harness_with(UserFolder::At(dir.clone()));
-    assert_eq!(find(&harness, "Continue"), None, "nothing to continue");
+    assert_eq!(harness.find("Continue"), None, "nothing to continue");
     press(&mut harness, "New Game");
     press(&mut harness, "Normal");
     assert_eq!(top(&harness), Some(game::GAMEPLAY), "no question: it stays");
@@ -372,11 +372,11 @@ fn a_slot_that_fails_to_load_is_never_overwritten() {
     let last = slot_file(&dir, "slot_10");
     let newer_last = newer_slot(&dir, "slot_10");
     press(&mut harness, "Save");
-    assert_eq!(find(&harness, "Slot 10"), None, "not a save target");
-    assert!(named(&harness, "Slot 10").is_some(), "but listed");
+    assert_eq!(harness.find("Slot 10"), None, "not a save target");
+    assert!(harness.named("Slot 10").is_some(), "but listed");
     tap(&mut harness, "ui_cancel");
     press(&mut harness, "Load");
-    assert_eq!(find(&harness, "Slot 10"), None, "nor a load source");
+    assert_eq!(harness.find("Slot 10"), None, "nor a load source");
     assert_eq!(std::fs::read_to_string(&last).unwrap(), newer_last);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -442,15 +442,19 @@ fn set_saved_at(dir: &Path, slot: &str, ms: u64) {
 }
 
 fn row_text(harness: &UiHarness, name: &str) -> String {
-    let row = named(harness, name).unwrap_or_else(|| panic!("no row '{name}'"));
-    widgets::text_of(harness.tree(), row)
+    let row = harness
+        .named(name)
+        .unwrap_or_else(|| panic!("no row '{name}'"));
+    harness.tree().plain_text(row)
 }
 
 /// The details under the row named `name`: its button's second label.
 fn details(harness: &UiHarness, name: &str) -> String {
-    let row = named(harness, name).unwrap_or_else(|| panic!("no row '{name}'"));
+    let row = harness
+        .named(name)
+        .unwrap_or_else(|| panic!("no row '{name}'"));
     let tree = harness.tree();
-    widgets::text_of(tree, tree.children(row)[1])
+    tree.plain_text(tree.children(row)[1])
 }
 
 #[test]
@@ -484,11 +488,11 @@ fn the_load_screen_lists_the_autosaves_and_ten_slots_and_scrolls() {
     for number in [1, 3, 4, 5, 6, 7, 8, 9] {
         let name = format!("Slot {number}");
         assert_eq!(details(&harness, &name), "Empty");
-        assert_eq!(find(&harness, &name), None, "an empty slot loads nothing");
+        assert_eq!(harness.find(&name), None, "an empty slot loads nothing");
     }
     assert!(details(&harness, "Slot 10").starts_with("just now"));
     let tree = harness.tree();
-    let card = named(&harness, "Autosave 1").and_then(|row| {
+    let card = harness.named("Autosave 1").and_then(|row| {
         let mut id = row;
         while let Some(parent) = tree.parent(id) {
             if tree.scroll_max(parent).is_some() {
@@ -500,7 +504,7 @@ fn the_load_screen_lists_the_autosaves_and_ten_slots_and_scrolls() {
     });
     let card = card.expect("the rows sit in a scroll panel");
     assert!(tree.scroll_max(card).unwrap() > 0.0, "the card scrolls");
-    let last = find(&harness, "Slot 10").unwrap();
+    let last = harness.find("Slot 10").unwrap();
     assert!(harness.focus(last), "focus reaches the last row");
     harness.layout();
     let (rect, view) = (harness.rect(last).unwrap(), harness.rect(card).unwrap());
@@ -554,7 +558,7 @@ fn overwriting_asks_first_and_cancel_keeps_the_old_save() {
     press(&mut harness, "Save");
     press(&mut harness, "Slot 1");
     assert_eq!(top(&harness), Some(CONFIRM));
-    assert!(shows(&harness, "Overwrite Slot 1?"));
+    assert!(harness.shows("Overwrite Slot 1?"));
     press(&mut harness, "Cancel");
     assert_eq!(top(&harness), Some(SAVES));
     assert_eq!(std::fs::read(&file).unwrap(), bytes, "the old save stays");
@@ -576,7 +580,7 @@ fn deleting_asks_first_and_empties_the_slot() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     press(&mut harness, "Load");
     press(&mut harness, "Delete Slot 2");
-    assert!(shows(&harness, "Delete Slot 2?"));
+    assert!(harness.shows("Delete Slot 2?"));
     press(&mut harness, "Cancel");
     assert!(file.is_file());
     press(&mut harness, "Delete Slot 2");
@@ -584,7 +588,7 @@ fn deleting_asks_first_and_empties_the_slot() {
     assert_eq!(top(&harness), Some(SAVES));
     assert!(!file.exists());
     assert_eq!(details(&harness, "Slot 2"), "Empty");
-    assert_eq!(find(&harness, "Delete Slot 2"), None);
+    assert_eq!(harness.find("Delete Slot 2"), None);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -607,7 +611,7 @@ fn a_delete_that_fails_keeps_the_slot_read_only_and_says_so() {
     let mut read_only = writable.clone();
     read_only.set_readonly(true);
     std::fs::set_permissions(&saves, read_only).unwrap();
-    let delete = find(&harness, "Delete").unwrap();
+    let delete = harness.find("Delete").unwrap();
     assert!(harness.focus(delete));
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
@@ -639,15 +643,15 @@ fn a_damaged_or_newer_slot_shows_its_label_and_is_neither_loaded_nor_overwritten
     press(&mut harness, "Load");
     assert_eq!(details(&harness, "Slot 1"), "Saved by a newer version");
     assert_eq!(details(&harness, "Slot 3"), "Damaged");
-    assert_eq!(find(&harness, "Slot 1"), None);
-    assert_eq!(find(&harness, "Slot 3"), None);
+    assert_eq!(harness.find("Slot 1"), None);
+    assert_eq!(harness.find("Slot 3"), None);
     tap(&mut harness, "ui_cancel");
 
     press(&mut harness, "New Game");
     press(&mut harness, "Normal");
     tap(&mut harness, "state_pause");
     press(&mut harness, "Save");
-    assert_eq!(find(&harness, "Slot 1"), None, "nor overwritten");
+    assert_eq!(harness.find("Slot 1"), None, "nor overwritten");
     assert!(!shell::save_to(harness.world_mut(), "slot_1"));
     assert!(!shell::save_to(harness.world_mut(), "slot_3"));
     assert_eq!(
@@ -717,10 +721,7 @@ fn loading_from_pause_asks_first_unless_the_run_is_checkpointed() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     assert!(load_slot_1_asks(&mut harness), "read-only autosaves");
-    assert!(shows(
-        &harness,
-        "Load Slot 1? Progress since your last save will be lost."
-    ));
+    assert!(harness.shows("Load Slot 1? Progress since your last save will be lost."));
     let _ = std::fs::remove_dir_all(&dir);
 
     // A write that fails: the saves folder turned read-only mid-run. Unix
@@ -771,20 +772,20 @@ fn continue_loads_the_newest_of_thirteen_slots() {
 #[test]
 fn without_a_user_folder_save_and_load_are_off() {
     let mut harness = super::harness();
-    assert_eq!(find(&harness, "Load"), None);
-    assert!(shows(&harness, "Saving is off"));
+    assert_eq!(harness.find("Load"), None);
+    assert!(harness.shows("Saving is off"));
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    assert_eq!(find(&harness, "Save"), None);
-    assert_eq!(find(&harness, "Load"), None);
-    assert!(shows(&harness, "Saving is off"));
+    assert_eq!(harness.find("Save"), None);
+    assert_eq!(harness.find("Load"), None);
+    assert!(harness.shows("Saving is off"));
     tap(&mut harness, "ui_cancel");
     let player = player_entity(&harness);
     damage(harness.world_mut(), player, 99.0);
     harness.step(1);
     super::settle(&mut harness);
-    assert_eq!(find(&harness, "Load"), None);
-    assert!(find(&harness, "Retry").is_some());
+    assert_eq!(harness.find("Load"), None);
+    assert!(harness.find("Retry").is_some());
 }
 
 #[test]
@@ -796,15 +797,12 @@ fn the_autosave_rows_are_not_save_targets() {
     press(&mut harness, "Save");
     // Left out, with a note on when they are written.
     for name in ["Autosave 1", "Autosave 2", "Autosave 3"] {
-        assert_eq!(find(&harness, name), None);
+        assert_eq!(harness.find(name), None);
     }
-    assert!(shows(
-        &harness,
-        "Written as you play, when you pause and when you quit."
-    ));
+    assert!(harness.shows("Written as you play, when you pause and when you quit."));
     tap(&mut harness, "ui_cancel");
     press(&mut harness, "Load");
-    assert!(find(&harness, "Autosave 1").is_some(), "but a load source");
+    assert!(harness.find("Autosave 1").is_some(), "but a load source");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -883,7 +881,7 @@ fn an_autosave_fills_an_empty_slot_then_the_oldest() {
 /// The names of the save rows the screen on top shows, in order.
 fn row_names(harness: &UiHarness) -> Vec<String> {
     let tree = harness.tree();
-    let root = super::shown_modal(harness).expect("a screen");
+    let root = harness.front_modal().expect("a screen");
     let mut names = Vec::new();
     let mut stack = vec![root];
     while let Some(id) = stack.pop() {
@@ -1000,13 +998,10 @@ fn an_older_save_names_its_version_and_asks_before_it_loads() {
     press(&mut harness, "Autosave 1");
     assert_eq!(top(&harness), Some(CONFIRM));
     let question = "Autosave 1 was saved by an older version, unknown. Load it?";
-    assert!(shows(&harness, question), "the unknown one");
+    assert!(harness.shows(question), "the unknown one");
     press(&mut harness, "Cancel");
     press(&mut harness, "Slot 1");
-    assert!(shows(
-        &harness,
-        "Slot 1 was saved by an older version, 0.0.1. Load it?"
-    ));
+    assert!(harness.shows("Slot 1 was saved by an older version, 0.0.1. Load it?"));
     press(&mut harness, "Cancel");
     assert_eq!(top(&harness), Some(SAVES), "Cancel stays on the screen");
     press(&mut harness, "Slot 1");
@@ -1032,7 +1027,7 @@ fn a_save_of_this_version_loads_without_asking() {
 /// top, in order.
 fn layout_texts(harness: &UiHarness) -> Vec<String> {
     let tree = harness.tree();
-    let root = super::shown_modal(harness).expect("a screen");
+    let root = harness.front_modal().expect("a screen");
     let mut texts = Vec::new();
     let mut stack = vec![root];
     while let Some(id) = stack.pop() {
@@ -1041,9 +1036,9 @@ fn layout_texts(harness: &UiHarness) -> Vec<String> {
         }
         let parent = tree.parent(id).and_then(|parent| tree.kind(parent));
         match tree.kind(id) {
-            Some(WidgetKind::Button) => texts.push(widgets::text_of(tree, id)),
+            Some(WidgetKind::Button) => texts.push(tree.plain_text(id)),
             Some(WidgetKind::Label) if parent != Some(WidgetKind::Button) => {
-                texts.push(widgets::text_of(tree, id));
+                texts.push(tree.plain_text(id));
             }
             _ => {}
         }
@@ -1079,7 +1074,7 @@ fn the_load_screen_groups_autosaves_and_slots() {
     tap(&mut harness, "ui_cancel");
     harness.world_mut().resource_mut::<GameOptions>().autosave = false;
     press(&mut harness, "Save");
-    assert!(shows(&harness, "Autosave is off."));
+    assert!(harness.shows("Autosave is off."));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1093,11 +1088,11 @@ fn delete_is_quiet_until_its_row_has_focus() {
     press(&mut harness, "Load");
     let colors = harness.tree().theme().tokens.colors;
     let color = |harness: &UiHarness, name: &str| {
-        let delete = named(harness, name).unwrap();
+        let delete = harness.named(name).unwrap();
         harness.tree().resolved_style(delete).unwrap().text.color
     };
     let focus = |harness: &mut UiHarness, name: &str| {
-        let id = find(harness, name).unwrap();
+        let id = harness.find(name).unwrap();
         assert!(harness.focus(id));
         harness.step(1);
     };
@@ -1120,7 +1115,7 @@ fn an_empty_row_reads_quieter() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     let style = |harness: &UiHarness, name: &str| {
         let tree = harness.tree();
-        let row = named(harness, name).unwrap();
+        let row = harness.named(name).unwrap();
         let label = tree.children(row)[0];
         let background = tree.resolved_style(row).unwrap().background;
         (background, tree.resolved_style(label).unwrap().text.color)
@@ -1134,7 +1129,7 @@ fn an_empty_row_reads_quieter() {
     tap(&mut harness, "state_pause");
     press(&mut harness, "Save");
     // Focus away from the rows, so each shows its own look.
-    let back = find(&harness, "Back").unwrap();
+    let back = harness.find("Back").unwrap();
     assert!(harness.focus(back));
     harness.step(1);
     let theme = harness.tree().theme().clone();

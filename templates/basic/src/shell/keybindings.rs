@@ -10,12 +10,12 @@
 
 use std::path::Path;
 
-use tungsten::core::ui::{Sizing, UiEvent, UiRouter, UiTree, Visibility, WidgetId};
+use tungsten::core::ui::{Sizing, UiEvent, UiKey, UiRouter, UiTree, Visibility, WidgetId, widgets};
 use tungsten::core::{ActionMap, ActionMapError, Binding, Time, Timer, World};
 use tungsten::{GameState, StateContext, StateId};
 
 use super::confirm::{self, ConfirmState};
-use super::{cancelled, clicked, enter, events, pop, toast, transitioning, widgets};
+use super::{BACK, activated, cancelled, enter, events, pop, toast, transitioning};
 use crate::game::BINDABLE_ACTIONS;
 
 pub const KEYBINDINGS: StateId = "keybindings";
@@ -23,6 +23,7 @@ pub const KEYBINDINGS: StateId = "keybindings";
 pub const COLUMNS: [&str; 3] = ["Primary", "Alternate", "Gamepad"];
 /// Real seconds a capture waits for a press.
 pub const CAPTURE_SECS: f32 = 5.0;
+const RESET_ALL: UiKey = UiKey::new("reset_all");
 /// The card's design width, past the smallest viewport's, so a stick's
 /// name keeps one line there; and the least width of a row's caption at
 /// text 100 %, which the text scale scales, so the cells line up.
@@ -37,6 +38,24 @@ fn row(tree: &mut UiTree, card: WidgetId, caption: &str) -> WidgetId {
     (style.width, style.min_width) = (Sizing::Auto, Some(CAPTION * tree.text_scale()));
     tree.set_layout_style(label, style);
     row
+}
+
+/// The key of `action`'s cell in `column`, its Reset at column 3, as
+/// `jump.primary`.
+fn cell_key(action: &str, column: usize) -> String {
+    let column = ["primary", "alternate", "gamepad", "reset"][column];
+    format!("{action}.{column}")
+}
+
+/// The row and column of the cell keyed `key`.
+fn cell_of(key: UiKey) -> Option<(usize, usize)> {
+    BINDABLE_ACTIONS
+        .iter()
+        .enumerate()
+        .find_map(|(row, (action, _))| {
+            let column = (0..4).find(|column| UiKey::new(&cell_key(action, *column)) == key);
+            column.map(|column| (row, column))
+        })
 }
 
 fn is_pad(binding: Binding) -> bool {
@@ -95,15 +114,15 @@ pub fn reset(world: &mut World, only: Option<&str>) {
 /// The keybindings screen.
 #[derive(Default)]
 pub struct KeybindingsState {
-    /// The root, each row's three cells and Reset, Reset all and Back.
-    ui: Option<(WidgetId, Vec<[WidgetId; 4]>, WidgetId, WidgetId)>,
+    /// The root and each row's three cells and Reset.
+    ui: Option<(WidgetId, Vec<[WidgetId; 4]>)>,
     /// The row and column capturing, and its timer on the real clock.
     capture: Option<(usize, usize, Timer)>,
 }
 
 impl KeybindingsState {
     fn refresh(&self, world: &mut World) {
-        let (Some((_, rows, ..)), Some(map)) = (&self.ui, world.get_resource::<ActionMap>()) else {
+        let (Some((_, rows)), Some(map)) = (&self.ui, world.get_resource::<ActionMap>()) else {
             return;
         };
         let bindings: Vec<Vec<Binding>> = BINDABLE_ACTIONS
@@ -174,7 +193,7 @@ impl GameState for KeybindingsState {
         tree.set_visibility(spacer, Visibility::Hidden);
         let rows = BINDABLE_ACTIONS
             .iter()
-            .map(|(_, label)| {
+            .map(|(action, label)| {
                 let row = row(tree, card, label);
                 let [a, b, c] =
                     COLUMNS.map(|column| widgets::button(tree, row, &format!("{label} {column}")));
@@ -183,15 +202,21 @@ impl GameState for KeybindingsState {
                 }
                 let reset = widgets::button(tree, row, &format!("Reset {label}"));
                 tree.set_text(reset, "Reset");
-                [a, b, c, reset]
+                let cells = [a, b, c, reset];
+                for (column, cell) in cells.into_iter().enumerate() {
+                    tree.set_key(cell, &cell_key(action, column));
+                }
+                cells
             })
             .collect::<Vec<_>>();
         let actions = widgets::row(tree, card);
         let all = widgets::button(tree, actions, "Reset all");
+        tree.set_key(all, "reset_all");
         let back = widgets::button(tree, actions, "Back");
+        tree.set_key(back, "back");
         tree.focus(rows[0][0]);
         enter(ctx.world, root);
-        self.ui = Some((root, rows, all, back));
+        self.ui = Some((root, rows));
         self.refresh(ctx.world);
     }
 
@@ -204,7 +229,7 @@ impl GameState for KeybindingsState {
     }
 
     fn update(&mut self, world: &mut World) {
-        let Some((root, rows, all, back)) = self.ui.clone() else {
+        let Some((root, rows)) = self.ui.clone() else {
             return;
         };
         if transitioning(world) {
@@ -233,24 +258,28 @@ impl GameState for KeybindingsState {
             tree.set_text(rows[row][column], text.as_str());
             return;
         }
-        let buttons: Vec<WidgetId> = rows.iter().flatten().copied().chain([all, back]).collect();
-        match clicked(world, &buttons) {
-            Some(at) if buttons[at] == back => pop(world),
-            Some(at) if buttons[at] == all => {
+        let Some((cell, key)) = activated(world, root) else {
+            if cancelled(world, root) {
+                pop(world);
+            }
+            return;
+        };
+        match (key, cell_of(key)) {
+            (BACK, _) => pop(world),
+            (RESET_ALL, _) => {
                 reset(world, None);
                 self.refresh(world);
             }
-            Some(at) if at % 4 == 3 => {
-                reset(world, Some(BINDABLE_ACTIONS[at / 4].0));
+            (_, Some((row, 3))) => {
+                reset(world, Some(BINDABLE_ACTIONS[row].0));
                 self.refresh(world);
             }
-            Some(at) => {
-                self.capture = Some((at / 4, at % 4, Timer::once(CAPTURE_SECS)));
+            (_, Some((row, column))) => {
+                self.capture = Some((row, column, Timer::once(CAPTURE_SECS)));
                 let router = world.resource_mut::<UiRouter>();
-                router.capture_next_input(buttons[at]);
+                router.capture_next_input(cell);
             }
-            None if cancelled(world, root) => pop(world),
-            None => {}
+            (_, None) => {}
         }
     }
 }

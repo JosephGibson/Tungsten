@@ -302,3 +302,298 @@ fn danger_reads_from_colors_and_defaults() {
     // No built-in kind reads it, so the kinds are the default theme's.
     assert_eq!(theme.kinds, default.kinds);
 }
+
+#[test]
+fn text_styles_sizes_and_sounds_read_from_a_theme_file() {
+    let theme = theme_of(
+        r##"{
+          "tokens": { "colors": { "background": "#102030", "text_muted": "#808080" },
+                      "fonts": { "heading": "serif" },
+                      "text": { "size": 16, "line_height": 22, "heading_size": 26 } },
+          "text_styles": { "heading": { "size": 20, "line_height": 28 },
+                           "title": { "family": "serif", "size": 56, "line_height": 64,
+                                      "color": "#ffffff" } },
+          "sizes": { "menu_width": 260, "button_padding_x": 14.5 },
+          "sounds": { "focus": "ui_move", "back": "ui_back" }
+        }"##,
+    );
+    let heading = &theme.text_style("heading").expect("built in").text;
+    assert_eq!(
+        heading.family.as_deref(),
+        Some("serif"),
+        "from the file's tokens"
+    );
+    assert_eq!(
+        (heading.size, heading.line_height),
+        (Some(20.0), Some(28.0)),
+        "the file's fields over the built-in style"
+    );
+    let title = &theme.text_style("title").expect("the file's own").text;
+    assert_eq!(title.color, Some([255, 255, 255, 255]));
+    assert_eq!(title.size, Some(56.0));
+    let note = &theme.text_style("note").expect("built in").text;
+    assert_eq!(
+        note.color,
+        Some([0x80, 0x80, 0x80, 255]),
+        "the built-ins follow the file's tokens"
+    );
+    let small = &theme.text_style("small").expect("built in").text;
+    assert_eq!((small.size, small.line_height), (Some(13.0), Some(18.0)));
+    assert_eq!(theme.size("menu_width", 0.0), 260.0);
+    assert_eq!(theme.size("button_padding_x", 0.0), 14.5);
+    assert_eq!(theme.size("missing", 7.0), 7.0);
+    assert_eq!(theme.sounds().focus.as_deref(), Some("ui_move"));
+    assert_eq!(theme.sounds().activate, None);
+    assert_eq!(theme.sounds().back.as_deref(), Some("ui_back"));
+    assert_eq!(
+        theme.tokens.colors.scrim,
+        [0x10, 0x20, 0x30, 184],
+        "an unset scrim follows the file's background"
+    );
+    assert_eq!(theme.tokens.colors.raised, theme.tokens.colors.surface);
+
+    let built_in = Theme::default();
+    let names: Vec<&str> = built_in
+        .names
+        .text_styles
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(names, ["danger", "heading", "mono", "note", "small"]);
+    assert!(built_in.names.sizes.is_empty());
+    assert_eq!(*built_in.sounds(), ThemeSounds::default());
+    for bad in [
+        r#"{ "sizes": { "gap": -1 } }"#,
+        r#"{ "sizes": { "gap": 1e39 } }"#,
+        r#"{ "sounds": { "hover": "ui_move" } }"#,
+        r#"{ "text_styles": { "x": { "font": "mono" } } }"#,
+        r#"{ "text_styles": { "x": { "line_height": 0 } } }"#,
+    ] {
+        assert!(ThemeFile::from_json(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn a_colour_field_takes_a_token_name() {
+    let theme = theme_of(
+        r##"{
+          "tokens": { "colors": { "surface": "#15171d", "raised": "#1e2129", "focus": "accent" } },
+          "kinds": { "button": { "normal": { "background": "surface", "text": { "color": "text" } },
+                                 "hovered": { "background": "raised", "border": "scrim" } } },
+          "text_styles": { "warning": { "color": "danger" } }
+        }"##,
+    );
+    let colors = theme.tokens.colors;
+    assert_eq!(colors.focus, colors.accent, "a token reads a literal token");
+    let button = &theme.kinds.button;
+    assert_eq!(button.normal.background, [0x15, 0x17, 0x1d, 255]);
+    assert_eq!(button.normal.text.color, Some(colors.text));
+    assert_eq!(button.hovered.background, Some([0x1e, 0x21, 0x29, 255]));
+    assert_eq!(button.hovered.border, Some(colors.scrim));
+    let warning = &theme.text_style("warning").expect("the file's own").text;
+    assert_eq!(warning.color, Some(colors.danger));
+    let literal =
+        theme_of(r##"{ "kinds": { "button": { "normal": { "background": "#15171d" } } } }"##);
+    let named = theme_of(
+        r##"{ "tokens": { "colors": { "surface": "#15171d" } },
+             "kinds": { "button": { "normal": { "background": "surface" } } } }"##,
+    );
+    assert_eq!(
+        literal.kinds.button.normal.background,
+        named.kinds.button.normal.background
+    );
+}
+
+#[test]
+fn an_unknown_token_name_is_refused_with_its_path() {
+    for (bad, path) in [
+        (
+            r#"{ "kinds": { "button": { "hovered": { "background": "surfce" } } } }"#,
+            "kinds.button.hovered.background",
+        ),
+        (
+            r#"{ "kinds": { "slider": { "normal": { "text": { "color": "primary" } } } } }"#,
+            "kinds.slider.normal.text.color",
+        ),
+        (
+            r#"{ "text_styles": { "title": { "color": "gold" } } }"#,
+            "text_styles.title.color",
+        ),
+        (
+            r#"{ "tokens": { "colors": { "focus": "Accent" } } }"#,
+            "tokens.colors.focus",
+        ),
+    ] {
+        let err = ThemeFile::from_json(bad).unwrap_err().to_string();
+        assert!(err.contains(path), "{bad}: {err}");
+        assert!(err.contains("raised"), "the error lists the names: {err}");
+    }
+}
+
+#[test]
+fn outline_and_shadow_read_from_a_theme_file() {
+    use crate::text::{TextOutline, TextShadow};
+    use glam::Vec2;
+    let theme = theme_of(
+        r##"{
+          "tokens": { "colors": { "background": "#101010" } },
+          "text_styles": {
+            "title": { "size": 56, "outline": { "color": "#000000c0", "width": 1.5 } },
+            "died": { "shadow": { "color": "background", "offset": [2, 3] } }
+          }
+        }"##,
+    );
+    let title = theme.text_style("title").expect("the file's");
+    assert_eq!(title.outline, Some(TextOutline::new([0, 0, 0, 0xc0], 1.5)));
+    assert_eq!(title.shadow, None);
+    assert_eq!(title.text.size, Some(56.0));
+    let died = theme.text_style("died").expect("the file's");
+    assert_eq!(
+        died.shadow,
+        Some(TextShadow::new(
+            [0x10, 0x10, 0x10, 255],
+            Vec2::new(2.0, 3.0)
+        )),
+        "a token's name for its colour"
+    );
+
+    for (bad, says) in [
+        (
+            r##"{ "kinds": { "label": { "normal": { "text": { "outline": { "color": "#000000", "width": 1 } } } } } }"##,
+            "kinds.label.normal.text.outline",
+        ),
+        (
+            r##"{ "kinds": { "button": { "hovered": { "text": { "shadow": { "color": "#000000", "offset": [1, 1] } } } } } }"##,
+            "kinds.button.hovered.text.shadow",
+        ),
+        (
+            r#"{ "text_styles": { "x": { "outline": { "color": "gold", "width": 1 } } } }"#,
+            "text_styles.x.outline.color",
+        ),
+        (
+            r##"{ "text_styles": { "x": { "outline": { "color": "#000000", "width": -1 } } } }"##,
+            "outline width",
+        ),
+        (
+            r##"{ "text_styles": { "x": { "outline": { "color": "#000000" } } } }"##,
+            "width",
+        ),
+        (
+            r##"{ "text_styles": { "x": { "shadow": { "color": "#000000", "offset": [1, 1], "blur": 2 } } } }"##,
+            "blur",
+        ),
+    ] {
+        let err = ThemeFile::from_json(bad).unwrap_err().to_string();
+        assert!(err.contains(says), "{bad}: {err}");
+    }
+}
+
+#[test]
+fn shrink_reads_from_a_theme_file() {
+    let theme = theme_of(
+        r#"{ "text_styles": { "title": { "size": 56, "line_height": 64, "shrink": 0.5 },
+                              "died": { "shrink": 1 } } }"#,
+    );
+    let title = theme.text_style("title").expect("the file's");
+    assert_eq!(title.shrink, Some(0.5));
+    assert_eq!(title.text.size, Some(56.0));
+    assert_eq!(
+        theme.text_style("died").and_then(|style| style.shrink),
+        Some(1.0)
+    );
+    assert_eq!(
+        theme.text_style("heading").and_then(|style| style.shrink),
+        None,
+        "none built in"
+    );
+    for (bad, says) in [
+        (r#"{ "text_styles": { "x": { "shrink": 0 } } }"#, "shrink 0"),
+        (
+            r#"{ "text_styles": { "x": { "shrink": 1.5 } } }"#,
+            "shrink 1.5",
+        ),
+        (
+            r#"{ "text_styles": { "x": { "shrink": -0.5 } } }"#,
+            "shrink -0.5",
+        ),
+        (
+            r#"{ "kinds": { "label": { "normal": { "text": { "shrink": 0.5 } } } } }"#,
+            "kinds.label.normal.text.shrink",
+        ),
+    ] {
+        let err = ThemeFile::from_json(bad).unwrap_err().to_string();
+        assert!(err.contains(says), "{bad}: {err}");
+    }
+}
+
+/// The names serde lists after "expected" in `message`.
+fn expected(message: &str) -> std::collections::BTreeSet<String> {
+    let after = message
+        .split_once("expected")
+        .unwrap_or_else(|| panic!("no expected list in {message}"))
+        .1;
+    after
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn the_theme_schema_lists_every_field_the_model_reads() {
+    let schema = json_schema();
+    assert_eq!(
+        schema["$schema"],
+        "https://json-schema.org/draft/2020-12/schema"
+    );
+    let defs = &schema["$defs"];
+    let properties = |def: &Value| -> std::collections::BTreeSet<String> {
+        def["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{def} has no properties"))
+            .keys()
+            .cloned()
+            .collect()
+    };
+    for (json, def) in [
+        (r#"{"zz": 1}"#, &schema),
+        (r#"{"tokens": {"zz": 1}}"#, &defs["tokens"]),
+        (
+            r##"{"tokens": {"colors": {"zz": "#000000"}}}"##,
+            &defs["colors"],
+        ),
+        (r#"{"tokens": {"spacing": {"zz": 1}}}"#, &defs["spacing"]),
+        (r#"{"tokens": {"radii": {"zz": 1}}}"#, &defs["radii"]),
+        (r#"{"tokens": {"fonts": {"zz": "a"}}}"#, &defs["fonts"]),
+        (r#"{"tokens": {"text": {"zz": 1}}}"#, &defs["text_tokens"]),
+        (r#"{"kinds": {"zz": {}}}"#, &defs["kinds"]),
+        (r#"{"kinds": {"button": {"zz": {}}}}"#, &defs["kind"]),
+        (
+            r#"{"kinds": {"button": {"normal": {"zz": 1}}}}"#,
+            &defs["overrides"],
+        ),
+        (r#"{"text_styles": {"a": {"zz": 1}}}"#, &defs["text"]),
+        (
+            r##"{"text_styles": {"a": {"outline": {"color": "#000000", "width": 1, "zz": 1}}}}"##,
+            &defs["outline"],
+        ),
+        (
+            r##"{"text_styles": {"a": {"shadow": {"color": "#000000", "offset": [1, 1], "zz": 1}}}}"##,
+            &defs["shadow"],
+        ),
+        (
+            r#"{"text_styles": {"a": {"overflow": {"ellipsis": {"at": "end", "zz": 1}}}}}"#,
+            &defs["ellipsis"],
+        ),
+        (r#"{"sounds": {"zz": "a"}}"#, &defs["sounds"]),
+    ] {
+        let error = ThemeFile::from_json(json).expect_err(json).to_string();
+        assert!(error.contains("unknown field `zz`"), "{json}: {error}");
+        assert_eq!(expected(&error), properties(def), "{json}");
+    }
+    assert_eq!(
+        schema["properties"]["text_styles"]["additionalProperties"]["$ref"],
+        "#/$defs/text"
+    );
+}

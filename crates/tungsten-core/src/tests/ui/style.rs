@@ -653,3 +653,111 @@ fn a_controls_colour_only_change_repaints_and_a_line_height_change_relayouts() {
         Vec2::new(30.0, 30.0)
     );
 }
+
+/// The built-in theme with a hovered button's text in one colour and a
+/// `loud` style in another, larger.
+fn loud_theme() -> Theme {
+    let mut theme = Theme::default();
+    theme.kinds.button.hovered.text.color = Some([1, 1, 1, 255]);
+    let loud = TextOverrides {
+        color: Some([2, 2, 2, 255]),
+        size: Some(30.0),
+        ..TextOverrides::default()
+    };
+    theme
+        .names
+        .text_styles
+        .insert("loud".to_owned(), loud.into());
+    theme
+}
+
+#[test]
+fn a_named_style_layers_between_states_and_overrides() {
+    let (mut tree, _root, button, label) = clean_button();
+    tree.set_theme(loud_theme());
+    tree.set_text_style(button, Some("loud"));
+    tree.set_hovered(Some(button));
+    settle(&mut tree);
+    assert_eq!(tree.text_style(button), Some("loud"));
+    assert_eq!(
+        resolved(&tree, button).text.color,
+        [2, 2, 2, 255],
+        "the named style over the hovered variant"
+    );
+    assert_eq!(
+        resolved(&tree, label).text.size,
+        30.0,
+        "its text passes down"
+    );
+
+    tree.edit_overrides(button, |own| own.text.color = Some([3, 3, 3, 255]));
+    settle(&mut tree);
+    assert_eq!(
+        resolved(&tree, button).text.color,
+        [3, 3, 3, 255],
+        "the node's overrides over the named style"
+    );
+    assert_eq!(resolved(&tree, button).text.size, 30.0);
+
+    tree.set_text_style(button, None);
+    settle(&mut tree);
+    assert_eq!(
+        resolved(&tree, button).text.size,
+        tree.theme().tokens.text.size
+    );
+    tree.set_text_style(button, None);
+    assert!(
+        !tree.widget_dirty(button).expect("in the tree").style,
+        "an equal name marks nothing"
+    );
+}
+
+#[test]
+fn a_named_style_is_not_cascaded_past_inheritance() {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Game, LayoutStyle::default());
+    let panel = tree.panel(root, LayoutStyle::default());
+    let label = tree.label(panel, "inherits");
+    let button = tree.button(panel, "keeps its kind's");
+    tree.set_text_style(panel, Some("danger"));
+    settle(&mut tree);
+    let colors = tree.theme().tokens.colors;
+    assert_eq!(resolved(&tree, panel).text.color, colors.danger);
+    assert_eq!(
+        resolved(&tree, label).text.color,
+        colors.danger,
+        "a label under it inherits"
+    );
+    assert_eq!(
+        resolved(&tree, button).text.color,
+        colors.accent_text,
+        "a button's kind text applies over what it inherits; the style is not applied again"
+    );
+}
+
+#[test]
+fn an_unknown_style_name_applies_nothing() {
+    let (mut tree, _root, button, _label) = clean_button();
+    let before = resolved(&tree, button).clone();
+    tree.set_text_style(button, Some("no_such_style"));
+    settle(&mut tree);
+    assert_eq!(
+        resolved(&tree, button),
+        &before,
+        "it warns once and applies nothing"
+    );
+
+    // A theme that has the name applies it.
+    let mut theme = Theme::default();
+    let style = TextOverrides {
+        size: Some(40.0),
+        ..TextOverrides::default()
+    };
+    theme
+        .names
+        .text_styles
+        .insert("no_such_style".to_owned(), style.into());
+    tree.set_theme(theme);
+    settle(&mut tree);
+    assert_eq!(resolved(&tree, button).text.size, 40.0);
+}

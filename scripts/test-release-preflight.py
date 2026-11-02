@@ -42,6 +42,7 @@ class Preflight(unittest.TestCase):
         self.pulls = []
         self.runs = []
         self.ci_runs = []
+        self.ci_jobs = []
         self.api_calls = []
 
     def git(self, *args):
@@ -73,6 +74,8 @@ class Preflight(unittest.TestCase):
             return {"workflow_runs": self.runs}
         if "/workflows/ci.yml/" in endpoint:
             return {"workflow_runs": self.ci_runs}
+        if "/actions/runs/" in endpoint and endpoint.split("?")[0].endswith("/jobs"):
+            return {"jobs": self.ci_jobs}
         self.fail(f"Unexpected API lookup: {endpoint}")
 
     def check(self, version="1.0.0", ref="HEAD", branch="main", rehearsal=False, **options):
@@ -115,6 +118,22 @@ class Preflight(unittest.TestCase):
         with patch.object(pre, "api", side_effect=self.github), patch.object(pre, "github_repository", return_value="owner/repo"), contextlib.redirect_stdout(out):
             code = pre.main([*argv, "--root", str(self.root), "--repo", "owner/repo"])
         return code, out.getvalue()
+
+    def gate(self, sha=None, polls=()):
+        """`ci_gate` on SHA (HEAD) and main; each sleep advances its clock and, while POLLS last, sets the
+        next look's CI runs."""
+        clock, slept, polls = [0.0], [], list(polls)
+
+        def sleep(seconds):
+            slept.append(seconds)
+            clock[0] += seconds
+            if polls:
+                self.ci_runs = polls.pop(0)
+
+        out = io.StringIO()
+        with patch.object(pre, "api", side_effect=self.github), contextlib.redirect_stdout(out):
+            errors = pre.ci_gate(self.root, "owner/repo", "origin", "main", sha or self.sha, sleep, lambda: clock[0])
+        return errors, out.getvalue(), slept
 
     def cut(self, version, branch):
         """A release commit for VERSION on a new BRANCH from HEAD."""
@@ -337,6 +356,77 @@ class Preflight(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual((agent, owner), ([], [self.START]))
         self.assertTrue(any("No release run found" in line for line in info))
+
+    def test_ci_gate_reads_the_newest_push_run_past_cancelled_and_pull_request_runs(self):
+        self.ci_runs = [self.run_info("main", sha="f" * 40, conclusion="failure", id=10),
+                        self.run_info("main", event="pull_request", conclusion="failure", id=9),
+                        self.run_info("main", conclusion="cancelled", id=8),
+                        self.run_info("main", id=7), self.run_info("main", conclusion="failure", id=6)]
+        errors, out, slept = self.gate()
+        self.assertEqual((errors, slept), ([], []))
+        self.assertIn(f"CI passed on {self.sha[:12]}: https://github.com/owner/repo/actions/runs/7", out)
+
+    def test_ci_gate_refuses_a_run_that_failed_naming_its_failed_jobs(self):
+        self.ci_runs = [self.run_info("main", conclusion="failure", id=7)]
+        self.ci_jobs = [dict(name="CPU checks (Linux)", conclusion="failure"),
+                        dict(name="CPU tests (Windows)", conclusion="success")]
+        errors, _, _ = self.gate()
+        self.assertEqual(len(errors), 1)
+        self.assertIn(f"CI run 7 on {self.sha[:12]} concluded failure (CPU checks (Linux)):", errors[0])
+        self.assertIn("gh run rerun 7 --repo owner/repo --failed", errors[0])
+
+    def test_ci_gate_waits_for_a_pushed_commits_run_to_appear_and_finish(self):
+        running = [self.run_info("main", status="in_progress", conclusion=None, id=7)]
+        errors, out, slept = self.gate(polls=[running, running, [self.run_info("main", id=7)]])
+        self.assertEqual((errors, slept), ([], [pre.CI_POLL] * 3))
+        self.assertEqual(out.count("is in_progress; waiting for it"), 1)
+
+    def test_ci_gate_reports_a_run_cancelled_while_it_waited(self):
+        self.ci_runs = [self.run_info("main", status="in_progress", conclusion=None, id=7)]
+        errors, _, slept = self.gate(polls=[[self.run_info("main", conclusion="cancelled", id=7)]])
+        self.assertIn(f"CI run 7 on {self.sha[:12]} was cancelled while the release waited for it", errors[0])
+        self.assertEqual(slept, [pre.CI_POLL])
+
+    def test_ci_gate_lets_a_failed_lookup_raise_mid_wait(self):
+        self.ci_runs = [self.run_info("main", status="queued", conclusion=None, id=7)]
+        lookups = []
+
+        def github(root, endpoint, missing=False):
+            lookups.append(endpoint)
+            if len(lookups) > 1:
+                raise ValueError("GitHub lookup failed: HTTP 502")
+            return self.github(root, endpoint, missing)
+
+        with patch.object(pre, "api", side_effect=github), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(ValueError, "HTTP 502"):
+                pre.ci_gate(self.root, "owner/repo", "origin", "main", self.sha, lambda seconds: None, lambda: 0.0)
+        self.assertEqual(len(lookups), 2)
+
+    def test_ci_gate_gives_up_on_a_run_that_never_appears_or_never_finishes(self):
+        errors, _, slept = self.gate()
+        self.assertIn("no CI run on", errors[0])
+        self.assertIn(f"appeared within {pre.CI_APPEAR // 60} minutes", errors[0])
+        self.assertIn("gh workflow run ci.yml --repo owner/repo --ref main", errors[0])
+        self.assertEqual(sum(slept), pre.CI_APPEAR)
+        self.ci_runs = [self.run_info("main", status="queued", conclusion=None, id=7)]
+        errors, _, slept = self.gate()
+        self.assertIn("CI run 7 on", errors[0])
+        self.assertIn(f"is still queued after {pre.CI_WAIT // 60} minutes", errors[0])
+        self.assertEqual(sum(slept), pre.CI_WAIT)
+
+    def test_ci_gate_refuses_a_head_the_branch_does_not_hold_before_any_lookup(self):
+        self.write("README.md", "# Engine, later\n")
+        self.commit("later")
+        self.api_calls = []
+        errors, _, slept = self.gate(sha=self.git("rev-parse", "HEAD"))
+        self.assertIn(f"origin/main is at {self.sha[:12]}, not HEAD", errors[0])
+        self.assertIn("`git push origin main`", errors[0])
+        self.assertEqual((self.api_calls, slept), ([], []))
+        # A branch ahead of HEAD needs its commits integrated; a push would be refused.
+        self.git("push", "origin", "main")
+        errors, _, _ = self.gate(sha=self.sha)
+        self.assertIn(f"which HEAD {self.sha[:12]} doesn't hold: integrate the branch's commits", errors[0])
+        self.assertEqual(self.api_calls, [])
 
     def test_lightweight_and_conflicting_tag_objects_fail(self):
         self.git("tag", "v1.0.0")

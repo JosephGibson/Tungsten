@@ -4,8 +4,8 @@ use super::*;
 use crate::assets::SpriteAssetId;
 use crate::text::StyledText;
 use crate::ui::{
-    CursorIcon, FixedAdvanceMeasure, LayoutStyle, NavDirection, Role, Theme, UiLayer, Visibility,
-    WidgetKind,
+    CursorIcon, FixedAdvanceMeasure, LayoutStyle, NavDirection, Role, Sizing, Theme, UiKey,
+    UiLayer, Visibility, WidgetKind,
 };
 
 const VIEWPORT: Vec2 = Vec2::new(800.0, 600.0);
@@ -650,4 +650,129 @@ fn set_shadow_marks_paint_only_and_an_equal_shadow_nothing() {
     tree.set_shadow(panel, None);
     assert_eq!(tree.shadow(panel), None);
     assert!(tree.is_paint_dirty());
+}
+
+#[test]
+fn edit_layout_marks_only_a_change() {
+    let (mut tree, root) = clean_tree();
+    let panel = tree.panel(root, LayoutStyle::default());
+    settle(&mut tree);
+
+    tree.edit_layout(panel, |style| style.width = Sizing::Auto);
+    assert!(!tree.is_layout_dirty(), "an equal style marks nothing");
+    assert!(!tree.is_paint_dirty());
+
+    tree.edit_layout(panel, |style| style.width = Sizing::Px(40.0));
+    assert!(tree.is_layout_dirty());
+    assert_eq!(
+        tree.layout_style(panel).map(|style| style.width),
+        Some(Sizing::Px(40.0))
+    );
+    settle(&mut tree);
+    assert_eq!(tree.rect(panel).map(|rect| rect.width()), Some(40.0));
+
+    // An invalid ID runs no edit.
+    tree.remove(panel);
+    settle(&mut tree);
+    tree.edit_layout(panel, |_| panic!("an invalid ID runs no edit"));
+}
+
+#[test]
+fn edit_overrides_keeps_the_text_overrides() {
+    let (mut tree, root) = clean_tree();
+    let label = tree.label(root, "x");
+    tree.edit_overrides(label, |own| own.text.color = Some([1, 2, 3, 255]));
+    settle(&mut tree);
+
+    tree.edit_overrides(label, |own| own.background = Some([9, 9, 9, 255]));
+    let own = tree.overrides(label).expect("in the tree");
+    assert_eq!(own.background, Some([9, 9, 9, 255]));
+    assert_eq!(
+        own.text.color,
+        Some([1, 2, 3, 255]),
+        "the text overrides stay"
+    );
+    assert!(tree.is_paint_dirty());
+    settle(&mut tree);
+
+    tree.edit_overrides(label, |own| own.background = Some([9, 9, 9, 255]));
+    assert!(!tree.is_paint_dirty(), "equal overrides mark nothing");
+    assert!(!tree.widget_dirty(label).expect("in the tree").style);
+}
+
+#[test]
+fn plain_text_joins_spans_under_a_set_name() {
+    let (mut tree, root) = clean_tree();
+    let mut text = StyledText::from("Volume ");
+    text.spans
+        .push(crate::text::TextSpan::new("80%").with_color([9, 9, 9, 255]));
+    let button = tree.button(root, text);
+    tree.set_accessible_name(button, Some("Music".to_owned()));
+    assert_eq!(tree.accessible_name(button), Some("Music"));
+    assert_eq!(tree.plain_text(button), "Volume 80%");
+
+    let label = tree.children(button)[0];
+    assert_eq!(tree.plain_text(label), "Volume 80%");
+    assert_eq!(tree.plain_text(root), "", "a panel holds no text");
+    tree.remove(label);
+    assert_eq!(tree.plain_text(label), "");
+}
+
+#[test]
+fn ui_key_new_is_fnv1a_of_its_name() {
+    // FNV-1a 64's published vectors.
+    assert_eq!(UiKey::new("").get(), 0xcbf2_9ce4_8422_2325);
+    assert_eq!(UiKey::new("a").get(), 0xaf63_dc4c_8601_ec8c);
+    assert_eq!(UiKey::new("foobar").get(), 0x8594_4171_f739_67e8);
+    const BACK: UiKey = UiKey::new("back");
+    assert_eq!(BACK, UiKey::new("back"));
+    assert_ne!(BACK, UiKey::new("Back"));
+
+    let (mut tree, root) = clean_tree();
+    let button = tree.button(root, "Back");
+    settle(&mut tree);
+    tree.set_key(button, "back");
+    assert_eq!(tree.key(button), Some(BACK));
+    assert_eq!(tree.key_name(button), Some("back"));
+    assert_eq!(tree.key(root), None);
+    assert_eq!(tree.key_name(root), None);
+    assert!(
+        !tree.is_layout_dirty() && !tree.is_paint_dirty(),
+        "a key marks nothing"
+    );
+}
+
+#[test]
+fn contrast_ratio_of_black_and_white_is_21() {
+    use crate::ui::contrast_ratio;
+    let (black, white) = ([0, 0, 0, 255], [255, 255, 255, 255]);
+    assert!((contrast_ratio(black, white) - 21.0).abs() < 1e-4);
+    assert_eq!(contrast_ratio(white, black), contrast_ratio(black, white));
+    assert_eq!(contrast_ratio(white, white), 1.0);
+    assert_eq!(
+        contrast_ratio([9, 9, 9, 0], [9, 9, 9, 255]),
+        1.0,
+        "alpha is ignored"
+    );
+    // WCAG's often-quoted #777777 on white: 4.48:1.
+    let grey = contrast_ratio([0x77, 0x77, 0x77, 255], white);
+    assert!((grey - 4.48).abs() < 0.01, "{grey}");
+}
+
+#[test]
+fn layout_stats_add_field_by_field_saturating() {
+    let one = LayoutStats {
+        roots_laid_out: 1,
+        nodes_laid_out: 4,
+        measure_calls: 2,
+        commits: 3,
+    };
+    let mut sum = one + one;
+    assert_eq!(sum.nodes_laid_out, 8);
+    sum += LayoutStats {
+        roots_laid_out: u32::MAX,
+        ..LayoutStats::default()
+    };
+    assert_eq!(sum.roots_laid_out, u32::MAX, "saturating");
+    assert_eq!((sum.measure_calls, sum.commits), (4, 6));
 }

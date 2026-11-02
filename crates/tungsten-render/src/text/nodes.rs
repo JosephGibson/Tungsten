@@ -1,6 +1,10 @@
 //! Retained text nodes (`D-117`): text and a style, shaped once into a buffer
 //! that layout measures at several widths and then commits. Declared inside
-//! `engine`, so node methods reach the engine's fonts.
+//! `engine`, so node methods reach the engine's fonts. A node with coloured
+//! spans keeps a second, plain buffer while an outline or shadow copy draws
+//! its plain view (P7-14).
+
+use std::collections::HashMap;
 
 use glam::Vec2;
 use glyphon::cosmic_text::Ellipsize;
@@ -41,6 +45,13 @@ struct Node {
     /// Rises on a changing `set_text` and on every `commit_layout`, so a UI
     /// text batch's signature moves with what the buffer draws (M46).
     revision: u64,
+    /// The plain view's buffer (P7-14): the text shaped without its spans'
+    /// colours, laid out as `committed` is, while a frame's copies draw it.
+    plain: Option<Buffer>,
+    /// The layout `plain` holds.
+    plain_laid: Option<LayoutState>,
+    /// The plain-view pass that last drew `plain`.
+    plain_pass: u64,
 }
 
 impl Node {
@@ -58,10 +69,14 @@ impl Node {
             definite: None,
             committed: None,
             revision: 0,
+            plain: None,
+            plain_laid: None,
+            plain_pass: 0,
         }
     }
 
-    /// Forgets the shaping and every measurement made from it.
+    /// Forgets the shaping and every measurement made from it, the plain
+    /// view's buffer included.
     fn invalidate(&mut self) {
         self.shaped = None;
         self.laid_out = None;
@@ -69,6 +84,13 @@ impl Node {
         self.max = None;
         self.definite = None;
         self.committed = None;
+        self.plain = None;
+        self.plain_laid = None;
+    }
+
+    /// Whether a span carries a colour of its own, which a plain view drops.
+    fn coloured(&self) -> bool {
+        self.text.spans.iter().any(|span| span.color.is_some())
     }
 
     fn wrap(&self) -> Wrap {
@@ -88,6 +110,10 @@ struct NodeSlot {
 pub(super) struct NodeStore {
     slots: Vec<NodeSlot>,
     free: Vec<u32>,
+    /// Counts [`TextEngine::prepare_plain`] passes.
+    plain_pass: u64,
+    /// Whether a node may hold a plain buffer, so a pass sweeps the slots.
+    plain_held: bool,
     /// Buffers shaped, for tests.
     #[cfg(test)]
     shapes: u64,
@@ -115,12 +141,23 @@ impl NodeStore {
     }
 
     /// The committed buffer of `id` and the node's revision, while the
-    /// buffer still holds that layout under `epoch`.
+    /// buffer still holds that layout under `epoch`; for a plain view's ID,
+    /// the plain buffer laid out as the commit is, or the committed buffer
+    /// itself for a node whose spans carry no colour.
     fn area(&self, id: TextNodeId, epoch: FontEpoch) -> Option<(&Buffer, u64)> {
         let current = self.slot(id)?.node.as_ref()?;
         let (state, _) = current.committed?;
-        (current.shaped == Some(epoch) && current.laid_out == Some(state))
-            .then_some((&current.buffer, current.revision))
+        if !(current.shaped == Some(epoch) && current.laid_out == Some(state)) {
+            return None;
+        }
+        if !id.is_plain() || !current.coloured() {
+            return Some((&current.buffer, current.revision));
+        }
+        current
+            .plain
+            .as_ref()
+            .filter(|_| current.plain_laid == Some(state))
+            .map(|plain| (plain, current.revision))
     }
 }
 
@@ -252,6 +289,107 @@ impl TextEngine {
         self.nodes.area(node, self.epoch)
     }
 
+    /// Readies the plain views `ids` name for a frame's UI text batches
+    /// (P7-14): a committed node with a coloured span shapes its text
+    /// without the spans' colours into a second buffer and lays it out as
+    /// its commit; a node no plain ID names drops its plain buffer. IDs that
+    /// name no plain view are skipped.
+    pub(crate) fn prepare_plain(&mut self, ids: impl IntoIterator<Item = TextNodeId>) {
+        self.nodes.plain_pass += 1;
+        let pass = self.nodes.plain_pass;
+        for id in ids {
+            if id.is_plain() {
+                self.ready_plain(id.base(), pass);
+            }
+        }
+        if self.nodes.plain_held {
+            let mut held = false;
+            for node in self
+                .nodes
+                .slots
+                .iter_mut()
+                .filter_map(|slot| slot.node.as_mut())
+            {
+                if node.plain.is_some() && node.plain_pass != pass {
+                    node.plain = None;
+                    node.plain_laid = None;
+                }
+                held |= node.plain.is_some();
+            }
+            self.nodes.plain_held = held;
+        }
+    }
+
+    /// [`Self::prepare_plain`] for one node, in pass `pass`.
+    fn ready_plain(&mut self, id: TextNodeId, pass: u64) {
+        let epoch = self.epoch;
+        let Some(current) = self.nodes.slot(id).and_then(|slot| slot.node.as_ref()) else {
+            return;
+        };
+        let Some((state, _)) = current.committed else {
+            return;
+        };
+        if current.shaped != Some(epoch) || current.laid_out != Some(state) || !current.coloured() {
+            return;
+        }
+        let shape = current.plain.is_none();
+        let (text, style) = (current.text.clone(), current.style.clone());
+        let faces = shape.then(|| self.span_faces(&text, &style));
+        let Some(current) = self.nodes.node_mut(id) else {
+            return;
+        };
+        current.plain_pass = pass;
+        if let Some((base, span_faces)) = faces {
+            let mut buffer = Buffer::new_empty(layout_metrics(style.size, style.line_height));
+            set_spans(
+                &mut buffer,
+                &self.font_attrs,
+                &text,
+                &style,
+                base.as_ref(),
+                &span_faces,
+                false,
+            );
+            current.plain = Some(buffer);
+            current.plain_laid = None;
+        }
+        if current.plain_laid != Some(state)
+            && let Some(plain) = &mut current.plain
+        {
+            plain.set_wrap(state.wrap);
+            plain.set_ellipsize(state.ellipsize);
+            plain.set_size(state.width, state.height);
+            plain.shape_until_scroll(&mut self.font_system, false);
+            current.plain_laid = Some(state);
+        }
+        self.nodes.plain_held = true;
+    }
+
+    /// The face of `style` and of each of `text`'s spans, resolved through
+    /// the style's family (`D-116`).
+    fn span_faces(
+        &mut self,
+        text: &StyledText,
+        style: &TextStyle,
+    ) -> (Option<String>, Vec<Option<String>>) {
+        let base = self.resolve_face(&style.family, style.weight, style.italic);
+        let span_faces = text
+            .spans
+            .iter()
+            .map(|span| {
+                if span.weight.is_none() && span.italic.is_none() {
+                    return base.clone();
+                }
+                self.resolve_face(
+                    &style.family,
+                    span.weight.unwrap_or(style.weight),
+                    span.italic.unwrap_or(style.italic),
+                )
+            })
+            .collect();
+        (base, span_faces)
+    }
+
     /// The font system and the committed node buffers, for a UI text
     /// batch's prepare.
     pub(crate) fn batch_parts(&mut self) -> (&mut FontSystem, NodeAreas<'_>) {
@@ -295,70 +433,18 @@ impl TextEngine {
         };
 
         // Each span's face, resolved through the style's family (`D-116`).
-        let base = self.resolve_face(&style.family, style.weight, style.italic);
-        let span_faces: Vec<Option<String>> = text
-            .spans
-            .iter()
-            .map(|span| {
-                if span.weight.is_none() && span.italic.is_none() {
-                    return base.clone();
-                }
-                self.resolve_face(
-                    &style.family,
-                    span.weight.unwrap_or(style.weight),
-                    span.italic.unwrap_or(style.italic),
-                )
-            })
-            .collect();
-
-        let font_attrs = &self.font_attrs;
-        let face_attrs = |face: Option<&String>| {
-            face.and_then(|face| font_attrs.get(face)).map_or_else(
-                || Attrs::new().family(Family::SansSerif),
-                StoredFontAttrs::attrs,
-            )
-        };
-        // The style's colour is not baked in (M56): glyphs without a span
-        // colour take the text area's default colour, which the paint
-        // command sets, so a colour change or a fade re-prepares the batch
-        // and never reshapes. A span's own colour stays baked.
-        let color = |[r, g, b, a]: [u8; 4]| Color::rgba(r, g, b, a);
-        let default_attrs = with_layout(face_attrs(base.as_ref()), &style.layout);
-        let mut spans: Vec<(&str, Attrs)> = text
-            .spans
-            .iter()
-            .zip(&span_faces)
-            .map(|(span, face)| {
-                let attrs = face_attrs(face.as_ref());
-                let attrs = match span.color {
-                    Some(own) => attrs.color(color(own)),
-                    None => attrs,
-                };
-                (span.text.as_str(), with_layout(attrs, &style.layout))
-            })
-            .collect();
-        if spans.is_empty() {
-            spans.push(("", default_attrs.clone()));
-        }
-
+        let (base, span_faces) = self.span_faces(&text, &style);
         let Some(current) = self.nodes.node_mut(node) else {
             return false;
         };
-        let metrics = layout_metrics(style.size, style.line_height);
-        if metrics.font_size == 0.0 {
-            // `set_metrics` rejects a zero font size; `new_empty` takes one.
-            current.buffer = Buffer::new_empty(metrics);
-        } else {
-            current.buffer.set_metrics(metrics);
-        }
-        current
-            .buffer
-            .set_hinting(cosmic_hinting(style.layout.hinting));
-        current.buffer.set_rich_text(
-            spans,
-            &default_attrs,
-            Shaping::Advanced,
-            cosmic_align(style.layout.align),
+        set_spans(
+            &mut current.buffer,
+            &self.font_attrs,
+            &text,
+            &style,
+            base.as_ref(),
+            &span_faces,
+            true,
         );
         current.invalidate();
         current.shaped = Some(epoch);
@@ -512,6 +598,61 @@ impl TextMeasure for TextEngine {
             _ => self.max_content(node),
         }
     }
+}
+
+/// Sets `buffer`'s metrics, hinting and rich text from `text` in `style`,
+/// each span in its face from `span_faces`, its own colour baked in only
+/// when `colours`. The style's colour is never baked (M56): glyphs without a
+/// span colour take the text area's default colour, which the paint command
+/// sets, so a colour change or a fade re-prepares the batch and never
+/// reshapes.
+fn set_spans(
+    buffer: &mut Buffer,
+    font_attrs: &HashMap<String, StoredFontAttrs>,
+    text: &StyledText,
+    style: &TextStyle,
+    base: Option<&String>,
+    span_faces: &[Option<String>],
+    colours: bool,
+) {
+    let face_attrs = |face: Option<&String>| {
+        face.and_then(|face| font_attrs.get(face)).map_or_else(
+            || Attrs::new().family(Family::SansSerif),
+            StoredFontAttrs::attrs,
+        )
+    };
+    let color = |[r, g, b, a]: [u8; 4]| Color::rgba(r, g, b, a);
+    let default_attrs = with_layout(face_attrs(base), &style.layout);
+    let mut spans: Vec<(&str, Attrs)> = text
+        .spans
+        .iter()
+        .zip(span_faces)
+        .map(|(span, face)| {
+            let attrs = face_attrs(face.as_ref());
+            let attrs = match span.color.filter(|_| colours) {
+                Some(own) => attrs.color(color(own)),
+                None => attrs,
+            };
+            (span.text.as_str(), with_layout(attrs, &style.layout))
+        })
+        .collect();
+    if spans.is_empty() {
+        spans.push(("", default_attrs.clone()));
+    }
+    let metrics = layout_metrics(style.size, style.line_height);
+    if metrics.font_size == 0.0 {
+        // `set_metrics` rejects a zero font size; `new_empty` takes one.
+        *buffer = Buffer::new_empty(metrics);
+    } else {
+        buffer.set_metrics(metrics);
+    }
+    buffer.set_hinting(cosmic_hinting(style.layout.hinting));
+    buffer.set_rich_text(
+        spans,
+        &default_attrs,
+        Shaping::Advanced,
+        cosmic_align(style.layout.align),
+    );
 }
 
 /// Size, first baseline and line count of a laid-out buffer. Text with no

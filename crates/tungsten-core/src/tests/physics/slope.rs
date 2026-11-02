@@ -392,6 +392,139 @@ fn slope_contacts_clamp_at_a_masked_endpoint() {
 }
 
 #[test]
+fn a_zero_height_box_meets_a_slope_face() {
+    // A box of half (4, 0) 1.414 px over a 45 bl cell's face: at a zero
+    // extent the sum's first edge has zero length, and its 0 / 0 once
+    // seeded the nearest-feature search, losing the contact or reading a
+    // false deep one under a masked side.
+    let poly = polygon(2, Vec2::splat(8.0), HALF);
+    for mask in [FACE_ALL, FACE_ALL & !FACE_BOTTOM, FACE_ALL & !FACE_RIGHT] {
+        let contact = box_contact(Vec2::new(10.0, 4.0), Vec2::new(4.0, 0.0), &poly, mask, 4.0);
+        assert!(
+            contact.is_some_and(|c| c.normal.abs_diff_eq(poly.normal, 1e-4)
+                && (c.penetration + std::f32::consts::SQRT_2).abs() < 1e-3),
+            "mask {mask:#06b}: {contact:?}"
+        );
+    }
+}
+
+#[test]
+fn a_zero_height_box_by_a_ramps_foot_meets_the_face() {
+    // By a ramp's foot a box of zero height has the sum's foot vertex
+    // twice, its zero-length side between them; skipping that side left the
+    // vertex to a tie that named the wrong sides, so no contact or a false
+    // one came back. 0.5 px over the floor and 2 px from the foot, the
+    // centre lies between the floor side and the face, so the contact is
+    // the face's clamped gap, as a box of half (4, 0.001) reads it, whether
+    // the bottom is covered or exposed.
+    let br = polygon(1, Vec2::splat(8.0), HALF);
+    let bl = polygon(2, Vec2::splat(8.0), HALF);
+    let cases = [
+        (&br, Vec2::new(-6.0, 15.5), FACE_TOP | FACE_RIGHT),
+        (&bl, Vec2::new(22.0, 15.5), FACE_TOP | FACE_LEFT),
+        (
+            &br,
+            Vec2::new(-6.0, 15.5),
+            FACE_TOP | FACE_RIGHT | FACE_BOTTOM,
+        ),
+        (
+            &bl,
+            Vec2::new(22.0, 15.5),
+            FACE_TOP | FACE_LEFT | FACE_BOTTOM,
+        ),
+    ];
+    for (poly, center, mask) in cases {
+        for half in [
+            Vec2::new(4.0, 0.0),
+            Vec2::new(4.0, 0.001),
+            Vec2::new(4.0, 1e-6),
+            Vec2::new(4.0, 1e-7),
+        ] {
+            let contact = box_contact(center, half, poly, mask, 4.0);
+            assert!(
+                contact.is_some_and(|c| c.normal.abs_diff_eq(poly.normal, 1e-4)
+                    && (c.penetration + 1.768).abs() < 1e-3),
+                "half {half} at {center}, mask {mask:#06b}: {contact:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_wide_cells_slope_face_is_never_read_as_a_side() {
+    // A 2:1 low cell 64 x 16 has a face normal of (-0.124, -0.992), past the
+    // 0.99 an axis side's test once took, so its face read as the top and
+    // the outline's mask 0 covered it. Each kind on cells up to 1:16 and
+    // 16:1 keeps its face a face, and a box overlapping the wide face meets
+    // it under mask 0.
+    for code in 1..=12u8 {
+        for (w, h) in [(16.0, 16.0), (64.0, 16.0), (256.0, 16.0), (16.0, 256.0)] {
+            let poly = polygon(code, Vec2::ZERO, Vec2::new(w, h) * 0.5);
+            assert_eq!(
+                face_of(poly.normal),
+                0,
+                "kind {code} on {w} x {h}: {}",
+                poly.normal
+            );
+        }
+    }
+    let wide = polygon(5, Vec2::new(32.0, 8.0), Vec2::new(32.0, 8.0));
+    let contact = box_contact(Vec2::new(32.0, 9.0), Vec2::splat(4.0), &wide, 0, 1.0);
+    assert!(
+        contact.is_some_and(|c| c.normal.abs_diff_eq(wide.normal, 1e-6)),
+        "{contact:?}"
+    );
+}
+
+#[test]
+fn a_contact_on_a_vertex_between_exposed_sides_has_a_unit_normal() {
+    // A box whose corner sits on a ramp's apex meets the sum's vertex at its
+    // centre, at distance 0, wherever the slope side's separation rounds
+    // just above 0; a circle centred on a vertex always does. The normal is
+    // the two exposed sides' bisector there, never 0 / 0.
+    let unit = |normal: Vec2| (normal.length() - 1.0).abs() < 1e-5;
+    let mut bad = Vec::new();
+    for (code, half) in [(1u8, 8.0f32), (9, 8.0), (1, 6.0), (9, 6.0)] {
+        let half = Vec2::splat(half);
+        for row in 1..10 {
+            for col in 0..16 {
+                let corner = Vec2::new(col as f32, row as f32) * 16.0;
+                let poly = polygon(code, corner + HALF, HALF);
+                let apex = corner + Vec2::new(16.0, 0.0);
+                for mask in [FACE_TOP | FACE_LEFT, FACE_TOP, FACE_ALL] {
+                    let contact = box_contact(apex - half, half, &poly, mask, 1.0);
+                    if contact.is_some_and(|c| !unit(c.normal)) {
+                        bad.push(format!("box of half {half} on kind {code}'s apex {apex}, mask {mask:#06b}: {contact:?}"));
+                    }
+                }
+            }
+        }
+    }
+    for code in 1..=12u8 {
+        for row in 0..10 {
+            for col in 0..16 {
+                let corner = Vec2::new(col as f32, row as f32) * 16.0;
+                let poly = polygon(code, corner + HALF, HALF);
+                for &vertex in &poly.points[..poly.len] {
+                    let contact = circle_contact(vertex, 3.0, &poly, FACE_ALL, 0.0);
+                    if !contact.is_some_and(|c| unit(c.normal)) {
+                        bad.push(format!(
+                            "circle on kind {code}'s vertex {vertex}: {contact:?}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{} contacts: {:?}",
+        bad.len(),
+        &bad[..bad.len().min(3)]
+    );
+}
+
+#[test]
 fn a_box_sweep_meets_a_slope_as_its_ray_on_the_sum_does() {
     // The sum built as the hull of every vertex plus every box corner, and a
     // ray of the box's centre clipped by each edge's half plane. Rounding is

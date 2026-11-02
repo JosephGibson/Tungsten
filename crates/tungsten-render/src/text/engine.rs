@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use glam::Vec2;
 use glyphon::cosmic_text::{
     Align, Ellipsize, EllipsizeHeightLimit, FeatureTag, FontFeatures as CosmicFeatures, Hinting,
 };
@@ -9,7 +10,8 @@ use glyphon::{
 };
 use tungsten_core::assets::ResolvedFontFamily;
 use tungsten_core::text::{
-    EllipsisAt, FontEpoch, FontFeatures, TextAlign, TextHinting, TextLayout, TextOverflow, TextWrap,
+    EllipsisAt, FontEpoch, FontFeatures, TextAlign, TextHinting, TextLayout, TextOutline,
+    TextOverflow, TextShadow, TextWrap, effect_copies,
 };
 
 use super::fonts::{ChainFallback, FaceStyle, FamilyNames, FontSource, pick_face};
@@ -102,6 +104,8 @@ struct PreparedLabel {
     pivot: [f32; 2],
     scale: f32,
     color: [u8; 4],
+    outline: Option<TextOutline>,
+    shadow: Option<TextShadow>,
     left: f32,
     top: f32,
 }
@@ -564,6 +568,8 @@ impl TextEngine {
                         pivot: label.pivot,
                         scale: label.scale,
                         color: label.color,
+                        outline: label.outline,
+                        shadow: label.shadow,
                         left: 0.0,
                         top: 0.0,
                     });
@@ -818,6 +824,8 @@ impl PreparedLabel {
         self.pivot = label.pivot;
         self.scale = label.scale;
         self.color = label.color;
+        self.outline = label.outline;
+        self.shadow = label.shadow;
     }
 
     /// True when `label` lays out and draws exactly as this one did.
@@ -826,12 +834,15 @@ impl PreparedLabel {
             && self.pivot.map(f32::to_bits) == label.pivot.map(f32::to_bits)
             && self.scale.to_bits() == label.scale.to_bits()
             && self.color == label.color
+            && self.outline == label.outline
+            && self.shadow == label.shadow
             && self.key.matches_label(label)
     }
 }
 
 /// Text areas of the prepared labels, in order: each at its box's top-left
-/// and scale, bounded by the viewport.
+/// and scale, bounded by the viewport, after its shadow's and outline's
+/// copies (P7-14).
 fn label_areas<'a>(
     prepared: &'a [PreparedLabel],
     buffers: &'a HashMap<TextLayoutKey, CachedTextBuffer>,
@@ -844,19 +855,45 @@ fn label_areas<'a>(
         right: width as i32,
         bottom: height as i32,
     };
-    prepared.iter().filter_map(move |label| {
-        let cached = buffers.get(&label.key)?;
-        let [r, g, b, a] = label.color;
-        Some(TextArea {
-            buffer: &cached.buffer,
-            left: label.left,
-            top: label.top,
-            scale: label.scale,
+    prepared
+        .iter()
+        .filter_map(move |label| {
+            let cached = buffers.get(&label.key)?;
+            let at = Vec2::new(label.left, label.top);
+            Some(effect_areas(
+                &cached.buffer,
+                at,
+                label.scale,
+                bounds,
+                label.color,
+                (label.outline, label.shadow),
+            ))
+        })
+        .flatten()
+}
+
+/// The areas one text draws (P7-14): `buffer` at `at` and `scale` moved by
+/// each copy its outline and shadow draw, in the copy's colour, then at `at`
+/// in `color`, all within `bounds`.
+fn effect_areas(
+    buffer: &Buffer,
+    at: Vec2,
+    scale: f32,
+    bounds: TextBounds,
+    color: [u8; 4],
+    (outline, shadow): (Option<TextOutline>, Option<TextShadow>),
+) -> impl Iterator<Item = TextArea<'_>> {
+    effect_copies(outline, shadow, scale)
+        .chain(std::iter::once((Vec2::ZERO, color)))
+        .map(move |(offset, [r, g, b, a])| TextArea {
+            buffer,
+            left: at.x + offset.x,
+            top: at.y + offset.y,
+            scale,
             bounds,
             default_color: Color::rgba(r, g, b, a),
             custom_glyphs: &[],
         })
-    })
 }
 
 /// The laid-out box of an unbounded buffer: its widest line and the bottom

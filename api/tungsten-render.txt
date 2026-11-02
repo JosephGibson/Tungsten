@@ -1254,9 +1254,11 @@ pub tungsten_render::text::WorldLabelRun::content: alloc::string::String
 pub tungsten_render::text::WorldLabelRun::font_id: alloc::string::String
 pub tungsten_render::text::WorldLabelRun::font_size: f32
 pub tungsten_render::text::WorldLabelRun::line_height: f32
+pub tungsten_render::text::WorldLabelRun::outline: core::option::Option<tungsten_core::text::TextOutline>
 pub tungsten_render::text::WorldLabelRun::pivot: [f32; 2]
 pub tungsten_render::text::WorldLabelRun::position: [f32; 2]
 pub tungsten_render::text::WorldLabelRun::scale: f32
+pub tungsten_render::text::WorldLabelRun::shadow: core::option::Option<tungsten_core::text::TextShadow>
 impl core::clone::Clone for tungsten_render::text::WorldLabelRun
 pub fn tungsten_render::text::WorldLabelRun::clone(&self) -> tungsten_render::text::WorldLabelRun
 impl core::cmp::PartialEq for tungsten_render::text::WorldLabelRun
@@ -2326,9 +2328,11 @@ pub tungsten_render::WorldLabelRun::content: alloc::string::String
 pub tungsten_render::WorldLabelRun::font_id: alloc::string::String
 pub tungsten_render::WorldLabelRun::font_size: f32
 pub tungsten_render::WorldLabelRun::line_height: f32
+pub tungsten_render::WorldLabelRun::outline: core::option::Option<tungsten_core::text::TextOutline>
 pub tungsten_render::WorldLabelRun::pivot: [f32; 2]
 pub tungsten_render::WorldLabelRun::position: [f32; 2]
 pub tungsten_render::WorldLabelRun::scale: f32
+pub tungsten_render::WorldLabelRun::shadow: core::option::Option<tungsten_core::text::TextShadow>
 impl core::clone::Clone for tungsten_render::text::WorldLabelRun
 pub fn tungsten_render::text::WorldLabelRun::clone(&self) -> tungsten_render::text::WorldLabelRun
 impl core::cmp::PartialEq for tungsten_render::text::WorldLabelRun

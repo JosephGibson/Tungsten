@@ -22,10 +22,12 @@ pub struct TextPrewarm {
     /// Wall-clock microseconds, layout of the areas and the prepare.
     pub micros: u64,
 }
-use tungsten_core::text::TextLayout;
+use tungsten_core::text::{TextLayout, TextOutline, TextShadow};
 
 /// High-level text draw command. Build one with `..Default::default()` for
-/// the fields you leave as they are.
+/// the fields you leave as they are. It takes no outline or shadow, as a
+/// world label and a UI label do (P7-14): example 02's `gpu` row collects
+/// its sections every frame, so a section keeps its size.
 #[derive(Debug, Clone, Default)]
 pub struct TextSection {
     pub content: String,
@@ -70,4 +72,8 @@ pub struct WorldLabelRun {
     pub scale: f32,
     /// RGBA colour.
     pub color: [u8; 4],
+    /// An outline drawn around the glyphs, in UI units (P7-14).
+    pub outline: Option<TextOutline>,
+    /// A shadow drawn under the glyphs, in UI units (P7-14).
+    pub shadow: Option<TextShadow>,
 }

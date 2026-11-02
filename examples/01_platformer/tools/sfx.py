@@ -2574,7 +2574,7 @@ def geyser_sputter():
         t = i / RATE
         p = t / duration
         n = noise()
-        hiss = (low(n, glide(1800, 6500, p)) - high(n, glide(700, 1600, p))) * (0.35 + 0.65 * p)
+        hiss = (low(n, glide(1200, 3200, p)) - high(n, glide(500, 1000, p))) * (0.35 + 0.65 * p)
         # The gurgle: low bubbles bursting at random, each a falling blip.
         if bubbles() > 1 - 0.0011 * (1 + 2 * p):
             bubble, burble = 1.0, 0.0
@@ -2588,7 +2588,7 @@ def geyser_sputter():
             pop = 0.9
         pop *= 0.93
         envelope = min(1.0, t / 0.04) * (0.75 + 0.25 * p)
-        samples.append(math.tanh((1.5 * hiss + gurgle + rumble) * envelope + pop * pops()))
+        samples.append(math.tanh((0.8 * hiss + gurgle + rumble) * envelope + 0.4 * pop * pops()))
     return finish(samples, fade_out=0.05)
 
 
@@ -2605,19 +2605,19 @@ def geyser_erupt():
         p = t / duration
         n = noise()
         # The whoosh: noise swept up fast through a low-pass.
-        whoosh = (low(n, glide(180, 3600, min(1.0, t / 0.16))) - high(n, 120)) \
+        whoosh = (low(n, glide(180, 2200, min(1.0, t / 0.16))) - high(n, 120)) \
             * math.exp(-max(0.0, t - 0.1) / 0.12)
         phase += math.tau * glide(70, 34, min(1.0, t / 0.3)) / RATE
         thump = math.sin(phase) * min(1.0, t / 0.004) * math.exp(-t / 0.16)
         # The roar: a dark rush with a wavering body, dropping off at the end.
-        cutoff = glide(2400, 380, max(0.0, (p - 0.55) / 0.45)) if p > 0.55 else 2400
+        cutoff = glide(1300, 380, max(0.0, (p - 0.55) / 0.45)) if p > 0.55 else 1300
         body = roar_lp(n, cutoff) - rumble(n, 90) * 0.3
         waver = 0.75 + 0.25 * math.sin(math.tau * 11 * t) * math.sin(math.tau * 3.3 * t)
         swell = min(1.0, t / 0.12) * (1 - smooth_drop(p, 0.6, 1.0))
         if crackle() > 1 - 0.004 * swell:
             spit = 0.8
         spit *= 0.9
-        samples.append(math.tanh(1.4 * whoosh + 1.1 * thump + 2.2 * body * waver * swell + spit * crackle()))
+        samples.append(math.tanh(1.1 * whoosh + 1.1 * thump + 1.6 * body * waver * swell + 0.4 * spit * crackle()))
     return finish(samples, fade_in=0.002, fade_out=0.08)
 
 

@@ -14,7 +14,6 @@ use example_01_platformer::features::gun::{
 use example_01_platformer::features::spells::hud::Hud;
 use example_01_platformer::features::toys::{self, IRON_HALF};
 use example_01_platformer::shared::SaveId;
-use example_01_platformer::shell::widgets::text_of;
 use glam::Vec2;
 use tungsten::core::{Entity, EventQueue, RigidBody, Velocity};
 use tungsten::kit::{
@@ -357,11 +356,11 @@ fn the_magazine_shows_its_rounds_and_reloading() {
             .filter(|&&round| harness.tree().image_sprite(round) == Some(hud.art.live))
             .count()
     };
-    assert_eq!(text_of(harness.tree(), hud.magazine.text), "9 / 9");
+    assert_eq!(harness.tree().plain_text(hud.magazine.text), "9 / 9");
     assert_eq!(live(&harness), 9);
     hold_until(&mut harness, 6);
     harness.step(1);
-    assert_eq!(text_of(harness.tree(), hud.magazine.text), "6 / 9");
+    assert_eq!(harness.tree().plain_text(hud.magazine.text), "6 / 9");
     assert_eq!(live(&harness), 6);
     // An R reload with six left reads "reloading", every cartridge spent,
     // until the magazine is whole.
@@ -369,17 +368,17 @@ fn the_magazine_shows_its_rounds_and_reloading() {
     harness.step(1);
     harness.harness_mut().release_action(RELOAD);
     harness.step(1);
-    assert_eq!(text_of(harness.tree(), hud.magazine.text), "reloading");
+    assert_eq!(harness.tree().plain_text(hud.magazine.text), "reloading");
     assert_eq!(live(&harness), 0);
     harness.step(80);
-    assert_eq!(text_of(harness.tree(), hud.magazine.text), "9 / 9");
+    assert_eq!(harness.tree().plain_text(hud.magazine.text), "9 / 9");
     assert_eq!(live(&harness), 9);
     hold_until(&mut harness, 0);
     harness.step(1);
-    assert_eq!(text_of(harness.tree(), hud.magazine.text), "reloading");
+    assert_eq!(harness.tree().plain_text(hud.magazine.text), "reloading");
     assert_eq!(live(&harness), 0);
     harness.step(80);
-    assert_eq!(text_of(harness.tree(), hud.magazine.text), "9 / 9");
+    assert_eq!(harness.tree().plain_text(hud.magazine.text), "9 / 9");
     assert_eq!(live(&harness), 9);
 }
 

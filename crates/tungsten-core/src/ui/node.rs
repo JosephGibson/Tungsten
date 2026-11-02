@@ -7,9 +7,9 @@ use glam::Vec2;
 use crate::assets::SpriteAssetId;
 use crate::text::{StyledText, TextNodeId};
 
-use super::WidgetId;
 use super::control::Control;
 use super::geometry::Rect;
+use super::id::{UiKey, WidgetId};
 use super::scroll::ScrollState;
 use super::style::LayoutStyle;
 use super::theme::{ResolvedStyle, StyleOverrides};
@@ -219,6 +219,33 @@ impl UiShadow {
     }
 }
 
+/// A sprite that follows the pointer in place of the system cursor (redo
+/// 7.17), set with [`UiTree::set_pointer_sprite`](super::UiTree::set_pointer_sprite):
+/// `sprite` drawn `size` UI units large with its `hotspot`, in UI units
+/// from its top-left, on the pointer.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PointerSprite {
+    /// The sprite.
+    pub sprite: SpriteAssetId,
+    /// Its size in UI units.
+    pub size: Vec2,
+    /// The point of it on the pointer, from its top-left, in UI units.
+    pub hotspot: Vec2,
+}
+
+impl PointerSprite {
+    /// `sprite`, `size` large, its `hotspot` on the pointer.
+    #[must_use]
+    pub const fn new(sprite: SpriteAssetId, size: Vec2, hotspot: Vec2) -> Self {
+        Self {
+            sprite,
+            size,
+            hotspot,
+        }
+    }
+}
+
 /// A label's text and its flattened form, for the accessible name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TextContent {
@@ -292,6 +319,18 @@ pub(crate) struct Node {
     pub(crate) focus_wrap: bool,
     /// The node's own style overrides, applied after the kind's variant.
     pub(crate) overrides: StyleOverrides,
+    /// Panels: whether the kind's surface and border are skipped, so only
+    /// the node's own overrides paint.
+    pub(crate) bare: bool,
+    /// The widget's key and the name it was made from.
+    pub(crate) key: Option<(UiKey, Box<str>)>,
+    /// The theme text style the node names, layered before its overrides.
+    pub(crate) text_style: Option<Box<str>>,
+    /// Roots: whether its boxes paint on whole physical pixels (redo 7.17).
+    pub(crate) pixel_snap: bool,
+    /// Roots: the world point its top-left follows and the offset after
+    /// it, in UI units (redo 7.17).
+    pub(crate) world_anchor: Option<(Vec2, Vec2)>,
     /// The last resolution; `None` before the first.
     pub(crate) resolved: Option<ResolvedStyle>,
     /// Whether the next resolution pass must resolve this node.
@@ -363,6 +402,11 @@ impl Node {
             focus_neighbors: None,
             focus_wrap: false,
             overrides: StyleOverrides::default(),
+            bare: false,
+            key: None,
+            text_style: None,
+            pixel_snap: false,
+            world_anchor: None,
             resolved: None,
             style_dirty: true,
             style_dirty_subtree: true,

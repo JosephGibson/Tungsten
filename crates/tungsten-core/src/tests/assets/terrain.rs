@@ -253,11 +253,21 @@ fn a_cursor_from_another_history_reads_replaced() {
             },
         );
     });
+    let sloped = other_registry(|map| {
+        map.set_tile_props(
+            PLAIN,
+            TileProps {
+                slope: Some(crate::assets::Slope::parse("45 br").unwrap()),
+                ..TileProps::default()
+            },
+        );
+    });
     let named = other_registry(|map| map.layers[0].name = "floor".into());
     for (what, other) in [
         ("a layer mask", &masked),
         ("a layer kind", &kind),
         ("a tile property", &property),
+        ("a tile's slope", &sloped),
         ("a layer name", &named),
     ] {
         assert_eq!(

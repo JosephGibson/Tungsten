@@ -5,7 +5,7 @@ use tungsten_core::text::TextNodeStore;
 
 use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
 use tungsten_core::ui::{
-    LayoutStyle, Rect, Sizing, UiDebug, UiLayer, UiTree, WidgetId, WidgetKind,
+    LayoutStyle, Rect, Sizing, UiDebug, UiKey, UiLayer, UiTree, Visibility, WidgetId, WidgetKind,
 };
 use tungsten_core::{AssetRegistry, World};
 
@@ -465,4 +465,264 @@ fn ui_harness_lays_out_at_the_window_relative_factor() {
     harness.layout();
     let width = harness.rect(root).unwrap().width();
     assert!((width - 731.0).abs() < 1e-3, "the floor holds: {width}");
+}
+
+/// A root of `width` × `height` units at the top-left.
+fn sized_root(harness: &mut UiHarness, width: f32, height: f32) -> WidgetId {
+    harness.tree_mut().add_root(
+        UiLayer::Game,
+        LayoutStyle::column().with_size(Sizing::Px(width), Sizing::Px(height)),
+    )
+}
+
+/// A modal root on the game layer: a screen.
+fn modal_root(harness: &mut UiHarness) -> WidgetId {
+    let tree = harness.tree_mut();
+    let root = tree.add_root(UiLayer::Game, LayoutStyle::column());
+    tree.set_modal(root, true);
+    root
+}
+
+#[test]
+fn find_takes_the_front_most_visible_focusable_match() {
+    let mut harness = UiHarness::new(app());
+    let back = harness
+        .tree_mut()
+        .add_root(UiLayer::Game, LayoutStyle::column());
+    let front = harness
+        .tree_mut()
+        .add_root(UiLayer::Game, LayoutStyle::column());
+    let tree = harness.tree_mut();
+    let behind = tree.button(back, "Play");
+    let panel = tree.panel(front, LayoutStyle::default());
+    tree.set_accessible_name(panel, Some("Play".to_owned()));
+    let disabled = tree.button(front, "Play");
+    tree.set_enabled(disabled, false);
+    let ahead = tree.button(front, "Play");
+    assert_eq!(
+        harness.find("Play"),
+        Some(ahead),
+        "the front root's control that can take focus, past a named panel, a disabled button and labels"
+    );
+    harness
+        .tree_mut()
+        .set_visibility(ahead, Visibility::Collapsed);
+    assert_eq!(
+        harness.find("Play"),
+        Some(behind),
+        "a collapsed control is passed over"
+    );
+    harness
+        .tree_mut()
+        .set_visibility(ahead, Visibility::Visible);
+    harness.tree_mut().set_visibility(front, Visibility::Hidden);
+    assert_eq!(harness.find("Play"), Some(behind), "and a hidden root");
+    assert_eq!(harness.find("Quit"), None);
+}
+
+#[test]
+fn find_looks_past_a_toast_to_the_screen_below() {
+    let mut harness = UiHarness::new(app());
+    let covered = modal_root(&mut harness);
+    let screen = modal_root(&mut harness);
+    let tree = harness.tree_mut();
+    tree.button(covered, "Retry");
+    let retry = tree.button(screen, "Retry");
+    crate::screens::toast(harness.world_mut(), "Retry");
+    let tree = harness.tree();
+    let toast_root = *tree.roots().last().expect("the toasts' root");
+    assert!(
+        !tree.modal(toast_root) && toast_root != screen,
+        "the toast is front-most"
+    );
+    assert_eq!(
+        harness.front_modal(),
+        Some(screen),
+        "the toast is no screen"
+    );
+    assert_eq!(
+        harness.find("Retry"),
+        Some(retry),
+        "the toast's label takes no focus, the covered screen is behind"
+    );
+}
+
+#[test]
+fn named_finds_disabled_widgets_on_the_front_modal() {
+    let mut harness = UiHarness::new(app());
+    let covered = modal_root(&mut harness);
+    let screen = modal_root(&mut harness);
+    let hud = harness
+        .tree_mut()
+        .add_root(UiLayer::Game, LayoutStyle::column());
+    let tree = harness.tree_mut();
+    let back = tree.button(covered, "Back");
+    let apply = tree.button(screen, "Apply");
+    tree.set_enabled(apply, false);
+    tree.label(screen, "Volume 80%");
+    let hud_apply = tree.button(hud, "Apply");
+    assert_eq!(
+        harness.front_modal(),
+        Some(screen),
+        "a root that is not modal is no screen"
+    );
+    assert_eq!(
+        harness.named("Apply"),
+        Some(apply),
+        "disabled, on the front screen"
+    );
+    assert_eq!(
+        harness.find("Apply"),
+        Some(hud_apply),
+        "find takes focusable controls only"
+    );
+    assert_eq!(harness.named("Back"), None, "the covered screen's");
+    assert!(harness.shows("Volume 80%"));
+    assert!(harness.shows("Apply"), "a button's text");
+    assert!(!harness.shows("Back"));
+    harness
+        .tree_mut()
+        .set_visibility(screen, Visibility::Hidden);
+    assert_eq!(harness.front_modal(), Some(covered));
+    assert_eq!(harness.named("Back"), Some(back));
+}
+
+#[test]
+fn find_key_finds_a_keyed_widget() {
+    let mut harness = UiHarness::new(app());
+    let back = harness
+        .tree_mut()
+        .add_root(UiLayer::Game, LayoutStyle::column());
+    let front = harness
+        .tree_mut()
+        .add_root(UiLayer::Game, LayoutStyle::column());
+    let tree = harness.tree_mut();
+    let behind = tree.button(back, "Volume");
+    tree.set_key(behind, "volume");
+    tree.button(front, "volume");
+    let keyed = tree.button(front, "Loudness");
+    tree.set_key(keyed, "volume");
+    let volume = UiKey::new("volume");
+    assert_eq!(
+        harness.find_key(volume),
+        Some(keyed),
+        "by key, not caption, from the front"
+    );
+    assert_eq!(harness.find_key(UiKey::new("music")), None);
+    harness.tree_mut().set_visibility(front, Visibility::Hidden);
+    assert_eq!(harness.find_key(volume), Some(behind));
+}
+
+#[test]
+#[should_panic(expected = "wide: ")]
+fn assert_fits_fails_a_box_outside_its_parent() {
+    let mut harness = UiHarness::new(app());
+    let root = sized_root(&mut harness, 200.0, 100.0);
+    let panel = harness.tree_mut().panel(
+        root,
+        LayoutStyle::default().with_size(Sizing::Px(150.0), Sizing::Px(40.0)),
+    );
+    harness.assert_fits("narrow");
+    harness.tree_mut().set_layout_style(
+        panel,
+        LayoutStyle::default().with_size(Sizing::Px(300.0), Sizing::Px(40.0)),
+    );
+    harness.assert_fits("wide");
+}
+
+/// Ten buttons in a list 80 units tall, a scroll panel or a plain one.
+fn long_list(harness: &mut UiHarness, scroll: bool) -> WidgetId {
+    let root = sized_root(harness, 200.0, 100.0);
+    let tree = harness.tree_mut();
+    let style = LayoutStyle::column().with_size(Sizing::Fill, Sizing::Px(80.0));
+    let list = if scroll {
+        tree.scroll_panel(root, style)
+    } else {
+        tree.panel(root, style)
+    };
+    for row in 0..10 {
+        tree.button(list, format!("Row {row}"));
+    }
+    list
+}
+
+#[test]
+fn assert_fits_lets_a_scroll_panel_scroll() {
+    let mut harness = UiHarness::new(app());
+    let list = long_list(&mut harness, true);
+    harness.assert_fits("a scrolled list");
+    assert!(
+        harness.tree().scroll_max(list).is_some_and(|max| max > 0.0),
+        "its rows overflow it"
+    );
+    let plain = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut harness = UiHarness::new(app());
+        long_list(&mut harness, false);
+        harness.assert_fits("a plain list");
+    }));
+    assert!(plain.is_err(), "the same rows in a plain panel do not fit");
+}
+
+#[test]
+#[should_panic(expected = "narrow: \"A label that wraps\" on one line")]
+fn assert_fits_one_line_fails_a_wrapped_label() {
+    let mut harness = UiHarness::new(app());
+    let root = sized_root(&mut harness, 120.0, 100.0);
+    let tree = harness.tree_mut();
+    let short = tree.label(root, "Short");
+    // 18 glyphs of 8 units: 144 units, wrapped at 120.
+    let long = tree.label(root, "A label that wraps");
+    harness.assert_fits_one_line("narrow", &[short]);
+    harness.assert_fits_one_line("narrow", &[short, long]);
+}
+
+#[test]
+fn tree_json_names_key_text_rect_focus_and_shown() {
+    let mut harness = UiHarness::new(app());
+    let (root, button) = menu(&mut harness);
+    let tree = harness.tree_mut();
+    tree.set_key(button, "start");
+    let hidden = tree.label(root, "Secret");
+    tree.set_visibility(hidden, Visibility::Hidden);
+    tree.focus(button);
+    harness.step(1);
+    let json: serde_json::Value =
+        serde_json::from_str(&harness.tree_json()).expect("the dump is JSON");
+    let nodes = json["nodes"].as_array().expect("its nodes");
+    assert_eq!(
+        nodes.len(),
+        4,
+        "the root, the button, its label and the hidden label"
+    );
+    let id_of = |id: WidgetId| format!("{}:{}", id.index(), id.generation());
+    let node = |id: WidgetId| {
+        nodes
+            .iter()
+            .find(|node| node["id"] == id_of(id))
+            .unwrap_or_else(|| panic!("{id:?} in the dump"))
+    };
+    let start = node(button);
+    assert_eq!(start["kind"], "Button");
+    assert_eq!(start["key"], "start");
+    assert_eq!(start["name"], "Start");
+    assert_eq!(start["text"], "Start");
+    assert_eq!(start["root"], id_of(root));
+    assert_eq!(start["depth"], 1);
+    assert_eq!(start["focused"], true);
+    assert_eq!(start["shown"], true);
+    let rect = harness.rect(button).expect("laid out");
+    assert_eq!(
+        start["rect"],
+        serde_json::json!([rect.min.x, rect.min.y, rect.width(), rect.height()])
+    );
+    let secret = node(hidden);
+    assert_eq!(secret["shown"], false);
+    assert_eq!(secret["focused"], false);
+    assert_eq!(secret["text"], "Secret");
+    let top = node(root);
+    assert_eq!(top["depth"], 0);
+    assert!(
+        top["key"].is_null() && top["text"].is_null(),
+        "a panel holds neither"
+    );
 }

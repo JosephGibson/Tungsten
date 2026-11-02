@@ -6,11 +6,14 @@
 //! left, and its song playing until a run starts. Continue loads the newest
 //! readable slot, named with its age under it, asking first when an older
 //! version wrote it, and is focused when there is one, disabled otherwise.
-//! Quit asks first.
+//! Quit asks first. The screen is `assets/ui/screens/title.json`, its
+//! values the bindings [`bind`] registers over a [`TitleView`]; the cards
+//! stay Rust, a mount, since their pips fill by rank.
 
-use tungsten::core::text::{TextAlign, TextWrap};
+use tungsten::core::text::TextAlign;
 use tungsten::core::ui::{
-    Align, Anchor, Edges, Justify, LayoutStyle, Sizing, StyleOverrides, UiTree, WidgetId,
+    Edges, Justify, LayoutStyle, Sizing, StyleOverrides, UiBindings, UiKey, UiTree, WidgetId,
+    screen_build, widgets,
 };
 use tungsten::core::{AudioCommands, Voice, World};
 use tungsten::{GameState, StateContext, StateId};
@@ -20,24 +23,64 @@ use super::options::GameOptions;
 use super::saves::{Mode, SavesState, age, slot_name};
 use super::settings::SettingsState;
 use super::{
-    AUTOSAVES, Difficulty, GameInfo, RunStart, RunState, Shell, SlotState, cancelled, clicked,
-    enter, idle, load, newest, play, push, quit_game, read_slots, saving_on, start_run, theme,
-    toast, widgets,
+    AUTOSAVES, BACK, Difficulty, GameInfo, Menu, RunStart, RunState, Shell, SlotState, activated,
+    cancelled, enter, idle, load, newest, play, push, quit_game, read_slots, stack, start_run,
+    theme, toast,
 };
 use crate::game::difficulty_note;
 use crate::save::SaveGame;
 
 pub const TITLE: StateId = "title";
+const CONTINUE: UiKey = UiKey::new("continue");
+const NEW_GAME: UiKey = UiKey::new("new_game");
+const LOAD: UiKey = UiKey::new("load");
+const SETTINGS: UiKey = UiKey::new("settings");
+const QUIT: UiKey = UiKey::new("quit");
+/// The difficulty cards' keys, in [`Difficulty::ALL`]'s order.
+const PICKS: [&str; 3] = ["easy", "normal", "hard"];
 
-/// The title's widgets: the root, the main page and the picker, the main
-/// page's Continue, New Game, Load, Settings and Quit, and the picker's
-/// Easy, Normal, Hard and Back.
-type Ui = (WidgetId, [WidgetId; 2], [WidgetId; 5], [WidgetId; 4]);
+/// What the title shows beyond the game's info: the newest readable slot
+/// and when it was written, and whether the picker is open. A resource
+/// [`TitleState`] owns; absent, no slot and the main page.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TitleView {
+    newest: Option<(&'static str, u64)>,
+    picking: bool,
+}
 
-/// Keeps a label sized to its text on one line: such a box can commit an
-/// ulp short of its text and wrap its last word out of sight (known issues).
-fn one_line(tree: &mut UiTree, label: WidgetId) {
-    widgets::restyle(tree, label, |text| text.wrap = Some(TextWrap::None));
+fn view(world: &World) -> TitleView {
+    world
+        .get_resource::<TitleView>()
+        .copied()
+        .unwrap_or_default()
+}
+
+/// The title's bindings and its picker's cards, which
+/// `assets/ui/screens/title.json` names.
+pub(super) fn bind(bindings: &mut UiBindings) {
+    bindings
+        .text("game_title", |w| w.resource::<GameInfo>().title.clone())
+        .text("version", |w| {
+            format!("Version {}", w.resource::<GameInfo>().version)
+        })
+        .visible("title_main", |w| !view(w).picking)
+        .visible("title_picker", |w| view(w).picking)
+        .enabled("has_newest", |w| view(w).newest.is_some())
+        .visible("has_newest", |w| view(w).newest.is_some())
+        .text("newest_slot", |w| {
+            view(w)
+                .newest
+                .map_or_else(String::new, |(slot, _)| format!("{} ·", slot_name(slot)))
+        })
+        .text("newest_age", |w| {
+            view(w).newest.map_or_else(String::new, |(_, at)| age(at))
+        })
+        .mount("difficulty_cards", |world, row| {
+            let tree = world.resource_mut::<UiTree>();
+            for at in 0..Difficulty::ALL.len() {
+                difficulty_card(tree, row, at);
+            }
+        });
 }
 
 /// The picker's card for `Difficulty::ALL[at]` under `row`: a button holding
@@ -47,16 +90,14 @@ fn one_line(tree: &mut UiTree, label: WidgetId) {
 fn difficulty_card(tree: &mut UiTree, row: WidgetId, at: usize) -> WidgetId {
     let difficulty = Difficulty::ALL[at];
     let card = widgets::button(tree, row, difficulty.label());
+    tree.set_key(card, PICKS[at]);
+    let spacing = tree.theme().tokens.spacing;
     let mut style = tree.layout_style(card).cloned().unwrap_or_default();
-    (style.width, style.gap) = (Sizing::Fill, theme::GAP);
-    style.padding = Edges::all(theme::CARD_PADDING);
+    (style.width, style.gap) = (Sizing::Fill, spacing.sm);
+    style.padding = Edges::all(spacing.md);
     tree.set_layout_style(card, style);
-    let family = tree.theme().tokens.fonts.heading.clone();
     let name = tree.children(card)[0];
-    widgets::restyle(tree, name, |text| {
-        text.family = Some(family);
-        [text.size, text.line_height] = [theme::HEADING_SIZE, theme::HEADING_LINE].map(Some);
-    });
+    tree.set_text_style(name, Some("heading"));
     let pips = widgets::row(tree, card);
     let mut style = tree.layout_style(pips).cloned().unwrap_or_default();
     style.justify_content = Justify::Center;
@@ -65,8 +106,8 @@ fn difficulty_card(tree: &mut UiTree, row: WidgetId, at: usize) -> WidgetId {
         let colors = &tree.theme().tokens.colors;
         (colors.accent, colors.border)
     };
+    let side = Sizing::Px(widgets::size(tree, "pip"));
     for each in 0..Difficulty::ALL.len() {
-        let side = Sizing::Px(theme::PIP);
         let pip = tree.panel(pips, LayoutStyle::default().with_size(side, side));
         let filled = usize::from(each <= at);
         let style = StyleOverrides {
@@ -91,24 +132,25 @@ fn difficulty_card(tree: &mut UiTree, row: WidgetId, at: usize) -> WidgetId {
 /// The title screen.
 #[derive(Default)]
 pub struct TitleState {
-    ui: Option<Ui>,
+    root: Option<WidgetId>,
     newest: Option<(&'static str, SaveGame)>,
     autosave_ready: bool,
-    picking: bool,
     opened: Option<WidgetId>,
     music: Option<Voice>,
 }
 
 impl TitleState {
     /// Shows the picker, or the main page, focused on Normal or New Game.
-    fn show_picker(&mut self, tree: &mut UiTree, picking: bool) {
-        let Some((_, [main, picker], buttons, picks)) = self.ui else {
+    fn show_picker(&self, world: &mut World, picking: bool) {
+        let Some(root) = self.root else {
             return;
         };
-        self.picking = picking;
-        widgets::show(tree, main, !picking);
-        widgets::show(tree, picker, picking);
-        tree.focus(if picking { picks[1] } else { buttons[1] });
+        world.resource_mut::<TitleView>().picking = picking;
+        screen_build::refresh(world, root);
+        let key = if picking { PICKS[1] } else { "new_game" };
+        if let Some(button) = screen_build::node(world, root, key) {
+            world.resource_mut::<UiTree>().focus(button);
+        }
     }
 
     /// Starts a new run at `difficulty`, asking first while its autosaves
@@ -145,92 +187,24 @@ impl GameState for TitleState {
             AUTOSAVES.contains(slot) && matches!(state, SlotState::Ready(..))
         };
         self.autosave_ready = world.resource::<GameOptions>().autosave && slots.iter().any(ready);
-        let info = world.resource::<GameInfo>().clone();
-        let saving = saving_on(world);
-        let tree = world.resource_mut::<UiTree>();
-        // A clear card the viewport's width, so the name keeps one line.
-        let (root, card) = widgets::screen(tree, theme::MENU_WIDTH);
-        widgets::fill(tree, card, [0; 4]);
-        let mut style = tree.layout_style(card).cloned().unwrap_or_default();
-        (style.max_width, style.align_items) = (None, Align::Center);
-        style.gap = theme::TITLE_GAP;
-        tree.set_layout_style(card, style);
-        // The card's width, wider than the name: a box sized to its text
-        // can commit an ulp short and wrap its last word out of sight.
-        let title = widgets::display(tree, card, &info.title, theme::TITLE);
-        widgets::set_width(tree, title, Sizing::Percent(100.0));
-        // The pages, centred under the name, the column as wide as the one
-        // shown: the buttons' narrow, the picker's three cards a wide
-        // screen's width.
-        let column = widgets::column(tree, card);
-        let mut style = tree.layout_style(column).cloned().unwrap_or_default();
-        style.margin.top = theme::TITLE_SPACE;
-        style.align_items = Align::Center;
-        tree.set_layout_style(column, style);
-        let pages = [(); 2].map(|()| widgets::column(tree, column));
-        for (page, width) in pages
-            .into_iter()
-            .zip([theme::TITLE_MENU_WIDTH, theme::WIDE_WIDTH])
-        {
-            let mut style = tree.layout_style(page).cloned().unwrap_or_default();
-            (style.gap, style.width) = (theme::TITLE_GAP, Sizing::Px(width));
-            tree.set_layout_style(page, style);
-        }
-        let captions = ["Continue", "New Game", "Load", "Settings", "Quit"];
-        let buttons = captions.map(|caption| widgets::button(tree, pages[0], caption));
-        let [x, y] = theme::TITLE_BUTTON_PADDING;
-        for button in buttons {
-            let mut style = tree.layout_style(button).cloned().unwrap_or_default();
-            style.padding = Edges::symmetric(x, y);
-            tree.set_layout_style(button, style);
-        }
-        if let Some((slot, _)) = &self.newest {
+        let newest = self.newest.as_ref().map(|(slot, _)| {
             let at = slots.iter().find_map(|(each, state)| match state {
                 SlotState::Ready(_, at) if each == slot => Some(*at),
                 _ => None,
             });
-            let line = widgets::row(tree, buttons[0]);
-            let mut style = tree.layout_style(line).cloned().unwrap_or_default();
-            style.justify_content = Justify::Center;
-            tree.set_layout_style(line, style);
-            let name = widgets::small(tree, line, &format!("{} ·", slot_name(slot)));
-            let ago = widgets::small(tree, line, &age(at.unwrap_or(0)));
-            widgets::mono(tree, ago);
-            for label in [name, ago] {
-                one_line(tree, label);
-            }
-        }
-        widgets::heading(tree, pages[1], "Difficulty", true);
-        let cards = widgets::row(tree, pages[1]);
-        let mut style = tree.layout_style(cards).cloned().unwrap_or_default();
-        style.align_items = Align::Stretch;
-        tree.set_layout_style(cards, style);
-        let [easy, normal, hard] = [0, 1, 2].map(|at| difficulty_card(tree, cards, at));
-        let back = widgets::button(tree, pages[1], "Back");
-        let mut style = tree.layout_style(back).cloned().unwrap_or_default();
-        (style.width, style.align_self) =
-            (Sizing::Px(theme::TITLE_MENU_WIDTH), Some(Align::Center));
-        tree.set_layout_style(back, style);
-        let picks = [easy, normal, hard, back];
-        tree.set_enabled(buttons[0], self.newest.is_some());
-        tree.set_enabled(buttons[2], saving);
-        let corner = [theme::MARGIN; 2].into();
-        let footer = tree.panel(
-            root,
-            LayoutStyle::column().anchored(Anchor::BottomStart, corner),
-        );
-        widgets::fill(tree, footer, [0; 4]);
-        widgets::small(tree, footer, &format!("Version {}", info.version));
-        if !saving {
-            widgets::small(tree, footer, "Saving is off");
-        }
-        self.ui = Some((root, pages, buttons, picks));
-        self.show_picker(tree, false);
-        if self.newest.is_some() {
-            tree.focus(buttons[0]);
+            (*slot, at.unwrap_or(0))
+        });
+        let picking = false;
+        world.insert_resource(TitleView { newest, picking });
+        stack(world).own_resource::<TitleView>();
+        let root = Menu::build(world, "title").root;
+        self.root = Some(root);
+        self.show_picker(world, false);
+        let first = screen_build::node(world, root, "continue");
+        if let Some(first) = first.filter(|_| newest.is_some()) {
+            world.resource_mut::<UiTree>().focus(first);
         }
         enter(world, root);
-        widgets::capped(world, title, theme::TITLE, theme::TITLE_CAP);
         self.music = play(world, theme::TITLE_MUSIC, theme::TITLE_FADE);
         let shell = world.resource_mut::<Shell>();
         if warnings > 0 && !std::mem::replace(&mut shell.warned, true) {
@@ -253,29 +227,30 @@ impl GameState for TitleState {
     }
 
     fn update(&mut self, world: &mut World) {
-        let Some((root, _, buttons, picks)) = self.ui.filter(|_| idle(world)) else {
+        let Some(root) = self.root.filter(|_| idle(world)) else {
             return;
         };
-        let list: &[WidgetId] = if self.picking { &picks } else { &buttons };
-        let pick = clicked(world, list);
-        if let Some(at) = pick {
-            self.opened = Some(list[at]);
-        }
-        match (self.picking, pick) {
-            (true, Some(at @ 0..3)) => self.new_game(world, Difficulty::ALL[at]),
-            (true, Some(_)) => self.show_picker(world.resource_mut::<UiTree>(), false),
-            (true, None) if cancelled(world, root) => {
-                self.show_picker(world.resource_mut::<UiTree>(), false);
+        let chosen = activated(world, root);
+        let key = chosen.map(|(button, key)| {
+            self.opened = Some(button);
+            key
+        });
+        let pick = key.and_then(|key| PICKS.iter().position(|pick| UiKey::new(pick) == key));
+        match (key, pick) {
+            (_, Some(at)) => self.new_game(world, Difficulty::ALL[at]),
+            (Some(BACK), _) => self.show_picker(world, false),
+            (None, _) if view(world).picking && cancelled(world, root) => {
+                self.show_picker(world, false);
             }
-            (false, Some(0)) => {
+            (Some(CONTINUE), _) => {
                 if let Some((slot, save)) = self.newest.clone() {
                     load(world, slot, save);
                 }
             }
-            (false, Some(1)) => self.show_picker(world.resource_mut::<UiTree>(), true),
-            (false, Some(2)) => push(world, SavesState::new(Mode::Load)),
-            (false, Some(3)) => push(world, SettingsState::new(0)),
-            (false, Some(4)) => quit_game(world),
+            (Some(NEW_GAME), _) => self.show_picker(world, true),
+            (Some(LOAD), _) => push(world, SavesState::new(Mode::Load)),
+            (Some(SETTINGS), _) => push(world, SettingsState::new(0)),
+            (Some(QUIT), _) => quit_game(world),
             _ => {}
         }
     }

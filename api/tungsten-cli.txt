@@ -18,6 +18,9 @@ Commands:
   render      Render the game to PNG through a script made from its flags:
               a contact sheet, a scene or a point of its world, once or as
               a loop of frames
+  schema <name>
+              Print the JSON Schema of the ui_screen or ui_theme file
+              format, from this command line's engine
 
 Options:
   -h, --help     Print this help
@@ -33,11 +36,13 @@ Options of run:
 Options of describe:
   --json            Print the description as JSON
 
-Options of render, one of --sheet, --scene and --at, and -o:
+Options of render, one of --sheet, --scene, --at and --screen, and -o:
   --sheet <items>   Items in a captioned grid on an empty stage, by commas:
                     prefab IDs, sprite:<id>, animation:<id>, particles:<id>
   --scene <file>    A scene file on an empty stage
   --at <x>,<y>      A point of the game's world, the camera's centre
+  --screen <id>     A screen file or a registered screen, opened after the
+                    --after actions
   --after <action>[=<json>]
                     An action the game registered, with its arguments, at
                     frame 2, the next at 3, and so on; repeatable
@@ -54,5 +59,8 @@ Options of render, one of --sheet, --scene and --at, and -o:
   --release         Run the game's release build
   -o <path>         The PNG, or with --loop the folder of NNNN.png frames
 
-Run every command but new in the game's folder. They need the game's
-engine to be the version of this command line.
+Options of schema:
+  -o <path>         Write the schema to <path> instead
+
+Run every command but new and schema in the game's folder. They need
+the game's engine to be the version of this command line.

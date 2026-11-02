@@ -167,6 +167,44 @@ impl UiTree {
         self.node(id)?.text_id
     }
 
+    /// The tree as JSON for an agent or a script's report (redo 7.17):
+    /// `{"nodes": [...]}`, every node in tree order, roots in paint order,
+    /// each with its `id` (`index:generation`), `root` and `depth`, `kind`,
+    /// `key`, accessible `name`, `text` (a label's or a button's, joined),
+    /// `rect` (`[x, y, width, height]` in UI units after the last layout, or
+    /// `null`), whether it is `focused` and whether it is `shown` (it and
+    /// every ancestor visible).
+    #[must_use]
+    pub fn dump_json(&self) -> String {
+        let mut nodes = Vec::new();
+        for &root in &self.roots {
+            let mut stack = vec![(root, 0_u32)];
+            while let Some((id, depth)) = stack.pop() {
+                let Some(node) = self.node(id) else {
+                    continue;
+                };
+                let rect = node
+                    .rect
+                    .map(|rect| [rect.min.x, rect.min.y, rect.width(), rect.height()]);
+                let text = self.text_holder(id).map(|_| self.plain_text(id));
+                nodes.push(serde_json::json!({
+                    "id": format!("{}:{}", id.index(), id.generation()),
+                    "root": format!("{}:{}", root.index(), root.generation()),
+                    "depth": depth,
+                    "kind": format!("{:?}", node.kind),
+                    "key": self.key_name(id),
+                    "name": self.accessible_name(id),
+                    "text": text,
+                    "rect": rect,
+                    "focused": self.focused == Some(id),
+                    "shown": self.is_shown(id),
+                }));
+                stack.extend(node.children.iter().rev().map(|child| (*child, depth + 1)));
+            }
+        }
+        serde_json::json!({ "nodes": nodes }).to_string()
+    }
+
     /// One line per node, depth-indented: kind, role, visibility and the rect
     /// as `(x, y) w×h` to one decimal, or `-` for none. The snapshot-test
     /// format.

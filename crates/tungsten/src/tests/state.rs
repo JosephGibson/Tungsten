@@ -1038,3 +1038,232 @@ fn a_states_exit_takes_its_emitters_particles() {
         "others age out as before"
     );
 }
+
+// ---- resets, held clocks and owned resources (redo 7.17) ----
+
+/// Gameplay that holds its clock while covered, and may own a resource.
+struct Holding {
+    hooks: Hooks,
+    owns: bool,
+}
+
+/// What a state owns in [`an_owned_resource_leaves_with_its_state`].
+struct RunData(u32);
+
+impl GameState for Holding {
+    fn id(&self) -> StateId {
+        "gameplay"
+    }
+
+    fn on_enter(&mut self, ctx: &mut StateContext) {
+        self.hooks.borrow_mut().push("gameplay:on_enter");
+        if self.owns {
+            ctx.world.insert_resource(RunData(7));
+            ctx.world
+                .resource_mut::<StateStack>()
+                .own_resource::<RunData>();
+        }
+    }
+
+    fn on_exit(&mut self, _ctx: &mut StateContext) {
+        self.hooks.borrow_mut().push("gameplay:on_exit");
+    }
+
+    fn update(&mut self, _world: &mut World) {}
+
+    fn holds_clock(&self) -> bool {
+        true
+    }
+}
+
+/// A world in `menu` with holding gameplay pushed over it.
+fn world_in_play(hooks: &Hooks, owns: bool) -> World {
+    let mut world = world_in_menu(hooks);
+    stack_mut(&mut world).request_push(Holding {
+        hooks: hooks.clone(),
+        owns,
+    });
+    dispatch(&mut world, 0.0);
+    world
+}
+
+fn time(world: &World) -> &Time {
+    world.get_resource::<Time>().unwrap()
+}
+
+#[test]
+fn a_reset_transition_exits_every_state_then_enters_one() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = make_world();
+    stack_mut(&mut world).request_push(TestState::new("menu", hooks.clone(), false));
+    dispatch(&mut world, 0.0);
+    stack_mut(&mut world).request_push(TestState::new("gameplay", hooks.clone(), true));
+    dispatch(&mut world, 0.0);
+    stack_mut(&mut world).request_push(TestState::new("pause", hooks.clone(), false));
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).depth(), 3);
+    assert_eq!(scene_entity_count(&world, "gameplay"), 1);
+
+    assert!(
+        stack_mut(&mut world)
+            .request_reset_transition(TestState::new("menu", hooks.clone(), false), fade(0.5))
+    );
+    hooks.borrow_mut().clear();
+    dispatch(&mut world, 0.25);
+    assert!(
+        !hooks.borrow().iter().any(|hook| hook.ends_with("on_exit")),
+        "nothing exits before the boundary"
+    );
+    hooks.borrow_mut().clear();
+    dispatch(&mut world, 0.25);
+    let recorded: Vec<_> = hooks
+        .borrow()
+        .iter()
+        .copied()
+        .filter(|hook| !hook.ends_with("update"))
+        .collect();
+    assert_eq!(
+        recorded,
+        [
+            "pause:on_exit",
+            "gameplay:on_exit",
+            "menu:on_exit",
+            "menu:on_enter"
+        ],
+        "every state exits, top down, then one enters"
+    );
+    assert_eq!(stack(&world).depth(), 1);
+    assert_eq!(stack(&world).active_id(), Some("menu"));
+    assert_eq!(scene_entity_count(&world, "gameplay"), 0, "as pops despawn");
+}
+
+#[test]
+fn a_reset_runs_its_swap_hook_between_the_exits_and_the_enter() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    let swap_hooks = hooks.clone();
+    assert!(stack_mut(&mut world).request_reset_transition_with(
+        TestState::new("gameplay", hooks.clone(), false),
+        fade(0.2),
+        move |world| {
+            swap_hooks.borrow_mut().push("swap");
+            world.insert_resource(RunData(3));
+        },
+    ));
+    hooks.borrow_mut().clear();
+    dispatch(&mut world, 0.2);
+    let recorded: Vec<_> = hooks
+        .borrow()
+        .iter()
+        .copied()
+        .filter(|hook| !hook.ends_with("update"))
+        .collect();
+    assert_eq!(recorded, ["menu:on_exit", "swap", "gameplay:on_enter"]);
+    assert_eq!(world.get_resource::<RunData>().map(|data| data.0), Some(3));
+}
+
+#[test]
+fn a_reset_is_refused_while_a_transition_runs() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    assert!(
+        stack_mut(&mut world)
+            .request_push_transition(TestState::new("pause", hooks.clone(), false), fade(0.5))
+    );
+    let reset = |world: &mut World| {
+        stack_mut(world)
+            .request_reset_transition(TestState::new("gameplay", hooks.clone(), false), fade(0.2))
+    };
+    assert!(!reset(&mut world), "refused while one is queued");
+    dispatch(&mut world, 0.1);
+    assert!(stack(&world).is_transitioning());
+    assert!(!reset(&mut world), "and while one is active");
+    dispatch(&mut world, 1.0);
+    dispatch(&mut world, 1.0);
+    assert!(!stack(&world).is_transitioning());
+    assert!(reset(&mut world), "taken once the stack is idle");
+}
+
+#[test]
+fn a_covered_state_that_holds_its_clock_pauses_time() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_play(&hooks, false);
+    assert!(!time(&world).is_held(), "on top, it runs");
+    stack_mut(&mut world).request_push(TestState::new("pause", hooks.clone(), false));
+    dispatch(&mut world, 0.1);
+    assert!(time(&world).is_held(), "covered, the stack holds the clock");
+    dispatch(&mut world, 0.1);
+    assert_eq!(time(&world).delta(), 0.0);
+    assert_eq!(time(&world).real_delta(), 0.1);
+    assert!(
+        !time(&world).is_paused(),
+        "the hold is not the game's pause"
+    );
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.1);
+    assert!(!time(&world).is_held());
+    dispatch(&mut world, 0.1);
+    assert_eq!(time(&world).delta(), 0.1, "uncovered, it runs again");
+}
+
+#[test]
+fn a_games_own_pause_survives_an_uncover() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_play(&hooks, false);
+    world.resource_mut::<Time>().pause();
+    stack_mut(&mut world).request_push(TestState::new("pause", hooks.clone(), false));
+    dispatch(&mut world, 0.1);
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.1);
+    dispatch(&mut world, 0.1);
+    assert!(!time(&world).is_held());
+    assert!(time(&world).is_paused(), "the game paused before the cover");
+    assert_eq!(time(&world).delta(), 0.0);
+}
+
+#[test]
+fn a_pause_made_under_a_hold_survives_the_uncover() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_play(&hooks, false);
+    stack_mut(&mut world).request_push(TestState::new("pause", hooks.clone(), false));
+    dispatch(&mut world, 0.1);
+    assert!(time(&world).is_held());
+    // The game pauses while the stack holds, then the screen closes.
+    world.resource_mut::<Time>().pause();
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.1);
+    dispatch(&mut world, 0.1);
+    assert!(!time(&world).is_held());
+    assert!(time(&world).is_paused(), "still paused");
+    assert_eq!(time(&world).delta(), 0.0);
+    world.resource_mut::<Time>().resume();
+    dispatch(&mut world, 0.1);
+    assert_eq!(time(&world).delta(), 0.1);
+}
+
+#[test]
+fn an_owned_resource_leaves_with_its_state() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_play(&hooks, true);
+    assert_eq!(world.get_resource::<RunData>().map(|data| data.0), Some(7));
+    stack_mut(&mut world).request_push(TestState::new("pause", hooks.clone(), false));
+    dispatch(&mut world, 0.0);
+    assert!(world.has_resource::<RunData>(), "covered, it stays");
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.0);
+    assert!(
+        world.has_resource::<RunData>(),
+        "its owner still on the stack"
+    );
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.0);
+    assert!(!world.has_resource::<RunData>(), "gone with its owner");
+    assert_eq!(stack(&world).active_id(), Some("menu"));
+
+    // Outside a dispatch the top owns it.
+    world.insert_resource(RunData(1));
+    stack_mut(&mut world).own_resource::<RunData>();
+    stack_mut(&mut world).request_replace(TestState::new("gameplay", hooks.clone(), false));
+    dispatch(&mut world, 0.0);
+    assert!(!world.has_resource::<RunData>(), "the menu's exit took it");
+}

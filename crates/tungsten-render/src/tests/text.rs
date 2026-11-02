@@ -532,6 +532,8 @@ fn label(content: &str, x: f32, y: f32) -> WorldLabelRun {
         pivot: [0.5, 1.0],
         scale: 1.0,
         color: [255, 255, 255, 255],
+        outline: None,
+        shadow: None,
     }
 }
 
@@ -690,4 +692,90 @@ fn label_pivot_places_the_box() {
     assert!(labelled_frame(&mut cache, &[], &[moved.clone()]).labels);
     moved.pivot = [0.25, 0.0];
     assert!(labelled_frame(&mut cache, &[], &[moved]).labels);
+}
+
+// ---- outlines and shadows (P7-14) ----
+
+/// Each area's position and default colour.
+fn placed(areas: &[TextArea<'_>]) -> Vec<([f32; 2], glyphon::Color)> {
+    areas
+        .iter()
+        .map(|area| ([area.left, area.top], area.default_color))
+        .collect()
+}
+
+#[test]
+fn an_outlined_area_draws_eight_copies_then_the_text() {
+    use tungsten_core::text::{TextOutline, TextShadow};
+    let mut cache = mono_cache();
+    let mut ringed = label("12", 100.0, 100.0);
+    ringed.pivot = [0.0, 0.0];
+    ringed.outline = Some(TextOutline::new([0, 0, 0, 255], 2.0));
+    ringed.shadow = Some(TextShadow::new([0, 0, 255, 128], glam::Vec2::new(3.0, 4.0)));
+    labelled_frame(&mut cache, &[], &[ringed.clone()]);
+    let areas = label_area_list(&cache);
+    let black = glyphon::Color::rgba(0, 0, 0, 255);
+    let [x, y] = [100.0, 100.0];
+    assert_eq!(
+        placed(&areas),
+        [
+            ([x + 3.0, y + 4.0], glyphon::Color::rgba(0, 0, 255, 128)),
+            ([x - 2.0, y], black),
+            ([x + 2.0, y], black),
+            ([x, y - 2.0], black),
+            ([x, y + 2.0], black),
+            ([x - 2.0, y - 2.0], black),
+            ([x + 2.0, y - 2.0], black),
+            ([x - 2.0, y + 2.0], black),
+            ([x + 2.0, y + 2.0], black),
+            ([x, y], glyphon::Color::rgba(255, 255, 255, 255)),
+        ],
+        "the shadow under the outline's eight, then the text"
+    );
+    assert!(
+        areas
+            .windows(2)
+            .all(|pair| std::ptr::eq(pair[0].buffer, pair[1].buffer)),
+        "one buffer"
+    );
+
+    // The copies scale with the label, and an outline is a change.
+    ringed.scale = 2.0;
+    ringed.shadow = None;
+    ringed.outline = Some(TextOutline::new([0, 0, 0, 255], 1.0));
+    assert!(labelled_frame(&mut cache, &[], &[ringed]).labels);
+    let areas = label_area_list(&cache);
+    assert_eq!(areas.len(), 9);
+    assert_eq!(areas[1].left - areas[8].left, 2.0, "1 unit at scale 2");
+    assert!(areas.iter().all(|area| area.scale == 2.0));
+}
+
+#[test]
+fn text_without_outline_prepares_as_before() {
+    let mut cache = mono_cache();
+    let mut boxed = section("as before", 1);
+    boxed.bounds = Some([100.0, 20.0]);
+    assert!(frame(&mut cache, std::slice::from_ref(&boxed)));
+    let areas: Vec<_> = text_areas(&cache.prepared, &cache.buffers).collect();
+    assert_eq!(
+        placed(&areas),
+        [([16.0, 36.0], glyphon::Color::rgba(230, 236, 255, 255))]
+    );
+    assert_eq!(
+        areas[0].bounds,
+        clip_bounds_for_section(&boxed, WIDTH, HEIGHT)
+    );
+    assert_eq!(areas[0].scale, 1.0);
+    assert!(
+        !frame(&mut cache, &[boxed]),
+        "nothing changed, nothing prepares"
+    );
+
+    labelled_frame(&mut cache, &[], &[label("12", 100.0, 100.0)]);
+    let areas = label_area_list(&cache);
+    assert_eq!(areas.len(), 1, "a label without one draws once");
+    assert_eq!(
+        areas[0].default_color,
+        glyphon::Color::rgba(255, 255, 255, 255)
+    );
 }

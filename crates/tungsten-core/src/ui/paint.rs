@@ -22,15 +22,15 @@ use std::ops::Range;
 
 use glam::Vec2;
 
-use crate::assets::{AssetRegistry, FilterMode, SpriteAsset, SpriteAssetId, TextureHandle, UvRect};
-use crate::text::TextNodeId;
+use crate::assets::{AssetRegistry, FilterMode, SpriteAsset, TextureHandle, UvRect};
+use crate::text::{TextNodeId, TextStyle, effect_copies};
 
 use super::control::{self, Control};
 use super::geometry::{Rect, UiTransform};
 use super::id::WidgetId;
 use super::node::{Node, UiLayer, UiShadow, UiVertex, Visibility, WidgetKind};
 use super::scroll::{self, THUMB_WIDTH, children_transform};
-use super::tree::{MIN_SCALE, UiTree};
+use super::tree::{MIN_SCALE, UiTree, Warned};
 
 /// The border colour of the layout-bounds overlay.
 const BOUNDS_OUTLINE: [u8; 4] = [255, 64, 255, 255];
@@ -191,6 +191,74 @@ fn text_command(
         scale: layer * text_scale,
         clip,
     })
+}
+
+/// Pushes a label's text `command` after the copies its style's shadow and
+/// outline draw under it (P7-14), each the command moved by the copy's
+/// whole-pixel offset, in the copy's colour faded by `alpha`, through the
+/// node's plain view when a span carries a colour of its own. The copies'
+/// boxes make the label's paint box, which the clip and the text batches
+/// see; its layout stays as it was.
+fn push_text(
+    out: &mut PaintList,
+    node: &Node,
+    command: PaintCommand,
+    text: &TextStyle,
+    alpha: f32,
+) {
+    if let PaintCommand::Text {
+        node: id,
+        rect,
+        scale,
+        clip,
+        ..
+    } = command
+        && (text.outline.is_some() || text.shadow.is_some())
+    {
+        let coloured = node
+            .text
+            .as_ref()
+            .is_some_and(|content| content.text.spans.iter().any(|span| span.color.is_some()));
+        let copy = if coloured { id.plain() } else { id };
+        for (offset, color) in effect_copies(text.outline, text.shadow, out.scale * scale) {
+            out.commands.push(PaintCommand::Text {
+                node: copy,
+                rect: Rect::new(rect.min + offset, rect.max + offset),
+                color: faded(color, alpha),
+                scale,
+                clip,
+            });
+        }
+    }
+    out.commands.push(command);
+}
+
+/// `rect` on whole physical pixels, each edge at the nearest (redo 7.17).
+fn snapped(rect: Rect) -> Rect {
+    Rect::new(rect.min.round(), rect.max.round())
+}
+
+/// A text command moved so its box starts on a whole physical pixel, its
+/// size kept.
+fn snap_text(mut command: PaintCommand) -> PaintCommand {
+    if let PaintCommand::Text { rect, .. } = &mut command {
+        let shift = rect.min.round() - rect.min;
+        *rect = Rect::new(rect.min + shift, rect.max + shift);
+    }
+    command
+}
+
+/// An image's box in a snapped root (redo 7.17): its natural size times
+/// the largest whole number, at least one, that `rect` holds, centred in it
+/// on whole pixels, so each art pixel spans whole physical pixels.
+fn whole_multiple(rect: Rect, natural: Vec2) -> Rect {
+    if !(natural.x > 0.0 && natural.y > 0.0 && natural.is_finite()) {
+        return rect;
+    }
+    let fit = (rect.size() / natural).min_element().floor().max(1.0);
+    let size = natural * fit;
+    let min = (rect.min + (rect.size() - size) * 0.5).round();
+    Rect::new(min, min + size)
 }
 
 /// What a node inherits from its ancestors in a paint walk.
@@ -787,7 +855,7 @@ impl UiTree {
             });
         out.clips.push(to_physical(viewport, scale));
 
-        let mut warned = std::mem::take(&mut self.warned_sprites);
+        let mut warned = std::mem::take(&mut self.warned);
         let mut bounds = Vec::new();
         let mut stack: Vec<PaintStep> = Vec::new();
         for i in 0..self.roots.len() {
@@ -835,7 +903,7 @@ impl UiTree {
                 });
             }
         }
-        self.warned_sprites = warned;
+        self.warned = warned;
         self.paint_dirty = false;
     }
 
@@ -856,7 +924,7 @@ impl UiTree {
         sprites: &AssetRegistry,
         out: &mut PaintList,
         bounds: &mut Vec<Rect>,
-        warned: &mut HashSet<SpriteAssetId>,
+        warned: &mut HashSet<Warned>,
         stack: &mut Vec<PaintStep>,
     ) {
         let Some(node) = self.node(id) else {
@@ -887,7 +955,10 @@ impl UiTree {
         let clip = inherited.clip;
         // Lengths in physical pixels per UI unit, under this node's scale.
         let length = unit * transform.scale;
+        // A snapped root's boxes sit on whole physical pixels (redo 7.17).
+        let snap = self.node(node.root).is_some_and(|root| root.pixel_snap);
         let physical = scaled(transform.rect(rect), unit);
+        let physical = if snap { snapped(physical) } else { physical };
         let paint_rect = |part: Rect| scaled(transform.rect(part), unit);
         bounds.push(physical);
         if let Some(shadow) = node.shadow {
@@ -907,25 +978,25 @@ impl UiTree {
         match node.kind {
             WidgetKind::Label => {
                 let color = faded(resolved.text.color, alpha);
-                out.commands.extend(text_command(
-                    node, rect, transform, unit, layer, color, clip,
-                ));
+                if let Some(command) = text_command(node, rect, transform, unit, layer, color, clip)
+                {
+                    let command = if snap { snap_text(command) } else { command };
+                    push_text(out, node, command, &resolved.text, alpha);
+                }
             }
             WidgetKind::Image => {
                 if let Some(image) = node.image {
                     match sprites.sprite(image.sprite) {
                         Some(sprite) => {
-                            push_images(
-                                out,
-                                physical,
-                                sprite,
-                                faded(image.tint, alpha),
-                                length,
-                                clip,
-                            );
+                            let at = if snap {
+                                whole_multiple(physical, image.natural_size)
+                            } else {
+                                physical
+                            };
+                            push_images(out, at, sprite, faded(image.tint, alpha), length, clip);
                         }
                         None => {
-                            if warned.insert(image.sprite) {
+                            if warned.insert(Warned::Sprite(image.sprite)) {
                                 log::warn!(
                                     "UiTree: image {id:?} names sprite {} ({:?}), which is not registered; it draws nothing",
                                     image.sprite.index(),

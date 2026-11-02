@@ -7,7 +7,7 @@ use crate::assets::{AssetRegistry, SpriteAssetId};
 use crate::text::TextNodeStore as _;
 use crate::ui::theme::{StyleOverrides, WidgetState};
 use crate::ui::{
-    Anchor, FixedAdvanceMeasure, LayoutStats, LayoutStyle, Sizing, SliderRange, UiVertex,
+    Anchor, FixedAdvanceMeasure, LayoutStats, LayoutStyle, Sizing, SliderRange, Theme, UiVertex,
     Visibility,
 };
 
@@ -552,11 +552,11 @@ fn an_unregistered_sprite_draws_nothing_and_warns_once() {
     tree.image(root, pending, Vec2::new(32.0, 32.0), fixed(32.0, 32.0));
     let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
     assert_eq!(kinds(&list), "R");
-    assert_eq!(tree.warned_sprites.len(), 1);
+    assert_eq!(tree.warned.len(), 1);
     let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
     assert_eq!(kinds(&list), "R");
     assert_eq!(
-        tree.warned_sprites.len(),
+        tree.warned.len(),
         1,
         "the second paint warns again for no ID"
     );
@@ -1770,4 +1770,378 @@ fn a_shadow_paints_one_mesh_before_its_box_fading_to_transparent() {
         let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
         assert_eq!(kinds(&list), "R", "{color:?} {blur}");
     }
+}
+
+/// A theme whose panels show in every state: a filled, bordered surface,
+/// a fill when hovered and a border when focused.
+fn loud_panels() -> Theme {
+    let mut theme = Theme::default();
+    let panel = &mut theme.kinds.panel;
+    panel.normal.background = [200, 10, 10, 255];
+    panel.normal.border = [10, 200, 10, 255];
+    panel.normal.border_width = 3.0;
+    panel.hovered.background = Some([10, 10, 200, 255]);
+    panel.focused.border = Some([250, 250, 250, 255]);
+    panel.focused.border_width = Some(2.0);
+    theme
+}
+
+#[test]
+fn a_group_paints_nothing_under_any_theme() {
+    let mut tree = UiTree::new();
+    tree.set_theme(loud_panels());
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let group = tree.group(root, at(10.0, 10.0, 100.0, 40.0));
+    let inner = tree.panel(group, fixed(20.0, 20.0));
+    assert!(tree.bare(group) && !tree.bare(inner));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        rects(&list),
+        [rect(10.0, 10.0, 20.0, 20.0)],
+        "only the plain panel inside paints"
+    );
+
+    tree.set_hovered(Some(group));
+    tree.set_focusable(group, true);
+    tree.focus(group);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        kinds(&list),
+        "R",
+        "hovered and focused, the group still paints nothing"
+    );
+
+    // Its own overrides paint, and nothing of the kind's comes with them.
+    tree.edit_overrides(group, |own| own.background = Some([1, 2, 3, 255]));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    let PaintCommand::Rect {
+        rect: drawn,
+        fill,
+        border_width,
+        ..
+    } = list.commands[0]
+    else {
+        panic!("the group's box paints first: {list:?}");
+    };
+    assert_eq!(
+        (drawn, fill, border_width),
+        (rect(10.0, 10.0, 100.0, 40.0), [1, 2, 3, 255], 0.0)
+    );
+}
+
+#[test]
+fn a_bare_root_paints_nothing() {
+    let mut tree = UiTree::new();
+    tree.set_theme(loud_panels());
+    let root = tree.add_root(UiLayer::Game, fixed(300.0, 200.0));
+    let scroll = tree.scroll_panel(root, fixed(100.0, 100.0));
+    let label = tree.label(root, "x");
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        kinds(&list),
+        "RRT",
+        "the plain root and scroll panel paint their boxes"
+    );
+
+    tree.set_bare(root, true);
+    tree.set_bare(scroll, true);
+    tree.set_bare(label, true);
+    assert!(!tree.bare(label), "only a panel turns bare");
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "T", "only the label's text paints");
+
+    tree.set_bare(root, false);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "RT");
+}
+
+/// A tree whose theme names `ringed`, a 2-unit green outline, and `cast`, a
+/// blue shadow 3 right and 4 down, holding one label in each, at known
+/// places; their text is white.
+fn effect_tree() -> (UiTree, WidgetId, WidgetId) {
+    use crate::text::{TextOutline, TextShadow};
+    use crate::ui::NamedStyle;
+    let mut theme = Theme::default();
+    let ringed = NamedStyle {
+        outline: Some(TextOutline::new([0, 255, 0, 255], 2.0)),
+        ..NamedStyle::default()
+    };
+    let cast = NamedStyle {
+        shadow: Some(TextShadow::new([0, 0, 255, 255], Vec2::new(3.0, 4.0))),
+        ..NamedStyle::default()
+    };
+    theme.names.text_styles.insert("ringed".to_owned(), ringed);
+    theme.names.text_styles.insert("cast".to_owned(), cast);
+    let mut tree = UiTree::new();
+    tree.set_theme(theme);
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let outlined = tree.label(root, "ab");
+    tree.set_layout_style(outlined, at(100.0, 100.0, 16.0, 20.0));
+    tree.set_text_style(outlined, Some("ringed"));
+    let shadowed = tree.label(root, "cd");
+    tree.set_layout_style(shadowed, at(300.0, 100.0, 16.0, 20.0));
+    tree.set_text_style(shadowed, Some("cast"));
+    (tree, outlined, shadowed)
+}
+
+/// The text commands of `list`: each one's node, box and colour.
+fn texts(list: &PaintList) -> Vec<(TextNodeId, Rect, [u8; 4])> {
+    list.commands
+        .iter()
+        .filter_map(|command| match *command {
+            PaintCommand::Text {
+                node, rect, color, ..
+            } => Some((node, rect, color)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_nodes_outline_reaches_its_paint_command() {
+    let (mut tree, outlined, shadowed) = effect_tree();
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    let texts = texts(&list);
+    assert_eq!(
+        texts.len(),
+        8 + 1 + 1 + 1,
+        "eight outline copies, the text, a shadow, the text"
+    );
+    let green = [0, 255, 0, 255];
+    let label = rect(100.0, 100.0, 16.0, 20.0);
+    let offsets: Vec<Vec2> = texts[..8]
+        .iter()
+        .map(|(_, copy, color)| {
+            assert_eq!(*color, green, "the outline's colour");
+            copy.min - label.min
+        })
+        .collect();
+    assert_eq!(
+        offsets,
+        [
+            [-2.0, 0.0],
+            [2.0, 0.0],
+            [0.0, -2.0],
+            [0.0, 2.0],
+            [-2.0, -2.0],
+            [2.0, -2.0],
+            [-2.0, 2.0],
+            [2.0, 2.0]
+        ]
+        .map(Vec2::from),
+        "sides, then corners, at its width"
+    );
+    let node = tree
+        .node(outlined)
+        .and_then(|node| node.text_id)
+        .expect("committed");
+    assert!(
+        texts[..9].iter().all(|(id, ..)| *id == node),
+        "plain spans copy the node itself"
+    );
+    assert_eq!(
+        (texts[8].1, texts[8].2),
+        (label, [235, 235, 240, 255]),
+        "the text last"
+    );
+    let (_, shadow, blue) = texts[9];
+    assert_eq!(blue, [0, 0, 255, 255]);
+    assert_eq!(
+        shadow.min - rect(300.0, 100.0, 16.0, 20.0).min,
+        Vec2::new(3.0, 4.0)
+    );
+    let _ = shadowed;
+
+    // A coloured span draws its copies through the node's plain view, and
+    // the copies scale with the paint.
+    let mut text = crate::text::StyledText::from("a");
+    text.spans
+        .push(crate::text::TextSpan::new("b").with_color([255, 0, 0, 255]));
+    tree.set_text(outlined, text);
+    let list = paint(&mut tree, 2.0, UiDebug::default(), &AssetRegistry::new());
+    let copies = self::texts(&list);
+    let texts = copies;
+    assert!(texts[..8].iter().all(|(id, ..)| *id == node.plain()));
+    assert_eq!(
+        texts[8].0, node,
+        "the text draws the node, its colours kept"
+    );
+    assert_eq!(
+        texts[1].1.min - texts[8].1.min,
+        Vec2::new(4.0, 0.0),
+        "2 units at scale 2"
+    );
+}
+
+#[test]
+fn an_outlined_text_grows_its_paint_box_and_keeps_its_layout() {
+    let (mut tree, outlined, shadowed) = effect_tree();
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        tree.rect(outlined),
+        Some(rect(100.0, 100.0, 16.0, 20.0)),
+        "its layout stays"
+    );
+    let union = |range: std::ops::Range<usize>| {
+        texts(&list)[range]
+            .iter()
+            .map(|(_, rect, _)| *rect)
+            .reduce(|a, b| Rect::new(a.min.min(b.min), a.max.max(b.max)))
+            .expect("commands")
+    };
+    assert_eq!(
+        union(0..9),
+        rect(98.0, 98.0, 20.0, 24.0),
+        "2 units on every side"
+    );
+    assert_eq!(tree.rect(shadowed), Some(rect(300.0, 100.0, 16.0, 20.0)));
+    assert_eq!(
+        union(9..11),
+        rect(300.0, 100.0, 19.0, 24.0),
+        "the offset on its sides"
+    );
+
+    // Neither draws as before: one command each.
+    tree.set_text_style(outlined, None);
+    tree.set_text_style(shadowed, None);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "TT");
+}
+
+#[test]
+fn a_later_panel_over_an_outline_closes_the_batch_before_it() {
+    let (mut tree, outlined, _) = effect_tree();
+    let root = tree.root_of(outlined).expect("in the tree");
+    // A panel painted after both labels, inside the outline's band 2 units
+    // right of the outlined label's box and clear of the box itself, then a
+    // label after it.
+    tree.panel(root, at(117.0, 100.0, 10.0, 10.0));
+    let later = tree.label(root, "e");
+    tree.set_layout_style(later, at(500.0, 100.0, 8.0, 20.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "TTTTTTTTTTTRT");
+    assert_eq!(
+        list.text_batches(),
+        [0..11, 12..13],
+        "the band closes the batch"
+    );
+
+    // Without the outline the panel touches no text and the batch stays open.
+    tree.set_text_style(outlined, None);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "TTTRT");
+    let batches = list.text_batches();
+    assert_eq!((batches.len(), batches[0].clone()), (1, 0..5));
+}
+
+#[test]
+fn a_snapped_root_paints_on_whole_pixels() {
+    let paint_at = |snap: bool| {
+        let mut tree = UiTree::new();
+        let root = tree.add_root(UiLayer::Game, at(10.3, 7.6, 100.0, 50.0));
+        tree.set_pixel_snap(root, snap);
+        let panel = tree.panel(root, at(3.3, 2.2, 20.0, 10.0));
+        let label = tree.label(root, "hi");
+        tree.set_layout_style(label, at(30.4, 1.3, 16.0, 20.0));
+        let _ = panel;
+        paint(&mut tree, 1.75, UiDebug::default(), &AssetRegistry::new())
+    };
+    let whole = |value: f32| value == value.round();
+    let snapped = paint_at(true);
+    assert_eq!(kinds(&snapped), "RRT");
+    for command in &snapped.commands {
+        let rect = command.rect();
+        assert!(whole(rect.min.x) && whole(rect.min.y), "{command:?}");
+        if !command.is_text() {
+            assert!(whole(rect.max.x) && whole(rect.max.y), "{command:?}");
+        }
+    }
+    let loose = paint_at(false);
+    assert!(
+        loose
+            .commands
+            .iter()
+            .any(|command| !whole(command.rect().min.x)),
+        "unsnapped, a box keeps its fraction"
+    );
+}
+
+#[test]
+fn a_snapped_image_scales_by_whole_art_pixels() {
+    let (sprites, sprite) = registry("icon", None);
+    let image_rect = |scale: f32, snap: bool| {
+        let mut tree = UiTree::new();
+        let root = bare_root(&mut tree, LayoutStyle::default());
+        tree.set_pixel_snap(root, snap);
+        tree.image(root, sprite, Vec2::splat(16.0), fixed(16.0, 16.0));
+        let list = paint(&mut tree, scale, UiDebug::default(), &sprites);
+        list.commands
+            .iter()
+            .find_map(|command| match command {
+                PaintCommand::Image { rect, .. } => Some(*rect),
+                _ => None,
+            })
+            .expect("the image")
+    };
+    for (scale, side) in [(1.0, 16.0), (1.75, 16.0), (2.0, 32.0), (3.5, 48.0)] {
+        let rect = image_rect(scale, true);
+        assert_eq!(
+            rect.size(),
+            Vec2::splat(side),
+            "at {scale}: whole art pixels"
+        );
+        assert_eq!(rect.min, rect.min.round());
+    }
+    assert_eq!(
+        image_rect(1.75, false).size(),
+        Vec2::splat(28.0),
+        "unsnapped it fills its box"
+    );
+    let centred = image_rect(1.75, true);
+    assert_eq!(centred.min, Vec2::new(6.0, 6.0), "centred in its 28 px box");
+}
+
+#[test]
+fn the_pointer_sprite_paints_last_at_the_pointer() {
+    use crate::ui::PointerSprite;
+    let (sprites, sprite) = registry("cursor", None);
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::GamePopup, fixed(200.0, 200.0));
+    tree.panel(root, fixed(50.0, 50.0));
+    let arrow = PointerSprite::new(sprite, Vec2::new(16.0, 16.0), Vec2::new(2.0, 3.0));
+    tree.set_pointer_sprite(Some(arrow));
+    assert_eq!(tree.pointer_sprite(), Some(arrow));
+    assert!(!tree.pointer_sprite_shown(), "hidden until shown");
+    tree.place_pointer_sprite(Vec2::new(100.0, 50.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert!(
+        list.commands
+            .iter()
+            .all(|command| !matches!(command, PaintCommand::Image { .. })),
+        "hidden, it paints nothing"
+    );
+
+    tree.show_pointer_sprite(true);
+    tree.add_root(UiLayer::GamePopup, fixed(10.0, 10.0));
+    tree.place_pointer_sprite(Vec2::new(100.0, 50.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    let last = list.commands.last().expect("commands");
+    assert!(
+        matches!(last, PaintCommand::Image { rect, .. } if *rect == rect_of(98.0, 47.0, 16.0, 16.0)),
+        "last, its hotspot on the point: {last:?}"
+    );
+    assert!(
+        tree.hit_test(Vec2::new(100.0, 50.0)).is_none_or(|hit| tree
+            .key(tree.root_of(hit).expect("rooted"))
+            != Some(crate::ui::POINTER_KEY)),
+        "the pointer never hits itself"
+    );
+
+    tree.set_pointer_sprite(None);
+    assert_eq!(tree.pointer_sprite(), None);
+    assert!(!tree.pointer_sprite_shown());
+}
+
+fn rect_of(x: f32, y: f32, width: f32, height: f32) -> Rect {
+    rect(x, y, width, height)
 }

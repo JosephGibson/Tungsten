@@ -3,12 +3,13 @@
 //! the sample's gameplay, `shell` the shell's screens and run, `saves` the
 //! save seam and its screen, `settings` the tabbed settings, `keys` the
 //! keybindings, `fit` every screen at six windows and the scale extremes,
-//! and `visual` the title's pixels.
+//! `screens` the shell's screen files and `visual` the title's pixels.
 
 mod fit;
 mod keys;
 mod sample;
 mod saves;
+mod screens;
 mod script;
 mod settings;
 mod shell;
@@ -16,7 +17,6 @@ mod visual;
 
 use std::path::{Path, PathBuf};
 
-use tungsten::core::ui::{Visibility, WidgetId};
 use tungsten::core::{
     AudioCommand, AudioHandle, Config, Entity, Position, SoundRegistry, Transform, UserFolder,
     Velocity, Voice, With,
@@ -109,74 +109,21 @@ pub fn tap(harness: &mut UiHarness, action: &str) {
     settle(harness);
 }
 
-/// The focusable control named `name` on the front-most shown screen.
-pub fn find(harness: &UiHarness, name: &str) -> Option<WidgetId> {
-    let tree = harness.tree();
-    tree.roots().iter().rev().find_map(|root| {
-        if tree.visibility(*root) != Some(Visibility::Visible) {
-            return None;
-        }
-        let mut stack = vec![*root];
-        while let Some(id) = stack.pop() {
-            if tree.accessible_name(id) == Some(name) && tree.can_focus(id) {
-                return Some(id);
-            }
-            stack.extend(tree.children(id).iter().rev().copied());
-        }
-        None
-    })
-}
-
-/// The front-most shown screen's root.
-pub fn shown_modal(harness: &UiHarness) -> Option<WidgetId> {
-    let tree = harness.tree();
-    let shown = |root: &&WidgetId| {
-        tree.visibility(**root) == Some(Visibility::Visible) && tree.modal(**root)
-    };
-    tree.roots().iter().rev().find(shown).copied()
-}
-
-/// The widget named `name` on the front-most shown screen, enabled or not.
-pub fn named(harness: &UiHarness, name: &str) -> Option<WidgetId> {
-    let tree = harness.tree();
-    let root = shown_modal(harness)?;
-    let mut stack = vec![root];
-    while let Some(id) = stack.pop() {
-        if tree.accessible_name(id) == Some(name) {
-            return Some(id);
-        }
-        stack.extend(tree.children(id).iter().copied());
-    }
-    None
-}
-
-/// Whether a label on the front-most shown screen reads `text`.
-pub fn shows(harness: &UiHarness, text: &str) -> bool {
-    let tree = harness.tree();
-    let Some(root) = shown_modal(harness) else {
-        return false;
-    };
-    let mut stack = vec![root];
-    while let Some(id) = stack.pop() {
-        if game_shell::widgets::text_of(tree, id) == text {
-            return true;
-        }
-        stack.extend(tree.children(id).iter().copied());
-    }
-    false
-}
-
 /// Clicks the control named `name` on the front-most shown screen and steps
 /// the frame that routes the click.
 pub fn click(harness: &mut UiHarness, name: &str) {
-    let id = find(harness, name).unwrap_or_else(|| panic!("no enabled control '{name}'"));
+    let id = harness
+        .find(name)
+        .unwrap_or_else(|| panic!("no enabled control '{name}'"));
     harness.click(id);
     harness.step(1);
 }
 
 /// Focuses the control named `name` and activates it with `ui_accept`.
 pub fn press(harness: &mut UiHarness, name: &str) {
-    let id = find(harness, name).unwrap_or_else(|| panic!("no enabled control '{name}'"));
+    let id = harness
+        .find(name)
+        .unwrap_or_else(|| panic!("no enabled control '{name}'"));
     assert!(harness.focus(id), "'{name}' takes focus");
     tap(harness, "ui_accept");
 }

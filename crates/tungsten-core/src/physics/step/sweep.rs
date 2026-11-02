@@ -80,6 +80,12 @@ impl SweepGrid {
     /// in the pair grid's order.
     fn query(&mut self, pairs: &mut PairGrid, query: &Aabb, out: &mut Vec<ProxyId>) {
         out.clear();
+        // With no tiles and a few statics, test their cells before walking:
+        // a body away from the walls meets nothing (the test stays out of
+        // `for_each_in`, whose inlined walk `build_pairs` shares).
+        if pairs.tiles.misses_few(query, 0) && self.grid.misses_few(query, 8) {
+            return;
+        }
         for_each_in_both(
             &mut self.grid,
             &mut pairs.tiles,
@@ -170,6 +176,13 @@ pub(super) fn speculative_pass(
                 sweep_aabb_vs_aabb(a_prev, a_cur, a_half, target.center, b_half)
             };
             if let Some((t, n)) = hit {
+                // A sweep that starts touching the static is no hit, as one
+                // that starts overlapping is none: the narrow phase holds a
+                // body at 0 px, where a clamp to `t = 0` would undo its
+                // whole move along the face.
+                if t <= 0.0 {
+                    continue;
+                }
                 // Skip hits on internal tile faces; a slope's face is always
                 // exposed.
                 let face_bit = if n.x != 0.0 && n.y != 0.0 {

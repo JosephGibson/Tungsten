@@ -26,10 +26,10 @@
 //!
 //! Broadphase pairs persist across substeps under per-proxy travel budgets
 //! (D-075). Each build stages fresh, symmetrically inflated AABBs for the
-//! remaining frame. A proxy that exhausts its budget has its own pairs
-//! rebuilt before the next narrow phase (D-081); a contact wake, or too many
-//! exhausted budgets at once, rebuilds the whole list. Narrow phase, solve,
-//! islands and events stay per substep.
+//! remaining frame. A proxy that exhausts its budget, or that a contact woke,
+//! has its own pairs rebuilt before the next narrow phase (D-081, D-234); too
+//! many of them at once rebuild the whole list. Narrow phase, solve, islands
+//! and events stay per substep.
 //!
 //! Body state is gathered into the dense proxy array **once per frame**
 //! through a columnar 4-way ECS query (`query2_opt2`, no per-entity random
@@ -101,7 +101,8 @@
 //! only the cells the step's tile refresh changed.
 //!
 //! The contact record (`ContactBegan`, `ContactEnded`) runs while either
-//! queue exists. A pair touches in a substep when its contact penetrates or
+//! queue exists, which a game registers (`PhysicsPlugin` registers neither,
+//! D-233). A pair touches in a substep when its contact penetrates or
 //! the solve gave it a normal impulse, or an arrival or safety-net clamp
 //! stopped one side against the other; a pair is its two sides, a tile by
 //! its map, layer and cell (the cache's identity), never the solver's pair
@@ -144,7 +145,7 @@ use super::query::{IndexEntry, SpatialIndex, TileHit, first_overlap, first_overl
 use crate::components::Transform;
 use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
-use glam::Vec2;
+use glam::{Vec2, Vec4};
 
 mod arrival;
 mod gather;
@@ -368,8 +369,9 @@ pub struct PhysicsBuffers {
     repair_impulses: ImpulseMap,
     /// Scratch for filling `repair_impulses`.
     removed_impulses: Vec<(u128, f32)>,
-    /// Set by gather (new proxy set) or a contact wake; consumed before the
-    /// next substep's narrow phase. Proxies never change mid-frame today.
+    /// Set at frame start, for the gather's new proxy set; consumed before
+    /// the first substep's narrow phase. Proxies never change mid-frame
+    /// today, and a contact wake is repaired (D-234).
     pairs_invalidated: bool,
     #[cfg(test)]
     pair_builds: usize,
@@ -450,6 +452,11 @@ struct StepExtra {
     /// Each entity proxy's gravity scale, in proxy order; empty while every
     /// one is 1.
     gravity_scales: Vec<f32>,
+    /// Each proxy's pair box as the pair tests read it
+    /// (`pairs::box_bounds`), set with its `PhysicsBuffers::pair_aabbs` box.
+    pair_bounds: Vec<Vec4>,
+    /// The staged tile boxes' bounds, beside `PairGrid::tile_aabbs`.
+    tile_bounds: Vec<Vec4>,
     /// Each proxy's friction, the entity proxies' and then the tiles', in
     /// proxy order; empty while every one is 0, which leaves friction out
     /// of the frame.
@@ -488,6 +495,9 @@ struct StepExtra {
     contact_closing: Vec<f32>,
     /// The arrival pass's and the safety net's touches in the substep.
     touches: Vec<TouchObs>,
+    /// The proxies the substep's contacts woke; after the last substep,
+    /// those no pair build saw awake. Filled only while the record runs.
+    woken: Vec<u32>,
     /// The step's begins and ends, sent after its collision events.
     began: Vec<ContactBegan>,
     ended: Vec<ContactEnded>,
@@ -900,9 +910,11 @@ pub fn physics_step(world: &mut World) {
             record,
             began,
             ended,
+            woken,
             ..
         } = &mut **extra;
-        record.finish(proxies, *bodies, tiles, layers, began, ended);
+        woken.sort_unstable();
+        record.finish(proxies, *bodies, tiles, layers, woken, began, ended);
     }
     write_back(
         world,
@@ -1124,7 +1136,6 @@ fn substep(
         layers,
         repaired,
         repair_grid,
-        pairs_invalidated,
         pairs,
         events,
         candidates,
@@ -1150,6 +1161,7 @@ fn substep(
     extra.rolling.clear();
     extra.contact_closing.clear();
     extra.touches.clear();
+    extra.woken.clear();
     let bodies = *bodies;
     let friction_on = !extra.frictions.is_empty();
     let spins_on = !extra.spin_of.is_empty();
@@ -1227,12 +1239,16 @@ fn substep(
             } else {
                 relative.dot(contact.normal) < -wake_threshold
             };
+            // A woken body keeps the list: it moves now without its awake
+            // pair flag, so the next refresh repairs it (D-234).
             if wakes {
                 proxies[b_idx].sleeping = false;
-                *pairs_invalidated = true;
                 let entry = &mut sleep.entries[b_idx];
                 entry.sleeping = false;
                 entry.timer = 0.0;
+                if record_on {
+                    extra.woken.push(b_u);
+                }
             }
         }
         // A sleeping side is frozen at inverse mass 0 for this substep.
@@ -2055,6 +2071,11 @@ fn kinematic_state(proxy: &Proxy, layers: Layers) -> u64 {
     }) | 1
 }
 
+/// Whether a proxy is static or a tile: neither dynamic nor kinematic.
+fn fixed(proxy: &Proxy) -> bool {
+    !proxy.is_dynamic && !proxy.kinematic
+}
+
 /// Whether a proxy cannot move in the step: static, a tile, asleep through
 /// it, or a kinematic body at rest.
 fn immovable(proxy: &Proxy) -> bool {
@@ -2249,14 +2270,18 @@ impl ContactRecord {
 
     /// The step's end: a pair it touched and the last did not begins; one it
     /// did not touch ends, unless its sides are both immovable through the
-    /// step and neither changed, or they still overlap. Begins come in
+    /// step and neither changed (two static or tile sides: while they
+    /// overlap), or they still overlap, or a side is one the last substep
+    /// woke, sorted in `woken`, and they still overlap. Begins come in
     /// first-touch order, ends in the record's.
+    #[allow(clippy::too_many_arguments)]
     fn finish(
         &mut self,
         proxies: &[Proxy],
         bodies: usize,
         tiles: &TileCache,
         layers: &ProxyLayers,
+        woken: &[u32],
         began: &mut Vec<ContactBegan>,
         ended: &mut Vec<ContactEnded>,
     ) {
@@ -2286,22 +2311,34 @@ impl ContactRecord {
                 return true;
             };
             let state = |index: usize| kinematic_state(&proxies[index], layers.of[index]);
+            let overlaps = || {
+                layers.meet(a, b)
+                    && narrow_phase(&proxies[a], &proxies[b], 0.0)
+                        .is_some_and(|contact| contact.penetration > 0.0)
+            };
             if entry.touched != stamp {
                 // A pair the step solved touches only as solved; one it did
                 // not keeps touching while its sides stay as they were, or
-                // still overlap.
+                // still overlap. A side the last substep woke slept when its
+                // pairs were built, so no substep solved its pair: it keeps
+                // touching while they overlap.
                 if !(immovable(&proxies[a]) && immovable(&proxies[b])) {
-                    ends(entry, ended);
-                    return false;
-                }
-                if (state(a), state(b)) != (entry.a_state, entry.b_state) {
-                    let overlaps = layers.meet(a, b)
-                        && narrow_phase(&proxies[a], &proxies[b], 0.0)
-                            .is_some_and(|contact| contact.penetration > 0.0);
-                    if !overlaps {
+                    let woke_late = [a, b]
+                        .iter()
+                        .any(|&side| woken.binary_search(&(side as u32)).is_ok());
+                    if !(woke_late && overlaps()) {
                         ends(entry, ended);
                         return false;
                     }
+                } else if ((state(a), state(b)) != (entry.a_state, entry.b_state)
+                    || fixed(&proxies[a]) && fixed(&proxies[b]))
+                    && !overlaps()
+                {
+                    // Two fixed sides, a body turned static against its
+                    // floor, keep touching while they overlap: no state of
+                    // theirs tells a move, and no substep solves them.
+                    ends(entry, ended);
+                    return false;
                 }
                 entry.touched = stamp;
             } else if entry.began == stamp {

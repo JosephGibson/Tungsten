@@ -5,8 +5,6 @@
 use tungsten::core::ui::{Align, Anchor, LayoutStyle, UiLayer, UiTree, WidgetId};
 use tungsten::core::{Time, Timer, World};
 
-use super::{theme, widgets};
-
 /// How long a toast shows, in real seconds.
 pub const TOAST_SECS: f32 = 2.5;
 
@@ -25,7 +23,7 @@ impl Toasts {
     pub fn texts(&self, tree: &UiTree) -> Vec<String> {
         self.shown
             .iter()
-            .map(|(_, label, _)| widgets::text_of(tree, *label))
+            .map(|(_, label, _)| tree.plain_text(*label))
             .collect()
     }
 }
@@ -42,10 +40,11 @@ pub(crate) fn tick(world: &mut World) {
         return;
     };
     if let Some(tree) = world.get_resource_mut::<UiTree>() {
+        let spacing = tree.theme().tokens.spacing;
         let root = *toasts.root.get_or_insert_with(|| {
             let mut style = LayoutStyle::column()
-                .with_gap(theme::GAP)
-                .anchored(Anchor::BottomCenter, [0.0, theme::MARGIN].into());
+                .with_gap(spacing.sm)
+                .anchored(Anchor::BottomCenter, [0.0, spacing.lg].into());
             style.align_items = Align::Center;
             let root = tree.add_root(UiLayer::GamePopup, style);
             tree.set_hit_testable(root, false);
@@ -58,7 +57,7 @@ pub(crate) fn tick(world: &mut World) {
         }
         toasts.shown.retain(|(.., timer)| !timer.finished());
         for text in toasts.pending.drain(..) {
-            let panel = tree.panel(root, LayoutStyle::default().with_padding(theme::GAP));
+            let panel = tree.panel(root, LayoutStyle::default().with_padding(spacing.sm));
             let label = tree.label(panel, text.as_str());
             toasts.shown.push((panel, label, Timer::once(TOAST_SECS)));
         }
