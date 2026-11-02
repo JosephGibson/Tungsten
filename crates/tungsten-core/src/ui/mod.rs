@@ -47,14 +47,16 @@ pub mod tree;
 pub mod widgets;
 pub mod window;
 
-pub use anim::{UiProperty, UiTrack, ui_animate_system};
+pub use anim::{UiChain, UiProperty, UiTrack, ui_animate_system};
 pub use control::SliderRange;
 pub use event::{UiEvent, UiValue};
 pub use focus::NavDirection;
 pub use geometry::Rect;
 pub use id::{UiKey, WidgetId};
 pub use measure::{FixedAdvanceMeasure, MeasureCounts};
-pub use node::{CursorIcon, Role, UiLayer, UiShadow, UiVertex, Visibility, WidgetKind};
+pub use node::{
+    CursorIcon, PointerSprite, Role, UiLayer, UiShadow, UiVertex, Visibility, WidgetKind,
+};
 pub use paint::{ClipRect, PaintCommand, PaintList, UiDebug, to_physical};
 pub use route::{
     BACK_KEY, InputDevice, UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT,
@@ -67,5 +69,5 @@ pub use theme::{
     ThemeSounds, Tokens, VisualStyle, WidgetState, contrast_ratio,
 };
 pub use theme_file::{ThemeFile, ThemeFileError, UiThemeRegistry};
-pub use tree::{LayoutStats, UiTree, WidgetDirty};
+pub use tree::{LayoutStats, POINTER_KEY, UiTree, WidgetDirty};
 pub use window::WindowPlacements;

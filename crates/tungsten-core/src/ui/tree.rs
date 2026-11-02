@@ -19,12 +19,16 @@ use crate::text::{FontEpoch, StyledText, TextNodeId, TextStyle};
 use super::anim::RunningTrack;
 use super::id::{UiKey, WidgetId};
 use super::node::{
-    CursorIcon, ImageContent, Node, Role, TextContent, UiLayer, UiShadow, UiVertex, Visibility,
-    WidgetKind,
+    CursorIcon, ImageContent, Node, PointerSprite, Role, TextContent, UiLayer, UiShadow, UiVertex,
+    Visibility, WidgetKind,
 };
 use super::prompt::Prompt;
 use super::style::LayoutStyle;
+use super::style::{Anchor, Sizing};
 use super::theme::{self, ResolvedStyle, StyleOverrides, Theme, ThemeEpoch, WidgetState};
+
+/// The key of the root that draws the pointer sprite (redo 7.17).
+pub const POINTER_KEY: UiKey = UiKey::new("pointer");
 
 /// The smallest scale [`UiTree::set_scale`] takes, and the composed scale
 /// below which a subtree paints and hits nothing.
@@ -1348,6 +1352,182 @@ impl UiTree {
     #[must_use]
     pub fn text_style(&self, id: WidgetId) -> Option<&str> {
         self.node(id)?.text_style.as_deref()
+    }
+
+    // ---- pixel snapping and world anchors (redo 7.17) ----
+
+    /// Paints `root`'s boxes on whole physical pixels, and its images at
+    /// whole multiples of their natural size, at least one, so a pixel-art
+    /// HUD stays crisp at any scale; a menu's root keeps sub-pixel boxes.
+    /// Does nothing for a widget that is not a root. Marks paint; an equal
+    /// flag marks nothing.
+    pub fn set_pixel_snap(&mut self, root: WidgetId, on: bool) {
+        let Some(node) = self.node_mut(root).filter(|node| node.parent.is_none()) else {
+            return;
+        };
+        if node.pixel_snap == on {
+            return;
+        }
+        node.pixel_snap = on;
+        self.mark_paint_dirty();
+    }
+
+    /// Whether `root` snaps to whole pixels; `false` for any other widget.
+    #[must_use]
+    pub fn pixel_snap(&self, root: WidgetId) -> bool {
+        self.node(root).is_some_and(|node| node.pixel_snap)
+    }
+
+    /// Anchors `root`'s top-left to the world `point`, moved by `offset` UI
+    /// units after projection: the umbrella's camera update places it each
+    /// frame, inside the viewport by its last size. Does nothing for a widget
+    /// that is not a root, or a point or offset that is not finite. Marks
+    /// nothing; the placement marks paint.
+    pub fn anchor_to_world(&mut self, root: WidgetId, point: Vec2, offset: Vec2) {
+        if !(point.is_finite() && offset.is_finite()) {
+            return;
+        }
+        if let Some(node) = self.node_mut(root).filter(|node| node.parent.is_none()) {
+            node.world_anchor = Some((point, offset));
+        }
+    }
+
+    /// Ends `root`'s world anchor; it stays where the last placement put it.
+    pub fn clear_world_anchor(&mut self, root: WidgetId) {
+        if let Some(node) = self.node_mut(root) {
+            node.world_anchor = None;
+        }
+    }
+
+    /// `root`'s world anchor, its point and its offset; `None` when it has
+    /// none.
+    #[must_use]
+    pub fn world_anchor(&self, root: WidgetId) -> Option<(Vec2, Vec2)> {
+        self.node(root)?.world_anchor
+    }
+
+    /// Places every world-anchored root (redo 7.17): its top-left at
+    /// `screen(point)`, the anchor's point in UI units on screen, plus its
+    /// offset, moved inside its layer's viewport by its last size. The
+    /// umbrella's camera update calls it each frame. Marks paint for a root
+    /// that moved.
+    pub fn place_world_anchors(&mut self, screen: impl Fn(Vec2) -> Option<Vec2>) {
+        for at in 0..self.roots.len() {
+            let root = self.roots[at];
+            let Some(node) = self.node(root) else {
+                continue;
+            };
+            let (Some((point, offset)), Some(rect)) = (node.world_anchor, node.rect) else {
+                continue;
+            };
+            let Some(viewport) = self.layer_viewport(node.layer) else {
+                continue;
+            };
+            let Some(on_screen) = screen(point) else {
+                continue;
+            };
+            let room = (viewport - rect.size()).max(Vec2::ZERO);
+            let target = (on_screen + offset).clamp(Vec2::ZERO, room);
+            self.set_translation(root, target - rect.min);
+        }
+    }
+
+    // ---- the pointer sprite (redo 7.17) ----
+
+    /// The root that draws the pointer sprite: on the popup layer, keyed
+    /// [`POINTER_KEY`].
+    fn pointer_root(&self) -> Option<WidgetId> {
+        self.roots
+            .iter()
+            .copied()
+            .find(|root| self.key(*root) == Some(POINTER_KEY))
+    }
+
+    /// Sets the sprite drawn at the pointer, or removes it with `None`:
+    /// a pointer-transparent root on the popup layer, keyed
+    /// [`POINTER_KEY`], holding the image, hidden until
+    /// [`Self::show_pointer_sprite`]. The game shows it, and the app places
+    /// it at the pointer each frame and hides the system cursor while it is
+    /// shown.
+    pub fn set_pointer_sprite(&mut self, sprite: Option<PointerSprite>) {
+        let Some(sprite) = sprite else {
+            if let Some(root) = self.pointer_root() {
+                self.remove(root);
+            }
+            return;
+        };
+        let root = self
+            .pointer_root()
+            .unwrap_or_else(|| self.add_pointer_root());
+        let size = sprite.size.max(Vec2::ZERO);
+        let style = LayoutStyle::default().with_size(Sizing::Px(size.x), Sizing::Px(size.y));
+        let image = if let Some(image) = self.children(root).first().copied() {
+            self.set_image(image, sprite.sprite, size);
+            self.set_layout_style(image, style);
+            image
+        } else {
+            let image = self.image(root, sprite.sprite, size, style);
+            self.set_hit_testable(image, false);
+            image
+        };
+        self.set_translation(image, -sprite.hotspot);
+    }
+
+    /// A new pointer root: keyed, bare, pointer-transparent and hidden.
+    fn add_pointer_root(&mut self) -> WidgetId {
+        let style = LayoutStyle::default().anchored(Anchor::TopStart, Vec2::ZERO);
+        let root = self.add_root(UiLayer::GamePopup, style);
+        self.set_key(root, "pointer");
+        self.set_bare(root, true);
+        self.set_hit_testable(root, false);
+        self.set_visibility(root, Visibility::Hidden);
+        root
+    }
+
+    /// The pointer sprite set; `None` without one.
+    #[must_use]
+    pub fn pointer_sprite(&self) -> Option<PointerSprite> {
+        let image = *self.children(self.pointer_root()?).first()?;
+        let content = self.node(image)?.image?;
+        let hotspot = -self.translation(image)?;
+        Some(PointerSprite::new(
+            content.sprite,
+            content.natural_size,
+            hotspot,
+        ))
+    }
+
+    /// Shows the pointer sprite, or hides it; nothing without one.
+    pub fn show_pointer_sprite(&mut self, shown: bool) {
+        if let Some(root) = self.pointer_root() {
+            let visibility = [Visibility::Hidden, Visibility::Visible][usize::from(shown)];
+            self.set_visibility(root, visibility);
+            if shown {
+                self.raise(root);
+            }
+        }
+    }
+
+    /// Whether the pointer sprite is set and shown, so the app hides the
+    /// system cursor.
+    #[must_use]
+    pub fn pointer_sprite_shown(&self) -> bool {
+        self.pointer_root()
+            .and_then(|root| self.visibility(root))
+            .is_some_and(Visibility::is_visible)
+    }
+
+    /// Puts the shown pointer sprite's hotspot at `point`, in UI units, in
+    /// front of its layer's other roots; nothing while it is hidden. The app
+    /// calls it each frame.
+    pub fn place_pointer_sprite(&mut self, point: Vec2) {
+        if !point.is_finite() || !self.pointer_sprite_shown() {
+            return;
+        }
+        if let Some(root) = self.pointer_root() {
+            self.set_translation(root, point);
+            self.raise(root);
+        }
     }
 
     // ---- keys ----

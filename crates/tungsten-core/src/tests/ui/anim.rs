@@ -18,10 +18,16 @@ fn rig() -> (UiTree, WidgetId) {
     (tree, button)
 }
 
-/// Ticks `dt`, returning the finished events.
+/// Ticks `dt` on both clocks, returning the finished events.
 fn tick(tree: &mut UiTree, dt: f32) -> Vec<UiEvent> {
+    tick_clocks(tree, dt, dt)
+}
+
+/// Ticks `real` seconds on the real clock and `game` on the game clock,
+/// returning the finished events.
+fn tick_clocks(tree: &mut UiTree, real: f32, game: f32) -> Vec<UiEvent> {
     let mut finished = Vec::new();
-    tree.tick_animations(dt, &mut finished);
+    tree.tick_animations(real, game, &mut finished);
     finished
 }
 
@@ -311,4 +317,92 @@ fn colour_tracks_repaint_without_layout_or_set_text() {
         [191, 191, 191, 255]
     );
     assert!(store.committed(tree.text_node(label).unwrap()).is_some());
+}
+
+#[test]
+fn a_game_clock_track_holds_while_paused() {
+    let (mut tree, button) = rig();
+    let root = tree.root_of(button).expect("in the tree");
+    tree.animate(button, UiTrack::opacity(0.0, 1.0, 1.0).on_game_clock());
+    tree.animate(root, UiTrack::opacity(0.0, 1.0, 1.0));
+    assert!(
+        UiTrack::opacity(0.0, 1.0, 1.0)
+            .on_game_clock()
+            .is_on_game_clock()
+    );
+    tick_clocks(&mut tree, 0.5, 0.0);
+    assert_eq!(
+        tree.opacity(button),
+        Some(0.0),
+        "held while the game clock is paused"
+    );
+    assert_eq!(tree.opacity(root), Some(0.5), "a real-clock track runs");
+    tick_clocks(&mut tree, 0.25, 0.25);
+    assert_eq!(tree.opacity(button), Some(0.25));
+    assert_eq!(tree.opacity(root), Some(0.75));
+}
+
+#[test]
+fn a_chain_runs_in_hold_and_out() {
+    let (mut tree, button) = rig();
+    let chain = UiTrack::opacity(0.0, 1.0, 0.25)
+        .with_tag(1)
+        .then(UiTrack::opacity(1.0, 1.0, 0.5).with_tag(2))
+        .then(UiTrack::opacity(1.0, 0.0, 0.25).with_tag(3));
+    assert_eq!(chain.links().len(), 3);
+    assert!(tree.animate_chain(button, chain));
+    assert_eq!(tree.opacity(button), Some(0.0));
+    let tags = |events: Vec<UiEvent>| -> Vec<u32> {
+        events
+            .into_iter()
+            .filter_map(|event| match event {
+                UiEvent::AnimationFinished { tag, .. } => Some(tag),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(tags(tick(&mut tree, 0.125)), Vec::<u32>::new());
+    assert_eq!(tree.opacity(button), Some(0.5), "in");
+    assert_eq!(tags(tick(&mut tree, 0.125)), [1], "in ends");
+    assert_eq!(
+        tree.opacity(button),
+        Some(1.0),
+        "the hold starts at its start"
+    );
+    assert_eq!(tags(tick(&mut tree, 0.25)), Vec::<u32>::new());
+    assert_eq!(tree.opacity(button), Some(1.0), "held");
+    assert_eq!(tags(tick(&mut tree, 0.25)), [2]);
+    assert_eq!(tags(tick(&mut tree, 0.125)), Vec::<u32>::new());
+    assert_eq!(tree.opacity(button), Some(0.5), "out");
+    assert_eq!(tags(tick(&mut tree, 0.125)), [3]);
+    assert_eq!(tree.opacity(button), Some(0.0));
+    assert!(!tree.is_animating(button), "the chain is spent");
+
+    // A chain whose links move two properties is refused whole.
+    let mixed = UiTrack::opacity(0.0, 1.0, 1.0).then(UiTrack::scale(1.0, 2.0, 1.0));
+    assert!(!tree.animate_chain(button, mixed));
+    assert!(!tree.is_animating(button));
+}
+
+#[test]
+fn a_new_track_replaces_a_chain() {
+    let (mut tree, button) = rig();
+    let chain = UiTrack::opacity(0.0, 1.0, 0.25)
+        .with_tag(1)
+        .then(UiTrack::opacity(1.0, 0.0, 0.25).with_tag(2));
+    tree.animate_chain(button, chain);
+    tick(&mut tree, 0.125);
+    tree.animate(button, UiTrack::opacity(0.2, 0.4, 0.25).with_tag(9));
+    let finished = tick(&mut tree, 0.5);
+    assert_eq!(
+        finished,
+        [UiEvent::AnimationFinished {
+            widget: button,
+            property: UiProperty::Opacity,
+            tag: 9
+        }],
+        "the new track alone, the chain's links gone"
+    );
+    assert_eq!(tree.opacity(button), Some(0.4));
+    assert!(tick(&mut tree, 1.0).is_empty());
 }

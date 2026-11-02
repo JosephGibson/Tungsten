@@ -233,6 +233,34 @@ fn push_text(
     out.commands.push(command);
 }
 
+/// `rect` on whole physical pixels, each edge at the nearest (redo 7.17).
+fn snapped(rect: Rect) -> Rect {
+    Rect::new(rect.min.round(), rect.max.round())
+}
+
+/// A text command moved so its box starts on a whole physical pixel, its
+/// size kept.
+fn snap_text(mut command: PaintCommand) -> PaintCommand {
+    if let PaintCommand::Text { rect, .. } = &mut command {
+        let shift = rect.min.round() - rect.min;
+        *rect = Rect::new(rect.min + shift, rect.max + shift);
+    }
+    command
+}
+
+/// An image's box in a snapped root (redo 7.17): its natural size times
+/// the largest whole number, at least one, that `rect` holds, centred in it
+/// on whole pixels, so each art pixel spans whole physical pixels.
+fn whole_multiple(rect: Rect, natural: Vec2) -> Rect {
+    if !(natural.x > 0.0 && natural.y > 0.0 && natural.is_finite()) {
+        return rect;
+    }
+    let fit = (rect.size() / natural).min_element().floor().max(1.0);
+    let size = natural * fit;
+    let min = (rect.min + (rect.size() - size) * 0.5).round();
+    Rect::new(min, min + size)
+}
+
 /// What a node inherits from its ancestors in a paint walk.
 #[derive(Debug, Clone, Copy)]
 struct Inherited {
@@ -927,7 +955,10 @@ impl UiTree {
         let clip = inherited.clip;
         // Lengths in physical pixels per UI unit, under this node's scale.
         let length = unit * transform.scale;
+        // A snapped root's boxes sit on whole physical pixels (redo 7.17).
+        let snap = self.node(node.root).is_some_and(|root| root.pixel_snap);
         let physical = scaled(transform.rect(rect), unit);
+        let physical = if snap { snapped(physical) } else { physical };
         let paint_rect = |part: Rect| scaled(transform.rect(part), unit);
         bounds.push(physical);
         if let Some(shadow) = node.shadow {
@@ -949,6 +980,7 @@ impl UiTree {
                 let color = faded(resolved.text.color, alpha);
                 if let Some(command) = text_command(node, rect, transform, unit, layer, color, clip)
                 {
+                    let command = if snap { snap_text(command) } else { command };
                     push_text(out, node, command, &resolved.text, alpha);
                 }
             }
@@ -956,14 +988,12 @@ impl UiTree {
                 if let Some(image) = node.image {
                     match sprites.sprite(image.sprite) {
                         Some(sprite) => {
-                            push_images(
-                                out,
-                                physical,
-                                sprite,
-                                faded(image.tint, alpha),
-                                length,
-                                clip,
-                            );
+                            let at = if snap {
+                                whole_multiple(physical, image.natural_size)
+                            } else {
+                                physical
+                            };
+                            push_images(out, at, sprite, faded(image.tint, alpha), length, clip);
                         }
                         None => {
                             if warned.insert(Warned::Sprite(image.sprite)) {

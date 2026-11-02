@@ -219,6 +219,33 @@ impl UiShadow {
     }
 }
 
+/// A sprite that follows the pointer in place of the system cursor (redo
+/// 7.17), set with [`UiTree::set_pointer_sprite`](super::UiTree::set_pointer_sprite):
+/// `sprite` drawn `size` UI units large with its `hotspot`, in UI units
+/// from its top-left, on the pointer.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PointerSprite {
+    /// The sprite.
+    pub sprite: SpriteAssetId,
+    /// Its size in UI units.
+    pub size: Vec2,
+    /// The point of it on the pointer, from its top-left, in UI units.
+    pub hotspot: Vec2,
+}
+
+impl PointerSprite {
+    /// `sprite`, `size` large, its `hotspot` on the pointer.
+    #[must_use]
+    pub const fn new(sprite: SpriteAssetId, size: Vec2, hotspot: Vec2) -> Self {
+        Self {
+            sprite,
+            size,
+            hotspot,
+        }
+    }
+}
+
 /// A label's text and its flattened form, for the accessible name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TextContent {
@@ -299,6 +326,11 @@ pub(crate) struct Node {
     pub(crate) key: Option<(UiKey, Box<str>)>,
     /// The theme text style the node names, layered before its overrides.
     pub(crate) text_style: Option<Box<str>>,
+    /// Roots: whether its boxes paint on whole physical pixels (redo 7.17).
+    pub(crate) pixel_snap: bool,
+    /// Roots: the world point its top-left follows and the offset after
+    /// it, in UI units (redo 7.17).
+    pub(crate) world_anchor: Option<(Vec2, Vec2)>,
     /// The last resolution; `None` before the first.
     pub(crate) resolved: Option<ResolvedStyle>,
     /// Whether the next resolution pass must resolve this node.
@@ -373,6 +405,8 @@ impl Node {
             bare: false,
             key: None,
             text_style: None,
+            pixel_snap: false,
+            world_anchor: None,
             resolved: None,
             style_dirty: true,
             style_dirty_subtree: true,

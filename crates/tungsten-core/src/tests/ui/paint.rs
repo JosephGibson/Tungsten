@@ -2033,3 +2033,115 @@ fn a_later_panel_over_an_outline_closes_the_batch_before_it() {
     let batches = list.text_batches();
     assert_eq!((batches.len(), batches[0].clone()), (1, 0..5));
 }
+
+#[test]
+fn a_snapped_root_paints_on_whole_pixels() {
+    let paint_at = |snap: bool| {
+        let mut tree = UiTree::new();
+        let root = tree.add_root(UiLayer::Game, at(10.3, 7.6, 100.0, 50.0));
+        tree.set_pixel_snap(root, snap);
+        let panel = tree.panel(root, at(3.3, 2.2, 20.0, 10.0));
+        let label = tree.label(root, "hi");
+        tree.set_layout_style(label, at(30.4, 1.3, 16.0, 20.0));
+        let _ = panel;
+        paint(&mut tree, 1.75, UiDebug::default(), &AssetRegistry::new())
+    };
+    let whole = |value: f32| value == value.round();
+    let snapped = paint_at(true);
+    assert_eq!(kinds(&snapped), "RRT");
+    for command in &snapped.commands {
+        let rect = command.rect();
+        assert!(whole(rect.min.x) && whole(rect.min.y), "{command:?}");
+        if !command.is_text() {
+            assert!(whole(rect.max.x) && whole(rect.max.y), "{command:?}");
+        }
+    }
+    let loose = paint_at(false);
+    assert!(
+        loose
+            .commands
+            .iter()
+            .any(|command| !whole(command.rect().min.x)),
+        "unsnapped, a box keeps its fraction"
+    );
+}
+
+#[test]
+fn a_snapped_image_scales_by_whole_art_pixels() {
+    let (sprites, sprite) = registry("icon", None);
+    let image_rect = |scale: f32, snap: bool| {
+        let mut tree = UiTree::new();
+        let root = bare_root(&mut tree, LayoutStyle::default());
+        tree.set_pixel_snap(root, snap);
+        tree.image(root, sprite, Vec2::splat(16.0), fixed(16.0, 16.0));
+        let list = paint(&mut tree, scale, UiDebug::default(), &sprites);
+        list.commands
+            .iter()
+            .find_map(|command| match command {
+                PaintCommand::Image { rect, .. } => Some(*rect),
+                _ => None,
+            })
+            .expect("the image")
+    };
+    for (scale, side) in [(1.0, 16.0), (1.75, 16.0), (2.0, 32.0), (3.5, 48.0)] {
+        let rect = image_rect(scale, true);
+        assert_eq!(
+            rect.size(),
+            Vec2::splat(side),
+            "at {scale}: whole art pixels"
+        );
+        assert_eq!(rect.min, rect.min.round());
+    }
+    assert_eq!(
+        image_rect(1.75, false).size(),
+        Vec2::splat(28.0),
+        "unsnapped it fills its box"
+    );
+    let centred = image_rect(1.75, true);
+    assert_eq!(centred.min, Vec2::new(6.0, 6.0), "centred in its 28 px box");
+}
+
+#[test]
+fn the_pointer_sprite_paints_last_at_the_pointer() {
+    use crate::ui::PointerSprite;
+    let (sprites, sprite) = registry("cursor", None);
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::GamePopup, fixed(200.0, 200.0));
+    tree.panel(root, fixed(50.0, 50.0));
+    let arrow = PointerSprite::new(sprite, Vec2::new(16.0, 16.0), Vec2::new(2.0, 3.0));
+    tree.set_pointer_sprite(Some(arrow));
+    assert_eq!(tree.pointer_sprite(), Some(arrow));
+    assert!(!tree.pointer_sprite_shown(), "hidden until shown");
+    tree.place_pointer_sprite(Vec2::new(100.0, 50.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert!(
+        list.commands
+            .iter()
+            .all(|command| !matches!(command, PaintCommand::Image { .. })),
+        "hidden, it paints nothing"
+    );
+
+    tree.show_pointer_sprite(true);
+    tree.add_root(UiLayer::GamePopup, fixed(10.0, 10.0));
+    tree.place_pointer_sprite(Vec2::new(100.0, 50.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    let last = list.commands.last().expect("commands");
+    assert!(
+        matches!(last, PaintCommand::Image { rect, .. } if *rect == rect_of(98.0, 47.0, 16.0, 16.0)),
+        "last, its hotspot on the point: {last:?}"
+    );
+    assert!(
+        tree.hit_test(Vec2::new(100.0, 50.0)).is_none_or(|hit| tree
+            .key(tree.root_of(hit).expect("rooted"))
+            != Some(crate::ui::POINTER_KEY)),
+        "the pointer never hits itself"
+    );
+
+    tree.set_pointer_sprite(None);
+    assert_eq!(tree.pointer_sprite(), None);
+    assert!(!tree.pointer_sprite_shown());
+}
+
+fn rect_of(x: f32, y: f32, width: f32, height: f32) -> Rect {
+    rect(x, y, width, height)
+}

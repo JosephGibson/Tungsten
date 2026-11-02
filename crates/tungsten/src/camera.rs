@@ -3,7 +3,10 @@
 use std::f32::consts::TAU;
 
 use glam::Vec2;
-use tungsten_core::{CameraController, CameraMode, CameraState, Time, Transform, World};
+use tungsten_core::ui::UiTree;
+use tungsten_core::{
+    CameraController, CameraMode, CameraState, ScaleFactor, Time, Transform, World,
+};
 
 use crate::WindowSize;
 
@@ -51,7 +54,8 @@ fn smoothing_blend(s: f32, dt: f32) -> f32 {
 /// `CameraState` (`Free`, `Scripted`), or toward the followed entity
 /// (`Follow`), clamped to the controller's bounds; the zoom times
 /// `zoom_multiplier`; then the shake offset, which the next frame takes back
-/// off before it reads the position, so a game writes it without the shake.
+/// off before it reads the position, so a game writes it without the shake;
+/// then the UI's world-anchored roots follow the view (redo 7.17).
 pub fn camera_update_system(world: &mut World) {
     let Some(mut camera) = world.get_resource::<CameraState>().copied() else {
         return;
@@ -123,6 +127,25 @@ pub fn camera_update_system(world: &mut World) {
     if let Some(camera_controller) = world.get_resource_mut::<CameraController>() {
         *camera_controller = controller;
     }
+    place_world_anchors(world, camera);
+}
+
+/// Places the UI's world-anchored roots for the view `camera` just took
+/// (redo 7.17): each root's top-left at its point's screen position, in UI
+/// units, plus its offset, inside the viewport. Part of the camera update
+/// rather than a system of its own, so it runs after every camera move and
+/// adds no system to the frame.
+fn place_world_anchors(world: &mut World, camera: CameraState) {
+    let scale = world
+        .get_resource::<ScaleFactor>()
+        .map_or(1.0, ScaleFactor::get);
+    let Some(tree) = world.get_resource_mut::<UiTree>() else {
+        return;
+    };
+    tree.place_world_anchors(|point| {
+        let at = camera.world_to_screen(point) / scale;
+        at.is_finite().then_some(at)
+    });
 }
 
 #[cfg(test)]

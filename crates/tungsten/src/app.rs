@@ -345,6 +345,15 @@ fn default_boot_view(progress: &BootProgress<'_>) -> BootView {
     view
 }
 
+/// The system cursor the app last applied to the window: the icon the UI
+/// router asks for (`D-149`), and whether it is hidden under the UI's
+/// pointer sprite (redo 7.17).
+#[derive(Debug, Clone, Copy, Default)]
+struct WindowCursor {
+    icon: CursorIcon,
+    hidden: bool,
+}
+
 /// Winit loop, ECS, and renderer owner.
 pub struct App {
     config: Config,
@@ -404,7 +413,7 @@ pub struct App {
     /// once a run (M59), not at every apply.
     exclusive_warning: std::sync::Once,
     /// The system cursor last set on the window (`D-149`).
-    cursor: CursorIcon,
+    cursor: WindowCursor,
     /// The frame's raw events when `PreUpdate`, and so the UI's routing,
     /// ended; the exit check reads later ones raw.
     routed_events: usize,
@@ -726,7 +735,7 @@ impl App {
             ui_paint: PaintList::default(),
             painted_at: None,
             exclusive_warning: std::sync::Once::new(),
-            cursor: CursorIcon::Default,
+            cursor: WindowCursor::default(),
             routed_events: 0,
             script: script.zip(script_path).map(|(script, path)| {
                 ScriptRunner::new(script, &path.display().to_string(), false)
@@ -1959,20 +1968,48 @@ impl App {
     /// The system cursor last set on the window.
     #[cfg(test)]
     pub(crate) fn applied_cursor(&self) -> CursorIcon {
-        self.cursor
+        self.cursor.icon
     }
 
-    /// Sets the window's cursor to the one the UI router asks for, when it
-    /// changed (`D-149`).
+    /// Whether the window's system cursor is hidden: while the UI shows its
+    /// pointer sprite (redo 7.17).
+    #[cfg(test)]
+    pub(crate) fn cursor_hidden(&self) -> bool {
+        self.cursor.hidden
+    }
+
+    /// Puts the UI's shown pointer sprite at the pointer and hides the
+    /// system cursor while it shows (redo 7.17), then sets the window's
+    /// cursor to the one the UI router asks for, when it changed (`D-149`).
     #[inline(always)]
     fn stage_cursor(&mut self) {
+        let pointer = self
+            .world
+            .get_resource::<InputState>()
+            .and_then(InputState::cursor_position);
+        let scale = self
+            .world
+            .get_resource::<tungsten_core::ScaleFactor>()
+            .map_or(1.0, tungsten_core::ScaleFactor::get);
+        if let Some(tree) = self.world.get_resource_mut::<UiTree>() {
+            let shown = tree.pointer_sprite_shown();
+            if let Some((x, y)) = pointer.filter(|_| shown) {
+                tree.place_pointer_sprite(Vec2::new(x, y) / scale);
+            }
+            if shown != self.cursor.hidden {
+                self.cursor.hidden = shown;
+                if let Some(window) = &self.window {
+                    window.set_cursor_visible(!shown);
+                }
+            }
+        }
         let Some(cursor) = self.world.get_resource::<UiRouter>().map(UiRouter::cursor) else {
             return;
         };
-        if cursor == self.cursor {
+        if cursor == self.cursor.icon {
             return;
         }
-        self.cursor = cursor;
+        self.cursor.icon = cursor;
         if let Some(window) = &self.window {
             window.set_cursor(input_bridge::cursor_icon(cursor));
         }
