@@ -20,7 +20,7 @@ One prompt, the next step's; later steps by name only. Leave out empty sections.
 
 **Next: <step>** · <you | new session | same session>
 
-**New session** (repo root) · Opus 5.5 · <max for art or sound, else xhigh> · <route> · <one-clause reason>
+**New session** (repo root) · Opus 5.5 · <max for art or sound or a redo row that says max, else xhigh> · <route> · <one-clause reason>
 ```text
 <the prompt, filled in>
 ```

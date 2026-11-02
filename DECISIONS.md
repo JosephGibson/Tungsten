@@ -1970,6 +1970,7 @@ The suite with culling against the suite with interned IDs only (`D-113`), and a
 ## D-151 — Opus 5.5 max only for level C plans and gate sessions; every other session stage at most xhigh
 **Amended by D-195:** a stop's own `tier` in the roadmap catalog comes first; example 01's four stops run every session stage on Opus 5.5 at max; the rule stands for every other stop.
 **Amended by D-215:** the level C clause only; a session that generates art or sound runs on Opus 5.5 at max and a code session at xhigh, by rule rather than a per-stop tier; the rest stands.
+**Amended by D-237:** the tiers past art and sound; 9.1's budgets and 9.3's stability policy run at max as the gates did, and §8's evaluation agents at xhigh at every checkpoint; the rest stands.
 **Date:** 2026-10-13
 **Decision:** `tier(stop, key)` in `scripts/roadmap.py` keeps `D-136`'s Fable rule (Fable 5.1 at xhigh for complexity 4, or 3 with effort XL, unless the stop is a level A or B release) and Opus 5.5 at high for complexity 1 with effort S. Opus 5.5 at max is left only where a stage's judgment is final and no command checks it: a level C stop's `plan` and a `gate`, at complexity 2–4. Every other session stage takes Opus 5.5 at xhigh: `run`, `qa-plan`, the `plan` of a level A, B or not yet carded stop, `experiment` and `rc-fix`, as `rc-checklist` and `release` already did; `verify` stays at high.
 
@@ -3283,6 +3284,7 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 **Amended by D-216:** the Git bullet's push only; agents push the version branch after each commit, while tags, merges and every other push stay the owner's; the rest stands.
 **Amended by D-218:** the genre promise only; 1.0 also promises action RPGs, a fifth genre beside platformer, top-down, story-driven RPG and shooter games; the rest stands.
 **Amended by D-227:** the Git bullet's "until H2" clause only; a pushed tag publishes, and the release pull request, merged without squashing, publishes nothing; the rest stands.
+**Amended by D-237:** the Tiers bullet only; 9.1's budgets and 9.3's stability policy also run at max, and §8's evaluation agents at xhigh at every checkpoint; the rest stands.
 **Date:** 2026-10-25
 **Decision:** [docs/plans/roadmap-redo.md](docs/plans/roadmap-redo.md) is the plan of record from Phase 6's tail to 1.0: Phase 7 Seams, Phase 8 Genres and Phase 9 Release (its §3), with health in two parts, H1 now and H2 at step 7.4. 1.0 promises a fully featured engine, tooling and kit for platformer, top-down, story-driven RPG and shooter games, with no API stability promise at 1.0 (§5.7; the policy after it is step 9.3). Example 01 is the acceptance game, accepted when the owner says it is. H1 lands in this change, with its rules in [docs/operating-rules.md](docs/operating-rules.md), each naming the failure it prevents:
 
@@ -3644,3 +3646,19 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Guards (`D-226`): `screens::tests::an_idle_data_screen_lays_out_no_root`, and `a_reloaded_screen_lays_out_only_its_root` with `a_covered_screens_reload_keeps_focus_and_its_opener`.
 - Pins and goldens: every guard pin, 02's `boot` digest, the kit's pin, the physics hashes and the goldens hold; the converted screens' pixels are unchanged in both games.
 - Not landed: the shell on `tungsten::screens`, where its files take actions (7.11); the `ui` probe and `tungsten new screen` (Later); images and scroll panels in a file, later kinds at version 1.
+
+## D-237 — Session tiers past art and sound: 9.1's budgets and 9.3's stability policy at Opus 5.5 max; §8's evaluation agents at xhigh at every checkpoint
+**Date:** 2026-11-02
+**Decision:** The tiers for the redo's remaining steps, on `D-151` as `D-215` left it:
+
+- **Max:** a session that generates art or sound, as before, and the two sessions whose judgment no command checks and later work builds on, as `D-151`'s gates were: 9.1's budgets by category and 9.3's stability policy (Q8).
+- **Xhigh:** every other session, a plan that writes an asset brief without drawing, maintenance and a release included.
+- **Evaluations:** §8's fresh agents at 7.13, 8.5 and 8.6 run on Opus 5.5 at xhigh at every checkpoint, art or sound tasks included.
+- **The art and sound ahead,** named in the redo's rows: 7.11's boot logo, 7.13's asset session, 8.4's additions, and any UI, sketch or sound need in 8.1 and 8.5.
+
+**Why:** From the transcripts of 2026-10-29 to 11-02, 22 code sessions ran at max against hand-offs that said xhigh, about 8.7M output tokens on the main thread. Since H1, code plan sessions had medians of 142k output tokens at xhigh (seven) and 268k at max (eight), 1.9×; their first critique rounds found 8, 7 and 3 issues at xhigh and 6, 5, 4, 8, 8, 7, 6 and 7 at max, no fewer. The xhigh saves-and-seams run landed its 12 steps with no skip, and the max runs' skips were scope and pin stops. A run's checks, a plan's critique and a release's chain check code; nothing after 9.1's budgets and 9.3's policy checks them, which is `D-151`'s reason for max, and both are short. An evaluation at max would hide the friction an ordinary session meets, and a tier changed between checkpoints would leave their counts incomparable.
+
+**Consequences:**
+- Amends `D-151` and `D-215` as their marker lines say.
+- `docs/operating-rules.md`'s Tiers, the redo's §3, §6 and §8, and `tungsten-next`'s label, which takes max from a row that names it.
+- Different plans and a small sample bound the cost; they don't prove max adds nothing to code. The same transcript measurement rechecks it.

@@ -63,6 +63,8 @@ No break ledger, no level C or its API critique, no rule that prefab and scene f
 ## Tiers
 
 - A session that generates art or sound runs on Opus 5.5 at max; a code session runs at xhigh (`D-151` as amended). Large art sessions lost quality at lower tiers, and a per-stop field lived in a catalog that is now frozen.
+- Two judgment sessions also run at max: 9.1's budgets and 9.3's stability policy, which no command checks and later work builds on (`D-237`). Everything else stays at xhigh, a plan that writes an asset brief and a release included: from 2026-10-29 to 11-02, code plans written at max cost 1.9× the output of xhigh ones and drew as many critique findings.
+- §8's evaluation agents run at xhigh at every checkpoint, art or sound tasks included (`D-237`). At max they would hide the friction an ordinary session meets, and a tier changed between checkpoints leaves their counts incomparable.
 
 ## Assets
 
