@@ -2,8 +2,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use glam::Vec2;
-use tungsten_core::ui::{UiKey, UiTree, widgets};
-use tungsten_core::{Config, KeyCode, World};
+use tungsten_core::ui::{
+    ScreenFile, UiAction, UiBindings, UiKey, UiRow, UiScreenRegistry, UiTree, UiValue, widgets,
+};
+use tungsten_core::{Config, KeyCode, Settings, World};
 
 use super::*;
 use crate::App;
@@ -443,5 +445,433 @@ fn an_idle_screen_lays_out_no_root() {
         harness.layout_totals().roots_laid_out,
         before.roots_laid_out + 1,
         "a new text lays out its root"
+    );
+}
+
+// ---- data screens (redo 7.20) ----
+
+/// What the data screens' bindings read, and the actions they heard.
+#[derive(Debug, Default)]
+struct Board {
+    text: String,
+    shown: bool,
+    enabled: bool,
+    on: bool,
+    heard: Vec<UiAction>,
+}
+
+fn board(world: &World) -> &Board {
+    world.resource::<Board>()
+}
+
+fn board_text(world: &World) -> String {
+    board(world).text.clone()
+}
+
+fn board_shown(world: &World) -> bool {
+    board(world).shown
+}
+
+fn board_enabled(world: &World) -> bool {
+    board(world).enabled
+}
+
+fn board_on(world: &World) -> UiValue {
+    UiValue::Bool(board(world).on)
+}
+
+fn board_rows(_world: &World) -> Vec<UiRow> {
+    vec![UiRow::new("a"), UiRow::new("b")]
+}
+
+fn record(world: &mut World, action: UiAction) {
+    world.resource_mut::<Board>().heard.push(action);
+}
+
+/// A screen file whose card, 260 units wide, holds `children`.
+fn file(children: &str) -> String {
+    format!(
+        r#"{{"version": 1, "root": {{"kind": "screen", "width": 260, "children": [{children}]}}}}"#
+    )
+}
+
+/// A harness whose `ui_screens` are `files` (ID, JSON), with the board's
+/// bindings and actions; `plugin` adds [`ScreensPlugin`].
+fn data_harness(files: &[(&str, &str)], plugin: bool) -> UiHarness {
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    if plugin {
+        app.add_plugin(ScreensPlugin);
+    }
+    let world = app.world_mut();
+    let mut registry = UiScreenRegistry::new();
+    for (id, json) in files {
+        let file = ScreenFile::from_json(json).unwrap_or_else(|e| panic!("{id}: {e}"));
+        registry.insert(*id, file);
+    }
+    world.insert_resource(registry);
+    world.insert_resource(Board {
+        shown: true,
+        enabled: true,
+        ..Board::default()
+    });
+    UiBindings::of(world)
+        .text("text", board_text)
+        .visible("shown", board_shown)
+        .enabled("enabled", board_enabled)
+        .value("on", board_on)
+        .rows("rows", board_rows)
+        .action("record", record);
+    UiHarness::new(app)
+}
+
+/// `id` opened and its slide in finished.
+fn opened_file(harness: &mut UiHarness, id: &str) {
+    assert!(open(harness.world_mut(), id), "{id} opens");
+    harness.step(12);
+}
+
+fn keyed(harness: &UiHarness, key: &str) -> WidgetId {
+    harness
+        .find_key(UiKey::new(key))
+        .unwrap_or_else(|| panic!("no widget keyed {key}"))
+}
+
+fn heard(harness: &UiHarness) -> &[UiAction] {
+    &harness.world().resource::<Board>().heard
+}
+
+/// Activates `widget` from the keyboard: focused, then `ui_accept`.
+fn accept(harness: &mut UiHarness, widget: WidgetId) {
+    assert!(harness.focus(widget));
+    tap(harness, KeyCode::Enter);
+}
+
+#[test]
+fn open_pushes_a_screen_file_by_id() {
+    let pause = file(
+        r#"{"kind": "heading", "text": "Paused", "centred": true},
+           {"kind": "button", "key": "resume", "text": "Resume", "on": "pop"}"#,
+    );
+    let mut harness = data_harness(&[("pause", &pause)], true);
+    opened_file(&mut harness, "pause");
+    assert_eq!(stack(&harness).active_id(), Some("pause"));
+    assert!(harness.shows("Paused"));
+    let resume = keyed(&harness, "resume");
+    assert_eq!(harness.tree().focused(), Some(resume), "its first control");
+    assert!(!open(harness.world_mut(), "nowhere"));
+    assert_eq!(
+        refusal(harness.world(), "nowhere").as_deref(),
+        Some("no registered screen or ui_screens file is named 'nowhere'")
+    );
+}
+
+#[test]
+fn a_data_screen_runs_each_action() {
+    let menu = file(
+        r#"{"kind": "button", "key": "named", "text": "Named", "on": {"action": "record"}},
+           {"kind": "button", "key": "push", "text": "Push", "on": {"push": "other"}},
+           {"kind": "button", "key": "pop", "text": "Pop", "on": "pop"}"#,
+    );
+    let other = file(r#"{"kind": "button", "key": "back", "text": "Back", "on": "pop"}"#);
+    let mut harness = data_harness(&[("menu", &menu), ("other", &other)], true);
+    opened_file(&mut harness, "menu");
+    let named = keyed(&harness, "named");
+    harness.click(named);
+    harness.step(1);
+    assert_eq!(
+        heard(&harness),
+        [UiAction {
+            key: Some("named".into()),
+            row: None,
+            value: None
+        }]
+    );
+    let push = keyed(&harness, "push");
+    harness.click(push);
+    harness.step(12);
+    assert_eq!(stack(&harness).active_id(), Some("other"));
+    let back = keyed(&harness, "back");
+    harness.click(back);
+    harness.step(12);
+    assert_eq!(stack(&harness).active_id(), Some("menu"));
+    let pop = keyed(&harness, "pop");
+    harness.click(pop);
+    harness.step(12);
+    assert_eq!(stack(&harness).active_id(), None);
+}
+
+#[test]
+fn each_control_runs_its_action_once() {
+    let menu = file(
+        r#"{"kind": "toggle_row", "key": "toggle", "caption": "Toggle", "on": {"action": "record"}},
+           {"kind": "slider_row", "key": "slider", "caption": "Slider",
+            "range": {"min": 0, "max": 1, "step": 0.25}, "on": {"action": "record"}},
+           {"kind": "button", "key": "button", "text": "Button", "on": {"action": "record"}}"#,
+    );
+    let mut harness = data_harness(&[("menu", &menu)], true);
+    opened_file(&mut harness, "menu");
+    let values = |harness: &UiHarness| -> Vec<Option<UiValue>> {
+        heard(harness).iter().map(|action| action.value).collect()
+    };
+    harness.click(keyed(&harness, "toggle"));
+    harness.step(1);
+    assert_eq!(
+        values(&harness),
+        [Some(UiValue::Bool(true))],
+        "a toggle's click"
+    );
+
+    let slider = keyed(&harness, "slider");
+    let rect = harness.rect(slider).expect("laid out");
+    let y = f32::midpoint(rect.min.y, rect.max.y);
+    let x = |share: f32| rect.min.x + (rect.max.x - rect.min.x) * share;
+    harness.pointer_to(x(0.05), y);
+    harness.pointer_down();
+    harness.step(1);
+    for share in [0.3, 0.6] {
+        harness.pointer_to(x(share), y);
+        harness.step(1);
+    }
+    harness.step(1);
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(values(&harness).len(), 2, "a drag over frames commits once");
+
+    // A click where the value changes: one at the value it has commits
+    // nothing.
+    harness.pointer_to(x(0.97), y);
+    harness.pointer_down();
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(values(&harness).len(), 3, "a slider's click");
+
+    // At its most, a step down.
+    assert!(harness.focus(slider));
+    tap(&mut harness, KeyCode::ArrowLeft);
+    assert_eq!(values(&harness).len(), 4, "a key's step");
+
+    harness.click(keyed(&harness, "button"));
+    harness.step(1);
+    assert_eq!(values(&harness).len(), 5);
+    assert_eq!(values(&harness)[4], None, "a button carries no value");
+}
+
+#[test]
+fn a_dragged_setting_slider_commits_its_draft() {
+    let menu = file(
+        r#"{"kind": "slider_row", "key": "volume", "caption": "Volume",
+            "range": {"min": 0, "max": 1, "step": 0.25}, "on": {"setting": "master_volume"}}"#,
+    );
+    let mut harness = data_harness(&[("menu", &menu)], true);
+    opened_file(&mut harness, "menu");
+    let slider = keyed(&harness, "volume");
+    assert_eq!(
+        harness.tree().slider_value(slider),
+        Some(1.0),
+        "the setting as it runs: the shipped volume"
+    );
+    let rect = harness.rect(slider).expect("laid out");
+    let y = f32::midpoint(rect.min.y, rect.max.y);
+    let middle = f32::midpoint(rect.min.x, rect.max.x);
+    harness.pointer_to(rect.max.x - 1.0, y);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(middle, y);
+    harness.step(1);
+    // Off the slider: the draft holds, every frame's refresh leaves it.
+    harness.pointer_to(middle, y + 200.0);
+    harness.step(1);
+    harness.step(1);
+    assert_eq!(harness.tree().slider_value(slider), Some(0.5));
+    assert_eq!(harness.world().resource::<Settings>().master_volume(), None);
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(
+        harness.world().resource::<Settings>().master_volume(),
+        Some(0.5)
+    );
+    harness.step(1);
+    assert_eq!(harness.tree().slider_value(slider), Some(0.5));
+}
+
+#[test]
+fn a_setting_action_writes_and_applies_settings() {
+    let menu = file(
+        r#"{"kind": "toggle_row", "key": "vsync", "caption": "VSync", "on": {"setting": "vsync"}},
+           {"kind": "slider_row", "key": "scale", "caption": "UI scale",
+            "range": {"min": 0.5, "max": 2, "step": 0.25}, "on": {"setting": "ui_scale"}}"#,
+    );
+    let mut harness = data_harness(&[("menu", &menu)], true);
+    opened_file(&mut harness, "menu");
+    let vsync = keyed(&harness, "vsync");
+    let was = harness.tree().toggled(vsync).expect("a toggle");
+    harness.click(vsync);
+    harness.step(1);
+    assert_eq!(harness.world().resource::<Settings>().vsync(), Some(!was));
+    let scale = keyed(&harness, "scale");
+    assert_eq!(harness.tree().slider_value(scale), Some(1.0));
+    assert!(harness.focus(scale));
+    tap(&mut harness, KeyCode::ArrowRight);
+    let world = harness.world();
+    assert_eq!(world.resource::<Settings>().ui_scale(), Some(1.25));
+    assert_eq!(
+        world.resource::<tungsten_core::ScaleFactor>().ui_scale(),
+        1.25,
+        "applied"
+    );
+}
+
+#[test]
+fn a_named_action_gets_its_key_and_value() {
+    let menu = file(
+        r#"{"kind": "toggle_row", "key": "music", "caption": "Music", "bind": {"value": "on"},
+            "on": {"action": "record"}},
+           {"kind": "button", "text": "Unkeyed", "on": {"action": "record"}}"#,
+    );
+    let mut harness = data_harness(&[("menu", &menu)], true);
+    opened_file(&mut harness, "menu");
+    harness.click(keyed(&harness, "music"));
+    harness.step(1);
+    let unkeyed = harness.find("Unkeyed").expect("a button");
+    accept(&mut harness, unkeyed);
+    assert_eq!(
+        heard(&harness),
+        [
+            UiAction {
+                key: Some("music".into()),
+                row: None,
+                value: Some(UiValue::Bool(true))
+            },
+            UiAction {
+                key: None,
+                row: None,
+                value: None
+            }
+        ]
+    );
+}
+
+#[test]
+fn a_row_action_names_its_row() {
+    let menu = file(
+        r#"{"kind": "repeat", "key": "slots", "rows": "rows",
+            "row": {"kind": "button", "text": "Slot", "on": {"action": "record"},
+                    "children": [{"kind": "button", "key": "delete", "text": "x", "on": {"action": "record"}}]}}"#,
+    );
+    let mut harness = data_harness(&[("menu", &menu)], true);
+    opened_file(&mut harness, "menu");
+    let row_b = keyed(&harness, "slots/b");
+    accept(&mut harness, row_b);
+    let delete_a = keyed(&harness, "slots/a/delete");
+    accept(&mut harness, delete_a);
+    assert_eq!(
+        heard(&harness),
+        [
+            UiAction {
+                key: Some("slots".into()),
+                row: Some("b".into()),
+                value: None
+            },
+            UiAction {
+                key: Some("delete".into()),
+                row: Some("a".into()),
+                value: None
+            }
+        ]
+    );
+}
+
+#[test]
+fn open_works_without_the_plugin() {
+    let pause = file(r#"{"kind": "button", "key": "resume", "text": "Resume", "on": "pop"}"#);
+    let mut harness = data_harness(&[("pause", &pause)], false);
+    assert!(!harness.world().has_resource::<Screens>());
+    opened_file(&mut harness, "pause");
+    let world = harness.world();
+    assert!(world.has_resource::<Screens>());
+    assert!(world.has_resource::<ScreenRegistry>());
+    assert!(world.has_resource::<Toasts>());
+    assert_eq!(stack(&harness).active_id(), Some("pause"));
+    assert!(harness.shows("Resume"));
+}
+
+#[test]
+fn open_refuses_a_file_off_the_popup_layer_or_not_modal() {
+    let root = |layer: &str, modal: bool| {
+        format!(
+            r#"{{"version": 1, "root": {{"kind": "root", "layer": "{layer}", "modal": {modal},
+                 "children": [{{"kind": "label", "text": "x"}}]}}}}"#
+        )
+    };
+    let (hud, panel, popup) = (
+        root("game", true),
+        root("game_popup", false),
+        root("game_popup", true),
+    );
+    let mut harness = data_harness(&[("hud", &hud), ("panel", &panel), ("popup", &popup)], true);
+    for id in ["hud", "panel"] {
+        assert!(!open(harness.world_mut(), id), "{id}");
+        assert_eq!(
+            refusal(harness.world(), id).as_deref(),
+            Some(format!("ui screen '{id}': its root is not modal on the popup layer").as_str())
+        );
+    }
+    harness.step(1);
+    assert_eq!(stack(&harness).active_id(), None);
+    opened_file(&mut harness, "popup");
+    assert_eq!(stack(&harness).active_id(), Some("popup"));
+}
+
+#[test]
+fn a_data_screen_pops_on_cancel_and_refocuses_its_opener() {
+    let menu = file(
+        r#"{"kind": "button", "key": "first", "text": "First"},
+           {"kind": "button", "key": "open", "text": "Open", "on": {"push": "child"}}"#,
+    );
+    let child = file(r#"{"kind": "button", "key": "x", "text": "X"}"#);
+    let mut harness = data_harness(&[("menu", &menu), ("child", &child)], true);
+    opened_file(&mut harness, "menu");
+    let opener = keyed(&harness, "open");
+    accept(&mut harness, opener);
+    harness.step(12);
+    assert_eq!(stack(&harness).active_id(), Some("child"));
+    tap(&mut harness, KeyCode::Escape);
+    harness.step(12);
+    assert_eq!(stack(&harness).active_id(), Some("menu"));
+    assert_eq!(harness.tree().focused(), Some(opener), "back on its opener");
+}
+
+/// The idle data-screen guard (redo 7.20): a data screen whose bindings
+/// refresh every frame lays out nothing while their values hold; one
+/// binding's new value lays out its root once.
+#[test]
+fn an_idle_data_screen_lays_out_no_root() {
+    let menu = file(
+        r#"{"kind": "label", "key": "label", "bind": {"text": "text", "visible": "shown", "enabled": "enabled"}},
+           {"kind": "toggle_row", "caption": "On", "bind": {"value": "on", "enabled": "enabled"}},
+           {"kind": "button", "text": "Go", "bind": {"visible": "shown"}}"#,
+    );
+    let mut harness = data_harness(&[("menu", &menu)], true);
+    harness.world_mut().resource_mut::<Board>().text = "hello".into();
+    opened_file(&mut harness, "menu");
+    let before = harness.layout_totals();
+    harness.step(60);
+    assert_eq!(
+        harness.layout_totals(),
+        before,
+        "60 refreshed frames lay nothing out"
+    );
+    harness.world_mut().resource_mut::<Board>().text = "changed".into();
+    harness.step(1);
+    assert_eq!(
+        harness.layout_totals().roots_laid_out,
+        before.roots_laid_out + 1,
+        "a binding's new value lays out its root"
+    );
+    harness.step(10);
+    assert_eq!(
+        harness.layout_totals().roots_laid_out,
+        before.roots_laid_out + 1,
+        "once"
     );
 }

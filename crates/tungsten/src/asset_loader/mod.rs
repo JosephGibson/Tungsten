@@ -15,7 +15,7 @@ use tungsten_core::assets::{
     TilemapData, TilemapRegistry, UvRect,
 };
 use tungsten_core::physics::{PhysicsLayers, PhysicsMaterials};
-use tungsten_core::ui::{Theme, ThemeFile, UiThemeRegistry};
+use tungsten_core::ui::{ScreenFile, Theme, ThemeFile, UiScreenRegistry, UiThemeRegistry};
 use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
 use tungsten_render::sprite::TextureHandles;
@@ -126,6 +126,51 @@ impl UiThemePaths {
     pub fn id_for_path(&self, path: &Path) -> Option<&str> {
         self.path_to_id.get(path).map(String::as_str)
     }
+}
+
+/// Screen file paths by `ui_screens` ID (redo 7.20): the hot reload's
+/// reverse lookup, inserted only when a manifest lists screens.
+#[derive(Debug, Default)]
+pub struct UiScreenPaths {
+    path_to_id: HashMap<PathBuf, String>,
+}
+
+impl UiScreenPaths {
+    /// Records that `path` loads as screen `id`.
+    pub fn register(&mut self, id: String, path: PathBuf) {
+        self.path_to_id.insert(path, id);
+    }
+
+    /// The screen a file path loads as.
+    #[must_use]
+    pub fn id_for_path(&self, path: &Path) -> Option<&str> {
+        self.path_to_id.get(path).map(String::as_str)
+    }
+}
+
+/// Load the manifest's `ui_screens` into a [`UiScreenRegistry`] and their
+/// paths into [`UiScreenPaths`] (redo 7.20), in sorted ID order; a file
+/// that does not load is an error, as a theme's. A manifest without screens
+/// inserts neither resource, and every reader takes their absence as none.
+pub fn load_ui_screens(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
+    if manifest.ui_screens.is_empty() {
+        return Ok(());
+    }
+    let mut registry = UiScreenRegistry::new();
+    let mut paths = UiScreenPaths::default();
+    let mut ids: Vec<&String> = manifest.ui_screens.keys().collect();
+    ids.sort();
+    for id in ids {
+        let entry = &manifest.ui_screens[id];
+        let file = ScreenFile::load(&entry.path)
+            .map_err(|e| anyhow::anyhow!("Failed to load ui screen '{id}': {e}"))?;
+        log::info!("Loaded ui screen '{id}' from '{}'", entry.path.display());
+        registry.insert(id.clone(), file);
+        paths.register(id.clone(), entry.path.clone());
+    }
+    world.insert_resource(registry);
+    world.insert_resource(paths);
+    Ok(())
 }
 
 /// Load the manifest's `ui_themes` into a [`UiThemeRegistry`] and their
@@ -967,7 +1012,7 @@ pub enum LoadUnit {
     Font(String),
     /// The font families and the fallback chain.
     FontFamilies,
-    /// The UI themes.
+    /// The UI themes, then the screen files (redo 7.20).
     Themes,
     /// The shaders.
     Shaders,
@@ -1222,7 +1267,10 @@ impl LoadPlan {
             LoadUnit::Animation(id) => load_animation_unit(manifest, id, world)?,
             LoadUnit::Font(id) => load_font_unit(manifest, id, world, target)?,
             LoadUnit::FontFamilies => set_font_families(manifest, target),
-            LoadUnit::Themes => load_ui_themes(manifest, world)?,
+            LoadUnit::Themes => {
+                load_ui_themes(manifest, world)?;
+                load_ui_screens(manifest, world)?;
+            }
             LoadUnit::Shaders => load_shaders_into(manifest, world, target),
             LoadUnit::Materials => load_materials_into(manifest, world, target),
             LoadUnit::Sound(id) => load_sound_unit(manifest, id, world)?,

@@ -7,22 +7,26 @@
 //! push acts at once, a pop after its slide, a reset behind a fade in the
 //! theme's background. [`Confirm`] asks a question with a safe answer,
 //! [`toast`] shows a short message above every screen, and [`register`]
-//! and [`open`] name screens for scripts and data.
+//! and [`open`] name screens for scripts and data; [`open`] also pushes a
+//! `ui_screens` file as a [`DataScreen`] (redo 7.20), which runs the file's
+//! actions.
 //!
 //! Opt in with [`ScreensPlugin`], which inserts the resources and adds no
 //! system: each screen's own `update` drives its slide out and its
 //! answers, and the UI's animation tracks time the toasts.
 
 mod confirm;
+mod data;
 mod toast;
 
-use tungsten_core::ui::{UiEvent, UiKey, UiTrack, UiTree, WidgetId, widgets};
+use tungsten_core::ui::{UiEvent, UiKey, UiScreenRegistry, UiTrack, UiTree, WidgetId, widgets};
 use tungsten_core::{Easing, EventQueue, Plugin, Schedule, UiRouter, World};
 
 use crate::state::{GameState, RootCover, StateCommand, StateStack};
 use crate::transition::{Transition, TransitionEffect};
 
 pub use confirm::{CONFIRM, Confirm, ask};
+pub use data::DataScreen;
 pub use toast::{TOAST_SECS, Toasts, toast};
 
 /// How long a pushed screen fades and slides in, in real seconds.
@@ -69,15 +73,21 @@ pub struct ScreensPlugin;
 
 impl Plugin for ScreensPlugin {
     fn build(&self, _schedule: &mut Schedule, world: &mut World) {
-        if !world.has_resource::<Screens>() {
-            world.insert_resource(Screens::default());
-        }
-        if !world.has_resource::<ScreenRegistry>() {
-            world.insert_resource(ScreenRegistry::default());
-        }
-        if !world.has_resource::<Toasts>() {
-            world.insert_resource(Toasts::default());
-        }
+        insert_resources(world);
+    }
+}
+
+/// Inserts [`Screens`], [`ScreenRegistry`] and [`Toasts`] where the world
+/// lacks them.
+fn insert_resources(world: &mut World) {
+    if !world.has_resource::<Screens>() {
+        world.insert_resource(Screens::default());
+    }
+    if !world.has_resource::<ScreenRegistry>() {
+        world.insert_resource(ScreenRegistry::default());
+    }
+    if !world.has_resource::<Toasts>() {
+        world.insert_resource(Toasts::default());
     }
 }
 
@@ -185,17 +195,68 @@ pub fn register(world: &mut World, id: &'static str, make: MakeScreen) {
     registry.screens.push((id, make));
 }
 
-/// Pushes the screen registered as `id`; `false` for an unknown ID or
-/// while the screens are not [`idle`].
+/// Pushes the screen registered as `id`, else the `ui_screens` file `id`
+/// as a [`DataScreen`]; `false` when [`refusal`] gives a reason, a file a
+/// data screen refuses warning with it. Inserts [`Screens`],
+/// [`ScreenRegistry`] and [`Toasts`] where the world lacks them, as
+/// [`ScreensPlugin`] does, so a script opens a file in a game without the
+/// plugin.
 pub fn open(world: &mut World, id: &str) -> bool {
-    let make = world.get_resource::<ScreenRegistry>().and_then(|registry| {
+    insert_resources(world);
+    match opening(world, id) {
+        Ok(Some(make)) => push_boxed(world, make()),
+        Ok(None) => {
+            let state = world.resource_mut::<UiScreenRegistry>().intern(id);
+            state.is_some_and(|state| push_boxed(world, Box::new(DataScreen::new(state))))
+        }
+        Err(reason) => {
+            let file = world.get_resource::<UiScreenRegistry>();
+            if file.is_some_and(|registry| registry.contains(id)) {
+                log::warn!("{reason}");
+            }
+            false
+        }
+    }
+}
+
+/// Why [`open`] would not open `id` now: neither a registered screen nor a
+/// loaded `ui_screens` file, a file whose root is not modal on the popup
+/// layer, which screens close front-most first, or a screen change that
+/// waits or runs. `None` when it would open.
+#[must_use]
+pub fn refusal(world: &World, id: &str) -> Option<String> {
+    match opening(world, id) {
+        Err(reason) => Some(reason),
+        Ok(_) if !idle(world) => Some("a screen change waits or runs".to_owned()),
+        Ok(_) => None,
+    }
+}
+
+/// What [`open`] makes of `id`: a registered screen's maker, `None` for a
+/// screen file a data screen opens, or why neither.
+fn opening(world: &World, id: &str) -> Result<Option<MakeScreen>, String> {
+    let made = world.get_resource::<ScreenRegistry>().and_then(|registry| {
         registry
             .screens
             .iter()
             .find(|(name, _)| *name == id)
             .map(|(_, make)| *make)
     });
-    make.is_some_and(|make| push_boxed(world, make()))
+    if made.is_some() {
+        return Ok(made);
+    }
+    let file = world
+        .get_resource::<UiScreenRegistry>()
+        .and_then(|registry| registry.get(id));
+    let Some(file) = file else {
+        return Err(format!(
+            "no registered screen or ui_screens file is named '{id}'"
+        ));
+    };
+    match file.data_screen_refusal() {
+        Some(why) => Err(format!("ui screen '{id}': {why}")),
+        None => Ok(None),
+    }
 }
 
 /// A state's modal screen (redo 7.17): its root and card, and the control
@@ -212,14 +273,21 @@ pub struct ModalScreen {
 
 impl ModalScreen {
     /// Opens a modal screen `width` units wide from a state's `on_enter`:
-    /// [`widgets::screen`]'s scrim and card, owned by the state and shown
-    /// while covered ([`RootCover::Show`]), faded and slid in over
-    /// [`PUSH_SECS`], with the toasts raised above it. Build into
-    /// [`Self::card`], then call [`Self::resume`] to focus the first
+    /// [`widgets::screen`]'s scrim and card, [adopted](Self::adopt). Build
+    /// into [`Self::card`], then call [`Self::resume`] to focus the first
     /// control.
     pub fn open(world: &mut World, width: f32) -> Self {
         let tree = world.resource_mut::<UiTree>();
         let (root, card) = widgets::screen(tree, width);
+        Self::adopt(world, root, card)
+    }
+
+    /// Adopts a modal root built elsewhere, a screen file's say, and its
+    /// card: owned by the state and shown while covered
+    /// ([`RootCover::Show`]), faded and slid in over [`PUSH_SECS`], with the
+    /// toasts raised above it.
+    pub fn adopt(world: &mut World, root: WidgetId, card: WidgetId) -> Self {
+        let tree = world.resource_mut::<UiTree>();
         let ease = |track: UiTrack| track.with_easing(Easing::CubicOut);
         tree.animate(root, ease(UiTrack::opacity(0.0, 1.0, PUSH_SECS)));
         let from = [0.0, SLIDE_UNITS].into();
@@ -244,27 +312,10 @@ impl ModalScreen {
     /// the control on it activated at this routing, which becomes the
     /// opener.
     pub fn update(&mut self, world: &mut World) -> Option<UiKey> {
+        if !self.ready(world) {
+            return None;
+        }
         let events = world.resource::<EventQueue<UiEvent>>();
-        let closing = world
-            .get_resource::<Screens>()
-            .is_some_and(|screens| screens.closing == Some(self.root));
-        if closing {
-            if events.animation_finished(self.root, POP_TAG) {
-                world.resource_mut::<Screens>().closing = None;
-                world.resource_mut::<StateStack>().request_pop();
-            }
-            return None;
-        }
-        if !idle(world) {
-            return None;
-        }
-        let cancelled = events
-            .iter_current()
-            .any(|event| matches!(event, UiEvent::Cancel { scope, .. } if *scope == self.root));
-        if cancelled {
-            pop(world);
-            return None;
-        }
         let tree = world.resource::<UiTree>();
         let activated = events.iter_current().find_map(|event| match *event {
             UiEvent::Activated {
@@ -277,6 +328,34 @@ impl ModalScreen {
         let (widget, key) = activated?;
         self.opener = Some(widget);
         Some(key)
+    }
+
+    /// Whether the screen may act at this routing: not while its slide out
+    /// runs, whose end pops its state, nor while the screens are not
+    /// [`idle`]; a `Cancel` on its root pops it instead.
+    fn ready(&self, world: &mut World) -> bool {
+        let events = world.resource::<EventQueue<UiEvent>>();
+        let closing = world
+            .get_resource::<Screens>()
+            .is_some_and(|screens| screens.closing == Some(self.root));
+        if closing {
+            if events.animation_finished(self.root, POP_TAG) {
+                world.resource_mut::<Screens>().closing = None;
+                world.resource_mut::<StateStack>().request_pop();
+            }
+            return false;
+        }
+        if !idle(world) {
+            return false;
+        }
+        let cancelled = events
+            .iter_current()
+            .any(|event| matches!(event, UiEvent::Cancel { scope, .. } if *scope == self.root));
+        if cancelled {
+            pop(world);
+            return false;
+        }
+        true
     }
 
     /// Focuses the control that opened the screen above, else the first

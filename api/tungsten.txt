@@ -308,6 +308,21 @@ impl core::marker::Unpin for tungsten::asset_loader::LoadTimings
 impl core::marker::UnsafeUnpin for tungsten::asset_loader::LoadTimings
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::LoadTimings
 impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::LoadTimings
+pub struct tungsten::asset_loader::UiScreenPaths
+impl tungsten::asset_loader::UiScreenPaths
+pub fn tungsten::asset_loader::UiScreenPaths::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten::asset_loader::UiScreenPaths::register(&mut self, alloc::string::String, std::path::PathBuf)
+impl core::default::Default for tungsten::asset_loader::UiScreenPaths
+pub fn tungsten::asset_loader::UiScreenPaths::default() -> tungsten::asset_loader::UiScreenPaths
+impl core::fmt::Debug for tungsten::asset_loader::UiScreenPaths
+pub fn tungsten::asset_loader::UiScreenPaths::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::asset_loader::UiScreenPaths
+impl core::marker::Send for tungsten::asset_loader::UiScreenPaths
+impl core::marker::Sync for tungsten::asset_loader::UiScreenPaths
+impl core::marker::Unpin for tungsten::asset_loader::UiScreenPaths
+impl core::marker::UnsafeUnpin for tungsten::asset_loader::UiScreenPaths
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::UiScreenPaths
+impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::UiScreenPaths
 pub struct tungsten::asset_loader::UiThemePaths
 impl tungsten::asset_loader::UiThemePaths
 pub fn tungsten::asset_loader::UiThemePaths::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
@@ -340,6 +355,7 @@ pub fn tungsten::asset_loader::load_shaders(&tungsten_core::assets::manifest::Re
 pub fn tungsten::asset_loader::load_sounds(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_sprites(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_tilemaps(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_ui_screens(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_ui_themes(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::rebuild_atlas_for_filter(tungsten_core::assets::manifest::FilterMode, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_action_map(&std::path::Path, &mut tungsten_core::ecs::world::World) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
@@ -805,10 +821,29 @@ impl core::marker::Unpin for tungsten::screens::Confirm
 impl core::marker::UnsafeUnpin for tungsten::screens::Confirm
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::Confirm
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::screens::Confirm
+pub struct tungsten::screens::DataScreen
+impl tungsten::screens::DataScreen
+pub fn tungsten::screens::DataScreen::new(tungsten::state::StateId) -> Self
+impl tungsten::state::GameState for tungsten::screens::DataScreen
+pub fn tungsten::screens::DataScreen::holds_clock(&self) -> bool
+pub fn tungsten::screens::DataScreen::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::DataScreen::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::update(&mut self, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::screens::DataScreen
+impl core::marker::Send for tungsten::screens::DataScreen
+impl core::marker::Sync for tungsten::screens::DataScreen
+impl core::marker::Unpin for tungsten::screens::DataScreen
+impl core::marker::UnsafeUnpin for tungsten::screens::DataScreen
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::DataScreen
+impl core::panic::unwind_safe::UnwindSafe for tungsten::screens::DataScreen
 pub struct tungsten::screens::ModalScreen
 pub tungsten::screens::ModalScreen::card: tungsten_core::ui::id::WidgetId
 pub tungsten::screens::ModalScreen::root: tungsten_core::ui::id::WidgetId
 impl tungsten::screens::ModalScreen
+pub fn tungsten::screens::ModalScreen::adopt(&mut tungsten_core::ecs::world::World, tungsten_core::ui::id::WidgetId, tungsten_core::ui::id::WidgetId) -> Self
 pub fn tungsten::screens::ModalScreen::open(&mut tungsten_core::ecs::world::World, f32) -> Self
 pub fn tungsten::screens::ModalScreen::resume(&self, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::screens::ModalScreen::update(&mut self, &mut tungsten_core::ecs::world::World) -> core::option::Option<tungsten_core::ui::id::UiKey>
@@ -890,6 +925,7 @@ pub fn tungsten::screens::idle(&tungsten_core::ecs::world::World) -> bool
 pub fn tungsten::screens::open(&mut tungsten_core::ecs::world::World, &str) -> bool
 pub fn tungsten::screens::pop(&mut tungsten_core::ecs::world::World) -> bool
 pub fn tungsten::screens::push(&mut tungsten_core::ecs::world::World, impl tungsten::state::GameState) -> bool
+pub fn tungsten::screens::refusal(&tungsten_core::ecs::world::World, &str) -> core::option::Option<alloc::string::String>
 pub fn tungsten::screens::register(&mut tungsten_core::ecs::world::World, &'static str, tungsten::screens::MakeScreen)
 pub fn tungsten::screens::reset(&mut tungsten_core::ecs::world::World, impl tungsten::state::GameState, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World) + 'static) -> bool
 pub fn tungsten::screens::toast(&mut tungsten_core::ecs::world::World, impl core::convert::Into<alloc::string::String>)
@@ -1004,6 +1040,14 @@ pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::Stat
 pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::update(&mut self, &mut tungsten_core::ecs::world::World)
+impl tungsten::state::GameState for tungsten::screens::DataScreen
+pub fn tungsten::screens::DataScreen::holds_clock(&self) -> bool
+pub fn tungsten::screens::DataScreen::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::DataScreen::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::update(&mut self, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::state::despawn_scene_entities(&mut tungsten_core::ecs::world::World, tungsten::state::StateId)
 pub fn tungsten::state::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::state::ui_state_roots_system(&mut tungsten_core::ecs::world::World)
@@ -2250,6 +2294,14 @@ pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::Stat
 pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::update(&mut self, &mut tungsten_core::ecs::world::World)
+impl tungsten::state::GameState for tungsten::screens::DataScreen
+pub fn tungsten::screens::DataScreen::holds_clock(&self) -> bool
+pub fn tungsten::screens::DataScreen::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::DataScreen::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::screens::DataScreen::update(&mut self, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::apply_settings(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::beam(&mut tungsten::sprite_extract::Batches, &tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32, [u8; 4], f32)
 pub fn tungsten::camera_update_system(&mut tungsten_core::ecs::world::World)
