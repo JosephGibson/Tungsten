@@ -10,7 +10,7 @@ use tungsten_core::{Config, Entity, UserFolder};
 
 use super::*;
 use crate::plugins::{DefaultPlugins, UiPlugin};
-use crate::testing::UiHarness;
+use crate::testing::{CounterGuard, UiHarness};
 use crate::{App, DebugHud, InspectorState, SystemTimingOverlay};
 
 fn app() -> App {
@@ -1963,4 +1963,76 @@ fn debug_views_keep_their_size_under_a_reference_height() {
             "ui {ui}: {root:?} and {plain:?}"
         );
     }
+}
+
+// ---- debug-pass: the views' counter guards ----
+
+/// The pin `name` beside the views' tests.
+fn views_pin(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/tests/guards")
+        .join(name)
+}
+
+/// The views closed (debug-pass): a default app, every view off, laid out
+/// through a 30-frame warm-up, then a 60-frame window. What every frame of
+/// every game pays for the views and the timings they read.
+#[test]
+fn views_guard_closed() {
+    let mut harness = UiHarness::new(app());
+    harness.step(30);
+    let reading = CounterGuard::measure(harness.harness_mut(), 0, 60);
+    reading.check(views_pin("views-closed.json"));
+}
+
+/// The five views open and idle (debug-pass) at 1280×720 on 1.75: each
+/// refresh interval infinite, so each view refreshes once and then idles,
+/// the console over 40 records of its own feed. A 300-frame laid-out
+/// warm-up fills the HUD's graph past its 240 samples and docks the windows
+/// on real rects; then a 60-frame window. Then 60 more laid-out frames,
+/// whose layouts it prints.
+#[test]
+fn views_guard_open_idle() {
+    let (sink, feed) = crate::logging::console_channel(64);
+    let mut harness = sized(app(), 1280, 720, 1.75);
+    {
+        let world = harness.world_mut();
+        let hud = world.resource_mut::<DebugHud>();
+        hud.enabled = true;
+        hud.refresh_interval_ms = f32::INFINITY;
+        let overlay = world.resource_mut::<SystemTimingOverlay>();
+        overlay.enabled = true;
+        overlay.refresh_interval_ms = f32::INFINITY;
+        let inspector = world.resource_mut::<InspectorState>();
+        inspector.enabled = true;
+        inspector.refresh_interval_ms = f32::INFINITY;
+        let ui = world.resource_mut::<UiInspector>();
+        ui.enabled = true;
+        ui.refresh_interval_ms = f32::INFINITY;
+        world.insert_resource(LogConsole {
+            enabled: true,
+            refresh_interval_ms: f32::INFINITY,
+            ..LogConsole::with_feed(Some(feed))
+        });
+    }
+    for n in 0..40 {
+        sink.send(record("INFO", "game::guard", &format!("record {n}")).as_bytes());
+    }
+    harness.step(300);
+    let tree = harness.tree();
+    assert!(
+        five(&harness).iter().all(|root| tree.rect(*root).is_some()),
+        "the five laid out"
+    );
+    let reading = CounterGuard::measure(harness.harness_mut(), 0, 60);
+    let before = harness.layout_totals();
+    harness.step(60);
+    let after = harness.layout_totals();
+    println!(
+        "views_guard_open_idle: 60 idle frames laid out {} roots and {} nodes",
+        after.roots_laid_out - before.roots_laid_out,
+        after.nodes_laid_out - before.nodes_laid_out
+    );
+    reading.check(views_pin("views-open.json"));
+    drop(sink);
 }
