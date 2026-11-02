@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.115.0] - 2026-11-02
+
 Summary: the roadmap redo's Phase 7 steps 7.17 and 7.20: the UI pass, with widget keys, named text styles with outlines and shadows, the shell's builders in core, modal screens and the UI's configuration (`D-235`), and screens as data, screen files bound to the game's names, with the template's pause, game over, settings and title as files (`D-236`); a physics review's fixes and the physics tail pass, with the contact record left to the game (`D-233`) and contact wakes repaired (`D-234`); and `just release minor` waiting for CI to pass on HEAD (`D-232`). 7.10, the kit pass, is next. 01's save stays at schema 23 and the template's at 4.
 
 ### Added
