@@ -31,3 +31,21 @@ fn slowest_system_finds_max() {
     assert_eq!(name, "b");
     assert!((ms - 5.0).abs() < f32::EPSILON);
 }
+
+/// Once warm, a system adds no allocation to a frame (debug-pass): its
+/// timing entry and its name are the frame before last's, reused.
+#[test]
+fn a_system_adds_no_allocation_to_a_warm_frame() {
+    use crate::App;
+    use crate::testing::{CounterGuard, Harness};
+    use tungsten_core::{Config, World};
+
+    let window = |extra: usize| {
+        let mut app = App::new(Config::default()).unwrap();
+        for _ in 0..extra {
+            app.add_system(|_: &mut World| {});
+        }
+        CounterGuard::measure(&mut Harness::new(app), 30, 60).allocations
+    };
+    assert_eq!(window(8), window(0), "eight more no-op systems");
+}

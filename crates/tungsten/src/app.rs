@@ -368,6 +368,7 @@ fn hud_corner(corner: tungsten_core::config::UiCorner) -> crate::debug_hud::HudC
 }
 
 /// Winit loop, ECS, and renderer owner.
+#[allow(clippy::struct_excessive_bools)] // Independent switches: startup ran, Escape exits, two telemetry variables.
 pub struct App {
     config: Config,
     window: Option<Arc<Window>>,
@@ -444,6 +445,12 @@ pub struct App {
     /// `tungsten.json`'s `ui.theme` until its asset has loaded and the
     /// tree took it (redo 7.17).
     pending_theme: Option<String>,
+    /// The frame's per-system timings, written over the entries the frame
+    /// before last left and swapped with `FrameTimings::system_timings` at
+    /// telemetry, so a warm frame's timings allocate nothing (debug-pass).
+    system_timings: Vec<(String, f32)>,
+    /// Whether `TUNGSTEN_PERF_LOG` was set when the app was built.
+    perf_log: bool,
 }
 
 impl App {
@@ -787,6 +794,8 @@ impl App {
             boot: None,
             boot_view: None,
             pending_theme,
+            system_timings: Vec::new(),
+            perf_log: std::env::var("TUNGSTEN_PERF_LOG").is_ok(),
         };
         app.take_config_manifest()
             .inspect_err(|err| log::error!("{err}"))?;
@@ -1383,7 +1392,7 @@ impl App {
             return;
         }
         clock.logged = true;
-        if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
+        if self.perf_log {
             log::debug!("{}", format_startup_line(&clock.timings));
         }
     }
@@ -1858,6 +1867,7 @@ struct FrameRenderOut {
 }
 
 // One-pass telemetry write; no long `&mut FrameTimings` borrow across stages.
+#[derive(Clone, Copy)]
 struct FrameStageTimings {
     update_ms: f32,
     flush_ms: f32,
@@ -1872,7 +1882,8 @@ struct FrameStageTimings {
     total_ms: f32,
     interval_ms: Option<f32>,
     fixed_steps: u32,
-    system_timings: Vec<(String, f32)>,
+    /// The frame's entries in `App::system_timings`.
+    systems: usize,
 }
 
 impl App {
@@ -1901,13 +1912,15 @@ impl App {
         }
     }
 
-    /// Runs `stage`'s systems, each timed into `system_timings`.
+    /// Runs `stage`'s systems, each timed into the frame's timings at
+    /// `timed`, which counts the entries written.
     #[inline(always)]
-    fn run_stage(&mut self, stage: Stage, system_timings: &mut Vec<(String, f32)>) {
+    fn run_stage(&mut self, stage: Stage, timed: &mut usize) {
         // Input edges: events received before RedrawRequested in same loop turn.
+        let timings = &mut self.system_timings;
         self.schedule
             .run_stage(stage, &mut self.world, |name, elapsed| {
-                system_timings.push((name.to_string(), elapsed.as_secs_f64() as f32 * 1000.0));
+                write_timing(timings, timed, name, elapsed.as_secs_f64() as f32 * 1000.0);
             });
     }
 
@@ -1922,21 +1935,19 @@ impl App {
     /// edges (`D-146`). A world without `Time` runs the stage once, as
     /// before the accumulator.
     #[inline(always)]
-    fn stage_fixed_update(&mut self, system_timings: &mut Vec<(String, f32)>) -> u32 {
+    fn stage_fixed_update(&mut self, timed: &mut usize) -> u32 {
         let Some(steps) = self
             .world
             .get_resource::<Time>()
             .map(Time::fixed_steps_this_frame)
         else {
-            self.run_stage(Stage::FixedUpdate, system_timings);
+            self.run_stage(Stage::FixedUpdate, timed);
             return 1;
         };
         if steps == 0 {
-            system_timings.extend(
-                self.schedule
-                    .names(Stage::FixedUpdate)
-                    .map(|name| (name.to_string(), 0.0)),
-            );
+            for name in self.schedule.names(Stage::FixedUpdate) {
+                write_timing(&mut self.system_timings, timed, name, 0.0);
+            }
             // The frame's events wait for the next step's readers, unless
             // the clock stands still or no fixed system could read them.
             let (advancing, stopped) =
@@ -1956,20 +1967,21 @@ impl App {
             }
             return 0;
         }
-        let first = system_timings.len();
+        let first = *timed;
         for k in 0..steps {
             if let Some(time) = self.world.get_resource_mut::<Time>() {
                 time.enter_fixed_step();
             }
             self.set_step_views(true);
             if k == 0 {
-                self.run_stage(Stage::FixedUpdate, system_timings);
+                self.run_stage(Stage::FixedUpdate, timed);
             } else {
-                // The k-th system adds to the entry the first step pushed.
+                // The k-th system adds to the entry the first step wrote.
                 let mut entry = first;
+                let timings = &mut self.system_timings;
                 self.schedule
                     .run_stage(Stage::FixedUpdate, &mut self.world, |_, elapsed| {
-                        system_timings[entry].1 += elapsed.as_secs_f64() as f32 * 1000.0;
+                        timings[entry].1 += elapsed.as_secs_f64() as f32 * 1000.0;
                         entry += 1;
                     });
             }
@@ -2060,19 +2072,19 @@ impl App {
 
     /// `Startup` once, then `PreUpdate`, the frame's fixed steps and
     /// `Update`; `None` when the frame's update asked the engine to exit,
-    /// else the time so far, the per-system timings `stage_post_update`
-    /// extends and the fixed steps run.
+    /// else the time so far, the per-system timings written, which
+    /// `stage_post_update` extends, and the fixed steps run.
     #[inline(always)]
-    fn stage_update(&mut self) -> (Instant, Vec<(String, f32)>, u32, bool) {
+    fn stage_update(&mut self) -> (Instant, usize, u32, bool) {
         let update_start = Instant::now();
         if !self.schedule.is_resolved() {
             self.resolve_schedule()
                 .expect("the schedule resolves before the first frame");
         }
-        let mut system_timings: Vec<(String, f32)> = Vec::with_capacity(self.schedule.len());
+        let mut timed = 0;
         if !self.startup_done {
             self.startup_done = true;
-            self.run_stage(Stage::Startup, &mut system_timings);
+            self.run_stage(Stage::Startup, &mut timed);
             // The stage's time is excluded from the next frame's dt, as the
             // startup hook's is: a slow startup system must not inflate it.
             self.last_frame = Some(Instant::now());
@@ -2080,23 +2092,23 @@ impl App {
         if let Some(script) = self.script.as_mut() {
             script.before_pre_update(&mut self.world);
         }
-        self.run_stage(Stage::PreUpdate, &mut system_timings);
+        self.run_stage(Stage::PreUpdate, &mut timed);
         self.routed_events = self
             .world
             .get_resource::<InputState>()
             .map_or(0, |input| input.raw_events().len());
-        let fixed_steps = self.stage_fixed_update(&mut system_timings);
-        self.run_stage(Stage::Update, &mut system_timings);
+        let fixed_steps = self.stage_fixed_update(&mut timed);
+        self.run_stage(Stage::Update, &mut timed);
         let exit = self.engine_exit_requested();
-        (update_start, system_timings, fixed_steps, exit)
+        (update_start, timed, fixed_steps, exit)
     }
 
     /// `PostUpdate`: physics sync, particles, tweens, game feel, camera and
     /// a game's own, before the command flush. Tween writes override
     /// particle writes; `TweenComplete` lands before the event flush rotates.
     #[inline(always)]
-    fn stage_post_update(&mut self, system_timings: &mut Vec<(String, f32)>) {
-        self.run_stage(Stage::PostUpdate, system_timings);
+    fn stage_post_update(&mut self, timed: &mut usize) {
+        self.run_stage(Stage::PostUpdate, timed);
     }
 
     #[inline(always)]
@@ -2520,8 +2532,11 @@ impl App {
         audio_start.elapsed().as_secs_f64() as f32 * 1000.0
     }
 
+    /// Writes the frame's telemetry; the frame's system timings change
+    /// places with the last frame's, whose entries the next frame reuses.
     #[inline(always)]
     fn stage_telemetry(&mut self, t: FrameStageTimings) {
+        self.system_timings.truncate(t.systems);
         if let Some(ft) = self.world.get_resource_mut::<FrameTimings>() {
             ft.update_ms = t.update_ms;
             ft.extract_ms = t.extract_ms;
@@ -2536,7 +2551,7 @@ impl App {
             ft.total_ms = t.total_ms;
             ft.interval_ms = t.interval_ms;
             ft.fixed_steps = t.fixed_steps;
-            ft.system_timings = t.system_timings;
+            std::mem::swap(&mut ft.system_timings, &mut self.system_timings);
         }
     }
 
@@ -2558,7 +2573,7 @@ impl App {
         self.apply_pending_display_request();
 
         self.stage_time(clock);
-        let (update_start, mut system_timings, fixed_steps, exit) = self.stage_update();
+        let (update_start, mut systems, fixed_steps, exit) = self.stage_update();
         if exit {
             return FrameEnd::ExitRequested;
         }
@@ -2566,7 +2581,7 @@ impl App {
             script.after_update(&mut self.world);
         }
         self.stage_cursor();
-        self.stage_post_update(&mut system_timings);
+        self.stage_post_update(&mut systems);
         let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
         let flush_ms = self.stage_flush_commands();
@@ -2619,10 +2634,10 @@ impl App {
             total_ms,
             interval_ms,
             fixed_steps,
-            system_timings,
+            systems,
         });
 
-        if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
+        if self.perf_log {
             log_perf_line(
                 total_ms,
                 interval_ms,
@@ -2971,6 +2986,23 @@ fn log_perf_line(
 /// Per-system companion to the `frame:` perf line, in registration order.
 /// Whitespace and `=` in names become `_` so `scripts/perf_stats.py` can
 /// split `name=ms` tokens on whitespace.
+/// Writes the frame's `timed`-th system timing over the entry a frame
+/// before left there, rewriting its name only where it differs, and pushes
+/// one past the end (debug-pass): a warm frame allocates nothing.
+fn write_timing(timings: &mut Vec<(String, f32)>, timed: &mut usize, name: &str, ms: f32) {
+    match timings.get_mut(*timed) {
+        Some(entry) => {
+            if entry.0 != name {
+                entry.0.clear();
+                entry.0.push_str(name);
+            }
+            entry.1 = ms;
+        }
+        None => timings.push((name.to_owned(), ms)),
+    }
+    *timed += 1;
+}
+
 fn format_perf_systems_line(system_timings: &[(String, f32)]) -> String {
     format_perf_named_timings("systems:", system_timings)
 }
@@ -3236,7 +3268,7 @@ impl ApplicationHandler for App {
                 // ID replaces it, and every start registers faces in one
                 // order (D-116, D-123).
                 crate::engine_font::register(&mut renderer);
-                if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
+                if self.perf_log {
                     log::debug!(
                         "backend: {} adapter: {} present_mode: {} max_frame_latency: {} timestamp_query: {}",
                         renderer.gpu_timings.backend.as_deref().unwrap_or("unknown"),

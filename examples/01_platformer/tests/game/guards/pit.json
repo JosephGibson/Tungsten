@@ -1,6 +1,6 @@
 {
-  "allocated_bytes": 68631116,
-  "allocations": 72217,
+  "allocated_bytes": 68096636,
+  "allocations": 60037,
   "archetype_moves": 298,
   "despawned": 243,
   "events_sent": 12,
