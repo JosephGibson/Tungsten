@@ -10,7 +10,7 @@ use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{DataRef, DataRegistry, Entity, MissingAsset, World};
 
 use crate::damage::effects::MODIFIER;
-use crate::damage::kinds::check_type;
+use crate::damage::kinds::{CONVERSION_RULE, ConversionRuleDef, check_rule, check_type};
 use crate::foundation::curve::Curve;
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, describe_shape, round_trip,
@@ -39,20 +39,27 @@ enum LineKind {
     Added { kind: String, range: [f32; 2] },
     /// Penetration points for the parts of a type.
     Pen { kind: String, points: f32 },
+    /// A share of each part of a type converted to another.
+    Convert { from: String, to: String, pct: f32 },
+    /// A share of each part carrying a type added as another.
+    Extra { from: String, to: String, pct: f32 },
 }
 
 /// A line a skill reads (§4.1 of the ARPG design): a stat line, flat damage
-/// of a damage type (`added`), or penetration points for a type's parts
-/// (`pen`), each with a [`Scope`]. Only the lines on `damage`,
+/// of a damage type (`added`), penetration points for a type's parts
+/// (`pen`), or a share of a type converted to another (`convert`) or added
+/// as another (`extra`), each with a [`Scope`]. Only the lines on `damage`,
 /// `crit_chance` and `crit_multiplier`, and `pen` lines, may wait for the
 /// hit (an `against` filter, or a state tag in `with`): one on
-/// `skill_level`, `cost` or `cooldown`, or an `added` line, is refused,
-/// since a use spends them.
+/// `skill_level`, `cost` or `cooldown`, or an `added`, `convert` or `extra`
+/// line, is refused, since a use spends them.
 ///
 /// Data form, one kind with its filters beside it:
 /// `{ "stat": "damage", "modifier": { "pct": 0.4 }, "with": { "all": ["skill.spell"] } }`,
-/// `{ "added": { "damage.fire": [4, 6] } }` or
-/// `{ "pen": { "damage.fire": 0.1 }, "against": { "all": ["status.chilled"] } }`.
+/// `{ "added": { "damage.fire": [4, 6] } }`,
+/// `{ "pen": { "damage.fire": 0.1 }, "against": { "all": ["status.chilled"] } }`,
+/// `{ "convert": { "from": "damage.fire", "to": "damage.cold", "pct": 0.5 } }` or
+/// `{ "extra": { "from": "damage.cold", "to": "damage.fire", "pct": 0.18 } }`.
 ///
 /// # Examples
 ///
@@ -66,6 +73,12 @@ enum LineKind {
 /// assert_eq!(added.as_added(), Some(("damage.fire", [4.0, 6.0])));
 /// let data = serde_json::to_value(&added).unwrap();
 /// assert_eq!(data, serde_json::json!({ "added": { "damage.fire": [4.0, 6.0] } }));
+/// let half: SkillLine = serde_json::from_value(serde_json::json!({
+///     "convert": { "from": "damage.fire", "to": "damage.cold", "pct": 0.5 }
+/// }))
+/// .unwrap();
+/// assert_eq!(half, SkillLine::convert("damage.fire", "damage.cold", 0.5));
+/// assert_eq!(half.as_convert(), Some(("damage.fire", "damage.cold", 0.5)));
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "SkillLineFields", into = "SkillLineFields")]
@@ -116,7 +129,9 @@ impl SkillLine {
     }
 
     /// `points` of penetration for the parts of `kind` and its dotted
-    /// descendants.
+    /// descendants, by type: a part's history reaches only its filters, so
+    /// a cold `pen` line `with` `damage.fire` reaches cold converted from
+    /// fire and not native cold.
     ///
     /// # Panics
     ///
@@ -132,6 +147,51 @@ impl SkillLine {
             scope: Scope::new(),
         }
         .checked("pen")
+    }
+
+    /// `pct` of each part whose type is `from` or a dotted descendant
+    /// converted to `to` at a use (§6.2 step 6), the share's history the
+    /// part's plus its type; one part's shares past 1 normalize, and no
+    /// share converts again.
+    ///
+    /// # Panics
+    ///
+    /// When `from` or `to` is not a tag name, they are equal, or `pct` is
+    /// outside `[0, 1]`.
+    #[must_use]
+    #[track_caller]
+    pub fn convert(from: &str, to: &str, pct: f32) -> Self {
+        Self {
+            kind: LineKind::Convert {
+                from: from.to_owned(),
+                to: to.to_owned(),
+                pct,
+            },
+            scope: Scope::new(),
+        }
+        .checked("convert")
+    }
+
+    /// `pct` of each part whose type or history carries `from` added as a
+    /// new part of `to` at a use, after the conversion (§6.2 step 7): its
+    /// history the part's plus its type; an extra part makes none.
+    ///
+    /// # Panics
+    ///
+    /// When `from` or `to` is not a tag name, they are equal, or `pct` is
+    /// outside `[0, 1]`.
+    #[must_use]
+    #[track_caller]
+    pub fn extra(from: &str, to: &str, pct: f32) -> Self {
+        Self {
+            kind: LineKind::Extra {
+                from: from.to_owned(),
+                to: to.to_owned(),
+                pct,
+            },
+            scope: Scope::new(),
+        }
+        .checked("extra")
     }
 
     /// The line, read only where `filter` passes the read's context.
@@ -197,6 +257,24 @@ impl SkillLine {
         }
     }
 
+    /// Its source type, target type and share, for a `convert` line.
+    #[must_use]
+    pub fn as_convert(&self) -> Option<(&str, &str, f32)> {
+        match &self.kind {
+            LineKind::Convert { from, to, pct } => Some((from, to, *pct)),
+            _ => None,
+        }
+    }
+
+    /// Its source type, target type and share, for an `extra` line.
+    #[must_use]
+    pub fn as_extra(&self) -> Option<(&str, &str, f32)> {
+        match &self.kind {
+            LineKind::Extra { from, to, pct } => Some((from, to, *pct)),
+            _ => None,
+        }
+    }
+
     /// Its filters.
     #[must_use]
     pub fn scope(&self) -> &Scope {
@@ -214,7 +292,7 @@ impl SkillLine {
                         .contains(&stat.as_str())
                 }
                 LineKind::Pen { .. } => true,
-                LineKind::Added { .. } => false,
+                LineKind::Added { .. } | LineKind::Convert { .. } | LineKind::Extra { .. } => false,
             }
     }
 
@@ -253,6 +331,13 @@ impl SkillLine {
                     Err(format!("pen: {kind}: must be finite (got {points})"))
                 }
             }
+            LineKind::Convert { from, to, pct } | LineKind::Extra { from, to, pct } => {
+                check_rule(from, to, *pct)?;
+                if self.scope.waits_for_hit() {
+                    return Err("a `convert` or `extra` line, spent at a use, may not wait for the hit (`against`, or a state tag in `with`)".to_string());
+                }
+                Ok(())
+            }
         }
     }
 
@@ -272,6 +357,15 @@ impl SkillLine {
                 check_type(world, &format!("{field}.added"), kind, true)
             }
             LineKind::Pen { kind, .. } => check_type(world, &format!("{field}.pen"), kind, true),
+            LineKind::Convert { from, to, .. } | LineKind::Extra { from, to, .. } => {
+                let form = if matches!(self.kind, LineKind::Convert { .. }) {
+                    "convert"
+                } else {
+                    "extra"
+                };
+                check_type(world, &format!("{field}.{form}.from"), from, true)?;
+                check_type(world, &format!("{field}.{form}.to"), to, false)
+            }
             LineKind::Stat { .. } => Ok(()),
         }
     }
@@ -300,6 +394,10 @@ struct SkillLineFields {
     added: Option<BTreeMap<String, [f32; 2]>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pen: Option<BTreeMap<String, f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    convert: Option<ConversionRuleDef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    extra: Option<ConversionRuleDef>,
     #[serde(default, skip_serializing_if = "TagFilter::is_everything")]
     with: TagFilter,
     #[serde(
@@ -325,19 +423,33 @@ impl TryFrom<SkillLineFields> for SkillLine {
     type Error = String;
 
     fn try_from(fields: SkillLineFields) -> Result<Self, Self::Error> {
-        let kind = match (fields.stat, fields.modifier, fields.added, fields.pen) {
-            (Some(stat), Some(modifier), None, None) => LineKind::Stat { stat, modifier },
-            (None, None, Some(added), None) => {
-                let (kind, range) = only(added, "added")?;
-                LineKind::Added { kind, range }
-            }
-            (None, None, None, Some(pen)) => {
-                let (kind, points) = only(pen, "pen")?;
-                LineKind::Pen { kind, points }
-            }
-            _ => {
-                return Err("a line is one of `stat` with `modifier`, `added` or `pen`".to_string());
-            }
+        let kinds = usize::from(fields.stat.is_some() || fields.modifier.is_some())
+            + usize::from(fields.added.is_some())
+            + usize::from(fields.pen.is_some())
+            + usize::from(fields.convert.is_some())
+            + usize::from(fields.extra.is_some());
+        if kinds != 1 {
+            return Err(
+                "a line is one of `stat` with `modifier`, `added`, `pen`, `convert` or `extra`"
+                    .to_string(),
+            );
+        }
+        let kind = if let Some(added) = fields.added {
+            let (kind, range) = only(added, "added")?;
+            LineKind::Added { kind, range }
+        } else if let Some(pen) = fields.pen {
+            let (kind, points) = only(pen, "pen")?;
+            LineKind::Pen { kind, points }
+        } else if let Some(rule) = fields.convert {
+            let (from, to, pct) = rule.into_parts();
+            LineKind::Convert { from, to, pct }
+        } else if let Some(rule) = fields.extra {
+            let (from, to, pct) = rule.into_parts();
+            LineKind::Extra { from, to, pct }
+        } else if let (Some(stat), Some(modifier)) = (fields.stat, fields.modifier) {
+            LineKind::Stat { stat, modifier }
+        } else {
+            return Err("a stat line names its `stat` and its `modifier`".to_string());
         };
         let line = Self {
             kind,
@@ -353,24 +465,31 @@ impl TryFrom<SkillLineFields> for SkillLine {
 
 impl From<SkillLine> for SkillLineFields {
     fn from(line: SkillLine) -> Self {
-        let (stat, modifier, added, pen) = match line.kind {
-            LineKind::Stat { stat, modifier } => (Some(stat), Some(modifier), None, None),
-            LineKind::Added { kind, range } => {
-                (None, None, Some(BTreeMap::from([(kind, range)])), None)
-            }
-            LineKind::Pen { kind, points } => {
-                (None, None, None, Some(BTreeMap::from([(kind, points)])))
-            }
+        let rule = |from: &str, to: &str, pct: f32| {
+            ConversionRuleDef::new(from, to, pct).expect("a line's rule was checked when made")
         };
-        Self {
-            stat,
-            modifier,
-            added,
-            pen,
+        let mut fields = Self {
+            stat: None,
+            modifier: None,
+            added: None,
+            pen: None,
+            convert: None,
+            extra: None,
             with: line.scope.context_filter().clone(),
             holder: line.scope.holder_filter().clone(),
             against: line.scope.against_filter().clone(),
+        };
+        match line.kind {
+            LineKind::Stat { stat, modifier } => {
+                fields.stat = Some(stat);
+                fields.modifier = Some(modifier);
+            }
+            LineKind::Added { kind, range } => fields.added = Some(BTreeMap::from([(kind, range)])),
+            LineKind::Pen { kind, points } => fields.pen = Some(BTreeMap::from([(kind, points)])),
+            LineKind::Convert { from, to, pct } => fields.convert = Some(rule(&from, &to, pct)),
+            LineKind::Extra { from, to, pct } => fields.extra = Some(rule(&from, &to, pct)),
         }
+        fields
     }
 }
 
@@ -868,7 +987,7 @@ impl Delivery {
                     LineKind::Stat { stat, modifier } if stat == Stats::DAMAGE => {
                         hit.fold(*modifier);
                     }
-                    LineKind::Pen { kind, points } if part_carries(part, kind) => pen += points,
+                    LineKind::Pen { kind, points } if covers(&part.kind, kind) => pen += points,
                     _ => {}
                 }
             }
@@ -895,11 +1014,6 @@ fn factor_of(sums: &Sums) -> f64 {
         return over.max(0.0);
     }
     ((1.0 + sums.pct()) * sums.mul()).max(0.0)
-}
-
-/// Whether `part`'s type or history carries `kind`.
-fn part_carries(part: &DeliveryPart, kind: &str) -> bool {
-    covers(&part.kind, kind) || part.history.iter().any(|name| covers(name, kind))
 }
 
 /// A delivery as a save writes it, its holder by reference.
@@ -1085,6 +1199,22 @@ pub(crate) fn describe_skills(
             )
             .default("null"),
         )
+        .field(
+            FieldDescription::new(
+                "convert",
+                FieldType::Shape(CONVERSION_RULE),
+                "a share of each part of `from` (or a descendant) converted to `to` at a use, its history the part's and its type; may not wait for the hit",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "extra",
+                FieldType::Shape(CONVERSION_RULE),
+                "a share of each part whose type or history carries `from` added as `to` after the conversion; may not wait for the hit",
+            )
+            .default("null"),
+        )
         .field(filter("with", "read only where it passes the context: the skill's tags, a part's track, type and history"))
         .field(filter("while", "read only while it passes the holder's tags at the use"))
         .field(filter(
@@ -1147,6 +1277,135 @@ fn curve_of<'a>(world: &'a World, curve: &'a DataRef<Curve>) -> Option<&'a Curve
         Some(data) => curve.resolve(data),
         None => curve.as_inline(),
     }
+}
+
+/// A part between its base and its snapshot: its type, its history (the
+/// types it came from, sorted) and its range.
+type Working = (String, Vec<String>, [f64; 2]);
+
+/// A conversion or extra line's rule, with its scope.
+type Rule<'a> = ((&'a str, &'a str, f32), &'a Scope);
+
+/// A line's rule of one kind: [`SkillLine::as_convert`] or
+/// [`SkillLine::as_extra`].
+type RuleOf = fn(&SkillLine) -> Option<(&str, &str, f32)>;
+
+/// Whether `rule` reaches a part of `kind` and `history` at the use: its
+/// filters read in the skill's context and the part's type and history.
+fn rule_reaches(
+    scope: &Scope,
+    context: &[String],
+    holder: Option<&Tags>,
+    kind: &str,
+    history: &[String],
+) -> bool {
+    let sets = [
+        TagSet::Names(context),
+        TagSet::Name(kind),
+        TagSet::Names(history),
+    ];
+    Read::new(&sets).holder(holder).reach_scope(scope) == Reach::Applies
+}
+
+/// `history` with `kind` added, sorted and deduplicated.
+fn grown(history: &[String], kind: &str) -> Vec<String> {
+    let mut grown = history.to_vec();
+    grown.push(kind.to_owned());
+    grown.sort();
+    grown.dedup();
+    grown
+}
+
+/// §6.2 step 6: in one pass, each part's matching `convert` lines (its type
+/// `from` or a descendant) take their shares, normalized past 1, each a part
+/// of `to` whose history is the part's plus its type; the remainder stays,
+/// first.
+fn convert(
+    parts: Vec<Working>,
+    rules: &[Rule<'_>],
+    context: &[String],
+    holder: Option<&Tags>,
+) -> Vec<Working> {
+    let mut out = Vec::with_capacity(parts.len());
+    for (kind, history, range) in parts {
+        let matching: Vec<&Rule<'_>> = rules
+            .iter()
+            .filter(|((from, _, _), scope)| {
+                covers(&kind, from) && rule_reaches(scope, context, holder, &kind, &history)
+            })
+            .collect();
+        let sum: f64 = matching
+            .iter()
+            .map(|((_, _, pct), _)| f64::from(*pct))
+            .sum();
+        if sum < 1.0 {
+            let keep = 1.0 - sum;
+            out.push((kind.clone(), history.clone(), range.map(|v| v * keep)));
+        }
+        for ((_, to, pct), _) in matching {
+            let share = if sum > 1.0 {
+                f64::from(*pct) / sum
+            } else {
+                f64::from(*pct)
+            };
+            out.push((
+                (*to).to_owned(),
+                grown(&history, &kind),
+                range.map(|v| v * share),
+            ));
+        }
+    }
+    out
+}
+
+/// §6.2 step 7: in one pass over the converted parts, each `extra` line adds
+/// `pct` of every part whose type or history carries `from` as a part of
+/// `to`, its history that part's plus its type; an extra part makes none.
+fn extra(
+    parts: Vec<Working>,
+    rules: &[Rule<'_>],
+    context: &[String],
+    holder: Option<&Tags>,
+) -> Vec<Working> {
+    let mut added = Vec::new();
+    for (kind, history, range) in &parts {
+        for ((from, to, pct), scope) in rules {
+            let carries = covers(kind, from) || history.iter().any(|h| covers(h, from));
+            if carries && rule_reaches(scope, context, holder, kind, history) {
+                let pct = f64::from(*pct);
+                added.push((
+                    (*to).to_owned(),
+                    grown(history, kind),
+                    range.map(|v| v * pct),
+                ));
+            }
+        }
+    }
+    let mut parts = parts;
+    parts.extend(added);
+    parts
+}
+
+/// §6.2 step 8: parts of equal type and history merged, in first-appearance
+/// order; a part of nothing drops.
+fn merge(parts: Vec<Working>) -> Vec<Working> {
+    let mut out: Vec<Working> = Vec::with_capacity(parts.len());
+    for (kind, history, range) in parts {
+        if range[0] <= 0.0 && range[1] <= 0.0 {
+            continue;
+        }
+        match out
+            .iter_mut()
+            .find(|(known, known_history, _)| *known == kind && *known_history == history)
+        {
+            Some((_, _, sum)) => {
+                sum[0] += range[0];
+                sum[1] += range[1];
+            }
+            None => out.push((kind, history, range)),
+        }
+    }
+    out
 }
 
 /// Resolves `entry`'s sheet for `holder`'s use of `ability` with `skill`
@@ -1311,50 +1570,65 @@ pub(crate) fn resolve(
         }
     }
     let to_f32 = |v: f64| v.clamp(0.0, f64::from(f32::MAX)) as f32;
-    let parts = ranges
+    let ranges: Vec<Working> = ranges
         .into_iter()
         .filter(|(_, [min, max])| *min > 0.0 || *max > 0.0)
-        .map(|(kind, [min, max])| {
-            let history: Vec<String> = Vec::new();
-            let track = |track: &str| {
-                let sets = [
-                    TagSet::Names(context),
-                    TagSet::Name(track),
-                    TagSet::Name(&kind),
-                    TagSet::Names(&history),
-                ];
-                let read = Read::new(&sets).holder(holder_tags).at_use();
-                let mut sums = Sums::new(0.0);
-                for line in lines_on(Stats::DAMAGE) {
-                    if reach(&read, line) == Reach::Applies
-                        && let modifier @ (Modifier::Pct(_) | Modifier::Mul(_)) = modifier_of(line)
-                    {
-                        sums.fold(modifier);
-                    }
-                }
-                let mut pen = 0.0_f32;
-                for &(_, line) in &local {
-                    if let Some((pen_kind, points)) = line.as_pen()
-                        && (covers(&kind, pen_kind) || history.iter().any(|h| covers(h, pen_kind)))
-                        && read.reach_scope(&line.scope) == Reach::Applies
-                    {
-                        pen += points;
-                    }
-                }
-                (Partial::of(&sums), pen)
-            };
-            let (hit, pen) = track(TRACK_HIT);
-            let (dot, _) = track(TRACK_DOT);
-            DeliveryPart {
-                range: [to_f32(min), to_f32(max)],
-                kind,
-                history,
-                hit,
-                dot,
-                pen: pen.clamp(0.0, 1.0),
-            }
-        })
+        .map(|(kind, range)| (kind, Vec::new(), range))
         .collect();
+    let rules = |kind: RuleOf| {
+        local
+            .iter()
+            .filter_map(|&(_, line)| kind(line).map(|rule| (rule, &line.scope)))
+            .collect::<Vec<_>>()
+    };
+    let converted = convert(ranges, &rules(SkillLine::as_convert), context, holder_tags);
+    let parts = merge(extra(
+        converted,
+        &rules(SkillLine::as_extra),
+        context,
+        holder_tags,
+    ))
+    .into_iter()
+    .map(|(kind, history, [min, max])| {
+        let track = |track: &str| {
+            let sets = [
+                TagSet::Names(context),
+                TagSet::Name(track),
+                TagSet::Name(&kind),
+                TagSet::Names(&history),
+            ];
+            let read = Read::new(&sets).holder(holder_tags).at_use();
+            let mut sums = Sums::new(0.0);
+            for line in lines_on(Stats::DAMAGE) {
+                if reach(&read, line) == Reach::Applies
+                    && let modifier @ (Modifier::Pct(_) | Modifier::Mul(_)) = modifier_of(line)
+                {
+                    sums.fold(modifier);
+                }
+            }
+            let mut pen = 0.0_f32;
+            for &(_, line) in &local {
+                if let Some((pen_kind, points)) = line.as_pen()
+                    && covers(&kind, pen_kind)
+                    && read.reach_scope(&line.scope) == Reach::Applies
+                {
+                    pen += points;
+                }
+            }
+            (Partial::of(&sums), pen)
+        };
+        let (hit, pen) = track(TRACK_HIT);
+        let (dot, _) = track(TRACK_DOT);
+        DeliveryPart {
+            range: [to_f32(min), to_f32(max)],
+            kind,
+            history,
+            hit,
+            dot,
+            pen: pen.clamp(0.0, 1.0),
+        }
+    })
+    .collect();
 
     Sheet {
         cost,

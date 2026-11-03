@@ -19,11 +19,14 @@ fn placed(world: &mut World, id: &str) -> Entity {
 struct Loaded;
 
 /// The skill's damage types and tags the tests name.
-const TAGS: [&str; 8] = [
+const TAGS: [&str; 11] = [
     "damage.fire",
     "damage.cold",
     "skill.spell",
     "skill.attack",
+    "skill.projectile",
+    "skill.fire",
+    "skill.melee",
     "status.chilled",
     "status.marked",
     "team.player",
@@ -589,4 +592,430 @@ fn an_ability_without_a_skill_uses_as_before() {
     );
     assert!(world.get::<Delivery>(holder).is_none());
     damage(&mut world, holder, 0.0);
+}
+
+// 7.10a, Step 6: conversion and extra with history; §9.1.
+
+/// A skill of `damage` (type to range) and `lines`, its sheet resolved for
+/// a holder with `stats`.
+fn sheet_with(
+    world: &mut World,
+    damage: &[(&str, f32, f32)],
+    lines: Vec<SkillLine>,
+    stats: Stats,
+) -> Delivery {
+    let mut skill = Skill::new();
+    for &(kind, min, max) in damage {
+        skill = skill.with_damage(kind, min, max);
+    }
+    for line in lines {
+        skill = skill.with_line(line);
+    }
+    let holder = caster(world, cinder().with_skill(skill), stats);
+    sheet_of(world, holder).delivery
+}
+
+/// The parts' types, histories and ranges.
+fn shape(delivery: &Delivery) -> Vec<(String, Vec<String>, [f32; 2])> {
+    delivery
+        .parts
+        .iter()
+        .map(|part| (part.kind.clone(), part.history.clone(), part.range))
+        .collect()
+}
+
+fn fire() -> String {
+    "damage.fire".to_string()
+}
+
+fn cold() -> String {
+    "damage.cold".to_string()
+}
+
+#[test]
+fn a_converted_share_keeps_its_history_and_never_converts_again() {
+    let (mut world, _) = rig();
+    let delivery = sheet_with(
+        &mut world,
+        &[("damage.fire", 10.0, 20.0)],
+        vec![
+            SkillLine::convert("damage.fire", "damage.cold", 0.5),
+            SkillLine::convert("damage.cold", "damage.fire", 1.0),
+        ],
+        Stats::new(),
+    );
+    assert_eq!(
+        shape(&delivery),
+        [
+            (fire(), vec![], [5.0, 10.0]),
+            (cold(), vec![fire()], [5.0, 10.0])
+        ],
+        "one pass: the cold share stays cold"
+    );
+}
+
+#[test]
+fn shares_past_one_normalize_and_equal_parts_merge() {
+    let (mut world, _) = rig();
+    let delivery = sheet_with(
+        &mut world,
+        &[("damage.fire", 10.0, 10.0)],
+        vec![
+            SkillLine::convert("damage.fire", "damage.cold", 0.75),
+            SkillLine::convert("damage.fire", "damage.cold", 0.75),
+        ],
+        Stats::new(),
+    );
+    assert_eq!(
+        shape(&delivery),
+        [(cold(), vec![fire()], [10.0, 10.0])],
+        "1.5 normalized, merged"
+    );
+    // A native cold part and a converted one stay apart; two natives
+    // merge.
+    let delivery = sheet_with(
+        &mut world,
+        &[("damage.fire", 10.0, 10.0), ("damage.cold", 2.0, 2.0)],
+        vec![
+            SkillLine::convert("damage.fire", "damage.cold", 0.5),
+            SkillLine::added("damage.cold", 1.0, 1.0),
+        ],
+        Stats::new(),
+    );
+    assert_eq!(
+        shape(&delivery),
+        [
+            (cold(), vec![], [3.0, 3.0]),
+            (fire(), vec![], [5.0, 5.0]),
+            (cold(), vec![fire()], [5.0, 5.0]),
+        ]
+    );
+}
+
+#[test]
+fn extra_parts_come_from_every_part_carrying_from_and_make_none() {
+    let (mut world, _) = rig();
+    let delivery = sheet_with(
+        &mut world,
+        &[("damage.fire", 10.0, 10.0)],
+        vec![
+            SkillLine::convert("damage.fire", "damage.cold", 0.5),
+            SkillLine::extra("damage.fire", "damage.cold", 0.5),
+            SkillLine::extra("damage.cold", "damage.fire", 0.5),
+        ],
+        Stats::new(),
+    );
+    // Fire to cold from the fire part (merging into the converted cold) and
+    // from the converted cold (fire by its history); cold to fire from the
+    // converted cold alone, none from the extra cold.
+    let both = vec![cold(), fire()];
+    assert_eq!(
+        shape(&delivery),
+        [
+            (fire(), vec![], [5.0, 5.0]),
+            (cold(), vec![fire()], [7.5, 7.5]),
+            (cold(), both.clone(), [2.5, 2.5]),
+            (fire(), both, [2.5, 2.5]),
+        ]
+    );
+}
+
+#[test]
+fn a_line_reaches_a_part_by_its_history_and_pen_by_its_type() {
+    let (mut world, _) = rig();
+    let mut stats = Stats::new();
+    let by_fire = TagFilter::new().any(["damage.fire"]);
+    stats.add_line(
+        Stats::DAMAGE,
+        "item:searing",
+        Line::new(Modifier::Pct(0.5)).with(by_fire.clone()),
+    );
+    let delivery = sheet_with(
+        &mut world,
+        &[("damage.fire", 10.0, 10.0), ("damage.cold", 4.0, 4.0)],
+        vec![
+            SkillLine::convert("damage.fire", "damage.cold", 0.5),
+            SkillLine::pen("damage.cold", 0.25).with(by_fire.clone()),
+        ],
+        stats,
+    );
+    let parts: Vec<(String, Vec<String>, f64, f32)> = delivery
+        .parts
+        .iter()
+        .map(|part| {
+            (
+                part.kind.clone(),
+                part.history.clone(),
+                sums(part).0,
+                part.pen,
+            )
+        })
+        .collect();
+    assert_eq!(
+        parts,
+        [
+            (cold(), vec![], 0.0, 0.0),
+            (fire(), vec![], 0.5, 0.0),
+            (cold(), vec![fire()], 0.5, 0.25),
+        ],
+        "searing reaches the converted cold by its history; the cold `pen` with fire only that one"
+    );
+    // A defender's `damage_taken` so scoped halves the fire and the
+    // converted cold, not the native cold.
+    let mut taken = Stats::new().with(Stats::DAMAGE_TAKEN, 1.0);
+    taken.add_line(
+        Stats::DAMAGE_TAKEN,
+        "base",
+        Line::new(Modifier::Mul(0.5)).with(by_fire),
+    );
+    let target = world.spawn_with((Health::new(1000.0), taken));
+    world.insert_resource(KitRng::seeded(7228));
+    DamageRequest::from_delivery(&world, target, &delivery).apply(&mut world);
+    let landed: Vec<f32> = world
+        .resource::<EventQueue<DamagedPart>>()
+        .iter()
+        .map(|part| part.amount)
+        .collect();
+    assert_eq!(landed[0], 4.0, "native cold, whole");
+    assert!(
+        (landed[1] - 3.75).abs() < 1e-4,
+        "fire 5 × 1.5, halved: {landed:?}"
+    );
+    assert!(
+        (landed[2] - 3.75).abs() < 1e-4,
+        "converted cold 5 × 1.5, halved: {landed:?}"
+    );
+}
+
+#[test]
+fn a_convert_or_extra_line_may_not_wait_for_the_hit() {
+    for bad in [
+        json!({ "convert": { "from": "damage.fire", "to": "damage.cold", "pct": 0.5 }, "against": { "all": ["boss"] } }),
+        json!({ "extra": { "from": "damage.fire", "to": "damage.cold", "pct": 0.5 }, "with": { "all": ["delivery.chained"] } }),
+        json!({ "convert": { "from": "damage.fire", "to": "damage.fire", "pct": 0.5 } }),
+        json!({ "extra": { "from": "damage.fire", "to": "damage.cold", "pct": 1.5 } }),
+    ] {
+        assert!(
+            serde_json::from_value::<SkillLine>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+    let good = json!({ "extra": { "from": "damage.fire", "to": "damage.cold", "pct": 0.25 }, "with": { "all": ["skill.spell"] } });
+    let line: SkillLine = serde_json::from_value(good.clone()).unwrap();
+    assert_eq!(line.as_extra(), Some(("damage.fire", "damage.cold", 0.25)));
+    assert_eq!(serde_json::to_value(&line).unwrap(), good);
+    let refused = std::panic::catch_unwind(|| {
+        SkillLine::convert("damage.fire", "damage.cold", 0.5)
+            .against(TagFilter::new().all(["boss"]))
+    });
+    assert!(refused.is_err());
+}
+
+#[test]
+fn a_request_without_a_sheet_converts_as_before() {
+    let (mut world, _) = rig();
+    let target = world.spawn_with((Health::new(1000.0),));
+    DamageRequest::from_parts(
+        target,
+        [crate::DamagePart::new(8.0).with_tags(Tags::new(["damage.fire"]))],
+    )
+    .with_conversion(
+        crate::Conversion::new()
+            .with_rule("damage.fire", "damage.cold", 0.75)
+            .with_rule("damage.fire", "damage.cold", 0.75),
+    )
+    .apply(&mut world);
+    let parts: Vec<f32> = world
+        .resource::<EventQueue<DamagedPart>>()
+        .iter()
+        .map(|part| part.amount)
+        .collect();
+    assert_eq!(
+        parts,
+        [8.0],
+        "both shares normalized into one cold part, as before"
+    );
+}
+
+/// §9.1's caster: Cinder Volley at fire 16 to 24 with `threefold`,
+/// `ricochet` and `rimecraft` as skill-local `support:` lines, the
+/// passives, the wand's and the status's lines on its stats, and the
+/// rings' `pen` and, with `ring`, the unique's `extra` as holder lines.
+fn nine_one(world: &mut World, ring: bool) -> Entity {
+    let all = |tag: &str| TagFilter::new().all([tag]);
+    let any = |tag: &str| TagFilter::new().any([tag]);
+    let mut stats = Stats::new();
+    for (source, modifier, filter) in [
+        (
+            "passive:spellcraft",
+            Modifier::Pct(0.40),
+            all("skill.spell"),
+        ),
+        (
+            "item:9137 implicit",
+            Modifier::Pct(0.08),
+            all("skill.spell"),
+        ),
+        (
+            "item:9137 spellwoven",
+            Modifier::Pct(0.26),
+            all("skill.spell"),
+        ),
+        ("item:9137 searing", Modifier::Pct(0.22), any("damage.fire")),
+        (
+            "passive:frostcraft",
+            Modifier::Pct(0.20),
+            any("damage.cold"),
+        ),
+        (
+            "passive:marksman",
+            Modifier::Pct(0.25),
+            all("skill.projectile"),
+        ),
+        ("passive:brawler", Modifier::Pct(0.30), all("skill.melee")),
+        ("status#41", Modifier::Mul(1.1), any("damage.fire")),
+    ] {
+        stats.add_line(Stats::DAMAGE, source, Line::new(modifier).with(filter));
+    }
+    stats.add_line(
+        Stats::DAMAGE,
+        "passive:cold_snap",
+        Line::new(Modifier::Pct(0.20)).against(all("status.chilled")),
+    );
+    stats.add_line(
+        Stats::CRIT_CHANCE,
+        "passive:precision",
+        Line::new(Modifier::Pct(0.5)),
+    );
+    stats.add_line(
+        Stats::CRIT_MULTIPLIER,
+        "passive:deadeye",
+        Line::new(Modifier::Add(0.4)),
+    );
+    let volley = Ability::new()
+        .with_cost("mana", 1.0)
+        .with_tags(["skill.spell", "skill.projectile", "skill.fire"])
+        .with_payload(crate::Payload::Hitbox(0.1))
+        .with_skill(
+            Skill::new()
+                .with_damage("damage.fire", 16.0, 24.0)
+                .with_crit_chance(0.06)
+                .with_cost(12.0),
+        );
+    let holder = caster(world, volley, stats);
+    let abilities = world.get_mut::<Abilities>(holder).unwrap();
+    abilities.add_skill_lines(
+        "cinder",
+        "support:threefold",
+        [
+            SkillLine::stat("damage", Line::new(Modifier::Mul(0.8))),
+            SkillLine::stat("cost", Line::new(Modifier::Mul(1.3))),
+        ],
+    );
+    abilities.add_skill_lines(
+        "cinder",
+        "support:ricochet",
+        [
+            SkillLine::stat(
+                "damage",
+                Line::new(Modifier::Mul(0.85)).with(all("delivery.chained")),
+            ),
+            SkillLine::stat("cost", Line::new(Modifier::Mul(1.2))),
+        ],
+    );
+    abilities.add_skill_lines(
+        "cinder",
+        "support:rimecraft",
+        [
+            SkillLine::convert("damage.fire", "damage.cold", 0.5),
+            SkillLine::stat("cost", Line::new(Modifier::Mul(1.1))),
+        ],
+    );
+    abilities.add_lines("item:ring", [SkillLine::pen("damage.fire", 0.10)]);
+    if ring {
+        abilities.add_lines(
+            "item:9140",
+            [SkillLine::extra("damage.cold", "damage.fire", 0.18)],
+        );
+    }
+    holder
+}
+
+/// A chilled fen brute: fire 0.6, cold 0.75, no floors.
+fn brute(world: &mut World) -> Entity {
+    world.spawn_with((
+        Health::new(100_000.0),
+        Tags::new(["status.chilled"]),
+        Resist::new()
+            .with_factor("damage.fire", 0.6)
+            .with_factor("damage.cold", 0.75),
+    ))
+}
+
+/// The hit `delivery` lands on `target` under `seed`: its amount and crit.
+fn landing(world: &mut World, target: Entity, delivery: &Delivery, seed: u64) -> (f32, bool) {
+    world.insert_resource(KitRng::seeded(seed));
+    DamageRequest::from_delivery(world, target, delivery).apply(world);
+    let hit = world
+        .resource::<EventQueue<Damaged>>()
+        .iter()
+        .last()
+        .copied()
+        .unwrap();
+    (hit.amount, hit.crit)
+}
+
+/// §9.1's pinned seeds: the first draw within 10⁻⁴ of 0.5 at both, the
+/// second missing a 0.09 chance at the first and making it at the second.
+const PLAIN: u64 = 7228;
+const CRIT: u64 = 2638;
+
+#[test]
+fn nine_one_hits_at_32_07_crits_at_60_94_chains_at_27_26_and_the_ring_adds_2_89() {
+    for (seed, crit) in [(PLAIN, false), (CRIT, true)] {
+        let mut rng = KitRng::seeded(seed);
+        let (u, roll) = (rng.unit(), rng.unit());
+        assert!(
+            (u - 0.5).abs() < 1e-4 && (roll < 0.09) == crit,
+            "seed {seed}: {u}, {roll}"
+        );
+    }
+    let (mut world, _) = rig();
+    let holder = nine_one(&mut world, false);
+    let sheet = sheet_of(&world, holder);
+    let delivery = sheet.delivery;
+    let chance = delivery.crit_chance.sums().value(0.0, 1.0);
+    let multiplier = delivery.crit_multiplier.sums().value(1.0, f32::INFINITY);
+    assert!((chance - 0.09).abs() < 1e-6, "{chance}");
+    assert!((multiplier - 1.9).abs() < 1e-6, "{multiplier}");
+    let cost = sheet.cost.unwrap();
+    assert!((cost - 20.59).abs() < 0.005, "12 × 1.3 × 1.2 × 1.1: {cost}");
+    assert_eq!(
+        shape(&delivery),
+        [
+            (fire(), vec![], [8.0, 12.0]),
+            (cold(), vec![fire()], [8.0, 12.0])
+        ],
+        "half the fire to cold"
+    );
+    let near = |got: f32, want: f32| (got - want).abs() < 0.005;
+    let target = brute(&mut world);
+    let (hit, crit) = landing(&mut world, target, &delivery, PLAIN);
+    assert!(near(hit, 32.0716) && !crit, "the first hit: {hit}");
+    let (critical, crit) = landing(&mut world, target, &delivery, CRIT);
+    assert!(near(critical, 60.94) && crit, "on a crit: {critical}");
+    let chained = delivery.clone().with_state(Tags::new(["delivery.chained"]));
+    let (hit_chained, _) = landing(&mut world, target, &chained, PLAIN);
+    assert!(near(hit_chained, 27.26), "a chained hit: {hit_chained}");
+    // Worn with the unique ring: 18 % of cold as extra fire.
+    let (mut ringed, _) = rig();
+    let holder = nine_one(&mut ringed, true);
+    let delivery = sheet_of(&ringed, holder).delivery;
+    let target = brute(&mut ringed);
+    let (with_ring, _) = landing(&mut ringed, target, &delivery, PLAIN);
+    assert!(
+        near(with_ring - hit, 2.89),
+        "the ring's extra fire: {}",
+        with_ring - hit
+    );
 }

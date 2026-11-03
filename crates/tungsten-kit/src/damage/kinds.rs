@@ -680,7 +680,7 @@ impl ConversionRule {
 }
 
 /// `from` and `to` tag names that differ, `pct` in `[0, 1]`.
-fn check_rule(from: &str, to: &str, pct: f32) -> Result<(), String> {
+pub(crate) fn check_rule(from: &str, to: &str, pct: f32) -> Result<(), String> {
     tag_name("from: ", from)?;
     tag_name("to: ", to)?;
     if from == to {
@@ -742,6 +742,23 @@ struct ConversionRuleFields {
     to: String,
     #[serde(deserialize_with = "fraction")]
     pct: f32,
+}
+
+impl ConversionRuleDef {
+    /// A rule's data form, checked as the data is.
+    pub(crate) fn new(from: &str, to: &str, pct: f32) -> Result<Self, String> {
+        check_rule(from, to, pct)?;
+        Ok(Self {
+            from: from.to_owned(),
+            to: to.to_owned(),
+            pct,
+        })
+    }
+
+    /// Its source type, target type and share.
+    pub(crate) fn into_parts(self) -> (String, String, f32) {
+        (self.from, self.to, self.pct)
+    }
 }
 
 impl TryFrom<ConversionRuleFields> for ConversionRuleDef {

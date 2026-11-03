@@ -495,6 +495,8 @@ shape skill_line: A line a skill reads: a stat's modifier, flat damage of a type
   field modifier: shape modifier = null — the change, with `stat`
   field added: one damage type → [min, max] = null — flat damage added to that type's part; may not wait for the hit
   field pen: one damage type → points = null — penetration for the parts of that type and its descendants, by type or history
+  field convert: shape conversion_rule = null — a share of each part of `from` (or a descendant) converted to `to` at a use, its history the part's and its type; may not wait for the hit
+  field extra: shape conversion_rule = null — a share of each part whose type or history carries `from` added as `to` after the conversion; may not wait for the hit
   field with: tag filter = null — read only where it passes the context: the skill's tags, a part's track, type and history
   field while: tag filter = null — read only while it passes the holder's tags at the use
   field against: tag filter = null — read at the hit, against the target's tags; only `damage`, `crit_chance`, `crit_multiplier` and `pen` may wait for the hit

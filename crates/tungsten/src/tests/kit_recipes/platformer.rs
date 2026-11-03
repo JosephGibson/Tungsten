@@ -1037,18 +1037,24 @@ fn a_knights_hits_crit_from_its_stats_at_the_resolve_or_its_builder() {
 
 #[test]
 fn a_knights_skill_arms_its_hitbox_with_the_snapshot_for_that_swing() {
-    use crate::kit::{Abilities, Ability, KitRng, Payload, Skill, Used, use_ability};
+    use crate::kit::{
+        Abilities, Ability, DamagedPart, KitRng, Payload, Skill, SkillLine, Used, use_ability,
+    };
     for dt in DTS {
         let mut harness = recipe(GENRE, KitPlugins::set(), dt);
         let knight = spawn(&mut harness, "knight", [2000.0, -2000.0]);
         let squire = spawn(&mut harness, "squire", [2010.0, -2000.0]);
-        // The swing: its hitbox armed for 0.1 s with the skill's 3 to 3.
+        // The swing: its hitbox armed for 0.1 s with the skill's physical 3
+        // to 3, and the knight's edge gaining a quarter of it as cold.
         let swing = Ability::new()
             .with_payload(Payload::Hitbox(0.1))
-            .with_skill(Skill::new().with_damage("damage.fire", 3.0, 3.0));
-        harness
-            .world_mut()
-            .insert(knight, Abilities::new().with(DataRef::inline(swing)));
+            .with_skill(Skill::new().with_damage("damage.physical", 3.0, 3.0));
+        let mut abilities = Abilities::new().with(DataRef::inline(swing));
+        abilities.add_lines(
+            "item:rime_edge",
+            [SkillLine::extra("damage.physical", "damage.cold", 0.25)],
+        );
+        harness.world_mut().insert(knight, abilities);
         harness.step(1);
         // Its crit (Step 3's knight crits half the time) draws after the
         // range: a seed whose second draw misses.
@@ -1065,7 +1071,7 @@ fn a_knights_skill_arms_its_hitbox_with_the_snapshot_for_that_swing() {
             Used::Used,
             "dt {dt}"
         );
-        let mut hits = Vec::new();
+        let (mut hits, mut parts) = (Vec::new(), Vec::new());
         for _ in 0..frames_for(0.2, dt) {
             harness.step(1);
             hits.extend(
@@ -1074,11 +1080,22 @@ fn a_knights_skill_arms_its_hitbox_with_the_snapshot_for_that_swing() {
                     .filter(|hit| hit.entity == squire)
                     .map(|hit| (hit.amount, hit.crit, hit.source)),
             );
+            parts.extend(
+                harness
+                    .events::<DamagedPart>()
+                    .filter(|part| part.entity == squire)
+                    .map(|part| part.amount),
+            );
         }
         assert_eq!(
             hits,
-            [(3.0, false, Some(knight))],
-            "dt {dt}: once, the snapshot's 3, not the hitbox's 1"
+            [(3.75, false, Some(knight))],
+            "dt {dt}: once, the snapshot's 3 and its extra, not the hitbox's 1"
+        );
+        assert_eq!(
+            parts,
+            [3.0, 0.75],
+            "dt {dt}: the physical part, then a quarter of it as extra cold"
         );
     }
 }

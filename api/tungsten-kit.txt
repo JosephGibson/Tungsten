@@ -6964,8 +6964,12 @@ impl tungsten_kit::SkillLine
 pub fn tungsten_kit::SkillLine::added(&str, f32, f32) -> Self
 pub fn tungsten_kit::SkillLine::against(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::SkillLine::as_added(&self) -> core::option::Option<(&str, [f32; 2])>
+pub fn tungsten_kit::SkillLine::as_convert(&self) -> core::option::Option<(&str, &str, f32)>
+pub fn tungsten_kit::SkillLine::as_extra(&self) -> core::option::Option<(&str, &str, f32)>
 pub fn tungsten_kit::SkillLine::as_pen(&self) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::SkillLine::as_stat(&self) -> core::option::Option<(&str, tungsten_kit::Modifier)>
+pub fn tungsten_kit::SkillLine::convert(&str, &str, f32) -> Self
+pub fn tungsten_kit::SkillLine::extra(&str, &str, f32) -> Self
 pub fn tungsten_kit::SkillLine::pen(&str, f32) -> Self
 pub fn tungsten_kit::SkillLine::scope(&self) -> &tungsten_kit::Scope
 pub fn tungsten_kit::SkillLine::stat(&str, tungsten_kit::Line) -> Self

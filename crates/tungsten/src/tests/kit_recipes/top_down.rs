@@ -2045,7 +2045,7 @@ fn a_marksmans_embers_crit_from_its_stats_at_a_pinned_seed() {
 }
 
 #[test]
-fn a_casters_bolt_carries_its_skills_snapshot_and_hits_after_the_caster_is_gone() {
+fn a_casters_bolt_carries_its_skills_snapshot_converted_and_hits_after_the_caster_is_gone() {
     for dt in DTS {
         let mut harness = recipe(GENRE, KitPlugins::set(), dt);
         let caster = spawn(&mut harness, "caster", [6000.0, 6000.0]);
@@ -2068,7 +2068,7 @@ fn a_casters_bolt_carries_its_skills_snapshot_and_hits_after_the_caster_is_gone(
             "dt {dt}: the bolt carries the snapshot"
         );
         harness.world_mut().despawn(caster);
-        let mut hits = Vec::new();
+        let (mut hits, mut parts) = (Vec::new(), Vec::new());
         for _ in 0..frames_for(0.5, dt) {
             harness.step(1);
             hits.extend(
@@ -2077,11 +2077,26 @@ fn a_casters_bolt_carries_its_skills_snapshot_and_hits_after_the_caster_is_gone(
                     .filter(|hit| hit.entity == veteran)
                     .map(|hit| (hit.amount, hit.source)),
             );
+            parts.extend(parts_on(&harness, veteran));
         }
         assert_eq!(
             hits,
             [(3.0, None)],
-            "dt {dt}: the snapshot's fire, with no source"
+            "dt {dt}: the snapshot's damage, with no source"
+        );
+        assert_eq!(
+            parts,
+            [
+                (
+                    1.5,
+                    vec!["elemental".to_string(), "elemental.fire".to_string()]
+                ),
+                (
+                    1.5,
+                    vec!["elemental".to_string(), "elemental.cold".to_string()]
+                ),
+            ],
+            "dt {dt}: half its fire converted to cold at the use"
         );
     }
 }

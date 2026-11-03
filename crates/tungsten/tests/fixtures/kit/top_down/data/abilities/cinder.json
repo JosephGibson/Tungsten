@@ -18,7 +18,16 @@
           3
         ]
       }
-    }
+    },
+    "lines": [
+      {
+        "convert": {
+          "from": "elemental.fire",
+          "to": "elemental.cold",
+          "pct": 0.5
+        }
+      }
+    ]
   },
   "payload": [
     {
