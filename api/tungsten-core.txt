@@ -7743,6 +7743,11 @@ impl core::marker::UnsafeUnpin for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::lighting::AmbientLight
 pub const tungsten_core::lighting::LIGHT_CAP: usize
+pub const tungsten_core::lighting::MIN_LIGHT_RADIUS: f32
+pub fn tungsten_core::lighting::light_at(&tungsten_core::World, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
+pub fn tungsten_core::lighting::light_from(&tungsten_core::components::Light, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
+pub fn tungsten_core::lighting::light_level(&tungsten_core::World, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_core::lighting::luma(glam::f32::vec3::Vec3) -> f32
 pub mod tungsten_core::persist
 #[non_exhaustive] pub enum tungsten_core::persist::WriteError
 pub tungsten_core::persist::WriteError::Busy
@@ -22661,6 +22666,8 @@ pub fn tungsten_core::aabb_vs_circle(&tungsten_core::physics::collision::Aabb, g
 pub fn tungsten_core::circle_vs_circle(glam::f32::vec2::Vec2, f32, glam::f32::vec2::Vec2, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::lerp_f32(f32, f32, f32) -> f32
 pub fn tungsten_core::lerp_u8(u8, u8, f32) -> u8
+pub fn tungsten_core::light_at(&tungsten_core::World, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
+pub fn tungsten_core::light_level(&tungsten_core::World, glam::f32::vec2::Vec2) -> f32
 pub fn tungsten_core::parallax_world_position(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::physics_prev_snapshot(&mut tungsten_core::World)
 pub fn tungsten_core::physics_step(&mut tungsten_core::World)

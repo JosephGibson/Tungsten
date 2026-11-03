@@ -1,6 +1,6 @@
-# Statuses and chemistry: effects with intensity, interactions, spread, tiles, `become` and the blast (statuses-and-chemistry) — draft
+# Statuses and chemistry: effects with intensity, interactions, spread, tiles, `become` and the blast (statuses-and-chemistry) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Redo 7.10b, the third of phase 7's Step 9 plans (§2.8): today's effects become §5.2's statuses (Q17's merge), with an intensity that decays, bands, curves read by intensity, fuel, end outputs, a status effect from the user and instance lines (P7-4's statuses, PA-8); the light at a point in core (P7-5); chemistry's `interactions`, matching stimuli (landed parts, emissions, impacts, light, blasts) against properties and statuses through a saved, capped and bounded queue to a fixed list of outputs and named handlers, a damage-over-time rate fixed from the hit (P7-4, PA-8); statuses on tiles, `set_tile` and `become` keeping identity (P7-4); the blast output (S-4, K10); the spread row at 12,000 bodies. 01 and the template keep their behaviour; their sites move at 7.13 and 7.11.
 - **non-goals:**
   - The looks and cues: status looks, particles at anchors, the flash over a tint, a shield's absorption, every cue filter, event and listener row and P7-13's loops and pan (7.10p, split from 7.10b at this planning by phase 7's §6: K27, K28, S-1, S-51, S-122, S-39, S-41, S-48, S-56, S-79, S-96, S-121, S-154, S-165; Q1).
@@ -283,5 +283,6 @@ A sweep of round 2's fixes then found the hold could last forever for a dead rec
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-03 | landed | `cargo test -p tungsten-core --lib --locked lighting::` → `5 passed; 0 failed`, `the_light_at_a_point_sums_each_light_as_the_lit_shader_does`, `light_level_is_the_luma_of_light_at` and `the_query_follows_the_lit_shaders_light_lines` among them; `just check` → exit 0 (`4335 passed`, 0 failed); `just physics-release` → exit 0 (`16 passed`, hashes unchanged); `just api-check` → exit 0; `just repo-check` → exit 0; the kit pin's `rg -c` → `1`; `git diff --quiet 36e0288e -- examples/01_platformer` → exit 0; the template's numstat → empty. Beside the plan's `light_at` and `light_level`: `light_from` (one light) and `luma`, so Step 4 can sum lights once per sample rather than query per receiver, and `MIN_LIGHT_RADIUS` | `crates/tungsten-core/src/lighting.rs`, `crates/tungsten-core/src/tests/lighting.rs`, `crates/tungsten-core/src/lib.rs`, `api/tungsten-core.txt` |
 
 ## Follow-ups
