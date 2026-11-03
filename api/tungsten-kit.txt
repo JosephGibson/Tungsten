@@ -1171,6 +1171,7 @@ pub fn tungsten_kit::DamageRequest::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::DamageRequest::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::DamageRequest::position(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::queue(self, &mut tungsten_core::ecs::world::World) -> bool
+pub fn tungsten_kit::DamageRequest::roll_crit(self, &mut tungsten_core::ecs::world::World) -> Self
 pub fn tungsten_kit::DamageRequest::side(&self) -> core::option::Option<tungsten_kit::Side>
 pub fn tungsten_kit::DamageRequest::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::DamageRequest::state(&self) -> &tungsten_kit::Tags
@@ -5018,6 +5019,7 @@ pub fn tungsten_kit::DamageRequest::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::DamageRequest::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::DamageRequest::position(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::queue(self, &mut tungsten_core::ecs::world::World) -> bool
+pub fn tungsten_kit::DamageRequest::roll_crit(self, &mut tungsten_core::ecs::world::World) -> Self
 pub fn tungsten_kit::DamageRequest::side(&self) -> core::option::Option<tungsten_kit::Side>
 pub fn tungsten_kit::DamageRequest::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::DamageRequest::state(&self) -> &tungsten_kit::Tags

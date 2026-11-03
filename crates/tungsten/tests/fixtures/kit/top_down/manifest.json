@@ -116,6 +116,9 @@
     },
     "post": {
       "path": "prefabs/post.json"
+    },
+    "marksman": {
+      "path": "prefabs/marksman.json"
     }
   },
   "data": {

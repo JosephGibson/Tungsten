@@ -442,6 +442,47 @@ fn a_queued_requests_context_and_direction_come_back_with_it() {
 }
 
 #[test]
+fn a_queued_hits_crit_waits_for_the_resolve_after_a_load_and_a_decided_one_holds() {
+    let level = |world: &mut World| -> (Entity, Entity) {
+        let ace = world.spawn_with((Stats::new()
+            .with(Stats::CRIT_CHANCE, 1.0)
+            .with(Stats::CRIT_MULTIPLIER, 3.0),));
+        let golem = world.spawn_with((Health::new(100.0),));
+        (
+            named(world, ace, None, "ace"),
+            named(world, golem, None, "golem"),
+        )
+    };
+    let (mut a, mut schedule_a) = rig();
+    let (ace, golem) = level(&mut a);
+    step(&mut a, &mut schedule_a);
+    let hit = || DamageRequest::new(golem, 2.0).with_source(ace);
+    assert!(hit().queue(&mut a));
+    assert!(hit().with_crit(false).queue(&mut a));
+    let saved = capture_world(&a).unwrap();
+    let draws = |world: &World| world.resource::<KitRng>().draws();
+    let before = draws(&a);
+
+    let (mut b, mut schedule_b) = rig();
+    churn(&mut b, 25);
+    let (_, golem_b) = level(&mut b);
+    restore(&mut b, &saved);
+    assert_eq!(draws(&b), before, "the stream came back where it was");
+    for (world, schedule, golem) in [
+        (&mut a, &mut schedule_a, golem),
+        (&mut b, &mut schedule_b, golem_b),
+    ] {
+        step(world, schedule);
+        assert_eq!(
+            world.get::<Health>(golem).unwrap().current(),
+            92.0,
+            "the open one crit at the resolve (6), the decided one did not (2)"
+        );
+        assert_eq!(draws(world), before + 1, "one draw, the open one's");
+    }
+}
+
+#[test]
 fn a_saved_parents_children_come_back_once() {
     let level = |world: &mut World| -> Entity {
         let children: SpawnChildren =

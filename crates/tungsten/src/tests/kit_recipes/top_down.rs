@@ -9,7 +9,8 @@
 //! after a load, the golem's frost stream and a game's own damage numbers;
 //! M75's guard saved mid-swing; M76's arrow through hedges, saved
 //! mid-flight; 7.10a's veteran with its scoped lines, a focused effect and
-//! a difficulty world source, and a bulwark braced on its front.
+//! a difficulty world source, a bulwark braced on its front, and a
+//! marksman whose embers crit from its stats.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -1997,6 +1998,48 @@ fn a_bulwark_takes_front_hits_at_a_quarter_and_rear_hits_whole() {
             health(&harness),
             22.0,
             "dt {dt}: its brace is physical only"
+        );
+    }
+}
+
+/// The first seed whose first draws are `rolls`, each under 0.5 or not.
+fn seed_for(rolls: &[bool]) -> u64 {
+    (0..10_000)
+        .find(|&seed| {
+            let mut rng = KitRng::seeded(seed);
+            rolls.iter().all(|&crit| (rng.unit() < 0.5) == crit)
+        })
+        .unwrap()
+}
+
+#[test]
+fn a_marksmans_embers_crit_from_its_stats_at_a_pinned_seed() {
+    let seed = seed_for(&[true, false]);
+    assert_eq!(seed, 2, "pinned: crit, then none");
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness.world_mut().insert_resource(KitRng::seeded(seed));
+        let marksman = spawn(&mut harness, "marksman", [5000.0, 5000.0]);
+        let veteran = spawn(&mut harness, "veteran", [5100.0, 5000.0]);
+        let mut hits = Vec::new();
+        for _ in 0..frames_for(1.3, dt) {
+            harness.step(1);
+            hits.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|hit| hit.entity == veteran)
+                    .map(|hit| (hit.amount, hit.crit, hit.source)),
+            );
+        }
+        assert_eq!(
+            hits,
+            [(6.0, true, Some(marksman)), (2.0, false, Some(marksman))],
+            "dt {dt}: its first ember crits for 2 × 3, its second lands whole"
+        );
+        assert_eq!(
+            harness.world().resource::<KitRng>().draws(),
+            2,
+            "dt {dt}: a draw a hit"
         );
     }
 }

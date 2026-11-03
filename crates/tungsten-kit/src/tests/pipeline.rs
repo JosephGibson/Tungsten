@@ -14,7 +14,7 @@ use crate::foundation::trace::KitTrace;
 use crate::motion::knockback::Knockback;
 use crate::react::counters::{Counters, CountersPlugin};
 use crate::react::cues::{CUES, CueAction, Cues, CuesPlugin};
-use crate::{Conversion, Penetration, Resist, Shield};
+use crate::{Conversion, KitRng, Penetration, Resist, Shield};
 
 const STEP: f32 = 1.0 / 60.0;
 
@@ -1379,4 +1379,204 @@ fn a_queued_requests_extension_survives_a_save() {
         plain,
         serde_json::json!({ "parts": [{ "amount": 2.0 }], "crit": false, "periodic": false, "push_always": false })
     );
+}
+
+// 7.10a: crits from the source's stats.
+
+/// A source with a crit chance and, when given, a multiplier.
+fn critter(world: &mut World, chance: f32, multiplier: Option<f32>) -> Entity {
+    let mut stats = crate::Stats::new().with(crate::Stats::CRIT_CHANCE, chance);
+    if let Some(multiplier) = multiplier {
+        stats = stats.with(crate::Stats::CRIT_MULTIPLIER, multiplier);
+    }
+    world.spawn_with((stats,))
+}
+
+fn draws(world: &World) -> u64 {
+    world.get_resource::<KitRng>().map_or(0, KitRng::draws)
+}
+
+/// The first seed whose first draws are `rolls`, each under 0.5 or not.
+fn seed_for(rolls: &[bool]) -> u64 {
+    (0..10_000)
+        .find(|&seed| {
+            let mut rng = KitRng::seeded(seed);
+            rolls.iter().all(|&crit| (rng.unit() < 0.5) == crit)
+        })
+        .unwrap()
+}
+
+#[test]
+fn a_source_with_a_chance_draws_once_a_hit_first_in_the_resolves_order_ignored_hits_included() {
+    let (mut world, mut schedule) = rig();
+    let source = critter(&mut world, 0.5, Some(3.0));
+    let alive = world.spawn_with((Health::new(1000.0),));
+    let dead = world.spawn_with((Health::new(1.0),));
+    DamageRequest::new(dead, 1.0).apply(&mut world);
+    assert!(alive.id() < dead.id());
+    let seed = seed_for(&[true, false, true]);
+    world.insert_resource(KitRng::seeded(seed));
+    // Queued out of order; the resolve sorts by target: alive's two, then
+    // the dead one's, which is ignored after its draw.
+    for target in [dead, alive, alive] {
+        assert!(
+            DamageRequest::new(target, 2.0)
+                .with_source(source)
+                .queue(&mut world)
+        );
+    }
+    frame(&mut world, &mut schedule);
+    assert_eq!(draws(&world), 3, "a draw a hit, the ignored one's included");
+    let hits: Vec<(Entity, f32, bool)> = sent(&world)
+        .iter()
+        .filter(|hit| hit.entity == alive)
+        .map(|hit| (hit.entity, hit.amount, hit.crit))
+        .collect();
+    assert_eq!(
+        hits,
+        [(alive, 6.0, true), (alive, 2.0, false)],
+        "the stream in sorted order"
+    );
+}
+
+#[test]
+fn a_crit_multiplies_every_part_before_the_defences_and_marks_the_hit_and_its_parts() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "ice"]);
+    let source = critter(&mut world, 0.5, Some(3.0));
+    let target = world.spawn_with((Health::new(1000.0), Resist::new().with_factor("fire", 0.5)));
+    world.insert_resource(KitRng::seeded(seed_for(&[true])));
+    DamageRequest::from_parts(target, [typed(2.0, &["fire"]), typed(4.0, &["ice"])])
+        .with_source(source)
+        .apply(&mut world);
+    assert_eq!(
+        parts_sent(&world),
+        [(3.0, vec!["fire"]), (12.0, vec!["ice"])]
+    );
+    let parts = world.resource::<tungsten_core::EventQueue<DamagedPart>>();
+    assert!(parts.iter().all(|part| part.crit));
+    assert!(sent(&world)[0].crit);
+    assert_eq!(sent(&world)[0].amount, 15.0);
+}
+
+#[test]
+fn a_periodic_request_never_draws_and_a_game_decided_crit_draws_nothing() {
+    let (mut world, _) = rig();
+    let source = critter(&mut world, 1.0, Some(3.0));
+    let target = world.spawn_with((Health::new(1000.0),));
+    world.insert_resource(KitRng::seeded(1));
+    DamageRequest::new(target, 2.0)
+        .with_source(source)
+        .with_periodic(true)
+        .apply(&mut world);
+    assert_eq!(
+        (draws(&world), sent(&world)[0].amount, sent(&world)[0].crit),
+        (0, 2.0, false)
+    );
+    DamageRequest::new(target, 2.0)
+        .with_source(source)
+        .with_crit(false)
+        .apply(&mut world);
+    DamageRequest::new(target, 2.0)
+        .with_source(source)
+        .with_crit(true)
+        .apply(&mut world);
+    let hits: Vec<(f32, bool)> = sent(&world)
+        .iter()
+        .map(|hit| (hit.amount, hit.crit))
+        .collect();
+    assert_eq!(
+        hits[1..],
+        [(2.0, false), (2.0, true)],
+        "carried: no draw and no factor"
+    );
+    assert_eq!(draws(&world), 0);
+}
+
+#[test]
+fn roll_crit_decides_at_build_with_one_draw_and_the_resolve_draws_no_more() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "ice"]);
+    let source = critter(&mut world, 0.5, Some(2.0));
+    let target = world.spawn_with((Health::new(1000.0),));
+    world.insert_resource(KitRng::seeded(seed_for(&[true, false])));
+    let built = |world: &mut World| {
+        DamageRequest::from_parts(target, [typed(2.0, &["fire"]), typed(3.0, &["ice"])])
+            .with_source(source)
+            .roll_crit(world)
+    };
+    let crit = built(&mut world);
+    assert_eq!(draws(&world), 1);
+    assert!(crit.is_crit());
+    let amounts: Vec<f32> = crit.parts().iter().map(DamagePart::amount).collect();
+    assert_eq!(amounts, [4.0, 6.0], "both parts doubled at build");
+    crit.apply(&mut world);
+    assert_eq!(draws(&world), 1, "the resolve draws no more");
+    assert_eq!((sent(&world)[0].amount, sent(&world)[0].crit), (10.0, true));
+    let plain = built(&mut world);
+    assert_eq!(draws(&world), 2);
+    assert!(!plain.is_crit());
+    assert_eq!(plain.amount(), 5.0);
+    plain.apply(&mut world);
+    assert_eq!((draws(&world), sent(&world)[1].crit), (2, false));
+    // No source, or a periodic one: decided with no draw.
+    let lone = DamageRequest::new(target, 1.0).roll_crit(&mut world);
+    let tick = DamageRequest::new(target, 1.0)
+        .with_source(source)
+        .with_periodic(true)
+        .roll_crit(&mut world);
+    assert!(!lone.is_crit() && !tick.is_crit());
+    assert_eq!(draws(&world), 2);
+}
+
+#[test]
+fn a_source_without_a_chance_leaves_the_stream_where_it_was() {
+    let (mut world, _) = rig();
+    world.insert_resource(KitRng::seeded(9));
+    let plain = world.spawn_with((crate::Stats::new().with(crate::Stats::DAMAGE, 1.0),));
+    let zero = critter(&mut world, 0.0, Some(3.0));
+    let bare = world.spawn();
+    let target = world.spawn_with((Health::new(1000.0),));
+    for source in [plain, zero, bare] {
+        DamageRequest::new(target, 2.0)
+            .with_source(source)
+            .apply(&mut world);
+        let _ = DamageRequest::new(target, 2.0)
+            .with_source(source)
+            .roll_crit(&mut world);
+    }
+    DamageRequest::new(target, 2.0).apply(&mut world);
+    assert_eq!(draws(&world), 0);
+    assert!(
+        sent(&world)
+            .iter()
+            .all(|hit| hit.amount == 2.0 && !hit.crit)
+    );
+    // A sure chance without a multiplier crits at 1.5.
+    let sure = critter(&mut world, 1.0, None);
+    DamageRequest::new(target, 2.0)
+        .with_source(sure)
+        .apply(&mut world);
+    assert_eq!(
+        (sent(&world)[4].amount, sent(&world)[4].crit, draws(&world)),
+        (3.0, true, 1)
+    );
+}
+
+#[test]
+fn a_crit_the_resolve_decides_saves_as_it_always_has() {
+    let (mut world, _) = rig();
+    let target = world.spawn();
+    let save = |request: DamageRequest| serde_json::to_value(DamageSave::from(&request)).unwrap();
+    let open = save(DamageRequest::new(target, 2.0));
+    assert_eq!(open["crit"], serde_json::json!(false));
+    assert!(open.get("crit_decided").is_none(), "as before 7.10a");
+    let no = save(DamageRequest::new(target, 2.0).with_crit(false));
+    assert_eq!(no["crit_decided"], serde_json::json!(true));
+    let yes = save(DamageRequest::new(target, 2.0).with_crit(true));
+    assert_eq!(yes["crit"], serde_json::json!(true));
+    for (saved, crit) in [(open, Crit::Open), (no, Crit::No), (yes, Crit::Yes)] {
+        let back = DamageRequest::from(serde_json::from_value::<DamageSave>(saved).unwrap());
+        assert_eq!(back.crit, crit);
+    }
 }

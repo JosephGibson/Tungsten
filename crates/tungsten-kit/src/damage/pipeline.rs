@@ -15,6 +15,7 @@ use crate::damage::kinds::{
     Conversion, ConversionRule, DamageKinds, DamageTypeTable, Penetration, merge_types,
 };
 use crate::foundation::lines::{Read, TagSet};
+use crate::foundation::rng::KitRng;
 use crate::foundation::saved::order_of;
 use crate::foundation::stats::Stats;
 use crate::foundation::tags::{SIDE_FRONT, SIDE_REAR, TRACK_DOT, TRACK_HIT, Tags};
@@ -120,8 +121,19 @@ impl PartialEq for Parts {
 /// its own and either [`apply`](Self::apply)s it now or
 /// [`queue`](Self::queue)s it for the step's [`DAMAGE_RESOLVE`].
 ///
+/// Its crit is decided once: by the game ([`with_crit`](Self::with_crit),
+/// carried with no draw and no factor); by its builder
+/// ([`roll_crit`](Self::roll_crit), from its source's stats); or, when
+/// neither did, at the resolve, below.
+///
 /// Resolving one, now or queued:
 ///
+/// 0. Crit: a request no rule decided, not periodic, whose source's
+///    [`Stats::CRIT_CHANCE`] is above 0, draws once from the [`KitRng`],
+///    first, ignored or not, in the resolve's order; under the chance it
+///    is a crit, and every part is multiplied by the source's
+///    [`Stats::CRIT_MULTIPLIER`], 1.5 without one, before the conversion
+///    and the defences. A periodic request never crits.
 /// 1. Each part takes its own types, else the request's; a part of 0 drops.
 ///    No part left, or a target that is gone, being despawned by the kit,
 ///    without [`Health`], dead or, unless the request is periodic, inside
@@ -235,7 +247,7 @@ pub struct DamageRequest {
     tags: Tags,
     position: Option<Vec2>,
     knockback: Option<Vec2>,
-    crit: bool,
+    crit: Crit,
     periodic: bool,
     /// Its knockback lands where the hit is ignored for the target's
     /// window too: contact damage's `push_always`.
@@ -250,6 +262,41 @@ pub struct DamageRequest {
 
 /// The tags of a request without a context or state tags.
 static NO_TAGS: Tags = Tags::EMPTY;
+
+/// How far a request's crit is decided, in a flag's byte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Crit {
+    /// No rule decided it: the resolve draws from its source's stats.
+    Open,
+    /// Decided: no crit.
+    No,
+    /// Decided: a crit, whose factor is the game's or already in the
+    /// parts.
+    Yes,
+}
+
+/// The multiplier a crit takes without a `crit_multiplier` stat.
+const CRIT_MULTIPLIER: f32 = 1.5;
+
+/// The crit chance and multiplier of `source`'s entity-level stats, when
+/// the chance is above 0.
+fn crit_odds(world: &World, source: Option<Entity>) -> Option<(f32, f32)> {
+    let stats = world.get::<Stats>(source?)?;
+    let chance = stats
+        .get(Stats::CRIT_CHANCE)
+        .filter(|&chance| chance > 0.0)?;
+    let multiplier = stats.get(Stats::CRIT_MULTIPLIER).unwrap_or(CRIT_MULTIPLIER);
+    Some((chance.min(1.0), multiplier))
+}
+
+/// One draw of the kit's stream under `chance`: whether it crits. The
+/// stream is the World's, or a default one inserted.
+fn draw_crit(world: &mut World, chance: f32) -> bool {
+    if !world.has_resource::<KitRng>() {
+        world.insert_resource(KitRng::default());
+    }
+    world.resource_mut::<KitRng>().unit() < chance
+}
 
 /// A request's own conversion alone, or its boxed extras.
 #[derive(Debug, Clone, PartialEq)]
@@ -363,7 +410,7 @@ impl DamageRequest {
             tags: Tags::default(),
             position: None,
             knockback: None,
-            crit: false,
+            crit: Crit::Open,
             periodic: false,
             push_always: false,
             side: None,
@@ -519,11 +566,37 @@ impl DamageRequest {
         self
     }
 
-    /// The request, marked a critical hit when `crit`: the kit only carries
-    /// it to [`Damaged`] and to each of its [`DamagedPart`]s.
+    /// The request, marked a critical hit when `crit`, its crit decided by
+    /// the game: the kit carries the flag to [`Damaged`] and to each of its
+    /// [`DamagedPart`]s, with no draw and no factor.
     #[must_use]
     pub fn with_crit(mut self, crit: bool) -> Self {
-        self.crit = crit;
+        self.crit = if crit { Crit::Yes } else { Crit::No };
+        self
+    }
+
+    /// The request, its crit decided now by its builder from its source's
+    /// entity-level [`Stats::CRIT_CHANCE`] and [`Stats::CRIT_MULTIPLIER`]
+    /// (1.5 without one): one draw from the [`KitRng`] when the chance is
+    /// above 0, every part times the multiplier on a crit, marked; no draw
+    /// and no crit for a source without a chance, a request with no source,
+    /// or a periodic one. The resolve draws no more. Set the source first.
+    #[must_use]
+    pub fn roll_crit(mut self, world: &mut World) -> Self {
+        let odds = (!self.periodic)
+            .then(|| crit_odds(world, self.source))
+            .flatten();
+        let crit = odds.is_some_and(|(chance, _)| draw_crit(world, chance));
+        if crit && let Some((_, multiplier)) = odds {
+            let times = |part: &mut DamagePart| {
+                part.amount = clamped(f64::from(part.amount) * f64::from(multiplier)).max(0.0);
+            };
+            match &mut self.parts {
+                Parts::One(part) => times(part),
+                Parts::Many(parts) => parts.iter_mut().for_each(times),
+            }
+        }
+        self.crit = if crit { Crit::Yes } else { Crit::No };
         self
     }
 
@@ -620,10 +693,11 @@ impl DamageRequest {
         self.knockback
     }
 
-    /// Whether it is a critical hit.
+    /// Whether it is a critical hit, as decided so far: a request the
+    /// resolve decides reads false until then.
     #[must_use]
     pub fn is_crit(&self) -> bool {
-        self.crit
+        self.crit == Crit::Yes
     }
 
     /// Whether it is periodic: an effect's payload.
@@ -817,6 +891,7 @@ struct PartSave {
 /// A [`DamageRequest`] in a save, its target and source by reference.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)] // A save's flags, each a field of its JSON as before.
 struct DamageSave {
     parts: Vec<PartSave>,
     #[serde(default, skip_serializing_if = "Tags::is_empty")]
@@ -827,6 +902,10 @@ struct DamageSave {
     knockback: Option<[f32; 2]>,
     #[serde(default)]
     crit: bool,
+    /// Its crit decided with no crit: a request the resolve decides writes
+    /// none.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    crit_decided: bool,
     #[serde(default)]
     periodic: bool,
     #[serde(default)]
@@ -860,7 +939,8 @@ impl From<&DamageRequest> for DamageSave {
             tags: request.tags.clone(),
             position: request.position.map(|at| at.to_array()),
             knockback: request.knockback.map(|push| push.to_array()),
-            crit: request.crit,
+            crit: request.crit == Crit::Yes,
+            crit_decided: request.crit == Crit::No,
             periodic: request.periodic,
             push_always: request.push_always,
             penetration: request.penetration.clone(),
@@ -900,7 +980,11 @@ impl From<DamageSave> for DamageRequest {
             tags: saved.tags,
             position: saved.position.map(Vec2::from_array),
             knockback: saved.knockback.map(Vec2::from_array),
-            crit: saved.crit,
+            crit: match (saved.crit, saved.crit_decided) {
+                (true, _) => Crit::Yes,
+                (false, true) => Crit::No,
+                (false, false) => Crit::Open,
+            },
             periodic: saved.periodic,
             push_always: saved.push_always,
             side: saved.side,
@@ -1255,6 +1339,7 @@ fn record(landing: Landing, landed: &mut Vec<Landed>, immune: &mut Vec<Landed>) 
 fn land_parts<'a>(
     world: &'a World,
     request: &'a DamageRequest,
+    crit: f64,
     landed: &mut Vec<Landed>,
     immune: &mut Vec<Landed>,
 ) {
@@ -1308,7 +1393,8 @@ fn land_parts<'a>(
         && lent_rules.is_empty()
     {
         if part.amount != 0.0 {
-            let landing = defences.land(typed(part), f64::from(part.amount));
+            let amount = (f64::from(part.amount) * crit).min(f64::from(f32::MAX));
+            let landing = defences.land(typed(part), amount);
             record(landing, landed, immune);
         }
         return;
@@ -1317,7 +1403,7 @@ fn land_parts<'a>(
     for part in parts.iter().filter(|part| part.amount != 0.0) {
         convert(
             typed(part),
-            f64::from(part.amount),
+            f64::from(part.amount) * crit,
             own_rules.iter().chain(lent_rules),
             &mut working,
         );
@@ -1371,8 +1457,8 @@ fn merge_part<'a>(working: &mut Vec<Working<'a>>, tags: &'a Tags, amount: f64) {
 
 /// Step 4's [`ImmunePart`]s: one per part of `request` an immunity dropped,
 /// in part order, once [`HealthPlugin`](crate::HealthPlugin) has
-/// registered the queue.
-fn send_immune(world: &mut World, request: &DamageRequest, immune: &[Landed]) {
+/// registered the queue, with the hit's `crit`.
+fn send_immune(world: &mut World, request: &DamageRequest, immune: &[Landed], crit: bool) {
     if !world.has_event::<ImmunePart>() {
         return;
     }
@@ -1381,7 +1467,7 @@ fn send_immune(world: &mut World, request: &DamageRequest, immune: &[Landed]) {
         let mut event = ImmunePart::new(request.target, part.amount)
             .with_kinds(part.kinds)
             .with_periodic(request.periodic)
-            .with_crit(request.crit);
+            .with_crit(crit);
         if let Some(source) = request.source {
             event = event.with_source(source);
         }
@@ -1401,15 +1487,25 @@ fn resolve(
     immune: &mut Vec<Landed>,
 ) -> Hit {
     let target = request.target;
+    let mut crit = request.crit == Crit::Yes;
+    let mut factor = 1.0;
+    if request.crit == Crit::Open
+        && !request.periodic
+        && let Some((chance, multiplier)) = crit_odds(world, request.source)
+        && draw_crit(world, chance)
+    {
+        crit = true;
+        factor = f64::from(multiplier);
+    }
     if request.parts().iter().all(|part| part.amount == 0.0)
         || !takes_hits(world, target, request.periodic)
     {
         push_ignored(world, request);
         return Hit::Ignored;
     }
-    land_parts(world, request, landed, immune);
+    land_parts(world, request, factor, landed, immune);
     if !immune.is_empty() {
-        send_immune(world, request, immune);
+        send_immune(world, request, immune, crit);
     }
     if landed.is_empty() {
         push_ignored(world, request);
@@ -1436,7 +1532,7 @@ fn resolve(
             let mut event = DamagedPart::new(target, part.amount)
                 .with_kinds(part.kinds)
                 .with_periodic(request.periodic)
-                .with_crit(request.crit);
+                .with_crit(crit);
             if let Some(source) = request.source {
                 event = event.with_source(source);
             }
@@ -1448,7 +1544,7 @@ fn resolve(
     }
     if world.has_event::<Damaged>() {
         let mut event = Damaged::new(target, amount, killed)
-            .with_crit(request.crit)
+            .with_crit(crit)
             .with_periodic(request.periodic)
             .with_kinds(kinds);
         if let Some(source) = request.source {

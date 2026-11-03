@@ -4,7 +4,7 @@
 //! bricks, climber, spiker and coin; M67's regen and haste on the runner;
 //! M76's bolt off armour, saved mid-flight; 7.10a's squire with its scoped
 //! lines, an inspired effect and a difficulty world source, and a knight
-//! that halves blasts and floors its cold factor.
+//! that halves blasts, floors its cold factor and crits from its stats.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -992,5 +992,45 @@ fn a_knight_halves_blasts_by_damage_taken_and_its_cold_factor_stops_at_its_floor
             .with_context(Tags::new(["hit.blast"]))
             .apply(harness.world_mut());
         assert_eq!(health(&harness), 19.5, "dt {dt}: a cold blast, both");
+    }
+}
+
+#[test]
+fn a_knights_hits_crit_from_its_stats_at_the_resolve_or_its_builder() {
+    use crate::kit::KitRng;
+    // Pinned: the first draw crits, the second does not.
+    let seed = (0..10_000)
+        .find(|&seed| {
+            let mut rng = KitRng::seeded(seed);
+            rng.unit() < 0.5 && rng.unit() >= 0.5
+        })
+        .unwrap();
+    assert_eq!(seed, 2);
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness.world_mut().insert_resource(KitRng::seeded(seed));
+        let knight = spawn(&mut harness, "knight", [2000.0, -2000.0]);
+        let target = spawn(&mut harness, "knight", [2400.0, -2000.0]);
+        harness.step(1);
+        let health =
+            |harness: &super::Harness| harness.world().get::<Health>(target).unwrap().current();
+        assert!(
+            DamageRequest::new(target, 4.0)
+                .with_source(knight)
+                .queue(harness.world_mut())
+        );
+        harness.step(1);
+        assert_eq!(
+            health(&harness),
+            32.0,
+            "dt {dt}: a crit at the resolve, 4 × 2"
+        );
+        let built = DamageRequest::new(target, 4.0)
+            .with_source(knight)
+            .roll_crit(harness.world_mut());
+        assert!(!built.is_crit(), "dt {dt}: the builder's draw, none");
+        built.apply(harness.world_mut());
+        assert_eq!(health(&harness), 28.0, "dt {dt}");
+        assert_eq!(harness.world().resource::<KitRng>().draws(), 2, "dt {dt}");
     }
 }
