@@ -14,9 +14,12 @@ use crate::damage::health::{Damaged, DamagedPart, Health, Hit, ImmunePart, start
 use crate::damage::kinds::{
     Conversion, ConversionRule, DamageKinds, DamageTypeTable, Penetration, merge_types,
 };
+use crate::foundation::lines::{Read, TagSet};
 use crate::foundation::saved::order_of;
-use crate::foundation::tags::Tags;
+use crate::foundation::stats::Stats;
+use crate::foundation::tags::{SIDE_FRONT, SIDE_REAR, TRACK_DOT, TRACK_HIT, Tags};
 use crate::foundation::trace::{TraceKind, trace};
+use crate::intent::aim::Aim;
 use crate::lifecycle::ended::Despawning;
 use crate::motion::knockback::knock_back;
 
@@ -127,13 +130,21 @@ impl PartialEq for Parts {
 ///    in one pass, each share a new part of its rule's type alone; parts of
 ///    equal types then merge in first-appearance order.
 /// 3. Penetration: each part's points, the hit's own [`Penetration`]'s and
-///    its source's matching entries, summed and capped at 1.
-/// 4. The target's [`Resist`], per part: a matching factor of 0 drops the
-///    part before any product, and an [`ImmunePart`] goes out for it with
-///    its amount before the resistances and its [`DamageKinds`]; a factor
-///    in `(0, 1)` gains the part's points, capped at 1; the factors
-///    multiply the part in `f64`, clamped to `f32::MAX`, and a result of 0
-///    drops the part.
+///    its source's matching entries, summed and capped at 1; a periodic
+///    request takes none.
+/// 4. The target's defences, per part, read in the hit's context: the
+///    request's context and state tags, its track (`delivery.hit`, or
+///    `delivery.dot` for a periodic one), its side (`side.front` or
+///    `side.rear`) and the part's types, with the target's tags for `while`
+///    lines and the source's for `against` lines. Each of the target's
+///    [`Resist`] factors whose tag the part carries, with its scoped lines
+///    that pass: one of 0 drops the part before any product, and an
+///    [`ImmunePart`] goes out for it with its amount before the resistances
+///    and its [`DamageKinds`]; each other rises to its tag's floor, then one
+///    in `(0, 1)` gains the part's points, capped at 1; the factors and the
+///    target's [`Stats::DAMAGE_TAKEN`], read in the same context, multiply
+///    the part in `f64`, clamped to `f32::MAX`, and a result of 0 drops the
+///    part.
 /// 5. No part left is [`Hit::Ignored`], with no side effect but step 4's
 ///    [`ImmunePart`]s.
 /// 6. The parts' total falls once: its [`Shield`] takes what it can and
@@ -152,6 +163,12 @@ impl PartialEq for Parts {
 ///
 /// A one-part request with no conversion, no penetration and no modifier
 /// on the target's [`Resist`] resolves as an untyped hit always has.
+///
+/// A hit's side: a kit hit takes it at its strike, from the blow's
+/// direction against the target's [`Aim`]; a game's
+/// [`with_direction`](Self::with_direction) is judged against the target's
+/// aim at the resolve. A hit travelling against the aim lands on
+/// [`Side::Front`], else [`Side::Rear`]; no direction or no aim, no side.
 ///
 /// # Examples
 ///
@@ -223,8 +240,87 @@ pub struct DamageRequest {
     /// Its knockback lands where the hit is ignored for the target's
     /// window too: contact damage's `push_always`.
     push_always: bool,
+    /// The side a kit hit took at its strike, in the byte beside the flags.
+    side: Option<Side>,
     penetration: Option<Penetration>,
+    /// Its own conversion, or the box of its rarer parts, which holds the
+    /// conversion too: one slot, so a request keeps its size.
+    own: Option<Own>,
+}
+
+/// The tags of a request without a context or state tags.
+static NO_TAGS: Tags = Tags::EMPTY;
+
+/// A request's own conversion alone, or its boxed extras.
+#[derive(Debug, Clone, PartialEq)]
+enum Own {
+    Conversion(Conversion),
+    Extras(Box<Extras>),
+}
+
+/// What only some requests carry, boxed so the rest stay small: the
+/// conversion, a context, state tags and a direction.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Extras {
     conversion: Option<Conversion>,
+    context: Tags,
+    state: Tags,
+    direction: Option<Vec2>,
+}
+
+/// The side of a target a hit lands on, judged from the way the hit
+/// travels against the way the target aims ([`Aim`]).
+///
+/// # Examples
+///
+/// ```
+/// use glam::Vec2;
+/// use tungsten_kit::Side;
+///
+/// // A target aiming right, hit by a blow travelling left: from the front.
+/// assert_eq!(Side::of(Vec2::NEG_X, Vec2::X), Some(Side::Front));
+/// assert_eq!(Side::of(Vec2::X, Vec2::X), Some(Side::Rear));
+/// assert_eq!(Side::of(Vec2::ZERO, Vec2::X), None);
+/// assert_eq!(Side::Front.tag(), "side.front");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Side {
+    /// Against the target's aim.
+    Front,
+    /// From behind or beside it.
+    Rear,
+}
+
+impl Side {
+    /// The side a hit travelling along `direction` lands on for a target
+    /// aiming along `aim`: [`Front`](Self::Front) when the two point
+    /// against each other (`direction · aim < 0`), else
+    /// [`Rear`](Self::Rear); `None` when either is zero or not finite.
+    #[must_use]
+    pub fn of(direction: Vec2, aim: Vec2) -> Option<Side> {
+        if direction == Vec2::ZERO
+            || aim == Vec2::ZERO
+            || !(direction.is_finite() && aim.is_finite())
+        {
+            return None;
+        }
+        Some(if direction.dot(aim) < 0.0 {
+            Side::Front
+        } else {
+            Side::Rear
+        })
+    }
+
+    /// The kit's tag for the side, which a hit's context carries:
+    /// `side.front` or `side.rear`.
+    #[must_use]
+    pub fn tag(self) -> &'static str {
+        match self {
+            Side::Front => SIDE_FRONT,
+            Side::Rear => SIDE_REAR,
+        }
+    }
 }
 
 impl DamageRequest {
@@ -270,9 +366,39 @@ impl DamageRequest {
             crit: false,
             periodic: false,
             push_always: false,
+            side: None,
             penetration: None,
-            conversion: None,
+            own: None,
         }
+    }
+
+    /// The boxed extras, made when the request has none.
+    fn extras_mut(&mut self) -> &mut Extras {
+        let own = match self.own.take() {
+            Some(Own::Extras(extras)) => extras,
+            Some(Own::Conversion(conversion)) => Box::new(Extras {
+                conversion: Some(conversion),
+                ..Extras::default()
+            }),
+            None => Box::default(),
+        };
+        let Own::Extras(extras) = self.own.insert(Own::Extras(own)) else {
+            unreachable!("just inserted");
+        };
+        extras
+    }
+
+    fn extras(&self) -> Option<&Extras> {
+        match &self.own {
+            Some(Own::Extras(extras)) => Some(extras),
+            _ => None,
+        }
+    }
+
+    /// The request, landing on `side`: a kit hit's, set at its strike.
+    pub(crate) fn with_side(mut self, side: Option<Side>) -> Self {
+        self.side = side;
+        self
     }
 
     /// The request, its knockback landing on a target it is ignored for:
@@ -311,7 +437,50 @@ impl DamageRequest {
     /// source's.
     #[must_use]
     pub fn with_conversion(mut self, conversion: Conversion) -> Self {
-        self.conversion = Some(conversion);
+        match &mut self.own {
+            Some(Own::Extras(extras)) => extras.conversion = Some(conversion),
+            own => *own = Some(Own::Conversion(conversion)),
+        }
+        self
+    }
+
+    /// The request, in the context `tags`: a skill's or a game's tags, such
+    /// as a blast's `hit.blast`, which the target's scoped resistances and
+    /// `damage_taken` lines read. Only a request with a context, state tags
+    /// or a direction boxes them.
+    #[must_use]
+    pub fn with_context(mut self, tags: Tags) -> Self {
+        if !tags.is_empty() || self.extras().is_some() {
+            self.extras_mut().context = tags;
+        }
+        self
+    }
+
+    /// The request, with the state tags `tags` (`delivery.chained`), known
+    /// only at the hit, which the target's lines read as its context.
+    #[must_use]
+    pub fn with_state(mut self, tags: Tags) -> Self {
+        if !tags.is_empty() || self.extras().is_some() {
+            self.extras_mut().state = tags;
+        }
+        self
+    }
+
+    /// The request, travelling along `direction`: its side is judged
+    /// against the target's [`Aim`] at the resolve, unless a kit hit's
+    /// strike set it.
+    ///
+    /// # Panics
+    ///
+    /// When `direction` is not finite.
+    #[must_use]
+    #[track_caller]
+    pub fn with_direction(mut self, direction: Vec2) -> Self {
+        assert!(
+            direction.is_finite(),
+            "DamageRequest::with_direction: direction must be finite (got {direction})"
+        );
+        self.extras_mut().direction = Some(direction);
         self
     }
 
@@ -407,7 +576,36 @@ impl DamageRequest {
     /// Its own conversion, when it has one.
     #[must_use]
     pub fn conversion(&self) -> Option<&Conversion> {
-        self.conversion.as_ref()
+        match &self.own {
+            Some(Own::Conversion(conversion)) => Some(conversion),
+            Some(Own::Extras(extras)) => extras.conversion.as_ref(),
+            None => None,
+        }
+    }
+
+    /// Its context tags; empty without.
+    #[must_use]
+    pub fn context(&self) -> &Tags {
+        self.extras().map_or(&NO_TAGS, |extras| &extras.context)
+    }
+
+    /// Its state tags; empty without.
+    #[must_use]
+    pub fn state(&self) -> &Tags {
+        self.extras().map_or(&NO_TAGS, |extras| &extras.state)
+    }
+
+    /// The direction a game gave it, when it has one.
+    #[must_use]
+    pub fn direction(&self) -> Option<Vec2> {
+        self.extras().and_then(|extras| extras.direction)
+    }
+
+    /// The side a kit hit took at its strike; a game's direction is judged
+    /// at the resolve.
+    #[must_use]
+    pub fn side(&self) -> Option<Side> {
+        self.side
     }
 
     /// Where it landed, when it says.
@@ -637,6 +835,14 @@ struct DamageSave {
     penetration: Option<Penetration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     conversion: Option<Conversion>,
+    #[serde(default, skip_serializing_if = "Tags::is_empty")]
+    context: Tags,
+    #[serde(default, skip_serializing_if = "Tags::is_empty")]
+    state: Tags,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    direction: Option<[f32; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    side: Option<Side>,
 }
 
 impl From<&DamageRequest> for DamageSave {
@@ -658,7 +864,11 @@ impl From<&DamageRequest> for DamageSave {
             periodic: request.periodic,
             push_always: request.push_always,
             penetration: request.penetration.clone(),
-            conversion: request.conversion.clone(),
+            conversion: request.conversion().cloned(),
+            context: request.context().clone(),
+            state: request.state().clone(),
+            direction: request.direction().map(|at| at.to_array()),
+            side: request.side,
         }
     }
 }
@@ -683,7 +893,7 @@ impl From<DamageSave> for DamageRequest {
         } else {
             Parts::Many(parts)
         };
-        Self {
+        let mut request = Self {
             target: Entity::PLACEHOLDER,
             parts,
             source: None,
@@ -693,9 +903,20 @@ impl From<DamageSave> for DamageRequest {
             crit: saved.crit,
             periodic: saved.periodic,
             push_always: saved.push_always,
+            side: saved.side,
             penetration: saved.penetration,
-            conversion: saved.conversion,
+            own: None,
+        };
+        if let Some(conversion) = saved.conversion {
+            request = request.with_conversion(conversion);
         }
+        request = request.with_context(saved.context).with_state(saved.state);
+        if let Some(direction) = saved.direction.map(Vec2::from_array)
+            && direction.is_finite()
+        {
+            request = request.with_direction(direction);
+        }
+        request
     }
 }
 
@@ -811,6 +1032,22 @@ pub(crate) fn requests_saved() -> SaveOptions<Requests> {
     })
 }
 
+#[cfg(test)]
+impl Requests {
+    /// The queued damage requests, in queue order.
+    pub(crate) fn damage(&self) -> &[DamageRequest] {
+        &self.damage
+    }
+}
+
+#[cfg(test)]
+impl DamageRequest {
+    /// Whether it boxed its extras.
+    pub(crate) fn has_extras(&self) -> bool {
+        self.extras().is_some()
+    }
+}
+
 /// [`DAMAGE_RESOLVE`]'s state between steps: the drained lists and a
 /// resolution's landed and immune parts, kept so a step allocates nothing
 /// once warm.
@@ -897,12 +1134,29 @@ pub(crate) struct Landed {
 type Working<'a> = (&'a Tags, f64);
 
 /// What the target's defences read of a request: its resistances, the
-/// penetration of the hit and of its source, and the type table.
+/// penetration of the hit and of its source, the type table, the target's
+/// stats for `damage_taken`, and the hit's context.
 struct Defences<'a> {
     resist: Option<&'a Resist>,
     own: Option<&'a Penetration>,
     lent: Option<&'a Penetration>,
     table: Option<&'a DamageTypeTable>,
+    /// The target's stats, when they hold `damage_taken`.
+    taken: Option<&'a Stats>,
+    hit: HitContext<'a>,
+}
+
+/// A hit's context as the target's lines read it: the request's context
+/// and state tags, its track and side, the target's tags and the
+/// attacker's.
+struct HitContext<'a> {
+    context: &'a Tags,
+    state: &'a Tags,
+    track: &'static str,
+    side: Option<&'static str>,
+    holder: Option<&'a Tags>,
+    attacker: Option<&'a Tags>,
+    periodic: bool,
 }
 
 /// What one part comes to after the target's defences.
@@ -917,25 +1171,63 @@ enum Landing {
 }
 
 impl Defences<'_> {
-    /// Steps 3 and 4 for one part: its points, then its factors.
+    /// Whether no line of the target's could read anything of the hit's
+    /// context: no `damage_taken`, and no floor or scoped resistance line.
+    fn plain(&self) -> bool {
+        self.taken.is_none() && self.resist.is_none_or(|resist| !resist.reads_context())
+    }
+
+    /// Steps 3 and 4 for one part: its points, then its factors and the
+    /// target's `damage_taken`, read in the hit's context.
     fn land(&self, tags: &Tags, amount: f64) -> Landing {
         let kinds = || {
             self.table
                 .map_or(DamageKinds::NONE, |table| table.mask(tags))
         };
-        let amount = match self.resist {
-            None => clamped(amount),
-            Some(resist) => {
-                let points = self.own.map_or(0.0, |own| own.sum(tags))
-                    + self.lent.map_or(0.0, |lent| lent.sum(tags));
-                let Some(product) = resist.product_with(tags, points.min(1.0)) else {
-                    return Landing::Immune(Landed {
-                        amount: clamped(amount),
-                        kinds: kinds(),
-                    });
-                };
-                clamped(amount * product)
+        let hit = &self.hit;
+        let points = if hit.periodic {
+            0.0
+        } else {
+            self.own.map_or(0.0, |own| own.sum(tags)) + self.lent.map_or(0.0, |lent| lent.sum(tags))
+        };
+        let amount = if self.plain() {
+            match self.resist {
+                None => clamped(amount),
+                Some(resist) => {
+                    let Some(product) = resist.product_with(tags, points.min(1.0)) else {
+                        return Landing::Immune(Landed {
+                            amount: clamped(amount),
+                            kinds: kinds(),
+                        });
+                    };
+                    clamped(amount * product)
+                }
             }
+        } else {
+            let side = hit.side.map_or(TagSet::Names(&[]), TagSet::Name);
+            let sets = [
+                TagSet::Tags(hit.context),
+                TagSet::Name(hit.track),
+                TagSet::Tags(hit.state),
+                side,
+                TagSet::Tags(tags),
+            ];
+            let read = Read::new(&sets).holder(hit.holder).against(hit.attacker);
+            let product = match self.resist {
+                None => Some(1.0),
+                Some(resist) => resist.product_in(tags, points.min(1.0), &read),
+            };
+            let Some(product) = product else {
+                return Landing::Immune(Landed {
+                    amount: clamped(amount),
+                    kinds: kinds(),
+                });
+            };
+            let taken = self
+                .taken
+                .and_then(|stats| stats.read(Stats::DAMAGE_TAKEN, &read))
+                .map_or(1.0, f64::from);
+            clamped(amount * product * taken)
         };
         if amount == 0.0 {
             return Landing::Dropped;
@@ -968,18 +1260,37 @@ fn land_parts<'a>(
 ) {
     landed.clear();
     immune.clear();
+    let target = request.target;
+    let side = request.side.or_else(|| {
+        let direction = request.direction()?;
+        let aim = world.get::<Aim>(target)?.direction()?;
+        Side::of(direction, aim)
+    });
     let defences = Defences {
-        resist: world.get::<Resist>(request.target),
+        resist: world.get::<Resist>(target),
         own: request.penetration.as_ref(),
         lent: request
             .source
             .and_then(|source| world.get::<Penetration>(source)),
         table: world.get_resource::<DamageTypeTable>(),
+        taken: world
+            .get::<Stats>(target)
+            .filter(|stats| stats.get(Stats::DAMAGE_TAKEN).is_some()),
+        hit: HitContext {
+            context: request.context(),
+            state: request.state(),
+            track: if request.periodic {
+                TRACK_DOT
+            } else {
+                TRACK_HIT
+            },
+            side: side.map(Side::tag),
+            holder: world.get::<Tags>(target),
+            attacker: request.source.and_then(|source| world.get::<Tags>(source)),
+            periodic: request.periodic,
+        },
     };
-    let own_rules = request
-        .conversion
-        .as_ref()
-        .map_or(&[][..], Conversion::rules);
+    let own_rules = request.conversion().map_or(&[][..], Conversion::rules);
     let lent_rules = request
         .source
         .and_then(|source| world.get::<Conversion>(source))

@@ -1,0 +1,15 @@
+{
+  "resist": [
+    {
+      "tag": "physical",
+      "modifier": {
+        "mul": 0.25
+      },
+      "with": {
+        "all": [
+          "side.front"
+        ]
+      }
+    }
+  ]
+}

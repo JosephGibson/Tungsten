@@ -1,0 +1,11 @@
+{
+  "duration": 5,
+  "resist": [
+    {
+      "tag": "damage.cold",
+      "modifier": {
+        "mul": 0.25
+      }
+    }
+  ]
+}

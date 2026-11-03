@@ -394,6 +394,54 @@ fn queued_damage_heal_and_effect_requests_resolve_once_after_a_load() {
 }
 
 #[test]
+fn a_queued_requests_context_and_direction_come_back_with_it() {
+    let level = |world: &mut World| -> Entity {
+        let mut stats = Stats::new().with(Stats::DAMAGE_TAKEN, 1.0);
+        let blasts = crate::TagFilter::new().all(["hit.blast"]);
+        let rear = crate::TagFilter::new().all(["side.rear"]);
+        stats.add_line(
+            "damage_taken",
+            "base",
+            crate::Line::new(Modifier::Mul(0.5)).with(blasts),
+        );
+        stats.add_line(
+            "damage_taken",
+            "base",
+            crate::Line::new(Modifier::Mul(3.0)).with(rear),
+        );
+        let aim: crate::Aim = serde_json::from_value(json!({ "direction": [1.0, 0.0] })).unwrap();
+        let knight = world.spawn_with((Health::new(100.0), stats, aim));
+        named(world, knight, None, "knight")
+    };
+    let (mut a, mut schedule_a) = rig();
+    let knight = level(&mut a);
+    step(&mut a, &mut schedule_a);
+    assert!(
+        DamageRequest::new(knight, 8.0)
+            .with_context(crate::Tags::new(["hit.blast"]))
+            .with_direction(Vec2::X)
+            .queue(&mut a)
+    );
+    let saved = capture_world(&a).unwrap();
+
+    let (mut b, mut schedule_b) = rig();
+    churn(&mut b, 25);
+    let knight_b = level(&mut b);
+    restore(&mut b, &saved);
+    for (world, schedule, knight) in [
+        (&mut a, &mut schedule_a, knight),
+        (&mut b, &mut schedule_b, knight_b),
+    ] {
+        step(world, schedule);
+        assert_eq!(
+            world.get::<Health>(knight).unwrap().current(),
+            88.0,
+            "a blast from behind: 8 × 0.5 × 3"
+        );
+    }
+}
+
+#[test]
 fn a_saved_parents_children_come_back_once() {
     let level = |world: &mut World| -> Entity {
         let children: SpawnChildren =

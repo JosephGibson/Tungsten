@@ -1,0 +1,26 @@
+{
+  "tag": "bulwark",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 40
+    },
+    "aim": {
+      "from": "target",
+      "target": {
+        "nearest": {
+          "all": [
+            "team.player"
+          ],
+          "range": 400
+        }
+      }
+    },
+    "effects": [
+      "braced"
+    ],
+    "resist": {}
+  }
+}

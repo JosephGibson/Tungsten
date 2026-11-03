@@ -225,7 +225,7 @@ component projectile: Ends at its hitbox's first hit, its first wall or its rang
   genres: top_down, platformer, shmup
   sample: {}
 component resist: Damage factors by damage tag: a hit part's matching factors multiply its amount, and a factor of 0 is immunity.
-  field factors: damage tag → factor in [0, 1000] — the value itself: each tag declared, matching a part's type or its dotted descendants; a save adds each factor's modifiers
+  field factors: damage tag → factor in [0, 1000], or { factor, floor } — the value itself: each tag declared, matching a part's type or its dotted descendants; a floor in [0, 1000] is the lowest a factor above 0 goes in a hit, before penetration; a save adds each factor's modifiers and scoped lines
   genres: top_down, shmup
   sample: { "damage.fire": 0.5 }
 component shield: Takes damage before health, and recharges after a delay without a hit.
@@ -470,9 +470,12 @@ shape position_wave: A position channel: amplitude · sin(2π(t / period + phase
   field amplitude: [x, y] — world pixels at the peak
   field period: f32 (> 0) — seconds of game time a swing takes
   sample: { "amplitude": [0, 3], "period": 1.2 }
-shape resist_modifier: A modifier on the target's resistance to one damage tag.
+shape resist_modifier: A modifier on the target's resistance to one damage tag, and on its floor.
   field tag: tag — the damage tag; the load checks it
-  field modifier: shape modifier — the change, over a base of 1 for a tag the target lists no factor for
+  field modifier: shape modifier = null — the change, over a base of 1 for a tag the target lists no factor for; a scoped one may not override; one of it and `floor` at least
+  field with: tag filter = null — the modifier reaches only a hit whose context passes it (the part's types, the hit's track, state tags and side); the load checks its tags
+  field against: tag filter = null — the modifier reaches only a hit whose attacker's tags pass it; the load checks its tags
+  field floor: shape modifier = null — a change to the tag's floor, over a base of 0 without one: the lowest a factor above 0 goes in a hit
   sample: { "tag": "arcane", "modifier": { "mul": 2 } }
 shape sound_action: A manifest sound played at its volume, never looping.
   field id: text — the manifest sound; the load checks the ID

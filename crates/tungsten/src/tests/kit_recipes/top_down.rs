@@ -9,7 +9,7 @@
 //! after a load, the golem's frost stream and a game's own damage numbers;
 //! M75's guard saved mid-swing; M76's arrow through hedges, saved
 //! mid-flight; 7.10a's veteran with its scoped lines, a focused effect and
-//! a difficulty world source.
+//! a difficulty world source, and a bulwark braced on its front.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -1965,5 +1965,38 @@ fn a_difficulty_source_reaches_the_living_a_spawn_and_leaves_when_removed() {
         assert_eq!(max(&harness, veteran), 8.0, "dt {dt}: it left");
         assert_eq!(max(&harness, late), 8.0);
         assert_eq!(damage_in(&harness, late, "elemental.fire"), Some(6.0));
+    }
+}
+
+#[test]
+fn a_bulwark_takes_front_hits_at_a_quarter_and_rear_hits_whole() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let bulwark = spawn(&mut harness, "bulwark", [3000.0, 3000.0]);
+        spawn(&mut harness, "post", [3200.0, 3000.0]);
+        harness.step(2);
+        let aim = harness.world().get::<Aim>(bulwark).unwrap().direction();
+        assert_eq!(
+            aim,
+            Some(Vec2::X),
+            "dt {dt}: it aims at the post on its right"
+        );
+        let slash = |direction: Vec2| {
+            DamageRequest::from_parts(bulwark, [typed_part(8.0, "physical.slash")])
+                .with_direction(direction)
+        };
+        let health = |harness: &Harness| harness.world().get::<Health>(bulwark).unwrap().current();
+        slash(Vec2::NEG_X).apply(harness.world_mut());
+        assert_eq!(health(&harness), 38.0, "dt {dt}: from the front, a quarter");
+        slash(Vec2::X).apply(harness.world_mut());
+        assert_eq!(health(&harness), 30.0, "dt {dt}: from behind, whole");
+        DamageRequest::from_parts(bulwark, [typed_part(8.0, "elemental.fire")])
+            .with_direction(Vec2::NEG_X)
+            .apply(harness.world_mut());
+        assert_eq!(
+            health(&harness),
+            22.0,
+            "dt {dt}: its brace is physical only"
+        );
     }
 }

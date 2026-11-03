@@ -3,7 +3,8 @@
 //! conveyor, bobbing lift, acrobat, firebar and firefly; M65's fireballs,
 //! bricks, climber, spiker and coin; M67's regen and haste on the runner;
 //! M76's bolt off armour, saved mid-flight; 7.10a's squire with its scoped
-//! lines, an inspired effect and a difficulty world source.
+//! lines, an inspired effect and a difficulty world source, and a knight
+//! that halves blasts and floors its cold factor.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -11,10 +12,10 @@ use tungsten_core::{AnimationState, PluginSet, Transform, World};
 
 use super::{DTS, body_at, drawn_at, frames_for, motion_reversed, point_of, recipe, spawn, tagged};
 use crate::kit::{
-    CharacterAnimator, Children, Counters, EffectRequest, Effects, Facing, Flags, Health,
-    KitPlugins, Line, LinearMotion, Modifier, PathFollowerPlugin, PlatformerController,
-    PlatformerControllerPlugin, ProjectileExpired, Read, Stats, TagFilter, TagSet, WorldSource,
-    WorldSources, ZoneEntered, damage, knock_back,
+    CharacterAnimator, Children, Counters, DamagePart, DamageRequest, EffectRequest, Effects,
+    Facing, Flags, Health, KitPlugins, Line, LinearMotion, Modifier, PathFollowerPlugin,
+    PlatformerController, PlatformerControllerPlugin, ProjectileExpired, Read, Stats, TagFilter,
+    TagSet, Tags, WorldSource, WorldSources, ZoneEntered, damage, knock_back,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use tungsten_core::DataRef;
@@ -953,5 +954,43 @@ fn a_difficulty_source_reaches_the_living_a_spawn_and_leaves_when_removed() {
         harness.step(1);
         assert_eq!(max(&harness, squire), 4.0, "dt {dt}: it left");
         assert_eq!(max(&harness, late), 4.0);
+    }
+}
+
+#[test]
+fn a_knight_halves_blasts_by_damage_taken_and_its_cold_factor_stops_at_its_floor() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let knight = spawn(&mut harness, "knight", [2000.0, -2000.0]);
+        harness.step(1);
+        let health =
+            |harness: &super::Harness| harness.world().get::<Health>(knight).unwrap().current();
+        let hit = |kind: Option<&str>| match kind {
+            Some(kind) => DamageRequest::from_parts(
+                knight,
+                [DamagePart::new(8.0).with_tags(Tags::new([kind]))],
+            ),
+            None => DamageRequest::new(knight, 8.0),
+        };
+        hit(None)
+            .with_context(Tags::new(["hit.blast"]))
+            .apply(harness.world_mut());
+        assert_eq!(health(&harness), 36.0, "dt {dt}: a blast, halved");
+        hit(None).apply(harness.world_mut());
+        assert_eq!(health(&harness), 28.0, "dt {dt}: a plain hit, whole");
+        hit(Some("damage.cold")).apply(harness.world_mut());
+        assert_eq!(health(&harness), 24.0, "dt {dt}: cold at its factor");
+        assert!(EffectRequest::new(knight, DataRef::by_id("frostbite")).queue(harness.world_mut()));
+        harness.step(1);
+        hit(Some("damage.cold")).apply(harness.world_mut());
+        assert_eq!(
+            health(&harness),
+            21.0,
+            "dt {dt}: a quarter of 0.5 stops at its 0.375 floor"
+        );
+        hit(Some("damage.cold"))
+            .with_context(Tags::new(["hit.blast"]))
+            .apply(harness.world_mut());
+        assert_eq!(health(&harness), 19.5, "dt {dt}: a cold blast, both");
     }
 }

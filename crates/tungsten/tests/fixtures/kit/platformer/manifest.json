@@ -77,6 +77,9 @@
     },
     "squire": {
       "path": "prefabs/squire.json"
+    },
+    "knight": {
+      "path": "prefabs/knight.json"
     }
   },
   "data": {
@@ -105,6 +108,9 @@
       },
       "inspired": {
         "path": "data/effects/inspired.json"
+      },
+      "frostbite": {
+        "path": "data/effects/frostbite.json"
       }
     },
     "curves": {

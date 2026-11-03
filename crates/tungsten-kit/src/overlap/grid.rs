@@ -7,11 +7,12 @@ use tungsten_core::physics::{Position, PrevPosition, Shape};
 use tungsten_core::{Entity, EventQueue, Transform, World};
 
 use crate::damage::health::Health;
-use crate::damage::pipeline::DamageRequest;
+use crate::damage::pipeline::{DamageRequest, Side};
 use crate::foundation::saved::order_of;
 use crate::foundation::source::Source;
 use crate::foundation::tags::Tags;
 use crate::foundation::trace::{TraceKind, trace};
+use crate::intent::aim::Aim;
 use crate::lifecycle::ended::Despawning;
 use crate::motion::knockback::knock_back;
 use crate::overlap::hit::{HitPayload, Hurtbox, Struck};
@@ -441,8 +442,9 @@ pub(crate) struct Blow<'a> {
 /// Lands `blow`: sends [`Struck`], traces `hit` on the hitter and, when
 /// its damage is above 0, queues a [`DamageRequest`] from the hitter's
 /// [`Source`] or the hitter itself, at the target's centre, pushing the
-/// target away from the hitter, else along the relative motion. The request
-/// is one part of the damage, or a typed item's parts split to it, its
+/// target away from the hitter, else along the relative motion, on the side
+/// that way of travel meets against the target's [`Aim`]. The request is
+/// one part of the damage, or a typed item's parts split to it, its
 /// untyped parts of the item's tags, with the item's penetration and
 /// conversion.
 pub(crate) fn strike(world: &mut World, blow: &Blow<'_>) {
@@ -482,10 +484,15 @@ pub(crate) fn strike_with(world: &mut World, blow: &Blow<'_>, push_always: bool)
         Some(typed) => typed.request(blow.target, blow.damage),
         None => DamageRequest::new(blow.target, blow.damage),
     };
+    let side = direction_of(blow).and_then(|direction| {
+        let aim = world.get::<Aim>(blow.target)?.direction()?;
+        Side::of(direction, aim)
+    });
     let mut request = request
         .with_source(source)
         .with_tags(blow.tags.clone())
-        .with_position(blow.target_at);
+        .with_position(blow.target_at)
+        .with_side(side);
     if let Some(push) = push_of(blow) {
         request = request.with_knockback(push);
     }
@@ -495,19 +502,25 @@ pub(crate) fn strike_with(world: &mut World, blow: &Blow<'_>, push_always: bool)
     request.queue(world);
 }
 
-/// `blow`'s push: away from the hitter, else along the relative motion, at
-/// its knockback's speed; none without a knockback or a direction.
+/// `blow`'s push: along its way of travel, at its knockback's speed; none
+/// without a knockback or a direction.
 fn push_of(blow: &Blow<'_>) -> Option<Vec2> {
     if blow.knockback <= 0.0 {
         return None;
     }
+    direction_of(blow).map(|direction| direction * blow.knockback)
+}
+
+/// The way `blow` travels: away from the hitter, else along the relative
+/// motion; none when both are zero.
+fn direction_of(blow: &Blow<'_>) -> Option<Vec2> {
     let away = (blow.target_at - blow.hitter_at).normalize_or_zero();
     let direction = if away == Vec2::ZERO {
         blow.relative.normalize_or_zero()
     } else {
         away
     };
-    (direction != Vec2::ZERO).then(|| direction * blow.knockback)
+    (direction != Vec2::ZERO).then_some(direction)
 }
 
 #[cfg(test)]

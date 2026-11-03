@@ -12,6 +12,7 @@ use tungsten_core::{Inspectable, Time, World};
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, round_trip,
 };
+use crate::foundation::lines::{Line, Reach, Read};
 use crate::foundation::stats::{Modifier, modified};
 use crate::foundation::tags::{Tags, valid_tag};
 
@@ -42,11 +43,23 @@ const MAX_FACTOR: f32 = 1000.0;
 /// A curse that doubles fire damage is `Modifier::Mul(2.0)` on `fire`, from
 /// `curse`, which [`remove_modifiers`](Self::remove_modifiers) takes back.
 ///
+/// A factor may have a floor ([`with_floor`](Self::with_floor)), the
+/// lowest it goes once above 0, which modifiers change too
+/// ([`add_floor_modifier`](Self::add_floor_modifier)); a hit's factor rises
+/// to its floor before the part's penetration, so penetration works past a
+/// capped resistance. A [`Line`] scoped by tag filters
+/// ([`add_line`](Self::add_line)) changes a factor only in a hit whose
+/// context passes it: the part's types, the hit's track, state tags and
+/// side, the target's own tags for `while` and the attacker's for
+/// `against`.
+///
 /// Scene name `resist`: `{ "damage.fire": 0.5, "damage.poison": 0 }`, each
-/// key a declared tag, each base finite in `[0, 1000]`. It is data: a save
-/// writes a factor without modifiers as its base, as the scene does, and
-/// one with modifiers as `{ "base": 0.5, "modifiers": [["curse", { "mul": 2 }]] }`,
-/// `base` left out for a tag listed by a modifier only.
+/// key a declared tag, each base finite in `[0, 1000]`, or a factor with
+/// its floor, `{ "damage.cold": { "factor": 0.5, "floor": 0.25 } }`. It is
+/// data: a save writes a factor without modifiers as its base, as the scene
+/// does, and one with modifiers as `{ "base": 0.5, "modifiers": [["curse", { "mul": 2 }]] }`,
+/// `base` left out for a tag listed by a modifier only, with `floor`,
+/// `floor_modifiers` and `lines` beside them when it has any.
 ///
 /// # Examples
 ///
@@ -71,6 +84,90 @@ const MAX_FACTOR: f32 = 1000.0;
 pub struct Resist {
     /// Sorted by tag.
     entries: Vec<Entry>,
+    /// The floors and scoped lines, when it has any.
+    more: Option<Box<More>>,
+}
+
+/// What only some resistances carry, boxed so the rest stay small: floors
+/// and scoped lines.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct More {
+    /// Sorted by tag.
+    floors: Vec<Floor>,
+    /// Sorted by tag, in add order within one.
+    lines: Vec<ScopedLine>,
+}
+
+impl More {
+    fn is_empty(&self) -> bool {
+        self.floors.is_empty() && self.lines.is_empty()
+    }
+
+    /// `tag`'s floor value; 0 without one.
+    fn floor(&self, tag: &str) -> f32 {
+        self.floors
+            .binary_search_by(|floor| floor.tag.as_str().cmp(tag))
+            .map_or(0.0, |at| self.floors[at].value)
+    }
+
+    /// The scoped lines on `tag` that `read` takes, in add order.
+    fn taken<'s>(
+        &'s self,
+        tag: &'s str,
+        read: &'s Read<'_>,
+    ) -> impl Iterator<Item = &'s ScopedLine> + Clone {
+        self.lines_on(tag)
+            .filter(move |scoped| read.reach(&scoped.line) == Reach::Applies)
+    }
+
+    /// The scoped lines on `tag`, in add order.
+    fn lines_on<'s>(&'s self, tag: &'s str) -> impl Iterator<Item = &'s ScopedLine> + Clone {
+        let start = self.lines.partition_point(|line| line.tag.as_str() < tag);
+        self.lines[start..]
+            .iter()
+            .take_while(move |line| line.tag == tag)
+    }
+}
+
+/// One tag's floor: its base, its modifiers by source and the value they
+/// make, in `[0, 1000]`.
+#[derive(Debug, Clone, PartialEq)]
+struct Floor {
+    tag: String,
+    /// `None` for a floor listed by a modifier only, whose base is 0.
+    base: Option<f32>,
+    modifiers: Vec<(String, Modifier)>,
+    value: f32,
+}
+
+impl Floor {
+    fn new(tag: &str, base: Option<f32>, modifiers: Vec<(String, Modifier)>) -> Self {
+        let mut floor = Self {
+            tag: tag.to_owned(),
+            base,
+            modifiers,
+            value: 0.0,
+        };
+        floor.recompute();
+        floor
+    }
+
+    fn recompute(&mut self) {
+        self.value = modified(
+            self.base.unwrap_or(0.0),
+            self.modifiers.iter().map(|&(_, modifier)| modifier),
+            0.0,
+            MAX_FACTOR,
+        );
+    }
+}
+
+/// A scoped line on one tag's factor, from a source.
+#[derive(Debug, Clone, PartialEq)]
+struct ScopedLine {
+    tag: String,
+    source: String,
+    line: Line,
 }
 
 /// One resisted tag: its base, its modifiers by source in add order, and
@@ -121,7 +218,10 @@ impl TryFrom<BTreeMap<String, f32>> for Resist {
             check_factor(&tag, factor)?;
             entries.push(Entry::new(&tag, Some(factor), Vec::new()));
         }
-        Ok(Self { entries })
+        Ok(Self {
+            entries,
+            more: None,
+        })
     }
 }
 
@@ -219,9 +319,92 @@ impl Resist {
         }
     }
 
-    /// Removes every modifier `source` gave, on every tag, and recomputes
-    /// those factors, dropping a tag left with no base and no modifier; how
-    /// many it removed.
+    /// The resistances with a floor of `floor` for `tag`'s factor, added or
+    /// replaced, its modifiers kept: the lowest the factor goes in a hit
+    /// once above 0.
+    ///
+    /// # Panics
+    ///
+    /// When `tag` is not a tag name, or `floor` is not finite and in
+    /// `[0, 1000]`.
+    #[must_use]
+    #[track_caller]
+    pub fn with_floor(mut self, tag: &str, floor: f32) -> Self {
+        if let Err(error) = check_factor(tag, floor) {
+            panic!("Resist::with_floor: {error}");
+        }
+        let floors = &mut self.more.get_or_insert_with(Box::default).floors;
+        match floors.binary_search_by(|entry| entry.tag.as_str().cmp(tag)) {
+            Ok(at) => {
+                floors[at].base = Some(floor);
+                floors[at].recompute();
+            }
+            Err(at) => floors.insert(at, Floor::new(tag, Some(floor), Vec::new())),
+        }
+        self
+    }
+
+    /// Adds `modifier` to `tag`'s floor from `source`, after its earlier
+    /// ones; a tag without a floor takes one of base 0.
+    ///
+    /// # Panics
+    ///
+    /// When `tag` is not a tag name or the modifier's value is not finite.
+    #[track_caller]
+    pub fn add_floor_modifier(&mut self, tag: &str, source: &str, modifier: Modifier) {
+        if let Err(error) = check_tag(tag) {
+            panic!("Resist::add_floor_modifier: {error}");
+        }
+        assert!(
+            modifier.is_finite(),
+            "Resist::add_floor_modifier: {tag}: the modifier must be finite (got {modifier:?})"
+        );
+        let floors = &mut self.more.get_or_insert_with(Box::default).floors;
+        match floors.binary_search_by(|entry| entry.tag.as_str().cmp(tag)) {
+            Ok(at) => {
+                floors[at].modifiers.push((source.to_owned(), modifier));
+                floors[at].recompute();
+            }
+            Err(at) => floors.insert(
+                at,
+                Floor::new(tag, None, vec![(source.to_owned(), modifier)]),
+            ),
+        }
+    }
+
+    /// Adds `line` to `tag`'s factor from `source`: an unscoped line as
+    /// [`add_modifier`](Self::add_modifier) does, a scoped one read only in
+    /// a hit whose context passes it, over the factor's base, or 1 for a
+    /// tag the resistances list no factor for.
+    ///
+    /// # Panics
+    ///
+    /// When `tag` is not a tag name.
+    #[track_caller]
+    pub fn add_line(&mut self, tag: &str, source: &str, line: Line) {
+        if let Err(error) = check_tag(tag) {
+            panic!("Resist::add_line: {error}");
+        }
+        if !line.is_scoped() {
+            self.add_modifier(tag, source, line.modifier());
+            return;
+        }
+        let lines = &mut self.more.get_or_insert_with(Box::default).lines;
+        let at = lines.partition_point(|kept| kept.tag.as_str() <= tag);
+        lines.insert(
+            at,
+            ScopedLine {
+                tag: tag.to_owned(),
+                source: source.to_owned(),
+                line,
+            },
+        );
+    }
+
+    /// Removes every modifier, floor modifier and scoped line `source`
+    /// gave, on every tag, and recomputes those factors and floors,
+    /// dropping a tag left with no base and no modifier; how many it
+    /// removed.
     pub fn remove_modifiers(&mut self, source: &str) -> usize {
         let mut removed = 0;
         for entry in &mut self.entries {
@@ -234,7 +417,46 @@ impl Resist {
         }
         self.entries
             .retain(|entry| entry.base.is_some() || !entry.modifiers.is_empty());
+        if let Some(more) = &mut self.more {
+            for floor in &mut more.floors {
+                let before = floor.modifiers.len();
+                floor.modifiers.retain(|(from, _)| from != source);
+                if floor.modifiers.len() != before {
+                    removed += before - floor.modifiers.len();
+                    floor.recompute();
+                }
+            }
+            more.floors
+                .retain(|floor| floor.base.is_some() || !floor.modifiers.is_empty());
+            let before = more.lines.len();
+            more.lines.retain(|line| line.source != source);
+            removed += before - more.lines.len();
+            if more.is_empty() {
+                self.more = None;
+            }
+        }
         removed
+    }
+
+    /// `tag`'s floor, when it lists one: the lowest its factor goes in a
+    /// hit once above 0.
+    #[must_use]
+    pub fn floor(&self, tag: &str) -> Option<f32> {
+        let more = self.more.as_ref()?;
+        more.floors
+            .binary_search_by(|floor| floor.tag.as_str().cmp(tag))
+            .ok()
+            .map(|at| more.floors[at].value)
+    }
+
+    /// The product of the factors whose tag `tags` carries in `read`'s
+    /// context, as a hit with no penetration meets them: each with the
+    /// scoped lines the read takes, raised to its floor, 0 when one of them
+    /// is 0, clamped to `f32::MAX`.
+    #[must_use]
+    pub fn factor_in(&self, tags: &Tags, read: &Read<'_>) -> f32 {
+        self.product_in(tags, 0.0, read)
+            .map_or(0.0, |product| product.min(f64::from(f32::MAX)) as f32)
     }
 
     /// `tag`'s base factor, when it lists one.
@@ -244,12 +466,81 @@ impl Resist {
     }
 
     /// The product of the factors whose tag `tags` carries, each after its
-    /// modifiers, 1 when none does and 0 when one of them is 0, clamped to
-    /// `f32::MAX`.
+    /// modifiers and raised to its floor, 1 when none does and 0 when one
+    /// of them is 0, clamped to `f32::MAX`: the factor in no context.
     #[must_use]
     pub fn factor(&self, tags: &Tags) -> f32 {
-        self.product_with(tags, 0.0)
-            .map_or(0.0, |product| product.min(f64::from(f32::MAX)) as f32)
+        self.factor_in(tags, &Read::default())
+    }
+
+    /// Whether a hit's context could change a factor: it has a floor or a
+    /// scoped line.
+    pub(crate) fn reads_context(&self) -> bool {
+        self.more.is_some()
+    }
+
+    /// [`product_with`](Self::product_with) in `read`'s context: each
+    /// matching factor with the scoped lines the read takes, 0 is immunity,
+    /// the rest raised to their floors before `points`.
+    pub(crate) fn product_in(&self, tags: &Tags, points: f32, read: &Read<'_>) -> Option<f64> {
+        let Some(more) = &self.more else {
+            return self.product_with(tags, points);
+        };
+        let raise = |tag: &str, factor: f32| -> f64 {
+            let factor = f64::from(factor.max(more.floor(tag)));
+            if points > 0.0 && factor < 1.0 {
+                (factor + f64::from(points)).min(1.0)
+            } else {
+                factor
+            }
+        };
+        let mut product = 1.0_f64;
+        for entry in self.entries.iter().filter(|entry| tags.has(&entry.tag)) {
+            let lines = more.taken(&entry.tag, read);
+            let factor = match entry.base {
+                _ if lines.clone().next().is_none() => entry.factor,
+                Some(0.0) => 0.0,
+                base => modified(
+                    base.unwrap_or(1.0),
+                    entry
+                        .modifiers
+                        .iter()
+                        .map(|&(_, modifier)| modifier)
+                        .chain(lines.map(|scoped| scoped.line.modifier())),
+                    0.0,
+                    MAX_FACTOR,
+                ),
+            };
+            if factor == 0.0 {
+                return None;
+            }
+            product *= raise(&entry.tag, factor);
+        }
+        // A scoped line on a tag without a factor stands over a base of 1,
+        // once a tag.
+        for (at, scoped) in more.lines.iter().enumerate() {
+            if !tags.has(&scoped.tag)
+                || (at > 0 && more.lines[at - 1].tag == scoped.tag)
+                || self.search(&scoped.tag).is_ok()
+            {
+                continue;
+            }
+            let lines = more.taken(&scoped.tag, read);
+            if lines.clone().next().is_none() {
+                continue;
+            }
+            let factor = modified(
+                1.0,
+                lines.map(|scoped| scoped.line.modifier()),
+                0.0,
+                MAX_FACTOR,
+            );
+            if factor == 0.0 {
+                return None;
+            }
+            product *= raise(&scoped.tag, factor);
+        }
+        Some(product)
     }
 
     /// The product of the matching factors in `f64`, each in `(0, 1)`
@@ -287,10 +578,19 @@ impl Resist {
 struct ResistSave(BTreeMap<String, SavedFactor>);
 
 /// One saved factor: `0.5`, or `{ "base": 0.5, "modifiers": [..] }` with
-/// `base` optional, never `{}`.
+/// `base` optional, never `{}`; a floor and scoped lines beside them.
 struct SavedFactor {
     base: Option<f32>,
     modifiers: Vec<(String, Modifier)>,
+    more: Option<Box<SavedMore>>,
+}
+
+/// A saved factor's floor and scoped lines.
+#[derive(Default)]
+struct SavedMore {
+    floor: Option<f32>,
+    floor_modifiers: Vec<(String, Modifier)>,
+    lines: Vec<(String, Line)>,
 }
 
 impl Serialize for SavedFactor {
@@ -299,13 +599,36 @@ impl Serialize for SavedFactor {
         struct WithModifiers<'a> {
             #[serde(skip_serializing_if = "Option::is_none")]
             base: Option<f32>,
+            #[serde(skip_serializing_if = "<[_]>::is_empty")]
             modifiers: &'a [(String, Modifier)],
+            #[serde(skip_serializing_if = "Option::is_none")]
+            floor: Option<f32>,
+            #[serde(skip_serializing_if = "<[_]>::is_empty")]
+            floor_modifiers: &'a [(String, Modifier)],
+            #[serde(skip_serializing_if = "<[_]>::is_empty")]
+            lines: &'a [(String, Line)],
         }
-        match (self.base, self.modifiers.is_empty()) {
-            (Some(base), true) => serializer.serialize_f32(base),
-            _ => WithModifiers {
-                base: self.base,
+        match (self.base, self.modifiers.is_empty(), &self.more) {
+            (Some(base), true, None) => serializer.serialize_f32(base),
+            (base, _, None) => {
+                #[derive(Serialize)]
+                struct Plain<'a> {
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    base: Option<f32>,
+                    modifiers: &'a [(String, Modifier)],
+                }
+                Plain {
+                    base,
+                    modifiers: &self.modifiers,
+                }
+                .serialize(serializer)
+            }
+            (base, _, Some(more)) => WithModifiers {
+                base,
                 modifiers: &self.modifiers,
+                floor: more.floor,
+                floor_modifiers: &more.floor_modifiers,
+                lines: &more.lines,
             }
             .serialize(serializer),
         }
@@ -326,6 +649,7 @@ impl SavedFactorVisitor {
         SavedFactor {
             base: Some(value as f32),
             modifiers: Vec::new(),
+            more: None,
         }
     }
 }
@@ -350,32 +674,51 @@ impl<'de> Visitor<'de> for SavedFactorVisitor {
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<SavedFactor, A::Error> {
+        const FIELDS: &[&str] = &["base", "modifiers", "floor", "floor_modifiers", "lines"];
         let mut base = None;
         let mut modifiers = None;
+        let mut floor = None;
+        let mut floor_modifiers = None;
+        let mut lines = None;
         while let Some(key) = map.next_key::<String>()? {
-            match key.as_str() {
-                "base" => {
-                    if base.is_some() {
-                        return Err(de::Error::duplicate_field("base"));
-                    }
-                    base = Some(map.next_value::<f32>()?);
-                }
-                "modifiers" => {
-                    if modifiers.is_some() {
-                        return Err(de::Error::duplicate_field("modifiers"));
-                    }
-                    modifiers = Some(map.next_value::<Vec<(String, Modifier)>>()?);
-                }
-                other => return Err(de::Error::unknown_field(other, &["base", "modifiers"])),
+            let duplicate = match key.as_str() {
+                "base" => base.replace(map.next_value::<f32>()?).is_some(),
+                "modifiers" => modifiers
+                    .replace(map.next_value::<Vec<(String, Modifier)>>()?)
+                    .is_some(),
+                "floor" => floor.replace(map.next_value::<f32>()?).is_some(),
+                "floor_modifiers" => floor_modifiers
+                    .replace(map.next_value::<Vec<(String, Modifier)>>()?)
+                    .is_some(),
+                "lines" => lines
+                    .replace(map.next_value::<Vec<(String, Line)>>()?)
+                    .is_some(),
+                other => return Err(de::Error::unknown_field(other, FIELDS)),
+            };
+            if duplicate {
+                let field = FIELDS.iter().find(|field| **field == key).copied();
+                return Err(de::Error::duplicate_field(field.unwrap_or("base")));
             }
         }
         let modifiers = modifiers.unwrap_or_default();
-        if base.is_none() && modifiers.is_empty() {
+        let more = SavedMore {
+            floor,
+            floor_modifiers: floor_modifiers.unwrap_or_default(),
+            lines: lines.unwrap_or_default(),
+        };
+        let more =
+            (more.floor.is_some() || !more.floor_modifiers.is_empty() || !more.lines.is_empty())
+                .then(|| Box::new(more));
+        if base.is_none() && modifiers.is_empty() && more.is_none() {
             return Err(de::Error::custom(
-                "a factor names its `base`, its `modifiers` or both",
+                "a factor names its `base`, its `modifiers`, a floor or lines",
             ));
         }
-        Ok(SavedFactor { base, modifiers })
+        Ok(SavedFactor {
+            base,
+            modifiers,
+            more,
+        })
     }
 }
 
@@ -383,34 +726,87 @@ impl TryFrom<ResistSave> for Resist {
     type Error = String;
 
     fn try_from(save: ResistSave) -> Result<Self, Self::Error> {
-        let mut entries = Vec::with_capacity(save.0.len());
+        let mut resist = Self {
+            entries: Vec::with_capacity(save.0.len()),
+            more: None,
+        };
         for (tag, factor) in save.0 {
             match factor.base {
                 Some(base) => check_factor(&tag, base)?,
                 None => check_tag(&tag)?,
             }
             check_modifiers(&tag, &factor.modifiers)?;
-            entries.push(Entry::new(&tag, factor.base, factor.modifiers));
+            if factor.base.is_some() || !factor.modifiers.is_empty() {
+                resist
+                    .entries
+                    .push(Entry::new(&tag, factor.base, factor.modifiers));
+            }
+            let Some(more) = factor.more else {
+                continue;
+            };
+            if let Some(floor) = more.floor {
+                check_factor(&tag, floor)?;
+            }
+            check_modifiers(&tag, &more.floor_modifiers)?;
+            if more.floor.is_some() || !more.floor_modifiers.is_empty() {
+                resist
+                    .more
+                    .get_or_insert_with(Box::default)
+                    .floors
+                    .push(Floor::new(&tag, more.floor, more.floor_modifiers));
+            }
+            for (source, line) in more.lines {
+                if line.is_scoped() {
+                    resist.add_line(&tag, &source, line);
+                } else {
+                    return Err(format!("{tag}: a saved line is scoped"));
+                }
+            }
         }
-        Ok(Self { entries })
+        Ok(resist)
     }
+}
+
+/// The floor and lines `saved` holds for `tag`, made when missing.
+fn saved_more(saved: &mut BTreeMap<String, SavedFactor>, tag: String) -> &mut SavedMore {
+    saved
+        .entry(tag)
+        .or_insert_with(|| SavedFactor {
+            base: None,
+            modifiers: Vec::new(),
+            more: None,
+        })
+        .more
+        .get_or_insert_with(Box::default)
 }
 
 impl From<Resist> for ResistSave {
     fn from(resist: Resist) -> Self {
-        Self(
-            resist
-                .entries
-                .into_iter()
-                .map(|entry| {
-                    let factor = SavedFactor {
-                        base: entry.base,
-                        modifiers: entry.modifiers,
-                    };
-                    (entry.tag, factor)
-                })
-                .collect(),
-        )
+        let mut saved: BTreeMap<String, SavedFactor> = resist
+            .entries
+            .into_iter()
+            .map(|entry| {
+                let factor = SavedFactor {
+                    base: entry.base,
+                    modifiers: entry.modifiers,
+                    more: None,
+                };
+                (entry.tag, factor)
+            })
+            .collect();
+        if let Some(more) = resist.more {
+            for floor in more.floors {
+                let fields = saved_more(&mut saved, floor.tag);
+                fields.floor = floor.base;
+                fields.floor_modifiers = floor.modifiers;
+            }
+            for scoped in more.lines {
+                saved_more(&mut saved, scoped.tag)
+                    .lines
+                    .push((scoped.source, scoped.line));
+            }
+        }
+        Self(saved)
     }
 }
 
@@ -629,31 +1025,110 @@ pub(crate) fn shield_tick(world: &mut World) {
 }
 
 /// `components.resist` as a scene writes it: factors by tag, in name
-/// order, each checked.
+/// order, each a factor or a factor with its floor, checked.
 #[derive(Serialize, Deserialize)]
-#[serde(try_from = "BTreeMap<String, f32>")]
-pub(crate) struct ResistDef(pub(crate) BTreeMap<String, f32>);
+#[serde(try_from = "BTreeMap<String, FactorDef>")]
+pub(crate) struct ResistDef(pub(crate) BTreeMap<String, FactorDef>);
 
-impl TryFrom<BTreeMap<String, f32>> for ResistDef {
+impl TryFrom<BTreeMap<String, FactorDef>> for ResistDef {
     type Error = String;
 
-    fn try_from(factors: BTreeMap<String, f32>) -> Result<Self, Self::Error> {
-        for (tag, &factor) in &factors {
-            check_factor(tag, factor)?;
+    fn try_from(factors: BTreeMap<String, FactorDef>) -> Result<Self, Self::Error> {
+        for (tag, factor) in &factors {
+            check_factor(tag, factor.factor)?;
+            if let Some(floor) = factor.floor {
+                check_factor(tag, floor).map_err(|e| format!("floor: {e}"))?;
+            }
         }
         Ok(Self(factors))
     }
 }
 
+/// One factor as a scene writes it: `0.5`, or `{ "factor": 0.5, "floor":
+/// 0.25 }`.
+pub(crate) struct FactorDef {
+    factor: f32,
+    floor: Option<f32>,
+}
+
+impl Serialize for FactorDef {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct WithFloor {
+            factor: f32,
+            floor: f32,
+        }
+        match self.floor {
+            None => serializer.serialize_f32(self.factor),
+            Some(floor) => WithFloor {
+                factor: self.factor,
+                floor,
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for FactorDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(FactorVisitor)
+    }
+}
+
+/// The object form of a [`FactorDef`].
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FactorFields {
+    factor: f32,
+    floor: f32,
+}
+
+/// Reads either form of a scene's factor.
+struct FactorVisitor;
+
+impl<'de> Visitor<'de> for FactorVisitor {
+    type Value = FactorDef;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a factor, or an object of `factor` and `floor`")
+    }
+
+    fn visit_f64<E: de::Error>(self, value: f64) -> Result<FactorDef, E> {
+        Ok(FactorDef {
+            factor: value as f32,
+            floor: None,
+        })
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<FactorDef, E> {
+        self.visit_f64(value as f64)
+    }
+
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<FactorDef, E> {
+        self.visit_f64(value as f64)
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<FactorDef, A::Error> {
+        let fields = FactorFields::deserialize(de::value::MapAccessDeserializer::new(map))?;
+        Ok(FactorDef {
+            factor: fields.factor,
+            floor: Some(fields.floor),
+        })
+    }
+}
+
 impl From<ResistDef> for Resist {
     fn from(def: ResistDef) -> Self {
-        Self {
-            entries: def
-                .0
-                .into_iter()
-                .map(|(tag, factor)| Entry::new(&tag, Some(factor), Vec::new()))
-                .collect(),
+        let mut resist = Self::default();
+        for (tag, factor) in def.0 {
+            resist
+                .entries
+                .push(Entry::new(&tag, Some(factor.factor), Vec::new()));
+            if let Some(floor) = factor.floor {
+                resist = resist.with_floor(&tag, floor);
+            }
         }
+        resist
     }
 }
 
@@ -677,8 +1152,8 @@ pub(crate) fn resist_description() -> ComponentDescription {
     )
     .field(FieldDescription::new(
         "factors",
-        FieldType::Object("damage tag → factor in [0, 1000]"),
-        "the value itself: each tag declared, matching a part's type or its dotted descendants; a save adds each factor's modifiers",
+        FieldType::Object("damage tag → factor in [0, 1000], or { factor, floor }"),
+        "the value itself: each tag declared, matching a part's type or its dotted descendants; a floor in [0, 1000] is the lowest a factor above 0 goes in a hit, before penetration; a save adds each factor's modifiers and scoped lines",
     ))
     .genre(TOP_DOWN)
     .genre(SHMUP)
@@ -753,7 +1228,26 @@ impl Inspectable for Resist {
                 )
             })
             .collect();
-        vec![("resist", factors.join(", "))]
+        let mut rows = vec![("resist", factors.join(", "))];
+        if let Some(more) = &self.more {
+            if !more.floors.is_empty() {
+                let floors: Vec<String> = more
+                    .floors
+                    .iter()
+                    .map(|floor| format!("{} ≥ {}", floor.tag, floor.value))
+                    .collect();
+                rows.push(("floors", floors.join(", ")));
+            }
+            if !more.lines.is_empty() {
+                let lines: Vec<String> = more
+                    .lines
+                    .iter()
+                    .map(|scoped| format!("{} from {}", scoped.tag, scoped.source))
+                    .collect();
+                rows.push(("scoped", lines.join(", ")));
+            }
+        }
+        rows
     }
 }
 

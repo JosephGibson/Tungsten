@@ -412,3 +412,46 @@ fn strike_types_the_untyped_parts_with_the_items_tags() {
         .unwrap();
     assert_eq!((hit.amount, hit.source), (5.0, Some(hitter)));
 }
+
+#[test]
+fn a_kit_hit_takes_its_side_at_the_strike_from_its_way_and_the_targets_aim() {
+    use tungsten_core::{Plugin, Schedule};
+
+    use crate::damage::pipeline::Requests;
+
+    let mut world = World::new();
+    let mut schedule = Schedule::new();
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    let aim: crate::Aim =
+        serde_json::from_value(serde_json::json!({ "direction": [1.0, 0.0] })).unwrap();
+    let target = world.spawn_with((Health::new(100.0), aim));
+    let unaimed = world.spawn_with((Health::new(100.0),));
+    let hitter = world.spawn();
+    let none = Tags::default();
+    let blow = |target: Entity, hitter_at: Vec2, relative: Vec2| Blow {
+        hitter,
+        target,
+        hitter_at,
+        target_at: Vec2::ZERO,
+        relative,
+        damage: 1.0,
+        tags: &none,
+        typed: None,
+        knockback: 0.0,
+    };
+    // It aims right: a blow from its right travels left, into its face.
+    strike(&mut world, &blow(target, Vec2::new(10.0, 0.0), Vec2::ZERO));
+    strike(&mut world, &blow(target, Vec2::new(-10.0, 0.0), Vec2::ZERO));
+    // Met at its centre, the relative motion is the way.
+    strike(&mut world, &blow(target, Vec2::ZERO, Vec2::new(-5.0, 0.0)));
+    strike(&mut world, &blow(target, Vec2::ZERO, Vec2::ZERO));
+    strike(&mut world, &blow(unaimed, Vec2::new(10.0, 0.0), Vec2::ZERO));
+    let queued = world.resource::<Requests>().damage();
+    let sides: Vec<Option<crate::Side>> = queued.iter().map(DamageRequest::side).collect();
+    use crate::Side::{Front, Rear};
+    assert_eq!(sides, [Some(Front), Some(Rear), Some(Front), None, None]);
+    assert!(
+        queued.iter().all(|request| !request.has_extras()),
+        "a kit hit boxes nothing for its side"
+    );
+}

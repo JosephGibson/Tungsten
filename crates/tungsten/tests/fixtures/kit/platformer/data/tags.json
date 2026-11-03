@@ -3,5 +3,7 @@
   "team.enemy",
   "damage.fire",
   "casting",
-  "skill.spell"
+  "skill.spell",
+  "hit.blast",
+  "damage.cold"
 ]

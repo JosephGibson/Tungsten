@@ -1159,7 +1159,9 @@ pub struct tungsten_kit::prelude::DamageRequest
 impl tungsten_kit::DamageRequest
 pub fn tungsten_kit::DamageRequest::amount(&self) -> f32
 pub fn tungsten_kit::DamageRequest::apply(self, &mut tungsten_core::ecs::world::World) -> tungsten_kit::Hit
+pub fn tungsten_kit::DamageRequest::context(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::DamageRequest::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
+pub fn tungsten_kit::DamageRequest::direction(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::from_parts(tungsten_core::ecs::entity::Entity, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
 pub fn tungsten_kit::DamageRequest::is_crit(&self) -> bool
 pub fn tungsten_kit::DamageRequest::is_periodic(&self) -> bool
@@ -1169,16 +1171,21 @@ pub fn tungsten_kit::DamageRequest::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::DamageRequest::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::DamageRequest::position(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::queue(self, &mut tungsten_core::ecs::world::World) -> bool
+pub fn tungsten_kit::DamageRequest::side(&self) -> core::option::Option<tungsten_kit::Side>
 pub fn tungsten_kit::DamageRequest::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::DamageRequest::state(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::DamageRequest::tags(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::DamageRequest::target(&self) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::DamageRequest::with_context(self, tungsten_kit::Tags) -> Self
 pub fn tungsten_kit::DamageRequest::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::DamageRequest::with_crit(self, bool) -> Self
+pub fn tungsten_kit::DamageRequest::with_direction(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DamageRequest::with_knockback(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DamageRequest::with_penetration(self, tungsten_kit::Penetration) -> Self
 pub fn tungsten_kit::DamageRequest::with_periodic(self, bool) -> Self
 pub fn tungsten_kit::DamageRequest::with_position(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DamageRequest::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
+pub fn tungsten_kit::DamageRequest::with_state(self, tungsten_kit::Tags) -> Self
 pub fn tungsten_kit::DamageRequest::with_tags(self, tungsten_kit::Tags) -> Self
 impl core::clone::Clone for tungsten_kit::DamageRequest
 pub fn tungsten_kit::DamageRequest::clone(&self) -> tungsten_kit::DamageRequest
@@ -1352,6 +1359,8 @@ pub fn tungsten_kit::Effect::on_expire(&self) -> core::option::Option<&tungsten_
 pub fn tungsten_kit::Effect::period(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Effect::refresh(&self) -> tungsten_kit::Refresh
 pub fn tungsten_kit::Effect::resist(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
+pub fn tungsten_kit::Effect::resist_floors(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
+pub fn tungsten_kit::Effect::resist_lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
 pub fn tungsten_kit::Effect::restore(&self) -> core::option::Option<(&str, f32, &str)>
 pub fn tungsten_kit::Effect::scale(&self) -> core::option::Option<(&tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled)>
 pub fn tungsten_kit::Effect::stack_limit(&self) -> u32
@@ -1366,6 +1375,8 @@ pub fn tungsten_kit::Effect::with_modifier(self, &str, tungsten_kit::Modifier) -
 pub fn tungsten_kit::Effect::with_on_expire(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::Effect::with_period(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_resist(self, &str, tungsten_kit::Modifier) -> Self
+pub fn tungsten_kit::Effect::with_resist_floor(self, &str, tungsten_kit::Modifier) -> Self
+pub fn tungsten_kit::Effect::with_resist_line(self, &str, tungsten_kit::Line) -> Self
 pub fn tungsten_kit::Effect::with_restore(self, &str, f32, &str) -> Self
 pub fn tungsten_kit::Effect::with_scale(self, tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled) -> Self
 pub fn tungsten_kit::Effect::with_stack(self, u32, tungsten_kit::Refresh, tungsten_kit::Expire) -> Self
@@ -2797,12 +2808,17 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectilePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectilePlugin
 pub struct tungsten_kit::prelude::Resist
 impl tungsten_kit::Resist
+pub fn tungsten_kit::Resist::add_floor_modifier(&mut self, &str, &str, tungsten_kit::Modifier)
+pub fn tungsten_kit::Resist::add_line(&mut self, &str, &str, tungsten_kit::Line)
 pub fn tungsten_kit::Resist::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier)
 pub fn tungsten_kit::Resist::base(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Resist::factor(&self, &tungsten_kit::Tags) -> f32
+pub fn tungsten_kit::Resist::factor_in(&self, &tungsten_kit::Tags, &tungsten_kit::Read<'_>) -> f32
+pub fn tungsten_kit::Resist::floor(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Resist::new() -> Self
 pub fn tungsten_kit::Resist::remove_modifiers(&mut self, &str) -> usize
 pub fn tungsten_kit::Resist::with_factor(self, &str, f32) -> Self
+pub fn tungsten_kit::Resist::with_floor(self, &str, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Resist
 pub fn tungsten_kit::Resist::clone(&self) -> tungsten_kit::Resist
 impl core::cmp::PartialEq for tungsten_kit::Resist
@@ -3938,6 +3954,32 @@ impl core::marker::Unpin for tungsten_kit::Refresh
 impl core::marker::UnsafeUnpin for tungsten_kit::Refresh
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Refresh
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Refresh
+pub enum tungsten_kit::Side
+pub tungsten_kit::Side::Front
+pub tungsten_kit::Side::Rear
+impl tungsten_kit::Side
+pub fn tungsten_kit::Side::of(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_kit::Side>
+pub fn tungsten_kit::Side::tag(self) -> &'static str
+impl core::clone::Clone for tungsten_kit::Side
+pub fn tungsten_kit::Side::clone(&self) -> tungsten_kit::Side
+impl core::cmp::Eq for tungsten_kit::Side
+impl core::cmp::PartialEq for tungsten_kit::Side
+pub fn tungsten_kit::Side::eq(&self, &tungsten_kit::Side) -> bool
+impl core::fmt::Debug for tungsten_kit::Side
+pub fn tungsten_kit::Side::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::Side
+impl core::marker::StructuralPartialEq for tungsten_kit::Side
+impl serde_core::ser::Serialize for tungsten_kit::Side
+pub fn tungsten_kit::Side::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Side
+pub fn tungsten_kit::Side::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Side
+impl core::marker::Send for tungsten_kit::Side
+impl core::marker::Sync for tungsten_kit::Side
+impl core::marker::Unpin for tungsten_kit::Side
+impl core::marker::UnsafeUnpin for tungsten_kit::Side
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Side
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Side
 #[non_exhaustive] pub enum tungsten_kit::TagSet<'a>
 pub tungsten_kit::TagSet::Name(&'a str)
 pub tungsten_kit::TagSet::Names(&'a [alloc::string::String])
@@ -4964,7 +5006,9 @@ pub struct tungsten_kit::DamageRequest
 impl tungsten_kit::DamageRequest
 pub fn tungsten_kit::DamageRequest::amount(&self) -> f32
 pub fn tungsten_kit::DamageRequest::apply(self, &mut tungsten_core::ecs::world::World) -> tungsten_kit::Hit
+pub fn tungsten_kit::DamageRequest::context(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::DamageRequest::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
+pub fn tungsten_kit::DamageRequest::direction(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::from_parts(tungsten_core::ecs::entity::Entity, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
 pub fn tungsten_kit::DamageRequest::is_crit(&self) -> bool
 pub fn tungsten_kit::DamageRequest::is_periodic(&self) -> bool
@@ -4974,16 +5018,21 @@ pub fn tungsten_kit::DamageRequest::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::DamageRequest::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::DamageRequest::position(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::queue(self, &mut tungsten_core::ecs::world::World) -> bool
+pub fn tungsten_kit::DamageRequest::side(&self) -> core::option::Option<tungsten_kit::Side>
 pub fn tungsten_kit::DamageRequest::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::DamageRequest::state(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::DamageRequest::tags(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::DamageRequest::target(&self) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::DamageRequest::with_context(self, tungsten_kit::Tags) -> Self
 pub fn tungsten_kit::DamageRequest::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::DamageRequest::with_crit(self, bool) -> Self
+pub fn tungsten_kit::DamageRequest::with_direction(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DamageRequest::with_knockback(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DamageRequest::with_penetration(self, tungsten_kit::Penetration) -> Self
 pub fn tungsten_kit::DamageRequest::with_periodic(self, bool) -> Self
 pub fn tungsten_kit::DamageRequest::with_position(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DamageRequest::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
+pub fn tungsten_kit::DamageRequest::with_state(self, tungsten_kit::Tags) -> Self
 pub fn tungsten_kit::DamageRequest::with_tags(self, tungsten_kit::Tags) -> Self
 impl core::clone::Clone for tungsten_kit::DamageRequest
 pub fn tungsten_kit::DamageRequest::clone(&self) -> tungsten_kit::DamageRequest
@@ -5157,6 +5206,8 @@ pub fn tungsten_kit::Effect::on_expire(&self) -> core::option::Option<&tungsten_
 pub fn tungsten_kit::Effect::period(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Effect::refresh(&self) -> tungsten_kit::Refresh
 pub fn tungsten_kit::Effect::resist(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
+pub fn tungsten_kit::Effect::resist_floors(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
+pub fn tungsten_kit::Effect::resist_lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
 pub fn tungsten_kit::Effect::restore(&self) -> core::option::Option<(&str, f32, &str)>
 pub fn tungsten_kit::Effect::scale(&self) -> core::option::Option<(&tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled)>
 pub fn tungsten_kit::Effect::stack_limit(&self) -> u32
@@ -5171,6 +5222,8 @@ pub fn tungsten_kit::Effect::with_modifier(self, &str, tungsten_kit::Modifier) -
 pub fn tungsten_kit::Effect::with_on_expire(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::Effect::with_period(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_resist(self, &str, tungsten_kit::Modifier) -> Self
+pub fn tungsten_kit::Effect::with_resist_floor(self, &str, tungsten_kit::Modifier) -> Self
+pub fn tungsten_kit::Effect::with_resist_line(self, &str, tungsten_kit::Line) -> Self
 pub fn tungsten_kit::Effect::with_restore(self, &str, f32, &str) -> Self
 pub fn tungsten_kit::Effect::with_scale(self, tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled) -> Self
 pub fn tungsten_kit::Effect::with_stack(self, u32, tungsten_kit::Refresh, tungsten_kit::Expire) -> Self
@@ -6695,12 +6748,17 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Read<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_kit::Read<'a>
 pub struct tungsten_kit::Resist
 impl tungsten_kit::Resist
+pub fn tungsten_kit::Resist::add_floor_modifier(&mut self, &str, &str, tungsten_kit::Modifier)
+pub fn tungsten_kit::Resist::add_line(&mut self, &str, &str, tungsten_kit::Line)
 pub fn tungsten_kit::Resist::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier)
 pub fn tungsten_kit::Resist::base(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Resist::factor(&self, &tungsten_kit::Tags) -> f32
+pub fn tungsten_kit::Resist::factor_in(&self, &tungsten_kit::Tags, &tungsten_kit::Read<'_>) -> f32
+pub fn tungsten_kit::Resist::floor(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Resist::new() -> Self
 pub fn tungsten_kit::Resist::remove_modifiers(&mut self, &str) -> usize
 pub fn tungsten_kit::Resist::with_factor(self, &str, f32) -> Self
+pub fn tungsten_kit::Resist::with_floor(self, &str, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Resist
 pub fn tungsten_kit::Resist::clone(&self) -> tungsten_kit::Resist
 impl core::cmp::PartialEq for tungsten_kit::Resist

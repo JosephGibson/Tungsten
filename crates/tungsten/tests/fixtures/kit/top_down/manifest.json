@@ -110,6 +110,12 @@
     },
     "veteran": {
       "path": "prefabs/veteran.json"
+    },
+    "bulwark": {
+      "path": "prefabs/bulwark.json"
+    },
+    "post": {
+      "path": "prefabs/post.json"
     }
   },
   "data": {
@@ -168,6 +174,9 @@
       },
       "focused": {
         "path": "data/effects/focused.json"
+      },
+      "braced": {
+        "path": "data/effects/braced.json"
       }
     },
     "curves": {

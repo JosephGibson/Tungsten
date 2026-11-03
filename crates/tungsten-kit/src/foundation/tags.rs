@@ -16,6 +16,36 @@ use crate::foundation::phases::ensure_phases;
 /// The scene component [`TagsPlugin`] registers, and the data kind.
 pub(crate) const TAGS: &str = "tags";
 
+/// A hit's track: a direct hit's.
+pub(crate) const TRACK_HIT: &str = "delivery.hit";
+/// A hit's track: a periodic request's, damage over time.
+pub(crate) const TRACK_DOT: &str = "delivery.dot";
+/// The state tags a hit carries, known only at the hit, which a family of
+/// deliveries sets.
+pub(crate) const STATE_TAGS: [&str; 4] = [
+    "delivery.pierced",
+    "delivery.forked",
+    "delivery.chained",
+    "delivery.repeated",
+];
+/// The sides a hit lands on.
+pub(crate) const SIDE_FRONT: &str = "side.front";
+pub(crate) const SIDE_REAR: &str = "side.rear";
+
+/// The tags the kit names itself, declared in every game so data names
+/// them: a hit's tracks, its state tags and its sides, with their dotted
+/// ancestors (`delivery`, `side`).
+pub(crate) const KIT_TAGS: [&str; 8] = [
+    TRACK_HIT,
+    TRACK_DOT,
+    STATE_TAGS[0],
+    STATE_TAGS[1],
+    STATE_TAGS[2],
+    STATE_TAGS[3],
+    SIDE_FRONT,
+    SIDE_REAR,
+];
+
 /// Whether `name` is a tag name: `[a-z][a-z0-9_]*` segments joined by dots,
 /// the rule counter and flag names follow too.
 pub(crate) fn valid_tag(name: &str) -> bool {
@@ -102,6 +132,9 @@ impl From<Tags> for Vec<String> {
 }
 
 impl Tags {
+    /// No tags.
+    pub(crate) const EMPTY: Tags = Tags { names: Vec::new() };
+
     /// Tags of `names`, sorted and deduplicated.
     ///
     /// # Panics
@@ -410,11 +443,15 @@ impl TryFrom<Vec<String>> for TagsDef {
     }
 }
 
-/// Whether `name` is declared: by a [`TagsPlugin`]'s build-time names or by
-/// an entry of the `tags` data kind, either of which declares its dotted
-/// ancestors too; else the [`MissingAsset`] a load reports, of kind `tag`,
-/// at `field`. A kit item's filter check calls it.
+/// Whether `name` is declared: by the kit itself ([`KIT_TAGS`]), by a
+/// [`TagsPlugin`]'s build-time names or by an entry of the `tags` data kind,
+/// any of which declares its dotted ancestors too; else the
+/// [`MissingAsset`] a load reports, of kind `tag`, at `field`. A kit item's
+/// filter check calls it.
 pub(crate) fn check_declared(world: &World, field: &str, name: &str) -> Result<(), MissingAsset> {
+    if KIT_TAGS.iter().any(|kit| covers(kit, name)) {
+        return Ok(());
+    }
     let by_build = world
         .get_resource::<TagDeclarations>()
         .is_some_and(|declared| declared.0.iter().any(|declared| covers(declared, name)));
@@ -438,7 +475,10 @@ pub(crate) fn check_declared(world: &World, field: &str, name: &str) -> Result<(
 /// declares the tags a load may name. A tag is declared by
 /// [`with_tags`](Self::with_tags) at build or by an entry of the `tags`
 /// kind, a JSON array of names under the manifest's `data.tags`; a declared
-/// name declares its dotted ancestors. A scene component or a filter that
+/// name declares its dotted ancestors. The kit declares its own: a hit's
+/// tracks (`delivery.hit`, `delivery.dot`), its state tags
+/// (`delivery.pierced`, `delivery.forked`, `delivery.chained`,
+/// `delivery.repeated`) and its sides (`side.front`, `side.rear`). A scene component or a filter that
 /// names an undeclared tag fails the load, naming the field and the tag, so
 /// a misspelt tag never matches nothing in silence.
 ///

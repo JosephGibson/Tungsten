@@ -429,6 +429,81 @@ fn a_with_line_is_kept_for_reads_in_context_and_leaves_with_its_instance() {
 }
 
 #[test]
+fn a_resist_modifier_scopes_its_factor_and_moves_its_floor() {
+    let (mut world, _) = rig();
+    let knight = world.spawn_with((Resist::new()
+        .with_factor("status", 0.5)
+        .with_floor("status", 0.25),));
+    let braced = Effect::new()
+        .with_resist_line(
+            "status.burning",
+            Line::new(Modifier::Mul(0.5)).with(TagFilter::new().all(["side.front"])),
+        )
+        .with_resist("status", Modifier::Mul(0.25))
+        .with_resist_floor("status", Modifier::Add(0.25));
+    assert_eq!(braced.resist().count(), 2);
+    assert_eq!(
+        braced.resist_floors().collect::<Vec<_>>(),
+        [("status", Modifier::Add(0.25))]
+    );
+    let braced = DataRef::inline(braced);
+    EffectRequest::new(knight, braced.clone()).apply(&mut world);
+    let resist = world.get::<Resist>(knight).unwrap();
+    let burning = Tags::new(["status.burning"]);
+    assert_eq!(resist.floor("status"), Some(0.5));
+    assert_eq!(
+        resist.factor(&burning),
+        0.5,
+        "0.125 rises to the moved floor"
+    );
+    let front = [TagSet::Name("side.front")];
+    assert_eq!(
+        resist.factor_in(&burning, &Read::new(&front)),
+        0.25,
+        "and the front's half"
+    );
+    assert!(end_effect(&mut world, knight, &braced));
+    let resist = world.get::<Resist>(knight).unwrap();
+    assert_eq!(
+        (resist.floor("status"), resist.factor(&burning)),
+        (Some(0.25), 0.5)
+    );
+    assert_eq!(resist.factor_in(&burning, &Read::new(&front)), 0.5);
+
+    // The data form: each of `modifier` and `floor`, the filters on the
+    // modifier, the tags checked at the load.
+    let data = json!({ "resist": [
+        { "tag": "status", "modifier": { "mul": 2 }, "with": { "all": ["side.rear"] }, "against": { "all": ["status.marked"] } },
+        { "tag": "status", "floor": { "add": 0.5 } }
+    ] });
+    let effect: Effect = serde_json::from_value(data.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&effect).unwrap()["resist"],
+        json!([
+            { "tag": "status", "modifier": { "mul": 2.0 }, "with": { "all": ["side.rear"] }, "against": { "all": ["status.marked"] } },
+            { "tag": "status", "floor": { "add": 0.5 } }
+        ])
+    );
+    assert!(effect.check(&world).is_ok());
+    for bad in [
+        json!({ "resist": [{ "tag": "status" }] }),
+        json!({ "resist": [{ "tag": "status", "with": { "all": ["side.rear"] }, "floor": { "add": 1 } }] }),
+        json!({ "resist": [{ "tag": "status", "modifier": { "override": 1 }, "against": { "all": ["status.marked"] } }] }),
+    ] {
+        assert!(
+            serde_json::from_value::<Effect>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+    let unknown: Effect = serde_json::from_value(json!({ "resist": [{ "tag": "status", "modifier": { "mul": 2 }, "against": { "all": ["status.unknown"] } }] })).unwrap();
+    let error = unknown.check(&world).unwrap_err();
+    assert_eq!(
+        (error.field.as_str(), error.id.as_str()),
+        ("resist.0.against.all.0", "status.unknown")
+    );
+}
+
+#[test]
 fn a_tag_two_instances_grant_leaves_with_the_second_to_expire_in_both_orders() {
     for (first, second) in [(1, 3), (3, 1)] {
         let (mut world, mut schedule) = rig();

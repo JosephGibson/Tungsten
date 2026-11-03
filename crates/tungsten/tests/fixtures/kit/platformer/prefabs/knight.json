@@ -1,0 +1,34 @@
+{
+  "tag": "knight",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 40
+    },
+    "stats": {
+      "damage_taken": {
+        "base": 1,
+        "lines": [
+          {
+            "modifier": {
+              "mul": 0.5
+            },
+            "with": {
+              "all": [
+                "hit.blast"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "resist": {
+      "damage.cold": {
+        "factor": 0.5,
+        "floor": 0.375
+      }
+    }
+  }
+}

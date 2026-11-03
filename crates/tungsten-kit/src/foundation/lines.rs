@@ -6,16 +6,7 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::{MissingAsset, World};
 
 use crate::foundation::stats::Modifier;
-use crate::foundation::tags::{TagFilter, Tags, covers};
-
-/// The state tags a hit carries, known only at the hit: a line whose
-/// `with` names one waits for the hit when a read at use meets it.
-pub(crate) const STATE_TAGS: [&str; 4] = [
-    "delivery.pierced",
-    "delivery.forked",
-    "delivery.chained",
-    "delivery.repeated",
-];
+use crate::foundation::tags::{STATE_TAGS, TagFilter, Tags, covers};
 
 /// A line: a [`Modifier`] that a source puts on a stat, read only where its
 /// filters pass. `with` filters the read's context (a skill's tags, a hit's

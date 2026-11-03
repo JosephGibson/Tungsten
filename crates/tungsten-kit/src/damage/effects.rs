@@ -309,7 +309,7 @@ pub struct Effect {
     expire: Expire,
     /// In order.
     modifiers: Vec<(String, Line)>,
-    resist: Vec<(String, Modifier)>,
+    resist: Vec<ResistChange>,
     /// Sorted and deduplicated.
     grant: Vec<String>,
     blocked_by: Vec<String>,
@@ -318,6 +318,15 @@ pub struct Effect {
     suppressed_by: Vec<String>,
     scale: Option<(DataRef<Curve>, Scaled)>,
     on_expire: Option<DataRef<Effect>>,
+}
+
+/// One change an effect makes to the target's resistance to a tag: a line
+/// on its factor, scoped or not, a modifier on its floor, or both.
+#[derive(Debug, Clone, PartialEq)]
+struct ResistChange {
+    tag: String,
+    line: Option<Line>,
+    floor: Option<Modifier>,
 }
 
 /// A restore payload: the stat it raises, by how much a payload, and the
@@ -553,7 +562,59 @@ impl Effect {
             modifier.is_finite(),
             "Effect::with_resist: {tag}: the modifier must be finite (got {modifier:?})"
         );
-        self.resist.push((tag.to_owned(), modifier));
+        self.resist.push(ResistChange {
+            tag: tag.to_owned(),
+            line: Some(Line::new(modifier)),
+            floor: None,
+        });
+        self
+    }
+
+    /// The effect, putting `line` on the target's resistance to `tag` per
+    /// stack, after its earlier ones: an unscoped line as
+    /// [`with_resist`](Self::with_resist) puts it, a scoped one read only in
+    /// a hit whose context passes it ([`Resist::add_line`]).
+    ///
+    /// # Panics
+    ///
+    /// When `tag` is not a tag name.
+    #[must_use]
+    #[track_caller]
+    pub fn with_resist_line(mut self, tag: &str, line: Line) -> Self {
+        assert!(
+            valid_tag(tag),
+            "Effect::with_resist_line: `{tag}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+        );
+        self.resist.push(ResistChange {
+            tag: tag.to_owned(),
+            line: Some(line),
+            floor: None,
+        });
+        self
+    }
+
+    /// The effect, putting `modifier` on the floor of the target's
+    /// resistance to `tag` per stack ([`Resist::add_floor_modifier`]).
+    ///
+    /// # Panics
+    ///
+    /// When `tag` is not a tag name or the modifier's value is not finite.
+    #[must_use]
+    #[track_caller]
+    pub fn with_resist_floor(mut self, tag: &str, modifier: Modifier) -> Self {
+        assert!(
+            valid_tag(tag),
+            "Effect::with_resist_floor: `{tag}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+        );
+        assert!(
+            modifier.is_finite(),
+            "Effect::with_resist_floor: {tag}: the modifier must be finite (got {modifier:?})"
+        );
+        self.resist.push(ResistChange {
+            tag: tag.to_owned(),
+            line: None,
+            floor: Some(modifier),
+        });
         self
     }
 
@@ -711,11 +772,28 @@ impl Effect {
             .map(|(stat, line)| (stat.as_str(), line))
     }
 
-    /// Its resistance modifiers, in order.
+    /// Its resistance modifiers, in order, each line's modifier.
     pub fn resist(&self) -> impl Iterator<Item = (&str, Modifier)> {
+        self.resist.iter().filter_map(|change| {
+            change
+                .line
+                .as_ref()
+                .map(|line| (change.tag.as_str(), line.modifier()))
+        })
+    }
+
+    /// Its resistance lines with their filters, in order.
+    pub fn resist_lines(&self) -> impl Iterator<Item = (&str, &Line)> {
         self.resist
             .iter()
-            .map(|(tag, modifier)| (tag.as_str(), *modifier))
+            .filter_map(|change| change.line.as_ref().map(|line| (change.tag.as_str(), line)))
+    }
+
+    /// Its modifiers on resistance floors, in order.
+    pub fn resist_floors(&self) -> impl Iterator<Item = (&str, Modifier)> {
+        self.resist
+            .iter()
+            .filter_map(|change| change.floor.map(|floor| (change.tag.as_str(), floor)))
     }
 
     /// The tags it grants, sorted.
@@ -845,8 +923,11 @@ impl Effect {
         for (i, (_, line)) in self.modifiers.iter().enumerate() {
             line.check(world, &format!("modifiers.{i}"))?;
         }
-        for (i, (tag, _)) in self.resist.iter().enumerate() {
-            check_declared(world, &format!("resist.{i}.tag"), tag)?;
+        for (i, change) in self.resist.iter().enumerate() {
+            check_declared(world, &format!("resist.{i}.tag"), &change.tag)?;
+            if let Some(line) = &change.line {
+                line.check(world, &format!("resist.{i}"))?;
+            }
         }
         if let Some((curve, _)) = &self.scale {
             curve.check(world, "scale.curve")?;
@@ -1012,19 +1093,34 @@ impl StatModifierDef {
     }
 }
 
-/// A resistance modifier as data writes it.
+/// A resistance modifier as data writes it: a change to a tag's factor,
+/// with its filters, a change to its floor, or both.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields, try_from = "ResistModifierFields")]
 struct ResistModifierDef {
     tag: String,
-    modifier: Modifier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    modifier: Option<Modifier>,
+    #[serde(default, skip_serializing_if = "TagFilter::is_everything")]
+    with: TagFilter,
+    #[serde(default, skip_serializing_if = "TagFilter::is_everything")]
+    against: TagFilter,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    floor: Option<Modifier>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ResistModifierFields {
     tag: String,
-    modifier: Modifier,
+    #[serde(default)]
+    modifier: Option<Modifier>,
+    #[serde(default)]
+    with: TagFilter,
+    #[serde(default)]
+    against: TagFilter,
+    #[serde(default)]
+    floor: Option<Modifier>,
 }
 
 impl TryFrom<ResistModifierFields> for ResistModifierDef {
@@ -1037,16 +1133,63 @@ impl TryFrom<ResistModifierFields> for ResistModifierDef {
                 fields.tag
             ));
         }
-        if !fields.modifier.is_finite() {
-            return Err(format!(
-                "modifier: must be finite (got {:?})",
-                fields.modifier
-            ));
+        let line = match fields.modifier {
+            Some(modifier) => Some(Line::from_parts(
+                modifier,
+                fields.with,
+                TagFilter::new(),
+                fields.against,
+            )?),
+            None if !(fields.with.is_everything() && fields.against.is_everything()) => {
+                return Err("`with` and `against` scope a `modifier`, which is missing".into());
+            }
+            None => None,
+        };
+        if let Some(floor) = fields.floor
+            && !floor.is_finite()
+        {
+            return Err(format!("floor: must be finite (got {floor:?})"));
         }
-        Ok(Self {
+        if line.is_none() && fields.floor.is_none() {
+            return Err("a resistance modifier names its `modifier`, its `floor` or both".into());
+        }
+        Ok(Self::of(ResistChange {
             tag: fields.tag,
-            modifier: fields.modifier,
-        })
+            line,
+            floor: fields.floor,
+        }))
+    }
+}
+
+impl ResistModifierDef {
+    fn of(change: ResistChange) -> Self {
+        let (modifier, with, against) = match &change.line {
+            Some(line) => (
+                Some(line.modifier()),
+                line.context_filter().clone(),
+                line.against_filter().clone(),
+            ),
+            None => (None, TagFilter::new(), TagFilter::new()),
+        };
+        Self {
+            tag: change.tag,
+            modifier,
+            with,
+            against,
+            floor: change.floor,
+        }
+    }
+
+    fn into_change(self) -> ResistChange {
+        let line = self.modifier.map(|modifier| {
+            Line::from_parts(modifier, self.with, TagFilter::new(), self.against)
+                .expect("a resistance modifier's line was checked at its load")
+        });
+        ResistChange {
+            tag: self.tag,
+            line,
+            floor: self.floor,
+        }
     }
 }
 
@@ -1145,7 +1288,7 @@ impl TryFrom<EffectDef> for Effect {
             resist: def
                 .resist
                 .into_iter()
-                .map(|m| (m.tag, m.modifier))
+                .map(ResistModifierDef::into_change)
                 .collect(),
             grant: def.grant.0,
             blocked_by: def.blocked_by.0,
@@ -1183,7 +1326,7 @@ impl From<Effect> for EffectDef {
             resist: effect
                 .resist
                 .into_iter()
-                .map(|(tag, modifier)| ResistModifierDef { tag, modifier })
+                .map(ResistModifierDef::of)
                 .collect(),
             grant: TagList(effect.grant),
             blocked_by: TagList(effect.blocked_by),
@@ -2193,8 +2336,22 @@ fn place_modifiers(
         match world.get_mut::<Resist>(target) {
             Some(resist) => {
                 for _ in 0..instance.stacks {
-                    for (tag, modifier) in &effect.resist {
-                        resist.add_modifier(tag, &source, scale(*modifier));
+                    for change in &effect.resist {
+                        if let Some(line) = &change.line {
+                            let modifier = scale(line.modifier());
+                            if line.is_scoped() {
+                                resist.add_line(
+                                    &change.tag,
+                                    &source,
+                                    line.clone().with_modifier(modifier),
+                                );
+                            } else {
+                                resist.add_modifier(&change.tag, &source, modifier);
+                            }
+                        }
+                        if let Some(floor) = change.floor {
+                            resist.add_floor_modifier(&change.tag, &source, scale(floor));
+                        }
                     }
                 }
             }
@@ -2962,18 +3119,45 @@ fn describe_effects(world: &mut World) {
             .roundtrip(round_trip::<StatModifierDef>),
         ComponentDescription::new(
             RESIST_MODIFIER,
-            "A modifier on the target's resistance to one damage tag.",
+            "A modifier on the target's resistance to one damage tag, and on its floor.",
         )
         .field(FieldDescription::new(
             "tag",
             FieldType::Tag,
             "the damage tag; the load checks it",
         ))
-        .field(FieldDescription::new(
-            "modifier",
-            FieldType::Shape(MODIFIER),
-            "the change, over a base of 1 for a tag the target lists no factor for",
-        ))
+        .field(
+            FieldDescription::new(
+                "modifier",
+                FieldType::Shape(MODIFIER),
+                "the change, over a base of 1 for a tag the target lists no factor for; a scoped one may not override; one of it and `floor` at least",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "with",
+                FieldType::Filter,
+                "the modifier reaches only a hit whose context passes it (the part's types, the hit's track, state tags and side); the load checks its tags",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "against",
+                FieldType::Filter,
+                "the modifier reaches only a hit whose attacker's tags pass it; the load checks its tags",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "floor",
+                FieldType::Shape(MODIFIER),
+                "a change to the tag's floor, over a base of 0 without one: the lowest a factor above 0 goes in a hit",
+            )
+            .default("null"),
+        )
         .sample(r#"{ "tag": "arcane", "modifier": { "mul": 2 } }"#)
         .roundtrip(round_trip::<ResistModifierDef>),
         ComponentDescription::new(

@@ -231,7 +231,9 @@ pub use damage::health::{
     Hit, HitFlash, ImmunePart, damage,
 };
 pub use damage::kinds::{Conversion, DamageKinds, Penetration};
-pub use damage::pipeline::{DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest, Healed, heal};
+pub use damage::pipeline::{
+    DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest, Healed, Side, heal,
+};
 pub use foundation::curve::Curve;
 pub use foundation::debug::{KIT_DEBUG_DRAW, KitDebug, KitDebugPlugin};
 pub use foundation::describe::{
