@@ -1,0 +1,11 @@
+{
+  "tag": "wooden_crate",
+  "components": {
+    "health": {
+      "max": 100
+    },
+    "tags": [
+      "material.wood"
+    ]
+  }
+}

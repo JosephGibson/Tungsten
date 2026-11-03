@@ -1,0 +1,9 @@
+{
+  "intensity": {
+    "max": 5,
+    "decay": 0.5
+  },
+  "grant": [
+    "status.burning"
+  ]
+}

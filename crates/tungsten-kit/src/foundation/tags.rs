@@ -46,6 +46,14 @@ pub(crate) const KIT_TAGS: [&str; 8] = [
     SIDE_REAR,
 ];
 
+/// The stimuli the kit names itself (redo 7.10b), declared in every game so
+/// a chemistry rule names them: a body's impact, the light at a point and a
+/// blast, with their ancestor `stimulus`.
+pub(crate) const STIMULUS_IMPACT: &str = "stimulus.impact";
+pub(crate) const STIMULUS_LIGHT: &str = "stimulus.light";
+pub(crate) const STIMULUS_BLAST: &str = "stimulus.blast";
+pub(crate) const STIMULI: [&str; 3] = [STIMULUS_IMPACT, STIMULUS_LIGHT, STIMULUS_BLAST];
+
 /// Whether `name` is a tag name: `[a-z][a-z0-9_]*` segments joined by dots,
 /// the rule counter and flag names follow too.
 pub(crate) fn valid_tag(name: &str) -> bool {
@@ -361,6 +369,12 @@ impl TagFilter {
         Ok(())
     }
 
+    /// The dotted segments its `all` names, summed: how specific a chemistry
+    /// rule's filter is.
+    pub(crate) fn all_segments(&self) -> usize {
+        self.all.iter().map(|name| name.split('.').count()).sum()
+    }
+
     /// Whether the filter names no tag, so everything passes.
     #[must_use]
     pub fn is_everything(&self) -> bool {
@@ -443,13 +457,13 @@ impl TryFrom<Vec<String>> for TagsDef {
     }
 }
 
-/// Whether `name` is declared: by the kit itself ([`KIT_TAGS`]), by a
+/// Whether `name` is declared: by the kit itself ([`KIT_TAGS`], [`STIMULI`]), by a
 /// [`TagsPlugin`]'s build-time names or by an entry of the `tags` data kind,
 /// any of which declares its dotted ancestors too; else the
 /// [`MissingAsset`] a load reports, of kind `tag`, at `field`. A kit item's
 /// filter check calls it.
 pub(crate) fn check_declared(world: &World, field: &str, name: &str) -> Result<(), MissingAsset> {
-    if KIT_TAGS.iter().any(|kit| covers(kit, name)) {
+    if KIT_TAGS.iter().chain(&STIMULI).any(|kit| covers(kit, name)) {
         return Ok(());
     }
     let by_build = world

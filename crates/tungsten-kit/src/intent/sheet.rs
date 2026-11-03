@@ -873,6 +873,9 @@ pub struct Delivery {
     activation: Option<u32>,
     /// Its sheet's why-record, while one is kept.
     explain: Option<Box<SheetRecord>>,
+    /// The skill's `status_effect` at the use, which its hits' statuses
+    /// are built and their damage over time based by.
+    status_effect: f32,
 }
 
 impl Delivery {
@@ -906,6 +909,13 @@ impl Delivery {
     #[must_use]
     pub fn holder_tags(&self) -> &Tags {
         &self.holder_tags
+    }
+
+    /// Its skill's [`Stats::STATUS_EFFECT`] at the use: the holder's base,
+    /// 1 without one, with the lines that reach it in the skill's context.
+    #[must_use]
+    pub fn status_effect(&self) -> f32 {
+        self.status_effect
     }
 
     /// The state tags its hits carry.
@@ -951,7 +961,7 @@ impl Delivery {
         target: Option<&Tags>,
         u: f32,
         crit: f32,
-        out: &mut Vec<(f64, f32)>,
+        out: &mut Vec<(f64, f32, f64)>,
         mut record: Option<&mut HitRecord>,
     ) -> bool {
         out.clear();
@@ -1001,9 +1011,31 @@ impl Delivery {
                     _ => {}
                 }
             }
+            // The damage-over-time track: its sums with the deferred lines
+            // its read meets.
+            let at_dot = [
+                TagSet::Names(&self.context),
+                TagSet::Name(TRACK_DOT),
+                TagSet::Tags(&self.state),
+                TagSet::Name(&part.kind),
+                TagSet::Names(&part.history),
+            ];
+            let dot_read = Read::new(&at_dot)
+                .holder(Some(&self.holder_tags))
+                .against(target);
+            let mut dot = part.dot.sums();
+            for (_, line) in &self.deferred {
+                if let LineKind::Stat { stat, modifier } = &line.kind
+                    && stat == Stats::DAMAGE
+                    && dot_read.reach_scope(&line.scope) == Reach::Applies
+                {
+                    dot.fold(*modifier);
+                }
+            }
             let [min, max] = part.range;
             let rolled = f64::from(min) + f64::from(u) * (f64::from(max) - f64::from(min));
-            out.push((rolled * factor_of(&hit), pen.clamp(0.0, 1.0)));
+            let dot_base = rolled * factor_of(&dot) * f64::from(self.status_effect);
+            out.push((rolled * factor_of(&hit), pen.clamp(0.0, 1.0), dot_base));
             if let Some(record) = record.as_deref_mut() {
                 let noted = self.noted(at, target, &read, &hit, rolled);
                 record.parts.push(noted);
@@ -1014,7 +1046,7 @@ impl Delivery {
         let roll = crit;
         let crit = roll < chance;
         if crit {
-            for (amount, _) in out.iter_mut() {
+            for (amount, _, _) in out.iter_mut() {
                 *amount *= f64::from(multiplier);
             }
         }
@@ -1136,6 +1168,17 @@ struct DeliverySave {
     deferred: Vec<(String, SkillLine)>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     activation: Option<u32>,
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    status_effect: f32,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_one(value: &f32) -> bool {
+    *value == 1.0
 }
 
 impl From<&Delivery> for DeliverySave {
@@ -1150,6 +1193,7 @@ impl From<&Delivery> for DeliverySave {
             crit_multiplier: delivery.crit_multiplier,
             deferred: delivery.deferred.clone(),
             activation: delivery.activation,
+            status_effect: delivery.status_effect,
         }
     }
 }
@@ -1168,6 +1212,11 @@ impl From<DeliverySave> for Delivery {
             deferred: save.deferred,
             activation: save.activation,
             explain: None,
+            status_effect: if save.status_effect.is_finite() {
+                save.status_effect.max(0.0)
+            } else {
+                1.0
+            },
         }
     }
 }
@@ -1692,6 +1741,10 @@ pub(crate) fn resolve(
         .or(skill.cooldown)
         .unwrap_or(ability.cooldown());
     let cooldown = sums_of(Stats::COOLDOWN, cooldown_base).value(0.0, f32::INFINITY);
+    let status_effect_base = stats
+        .and_then(|s| s.base(Stats::STATUS_EFFECT))
+        .unwrap_or(1.0);
+    let status_effect = sums_of(Stats::STATUS_EFFECT, status_effect_base).value(0.0, f32::INFINITY);
 
     // The lines kept for the hit.
     let mut deferred: Vec<(String, SkillLine)> = Vec::new();
@@ -1981,6 +2034,7 @@ pub(crate) fn resolve(
             deferred,
             activation: None,
             explain: explained,
+            status_effect,
         },
     }
 }

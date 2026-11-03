@@ -16,6 +16,9 @@ use tungsten_core::{
     SpawnContext, Time, World, system,
 };
 
+use crate::chemistry::outputs::check_outputs;
+use crate::chemistry::queue::StatusList;
+use crate::chemistry::{CHEMISTRY, Output, queue_status_list};
 use crate::damage::ailments::{AILMENT_FEED, register_ailments};
 use crate::damage::defense::Resist;
 use crate::damage::health::Health;
@@ -345,6 +348,8 @@ pub struct Effect {
     /// Strictly ascending by `at`, inside `(0, max]`.
     bands: Vec<Band>,
     fuel: Option<Fuel>,
+    /// Run on the holder when an instance ends.
+    on_end: Vec<Output>,
 }
 
 /// A status's intensity: the most an instance holds, and what a second
@@ -362,6 +367,8 @@ struct Band {
     at: f32,
     /// Sorted and deduplicated.
     grant: Vec<String>,
+    /// Run on the holder each time the intensity reaches it from below.
+    enter: Vec<Output>,
 }
 
 /// A fuel: the holder's stat an instance burns, and how much a second.
@@ -434,6 +441,7 @@ impl Effect {
             intensity: None,
             bands: Vec::new(),
             fuel: None,
+            on_end: Vec::new(),
         }
     }
 
@@ -838,6 +846,7 @@ impl Effect {
         self.bands.push(Band {
             at,
             grant: tag_list("Effect::with_band", tags),
+            enter: Vec::new(),
         });
         self
     }
@@ -1018,6 +1027,20 @@ impl Effect {
             .map(|fuel| (fuel.stat.as_str(), fuel.rate))
     }
 
+    /// What it runs on its holder when an instance ends: run out, worn
+    /// out, its fuel spent, removed or ended; an instant effect's when it
+    /// lands, which expires it at once.
+    #[must_use]
+    pub fn on_end(&self) -> &[Output] {
+        &self.on_end
+    }
+
+    /// What band `band` runs on its holder each time the intensity reaches
+    /// it from below.
+    pub(crate) fn band_enter(&self, band: usize) -> Option<&[Output]> {
+        self.bands.get(band).map(|band| band.enter.as_slice())
+    }
+
     /// How many of its bands an intensity of `intensity` reaches; none
     /// without one.
     fn bands_reached(&self, intensity: Option<f32>) -> usize {
@@ -1076,6 +1099,42 @@ impl Effect {
             ),
         };
         request = request.with_periodic(true);
+        if let Some(source) = source {
+            request = request.with_source(source);
+        }
+        Some(request)
+    }
+
+    /// The damage request of one period of a fixed rate, `amount`: shared
+    /// over the payload's types in their proportions (an untyped payload's
+    /// one part), periodic and typed, so the source's conversion leaves it
+    /// as it is; the rate is fixed, so the payload factor (the scale curve
+    /// on the periodic payload, the intensity) leaves it too. `None` when
+    /// it comes to nothing.
+    fn rated_request(
+        &self,
+        target: Entity,
+        source: Option<Entity>,
+        amount: f32,
+    ) -> Option<DamageRequest> {
+        if amount <= 0.0 {
+            return None;
+        }
+        let total: f64 = match &self.damage {
+            DamageDef::Typed(parts) => parts.values().map(|&share| f64::from(share)).sum(),
+            DamageDef::Number(_) => 0.0,
+        };
+        let mut request = match &self.damage {
+            DamageDef::Typed(parts) if total > 0.0 => DamageRequest::from_parts(
+                target,
+                parts.iter().map(|(name, &share)| {
+                    let part = (f64::from(amount) * f64::from(share) / total) as f32;
+                    DamagePart::new(part).with_tags(Tags::new([name.as_str()]))
+                }),
+            ),
+            _ => DamageRequest::new(target, amount),
+        };
+        request = request.with_periodic(true).typed();
         if let Some(source) = source {
             request = request.with_source(source);
         }
@@ -1147,7 +1206,9 @@ impl Effect {
             for (j, tag) in band.grant.iter().enumerate() {
                 check_declared(world, &format!("bands.{i}.grant.{j}"), tag)?;
             }
+            check_outputs(world, &format!("bands.{i}.enter"), &band.enter)?;
         }
+        check_outputs(world, "on_end", &self.on_end)?;
         Ok(())
     }
 }
@@ -1190,6 +1251,8 @@ struct EffectDef {
     bands: Vec<BandDef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     fuel: Option<FuelDef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    on_end: Vec<Output>,
 }
 
 /// A status's intensity as data writes it.
@@ -1235,6 +1298,8 @@ impl TryFrom<IntensityFields> for IntensityDef {
 struct BandDef {
     at: f32,
     grant: TagList,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    enter: Vec<Output>,
 }
 
 #[derive(Deserialize)]
@@ -1243,6 +1308,8 @@ struct BandFields {
     at: f32,
     #[serde(default)]
     grant: TagList,
+    #[serde(default)]
+    enter: Vec<Output>,
 }
 
 impl TryFrom<BandFields> for BandDef {
@@ -1255,6 +1322,7 @@ impl TryFrom<BandFields> for BandDef {
         Ok(Self {
             at: fields.at,
             grant: fields.grant,
+            enter: fields.enter,
         })
     }
 }
@@ -1342,9 +1410,9 @@ fn at_least_one<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32
 
 /// A stat modifier as data writes it: a line with its stat, each filter
 /// left out when it passes everything.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, try_from = "StatModifierFields")]
-struct StatModifierDef {
+pub(crate) struct StatModifierDef {
     stat: String,
     modifier: Modifier,
     #[serde(default, skip_serializing_if = "TagFilter::is_everything")]
@@ -1388,7 +1456,7 @@ impl TryFrom<StatModifierFields> for StatModifierDef {
 }
 
 impl StatModifierDef {
-    fn of(stat: String, line: &Line) -> Self {
+    pub(crate) fn of(stat: String, line: &Line) -> Self {
         Self {
             stat,
             modifier: line.modifier(),
@@ -1398,10 +1466,15 @@ impl StatModifierDef {
         }
     }
 
-    fn into_line(self) -> (String, Line) {
+    pub(crate) fn into_line(self) -> (String, Line) {
         let line = Line::from_parts(self.modifier, self.with, self.holder, self.against)
             .expect("a stat modifier's line was checked at its load");
         (self.stat, line)
+    }
+
+    /// The load's check of its line's tags, at `field`.
+    pub(crate) fn check(&self, world: &World, field: &str) -> Result<(), MissingAsset> {
+        self.clone().into_line().1.check(world, field)
     }
 }
 
@@ -1639,12 +1712,14 @@ impl TryFrom<EffectDef> for Effect {
                 .map(|band| Band {
                     at: band.at,
                     grant: band.grant.0,
+                    enter: band.enter,
                 })
                 .collect(),
             fuel: def.fuel.map(|fuel| Fuel {
                 stat: fuel.stat,
                 rate: fuel.rate,
             }),
+            on_end: def.on_end,
         })
     }
 }
@@ -1694,12 +1769,14 @@ impl From<Effect> for EffectDef {
                 .map(|band| BandDef {
                     at: band.at,
                     grant: TagList(band.grant),
+                    enter: band.enter,
                 })
                 .collect(),
             fuel: effect.fuel.map(|fuel| FuelDef {
                 stat: fuel.stat,
                 rate: fuel.rate,
             }),
+            on_end: effect.on_end,
         }
     }
 }
@@ -1747,6 +1824,9 @@ pub struct EffectInstance {
     bands: Vec<u32>,
     /// Its request's lines, beside the effect's own.
     lines: Vec<(String, Line)>,
+    /// Its damage over time a second, fixed at the application from the
+    /// hit; its ticks deal it in place of the effect's damage.
+    rate: Option<f32>,
 }
 
 impl EffectInstance {
@@ -1803,6 +1883,14 @@ impl EffectInstance {
         self.lines.iter().map(|(stat, line)| (stat.as_str(), line))
     }
 
+    /// Its damage over time a second, when an application fixed one
+    /// ([`EffectRequest::with_rate`]): each period deals `rate × period`,
+    /// shared over the effect's damage types in their proportions.
+    #[must_use]
+    pub fn rate(&self) -> Option<f32> {
+        self.rate
+    }
+
     /// The modifier source of the instance numbered `serial`.
     fn source_of(serial: u64) -> String {
         format!("effect#{serial}")
@@ -1834,6 +1922,8 @@ struct InstanceFields {
     bands: Vec<u32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     lines: Vec<StatModifierDef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rate: Option<f32>,
 }
 
 fn one_f32() -> f32 {
@@ -1875,6 +1965,11 @@ impl TryFrom<InstanceFields> for EffectInstance {
                 "intensity: must be finite and > 0 (got {intensity})"
             ));
         }
+        if let Some(rate) = fields.rate
+            && !(rate.is_finite() && rate >= 0.0)
+        {
+            return Err(format!("rate: must be finite and >= 0 (got {rate})"));
+        }
         let banded: u64 = fields.bands.iter().map(|&count| u64::from(count)).sum();
         if banded > fields.granted.len() as u64 {
             return Err(format!(
@@ -1898,6 +1993,7 @@ impl TryFrom<InstanceFields> for EffectInstance {
                 .into_iter()
                 .map(StatModifierDef::into_line)
                 .collect(),
+            rate: fields.rate,
         })
     }
 }
@@ -1919,6 +2015,7 @@ impl From<EffectInstance> for InstanceFields {
                 .into_iter()
                 .map(|(stat, line)| StatModifierDef::of(stat, &line))
                 .collect(),
+            rate: instance.rate,
         }
     }
 }
@@ -2246,6 +2343,9 @@ pub struct EffectRequest {
     amount: f32,
     status_effect: Option<f32>,
     lines: Vec<(String, Line)>,
+    rate: Option<f32>,
+    /// How deep the outputs it sets off queue: a band's `enter`.
+    depth: u8,
 }
 
 impl EffectRequest {
@@ -2261,7 +2361,36 @@ impl EffectRequest {
             amount: 1.0,
             status_effect: None,
             lines: Vec::new(),
+            rate: None,
+            depth: 0,
         }
+    }
+
+    /// The request, fixing its instance's damage over time at `per_second`:
+    /// each of its periods deals `per_second × period`, shared over the
+    /// effect's damage types in their proportions, typed at the
+    /// application, so the source's conversion and the user's later lines
+    /// change nothing; a later application's rate replaces it.
+    ///
+    /// # Panics
+    ///
+    /// When `per_second` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_rate(mut self, per_second: f32) -> Self {
+        assert!(
+            per_second.is_finite() && per_second >= 0.0,
+            "EffectRequest::with_rate: per_second must be finite and >= 0 (got {per_second})"
+        );
+        self.rate = Some(per_second);
+        self
+    }
+
+    /// The request, its band entries' outputs queued `depth` reactions
+    /// deep.
+    pub(crate) fn at_depth(mut self, depth: u8) -> Self {
+        self.depth = depth;
+        self
     }
 
     /// The request, building a status's intensity by `amount` (times its
@@ -2391,6 +2520,12 @@ impl EffectRequest {
         self.lines.iter().map(|(stat, line)| (stat.as_str(), line))
     }
 
+    /// The damage over time a second it fixes, when it fixes one.
+    #[must_use]
+    pub fn rate(&self) -> Option<f32> {
+        self.rate
+    }
+
     /// Applies the effect now, so the caller knows the outcome in the same
     /// step: the game's immediate form, since every kit path queues.
     pub fn apply(self, world: &mut World) -> Applied {
@@ -2406,9 +2541,21 @@ impl EffectRequest {
 }
 
 /// Ends `effect`'s instance on `entity` early: its modifiers and tags
-/// leave, [`EffectExpired`] goes out with `ended` set, and its `on_expire`
-/// does not apply. Whether there was one.
+/// leave, [`EffectExpired`] goes out with `ended` set, its `on_expire`
+/// does not apply and its `on_end` outputs queue for chemistry. Whether
+/// there was one.
 pub fn end_effect(world: &mut World, entity: Entity, effect: &DataRef<Effect>) -> bool {
+    end_effect_at(world, entity, effect, 0)
+}
+
+/// [`end_effect`], its `on_end` outputs queued `depth` reactions deep: a
+/// chemistry `remove` output's.
+pub(crate) fn end_effect_at(
+    world: &mut World,
+    entity: Entity,
+    effect: &DataRef<Effect>,
+    depth: u8,
+) -> bool {
     let Some(slot) = world.get_mut::<Effects>(entity) else {
         return false;
     };
@@ -2420,7 +2567,77 @@ pub fn end_effect(world: &mut World, entity: Entity, effect: &DataRef<Effect>) -
     release(world, entity, &mut effects, &instance);
     put_back(world, entity, effects);
     send_expired(world, entity, instance.effect.id().map(str::to_owned), true);
+    queue_on_end(world, entity, &instance, depth);
     true
+}
+
+/// Takes `amount` off the intensity of `effect`'s instance on `entity`, a
+/// status's: its bands, factor and modifiers follow, and at 0 it has run
+/// out, as a decay does, its `on_end` outputs queued `depth` reactions
+/// deep. False, changing nothing, without such a status.
+pub(crate) fn consume(
+    world: &mut World,
+    entity: Entity,
+    effect: &DataRef<Effect>,
+    amount: f32,
+    depth: u8,
+) -> bool {
+    let Some(slot) = world.get_mut::<Effects>(entity) else {
+        return false;
+    };
+    let Some(at) = slot.find(effect) else {
+        return false;
+    };
+    let Some(was) = slot.instances[at].intensity else {
+        return false;
+    };
+    let mut effects = std::mem::take(slot);
+    let rest = count_down(was, amount);
+    if rest > 0.0 {
+        effects.instances[at].intensity = Some(rest);
+        follow_intensity(world, entity, &mut effects, at);
+        put_back(world, entity, effects);
+        return true;
+    }
+    let instance = effects.instances.remove(at);
+    release(world, entity, &mut effects, &instance);
+    put_back(world, entity, effects);
+    expire(world, entity, &instance, depth);
+    true
+}
+
+/// An instance's end in its time: [`EffectExpired`], its `on_expire`
+/// queued as the step's transition and its `on_end` outputs, both `depth`
+/// reactions deep (0 from a tick).
+fn expire(world: &mut World, entity: Entity, instance: &EffectInstance, depth: u8) {
+    send_expired(
+        world,
+        entity,
+        instance.effect.id().map(str::to_owned),
+        false,
+    );
+    let on_expire = definition(world, &instance.effect).and_then(|effect| effect.on_expire.clone());
+    if let Some(on_expire) = on_expire {
+        let mut next = EffectRequest::new(entity, on_expire).at_depth(depth);
+        if let Some(source) = instance.source {
+            next = next.with_source(source);
+        }
+        queue_request(world, next, true);
+    }
+    queue_on_end(world, entity, instance, depth);
+}
+
+/// Queues `instance`'s `on_end` outputs on `entity` for chemistry, `depth`
+/// reactions deep, credited to its source, when its effect has any.
+fn queue_on_end(world: &mut World, entity: Entity, instance: &EffectInstance, depth: u8) {
+    let ends = definition(world, &instance.effect).is_some_and(|effect| !effect.on_end.is_empty());
+    if ends {
+        let list = StatusList {
+            effect: instance.effect.clone(),
+            band: None,
+        };
+        queue_status_list(world, entity, list, depth, instance.source);
+    }
 }
 
 /// An effect applied or stacked, sent once [`EffectsPlugin`] has registered
@@ -2560,6 +2777,19 @@ struct EffectRequestSave {
     status_effect: Option<f32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     lines: Vec<StatModifierDef>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_non_negative"
+    )]
+    rate: Option<f32>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    depth: u8,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &u8) -> bool {
+    *value == 0
 }
 
 impl From<&EffectRequest> for EffectRequestSave {
@@ -2574,6 +2804,8 @@ impl From<&EffectRequest> for EffectRequestSave {
                 .iter()
                 .map(|(stat, line)| StatModifierDef::of(stat.clone(), line))
                 .collect(),
+            rate: request.rate,
+            depth: request.depth,
         }
     }
 }
@@ -2592,6 +2824,8 @@ impl From<EffectRequestSave> for EffectRequest {
                 .into_iter()
                 .map(StatModifierDef::into_line)
                 .collect(),
+            rate: saved.rate,
+            depth: saved.depth,
         }
     }
 }
@@ -2994,13 +3228,15 @@ fn release(world: &mut World, target: Entity, effects: &mut Effects, instance: &
 
 /// Brings `instance`'s bands to the ones its intensity reaches: a band
 /// fallen below gives back its tags, the highest first; a band reached
-/// grants its own, the lowest first. Whether any changed.
+/// grants its own, the lowest first, and queues its `enter` outputs
+/// `depth` reactions deep. Whether any changed.
 fn reach_bands(
     world: &mut World,
     target: Entity,
     granted: &mut Vec<Granted>,
     instance: &mut EffectInstance,
     effect: &Effect,
+    depth: u8,
 ) -> bool {
     let reached = effect.bands_reached(instance.intensity);
     let changed = reached != instance.bands.len();
@@ -3011,12 +3247,20 @@ fn reach_bands(
         instance.granted.truncate(from);
     }
     while instance.bands.len() < reached {
-        let band = &effect.bands[instance.bands.len()];
+        let at = instance.bands.len();
+        let band = &effect.bands[at];
         let before = instance.granted.len();
         grant(world, target, granted, instance, &band.grant);
         instance
             .bands
             .push((instance.granted.len() - before) as u32);
+        if !band.enter.is_empty() {
+            let list = StatusList {
+                effect: instance.effect.clone(),
+                band: Some(at as u32),
+            };
+            queue_status_list(world, target, list, depth, instance.source);
+        }
     }
     changed
 }
@@ -3086,15 +3330,25 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
     };
     let id = request.effect.id().map(str::to_owned);
     if effect.scaled_duration(factor) == Some(0.0) {
+        // An instant effect lands and expires at once: its `on_expire` and
+        // its `on_end` outputs at the request's depth, so a cycle through
+        // them deepens and ends at chemistry's depth limit.
         send_applied(world, target, request.source, 1, id.clone());
         land_payload(world, &effect, target, request.source, factor);
         send_expired(world, target, id, false);
         if let Some(on_expire) = &effect.on_expire {
-            let mut next = EffectRequest::new(target, on_expire.clone());
+            let mut next = EffectRequest::new(target, on_expire.clone()).at_depth(request.depth);
             if let Some(source) = request.source {
                 next = next.with_source(source);
             }
             queue_request(world, next, false);
+        }
+        if !effect.on_end.is_empty() {
+            let list = StatusList {
+                effect: request.effect.clone(),
+                band: None,
+            };
+            queue_status_list(world, target, list, request.depth, request.source);
         }
         return Applied::Applied;
     }
@@ -3124,10 +3378,18 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
                 intensity,
                 bands: Vec::new(),
                 lines: request.lines.clone(),
+                rate: request.rate,
             };
             place_modifiers(world, target, &effect, &instance, true);
             grant(world, target, granted, &mut instance, &effect.grant);
-            reach_bands(world, target, granted, &mut instance, &effect);
+            reach_bands(
+                world,
+                target,
+                granted,
+                &mut instance,
+                &effect,
+                request.depth,
+            );
             instances.push(instance);
             (Applied::Applied, 1)
         }
@@ -3153,9 +3415,10 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
                 instance.source = request.source;
             }
             instance.lines.clone_from(&request.lines);
+            instance.rate = request.rate;
             remove_modifiers(world, target, instance.serial);
             place_modifiers(world, target, &effect, instance, false);
-            reach_bands(world, target, granted, instance, &effect);
+            reach_bands(world, target, granted, instance, &effect, request.depth);
             (Applied::Stacked, instance.stacks)
         }
     };
@@ -3361,23 +3624,12 @@ impl Ticker {
                 }
             }
         }
-        for instance in self.expired.drain(..) {
-            send_expired(
-                world,
-                entity,
-                instance.effect.id().map(str::to_owned),
-                false,
-            );
-            let on_expire =
-                definition(world, &instance.effect).and_then(|effect| effect.on_expire.clone());
-            if let Some(on_expire) = on_expire {
-                let mut next = EffectRequest::new(entity, on_expire);
-                if let Some(source) = instance.source {
-                    next = next.with_source(source);
-                }
-                queue_request(world, next, true);
-            }
+        let expired = std::mem::take(&mut self.expired);
+        for instance in &expired {
+            expire(world, entity, instance, 0);
         }
+        self.expired = expired;
+        self.expired.clear();
     }
 }
 
@@ -3431,7 +3683,7 @@ fn follow_intensity(world: &mut World, entity: Entity, effects: &mut Effects, i:
         place_modifiers(world, entity, &effect, instance, false);
     }
     if banded {
-        reach_bands(world, entity, granted, instance, &effect);
+        reach_bands(world, entity, granted, instance, &effect, 0);
     }
 }
 
@@ -3456,6 +3708,7 @@ fn tick_instance(
         period_left,
         factor,
         intensity,
+        rate,
         ..
     } = instance;
     let effect = definition(world, effect_ref);
@@ -3479,7 +3732,13 @@ fn tick_instance(
             landed = elapses;
             let payload_factor = effect.payload_factor(*factor);
             for _ in 0..elapses {
-                if let Some(request) = effect.damage_request(entity, *source, payload_factor) {
+                let damage = match *rate {
+                    Some(rate) => {
+                        effect.rated_request(entity, *source, scaled(rate, f64::from(period)))
+                    }
+                    None => effect.damage_request(entity, *source, payload_factor),
+                };
+                if let Some(request) = damage {
                     payloads.push(Payload::Damage(request));
                 }
                 if let Some(request) = effect.heal_request(entity, *source, payload_factor) {
@@ -3625,7 +3884,8 @@ impl Plugin for EffectsPlugin {
                     resolver.run(world);
                 }))
                 .after_if_present(DAMAGE_RESOLVE)
-                .after_if_present(AILMENT_FEED),
+                .after_if_present(AILMENT_FEED)
+                .after_if_present(CHEMISTRY),
         );
         register_ailments(schedule, world);
     }
@@ -3797,6 +4057,14 @@ fn describe_effects(world: &mut World) {
             )
             .default("null"),
         )
+        .field(
+            FieldDescription::new(
+                "on_end",
+                FieldType::List(Box::new(FieldType::Shape("interaction_output"))),
+                "chemistry outputs run on the holder when an instance ends: run out, worn out, its fuel spent, removed or ended; an instant one's as it lands",
+            )
+            .default("null"),
+        )
         .sample("{}")
         .roundtrip(round_trip::<EffectDef>),
         ComponentDescription::new(
@@ -3840,6 +4108,14 @@ fn describe_effects(world: &mut World) {
                     "tags the holder carries while the intensity is at least `at`; the load checks each",
                 )
                 .default("[]"),
+            )
+            .field(
+                FieldDescription::new(
+                    "enter",
+                    FieldType::List(Box::new(FieldType::Shape("interaction_output"))),
+                    "chemistry outputs run on the holder each time the intensity reaches `at` from below",
+                )
+                .default("null"),
             )
             .sample(r#"{ "at": 1 }"#)
             .roundtrip(round_trip::<BandDef>),

@@ -453,11 +453,23 @@ pub struct DamagedPart {
     /// The part's hit was a critical one
     /// ([`DamageRequest::with_crit`](crate::DamageRequest::with_crit)).
     pub crit: bool,
+    /// Its damage-over-time base (the ARPG design's §6.4, step 7): a
+    /// sheet's part's drawn amount before the factors and the crit, times
+    /// its `delivery.dot` sums and the hit's status effect; a plain part's
+    /// amount before the factors times its source's status effect. A
+    /// chemistry `apply` with `dot` fixes a status's rate from it.
+    pub dot_base: f32,
+    /// The hit's status effect: its sheet's at the use, else its source's
+    /// [`Stats::STATUS_EFFECT`](crate::Stats::STATUS_EFFECT), else 1.
+    pub status_effect: f32,
+    /// How many chemistry reactions led to the hit, from 0.
+    pub depth: u8,
 }
 
 impl DamagedPart {
     /// An event with these fields, no kind, no source, no position, not
-    /// periodic and no crit.
+    /// periodic, no crit, its damage-over-time base its amount, at status
+    /// effect 1 and depth 0.
     #[must_use]
     pub fn new(entity: Entity, amount: f32) -> Self {
         Self {
@@ -468,7 +480,31 @@ impl DamagedPart {
             position: None,
             periodic: false,
             crit: false,
+            dot_base: amount,
+            status_effect: 1.0,
+            depth: 0,
         }
+    }
+
+    /// The event, its damage-over-time base `dot_base`.
+    #[must_use]
+    pub fn with_dot_base(mut self, dot_base: f32) -> Self {
+        self.dot_base = dot_base;
+        self
+    }
+
+    /// The event, at the status effect `status_effect`.
+    #[must_use]
+    pub fn with_status_effect(mut self, status_effect: f32) -> Self {
+        self.status_effect = status_effect;
+        self
+    }
+
+    /// The event, `depth` chemistry reactions deep.
+    #[must_use]
+    pub fn with_depth(mut self, depth: u8) -> Self {
+        self.depth = depth;
+        self
     }
 
     /// The event, periodic when `periodic`.

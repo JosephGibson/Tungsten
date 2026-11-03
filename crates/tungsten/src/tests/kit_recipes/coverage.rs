@@ -82,7 +82,7 @@ fn every_registered_scene_name_and_kind_appears_in_two_genres() {
     }
     assert!(short.is_empty(), "under two genres: {}", short.join(", "));
     assert_eq!(registered.len(), 45);
-    assert_eq!(kinds.len(), 9);
+    assert_eq!(kinds.len(), 10);
 }
 
 /// The damage types every fixture's `damage_types` entries declare.

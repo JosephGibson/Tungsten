@@ -1,0 +1,16 @@
+{
+  "stimulus": "elemental.fire",
+  "on": {
+    "all": [
+      "material.wood"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "ablaze",
+        "scale": 1
+      }
+    }
+  ]
+}

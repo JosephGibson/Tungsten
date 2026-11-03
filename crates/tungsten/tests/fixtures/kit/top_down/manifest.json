@@ -140,6 +140,9 @@
     },
     "round": {
       "path": "prefabs/round.json"
+    },
+    "wooden_crate": {
+      "path": "prefabs/wooden_crate.json"
     }
   },
   "data": {
@@ -207,6 +210,9 @@
       },
       "suppressed": {
         "path": "data/effects/suppressed.json"
+      },
+      "ablaze": {
+        "path": "data/effects/ablaze.json"
       }
     },
     "curves": {
@@ -237,6 +243,14 @@
     "offers": {
       "hero_offers": {
         "path": "data/offers/hero_offers.json"
+      }
+    },
+    "interactions": {
+      "wood_burns": {
+        "path": "data/interactions/wood_burns.json"
+      },
+      "cold_douses": {
+        "path": "data/interactions/cold_douses.json"
       }
     }
   },

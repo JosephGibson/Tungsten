@@ -1,0 +1,11 @@
+{
+  "tag": "kindling",
+  "components": {
+    "health": {
+      "max": 10
+    },
+    "tags": [
+      "material.kindling"
+    ]
+  }
+}

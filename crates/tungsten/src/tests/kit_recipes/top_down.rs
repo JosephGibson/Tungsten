@@ -2360,3 +2360,55 @@ fn suppression_builds_bands_and_decays() {
         assert!(!carries(&harness, "status.cover") && !carries(&harness, "status.pinned"));
     }
 }
+
+#[test]
+fn fire_lights_a_crate_and_cold_puts_it_out() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let crate_ = spawn(&mut harness, "wooden_crate", [300.0, 100.0]);
+        let torch = harness.world_mut().spawn();
+        harness.step(1);
+        let ablaze = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Effects>(crate_)
+                .and_then(|effects| effects.intensity("ablaze"))
+        };
+        let burning = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Tags>(crate_)
+                .is_some_and(|tags| tags.has("status.burning"))
+        };
+        // A fire part of 3 on the wooden crate: the wood rule builds
+        // `ablaze` by it, which wears 0.5 a second.
+        DamageRequest::from_parts(
+            crate_,
+            [DamagePart::new(3.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .with_source(torch)
+        .apply(harness.world_mut());
+        harness.step(1);
+        let lit = ablaze(&harness).unwrap();
+        assert!((lit - 3.0).abs() <= 0.5 * dt + 1e-4, "dt {dt}: {lit}");
+        assert!(burning(&harness), "dt {dt}");
+        let instance = harness
+            .world()
+            .get::<Effects>(crate_)
+            .unwrap()
+            .instances()
+            .next()
+            .unwrap()
+            .clone();
+        assert_eq!(instance.source(), Some(torch), "dt {dt}: credited");
+        // Cold on the burning crate: the douse rule removes it.
+        DamageRequest::from_parts(
+            crate_,
+            [DamagePart::new(1.0).with_tags(Tags::new(["elemental.cold"]))],
+        )
+        .apply(harness.world_mut());
+        harness.step(1);
+        assert_eq!(ablaze(&harness), None, "dt {dt}: out");
+        assert!(!burning(&harness), "dt {dt}");
+    }
+}

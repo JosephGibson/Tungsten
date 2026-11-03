@@ -21,17 +21,17 @@ use tungsten_core::{
 
 use crate::App;
 use crate::kit::{
-    ABILITY_TICK, AILMENT_FEED, AILMENT_TICK, AbilitiesPlugin, Applied, CUES, Children,
-    ContactDamage, Cooldown, CooldownElapsed, Counters, CueAction, CueEvent, Cues, CuesOnEvent,
-    CuesPlugin, DAMAGE_RESOLVE, DamagePart, DamageRequest, Damaged, DespawnOutside, EFFECT_RESOLVE,
-    EFFECT_TICK, Effect, EffectRequest, Effects, EffectsPlugin, Expire, HEALTH_TICK,
-    HIT_FLASH_MATERIAL, Health, HealthPlugin, Hit as Outcome, HitFlash, HitShape, Hitbox, Hurtbox,
-    KitPlugins, KitRng, KitTrace, LEVEL_TICK, LabelStyle, LevelPlugin, Lifetime, LocalOffset,
-    Modifier, Parent, PathFollower, PickedUp, Pickup, PlatformerController, Projectile,
-    ProjectileExpired, Refresh, STATS_APPLY, SoundOnEvent, Source, SpawnChildren, Spawner,
-    StateMachine, StateMachinePlugin, Stats, StatsPlugin, Struck, TagFilter, Tags, TopDownMover,
-    TraceKind, TriggerEntered, TriggerZone, cursor_to_world, damage, despawn_recursive,
-    spawn_child,
+    ABILITY_TICK, AILMENT_FEED, AILMENT_TICK, AbilitiesPlugin, Applied, CHEMISTRY, CUES,
+    ChemistryPlugin, Children, ContactDamage, Cooldown, CooldownElapsed, Counters, CueAction,
+    CueEvent, Cues, CuesOnEvent, CuesPlugin, DAMAGE_RESOLVE, DamagePart, DamageRequest, Damaged,
+    DespawnOutside, EFFECT_RESOLVE, EFFECT_TICK, Effect, EffectRequest, Effects, EffectsPlugin,
+    Expire, HEALTH_TICK, HIT_FLASH_MATERIAL, Health, HealthPlugin, Hit as Outcome, HitFlash,
+    HitShape, Hitbox, Hurtbox, KitPlugins, KitRng, KitTrace, LEVEL_TICK, LabelStyle, LevelPlugin,
+    Lifetime, LocalOffset, Modifier, Parent, PathFollower, PickedUp, Pickup, PlatformerController,
+    Projectile, ProjectileExpired, Refresh, STATS_APPLY, SoundOnEvent, Source, SpawnChildren,
+    Spawner, StateMachine, StateMachinePlugin, Stats, StatsPlugin, Struck, TagFilter, Tags,
+    TopDownMover, TraceKind, TriggerEntered, TriggerZone, cursor_to_world, damage,
+    despawn_recursive, spawn_child,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use crate::testing::Harness;
@@ -45,7 +45,7 @@ const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, p
 /// `physics_step`, each member in its registration order but where an edge
 /// orders it: the hit items before the corrections, the magnet before the
 /// speed limit, the kit's despawn after the cues.
-const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, ailment_tick, kit_intent, action_input, aim, ability_tick, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, ailment_feed, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step";
+const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, ailment_tick, kit_intent, action_input, aim, ability_tick, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, ailment_feed, chemistry, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step";
 
 /// The event the sound plugin plays.
 struct Hit;
@@ -3000,6 +3000,7 @@ fn build_owner(name: &str, schedule: &mut tungsten_core::Schedule, world: &mut W
         EFFECT_TICK | EFFECT_RESOLVE | AILMENT_TICK | AILMENT_FEED => {
             EffectsPlugin.build(schedule, world);
         }
+        CHEMISTRY => ChemistryPlugin::new().build(schedule, world),
         ABILITY_TICK => AbilitiesPlugin.build(schedule, world),
         LEVEL_TICK => LevelPlugin.build(schedule, world),
         CUES => CuesPlugin.build(schedule, world),
@@ -4073,11 +4074,11 @@ fn a_magnet_passes_a_nearer_corpse_for_a_live_collector() {
 // M67: effects, abilities, levels and ailments at three frame rates, and
 // their edges.
 
-/// M67's within-phase edges whose two systems have their own plugins,
-/// each `(earlier, later)`; the effect plugin's own pair (`effect_tick`
+/// M67's and 7.10b's chemistry's within-phase edges whose two systems have
+/// their own plugins, each `(earlier, later)`; the effect plugin's own pair (`effect_tick`
 /// before `ailment_tick`, `ailment_feed` before `effect_resolve`) holds by
 /// its edges inside one build.
-const EFFECT_EDGES: [(&str, &str); 7] = [
+const EFFECT_EDGES: [(&str, &str); 10] = [
     (STATS_APPLY, EFFECT_TICK),
     (STATS_APPLY, AILMENT_TICK),
     (ACTION_INPUT, ABILITY_TICK),
@@ -4085,6 +4086,9 @@ const EFFECT_EDGES: [(&str, &str); 7] = [
     (DAMAGE_RESOLVE, AILMENT_FEED),
     (DAMAGE_RESOLVE, EFFECT_RESOLVE),
     (LEVEL_TICK, CUES),
+    (DAMAGE_RESOLVE, CHEMISTRY),
+    (AILMENT_FEED, CHEMISTRY),
+    (CHEMISTRY, EFFECT_RESOLVE),
 ];
 
 #[test]

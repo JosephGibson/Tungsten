@@ -1281,3 +1281,181 @@ fn without_the_resource_nothing_is_recorded() {
     assert!(!world.has_resource::<KitExplain>());
     assert_eq!(world.resource::<EventQueue<Damaged>>().iter().count(), 2);
 }
+
+// 7.10b: a damage-over-time status's rate from the hit (PA-8).
+
+#[test]
+fn a_dot_status_takes_its_rate_from_the_hit() {
+    use crate::{
+        Conversion, DamagePart, Effect, EffectRequest, Effects, Interaction, Line, Modifier,
+        Scaled, TagFilter,
+    };
+    let (mut world, mut schedule) = rig();
+    let data = world.resource_mut::<DataRegistry>();
+    data.insert(
+        "burning",
+        Effect::new()
+            .with_duration(10.0)
+            .with_period(0.5)
+            .with_typed_damage("damage.fire", 1.0),
+    );
+    data.insert(
+        "legacy",
+        Effect::new()
+            .with_duration(10.0)
+            .with_period(0.5)
+            .with_typed_damage("damage.fire", 2.0),
+    );
+    let rule: Interaction = serde_json::from_value(json!({
+        "stimulus": "damage.fire", "on": { "all": ["team.enemy"] },
+        "outputs": [{ "apply": { "status": "burning", "dot": 0.25 } }]
+    }))
+    .unwrap();
+    data.insert("ignites", rule);
+    let mut step = |world: &mut World, count: usize| {
+        for _ in 0..count {
+            world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+            schedule.run_stage(tungsten_core::Stage::FixedUpdate, world, |_, _| {});
+            let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+            world.flush_reusing(&mut commands);
+            world.insert_resource(commands);
+            world.flush_events();
+        }
+    };
+    // A sheet's fire part drawn at 10, `delivery.dot` +50 %, its status
+    // effect 1.2: a base of 18, a rate of 0.25 × 18.
+    let mut stats = Stats::new().with(Stats::STATUS_EFFECT, 1.2);
+    stats.add_line(
+        Stats::DAMAGE,
+        "passive:dot",
+        Line::new(Modifier::Pct(0.5)).with(TagFilter::new().all(["delivery.dot"])),
+    );
+    let holder = caster(
+        &mut world,
+        cinder().with_skill(Skill::new().with_damage("damage.fire", 10.0, 10.0)),
+        stats,
+    );
+    let delivery = sheet_of(&world, holder).delivery;
+    assert!((delivery.status_effect() - 1.2).abs() < 1e-6);
+    let target = world.spawn_with((Health::new(1000.0), Tags::new(["team.enemy"])));
+    world.insert_resource(KitRng::seeded(3));
+    DamageRequest::from_delivery(&world, target, &delivery).apply(&mut world);
+    let part = world
+        .resource::<EventQueue<DamagedPart>>()
+        .iter()
+        .last()
+        .copied()
+        .unwrap();
+    assert!((part.dot_base - 18.0).abs() < 1e-4, "{}", part.dot_base);
+    assert!((part.status_effect - 1.2).abs() < 1e-6);
+    step(&mut world, 1);
+    let rate = |world: &World, entity: Entity| {
+        world
+            .get::<Effects>(entity)
+            .unwrap()
+            .instances()
+            .next()
+            .unwrap()
+            .rate()
+    };
+    assert!((rate(&world, target).unwrap() - 4.5).abs() < 1e-4);
+    // Its user's lines change and its source gains a fire-to-cold
+    // conversion: the ticks stay 2.25 of fire every half second.
+    world
+        .get_mut::<Stats>(holder)
+        .unwrap()
+        .add_modifier(Stats::DAMAGE, "rage", Modifier::Pct(1.0));
+    world.insert(
+        holder,
+        Conversion::new().with_rule("damage.fire", "damage.cold", 1.0),
+    );
+    let mut ticks = Vec::new();
+    for _ in 0..61 {
+        step(&mut world, 1);
+        ticks.extend(
+            world
+                .resource::<EventQueue<DamagedPart>>()
+                .iter()
+                .filter(|part| part.entity == target && part.periodic)
+                .map(|part| (part.amount, part.kinds.names(&world).join(","))),
+        );
+    }
+    assert_eq!(
+        ticks,
+        [
+            (2.25, "damage.fire".to_string()),
+            (2.25, "damage.fire".to_string())
+        ]
+    );
+    // A plain part of 8 before the factors: 2 a second.
+    let plain_source = world.spawn();
+    let resisting = world.spawn_with((
+        Health::new(1000.0),
+        Tags::new(["team.enemy"]),
+        Resist::new().with_factor("damage.fire", 0.5),
+    ));
+    DamageRequest::from_parts(
+        resisting,
+        [DamagePart::new(8.0).with_tags(Tags::new(["damage.fire"]))],
+    )
+    .with_source(plain_source)
+    .apply(&mut world);
+    step(&mut world, 1);
+    assert!((rate(&world, resisting).unwrap() - 2.0).abs() < 1e-4);
+    // A legacy effect's payload is converted by its source as before.
+    let legacy = world.spawn_with((Health::new(1000.0),));
+    EffectRequest::new(legacy, DataRef::by_id("legacy"))
+        .with_source(holder)
+        .apply(&mut world);
+    let mut converted = Vec::new();
+    for _ in 0..31 {
+        step(&mut world, 1);
+        converted.extend(
+            world
+                .resource::<EventQueue<DamagedPart>>()
+                .iter()
+                .filter(|part| part.entity == legacy)
+                .map(|part| part.kinds.names(&world).join(",")),
+        );
+    }
+    assert_eq!(converted, ["damage.cold"]);
+    // The rate is fixed: a curve scaling the periodic payload (`y = 2x` on
+    // an intensity decaying from 4) leaves each tick at `rate × period`,
+    // as a status without one.
+    let data = world.resource_mut::<DataRegistry>();
+    data.insert("double", Curve::new([(0.0, 0.0), (4.0, 8.0)]));
+    data.insert(
+        "flaring",
+        Effect::new()
+            .with_intensity(4.0, 0.5)
+            .with_period(0.5)
+            .with_typed_damage("damage.fire", 1.0)
+            .with_scale(DataRef::by_id("double"), Scaled::NONE.periodic()),
+    );
+    let flaring = world.spawn_with((Health::new(1000.0),));
+    let steady = world.spawn_with((Health::new(1000.0),));
+    EffectRequest::new(flaring, DataRef::by_id("flaring"))
+        .with_amount(4.0)
+        .with_rate(3.0)
+        .apply(&mut world);
+    EffectRequest::new(steady, DataRef::by_id("burning"))
+        .with_rate(3.0)
+        .apply(&mut world);
+    let mut ticks = [Vec::new(), Vec::new()];
+    for _ in 0..170 {
+        step(&mut world, 1);
+        for part in world
+            .resource::<EventQueue<DamagedPart>>()
+            .iter()
+            .filter(|part| part.periodic)
+        {
+            for (i, target) in [flaring, steady].into_iter().enumerate() {
+                if part.entity == target {
+                    ticks[i].push(part.amount);
+                }
+            }
+        }
+    }
+    assert_eq!(ticks[0], [1.5; 5], "3 a second, a tick every half second");
+    assert_eq!(ticks[0], ticks[1]);
+}

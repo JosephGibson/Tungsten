@@ -11,10 +11,10 @@ use tungsten_core::{ActionMap, Binding, Config, Entity, KeyCode, PluginSet, Tran
 
 use crate::App;
 use crate::kit::{
-    AbilitiesPlugin, ActionInputPlugin, AimPlugin, CharacterAnimatorPlugin, ContactDamagePlugin,
-    CuesPlugin, DepthSortPlugin, EffectsPlugin, FacingPlugin, FollowPlugin, HealthPlugin,
-    HitPlugin, KitPlugins, KnockbackPlugin, LevelPlugin, LinearMotionPlugin, OrbitPlugin,
-    OscillatorPlugin, PickupPlugin, ProjectilePlugin, SpeedLimitPlugin, StatsPlugin,
+    AbilitiesPlugin, ActionInputPlugin, AimPlugin, CharacterAnimatorPlugin, ChemistryPlugin,
+    ContactDamagePlugin, CuesPlugin, DepthSortPlugin, EffectsPlugin, FacingPlugin, FollowPlugin,
+    HealthPlugin, HitPlugin, KitPlugins, KnockbackPlugin, LevelPlugin, LinearMotionPlugin,
+    OrbitPlugin, OscillatorPlugin, PickupPlugin, ProjectilePlugin, SpeedLimitPlugin, StatsPlugin,
     StayInViewPlugin, SteeringPlugin, WrapPlugin,
 };
 use crate::testing::Harness;
@@ -123,10 +123,10 @@ pub(crate) fn overlap_reversed() -> PluginSet {
         .with(HealthPlugin)
 }
 
-/// `KitPlugins::set()` with the health, stats, cue, hit, input, aim and
-/// M67 effect, ability and level plugins built last, in the reverse of
-/// their order in the set: the effect edges, not registration order, must
-/// order them.
+/// `KitPlugins::set()` with the health, stats, cue, hit, input, aim, M67
+/// effect, ability and level and 7.10b chemistry plugins built last, in the
+/// reverse of their order in the set: the effect edges, not registration
+/// order, must order them.
 pub(crate) fn effects_reversed() -> PluginSet {
     KitPlugins::set()
         .without::<HealthPlugin>()
@@ -136,10 +136,12 @@ pub(crate) fn effects_reversed() -> PluginSet {
         .without::<ActionInputPlugin>()
         .without::<AimPlugin>()
         .without::<EffectsPlugin>()
+        .without::<ChemistryPlugin>()
         .without::<AbilitiesPlugin>()
         .without::<LevelPlugin>()
         .with(LevelPlugin)
         .with(AbilitiesPlugin)
+        .with(ChemistryPlugin::new())
         .with(EffectsPlugin)
         .with(AimPlugin)
         .with(ActionInputPlugin)

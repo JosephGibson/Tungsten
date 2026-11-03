@@ -348,10 +348,24 @@ shape ailment_rung: One rung of a damage type's ladder, written from the lowest 
   field chance: f32 (> 0, <= 1) = 1.0 — drawn from the kit's random stream once the rung is reached
   field window: f32 (> 0) = null — seconds the bucket drains a threshold over, the first `needs` rung's; required with `needs`
   sample: { "effect": "chilled", "window": 4 }
+shape apply_output: A status applied, with a damage-over-time rate and lines.
+  field status: effects ID or entry — the status; the load checks it
+  field dot: f32 (>= 0) = null — its damage over time a second: this times the hit's base, the drawn amount before the factors times the `delivery.dot` sums and the status effect
+  field lines: list of shape stat_modifier = null — lines on the instance, beside the status's own
+  sample: { "status": "burning" }
+shape build_output: A status built by a fixed amount or by the entry's hits.
+  field status: effects ID or entry — the status; the load checks it
+  field amount: f32 (>= 0) = null — a fixed build, at the entry's largest status effect
+  field scale: f32 (>= 0) = null — times the entry's hits, each at its own status effect; 1 when neither is given
+  sample: { "status": "burning" }
 shape child: One child: its prefab and its offset from the parent.
   field prefab: prefab ID — what it spawns; the load checks the ID and refuses a prefab with a `rigid_body`
   field offset: [x, y] = [0.0, 0.0] — world pixels from the parent's position
   sample: { "prefab": "glow" }
+shape consume_output: Intensity taken off a status.
+  field status: effects ID or entry — the status; the load checks it
+  field amount: f32 (> 0) — taken off; at 0 it has run out
+  sample: { "status": "burning", "amount": 1 }
 shape conversion_rule: A share of each part of one damage type converted to another; one part's shares past 1 normalize.
   field from: tag — the type a part carries, exactly or as a dotted ancestor: a declared damage type or an ancestor of one
   field to: tag — the share's one type: a declared damage type other than `from`
@@ -411,6 +425,7 @@ shape effect: A change an entity carries: timed, infinite or instant, with a pay
   field intensity: shape effect_intensity = null — makes it a status: an intensity each application builds by its amount times its status effect, up to `max`, one stack, worn by `decay` a second until it runs out at 0; its `scale` curve reads the intensity
   field bands: list of shape effect_band = null — a status's thresholds, `at` strictly ascending up to its `max`: each band's tags granted while the intensity is at least its `at`
   field fuel: shape effect_fuel = null — a stat of its holder's an instance burns while it runs; at 0, or on a holder without it, it has run out
+  field on_end: list of shape interaction_output = null — chemistry outputs run on the holder when an instance ends: run out, worn out, its fuel spent, removed or ended; an instant one's as it lands
   sample: {}
 shape effect_action: An effect applied at the next effect resolve, from the event's other entity on the subject or from the subject on the other.
   field id: effects ID or entry — an `effects` entry or the effect in place; the load checks it
@@ -419,6 +434,7 @@ shape effect_action: An effect applied at the next effect resolve, from the even
 shape effect_band: A status's band: tags granted while its intensity reaches it.
   field at: f32 (> 0) — the intensity it starts at, above the band before and at most the status's `max`
   field grant: list of tag = [] — tags the holder carries while the intensity is at least `at`; the load checks each
+  field enter: list of shape interaction_output = null — chemistry outputs run on the holder each time the intensity reaches `at` from below
   sample: { "at": 1 }
 shape effect_fuel: A stat of its holder's that a running instance burns.
   field stat: text — the stat whose base it drains, `[a-z][a-z0-9_]*`
@@ -454,6 +470,22 @@ shape hit_shape: A circle or a box, placed at its entity's point plus its item's
   field circle: f32 (> 0, <= 16384) — the radius, in world pixels
   field aabb: [x, y] — the half extents [x, y], each in (0, 16384]
   sample: { "circle": 8 }
+shape interaction: A chemistry rule: when a stimulus reaches a receiver whose tags pass `on`, its outputs run on the receiver.
+  field stimulus: text — a damage type or a declared tag, and every name under it; the deepest rule wins
+  field on: tag filter = null — the receiver's tags, its statuses' grants and bands among them; more dotted segments in `all` win; the load checks its tags
+  field min: f32 (>= 0) = 0.0 — the least amount it answers: the merged hits' raw sum
+  field outputs: list of shape interaction_output — run on the receiver in order
+  sample: { "stimulus": "heat", "outputs": [] }
+shape interaction_output: One thing a rule, a status's end or a band's entry does to its receiver.
+  exactly one of its fields
+  field build: shape build_output — builds a status's intensity
+  field apply: shape apply_output — applies a status at the entry's largest status effect
+  field remove: effects ID or entry — ends the status's instance; the load checks it
+  field consume: shape consume_output — takes intensity off a status; at 0 it has run out
+  field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 — queued on the receiver from the credit for the next step's resolve, one reaction deeper
+  field spawn: prefab ID — a prefab at the receiver's point, from it
+  field handler: text — a game's Rust handler by name; the load refuses one no plugin registered
+  sample: { "remove": "burning" }
 shape label_action: A `label` action: a `label_style` that names its font, or on `damaged_part` none, its part's type's style, which the grouping fields take.
   field font: text = null — a manifest font face, and with it a `label_style`'s other fields; without it, a `damaged_part`'s type's style
   field merge: f32 (> 0) = null — seconds a target's parts of a type sum over: the first plain part floats at once, the rest as one sum when the window closes; without it each part floats alone
@@ -578,6 +610,7 @@ kind cue_rules: A list of `cue_rule`: shared reactions to an event, run after th
 kind curves: A `curve`: what an effect's `scale` reads and a `level` climbs.
 kind damage_types: An object of `damage_type` by damage type: each key a declared tag, defined by one entry; a World holds 64.
 kind effects: An `effect`: what a cue's `effect` action, an ailment, an ability or an offer applies.
+kind interactions: An `interaction`: a chemistry rule from a stimulus to outputs on what receives it.
 kind loot_tables: A `weighted_table`: what a `roll` cue action draws and spawns.
 kind offers: An `offers`: what a `level` draws at each level up.
 kind stats: An object of `stat_bounds` by stat name: each declares a game stat and its clamp.

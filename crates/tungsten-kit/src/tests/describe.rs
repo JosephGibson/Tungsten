@@ -105,6 +105,7 @@ fn valid_value(descriptions: &KitDescriptions, ty: &FieldType) -> Value {
         // A target's `source` takes the empty object.
         FieldType::Object(_) => json!({}),
         FieldType::Shape(name) => sample_of(descriptions.get_shape(name).unwrap()),
+        FieldType::Damage => json!(1.0),
         other => panic!("no probe value for {other:?}"),
     }
 }
@@ -123,8 +124,8 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
     assert_eq!(described.len(), 45);
-    assert_eq!(kinds.len(), 9);
-    assert_eq!(descriptions.shapes().count(), 49);
+    assert_eq!(kinds.len(), 10);
+    assert_eq!(descriptions.shapes().count(), 54);
 }
 
 #[test]
@@ -154,6 +155,7 @@ fn every_shape_a_field_names_is_described() {
                     "curve",
                     "damage_type",
                     "effect",
+                    "interaction",
                     "offers",
                     "stat_bounds",
                     "weighted_table",
@@ -238,9 +240,10 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 34,
+        probed, 41,
         "the cue action's twelve forms, the target's three, the hit shape's two, the modifier's \
-         four, the ability trigger's three, its target's four, its payload's four and the offer's two"
+         four, the ability trigger's three, its target's four, its payload's four, the offer's two \
+         and a chemistry output's seven"
     );
 }
 
@@ -383,8 +386,8 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 115,
-        "the kit's numeric fields, three of them a number-or-map damage, three a skill's bases"
+        checked, 121,
+        "the kit's numeric fields, four of them a number-or-map damage, three a skill's bases"
     );
 }
 
@@ -394,8 +397,8 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 45);
-    assert_eq!(count("shape "), 49);
-    assert_eq!(count("kind "), 9);
+    assert_eq!(count("shape "), 54);
+    assert_eq!(count("kind "), 10);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));
     assert!(text.contains("  field invulnerability: f32 (>= 0) = 0.0 "));

@@ -104,6 +104,9 @@
     },
     "lamp": {
       "path": "prefabs/lamp.json"
+    },
+    "kindling": {
+      "path": "prefabs/kindling.json"
     }
   },
   "data": {
@@ -138,6 +141,9 @@
       },
       "lit": {
         "path": "data/effects/lit.json"
+      },
+      "smoulder": {
+        "path": "data/effects/smoulder.json"
       }
     },
     "curves": {
@@ -158,6 +164,11 @@
     "cue_rules": {
       "numbers": {
         "path": "data/cue_rules/numbers.json"
+      }
+    },
+    "interactions": {
+      "kindles": {
+        "path": "data/interactions/kindles.json"
       }
     }
   },

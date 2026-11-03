@@ -10,5 +10,6 @@
   "elemental.fire",
   "elemental.cold",
   "numbered",
-  "status.lit"
+  "status.lit",
+  "material.kindling"
 ]

@@ -252,16 +252,43 @@ pub struct DamageRequest {
     position: Option<Vec2>,
     knockback: Option<Vec2>,
     crit: Crit,
-    periodic: bool,
-    /// Its knockback lands where the hit is ignored for the target's
-    /// window too: contact damage's `push_always`.
-    push_always: bool,
+    /// Periodic, pushing always and typed, one bit each in one byte, so
+    /// the depth takes the byte the flags freed.
+    flags: HitFlags,
     /// The side a kit hit took at its strike, in the byte beside the flags.
     side: Option<Side>,
     penetration: Option<Penetration>,
     /// Its own conversion, or the box of its rarer parts, which holds the
     /// conversion too: one slot, so a request keeps its size.
     own: Option<Own>,
+    /// How many chemistry reactions led to it, carried onto its parts, in
+    /// the byte beside the flags.
+    depth: u8,
+}
+
+/// A request's flags, a bit each: periodic (an effect's payload), pushing
+/// always (its knockback lands where the hit is ignored for the target's
+/// window too: contact damage's `push_always`) and typed (at a status's
+/// application, so the source's conversion leaves it as it is).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct HitFlags(u8);
+
+impl HitFlags {
+    const PERIODIC: u8 = 1;
+    const PUSH_ALWAYS: u8 = 1 << 1;
+    const TYPED: u8 = 1 << 2;
+
+    fn has(self, flag: u8) -> bool {
+        self.0 & flag != 0
+    }
+
+    fn set(&mut self, flag: u8, on: bool) {
+        if on {
+            self.0 |= flag;
+        } else {
+            self.0 &= !flag;
+        }
+    }
 }
 
 /// The tags of a request without a context or state tags.
@@ -417,12 +444,26 @@ impl DamageRequest {
             position: None,
             knockback: None,
             crit: Crit::Open,
-            periodic: false,
-            push_always: false,
+            flags: HitFlags::default(),
             side: None,
             penetration: None,
             own: None,
+            depth: 0,
         }
+    }
+
+    /// The request, `depth` chemistry reactions deep: its parts carry it,
+    /// so a cycle of reactions through damage ends at the depth limit.
+    pub(crate) fn with_depth(mut self, depth: u8) -> Self {
+        self.depth = depth;
+        self
+    }
+
+    /// The request, typed at a status's application: the source's
+    /// conversion leaves its parts as they are.
+    pub(crate) fn typed(mut self) -> Self {
+        self.flags.set(HitFlags::TYPED, true);
+        self
     }
 
     /// The boxed extras, made when the request has none.
@@ -488,7 +529,7 @@ impl DamageRequest {
     /// The request, its knockback landing on a target it is ignored for:
     /// contact damage's `push_always`.
     pub(crate) fn pushing_always(mut self) -> Self {
-        self.push_always = true;
+        self.flags.set(HitFlags::PUSH_ALWAYS, true);
         self
     }
 
@@ -620,7 +661,7 @@ impl DamageRequest {
     /// or a periodic one. The resolve draws no more. Set the source first.
     #[must_use]
     pub fn roll_crit(mut self, world: &mut World) -> Self {
-        let odds = (!self.periodic)
+        let odds = (!self.is_periodic())
             .then(|| crit_odds(world, self.source))
             .flatten();
         let crit = odds.is_some_and(|(chance, _)| draw_roll(world) < chance);
@@ -643,7 +684,7 @@ impl DamageRequest {
     /// carry the flag.
     #[must_use]
     pub fn with_periodic(mut self, periodic: bool) -> Self {
-        self.periodic = periodic;
+        self.flags.set(HitFlags::PERIODIC, periodic);
         self
     }
 
@@ -740,7 +781,17 @@ impl DamageRequest {
     /// Whether it is periodic: an effect's payload.
     #[must_use]
     pub fn is_periodic(&self) -> bool {
-        self.periodic
+        self.flags.has(HitFlags::PERIODIC)
+    }
+
+    /// Whether its knockback lands where the hit is ignored.
+    fn pushes_always(&self) -> bool {
+        self.flags.has(HitFlags::PUSH_ALWAYS)
+    }
+
+    /// Whether it was typed at a status's application.
+    fn is_typed(&self) -> bool {
+        self.flags.has(HitFlags::TYPED)
     }
 
     /// Resolves the request now, so the caller knows the outcome in the
@@ -961,6 +1012,15 @@ struct DamageSave {
     side: Option<Side>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sheet: Option<Delivery>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    depth: u8,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    typed: bool,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &u8) -> bool {
+    *value == 0
 }
 
 impl From<&DamageRequest> for DamageSave {
@@ -980,8 +1040,8 @@ impl From<&DamageRequest> for DamageSave {
             knockback: request.knockback.map(|push| push.to_array()),
             crit: request.crit == Crit::Yes,
             crit_decided: request.crit == Crit::No,
-            periodic: request.periodic,
-            push_always: request.push_always,
+            periodic: request.is_periodic(),
+            push_always: request.pushes_always(),
             penetration: request.penetration.clone(),
             conversion: request.conversion().cloned(),
             context: request.context().clone(),
@@ -989,6 +1049,8 @@ impl From<&DamageRequest> for DamageSave {
             direction: request.direction().map(|at| at.to_array()),
             side: request.side,
             sheet: request.sheet().cloned(),
+            depth: request.depth,
+            typed: request.is_typed(),
         }
     }
 }
@@ -1025,12 +1087,15 @@ impl From<DamageSave> for DamageRequest {
                 (false, true) => Crit::No,
                 (false, false) => Crit::Open,
             },
-            periodic: saved.periodic,
-            push_always: saved.push_always,
+            flags: HitFlags::default(),
             side: saved.side,
             penetration: saved.penetration,
             own: None,
+            depth: saved.depth,
         };
+        request.flags.set(HitFlags::PERIODIC, saved.periodic);
+        request.flags.set(HitFlags::PUSH_ALWAYS, saved.push_always);
+        request.flags.set(HitFlags::TYPED, saved.typed);
         if let Some(conversion) = saved.conversion {
             request = request.with_conversion(conversion);
         }
@@ -1229,7 +1294,7 @@ impl Resolver {
 /// still lands its knockback on a target alive and not being despawned by
 /// the kit; `knock_back` spares the dead.
 fn push_ignored(world: &mut World, request: &DamageRequest) {
-    if request.push_always
+    if request.pushes_always()
         && let Some(velocity) = request.knockback
         && world.is_alive(request.target)
         && !world.has::<Despawning>(request.target)
@@ -1254,6 +1319,9 @@ fn takes_hits(world: &World, target: Entity, periodic: bool) -> bool {
 pub(crate) struct Landed {
     amount: f32,
     kinds: DamageKinds,
+    /// Its amount before the factors and the crit, times the hit's status
+    /// effect: a damage-over-time rate's base.
+    dot_base: f32,
 }
 
 /// A part between the conversion and the resistances: its types and its
@@ -1429,6 +1497,7 @@ impl Defences<'_> {
                         return Landing::Immune(Landed {
                             amount: clamped(amount),
                             kinds: kinds(),
+                            dot_base: 0.0,
                         });
                     };
                     clamped(amount * product)
@@ -1445,6 +1514,7 @@ impl Defences<'_> {
                 return Landing::Immune(Landed {
                     amount: clamped(amount),
                     kinds: kinds(),
+                    dot_base: 0.0,
                 });
             };
             let taken = self
@@ -1459,15 +1529,30 @@ impl Defences<'_> {
         Landing::Landed(Landed {
             amount,
             kinds: kinds(),
+            dot_base: 0.0,
         })
     }
 }
 
-/// Puts one part's landing in its list.
-fn record(landing: Landing, landed: &mut Vec<Landed>, immune: &mut Vec<Landed>) {
+/// A hit's status effect: its sheet's, snapshot at the use, else its
+/// source's [`Stats::STATUS_EFFECT`] at the resolve, else 1.
+fn hit_status_effect(world: &World, request: &DamageRequest) -> f32 {
+    match request.sheet() {
+        Some(sheet) => sheet.status_effect(),
+        None => request
+            .source
+            .and_then(|source| world.get::<Stats>(source))
+            .and_then(|stats| stats.get(Stats::STATUS_EFFECT))
+            .unwrap_or(1.0),
+    }
+}
+
+/// Puts one part's landing in its list, with its damage-over-time base.
+fn record(landing: Landing, dot_base: f64, landed: &mut Vec<Landed>, immune: &mut Vec<Landed>) {
+    let dot_base = dot_base.clamp(0.0, f64::from(f32::MAX)) as f32;
     match landing {
-        Landing::Landed(part) => landed.push(part),
-        Landing::Immune(part) => immune.push(part),
+        Landing::Landed(part) => landed.push(Landed { dot_base, ..part }),
+        Landing::Immune(part) => immune.push(Landed { dot_base, ..part }),
         Landing::Dropped => {}
     }
 }
@@ -1481,7 +1566,7 @@ fn land_parts<'a>(
     world: &'a World,
     request: &'a DamageRequest,
     crit: f64,
-    drawn: &[(f64, f32)],
+    drawn: &[(f64, f32, f64)],
     landed: &mut Vec<Landed>,
     immune: &mut Vec<Landed>,
     mut notes: Option<&mut HitRecord>,
@@ -1489,6 +1574,7 @@ fn land_parts<'a>(
     landed.clear();
     immune.clear();
     let target = request.target;
+    let status_effect = f64::from(hit_status_effect(world, request));
     let side = request.side.or_else(|| {
         let direction = request.direction()?;
         let aim = world.get::<Aim>(target)?.direction()?;
@@ -1507,7 +1593,7 @@ fn land_parts<'a>(
         hit: HitContext {
             context: request.context(),
             state: request.state(),
-            track: if request.periodic {
+            track: if request.is_periodic() {
                 TRACK_DOT
             } else {
                 TRACK_HIT
@@ -1518,12 +1604,12 @@ fn land_parts<'a>(
                 Some(sheet) => Some(sheet.holder_tags()),
                 None => request.source.and_then(|source| world.get::<Tags>(source)),
             },
-            periodic: request.periodic,
+            periodic: request.is_periodic(),
         },
     };
     // A delivery's hit: its drawn amounts and own points, converted at use.
     if let Some(sheet) = request.sheet() {
-        for (at, (part, &(amount, points))) in sheet.parts.iter().zip(drawn).enumerate() {
+        for (at, (part, &(amount, points, dot_base))) in sheet.parts.iter().zip(drawn).enumerate() {
             if amount > 0.0 {
                 let tags = Tags::new([part.kind.as_str()]);
                 let amount = amount.min(f64::from(f32::MAX));
@@ -1534,14 +1620,16 @@ fn land_parts<'a>(
                 {
                     defences.note(noted, &tags, &part.history, points, landing);
                 }
-                record(landing, landed, immune);
+                record(landing, dot_base, landed, immune);
             }
         }
         return;
     }
     let own_rules = request.conversion().map_or(&[][..], Conversion::rules);
+    // A status's typed ticks skip the source's live conversion.
     let lent_rules = request
         .source
+        .filter(|_| !request.is_typed())
         .and_then(|source| world.get::<Conversion>(source))
         .map_or(&[][..], Conversion::rules);
     let parts = request.parts.as_slice();
@@ -1564,7 +1652,12 @@ fn land_parts<'a>(
                     .parts
                     .push(defences.noted(typed(part), amount, crit, landing));
             }
-            record(landing, landed, immune);
+            record(
+                landing,
+                f64::from(part.amount) * status_effect,
+                landed,
+                immune,
+            );
         }
         return;
     }
@@ -1585,7 +1678,8 @@ fn land_parts<'a>(
                 .parts
                 .push(defences.noted(tags, amount, crit, landing));
         }
-        record(landing, landed, immune);
+        // Its amount before the crit: the conversion is linear.
+        record(landing, amount / crit * status_effect, landed, immune);
     }
 }
 
@@ -1641,7 +1735,7 @@ fn send_immune(world: &mut World, request: &DamageRequest, immune: &[Landed], cr
     for part in immune {
         let mut event = ImmunePart::new(request.target, part.amount)
             .with_kinds(part.kinds)
-            .with_periodic(request.periodic)
+            .with_periodic(request.is_periodic())
             .with_crit(crit);
         if let Some(source) = request.source {
             event = event.with_source(source);
@@ -1667,7 +1761,7 @@ fn resolve(
     let mut drawn = Vec::new();
     let mut notes = world
         .has_resource::<KitExplain>()
-        .then(|| HitRecord::new(target, request.source, request.periodic));
+        .then(|| HitRecord::new(target, request.source, request.is_periodic()));
     if let Some(sheet) = request.sheet() {
         // A delivery's hit: the range draw, then the crit draw.
         if !world.has_resource::<KitRng>() {
@@ -1683,7 +1777,7 @@ fn resolve(
             notes.as_mut(),
         );
     } else if request.crit == Crit::Open
-        && !request.periodic
+        && !request.is_periodic()
         && let Some((chance, multiplier)) = crit_odds(world, request.source)
     {
         let roll = draw_roll(world);
@@ -1704,11 +1798,12 @@ fn resolve(
         notes.crit = CritRecord::Decided(crit);
     }
     if request.parts().iter().all(|part| part.amount == 0.0)
-        || !takes_hits(world, target, request.periodic)
+        || !takes_hits(world, target, request.is_periodic())
     {
         push_ignored(world, request);
         return Hit::Ignored;
     }
+    let status_effect = hit_status_effect(world, request);
     land_parts(
         world,
         request,
@@ -1737,13 +1832,13 @@ fn resolve(
     let killed = world
         .get_mut::<Health>(target)
         .unwrap()
-        .hurt(rest, request.periodic);
+        .hurt(rest, request.is_periodic());
     if let Some(mut notes) = notes {
         notes.amount = amount;
         notes.killed = killed;
         keep(world, Some(notes));
     }
-    if !request.periodic {
+    if !request.is_periodic() {
         start_flash(world, target);
     }
     if world.has_event::<DamagedPart>() {
@@ -1751,8 +1846,11 @@ fn resolve(
         for part in landed.iter() {
             let mut event = DamagedPart::new(target, part.amount)
                 .with_kinds(part.kinds)
-                .with_periodic(request.periodic)
-                .with_crit(crit);
+                .with_periodic(request.is_periodic())
+                .with_crit(crit)
+                .with_dot_base(part.dot_base)
+                .with_status_effect(status_effect)
+                .with_depth(request.depth);
             if let Some(source) = request.source {
                 event = event.with_source(source);
             }
@@ -1765,7 +1863,7 @@ fn resolve(
     if world.has_event::<Damaged>() {
         let mut event = Damaged::new(target, amount, killed)
             .with_crit(crit)
-            .with_periodic(request.periodic)
+            .with_periodic(request.is_periodic())
             .with_kinds(kinds);
         if let Some(source) = request.source {
             event = event.with_source(source);

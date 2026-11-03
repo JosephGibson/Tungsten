@@ -1463,3 +1463,45 @@ fn a_lamp_burns_its_oil_and_goes_out() {
         assert!(!effects.has("lit"), "dt {dt}: out");
     }
 }
+
+#[test]
+fn a_torch_ignites_by_its_hit() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let kindling = spawn(&mut harness, "kindling", [100.0, 100.0]);
+        let brand = harness.world_mut().spawn();
+        harness.step(1);
+        // A fire hit of 4 from the brand: the kindling rule applies
+        // `smoulder` at half the hit a second, credited to the brand.
+        DamageRequest::from_parts(
+            kindling,
+            [DamagePart::new(4.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .with_source(brand)
+        .apply(harness.world_mut());
+        harness.step(1);
+        let world = harness.world();
+        let instance = world
+            .get::<Effects>(kindling)
+            .unwrap()
+            .instances()
+            .next()
+            .unwrap()
+            .clone();
+        assert_eq!(instance.rate(), Some(2.0), "dt {dt}");
+        assert_eq!(instance.source(), Some(brand), "dt {dt}");
+        assert_eq!(world.get::<Health>(kindling).unwrap().current(), 6.0);
+        // Its two seconds: a tick of 1 every half second.
+        harness.step(frames_for(2.0, dt) + 2);
+        let world = harness.world();
+        assert_eq!(
+            world.get::<Health>(kindling).unwrap().current(),
+            2.0,
+            "dt {dt}"
+        );
+        assert!(
+            !world.get::<Effects>(kindling).unwrap().has("smoulder"),
+            "dt {dt}"
+        );
+    }
+}
