@@ -5,7 +5,9 @@
 //! in the fixed header at 240 units wide, with guide lines at 16.7 and
 //! 33.3 ms and its least, mean, most and 1% low beside it, its bars and
 //! times on the budget ramp; the averages start from the first interval,
-//! and the values read `–` until it arrives.
+//! and the values read `–` until it arrives. From debug-pass the built-in
+//! rows read in words, fields apart by ` · `, each value in the view's
+//! colour and its names and units in the palette's grey.
 
 use std::collections::VecDeque;
 
@@ -17,9 +19,9 @@ use tungsten_core::ui::{Sizing, UiVertex, WidgetId};
 use tungsten_render::GpuFrameTimings;
 
 use crate::debug_views::{
-    BORDER, Cell, Column, FRAME_BUDGET_MS, GRAPH_SAMPLES, Header, MISSING, PANEL, Row, STRONG,
-    Shape, Tone, VALUE, ViewFrame, ViewSpec, ViewWindow, Width, graph_stats, graph_vertices,
-    look_of, ramp, toggle_key, write_table,
+    BORDER, Cell, Column, FRAME_BUDGET_MS, GRAPH_SAMPLES, Header, LABEL, MISSING, PANEL, Row,
+    STRONG, Shape, Tone, VALUE, ViewFrame, ViewSpec, ViewWindow, Width, graph_stats,
+    graph_vertices, look_of, ramp, toggle_key, write_table,
 };
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 
@@ -91,7 +93,7 @@ pub struct DebugHud {
     graph_samples: Vec<f32>,
     rendered_height: f32,
     pub(crate) window: Option<ViewWindow>,
-    built_in: Vec<HudRowProvider>,
+    built_in: Vec<fn(&World) -> Vec<Line>>,
     custom: Vec<HudRowProvider>,
 }
 
@@ -102,15 +104,16 @@ const COLUMNS: &[Column] = &[
 ];
 
 impl DebugHud {
+    #[must_use]
     pub fn new() -> Self {
         // HUD stays render-focused; systems/inspector own deeper views.
-        let built_in: Vec<HudRowProvider> = vec![
-            Box::new(gpu_provider),
-            Box::new(display_provider),
-            Box::new(camera_provider),
-            Box::new(counts_provider),
-            Box::new(render_cpu_provider),
-            Box::new(ui_provider),
+        let built_in: Vec<fn(&World) -> Vec<Line>> = vec![
+            gpu_line,
+            display_line,
+            camera_line,
+            counts_line,
+            render_line,
+            ui_lines,
         ];
         Self {
             enabled: false,
@@ -173,7 +176,7 @@ impl DebugHud {
 
     /// The fps row's cells (M58): `1000 / average interval`, then the
     /// average CPU frame time at the strong weight in the budget ramp's
-    /// colour; `–` before the first interval.
+    /// colour, ` 59.9 · frame  2.80 ms`; `–` before the first interval.
     fn fps_cells(&self) -> Vec<Cell> {
         let label = Cell::new("fps");
         if !self.seeded {
@@ -184,15 +187,11 @@ impl DebugHud {
         } else {
             0.0
         };
-        let spans = StyledText {
-            spans: vec![
-                TextSpan::new(format!("{fps:>5.1}  ")),
-                TextSpan::new(format!("{:>5.2}ms", self.total_ewma))
-                    .with_weight(STRONG)
-                    .with_color(ramp(self.total_ewma, FRAME_BUDGET_MS)),
-            ],
-        };
-        vec![label, Cell::styled(spans)]
+        let value = Spans::default()
+            .value(format!("{fps:>5.1}"))
+            .name(" \u{b7} frame ")
+            .time(self.total_ewma);
+        vec![label, Cell::styled(value.text())]
     }
 
     /// The HUD's frame (M57): the averages, the graph and, on its interval,
@@ -282,15 +281,20 @@ impl DebugHud {
             self.time_since_refresh_ms = 0.0;
             window.write_stats(frame.tree, graph_stats(&self.graph_samples));
             let mut rows = vec![Row::data(self.fps_cells())];
-            for provider in self.built_in.iter().chain(&self.custom) {
-                for row in provider(world) {
+            for provider in &self.built_in {
+                for line in provider(world) {
                     // The frame's CPU times are 0 until it has run once.
-                    let value = if row.label == "cpu" && !self.seeded {
-                        MISSING.to_string()
+                    let value = if line.label == RENDER && !self.seeded {
+                        Cell::new(MISSING)
                     } else {
-                        row.value
+                        Cell::styled(line.value.text())
                     };
-                    rows.push(Row::data(vec![Cell::new(row.label), Cell::new(value)]));
+                    rows.push(Row::data(vec![Cell::new(line.label), value]));
+                }
+            }
+            for provider in &self.custom {
+                for row in provider(world) {
+                    rows.push(Row::data(vec![Cell::new(row.label), Cell::new(row.value)]));
                 }
             }
             write_table(frame.tree, window, &rows);
@@ -309,122 +313,223 @@ impl Default for DebugHud {
     }
 }
 
-fn camera_provider(world: &World) -> Vec<HudRow> {
-    let Some(state) = world.get_resource::<CameraState>() else {
+/// The render row's label, whose CPU times read `–` until the frame has
+/// run once.
+const RENDER: &str = "render";
+
+/// A built-in row (debug-pass): its label and its value's spans.
+struct Line {
+    label: &'static str,
+    value: Spans,
+}
+
+/// A built-in row's value as spans (debug-pass): values, numbers and
+/// states, in the view's colour; their names, units and separators in the
+/// palette's grey; a time on the budget ramp at the strong weight.
+#[derive(Default)]
+struct Spans(Vec<TextSpan>);
+
+impl Spans {
+    /// `text` in the view's colour.
+    fn value(mut self, text: impl Into<String>) -> Self {
+        self.0.push(TextSpan::new(text));
+        self
+    }
+
+    /// `text` in the palette's grey: a name, a unit or a separator.
+    fn name(mut self, text: impl Into<String>) -> Self {
+        self.0.push(TextSpan::new(text).with_color(LABEL));
+        self
+    }
+
+    /// `n` with its thousands apart, then `one` or `many` as `n` is 1 or
+    /// not: `1 root`, `9 nodes`.
+    fn count(self, n: impl Into<u64>, one: &str, many: &str) -> Self {
+        let n = n.into();
+        let noun = if n == 1 { one } else { many };
+        self.value(grouped(n)).name(format!(" {noun}"))
+    }
+
+    /// `ms` five wide to two places, on the frame's budget ramp at the
+    /// strong weight, then its unit.
+    fn time(mut self, ms: f32) -> Self {
+        self.0.push(
+            TextSpan::new(format!("{ms:>5.2}"))
+                .with_weight(STRONG)
+                .with_color(ramp(ms, FRAME_BUDGET_MS)),
+        );
+        self.name(" ms")
+    }
+
+    /// The row labelled `label`.
+    fn line(self, label: &'static str) -> Line {
+        Line { label, value: self }
+    }
+
+    fn text(self) -> StyledText {
+        StyledText { spans: self.0 }
+    }
+}
+
+/// `n` with its thousands apart: `12,345`.
+fn grouped(n: impl Into<u64>) -> String {
+    let digits = n.into().to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, digit) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
+/// `gpu`: the backend, then the GPU's frame time on the budget ramp, `–`
+/// while none is timed.
+fn gpu_line(world: &World) -> Vec<Line> {
+    let Some(gpu) = world.get_resource::<GpuFrameTimings>() else {
         return Vec::new();
     };
-    let Some(controller) = world.get_resource::<CameraController>() else {
+    let value = Spans::default()
+        .value(gpu.backend.as_deref().unwrap_or("?"))
+        .name(" \u{b7} ");
+    let value = match gpu.frame_gpu_ms {
+        Some(ms) => value.time(ms),
+        None => value.value(MISSING),
+    };
+    vec![value.line("gpu")]
+}
+
+/// `display`: the size, the mode and vsync, `1280×720 · windowed · vsync off`.
+fn display_line(world: &World) -> Vec<Line> {
+    let Some(display) = world.get_resource::<DisplayTelemetry>() else {
+        return Vec::new();
+    };
+    let (width, height) = display.resolution;
+    vec![
+        Spans::default()
+            .value(format!("{width}\u{d7}{height}"))
+            .name(" \u{b7} ")
+            .value(display.display_mode.as_str())
+            .name(" \u{b7} vsync ")
+            .value(if display.vsync { "on" } else { "off" })
+            .line("display"),
+    ]
+}
+
+/// `camera`: its position, zoom and mode, `(0, 1635) · zoom 0.62 · follow`.
+fn camera_line(world: &World) -> Vec<Line> {
+    let (Some(state), Some(controller)) = (
+        world.get_resource::<CameraState>(),
+        world.get_resource::<CameraController>(),
+    ) else {
         return Vec::new();
     };
     let mode = match controller.mode {
         CameraMode::Free => "free",
-        CameraMode::Follow(_) => "foll",
-        CameraMode::Scripted => "scr",
+        CameraMode::Follow(_) => "follow",
+        CameraMode::Scripted => "scripted",
     };
-    vec![HudRow {
-        label: "cam",
-        value: format!(
-            "({:.0},{:.0}) z{:.2} {}",
-            state.position.x, state.position.y, state.zoom, mode
-        ),
-    }]
+    vec![
+        Spans::default()
+            .value(format!(
+                "({:.0}, {:.0})",
+                state.position.x, state.position.y
+            ))
+            .name(" \u{b7} zoom ")
+            .value(format!("{:.2}", state.zoom))
+            .name(" \u{b7} ")
+            .value(mode)
+            .line("camera"),
+    ]
 }
 
-fn display_provider(world: &World) -> Vec<HudRow> {
-    let Some(dt) = world.get_resource::<DisplayTelemetry>() else {
+/// `draw`: the entities and the sprites drawn, `1,429 entities · 457 sprites`.
+fn counts_line(world: &World) -> Vec<Line> {
+    let Some(counts) = world.get_resource::<RenderCounts>() else {
         return Vec::new();
     };
-    let vsync = if dt.vsync { "on" } else { "off" };
-    vec![HudRow {
-        label: "view",
-        value: format!(
-            "{}x{} {} vs:{}",
-            dt.resolution.0,
-            dt.resolution.1,
-            dt.display_mode.as_str(),
-            vsync
-        ),
-    }]
+    vec![
+        Spans::default()
+            .count(counts.entities, "entity", "entities")
+            .name(" \u{b7} ")
+            .count(counts.sprite_instances, "sprite", "sprites")
+            .line("draw"),
+    ]
 }
 
-fn gpu_provider(world: &World) -> Vec<HudRow> {
-    let Some(gpu) = world.get_resource::<GpuFrameTimings>() else {
-        return Vec::new();
-    };
-    let gpu_ms = match gpu.frame_gpu_ms {
-        Some(ms) => format!("{ms:.2}ms"),
-        None => "n/a".to_string(),
-    };
-    let backend = gpu.backend.as_deref().unwrap_or("?");
-    vec![HudRow {
-        label: "gpu",
-        value: format!("{gpu_ms} {backend}"),
-    }]
-}
-
-fn counts_provider(world: &World) -> Vec<HudRow> {
-    let rc = match world.get_resource::<RenderCounts>() {
-        Some(rc) => *rc,
-        None => return Vec::new(),
-    };
-    vec![HudRow {
-        label: "draw",
-        value: format!("{} ents  {} spr", rc.entities, rc.sprite_instances),
-    }]
-}
-
-fn render_cpu_provider(world: &World) -> Vec<HudRow> {
+/// `render`: the render stage's CPU times, acquire, encode and submit with
+/// present, in ms.
+fn render_line(world: &World) -> Vec<Line> {
     let Some(ft) = world.get_resource::<FrameTimings>() else {
         return Vec::new();
     };
-    vec![HudRow {
-        label: "cpu",
-        value: format!(
-            "acq {:.2} enc {:.2} sub {:.2}ms",
-            ft.render_acquire_ms, ft.render_encode_ms, ft.render_submit_present_ms
-        ),
-    }]
+    vec![
+        Spans::default()
+            .name("acq ")
+            .value(format!("{:.2}", ft.render_acquire_ms))
+            .name(" \u{b7} enc ")
+            .value(format!("{:.2}", ft.render_encode_ms))
+            .name(" \u{b7} sub ")
+            .value(format!("{:.2}", ft.render_submit_present_ms))
+            .name(" ms")
+            .line(RENDER),
+    ]
+}
+
+/// The text row's value (debug-pass): batches prepared, cached layouts and
+/// full frames, which trim the atlas, then the times the atlas was full
+/// once it has been.
+fn text_spans(rc: &RenderCounts) -> Spans {
+    let spans = Spans::default()
+        .value(grouped(rc.text_batches_prepared))
+        .name(" prepared \u{b7} ")
+        .count(rc.text_layouts, "layout", "layouts")
+        .name(" \u{b7} ")
+        .count(rc.text_full_frames, "trim", "trims");
+    if rc.text_atlas_full == 0 {
+        return spans;
+    }
+    spans
+        .name(" \u{b7} ")
+        .value(grouped(rc.text_atlas_full))
+        .name(" atlas full")
 }
 
 /// M46: the UI paint list's size, the layout stage's cost and the text
 /// batch telemetry (`D-126`'s observable half, Q3); M54: the world labels
-/// kept, culled and dropped, their glyphs and the cached layouts. From M58
-/// three rows: `ui` (commands, layout µs, roots and nodes laid out), `text`
-/// (batches, prepared, full frames, atlas full, layouts) and `labels`
-/// (world labels kept, culled and dropped, glyphs).
-fn ui_provider(world: &World) -> Vec<HudRow> {
+/// kept, culled and dropped, their glyphs and the cached layouts. From
+/// debug-pass four rows, each a value the HUD's width holds at the views'
+/// floor: `ui` (paint commands, text batches), `layout` (µs, roots and
+/// nodes laid out), `text` ([`text_spans`]) and `labels` (world labels
+/// kept, culled and dropped, glyphs).
+fn ui_lines(world: &World) -> Vec<Line> {
     let Some(rc) = world.get_resource::<RenderCounts>() else {
         return Vec::new();
     };
     vec![
-        HudRow {
-            label: "ui",
-            value: format!(
-                "{} cmds layout {}us {}r/{}n",
-                rc.ui_commands, rc.ui_layout_us, rc.ui_roots_laid_out, rc.ui_nodes_laid_out
-            ),
-        },
-        HudRow {
-            label: "text",
-            value: format!(
-                "{}b {}prep full {} atlas_full {} lay {}",
-                rc.text_batches,
-                rc.text_batches_prepared,
-                rc.text_full_frames,
-                rc.text_atlas_full,
-                rc.text_layouts
-            ),
-        },
-        HudRow {
-            label: "labels",
-            value: format!(
-                "{}/{}c/{}d lg {}",
-                rc.world_labels,
-                rc.world_labels_culled,
-                rc.world_labels_dropped,
-                rc.text_label_glyphs
-            ),
-        },
+        Spans::default()
+            .count(rc.ui_commands, "command", "commands")
+            .name(" \u{b7} ")
+            .count(rc.text_batches, "text batch", "text batches")
+            .line("ui"),
+        Spans::default()
+            .value(grouped(rc.ui_layout_us))
+            .name(" \u{b5}s \u{b7} ")
+            .count(rc.ui_roots_laid_out, "root", "roots")
+            .name(" \u{b7} ")
+            .count(rc.ui_nodes_laid_out, "node", "nodes")
+            .line("layout"),
+        text_spans(rc).line("text"),
+        Spans::default()
+            .value(grouped(rc.world_labels))
+            .name(" \u{b7} ")
+            .value(grouped(rc.world_labels_culled))
+            .name(" culled \u{b7} ")
+            .value(grouped(rc.world_labels_dropped))
+            .name(" dropped \u{b7} ")
+            .count(rc.text_label_glyphs, "glyph", "glyphs")
+            .line("labels"),
     ]
 }
 

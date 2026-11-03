@@ -8,7 +8,7 @@ use tungsten_core::ui::{FixedAdvanceMeasure, UiTree};
 
 use super::*;
 use crate::app::WindowSize;
-use crate::debug_views::{GRAPH_WIDTH, GREEN, ORANGE, RED, YELLOW};
+use crate::debug_views::{GRAPH_WIDTH, GREEN, LABEL, ORANGE, RED, YELLOW};
 
 /// A world with what the views' frame reads, the HUD on.
 fn views_world() -> World {
@@ -138,14 +138,25 @@ fn the_rows_list_fps_then_the_built_in_rows_then_a_providers_in_columns() {
     let labels: Vec<&str> = rows.iter().map(|(label, _)| label.as_str()).collect();
     assert_eq!(
         labels,
-        ["fps", "draw", "cpu", "ui", "text", "labels", "extra"],
-        "M58 splits the ui row in three"
+        [
+            "fps", "draw", "render", "ui", "layout", "text", "labels", "extra"
+        ],
+        "M58 split the ui row in three; debug-pass the ui row in two"
     );
-    assert_eq!(rows[1].1, "42 ents  128 spr");
-    assert_eq!(rows[3].1, "17 cmds layout 42us 1r/9n");
-    assert_eq!(rows[4].1, "2b 1prep full 3 atlas_full 0 lay 12");
-    assert_eq!(rows[5].1, "5/1c/2d lg 37");
-    assert_eq!(rows[6].1, "value");
+    // In words, fields apart by ` · ` (debug-pass).
+    assert_eq!(rows[1].1, "42 entities \u{b7} 128 sprites");
+    assert_eq!(rows[2].1, MISSING, "the render times wait for an interval");
+    assert_eq!(rows[3].1, "17 commands \u{b7} 2 text batches");
+    assert_eq!(rows[4].1, "42 \u{b5}s \u{b7} 1 root \u{b7} 9 nodes");
+    assert_eq!(
+        rows[5].1, "1 prepared \u{b7} 12 layouts \u{b7} 3 trims",
+        "no atlas full while it has not been"
+    );
+    assert_eq!(
+        rows[6].1,
+        "5 \u{b7} 1 culled \u{b7} 2 dropped \u{b7} 37 glyphs"
+    );
+    assert_eq!(rows[7].1, "value");
     let all = rows
         .iter()
         .map(|(label, value)| format!("{label} {value}"))
@@ -154,6 +165,14 @@ fn the_rows_list_fps_then_the_built_in_rows_then_a_providers_in_columns() {
     for absent in ["player", "state", "gameplay", "sys_a"] {
         assert!(!all.contains(absent), "{absent} in\n{all}");
     }
+
+    world.resource_mut::<RenderCounts>().text_atlas_full = 1;
+    world.resource_mut::<DebugHud>().refresh_interval_ms = 0.0;
+    frame(&mut world, None, 0.0);
+    assert_eq!(
+        self::rows(&world)[5].1,
+        "1 prepared \u{b7} 12 layouts \u{b7} 3 trims \u{b7} 1 atlas full"
+    );
 }
 
 #[test]
@@ -197,7 +216,10 @@ fn fps_comes_from_the_interval_and_the_ms_from_the_frame_total() {
         hud.interval_ewma
     );
     assert!((hud.total_ewma - 5.0).abs() < 1e-3, "{}", hud.total_ewma);
-    assert_eq!(rows(&world)[0], ("fps".into(), " 50.0   5.00ms".into()));
+    assert_eq!(
+        rows(&world)[0],
+        ("fps".into(), " 50.0 \u{b7} frame  5.00 ms".into())
+    );
 }
 
 #[test]
@@ -413,7 +435,7 @@ fn both_averages_start_from_the_first_interval() {
         (40.0, 8.0),
         "not from 0"
     );
-    assert_eq!(rows(&world)[0].1, " 25.0   8.00ms");
+    assert_eq!(rows(&world)[0].1, " 25.0 \u{b7} frame  8.00 ms");
 }
 
 #[test]
@@ -431,10 +453,15 @@ fn the_fps_rows_time_takes_the_ramps_colour() {
             .unwrap()
             .spans
             .clone();
-        assert_eq!(spans.len(), 2);
-        assert_eq!(spans[1].color, Some(color), "{total} ms");
-        assert_eq!(spans[1].weight, Some(600));
+        assert_eq!(spans.len(), 4, "fps, ` · frame `, the time, ` ms`");
+        assert_eq!(spans[2].color, Some(color), "{total} ms");
+        assert_eq!(spans[2].weight, Some(600));
         assert_eq!(spans[0].color, None, "the fps in the value colour");
+        assert_eq!(
+            (spans[1].color, spans[3].color),
+            (Some(LABEL), Some(LABEL)),
+            "names and units in the label grey"
+        );
     }
 }
 
@@ -461,5 +488,8 @@ fn a_reopened_hud_starts_its_graph_and_averages_afresh() {
         3 * 6 + 12,
         "the three new bars and the two guide lines"
     );
-    assert_eq!(rows(&world)[0], ("fps".into(), "100.0   1.00ms".into()));
+    assert_eq!(
+        rows(&world)[0],
+        ("fps".into(), "100.0 \u{b7} frame  1.00 ms".into())
+    );
 }
