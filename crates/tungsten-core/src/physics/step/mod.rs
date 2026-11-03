@@ -162,8 +162,8 @@ use gather::{TileCache, entity_key, gather_proxies, key_entity};
 use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses};
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
 use solver::{
-    apply_impulse, apply_restitution, apply_tangent, narrow_phase, one_way_holds, soft_params,
-    solve_contacts, solve_friction, solve_rolling,
+    apply_impulse as apply_contact_impulse, apply_restitution, apply_tangent, narrow_phase,
+    one_way_holds, soft_params, solve_contacts, solve_friction, solve_rolling,
 };
 use sweep::{SweepGrid, speculative_pass};
 
@@ -514,6 +514,8 @@ struct StepExtra {
     sensor_cells_next: Vec<(u128, TileHit)>,
     /// The step's sensor exits, sent after its entries.
     sensor_exits: Vec<SensorExited>,
+    /// The kinematic bodies' pushes ([`take_push`]).
+    push: PushRecord,
 }
 
 /// A swept sensor of the step ([`RigidBody::swept`]): its place among the
@@ -815,6 +817,133 @@ pub fn teleport(world: &mut World, entity: Entity, at: Vec2) {
     wake(world, entity);
 }
 
+/// Gives `entity` the impulse `impulse`, in mass times px/s, and returns
+/// whether it took one: a dynamic body's `Velocity` changes by `impulse /
+/// m` at once and its island wakes; a kinematic body with a mass `M`
+/// ([`RigidBody::with_mass`]) keeps `impulse / M` in its push, which its
+/// driver reads with [`take_push`]. A static body, a sensor, a kinematic
+/// body without a mass, a missing body and a non-finite impulse take none.
+///
+/// ```
+/// use tungsten_core::ecs::World;
+/// use tungsten_core::physics::{Collider, Position, RigidBody, RigidBodyBundle, Velocity, apply_impulse};
+/// use glam::Vec2;
+///
+/// let mut world = World::new();
+/// let ball = world.spawn_with(
+///     RigidBodyBundle::dynamic(Position(Vec2::ZERO), Collider::circle(4.0))
+///         .with_body(RigidBody::dynamic().with_mass(2.0)),
+/// );
+/// assert!(apply_impulse(&mut world, ball, Vec2::new(100.0, 0.0)));
+/// assert_eq!(world.get::<Velocity>(ball).unwrap().0, Vec2::new(50.0, 0.0));
+/// ```
+pub fn apply_impulse(world: &mut World, entity: Entity, impulse: Vec2) -> bool {
+    if !impulse.is_finite() {
+        return false;
+    }
+    let Some(&body) = world.get::<RigidBody>(entity) else {
+        return false;
+    };
+    if !(body.inv_mass.is_finite() && body.inv_mass > 0.0) {
+        return false;
+    }
+    match body.kind {
+        BodyKind::Dynamic => {
+            let Some(velocity) = world.get_mut::<Velocity>(entity) else {
+                return false;
+            };
+            velocity.0 += impulse * body.inv_mass;
+            wake(world, entity);
+            true
+        }
+        BodyKind::Kinematic => {
+            if !world.has_resource::<PhysicsBuffers>() {
+                world.insert_resource(PhysicsBuffers::default());
+            }
+            let kept = &mut world.resource_mut::<PhysicsBuffers>().extra.push.kept;
+            let push = impulse * body.inv_mass;
+            match kept.iter_mut().find(|(owner, _)| *owner == entity) {
+                Some((_, total)) => *total += push,
+                None => kept.push((entity, push)),
+            }
+            true
+        }
+        BodyKind::Static | BodyKind::Sensor => false,
+    }
+}
+
+/// Gives each dynamic or kinematic body that `filter` sees, and whose shape
+/// lies within `radius` of `center` as [`overlap`](crate::physics::overlap)
+/// finds it at the last step's positions, in its order, the impulse
+/// `impulse · (1 − d / radius)` from `center` toward its centre, `d` its
+/// surface's distance from `center` ([`Shape::distance`]), straight up
+/// where the two coincide, as [`apply_impulse`] gives it; returns how many
+/// took one. The falloff is linear; the candidates go through a buffer
+/// the physics keeps, so a call allocates nothing once warm.
+pub fn apply_radial_impulse(
+    world: &mut World,
+    center: Vec2,
+    radius: f32,
+    impulse: f32,
+    filter: &super::SpatialFilter,
+) -> usize {
+    if !(center.is_finite() && radius.is_finite() && radius > 0.0 && impulse.is_finite()) {
+        return 0;
+    }
+    let Some(buffers) = world.get_resource_mut::<PhysicsBuffers>() else {
+        return 0;
+    };
+    let mut found = std::mem::take(&mut buffers.extra.push.found);
+    super::overlap(world, Shape::Circle { radius }, center, filter, &mut found);
+    let mut took = 0;
+    for &entity in found.iter().flatten() {
+        let (Some(body), Some(&collider), Some(position)) = (
+            world.get::<RigidBody>(entity),
+            world.get::<Collider>(entity),
+            world.get::<Position>(entity),
+        ) else {
+            continue;
+        };
+        if !matches!(body.kind, BodyKind::Dynamic | BodyKind::Kinematic) {
+            continue;
+        }
+        let at = collider.center(position.0);
+        let distance = collider.shape.distance(center - at);
+        if distance >= radius {
+            continue;
+        }
+        let direction = (at - center).normalize_or(Vec2::NEG_Y);
+        let share = direction * (impulse * (1.0 - distance / radius));
+        took += usize::from(apply_impulse(world, entity, share));
+    }
+    if let Some(buffers) = world.get_resource_mut::<PhysicsBuffers>() {
+        buffers.extra.push.found = found;
+    }
+    took
+}
+
+/// The push `entity`, a kinematic body with a mass `M`, has kept since this
+/// was last called, a velocity change, and clears it: the impulses
+/// [`apply_impulse`] gave it over `M`, and each hit's inelastic share, a
+/// body of mass `m` that begins touching it at a closing speed `u` adding
+/// `m · u / (m + M)` along the normal into it. Zero for any other
+/// entity; a despawned body's push, or one that lost its mass, drops at the
+/// next step.
+pub fn take_push(world: &mut World, entity: Entity) -> Vec2 {
+    world
+        .get_resource_mut::<PhysicsBuffers>()
+        .and_then(|buffers| {
+            buffers
+                .extra
+                .push
+                .kept
+                .iter_mut()
+                .find(|(owner, _)| *owner == entity)
+                .map(|(_, push)| std::mem::take(push))
+        })
+        .unwrap_or(Vec2::ZERO)
+}
+
 /// Run one physics tick with fixed substeps (D-064), advancing at most
 /// `PhysicsConfig::max_step_dt` of the frame's game dt, [`Time::delta`]
 /// (D-094); a paused clock leaves every body as it is.
@@ -916,6 +1045,7 @@ pub fn physics_step(world: &mut World) {
         woken.sort_unstable();
         record.finish(proxies, *bodies, tiles, layers, woken, began, ended);
     }
+    buffers.extra.push.finish(&buffers.proxies, buffers.bodies);
     write_back(
         world,
         &buffers.proxies,
@@ -1381,6 +1511,12 @@ fn substep(
         }
     }
 
+    // The push record samples its pairs' closing speeds at the build.
+    let push_on = !extra.push.reaction.is_empty();
+    if push_on {
+        extra.push.build(contacts);
+    }
+
     // Integrate velocities (gravity), then warm start from stored impulses.
     // Each awake body's velocity is kept as the narrow phase saw it: the
     // arrival pass measures what the solve adds against it (D-092).
@@ -1418,7 +1554,7 @@ fn substep(
     }
     for contact in contacts.iter() {
         if contact.impulse > 0.0 {
-            apply_impulse(proxies, contact, contact.normal * contact.impulse);
+            apply_contact_impulse(proxies, contact, contact.normal * contact.impulse);
         }
     }
     for friction in &extra.friction {
@@ -1497,12 +1633,14 @@ fn substep(
             repaired,
             candidates,
             arrival,
-            record_on.then_some(&mut extra.touches),
+            (record_on || push_on).then_some(&mut extra.touches),
         );
     }
     // The record samples each contact's closing speed after the solve and
     // the arrival pass, which catches a body knocked into a contact built
-    // while it rested; the arrival pass's clamps are touches.
+    // while it rested; the arrival pass's clamps are touches, of the push
+    // record's pairs too, which samples none here: these velocities carry
+    // the solve's bias.
     if record_on {
         for (contact, closing) in contacts.iter().zip(extra.contact_closing.iter_mut()) {
             let approach = (proxies[contact.a as usize].velocity
@@ -1513,13 +1651,24 @@ fn substep(
         for &touch in &extra.touches {
             extra.record.observe(proxies, bodies, tiles, touch);
         }
-        extra.touches.clear();
     }
+    if push_on {
+        for &touch in &extra.touches {
+            extra.push.clamp(proxies, touch);
+        }
+    }
+    extra.touches.clear();
 
     // One bias-free relax iteration strips the injected bias energy.
     solve_contacts(proxies, contacts, config, soft, soft_static, inv_h, false);
     solve_friction(proxies, &mut extra.spins, contacts, &mut extra.friction);
     solve_rolling(&mut extra.spins, contacts, &mut extra.rolling);
+    // The push record samples again where the relax has stripped the bias,
+    // before restitution adds to the same velocities, and its contacts
+    // touch as the record's do.
+    if push_on {
+        extra.push.relax(proxies, contacts);
+    }
 
     apply_restitution(proxies, contacts, config.restitution_threshold);
 
@@ -2363,6 +2512,287 @@ impl ContactRecord {
         if self.entries.len() != before {
             self.reindex(self.entries.len());
         }
+    }
+}
+
+/// The push record ([`take_push`]): what hits bring the kinematic bodies
+/// with a mass. A pair of a dynamic body and such a body touches as the
+/// contact record's pairs do, an arrival clamp included, and keeps the
+/// largest closing speed it had since it came within reach or last touched
+/// at a step's end, sampled where the relax has stripped the solve's bias:
+/// at each build and after each relax, before restitution. At the step's
+/// end a pair that touched and did not at the last begins, adding
+/// `m · u / (m + M)` to the kinematic body's push along its first touch's
+/// normal into it; a pair that touched clears its speed. A pair the step
+/// did not solve, both sides immovable, keeps touching. Its vectors stay
+/// empty while no kinematic body has a mass.
+#[derive(Debug, Default)]
+struct PushRecord {
+    /// Each proxy's reaction inverse mass: `1 / M` for a kinematic body
+    /// with a mass `M`, 0 for every other, in proxy order; empty while no
+    /// kinematic body has one, when the record runs none of the rest.
+    reaction: Vec<f32>,
+    /// The pairs in reach of the last substep's build or touched this
+    /// step, sorted by solver pair key.
+    pairs: Vec<PushPair>,
+    /// The substep's contacts of those pairs, by index.
+    contacts: Vec<u32>,
+    /// The keys of the pairs the step touched, in first-touch order.
+    touched: Vec<u128>,
+    /// The pairs touching at the last step's end, sorted by key; and
+    /// scratch for this step's.
+    touching: Vec<PushSides>,
+    touching_next: Vec<PushSides>,
+    /// The step's pushes, parallel to `reaction`.
+    step: Vec<Vec2>,
+    /// Each kinematic body's push not yet taken, in proxy order, and
+    /// scratch.
+    kept: Vec<(Entity, Vec2)>,
+    kept_next: Vec<(Entity, Vec2)>,
+    /// The entity proxies by key, sorted, built when a stored place misses.
+    by_key: Vec<(u64, u32)>,
+    /// [`apply_radial_impulse`]'s candidates.
+    found: Vec<Option<Entity>>,
+}
+
+/// A pair of the push record.
+#[derive(Debug, Clone, Copy)]
+struct PushPair {
+    key: u128,
+    /// Its largest closing speed since it came within reach or last touched
+    /// at a step's end.
+    closing: f32,
+    /// The last build reached it.
+    in_reach: bool,
+    /// The step touched it; its sides and the normal into the kinematic
+    /// body at its first touch.
+    touched: bool,
+    sides: PushSides,
+    into: Vec2,
+}
+
+/// A pair's sides: the dynamic body's and the kinematic body's proxies and
+/// keys, where the pair last touched.
+#[derive(Debug, Clone, Copy)]
+struct PushSides {
+    key: u128,
+    body: u32,
+    kinematic: u32,
+    body_key: u64,
+    kinematic_key: u64,
+}
+
+impl PushRecord {
+    /// The place of the pair keyed `key`, inserted untouched with no speed
+    /// when missing.
+    fn pair(&mut self, key: u128) -> usize {
+        match self.pairs.binary_search_by_key(&key, |pair| pair.key) {
+            Ok(at) => at,
+            Err(at) => {
+                self.pairs.insert(
+                    at,
+                    PushPair {
+                        key,
+                        closing: 0.0,
+                        in_reach: false,
+                        touched: false,
+                        sides: PushSides {
+                            key,
+                            body: 0,
+                            kinematic: 0,
+                            body_key: 0,
+                            kinematic_key: 0,
+                        },
+                        into: Vec2::ZERO,
+                    },
+                );
+                at
+            }
+        }
+    }
+
+    /// The pair's sides from proxy `body`, the dynamic body, and
+    /// `kinematic`.
+    fn sides(proxies: &[Proxy], key: u128, body: usize, kinematic: usize) -> PushSides {
+        PushSides {
+            key,
+            body: body as u32,
+            kinematic: kinematic as u32,
+            body_key: proxies[body].key,
+            kinematic_key: proxies[kinematic].key,
+        }
+    }
+
+    /// Notes the first touch this step of the pair at `at`.
+    fn touch(&mut self, at: usize, sides: PushSides, into: Vec2) {
+        let pair = &mut self.pairs[at];
+        if !pair.touched {
+            pair.touched = true;
+            pair.sides = sides;
+            pair.into = into;
+            self.touched.push(pair.key);
+        }
+    }
+
+    /// The build: each contact of a dynamic body and a kinematic body with
+    /// a mass comes within reach at its closing speed.
+    fn build(&mut self, contacts: &[ContactConstraint]) {
+        self.contacts.clear();
+        for pair in &mut self.pairs {
+            pair.in_reach = false;
+        }
+        for (index, contact) in contacts.iter().enumerate() {
+            if self.reaction[contact.a as usize] > 0.0 || self.reaction[contact.b as usize] > 0.0 {
+                self.contacts.push(index as u32);
+                let at = self.pair(contact.key);
+                let pair = &mut self.pairs[at];
+                pair.in_reach = true;
+                pair.closing = pair.closing.max(-contact.approach);
+            }
+        }
+    }
+
+    /// An arrival clamp, `touch`, of a dynamic body against a kinematic
+    /// body with a mass touches their pair; its speed carries the solve's
+    /// bias, so it is not sampled.
+    fn clamp(&mut self, proxies: &[Proxy], touch: TouchObs) {
+        let (x, y) = (touch.a as usize, touch.b as usize);
+        let (body, kinematic, into) = if self.reaction[y] > 0.0 {
+            (x, y, -touch.normal)
+        } else if self.reaction[x] > 0.0 {
+            (y, x, touch.normal)
+        } else {
+            return;
+        };
+        if !proxies[body].is_dynamic {
+            return;
+        }
+        let key = pair_key(proxies[x].key, proxies[y].key);
+        let at = self.pair(key);
+        self.touch(at, Self::sides(proxies, key, body, kinematic), into);
+    }
+
+    /// After the relax: each contact's closing speed, then its touch when it
+    /// penetrates or the solve gave it an impulse; a pair out of reach that
+    /// the step did not touch drops its speed.
+    fn relax(&mut self, proxies: &[Proxy], contacts: &[ContactConstraint]) {
+        for at in 0..self.contacts.len() {
+            let contact = &contacts[self.contacts[at] as usize];
+            let (a, b) = (contact.a as usize, contact.b as usize);
+            let approach = (proxies[a].velocity - proxies[b].velocity).dot(contact.normal);
+            let (body, kinematic, into) = if self.reaction[b] > 0.0 {
+                (a, b, -contact.normal)
+            } else {
+                (b, a, contact.normal)
+            };
+            let place = self.pair(contact.key);
+            let pair = &mut self.pairs[place];
+            pair.closing = pair.closing.max(-approach);
+            if contact.penetration > 0.0 || contact.impulse > 0.0 {
+                let sides = Self::sides(proxies, contact.key, body, kinematic);
+                self.touch(place, sides, into);
+            }
+        }
+        self.pairs.retain(|pair| pair.in_reach || pair.touched);
+    }
+
+    /// The proxy of the entity keyed `key`, last at `at`.
+    fn body(&mut self, proxies: &[Proxy], bodies: usize, key: u64, at: u32) -> Option<usize> {
+        let at = at as usize;
+        if at < bodies && proxies[at].key == key {
+            return Some(at);
+        }
+        if self.by_key.is_empty() {
+            self.by_key.extend(
+                proxies[..bodies]
+                    .iter()
+                    .enumerate()
+                    .map(|(index, proxy)| (proxy.key, index as u32)),
+            );
+            self.by_key.sort_unstable();
+        }
+        self.by_key
+            .binary_search_by_key(&key, |&(key, _)| key)
+            .ok()
+            .map(|found| self.by_key[found].1 as usize)
+    }
+
+    /// The step's end: the begins push their kinematic bodies, in
+    /// first-touch order; the pairs touching now replace the last step's;
+    /// the step's pushes join each kinematic body's untaken one, in proxy
+    /// order, a body no longer kinematic with a mass dropping its own.
+    fn finish(&mut self, proxies: &[Proxy], bodies: usize) {
+        if self.reaction.is_empty() {
+            if !(self.pairs.is_empty() && self.touching.is_empty() && self.kept.is_empty()) {
+                self.pairs.clear();
+                self.touched.clear();
+                self.touching.clear();
+                self.kept.clear();
+            }
+            return;
+        }
+        self.step.clear();
+        self.step.resize(self.reaction.len(), Vec2::ZERO);
+        self.by_key.clear();
+        // A pair the step did not touch keeps touching while both its sides
+        // are immovable through the step, so no substep solved it.
+        self.touching_next.clear();
+        for at in 0..self.touching.len() {
+            let sides = self.touching[at];
+            let touched = self
+                .pairs
+                .binary_search_by_key(&sides.key, |pair| pair.key)
+                .is_ok_and(|place| self.pairs[place].touched);
+            if touched {
+                continue;
+            }
+            let body = self.body(proxies, bodies, sides.body_key, sides.body);
+            let kinematic = self.body(proxies, bodies, sides.kinematic_key, sides.kinematic);
+            if let (Some(body), Some(kinematic)) = (body, kinematic)
+                && immovable(&proxies[body])
+                && immovable(&proxies[kinematic])
+            {
+                self.touching_next
+                    .push(Self::sides(proxies, sides.key, body, kinematic));
+            }
+        }
+        for at in 0..self.touched.len() {
+            let key = self.touched[at];
+            let Ok(place) = self.pairs.binary_search_by_key(&key, |pair| pair.key) else {
+                continue;
+            };
+            let pair = &mut self.pairs[place];
+            let begins = self
+                .touching
+                .binary_search_by_key(&key, |sides| sides.key)
+                .is_err();
+            let (body, kinematic) = (pair.sides.body as usize, pair.sides.kinematic as usize);
+            let (inverse, reaction) = (proxies[body].inv_mass, self.reaction[kinematic]);
+            if begins && inverse > 0.0 && reaction > 0.0 {
+                self.step[kinematic] +=
+                    pair.into * (pair.closing * reaction / (reaction + inverse));
+            }
+            pair.closing = 0.0;
+            pair.touched = false;
+            self.touching_next.push(pair.sides);
+        }
+        self.touched.clear();
+        self.pairs.retain(|pair| pair.in_reach);
+        self.touching_next.sort_unstable_by_key(|sides| sides.key);
+        std::mem::swap(&mut self.touching, &mut self.touching_next);
+        self.kept_next.clear();
+        for (index, &reaction) in self.reaction[..bodies].iter().enumerate() {
+            let Some(entity) = proxies[index].entity.filter(|_| reaction > 0.0) else {
+                continue;
+            };
+            let carried = self
+                .kept
+                .iter()
+                .find(|(owner, _)| *owner == entity)
+                .map_or(Vec2::ZERO, |&(_, push)| push);
+            self.kept_next.push((entity, carried + self.step[index]));
+        }
+        std::mem::swap(&mut self.kept, &mut self.kept_next);
     }
 }
 

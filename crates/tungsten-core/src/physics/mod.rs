@@ -40,7 +40,10 @@ pub use query::{
     SpatialFilter, SpatialHit, TileHit, cast_ray, cast_ray_where, cast_shape, cast_shape_where,
     nearest, overlap,
 };
-pub use step::{PhysicsBuffers, TerrainFace, physics_step, teleport, wake};
+pub use step::{
+    PhysicsBuffers, TerrainFace, apply_impulse, apply_radial_impulse, physics_step, take_push,
+    teleport, wake,
+};
 
 use std::collections::BTreeMap;
 

@@ -7717,3 +7717,463 @@ fn a_map_inserted_again_with_a_tile_turned_slope_reaches_the_step() {
         );
     }
 }
+
+/// A dynamic ball of `radius` and `mass` at `at`, moving at `velocity`.
+fn push_ball(
+    world: &mut World,
+    at: Vec2,
+    radius: f32,
+    mass: f32,
+    velocity: Vec2,
+    restitution: f32,
+) -> Entity {
+    world.spawn_with(
+        RigidBodyBundle::dynamic(Position(at), Collider::circle(radius))
+            .with_body(
+                RigidBody::dynamic()
+                    .with_mass(mass)
+                    .with_restitution(restitution),
+            )
+            .with_velocity(Velocity(velocity)),
+    )
+}
+
+/// A still kinematic box of `half` at `at`, with a mass when given.
+fn push_box(world: &mut World, at: Vec2, half: Vec2, mass: Option<f32>) -> Entity {
+    let body = mass.map_or(RigidBody::kinematic(), |mass| {
+        RigidBody::kinematic().with_mass(mass)
+    });
+    world.spawn_with(RigidBodyBundle::kinematic(Position(at), Collider::aabb(half)).with_body(body))
+}
+
+/// Each step's push on `kinematic` over `steps` steps.
+fn pushes(world: &mut World, kinematic: Entity, steps: usize) -> Vec<Vec2> {
+    (0..steps)
+        .map(|_| {
+            physics_step(world);
+            take_push(world, kinematic)
+        })
+        .collect()
+}
+
+/// The six orders of three spawns.
+const ORDERS: [[usize; 3]; 6] = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+];
+
+#[test]
+fn an_impulse_moves_a_body_by_its_mass() {
+    // A dynamic body's velocity changes by the impulse over its mass at
+    // once; a static body, a sensor, a kinematic body without a mass and a
+    // non-finite impulse take none.
+    let mut world = seed_world();
+    let light = push_ball(&mut world, Vec2::ZERO, 4.0, 1.0, Vec2::ZERO, 0.0);
+    let heavy = push_ball(&mut world, Vec2::new(100.0, 0.0), 4.0, 2.0, Vec2::ZERO, 0.0);
+    let impulse = Vec2::new(30.0, -12.0);
+    assert!(apply_impulse(&mut world, light, impulse));
+    assert!(apply_impulse(&mut world, heavy, impulse));
+    assert_eq!(world.get::<Velocity>(light).unwrap().0, impulse);
+    assert_eq!(world.get::<Velocity>(heavy).unwrap().0, impulse / 2.0);
+    let wall = world.spawn_with(RigidBodyBundle::r#static(
+        Position(Vec2::new(0.0, 200.0)),
+        Collider::aabb(Vec2::splat(8.0)),
+    ));
+    let sensor = world.spawn_with(RigidBodyBundle::sensor(
+        Position(Vec2::new(200.0, 0.0)),
+        Collider::circle(8.0),
+    ));
+    let platform = push_box(&mut world, Vec2::new(-200.0, 0.0), Vec2::splat(8.0), None);
+    for (name, entity) in [
+        ("static", wall),
+        ("sensor", sensor),
+        ("kinematic", platform),
+    ] {
+        assert!(!apply_impulse(&mut world, entity, impulse), "{name}");
+    }
+    assert_eq!(world.get::<Velocity>(sensor).unwrap().0, Vec2::ZERO);
+    assert_eq!(world.get::<Velocity>(platform).unwrap().0, Vec2::ZERO);
+    assert_eq!(take_push(&mut world, platform), Vec2::ZERO);
+    for bad in [Vec2::new(f32::NAN, 0.0), Vec2::new(0.0, f32::INFINITY)] {
+        assert!(!apply_impulse(&mut world, light, bad));
+    }
+    assert_eq!(world.get::<Velocity>(light).unwrap().0, impulse);
+    let gone = world.spawn();
+    assert!(!apply_impulse(&mut world, gone, impulse));
+
+    // A sleeper wakes and moves.
+    let mut world = seed_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    settle_to_sleep(&mut world, &[bottom, top]);
+    let before = world.get::<Position>(top).unwrap().0;
+    assert!(apply_impulse(&mut world, top, Vec2::new(0.0, -600.0)));
+    assert!(!world.resource::<PhysicsBuffers>().is_sleeping(top));
+    physics_step(&mut world);
+    let after = world.get::<Position>(top).unwrap().0;
+    assert!(after.y < before.y - 5.0, "{before} -> {after}");
+}
+
+#[test]
+fn a_radial_impulse_falls_off_with_distance() {
+    // Balls whose surfaces lie 0.25, 0.5 and 1.25 radii out: the first two
+    // take `impulse · (1 − d / r) / m` from the centre toward theirs, the
+    // third nothing.
+    let mut world = seed_world();
+    let (radius, impulse) = (100.0, 600.0);
+    let near = push_ball(&mut world, Vec2::new(29.0, 0.0), 4.0, 1.0, Vec2::ZERO, 0.0);
+    let mid = push_ball(&mut world, Vec2::new(0.0, 54.0), 4.0, 2.0, Vec2::ZERO, 0.0);
+    let far = push_ball(
+        &mut world,
+        Vec2::new(-129.0, 0.0),
+        4.0,
+        1.0,
+        Vec2::ZERO,
+        0.0,
+    );
+    physics_step(&mut world);
+    let took = apply_radial_impulse(
+        &mut world,
+        Vec2::ZERO,
+        radius,
+        impulse,
+        &crate::physics::SpatialFilter::new(),
+    );
+    assert_eq!(took, 2);
+    let velocity = |world: &World, entity| world.get::<Velocity>(entity).unwrap().0;
+    assert!(velocity(&world, near).abs_diff_eq(Vec2::new(450.0, 0.0), 1e-4));
+    assert!(velocity(&world, mid).abs_diff_eq(Vec2::new(0.0, 150.0), 1e-4));
+    assert_eq!(velocity(&world, far), Vec2::ZERO);
+
+    // A centre on the blast's goes straight up; a kinematic body with a mass
+    // keeps its share as a push, one without takes none.
+    let mut world = seed_world();
+    let center = push_ball(&mut world, Vec2::ZERO, 4.0, 3.0, Vec2::ZERO, 0.0);
+    let heavy = push_box(
+        &mut world,
+        Vec2::new(0.0, -60.0),
+        Vec2::splat(4.0),
+        Some(4.0),
+    );
+    let bare = push_box(&mut world, Vec2::new(60.0, 0.0), Vec2::splat(4.0), None);
+    physics_step(&mut world);
+    let took = apply_radial_impulse(
+        &mut world,
+        Vec2::ZERO,
+        radius,
+        impulse,
+        &crate::physics::SpatialFilter::new(),
+    );
+    assert_eq!(took, 2);
+    assert!(velocity(&world, center).abs_diff_eq(Vec2::new(0.0, -200.0), 1e-4));
+    let push = take_push(&mut world, heavy);
+    assert!(push.abs_diff_eq(Vec2::new(0.0, -66.0), 1e-4), "{push}");
+    assert_eq!(take_push(&mut world, heavy), Vec2::ZERO);
+    assert_eq!(take_push(&mut world, bare), Vec2::ZERO);
+    assert_eq!(
+        apply_radial_impulse(
+            &mut world,
+            Vec2::ZERO,
+            0.0,
+            impulse,
+            &crate::physics::SpatialFilter::new()
+        ),
+        0
+    );
+}
+
+#[test]
+fn a_kinematic_body_keeps_a_hits_push() {
+    // A ball of mass 3 at 200 px/s into a still kinematic box of mass 6:
+    // its begin pushes the box by 3 · 200 / 9 px/s along the normal into
+    // it, all at one step, whatever the gap it starts from and the
+    // restitution; without a mass the box keeps nothing.
+    for mass in [Some(6.0), None] {
+        for restitution in [0.0, 1.0] {
+            for gap in [0.0, 3.0, 6.0, 12.0] {
+                let mut world = seed_world();
+                let target = push_box(&mut world, Vec2::new(100.0, 0.0), Vec2::splat(10.0), mass);
+                let x = 100.0 - 10.0 - 5.0 - gap;
+                push_ball(
+                    &mut world,
+                    Vec2::new(x, 0.0),
+                    5.0,
+                    3.0,
+                    Vec2::new(200.0, 0.0),
+                    restitution,
+                );
+                let steps = pushes(&mut world, target, 60);
+                let at = format!("mass {mass:?}, restitution {restitution}, gap {gap}");
+                let moved: Vec<_> = steps.iter().filter(|push| **push != Vec2::ZERO).collect();
+                if mass.is_none() {
+                    assert!(moved.is_empty(), "{at}: {moved:?}");
+                    continue;
+                }
+                assert_eq!(moved.len(), 1, "{at}: {steps:?}");
+                let expected = 600.0 / 9.0;
+                assert!(
+                    (moved[0].x - expected).abs() < expected * 0.01 && moved[0].y.abs() < 1e-3,
+                    "{at}: {}",
+                    moved[0]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_light_kinematic_body_is_never_launched() {
+    // A kinematic box of mass 1 hit by a ball of mass 10 at 100 px/s: its
+    // push is the inelastic share, 1,000 / 11 px/s, never the ball's speed
+    // or more, at either restitution.
+    for restitution in [0.0, 1.0] {
+        let mut world = seed_world();
+        let target = push_box(
+            &mut world,
+            Vec2::new(100.0, 0.0),
+            Vec2::splat(10.0),
+            Some(1.0),
+        );
+        push_ball(
+            &mut world,
+            Vec2::new(80.0, 0.0),
+            5.0,
+            10.0,
+            Vec2::new(100.0, 0.0),
+            restitution,
+        );
+        let steps = pushes(&mut world, target, 60);
+        let total: Vec2 = steps.iter().copied().sum();
+        let expected = 1_000.0 / 11.0;
+        assert!(
+            (total.x - expected).abs() < expected * 0.01,
+            "restitution {restitution}: {total}"
+        );
+        assert!(
+            steps.iter().all(|push| push.length() <= 100.0),
+            "restitution {restitution}: {steps:?}"
+        );
+    }
+}
+
+#[test]
+fn push_out_and_rest_push_nothing() {
+    // A ball inside a kinematic box with a mass, at rest, is pushed out by
+    // the solver's bias, which the relax strips before the record samples.
+    for depth in [2.0, 4.0] {
+        let mut world = seed_world();
+        let target = push_box(&mut world, Vec2::ZERO, Vec2::splat(10.0), Some(6.0));
+        let ball = push_ball(
+            &mut world,
+            Vec2::new(-15.0 + depth, 0.0),
+            5.0,
+            3.0,
+            Vec2::ZERO,
+            0.0,
+        );
+        let total: f32 = pushes(&mut world, target, 60)
+            .iter()
+            .map(|push| push.length())
+            .sum();
+        assert!(total < 1e-3, "depth {depth}: {total}");
+        let x = world.get::<Position>(ball).unwrap().0.x;
+        assert!(x < -15.0 + 0.5, "depth {depth}: still inside at {x}");
+    }
+    // A box landing on a kinematic platform with a mass pushes it once by
+    // its landing; resting on it under gravity pushes nothing.
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 1_000.0);
+    let platform = push_box(
+        &mut world,
+        Vec2::new(0.0, 100.0),
+        Vec2::new(50.0, 5.0),
+        Some(10.0),
+    );
+    world.spawn_with(
+        RigidBodyBundle::dynamic(
+            Position(Vec2::new(0.0, 50.0)),
+            Collider::aabb(Vec2::splat(5.0)),
+        )
+        .with_body(RigidBody::dynamic().with_mass(2.0)),
+    );
+    let steps = pushes(&mut world, platform, 90);
+    let landing = steps
+        .iter()
+        .position(|push| *push != Vec2::ZERO)
+        .expect("the landing pushes");
+    // It falls 40 px: at most sqrt(2 · 1,000 · 40) px/s and a step's gravity.
+    let speed = (2.0f32 * 1_000.0 * 40.0).sqrt() + 1_000.0 / 60.0;
+    let push = steps[landing];
+    assert!(
+        push.x.abs() < 1e-3 && push.y > 0.0 && push.y <= 2.0 * speed / 12.0,
+        "{push}"
+    );
+    let rest: f32 = steps[landing + 1..].iter().map(|push| push.length()).sum();
+    assert!(
+        steps.len() - landing > 60 && rest < 1e-3,
+        "{rest} after step {landing}"
+    );
+}
+
+/// A kinematic box of mass 6, a ball of mass 3 a gap from it and a second
+/// ball of mass 3 overlapping that one by 2 px, at rest, no gravity,
+/// spawned in `order`; with a static wall touching the far ball at the slop
+/// when `walled`. Each step's push on the box over 60 steps.
+fn depenetrating_pushes(order: [usize; 3], walled: bool) -> Vec<Vec2> {
+    let mut world = seed_world();
+    if walled {
+        world.spawn_with(RigidBodyBundle::r#static(
+            Position(Vec2::new(-38.25, 0.0)),
+            Collider::aabb(Vec2::new(10.0, 20.0)),
+        ));
+    }
+    let mut target = None;
+    for which in order {
+        match which {
+            0 => {
+                target = Some(push_box(
+                    &mut world,
+                    Vec2::ZERO,
+                    Vec2::splat(10.0),
+                    Some(6.0),
+                ));
+            }
+            1 => {
+                push_ball(&mut world, Vec2::new(-15.5, 0.0), 5.0, 3.0, Vec2::ZERO, 0.0);
+            }
+            _ => {
+                push_ball(&mut world, Vec2::new(-23.5, 0.0), 5.0, 3.0, Vec2::ZERO, 0.0);
+            }
+        }
+    }
+    pushes(&mut world, target.unwrap(), 60)
+}
+
+#[test]
+fn a_depenetrating_pair_pushes_nothing() {
+    // Two balls pushed apart by the solver's bias, one toward the box: the
+    // record samples where the relax has stripped the bias, so their
+    // push-out pushes nothing, in every spawn order.
+    for order in ORDERS {
+        let total: f32 = depenetrating_pushes(order, false)
+            .iter()
+            .map(|push| push.length())
+            .sum();
+        assert!(total < 1.0, "order {order:?}: {total}");
+    }
+}
+
+#[test]
+fn confined_push_out_is_bounded() {
+    // The far ball rests on a static wall at the slop, so the relax's one
+    // pass leaves part of the push-out the near ball took toward the box:
+    // a begin can read it, at most `max_push_speed` (Q3), so each push is
+    // at most 3 · 120 / 9 px/s.
+    for order in ORDERS {
+        let steps = depenetrating_pushes(order, true);
+        let total: Vec2 = steps.iter().copied().sum();
+        eprintln!(
+            "confined push-out, order {order:?}: {:.3} px/s",
+            total.length()
+        );
+        for push in &steps {
+            assert!(push.length() <= 40.0 + 1e-3, "order {order:?}: {steps:?}");
+        }
+    }
+}
+
+#[test]
+fn a_chain_pushes_through_the_touching_body() {
+    // A striker of mass 3 at 1,200 px/s into a ball of mass 3 resting 1.5 px
+    // from a kinematic box of mass 6: the box takes the touching ball's own
+    // approach at the record's samples, above 0 and never the whole chain's
+    // 3 · 1,200 / 9 = 400 px/s, in every spawn order and from every gap.
+    for order in ORDERS {
+        for gap in [0.0, 0.25, 0.5, 1.0, 2.0, 4.0] {
+            let mut world = seed_world();
+            let mut target = None;
+            for which in order {
+                match which {
+                    0 => {
+                        target = Some(push_box(
+                            &mut world,
+                            Vec2::ZERO,
+                            Vec2::splat(10.0),
+                            Some(6.0),
+                        ));
+                    }
+                    1 => {
+                        push_ball(&mut world, Vec2::new(-16.5, 0.0), 5.0, 3.0, Vec2::ZERO, 0.0);
+                    }
+                    _ => {
+                        let x = -26.5 - gap;
+                        push_ball(
+                            &mut world,
+                            Vec2::new(x, 0.0),
+                            5.0,
+                            3.0,
+                            Vec2::new(1_200.0, 0.0),
+                            0.0,
+                        );
+                    }
+                }
+            }
+            let steps = pushes(&mut world, target.unwrap(), 60);
+            let total: Vec2 = steps.iter().copied().sum();
+            eprintln!(
+                "chain, order {order:?}, gap {gap}: {:.3} px/s",
+                total.length()
+            );
+            assert!(
+                total.x > 0.0 && total.length() <= 400.0,
+                "order {order:?}, gap {gap}: {steps:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_world_without_a_kinematic_mass_keeps_no_push_state() {
+    // Balls hitting a kinematic box without a mass: the record never runs,
+    // so none of its vectors ever holds or allocates anything.
+    let mut world = seed_world();
+    let target = push_box(&mut world, Vec2::ZERO, Vec2::splat(10.0), None);
+    push_ball(
+        &mut world,
+        Vec2::new(-40.0, 0.0),
+        5.0,
+        3.0,
+        Vec2::new(300.0, 0.0),
+        0.0,
+    );
+    push_ball(
+        &mut world,
+        Vec2::new(40.0, 0.0),
+        5.0,
+        1.0,
+        Vec2::new(-300.0, 0.0),
+        1.0,
+    );
+    for _ in 0..60 {
+        physics_step(&mut world);
+        assert_eq!(take_push(&mut world, target), Vec2::ZERO);
+    }
+    let push = &world.resource::<PhysicsBuffers>().extra.push;
+    let capacities = [
+        push.reaction.capacity(),
+        push.pairs.capacity(),
+        push.contacts.capacity(),
+        push.touched.capacity(),
+        push.touching.capacity(),
+        push.touching_next.capacity(),
+        push.step.capacity(),
+        push.kept.capacity(),
+        push.kept_next.capacity(),
+        push.by_key.capacity(),
+        push.found.capacity(),
+    ];
+    assert_eq!(capacities, [0; 11]);
+}
