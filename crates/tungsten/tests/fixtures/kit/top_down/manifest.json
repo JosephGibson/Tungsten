@@ -152,6 +152,12 @@
     },
     "lamp_doused": {
       "path": "prefabs/lamp_doused.json"
+    },
+    "powder_bomb": {
+      "path": "prefabs/powder_bomb.json"
+    },
+    "blast_dummy": {
+      "path": "prefabs/blast_dummy.json"
     }
   },
   "data": {
@@ -228,6 +234,9 @@
       },
       "drenched": {
         "path": "data/effects/drenched.json"
+      },
+      "fuse": {
+        "path": "data/effects/fuse.json"
       }
     },
     "curves": {

@@ -1,0 +1,19 @@
+{
+  "stimulus": "elemental.fire",
+  "on": {
+    "all": [
+      "explosive"
+    ]
+  },
+  "outputs": [
+    {
+      "blast": {
+        "radius": 80,
+        "damage": {
+          "elemental.fire": 10
+        },
+        "push": 400
+      }
+    }
+  ]
+}

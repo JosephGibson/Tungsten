@@ -7,6 +7,7 @@
 
 #[path = "become.rs"]
 pub(crate) mod becoming;
+pub(crate) mod blast;
 pub(crate) mod grid;
 pub(crate) mod outputs;
 pub(crate) mod queue;
@@ -259,6 +260,9 @@ impl Plugin for ChemistryPlugin {
         }
         world.register_saved_resource_with(TILE_STATUSES, tile_saved());
         world.register_saved::<Became>(BECAME);
+        if !world.has_resource::<blast::Blasts>() {
+            world.insert_resource(blast::Blasts::default());
+        }
         if schedule.contains(CHEMISTRY) {
             return;
         }
@@ -455,6 +459,16 @@ impl Runner {
             self.react(world, entry);
         }
         self.taken = taken;
+        // The blasts the reactions set off, once they are done: their
+        // stimuli for the next run.
+        if world
+            .get_resource::<blast::Blasts>()
+            .is_some_and(|blasts| !blasts.0.is_empty())
+        {
+            let mut blasts = world.remove_resource::<blast::Blasts>().unwrap();
+            blast::detonate(world, &settings, &mut blasts.0, &mut self.reach, run + 1);
+            world.insert_resource(blasts);
+        }
         let chemistry = world.resource_mut::<Chemistry>();
         chemistry.count_ran(count);
         let warn = std::mem::take(&mut chemistry.dropped_now);
@@ -676,6 +690,11 @@ fn describe_chemistry(world: &mut World) {
             "the receiver replaced by a prefab at its point under its save identity, its statuses not carried",
         ))
         .field(FieldDescription::new(
+            "blast",
+            FieldType::Shape("blast_output"),
+            "hurts, pushes and sets off what lies within a radius of the receiver's point, by a linear falloff, after the run's reactions",
+        ))
+        .field(FieldDescription::new(
             "handler",
             FieldType::Text,
             "a game's Rust handler by name; the load refuses one no plugin registered",
@@ -830,6 +849,48 @@ fn describe_chemistry(world: &mut World) {
             ))
             .sample(r#"{ "after": 3, "to": "lamp" }"#)
             .roundtrip(round_trip::<becoming::RevertDef>),
+        ComponentDescription::new(
+            "blast_output",
+            "A blast at the receiver's point or a cell's centre, each effect falling off linearly to 0 at its radius.",
+        )
+        .field(FieldDescription::new(
+            "radius",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "px to a target's surface, or to its point without a body",
+        ))
+        .field(
+            FieldDescription::new(
+                "damage",
+                FieldType::Damage,
+                "at its centre, on each entity with health but the receiver, from the credit, at the next step's resolve",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "context",
+                FieldType::List(Box::new(FieldType::Text)),
+                "the tags its hits carry as their context, such as a game's `hit.blast`",
+            )
+            .default("[]"),
+        )
+        .field(
+            FieldDescription::new("push", amount(), "a knockback at its centre, in px/s, away from it")
+                .default("0.0"),
+        )
+        .field(
+            FieldDescription::new(
+                "impulse",
+                amount(),
+                "a physics impulse at its centre on dynamic bodies and kinematic ones with a mass",
+            )
+            .default("0.0"),
+        )
+        .sample(r#"{ "radius": 60 }"#)
+        .roundtrip(round_trip::<blast::BlastDef>),
     ];
     for shape in shapes {
         describe_shape(world, shape);

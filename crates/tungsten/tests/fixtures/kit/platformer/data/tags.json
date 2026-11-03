@@ -18,5 +18,6 @@
   "planks",
   "heat",
   "material.crate",
-  "material.char"
+  "material.char",
+  "explosive"
 ]

@@ -11,8 +11,8 @@
 //! falling deck, and a wisp steering its mover along a brick; 7.10b's
 //! lamp, which burns its oil and goes out; its chemistry's kindling, lit
 //! by a torch's hit, a clay pot cracked by a hard landing, a floor of
-//! glass a pot cracks and planks a flare scorches for a while, and a crate
-//! fire chars.
+//! glass a pot cracks and planks a flare scorches for a while, a crate
+//! fire chars, and a powder keg whose blast chars the crate beside it.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1630,5 +1630,37 @@ fn a_crate_chars_in_fire() {
             .map(|(_, transform)| transform.position)
             .collect();
         assert_eq!(charred, [Vec2::new(100.0, 100.0)], "dt {dt}");
+    }
+}
+
+#[test]
+fn a_powder_kegs_blast_chars_a_crate() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let keg = spawn(&mut harness, "powder_keg", [200.0, 100.0]);
+        let crate_ = spawn(&mut harness, "wood_crate", [230.0, 100.0]);
+        let kindling = spawn(&mut harness, "kindling", [400.0, 100.0]);
+        harness.step(1);
+        // Fire on the keg: `kegs_blow` blasts fire 10 within 80 px, so the
+        // crate 30 px off takes 6.25, which `chars_crates` (min 5) chars.
+        DamageRequest::from_parts(
+            keg,
+            [DamagePart::new(1.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .apply(harness.world_mut());
+        harness.step(4);
+        let world = harness.world();
+        assert!(!world.is_alive(crate_), "dt {dt}: charred");
+        let charred: Vec<Vec2> = world
+            .query::<(&tungsten_core::Tag, &Transform)>()
+            .filter(|(tag, _)| tag.name == "crate_charred")
+            .map(|(_, transform)| transform.position)
+            .collect();
+        assert_eq!(charred, [Vec2::new(230.0, 100.0)], "dt {dt}");
+        assert_eq!(
+            world.get::<Health>(kindling).unwrap().current(),
+            10.0,
+            "dt {dt}: out of reach"
+        );
     }
 }

@@ -116,6 +116,9 @@
     },
     "crate_charred": {
       "path": "prefabs/crate_charred.json"
+    },
+    "powder_keg": {
+      "path": "prefabs/powder_keg.json"
     }
   },
   "data": {
@@ -199,6 +202,9 @@
       },
       "chars_crates": {
         "path": "data/interactions/chars_crates.json"
+      },
+      "kegs_blow": {
+        "path": "data/interactions/kegs_blow.json"
       }
     }
   },

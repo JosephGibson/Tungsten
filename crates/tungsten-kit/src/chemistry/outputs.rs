@@ -9,6 +9,8 @@ use tungsten_core::physics::Position;
 use tungsten_core::{CommandBuffer, DataRef, Entity, MissingAsset, Transform, World};
 
 use crate::chemistry::becoming::BecomeDef;
+use crate::chemistry::blast::BlastDef;
+use crate::chemistry::grid::locate;
 use crate::chemistry::queue::Receiver;
 use crate::chemistry::rules::check_stimulus;
 use crate::chemistry::stimuli::{Named, emit_from};
@@ -44,6 +46,7 @@ const NOT_AN_ENTITY: &str = "the receiver is a tile cell, not an entity";
 /// | emit | `{ "emit": { "stimulus": "heat", "amount": 1, "radius": 40 } }` | sends a stimulus once from the receiver's point to every receiver within the radius but itself, at the next run |
 /// | set_tile | `{ "set_tile": { "tile": "ash", "revert": 5 } }` | on a tile cell, writes the first tileset entry with that sprite through the registry, every placement of the map showing it; `revert` writes the old tile back after that many seconds |
 /// | become | `{ "become": { "prefab": "lamp_doused", "revert": { "after": 3, "to": "lamp" } } }` | replaces the receiver by a prefab at its point under its save identity, keeping its source, its statuses not carried; `revert` turns it into `to` after `after` seconds, under the same identity |
+/// | blast | `{ "blast": { "radius": 80, "damage": { "elemental.fire": 8 }, "context": ["hit.blast"], "push": 600, "impulse": 300 } }` | once the run's reactions are done, each entity with health within the radius but the receiver takes the damage and a knockback away from the centre, dynamic bodies the impulse, and each receiver and cell within it `stimulus.blast`, each by `1 − d / r`, one reaction deeper |
 /// | handler | `{ "handler": "douse" }` | runs a game's Rust handler ([`ChemistryPlugin::with_handler`](crate::ChemistryPlugin::with_handler)) |
 ///
 /// On a dead receiver `build` and `apply` are refused, as effects refuse the
@@ -80,12 +83,14 @@ enum Kind {
     Emit(EmitDef),
     SetTile(SetTileDef),
     Become(BecomeDef),
+    Blast(BlastDef),
     Handler(String),
 }
 
 impl Output {
     /// Its name, as data writes it: `build`, `apply`, `remove`, `consume`,
-    /// `damage`, `spawn`, `emit`, `set_tile`, `become` or `handler`.
+    /// `damage`, `spawn`, `emit`, `set_tile`, `become`, `blast` or
+    /// `handler`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match &self.0 {
@@ -98,6 +103,7 @@ impl Output {
             Kind::Emit(_) => "emit",
             Kind::SetTile(_) => "set_tile",
             Kind::Become(_) => "become",
+            Kind::Blast(_) => "blast",
             Kind::Handler(_) => "handler",
         }
     }
@@ -422,6 +428,7 @@ pub(crate) fn check_outputs(
             Kind::Emit(def) => check_stimulus(world, &format!("{at}.stimulus"), &def.stimulus)?,
             Kind::SetTile(_) => {}
             Kind::Become(def) => def.check(world, &at)?,
+            Kind::Blast(def) => def.check(world, &at)?,
             Kind::Handler(name) => {
                 let known = world
                     .get_resource::<Handlers>()
@@ -582,6 +589,17 @@ fn on_entity(
         }
         Kind::SetTile(_) => Err(NOT_A_TILE),
         Kind::Become(def) => def.run(world, receiver),
+        Kind::Blast(def) => {
+            let centre = locate(world, receiver).map_or(Vec2::ZERO, |(centre, _)| centre);
+            def.queue(
+                world,
+                centre,
+                Receiver::Entity(receiver),
+                reaction.credit,
+                deeper,
+            );
+            Ok(())
+        }
         Kind::Handler(_) => unreachable!("handlers run apart"),
     }
 }
@@ -659,6 +677,17 @@ fn on_cell(
         }
         Kind::SetTile(def) => tiles::set_tile(world, cell, &def.tile, def.revert),
         Kind::Become(_) => Err(NOT_AN_ENTITY),
+        Kind::Blast(def) => {
+            let centre = cell.centre_in(world).ok_or(tiles::NO_MAP)?;
+            def.queue(
+                world,
+                centre,
+                Receiver::Cell(cell.clone()),
+                reaction.credit,
+                deeper,
+            );
+            Ok(())
+        }
         Kind::Handler(_) => unreachable!("handlers run apart"),
     }
 }

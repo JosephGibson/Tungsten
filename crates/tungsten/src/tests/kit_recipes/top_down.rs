@@ -14,8 +14,9 @@
 //! wall, an ox that stacks its knockback and a wisp steering its mover;
 //! 7.10b's trooper, suppressed by the rounds that pass it; its chemistry's
 //! wooden crates, lit by fire, doused by cold and setting each other
-//! alight, a lurker a lamp lights, a grass strip a crate sets burning and
-//! a lamp a bucket's water douses for 3 s.
+//! alight, a lurker a lamp lights, a grass strip a crate sets burning, a
+//! lamp a bucket's water douses for 3 s, and a bomb whose fuse ends in a
+//! blast among crates and a target.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -2578,5 +2579,39 @@ fn a_lamp_doused_by_water_relights() {
         harness.step(frames_for(3.0, dt));
         assert!(tagged_one(&harness, "lamp").is_some(), "dt {dt}: relit");
         assert!(tagged_one(&harness, "lamp_doused").is_none(), "dt {dt}");
+    }
+}
+
+#[test]
+fn a_bombs_blast_hurts_crates_and_a_target() {
+    use crate::kit::Knockback;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // The bomb's `fuse` runs 0.5 s; its end blasts 12 within 64 px,
+        // pushing 300, both falling off to 0 at the radius.
+        spawn(&mut harness, "powder_bomb", [300.0, 300.0]);
+        let near = spawn(&mut harness, "wooden_crate", [332.0, 300.0]);
+        let far = spawn(&mut harness, "wooden_crate", [300.0, 400.0]);
+        let target = spawn(&mut harness, "blast_dummy", [300.0, 252.0]);
+        harness.step(frames_for(0.5, dt) + 3);
+        let world = harness.world();
+        let health = |entity| world.get::<Health>(entity).unwrap().current();
+        assert!(
+            (health(near) - (100.0 - 6.0)).abs() < 1e-3,
+            "dt {dt}: {}",
+            health(near)
+        );
+        assert_eq!(health(far), 100.0, "dt {dt}: out of reach");
+        assert!(
+            (health(target) - (50.0 - 3.0)).abs() < 1e-3,
+            "dt {dt}: {}",
+            health(target)
+        );
+        let push = world.get::<Knockback>(target).unwrap().push();
+        assert!(
+            push.y < 0.0 && push.x.abs() < 1e-3,
+            "dt {dt}: away from the bomb, {push}"
+        );
     }
 }

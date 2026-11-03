@@ -1410,9 +1410,10 @@ fn light_stimulates_on_its_period() {
 
 /// The tiles a strip's tileset holds, in order: `grass` (material
 /// `grass`), `ash` (none), `stone` (material `stone`, health 3, breaking to
-/// `ash`), `ember` (none), and a `turf` style: its brush and the variants
-/// closed (0), open right (2), open left (8) and open both ways (10).
-const STRIP_TILES: [&str; 8] = [
+/// `ash`), `ember` (none), a `turf` style (its brush and the variants
+/// closed (0), open right (2) and open left (8)), and `glass` (material
+/// `glass`, health 1, breaking to `ash`).
+const STRIP_TILES: [&str; 9] = [
     "grass",
     "ash",
     "stone",
@@ -1421,6 +1422,7 @@ const STRIP_TILES: [&str; 8] = [
     "turf_mid",
     "turf_right",
     "turf_left",
+    "glass",
 ];
 
 /// A one-row map `id` of `len` 16 px cells of `fill`, on one layer of
@@ -1448,6 +1450,11 @@ fn strip_map(world: &mut World, id: &str, len: u32, fill: &str, kind: LayerKind,
     props("stone", &|tile| {
         tile.material = Some("stone".into());
         tile.health = Some(3.0);
+        tile.broken = index("ash");
+    });
+    props("glass", &|tile| {
+        tile.material = Some("glass".into());
+        tile.health = Some(1.0);
         tile.broken = index("ash");
     });
     props("turf", &|tile| {
@@ -2112,4 +2119,349 @@ fn become_replaces_and_reverts() {
         }
     }
     assert_eq!(back, (Some(120), Some(120)), "at 3 s both ways");
+}
+
+// Step 5: the blast.
+
+/// The damage each entity took, by its `DamagedPart`s this step: `(amount,
+/// type, source, depth)`.
+fn parts_on(world: &World, entity: Entity) -> Vec<(f32, String, Option<Entity>, u8)> {
+    world
+        .resource::<tungsten_core::EventQueue<crate::DamagedPart>>()
+        .iter()
+        .filter(|part| part.entity == entity)
+        .map(|part| {
+            // Its deepest type: the kinds list the ancestors too.
+            let names = part.kinds.names(world);
+            let deepest = names
+                .iter()
+                .max_by_key(|name| name.split('.').count())
+                .map_or(String::new(), |name| (*name).to_owned());
+            (part.amount, deepest, part.source, part.depth)
+        })
+        .collect()
+}
+
+#[test]
+fn a_blast_hurts_and_pushes_by_its_falloff() {
+    use tungsten_core::physics::{BodyKind, RigidBody};
+
+    use crate::{Knockback, Line, TagFilter};
+
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+    let types: DamageTypes = serde_json::from_value(json!({
+        "elemental": {}, "elemental.fire": {}, "elemental.cold": {}
+    }))
+    .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("fantasy", types);
+    rule(
+        &mut world,
+        "blows",
+        json!({
+            "stimulus": "heat", "on": { "all": ["node"] },
+            "outputs": [{ "blast": {
+                "radius": 100, "damage": { "elemental.fire": 8, "elemental.cold": 8 },
+                "context": ["team.enemy"], "push": 600, "impulse": 300
+            } }]
+        }),
+    );
+    // The keg at the origin, bodiless, with health and a knockback.
+    let keg = world.spawn_with((
+        Health::new(100.0),
+        Tags::new(["node"]),
+        Knockback::new(1.0),
+        Transform::from_position(Vec2::ZERO),
+    ));
+    // Targets on circle bodies of radius 10 that take no impulse
+    // (kinematic, no mass), their surfaces 0, 50 and 100 px out.
+    let target = |world: &mut World, at: Vec2| {
+        world.spawn_with(RigidBodyBundle::kinematic(
+            Position(at),
+            Collider::circle(10.0),
+        ))
+    };
+    let near = target(&mut world, Vec2::ZERO);
+    let mid = target(&mut world, Vec2::new(60.0, 0.0));
+    let edge = target(&mut world, Vec2::new(0.0, 110.0));
+    for entity in [near, mid, edge] {
+        world.insert(entity, Health::new(100.0));
+        world.insert(entity, Knockback::new(1.0));
+    }
+    // One at 50 px whose fire factor halves in the blast's context.
+    let guarded = target(&mut world, Vec2::new(0.0, -60.0));
+    world.insert(guarded, Health::new(100.0));
+    let mut resist = Resist::new();
+    resist.add_line(
+        "elemental.fire",
+        "blast_guard",
+        Line::new(crate::Modifier::Mul(0.5)).with(TagFilter::new().all(["team.enemy"])),
+    );
+    world.insert(guarded, resist);
+    // Dynamic bodies of mass 1 and 2 at 50 px; a static body, a sensor and
+    // a kinematic body without a mass inside the radius.
+    let one = world.spawn_with(RigidBodyBundle::dynamic(
+        Position::new(-60.0, 0.0),
+        Collider::circle(10.0),
+    ));
+    let two = world.spawn_with(RigidBodyBundle::dynamic(
+        Position::new(0.0, 160.0),
+        Collider::circle(10.0),
+    ));
+    *world.get_mut::<RigidBody>(two).unwrap() = RigidBody::dynamic().with_mass(2.0);
+    world.get_mut::<Position>(two).unwrap().0 = Vec2::new(42.426_407, 42.426_407);
+    let fixed = world.spawn_with(RigidBodyBundle::r#static(
+        Position::new(-50.0, -50.0),
+        Collider::circle(10.0),
+    ));
+    let sensor = world.spawn_with(RigidBodyBundle::r#static(
+        Position::new(50.0, -50.0),
+        Collider::circle(10.0),
+    ));
+    *world.get_mut::<RigidBody>(sensor).unwrap() = RigidBody::sensor();
+    let massless = world.spawn_with(RigidBodyBundle::kinematic(
+        Position::new(-50.0, 50.0),
+        Collider::circle(10.0),
+    ));
+    // A bodiless target and a body, each with health and no tags.
+    let bodiless = world.spawn_with((
+        Health::new(100.0),
+        Transform::from_position(Vec2::new(30.0, 30.0)),
+    ));
+    let unbodied = target(&mut world, Vec2::new(-30.0, -30.0));
+    world.insert(unbodied, Health::new(100.0));
+    let _ = BodyKind::Dynamic;
+    // A step for the physics index, then the stimulus from the chain's
+    // source.
+    step(&mut world, &mut schedule);
+    let source = world.spawn();
+    let stimulus = queue::Stimulus {
+        amount: 1.0,
+        status_effect: 1.0,
+        dot_base: 1.0,
+        depth: 0,
+        credit: Some(source),
+    };
+    {
+        let chemistry = world.resource_mut::<Chemistry>();
+        let run = chemistry.run;
+        chemistry.stimulate(
+            &Settings::default(),
+            Receiver::Entity(keg),
+            "heat",
+            stimulus,
+            run,
+        );
+    }
+    let velocity = |world: &World, entity: Entity| world.get::<Velocity>(entity).map(|v| v.0);
+    let before: Vec<Option<Vec2>> = [fixed, sensor, massless]
+        .iter()
+        .map(|&e| velocity(&world, e))
+        .collect();
+    step(&mut world, &mut schedule);
+    // The impulse lands at once: 300 × 0.5 over the mass, away.
+    let pushed = |world: &World, entity: Entity| velocity(world, entity).unwrap();
+    assert!(
+        (pushed(&world, one) - Vec2::new(-150.0, 0.0)).length() < 1e-2,
+        "{}",
+        pushed(&world, one)
+    );
+    let away = Vec2::new(1.0, 1.0).normalize() * 75.0;
+    assert!(
+        (pushed(&world, two) - away).length() < 1e-2,
+        "{}",
+        pushed(&world, two)
+    );
+    let after: Vec<Option<Vec2>> = [fixed, sensor, massless]
+        .iter()
+        .map(|&e| velocity(&world, e))
+        .collect();
+    assert_eq!(
+        before, after,
+        "the static body, the sensor and the massless kinematic one"
+    );
+    // The damage at the next step's resolve: typed, credited, a reaction
+    // deep, by the falloff.
+    assert!(parts_on(&world, near).is_empty(), "not resolved yet");
+    step(&mut world, &mut schedule);
+    let typed = |amount: f32| {
+        vec![
+            (amount, "elemental.cold".to_string(), Some(source), 1),
+            (amount, "elemental.fire".to_string(), Some(source), 1),
+        ]
+    };
+    let sorted = |mut parts: Vec<(f32, String, Option<Entity>, u8)>| {
+        parts.sort_by(|a, b| a.1.cmp(&b.1));
+        parts
+    };
+    assert_eq!(sorted(parts_on(&world, near)), typed(8.0));
+    assert_eq!(sorted(parts_on(&world, mid)), typed(4.0));
+    assert!(parts_on(&world, edge).is_empty(), "at the radius: nothing");
+    let health = |world: &World, entity: Entity| world.get::<Health>(entity).unwrap().current();
+    assert!(
+        (health(&world, guarded) - (100.0 - 2.0 - 4.0)).abs() < 1e-4,
+        "the context halves its fire"
+    );
+    assert!(
+        (health(&world, bodiless) - (100.0 - 2.0 * 8.0 * (1.0 - 42.426_407 / 100.0))).abs() < 1e-3
+    );
+    let unbodied_d = 42.426_407_f32 - 10.0;
+    assert!(
+        (health(&world, unbodied) - (100.0 - 2.0 * 8.0 * (1.0 - unbodied_d / 100.0))).abs() < 1e-3
+    );
+    let push = |world: &World, entity: Entity| world.get::<Knockback>(entity).unwrap().push();
+    assert!(
+        (push(&world, near) - Vec2::new(0.0, -600.0)).length() < 1e-3,
+        "straight up"
+    );
+    assert!((push(&world, mid) - Vec2::new(300.0, 0.0)).length() < 1e-3);
+    assert_eq!(push(&world, edge), Vec2::ZERO);
+    // The keg neither hurt nor pushed.
+    assert_eq!(
+        (health(&world, keg), push(&world, keg)),
+        (100.0, Vec2::ZERO)
+    );
+}
+
+#[test]
+fn a_chain_of_kegs_ends_at_the_depth_limit() {
+    let notes = Notes::default();
+    let (mut world, mut schedule) =
+        rig_with(&ChemistryPlugin::new().with_handler("noted", noting(&notes)));
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("armed", Effect::new().with_grant(["status.armed"]));
+    rule(
+        &mut world,
+        "goes_off",
+        json!({
+            "stimulus": "stimulus.blast", "on": { "all": ["status.armed"] },
+            "outputs": [
+                { "remove": "armed" }, { "handler": "noted" },
+                { "blast": { "radius": 50, "damage": 1, "push": 100 } }
+            ]
+        }),
+    );
+    // Ten kegs 40 px apart, health 1, kept when dead, armed.
+    let kegs: Vec<Entity> = (0..10)
+        .map(|i| {
+            let keg = world.spawn_with((
+                Health::new(1.0),
+                Tags::new(["node"]),
+                crate::Knockback::new(1.0),
+                Transform::from_position(Vec2::new(i as f32 * 40.0, 0.0)),
+            ));
+            EffectRequest::new(keg, DataRef::by_id("armed")).apply(&mut world);
+            keg
+        })
+        .collect();
+    let blast = queue::Stimulus {
+        amount: 1.0,
+        status_effect: 1.0,
+        dot_base: 1.0,
+        depth: 0,
+        credit: None,
+    };
+    {
+        let chemistry = world.resource_mut::<Chemistry>();
+        let run = chemistry.run;
+        chemistry.stimulate(
+            &Settings::default(),
+            Receiver::Entity(kegs[0]),
+            "stimulus.blast",
+            blast,
+            run,
+        );
+    }
+    let mut per_step = Vec::new();
+    for frame in 0..14 {
+        step(&mut world, &mut schedule);
+        per_step.push(notes.borrow().len());
+        if frame == 0 {
+            // Its own blast neither hurts nor pushes the first keg.
+            let first = kegs[0];
+            assert!(!world.get::<Health>(first).unwrap().is_dead());
+            assert_eq!(
+                world.get::<crate::Knockback>(first).unwrap().push(),
+                Vec2::ZERO
+            );
+        }
+    }
+    let went_off: Vec<u8> = notes.borrow().iter().map(|(_, _, depth)| *depth).collect();
+    assert_eq!(
+        went_off,
+        (0..=8).collect::<Vec<u8>>(),
+        "the first nine, depths 0 to 8"
+    );
+    assert!(
+        per_step.windows(2).all(|pair| pair[1] - pair[0] <= 1),
+        "a run apart: {per_step:?}"
+    );
+    assert!(has(&world, kegs[9], "armed"), "the tenth never goes off");
+    assert!(chemistry(&world).cut() >= 1, "the tenth cut and counted");
+    assert_eq!(chemistry(&world).pending(), 0);
+}
+
+#[test]
+fn a_blast_reaches_cells() {
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let noted = Rc::clone(&seen);
+    let (mut world, mut schedule) = rig_with(&ChemistryPlugin::new().with_handler(
+        "struck",
+        move |_, reaction: &Reaction| {
+            let cell = reaction.cell().unwrap();
+            noted.borrow_mut().push((cell.col, reaction.amount()));
+        },
+    ));
+    rule(
+        &mut world,
+        "blows",
+        json!({ "stimulus": "heat", "on": { "all": ["node"] }, "outputs": [{ "blast": { "radius": 40 } }] }),
+    );
+    rule(
+        &mut world,
+        "shatters",
+        json!({ "stimulus": "stimulus.blast", "on": { "all": ["glass"] }, "outputs": [{ "handler": "struck" }, { "damage": 1 }] }),
+    );
+    strip_map(&mut world, "panes", 8, "glass", LayerKind::Render, false);
+    place(&mut world, "panes", Vec2::ZERO);
+    // A keg at cell 2's centre: cells 0 to 4 lie within 40 px.
+    let keg = world.spawn_with((
+        Tags::new(["node"]),
+        Transform::from_position(Vec2::new(40.0, 8.0)),
+    ));
+    {
+        let chemistry = world.resource_mut::<Chemistry>();
+        let run = chemistry.run;
+        let stimulus = queue::Stimulus {
+            amount: 1.0,
+            status_effect: 1.0,
+            dot_base: 1.0,
+            depth: 0,
+            credit: None,
+        };
+        chemistry.stimulate(
+            &Settings::default(),
+            Receiver::Entity(keg),
+            "heat",
+            stimulus,
+            run,
+        );
+    }
+    for _ in 0..3 {
+        step(&mut world, &mut schedule);
+    }
+    let mut seen = seen.borrow().clone();
+    seen.sort_by_key(|(col, _)| *col);
+    let falloffs: Vec<(u32, f32)> = [(0, 0.2), (1, 0.6), (2, 1.0), (3, 0.6), (4, 0.2)].to_vec();
+    assert_eq!(seen.len(), falloffs.len(), "{seen:?}");
+    for ((col, amount), (want_col, want)) in seen.iter().zip(&falloffs) {
+        assert_eq!(col, want_col);
+        assert!((amount - want).abs() < 1e-5, "{col}: {amount}");
+    }
+    let broken: Vec<u32> = (0..8)
+        .filter(|&col| sprite_at(&world, "panes", col) == "ash")
+        .collect();
+    assert_eq!(broken, [0, 1, 2, 3, 4]);
 }

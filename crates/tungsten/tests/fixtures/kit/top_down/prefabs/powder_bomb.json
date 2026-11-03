@@ -1,0 +1,8 @@
+{
+  "tag": "powder_bomb",
+  "components": {
+    "effects": [
+      "fuse"
+    ]
+  }
+}

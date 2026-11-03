@@ -361,6 +361,13 @@ shape become_revert: A replacement turned back after a while.
   field after: f32 (> 0) — game seconds until it turns back
   field to: prefab ID — the prefab it turns into; data names it, since a named entity's save holds no prefab
   sample: { "after": 3, "to": "lamp" }
+shape blast_output: A blast at the receiver's point or a cell's centre, each effect falling off linearly to 0 at its radius.
+  field radius: f32 (> 0) — px to a target's surface, or to its point without a body
+  field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 = null — at its centre, on each entity with health but the receiver, from the credit, at the next step's resolve
+  field context: list of text = [] — the tags its hits carry as their context, such as a game's `hit.blast`
+  field push: f32 (>= 0) = 0.0 — a knockback at its centre, in px/s, away from it
+  field impulse: f32 (>= 0) = 0.0 — a physics impulse at its centre on dynamic bodies and kinematic ones with a mass
+  sample: { "radius": 60 }
 shape build_output: A status built by a fixed amount or by the entry's hits.
   field status: effects ID or entry — the status; the load checks it
   field amount: f32 (>= 0) = null — a fixed build, at the entry's largest status effect
@@ -507,6 +514,7 @@ shape interaction_output: One thing a rule, a status's end or a band's entry doe
   field emit: shape emit_output — a stimulus sent once from the receiver's point to every receiver in a radius but itself, one reaction deeper
   field set_tile: shape set_tile_output — on a tile cell, a sprite written through the registry, which every placement of the map shows
   field become: shape become_output — the receiver replaced by a prefab at its point under its save identity, its statuses not carried
+  field blast: shape blast_output — hurts, pushes and sets off what lies within a radius of the receiver's point, by a linear falloff, after the run's reactions
   field handler: text — a game's Rust handler by name; the load refuses one no plugin registered
   sample: { "remove": "burning" }
 shape label_action: A `label` action: a `label_style` that names its font, or on `damaged_part` none, its part's type's style, which the grouping fields take.
