@@ -134,6 +134,12 @@
     },
     "wisp": {
       "path": "prefabs/wisp.json"
+    },
+    "trooper": {
+      "path": "prefabs/trooper.json"
+    },
+    "round": {
+      "path": "prefabs/round.json"
     }
   },
   "data": {
@@ -198,6 +204,9 @@
       },
       "braced": {
         "path": "data/effects/braced.json"
+      },
+      "suppressed": {
+        "path": "data/effects/suppressed.json"
       }
     },
     "curves": {

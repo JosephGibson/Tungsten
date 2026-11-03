@@ -1,0 +1,22 @@
+{
+  "tag": "round",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 2
+      },
+      "velocity": [
+        600,
+        0
+      ]
+    },
+    "tags": [
+      "shot"
+    ],
+    "lifetime": {
+      "seconds": 1
+    }
+  }
+}

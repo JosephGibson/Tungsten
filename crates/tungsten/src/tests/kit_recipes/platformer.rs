@@ -8,7 +8,8 @@
 //! 7.10m's rambler up a 2:1 ramp, down a steep one and through a ledge, and
 //! its porter, whose body's mass a rolled ball pushes, carried up to a
 //! ceiling, the hero pushed out of a sliding platform and crushed under a
-//! falling deck, and a wisp steering its mover along a brick.
+//! falling deck, and a wisp steering its mover along a brick; 7.10b's
+//! lamp, which burns its oil and goes out.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1420,5 +1421,45 @@ fn a_wisp_steers_its_mover_along_a_brick_and_lands_on_a_point() {
         harness.step(frames_for(6.0, dt));
         let at = body_at(&harness, wisp);
         assert!(at.distance(point) < 1e-3, "dt {dt}: on the point: {at}");
+    }
+}
+
+#[test]
+fn a_lamp_burns_its_oil_and_goes_out() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let lamp = spawn(&mut harness, "lamp", [100.0, 100.0]);
+        // Its listed `lit` applies at its first step and burns 1 oil a
+        // second from the next, 3 s of it.
+        harness.step(1);
+        let oil = |harness: &super::Harness| {
+            harness
+                .world()
+                .get::<Stats>(lamp)
+                .and_then(|stats| stats.base("oil"))
+                .unwrap()
+        };
+        let lit = |harness: &super::Harness| {
+            harness
+                .world()
+                .get::<Tags>(lamp)
+                .is_some_and(|tags| tags.has("status.lit"))
+        };
+        assert!(lit(&harness), "dt {dt}");
+        let mut frames = 0;
+        while lit(&harness) {
+            harness.step(1);
+            frames += 1;
+            assert!(oil(&harness) < 3.0, "dt {dt}: burning");
+            assert!(frames < frames_for(5.0, dt), "dt {dt}: still lit");
+        }
+        let burned = frames as f32 * dt;
+        assert!(
+            (burned - 3.0).abs() <= 2.0 * dt + 1e-3,
+            "dt {dt}: {burned} s"
+        );
+        assert_eq!(oil(&harness), 0.0, "dt {dt}: dry");
+        let effects = harness.world().get::<Effects>(lamp).unwrap();
+        assert!(!effects.has("lit"), "dt {dt}: out");
     }
 }

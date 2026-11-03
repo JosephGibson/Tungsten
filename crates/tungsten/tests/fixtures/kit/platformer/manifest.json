@@ -101,6 +101,9 @@
     },
     "wisp": {
       "path": "prefabs/wisp.json"
+    },
+    "lamp": {
+      "path": "prefabs/lamp.json"
     }
   },
   "data": {
@@ -132,6 +135,9 @@
       },
       "frostbite": {
         "path": "data/effects/frostbite.json"
+      },
+      "lit": {
+        "path": "data/effects/lit.json"
       }
     },
     "curves": {

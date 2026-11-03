@@ -9,5 +9,6 @@
   "damage.physical",
   "elemental.fire",
   "elemental.cold",
-  "numbered"
+  "numbered",
+  "status.lit"
 ]

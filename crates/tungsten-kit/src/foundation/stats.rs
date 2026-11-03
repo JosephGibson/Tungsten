@@ -487,8 +487,13 @@ impl Stats {
     pub const COST: &'static str = "cost";
     /// A skill's cooldown at a use, in seconds (a sheet's stat).
     pub const COOLDOWN: &'static str = "cooldown";
+    /// What a source's statuses are built and scaled by, from 0, read as 1
+    /// where absent: an [`EffectRequest`](crate::EffectRequest) from it
+    /// multiplies its amount and its scale by its source's value at the
+    /// resolve, unless it names its own.
+    pub const STATUS_EFFECT: &'static str = "status_effect";
     /// The stats every game knows without declaring them.
-    pub const WELL_KNOWN: [&'static str; 10] = [
+    pub const WELL_KNOWN: [&'static str; 11] = [
         Self::MOVE_SPEED,
         Self::MAX_HEALTH,
         Self::DAMAGE,
@@ -499,6 +504,7 @@ impl Stats {
         Self::CRIT_CHANCE,
         Self::CRIT_MULTIPLIER,
         Self::DAMAGE_TAKEN,
+        Self::STATUS_EFFECT,
     ];
 
     /// No stats.

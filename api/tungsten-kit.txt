@@ -1358,12 +1358,15 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DespawnOutsidePlu
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DespawnOutsidePlugin
 pub struct tungsten_kit::prelude::Effect
 impl tungsten_kit::Effect
+pub fn tungsten_kit::Effect::bands(&self) -> impl core::iter::traits::iterator::Iterator<Item = (f32, &[alloc::string::String])>
 pub fn tungsten_kit::Effect::blocked_by(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Effect::damage(&self) -> f32
 pub fn tungsten_kit::Effect::duration(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Effect::expire(&self) -> tungsten_kit::Expire
+pub fn tungsten_kit::Effect::fuel(&self) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Effect::grant(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Effect::heal(&self) -> f32
+pub fn tungsten_kit::Effect::intensity(&self) -> core::option::Option<(f32, f32)>
 pub fn tungsten_kit::Effect::is_instant(&self) -> bool
 pub fn tungsten_kit::Effect::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
 pub fn tungsten_kit::Effect::modifiers(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
@@ -1378,11 +1381,14 @@ pub fn tungsten_kit::Effect::restore(&self) -> core::option::Option<(&str, f32, 
 pub fn tungsten_kit::Effect::scale(&self) -> core::option::Option<(&tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled)>
 pub fn tungsten_kit::Effect::stack_limit(&self) -> u32
 pub fn tungsten_kit::Effect::suppressed_by(&self) -> &[alloc::string::String]
+pub fn tungsten_kit::Effect::with_band(self, f32, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_damage(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_duration(self, f32) -> Self
+pub fn tungsten_kit::Effect::with_fuel(self, &str, f32) -> Self
 pub fn tungsten_kit::Effect::with_grant(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_heal(self, f32) -> Self
+pub fn tungsten_kit::Effect::with_intensity(self, f32, f32) -> Self
 pub fn tungsten_kit::Effect::with_line(self, &str, tungsten_kit::Line) -> Self
 pub fn tungsten_kit::Effect::with_modifier(self, &str, tungsten_kit::Modifier) -> Self
 pub fn tungsten_kit::Effect::with_on_expire(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
@@ -1463,7 +1469,9 @@ pub struct tungsten_kit::prelude::EffectInstance
 impl tungsten_kit::EffectInstance
 pub fn tungsten_kit::EffectInstance::effect(&self) -> &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>
 pub fn tungsten_kit::EffectInstance::factor(&self) -> f32
+pub fn tungsten_kit::EffectInstance::intensity(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::EffectInstance::left(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::EffectInstance::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
 pub fn tungsten_kit::EffectInstance::serial(&self) -> u64
 pub fn tungsten_kit::EffectInstance::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::EffectInstance::stacks(&self) -> u32
@@ -1487,15 +1495,21 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::EffectInstance
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::EffectInstance
 pub struct tungsten_kit::prelude::EffectRequest
 impl tungsten_kit::EffectRequest
+pub fn tungsten_kit::EffectRequest::amount(&self) -> f32
 pub fn tungsten_kit::EffectRequest::apply(self, &mut tungsten_core::ecs::world::World) -> tungsten_kit::Applied
 pub fn tungsten_kit::EffectRequest::effect(&self) -> &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>
+pub fn tungsten_kit::EffectRequest::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
 pub fn tungsten_kit::EffectRequest::new(tungsten_core::ecs::entity::Entity, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::EffectRequest::queue(self, &mut tungsten_core::ecs::world::World) -> bool
 pub fn tungsten_kit::EffectRequest::scale(&self) -> f32
 pub fn tungsten_kit::EffectRequest::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::EffectRequest::status_effect(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::EffectRequest::target(&self) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::EffectRequest::with_amount(self, f32) -> Self
+pub fn tungsten_kit::EffectRequest::with_lines(self, impl core::iter::traits::collect::IntoIterator<Item = (impl core::convert::Into<alloc::string::String>, tungsten_kit::Line)>) -> Self
 pub fn tungsten_kit::EffectRequest::with_scale(self, f32) -> Self
 pub fn tungsten_kit::EffectRequest::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
+pub fn tungsten_kit::EffectRequest::with_status_effect(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::EffectRequest
 pub fn tungsten_kit::EffectRequest::clone(&self) -> tungsten_kit::EffectRequest
 impl core::cmp::PartialEq for tungsten_kit::EffectRequest
@@ -1515,6 +1529,7 @@ impl tungsten_kit::Effects
 pub fn tungsten_kit::Effects::granted(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, u32)>
 pub fn tungsten_kit::Effects::has(&self, &str) -> bool
 pub fn tungsten_kit::Effects::instances(&self) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::EffectInstance>
+pub fn tungsten_kit::Effects::intensity(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Effects::new() -> Self
 pub fn tungsten_kit::Effects::pending(&self) -> &[tungsten_core::assets::data::DataRef<tungsten_kit::Effect>]
 pub fn tungsten_kit::Effects::set_source(&mut self, u64, core::option::Option<tungsten_core::ecs::entity::Entity>) -> bool
@@ -3177,7 +3192,8 @@ pub const tungsten_kit::Stats::MOVE_SPEED: &'static str
 pub const tungsten_kit::Stats::PICKUP_RADIUS: &'static str
 pub const tungsten_kit::Stats::PROJECTILE_SPEED: &'static str
 pub const tungsten_kit::Stats::SKILL_LEVEL: &'static str
-pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 10]
+pub const tungsten_kit::Stats::STATUS_EFFECT: &'static str
+pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 11]
 pub fn tungsten_kit::Stats::add_line(&mut self, &str, &str, tungsten_kit::Line)
 pub fn tungsten_kit::Stats::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier) -> bool
 pub fn tungsten_kit::Stats::base(&self, &str) -> core::option::Option<f32>
@@ -5365,12 +5381,15 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DespawnOutsidePlu
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DespawnOutsidePlugin
 pub struct tungsten_kit::Effect
 impl tungsten_kit::Effect
+pub fn tungsten_kit::Effect::bands(&self) -> impl core::iter::traits::iterator::Iterator<Item = (f32, &[alloc::string::String])>
 pub fn tungsten_kit::Effect::blocked_by(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Effect::damage(&self) -> f32
 pub fn tungsten_kit::Effect::duration(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Effect::expire(&self) -> tungsten_kit::Expire
+pub fn tungsten_kit::Effect::fuel(&self) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Effect::grant(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Effect::heal(&self) -> f32
+pub fn tungsten_kit::Effect::intensity(&self) -> core::option::Option<(f32, f32)>
 pub fn tungsten_kit::Effect::is_instant(&self) -> bool
 pub fn tungsten_kit::Effect::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
 pub fn tungsten_kit::Effect::modifiers(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
@@ -5385,11 +5404,14 @@ pub fn tungsten_kit::Effect::restore(&self) -> core::option::Option<(&str, f32, 
 pub fn tungsten_kit::Effect::scale(&self) -> core::option::Option<(&tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled)>
 pub fn tungsten_kit::Effect::stack_limit(&self) -> u32
 pub fn tungsten_kit::Effect::suppressed_by(&self) -> &[alloc::string::String]
+pub fn tungsten_kit::Effect::with_band(self, f32, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_damage(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_duration(self, f32) -> Self
+pub fn tungsten_kit::Effect::with_fuel(self, &str, f32) -> Self
 pub fn tungsten_kit::Effect::with_grant(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_heal(self, f32) -> Self
+pub fn tungsten_kit::Effect::with_intensity(self, f32, f32) -> Self
 pub fn tungsten_kit::Effect::with_line(self, &str, tungsten_kit::Line) -> Self
 pub fn tungsten_kit::Effect::with_modifier(self, &str, tungsten_kit::Modifier) -> Self
 pub fn tungsten_kit::Effect::with_on_expire(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
@@ -5470,7 +5492,9 @@ pub struct tungsten_kit::EffectInstance
 impl tungsten_kit::EffectInstance
 pub fn tungsten_kit::EffectInstance::effect(&self) -> &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>
 pub fn tungsten_kit::EffectInstance::factor(&self) -> f32
+pub fn tungsten_kit::EffectInstance::intensity(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::EffectInstance::left(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::EffectInstance::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
 pub fn tungsten_kit::EffectInstance::serial(&self) -> u64
 pub fn tungsten_kit::EffectInstance::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::EffectInstance::stacks(&self) -> u32
@@ -5494,15 +5518,21 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::EffectInstance
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::EffectInstance
 pub struct tungsten_kit::EffectRequest
 impl tungsten_kit::EffectRequest
+pub fn tungsten_kit::EffectRequest::amount(&self) -> f32
 pub fn tungsten_kit::EffectRequest::apply(self, &mut tungsten_core::ecs::world::World) -> tungsten_kit::Applied
 pub fn tungsten_kit::EffectRequest::effect(&self) -> &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>
+pub fn tungsten_kit::EffectRequest::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
 pub fn tungsten_kit::EffectRequest::new(tungsten_core::ecs::entity::Entity, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::EffectRequest::queue(self, &mut tungsten_core::ecs::world::World) -> bool
 pub fn tungsten_kit::EffectRequest::scale(&self) -> f32
 pub fn tungsten_kit::EffectRequest::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::EffectRequest::status_effect(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::EffectRequest::target(&self) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::EffectRequest::with_amount(self, f32) -> Self
+pub fn tungsten_kit::EffectRequest::with_lines(self, impl core::iter::traits::collect::IntoIterator<Item = (impl core::convert::Into<alloc::string::String>, tungsten_kit::Line)>) -> Self
 pub fn tungsten_kit::EffectRequest::with_scale(self, f32) -> Self
 pub fn tungsten_kit::EffectRequest::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
+pub fn tungsten_kit::EffectRequest::with_status_effect(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::EffectRequest
 pub fn tungsten_kit::EffectRequest::clone(&self) -> tungsten_kit::EffectRequest
 impl core::cmp::PartialEq for tungsten_kit::EffectRequest
@@ -5522,6 +5552,7 @@ impl tungsten_kit::Effects
 pub fn tungsten_kit::Effects::granted(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, u32)>
 pub fn tungsten_kit::Effects::has(&self, &str) -> bool
 pub fn tungsten_kit::Effects::instances(&self) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::EffectInstance>
+pub fn tungsten_kit::Effects::intensity(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Effects::new() -> Self
 pub fn tungsten_kit::Effects::pending(&self) -> &[tungsten_core::assets::data::DataRef<tungsten_kit::Effect>]
 pub fn tungsten_kit::Effects::set_source(&mut self, u64, core::option::Option<tungsten_core::ecs::entity::Entity>) -> bool
@@ -7572,7 +7603,8 @@ pub const tungsten_kit::Stats::MOVE_SPEED: &'static str
 pub const tungsten_kit::Stats::PICKUP_RADIUS: &'static str
 pub const tungsten_kit::Stats::PROJECTILE_SPEED: &'static str
 pub const tungsten_kit::Stats::SKILL_LEVEL: &'static str
-pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 10]
+pub const tungsten_kit::Stats::STATUS_EFFECT: &'static str
+pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 11]
 pub fn tungsten_kit::Stats::add_line(&mut self, &str, &str, tungsten_kit::Line)
 pub fn tungsten_kit::Stats::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier) -> bool
 pub fn tungsten_kit::Stats::base(&self, &str) -> core::option::Option<f32>

@@ -155,7 +155,9 @@
 //!   carries, the `effects` data kind and scene component: a periodic
 //!   payload that passes the window, stacks, modifiers on its stats and
 //!   resistances, granted and blocking tags, a scale curve and a
-//!   transition at the end, which the cue action `effect` applies.
+//!   transition at the end, which the cue action `effect` applies; with an
+//!   intensity, a status, built by its requests' amounts and status
+//!   effect, worn by its decay, granting bands and burning a fuel stat.
 //!   [`AilmentRung`], [`AilmentThreshold`] and [`AilmentBuckets`]: the
 //!   ladder on a `damage_types` definition that a target's bucket of that
 //!   type climbs against its threshold, each rung an effect.

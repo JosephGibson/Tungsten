@@ -18,5 +18,8 @@
   "flammable",
   "sprinting",
   "skill.spell",
-  "numbered"
+  "numbered",
+  "shot",
+  "status.cover",
+  "status.pinned"
 ]

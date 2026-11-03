@@ -1,0 +1,20 @@
+{
+  "intensity": {
+    "max": 5,
+    "decay": 0.5
+  },
+  "bands": [
+    {
+      "at": 3,
+      "grant": [
+        "status.cover"
+      ]
+    },
+    {
+      "at": 5,
+      "grant": [
+        "status.pinned"
+      ]
+    }
+  ]
+}

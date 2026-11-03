@@ -11,7 +11,8 @@
 //! mid-flight; 7.10a's veteran with its scoped lines, a focused effect and
 //! a difficulty world source, a bulwark braced on its front, and a
 //! marksman whose embers crit from its stats; 7.10m's skiff pulled along a
-//! wall, an ox that stacks its knockback and a wisp steering its mover.
+//! wall, an ox that stacks its knockback and a wisp steering its mover;
+//! 7.10b's trooper, suppressed by the rounds that pass it.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -2283,5 +2284,79 @@ fn a_wisp_steers_its_mover_along_a_wall_and_lands_on_a_point() {
         harness.step(frames_for(6.0, dt));
         let at = body_at(&harness, wisp);
         assert!(at.distance(point) < 1e-3, "dt {dt}: on the point: {at}");
+    }
+}
+
+/// The trooper's `suppressed` intensity, and whether it carries `tag`.
+fn suppression(harness: &Harness, trooper: Entity) -> Option<f32> {
+    harness
+        .world()
+        .get::<Effects>(trooper)
+        .and_then(|effects| effects.intensity("suppressed"))
+}
+
+#[test]
+fn suppression_builds_bands_and_decays() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let trooper = spawn(&mut harness, "trooper", [300.0, 200.0]);
+        harness.step(1);
+        assert_eq!(suppression(&harness, trooper), None, "dt {dt}");
+        // A round every quarter second through the trooper's near-miss
+        // zone: each entry builds `suppressed` by 1, which wears 0.5 a
+        // second, its bands granting cover at 3 and pinned at its max of 5.
+        let carries = |harness: &Harness, tag: &str| {
+            harness
+                .world()
+                .get::<Tags>(trooper)
+                .is_some_and(|tags| tags.has(tag))
+        };
+        // The highest intensity, the frame of the last build and the last
+        // reading.
+        let mut watch = (0.0_f32, 0_u32, 0.0_f32);
+        let check = |harness: &Harness, frame: u32, watch: &mut (f32, u32, f32)| {
+            let now = suppression(harness, trooper).unwrap_or(0.0);
+            assert_eq!(
+                carries(harness, "status.cover"),
+                now >= 3.0,
+                "dt {dt}: {now}"
+            );
+            assert_eq!(
+                carries(harness, "status.pinned"),
+                now >= 5.0,
+                "dt {dt}: {now}"
+            );
+            watch.0 = watch.0.max(now);
+            if now > watch.2 {
+                watch.1 = frame;
+            }
+            watch.2 = now;
+        };
+        let mut frame = 0;
+        for _ in 0..8 {
+            spawn(&mut harness, "round", [240.0, 200.0]);
+            for _ in 0..frames_for(0.25, dt) {
+                harness.step(1);
+                frame += 1;
+                check(&harness, frame, &mut watch);
+            }
+        }
+        // At its max of 5; at two steps a frame, a build in the first step
+        // is worn by the second before the frame ends.
+        assert!(watch.0 >= 5.0 - 0.5 * dt, "dt {dt}: peak {}", watch.0);
+        if dt == DTS[0] {
+            assert_eq!(watch.0, 5.0, "pinned at one step a frame");
+        }
+        // The fire stops: pinned leaves at once, cover 4 s on, and the
+        // status runs out at 0, 10 s after its last build at 5.
+        while suppression(&harness, trooper).is_some() {
+            harness.step(1);
+            frame += 1;
+            check(&harness, frame, &mut watch);
+            assert!(frame < frames_for(20.0, dt), "dt {dt}: still suppressed");
+        }
+        let lasted = (frame - watch.1) as f32 * dt;
+        assert!((lasted - 10.0).abs() <= dt + 1e-3, "dt {dt}: {lasted} s");
+        assert!(!carries(&harness, "status.cover") && !carries(&harness, "status.pinned"));
     }
 }
