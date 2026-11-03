@@ -167,11 +167,12 @@ pub(super) fn speculative_pass(
                 // last-resort net.
                 Shape::Circle { radius } => Vec2::splat(radius),
             };
-            // A slope cell is swept as its polygon, every other static as a
-            // box.
+            // A slope cell is swept as its polygon under its mask, a masked
+            // side a rounding behind the face entering through the face as
+            // the casts do; every other static as a box.
             let hit = if target.slope != 0 {
                 let poly = super::slope::polygon(target.slope, target.center, b_half);
-                super::slope::box_sweep(a_prev, a_cur, a_half, &poly)
+                super::slope::box_sweep(a_prev, a_cur, a_half, &poly, target.face_mask)
             } else {
                 sweep_aabb_vs_aabb(a_prev, a_cur, a_half, target.center, b_half)
             };

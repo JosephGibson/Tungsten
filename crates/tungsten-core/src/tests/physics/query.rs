@@ -2043,6 +2043,60 @@ fn casts_graze_slopes_exactly() {
 }
 
 #[test]
+fn a_box_on_the_floor_meets_a_ramps_foot() {
+    // A ramp on a floor, its foot's side masked by the floor under it
+    // (`D-229`'s shadow rule): a box with its bottom exactly on the floor's
+    // top, as a spawn on the floor leaves it, runs through the sum's vertex
+    // where that side meets the face, and rounding once gave the masked
+    // side the entry, so the box passed into the ramp. It meets the face
+    // short of the polygon, as it does 0.01 px up. A 5 × 3 map of 16 px
+    // cells, the floor in row 2, the ramp in cell (2, 1).
+    for code in [1u8, 2, 5, 6] {
+        let mut world = world();
+        let mut data = TilemapData::new(16, 16, 5, 3);
+        let solid = data.add_tile("solid");
+        let ramp = data.add_tile("ramp");
+        data.set_tile_props(
+            ramp,
+            crate::assets::TileProps {
+                slope: Some(slope_kind(code)),
+                ..Default::default()
+            },
+        );
+        let layer = data.add_layer("solid", LayerKind::Collision);
+        for col in 0..5 {
+            data.set_tile(layer, col, 2, solid);
+        }
+        data.set_tile(layer, 2, 1, ramp);
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("ramp".into(), data);
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("ramp", Vec2::ZERO));
+        physics_step(&mut world);
+        let poly = slope::polygon(code, Vec2::new(40.0, 24.0), Vec2::splat(8.0));
+        // A `br` ramp's foot is on its left, a `bl` ramp's on its right.
+        let (x, dir) = if code % 2 == 1 {
+            (8.0, Vec2::X)
+        } else {
+            (72.0, Vec2::NEG_X)
+        };
+        for half in [Vec2::splat(4.0), Vec2::new(6.0, 10.0), Vec2::new(2.5, 1.25)] {
+            let shape = Shape::Aabb { half_extents: half };
+            for above in [0.0, 0.01] {
+                let origin = Vec2::new(x, 32.0 - half.y - above);
+                let at = format!("kind {code}, half {half}, {above} px up");
+                let hit = cast_shape(&world, shape, origin, dir, 100.0, &all())
+                    .unwrap_or_else(|| panic!("{at}: missed the ramp"));
+                assert!(hit.normal.abs_diff_eq(poly.normal, 1e-6), "{at}: {hit:?}");
+                let depth = slope_depth(Some(shape), origin + dir * hit.distance, &poly);
+                assert!(depth < 1e-3, "{at}: {depth} px into the ramp, {hit:?}");
+            }
+        }
+    }
+}
+
+#[test]
 fn overlap_and_nearest_meet_slopes() {
     // A `45 br` cell from (16, 16) to (32, 32): its box's empty half above
     // the face is no tile to overlaps, nearest surfaces and sensors.
