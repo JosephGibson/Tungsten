@@ -1,0 +1,36 @@
+{
+  "tag": "rambler",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          12
+        ]
+      }
+    },
+    "platformer_controller": {
+      "run_speed": 160,
+      "jump_speed": 500,
+      "gravity": 2000,
+      "slope_limit": 50,
+      "slide_limit": 35,
+      "mask": [
+        0
+      ]
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ],
+      "slots": {
+        "jump": "jump"
+      }
+    }
+  }
+}

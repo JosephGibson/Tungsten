@@ -383,7 +383,7 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 109,
+        checked, 111,
         "the kit's numeric fields, three of them a number-or-map damage, three a skill's bases"
     );
 }

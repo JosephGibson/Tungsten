@@ -2642,6 +2642,8 @@ pub fn tungsten_kit::PlatformerController::air_jump_refused(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
+pub fn tungsten_kit::PlatformerController::drop_through(&mut self)
+pub fn tungsten_kit::PlatformerController::floor_normal(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::PlatformerController::ground(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::PlatformerController::grounded(&self) -> bool
 pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
@@ -2662,6 +2664,8 @@ pub fn tungsten_kit::PlatformerController::with_gravity(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_buffer(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_cut(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_shove(self, f32, f32) -> Self
+pub fn tungsten_kit::PlatformerController::with_slide_limit(self, f32) -> Self
+pub fn tungsten_kit::PlatformerController::with_slope_limit(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_step_height(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::clone(&self) -> tungsten_kit::PlatformerController
@@ -6846,6 +6850,8 @@ pub fn tungsten_kit::PlatformerController::air_jump_refused(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
+pub fn tungsten_kit::PlatformerController::drop_through(&mut self)
+pub fn tungsten_kit::PlatformerController::floor_normal(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::PlatformerController::ground(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::PlatformerController::grounded(&self) -> bool
 pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
@@ -6866,6 +6872,8 @@ pub fn tungsten_kit::PlatformerController::with_gravity(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_buffer(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_cut(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_shove(self, f32, f32) -> Self
+pub fn tungsten_kit::PlatformerController::with_slide_limit(self, f32) -> Self
+pub fn tungsten_kit::PlatformerController::with_slope_limit(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_step_height(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::clone(&self) -> tungsten_kit::PlatformerController

@@ -80,6 +80,9 @@
     },
     "knight": {
       "path": "prefabs/knight.json"
+    },
+    "rambler": {
+      "path": "prefabs/rambler.json"
     }
   },
   "data": {

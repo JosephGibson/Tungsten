@@ -8722,11 +8722,14 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::Se
 pub struct tungsten_core::physics::SpatialFilter
 impl tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::excluding(self, tungsten_core::Entity) -> Self
+pub fn tungsten_core::SpatialFilter::mask(&self) -> u32
 pub fn tungsten_core::SpatialFilter::new() -> Self
 pub fn tungsten_core::SpatialFilter::with_bodies(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_mask(self, u32) -> Self
+pub fn tungsten_core::SpatialFilter::with_one_way(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_sensors(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_tiles(self, bool) -> Self
+pub fn tungsten_core::SpatialFilter::without(&self) -> u32
 pub fn tungsten_core::SpatialFilter::without_layers(self, u32) -> Self
 impl core::clone::Clone for tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::clone(&self) -> tungsten_core::SpatialFilter
@@ -8774,6 +8777,7 @@ pub tungsten_core::physics::SpatialHit::entity: core::option::Option<tungsten_co
 pub tungsten_core::physics::SpatialHit::layers: u32
 pub tungsten_core::physics::SpatialHit::normal: glam::f32::vec2::Vec2
 pub tungsten_core::physics::SpatialHit::point: glam::f32::vec2::Vec2
+pub tungsten_core::physics::SpatialHit::slope: bool
 pub tungsten_core::physics::SpatialHit::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl core::clone::Clone for tungsten_core::SpatialHit
 pub fn tungsten_core::SpatialHit::clone(&self) -> tungsten_core::SpatialHit
@@ -21034,11 +21038,14 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::Soun
 pub struct tungsten_core::SpatialFilter
 impl tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::excluding(self, tungsten_core::Entity) -> Self
+pub fn tungsten_core::SpatialFilter::mask(&self) -> u32
 pub fn tungsten_core::SpatialFilter::new() -> Self
 pub fn tungsten_core::SpatialFilter::with_bodies(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_mask(self, u32) -> Self
+pub fn tungsten_core::SpatialFilter::with_one_way(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_sensors(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_tiles(self, bool) -> Self
+pub fn tungsten_core::SpatialFilter::without(&self) -> u32
 pub fn tungsten_core::SpatialFilter::without_layers(self, u32) -> Self
 impl core::clone::Clone for tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::clone(&self) -> tungsten_core::SpatialFilter
@@ -21086,6 +21093,7 @@ pub tungsten_core::SpatialHit::entity: core::option::Option<tungsten_core::Entit
 pub tungsten_core::SpatialHit::layers: u32
 pub tungsten_core::SpatialHit::normal: glam::f32::vec2::Vec2
 pub tungsten_core::SpatialHit::point: glam::f32::vec2::Vec2
+pub tungsten_core::SpatialHit::slope: bool
 pub tungsten_core::SpatialHit::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl core::clone::Clone for tungsten_core::SpatialHit
 pub fn tungsten_core::SpatialHit::clone(&self) -> tungsten_core::SpatialHit

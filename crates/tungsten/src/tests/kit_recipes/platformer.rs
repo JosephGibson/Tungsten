@@ -4,7 +4,8 @@
 //! bricks, climber, spiker and coin; M67's regen and haste on the runner;
 //! M76's bolt off armour, saved mid-flight; 7.10a's squire with its scoped
 //! lines, an inspired effect and a difficulty world source, and a knight
-//! that halves blasts, floors its cold factor and crits from its stats.
+//! that halves blasts, floors its cold factor and crits from its stats;
+//! 7.10m's rambler up a 2:1 ramp, down a steep one and through a ledge.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1183,6 +1184,131 @@ fn a_numbered_targets_numbers_merge_tick_and_crit_by_its_cue_rule() {
                 label("1", 10.0, RED),
             ],
             "dt {dt}: the bolt's first at once, the crit in gold, then the bolt's follower and the burn's ticks as one"
+        );
+    }
+}
+
+/// The hills: 16 px cells, the floor's top at y 240; a 2:1 ramp from x 64
+/// up to a plateau at y 208 from x 128 to 224, a 45° slope down from it to
+/// the floor at x 256, and a one-way ledge at y 160 from x 384 to 496.
+fn hills(dt: f32) -> super::Harness {
+    use tungsten_core::{
+        LayerKind, Slope, TileProps, TilemapData, TilemapInstance, TilemapRegistry,
+    };
+
+    let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+    let rows = [
+        (10, "........................=======........."),
+        (13, "......ei######b........................."),
+        (14, "....ei#########b........................"),
+        (15, "########################################"),
+    ];
+    let mut map = TilemapData::new(16, 16, 40, 16);
+    let solid = map.add_tile("solid");
+    let slope = |map: &mut TilemapData, name: &str| {
+        let tile = map.add_tile(name);
+        let mut props = TileProps::default();
+        props.slope = Some(Slope::parse(name).unwrap());
+        map.set_tile_props(tile, props);
+        tile
+    };
+    let (low, high, down) = (
+        slope(&mut map, "2:1 low br"),
+        slope(&mut map, "2:1 high br"),
+        slope(&mut map, "45 bl"),
+    );
+    let ledge = map.add_tile("ledge");
+    let mut props = TileProps::default();
+    props.one_way = true;
+    map.set_tile_props(ledge, props);
+    let layer = map.add_layer("solid", LayerKind::Collision);
+    for (row, letters) in rows {
+        for (col, letter) in letters.chars().enumerate() {
+            let tile = match letter {
+                '#' => solid,
+                'e' => low,
+                'i' => high,
+                'b' => down,
+                '=' => ledge,
+                _ => continue,
+            };
+            map.set_tile(layer, col as u32, row, tile);
+        }
+    }
+    let world = harness.world_mut();
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("hills".into(), map);
+    let instance = world.spawn();
+    world.insert(instance, TilemapInstance::new("hills", Vec2::ZERO));
+    harness
+}
+
+/// The rambler's feet and whether it stands.
+fn rambler_feet(harness: &super::Harness, rambler: tungsten_core::Entity) -> (Vec2, bool) {
+    let at = body_at(harness, rambler) + Vec2::new(0.0, 12.0);
+    (at, grounded(harness, rambler))
+}
+
+#[test]
+fn a_rambler_walks_up_a_ramp_slides_down_a_steep_one_and_drops_through_a_ledge() {
+    for dt in DTS {
+        // Up the 2:1 ramp, within its 50° slope limit and its 35° slide
+        // limit: grounded each frame, onto the plateau.
+        let mut harness = hills(dt);
+        let rambler = spawn(&mut harness, "rambler", [24.0, 228.0]);
+        harness.step(2);
+        harness.press_action("move_right");
+        for frame in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            let (feet, standing) = rambler_feet(&harness, rambler);
+            assert!(standing, "dt {dt}, frame {frame}: off the ramp at {feet}");
+        }
+        harness.release_action("move_right");
+        let (feet, _) = rambler_feet(&harness, rambler);
+        assert!(
+            (feet.y - 208.0).abs() < 0.05 && (128.0..224.0).contains(&feet.x),
+            "dt {dt}: on the plateau at {feet}"
+        );
+
+        // Set on the 45° slope, steeper than its slide limit: it slides down
+        // it to the floor and stops there.
+        let mut harness = hills(dt);
+        let rambler = spawn(&mut harness, "rambler", [244.0, 207.5]);
+        harness.step(frames_for(1.0, dt));
+        let (feet, standing) = rambler_feet(&harness, rambler);
+        assert!(
+            standing && (feet.y - 240.0).abs() < 0.05 && feet.x > 256.0,
+            "dt {dt}: slid to the floor, at {feet}"
+        );
+        harness.step(frames_for(0.25, dt));
+        assert_eq!(rambler_feet(&harness, rambler).0, feet, "dt {dt}: it stops");
+
+        // On the one-way ledge, down with a jump drops it through: it never
+        // stands on the ledge again and lands on the floor.
+        let mut harness = hills(dt);
+        let rambler = spawn(&mut harness, "rambler", [440.0, 148.0]);
+        harness.step(3);
+        assert!(rambler_feet(&harness, rambler).1, "dt {dt}: on the ledge");
+        harness.press_action("move_down");
+        harness.press_action("jump");
+        harness.step(1);
+        harness.release_action("jump");
+        harness.release_action("move_down");
+        let mut landed = None;
+        for frame in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            let (feet, standing) = rambler_feet(&harness, rambler);
+            if standing {
+                landed = Some((frame, feet));
+                break;
+            }
+            assert!(feet.y >= 160.0, "dt {dt}, frame {frame}: rose to {feet}");
+        }
+        let (_, feet) = landed.unwrap_or_else(|| panic!("dt {dt}: it never landed"));
+        assert!(
+            (feet.y - 240.0).abs() < 0.05,
+            "dt {dt}: on the floor at {feet}"
         );
     }
 }

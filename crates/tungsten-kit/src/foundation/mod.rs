@@ -9,6 +9,7 @@ pub(crate) mod debug;
 pub(crate) mod describe;
 pub(crate) mod explain;
 pub(crate) mod inspect;
+pub(crate) mod layers;
 pub(crate) mod lines;
 pub(crate) mod phases;
 pub(crate) mod plugins;

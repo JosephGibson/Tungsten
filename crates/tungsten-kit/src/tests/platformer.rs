@@ -1323,3 +1323,571 @@ fn the_controller_jumps_up_through_a_one_way_edge_and_lands_on_it() {
     assert!(state(&world, entity).grounded(), "it stands");
     assert!((feet + 128.0).abs() < 0.05, "on the ledge: feet at {feet}");
 }
+
+/// A world as [`rig`]'s with a map of 16 px cells at the origin drawn by
+/// rows of letters: `#` solid, `a` to `l` slope kinds 1 to 12 (`45 br` to
+/// `2:1 high tl`), `=` one-way, `.` empty.
+fn slope_rig(rows: &[String]) -> (World, Schedule) {
+    let (mut world, schedule) = rig();
+    let names = [
+        "45 br",
+        "45 bl",
+        "45 tr",
+        "45 tl",
+        "2:1 low br",
+        "2:1 low bl",
+        "2:1 low tr",
+        "2:1 low tl",
+        "2:1 high br",
+        "2:1 high bl",
+        "2:1 high tr",
+        "2:1 high tl",
+    ];
+    let (width, height) = (rows[0].len() as u32, rows.len() as u32);
+    let mut map = TilemapData::new(16, 16, width, height);
+    let solid = map.add_tile("solid");
+    let slopes: Vec<i32> = names
+        .iter()
+        .map(|name| {
+            let tile = map.add_tile(format!("slope {name}"));
+            let mut props = tungsten_core::TileProps::default();
+            props.slope = Some(tungsten_core::Slope::parse(name).unwrap());
+            map.set_tile_props(tile, props);
+            tile
+        })
+        .collect();
+    let ledge = map.add_tile("ledge");
+    let mut props = tungsten_core::TileProps::default();
+    props.one_way = true;
+    map.set_tile_props(ledge, props);
+    let layer = map.add_layer("solid", LayerKind::Collision);
+    for (row, letters) in rows.iter().enumerate() {
+        for (col, letter) in letters.chars().enumerate() {
+            let tile = match letter {
+                '#' => solid,
+                '=' => ledge,
+                'a'..='l' => slopes[usize::from(letter as u8 - b'a')],
+                _ => continue,
+            };
+            map.set_tile(layer, col as u32, row as u32, tile);
+        }
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("slopes".into(), map);
+    let instance = world.spawn();
+    world.insert(instance, TilemapInstance::new("slopes", Vec2::ZERO));
+    (world, schedule)
+}
+
+/// A 40-cell map whose floor's top is at y 240, with a ramp from x 160
+/// rising to the right to a plateau: six `45 br` cells to one at y 144, or
+/// five pairs of `2:1 low br` and `2:1 high br` cells to one at y 160; or,
+/// with `down`, a plateau at that height ending at x 160 and the mirrored
+/// ramp, `45 bl` or `2:1 high bl` and `2:1 low bl`, falling to the right.
+fn ramp(two_to_one: bool, down: bool) -> Vec<String> {
+    let rise: i32 = if two_to_one { 5 } else { 6 };
+    let width = if two_to_one { 2 * rise } else { rise };
+    let plateau = 15 - rise;
+    (0..16)
+        .map(|row: i32| {
+            (0..40)
+                .map(|col: i32| {
+                    if row == 15 {
+                        return '#';
+                    }
+                    let at = col - 10;
+                    if (0..width).contains(&at) {
+                        let (surface, letter) = match (two_to_one, down) {
+                            (false, false) => (14 - at, 'a'),
+                            (false, true) => (plateau + at, 'b'),
+                            (true, false) => (14 - at / 2, if at % 2 == 0 { 'e' } else { 'i' }),
+                            (true, true) => (plateau + at / 2, if at % 2 == 0 { 'j' } else { 'f' }),
+                        };
+                        return match row.cmp(&surface) {
+                            std::cmp::Ordering::Equal => letter,
+                            std::cmp::Ordering::Greater => '#',
+                            std::cmp::Ordering::Less => '.',
+                        };
+                    }
+                    let high = if down { at < 0 } else { at >= width };
+                    if high && row >= plateau { '#' } else { '.' }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// Each step's start and end position and its grounded state and floor
+/// normal at the end, for `count` steps.
+fn walk(
+    world: &mut World,
+    schedule: &mut Schedule,
+    entity: Entity,
+    count: usize,
+) -> Vec<(Vec2, Vec2, bool, Option<Vec2>)> {
+    (0..count)
+        .map(|_| {
+            let from = position(world, entity);
+            step(world, schedule);
+            let pc = state(world, entity);
+            (
+                from,
+                position(world, entity),
+                pc.grounded(),
+                pc.floor_normal(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn the_controller_walks_slopes_at_its_run_speed() {
+    // Up a ramp and back down, 45° and 2:1: grounded every step, and every
+    // step that starts and ends on the face moves along it at the run speed.
+    for two_to_one in [false, true] {
+        let face = if two_to_one {
+            Vec2::new(-1.0, -2.0).normalize()
+        } else {
+            Vec2::new(-1.0, -1.0).normalize()
+        };
+        let (mut world, mut schedule) = slope_rig(&ramp(two_to_one, false));
+        let entity = hero(
+            &mut world,
+            Vec2::new(60.0, 240.0),
+            PlatformerController::new(RUN, JUMP),
+        );
+        steps(&mut world, &mut schedule, 2);
+        let mut on_face = 0;
+        for run in [1.0, -1.0] {
+            controller(&mut world, entity).set_run(run);
+            let mut last = state(&world, entity).floor_normal();
+            for (from, to, grounded, normal) in walk(&mut world, &mut schedule, entity, 45) {
+                let at = format!("2:1 {two_to_one}, run {run}: {from} to {to}");
+                assert!(grounded, "{at}: off the ground");
+                let face_both = [last, normal]
+                    .iter()
+                    .all(|n| n.is_some_and(|n| n.abs_diff_eq(face, 1e-4)));
+                if face_both {
+                    let speed = from.distance(to) / DT;
+                    assert!(
+                        (speed - RUN).abs() < 0.01 * RUN,
+                        "{at}: {speed} px/s along the face"
+                    );
+                    on_face += 1;
+                }
+                last = normal;
+            }
+        }
+        assert!(
+            on_face > 20,
+            "2:1 {two_to_one}: {on_face} steps on the face"
+        );
+        // Back where it started, on the floor.
+        let feet = position(&world, entity).y + HALF.y;
+        assert!(
+            (feet - 240.0).abs() < 0.05,
+            "2:1 {two_to_one}: feet at {feet}"
+        );
+    }
+}
+
+#[test]
+fn the_controller_stands_and_slides_by_its_limits() {
+    // Halfway up a 45° ramp, its face y = 400 − x: the default stands
+    // still; a slide limit of 30° slides it down along the face, its speed
+    // along it growing by g · sin 45° · dt a sliding step, its own gravity
+    // 600; on a 2:1 ramp, gentler than 30°, it stands.
+    let place = |two_to_one: bool, controller: PlatformerController| {
+        let (mut world, mut schedule) = slope_rig(&ramp(two_to_one, false));
+        let feet = if two_to_one {
+            // The 2:1 face: y = 240 − (x − 160) / 2.
+            Vec2::new(220.0, 240.0 - (230.0 - 160.0) / 2.0 - 0.5)
+        } else {
+            Vec2::new(220.0, 400.0 - 230.0 - 0.5)
+        };
+        let entity = hero(&mut world, feet, controller);
+        steps(&mut world, &mut schedule, 3);
+        assert!(state(&world, entity).grounded(), "on the face");
+        (world, schedule, entity)
+    };
+    let (mut world, mut schedule, entity) = place(false, PlatformerController::new(RUN, JUMP));
+    let still = position(&world, entity);
+    steps(&mut world, &mut schedule, 60);
+    assert_eq!(position(&world, entity), still, "the default stands");
+
+    let sliding = PlatformerController::new(RUN, JUMP)
+        .with_gravity(600.0)
+        .with_slide_limit(30.0);
+    let (mut world, mut schedule, entity) = place(false, sliding.clone());
+    let face = Vec2::new(-1.0, -1.0).normalize();
+    let growth = 600.0 * std::f32::consts::FRAC_1_SQRT_2 * DT;
+    let mut last: Option<f32> = None;
+    let mut sliding_steps = 0;
+    for (from, to, grounded, normal) in walk(&mut world, &mut schedule, entity, 30) {
+        assert!(
+            grounded && to.x < from.x && to.y > from.y,
+            "down the face: {from} to {to}"
+        );
+        assert!(
+            normal.is_some_and(|n| n.abs_diff_eq(face, 1e-4)),
+            "{normal:?}"
+        );
+        let speed = from.distance(to) / DT;
+        if let Some(last) = last {
+            assert!(
+                (speed - last - growth).abs() < 0.01 * growth,
+                "{last} to {speed} px/s, g · sin 45° · dt gives {growth} a step"
+            );
+            sliding_steps += 1;
+        }
+        last = Some(speed);
+    }
+    assert!(sliding_steps >= 20, "{sliding_steps} sliding steps");
+
+    let (mut world, mut schedule, entity) = place(true, sliding);
+    let still = position(&world, entity);
+    steps(&mut world, &mut schedule, 60);
+    assert_eq!(position(&world, entity), still, "2:1 is gentler than 30°");
+}
+
+#[test]
+fn the_controller_snaps_down_a_slope_and_over_its_crest() {
+    // Off a plateau down a ramp falling to the right, 45° and 2:1, and up a
+    // ramp over its crest onto a plateau: grounded every step.
+    for two_to_one in [false, true] {
+        let top = if two_to_one { 160.0 } else { 144.0 };
+        let (mut world, mut schedule) = slope_rig(&ramp(two_to_one, true));
+        let entity = hero(
+            &mut world,
+            Vec2::new(100.0, top),
+            PlatformerController::new(RUN, JUMP),
+        );
+        steps(&mut world, &mut schedule, 2);
+        controller(&mut world, entity).set_run(1.0);
+        for (from, to, grounded, _) in walk(&mut world, &mut schedule, entity, 40) {
+            assert!(
+                grounded,
+                "2:1 {two_to_one}, down: {from} to {to} off the ground"
+            );
+        }
+        let feet = position(&world, entity).y + HALF.y;
+        assert!(
+            (feet - 240.0).abs() < 0.05,
+            "2:1 {two_to_one}: down on the floor at {feet}"
+        );
+
+        let (mut world, mut schedule) = slope_rig(&ramp(two_to_one, false));
+        let entity = hero(
+            &mut world,
+            Vec2::new(60.0, 240.0),
+            PlatformerController::new(RUN, JUMP),
+        );
+        steps(&mut world, &mut schedule, 2);
+        controller(&mut world, entity).set_run(1.0);
+        for (from, to, grounded, _) in walk(&mut world, &mut schedule, entity, 40) {
+            assert!(
+                grounded,
+                "2:1 {two_to_one}, up: {from} to {to} off the ground"
+            );
+        }
+        let feet = position(&world, entity).y + HALF.y;
+        assert!(
+            (feet - top).abs() < 0.05,
+            "2:1 {two_to_one}: on the plateau at {feet}"
+        );
+        assert_eq!(state(&world, entity).floor_normal(), Some(Vec2::NEG_Y));
+    }
+}
+
+#[test]
+fn the_controller_leaves_a_flat_ledge_as_before() {
+    // A ledge whose top is at y 160 ending at x 160, a floor 3 px lower past
+    // it, inside the snap reach: grounded while its box overlaps the ledge
+    // at a step's start, and off the ground at the first step whose box
+    // starts clear of it, as the 1 px probe gives.
+    let (mut world, mut schedule) = rig();
+    static_box(&mut world, Vec2::new(-40.0, 170.0), Vec2::new(200.0, 10.0));
+    static_box(&mut world, Vec2::new(360.0, 173.0), Vec2::new(200.0, 10.0));
+    let entity = hero(
+        &mut world,
+        Vec2::new(100.0, 160.0),
+        PlatformerController::new(RUN, JUMP),
+    );
+    steps(&mut world, &mut schedule, 2);
+    controller(&mut world, entity).set_run(1.0);
+    let mut left = false;
+    for (from, to, grounded, _) in walk(&mut world, &mut schedule, entity, 12) {
+        let over = from.x - HALF.x < 160.0;
+        if over {
+            assert!(grounded, "{from} to {to}: over the ledge");
+        } else {
+            assert!(!grounded, "{from} to {to}: clear of the ledge");
+            left = true;
+            break;
+        }
+    }
+    assert!(left, "it reached the ledge's end");
+}
+
+#[test]
+fn the_controller_stops_at_a_slope_past_its_limit() {
+    // A slope limit of 30°: a 45° ramp, its face y = 400 − x from its foot
+    // at (160, 240), stops it at the foot as a wall, where the default climbs
+    // it; a 2:1 ramp, 26.6°, it climbs. Its feet start exactly on the floor,
+    // a 0 px contact as a spawn on it leaves them, and 0.01 px over it: its
+    // box never lies more than 1e-3 px into the 45° ramp.
+    let depth = |at: Vec2| {
+        let corner = at + HALF;
+        if (160.0..=256.0).contains(&corner.x) {
+            (corner.x + corner.y - 400.0) * std::f32::consts::FRAC_1_SQRT_2
+        } else {
+            f32::NEG_INFINITY
+        }
+    };
+    let run_at = |two_to_one: bool, above: f32, controller: PlatformerController| {
+        let (mut world, mut schedule) = slope_rig(&ramp(two_to_one, false));
+        let entity = hero(&mut world, Vec2::new(60.0, 240.0 - above), controller);
+        steps(&mut world, &mut schedule, 2);
+        controller_of(&mut world, entity).set_run(1.0);
+        let mut deepest = f32::NEG_INFINITY;
+        let mut held = Vec2::ZERO;
+        for k in 0..40 {
+            step(&mut world, &mut schedule);
+            if !two_to_one {
+                deepest = deepest.max(depth(position(&world, entity)));
+            }
+            if k == 29 {
+                held = position(&world, entity);
+            }
+        }
+        (held, position(&world, entity), deepest)
+    };
+    for above in [0.0, 0.01] {
+        let limited = PlatformerController::new(RUN, JUMP).with_slope_limit(30.0);
+        let (held, at, deepest) = run_at(false, above, limited.clone());
+        assert_eq!(held, at, "{above} px up: it stays stopped");
+        assert!(
+            (at.y + HALF.y - 240.0).abs() < 0.05,
+            "{above} px up: on the floor at {at}"
+        );
+        assert!(
+            at.x + HALF.x < 160.0 + 1e-3,
+            "{above} px up: at the ramp's foot: {at}"
+        );
+        assert!(deepest <= 1e-3, "{above} px up: {deepest} px into the ramp");
+        let (_, climbed, deepest) = run_at(false, above, PlatformerController::new(RUN, JUMP));
+        assert!(
+            climbed.y + HALF.y < 150.0,
+            "{above} px up: the default climbs: {climbed}"
+        );
+        assert!(deepest <= 1e-3, "{above} px up: {deepest} px into the ramp");
+        let (_, gentle, _) = run_at(true, above, limited);
+        assert!(
+            gentle.y + HALF.y < 170.0,
+            "{above} px up: 2:1 is within 30°: {gentle}"
+        );
+    }
+}
+
+fn controller_of(world: &mut World, entity: Entity) -> &mut PlatformerController {
+    controller(world, entity)
+}
+
+#[test]
+fn the_controller_drops_through_a_one_way_edge() {
+    // A one-way ledge whose top is at y 160 over a floor at y 464: dropped
+    // through by call and by a jump press with the movement down, at
+    // gravity 10 and 2,000 and steps of 1/60 and 1/240 s, it is never on
+    // the ground for half a second and ends below the ledge, falling.
+    let mut rows = vec![".".repeat(40); 30];
+    rows[10] = format!("{}{}{}", ".".repeat(5), "=".repeat(25), ".".repeat(10));
+    rows[29] = "#".repeat(40);
+    for gravity in [10.0, 2000.0] {
+        for dt in [1.0 / 60.0, 1.0 / 240.0] {
+            for by_intent in [false, true] {
+                let at = format!("gravity {gravity}, dt {dt}, intent {by_intent}");
+                let (mut world, mut schedule) = slope_rig(&rows);
+                let entity = hero(
+                    &mut world,
+                    Vec2::new(200.0, 160.0),
+                    PlatformerController::new(RUN, JUMP).with_gravity(gravity),
+                );
+                let mut tick = |world: &mut World| {
+                    world.resource_mut::<Time>().advance_frame(dt);
+                    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+                };
+                for _ in 0..3 {
+                    tick(&mut world);
+                }
+                assert!(state(&world, entity).grounded(), "{at}: on the ledge");
+                if by_intent {
+                    let mut intent = crate::Intent::default();
+                    intent.set_movement(Vec2::new(0.0, 1.0));
+                    intent.set_slot("jump", true, true);
+                    world.insert(entity, intent);
+                } else {
+                    controller(&mut world, entity).drop_through();
+                }
+                let start = position(&world, entity).y;
+                let mut last = start;
+                for k in 0..(0.5 / dt).round() as usize {
+                    tick(&mut world);
+                    if k == 0 && by_intent {
+                        world
+                            .get_mut::<crate::Intent>(entity)
+                            .unwrap()
+                            .set_slot("jump", false, false);
+                    }
+                    let y = position(&world, entity).y;
+                    assert!(
+                        !state(&world, entity).grounded(),
+                        "{at}, step {k}: grounded at {y}"
+                    );
+                    assert!(y >= last, "{at}, step {k}: rose to {y}");
+                    last = y;
+                }
+                let feet = last + HALF.y;
+                let falling = world.get::<Velocity>(entity).unwrap().0.y;
+                assert!(feet > 160.0 + 1.0, "{at}: feet at {feet}");
+                assert!(falling > 0.0, "{at}: moving at {falling}");
+            }
+        }
+    }
+}
+
+#[test]
+fn the_controllers_filter_round_trips_its_data_and_save() {
+    // `mask` and `without` by number and by physics layer name build its
+    // filter; a save writes the filter's layers when they differ from the
+    // defaults, and a save from before them loads with today's filter.
+    let (mut world, _) = rig();
+    world.insert_resource(tungsten_core::physics::PhysicsLayers::new([(
+        "ground".to_owned(),
+        2,
+    )]));
+    let fields = json!({
+        "run_speed": RUN,
+        "jump_speed": JUMP,
+        "mask": [0, "ground"],
+        "without": [3],
+        "slope_limit": 50,
+        "slide_limit": 40
+    });
+    let components = world.resource::<ComponentRegistry>();
+    components
+        .check_in(PLATFORMER_CONTROLLER_COMPONENT, &fields, &world)
+        .unwrap();
+    let unknown = json!({ "run_speed": RUN, "jump_speed": JUMP, "mask": [0, "sky"] });
+    let refused = components
+        .check_in(PLATFORMER_CONTROLLER_COMPONENT, &unknown, &world)
+        .unwrap_err();
+    assert!(
+        matches!(
+            &refused,
+            tungsten_core::ComponentError::MissingAsset { field, kind: "physics layer", id, .. }
+                if field == "mask[1]" && id == "sky"
+        ),
+        "{refused}"
+    );
+    let unknown = json!({ "run_speed": RUN, "jump_speed": JUMP, "without": ["ground", "sea"] });
+    let refused = components
+        .check_in(PLATFORMER_CONTROLLER_COMPONENT, &unknown, &world)
+        .unwrap_err();
+    assert!(
+        matches!(
+            &refused,
+            tungsten_core::ComponentError::MissingAsset { field, id, .. }
+                if field == "without[1]" && id == "sea"
+        ),
+        "{refused}"
+    );
+    for bad in [
+        json!({ "run_speed": RUN, "jump_speed": JUMP, "mask": [32] }),
+        json!({ "run_speed": RUN, "jump_speed": JUMP, "without": [-1] }),
+        json!({ "run_speed": RUN, "jump_speed": JUMP, "slope_limit": 90 }),
+        json!({ "run_speed": RUN, "jump_speed": JUMP, "slide_limit": 0 }),
+    ] {
+        assert!(
+            components
+                .check(PLATFORMER_CONTROLLER_COMPONENT, &bad)
+                .is_err(),
+            "{bad}"
+        );
+    }
+    let prepared = world
+        .resource::<ComponentRegistry>()
+        .prepare(
+            PLATFORMER_CONTROLLER_COMPONENT,
+            &fields,
+            &SpawnContext::new(&world, Transform::default()),
+        )
+        .unwrap();
+    let mut buffer = CommandBuffer::new();
+    let pending = buffer.spawn();
+    prepared.insert_pending(&mut buffer, pending);
+    world.flush_reusing(&mut buffer);
+    let built = world
+        .query::<&PlatformerController>()
+        .last()
+        .unwrap()
+        .clone();
+    let filter = SpatialFilter::new().with_mask(0b101).without_layers(0b1000);
+    let expected = PlatformerController::new(RUN, JUMP)
+        .with_filter(filter)
+        .with_slope_limit(50.0)
+        .with_slide_limit(40.0);
+    assert_eq!(built, expected);
+
+    let saved = serde_json::to_value(&built).unwrap();
+    assert_eq!(
+        (saved["mask"].clone(), saved["without"].clone()),
+        (json!(5), json!(8))
+    );
+    assert_eq!(
+        serde_json::from_value::<PlatformerController>(saved.clone()).unwrap(),
+        built
+    );
+    let plain = serde_json::to_value(PlatformerController::new(RUN, JUMP)).unwrap();
+    for key in [
+        "mask",
+        "without",
+        "slope_limit",
+        "slide_limit",
+        "drop_edge",
+        "slope_normal",
+    ] {
+        assert!(plain.get(key).is_none(), "{key} is written at its default");
+    }
+    let mut old = saved;
+    for key in ["mask", "without", "slope_limit", "slide_limit"] {
+        old.as_object_mut().unwrap().remove(key);
+    }
+    let loaded: PlatformerController = serde_json::from_value(old).unwrap();
+    assert_eq!(loaded.filter, SpatialFilter::new(), "today's filter");
+
+    // Standing on flat ground it writes the fields it wrote before; on a
+    // slope face it keeps the face's normal through a load.
+    let (world, _, entity) = standing(PlatformerController::new(RUN, JUMP));
+    let saved = serde_json::to_value(state(&world, entity)).unwrap();
+    for key in ["slope_normal", "slide_speed", "drop_edge", "drop_asked"] {
+        assert!(saved.get(key).is_none(), "{key} written on flat ground");
+    }
+    let (mut world, mut schedule) = slope_rig(&ramp(false, false));
+    let entity = hero(
+        &mut world,
+        Vec2::new(220.0, 400.0 - 230.0 - 0.5),
+        PlatformerController::new(RUN, JUMP),
+    );
+    steps(&mut world, &mut schedule, 3);
+    let face = Vec2::new(-1.0, -1.0).normalize();
+    let on_face = state(&world, entity).clone();
+    assert!(
+        on_face
+            .floor_normal()
+            .is_some_and(|n| n.abs_diff_eq(face, 1e-4))
+    );
+    let loaded: PlatformerController =
+        serde_json::from_value(serde_json::to_value(&on_face).unwrap()).unwrap();
+    assert_eq!(loaded.floor_normal(), on_face.floor_normal());
+}

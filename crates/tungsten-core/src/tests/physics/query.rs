@@ -1420,6 +1420,7 @@ fn casts_on_run_boxes_give_the_cells_hits() {
                         distance,
                         layers: entry.layers,
                         tile: None,
+                        slope: false,
                     }),
                     Some(shape) => cast_against(shape, from, unit, entry),
                 };
@@ -1429,6 +1430,7 @@ fn casts_on_run_boxes_give_the_cells_hits() {
                 {
                     want = Some(SpatialHit {
                         tile: Some(*cell),
+                        slope: false,
                         ..hit
                     });
                 }
@@ -1540,6 +1542,7 @@ fn casts_where_pass_the_hits_they_refuse() {
                     distance,
                     layers: entry.layers,
                     tile: None,
+                    slope: false,
                 }),
                 Some(shape) => cast_against(shape, from, unit, entry),
             };
@@ -1572,6 +1575,7 @@ fn casts_where_pass_the_hits_they_refuse() {
                 if let Some(hit) = hit_on(entry) {
                     consider(SpatialHit {
                         tile: Some(*cell),
+                        slope: false,
                         ..hit
                     });
                 }
@@ -2197,4 +2201,62 @@ fn swept_circles_meet_where_they_first_touch() {
     );
     let touch = (9.0 - std::f32::consts::FRAC_1_SQRT_2) / 20.0;
     assert!((corner.unwrap() - touch).abs() < 1.0e-6, "{corner:?}");
+}
+
+#[test]
+fn casts_can_skip_one_way_tiles() {
+    // A one-way ledge of 16 px cells from x 32 to 112, its top face at y 48,
+    // over a solid floor whose top is at y 96: a filter without one-way
+    // tiles casts through the ledge to the floor, and the default meets it.
+    let mut world = world();
+    let mut data = TilemapData::new(16, 16, 10, 7);
+    let solid = data.add_tile("solid");
+    let ledge = data.add_tile("ledge");
+    data.set_tile_props(
+        ledge,
+        crate::assets::TileProps {
+            one_way: true,
+            ..crate::assets::TileProps::default()
+        },
+    );
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    for col in 2..7 {
+        data.set_tile(layer, col, 3, ledge);
+    }
+    for col in 0..10 {
+        data.set_tile(layer, col, 6, solid);
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("ledge".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("ledge", Vec2::ZERO));
+    physics_step(&mut world);
+    let skipping = all().with_one_way(false);
+    assert!(all().one_way && !skipping.one_way);
+    let small = Shape::Aabb {
+        half_extents: Vec2::splat(4.0),
+    };
+    let down = |filter: &SpatialFilter| {
+        let ray = cast_ray(&world, Vec2::new(72.0, 10.0), Vec2::Y, 500.0, filter);
+        let shape = cast_shape(&world, small, Vec2::new(72.0, 10.0), Vec2::Y, 500.0, filter);
+        (ray.unwrap().point.y, shape.unwrap().point.y)
+    };
+    assert_eq!(down(&all()), (48.0, 48.0));
+    assert_eq!(down(&skipping), (96.0, 96.0));
+    let row = |hit: Option<SpatialHit>| hit.and_then(|hit| hit.tile).map(|tile| tile.row);
+    assert_eq!(
+        row(cast_ray(
+            &world,
+            Vec2::new(72.0, 10.0),
+            Vec2::Y,
+            500.0,
+            &skipping
+        )),
+        Some(6)
+    );
+    // The filter's layers read back as they were set.
+    let layered = all().with_mask(0b101).without_layers(0b100);
+    assert_eq!((layered.mask(), layered.without()), (0b101, 0b100));
+    assert_eq!((all().mask(), all().without()), (RigidBody::ALL_LAYERS, 0));
 }
