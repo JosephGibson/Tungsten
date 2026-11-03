@@ -92,6 +92,12 @@
     },
     "riser": {
       "path": "prefabs/riser.json"
+    },
+    "slider": {
+      "path": "prefabs/slider.json"
+    },
+    "crusher": {
+      "path": "prefabs/crusher.json"
     }
   },
   "data": {

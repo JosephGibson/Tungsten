@@ -2175,3 +2175,139 @@ fn a_riders_carry_stops_at_a_ceiling() {
         );
     }
 }
+
+#[test]
+fn a_kinematic_body_pushes_the_controller_out() {
+    // A deck coming down at 120 px/s, 2 px a step, onto a floating
+    // controller and a platform sliding across one standing on a floor: at
+    // each step the controller is pushed out of what overlaps it, so its box
+    // never lies deeper in theirs than their move in a step plus 1e-3 px.
+    let deepest = |deck_velocity: Vec2,
+                   deck_at: Vec2,
+                   half: Vec2,
+                   controller: PlatformerController,
+                   floor: bool| {
+        let (mut world, mut schedule) = rig();
+        if floor {
+            tile_floor(&mut world, 64);
+        }
+        let entity = hero(&mut world, Vec2::new(200.0, 0.0), controller);
+        let deck = world.spawn_with(RigidBodyBundle::kinematic(
+            Position(deck_at),
+            Collider::aabb(half),
+        ));
+        steps(&mut world, &mut schedule, 2);
+        world.get_mut::<Velocity>(deck).unwrap().0 = deck_velocity;
+        let mut deepest = 0.0_f32;
+        let mut crushed = 0;
+        for _ in 0..40 {
+            step(&mut world, &mut schedule);
+            let (own, theirs) = (position(&world, entity), position(&world, deck));
+            let overlap = (HALF + half) - (own - theirs).abs();
+            deepest = deepest.max(overlap.min_element());
+            crushed += usize::from(state(&world, entity).crushed());
+        }
+        (deepest, crushed, position(&world, entity))
+    };
+    let floating = PlatformerController::new(RUN, JUMP).with_gravity(0.0);
+    let (depth, crushed, at) = deepest(
+        Vec2::new(0.0, 120.0),
+        Vec2::new(200.0, -2.0 * HALF.y - 12.0),
+        Vec2::new(60.0, 10.0),
+        floating,
+        false,
+    );
+    assert!(
+        depth <= 2.0 + 1e-3 && crushed == 0,
+        "down: {depth} px deep, {crushed} crushed"
+    );
+    assert!(at.y > 20.0, "pushed down: {at}");
+    let (depth, crushed, at) = deepest(
+        Vec2::new(-120.0, 0.0),
+        Vec2::new(200.0 + HALF.x + 12.0, -HALF.y),
+        Vec2::new(10.0, 10.0),
+        PlatformerController::new(RUN, JUMP),
+        true,
+    );
+    assert!(
+        depth <= 2.0 + 1e-3 && crushed == 0,
+        "across: {depth} px deep, {crushed} crushed"
+    );
+    assert!(at.x < 190.0, "pushed along: {at}");
+    // Down on one that stands on a floor, the push is cut short: crushed.
+    let (_, crushed, _) = deepest(
+        Vec2::new(0.0, 120.0),
+        Vec2::new(200.0, -2.0 * HALF.y - 12.0),
+        Vec2::new(60.0, 10.0),
+        PlatformerController::new(RUN, JUMP),
+        true,
+    );
+    assert!(crushed > 0, "the floor cuts the push short");
+
+    // Another controller, a top-down mover and its own ground push nothing.
+    let (mut world, mut schedule) = rig();
+    tile_floor(&mut world, 64);
+    let entity = hero(
+        &mut world,
+        Vec2::new(200.0, 0.0),
+        PlatformerController::new(RUN, JUMP),
+    );
+    let other = hero(
+        &mut world,
+        Vec2::new(205.0, 0.0),
+        PlatformerController::new(RUN, JUMP),
+    );
+    world.spawn_with(
+        RigidBodyBundle::kinematic(
+            Position::new(195.0, -10.0),
+            Collider::aabb(Vec2::splat(8.0)),
+        )
+        .with((crate::TopDownMover::new(100.0),)),
+    );
+    steps(&mut world, &mut schedule, 2);
+    let (still, also) = (position(&world, entity), position(&world, other));
+    steps(&mut world, &mut schedule, 10);
+    assert_eq!(
+        (position(&world, entity), position(&world, other)),
+        (still, also)
+    );
+    assert!(!state(&world, entity).crushed() && !state(&world, other).crushed());
+
+    // A rider on its ground deck moves as before, bit for bit: its path's
+    // hash as the controller gave it before the push-out (bd6145e7).
+    let (mut world, mut schedule) = rig();
+    let deck = world.spawn_with(RigidBodyBundle::kinematic(
+        Position::new(200.0, 10.0),
+        Collider::aabb(Vec2::new(60.0, 10.0)),
+    ));
+    let entity = hero(
+        &mut world,
+        Vec2::new(200.0, 0.0),
+        PlatformerController::new(RUN, JUMP),
+    );
+    steps(&mut world, &mut schedule, 2);
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for (velocity, count) in [
+        (Vec2::new(90.0, -30.0), 30),
+        (Vec2::new(-60.0, 45.0), 30),
+        (Vec2::new(0.0, -120.0), 20),
+    ] {
+        world.get_mut::<Velocity>(deck).unwrap().0 = velocity;
+        for _ in 0..count {
+            step(&mut world, &mut schedule);
+            let at = position(&world, entity);
+            for word in [at.x.to_bits(), at.y.to_bits()] {
+                for byte in word.to_le_bytes() {
+                    hash = (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
+                }
+            }
+            assert!(state(&world, entity).grounded());
+        }
+    }
+    assert_eq!(
+        hash,
+        0xfde1_ce61_8bed_9ac6,
+        "the rider's path at {}",
+        position(&world, entity)
+    );
+}

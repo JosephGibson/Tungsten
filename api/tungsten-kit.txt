@@ -2642,6 +2642,7 @@ pub fn tungsten_kit::PlatformerController::air_jump_refused(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
+pub fn tungsten_kit::PlatformerController::crushed(&self) -> bool
 pub fn tungsten_kit::PlatformerController::drop_through(&mut self)
 pub fn tungsten_kit::PlatformerController::floor_normal(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::PlatformerController::ground(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
@@ -6851,6 +6852,7 @@ pub fn tungsten_kit::PlatformerController::air_jump_refused(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
+pub fn tungsten_kit::PlatformerController::crushed(&self) -> bool
 pub fn tungsten_kit::PlatformerController::drop_through(&mut self)
 pub fn tungsten_kit::PlatformerController::floor_normal(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::PlatformerController::ground(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>

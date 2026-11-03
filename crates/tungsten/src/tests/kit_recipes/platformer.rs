@@ -7,7 +7,8 @@
 //! that halves blasts, floors its cold factor and crits from its stats;
 //! 7.10m's rambler up a 2:1 ramp, down a steep one and through a ledge, and
 //! its porter, whose body's mass a rolled ball pushes, carried up to a
-//! ceiling.
+//! ceiling, and the hero pushed out of a sliding platform and crushed under
+//! a falling deck.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1356,5 +1357,39 @@ fn a_porter_is_knocked_by_a_ball_and_carried_up_to_a_ceiling() {
             (head - 190.01).abs() < 1e-3,
             "dt {dt}: its head at {head}, the ledge's bottom at 190"
         );
+    }
+}
+
+#[test]
+fn the_hero_is_pushed_out_of_a_sliding_platform_and_crushed_under_a_falling_deck() {
+    for dt in DTS {
+        // A platform sliding at 120 px/s into the hero's side pushes it
+        // along: never deeper in it than the platform's move in a step.
+        let (mut harness, hero) = hero_on_ground(dt, KitPlugins::set());
+        let slider = spawn(&mut harness, "slider", [40.0, 280.0]);
+        let mut deepest = 0.0_f32;
+        for _ in 0..frames_for(0.75, dt) {
+            harness.step(1);
+            let gap = (body_at(&harness, hero) - body_at(&harness, slider)).abs();
+            let overlap = Vec2::new(20.0, 30.0) - gap;
+            deepest = deepest.max(overlap.min_element());
+        }
+        assert!(deepest <= 120.0 * dt + 1e-3, "dt {dt}: {deepest} px deep");
+        assert!(body_at(&harness, hero).x < -20.0, "dt {dt}: pushed along");
+
+        // A deck falling at 120 px/s onto the hero where it stands: the
+        // ground cuts its push short, so it is crushed.
+        let (mut harness, hero) = hero_on_ground(dt, KitPlugins::set());
+        spawn(&mut harness, "crusher", [0.0, 210.0]);
+        let mut crushed = false;
+        for _ in 0..frames_for(0.75, dt) {
+            harness.step(1);
+            crushed |= harness
+                .world()
+                .get::<PlatformerController>(hero)
+                .unwrap()
+                .crushed();
+        }
+        assert!(crushed, "dt {dt}: crushed under the deck");
     }
 }

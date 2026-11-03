@@ -1,0 +1,19 @@
+{
+  "tag": "crusher",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          40,
+          8
+        ]
+      },
+      "velocity": [
+        0,
+        120
+      ]
+    }
+  }
+}

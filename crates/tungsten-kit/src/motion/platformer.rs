@@ -8,7 +8,8 @@ use glam::Vec2;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use tungsten_core::physics::{
-    BodyKind, Collider, Position, RigidBody, Shape, SpatialFilter, Velocity, apply_impulse,
+    Aabb, BodyKind, Collider, Contact, Position, RigidBody, Shape, SpatialFilter, Velocity,
+    aabb_vs_aabb, aabb_vs_circle, apply_impulse, cast_shape_where, circle_vs_circle, overlap,
     take_push, wake,
 };
 use tungsten_core::{
@@ -33,6 +34,7 @@ use crate::motion::slide::{
     FLOOR_NORMAL_Y, GROUND_PROBE, SKIN, Slide, carry, climb, is_kinematic, move_and_slide_on,
     probe_ground_on, step_dt,
 };
+use crate::motion::top_down::TopDownMover;
 
 /// [`PlatformerControllerPlugin`]'s system, in the move phase.
 pub const PLATFORMER_CONTROLLER: &str = "platformer_controller";
@@ -79,14 +81,21 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 /// 1. Moves nothing on the controller's first step, so the physics step
 ///    after it indexes the floor and walls it was spawned among: queries
 ///    find nothing spawned since the last step.
-/// 2. Checks the ground unless it is rising: a floor within a pixel below
+/// 2. Is pushed out of each kinematic body its filter sees overlapping it
+///    at the last step's positions, but its ground and a body a kit mover
+///    drives (a platformer controller or a [`TopDownMover`]): along their
+///    contact's normal by the overlap and the skin, cast against the rest
+///    of the world, so a wall or a floor that cuts the push short leaves it
+///    overlapped and [`crushed`](Self::crushed) for the step. It sees a
+///    moving platform a step late, as every cast it makes does.
+/// 3. Checks the ground unless it is rising: a floor within a pixel below
 ///    it grounds it and snaps it down onto the surface, and so does one
 ///    within `run_speed · dt · tan(slope limit)` when the controller ended
 ///    its last step grounded and the floor is a slope tile's face or it
 ///    stood on one, so it keeps to a slope and over its crest. A drop asked
 ///    for while it stands on a one-way edge starts there instead.
-/// 3. Applies a pending [`launch`](Self::launch), which ungrounds it.
-/// 4. Unless the input is locked, runs at `run · run_speed`, along a slope
+/// 4. Applies a pending [`launch`](Self::launch), which ungrounds it.
+/// 5. Unless the input is locked, runs at `run · run_speed`, along a slope
 ///    tile's face when it stands on one, so it climbs and descends at that
 ///    speed, plus its slide down a face past its slide limit, and jumps on a
 ///    buffered press while grounded or within coyote time; past them, a
@@ -97,17 +106,17 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 ///    [`Stats`] base of its stat holds the amount, with no cap; below it
 ///    the jump buffer keeps the press. While locked, presses are dropped
 ///    and the horizontal speed holds.
-/// 5. Adds the [`push`](Self::push)es made since its last step, velocity
+/// 6. Adds the [`push`](Self::push)es made since its last step, velocity
 ///    given to it, where a [shove](Self::with_shove) moves what it walks
 ///    into; with a mass on its body (`RigidBody::with_mass`), the push the
 ///    bodies that hit it and the impulses it took gave since its last step,
 ///    which [`pushed`](Self::pushed) reads.
-/// 6. Cuts a rising jump by the jump cut once, when the jump is released.
-/// 7. Applies gravity, `with_gravity`'s or the world's
+/// 7. Cuts a rising jump by the jump cut once, when the jump is released.
+/// 8. Applies gravity, `with_gravity`'s or the world's
 ///    `PhysicsConfig::gravity.y`, over the step's mean velocity, so a jump
 ///    follows the exact parabola at each step and peaks at
 ///    `jump_speed² / 2g`. A zero-gravity world needs `with_gravity`.
-/// 8. Moves and slides against the last step's positions: a floor lands
+/// 9. Moves and slides against the last step's positions: a floor lands
 ///    it, a ceiling stops its rise and a wall its horizontal speed; a slope
 ///    steeper than its slope limit is a wall it does not climb. A wall
 ///    met on the ground that its [step height](Self::with_step_height)
@@ -116,11 +125,11 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 ///    `M` on its body, a dynamic body of mass `m` it cannot shove takes the
 ///    inelastic impulse `M m / (M + m)` times the speed it closes at along
 ///    x, and the controller keeps the speed they share.
-/// 9. On a kinematic ground, moves by the ground's `Velocity` times the
-///    step, by a slide from where its own move ended that passes the
-///    ground, so a wall or a ceiling stops the carry, unless it jumped, was
-///    launched or was pushed up.
-/// 10. Writes `Velocity`, which its body moves by in the step, or after a
+/// 10. On a kinematic ground, moves by the ground's `Velocity` times the
+///     step, by a slide from where its own move ended that passes the
+///     ground, so a wall or a ceiling stops the carry, unless it jumped, was
+///     launched or was pushed up.
+/// 11. Writes `Velocity`, which its body moves by in the step, or after a
 ///     climb its `Position` at the landing and a zero `Velocity`; writes a
 ///     shoved body's `Velocity.x` and wakes it; gives a ploughed body its
 ///     impulse; takes a paid air jump's
@@ -135,8 +144,9 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 /// and floors do, unless it shoves or climbs them: a shoved body moves by
 /// its own physics, a step behind, and one that cannot move holds it. Two
 /// controllers do not see each other's motion within a step, a body spawned
-/// since the last step is not seen until the next, and nothing pushes a
-/// kinematic body out of an overlap, though a move may leave one.
+/// since the last step is not seen until the next, and a moving platform
+/// pushes it out of an overlap as step 2 says, while another controller, a
+/// top-down mover and its ground do not, though a move may leave one.
 ///
 /// It is data: a save holds its settings and its runtime state, the air
 /// jumps left, the air-jump cost and a drop's edge among them, and of its
@@ -268,6 +278,8 @@ pub struct PlatformerController {
     push: Vec2,
     /// The push its body's mass took at its last step.
     pushed: Vec2,
+    /// Its last step's push out of a kinematic body was cut short.
+    crushed: bool,
     /// A drop through a one-way edge asked for since its last step.
     drop_asked: bool,
     /// While a drop through a one-way edge lasts, that edge's top face's y.
@@ -342,6 +354,7 @@ impl PlatformerController {
             launch: None,
             push: Vec2::ZERO,
             pushed: Vec2::ZERO,
+            crushed: false,
             drop_asked: false,
             drop_edge: None,
             slide_speed: 0.0,
@@ -612,6 +625,14 @@ impl PlatformerController {
         self.pushed
     }
 
+    /// Its last step's push out of a kinematic body that overlapped it was
+    /// cut short by a wall or a floor, so it stays overlapped: a deck coming
+    /// down on it where it stands, a door closing on it against a wall.
+    #[must_use]
+    pub fn crushed(&self) -> bool {
+        self.crushed
+    }
+
     /// The floor rule: a surface whose normal's y is at most this is a
     /// floor.
     fn floor_y(&self) -> f32 {
@@ -772,6 +793,7 @@ impl PlatformerController {
 
     /// One step of `dt` for the body at `position` with `collider`: how its
     /// body moves in this step, and the body it shoves.
+    #[allow(clippy::too_many_arguments)]
     fn step(
         &mut self,
         world: &World,
@@ -780,6 +802,7 @@ impl PlatformerController {
         collider: Collider,
         world_gravity: f32,
         dt: f32,
+        found: &mut Vec<Option<Entity>>,
     ) -> Moved {
         self.jumped = false;
         self.air_jumped = false;
@@ -797,7 +820,7 @@ impl PlatformerController {
         let base = self.filter.excluding(entity);
         let floor_y = self.floor_y();
         let origin = position + collider.offset;
-        let mut at = origin;
+        let mut at = self.push_out(world, collider.shape, origin, &base, found);
 
         // The ground check: a floor within a pixel, or within the snap reach
         // on a slope face or after one, grounded and not launched; a drop
@@ -821,7 +844,7 @@ impl PlatformerController {
                 GROUND_PROBE
             };
             let probe = |filter: &SpatialFilter| {
-                probe_ground_on(world, collider.shape, origin, filter, reach, floor_y)
+                probe_ground_on(world, collider.shape, at, filter, reach, floor_y)
             };
             let hit =
                 probe(&filter).filter(|hit| hit.distance <= GROUND_PROBE || hit.slope || on_slope);
@@ -1122,6 +1145,82 @@ impl PlatformerController {
             Vec2::new(into * impulse, 0.0),
             into * (u - impulse * own),
         ))
+    }
+
+    /// `shape` at `at` pushed out of each kinematic body `filter` sees
+    /// overlapping it at the last step's positions, in the query's order,
+    /// but its ground and a body a kit mover drives: along their contact's
+    /// normal by the overlap and the skin, cast with that body refused; a
+    /// cast cut short stops the skin before what it met and crushes it.
+    fn push_out(
+        &mut self,
+        world: &World,
+        shape: Shape,
+        mut at: Vec2,
+        filter: &SpatialFilter,
+        found: &mut Vec<Option<Entity>>,
+    ) -> Vec2 {
+        self.crushed = false;
+        overlap(world, shape, at, filter, found);
+        for &other in found.iter().flatten() {
+            if Some(other) == self.ground
+                || !is_kinematic(world, other)
+                || world.has::<PlatformerController>(other)
+                || world.has::<TopDownMover>(other)
+            {
+                continue;
+            }
+            let (Some(position), Some(collider)) =
+                (world.get::<Position>(other), world.get::<Collider>(other))
+            else {
+                continue;
+            };
+            let Some(contact) =
+                overlap_contact(shape, at, collider.shape, collider.center(position.0))
+            else {
+                continue;
+            };
+            if contact.penetration <= 0.0 {
+                continue;
+            }
+            let reach = contact.penetration + SKIN;
+            match cast_shape_where(world, shape, at, contact.normal, reach, filter, |hit| {
+                hit.entity != Some(other)
+            }) {
+                Some(hit) => {
+                    at += contact.normal * (hit.distance - SKIN).max(0.0);
+                    self.crushed = true;
+                }
+                None => at += contact.normal * reach,
+            }
+        }
+        at
+    }
+}
+
+/// The contact that moves `shape` at `at` out of `other` at `center`, as
+/// the physics' narrow phase finds it.
+fn overlap_contact(shape: Shape, at: Vec2, other: Shape, center: Vec2) -> Option<Contact> {
+    match (shape, other) {
+        (
+            Shape::Aabb { half_extents },
+            Shape::Aabb {
+                half_extents: theirs,
+            },
+        ) => aabb_vs_aabb(&Aabb::new(at, half_extents), &Aabb::new(center, theirs)),
+        (Shape::Aabb { half_extents }, Shape::Circle { radius }) => {
+            aabb_vs_circle(&Aabb::new(at, half_extents), center, radius)
+        }
+        (Shape::Circle { radius }, Shape::Aabb { half_extents }) => {
+            aabb_vs_circle(&Aabb::new(center, half_extents), at, radius).map(|contact| Contact {
+                normal: -contact.normal,
+                penetration: contact.penetration,
+            })
+        }
+        (Shape::Circle { radius }, Shape::Circle { radius: theirs }) => {
+            circle_vs_circle(at, radius, center, theirs)
+        }
+        _ => None,
     }
 }
 
@@ -1446,6 +1545,8 @@ struct ControllerSave {
     #[serde(default, with = "vec2", skip_serializing_if = "is_zero_vec")]
     pushed: Vec2,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    crushed: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     drop_asked: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     drop_edge: Option<f32>,
@@ -1612,6 +1713,7 @@ impl TryFrom<ControllerSave> for PlatformerController {
             launch: save.launch,
             push: save.push,
             pushed: save.pushed,
+            crushed: save.crushed,
             drop_asked: save.drop_asked,
             drop_edge: save.drop_edge,
             slide_speed: save.slide_speed,
@@ -1658,6 +1760,7 @@ impl From<PlatformerController> for ControllerSave {
             launch: controller.launch,
             push: controller.push,
             pushed: controller.pushed,
+            crushed: controller.crushed,
             drop_asked: controller.drop_asked,
             drop_edge: controller.drop_edge,
             slide_speed: controller.slide_speed,
@@ -1752,6 +1855,8 @@ fn is_no_layer(layers: &u32) -> bool {
 struct Runner {
     /// The step's controllers, kept so a step allocates nothing once warm.
     entities: Vec<Entity>,
+    /// The bodies a controller overlaps, kept likewise.
+    found: Vec<Option<Entity>>,
     /// The entities whose body was warned about.
     warned: HashSet<Entity>,
 }
@@ -1804,7 +1909,15 @@ impl Runner {
                     }
                 }
             }
-            let moved = controller.step(world, entity, position, collider, gravity, dt);
+            let moved = controller.step(
+                world,
+                entity,
+                position,
+                collider,
+                gravity,
+                dt,
+                &mut self.found,
+            );
             if controller.paid_air_jumped
                 && let Some((stat, amount)) = &controller.air_jump_cost
                 && let Some(stats) = world.get_mut::<Stats>(entity)
