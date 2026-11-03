@@ -122,7 +122,7 @@ fn rows_sort_by_average_under_the_column_headers() {
     );
     assert_eq!(
         column_texts(&world, 1),
-        ["avg ms", "4.75", "3.00", "1.25", "0.50"]
+        ["avg", "4.75", "3.00", "1.25", "0.50"]
     );
     let window = world
         .resource::<SystemTimingOverlay>()
@@ -183,9 +183,36 @@ fn the_title_carries_the_total_and_the_headers_name_the_columns() {
     let title: String = tree.text(caption).unwrap().spans[0].text.clone();
     assert_eq!(title, "Systems \u{b7} 3.75 ms");
     let headers: Vec<String> = (0..4).map(|c| column_texts(&world, c)[0].clone()).collect();
-    assert_eq!(headers, ["system", "avg ms", "max ms", "% frame"]);
+    assert_eq!(headers, ["system", "avg", "max", "%"]);
     for c in 0..4 {
         assert_eq!(column_inks(&world, c)[0], (LABEL, STRONG), "column {c}");
+    }
+}
+
+#[test]
+fn each_numeric_column_is_as_wide_as_its_widest_value() {
+    // The harness's glyphs advance half the font size, 7.5 units, and a
+    // cell pads 6 a side: a column of five-glyph values is 49.5 wide.
+    let mut world = world_with_timings(&[("a", 12.5), ("b", 0.25)]);
+    world.resource_mut::<FrameTimings>().total_ms = 50.0;
+    frame(&mut world);
+    frame(&mut world);
+    let tree = world.resource::<UiTree>();
+    for c in 1..=3 {
+        let texts = column_texts(&world, c);
+        let widest = texts[1..]
+            .iter()
+            .map(|text| text.chars().count())
+            .max()
+            .unwrap();
+        let width = tree
+            .rect(overlay_window(&world).columns[c])
+            .unwrap()
+            .width();
+        assert!(
+            (width - (widest as f32 * 7.5 + 12.0)).abs() < 1e-3,
+            "column {c} ({texts:?}): {width}"
+        );
     }
 }
 
@@ -218,7 +245,7 @@ fn systems_group_by_stage_slowest_first_each_stage_in_its_hue_with_its_total() {
     assert_eq!(
         column_texts(&world, 1),
         [
-            "avg ms", "2.00", "2.00", "4.00", "3.00", "1.00", "0.50", "0.50"
+            "avg", "2.00", "2.00", "4.00", "3.00", "1.00", "0.50", "0.50"
         ]
     );
     let inks = column_inks(&world, 0);

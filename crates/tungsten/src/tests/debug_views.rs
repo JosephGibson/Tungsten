@@ -264,7 +264,13 @@ fn every_node_a_view_builds_keeps_its_look_under_a_game_theme() {
 
     // The overlay's body scrolls, and its thumb takes the view's colour at
     // half its alpha, never the theme's transparent panel text.
-    let body = harness.tree().children(overlay)[1];
+    let body = harness
+        .world()
+        .resource::<SystemTimingOverlay>()
+        .window
+        .as_ref()
+        .unwrap()
+        .body;
     let max = harness.tree().scroll_max(body).unwrap();
     assert!(max > 0.0, "the schedule's systems overflow 45% of 720");
     assert!(harness.tree_mut().set_scroll(body, 40.0));
@@ -1011,15 +1017,17 @@ fn worst_contrast(panel_alpha: u8) -> (f64, String) {
 fn every_palette_text_colour_keeps_4_5_to_1_composited_in_linear_light() {
     let (worst, at) = worst_contrast(PANEL[3]);
     assert!(worst >= 4.5, "{worst:.2}:1, {at}");
+    // The stripes at alpha 4 (debug-pass) move the worst case from 4.99:1
+    // on the title bar to a level badge.
     assert!(
-        (worst - 4.99).abs() < 0.01 && at.contains(&format!("{RED:?} on the title bar over white")),
+        (worst - 4.61).abs() < 0.01 && at.contains(&format!("{RED:?} on the badge over white")),
         "the worst case: {worst:.3}:1, {at}"
     );
     // M57's panel alpha fails the same model: in linear light a faint
     // veil lifts near-black a long way.
     let (m57, at) = worst_contrast(245);
     assert!(m57 < 4.5, "{m57:.2}:1, {at}");
-    assert!((m57 - 3.81).abs() < 0.01, "{m57:.3}:1, {at}");
+    assert!((m57 - 3.61).abs() < 0.01, "{m57:.3}:1, {at}");
 }
 
 fn text_of(tree: &UiTree, id: WidgetId) -> String {
@@ -1177,6 +1185,91 @@ fn every_window_casts_a_shadow_before_its_box() {
             "the shadow just before it"
         );
     }
+}
+
+/// The five open views' windows.
+fn windows(harness: &UiHarness) -> Vec<&ViewWindow> {
+    let world = harness.world();
+    [
+        world.resource::<DebugHud>().window.as_ref(),
+        world.resource::<SystemTimingOverlay>().window.as_ref(),
+        world.resource::<InspectorState>().window.as_ref(),
+        world.resource::<LogConsole>().window.as_ref(),
+        world.resource::<UiInspector>().window.as_ref(),
+    ]
+    .into_iter()
+    .map(Option::unwrap)
+    .collect()
+}
+
+#[test]
+fn every_window_draws_a_rule_under_its_title_bar_and_fixed_header() {
+    for os in [1.0, 1.75] {
+        let mut harness = sized(app(), 1280, 720, os);
+        open_all(&mut harness);
+        {
+            let world = harness.world_mut();
+            world.resource_mut::<LogConsole>().enabled = true;
+            world.resource_mut::<UiInspector>().enabled = true;
+        }
+        harness.step(3);
+        let tree = harness.tree();
+        let unit = harness.world().resource::<ScaleFactor>().get() * tree.debug_scale();
+        for window in windows(&harness) {
+            let children = tree.children(window.root);
+            let mut expected = vec![window.title, window.rules[0]];
+            expected.extend(window.fixed.into_iter().chain(window.rules.get(1).copied()));
+            expected.push(window.body);
+            assert_eq!(
+                children, expected,
+                "os {os}: title, rule, header, rule, body"
+            );
+            assert_eq!(window.rules.len(), 1 + usize::from(window.fixed.is_some()));
+            let root = tree.rect(window.root).unwrap();
+            for rule in &window.rules {
+                assert_eq!(tree.resolved_style(*rule).unwrap().background, BORDER);
+                let rect = tree.rect(*rule).unwrap();
+                assert!(
+                    (rect.height() * unit - 1.0).abs() < 1e-3,
+                    "os {os}: one physical pixel, {rect:?} at {unit}"
+                );
+                assert!((rect.width() - root.width()).abs() < 1e-3, "across");
+            }
+        }
+    }
+}
+
+#[test]
+fn the_console_status_ends_its_controls_line() {
+    let (mut harness, _sink) = console_harness();
+    harness.step(1);
+    let window = harness
+        .world()
+        .resource::<LogConsole>()
+        .window
+        .as_ref()
+        .unwrap();
+    let tree = harness.tree();
+    let rect = |id: WidgetId| tree.rect(id).unwrap();
+    let status = rect(window.header.unwrap());
+    let line = rect(tree.parent(window.header.unwrap()).unwrap());
+    assert!(
+        (status.max.x - line.max.x).abs() < 1e-3,
+        "the status at the line's end: {status:?} in {line:?}"
+    );
+    let (trace, pause) = (
+        rect(window.controls[PAUSE - 1]),
+        rect(window.controls[PAUSE]),
+    );
+    assert!(
+        (pause.min.x - trace.max.x - 3.0 * INSET).abs() < 1e-3,
+        "three insets from TRACE to pause: {trace:?} {pause:?}"
+    );
+    let clear = rect(window.controls[CLEAR]);
+    assert!(
+        (clear.min.x - pause.max.x - INSET).abs() < 1e-3,
+        "one to clear"
+    );
 }
 
 #[test]

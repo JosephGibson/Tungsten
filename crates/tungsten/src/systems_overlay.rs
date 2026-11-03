@@ -247,8 +247,9 @@ impl SystemTimingOverlay {
     /// then its systems slowest first, indented.
     fn rows(&self, stages: Option<&SystemStages>) -> (Vec<Row>, f32) {
         let stage_of = |name: &str| stages.and_then(|stages| stages.0.get(name).copied());
-        let headers = ["system", "avg ms", "max ms", "% frame", ""]
-            .map(|text| Cell::new(text).colored(LABEL));
+        // The title carries the unit, so each numeric column is as wide as
+        // its widest value (debug-pass).
+        let headers = ["system", "avg", "max", "%", ""].map(|text| Cell::new(text).colored(LABEL));
         let mut rows = vec![Row {
             cells: headers.to_vec(),
             header: true,

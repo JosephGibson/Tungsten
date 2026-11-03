@@ -72,8 +72,10 @@ pub(crate) const PANEL: [u8; 4] = [17, 17, 20, 252];
 /// The title bar, over the panel.
 const TITLE_VEIL: [u8; 4] = [255, 255, 255, 5];
 
-/// Every other data row, and the graph's backdrop.
-pub(crate) const STRIPE_VEIL: [u8; 4] = [255, 255, 255, 2];
+/// Every other data row, and the graph's backdrop: alpha 4, the most at
+/// which `RED` keeps 4.5:1 on a level badge over a white scene
+/// (debug-pass).
+pub(crate) const STRIPE_VEIL: [u8; 4] = [255, 255, 255, 4];
 
 /// The 1 px border; each view's `outline_color` default.
 pub(crate) const BORDER: [u8; 4] = [70, 70, 80, 255];
@@ -422,9 +424,13 @@ pub(crate) enum Header {
     Line,
     /// The HUD's frame-time graph.
     Graph,
-    /// A line of this many buttons, then a status line: the log console's
-    /// controls (M58).
-    Controls(usize),
+    /// A line of `filters` buttons, three insets apart from `actions`
+    /// more, then the status at the line's end, the line as wide as the
+    /// window: the log console's controls (M58; debug-pass).
+    Controls {
+        filters: usize,
+        actions: usize,
+    },
 }
 
 /// What a view's window holds besides its title.
@@ -480,6 +486,9 @@ pub(crate) struct ViewWindow {
     pub(crate) close: WidgetId,
     /// The fixed header's panel, when the shape has one.
     pub(crate) fixed: Option<WidgetId>,
+    /// The rules under the title bar and under the fixed header, when there
+    /// is one: lines as tall as the border is wide (debug-pass).
+    pub(crate) rules: Vec<WidgetId>,
     /// The header line, when the shape's header is one, or the controls'
     /// status line.
     pub(crate) header: Option<WidgetId>,
@@ -677,6 +686,7 @@ impl ViewFrame<'_> {
         tree.set_overrides(key, look.plain(Ink::body(LABEL)));
         let collapse = title_button(tree, look, title, COLLAPSE);
         let close = title_button(tree, look, title, CLOSE);
+        let mut rules = vec![rule(tree, look, root)];
 
         let mut stats = Vec::new();
         let mut controls = Vec::new();
@@ -754,7 +764,7 @@ impl ViewFrame<'_> {
                 }
                 (Some(fixed), None, Some(graph), Some(block))
             }
-            Header::Controls(buttons) => {
+            Header::Controls { filters, actions } => {
                 let fixed = tree.panel(
                     root,
                     LayoutStyle {
@@ -774,13 +784,17 @@ impl ViewFrame<'_> {
                         direction: Direction::Row,
                         gap: INSET,
                         align_items: Align::Center,
-                        align_self: Some(Align::Start),
                         ..LayoutStyle::default()
                     },
                 );
                 tree.set_overrides(line, look.plain(Ink::body(look.color)));
-                for _ in 0..buttons {
+                for i in 0..filters + actions {
                     let button = tree.button(line, "");
+                    if i == filters && filters > 0 {
+                        // Three insets from the filters: the line's gap and
+                        // two more.
+                        restyle(tree, button, |style| style.margin.start = 2.0 * INSET);
+                    }
                     tree.set_focusable(button, false);
                     tree.set_overrides(button, look.plain(Ink::body(LABEL)));
                     if let Some(&label) = tree.children(button).first() {
@@ -788,11 +802,24 @@ impl ViewFrame<'_> {
                     }
                     controls.push(button);
                 }
+                // The status at the line's end.
+                let spacer = tree.panel(
+                    line,
+                    LayoutStyle {
+                        width: Sizing::Fill,
+                        ..LayoutStyle::default()
+                    },
+                );
+                tree.set_overrides(spacer, look.plain(Ink::body(look.color)));
                 let status = tree.label(line, "");
                 tree.set_overrides(status, look.plain(Ink::body(LABEL)));
-                (Some(fixed), Some(status), None, Some(line))
+                // The line spans the window: it keeps no width of its own.
+                (Some(fixed), Some(status), None, None)
             }
         };
+        if fixed.is_some() {
+            rules.push(rule(tree, look, root));
+        }
 
         let body = tree.scroll_panel(
             root,
@@ -838,6 +865,7 @@ impl ViewFrame<'_> {
             collapse,
             close,
             fixed,
+            rules,
             header,
             controls,
             graph,
@@ -870,7 +898,8 @@ impl ViewFrame<'_> {
             } else {
                 Visibility::Visible
             };
-            for part in window.fixed.into_iter().chain([window.body]) {
+            let parts = window.rules.iter().copied().chain(window.fixed);
+            for part in parts.chain([window.body]) {
                 tree.set_visibility(part, shown);
             }
             tree.set_text(
@@ -886,6 +915,11 @@ impl ViewFrame<'_> {
         }
         let hot = self.hot == Some(window.root) || window.held;
         let width = window.look.border_width(self.scale * tree.debug_scale());
+        if window.border.map(|(_, was)| was) != Some(width) {
+            for rule in &window.rules {
+                restyle(tree, *rule, |style| style.height = Sizing::Px(width));
+            }
+        }
         if window.border != Some((hot, width)) {
             window.border = Some((hot, width));
             let border = if hot { BORDER_HOT } else { window.look.border };
@@ -1208,6 +1242,21 @@ fn title_button(tree: &mut UiTree, look: &Look, title: WidgetId, glyph: &str) ->
         tree.set_overrides(label, glyph_look(look, LABEL));
     }
     button
+}
+
+/// A rule across `parent` (debug-pass): a line of the view's border colour,
+/// which [`ViewFrame::chrome`] keeps as tall as the border is wide, a
+/// physical pixel at the default 1 px.
+fn rule(tree: &mut UiTree, look: &Look, parent: WidgetId) -> WidgetId {
+    let rule = tree.panel(
+        parent,
+        LayoutStyle {
+            height: Sizing::Px(0.0),
+            ..LayoutStyle::default()
+        },
+    );
+    tree.set_overrides(rule, look.cell(look.border, Ink::body(look.color)));
+    rule
 }
 
 /// A button glyph's look: title-sized, centred, in `color`.
@@ -2132,7 +2181,10 @@ impl LogConsole {
             look: look_of!(self),
             shape: Shape {
                 columns: CONSOLE_COLUMNS,
-                header: Header::Controls(LEVELS.len() + 2),
+                header: Header::Controls {
+                    filters: LEVELS.len(),
+                    actions: 2,
+                },
             },
         };
         if !frame.sync(&mut self.window, &spec) {
