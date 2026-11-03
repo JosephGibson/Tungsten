@@ -6,8 +6,8 @@
 //! 33.3 ms and its least, mean, most and 1% low beside it, its bars and
 //! times on the budget ramp; the averages start from the first interval,
 //! and the values read `–` until it arrives. From debug-pass the built-in
-//! rows read in words, fields apart by ` · `, each value in the view's
-//! colour and its names and units in the palette's grey.
+//! rows set their fields in columns on the engine's monospace face, each
+//! value in the view's colour and its name or unit in the palette's grey.
 
 use std::collections::VecDeque;
 
@@ -174,24 +174,23 @@ impl DebugHud {
         self.custom.push(Box::new(provider));
     }
 
-    /// The fps row's cells (M58): `1000 / average interval`, then the
-    /// average CPU frame time at the strong weight in the budget ramp's
-    /// colour, ` 59.9 · frame  2.80 ms`; `–` before the first interval.
-    fn fps_cells(&self) -> Vec<Cell> {
-        let label = Cell::new("fps");
+    /// The fps row (M58): `1000 / average interval`, then the average CPU
+    /// frame time at the strong weight in the budget ramp's colour; `–`
+    /// before the first interval.
+    fn fps_line(&self) -> Line {
         if !self.seeded {
-            return vec![label, Cell::new(MISSING)];
+            return Line::new("fps", vec![field(MISSING)]);
         }
         let fps = if self.interval_ewma > 0.0 {
             1000.0 / self.interval_ewma
         } else {
             0.0
         };
-        let value = Spans::default()
-            .value(format!("{fps:>5.1}"))
-            .name(" \u{b7} frame ")
-            .time(self.total_ewma);
-        vec![label, Cell::styled(value.text())]
+        let fields = vec![
+            field(format!("{fps:.1}")),
+            Spans::default().time(self.total_ewma),
+        ];
+        Line::new("fps", fields)
     }
 
     /// The HUD's frame (M57): the averages, the graph and, on its interval,
@@ -280,18 +279,21 @@ impl DebugHud {
         if self.time_since_refresh_ms >= self.refresh_interval_ms {
             self.time_since_refresh_ms = 0.0;
             window.write_stats(frame.tree, graph_stats(&self.graph_samples));
-            let mut rows = vec![Row::data(self.fps_cells())];
+            let mut lines = vec![self.fps_line()];
             for provider in &self.built_in {
                 for line in provider(world) {
                     // The frame's CPU times are 0 until it has run once.
-                    let value = if line.label == RENDER && !self.seeded {
-                        Cell::new(MISSING)
+                    lines.push(if line.label == RENDER && !self.seeded {
+                        Line::new(RENDER, vec![field(MISSING)])
                     } else {
-                        Cell::styled(line.value.text())
-                    };
-                    rows.push(Row::data(vec![Cell::new(line.label), value]));
+                        line
+                    });
                 }
             }
+            let mut rows: Vec<Row> = aligned(lines)
+                .into_iter()
+                .map(|(label, value)| Row::data(vec![Cell::new(label), Cell::styled(value)]))
+                .collect();
             for provider in &self.custom {
                 for row in provider(world) {
                     rows.push(Row::data(vec![Cell::new(row.label), Cell::new(row.value)]));
@@ -317,15 +319,25 @@ impl Default for DebugHud {
 /// run once.
 const RENDER: &str = "render";
 
-/// A built-in row (debug-pass): its label and its value's spans.
+/// Spaces between a row's columns (debug-pass).
+const FIELD_GAP: usize = 2;
+
+/// A built-in row (debug-pass): its label and its fields, each a value with
+/// its name or unit, which [`aligned`] sets in columns across the rows.
 struct Line {
     label: &'static str,
-    value: Spans,
+    fields: Vec<Spans>,
 }
 
-/// A built-in row's value as spans (debug-pass): values, numbers and
-/// states, in the view's colour; their names, units and separators in the
-/// palette's grey; a time on the budget ramp at the strong weight.
+impl Line {
+    fn new(label: &'static str, fields: Vec<Spans>) -> Self {
+        Self { label, fields }
+    }
+}
+
+/// One field of a built-in row as spans (debug-pass): its value in the
+/// view's colour and its name or unit in the palette's grey; a time on the
+/// budget ramp at the strong weight.
 #[derive(Default)]
 struct Spans(Vec<TextSpan>);
 
@@ -336,7 +348,7 @@ impl Spans {
         self
     }
 
-    /// `text` in the palette's grey: a name, a unit or a separator.
+    /// `text` in the palette's grey: a name or a unit.
     fn name(mut self, text: impl Into<String>) -> Self {
         self.0.push(TextSpan::new(text).with_color(LABEL));
         self
@@ -346,29 +358,62 @@ impl Spans {
     /// not: `1 root`, `9 nodes`.
     fn count(self, n: impl Into<u64>, one: &str, many: &str) -> Self {
         let n = n.into();
-        let noun = if n == 1 { one } else { many };
-        self.value(grouped(n)).name(format!(" {noun}"))
+        let unit = if n == 1 { one } else { many };
+        self.value(grouped(n)).name(format!(" {unit}"))
     }
 
-    /// `ms` five wide to two places, on the frame's budget ramp at the
-    /// strong weight, then its unit.
+    /// `ms` to two places on the frame's budget ramp at the strong weight,
+    /// then its unit.
     fn time(mut self, ms: f32) -> Self {
         self.0.push(
-            TextSpan::new(format!("{ms:>5.2}"))
+            TextSpan::new(format!("{ms:.2}"))
                 .with_weight(STRONG)
                 .with_color(ramp(ms, FRAME_BUDGET_MS)),
         );
         self.name(" ms")
     }
 
-    /// The row labelled `label`.
-    fn line(self, label: &'static str) -> Line {
-        Line { label, value: self }
+    /// Its width in glyphs, each as wide on the monospace face.
+    fn width(&self) -> usize {
+        self.0.iter().map(|span| span.text.chars().count()).sum()
     }
+}
 
-    fn text(self) -> StyledText {
-        StyledText { spans: self.0 }
+/// A field of `text` alone, in the view's colour.
+fn field(text: impl Into<String>) -> Spans {
+    Spans::default().value(text)
+}
+
+/// The built-in rows' values with their fields in columns (debug-pass):
+/// every field but a row's last padded to the widest of its column among
+/// the rows with a field after it, then [`FIELD_GAP`] spaces, so each
+/// column starts at one place on the engine's monospace face.
+fn aligned(lines: Vec<Line>) -> Vec<(&'static str, StyledText)> {
+    let mut widths: Vec<usize> = Vec::new();
+    for line in &lines {
+        let inner = line.fields.len().saturating_sub(1);
+        for (k, field) in line.fields[..inner].iter().enumerate() {
+            if k == widths.len() {
+                widths.push(0);
+            }
+            widths[k] = widths[k].max(field.width());
+        }
     }
+    lines
+        .into_iter()
+        .map(|line| {
+            let last = line.fields.len().saturating_sub(1);
+            let mut spans = Vec::new();
+            for (k, field) in line.fields.into_iter().enumerate() {
+                let pad = (k < last).then(|| widths[k] - field.width() + FIELD_GAP);
+                spans.extend(field.0);
+                if let Some(pad) = pad {
+                    spans.push(TextSpan::new(" ".repeat(pad)));
+                }
+            }
+            (line.label, StyledText { spans })
+        })
+        .collect()
 }
 
 /// `n` with its thousands apart: `12,345`.
@@ -390,34 +435,32 @@ fn gpu_line(world: &World) -> Vec<Line> {
     let Some(gpu) = world.get_resource::<GpuFrameTimings>() else {
         return Vec::new();
     };
-    let value = Spans::default()
-        .value(gpu.backend.as_deref().unwrap_or("?"))
-        .name(" \u{b7} ");
-    let value = match gpu.frame_gpu_ms {
-        Some(ms) => value.time(ms),
-        None => value.value(MISSING),
+    let time = match gpu.frame_gpu_ms {
+        Some(ms) => Spans::default().time(ms),
+        None => field(MISSING),
     };
-    vec![value.line("gpu")]
+    let backend = field(gpu.backend.as_deref().unwrap_or("?"));
+    vec![Line::new("gpu", vec![backend, time])]
 }
 
-/// `display`: the size, the mode and vsync, `1280×720 · windowed · vsync off`.
+/// `display`: the size, the mode and vsync.
 fn display_line(world: &World) -> Vec<Line> {
     let Some(display) = world.get_resource::<DisplayTelemetry>() else {
         return Vec::new();
     };
     let (width, height) = display.resolution;
-    vec![
-        Spans::default()
-            .value(format!("{width}\u{d7}{height}"))
-            .name(" \u{b7} ")
-            .value(display.display_mode.as_str())
-            .name(" \u{b7} vsync ")
-            .value(if display.vsync { "on" } else { "off" })
-            .line("display"),
-    ]
+    let vsync = if display.vsync { "on" } else { "off" };
+    vec![Line::new(
+        "display",
+        vec![
+            field(format!("{width}\u{d7}{height}")),
+            field(display.display_mode.as_str()),
+            Spans::default().name("vsync ").value(vsync),
+        ],
+    )]
 }
 
-/// `camera`: its position, zoom and mode, `(0, 1635) · zoom 0.62 · follow`.
+/// `camera`: its position, its zoom as a factor and its mode.
 fn camera_line(world: &World) -> Vec<Line> {
     let (Some(state), Some(controller)) = (
         world.get_resource::<CameraState>(),
@@ -430,32 +473,30 @@ fn camera_line(world: &World) -> Vec<Line> {
         CameraMode::Follow(_) => "follow",
         CameraMode::Scripted => "scripted",
     };
-    vec![
-        Spans::default()
-            .value(format!(
-                "({:.0}, {:.0})",
-                state.position.x, state.position.y
-            ))
-            .name(" \u{b7} zoom ")
-            .value(format!("{:.2}", state.zoom))
-            .name(" \u{b7} ")
-            .value(mode)
-            .line("camera"),
-    ]
+    vec![Line::new(
+        "camera",
+        vec![
+            field(format!("{:.0}, {:.0}", state.position.x, state.position.y)),
+            Spans::default()
+                .name("\u{d7}")
+                .value(format!("{:.2}", state.zoom)),
+            field(mode),
+        ],
+    )]
 }
 
-/// `draw`: the entities and the sprites drawn, `1,429 entities · 457 sprites`.
+/// `draw`: the entities and the sprites drawn.
 fn counts_line(world: &World) -> Vec<Line> {
     let Some(counts) = world.get_resource::<RenderCounts>() else {
         return Vec::new();
     };
-    vec![
-        Spans::default()
-            .count(counts.entities, "entity", "entities")
-            .name(" \u{b7} ")
-            .count(counts.sprite_instances, "sprite", "sprites")
-            .line("draw"),
-    ]
+    vec![Line::new(
+        "draw",
+        vec![
+            Spans::default().count(counts.entities, "ent", "ents"),
+            Spans::default().count(counts.sprite_instances, "sprite", "sprites"),
+        ],
+    )]
 }
 
 /// `render`: the render stage's CPU times, acquire, encode and submit with
@@ -464,72 +505,82 @@ fn render_line(world: &World) -> Vec<Line> {
     let Some(ft) = world.get_resource::<FrameTimings>() else {
         return Vec::new();
     };
-    vec![
+    let time = |name: &str, ms: f32| {
         Spans::default()
-            .name("acq ")
-            .value(format!("{:.2}", ft.render_acquire_ms))
-            .name(" \u{b7} enc ")
-            .value(format!("{:.2}", ft.render_encode_ms))
-            .name(" \u{b7} sub ")
-            .value(format!("{:.2}", ft.render_submit_present_ms))
-            .name(" ms")
-            .line(RENDER),
-    ]
-}
-
-/// The text row's value (debug-pass): batches prepared, cached layouts and
-/// full frames, which trim the atlas, then the times the atlas was full
-/// once it has been.
-fn text_spans(rc: &RenderCounts) -> Spans {
-    let spans = Spans::default()
-        .value(grouped(rc.text_batches_prepared))
-        .name(" prepared \u{b7} ")
-        .count(rc.text_layouts, "layout", "layouts")
-        .name(" \u{b7} ")
-        .count(rc.text_full_frames, "trim", "trims");
-    if rc.text_atlas_full == 0 {
-        return spans;
-    }
-    spans
-        .name(" \u{b7} ")
-        .value(grouped(rc.text_atlas_full))
-        .name(" atlas full")
+            .name(format!("{name} "))
+            .value(format!("{ms:.2}"))
+    };
+    vec![Line::new(
+        RENDER,
+        vec![
+            time("acq", ft.render_acquire_ms),
+            time("enc", ft.render_encode_ms),
+            time("sub", ft.render_submit_present_ms).name(" ms"),
+        ],
+    )]
 }
 
 /// M46: the UI paint list's size, the layout stage's cost and the text
 /// batch telemetry (`D-126`'s observable half, Q3); M54: the world labels
 /// kept, culled and dropped, their glyphs and the cached layouts. From
-/// debug-pass four rows, each a value the HUD's width holds at the views'
-/// floor: `ui` (paint commands, text batches), `layout` (µs, roots and
-/// nodes laid out), `text` ([`text_spans`]) and `labels` (world labels
-/// kept, culled and dropped, glyphs).
+/// debug-pass four rows of at most three fields, each held to the HUD's
+/// width at the views' floor: `ui` (paint commands, text batches),
+/// `layout` (µs, roots and nodes laid out), `text` (batches prepared,
+/// cached layouts, full frames, which trim the atlas, and the times the
+/// atlas was full once it has been) and `labels` (world labels drawn,
+/// culled and dropped, and their glyphs while any is drawn).
 fn ui_lines(world: &World) -> Vec<Line> {
     let Some(rc) = world.get_resource::<RenderCounts>() else {
         return Vec::new();
     };
-    vec![
+    let mut text = vec![
         Spans::default()
-            .count(rc.ui_commands, "command", "commands")
-            .name(" \u{b7} ")
-            .count(rc.text_batches, "text batch", "text batches")
-            .line("ui"),
-        Spans::default()
-            .value(grouped(rc.ui_layout_us))
-            .name(" \u{b5}s \u{b7} ")
-            .count(rc.ui_roots_laid_out, "root", "roots")
-            .name(" \u{b7} ")
-            .count(rc.ui_nodes_laid_out, "node", "nodes")
-            .line("layout"),
-        text_spans(rc).line("text"),
+            .value(grouped(rc.text_batches_prepared))
+            .name(" prep"),
+        Spans::default().count(rc.text_layouts, "layout", "layouts"),
+        Spans::default().count(rc.text_full_frames, "trim", "trims"),
+    ];
+    if rc.text_atlas_full > 0 {
+        text.push(
+            Spans::default()
+                .value(grouped(rc.text_atlas_full))
+                .name(" atlas full"),
+        );
+    }
+    let mut labels = vec![
         Spans::default()
             .value(grouped(rc.world_labels))
-            .name(" \u{b7} ")
+            .name(" drawn"),
+        Spans::default()
             .value(grouped(rc.world_labels_culled))
-            .name(" culled \u{b7} ")
+            .name(" culled"),
+        Spans::default()
             .value(grouped(rc.world_labels_dropped))
-            .name(" dropped \u{b7} ")
-            .count(rc.text_label_glyphs, "glyph", "glyphs")
-            .line("labels"),
+            .name(" dropped"),
+    ];
+    if rc.world_labels > 0 {
+        labels.push(Spans::default().count(rc.text_label_glyphs, "glyph", "glyphs"));
+    }
+    vec![
+        Line::new(
+            "ui",
+            vec![
+                Spans::default().count(rc.ui_commands, "cmd", "cmds"),
+                Spans::default().count(rc.text_batches, "batch", "batches"),
+            ],
+        ),
+        Line::new(
+            "layout",
+            vec![
+                Spans::default()
+                    .value(grouped(rc.ui_layout_us))
+                    .name(" \u{b5}s"),
+                Spans::default().count(rc.ui_roots_laid_out, "root", "roots"),
+                Spans::default().count(rc.ui_nodes_laid_out, "node", "nodes"),
+            ],
+        ),
+        Line::new("text", text),
+        Line::new("labels", labels),
     ]
 }
 

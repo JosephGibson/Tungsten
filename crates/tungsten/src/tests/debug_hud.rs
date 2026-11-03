@@ -47,6 +47,24 @@ fn text(tree: &UiTree, id: WidgetId) -> String {
         .unwrap_or_default()
 }
 
+/// A built-in value's fields: its text split at the column gaps, each two
+/// spaces or more (debug-pass).
+fn fields(value: &str) -> Vec<&str> {
+    value
+        .split("  ")
+        .map(str::trim)
+        .filter(|field| !field.is_empty())
+        .collect()
+}
+
+/// Where each field after a value's first starts, in glyphs.
+fn starts(value: &str) -> Vec<usize> {
+    let chars: Vec<char> = value.chars().collect();
+    (2..chars.len())
+        .filter(|&i| chars[i] != ' ' && chars[i - 1] == ' ' && chars[i - 2] == ' ')
+        .collect()
+}
+
 /// The HUD's rows: (label, value).
 fn rows(world: &World) -> Vec<(String, String)> {
     let window = world.resource::<DebugHud>().window.as_ref().expect("open");
@@ -143,20 +161,33 @@ fn the_rows_list_fps_then_the_built_in_rows_then_a_providers_in_columns() {
         ],
         "M58 split the ui row in three; debug-pass the ui row in two"
     );
-    // In words, fields apart by ` · ` (debug-pass).
-    assert_eq!(rows[1].1, "42 entities \u{b7} 128 sprites");
+    // Fields in columns (debug-pass).
+    assert_eq!(fields(&rows[1].1), ["42 ents", "128 sprites"]);
     assert_eq!(rows[2].1, MISSING, "the render times wait for an interval");
-    assert_eq!(rows[3].1, "17 commands \u{b7} 2 text batches");
-    assert_eq!(rows[4].1, "42 \u{b5}s \u{b7} 1 root \u{b7} 9 nodes");
+    assert_eq!(fields(&rows[3].1), ["17 cmds", "2 batches"]);
+    assert_eq!(fields(&rows[4].1), ["42 \u{b5}s", "1 root", "9 nodes"]);
     assert_eq!(
-        rows[5].1, "1 prepared \u{b7} 12 layouts \u{b7} 3 trims",
+        fields(&rows[5].1),
+        ["1 prep", "12 layouts", "3 trims"],
         "no atlas full while it has not been"
     );
     assert_eq!(
-        rows[6].1,
-        "5 \u{b7} 1 culled \u{b7} 2 dropped \u{b7} 37 glyphs"
+        fields(&rows[6].1),
+        ["5 drawn", "1 culled", "2 dropped", "37 glyphs"],
+        "glyphs while a label is drawn"
     );
     assert_eq!(rows[7].1, "value");
+    for k in 0..3 {
+        let columns: Vec<usize> = rows[..7]
+            .iter()
+            .filter_map(|(_, value)| starts(value).get(k).copied())
+            .collect();
+        assert!(
+            columns.windows(2).all(|pair| pair[0] == pair[1]),
+            "field {} starts at one column: {columns:?} in {rows:?}",
+            k + 2
+        );
+    }
     let all = rows
         .iter()
         .map(|(label, value)| format!("{label} {value}"))
@@ -170,8 +201,8 @@ fn the_rows_list_fps_then_the_built_in_rows_then_a_providers_in_columns() {
     world.resource_mut::<DebugHud>().refresh_interval_ms = 0.0;
     frame(&mut world, None, 0.0);
     assert_eq!(
-        self::rows(&world)[5].1,
-        "1 prepared \u{b7} 12 layouts \u{b7} 3 trims \u{b7} 1 atlas full"
+        fields(&self::rows(&world)[5].1),
+        ["1 prep", "12 layouts", "3 trims", "1 atlas full"]
     );
 }
 
@@ -216,9 +247,10 @@ fn fps_comes_from_the_interval_and_the_ms_from_the_frame_total() {
         hud.interval_ewma
     );
     assert!((hud.total_ewma - 5.0).abs() < 1e-3, "{}", hud.total_ewma);
+    let (label, value) = rows(&world)[0].clone();
     assert_eq!(
-        rows(&world)[0],
-        ("fps".into(), " 50.0 \u{b7} frame  5.00 ms".into())
+        (label.as_str(), fields(&value)),
+        ("fps", vec!["50.0", "5.00 ms"])
     );
 }
 
@@ -435,7 +467,7 @@ fn both_averages_start_from_the_first_interval() {
         (40.0, 8.0),
         "not from 0"
     );
-    assert_eq!(rows(&world)[0].1, " 25.0 \u{b7} frame  8.00 ms");
+    assert_eq!(fields(&rows(&world)[0].1), ["25.0", "8.00 ms"]);
 }
 
 #[test]
@@ -453,15 +485,12 @@ fn the_fps_rows_time_takes_the_ramps_colour() {
             .unwrap()
             .spans
             .clone();
-        assert_eq!(spans.len(), 4, "fps, ` · frame `, the time, ` ms`");
+        assert_eq!(spans.len(), 4, "the fps, its column's gap, the time, ` ms`");
         assert_eq!(spans[2].color, Some(color), "{total} ms");
         assert_eq!(spans[2].weight, Some(600));
         assert_eq!(spans[0].color, None, "the fps in the value colour");
-        assert_eq!(
-            (spans[1].color, spans[3].color),
-            (Some(LABEL), Some(LABEL)),
-            "names and units in the label grey"
-        );
+        assert!(spans[1].text.trim().is_empty(), "{:?}", spans[1].text);
+        assert_eq!(spans[3].color, Some(LABEL), "the unit in the label grey");
     }
 }
 
@@ -488,8 +517,9 @@ fn a_reopened_hud_starts_its_graph_and_averages_afresh() {
         3 * 6 + 12,
         "the three new bars and the two guide lines"
     );
+    let (label, value) = rows(&world)[0].clone();
     assert_eq!(
-        rows(&world)[0],
-        ("fps".into(), "100.0 \u{b7} frame  1.00 ms".into())
+        (label.as_str(), fields(&value)),
+        ("fps", vec!["100.0", "1.00 ms"])
     );
 }
