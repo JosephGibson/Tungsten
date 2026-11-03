@@ -24,21 +24,24 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
-    DAMAGE_RESOLVE, DamagePart, DamageRequest, KitRng, Penetration, Phase, Stats, Tags,
-    ensure_phases,
+    DAMAGE_RESOLVE, DamagePart, DamageRequest, Penetration, Phase, Stats, Tags, ensure_phases,
 };
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
 use crate::features::enemies::{self, armour};
-use crate::features::run::Run;
 
 /// The share of the player's hits that crit, and a crit's factor on every
-/// part (Q8).
+/// part (Q8): the player's `crit_chance` and `crit_multiplier` in
+/// `player.json`, which the kit's rule reads (`DamageRequest::roll_crit`).
 pub const CRIT_CHANCE: f32 = 0.05;
 pub const CRIT_FACTOR: f32 = 2.0;
-/// The share of a blast or a steam burst the player takes (Q12).
+/// The share of a blast or a steam burst the player takes (Q12): the
+/// player's `damage_taken` line for [`BLAST`] in `player.json`.
 pub const PLAYER_BLAST_SHARE: f32 = 0.5;
+/// The context a blast's or a steam burst's hit carries, which the player's
+/// `damage_taken` halves.
+pub const BLAST: &str = "hit.blast";
 /// What the sprays deal a second to a target in their cone, in pulses this
 /// far apart: the frost half the flame's, its ladder's gates half the
 /// others' (`damage.cold` in `data/damage_types/game.json`), so it chills
@@ -102,9 +105,11 @@ impl Kind {
 
 /// A hit 01 builds, the hit builder: its target, its parts' base amounts,
 /// the entity it comes from, where it lands and its push. [`Hit::request`]
-/// turns it into the kit's request: a hit from the player crits on one
-/// [`KitRng`] draw under [`CRIT_CHANCE`], doubling every part; a blast's or
-/// a steam burst's on the player takes [`PLAYER_BLAST_SHARE`]; one landing
+/// turns it into the kit's request: its crit is the kit's, from its source's
+/// stats, so a hit from the player crits on one draw under [`CRIT_CHANCE`],
+/// doubling every part ([`CRIT_FACTOR`]); a blast's or a steam burst's
+/// carries [`BLAST`] in its context, which the player's `damage_taken`
+/// takes [`PLAYER_BLAST_SHARE`] of; one landing
 /// on an armoured creature's rear half, or one made whole, takes physical
 /// penetration 1, so its armour's physical resistance takes nothing; and one on a kind
 /// that resists knockback whole carries no push (`enemies::stands_firm`).
@@ -163,8 +168,8 @@ impl Hit {
         self
     }
 
-    /// The hit, a blast's or a steam burst's, which the player takes half
-    /// of.
+    /// The hit, a blast's or a steam burst's: its context carries
+    /// [`BLAST`], which the player takes half of.
     #[must_use]
     pub fn blast(mut self) -> Self {
         self.blast = true;
@@ -188,15 +193,13 @@ impl Hit {
         self
     }
 
-    /// The kit's request: the base amounts, doubled on a crit (one draw,
-    /// for a hit from the run's player), a spell's times its source's
-    /// [`SPELL_POWER`], halved on the player for a blast, with physical
-    /// penetration 1 when whole or on armour's rear half, and its push
-    /// unless the target stands firm.
+    /// The kit's request: the base amounts, a spell's times its source's
+    /// [`SPELL_POWER`], its crit rolled by the kit from its source's stats
+    /// (one draw, for the player's), a blast's in the [`BLAST`] context,
+    /// with physical penetration 1 when whole or on armour's rear half, and
+    /// its push unless the target stands firm.
     pub fn request(&self, world: &mut World) -> DamageRequest {
-        let player = world.get_resource::<Run>().map(|run| run.player);
-        let crit = self.source.is_some() && self.source == player && roll_crit(world);
-        let mut factor = if crit { CRIT_FACTOR } else { 1.0 };
+        let mut factor = 1.0;
         if self.spell
             && let Some(power) = self
                 .source
@@ -205,15 +208,16 @@ impl Hit {
         {
             factor *= power.max(0.0);
         }
-        if self.blast && Some(self.target) == player {
-            factor *= PLAYER_BLAST_SHARE;
-        }
         let parts = self.parts.iter().map(|&(kind, amount)| {
             DamagePart::new((amount * factor).max(0.0)).with_tags(Tags::new([kind.tag()]))
         });
-        let mut request = DamageRequest::from_parts(self.target, parts).with_crit(crit);
+        let mut request = DamageRequest::from_parts(self.target, parts);
         if let Some(source) = self.source {
             request = request.with_source(source);
+        }
+        request = request.roll_crit(world);
+        if self.blast {
+            request = request.with_context(Tags::new([BLAST]));
         }
         if let Some(at) = self.at {
             request = request.with_position(at);
@@ -238,13 +242,6 @@ impl Hit {
         let request = self.request(world);
         request.queue(world)
     }
-}
-
-/// One draw of the kit's stream: whether it lands under [`CRIT_CHANCE`].
-fn roll_crit(world: &mut World) -> bool {
-    world
-        .get_resource_mut::<KitRng>()
-        .is_some_and(|rng| rng.unit() < CRIT_CHANCE)
 }
 
 /// Whether `entity` carries the status `tag`.
