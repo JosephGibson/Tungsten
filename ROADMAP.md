@@ -44,6 +44,9 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - A kinematic body's push from a pile's weight or a chain's whole momentum (`D-239` counts the touching body's own approach), and a confined pair's push-out residue, at most `max_push_speed`, removed by bias-free velocities beside the solve or a dead zone: a game that meets either.
 - Kinematic pairs past a moving platform and a platformer controller pushed out of an overlap (`D-239`): two controllers, a top-down mover against a kinematic body.
 - M84's shove rebuilt on impulses, a shove that slows its shover (`D-213`; `D-239`'s plough is its locked sibling): a game that wants it.
+- Tile tags past a tile's `material`: a `TileProps` field and its Tiled property, which a cell's chemistry tags read beside the material (`D-241`, chemistry's Q8).
+- An `explain` record for reactions: why a stimulus met a rule, or none, on a receiver, beside the trace lines that name each rule (`D-241`, chemistry's Q11).
+- A stronger-rate-wins rule for a damage-over-time status re-applied at a lower rate, where the latest application's rate stands (`D-241`, chemistry's Q13).
 - Effects renamed to statuses (`Effect`, `Effects`, the `effects` kind and its saved name): a rename for no behaviour, which moves 01's 17 effect files, its prefabs, saves and tests and the template's catalogue (`D-240`, statuses-and-chemistry's Q2).
 - Phase 7, Seams (redo §3, in [phase-7.md](docs/plans/phase-7.md)'s order, one track): saves, the UI pass (7.17), screens as data (7.20), the kit pass, camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
 - Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, ARPG systems (8.7), 01 refreshed, the template's final pass, proof.
