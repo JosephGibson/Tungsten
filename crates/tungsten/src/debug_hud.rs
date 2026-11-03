@@ -197,7 +197,8 @@ impl DebugHud {
 
     /// The HUD's frame (M57): the averages, the graph and, on its interval,
     /// the rows, from the previous frame's `FrameTimings`; while it is
-    /// shown. Its window opens, closes and moves through `frame`.
+    /// shown. Its window opens, closes and moves through `frame`; closed, it
+    /// drops its intervals and averages (debug-pass).
     pub(crate) fn update_window(&mut self, world: &World, frame: &mut ViewFrame<'_>) {
         if frame.closes(self.window.as_ref()) {
             self.enabled = false;
@@ -217,8 +218,17 @@ impl DebugHud {
             },
         };
         if !frame.sync(&mut self.window, &spec) {
+            // A closed HUD keeps no frame from before it closed, so a reopened
+            // one starts as a new one does (debug-pass); the buffers keep
+            // their capacity.
             self.time_since_refresh_ms = f32::INFINITY;
             self.rendered_height = 0.0;
+            self.samples.clear();
+            self.graph_samples.clear();
+            self.vertices.clear();
+            self.interval_ewma = 0.0;
+            self.total_ewma = 0.0;
+            self.seeded = false;
             return;
         }
         let Some(window) = self.window.as_ref() else {

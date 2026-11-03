@@ -437,3 +437,29 @@ fn the_fps_rows_time_takes_the_ramps_colour() {
         assert_eq!(spans[0].color, None, "the fps in the value colour");
     }
 }
+
+/// A reopened HUD starts as a new one (debug-pass): no bar, statistic or
+/// average from before it closed.
+#[test]
+fn a_reopened_hud_starts_its_graph_and_averages_afresh() {
+    let mut world = views_world();
+    for _ in 0..30 {
+        frame(&mut world, Some(50.0), 5.0);
+    }
+    world.resource_mut::<DebugHud>().enabled = false;
+    frame(&mut world, Some(50.0), 5.0);
+    assert!(world.resource::<DebugHud>().window().is_none(), "closed");
+    world.resource_mut::<DebugHud>().enabled = true;
+    for _ in 0..3 {
+        frame(&mut world, Some(10.0), 1.0);
+    }
+    let tree = world.resource::<UiTree>();
+    assert_eq!(text(tree, window(&world).stats[2]), "10.00ms", "the most");
+    let graph = window(&world).graph.unwrap();
+    assert_eq!(
+        tree.mesh_vertices(graph).len(),
+        3 * 6 + 12,
+        "the three new bars and the two guide lines"
+    );
+    assert_eq!(rows(&world)[0], ("fps".into(), "100.0   1.00ms".into()));
+}
