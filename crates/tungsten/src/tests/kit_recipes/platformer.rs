@@ -1124,3 +1124,65 @@ fn a_knights_skill_arms_its_hitbox_with_the_snapshot_for_that_swing() {
         );
     }
 }
+
+#[test]
+fn a_numbered_targets_numbers_merge_tick_and_crit_by_its_cue_rule() {
+    const RED: [u8; 4] = [255, 0, 0, 255];
+    const BLUE: [u8; 4] = [0, 0, 255, 255];
+    const GOLD: [u8; 4] = [255, 218, 0, 255];
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // `numbers.json`: merge over 0.25 s, ticks at 10, crits gold at 24,
+        // over the genre's `numbers` damage types.
+        let target = harness
+            .world_mut()
+            .spawn_with((Health::new(100.0), Tags::new(["numbered"])));
+        harness.step(1);
+        let part = |amount: f32, kind: &str| DamagePart::new(amount).with_tags(Tags::new([kind]));
+        let mut seen: Vec<(String, f32, [u8; 4])> = Vec::new();
+        let mut note = |harness: &super::Harness| {
+            for run in &harness.draw().unwrap().world_labels {
+                // Its colour as floated: the fade leaves the RGB.
+                let [r, g, b, _] = run.color;
+                let label = (run.content.clone(), run.font_size, [r, g, b, 255]);
+                if !seen.contains(&label) {
+                    seen.push(label);
+                }
+            }
+        };
+        // A cold bolt, a fire burn's ticks, then a crit; the bolt's second
+        // half within the window.
+        let world = harness.world_mut();
+        DamageRequest::from_parts(target, [part(6.0, "elemental.cold")]).queue(world);
+        DamageRequest::from_parts(target, [part(0.5, "elemental.fire")])
+            .with_periodic(true)
+            .queue(world);
+        harness.step(1);
+        note(&harness);
+        let world = harness.world_mut();
+        DamageRequest::from_parts(target, [part(2.5, "elemental.cold")]).queue(world);
+        DamageRequest::from_parts(target, [part(0.5, "elemental.fire")])
+            .with_periodic(true)
+            .queue(world);
+        DamageRequest::from_parts(target, [part(7.0, "elemental.fire")])
+            .with_crit(true)
+            .queue(world);
+        harness.step(1);
+        note(&harness);
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            note(&harness);
+        }
+        let label = |text: &str, size: f32, color: [u8; 4]| (text.to_string(), size, color);
+        assert_eq!(
+            seen,
+            [
+                label("6", 16.0, BLUE),
+                label("7", 24.0, GOLD),
+                label("2.5", 16.0, BLUE),
+                label("1", 10.0, RED),
+            ],
+            "dt {dt}: the bolt's first at once, the crit in gold, then the bolt's follower and the burn's ticks as one"
+        );
+    }
+}

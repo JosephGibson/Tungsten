@@ -159,7 +159,10 @@ fn without_frame_labels_they_still_age() {
 fn an_empty_label_takes_no_style_and_a_partial_one_needs_a_font() {
     let empty: LabelDef = serde_json::from_value(json!({})).unwrap();
     assert!(empty.0.is_none());
-    assert_eq!(serde_json::to_value(LabelDef(None)).unwrap(), json!({}));
+    assert_eq!(
+        serde_json::to_value(LabelDef(None, None)).unwrap(),
+        json!({})
+    );
     let named: LabelDef = serde_json::from_value(json!({ "font": "sans", "size": 20 })).unwrap();
     assert_eq!(named.0, Some(LabelStyle::new("sans").with_size(20.0)));
     let written = serde_json::to_value(named).unwrap();
@@ -176,6 +179,43 @@ fn an_empty_label_takes_no_style_and_a_partial_one_needs_a_font() {
         json!({ "color": [1, 1, 1, 1] }),
         json!({ "font": "sans", "glow": 1 }),
         json!({ "font": "sans", "rise": "up" }),
+    ] {
+        assert!(
+            serde_json::from_value::<LabelDef>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn a_type_label_takes_merge_ticks_and_crit_and_a_named_style_none() {
+    let grouped = json!({
+        "merge": 0.25,
+        "ticks": { "size": 10.0, "kind": { "any": ["elemental"] } },
+        "crit": { "size": 24.0, "color": [1.0, 0.75, 0.0, 1.0] }
+    });
+    let def: LabelDef = serde_json::from_value(grouped.clone()).unwrap();
+    let part = def.1.as_deref().unwrap();
+    assert_eq!(def.0, None);
+    assert_eq!(part.merge, Some(0.25));
+    assert_eq!(part.ticks.as_ref().map(|ticks| ticks.size), Some(10.0));
+    assert_eq!(
+        part.crit,
+        Some(CritLabel {
+            size: 24.0,
+            color: [1.0, 0.75, 0.0, 1.0]
+        })
+    );
+    assert_eq!(serde_json::to_value(def).unwrap(), grouped);
+    let ticks_only: LabelDef = serde_json::from_value(json!({ "ticks": { "size": 8 } })).unwrap();
+    assert!(ticks_only.1.unwrap().ticks.unwrap().kind.is_everything());
+    for bad in [
+        json!({ "font": "sans", "merge": 0.25 }),
+        json!({ "merge": 0 }),
+        json!({ "ticks": {} }),
+        json!({ "ticks": { "size": 10, "kind": { "any": ["Fire"] } } }),
+        json!({ "crit": { "size": 24 } }),
+        json!({ "crit": { "size": 24, "color": [1, 1, 1, 1], "glow": 1 } }),
     ] {
         assert!(
             serde_json::from_value::<LabelDef>(bad.clone()).is_err(),

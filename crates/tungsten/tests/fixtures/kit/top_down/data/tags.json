@@ -17,5 +17,6 @@
   "status.poisoned",
   "flammable",
   "sprinting",
-  "skill.spell"
+  "skill.spell",
+  "numbered"
 ]

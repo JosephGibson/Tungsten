@@ -144,6 +144,9 @@
       },
       "elements": {
         "path": "data/cue_rules/elements.json"
+      },
+      "numbers": {
+        "path": "data/cue_rules/numbers.json"
       }
     },
     "loot_tables": {

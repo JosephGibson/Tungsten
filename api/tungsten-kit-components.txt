@@ -368,7 +368,7 @@ shape cue_action: One reaction to an event.
   field shake: f32 (>= 0) — camera trauma added
   field squash: one of on_land | on_hit | on_pickup | manual — the subject's squash armed for this trigger
   field flash: shape flash_action — the subject's hit flash started
-  field label: shape label_style — the event's amount floated at its position; on `damaged_part`, `{}` floats it in its type's `label_style`
+  field label: shape label_action — the event's amount floated at its position in a `label_style`; on `damaged_part`, without a font, in its type's, grouped by `merge`, `ticks` and `crit`
   field roll: loot_tables ID or entry — a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject; the load checks its IDs
   field effect: shape effect_action — an effect queued on the subject from the event's other entity, or on the other from the subject; an ID alone reads as `{ "id": .. }`
   field ability: shape ability_action — the subject's or the other's ability used now, or made ready; a name alone reads as `{ "name": .. }`
@@ -434,6 +434,16 @@ shape hit_shape: A circle or a box, placed at its entity's point plus its item's
   field circle: f32 (> 0, <= 16384) — the radius, in world pixels
   field aabb: [x, y] — the half extents [x, y], each in (0, 16384]
   sample: { "circle": 8 }
+shape label_action: A `label` action: a `label_style` that names its font, or on `damaged_part` none, its part's type's style, which the grouping fields take.
+  field font: text = null — a manifest font face, and with it a `label_style`'s other fields; without it, a `damaged_part`'s type's style
+  field merge: f32 (> 0) = null — seconds a target's parts of a type sum over: the first plain part floats at once, the rest as one sum when the window closes; without it each part floats alone
+  field ticks: shape label_ticks = null — periodic parts summed on their own over the window
+  field crit: shape label_crit = null — a step's crit parts on a target floated at once as one sum
+  sample: {}
+shape label_crit: A type label's crit style: a step's crit parts on a target as one sum, in the first part's type's style at this size and colour.
+  field size: f32 (> 0) — UI units tall
+  field color: [r, g, b, a] — linear, encoded to sRGB when drawn
+  sample: { "size": 24, "color": [1.0, 0.7, 0.0, 1.0] }
 shape label_style: The event's amount as a timed world label: it rises, pops from its scale to 1 over its first fifth and fades over its second half.
   field font: text — a manifest font face; the load does not check it
   field size: f32 (> 0) = 16.0 — UI units tall
@@ -442,6 +452,10 @@ shape label_style: The event's amount as a timed world label: it rises, pops fro
   field rise: f32 = 32.0 — UI units it rises over its seconds
   field pop: f32 (> 0) = 1.5 — the scale it starts at
   sample: { "font": "sans" }
+shape label_ticks: A type label's periodic parts: summed on their own over its window at this size.
+  field size: f32 (> 0) — UI units tall
+  field kind: tag filter = {} — the periodic parts it takes by their damage kinds, each a declared damage type or an ancestor of one
+  sample: { "size": 10 }
 shape modifier: A change to a value: added to the base, added to the percentage factor, multiplied, or replaced.
   exactly one of its fields
   field add: f32 — added to the base

@@ -1460,6 +1460,68 @@ fn a_crit_floats_gold_and_larger_from_the_games_code() {
     }
 }
 
+/// Each label a frame drew that no earlier frame drew, appended to `seen`
+/// as text, size and opaque colour: the floats in their order.
+fn note_labels(harness: &Harness, seen: &mut Vec<(String, f32, [u8; 4])>) {
+    for run in &harness.draw().unwrap().world_labels {
+        // Its colour as floated: the fade leaves the RGB.
+        let [r, g, b, _] = run.color;
+        let label = (run.content.clone(), run.font_size, [r, g, b, 255]);
+        if !seen.contains(&label) {
+            seen.push(label);
+        }
+    }
+}
+
+#[test]
+fn a_numbered_targets_numbers_merge_tick_and_crit_by_its_cue_rule() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // `numbers.json`: merge over 0.25 s, ticks at 10, crits gold at 24.
+        let target = harness
+            .world_mut()
+            .spawn_with((Health::new(100.0), Tags::new(["numbered"])));
+        harness.step(1);
+        let mut seen = Vec::new();
+        let frames: [&[(f32, bool, bool)]; 3] = [
+            &[(4.0, false, false), (1.0, true, false)],
+            &[(2.0, false, false), (1.0, true, false), (3.0, false, true)],
+            &[(1.5, false, false), (1.0, true, false)],
+        ];
+        for frame in frames {
+            let world = harness.world_mut();
+            for &(amount, periodic, crit) in frame {
+                let mut parts = vec![typed_part(amount, "elemental.fire")];
+                if crit {
+                    parts.push(typed_part(2.0, "elemental.cold"));
+                }
+                DamageRequest::from_parts(target, parts)
+                    .with_position(Vec2::new(40.0, 20.0))
+                    .with_periodic(periodic)
+                    .with_crit(crit)
+                    .queue(world);
+            }
+            harness.step(1);
+            note_labels(&harness, &mut seen);
+        }
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            note_labels(&harness, &mut seen);
+        }
+        let label = |text: &str, size: f32, color: [u8; 4]| (text.to_string(), size, color);
+        assert_eq!(
+            seen,
+            [
+                label("4", 16.0, RED),
+                label("5", 24.0, GOLD),
+                label("3.5", 16.0, RED),
+                label("3", 10.0, RED),
+            ],
+            "dt {dt}: fire's first at once, the crit's fire and cold as one, then the window's plain parts and its ticks"
+        );
+    }
+}
+
 // M75: a guard saved mid-swing: its state machine, its sword's activation,
 // its spiked shield's touches and its mover's turn, the targets named again
 // after the load by the game's own IDs.

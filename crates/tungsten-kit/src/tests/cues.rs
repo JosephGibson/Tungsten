@@ -1354,3 +1354,220 @@ fn a_kind_mask_follows_a_type_a_reload_adds() {
         "the new type joins the name's mask"
     );
 }
+
+// 7.10a, Step 8: the type label's merge, ticks and crit style.
+
+/// Damage types whose label styles are fire red, cold blue and elemental
+/// yellow.
+fn styled() -> Value {
+    let style = |color: [f32; 4]| json!({ "label_style": { "font": "sans", "color": color } });
+    json!({
+        "elemental": style([1.0, 1.0, 0.0, 1.0]),
+        "elemental.fire": style([1.0, 0.0, 0.0, 1.0]),
+        "elemental.cold": style([0.0, 0.0, 1.0, 1.0])
+    })
+}
+
+const RED: [u8; 4] = [255, 0, 0, 255];
+const BLUE: [u8; 4] = [0, 0, 255, 255];
+const GOLD: [u8; 4] = [255, 218, 0, 255];
+
+/// A target whose `damaged_part` cue is the type label `label`.
+fn numbered(world: &mut World, label: &Value) -> Entity {
+    let action: CueAction = serde_json::from_value(json!({ "label": label })).unwrap();
+    world.spawn_with((
+        crate::Health::new(1000.0),
+        Cues::new().on("damaged_part", [action]),
+    ))
+}
+
+/// Every label floated so far, in float order, as text, size and colour:
+/// a frame of no time drawn, so none ages.
+fn floated(world: &mut World, schedule: &mut Schedule) -> Vec<(String, f32, [u8; 4])> {
+    world.resource_mut::<Time>().advance_frame(0.0);
+    schedule.run_stage(tungsten_core::Stage::PostUpdate, world, |_, _| {});
+    world
+        .resource_mut::<tungsten_core::WorldLabels>()
+        .drain()
+        .map(|label| (label.text, label.font_size, label.color))
+        .collect()
+}
+
+fn label(text: &str, size: f32, color: [u8; 4]) -> (String, f32, [u8; 4]) {
+    (text.to_string(), size, color)
+}
+
+/// A periodic request of one part: an effect's tick.
+fn tick(world: &mut World, target: Entity, amount: f32, kind: &str) {
+    crate::DamageRequest::from_parts(
+        target,
+        [crate::DamagePart::new(amount).with_tags(Tags::new([kind]))],
+    )
+    .with_periodic(true)
+    .apply(world);
+}
+
+#[test]
+fn a_types_first_plain_part_floats_at_once_and_its_followers_within_the_window_as_one_sum_when_it_closes()
+ {
+    let (mut world, mut schedule) = typed_running(styled());
+    let golem = numbered(&mut world, &json!({ "merge": 0.25 }));
+    hit(&mut world, golem, &[(4.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    let first = vec![label("4", 16.0, RED)];
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        first,
+        "the first at once"
+    );
+    // Fire's followers sum; cold's first floats at once in its window.
+    hit(
+        &mut world,
+        golem,
+        &[(2.0, &["elemental.fire"]), (1.0, &["elemental.cold"])],
+    );
+    typed_step(&mut world, &mut schedule);
+    hit(&mut world, golem, &[(1.5, &["elemental.fire"])]);
+    let mut so_far = first;
+    so_far.push(label("1", 16.0, BLUE));
+    for _ in 2..15 {
+        typed_step(&mut world, &mut schedule);
+        assert_eq!(
+            floated(&mut world, &mut schedule),
+            so_far,
+            "the window open"
+        );
+    }
+    // 0.25 s after the first: fire's window closes with its followers.
+    typed_step(&mut world, &mut schedule);
+    so_far.push(label("3.5", 16.0, RED));
+    assert_eq!(floated(&mut world, &mut schedule), so_far);
+    // Cold's closes with nothing in it; the next fire part opens anew.
+    typed_step(&mut world, &mut schedule);
+    hit(&mut world, golem, &[(5.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    so_far.push(label("5", 16.0, RED));
+    assert_eq!(floated(&mut world, &mut schedule), so_far);
+}
+
+#[test]
+fn periodic_parts_passing_ticks_kind_sum_on_their_own_at_its_size() {
+    let (mut world, mut schedule) = typed_running(styled());
+    let golem = numbered(
+        &mut world,
+        &json!({ "merge": 0.25, "ticks": { "size": 10, "kind": { "any": ["elemental.fire"] } } }),
+    );
+    // A fire tick waits; a cold tick fails `kind` and floats as a plain
+    // part.
+    tick(&mut world, golem, 1.0, "elemental.fire");
+    tick(&mut world, golem, 2.0, "elemental.cold");
+    typed_step(&mut world, &mut schedule);
+    let mut so_far = vec![label("2", 16.0, BLUE)];
+    assert_eq!(floated(&mut world, &mut schedule), so_far);
+    // A plain fire part keeps its own window beside the ticks'.
+    tick(&mut world, golem, 1.0, "elemental.fire");
+    hit(&mut world, golem, &[(4.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    so_far.push(label("4", 16.0, RED));
+    assert_eq!(floated(&mut world, &mut schedule), so_far);
+    tick(&mut world, golem, 1.5, "elemental.fire");
+    for _ in 2..15 {
+        typed_step(&mut world, &mut schedule);
+    }
+    assert_eq!(floated(&mut world, &mut schedule), so_far, "the ticks wait");
+    typed_step(&mut world, &mut schedule);
+    so_far.push(label("3.5", 10.0, RED));
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        so_far,
+        "three fire ticks as one, at the tick size"
+    );
+}
+
+#[test]
+fn a_steps_crit_parts_on_a_target_float_at_once_as_one_sum_in_the_crit_style() {
+    let (mut world, mut schedule) = typed_running(styled());
+    let crit = json!({ "merge": 0.25, "crit": { "size": 24, "color": [1, 0.7, 0, 1] } });
+    let golem = numbered(&mut world, &crit);
+    let imp = numbered(&mut world, &crit);
+    let crit_hit = |world: &mut World, target: Entity, parts: &[(f32, &str)]| {
+        let parts = parts
+            .iter()
+            .map(|&(amount, kind)| crate::DamagePart::new(amount).with_tags(Tags::new([kind])));
+        crate::DamageRequest::from_parts(target, parts)
+            .with_crit(true)
+            .apply(world);
+    };
+    crit_hit(
+        &mut world,
+        golem,
+        &[(4.0, "elemental.fire"), (2.0, "elemental.cold")],
+    );
+    hit(&mut world, golem, &[(1.0, &["elemental.cold"])]);
+    crit_hit(&mut world, golem, &[(3.0, "elemental.cold")]);
+    crit_hit(&mut world, imp, &[(5.0, "elemental.cold")]);
+    typed_step(&mut world, &mut schedule);
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        [
+            label("1", 16.0, BLUE),
+            label("9", 24.0, GOLD),
+            label("5", 24.0, GOLD)
+        ],
+        "the plain part at once, each target's crits as one at the step's end"
+    );
+    crit_hit(&mut world, golem, &[(2.0, "elemental.fire")]);
+    typed_step(&mut world, &mut schedule);
+    assert_eq!(
+        floated(&mut world, &mut schedule).last(),
+        Some(&label("2", 24.0, GOLD)),
+        "the next step's crits on their own"
+    );
+}
+
+#[test]
+fn a_label_without_the_fields_floats_each_part_alone() {
+    let (mut world, mut schedule) = typed_running(styled());
+    let golem = numbered(&mut world, &json!({}));
+    // Two requests: a request's parts of one type land as one.
+    hit(&mut world, golem, &[(4.0, &["elemental.fire"])]);
+    hit(&mut world, golem, &[(2.0, &["elemental.fire"])]);
+    crate::DamageRequest::from_parts(
+        golem,
+        [crate::DamagePart::new(3.0).with_tags(Tags::new(["elemental.cold"]))],
+    )
+    .with_crit(true)
+    .apply(&mut world);
+    tick(&mut world, golem, 1.0, "elemental.fire");
+    typed_step(&mut world, &mut schedule);
+    hit(&mut world, golem, &[(1.5, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        [
+            label("4", 16.0, RED),
+            label("2", 16.0, RED),
+            label("3", 16.0, BLUE),
+            label("1", 16.0, RED),
+            label("1.5", 16.0, RED),
+        ]
+    );
+    // A window without ticks or crit floats ticks and crits as plain parts.
+    let grouped: CueAction = serde_json::from_value(json!({ "label": { "merge": 0.25 } })).unwrap();
+    assert_ne!(grouped, CueAction::type_label());
+}
+
+#[test]
+fn a_grouped_label_is_checked_as_a_type_label_with_its_ticks_kind_declared() {
+    let world = typed_rig();
+    let grouped =
+        json!({ "merge": 0.25, "ticks": { "size": 10, "kind": { "any": ["elemental"] } } });
+    check(&world, &json!({ "damaged_part": [{ "label": grouped }] })).unwrap();
+    assert!(check(&world, &json!({ "damaged": [{ "label": grouped }] })).is_err());
+    let unknown = check(
+        &world,
+        &json!({ "damaged_part": [{ "label": { "ticks": { "size": 10, "kind": { "all": ["arcane"] } } } }] }),
+    )
+    .unwrap_err();
+    assert!(unknown.contains("ticks.kind.all.0"), "{unknown}");
+}

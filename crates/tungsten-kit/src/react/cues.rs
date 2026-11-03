@@ -38,7 +38,8 @@ use crate::overlap::pickup::PickedUp;
 use crate::overlap::projectile::ProjectileExpired;
 use crate::overlap::zone::ZoneEntered;
 use crate::present::labels::{
-    LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, float_label, label_tick,
+    CritLabel, LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, PartLabel, TickLabel,
+    float_label, label_tick,
 };
 use crate::react::counters::{Counters, Flags};
 use crate::react::level::LevelUp;
@@ -244,7 +245,7 @@ impl Cues {
 /// | shake | `{ "shake": 0.3 }`, camera trauma added |
 /// | squash | `{ "squash": "on_hit" }`, the subject's squash trigger |
 /// | flash | `{ "flash": {} }`, the subject's [`HitFlash`](crate::HitFlash) |
-/// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label; on `damaged_part`, `{ "label": {} }` floats it in its type's style |
+/// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label; on `damaged_part`, `{ "label": {} }` floats it in its type's style, `merge`, `ticks` and `crit` grouping a target's numbers ([`type_label`](CueAction::type_label)) |
 /// | roll | `{ "roll": "slime_drops" }`, a `loot_tables` entry or the [`WeightedTable`] in place: each prefab drawn spawned at the event's position from the subject |
 /// | effect | `{ "effect": "burning" }`, or `{ "effect": { "id": "burning", "target": "other" } }`, an `effects` entry or the [`Effect`] in place under `id`, queued on the subject from the event's other entity, or on the other from the subject |
 /// | ability | `{ "ability": "wand" }`, or `{ "ability": { "name": "wand", "op": "refill", "target": "other" } }`, the named ability of the subject or the other used now (`op` `use`), or made ready with every charge (`refill`) |
@@ -294,6 +295,8 @@ pub(crate) enum ActionKind {
     Flash,
     /// `None`: a `damaged_part`'s amount in its type's style.
     Label(Option<LabelStyle>),
+    /// A `damaged_part`'s amount in its type's style, grouped.
+    PartLabel(Box<PartLabel>),
     Roll(DataRef<WeightedTable>),
     Effect {
         effect: DataRef<Effect>,
@@ -505,6 +508,17 @@ impl CueAction {
     /// whose types set none floats nothing, and the trace says so. Data form
     /// `{ "label": {} }`; the load refuses it on any other event.
     ///
+    /// Three fields group a target's numbers, each optional: `merge`, the
+    /// seconds a target's parts of a type sum over, its first plain part
+    /// floating at once and the rest within the window as one sum when it
+    /// closes; `ticks`, `{ "size", "kind" }`, periodic parts whose kinds pass
+    /// `kind` (every periodic part by default) summed on their own over the
+    /// window at that size; and `crit`, `{ "size", "color" }`, a step's crit
+    /// parts on a target floated at once as one sum in the first part's
+    /// type's style at that size and colour. Open sums are presentation,
+    /// unsaved, aged on the fixed step; without the fields each part floats
+    /// alone.
+    ///
     /// # Examples
     ///
     /// ```
@@ -513,6 +527,18 @@ impl CueAction {
     /// let numbers = Cues::new().on("damaged_part", [CueAction::type_label()]);
     /// let data = serde_json::to_value(&numbers).unwrap();
     /// assert_eq!(data["damaged_part"][0], serde_json::json!({ "label": {} }));
+    ///
+    /// let grouped = serde_json::json!({ "label": {
+    ///     "merge": 0.25,
+    ///     "ticks": { "size": 10.0, "kind": { "any": ["elemental"] } },
+    ///     "crit": { "size": 24.0, "color": [1.0, 0.75, 0.0, 1.0] }
+    /// } });
+    /// let action: CueAction = serde_json::from_value(grouped.clone()).unwrap();
+    /// assert_eq!((action.name(), serde_json::to_value(&action).unwrap()), ("label", grouped));
+    /// assert!(serde_json::from_value::<CueAction>(serde_json::json!({
+    ///     "label": { "font": "sans", "merge": 0.25 }
+    /// }))
+    /// .is_err(), "a named style groups nothing");
     /// ```
     #[must_use]
     pub fn type_label() -> Self {
@@ -629,7 +655,7 @@ impl CueAction {
             ActionKind::Shake(_) => "shake",
             ActionKind::Squash(_) => "squash",
             ActionKind::Flash => "flash",
-            ActionKind::Label(_) => "label",
+            ActionKind::Label(_) | ActionKind::PartLabel(_) => "label",
             ActionKind::Roll(_) => "roll",
             ActionKind::Effect { .. } => "effect",
             ActionKind::Ability { .. } => "ability",
@@ -1004,7 +1030,8 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Shake(trauma) => ActionKind::Shake(trauma),
             CueActionDef::Squash(name) => ActionKind::Squash(name.into()),
             CueActionDef::Flash(FlashDef {}) => ActionKind::Flash,
-            CueActionDef::Label(LabelDef(style)) => ActionKind::Label(style),
+            CueActionDef::Label(LabelDef(style, None)) => ActionKind::Label(style),
+            CueActionDef::Label(LabelDef(_, Some(part))) => ActionKind::PartLabel(part),
             CueActionDef::Roll(table) => ActionKind::Roll(table),
             CueActionDef::Effect(def) => ActionKind::Effect {
                 effect: def.id,
@@ -1050,7 +1077,8 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Shake(trauma) => CueActionDef::Shake(trauma),
             ActionKind::Squash(trigger) => CueActionDef::Squash(trigger.into()),
             ActionKind::Flash => CueActionDef::Flash(FlashDef {}),
-            ActionKind::Label(style) => CueActionDef::Label(LabelDef(style)),
+            ActionKind::Label(style) => CueActionDef::Label(LabelDef(style, None)),
+            ActionKind::PartLabel(part) => CueActionDef::Label(LabelDef(None, Some(part))),
             ActionKind::Roll(table) => CueActionDef::Roll(table),
             ActionKind::Effect { effect, target } => CueActionDef::Effect(EffectActionDef {
                 id: effect,
@@ -1234,6 +1262,10 @@ pub(crate) struct Occurrence {
     pub(crate) other: Option<Entity>,
     /// A damage event's kinds: a part's, or a hit's parts' together.
     pub(crate) kinds: DamageKinds,
+    /// A damage event's: a periodic request's.
+    pub(crate) periodic: bool,
+    /// A damage event's: a crit's.
+    pub(crate) crit: bool,
 }
 
 /// What a registered cue event may carry, for the load's checks.
@@ -1392,6 +1424,8 @@ impl<E: 'static> CueSource for GameSource<E> {
                     amount: event.amount,
                     other: event.other,
                     kinds: DamageKinds::NONE,
+                    periodic: false,
+                    crit: false,
                 }),
         );
     }
@@ -1454,9 +1488,9 @@ struct CueRuleDef {
 /// declared damage types or their ancestors in `all`, `any` and `none`,
 /// each checked as a tag name and kept as written, so a load's error names
 /// the field.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "KindFields")]
-struct KindFilterDef {
+pub(crate) struct KindFilterDef {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     all: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -1499,7 +1533,7 @@ impl TryFrom<KindFields> for KindFilterDef {
 impl KindFilterDef {
     /// Every name the filter uses, with the field that names it as written
     /// (`any.0`), for a load's check.
-    fn names(&self) -> impl Iterator<Item = (String, &str)> {
+    pub(crate) fn names(&self) -> impl Iterator<Item = (String, &str)> {
         [("all", &self.all), ("any", &self.any), ("none", &self.none)]
             .into_iter()
             .flat_map(|(field, names)| {
@@ -1511,14 +1545,18 @@ impl KindFilterDef {
     }
 
     /// Whether it names no type, so every occurrence passes.
-    fn is_everything(&self) -> bool {
+    pub(crate) fn is_everything(&self) -> bool {
         self.all.is_empty() && self.any.is_empty() && self.none.is_empty()
     }
 
     /// Whether an occurrence of `kinds` passes, each name's kinds from
     /// `mask`, read as a tag filter reads tags: every `all`, one `any` when
     /// it names any, no `none`.
-    fn matches(&self, kinds: DamageKinds, mut mask: impl FnMut(&str) -> DamageKinds) -> bool {
+    pub(crate) fn matches(
+        &self,
+        kinds: DamageKinds,
+        mut mask: impl FnMut(&str) -> DamageKinds,
+    ) -> bool {
         let mut has = |name: &String| kinds.intersects(mask(name));
         self.all.iter().all(&mut has)
             && (self.any.is_empty() || self.any.iter().any(&mut has))
@@ -1629,19 +1667,26 @@ fn check_actions(
                     return Err(MissingAsset::new(format!("{at}.id"), "sound", id.as_str()));
                 }
             }
-            ActionKind::Label(_) if !event.amount => {
+            ActionKind::Label(_) | ActionKind::PartLabel(_) if !event.amount => {
                 return Err(MissingAsset::new(
                     at,
                     "cue event with an amount",
                     event.name,
                 ));
             }
-            ActionKind::Label(None) if event.name != DAMAGED_PART => {
+            ActionKind::Label(None) | ActionKind::PartLabel(_) if event.name != DAMAGED_PART => {
                 return Err(MissingAsset::new(
                     at,
                     "cue event with a damage type's label style",
                     event.name,
                 ));
+            }
+            ActionKind::PartLabel(part) => {
+                if let Some(ticks) = &part.ticks {
+                    for (field, name) in ticks.kind.names() {
+                        check_type(world, &format!("{at}.ticks.kind.{field}"), name, true)?;
+                    }
+                }
             }
             ActionKind::Counter {
                 target: Target::Other,
@@ -1834,11 +1879,37 @@ struct Reactor {
     masks: HashMap<String, DamageKinds>,
     /// The type table's bits when `masks` was last cleared.
     masked: usize,
+    /// The part labels' open sums, by label, target, kinds and track.
+    sums: HashMap<(usize, Entity, DamageKinds, bool), OpenSum>,
+    /// The step's crit sums, floated at its end in the order they opened.
+    crits: Vec<OpenSum>,
+    /// How many sums have opened: their close order.
+    opened: u64,
 }
+
+/// A part label's sum while it is open: its label and target, the sum and
+/// how many parts made it, where it floats, the seconds left, its style and
+/// when it opened.
+struct OpenSum {
+    label: usize,
+    subject: Entity,
+    sum: f32,
+    parts: u32,
+    position: Vec2,
+    left: f32,
+    style: LabelStyle,
+    order: u64,
+}
+
+/// Seconds a part label's window may end early by and still close, against
+/// the steps' rounding.
+const SUM_SLACK: f32 = 1e-4;
 
 impl Reactor {
     fn run(&mut self, world: &mut World) {
-        self.clock += f64::from(world.get_resource::<Time>().map_or(0.0, Time::delta));
+        let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+        self.clock += f64::from(dt);
+        self.close_sums(world, dt);
         self.occurrences.clear();
         self.read(world);
         if self.occurrences.is_empty() {
@@ -1891,6 +1962,9 @@ impl Reactor {
             self.matched.clear();
         }
         self.occurrences = occurrences;
+        for open in self.crits.drain(..) {
+            float_label(world, &open.style, open.position, open.sum);
+        }
         for entity in self.despawns.drain(..) {
             if let Some(commands) = world.get_resource_mut::<CommandBuffer>() {
                 despawn_recursive(commands, entity);
@@ -2096,6 +2170,15 @@ impl Reactor {
                 };
                 float_label(world, &style, occurrence.position, amount);
             }
+            ActionKind::PartLabel(label) => {
+                let Some(amount) = occurrence.amount else {
+                    return skip(world, NO_AMOUNT);
+                };
+                let Some(style) = label_style(world, occurrence.kinds) else {
+                    return skip(world, NO_STYLE);
+                };
+                self.part_label(world, occurrence, label, style, amount);
+            }
             ActionKind::Effect { effect, target: to } => {
                 let Some(entity) = target(*to, world) else {
                     return skip(world, NO_OTHER);
@@ -2194,6 +2277,123 @@ impl Reactor {
         resolved
     }
 
+    /// Ages the part labels' open sums by `dt` and floats each that closes
+    /// with a part in it, in the order they opened.
+    fn close_sums(&mut self, world: &mut World, dt: f32) {
+        if self.sums.is_empty() {
+            return;
+        }
+        let mut closed: Vec<OpenSum> = self
+            .sums
+            .extract_if(|_, open| {
+                open.left -= dt;
+                open.left <= SUM_SLACK
+            })
+            .map(|(_, open)| open)
+            .collect();
+        closed.sort_by_key(|open| open.order);
+        for open in closed.iter().filter(|open| open.parts > 0) {
+            float_label(world, &open.style, open.position, open.sum);
+        }
+    }
+
+    /// A part label's number for `occurrence`'s part of `amount` in its
+    /// type's `style`: a crit into its target's crit sum for the step; a
+    /// tick into its own sum at the tick size; a plain part at once when it
+    /// opens a window, else into the window's sum; each alone without one.
+    fn part_label(
+        &mut self,
+        world: &mut World,
+        occurrence: &Occurrence,
+        label: &PartLabel,
+        style: LabelStyle,
+        amount: f32,
+    ) {
+        let id = std::ptr::from_ref(label) as usize;
+        let subject = occurrence.subject;
+        if occurrence.crit
+            && let Some(crit) = label.crit
+        {
+            match self
+                .crits
+                .iter_mut()
+                .find(|open| open.label == id && open.subject == subject)
+            {
+                Some(open) => {
+                    open.sum += amount;
+                    open.parts += 1;
+                }
+                None => self.crits.push(OpenSum {
+                    label: id,
+                    subject,
+                    sum: amount,
+                    parts: 1,
+                    position: occurrence.position,
+                    left: 0.0,
+                    style: style.with_size(crit.size).with_color(crit.color),
+                    order: 0,
+                }),
+            }
+            return;
+        }
+        let tick = occurrence.periodic
+            && label.ticks.as_ref().is_some_and(|ticks| {
+                ticks.kind.is_everything() || self.passes(world, &ticks.kind, occurrence.kinds)
+            });
+        let style = match &label.ticks {
+            Some(ticks) if tick => style.with_size(ticks.size),
+            _ => style,
+        };
+        let Some(window) = label.merge else {
+            float_label(world, &style, occurrence.position, amount);
+            return;
+        };
+        let key = (id, subject, occurrence.kinds, tick);
+        if let Some(open) = self.sums.get_mut(&key) {
+            open.sum += amount;
+            open.parts += 1;
+            open.position = occurrence.position;
+            return;
+        }
+        // A window opens: a plain part floats at once, a tick waits for
+        // the close.
+        let (sum, parts) = if tick {
+            (amount, 1)
+        } else {
+            float_label(world, &style, occurrence.position, amount);
+            (0.0, 0)
+        };
+        self.opened += 1;
+        self.sums.insert(
+            key,
+            OpenSum {
+                label: id,
+                subject,
+                sum,
+                parts,
+                position: occurrence.position,
+                left: window,
+                style,
+                order: self.opened,
+            },
+        );
+    }
+
+    /// Whether `kinds` pass `filter`, each name's kinds from the type table
+    /// through the reactor's cache.
+    fn passes(&mut self, world: &World, filter: &KindFilterDef, kinds: DamageKinds) -> bool {
+        let table = world.get_resource::<DamageTypeTable>();
+        let masks = &mut self.masks;
+        filter.matches(kinds, |name| {
+            if let Some(&kinds) = masks.get(name) {
+                return kinds;
+            }
+            let kinds = table.map_or(DamageKinds::NONE, |table| table.mask_of(name));
+            masks.insert(name.to_owned(), kinds);
+            kinds
+        })
+    }
+
     /// The step's occurrences, from every source in order.
     fn read(&mut self, world: &mut World) {
         let Self {
@@ -2223,6 +2423,8 @@ impl Reactor {
                     amount: Some(event.amount),
                     other: event.source,
                     kinds: event.kinds,
+                    periodic: event.periodic,
+                    crit: event.crit,
                 });
             }
         }
@@ -2239,6 +2441,8 @@ impl Reactor {
                     amount,
                     other: event.source,
                     kinds: event.kinds,
+                    periodic: event.periodic,
+                    crit: event.crit,
                 });
                 if event.killed {
                     occurrences.push(Occurrence {
@@ -2248,6 +2452,8 @@ impl Reactor {
                         amount,
                         other: event.source,
                         kinds: event.kinds,
+                        periodic: event.periodic,
+                        crit: event.crit,
                     });
                 }
             }
@@ -2260,6 +2466,8 @@ impl Reactor {
                 amount: None,
                 other: Some(event.entity),
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<CooldownElapsed>>() {
@@ -2270,6 +2478,8 @@ impl Reactor {
                 amount: None,
                 other: None,
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<Struck>>() {
@@ -2280,6 +2490,8 @@ impl Reactor {
                 amount: Some(event.amount),
                 other: Some(event.target),
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<Healed>>() {
@@ -2290,6 +2502,8 @@ impl Reactor {
                 amount: Some(event.amount),
                 other: event.source,
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<PickedUp>>() {
@@ -2300,6 +2514,8 @@ impl Reactor {
                 amount: None,
                 other: Some(event.by),
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<ProjectileExpired>>() {
@@ -2310,6 +2526,8 @@ impl Reactor {
                 amount: None,
                 other: None,
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<EffectApplied>>() {
@@ -2320,6 +2538,8 @@ impl Reactor {
                 amount: Some(event.stacks as f32),
                 other: event.source,
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<EffectExpired>>() {
@@ -2330,6 +2550,8 @@ impl Reactor {
                 amount: None,
                 other: None,
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<AbilityUsed>>() {
@@ -2340,6 +2562,8 @@ impl Reactor {
                 amount: None,
                 other: event.target,
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<LevelUp>>() {
@@ -2350,6 +2574,8 @@ impl Reactor {
                 amount: Some(event.level as f32),
                 other: None,
                 kinds: DamageKinds::NONE,
+                periodic: false,
+                crit: false,
             }));
         }
         if let Some(mut sources) = world.remove_resource::<CueSources>() {
@@ -2466,8 +2692,8 @@ fn describe_cues(world: &mut World) {
             ))
             .field(FieldDescription::new(
                 "label",
-                FieldType::Shape("label_style"),
-                "the event's amount floated at its position; on `damaged_part`, `{}` floats it in its type's `label_style`",
+                FieldType::Shape("label_action"),
+                "the event's amount floated at its position in a `label_style`; on `damaged_part`, without a font, in its type's, grouped by `merge`, `ticks` and `crit`",
             ))
             .field(FieldDescription::new(
                 "roll",
@@ -2653,6 +2879,88 @@ fn describe_cues(world: &mut World) {
         )
         .sample(r#"{ "font": "sans" }"#)
         .roundtrip(round_trip::<LabelStyleDef>),
+        ComponentDescription::new(
+            "label_action",
+            "A `label` action: a `label_style` that names its font, or on `damaged_part` none, its part's type's style, which the grouping fields take.",
+        )
+        .field(
+            FieldDescription::new(
+                "font",
+                FieldType::Text,
+                "a manifest font face, and with it a `label_style`'s other fields; without it, a `damaged_part`'s type's style",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "merge",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Open,
+                },
+                "seconds a target's parts of a type sum over: the first plain part floats at once, the rest as one sum when the window closes; without it each part floats alone",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "ticks",
+                FieldType::Shape("label_ticks"),
+                "periodic parts summed on their own over the window",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "crit",
+                FieldType::Shape("label_crit"),
+                "a step's crit parts on a target floated at once as one sum",
+            )
+            .default("null"),
+        )
+        .sample("{}")
+        .roundtrip(round_trip::<LabelDef>),
+        ComponentDescription::new(
+            "label_ticks",
+            "A type label's periodic parts: summed on their own over its window at this size.",
+        )
+        .field(FieldDescription::new(
+            "size",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "UI units tall",
+        ))
+        .field(
+            FieldDescription::new(
+                "kind",
+                FieldType::Filter,
+                "the periodic parts it takes by their damage kinds, each a declared damage type or an ancestor of one",
+            )
+            .default("{}"),
+        )
+        .sample(r#"{ "size": 10 }"#)
+        .roundtrip(round_trip::<TickLabel>),
+        ComponentDescription::new(
+            "label_crit",
+            "A type label's crit style: a step's crit parts on a target as one sum, in the first part's type's style at this size and colour.",
+        )
+        .field(FieldDescription::new(
+            "size",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "UI units tall",
+        ))
+        .field(FieldDescription::new(
+            "color",
+            FieldType::Color,
+            "linear, encoded to sRGB when drawn",
+        ))
+        .sample(r#"{ "size": 24, "color": [1.0, 0.7, 0.0, 1.0] }"#)
+        .roundtrip(round_trip::<CritLabel>),
         ComponentDescription::new(
             "cue_rule",
             "A shared reaction: on an event, for each subject whose tags pass the filter, the actions in order.",

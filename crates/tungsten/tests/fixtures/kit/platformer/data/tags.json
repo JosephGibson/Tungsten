@@ -6,5 +6,8 @@
   "skill.spell",
   "hit.blast",
   "damage.cold",
-  "damage.physical"
+  "damage.physical",
+  "elemental.fire",
+  "elemental.cold",
+  "numbered"
 ]

@@ -122,6 +122,16 @@
       "spell": {
         "path": "data/abilities/spell.json"
       }
+    },
+    "damage_types": {
+      "numbers": {
+        "path": "data/damage_types/numbers.json"
+      }
+    },
+    "cue_rules": {
+      "numbers": {
+        "path": "data/cue_rules/numbers.json"
+      }
     }
   },
   "animations": {
