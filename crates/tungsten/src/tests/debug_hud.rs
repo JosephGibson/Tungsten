@@ -9,6 +9,7 @@ use tungsten_core::ui::{FixedAdvanceMeasure, UiTree};
 use super::*;
 use crate::app::WindowSize;
 use crate::debug_views::{GRAPH_WIDTH, GREEN, LABEL, ORANGE, RED, YELLOW};
+use tungsten_render::timing::GpuFrameSample;
 
 /// A world with what the views' frame reads, the HUD on.
 fn views_world() -> World {
@@ -262,7 +263,7 @@ fn fps_comes_from_the_interval_and_the_ms_from_the_frame_total() {
     let (label, value) = rows(&world)[0].clone();
     assert_eq!(
         (label.as_str(), fields(&value)),
-        ("fps", vec!["50.0", "5.00 ms"])
+        ("fps", vec!["50.0", "5.00 cpu", "\u{2013} gpu"])
     );
 }
 
@@ -479,7 +480,10 @@ fn both_averages_start_from_the_first_interval() {
         (40.0, 8.0),
         "not from 0"
     );
-    assert_eq!(fields(&rows(&world)[0].1), ["25.0", "8.00 ms"]);
+    assert_eq!(
+        fields(&rows(&world)[0].1),
+        ["25.0", "8.00 cpu", "\u{2013} gpu"]
+    );
 }
 
 #[test]
@@ -497,12 +501,16 @@ fn the_fps_rows_time_takes_the_ramps_colour() {
             .unwrap()
             .spans
             .clone();
-        assert_eq!(spans.len(), 4, "the fps, its column's gap, the time, ` ms`");
+        assert_eq!(
+            spans.len(),
+            7,
+            "the fps, a gap, the CPU time, ` cpu`, a gap, the GPU's, ` gpu`"
+        );
         assert_eq!(spans[2].color, Some(color), "{total} ms");
         assert_eq!(spans[2].weight, Some(600));
         assert_eq!(spans[0].color, None, "the fps in the value colour");
         assert!(spans[1].text.trim().is_empty(), "{:?}", spans[1].text);
-        assert_eq!(spans[3].color, Some(LABEL), "the unit in the label grey");
+        assert_eq!(spans[3].color, Some(LABEL), "the name in the label grey");
     }
 }
 
@@ -532,6 +540,54 @@ fn a_reopened_hud_starts_its_graph_and_averages_afresh() {
     let (label, value) = rows(&world)[0].clone();
     assert_eq!(
         (label.as_str(), fields(&value)),
-        ("fps", vec!["100.0", "1.00 ms"])
+        ("fps", vec!["100.0", "1.00 cpu", "\u{2013} gpu"])
+    );
+}
+
+/// The fps row's GPU render time (debug-pass): the average of each timed
+/// frame read back, its first scene timestamp to the end of its last pass,
+/// forgotten when the HUD closes; the gpu row names the backend and the
+/// newest scene pass.
+#[test]
+fn the_fps_row_carries_the_gpu_render_time_and_the_gpu_row_its_scene_pass() {
+    let mut world = views_world();
+    world.insert_resource(GpuFrameTimings {
+        frame_gpu_ms: Some(0.9),
+        render_gpu_ms: Some(1.25),
+        samples: vec![GpuFrameSample {
+            frame: 1,
+            scene_ms: Some(0.9),
+            render_ms: 1.25,
+            passes: Vec::new(),
+        }],
+        backend: Some("Vulkan".into()),
+        ..GpuFrameTimings::default()
+    });
+    for _ in 0..3 {
+        frame(&mut world, Some(16.0), 4.0);
+    }
+    let rows = rows(&world);
+    assert_eq!(fields(&rows[0].1), ["62.5", "4.00 cpu", "1.25 gpu"]);
+    assert_eq!(rows[1].0, "gpu");
+    assert_eq!(fields(&rows[1].1), ["Vulkan", "0.90 scene"]);
+    let fps = world
+        .resource::<UiTree>()
+        .children(window(&world).columns[1])[0];
+    let spans = world.resource::<UiTree>().text(fps).unwrap().spans.clone();
+    assert_eq!(
+        (spans[5].color, spans[5].weight),
+        (Some(GREEN), Some(600)),
+        "on the budget ramp, as the CPU's"
+    );
+
+    world.resource_mut::<DebugHud>().enabled = false;
+    frame(&mut world, Some(16.0), 4.0);
+    world.resource_mut::<GpuFrameTimings>().samples.clear();
+    world.resource_mut::<DebugHud>().enabled = true;
+    frame(&mut world, Some(16.0), 4.0);
+    assert_eq!(
+        fields(&self::rows(&world)[0].1)[2],
+        "\u{2013} gpu",
+        "a reopened HUD waits for a timed frame"
     );
 }

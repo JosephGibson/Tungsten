@@ -80,6 +80,9 @@ pub struct DebugHud {
     pub refresh_interval_ms: f32,
     interval_ewma: f32,
     total_ewma: f32,
+    /// The GPU's render time's average, from the first timed frame read
+    /// back (debug-pass): the app times the GPU while the HUD shows.
+    gpu_ewma: Option<f32>,
     ewma_alpha: f32,
     /// Whether an interval has arrived: the averages start from the first
     /// (M58).
@@ -129,6 +132,7 @@ impl DebugHud {
             refresh_interval_ms: 500.0,
             interval_ewma: 0.0,
             total_ewma: 0.0,
+            gpu_ewma: None,
             ewma_alpha: 0.1,
             seeded: false,
             time_since_refresh_ms: f32::INFINITY,
@@ -175,8 +179,10 @@ impl DebugHud {
     }
 
     /// The fps row (M58): `1000 / average interval`, then the average CPU
-    /// frame time at the strong weight in the budget ramp's colour; `–`
-    /// before the first interval.
+    /// frame time and, from debug-pass, the average GPU render time, each
+    /// in ms at the strong weight in the budget ramp's colour before its
+    /// name, `59.6  4.75 cpu  1.23 gpu`; the GPU's `–` until a timed frame
+    /// is read back, and the row's before the first interval.
     fn fps_line(&self) -> Line {
         if !self.seeded {
             return Line::new("fps", vec![field(MISSING)]);
@@ -186,9 +192,14 @@ impl DebugHud {
         } else {
             0.0
         };
+        let gpu = match self.gpu_ewma {
+            Some(ms) => Spans::default().time(ms, "gpu"),
+            None => field(MISSING).name(" gpu"),
+        };
         let fields = vec![
             field(format!("{fps:.1}")),
-            Spans::default().time(self.total_ewma),
+            Spans::default().time(self.total_ewma, "cpu"),
+            gpu,
         ];
         Line::new("fps", fields)
     }
@@ -227,6 +238,7 @@ impl DebugHud {
             self.vertices.clear();
             self.interval_ewma = 0.0;
             self.total_ewma = 0.0;
+            self.gpu_ewma = None;
             self.seeded = false;
             return;
         }
@@ -253,6 +265,18 @@ impl DebugHud {
             self.interval_ewma = interval;
             self.total_ewma = total.unwrap_or(0.0);
             self.time_since_refresh_ms = f32::INFINITY;
+        }
+        // Each timed frame read back this frame, from first scene timestamp
+        // to the end of its last pass (debug-pass).
+        if let Some(gpu) = world.get_resource::<GpuFrameTimings>() {
+            for ms in gpu.samples.iter().map(|sample| sample.render_ms) {
+                if ms.is_finite() && ms >= 0.0 {
+                    self.gpu_ewma = Some(
+                        self.gpu_ewma
+                            .map_or(ms, |average| (1.0 - alpha) * average + alpha * ms),
+                    );
+                }
+            }
         }
         if let Some(interval) = interval {
             if self.samples.len() == GRAPH_SAMPLES {
@@ -363,14 +387,14 @@ impl Spans {
     }
 
     /// `ms` to two places on the frame's budget ramp at the strong weight,
-    /// then its unit.
-    fn time(mut self, ms: f32) -> Self {
+    /// then `name`.
+    fn time(mut self, ms: f32, name: &str) -> Self {
         self.0.push(
             TextSpan::new(format!("{ms:.2}"))
                 .with_weight(STRONG)
                 .with_color(ramp(ms, FRAME_BUDGET_MS)),
         );
-        self.name(" ms")
+        self.name(format!(" {name}"))
     }
 
     /// Its width in glyphs, each as wide on the monospace face.
@@ -429,18 +453,18 @@ fn grouped(n: impl Into<u64>) -> String {
     out
 }
 
-/// `gpu`: the backend, then the GPU's frame time on the budget ramp, `–`
-/// while none is timed.
+/// `gpu`: the backend, then the newest timed frame's scene pass in ms, `–`
+/// while none is read back; the fps row carries the whole render.
 fn gpu_line(world: &World) -> Vec<Line> {
     let Some(gpu) = world.get_resource::<GpuFrameTimings>() else {
         return Vec::new();
     };
-    let time = match gpu.frame_gpu_ms {
-        Some(ms) => Spans::default().time(ms),
+    let scene = match gpu.frame_gpu_ms {
+        Some(ms) => field(format!("{ms:.2}")),
         None => field(MISSING),
     };
     let backend = field(gpu.backend.as_deref().unwrap_or("?"));
-    vec![Line::new("gpu", vec![backend, time])]
+    vec![Line::new("gpu", vec![backend, scene.name(" scene")])]
 }
 
 /// `display`: the size, the mode and vsync.

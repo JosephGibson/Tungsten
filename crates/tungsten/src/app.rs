@@ -397,7 +397,8 @@ pub struct App {
     input_map_path: PathBuf,
     smoke_frames_remaining: Option<u32>,
     system_name_counter: usize,
-    // GPU timing path adds `device.poll` stall.
+    /// `TUNGSTEN_GPU_TIMING`: GPU timestamps on every frame; the HUD turns
+    /// them on while it shows (debug-pass).
     gpu_timing_enabled: bool,
     frame_budget: Option<Duration>,
     // Capped frames: when `about_to_wait` requests the next redraw.
@@ -2404,7 +2405,14 @@ impl App {
 
             // A timed frame's GPU sample names it when it is read back.
             renderer.set_frame_number(self.world.get_resource::<Time>().map_or(0, Time::frame));
-            result = Some(if self.gpu_timing_enabled {
+            // The HUD's GPU render time needs the timestamps while it shows
+            // (debug-pass); they never wait on the GPU (redo 7.3).
+            let timed = self.gpu_timing_enabled
+                || self
+                    .world
+                    .get_resource::<DebugHud>()
+                    .is_some_and(|hud| hud.enabled);
+            result = Some(if timed {
                 renderer.render_frame_full_timed(
                     &view_proj,
                     &extract.quads,
