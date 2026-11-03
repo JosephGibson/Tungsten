@@ -158,16 +158,18 @@
 //!   transition at the end, which the cue action `effect` applies; with an
 //!   intensity, a status, built by its requests' amounts and status
 //!   effect, worn by its decay, granting bands and burning a fuel stat.
-//! - **Chemistry.** [`Interaction`], [`Output`], [`Reaction`], [`Chemistry`]
-//!   and [`ChemistryPlugin`]: the `interactions` kind's rules from a
-//!   stimulus (a landed hit's damage type, or a game's tag) on a receiver's
-//!   tags to a fixed list of outputs (build, apply, remove or consume a
-//!   status, damage, spawn, a game's handler), through a saved, bounded
-//!   and capped queue; a status's `on_end` and a band's `enter` run their
-//!   own, and a hit's damage-over-time base fixes a status's rate.
 //!   [`AilmentRung`], [`AilmentThreshold`] and [`AilmentBuckets`]: the
 //!   ladder on a `damage_types` definition that a target's bucket of that
 //!   type climbs against its threshold, each rung an effect.
+//! - **Chemistry.** [`Interaction`], [`Output`], [`Reaction`], [`Chemistry`]
+//!   and [`ChemistryPlugin`]: the `interactions` kind's rules from a
+//!   stimulus (a landed hit's damage type, a status's or an output's
+//!   emission in a radius, a body's impact, the light at a point, or a
+//!   game's tag) on a receiver's tags to a fixed list of outputs (build,
+//!   apply, remove or consume a status, damage, spawn, emit, a game's
+//!   handler), through a saved, bounded and capped queue; a status's
+//!   `on_end` and a band's `enter` run their own, and a hit's
+//!   damage-over-time base fixes a status's rate.
 //! - **React.** [`Cues`], [`CueAction`], [`CueEvent`], [`CuesOnEvent`] and
 //!   [`CuesPlugin`]: the one way to react to events in data, an entity's
 //!   `cues` and the shared `cue_rules` kind, whose `effect` action applies
@@ -228,7 +230,9 @@ mod present;
 mod react;
 mod transform;
 
-pub use chemistry::{CHEMISTRY, Chemistry, ChemistryPlugin, Interaction, Output, Reaction};
+pub use chemistry::{
+    CHEMISTRY, CHEMISTRY_TICK, Chemistry, ChemistryPlugin, Interaction, Output, Reaction,
+};
 pub use damage::ailments::{
     AILMENT_FEED, AILMENT_TICK, AilmentBuckets, AilmentRung, AilmentThreshold,
 };

@@ -8,9 +8,12 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::physics::Position;
 use tungsten_core::{CommandBuffer, DataRef, Entity, MissingAsset, Transform, World};
 
+use crate::chemistry::rules::check_stimulus;
+use crate::chemistry::stimuli::{Named, emit_from};
 use crate::damage::effects::{Effect, EffectRequest, StatModifierDef, consume, end_effect_at};
 use crate::damage::pipeline::DamageRequest;
 use crate::foundation::lines::Line;
+use crate::foundation::tags::valid_tag;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::overlap::hit::DamageDef;
 
@@ -34,6 +37,7 @@ const NO_SPAWN: &str = "the prefab did not prepare";
 /// | consume | `{ "consume": { "status": "burning", "amount": 1 } }` | takes intensity off; at 0 it has run out |
 /// | damage | `{ "damage": { "elemental.fire": 2 } }` | queues typed damage on the receiver from the credit, for the next step's resolve |
 /// | spawn | `{ "spawn": "puff" }` | spawns a prefab at the receiver's point, from it |
+/// | emit | `{ "emit": { "stimulus": "heat", "amount": 1, "radius": 40 } }` | sends a stimulus once from the receiver's point to every receiver within the radius but itself, at the next run |
 /// | handler | `{ "handler": "douse" }` | runs a game's Rust handler ([`ChemistryPlugin::with_handler`](crate::ChemistryPlugin::with_handler)) |
 ///
 /// On a dead receiver `build` and `apply` are refused, as effects refuse the
@@ -63,12 +67,13 @@ enum Kind {
     Consume(ConsumeDef),
     Damage(DamageDef),
     Spawn(String),
+    Emit(EmitDef),
     Handler(String),
 }
 
 impl Output {
     /// Its name, as data writes it: `build`, `apply`, `remove`, `consume`,
-    /// `damage`, `spawn` or `handler`.
+    /// `damage`, `spawn`, `emit` or `handler`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match &self.0 {
@@ -78,6 +83,7 @@ impl Output {
             Kind::Consume(_) => "consume",
             Kind::Damage(_) => "damage",
             Kind::Spawn(_) => "spawn",
+            Kind::Emit(_) => "emit",
             Kind::Handler(_) => "handler",
         }
     }
@@ -197,6 +203,47 @@ impl TryFrom<ConsumeFields> for ConsumeDef {
     }
 }
 
+/// An `emit` as data writes it: a stimulus sent once to the receivers in a
+/// radius.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, try_from = "EmitFields")]
+pub(crate) struct EmitDef {
+    stimulus: String,
+    amount: f32,
+    radius: f32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EmitFields {
+    stimulus: String,
+    amount: f32,
+    radius: f32,
+}
+
+impl TryFrom<EmitFields> for EmitDef {
+    type Error = String;
+
+    fn try_from(fields: EmitFields) -> Result<Self, Self::Error> {
+        if !valid_tag(&fields.stimulus) {
+            return Err(format!(
+                "stimulus: `{}` is not a stimulus name (`[a-z][a-z0-9_]*` segments joined by dots)",
+                fields.stimulus
+            ));
+        }
+        for (field, value) in [("amount", fields.amount), ("radius", fields.radius)] {
+            if !(value.is_finite() && value > 0.0) {
+                return Err(format!("{field}: must be finite and > 0 (got {value})"));
+            }
+        }
+        Ok(Self {
+            stimulus: fields.stimulus,
+            amount: fields.amount,
+            radius: fields.radius,
+        })
+    }
+}
+
 /// What an output runs for, which a handler reads: the receiver, what
 /// reached it, the rule, the amounts, the credit and the depth.
 #[derive(Debug, Clone, PartialEq)]
@@ -288,6 +335,7 @@ pub(crate) fn check_outputs(
             Kind::Consume(def) => def.status.check(world, &format!("{at}.status"))?,
             Kind::Damage(damage) => damage.check(world)?,
             Kind::Spawn(prefab) => world.check_prefab_id(&at, prefab)?,
+            Kind::Emit(def) => check_stimulus(world, &format!("{at}.stimulus"), &def.stimulus)?,
             Kind::Handler(name) => {
                 let known = world
                     .get_resource::<Handlers>()
@@ -379,6 +427,18 @@ pub(crate) fn run_outputs(
                 Ok(())
             }
             Kind::Spawn(prefab) => spawn_from(world, receiver, prefab),
+            Kind::Emit(def) => {
+                emit_from(
+                    world,
+                    receiver,
+                    Named::New(def.stimulus.clone()),
+                    def.amount,
+                    def.radius,
+                    reaction.credit,
+                    deeper,
+                );
+                Ok(())
+            }
             Kind::Handler(name) => {
                 let handler = world
                     .get_resource::<Handlers>()

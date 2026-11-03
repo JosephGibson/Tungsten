@@ -1,0 +1,11 @@
+{
+  "tag": "lurker",
+  "components": {
+    "health": {
+      "max": 20
+    },
+    "tags": [
+      "creature.lurker"
+    ]
+  }
+}

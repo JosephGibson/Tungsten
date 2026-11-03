@@ -9,7 +9,8 @@
 //! its porter, whose body's mass a rolled ball pushes, carried up to a
 //! ceiling, the hero pushed out of a sliding platform and crushed under a
 //! falling deck, and a wisp steering its mover along a brick; 7.10b's
-//! lamp, which burns its oil and goes out.
+//! lamp, which burns its oil and goes out; its chemistry's kindling, lit
+//! by a torch's hit, and a clay pot cracked by a hard landing.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1503,5 +1504,30 @@ fn a_torch_ignites_by_its_hit() {
             !world.get::<Effects>(kindling).unwrap().has("smoulder"),
             "dt {dt}"
         );
+    }
+}
+
+#[test]
+fn a_clay_pot_cracks_on_a_hard_landing() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ledge", [200.0, 300.0]);
+        spawn(&mut harness, "ledge", [400.0, 300.0]);
+        let hard = spawn(&mut harness, "clay_pot", [200.0, 270.0]);
+        let soft = spawn(&mut harness, "clay_pot", [400.0, 270.0]);
+        // Dropped onto the ledges at 600 and 150 px/s: the rule cracks a
+        // pot whose impact closes at 300 px/s or more.
+        for (pot, speed) in [(hard, 600.0), (soft, 150.0)] {
+            harness.world_mut().get_mut::<Velocity>(pot).unwrap().0 = Vec2::new(0.0, speed);
+        }
+        harness.step(frames_for(0.5, dt));
+        let cracked = |harness: &crate::testing::Harness, pot| {
+            harness
+                .world()
+                .get::<Tags>(pot)
+                .is_some_and(|tags| tags.has("status.cracked"))
+        };
+        assert!(cracked(&harness, hard), "dt {dt}: the hard landing");
+        assert!(!cracked(&harness, soft), "dt {dt}: the soft one");
     }
 }

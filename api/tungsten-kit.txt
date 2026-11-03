@@ -703,6 +703,7 @@ pub fn tungsten_kit::ChemistryPlugin::with_bound(self, usize) -> Self
 pub fn tungsten_kit::ChemistryPlugin::with_cap(self, usize) -> Self
 pub fn tungsten_kit::ChemistryPlugin::with_depth(self, u8) -> Self
 pub fn tungsten_kit::ChemistryPlugin::with_handler(self, impl core::convert::Into<alloc::string::String>, impl core::ops::function::Fn(&mut tungsten_core::ecs::world::World, &tungsten_kit::Reaction) + 'static) -> Self
+pub fn tungsten_kit::ChemistryPlugin::with_light_period(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::ChemistryPlugin
 pub fn tungsten_kit::ChemistryPlugin::clone(&self) -> tungsten_kit::ChemistryPlugin
 impl core::default::Default for tungsten_kit::ChemistryPlugin
@@ -1431,6 +1432,7 @@ pub fn tungsten_kit::Effect::with_band(self, f32, impl core::iter::traits::colle
 pub fn tungsten_kit::Effect::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_damage(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_duration(self, f32) -> Self
+pub fn tungsten_kit::Effect::with_emit(self, &str, f32, f32, f32) -> Self
 pub fn tungsten_kit::Effect::with_fuel(self, &str, f32) -> Self
 pub fn tungsten_kit::Effect::with_grant(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_heal(self, f32) -> Self
@@ -4766,6 +4768,7 @@ pub fn tungsten_kit::ChemistryPlugin::with_bound(self, usize) -> Self
 pub fn tungsten_kit::ChemistryPlugin::with_cap(self, usize) -> Self
 pub fn tungsten_kit::ChemistryPlugin::with_depth(self, u8) -> Self
 pub fn tungsten_kit::ChemistryPlugin::with_handler(self, impl core::convert::Into<alloc::string::String>, impl core::ops::function::Fn(&mut tungsten_core::ecs::world::World, &tungsten_kit::Reaction) + 'static) -> Self
+pub fn tungsten_kit::ChemistryPlugin::with_light_period(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::ChemistryPlugin
 pub fn tungsten_kit::ChemistryPlugin::clone(&self) -> tungsten_kit::ChemistryPlugin
 impl core::default::Default for tungsten_kit::ChemistryPlugin
@@ -5571,6 +5574,7 @@ pub fn tungsten_kit::Effect::with_band(self, f32, impl core::iter::traits::colle
 pub fn tungsten_kit::Effect::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_damage(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_duration(self, f32) -> Self
+pub fn tungsten_kit::Effect::with_emit(self, &str, f32, f32, f32) -> Self
 pub fn tungsten_kit::Effect::with_fuel(self, &str, f32) -> Self
 pub fn tungsten_kit::Effect::with_grant(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_heal(self, f32) -> Self
@@ -8454,6 +8458,7 @@ pub const tungsten_kit::ANIMATION_TICK: &str
 pub const tungsten_kit::CAMERA_TARGET: &str
 pub const tungsten_kit::CHARACTER_ANIMATOR: &str
 pub const tungsten_kit::CHEMISTRY: &str
+pub const tungsten_kit::CHEMISTRY_TICK: &str
 pub const tungsten_kit::CONTACT_DAMAGE: &str
 pub const tungsten_kit::COOLDOWN_TICK: &str
 pub const tungsten_kit::CUES: &str

@@ -96,13 +96,19 @@ impl Interaction {
 
     /// The load's check: the stimulus, the filter and the outputs.
     pub(crate) fn check(&self, world: &World) -> Result<(), MissingAsset> {
-        let is_type = check_type(world, "stimulus", &self.stimulus, true).is_ok();
-        if !is_type {
-            check_declared(world, "stimulus", &self.stimulus)?;
-        }
+        check_stimulus(world, "stimulus", &self.stimulus)?;
         self.on.check(world, "on")?;
         check_outputs(world, "outputs", &self.outputs)
     }
+}
+
+/// The load's check of a stimulus name at `field`: a damage type, else a
+/// declared tag.
+pub(crate) fn check_stimulus(world: &World, field: &str, name: &str) -> Result<(), MissingAsset> {
+    if check_type(world, field, name, true).is_ok() {
+        return Ok(());
+    }
+    check_declared(world, field, name)
 }
 
 /// A rule as data writes it.
@@ -173,6 +179,23 @@ pub(crate) fn any_rule(world: &World) -> bool {
     world
         .get_resource::<DataRegistry>()
         .is_some_and(|data| data.ids(INTERACTIONS).next().is_some())
+}
+
+/// Whether some rule of the World's answers `stimulus`: it names it or an
+/// ancestor of it. It reads the rules in place, cloning none.
+pub(crate) fn answers(world: &World, stimulus: &str) -> bool {
+    rules_of(world).any(|rule| covers(stimulus, &rule.stimulus))
+}
+
+/// The World's rules in place, in ID order.
+pub(crate) fn rules_of(world: &World) -> impl Iterator<Item = &Interaction> + '_ {
+    world
+        .get_resource::<DataRegistry>()
+        .into_iter()
+        .flat_map(|data| {
+            data.ids(INTERACTIONS)
+                .filter_map(move |id| data.get::<Interaction>(id))
+        })
 }
 
 /// Whether some rule of `rules` answers `stimulus`: it names it or an

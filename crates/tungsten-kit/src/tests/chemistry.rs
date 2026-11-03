@@ -1,9 +1,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use glam::{Vec2, Vec3};
 use serde_json::{Value, json};
+use tungsten_core::physics::{
+    Collider, PhysicsConfig, PhysicsPlugin, Position, RigidBodyBundle, Velocity,
+};
 use tungsten_core::save::{capture_world, restore_world};
-use tungsten_core::{CommandBuffer, DataRef, DataRegistry, Schedule, Stage, Time};
+use tungsten_core::{
+    CommandBuffer, DataRef, DataRegistry, Light, Schedule, Stage, Time, Transform,
+};
 
 use super::*;
 use crate::HealthPlugin;
@@ -23,7 +29,7 @@ const STEP: f32 = 1.0 / 60.0;
 struct Restored;
 
 /// The tags the tests declare.
-const TAGS: [&str; 9] = [
+const TAGS: [&str; 13] = [
     "material.wood",
     "material.stone",
     "material.glass",
@@ -33,6 +39,10 @@ const TAGS: [&str; 9] = [
     "status.cover",
     "heat",
     "team.enemy",
+    "ping",
+    "pong",
+    "node",
+    "creature",
 ];
 
 /// A World with time, a command buffer, a trace, tags, stats, health,
@@ -79,6 +89,56 @@ fn rig_with(plugin: &ChemistryPlugin) -> (World, Schedule) {
 
 fn rig() -> (World, Schedule) {
     rig_with(&ChemistryPlugin::new())
+}
+
+/// [`rig_with`] with physics first, without gravity.
+fn physics_rig(plugin: &ChemistryPlugin) -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(KitTrace::default());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::ZERO,
+        ..PhysicsConfig::default()
+    });
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    TagsPlugin::new()
+        .with_tags(TAGS)
+        .build(&mut schedule, &mut world);
+    StatsPlugin::new().build(&mut schedule, &mut world);
+    HealthPlugin.build(&mut schedule, &mut world);
+    EffectsPlugin.build(&mut schedule, &mut world);
+    plugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// The frame rates the timing tests step at.
+const DTS: [f32; 3] = [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0];
+
+/// What a handler saw of each reaction: its receiver, stimulus, amount
+/// and credit.
+type Seen = Rc<RefCell<Vec<(Entity, String, f32, Option<Entity>)>>>;
+
+fn seeing(seen: &Seen) -> impl Fn(&mut World, &Reaction) + 'static {
+    let seen = Rc::clone(seen);
+    move |_, reaction| {
+        seen.borrow_mut().push((
+            reaction.receiver(),
+            reaction.stimulus().to_owned(),
+            reaction.amount(),
+            reaction.credit(),
+        ));
+    }
+}
+
+/// How many reactions `seen` holds on `entity`.
+fn seen_on(seen: &Seen, entity: Entity) -> usize {
+    seen.borrow()
+        .iter()
+        .filter(|(receiver, ..)| *receiver == entity)
+        .count()
 }
 
 /// One fixed step at `dt`, then the frame's command flush.
@@ -948,4 +1008,391 @@ fn the_queue_round_trips_a_save() {
         burnt, waiting,
         "the deep r3 cut, the youngest r{youngest} dropped"
     );
+}
+
+// Step 2: spread, impacts and light as stimuli.
+
+/// A crate burning with `heat` within 40 px every 0.5 s (lit when `lit`),
+/// and two boxes whose surfaces lie 39.9 and 40.1 px out, a handler
+/// seeing each `heat` on wood.
+fn emitting(seen: &Seen, lit: bool) -> (World, Schedule, [Entity; 3]) {
+    let (mut world, schedule) =
+        rig_with(&ChemistryPlugin::new().with_handler("warmed", seeing(seen)));
+    world.resource_mut::<DataRegistry>().insert(
+        "smouldering",
+        Effect::new()
+            .with_intensity(10.0, 0.0)
+            .with_emit("heat", 1.0, 40.0, 0.5),
+    );
+    rule(
+        &mut world,
+        "warms",
+        json!({ "stimulus": "heat", "on": { "all": ["material.wood"] }, "outputs": [{ "handler": "warmed" }] }),
+    );
+    let crate_ = world.spawn_with((
+        Health::new(1000.0),
+        Tags::new(["material.wood"]),
+        Transform::from_position(Vec2::ZERO),
+    ));
+    let boxed = |world: &mut World, x: f32| {
+        world.spawn_with((
+            Health::new(1000.0),
+            Tags::new(["material.wood"]),
+            Position(Vec2::new(x, 0.0)),
+            Collider::aabb(Vec2::splat(10.0)),
+        ))
+    };
+    let near = boxed(&mut world, 49.9);
+    let far = boxed(&mut world, 50.1);
+    if lit {
+        EffectRequest::new(crate_, DataRef::by_id("smouldering"))
+            .with_amount(5.0)
+            .apply(&mut world);
+    }
+    (world, schedule, [crate_, near, far])
+}
+
+#[test]
+fn a_status_emits_on_its_period_within_its_radius() {
+    // Over 3 s, at each frame rate: an emission every 0.5 s, the near box
+    // reached, the far box and the emitter not.
+    for dt in DTS {
+        let seen = Seen::default();
+        let (mut world, mut schedule, [crate_, near, far]) = emitting(&seen, true);
+        for _ in 0..(3.0 / dt).round() as usize {
+            step_at(&mut world, &mut schedule, dt);
+        }
+        assert_eq!(
+            (
+                seen_on(&seen, crate_),
+                seen_on(&seen, near),
+                seen_on(&seen, far)
+            ),
+            (0, 6, 0),
+            "dt {dt}"
+        );
+        assert!(
+            seen.borrow()
+                .iter()
+                .all(|(_, name, amount, _)| name == "heat" && *amount == 1.0)
+        );
+    }
+    // The clock is kept through a save: the next emission lands on the
+    // uninterrupted run's step.
+    let seen = Seen::default();
+    let (mut world, mut schedule, entities) = emitting(&seen, true);
+    let names = ["crate", "near", "far"];
+    for (entity, name) in entities.into_iter().zip(names) {
+        tungsten_core::save::name(&mut world, entity, None, name).unwrap();
+    }
+    for _ in 0..20 {
+        step(&mut world, &mut schedule);
+    }
+    let saved = capture_world(&world).unwrap();
+    let loaded_seen = Seen::default();
+    let (mut loaded, mut loaded_schedule, fresh) = emitting(&loaded_seen, false);
+    for (entity, name) in fresh.into_iter().zip(names) {
+        tungsten_core::save::name(&mut loaded, entity, None, name).unwrap();
+    }
+    restore_world(&mut loaded, &saved, &(Restored,)).unwrap();
+    let left = loaded
+        .get::<Effects>(fresh[0])
+        .unwrap()
+        .instances()
+        .next()
+        .unwrap()
+        .emit_left();
+    assert!(
+        left.is_some_and(|left| (left - (0.5 - 20.0 * STEP)).abs() < 1e-4),
+        "{left:?}"
+    );
+    let mut landed = (None, None);
+    for frame in 1..=12 {
+        step(&mut world, &mut schedule);
+        step(&mut loaded, &mut loaded_schedule);
+        if landed.0.is_none() && seen_on(&seen, entities[1]) == 1 {
+            landed.0 = Some(frame);
+        }
+        if landed.1.is_none() && seen_on(&loaded_seen, fresh[1]) == 1 {
+            landed.1 = Some(frame);
+        }
+    }
+    assert_eq!(landed, (Some(10), Some(10)), "at 0.5 s both ways");
+    // An instance without `emit` saves the bytes it saved before
+    // emissions.
+    let (mut world, _) = rig();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("ticking", Effect::new().with_duration(2.0).with_period(0.5));
+    let holder = world.spawn();
+    EffectRequest::new(holder, DataRef::by_id("ticking")).apply(&mut world);
+    let instance = world
+        .get::<Effects>(holder)
+        .unwrap()
+        .instances()
+        .next()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        serde_json::to_string(&instance).unwrap(),
+        r#"{"effect":"ticking","stacks":1,"left":2.0,"period_left":0.5,"factor":1.0,"serial":0,"granted":[]}"#
+    );
+}
+
+#[test]
+fn a_two_rule_cycle_ends() {
+    let (mut world, mut schedule) = rig();
+    for (id, from, to) in [("pings", "ping", "pong"), ("pongs", "pong", "ping")] {
+        rule(
+            &mut world,
+            id,
+            json!({
+                "stimulus": from, "on": { "all": ["node"] },
+                "outputs": [{ "emit": { "stimulus": to, "amount": 1, "radius": 100 } }]
+            }),
+        );
+    }
+    let node = |world: &mut World, x: f32| {
+        world.spawn_with((
+            Tags::new(["node"]),
+            Transform::from_position(Vec2::new(x, 0.0)),
+        ))
+    };
+    let a = node(&mut world, 0.0);
+    let _b = node(&mut world, 50.0);
+    let stimulus = queue::Stimulus {
+        amount: 1.0,
+        status_effect: 1.0,
+        dot_base: 1.0,
+        depth: 0,
+        credit: None,
+    };
+    world
+        .resource_mut::<Chemistry>()
+        .stimulate(&Settings::default(), a, "ping", stimulus, 0);
+    for _ in 0..10 {
+        step(&mut world, &mut schedule);
+    }
+    let chemistry = chemistry(&world);
+    assert_eq!(chemistry.pending(), 0, "no entry left by the tenth run");
+    assert!(chemistry.emitted.is_empty());
+    assert!(chemistry.cut() >= 1, "{}", chemistry.cut());
+    assert_eq!(chemistry.ran(), 9, "depths 0 to 8, one a run");
+}
+
+/// 2.6's field: `count` bodiless receivers tagged `flammable` on a square
+/// grid 24 px apart, `heat` on them building `burning` (max 4, decay 0.5,
+/// emitting `heat` 1 within 50 px every 0.25 s) by 1.
+fn field(world: &mut World, count: usize) -> Vec<Entity> {
+    world.resource_mut::<DataRegistry>().insert(
+        "burning",
+        Effect::new()
+            .with_intensity(4.0, 0.5)
+            .with_grant(["status.burning"])
+            .with_emit("heat", 1.0, 50.0, 0.25),
+    );
+    rule(
+        world,
+        "catches",
+        json!({ "stimulus": "heat", "on": { "all": ["flammable"] }, "outputs": [{ "build": { "status": "burning", "amount": 1 } }] }),
+    );
+    let columns = (count as f32).sqrt().ceil() as usize;
+    (0..count)
+        .map(|i| {
+            let at = Vec2::new((i % columns) as f32 * 24.0, (i / columns) as f32 * 24.0);
+            world.spawn_with((Tags::new(["flammable"]), Transform::from_position(at)))
+        })
+        .collect()
+}
+
+#[test]
+fn a_spread_flood_stays_under_its_bound() {
+    let started = std::time::Instant::now();
+    let (mut world, mut schedule) = rig();
+    let receivers = field(&mut world, 12_000);
+    // One receiver lit, mid-field.
+    let columns = (12_000_f32).sqrt().ceil() as usize;
+    let centre = receivers[(12_000 / columns / 2) * columns + columns / 2];
+    EffectRequest::new(centre, DataRef::by_id("burning")).apply(&mut world);
+    let mut burnt = vec![false; receivers.len()];
+    let mut left = receivers.len();
+    let mut runs = 0;
+    while runs < 3_000 && left > 0 {
+        step(&mut world, &mut schedule);
+        runs += 1;
+        let chemistry = chemistry(&world);
+        assert!(
+            chemistry.pending() <= receivers.len() && chemistry.pending() < queue::BOUND,
+            "run {runs}: {} pending",
+            chemistry.pending()
+        );
+        assert_eq!(chemistry.dropped(), 0, "run {runs}");
+        if runs % 30 == 0 {
+            for (i, &entity) in receivers.iter().enumerate() {
+                if !burnt[i] && has(&world, entity, "burning") {
+                    burnt[i] = true;
+                    left -= 1;
+                }
+            }
+        }
+    }
+    eprintln!(
+        "a_spread_flood_stays_under_its_bound: every receiver burnt by run {runs} ({} left), {} ran, {:.1} s",
+        left,
+        chemistry(&world).ran(),
+        started.elapsed().as_secs_f32()
+    );
+    assert_eq!(left, 0, "unburnt after {runs} runs");
+}
+
+#[test]
+fn impacts_stimulate_by_closing_speed() {
+    let seen = Seen::default();
+    let plugin = ChemistryPlugin::new().with_handler("struck", seeing(&seen));
+    let pair = |world: &mut World, y: f32, gap: f32, speed: f32| {
+        let ball = world.spawn_with(RigidBodyBundle::dynamic(
+            Position::new(0.0, y),
+            Collider::circle(5.0),
+        ));
+        world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(speed, 0.0);
+        world.insert(ball, Tags::new(["material.glass"]));
+        let block = world.spawn_with(RigidBodyBundle::r#static(
+            Position::new(15.0 + gap, y),
+            Collider::aabb(Vec2::splat(10.0)),
+        ));
+        world.insert(block, Tags::new(["material.glass"]));
+        (ball, block)
+    };
+    let (mut world, mut schedule) = physics_rig(&plugin);
+    rule(
+        &mut world,
+        "cracks",
+        json!({ "stimulus": "stimulus.impact", "on": { "all": ["material.glass"] }, "min": 300, "outputs": [{ "handler": "struck" }] }),
+    );
+    // Touching in the world's first step, at 600 px/s.
+    let (ball, block) = pair(&mut world, 0.0, 0.0, 600.0);
+    let thrower = world.spawn();
+    world.insert(ball, crate::Source::new(thrower));
+    // A slow pair, far below.
+    let (slow, slow_block) = pair(&mut world, 400.0, 20.0, 200.0);
+    let mut speeds = Vec::new();
+    for _ in 0..30 {
+        step(&mut world, &mut schedule);
+        speeds.extend(
+            world
+                .resource::<tungsten_core::EventQueue<ContactBegan>>()
+                .iter()
+                .filter(|begin| begin.a == ball || begin.b == Some(ball))
+                .map(|begin| begin.speed),
+        );
+    }
+    let first = *speeds.first().expect("the first step's begin");
+    assert!((first - 600.0).abs() <= 6.0, "{first}");
+    let on = |entity: Entity| -> Vec<(f32, Option<Entity>)> {
+        seen.borrow()
+            .iter()
+            .filter(|(receiver, ..)| *receiver == entity)
+            .map(|&(_, _, amount, credit)| (amount, credit))
+            .collect()
+    };
+    assert_eq!(
+        on(ball),
+        [(first, Some(block))],
+        "the ball, credited to the block"
+    );
+    assert_eq!(
+        on(block),
+        [(first, Some(thrower))],
+        "the block, credited to the thrower"
+    );
+    assert!(
+        on(slow).is_empty() && on(slow_block).is_empty(),
+        "under the rule's min"
+    );
+    // A rule naming `stimulus` alone sees impacts and the light both.
+    let any = Seen::default();
+    let (mut world, mut schedule) =
+        physics_rig(&ChemistryPlugin::new().with_handler("any", seeing(&any)));
+    rule(
+        &mut world,
+        "everything",
+        json!({ "stimulus": "stimulus", "outputs": [{ "handler": "any" }] }),
+    );
+    pair(&mut world, 0.0, 0.0, 600.0);
+    for _ in 0..5 {
+        step(&mut world, &mut schedule);
+    }
+    let names: std::collections::BTreeSet<String> = any
+        .borrow()
+        .iter()
+        .map(|(_, name, ..)| name.clone())
+        .collect();
+    assert!(
+        names.contains("stimulus.impact") && names.contains("stimulus.light"),
+        "{names:?}"
+    );
+    // Rules that name no impact never turn the record on.
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+    rule(
+        &mut world,
+        "warms",
+        json!({ "stimulus": "heat", "outputs": [{ "remove": "mark" }] }),
+    );
+    pair(&mut world, 0.0, 0.0, 600.0);
+    for _ in 0..60 {
+        step(&mut world, &mut schedule);
+    }
+    assert!(!world.has_event::<ContactBegan>());
+}
+
+#[test]
+fn light_stimulates_on_its_period() {
+    // Over 2 1/6 s, an integer of steps at each rate and clear of a
+    // sample: at once, then every 0.25 s, 9 samples.
+    let mut counts = Vec::new();
+    for dt in DTS {
+        let seen = Seen::default();
+        let (mut world, mut schedule) =
+            rig_with(&ChemistryPlugin::new().with_handler("lit", seeing(&seen)));
+        rule(
+            &mut world,
+            "lights",
+            json!({ "stimulus": "stimulus.light", "on": { "all": ["creature"] }, "outputs": [{ "handler": "lit" }] }),
+        );
+        world.spawn_with((
+            Transform::from_position(Vec2::ZERO),
+            Light::point(Vec3::ONE, 100.0),
+        ));
+        let lurker = world.spawn_with((
+            Tags::new(["creature"]),
+            Transform::from_position(Vec2::new(50.0, 0.0)),
+        ));
+        let stone = world.spawn_with((
+            Tags::new(["material.stone"]),
+            Transform::from_position(Vec2::new(10.0, 0.0)),
+        ));
+        for _ in 0..((2.0 + 1.0 / 6.0) / dt).round() as usize {
+            step_at(&mut world, &mut schedule, dt);
+        }
+        let level = tungsten_core::lighting::light_level(&world, Vec2::new(50.0, 0.0));
+        assert!(level > 0.0);
+        assert!(
+            seen.borrow()
+                .iter()
+                .all(|&(receiver, ref name, amount, credit)| {
+                    receiver == lurker
+                        && name == "stimulus.light"
+                        && amount == level
+                        && credit.is_none()
+                }),
+            "dt {dt}"
+        );
+        assert!(
+            skips(&world, stone).is_empty(),
+            "dt {dt}: the stone never sampled"
+        );
+        assert_eq!(chemistry(&world).ran() as usize, seen.borrow().len());
+        counts.push(seen.borrow().len());
+    }
+    assert_eq!(counts, [9, 9, 9]);
 }

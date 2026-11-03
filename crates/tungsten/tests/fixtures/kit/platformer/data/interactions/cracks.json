@@ -1,0 +1,16 @@
+{
+  "stimulus": "stimulus.impact",
+  "on": {
+    "all": [
+      "material.clay"
+    ]
+  },
+  "min": 300,
+  "outputs": [
+    {
+      "apply": {
+        "status": "cracked"
+      }
+    }
+  ]
+}

@@ -11,5 +11,7 @@
   "elemental.cold",
   "numbered",
   "status.lit",
-  "material.kindling"
+  "material.kindling",
+  "material.clay",
+  "status.cracked"
 ]

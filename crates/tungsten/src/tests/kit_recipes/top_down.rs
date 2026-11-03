@@ -12,7 +12,9 @@
 //! a difficulty world source, a bulwark braced on its front, and a
 //! marksman whose embers crit from its stats; 7.10m's skiff pulled along a
 //! wall, an ox that stacks its knockback and a wisp steering its mover;
-//! 7.10b's trooper, suppressed by the rounds that pass it.
+//! 7.10b's trooper, suppressed by the rounds that pass it; its chemistry's
+//! wooden crates, lit by fire, doused by cold and setting each other
+//! alight, and a lurker a lamp lights.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -2410,5 +2412,70 @@ fn fire_lights_a_crate_and_cold_puts_it_out() {
         harness.step(1);
         assert_eq!(ablaze(&harness), None, "dt {dt}: out");
         assert!(!burning(&harness), "dt {dt}");
+    }
+}
+
+#[test]
+fn burning_crates_set_each_other_alight() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let lit = spawn(&mut harness, "wooden_crate", [300.0, 100.0]);
+        let near = spawn(&mut harness, "wooden_crate", [340.0, 100.0]);
+        let far = spawn(&mut harness, "wooden_crate", [500.0, 100.0]);
+        harness.step(1);
+        let burning = |harness: &Harness, entity: Entity| {
+            harness
+                .world()
+                .get::<Tags>(entity)
+                .is_some_and(|tags| tags.has("status.burning"))
+        };
+        DamageRequest::from_parts(
+            lit,
+            [DamagePart::new(3.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .apply(harness.world_mut());
+        harness.step(1);
+        assert!(
+            burning(&harness, lit) && !burning(&harness, near),
+            "dt {dt}"
+        );
+        // `ablaze` sends `heat` within 48 px every 0.5 s: the crate 40 px
+        // off catches, the one 200 px off does not.
+        harness.step(frames_for(0.5, dt));
+        assert!(burning(&harness, near), "dt {dt}: caught");
+        assert!(!burning(&harness, far), "dt {dt}: out of reach");
+        // Each keeps the other alight past the first's own 6 s.
+        harness.step(frames_for(8.0, dt));
+        assert!(burning(&harness, lit) && burning(&harness, near), "dt {dt}");
+        assert!(!burning(&harness, far), "dt {dt}");
+    }
+}
+
+#[test]
+fn a_lamp_lights_a_lurker() {
+    use glam::Vec3;
+    use tungsten_core::Light;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let lurker = spawn(&mut harness, "lurker", [100.0, 100.0]);
+        let hidden = spawn(&mut harness, "lurker", [600.0, 100.0]);
+        // A lamp 40 px from the first: chemistry samples the light every
+        // 0.25 s, building `lit` by its luma.
+        harness.world_mut().spawn_with((
+            Transform::from_position(Vec2::new(140.0, 100.0)),
+            Light::point(Vec3::ONE, 120.0),
+        ));
+        let lit = |harness: &Harness, entity: Entity| {
+            harness
+                .world()
+                .get::<Tags>(entity)
+                .is_some_and(|tags| tags.has("status.lit"))
+        };
+        harness.step(1);
+        assert!(lit(&harness, lurker), "dt {dt}: sampled at once");
+        assert!(!lit(&harness, hidden), "dt {dt}: in the dark");
+        harness.step(frames_for(2.0, dt));
+        assert!(lit(&harness, lurker) && !lit(&harness, hidden), "dt {dt}");
     }
 }

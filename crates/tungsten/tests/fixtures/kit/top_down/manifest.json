@@ -143,6 +143,9 @@
     },
     "wooden_crate": {
       "path": "prefabs/wooden_crate.json"
+    },
+    "lurker": {
+      "path": "prefabs/lurker.json"
     }
   },
   "data": {
@@ -213,6 +216,9 @@
       },
       "ablaze": {
         "path": "data/effects/ablaze.json"
+      },
+      "lit": {
+        "path": "data/effects/lit.json"
       }
     },
     "curves": {
@@ -251,6 +257,12 @@
       },
       "cold_douses": {
         "path": "data/interactions/cold_douses.json"
+      },
+      "heat_spreads": {
+        "path": "data/interactions/heat_spreads.json"
+      },
+      "light_reveals": {
+        "path": "data/interactions/light_reveals.json"
       }
     }
   },

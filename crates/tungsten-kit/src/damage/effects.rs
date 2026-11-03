@@ -18,7 +18,9 @@ use tungsten_core::{
 
 use crate::chemistry::outputs::check_outputs;
 use crate::chemistry::queue::StatusList;
-use crate::chemistry::{CHEMISTRY, Output, queue_status_list};
+use crate::chemistry::rules::check_stimulus;
+use crate::chemistry::stimuli::{Named, emit_from};
+use crate::chemistry::{CHEMISTRY, Chemistry, Output, queue_status_list};
 use crate::damage::ailments::{AILMENT_FEED, register_ailments};
 use crate::damage::defense::Resist;
 use crate::damage::health::Health;
@@ -61,6 +63,7 @@ const EFFECT_RESTORE: &str = "effect_restore";
 const EFFECT_INTENSITY: &str = "effect_intensity";
 const EFFECT_BAND: &str = "effect_band";
 const EFFECT_FUEL: &str = "effect_fuel";
+const EFFECT_EMIT: &str = "effect_emit";
 const STAT_MODIFIER: &str = "stat_modifier";
 const RESIST_MODIFIER: &str = "resist_modifier";
 pub(crate) const MODIFIER: &str = "modifier";
@@ -350,6 +353,7 @@ pub struct Effect {
     fuel: Option<Fuel>,
     /// Run on the holder when an instance ends.
     on_end: Vec<Output>,
+    emit: Option<Emit>,
 }
 
 /// A status's intensity: the most an instance holds, and what a second
@@ -376,6 +380,17 @@ struct Band {
 struct Fuel {
     stat: String,
     rate: f32,
+}
+
+/// An emission: every `period` of an instance's life its holder sends
+/// `stimulus` of `amount` (times the instance's factor) to every chemistry
+/// receiver within `radius` of it but itself.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Emit {
+    pub(crate) stimulus: String,
+    pub(crate) amount: f32,
+    pub(crate) radius: f32,
+    pub(crate) period: f32,
 }
 
 /// One change an effect makes to the target's resistance to a tag: a line
@@ -442,6 +457,7 @@ impl Effect {
             bands: Vec::new(),
             fuel: None,
             on_end: Vec::new(),
+            emit: None,
         }
     }
 
@@ -877,6 +893,53 @@ impl Effect {
         self
     }
 
+    /// The effect, its holder emitting the chemistry stimulus `stimulus` of
+    /// `amount` (times the instance's factor) to every receiver within
+    /// `radius` of it but itself, every `period` of an instance's life, on
+    /// a clock counted as the payload's period is and saved with it,
+    /// credited to the instance's source.
+    ///
+    /// # Panics
+    ///
+    /// When `stimulus` is not a tag name or `amount`, `radius` or `period`
+    /// is not finite and above 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::Effect;
+    ///
+    /// let burning = Effect::new().with_intensity(4.0, 0.5).with_emit("heat", 1.0, 50.0, 0.25);
+    /// let data = serde_json::to_value(&burning).unwrap();
+    /// assert_eq!(data["emit"]["radius"], 50.0);
+    /// ```
+    #[must_use]
+    #[track_caller]
+    pub fn with_emit(mut self, stimulus: &str, amount: f32, radius: f32, period: f32) -> Self {
+        assert!(
+            valid_tag(stimulus),
+            "Effect::with_emit: `{stimulus}` is not a stimulus name (`[a-z][a-z0-9_]*` segments joined by dots)"
+        );
+        for (field, value) in [("amount", amount), ("radius", radius), ("period", period)] {
+            assert!(
+                value.is_finite() && value > 0.0,
+                "Effect::with_emit: {field} must be finite and > 0 (got {value})"
+            );
+        }
+        self.emit = Some(Emit {
+            stimulus: stimulus.to_owned(),
+            amount,
+            radius,
+            period,
+        });
+        self
+    }
+
+    /// Its emission, when it has one.
+    pub(crate) fn emission(&self) -> Option<&Emit> {
+        self.emit.as_ref()
+    }
+
     /// How long it lasts: `None` for an infinite effect, 0 for an instant
     /// one.
     #[must_use]
@@ -1209,6 +1272,9 @@ impl Effect {
             check_outputs(world, &format!("bands.{i}.enter"), &band.enter)?;
         }
         check_outputs(world, "on_end", &self.on_end)?;
+        if let Some(emit) = &self.emit {
+            check_stimulus(world, "emit.stimulus", &emit.stimulus)?;
+        }
         Ok(())
     }
 }
@@ -1253,6 +1319,55 @@ struct EffectDef {
     fuel: Option<FuelDef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     on_end: Vec<Output>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    emit: Option<EmitDef>,
+}
+
+/// An emission as data writes it, every field required.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, try_from = "EmitFields")]
+struct EmitDef {
+    stimulus: String,
+    amount: f32,
+    radius: f32,
+    period: f32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EmitFields {
+    stimulus: String,
+    amount: f32,
+    radius: f32,
+    period: f32,
+}
+
+impl TryFrom<EmitFields> for EmitDef {
+    type Error = String;
+
+    fn try_from(fields: EmitFields) -> Result<Self, Self::Error> {
+        if !valid_tag(&fields.stimulus) {
+            return Err(format!(
+                "stimulus: `{}` is not a stimulus name (`[a-z][a-z0-9_]*` segments joined by dots)",
+                fields.stimulus
+            ));
+        }
+        for (field, value) in [
+            ("amount", fields.amount),
+            ("radius", fields.radius),
+            ("period", fields.period),
+        ] {
+            if !(value.is_finite() && value > 0.0) {
+                return Err(format!("{field}: must be finite and > 0 (got {value})"));
+            }
+        }
+        Ok(Self {
+            stimulus: fields.stimulus,
+            amount: fields.amount,
+            radius: fields.radius,
+            period: fields.period,
+        })
+    }
 }
 
 /// A status's intensity as data writes it.
@@ -1720,6 +1835,12 @@ impl TryFrom<EffectDef> for Effect {
                 rate: fuel.rate,
             }),
             on_end: def.on_end,
+            emit: def.emit.map(|emit| Emit {
+                stimulus: emit.stimulus,
+                amount: emit.amount,
+                radius: emit.radius,
+                period: emit.period,
+            }),
         })
     }
 }
@@ -1777,6 +1898,12 @@ impl From<Effect> for EffectDef {
                 rate: fuel.rate,
             }),
             on_end: effect.on_end,
+            emit: effect.emit.map(|emit| EmitDef {
+                stimulus: emit.stimulus,
+                amount: emit.amount,
+                radius: emit.radius,
+                period: emit.period,
+            }),
         }
     }
 }
@@ -1827,6 +1954,8 @@ pub struct EffectInstance {
     /// Its damage over time a second, fixed at the application from the
     /// hit; its ticks deal it in place of the effect's damage.
     rate: Option<f32>,
+    /// Game seconds to its next emission, when the effect emits.
+    emit_left: Option<f32>,
 }
 
 impl EffectInstance {
@@ -1891,6 +2020,12 @@ impl EffectInstance {
         self.rate
     }
 
+    /// Game seconds to its next emission, when the effect emits.
+    #[cfg(test)]
+    pub(crate) fn emit_left(&self) -> Option<f32> {
+        self.emit_left
+    }
+
     /// The modifier source of the instance numbered `serial`.
     fn source_of(serial: u64) -> String {
         format!("effect#{serial}")
@@ -1924,6 +2059,8 @@ struct InstanceFields {
     lines: Vec<StatModifierDef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     rate: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    emit_left: Option<f32>,
 }
 
 fn one_f32() -> f32 {
@@ -1946,6 +2083,7 @@ impl TryFrom<InstanceFields> for EffectInstance {
             ("left", fields.left),
             ("period_left", fields.period_left),
             ("factor", Some(fields.factor)),
+            ("emit_left", fields.emit_left),
         ] {
             if let Some(value) = value
                 && !(value.is_finite() && value >= 0.0)
@@ -1994,6 +2132,7 @@ impl TryFrom<InstanceFields> for EffectInstance {
                 .map(StatModifierDef::into_line)
                 .collect(),
             rate: fields.rate,
+            emit_left: fields.emit_left,
         })
     }
 }
@@ -2016,6 +2155,7 @@ impl From<EffectInstance> for InstanceFields {
                 .map(|(stat, line)| StatModifierDef::of(stat, &line))
                 .collect(),
             rate: instance.rate,
+            emit_left: instance.emit_left,
         }
     }
 }
@@ -3379,6 +3519,7 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
                 bands: Vec::new(),
                 lines: request.lines.clone(),
                 rate: request.rate,
+                emit_left: effect.emit.as_ref().map(|emit| emit.period),
             };
             place_modifiers(world, target, &effect, &instance, true);
             grant(world, target, granted, &mut instance, &effect.grant);
@@ -3472,6 +3613,13 @@ impl EffectResolver {
 enum Payload {
     Damage(DamageRequest),
     Heal(HealRequest),
+    /// An emission from the holder, for chemistry's next run.
+    Emit {
+        stimulus: Named,
+        amount: f32,
+        radius: f32,
+        credit: Option<Entity>,
+    },
 }
 
 /// What the tick does with an instance after its step.
@@ -3622,6 +3770,12 @@ impl Ticker {
                 Payload::Heal(request) => {
                     request.queue(world);
                 }
+                Payload::Emit {
+                    stimulus,
+                    amount,
+                    radius,
+                    credit,
+                } => emit_from(world, entity, stimulus, amount, radius, credit, 0),
             }
         }
         let expired = std::mem::take(&mut self.expired);
@@ -3688,10 +3842,11 @@ fn follow_intensity(world: &mut World, entity: Entity, effects: &mut Effects, i:
 }
 
 /// One instance's step: its period counted down by the step's time inside
-/// its lifetime, each elapse a payload into `payloads`, at most 16; then
-/// its fuel's burn and its intensity's decay over the same time; then its
-/// time left, and what its end does, with the elapses, which a restore
-/// lands at once.
+/// its lifetime, each elapse a payload into `payloads`, at most 16; its
+/// emission's clock by the same time, its elapses one emission while the
+/// World holds chemistry; then its fuel's burn and its intensity's decay
+/// over the same time; then its time left, and what its end does, with the
+/// elapses, which a restore lands at once.
 fn tick_instance(
     world: &World,
     entity: Entity,
@@ -3709,6 +3864,7 @@ fn tick_instance(
         factor,
         intensity,
         rate,
+        emit_left,
         ..
     } = instance;
     let effect = definition(world, effect_ref);
@@ -3749,6 +3905,41 @@ fn tick_instance(
         // A reload gave the effect a period: it counts from now.
         (Some(period), None) => *period_left = Some(period),
         (None, Some(_)) => *period_left = None,
+        (None, None) => {}
+    }
+    match (effect.and_then(Effect::emission), *emit_left) {
+        (Some(emit), Some(was)) => {
+            let mut next = was - elapsed;
+            let mut elapses = 0;
+            while next <= TIME_EPSILON && elapses < MAX_ELAPSES_PER_STEP {
+                elapses += 1;
+                next += emit.period;
+            }
+            if next <= TIME_EPSILON {
+                next = emit.period;
+            }
+            *emit_left = Some(next);
+            // The step's elapses as one emission of their sum, which a
+            // merge reads as it reads them apart.
+            if elapses > 0
+                && let Some(chemistry) = world.get_resource::<Chemistry>()
+            {
+                let stimulus = match chemistry.find(&emit.stimulus) {
+                    Some(id) => Named::Known(id),
+                    None => Named::New(emit.stimulus.clone()),
+                };
+                let times = f64::from(elapses) * f64::from(*factor);
+                payloads.push(Payload::Emit {
+                    stimulus,
+                    amount: scaled(emit.amount, times),
+                    radius: emit.radius,
+                    credit: *source,
+                });
+            }
+        }
+        // A reload gave the effect an emission: it counts from now.
+        (Some(emit), None) => *emit_left = Some(emit.period),
+        (None, Some(_)) => *emit_left = None,
         (None, None) => {}
     }
     let burn = effect.and_then(|effect| effect.fuel.as_ref()).map(|spec| {
@@ -4065,6 +4256,14 @@ fn describe_effects(world: &mut World) {
             )
             .default("null"),
         )
+        .field(
+            FieldDescription::new(
+                "emit",
+                FieldType::Shape(EFFECT_EMIT),
+                "a chemistry stimulus its holder sends to the receivers around it on a period",
+            )
+            .default("null"),
+        )
         .sample("{}")
         .roundtrip(round_trip::<EffectDef>),
         ComponentDescription::new(
@@ -4135,6 +4334,41 @@ fn describe_effects(world: &mut World) {
             ))
             .sample(r#"{ "stat": "oil", "rate": 1 }"#)
             .roundtrip(round_trip::<FuelDef>),
+        ComponentDescription::new(
+            EFFECT_EMIT,
+            "A chemistry stimulus an instance's holder sends every period of its life to each receiver within the radius but itself.",
+        )
+        .field(FieldDescription::new(
+            "stimulus",
+            FieldType::Text,
+            "a damage type or a declared tag; the load checks it",
+        ))
+        .field(FieldDescription::new(
+            "amount",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "the stimulus's amount, times the instance's factor",
+        ))
+        .field(FieldDescription::new(
+            "radius",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "px from the holder's point to a receiver's surface, or to its point without a body",
+        ))
+        .field(FieldDescription::new(
+            "period",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "game seconds between emissions, counted as the payload's period is and saved",
+        ))
+        .sample(r#"{ "stimulus": "heat", "amount": 1, "radius": 50, "period": 0.25 }"#)
+        .roundtrip(round_trip::<EmitDef>),
         ComponentDescription::new(EFFECT_STACK, "An effect's stacking.")
             .field(
                 FieldDescription::new(

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{DataRef, Entity, World};
 
+use crate::chemistry::stimuli::Emission;
 use crate::damage::effects::Effect;
 use crate::foundation::saved::{Order, order_of};
 
@@ -17,20 +18,24 @@ type TakeKey = (u64, u8, (bool, u64), u32, usize);
 /// The name a save holds the queue under.
 pub(crate) const CHEMISTRY_QUEUE: &str = "chemistry_queue";
 
-/// A run's cap, the queue's bound and the depth limit by default.
+/// A run's cap, the queue's bound, the depth limit and the light's period
+/// by default.
 pub(crate) const CAP: usize = 256;
 pub(crate) const BOUND: usize = 16_384;
 pub(crate) const DEPTH: u8 = 8;
+pub(crate) const LIGHT_PERIOD: f32 = 0.25;
 
-/// Chemistry's settings: a run's cap, the queue's bound and the depth
-/// limit, a World resource [`ChemistryPlugin`](crate::ChemistryPlugin)
-/// writes and no save holds, so a World keeps its own through a load,
-/// which replaces the saved queue whole.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Chemistry's settings: a run's cap, the queue's bound, the depth limit
+/// and the light's period, a World resource
+/// [`ChemistryPlugin`](crate::ChemistryPlugin) writes and no save holds, so
+/// a World keeps its own through a load, which replaces the saved queue
+/// whole.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Settings {
     pub(crate) cap: usize,
     pub(crate) bound: usize,
     pub(crate) depth: u8,
+    pub(crate) light_period: f32,
 }
 
 impl Default for Settings {
@@ -39,6 +44,7 @@ impl Default for Settings {
             cap: CAP,
             bound: BOUND,
             depth: DEPTH,
+            light_period: LIGHT_PERIOD,
         }
     }
 }
@@ -142,6 +148,11 @@ pub struct Chemistry {
     /// restored (the saved form holds no flag), whose first run cuts and
     /// drops what passes them.
     checked: bool,
+    /// The emissions since the last run, which it drains; unsaved, since a
+    /// step makes and takes them.
+    pub(crate) emitted: Vec<Emission>,
+    /// Game seconds to the next light sample, while a light rule is loaded.
+    pub(crate) light_left: Option<f32>,
 }
 
 impl Default for Chemistry {
@@ -161,6 +172,8 @@ impl Default for Chemistry {
             run: 0,
             dropped_now: false,
             checked: true,
+            emitted: Vec::new(),
+            light_left: None,
         }
     }
 }
@@ -212,10 +225,18 @@ impl Chemistry {
         self.held.retain(|&entity| keep(entity));
     }
 
+    /// The interned id of `name`, when it has one.
+    pub(crate) fn find(&self, name: &str) -> Option<u32> {
+        self.names
+            .iter()
+            .position(|known| known == name)
+            .map(|at| at as u32)
+    }
+
     /// The interned id of `name`.
-    fn intern(&mut self, name: &str) -> u32 {
-        if let Some(at) = self.names.iter().position(|known| known == name) {
-            return at as u32;
+    pub(crate) fn intern(&mut self, name: &str) -> u32 {
+        if let Some(at) = self.find(name) {
+            return at;
         }
         self.names.push(name.to_owned());
         let mut order: Vec<u32> = (0..self.names.len() as u32).collect();
@@ -244,6 +265,19 @@ impl Chemistry {
         stimulus: Stimulus,
         age: u64,
     ) {
+        let id = self.intern(name);
+        self.stimulate_id(settings, receiver, id, stimulus, age);
+    }
+
+    /// [`stimulate`](Self::stimulate) by an interned name.
+    pub(crate) fn stimulate_id(
+        &mut self,
+        settings: &Settings,
+        receiver: Entity,
+        id: u32,
+        stimulus: Stimulus,
+        age: u64,
+    ) {
         if stimulus.depth > settings.depth {
             self.cut += 1;
             return;
@@ -251,7 +285,6 @@ impl Chemistry {
         if self.held.contains(&receiver) {
             return;
         }
-        let id = self.intern(name);
         let weighted = f64::from(stimulus.amount) * f64::from(stimulus.status_effect);
         if let Some(&slot) = self.index.get(&(receiver, id)) {
             let entry = self.slots[slot]
@@ -496,6 +529,8 @@ struct ChemistrySave {
     dropped: u64,
     cut: u64,
     ran: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    light_left: Option<f32>,
 }
 
 impl From<&Chemistry> for ChemistrySave {
@@ -526,6 +561,7 @@ impl From<&Chemistry> for ChemistrySave {
             dropped: chemistry.dropped,
             cut: chemistry.cut,
             ran: chemistry.ran,
+            light_left: chemistry.light_left,
         }
     }
 }
@@ -540,6 +576,10 @@ impl From<ChemistrySave> for Chemistry {
             cut: saved.cut,
             ran: saved.ran,
             checked: false,
+            light_left: saved
+                .light_left
+                .filter(|left| left.is_finite())
+                .map(|left| left.max(0.0)),
             ..Chemistry::default()
         };
         for entry in saved.entries {

@@ -21,8 +21,8 @@ use tungsten_core::{
 
 use crate::App;
 use crate::kit::{
-    ABILITY_TICK, AILMENT_FEED, AILMENT_TICK, AbilitiesPlugin, Applied, CHEMISTRY, CUES,
-    ChemistryPlugin, Children, ContactDamage, Cooldown, CooldownElapsed, Counters, CueAction,
+    ABILITY_TICK, AILMENT_FEED, AILMENT_TICK, AbilitiesPlugin, Applied, CHEMISTRY, CHEMISTRY_TICK,
+    CUES, ChemistryPlugin, Children, ContactDamage, Cooldown, CooldownElapsed, Counters, CueAction,
     CueEvent, Cues, CuesOnEvent, CuesPlugin, DAMAGE_RESOLVE, DamagePart, DamageRequest, Damaged,
     DespawnOutside, EFFECT_RESOLVE, EFFECT_TICK, Effect, EffectRequest, Effects, EffectsPlugin,
     Expire, HEALTH_TICK, HIT_FLASH_MATERIAL, Health, HealthPlugin, Hit as Outcome, HitFlash,
@@ -45,7 +45,7 @@ const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, p
 /// `physics_step`, each member in its registration order but where an edge
 /// orders it: the hit items before the corrections, the magnet before the
 /// speed limit, the kit's despawn after the cues.
-const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, ailment_tick, kit_intent, action_input, aim, ability_tick, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, ailment_feed, chemistry, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step";
+const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, ailment_tick, chemistry_tick, kit_intent, action_input, aim, ability_tick, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, ailment_feed, chemistry, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step";
 
 /// The event the sound plugin plays.
 struct Hit;
@@ -3000,7 +3000,7 @@ fn build_owner(name: &str, schedule: &mut tungsten_core::Schedule, world: &mut W
         EFFECT_TICK | EFFECT_RESOLVE | AILMENT_TICK | AILMENT_FEED => {
             EffectsPlugin.build(schedule, world);
         }
-        CHEMISTRY => ChemistryPlugin::new().build(schedule, world),
+        CHEMISTRY | CHEMISTRY_TICK => ChemistryPlugin::new().build(schedule, world),
         ABILITY_TICK => AbilitiesPlugin.build(schedule, world),
         LEVEL_TICK => LevelPlugin.build(schedule, world),
         CUES => CuesPlugin.build(schedule, world),
@@ -4078,7 +4078,7 @@ fn a_magnet_passes_a_nearer_corpse_for_a_live_collector() {
 /// their own plugins, each `(earlier, later)`; the effect plugin's own pair (`effect_tick`
 /// before `ailment_tick`, `ailment_feed` before `effect_resolve`) holds by
 /// its edges inside one build.
-const EFFECT_EDGES: [(&str, &str); 10] = [
+const EFFECT_EDGES: [(&str, &str); 12] = [
     (STATS_APPLY, EFFECT_TICK),
     (STATS_APPLY, AILMENT_TICK),
     (ACTION_INPUT, ABILITY_TICK),
@@ -4089,6 +4089,8 @@ const EFFECT_EDGES: [(&str, &str); 10] = [
     (DAMAGE_RESOLVE, CHEMISTRY),
     (AILMENT_FEED, CHEMISTRY),
     (CHEMISTRY, EFFECT_RESOLVE),
+    (EFFECT_TICK, CHEMISTRY_TICK),
+    (AILMENT_TICK, CHEMISTRY_TICK),
 ];
 
 #[test]

@@ -107,6 +107,9 @@
     },
     "kindling": {
       "path": "prefabs/kindling.json"
+    },
+    "clay_pot": {
+      "path": "prefabs/clay_pot.json"
     }
   },
   "data": {
@@ -144,6 +147,9 @@
       },
       "smoulder": {
         "path": "data/effects/smoulder.json"
+      },
+      "cracked": {
+        "path": "data/effects/cracked.json"
       }
     },
     "curves": {
@@ -169,6 +175,9 @@
     "interactions": {
       "kindles": {
         "path": "data/interactions/kindles.json"
+      },
+      "cracks": {
+        "path": "data/interactions/cracks.json"
       }
     }
   },

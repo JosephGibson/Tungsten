@@ -22,5 +22,8 @@
   "shot",
   "status.cover",
   "status.pinned",
-  "material.wood"
+  "material.wood",
+  "heat",
+  "status.lit",
+  "creature.lurker"
 ]

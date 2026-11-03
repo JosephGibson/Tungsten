@@ -426,6 +426,7 @@ shape effect: A change an entity carries: timed, infinite or instant, with a pay
   field bands: list of shape effect_band = null — a status's thresholds, `at` strictly ascending up to its `max`: each band's tags granted while the intensity is at least its `at`
   field fuel: shape effect_fuel = null — a stat of its holder's an instance burns while it runs; at 0, or on a holder without it, it has run out
   field on_end: list of shape interaction_output = null — chemistry outputs run on the holder when an instance ends: run out, worn out, its fuel spent, removed or ended; an instant one's as it lands
+  field emit: shape effect_emit = null — a chemistry stimulus its holder sends to the receivers around it on a period
   sample: {}
 shape effect_action: An effect applied at the next effect resolve, from the event's other entity on the subject or from the subject on the other.
   field id: effects ID or entry — an `effects` entry or the effect in place; the load checks it
@@ -436,6 +437,12 @@ shape effect_band: A status's band: tags granted while its intensity reaches it.
   field grant: list of tag = [] — tags the holder carries while the intensity is at least `at`; the load checks each
   field enter: list of shape interaction_output = null — chemistry outputs run on the holder each time the intensity reaches `at` from below
   sample: { "at": 1 }
+shape effect_emit: A chemistry stimulus an instance's holder sends every period of its life to each receiver within the radius but itself.
+  field stimulus: text — a damage type or a declared tag; the load checks it
+  field amount: f32 (> 0) — the stimulus's amount, times the instance's factor
+  field radius: f32 (> 0) — px from the holder's point to a receiver's surface, or to its point without a body
+  field period: f32 (> 0) — game seconds between emissions, counted as the payload's period is and saved
+  sample: { "stimulus": "heat", "amount": 1, "radius": 50, "period": 0.25 }
 shape effect_fuel: A stat of its holder's that a running instance burns.
   field stat: text — the stat whose base it drains, `[a-z][a-z0-9_]*`
   field rate: f32 (> 0) — taken off the base a second; the instance runs out at 0
@@ -458,6 +465,11 @@ shape effect_stack: An effect's stacking.
   field refresh: one of refresh | keep | extend = "refresh" — what a request on an entity that carries it does to the time left
   field expire: one of clear | remove_one = "clear" — what a timed end does: every stack, or one at a time
   sample: {}
+shape emit_output: A stimulus sent once to every receiver within a radius of the receiver but itself.
+  field stimulus: text — a damage type or a declared tag; the load checks it
+  field amount: f32 (> 0) — the stimulus's amount
+  field radius: f32 (> 0) — px from the receiver's point to another's surface, or to its point without a body
+  sample: { "stimulus": "heat", "amount": 1, "radius": 40 }
 shape flag_action: A flag set or cleared.
   field name: text — the flag: dotted, undeclared
   field set: bool = true — set when true, cleared when false
@@ -484,6 +496,7 @@ shape interaction_output: One thing a rule, a status's end or a band's entry doe
   field consume: shape consume_output — takes intensity off a status; at 0 it has run out
   field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 — queued on the receiver from the credit for the next step's resolve, one reaction deeper
   field spawn: prefab ID — a prefab at the receiver's point, from it
+  field emit: shape emit_output — a stimulus sent once from the receiver's point to every receiver in a radius but itself, one reaction deeper
   field handler: text — a game's Rust handler by name; the load refuses one no plugin registered
   sample: { "remove": "burning" }
 shape label_action: A `label` action: a `label_style` that names its font, or on `damaged_part` none, its part's type's style, which the grouping fields take.

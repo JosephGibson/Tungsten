@@ -1,19 +1,23 @@
 //! Chemistry (redo 7.10b, the ARPG design's §5.2): stimuli meet what
 //! receives them through the `interactions` kind's rules, a saved, bounded
 //! and capped queue and a fixed list of outputs. A landed hit stimulates by
-//! each of its damage types; a status's end and a band's entry run their
-//! own outputs.
+//! each of its damage types, a status or an output by an emission to the
+//! receivers in a radius, a body by its impact and a receiver by the light
+//! at its point; a status's end and a band's entry run their own outputs.
 
+pub(crate) mod grid;
 pub(crate) mod outputs;
 pub(crate) mod queue;
 pub(crate) mod rules;
+pub(crate) mod stimuli;
 
 use std::rc::Rc;
 
-use tungsten_core::{Entity, EventCursor, EventQueue, Plugin, Schedule, World, system};
+use tungsten_core::physics::ContactBegan;
+use tungsten_core::{Entity, EventCursor, EventQueue, Plugin, Schedule, Time, World, system};
 
-use crate::damage::ailments::AILMENT_FEED;
-use crate::damage::effects::definition;
+use crate::damage::ailments::{AILMENT_FEED, AILMENT_TICK};
+use crate::damage::effects::{EFFECT_TICK, definition};
 use crate::damage::health::{DamagedPart, Health};
 use crate::damage::pipeline::DAMAGE_RESOLVE;
 use crate::foundation::describe::{
@@ -21,7 +25,7 @@ use crate::foundation::describe::{
     round_trip,
 };
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::tags::{Tags, covers};
+use crate::foundation::tags::{STIMULUS_IMPACT, Tags, covers};
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::ended::Despawning;
 
@@ -29,9 +33,11 @@ pub use outputs::{Output, Reaction};
 pub use queue::Chemistry;
 pub use rules::Interaction;
 
+use grid::Grid;
 use outputs::{Handler, Handlers, run_outputs};
 use queue::{CHEMISTRY_QUEUE, Entry, Settings, StatusList, Stimulus, queue_saved};
-use rules::{INTERACTIONS, answered, any_rule, register_interactions, snapshot, winner};
+use rules::{INTERACTIONS, answered, answers, any_rule, register_interactions, snapshot, winner};
+use stimuli::{Emission, LightSampler, impacts, spread};
 
 /// [`ChemistryPlugin`]'s system, in the resolve phase after
 /// [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) and the ailment feed when they
@@ -39,18 +45,34 @@ use rules::{INTERACTIONS, answered, any_rule, register_interactions, snapshot, w
 /// statuses it applies land in its step.
 pub const CHEMISTRY: &str = "chemistry";
 
+/// [`ChemistryPlugin`]'s second system, in the tick phase after
+/// [`EFFECT_TICK`](crate::EFFECT_TICK) and the ailment tick when they are
+/// registered: before the step's physics it registers the contact begins'
+/// queue while a rule answers `stimulus.impact`, and it samples the light
+/// on its period while one answers `stimulus.light`; idle as [`CHEMISTRY`]
+/// is.
+pub const CHEMISTRY_TICK: &str = "chemistry_tick";
+
 /// Why an entry did nothing, for the trace.
 const GONE: &str = "the receiver is gone or despawning";
 const NO_RULE: &str = "no rule passes";
 
 /// Registers chemistry: the `interactions` kind, the saved queue
-/// ([`Chemistry`]) and [`CHEMISTRY`], which reads the step's landed parts
-/// and runs the queue.
+/// ([`Chemistry`]), [`CHEMISTRY`], which reads the step's stimuli and runs
+/// the queue, and [`CHEMISTRY_TICK`], which samples the light and turns on
+/// the impact record.
 ///
 /// Each run: every non-periodic [`DamagedPart`] since the last is a
 /// stimulus of each of its deepest types, its amount after the resistances,
-/// credited to its source, queued when some rule names its type or an
-/// ancestor of it, one entry per stimulus and receiver: a merge sums the
+/// credited to its source; every contact begin, while a rule answers
+/// `stimulus.impact`, one of that on both bodies by its closing speed,
+/// credited to the other's [`Source`](crate::Source) entity, else the other
+/// (a tile credits none); every emission since the last run, a status's
+/// `emit` or an `emit` output's, one on each tagged receiver within its
+/// radius but the emitter (a body measured to its surface, else its point,
+/// through a grid of 64 px cells built once a run with radius work). Each
+/// is queued when some rule names its name or an ancestor of it, one entry
+/// per stimulus and receiver: a merge sums the
 /// raw amounts, which a rule's `min` reads, and apart each hit's amount
 /// times its status effect, which a `scale` build reads, and keeps the
 /// largest status effect and damage-over-time base, the least depth, the
@@ -65,8 +87,11 @@ const NO_RULE: &str = "no rule passes";
 /// it while it has an entry, taking no new one. An output's damage and
 /// statuses carry the entry's depth plus one, and an entry past the depth
 /// limit is dropped and counted ([`Chemistry::cut`]), so a cycle of rules
-/// ends. With no `interactions` entry and an empty queue the run returns
-/// before any query.
+/// ends. With no `interactions` entry and an empty queue each system returns
+/// before any query. Every `light_period` on the fixed clock, while a rule
+/// answers `stimulus.light`, each receiver some such rule's `on` passes
+/// takes a `stimulus.light` of the luma of the lights' sum at its point
+/// ([`light_from`](tungsten_core::lighting::light_from)).
 ///
 /// # Examples
 ///
@@ -90,6 +115,7 @@ pub struct ChemistryPlugin {
     cap: usize,
     bound: usize,
     depth: u8,
+    light_period: f32,
     handlers: Vec<(String, Handler)>,
 }
 
@@ -106,6 +132,7 @@ impl std::fmt::Debug for ChemistryPlugin {
             .field("cap", &self.cap)
             .field("bound", &self.bound)
             .field("depth", &self.depth)
+            .field("light_period", &self.light_period)
             .field(
                 "handlers",
                 &self
@@ -119,14 +146,15 @@ impl std::fmt::Debug for ChemistryPlugin {
 }
 
 impl ChemistryPlugin {
-    /// Chemistry with a run's cap of 256, a bound of 16,384 entries and a
-    /// depth limit of 8, and no handler.
+    /// Chemistry with a run's cap of 256, a bound of 16,384 entries, a
+    /// depth limit of 8 and the light sampled every 0.25 s, and no handler.
     #[must_use]
     pub fn new() -> Self {
         Self {
             cap: queue::CAP,
             bound: queue::BOUND,
             depth: queue::DEPTH,
+            light_period: queue::LIGHT_PERIOD,
             handlers: Vec::new(),
         }
     }
@@ -167,6 +195,22 @@ impl ChemistryPlugin {
         self
     }
 
+    /// The light sampled every `seconds` of the fixed clock.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_light_period(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds > 0.0,
+            "ChemistryPlugin::with_light_period: seconds must be finite and > 0 (got {seconds})"
+        );
+        self.light_period = seconds;
+        self
+    }
+
     /// The handler `name`, which a `handler` output runs with the World and
     /// the [`Reaction`]; the load refuses a rule naming a handler no plugin
     /// registered.
@@ -202,11 +246,22 @@ impl Plugin for ChemistryPlugin {
             cap: self.cap,
             bound: self.bound,
             depth: self.depth,
+            light_period: self.light_period,
         });
         world.register_saved_resource_with(CHEMISTRY_QUEUE, queue_saved());
         if schedule.contains(CHEMISTRY) {
             return;
         }
+        let mut ticker = Ticker::default();
+        schedule.add(
+            Phase::Tick.stage(),
+            Phase::Tick
+                .join(system(CHEMISTRY_TICK, move |world: &mut World| {
+                    ticker.run(world);
+                }))
+                .after_if_present(EFFECT_TICK)
+                .after_if_present(AILMENT_TICK),
+        );
         let mut runner = Runner::default();
         schedule.add(
             Phase::Resolve.stage(),
@@ -220,12 +275,50 @@ impl Plugin for ChemistryPlugin {
     }
 }
 
+/// Whether chemistry has work: an `interactions` entry, or a queued entry.
+fn busy(world: &World) -> bool {
+    let waiting = world
+        .get_resource::<Chemistry>()
+        .is_some_and(|chemistry| chemistry.pending() > 0);
+    waiting || any_rule(world)
+}
+
+/// [`CHEMISTRY_TICK`]'s state between steps: the light sampler's lists.
+#[derive(Default)]
+struct Ticker {
+    light: LightSampler,
+}
+
+impl Ticker {
+    fn run(&mut self, world: &mut World) {
+        if !busy(world) {
+            return;
+        }
+        // The contact record runs for a step that starts with the queue,
+        // so a rule's first step counts.
+        if !world.has_event::<ContactBegan>() && answers(world, STIMULUS_IMPACT) {
+            world.register_event::<ContactBegan>();
+        }
+        let settings = Settings::of(world);
+        let dt = world
+            .get_resource::<Time>()
+            .map_or(0.0, Time::delta)
+            .max(0.0);
+        self.light.tick(world, &settings, dt);
+    }
+}
+
 /// [`CHEMISTRY`]'s state between steps: its place in the parts queue and
 /// its scratch lists, kept so a run allocates little once warm.
 #[derive(Default)]
 struct Runner {
     cursor: EventCursor<DamagedPart>,
     parts: Vec<DamagedPart>,
+    begins_cursor: EventCursor<ContactBegan>,
+    begins: Vec<ContactBegan>,
+    emitted: Vec<Emission>,
+    grid: Grid,
+    found: Vec<u32>,
     rules: Vec<(String, Interaction)>,
     taken: Vec<Entry>,
     /// A part's deepest types that some rule answers.
@@ -234,10 +327,7 @@ struct Runner {
 
 impl Runner {
     fn run(&mut self, world: &mut World) {
-        let waiting = world
-            .get_resource::<Chemistry>()
-            .is_some_and(|chemistry| chemistry.pending() > 0);
-        if !waiting && !any_rule(world) {
+        if !busy(world) {
             return;
         }
         snapshot(world, &mut self.rules);
@@ -293,6 +383,35 @@ impl Runner {
             }
         }
         self.parts = parts;
+
+        // The step's contact begins, while a rule answers impacts.
+        self.begins.clear();
+        if let Some(queue) = world.get_resource::<EventQueue<ContactBegan>>() {
+            self.begins.extend(self.begins_cursor.read(queue).copied());
+        }
+        if !self.begins.is_empty() && answered(&self.rules, STIMULUS_IMPACT) {
+            let impact = world.resource_mut::<Chemistry>().intern(STIMULUS_IMPACT);
+            impacts(world, &settings, &self.begins, impact, run);
+        }
+
+        // The emissions since the last run, through the grid.
+        self.grid.clear();
+        std::mem::swap(
+            &mut self.emitted,
+            &mut world.resource_mut::<Chemistry>().emitted,
+        );
+        if !self.emitted.is_empty() {
+            let rules = &self.rules;
+            spread(
+                world,
+                &settings,
+                &mut self.emitted,
+                &mut self.grid,
+                &mut self.found,
+                |name| answered(rules, name),
+                run,
+            );
+        }
 
         // The run: at most the cap, oldest first.
         let mut taken = std::mem::take(&mut self.taken);
@@ -494,6 +613,11 @@ fn describe_chemistry(world: &mut World) {
             "a prefab at the receiver's point, from it",
         ))
         .field(FieldDescription::new(
+            "emit",
+            FieldType::Shape("emit_output"),
+            "a stimulus sent once from the receiver's point to every receiver in a radius but itself, one reaction deeper",
+        ))
+        .field(FieldDescription::new(
             "handler",
             FieldType::Text,
             "a game's Rust handler by name; the load refuses one no plugin registered",
@@ -564,6 +688,33 @@ fn describe_chemistry(world: &mut World) {
             ))
             .sample(r#"{ "status": "burning", "amount": 1 }"#)
             .roundtrip(round_trip::<outputs::ConsumeDef>),
+        ComponentDescription::new(
+            "emit_output",
+            "A stimulus sent once to every receiver within a radius of the receiver but itself.",
+        )
+        .field(FieldDescription::new(
+            "stimulus",
+            FieldType::Text,
+            "a damage type or a declared tag; the load checks it",
+        ))
+        .field(FieldDescription::new(
+            "amount",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "the stimulus's amount",
+        ))
+        .field(FieldDescription::new(
+            "radius",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "px from the receiver's point to another's surface, or to its point without a body",
+        ))
+        .sample(r#"{ "stimulus": "heat", "amount": 1, "radius": 40 }"#)
+        .roundtrip(round_trip::<outputs::EmitDef>),
     ];
     for shape in shapes {
         describe_shape(world, shape);
