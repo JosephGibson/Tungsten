@@ -12,7 +12,7 @@ use crate::foundation::trace::KitTrace;
 use crate::motion::top_down::{TopDownMover, TopDownMoverPlugin};
 use crate::react::counters::{Counters, CountersPlugin};
 use crate::react::cues::{CueAction, Cues, CuesPlugin};
-use crate::{KIT_INTENT, KIT_REACT, KIT_RESOLVE, KIT_TICK};
+use crate::{KIT_INTENT, KIT_REACT, KIT_RESOLVE, KIT_TICK, Line, Read, TagFilter, TagSet};
 
 const STEP: f32 = 1.0 / 60.0;
 
@@ -373,6 +373,59 @@ fn modifiers_leave_with_their_source_and_a_games_own_stay() {
         skipped(&world, bare),
         [("modifiers", NO_STATS), ("resist", NO_RESIST)]
     );
+}
+
+#[test]
+fn a_with_line_is_kept_for_reads_in_context_and_leaves_with_its_instance() {
+    let (mut world, _) = rig();
+    let knight = world.spawn_with((Stats::new().with("armor", 2.0),));
+    let focused = Effect::new()
+        .with_modifier("armor", Modifier::Add(1.0))
+        .with_line(
+            "armor",
+            Line::new(Modifier::Mul(2.0)).with(TagFilter::new().all(["status.burning"])),
+        );
+    let lines: Vec<(&str, bool)> = focused
+        .lines()
+        .map(|(stat, line)| (stat, line.is_scoped()))
+        .collect();
+    assert_eq!(lines, [("armor", false), ("armor", true)]);
+    let focused = DataRef::inline(focused);
+    EffectRequest::new(knight, focused.clone()).apply(&mut world);
+    let stats = world.get::<Stats>(knight).unwrap();
+    assert_eq!(
+        stats.get("armor"),
+        Some(3.0),
+        "an unscoped line is a modifier"
+    );
+    let burning = [TagSet::Name("status.burning")];
+    assert_eq!(stats.read("armor", &Read::new(&burning)), Some(6.0));
+    assert_eq!(stats.read("armor", &Read::default()), Some(3.0));
+    let kept: Vec<&str> = stats.lines().map(|(_, source, _)| source).collect();
+    assert_eq!(kept.len(), 1);
+    assert!(kept[0].starts_with("effect#"), "{kept:?}");
+    assert!(end_effect(&mut world, knight, &focused));
+    let stats = world.get::<Stats>(knight).unwrap();
+    assert_eq!(stats.lines().count(), 0);
+    assert_eq!(stats.read("armor", &Read::new(&burning)), Some(2.0));
+
+    // The data form, its tags checked at the load.
+    let data = json!({ "modifiers": [{ "stat": "armor", "modifier": { "mul": 2 }, "with": { "all": ["status.burning"] }, "against": { "none": ["status.frozen"] } }] });
+    let effect: Effect = serde_json::from_value(data.clone()).unwrap();
+    let back = serde_json::to_value(&effect).unwrap();
+    assert_eq!(
+        back["modifiers"],
+        json!([{ "stat": "armor", "modifier": { "mul": 2.0 }, "with": { "all": ["status.burning"] }, "against": { "none": ["status.frozen"] } }])
+    );
+    assert!(effect.check(&world).is_ok());
+    let unknown: Effect = serde_json::from_value(json!({ "modifiers": [{ "stat": "armor", "modifier": { "mul": 2 }, "while": { "all": ["status.unknown"] } }] })).unwrap();
+    let error = unknown.check(&world).unwrap_err();
+    assert_eq!(
+        (error.field.as_str(), error.id.as_str()),
+        ("modifiers.0.while.all.0", "status.unknown")
+    );
+    let scoped_override = json!({ "modifiers": [{ "stat": "armor", "modifier": { "override": 0 }, "with": { "all": ["status.burning"] } }] });
+    assert!(serde_json::from_value::<Effect>(scoped_override).is_err());
 }
 
 #[test]

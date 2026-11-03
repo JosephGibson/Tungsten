@@ -1,9 +1,12 @@
-//! Stats: named values with ordered modifiers, which the kit's movers,
-//! health, cooldowns and hit items read when an entity carries them.
+//! Stats: named values with ordered modifiers and scoped lines, which the
+//! kit's movers, health, cooldowns and hit items read when an entity
+//! carries them.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tungsten_core::{
     DataRegistry, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, World, system,
 };
@@ -14,7 +17,9 @@ use crate::foundation::describe::{
     describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
+use crate::foundation::lines::{Line, Reach, Read, Sums};
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::world_sources::{WorldSources, bring_stale};
 use crate::lifecycle::cooldown::Cooldown;
 use crate::motion::platformer::PlatformerController;
 use crate::motion::steering::Steering;
@@ -31,17 +36,20 @@ const STATS: &str = "stats";
 const STAT_BOUNDS: &str = "stat_bounds";
 
 /// Whether `name` is a stat name: `[a-z][a-z0-9_]*`.
-fn valid_stat(name: &str) -> bool {
+pub(crate) fn valid_stat(name: &str) -> bool {
     let mut chars = name.chars();
     chars.next().is_some_and(|first| first.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
-/// The bounds of a well-known stat: `max_health` from 1, the rest from 0,
-/// none above; `None` for any other name.
-fn well_known_bounds(name: &str) -> Option<(f32, f32)> {
-    if name == Stats::MAX_HEALTH {
+/// The bounds of a well-known stat: `max_health` from 1, `crit_chance` in
+/// `[0, 1]`, `crit_multiplier` from 1, the rest from 0, none above; `None`
+/// for any other name.
+pub(crate) fn well_known_bounds(name: &str) -> Option<(f32, f32)> {
+    if name == Stats::MAX_HEALTH || name == Stats::CRIT_MULTIPLIER {
         Some((1.0, f32::INFINITY))
+    } else if name == Stats::CRIT_CHANCE {
+        Some((0.0, 1.0))
     } else if Stats::WELL_KNOWN.contains(&name) {
         Some((0.0, f32::INFINITY))
     } else {
@@ -99,30 +107,28 @@ pub(crate) fn modified(
     min: f32,
     max: f32,
 ) -> f32 {
-    let mut sum = f64::from(base);
-    let mut pct = 1.0_f64;
-    let mut product = 1.0_f64;
-    let mut zero = false;
-    let mut over = None;
+    let mut sums = Sums::new(base);
     for modifier in modifiers {
-        match modifier {
-            Modifier::Add(v) => sum += f64::from(v),
-            Modifier::Pct(v) => pct += f64::from(v),
-            Modifier::Mul(0.0) => zero = true,
-            Modifier::Mul(v) => product *= f64::from(v),
-            Modifier::Override(v) => over = Some(f64::from(v)),
-        }
+        sums.fold(modifier);
     }
-    let raw = match over {
-        Some(value) => value,
-        None if zero || sum == 0.0 || pct == 0.0 => 0.0,
-        None => sum * pct * product,
-    };
-    let limit = f64::from(f32::MAX);
-    let value = raw
-        .clamp(f64::from(min), f64::from(max))
-        .clamp(-limit, limit);
-    value as f32
+    sums.value(min, max)
+}
+
+/// A line [`Stats`] keeps for the reads that take a context: a scoped one,
+/// or one on a stat the entity lacks.
+#[derive(Debug, Clone, PartialEq)]
+struct KeptLine {
+    stat: String,
+    source: String,
+    line: Line,
+}
+
+/// The lines [`Stats`] keeps beside its stats, boxed so stats without one
+/// stay small.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Kept {
+    /// Sorted by stat, in add order within one.
+    lines: Vec<KeptLine>,
 }
 
 /// An entity's stats: named values such as `move_speed` or `armor`, each a
@@ -133,8 +139,17 @@ pub(crate) fn modified(
 /// the arithmetic runs in `f64`, a zero factor makes the product 0, and
 /// the result is clamped to `±f32::MAX` too.
 ///
+/// A [`Line`] scoped by tag filters ([`add_line`](Self::add_line)) reaches
+/// only the reads that take a context: [`read`](Self::read), and
+/// [`sums`](Self::sums), whose skill sheets bring their own base, so a line
+/// on a stat the entity lacks is kept for them. [`get`](Self::get) and every
+/// item's read stay the base and the unscoped modifiers (§5.1 of the ARPG
+/// design's empty context).
+///
 /// The well-known stats ([`WELL_KNOWN`](Self::WELL_KNOWN)) are bounded to
-/// `[0, ∞)`, [`MAX_HEALTH`](Self::MAX_HEALTH) to `[1, ∞)`. [`StatsPlugin`]'s
+/// `[0, ∞)`, [`MAX_HEALTH`](Self::MAX_HEALTH) and
+/// [`CRIT_MULTIPLIER`](Self::CRIT_MULTIPLIER) to `[1, ∞)`,
+/// [`CRIT_CHANCE`](Self::CRIT_CHANCE) to `[0, 1]`. [`StatsPlugin`]'s
 /// [`STATS_APPLY`] writes each one an entity has into its item, when they
 /// differ: [`MOVE_SPEED`](Self::MOVE_SPEED) into a [`TopDownMover`]'s speed,
 /// a [`PlatformerController`]'s run speed or a [`Steering`]'s top speed (0
@@ -149,14 +164,17 @@ pub(crate) fn modified(
 /// unbounded unless [`with_bounds`](Self::with_bounds),
 /// [`StatsPlugin::with_stat`] or the `stats` data kind bound it.
 ///
-/// Modifiers are keyed by a source, such as an effect's ID, so
+/// Modifiers and lines are keyed by a source, such as an effect's ID, so
 /// [`remove_modifiers`](Self::remove_modifiers) takes back everything one
 /// source gave.
 ///
 /// Scene name `stats`: `{ "move_speed": 160, "armor": 2 }`, the base
-/// values by stat name; the load checks each name is well-known or
-/// declared and each base lies in its bounds. It is data: a game's save
-/// holds the bases, bounds and modifiers.
+/// values by stat name, or a stat as `{ "base": 1, "lines": [{ "modifier":
+/// { "mul": 0.5 }, "with": { "all": ["hit.blast"] } }] }`, its lines the
+/// entity's own under the source `base`; the load checks each name is
+/// well-known or declared, each base lies in its bounds and each line's
+/// tags are declared. It is data: a game's save holds the bases, bounds,
+/// modifiers and kept lines.
 ///
 /// # Examples
 ///
@@ -181,75 +199,188 @@ pub(crate) fn modified(
 /// assert_eq!(stats.base("armor"), Some(2.0));
 /// assert_eq!(stats.get("luck"), None);
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(
     try_from = "BTreeMap<String, StatFields>",
     into = "BTreeMap<String, StatFields>"
 )]
+#[allow(clippy::struct_field_names)] // `stats` holds the stats themselves, beside the kept lines.
 pub struct Stats {
     /// Sorted by name.
     stats: Vec<Stat>,
+    /// The kept lines, when there are any.
+    kept: Option<Box<Kept>>,
+    /// The [`WorldSources`] revision the stats were brought to; neither
+    /// saved nor compared.
+    revision: u64,
 }
 
-/// A stat as a save writes it: unbounded ends as `null`.
+impl PartialEq for Stats {
+    /// The stats and their kept lines, not the world-source revision.
+    fn eq(&self, other: &Self) -> bool {
+        self.stats == other.stats && self.kept == other.kept
+    }
+}
+
+/// A stat as a save writes it: unbounded ends as `null`; a stat the entity
+/// lacks, holding only kept lines, without a base. Its bounds sit in an
+/// `f32` each and its kept lines behind one pointer, so it is as small as a
+/// save of stats without lines has always made it: a capture builds one
+/// per stat.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StatFields {
-    base: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    base: Option<f32>,
     #[serde(default)]
-    min: Option<f32>,
+    min: SavedBound,
     #[serde(default)]
-    max: Option<f32>,
+    max: SavedBound,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     modifiers: Vec<(String, Modifier)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lines: Option<Box<SavedLines>>,
+}
+
+/// A stat's kept lines as a save writes them: source and line pairs.
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct SavedLines(Vec<(String, Line)>);
+
+/// A bound as a save writes it, `null` for none, held as NaN.
+#[derive(Clone, Copy)]
+struct SavedBound(f32);
+
+impl Default for SavedBound {
+    fn default() -> Self {
+        Self(f32::NAN)
+    }
+}
+
+impl SavedBound {
+    /// The bound of a finite value, else none.
+    fn of(value: f32) -> Self {
+        if value.is_finite() {
+            Self(value)
+        } else {
+            Self::default()
+        }
+    }
+
+    /// Its value, `none` when it holds none.
+    fn or(self, none: f32) -> f32 {
+        if self.0.is_nan() { none } else { self.0 }
+    }
+
+    fn is_some(self) -> bool {
+        !self.0.is_nan()
+    }
+}
+
+impl Serialize for SavedBound {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.0.is_nan() {
+            serializer.serialize_none()
+        } else {
+            serializer.serialize_some(&self.0)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SavedBound {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Option::<f32>::deserialize(deserializer)?.map_or_else(Self::default, Self))
+    }
 }
 
 impl TryFrom<BTreeMap<String, StatFields>> for Stats {
     type Error = String;
 
     fn try_from(fields: BTreeMap<String, StatFields>) -> Result<Self, Self::Error> {
-        let mut stats = Vec::with_capacity(fields.len());
+        let mut stats = Self {
+            stats: Vec::with_capacity(fields.len()),
+            ..Self::default()
+        };
         for (name, fields) in fields {
             if !valid_stat(&name) {
                 return Err(format!("`{name}` is not a stat name (`[a-z][a-z0-9_]*`)"));
             }
-            if !fields.base.is_finite() {
-                return Err(format!("{name}.base: must be finite (got {})", fields.base));
+            let lines = fields.lines.map(|lines| lines.0).unwrap_or_default();
+            match fields.base {
+                Some(base) => {
+                    if !base.is_finite() {
+                        return Err(format!("{name}.base: must be finite (got {base})"));
+                    }
+                    let min = fields.min.or(f32::NEG_INFINITY);
+                    let max = fields.max.or(f32::INFINITY);
+                    check_bounds(min, max).map_err(|e| format!("{name}: {e}"))?;
+                    if let Some((_, modifier)) =
+                        fields.modifiers.iter().find(|(_, m)| !m.is_finite())
+                    {
+                        return Err(format!(
+                            "{name}: a modifier must be finite (got {modifier:?})"
+                        ));
+                    }
+                    let mut stat = Stat::new(&name, base);
+                    stat.min = min;
+                    stat.max = max;
+                    stat.modifiers = fields.modifiers;
+                    stat.recompute();
+                    stats.stats.push(stat);
+                }
+                None if lines.is_empty() => {
+                    return Err(format!("{name}: a stat needs a base or kept lines"));
+                }
+                None if fields.min.is_some()
+                    || fields.max.is_some()
+                    || !fields.modifiers.is_empty() =>
+                {
+                    return Err(format!(
+                        "{name}: a stat without a base holds only kept lines"
+                    ));
+                }
+                None => {}
             }
-            let min = fields.min.unwrap_or(f32::NEG_INFINITY);
-            let max = fields.max.unwrap_or(f32::INFINITY);
-            check_bounds(min, max).map_err(|e| format!("{name}: {e}"))?;
-            if let Some((_, modifier)) = fields.modifiers.iter().find(|(_, m)| !m.is_finite()) {
-                return Err(format!(
-                    "{name}: a modifier must be finite (got {modifier:?})"
-                ));
+            for (source, line) in lines {
+                stats.add_line(&name, &source, line);
             }
-            let mut stat = Stat::new(&name, fields.base);
-            stat.min = min;
-            stat.max = max;
-            stat.modifiers = fields.modifiers;
-            stat.recompute();
-            stats.push(stat);
         }
-        Ok(Self { stats })
+        Ok(stats)
     }
 }
 
 impl From<Stats> for BTreeMap<String, StatFields> {
     fn from(stats: Stats) -> Self {
-        stats
+        let mut out: BTreeMap<String, StatFields> = stats
             .stats
             .into_iter()
             .map(|stat| {
                 let fields = StatFields {
-                    base: stat.base,
-                    min: stat.min.is_finite().then_some(stat.min),
-                    max: stat.max.is_finite().then_some(stat.max),
+                    base: Some(stat.base),
+                    min: SavedBound::of(stat.min),
+                    max: SavedBound::of(stat.max),
                     modifiers: stat.modifiers,
+                    lines: None,
                 };
                 (stat.name, fields)
             })
-            .collect()
+            .collect();
+        for KeptLine { stat, source, line } in stats.kept.map(|kept| kept.lines).unwrap_or_default()
+        {
+            let fields = out.entry(stat).or_insert_with(|| StatFields {
+                base: None,
+                min: SavedBound::default(),
+                max: SavedBound::default(),
+                modifiers: Vec::new(),
+                lines: None,
+            });
+            fields
+                .lines
+                .get_or_insert_with(|| Box::new(SavedLines(Vec::new())))
+                .0
+                .push((source, line));
+        }
+        out
     }
 }
 
@@ -285,8 +416,17 @@ impl Stats {
     /// abilities will read when they spawn one (W13k); no item reads it
     /// yet.
     pub const PROJECTILE_SPEED: &'static str = "projectile_speed";
+    /// The chance in `[0, 1]` that a source's hit crits, so every genre's
+    /// source can crit without a declaration.
+    pub const CRIT_CHANCE: &'static str = "crit_chance";
+    /// What a crit multiplies a hit by, from 1.
+    pub const CRIT_MULTIPLIER: &'static str = "crit_multiplier";
+    /// What a target's hits are multiplied by, from 0, read in the hit's
+    /// context: `damage_taken` lines scoped by a hit's tags shape what it
+    /// takes.
+    pub const DAMAGE_TAKEN: &'static str = "damage_taken";
     /// The stats every game knows without declaring them.
-    pub const WELL_KNOWN: [&'static str; 7] = [
+    pub const WELL_KNOWN: [&'static str; 10] = [
         Self::MOVE_SPEED,
         Self::MAX_HEALTH,
         Self::DAMAGE,
@@ -294,6 +434,9 @@ impl Stats {
         Self::AREA,
         Self::PICKUP_RADIUS,
         Self::PROJECTILE_SPEED,
+        Self::CRIT_CHANCE,
+        Self::CRIT_MULTIPLIER,
+        Self::DAMAGE_TAKEN,
     ];
 
     /// No stats.
@@ -338,7 +481,8 @@ impl Stats {
     }
 
     /// Sets `stat`'s base, adding the stat when it is not there, with
-    /// [`with`](Self::with)'s bounds.
+    /// [`with`](Self::with)'s bounds; a new stat takes the unscoped lines
+    /// kept for it as its modifiers, in add order.
     ///
     /// # Panics
     ///
@@ -358,7 +502,23 @@ impl Stats {
                 self.stats[at].base = base;
                 self.stats[at].recompute();
             }
-            Err(at) => self.stats.insert(at, Stat::new(stat, base)),
+            Err(at) => {
+                let mut entry = Stat::new(stat, base);
+                if let Some(kept) = &mut self.kept {
+                    let mut i = 0;
+                    while i < kept.lines.len() {
+                        if kept.lines[i].stat == stat && !kept.lines[i].line.is_scoped() {
+                            let moved = kept.lines.remove(i);
+                            entry.modifiers.push((moved.source, moved.line.modifier()));
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    entry.recompute();
+                }
+                self.drop_empty_kept();
+                self.stats.insert(at, entry);
+            }
         }
     }
 
@@ -396,8 +556,93 @@ impl Stats {
         true
     }
 
-    /// Removes every modifier `source` gave, on every stat, and recomputes
-    /// those stats; how many it removed.
+    /// Adds `line` to `stat` from `source`, after its earlier ones. An
+    /// unscoped line on a stat the entity has is
+    /// [`add_modifier`](Self::add_modifier)'s, so [`get`](Self::get) takes
+    /// it; a scoped one, or any on a stat the entity lacks, is kept for the
+    /// reads that take a context, [`read`](Self::read) and
+    /// [`sums`](Self::sums), whose skill sheets bring their own base. A
+    /// [`Line`] cannot be a scoped override, which its builders and the
+    /// loads refuse.
+    ///
+    /// # Panics
+    ///
+    /// When `stat` is not `[a-z][a-z0-9_]*`.
+    #[track_caller]
+    pub fn add_line(&mut self, stat: &str, source: &str, line: Line) {
+        assert!(
+            valid_stat(stat),
+            "Stats::add_line: `{stat}` is not a stat name (`[a-z][a-z0-9_]*`)"
+        );
+        if !line.is_scoped()
+            && let Some(entry) = self.find_mut(stat)
+        {
+            entry.modifiers.push((source.to_owned(), line.modifier()));
+            entry.recompute();
+            return;
+        }
+        let kept = self.kept.get_or_insert_with(Box::default);
+        let at = kept
+            .lines
+            .partition_point(|kept| kept.stat.as_str() <= stat);
+        kept.lines.insert(
+            at,
+            KeptLine {
+                stat: stat.to_owned(),
+                source: source.to_owned(),
+                line,
+            },
+        );
+    }
+
+    /// `stat` read in `read`'s context, when the entity has the stat: its
+    /// base, its modifiers and the kept lines the read takes, clamped to its
+    /// bounds. A read without kept lines is [`get`](Self::get)'s value; a
+    /// read at use skips the lines it defers.
+    #[must_use]
+    pub fn read(&self, stat: &str, read: &Read<'_>) -> Option<f32> {
+        let entry = self.find(stat)?;
+        if self.kept.is_none() {
+            return Some(entry.value);
+        }
+        Some(self.sums(stat, read).value(entry.min, entry.max))
+    }
+
+    /// `stat`'s sums in `read`'s context, for a skill sheet or a hit that
+    /// brings its own base: the entity's base (0 without the stat), its
+    /// modifiers and the kept lines the read takes, with the lines a read
+    /// at use leaves for the hit.
+    #[must_use]
+    pub fn sums(&self, stat: &str, read: &Read<'_>) -> Sums {
+        let entry = self.find(stat);
+        let mut sums = Sums::new(entry.map_or(0.0, |entry| entry.base));
+        if let Some(entry) = entry {
+            for &(_, modifier) in &entry.modifiers {
+                sums.fold(modifier);
+            }
+        }
+        for kept in self.kept_on(stat) {
+            match read.reach(&kept.line) {
+                Reach::Applies => sums.fold(kept.line.modifier()),
+                Reach::Deferred => sums.defer(&kept.source, &kept.line),
+                Reach::Skipped(_) => {}
+            }
+        }
+        sums
+    }
+
+    /// Each kept line: its stat, its source and the line, by stat and then
+    /// in add order.
+    pub fn lines(&self) -> impl Iterator<Item = (&str, &str, &Line)> {
+        self.kept.iter().flat_map(|kept| {
+            kept.lines
+                .iter()
+                .map(|kept| (kept.stat.as_str(), kept.source.as_str(), &kept.line))
+        })
+    }
+
+    /// Removes every modifier and kept line `source` gave, on every stat,
+    /// and recomputes those stats; how many it removed.
     pub fn remove_modifiers(&mut self, source: &str) -> usize {
         let mut removed = 0;
         for stat in &mut self.stats {
@@ -408,6 +653,12 @@ impl Stats {
                 stat.recompute();
             }
         }
+        if let Some(kept) = &mut self.kept {
+            let before = kept.lines.len();
+            kept.lines.retain(|kept| kept.source != source);
+            removed += before - kept.lines.len();
+        }
+        self.drop_empty_kept();
         removed
     }
 
@@ -416,6 +667,62 @@ impl Stats {
         self.stats
             .iter()
             .map(|stat| (stat.name.as_str(), stat.value))
+    }
+
+    /// The [`WorldSources`] revision the stats were brought to.
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub(crate) fn set_revision(&mut self, revision: u64) {
+        self.revision = revision;
+    }
+
+    /// Whether what `source` gave is exactly what `wanted` would give,
+    /// `wanted` sorted by stat: each stat's modifiers from it, then its kept
+    /// lines, in order.
+    pub(crate) fn holds_exactly(&self, source: &str, wanted: &[(String, Line)]) -> bool {
+        for entry in &self.stats {
+            let have = entry
+                .modifiers
+                .iter()
+                .filter(|(from, _)| from == source)
+                .map(|&(_, modifier)| modifier);
+            let want = wanted
+                .iter()
+                .filter(|(stat, line)| *stat == entry.name && !line.is_scoped())
+                .map(|(_, line)| line.modifier());
+            if !have.eq(want) {
+                return false;
+            }
+        }
+        let have = self
+            .kept
+            .iter()
+            .flat_map(|kept| &kept.lines)
+            .filter(|kept| kept.source == source)
+            .map(|kept| (kept.stat.as_str(), &kept.line));
+        let want = wanted
+            .iter()
+            .filter(|(stat, line)| line.is_scoped() || self.find(stat).is_none())
+            .map(|(stat, line)| (stat.as_str(), line));
+        have.eq(want)
+    }
+
+    /// The kept lines on `stat`, in add order.
+    fn kept_on<'s>(&'s self, stat: &'s str) -> impl Iterator<Item = &'s KeptLine> {
+        let lines = self.kept.as_deref().map_or(&[][..], |kept| &kept.lines);
+        let start = lines.partition_point(|kept| kept.stat.as_str() < stat);
+        lines[start..]
+            .iter()
+            .take_while(move |kept| kept.stat == stat)
+    }
+
+    /// Drops the box once it keeps no line.
+    fn drop_empty_kept(&mut self) {
+        if self.kept.as_ref().is_some_and(|kept| kept.lines.is_empty()) {
+            self.kept = None;
+        }
     }
 
     fn search(&self, stat: &str) -> Result<usize, usize> {
@@ -539,25 +846,95 @@ impl TryFrom<StatBoundsFields> for StatBoundsDef {
     }
 }
 
-/// `components.stats` as a scene writes it: base values by name, each
-/// name and value checked.
+/// `components.stats` as a scene writes it: by stat name, a base or a base
+/// with the entity's own lines, each name and value checked.
 #[derive(Serialize, Deserialize)]
-#[serde(try_from = "BTreeMap<String, f32>")]
-struct StatsDef(BTreeMap<String, f32>);
+#[serde(try_from = "BTreeMap<String, StatEntryDef>")]
+struct StatsDef(BTreeMap<String, StatEntryDef>);
 
-impl TryFrom<BTreeMap<String, f32>> for StatsDef {
+impl TryFrom<BTreeMap<String, StatEntryDef>> for StatsDef {
     type Error = String;
 
-    fn try_from(bases: BTreeMap<String, f32>) -> Result<Self, Self::Error> {
-        for (name, base) in &bases {
+    fn try_from(entries: BTreeMap<String, StatEntryDef>) -> Result<Self, Self::Error> {
+        for (name, entry) in &entries {
             if !valid_stat(name) {
                 return Err(format!("`{name}` is not a stat name (`[a-z][a-z0-9_]*`)"));
             }
-            if !base.is_finite() {
-                return Err(format!("{name}: must be finite (got {base})"));
+            if !entry.base.is_finite() {
+                return Err(format!("{name}: must be finite (got {})", entry.base));
             }
         }
-        Ok(Self(bases))
+        Ok(Self(entries))
+    }
+}
+
+/// One stat as a scene writes it: its base, or `{ "base": 1, "lines": [..]
+/// }`.
+struct StatEntryDef {
+    base: f32,
+    lines: Vec<Line>,
+}
+
+/// The object form of a [`StatEntryDef`].
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StatEntryFields {
+    base: f32,
+    #[serde(default)]
+    lines: Vec<Line>,
+}
+
+impl Serialize for StatEntryDef {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct as _;
+        if self.lines.is_empty() {
+            return serializer.serialize_f32(self.base);
+        }
+        let mut entry = serializer.serialize_struct("StatEntry", 2)?;
+        entry.serialize_field("base", &self.base)?;
+        entry.serialize_field("lines", &self.lines)?;
+        entry.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for StatEntryDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(StatEntryVisitor)
+    }
+}
+
+/// Reads either form of a stat.
+struct StatEntryVisitor;
+
+impl<'de> Visitor<'de> for StatEntryVisitor {
+    type Value = StatEntryDef;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a base, or an object of `base` and `lines`")
+    }
+
+    fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<StatEntryDef, E> {
+        Ok(StatEntryDef {
+            base: value as f32,
+            lines: Vec::new(),
+        })
+    }
+
+    fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<StatEntryDef, E> {
+        self.visit_f64(value as f64)
+    }
+
+    fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<StatEntryDef, E> {
+        self.visit_f64(value as f64)
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<StatEntryDef, A::Error> {
+        let fields =
+            StatEntryFields::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
+        Ok(StatEntryDef {
+            base: fields.base,
+            lines: fields.lines,
+        })
     }
 }
 
@@ -670,8 +1047,8 @@ impl Plugin for StatsPlugin {
             )
             .field(FieldDescription::new(
                 "bases",
-                FieldType::Object("stat name → finite base"),
-                "the value itself: each stat well-known or declared, its base within its bounds",
+                FieldType::Object("stat name → finite base, or { base, lines: [line] }"),
+                "the value itself: each stat well-known or declared, its base within its bounds; a line is `{ modifier, with, while, against }`, the entity's own under the source `base`, its tags declared",
             ))
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
@@ -720,7 +1097,8 @@ impl Plugin for StatsPlugin {
         world.register_component_with_assets(
             STATS,
             |def: &StatsDef, world: &World| {
-                for (name, &base) in &def.0 {
+                for (name, entry) in &def.0 {
+                    let base = entry.base;
                     let Some((min, max)) = bounds_of(world, name) else {
                         return Err(MissingAsset::new(name.as_str(), "stat", name.as_str()));
                     };
@@ -731,17 +1109,23 @@ impl Plugin for StatsPlugin {
                             format!("{name} = {base}"),
                         ));
                     }
+                    for (i, line) in entry.lines.iter().enumerate() {
+                        line.check(world, &format!("{name}.lines.{i}"))?;
+                    }
                 }
                 Ok(())
             },
             |def: StatsDef, ctx: &SpawnContext<'_>| {
                 let mut stats = Stats::new();
-                for (name, base) in def.0 {
-                    stats.set_base(&name, base);
+                for (name, entry) in def.0 {
+                    stats.set_base(&name, entry.base);
                     if well_known_bounds(&name).is_none()
                         && let Some((min, max)) = bounds_of(ctx.world(), &name)
                     {
                         stats = stats.with_bounds(&name, min, max);
+                    }
+                    for line in entry.lines {
+                        stats.add_line(&name, BASE_SOURCE, line);
                     }
                 }
                 (stats,)
@@ -754,9 +1138,28 @@ impl Plugin for StatsPlugin {
     }
 }
 
+/// The source of an entity's own lines, written in its `stats`.
+const BASE_SOURCE: &str = "base";
+
 /// Writes each well-known stat an entity has into its item, when they
-/// differ.
+/// differ; on a step that met stats behind the [`WorldSources`] revision,
+/// brings them up to date and writes again, so a spawn's items take the
+/// world's sources in the step its stats first apply. A world without a
+/// source never meets one, so it runs one query.
 fn stats_apply(world: &mut World) {
+    let revision = world
+        .get_resource::<WorldSources>()
+        .map_or(0, WorldSources::revision);
+    if write_each(world, revision) {
+        bring_stale(world, revision);
+        write_each(world, revision);
+    }
+}
+
+/// Writes each well-known stat an entity has into its item, when they
+/// differ; whether any entity's stats lag `revision`.
+fn write_each(world: &mut World, revision: u64) -> bool {
+    let mut stale = false;
     for (stats, mover, controller, steering, health, cooldown, hitbox, contact) in world
         .query_mut::<(
             &Stats,
@@ -769,6 +1172,7 @@ fn stats_apply(world: &mut World) {
             Option<&mut ContactDamage>,
         )>()
     {
+        stale |= stats.revision != revision;
         if let Some(speed) = stats.get(Stats::MOVE_SPEED) {
             if let Some(mover) = mover {
                 mover.set_speed(speed);
@@ -795,11 +1199,14 @@ fn stats_apply(world: &mut World) {
             }
         }
     }
+    stale
 }
 
 impl Inspectable for Stats {
+    /// A row per stat, then one for the kept lines when there are any.
     fn inspect_rows(&self) -> Vec<(&'static str, String)> {
-        self.stats
+        let mut rows: Vec<(&'static str, String)> = self
+            .stats
             .iter()
             .map(|stat| {
                 (
@@ -813,7 +1220,16 @@ impl Inspectable for Stats {
                     ),
                 )
             })
-            .collect()
+            .collect();
+        if let Some(kept) = &self.kept {
+            let lines: Vec<String> = kept
+                .lines
+                .iter()
+                .map(|kept| format!("{} from {}", kept.stat, kept.source))
+                .collect();
+            rows.push(("lines", lines.join(", ")));
+        }
+        rows
     }
 }
 

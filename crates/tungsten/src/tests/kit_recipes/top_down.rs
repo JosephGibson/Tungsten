@@ -8,7 +8,8 @@
 //! offers, the golem's cold ladder and the ghouls' poison; M74's burn named
 //! after a load, the golem's frost stream and a game's own damage numbers;
 //! M75's guard saved mid-swing; M76's arrow through hedges, saved
-//! mid-flight.
+//! mid-flight; 7.10a's veteran with its scoped lines, a focused effect and
+//! a difficulty world source.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -26,9 +27,10 @@ use crate::kit::{
     Abilities, Aim, CharacterAnimator, ContactDamage, ContactTouch, Conversion, CooldownElapsed,
     Counters, DamagePart, DamageRequest, Damaged, DamagedPart, EffectInstance, EffectRequest,
     Effects, Facing, Health, Hit, HitFlash, HitShape, Hitbox, Hurtbox, KitPlugins, KitRng,
-    Knockback, LabelStyle, Level, LinearMotion, Modifier, Penetration, Phase, ProjectileExpired,
-    Shield, Source, StateMachine, StateMachinePlugin, Stats, Steering, Struck, TagFilter, Tags,
-    TopDownMover, TraceKind, ZoneEntered, damage, float_label, knock_back,
+    Knockback, LabelStyle, Level, Line, LinearMotion, Modifier, Penetration, Phase,
+    ProjectileExpired, Read, Shield, Source, StateMachine, StateMachinePlugin, Stats, Steering,
+    Struck, TagFilter, TagSet, Tags, TopDownMover, TraceKind, WorldSource, WorldSources,
+    ZoneEntered, damage, float_label, knock_back,
 };
 use crate::testing::Harness;
 use tungsten_core::PluginSet;
@@ -1864,5 +1866,104 @@ fn an_arrow_passes_hedges_and_ends_at_a_stone_wall_and_resumes_after_a_load() {
                 "dt {dt}: {loaded:?} against {kept:?}"
             );
         }
+    }
+}
+
+// 7.10a: scoped stat lines, context reads and world sources.
+
+/// `entity`'s `damage` read in the context of one damage type.
+fn damage_in(harness: &Harness, entity: Entity, kind: &str) -> Option<f32> {
+    let context = [TagSet::Name(kind)];
+    harness
+        .world()
+        .get::<Stats>(entity)
+        .unwrap()
+        .read(Stats::DAMAGE, &Read::new(&context))
+}
+
+#[test]
+fn a_veterans_own_line_and_a_focused_effect_read_in_and_out_of_context() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let veteran = spawn(&mut harness, "veteran", [2000.0, 2000.0]);
+        harness.step(1);
+        let get = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Stats>(veteran)
+                .unwrap()
+                .get(Stats::DAMAGE)
+        };
+        assert_eq!(get(&harness), Some(4.0), "dt {dt}: its own line is scoped");
+        assert_eq!(damage_in(&harness, veteran, "elemental.fire"), Some(6.0));
+        assert_eq!(damage_in(&harness, veteran, "elemental.cold"), Some(4.0));
+
+        let focused = DataRef::by_id("focused");
+        assert!(EffectRequest::new(veteran, focused).queue(harness.world_mut()));
+        harness.step(1);
+        assert_eq!(
+            damage_in(&harness, veteran, "elemental.cold"),
+            Some(8.0),
+            "dt {dt}"
+        );
+        assert_eq!(damage_in(&harness, veteran, "elemental.fire"), Some(6.0));
+        assert_eq!(
+            get(&harness),
+            Some(4.0),
+            "dt {dt}: the effect's line is scoped too"
+        );
+        harness.step(frames_for(2.1, dt));
+        assert_eq!(
+            damage_in(&harness, veteran, "elemental.cold"),
+            Some(4.0),
+            "dt {dt}: it left"
+        );
+    }
+}
+
+/// The `difficulty` world source: `mul 1.5` on the enemies' health and
+/// damage.
+fn hard() -> WorldSource {
+    WorldSource::new(TagFilter::new().all(["team.enemy"]))
+        .with_line(Stats::MAX_HEALTH, Line::new(Modifier::Mul(1.5)))
+        .with_line(Stats::DAMAGE, Line::new(Modifier::Mul(1.5)))
+}
+
+#[test]
+fn a_difficulty_source_reaches_the_living_a_spawn_and_leaves_when_removed() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let veteran = spawn(&mut harness, "veteran", [2000.0, 2000.0]);
+        let brute = spawn(&mut harness, "brute", [2400.0, 2000.0]);
+        harness.step(1);
+        let max = |harness: &Harness, entity| harness.world().get::<Health>(entity).unwrap().max();
+        WorldSources::set(harness.world_mut(), "difficulty", hard());
+        harness.step(1);
+        assert_eq!(
+            max(&harness, veteran),
+            12.0,
+            "dt {dt}: the living, at the next step"
+        );
+        assert_eq!(damage_in(&harness, veteran, "elemental.fire"), Some(9.0));
+        assert_eq!(
+            harness.world().get::<Stats>(brute).unwrap().get("armor"),
+            Some(2.0),
+            "dt {dt}: a stat no line names"
+        );
+
+        let late = spawn(&mut harness, "veteran", [2800.0, 2000.0]);
+        harness.step(1);
+        let health = harness.world().get::<Health>(late).unwrap();
+        assert_eq!(
+            (health.current(), health.max()),
+            (12.0, 12.0),
+            "dt {dt}: in its first step"
+        );
+
+        assert!(WorldSources::remove(harness.world_mut(), "difficulty"));
+        harness.step(1);
+        assert_eq!(max(&harness, veteran), 8.0, "dt {dt}: it left");
+        assert_eq!(max(&harness, late), 8.0);
+        assert_eq!(damage_in(&harness, late, "elemental.fire"), Some(6.0));
     }
 }

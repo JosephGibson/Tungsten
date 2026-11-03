@@ -107,6 +107,9 @@
     },
     "hedge": {
       "path": "prefabs/hedge.json"
+    },
+    "veteran": {
+      "path": "prefabs/veteran.json"
     }
   },
   "data": {
@@ -162,6 +165,9 @@
       },
       "sprinting": {
         "path": "data/effects/sprinting.json"
+      },
+      "focused": {
+        "path": "data/effects/focused.json"
       }
     },
     "curves": {

@@ -237,6 +237,7 @@ pub use foundation::debug::{KIT_DEBUG_DRAW, KitDebug, KitDebugPlugin};
 pub use foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, KitDescriptions,
 };
+pub use foundation::lines::{Line, Read, Sums, TagSet};
 pub use foundation::phases::{
     KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_PRESENT, KIT_REACT, KIT_RESOLVE, KIT_TICK, Phase,
     ensure_phases,
@@ -248,6 +249,7 @@ pub use foundation::source::{Source, SourcePlugin};
 pub use foundation::stats::{Modifier, STATS_APPLY, Stats, StatsPlugin};
 pub use foundation::tags::{TagFilter, Tags, TagsPlugin};
 pub use foundation::trace::{KIT_TRACE_STEP, KitTrace, TraceEntry, TraceKind};
+pub use foundation::world_sources::{WorldSource, WorldSources};
 pub use intent::ability::{
     ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Payload,
     Trigger, Used, use_ability,

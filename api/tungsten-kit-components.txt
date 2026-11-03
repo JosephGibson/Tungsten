@@ -251,7 +251,7 @@ component speed_limit: Caps the entity's speed, the length first, then each axis
   genres: platformer, shmup
   sample: { "speed": 600 }
 component stats: Named values with ordered modifiers, which the movers, health and cooldowns read.
-  field bases: stat name → finite base — the value itself: each stat well-known or declared, its base within its bounds
+  field bases: stat name → finite base, or { base, lines: [line] } — the value itself: each stat well-known or declared, its base within its bounds; a line is `{ modifier, with, while, against }`, the entity's own under the source `base`, its tags declared
   genres: platformer, top_down
   sample: { "move_speed": 160 }
 component stay_in_view: Clamps the entity's box inside an area and stops its outward speed; exactly one of `region` and `view`.
@@ -488,8 +488,11 @@ shape stat_bounds: A game stat's clamp.
   field max: f32 = null — the greatest value, at least `min`; none when left out
   sample: {}
 shape stat_modifier: A modifier on one of the target's stats.
-  field stat: text — the stat, `[a-z][a-z0-9_]*`; a target without it takes nothing
-  field modifier: shape modifier — the change; `add` and `pct` scale with the effect's factor
+  field stat: text — the stat, `[a-z][a-z0-9_]*`; a target without it takes nothing, unless the line is scoped
+  field modifier: shape modifier — the change; `add` and `pct` scale with the effect's factor; a scoped line may not override
+  field with: tag filter = null — read only where it passes the read's context (a skill's tags, a hit's track, a part's type); the load checks its tags
+  field while: tag filter = null — read only while it passes the target's own tags, in a read that takes a context; the load checks its tags
+  field against: tag filter = null — read only at a hit whose other party's tags pass it; the load checks its tags
   sample: { "stat": "move_speed", "modifier": { "pct": -0.2 } }
 shape target: What an item follows, circles, steers toward or aims at, resolved again each step.
   exactly one of its fields

@@ -74,6 +74,9 @@
     },
     "armour": {
       "path": "prefabs/armour.json"
+    },
+    "squire": {
+      "path": "prefabs/squire.json"
     }
   },
   "data": {
@@ -99,6 +102,9 @@
       },
       "casting": {
         "path": "data/effects/casting.json"
+      },
+      "inspired": {
+        "path": "data/effects/inspired.json"
       }
     },
     "curves": {

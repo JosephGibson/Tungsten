@@ -31,7 +31,7 @@ pub(crate) fn valid_tag(name: &str) -> bool {
 /// `team.player` declares `team` too; and whether a `name` an entity
 /// carries is `tag` or a descendant, so an entity tagged `team.enemy` has
 /// `team`.
-fn covers(declared: &str, name: &str) -> bool {
+pub(crate) fn covers(declared: &str, name: &str) -> bool {
     declared == name
         || (declared.starts_with(name) && declared.as_bytes().get(name.len()) == Some(&b'.'))
 }
@@ -295,10 +295,37 @@ impl TagFilter {
     /// Whether an entity with `tags` passes.
     #[must_use]
     pub fn matches(&self, tags: Option<&Tags>) -> bool {
-        let has = |tag: &String| tags.is_some_and(|tags| tags.has(tag));
-        self.all.iter().all(has)
-            && (self.any.is_empty() || self.any.iter().any(has))
-            && !self.none.iter().any(has)
+        self.matches_by(|tag| tags.is_some_and(|tags| tags.has(tag)))
+    }
+
+    /// Whether a holder of the names `has` reports passes: [`matches`]
+    /// over any source of names, such as several tag sets read together.
+    ///
+    /// [`matches`]: Self::matches
+    pub(crate) fn matches_by(&self, has: impl Fn(&str) -> bool) -> bool {
+        self.all.iter().all(|tag| has(tag))
+            && (self.any.is_empty() || self.any.iter().any(|tag| has(tag)))
+            && !self.none.iter().any(|tag| has(tag))
+    }
+
+    /// Every name the filter uses.
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        self.all
+            .iter()
+            .chain(&self.any)
+            .chain(&self.none)
+            .map(String::as_str)
+    }
+
+    /// The load's check: each name the filter uses declared, an error
+    /// naming `field` and the list (`with.all`).
+    pub(crate) fn check(&self, world: &World, field: &str) -> Result<(), MissingAsset> {
+        for (list, names) in [("all", &self.all), ("any", &self.any), ("none", &self.none)] {
+            for (i, name) in names.iter().enumerate() {
+                check_declared(world, &format!("{field}.{list}.{i}"), name)?;
+            }
+        }
+        Ok(())
     }
 
     /// Whether the filter names no tag, so everything passes.

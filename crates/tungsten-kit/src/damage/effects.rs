@@ -24,10 +24,11 @@ use crate::foundation::describe::{
     describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows_with;
+use crate::foundation::lines::Line;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::saved::order_of;
 use crate::foundation::stats::{Modifier, STATS_APPLY, Stats};
-use crate::foundation::tags::{Tags, check_declared, valid_tag};
+use crate::foundation::tags::{TagFilter, Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
 use crate::foundation::{non_negative, optional_non_negative, optional_positive};
 use crate::lifecycle::cooldown::Cooldown;
@@ -307,7 +308,7 @@ pub struct Effect {
     refresh: Refresh,
     expire: Expire,
     /// In order.
-    modifiers: Vec<(String, Modifier)>,
+    modifiers: Vec<(String, Line)>,
     resist: Vec<(String, Modifier)>,
     /// Sorted and deduplicated.
     grant: Vec<String>,
@@ -511,7 +512,27 @@ impl Effect {
             modifier.is_finite(),
             "Effect::with_modifier: {stat}: the modifier must be finite (got {modifier:?})"
         );
-        self.modifiers.push((stat.to_owned(), modifier));
+        self.modifiers.push((stat.to_owned(), Line::new(modifier)));
+        self
+    }
+
+    /// The effect, putting `line` on the target's stat `stat` per stack,
+    /// after its earlier modifiers: an unscoped line as
+    /// [`with_modifier`](Self::with_modifier) puts it, a scoped one kept
+    /// for the target's reads in context
+    /// ([`Stats::add_line`](crate::Stats::add_line)).
+    ///
+    /// # Panics
+    ///
+    /// When `stat` is not `[a-z][a-z0-9_]*`.
+    #[must_use]
+    #[track_caller]
+    pub fn with_line(mut self, stat: &str, line: Line) -> Self {
+        assert!(
+            valid_stat(stat),
+            "Effect::with_line: `{stat}` is not a stat name (`[a-z][a-z0-9_]*`)"
+        );
+        self.modifiers.push((stat.to_owned(), line));
         self
     }
 
@@ -676,11 +697,18 @@ impl Effect {
         self.expire
     }
 
-    /// Its stat modifiers, in order.
+    /// Its stat modifiers, in order, each line's modifier.
     pub fn modifiers(&self) -> impl Iterator<Item = (&str, Modifier)> {
         self.modifiers
             .iter()
-            .map(|(stat, modifier)| (stat.as_str(), *modifier))
+            .map(|(stat, line)| (stat.as_str(), line.modifier()))
+    }
+
+    /// Its stat lines with their filters, in order.
+    pub fn lines(&self) -> impl Iterator<Item = (&str, &Line)> {
+        self.modifiers
+            .iter()
+            .map(|(stat, line)| (stat.as_str(), line))
     }
 
     /// Its resistance modifiers, in order.
@@ -814,6 +842,9 @@ impl Effect {
         for (i, tag) in self.suppressed_by.iter().enumerate() {
             check_declared(world, &format!("suppressed_by.{i}"), tag)?;
         }
+        for (i, (_, line)) in self.modifiers.iter().enumerate() {
+            line.check(world, &format!("modifiers.{i}"))?;
+        }
         for (i, (tag, _)) in self.resist.iter().enumerate() {
             check_declared(world, &format!("resist.{i}.tag"), tag)?;
         }
@@ -916,12 +947,23 @@ fn at_least_one<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32
     }
 }
 
-/// A stat modifier as data writes it.
+/// A stat modifier as data writes it: a line with its stat, each filter
+/// left out when it passes everything.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields, try_from = "StatModifierFields")]
 struct StatModifierDef {
     stat: String,
     modifier: Modifier,
+    #[serde(default, skip_serializing_if = "TagFilter::is_everything")]
+    with: TagFilter,
+    #[serde(
+        default,
+        rename = "while",
+        skip_serializing_if = "TagFilter::is_everything"
+    )]
+    holder: TagFilter,
+    #[serde(default, skip_serializing_if = "TagFilter::is_everything")]
+    against: TagFilter,
 }
 
 #[derive(Deserialize)]
@@ -929,6 +971,12 @@ struct StatModifierDef {
 struct StatModifierFields {
     stat: String,
     modifier: Modifier,
+    #[serde(default)]
+    with: TagFilter,
+    #[serde(default, rename = "while")]
+    holder: TagFilter,
+    #[serde(default)]
+    against: TagFilter,
 }
 
 impl TryFrom<StatModifierFields> for StatModifierDef {
@@ -941,16 +989,26 @@ impl TryFrom<StatModifierFields> for StatModifierDef {
                 fields.stat
             ));
         }
-        if !fields.modifier.is_finite() {
-            return Err(format!(
-                "modifier: must be finite (got {:?})",
-                fields.modifier
-            ));
+        let line = Line::from_parts(fields.modifier, fields.with, fields.holder, fields.against)?;
+        Ok(Self::of(fields.stat, &line))
+    }
+}
+
+impl StatModifierDef {
+    fn of(stat: String, line: &Line) -> Self {
+        Self {
+            stat,
+            modifier: line.modifier(),
+            with: line.context_filter().clone(),
+            holder: line.holder_filter().clone(),
+            against: line.against_filter().clone(),
         }
-        Ok(Self {
-            stat: fields.stat,
-            modifier: fields.modifier,
-        })
+    }
+
+    fn into_line(self) -> (String, Line) {
+        let line = Line::from_parts(self.modifier, self.with, self.holder, self.against)
+            .expect("a stat modifier's line was checked at its load");
+        (self.stat, line)
     }
 }
 
@@ -1082,7 +1140,7 @@ impl TryFrom<EffectDef> for Effect {
             modifiers: def
                 .modifiers
                 .into_iter()
-                .map(|m| (m.stat, m.modifier))
+                .map(StatModifierDef::into_line)
                 .collect(),
             resist: def
                 .resist
@@ -1120,7 +1178,7 @@ impl From<Effect> for EffectDef {
             modifiers: effect
                 .modifiers
                 .into_iter()
-                .map(|(stat, modifier)| StatModifierDef { stat, modifier })
+                .map(|(stat, line)| StatModifierDef::of(stat, &line))
                 .collect(),
             resist: effect
                 .resist
@@ -2117,8 +2175,13 @@ fn place_modifiers(
         match world.get_mut::<Stats>(target) {
             Some(stats) => {
                 for _ in 0..instance.stacks {
-                    for (stat, modifier) in &effect.modifiers {
-                        stats.add_modifier(stat, &source, scale(*modifier));
+                    for (stat, line) in &effect.modifiers {
+                        let modifier = scale(line.modifier());
+                        if line.is_scoped() {
+                            stats.add_line(stat, &source, line.clone().with_modifier(modifier));
+                        } else {
+                            stats.add_modifier(stat, &source, modifier);
+                        }
                     }
                 }
             }
@@ -2864,13 +2927,37 @@ fn describe_effects(world: &mut World) {
             .field(FieldDescription::new(
                 "stat",
                 FieldType::Text,
-                "the stat, `[a-z][a-z0-9_]*`; a target without it takes nothing",
+                "the stat, `[a-z][a-z0-9_]*`; a target without it takes nothing, unless the line is scoped",
             ))
             .field(FieldDescription::new(
                 "modifier",
                 FieldType::Shape(MODIFIER),
-                "the change; `add` and `pct` scale with the effect's factor",
+                "the change; `add` and `pct` scale with the effect's factor; a scoped line may not override",
             ))
+            .field(
+                FieldDescription::new(
+                    "with",
+                    FieldType::Filter,
+                    "read only where it passes the read's context (a skill's tags, a hit's track, a part's type); the load checks its tags",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "while",
+                    FieldType::Filter,
+                    "read only while it passes the target's own tags, in a read that takes a context; the load checks its tags",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "against",
+                    FieldType::Filter,
+                    "read only at a hit whose other party's tags pass it; the load checks its tags",
+                )
+                .default("null"),
+            )
             .sample(r#"{ "stat": "move_speed", "modifier": { "pct": -0.2 } }"#)
             .roundtrip(round_trip::<StatModifierDef>),
         ComponentDescription::new(

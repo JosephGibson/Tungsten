@@ -2,7 +2,8 @@
 //! actions and a jump slot, a ground, a door zone, a spark and a lift; M64's
 //! conveyor, bobbing lift, acrobat, firebar and firefly; M65's fireballs,
 //! bricks, climber, spiker and coin; M67's regen and haste on the runner;
-//! M76's bolt off armour, saved mid-flight.
+//! M76's bolt off armour, saved mid-flight; 7.10a's squire with its scoped
+//! lines, an inspired effect and a difficulty world source.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -11,8 +12,9 @@ use tungsten_core::{AnimationState, PluginSet, Transform, World};
 use super::{DTS, body_at, drawn_at, frames_for, motion_reversed, point_of, recipe, spawn, tagged};
 use crate::kit::{
     CharacterAnimator, Children, Counters, EffectRequest, Effects, Facing, Flags, Health,
-    KitPlugins, LinearMotion, PathFollowerPlugin, PlatformerController, PlatformerControllerPlugin,
-    ProjectileExpired, Stats, ZoneEntered, damage, knock_back,
+    KitPlugins, Line, LinearMotion, Modifier, PathFollowerPlugin, PlatformerController,
+    PlatformerControllerPlugin, ProjectileExpired, Read, Stats, TagFilter, TagSet, WorldSource,
+    WorldSources, ZoneEntered, damage, knock_back,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use tungsten_core::DataRef;
@@ -843,5 +845,113 @@ fn a_bolt_turns_off_armour_and_ends_at_a_tile_and_resumes_after_a_load() {
                 "dt {dt}: {loaded:?} against {kept:?}"
             );
         }
+    }
+}
+
+// 7.10a: scoped stat lines, context reads and world sources.
+
+/// `entity`'s `damage` read in `context`.
+fn damage_in(
+    harness: &super::Harness,
+    entity: tungsten_core::Entity,
+    context: &[&str],
+) -> Option<f32> {
+    let names: Vec<String> = context.iter().map(|name| (*name).to_string()).collect();
+    let sets = [TagSet::Names(&names)];
+    harness
+        .world()
+        .get::<Stats>(entity)
+        .unwrap()
+        .read(Stats::DAMAGE, &Read::new(&sets))
+}
+
+#[test]
+fn a_squires_own_line_and_an_inspired_effect_read_in_and_out_of_context() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let squire = spawn(&mut harness, "squire", [2000.0, -2000.0]);
+        harness.step(1);
+        let get = |harness: &super::Harness| {
+            harness
+                .world()
+                .get::<Stats>(squire)
+                .unwrap()
+                .get(Stats::DAMAGE)
+        };
+        assert_eq!(get(&harness), Some(2.0), "dt {dt}");
+        assert_eq!(damage_in(&harness, squire, &["damage.fire"]), Some(3.0));
+        assert_eq!(damage_in(&harness, squire, &["skill.spell"]), Some(2.0));
+
+        assert!(EffectRequest::new(squire, DataRef::by_id("inspired")).queue(harness.world_mut()));
+        harness.step(1);
+        assert_eq!(
+            damage_in(&harness, squire, &["skill.spell"]),
+            Some(4.0),
+            "dt {dt}"
+        );
+        assert_eq!(
+            damage_in(&harness, squire, &["skill.spell", "damage.fire"]),
+            Some(6.0)
+        );
+        assert_eq!(
+            get(&harness),
+            Some(2.0),
+            "dt {dt}: never the entity-level read"
+        );
+        harness.step(frames_for(2.1, dt));
+        assert_eq!(
+            damage_in(&harness, squire, &["skill.spell"]),
+            Some(2.0),
+            "dt {dt}: it left"
+        );
+    }
+}
+
+#[test]
+fn a_difficulty_source_reaches_the_living_a_spawn_and_leaves_when_removed() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let squire = spawn(&mut harness, "squire", [2000.0, -2000.0]);
+        let runner = spawn(&mut harness, "runner", [2400.0, -2000.0]);
+        harness.step(1);
+        let max =
+            |harness: &super::Harness, entity| harness.world().get::<Health>(entity).unwrap().max();
+        let hard = WorldSource::new(TagFilter::new().all(["team.enemy"]))
+            .with_line(Stats::MAX_HEALTH, Line::new(Modifier::Mul(1.5)))
+            .with_line(Stats::DAMAGE, Line::new(Modifier::Mul(1.5)));
+        WorldSources::set(harness.world_mut(), "difficulty", hard);
+        let runner_speed = harness
+            .world()
+            .get::<Stats>(runner)
+            .and_then(|stats| stats.get(Stats::MOVE_SPEED));
+        harness.step(1);
+        assert_eq!(
+            max(&harness, squire),
+            6.0,
+            "dt {dt}: the living, at the next step"
+        );
+        assert_eq!(damage_in(&harness, squire, &["damage.fire"]), Some(4.5));
+        assert_eq!(
+            harness
+                .world()
+                .get::<Stats>(runner)
+                .and_then(|stats| stats.get(Stats::MOVE_SPEED)),
+            runner_speed,
+            "dt {dt}: a player is no enemy"
+        );
+
+        let late = spawn(&mut harness, "squire", [2800.0, -2000.0]);
+        harness.step(1);
+        let health = harness.world().get::<Health>(late).unwrap();
+        assert_eq!(
+            (health.current(), health.max()),
+            (6.0, 6.0),
+            "dt {dt}: in its first step"
+        );
+
+        assert!(WorldSources::remove(harness.world_mut(), "difficulty"));
+        harness.step(1);
+        assert_eq!(max(&harness, squire), 4.0, "dt {dt}: it left");
+        assert_eq!(max(&harness, late), 4.0);
     }
 }

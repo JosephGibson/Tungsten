@@ -2,5 +2,6 @@
   "team.player",
   "team.enemy",
   "damage.fire",
-  "casting"
+  "casting",
+  "skill.spell"
 ]

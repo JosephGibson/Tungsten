@@ -454,6 +454,49 @@ fn a_stat_modifier_added_in_play_keeps_a_retuned_base() {
 }
 
 #[test]
+fn kept_stat_lines_come_back_through_a_capture() {
+    let hero = |world: &mut World| -> Entity {
+        prefab(
+            world,
+            "hero",
+            json!({ "components": { "stats": { "damage_taken": { "base": 1, "lines": [
+                { "modifier": { "mul": 0.5 }, "with": { "all": ["damage.fire"] } }
+            ] } } } }),
+        );
+        let hero = world.spawn_prefab("hero", [0.0, 0.0]).unwrap();
+        named(world, hero, None, "hero")
+    };
+    let (mut a, _) = rig();
+    let entity = hero(&mut a);
+    let casting = crate::TagFilter::new().all(["casting"]);
+    a.get_mut::<Stats>(entity).unwrap().add_line(
+        "cost",
+        "passive:frugal",
+        crate::Line::new(Modifier::Mul(0.5)).while_holder(casting),
+    );
+    let saved = capture_world(&a).unwrap();
+
+    let (mut b, _) = rig();
+    let entity = hero(&mut b);
+    restore(&mut b, &saved);
+    assert_eq!(text(&capture_world(&b).unwrap()), text(&saved));
+    let stats = b.get::<Stats>(entity).unwrap();
+    let fire = [crate::TagSet::Name("damage.fire")];
+    assert_eq!(
+        stats.read("damage_taken", &crate::Read::new(&fire)),
+        Some(0.5)
+    );
+    let sources: Vec<(&str, &str)> = stats
+        .lines()
+        .map(|(stat, source, _)| (stat, source))
+        .collect();
+    assert_eq!(
+        sources,
+        [("cost", "passive:frugal"), ("damage_taken", "base")]
+    );
+}
+
+#[test]
 fn a_pending_hit_target_drops_once_its_hitbox_rearms() {
     let north = |world: &mut World| -> Entity {
         let sword = world.spawn_with((Hitbox::new(HitShape::circle(4.0), 1.0),));

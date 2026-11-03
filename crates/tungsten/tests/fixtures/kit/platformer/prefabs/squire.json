@@ -1,0 +1,29 @@
+{
+  "tag": "squire",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 4
+    },
+    "stats": {
+      "max_health": 4,
+      "damage": {
+        "base": 2,
+        "lines": [
+          {
+            "modifier": {
+              "pct": 0.5
+            },
+            "with": {
+              "any": [
+                "damage.fire"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
