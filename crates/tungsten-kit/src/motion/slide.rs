@@ -3,7 +3,9 @@
 //! along what it meets, and the climb over a step.
 
 use glam::Vec2;
-use tungsten_core::physics::{BodyKind, RigidBody, Shape, SpatialFilter, SpatialHit, cast_shape};
+use tungsten_core::physics::{
+    BodyKind, RigidBody, Shape, SpatialFilter, SpatialHit, cast_shape, cast_shape_where,
+};
 use tungsten_core::{Entity, PhysicsConfig, Time, World};
 
 /// The gap a move leaves before the surface it meets, in px.
@@ -85,6 +87,42 @@ pub(crate) fn move_and_slide_on(
     floor_y: f32,
     no_climb: bool,
 ) -> Slide {
+    slide_by(origin, delta, floor_y, no_climb, |at, direction, length| {
+        cast_shape(world, shape, at, direction, length, filter)
+    })
+}
+
+/// Where a carry of `delta` takes `shape` from `origin`, its ground's move
+/// under it: a slide against what `filter` sees but `ground`, so a wall or
+/// a ceiling stops it; `origin + delta` exactly when nothing is met.
+pub(crate) fn carry(
+    world: &World,
+    shape: Shape,
+    origin: Vec2,
+    delta: Vec2,
+    filter: &SpatialFilter,
+    ground: Entity,
+) -> Vec2 {
+    let cast = |at: Vec2, direction: Vec2, length: f32| {
+        cast_shape_where(world, shape, at, direction, length, filter, |hit| {
+            hit.entity != Some(ground)
+        })
+    };
+    let length = delta.length();
+    if length.is_nan() || length <= MIN_MOVE || cast(origin, delta / length, length).is_none() {
+        return origin + delta;
+    }
+    origin + slide_by(origin, delta, FLOOR_NORMAL_Y, false, cast).moved
+}
+
+/// The slide loop of [`move_and_slide_on`], each cast by `cast`.
+fn slide_by(
+    origin: Vec2,
+    delta: Vec2,
+    floor_y: f32,
+    no_climb: bool,
+    mut cast: impl FnMut(Vec2, Vec2, f32) -> Option<SpatialHit>,
+) -> Slide {
     let mut slide = Slide::default();
     let mut at = origin;
     let mut rest = delta;
@@ -94,7 +132,7 @@ pub(crate) fn move_and_slide_on(
             break;
         }
         let direction = rest / length;
-        let Some(hit) = cast_shape(world, shape, at, direction, length, filter) else {
+        let Some(hit) = cast(at, direction, length) else {
             at += rest;
             break;
         };

@@ -1,0 +1,17 @@
+{
+  "tag": "roller",
+  "components": {
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 8
+      },
+      "mass": 10,
+      "velocity": [
+        300,
+        0
+      ]
+    }
+  }
+}

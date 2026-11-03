@@ -5,7 +5,9 @@
 //! M76's bolt off armour, saved mid-flight; 7.10a's squire with its scoped
 //! lines, an inspired effect and a difficulty world source, and a knight
 //! that halves blasts, floors its cold factor and crits from its stats;
-//! 7.10m's rambler up a 2:1 ramp, down a steep one and through a ledge.
+//! 7.10m's rambler up a 2:1 ramp, down a steep one and through a ledge, and
+//! its porter, whose body's mass a rolled ball pushes, carried up to a
+//! ceiling.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1309,6 +1311,50 @@ fn a_rambler_walks_up_a_ramp_slides_down_a_steep_one_and_drops_through_a_ledge()
         assert!(
             (feet.y - 240.0).abs() < 0.05,
             "dt {dt}: on the floor at {feet}"
+        );
+    }
+}
+
+#[test]
+fn a_porter_is_knocked_by_a_ball_and_carried_up_to_a_ceiling() {
+    for dt in DTS {
+        // A ball of mass 10 rolled at 300 px/s into the porter, whose body
+        // weighs 60: one push of 3,000 / 70 px/s, which moves it.
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let porter = spawn(&mut harness, "porter", [0.0, 270.0]);
+        spawn(&mut harness, "roller", [-100.0, 282.0]);
+        let mut pushes = Vec::new();
+        for _ in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            let pushed = harness
+                .world()
+                .get::<PlatformerController>(porter)
+                .unwrap()
+                .pushed();
+            if pushed != Vec2::ZERO {
+                pushes.push(pushed);
+            }
+        }
+        let expected = 3_000.0 / 70.0;
+        assert_eq!(pushes.len(), 1, "dt {dt}: {pushes:?}");
+        assert!(
+            (pushes[0].x - expected).abs() < 0.01 * expected,
+            "dt {dt}: {pushes:?}"
+        );
+        assert!(body_at(&harness, porter).x > 0.5, "dt {dt}: it moved");
+
+        // On a deck rising at 60 px/s under a ledge whose bottom is 12 px over
+        // its head: carried up until its head is the skin under the ledge.
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "riser", [200.0, 250.0]);
+        spawn(&mut harness, "ledge", [200.0, 180.0]);
+        let porter = spawn(&mut harness, "porter", [200.0, 222.0]);
+        harness.step(frames_for(0.5, dt));
+        let head = body_at(&harness, porter).y - 20.0;
+        assert!(
+            (head - 190.01).abs() < 1e-3,
+            "dt {dt}: its head at {head}, the ledge's bottom at 190"
         );
     }
 }

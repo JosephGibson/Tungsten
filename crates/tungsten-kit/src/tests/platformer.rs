@@ -1891,3 +1891,287 @@ fn the_controllers_filter_round_trips_its_data_and_save() {
         serde_json::from_value(serde_json::to_value(&on_face).unwrap()).unwrap();
     assert_eq!(loaded.floor_normal(), on_face.floor_normal());
 }
+
+/// A controlled body standing with its feet at `feet`, its kinematic body of
+/// mass `mass` when given.
+fn weighed_hero(
+    world: &mut World,
+    feet: Vec2,
+    controller: PlatformerController,
+    mass: Option<f32>,
+) -> Entity {
+    let body = mass.map_or(RigidBody::kinematic(), |mass| {
+        RigidBody::kinematic().with_mass(mass)
+    });
+    world.spawn_with(
+        RigidBodyBundle::kinematic(
+            Position(feet - Vec2::new(0.0, HALF.y)),
+            Collider::aabb(HALF),
+        )
+        .with_body(body)
+        .with((controller,)),
+    )
+}
+
+/// A dynamic circle of `radius` and `mass` resting with its foot at `foot`,
+/// moving at `velocity`.
+fn thrown_ball(
+    world: &mut World,
+    foot: Vec2,
+    radius: f32,
+    mass: f32,
+    velocity: Vec2,
+    restitution: f32,
+) -> Entity {
+    world.spawn_with(
+        RigidBodyBundle::dynamic(
+            Position(foot - Vec2::new(0.0, radius)),
+            Collider::circle(radius),
+        )
+        .with_body(
+            RigidBody::dynamic()
+                .with_mass(mass)
+                .with_restitution(restitution),
+        )
+        .with_velocity(Velocity(velocity)),
+    )
+}
+
+/// Each step's `pushed()` over `count` steps.
+fn pushes_taken(
+    world: &mut World,
+    schedule: &mut Schedule,
+    entity: Entity,
+    count: usize,
+) -> Vec<Vec2> {
+    (0..count)
+        .map(|_| {
+            step(world, schedule);
+            state(world, entity).pushed()
+        })
+        .collect()
+}
+
+#[test]
+fn bodies_and_impulses_push_a_controller_with_a_mass() {
+    // A ball of mass 10 at 300 px/s into a controller whose body weighs 60:
+    // its begin pushes the body by 3,000 / 70 px/s, which the controller
+    // joins at its next step and `pushed` reads; the ball keeps the
+    // solver's stop. Without a mass, nothing.
+    for mass in [Some(60.0), None] {
+        let (mut world, mut schedule) = rig();
+        tile_floor(&mut world, 64);
+        let entity = weighed_hero(
+            &mut world,
+            Vec2::new(300.0, 0.0),
+            PlatformerController::new(RUN, JUMP),
+            mass,
+        );
+        thrown_ball(
+            &mut world,
+            Vec2::new(200.0, 0.0),
+            6.0,
+            10.0,
+            Vec2::new(300.0, 0.0),
+            0.0,
+        );
+        steps(&mut world, &mut schedule, 2);
+        let taken = pushes_taken(&mut world, &mut schedule, entity, 60);
+        let moved: Vec<_> = taken.iter().filter(|push| **push != Vec2::ZERO).collect();
+        if mass.is_none() {
+            assert!(moved.is_empty(), "no mass: {moved:?}");
+            continue;
+        }
+        assert_eq!(moved.len(), 1, "{taken:?}");
+        let expected = 3_000.0 / 70.0;
+        assert!(
+            (moved[0].x - expected).abs() < 0.01 * expected && moved[0].y.abs() < 1e-3,
+            "{}",
+            moved[0]
+        );
+    }
+    // A controller weighing 1 hit by mass 10 at 100 px/s: the inelastic
+    // share, never the ball's speed or more, at either restitution.
+    for restitution in [0.0, 1.0] {
+        let (mut world, mut schedule) = rig();
+        tile_floor(&mut world, 64);
+        let entity = weighed_hero(
+            &mut world,
+            Vec2::new(300.0, 0.0),
+            PlatformerController::new(RUN, JUMP),
+            Some(1.0),
+        );
+        thrown_ball(
+            &mut world,
+            Vec2::new(270.0, 0.0),
+            6.0,
+            10.0,
+            Vec2::new(100.0, 0.0),
+            restitution,
+        );
+        steps(&mut world, &mut schedule, 2);
+        let taken = pushes_taken(&mut world, &mut schedule, entity, 60);
+        let total: Vec2 = taken.iter().copied().sum();
+        let expected = 1_000.0 / 11.0;
+        assert!(
+            (total.x - expected).abs() < 0.01 * expected,
+            "restitution {restitution}: {total}"
+        );
+        assert!(
+            taken.iter().all(|push| push.length() <= 100.0),
+            "restitution {restitution}: {taken:?}"
+        );
+    }
+    // A radial impulse of 600 whose radius reaches twice as far as the
+    // controller's side: 300 on a body of 60, 5 px/s.
+    let (mut world, mut schedule) = rig();
+    tile_floor(&mut world, 64);
+    let entity = weighed_hero(
+        &mut world,
+        Vec2::new(300.0, 0.0),
+        PlatformerController::new(RUN, JUMP),
+        Some(60.0),
+    );
+    steps(&mut world, &mut schedule, 3);
+    let center = Vec2::new(300.0 - HALF.x - 50.0, -HALF.y);
+    let took = tungsten_core::physics::apply_radial_impulse(
+        &mut world,
+        center,
+        100.0,
+        600.0,
+        &SpatialFilter::new(),
+    );
+    assert_eq!(took, 1);
+    let before = position(&world, entity).x;
+    step(&mut world, &mut schedule);
+    let pushed = state(&world, entity).pushed();
+    assert!(pushed.abs_diff_eq(Vec2::new(5.0, 0.0), 1e-4), "{pushed}");
+    let moved = position(&world, entity).x - before;
+    assert!((moved - 5.0 * DT).abs() < 1e-4, "{moved} px");
+    step(&mut world, &mut schedule);
+    assert_eq!(state(&world, entity).pushed(), Vec2::ZERO);
+}
+
+#[test]
+fn a_locked_controller_ploughs_through_a_body() {
+    // Launched along the floor under locked input into a crate of mass 12
+    // it cannot shove, a controller whose body weighs 60 gives the crate the
+    // inelastic share of their closing speed and keeps the speed they then
+    // share, 400 · 60 / 72 px/s; a static wall and a tile still stop it,
+    // and without a mass it stops at the crate as before.
+    let shared = 400.0 * 60.0 / 72.0;
+    let run = |mass: Option<f32>, wall: &str| {
+        let (mut world, mut schedule) = rig();
+        tile_floor(&mut world, 64);
+        let entity = weighed_hero(
+            &mut world,
+            Vec2::new(100.0, 0.0),
+            PlatformerController::new(RUN, JUMP),
+            mass,
+        );
+        let crate_body = match wall {
+            "crate" => Some(dynamic_box(
+                &mut world,
+                Vec2::new(200.0, 0.0),
+                Vec2::splat(10.0),
+                12.0,
+            )),
+            "static" => {
+                static_box(&mut world, Vec2::new(200.0, -30.0), Vec2::new(10.0, 30.0));
+                None
+            }
+            _ => {
+                let mut map = TilemapData::new(16, 16, 1, 4);
+                let solid = map.add_tile("solid");
+                let layer = map.add_layer("solid", LayerKind::Collision);
+                map.fill(layer, solid);
+                world
+                    .resource_mut::<TilemapRegistry>()
+                    .insert("post".into(), map);
+                let instance = world.spawn();
+                world.insert(
+                    instance,
+                    TilemapInstance::new("post", Vec2::new(192.0, -64.0)),
+                );
+                None
+            }
+        };
+        steps(&mut world, &mut schedule, 2);
+        {
+            let controller = controller(&mut world, entity);
+            controller.launch(Vec2::new(400.0, 0.0));
+            controller.lock_input(1.0);
+        }
+        for _ in 0..30 {
+            step(&mut world, &mut schedule);
+            let crate_speed =
+                crate_body.map_or(0.0, |body| world.get::<Velocity>(body).unwrap().0.x);
+            if crate_speed != 0.0 || state(&world, entity).velocity.x != 400.0 {
+                return (state(&world, entity).velocity.x, crate_speed);
+            }
+        }
+        panic!("{wall}: it never met the wall");
+    };
+    let (own, crate_speed) = run(Some(60.0), "crate");
+    assert!((own - shared).abs() < 0.01 * shared, "controller {own}");
+    assert!(
+        (crate_speed - shared).abs() < 0.01 * shared,
+        "crate {crate_speed}"
+    );
+    for wall in ["static", "tile"] {
+        assert_eq!(run(Some(60.0), wall), (0.0, 0.0), "{wall}");
+    }
+    assert_eq!(run(None, "crate"), (0.0, 0.0), "no mass");
+}
+
+#[test]
+fn a_riders_carry_stops_at_a_ceiling() {
+    // A deck rising under a ceiling carries its rider until the rider's
+    // head is the skin under the ceiling, where the carry stops; the cast
+    // passes the deck itself. An open carry moves the rider by the deck's
+    // move exactly, as the uncast carry did.
+    let (mut world, mut schedule) = rig();
+    let deck = world.spawn_with(RigidBodyBundle::kinematic(
+        Position::new(200.0, 10.0),
+        Collider::aabb(Vec2::new(60.0, 10.0)),
+    ));
+    let ceiling = -2.0 * HALF.y - 12.0;
+    static_box(
+        &mut world,
+        Vec2::new(200.0, ceiling - 10.0),
+        Vec2::new(100.0, 10.0),
+    );
+    let entity = hero(
+        &mut world,
+        Vec2::new(200.0, 0.0),
+        PlatformerController::new(RUN, JUMP),
+    );
+    steps(&mut world, &mut schedule, 2);
+    world.get_mut::<Velocity>(deck).unwrap().0 = Vec2::new(0.0, -60.0);
+    let mut highest = f32::INFINITY;
+    for _ in 0..20 {
+        step(&mut world, &mut schedule);
+        highest = highest.min(position(&world, entity).y - HALF.y);
+    }
+    world.get_mut::<Velocity>(deck).unwrap().0 = Vec2::ZERO;
+    let head = position(&world, entity).y - HALF.y;
+    assert!(
+        (head - (ceiling + SKIN)).abs() < 1e-3 && highest >= ceiling,
+        "head at {head}, highest {highest}, the ceiling at {ceiling}"
+    );
+
+    let shape = Shape::Aabb { half_extents: HALF };
+    let filter = SpatialFilter::new().excluding(entity);
+    let from = Vec2::new(200.25, -3.375);
+    for delta in [
+        Vec2::new(1.5, -0.62),
+        Vec2::new(-0.031, 0.0),
+        Vec2::new(0.0, 1e-5),
+    ] {
+        assert_eq!(
+            crate::motion::slide::carry(&world, shape, from, delta, &filter, deck),
+            from + delta,
+            "{delta}"
+        );
+    }
+}

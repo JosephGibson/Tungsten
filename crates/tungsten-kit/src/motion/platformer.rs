@@ -8,7 +8,8 @@ use glam::Vec2;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use tungsten_core::physics::{
-    BodyKind, Collider, Position, RigidBody, Shape, SpatialFilter, Velocity, wake,
+    BodyKind, Collider, Position, RigidBody, Shape, SpatialFilter, Velocity, apply_impulse,
+    take_push, wake,
 };
 use tungsten_core::{
     Entity, Inspectable, PhysicsConfig, Plugin, Schedule, SpawnContext, World, system,
@@ -29,7 +30,7 @@ use crate::foundation::{
 use crate::intent::action_input::Intent;
 use crate::motion::path::PATH_FOLLOW;
 use crate::motion::slide::{
-    FLOOR_NORMAL_Y, GROUND_PROBE, SKIN, Slide, climb, is_kinematic, move_and_slide_on,
+    FLOOR_NORMAL_Y, GROUND_PROBE, SKIN, Slide, carry, climb, is_kinematic, move_and_slide_on,
     probe_ground_on, step_dt,
 };
 
@@ -98,7 +99,9 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 ///    and the horizontal speed holds.
 /// 5. Adds the [`push`](Self::push)es made since its last step, velocity
 ///    given to it, where a [shove](Self::with_shove) moves what it walks
-///    into.
+///    into; with a mass on its body (`RigidBody::with_mass`), the push the
+///    bodies that hit it and the impulses it took gave since its last step,
+///    which [`pushed`](Self::pushed) reads.
 /// 6. Cuts a rising jump by the jump cut once, when the jump is released.
 /// 7. Applies gravity, `with_gravity`'s or the world's
 ///    `PhysicsConfig::gravity.y`, over the step's mean velocity, so a jump
@@ -109,12 +112,18 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 ///    steeper than its slope limit is a wall it does not climb. A wall
 ///    met on the ground that its [step height](Self::with_step_height)
 ///    climbs is climbed instead, and a light dynamic body met as a wall
-///    takes a [shove](Self::with_shove).
-/// 9. On a kinematic ground, adds the ground's `Velocity` times the step,
-///    uncast, unless it jumped, was launched or was pushed up.
+///    takes a [shove](Self::with_shove). Under locked input, with a mass
+///    `M` on its body, a dynamic body of mass `m` it cannot shove takes the
+///    inelastic impulse `M m / (M + m)` times the speed it closes at along
+///    x, and the controller keeps the speed they share.
+/// 9. On a kinematic ground, moves by the ground's `Velocity` times the
+///    step, by a slide from where its own move ended that passes the
+///    ground, so a wall or a ceiling stops the carry, unless it jumped, was
+///    launched or was pushed up.
 /// 10. Writes `Velocity`, which its body moves by in the step, or after a
 ///     climb its `Position` at the landing and a zero `Velocity`; writes a
-///     shoved body's `Velocity.x` and wakes it; takes a paid air jump's
+///     shoved body's `Velocity.x` and wakes it; gives a ploughed body its
+///     impulse; takes a paid air jump's
 ///     amount off its stat's base; and ticks the input lock, the jump
 ///     buffer and coyote time on the game clock.
 ///
@@ -257,6 +266,8 @@ pub struct PlatformerController {
     pressed: bool,
     launch: Option<Vec2>,
     push: Vec2,
+    /// The push its body's mass took at its last step.
+    pushed: Vec2,
     /// A drop through a one-way edge asked for since its last step.
     drop_asked: bool,
     /// While a drop through a one-way edge lasts, that edge's top face's y.
@@ -330,6 +341,7 @@ impl PlatformerController {
             pressed: false,
             launch: None,
             push: Vec2::ZERO,
+            pushed: Vec2::ZERO,
             drop_asked: false,
             drop_edge: None,
             slide_speed: 0.0,
@@ -591,6 +603,15 @@ impl PlatformerController {
         self.floor.map(|(normal, _)| normal)
     }
 
+    /// The push its last step took from the hits and impulses its body's
+    /// mass kept ([`take_push`]), velocity it joined as a
+    /// [`push`](Self::push) does; zero without a mass. A game turns a hard
+    /// hit into a [`knock_back`](crate::knock_back) by it.
+    #[must_use]
+    pub fn pushed(&self) -> Vec2 {
+        self.pushed
+    }
+
     /// The floor rule: a surface whose normal's y is at most this is a
     /// floor.
     fn floor_y(&self) -> f32 {
@@ -770,6 +791,7 @@ impl PlatformerController {
                 velocity: Vec2::ZERO,
                 position: None,
                 shove: None,
+                plough: None,
             };
         }
         let base = self.filter.excluding(entity);
@@ -945,6 +967,7 @@ impl PlatformerController {
         }
         let mut climbed = false;
         let mut shoved = None;
+        let mut plough = None;
         if slide.wall {
             let landing = if walking {
                 self.climb(
@@ -964,16 +987,21 @@ impl PlatformerController {
                 climbed = true;
             } else {
                 shoved = self.shove_of(world, &slide);
-                self.velocity.x = 0.0;
+                plough = if shoved.is_none() {
+                    self.plough_of(world, entity, &slide)
+                } else {
+                    None
+                };
+                self.velocity.x = plough.map_or(0.0, |(_, _, kept)| kept);
             }
         }
         if self.grounded
             && !lifted
             && let Some(ground) = ground
             && is_kinematic(world, ground)
-            && let Some(carry) = world.get::<Velocity>(ground)
+            && let Some(moving) = world.get::<Velocity>(ground)
         {
-            at += carry.0 * dt;
+            at = carry(world, collider.shape, at, moving.0 * dt, &filter, ground);
         }
 
         // The timers, last, so the getters read the step's end.
@@ -993,12 +1021,14 @@ impl PlatformerController {
                 velocity: Vec2::ZERO,
                 position: Some(at - collider.offset),
                 shove: None,
+                plough: None,
             }
         } else {
             Moved {
                 velocity: (at - origin) / dt,
                 position: None,
                 shove: shoved,
+                plough: plough.map(|(body, impulse, _)| (body, impulse)),
             }
         }
     }
@@ -1056,6 +1086,43 @@ impl PlatformerController {
         let speed = self.velocity.x * (1.0 - mass / shove.mass);
         (mass <= shove.share * shove.mass && speed != 0.0).then_some((body, speed))
     }
+
+    /// The plough of the first wall `slide` met under locked input, when it
+    /// is a dynamic body and the controller's body `entity` has a mass: the
+    /// body, its impulse along x and the controller's horizontal speed
+    /// after, the inelastic share `M m / (M + m)` of their closing speed
+    /// taken from the controller's `u` and given to the body's `w`.
+    fn plough_of(
+        &self,
+        world: &World,
+        entity: Entity,
+        slide: &Slide,
+    ) -> Option<(Entity, Vec2, f32)> {
+        if self.lock_left <= 0.0 {
+            return None;
+        }
+        let own = world.get::<RigidBody>(entity)?.inv_mass;
+        let body = slide.wall_body?;
+        let rigid = world.get::<RigidBody>(body)?;
+        let other = world.get::<Velocity>(body)?.0;
+        if rigid.kind != BodyKind::Dynamic
+            || !(own.is_finite() && own > 0.0 && rigid.inv_mass.is_finite() && rigid.inv_mass > 0.0)
+        {
+            return None;
+        }
+        // Into the wall along x, the axis a wall stops.
+        let into = -slide.wall_normal.x.signum();
+        let (u, w) = (self.velocity.x * into, other.x * into);
+        if u <= 0.0 {
+            return None;
+        }
+        let impulse = (u - w).max(0.0) / (own + rigid.inv_mass);
+        Some((
+            body,
+            Vec2::new(into * impulse, 0.0),
+            into * (u - impulse * own),
+        ))
+    }
 }
 
 /// A controller's shove: the mass it shoves as, and the share of it a body
@@ -1075,6 +1142,8 @@ struct Moved {
     position: Option<Vec2>,
     /// The body it shoved and the horizontal speed the shove gives it.
     shove: Option<(Entity, f32)>,
+    /// The body it ploughed and the impulse it gives it.
+    plough: Option<(Entity, Vec2)>,
 }
 
 /// Gives `body` a shove's horizontal `speed`, unless it already moves that
@@ -1374,6 +1443,8 @@ struct ControllerSave {
     launch: Option<Vec2>,
     #[serde(with = "vec2")]
     push: Vec2,
+    #[serde(default, with = "vec2", skip_serializing_if = "is_zero_vec")]
+    pushed: Vec2,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     drop_asked: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1449,6 +1520,7 @@ impl TryFrom<ControllerSave> for PlatformerController {
         for (field, value) in [
             ("launch", save.launch.unwrap_or(Vec2::ZERO)),
             ("push", save.push),
+            ("pushed", save.pushed),
             ("velocity", save.velocity),
         ] {
             if !value.is_finite() {
@@ -1539,6 +1611,7 @@ impl TryFrom<ControllerSave> for PlatformerController {
             pressed: save.pressed,
             launch: save.launch,
             push: save.push,
+            pushed: save.pushed,
             drop_asked: save.drop_asked,
             drop_edge: save.drop_edge,
             slide_speed: save.slide_speed,
@@ -1584,6 +1657,7 @@ impl From<PlatformerController> for ControllerSave {
             pressed: controller.pressed,
             launch: controller.launch,
             push: controller.push,
+            pushed: controller.pushed,
             drop_asked: controller.drop_asked,
             drop_edge: controller.drop_edge,
             slide_speed: controller.slide_speed,
@@ -1639,6 +1713,11 @@ fn share<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero(value: &f32) -> bool {
     *value == 0.0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_vec(value: &Vec2) -> bool {
+    *value == Vec2::ZERO
 }
 
 /// An optional angle in degrees in `(0, 90)`, for a scene field's
@@ -1708,6 +1787,12 @@ impl Runner {
             let cost = stored.air_jump_cost.take();
             let mut controller = stored.clone();
             controller.air_jump_cost = cost;
+            // What hits and impulses gave its body's mass joins it as a push.
+            let taken = take_push(world, entity);
+            if taken != Vec2::ZERO {
+                controller.push(taken);
+            }
+            controller.pushed = taken;
             if let Some(intent) = world.get::<Intent>(entity) {
                 controller.set_run(intent.movement().x);
                 controller.set_jump_held(intent.held(JUMP_SLOT));
@@ -1734,6 +1819,9 @@ impl Runner {
             }
             if let Some((body, speed)) = moved.shove {
                 shove(world, body, speed);
+            }
+            if let Some((body, impulse)) = moved.plough {
+                apply_impulse(world, body, impulse);
             }
         }
     }

@@ -2653,6 +2653,7 @@ pub fn tungsten_kit::PlatformerController::new(f32, f32) -> Self
 pub fn tungsten_kit::PlatformerController::paid_air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::press_jump(&mut self)
 pub fn tungsten_kit::PlatformerController::push(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::PlatformerController::pushed(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::PlatformerController::set_air_jump_cost(&mut self, core::option::Option<(&str, f32)>)
 pub fn tungsten_kit::PlatformerController::set_jump_held(&mut self, bool)
 pub fn tungsten_kit::PlatformerController::set_run(&mut self, f32)
@@ -6861,6 +6862,7 @@ pub fn tungsten_kit::PlatformerController::new(f32, f32) -> Self
 pub fn tungsten_kit::PlatformerController::paid_air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::press_jump(&mut self)
 pub fn tungsten_kit::PlatformerController::push(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::PlatformerController::pushed(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::PlatformerController::set_air_jump_cost(&mut self, core::option::Option<(&str, f32)>)
 pub fn tungsten_kit::PlatformerController::set_jump_held(&mut self, bool)
 pub fn tungsten_kit::PlatformerController::set_run(&mut self, f32)

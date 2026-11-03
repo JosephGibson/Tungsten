@@ -83,6 +83,15 @@
     },
     "rambler": {
       "path": "prefabs/rambler.json"
+    },
+    "porter": {
+      "path": "prefabs/porter.json"
+    },
+    "roller": {
+      "path": "prefabs/roller.json"
+    },
+    "riser": {
+      "path": "prefabs/riser.json"
     }
   },
   "data": {
