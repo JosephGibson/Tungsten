@@ -721,6 +721,72 @@
       "workload_version": 1
     },
     {
+      "name": "spread",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "spread",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 60,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.chemistry",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.chemistry_tick",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.effect_tick",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "pending",
+          "kind": "counter_max",
+          "max": 16384
+        },
+        {
+          "counter": "dropped",
+          "kind": "counter_max",
+          "max": 0
+        },
+        {
+          "counter": "burning",
+          "kind": "counter_min",
+          "min": 12000
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "e01-pit",
       "package": "example-01-platformer",
       "folder": "examples/01_platformer",
