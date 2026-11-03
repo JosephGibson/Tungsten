@@ -173,8 +173,8 @@ fn the_rows_list_fps_then_the_built_in_rows_then_a_providers_in_columns() {
     );
     assert_eq!(
         fields(&rows[6].1),
-        ["5 drawn", "1 culled", "2 dropped", "37 glyphs"],
-        "glyphs while a label is drawn"
+        ["5 drawn", "1 culled", "2 dropped"],
+        "no glyph count"
     );
     assert_eq!(rows[7].1, "value");
     for k in 0..3 {
@@ -204,6 +204,18 @@ fn the_rows_list_fps_then_the_built_in_rows_then_a_providers_in_columns() {
         fields(&self::rows(&world)[5].1),
         ["1 prep", "12 layouts", "3 trims", "1 atlas full"]
     );
+
+    // Each render time's number before its name, once the frame has run.
+    {
+        let ft = world.resource_mut::<FrameTimings>();
+        ft.render_acquire_ms = 0.06;
+        ft.render_encode_ms = 0.85;
+        ft.render_submit_present_ms = 0.58;
+    }
+    frame(&mut world, Some(16.0), 2.0);
+    let rows = self::rows(&world);
+    assert_eq!(rows[2].0, "render");
+    assert_eq!(fields(&rows[2].1), ["0.06 acq", "0.85 enc", "0.58 sub"]);
 }
 
 #[test]

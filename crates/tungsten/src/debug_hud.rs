@@ -499,36 +499,35 @@ fn counts_line(world: &World) -> Vec<Line> {
     )]
 }
 
-/// `render`: the render stage's CPU times, acquire, encode and submit with
-/// present, in ms.
+/// `render`: the render stage's CPU times in ms, each number before its
+/// name: acquire, encode and submit with present.
 fn render_line(world: &World) -> Vec<Line> {
     let Some(ft) = world.get_resource::<FrameTimings>() else {
         return Vec::new();
     };
-    let time = |name: &str, ms: f32| {
+    let time = |ms: f32, name: &str| {
         Spans::default()
-            .name(format!("{name} "))
             .value(format!("{ms:.2}"))
+            .name(format!(" {name}"))
     };
     vec![Line::new(
         RENDER,
         vec![
-            time("acq", ft.render_acquire_ms),
-            time("enc", ft.render_encode_ms),
-            time("sub", ft.render_submit_present_ms).name(" ms"),
+            time(ft.render_acquire_ms, "acq"),
+            time(ft.render_encode_ms, "enc"),
+            time(ft.render_submit_present_ms, "sub"),
         ],
     )]
 }
 
 /// M46: the UI paint list's size, the layout stage's cost and the text
 /// batch telemetry (`D-126`'s observable half, Q3); M54: the world labels
-/// kept, culled and dropped, their glyphs and the cached layouts. From
-/// debug-pass four rows of at most three fields, each held to the HUD's
-/// width at the views' floor: `ui` (paint commands, text batches),
-/// `layout` (µs, roots and nodes laid out), `text` (batches prepared,
-/// cached layouts, full frames, which trim the atlas, and the times the
-/// atlas was full once it has been) and `labels` (world labels drawn,
-/// culled and dropped, and their glyphs while any is drawn).
+/// kept, culled and dropped, and the cached layouts. From debug-pass four
+/// rows of at most three fields, each held to the HUD's width at the
+/// views' floor: `ui` (paint commands, text batches), `layout` (µs, roots
+/// and nodes laid out), `text` (batches prepared, cached layouts, full
+/// frames, which trim the atlas, and the times the atlas was full once it
+/// has been) and `labels` (world labels drawn, culled and dropped).
 fn ui_lines(world: &World) -> Vec<Line> {
     let Some(rc) = world.get_resource::<RenderCounts>() else {
         return Vec::new();
@@ -547,7 +546,7 @@ fn ui_lines(world: &World) -> Vec<Line> {
                 .name(" atlas full"),
         );
     }
-    let mut labels = vec![
+    let labels = vec![
         Spans::default()
             .value(grouped(rc.world_labels))
             .name(" drawn"),
@@ -558,9 +557,6 @@ fn ui_lines(world: &World) -> Vec<Line> {
             .value(grouped(rc.world_labels_dropped))
             .name(" dropped"),
     ];
-    if rc.world_labels > 0 {
-        labels.push(Spans::default().count(rc.text_label_glyphs, "glyph", "glyphs"));
-    }
     vec![
         Line::new(
             "ui",
