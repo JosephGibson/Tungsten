@@ -420,15 +420,19 @@ pub fn state_dispatcher_system(world: &mut World) {
 
     sync_state_roots(world, 0);
 
+    // Rewritten in place only when the top state changes (debug-pass), so a
+    // frame that keeps its state allocates nothing here.
     let active = world
         .get_resource::<StateStack>()
         .and_then(|s| s.stack.last().map(|t| t.id()))
-        .unwrap_or("")
-        .to_string();
+        .unwrap_or("");
     if let Some(slot) = world.get_resource_mut::<HudActiveState>() {
-        slot.0 = active;
+        if slot.0 != active {
+            slot.0.clear();
+            slot.0.push_str(active);
+        }
     } else {
-        world.insert_resource(HudActiveState(active));
+        world.insert_resource(HudActiveState(active.to_owned()));
     }
 }
 
