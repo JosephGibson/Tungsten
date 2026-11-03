@@ -41,6 +41,9 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - The systems overlay's idle systems, under 0.01 ms, folded into one row (debug-pass's §2.6).
 - The agent surface for screens (ui-pass's step 15, `D-235`), the rest of it (`D-236` landed a script's `screen` step, `tungsten render --screen` and `describe`'s screens): the `ui` probe and `tungsten new screen`, once 7.11 puts the shell's screens on `tungsten::screens`.
 - Why-records (`D-238`) for the hits a target's checks turn away (dead, despawning or invulnerable) and for a delivery's crit lines read at the hit, one by one: with 8.7's `explain`.
+- A kinematic body's push from a pile's weight or a chain's whole momentum (`D-239` counts the touching body's own approach), and a confined pair's push-out residue, at most `max_push_speed`, removed by bias-free velocities beside the solve or a dead zone: a game that meets either.
+- Kinematic pairs past a moving platform and a platformer controller pushed out of an overlap (`D-239`): two controllers, a top-down mover against a kinematic body.
+- M84's shove rebuilt on impulses, a shove that slows its shover (`D-213`; `D-239`'s plough is its locked sibling): a game that wants it.
 - Phase 7, Seams (redo §3, in [phase-7.md](docs/plans/phase-7.md)'s order, one track): saves, the UI pass (7.17), screens as data (7.20), the kit pass, camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
 - Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, ARPG systems (8.7), 01 refreshed, the template's final pass, proof.
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, records, release candidates, 1.0.
