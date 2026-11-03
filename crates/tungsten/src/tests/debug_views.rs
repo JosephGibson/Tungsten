@@ -5,7 +5,7 @@ use tungsten_core::assets::{AssetRegistry, FilterMode, TextureHandle, UvRect};
 use tungsten_core::components::{Sprite, Transform, Visibility};
 use tungsten_core::input::{InputState, KeyCode, MouseButton};
 use tungsten_core::text::{EllipsisAt, TextAlign, TextOverflow, TextWrap};
-use tungsten_core::ui::{PaintCommand, Rect, Theme, WidgetState};
+use tungsten_core::ui::{PaintCommand, Rect, Theme, UiKey, WidgetState};
 use tungsten_core::{Config, Entity, UserFolder};
 
 use super::*;
@@ -853,7 +853,7 @@ fn the_panel_rows_show_the_rects_look_pending_work_and_batch() {
     let (header, rows) = ui_inspector_rows(&harness);
     assert_eq!(
         header,
-        format!("widget {}:{}", label.index(), label.generation())
+        format!("Label {}:{} \u{b7} Game", label.index(), label.generation())
     );
     let value = |name: &str| -> String {
         rows.iter()
@@ -862,10 +862,11 @@ fn the_panel_rows_show_the_rects_look_pending_work_and_batch() {
             .1
             .clone()
     };
-    assert!(
-        value("widget").contains("Label Label Game root"),
-        "{}",
-        value("widget")
+    let root = harness.tree().root_of(label).unwrap();
+    assert_eq!(
+        value("widget"),
+        format!("Label root {}:{}", root.index(), root.generation()),
+        "its role and root"
     );
     assert_eq!(
         value("layout"),
@@ -1174,7 +1175,9 @@ fn every_window_casts_a_shadow_before_its_box() {
             harness.tree().shadow(root),
             Some(UiShadow::new(SHADOW, 10.0, Vec2::new(0.0, 3.0)))
         );
-        let rect = harness.tree().rect(root).unwrap();
+        // The root's box on whole pixels: the views' roots snap (debug-pass).
+        let laid = harness.tree().rect(root).unwrap();
+        let rect = Rect::new(laid.min.round(), laid.max.round());
         let at = list
             .commands
             .iter()
@@ -1880,9 +1883,12 @@ fn console_controls(harness: &UiHarness) -> Vec<WidgetId> {
         .clone()
 }
 
-/// Clicks a console control and runs the frame that takes it.
-fn press_control(harness: &mut UiHarness, i: usize) {
-    let control = console_controls(harness)[i];
+/// Clicks the console control keyed `key` and runs the frame that takes
+/// it.
+fn press_control(harness: &mut UiHarness, key: &str) {
+    let control = harness
+        .find_key(UiKey::new(key))
+        .unwrap_or_else(|| panic!("no control keyed {key}"));
     harness.click(control);
     harness.step(1);
 }
@@ -1900,7 +1906,7 @@ fn the_harness_clicks_a_debug_control_where_it_paints_under_a_debug_scale() {
     sink.send(record("INFO", "a", "m").as_bytes());
     harness.step(1);
     assert_eq!(harness.tree().debug_scale(), 0.75);
-    press_control(&mut harness, 5);
+    press_control(&mut harness, "pause");
     assert!(
         harness.world().resource::<LogConsole>().paused.is_some(),
         "the click lands on pause"
@@ -1947,7 +1953,7 @@ fn the_controls_line_filters_pauses_and_clears() {
 
     // Each filter hides its level and shows it again.
     for (i, level) in ["ERROR", "WARN", "INFO"].into_iter().enumerate() {
-        press_control(&mut harness, i);
+        press_control(&mut harness, CONTROL_KEYS[i]);
         assert!(
             !levels(&harness).iter().any(|shown| shown == level),
             "{level} hidden"
@@ -1958,7 +1964,7 @@ fn the_controls_line_filters_pauses_and_clears() {
             harness.tree().resolved_style(label).unwrap().text.color,
             LABEL
         );
-        press_control(&mut harness, i);
+        press_control(&mut harness, CONTROL_KEYS[i]);
         assert_eq!(
             levels(&harness),
             ["ERROR", "WARN", "INFO", "INFO"],
@@ -1967,7 +1973,7 @@ fn the_controls_line_filters_pauses_and_clears() {
     }
 
     // Pause holds the window while the ring fills; resume catches up.
-    press_control(&mut harness, 5);
+    press_control(&mut harness, "pause");
     assert_eq!(labels(&harness)[5], "resume");
     for _ in 0..3 {
         sink.send(record("INFO", "a", "later").as_bytes());
@@ -1976,12 +1982,12 @@ fn the_controls_line_filters_pauses_and_clears() {
     assert_eq!(levels(&harness).len(), 4, "held");
     assert_eq!(harness.world().resource::<LogConsole>().lines().count(), 7);
     assert_eq!(status(&harness), "paused \u{b7} 3 new");
-    press_control(&mut harness, 5);
+    press_control(&mut harness, "pause");
     assert_eq!(levels(&harness).len(), 7, "caught up");
     assert_eq!(labels(&harness)[5], "pause");
 
     // Clear empties the ring and the window.
-    press_control(&mut harness, 6);
+    press_control(&mut harness, "clear");
     assert_eq!(harness.world().resource::<LogConsole>().lines().count(), 0);
     assert!(levels(&harness).is_empty());
     harness.world_mut().resource_mut::<LogConsole>().clear();
@@ -2016,7 +2022,7 @@ fn the_controls_line_stays_in_view_and_takes_a_click_while_the_log_follows_its_e
         shown.min.y >= frame.min.y && shown.max.y <= frame.max.y,
         "{shown:?} in {frame:?}"
     );
-    press_control(&mut harness, 5);
+    press_control(&mut harness, "pause");
     assert!(harness.world().resource::<LogConsole>().paused.is_some());
 }
 
@@ -2042,7 +2048,7 @@ fn a_paused_console_keeps_its_rows_while_the_ring_turns_over() {
     let first: Vec<String> = (0..8).map(|n| format!("first {n}")).collect();
     assert_eq!(messages(&harness), first);
 
-    press_control(&mut harness, PAUSE);
+    press_control(&mut harness, "pause");
     for n in 0..20 {
         let level = if n % 2 == 0 { "WARN" } else { "INFO" };
         sink.send(record(level, "a", &format!("then {n}")).as_bytes());
@@ -2054,7 +2060,7 @@ fn a_paused_console_keeps_its_rows_while_the_ring_turns_over() {
         .iter()
         .position(|level| *level == log::Level::Info)
         .unwrap();
-    press_control(&mut harness, info);
+    press_control(&mut harness, "info");
     assert_eq!(messages(&harness), first, "the filter waits for the resume");
     let filter = console_controls(&harness)[info];
     assert_eq!(
@@ -2063,7 +2069,7 @@ fn a_paused_console_keeps_its_rows_while_the_ring_turns_over() {
         "marked at once"
     );
 
-    press_control(&mut harness, PAUSE);
+    press_control(&mut harness, "pause");
     let passing: Vec<String> = (12..20)
         .filter(|n| n % 2 == 0)
         .map(|n| format!("then {n}"))
@@ -2111,6 +2117,98 @@ fn debug_views_keep_their_size_under_a_reference_height() {
             "ui {ui}: {root:?} and {plain:?}"
         );
     }
+}
+
+// ---- debug-pass: the UI pass's surface ----
+
+/// The five views open at 1280×720 on 1.75, the console on 60 records of
+/// its own feed, after four frames.
+fn all_five_at_the_owners_scale() -> (UiHarness, crate::logging::ConsoleSink) {
+    let (sink, feed) = crate::logging::console_channel(256);
+    let mut harness = sized(app(), 1280, 720, 1.75);
+    open_all(&mut harness);
+    {
+        let world = harness.world_mut();
+        world.insert_resource(LogConsole {
+            enabled: true,
+            refresh_interval_ms: 0.0,
+            ..LogConsole::with_feed(Some(feed))
+        });
+        world.resource_mut::<UiInspector>().enabled = true;
+    }
+    for n in 0..60 {
+        sink.send(record("INFO", "game::run", &format!("line {n}")).as_bytes());
+    }
+    harness.step(4);
+    (harness, sink)
+}
+
+#[test]
+fn every_view_root_snaps_and_every_control_has_its_key() {
+    let (mut harness, _sink) = all_five_at_the_owners_scale();
+    let tree = harness.tree();
+    let names = ["hud", "systems", "inspector", "log", "ui_inspector"];
+    for (window, name) in windows(&harness).into_iter().zip(names) {
+        assert!(tree.pixel_snap(window.root), "{name} snaps");
+        assert_eq!(tree.key_name(window.root), Some(name));
+        for (key, widget) in [("collapse", window.collapse), ("close", window.close)] {
+            assert_eq!(
+                tree.find_key(window.root, UiKey::new(key)),
+                Some(widget),
+                "{name}'s {key}"
+            );
+        }
+    }
+    let console = windows(&harness)[3];
+    for (i, key) in CONTROL_KEYS.into_iter().enumerate() {
+        assert_eq!(
+            tree.find_key(console.root, UiKey::new(key)),
+            Some(console.controls[i]),
+            "the console's {key}"
+        );
+    }
+    // A test takes a control by its key; the view dispatches by ID.
+    press_control(&mut harness, "pause");
+    assert!(harness.world().resource::<LogConsole>().paused.is_some());
+}
+
+#[test]
+fn the_ui_inspector_names_the_picks_key_and_style() {
+    let mut harness = UiHarness::new(app());
+    let panel = game_panel(&mut harness);
+    let label = harness.tree_mut().label(panel, "hi");
+    harness.tree_mut().set_key(label, "greeting");
+    harness.tree_mut().set_text_style(label, Some("body"));
+    harness.world_mut().resource_mut::<UiInspector>().enabled = true;
+    harness.step(3);
+    let at = harness.tree().rect(label).unwrap();
+    middle_click(&mut harness, (at.min + at.max) * 0.5);
+    let (header, rows) = ui_inspector_rows(&harness);
+    assert_eq!(
+        header,
+        format!("Label {}:{} \u{b7} Game", label.index(), label.generation())
+    );
+    let value = |rows: &[(String, String)], name: &str| {
+        rows.iter()
+            .find(|(row, _)| row == name)
+            .map(|(_, value)| value.clone())
+    };
+    assert_eq!(value(&rows, "key").as_deref(), Some("greeting"));
+    assert_eq!(value(&rows, "style").as_deref(), Some("body"));
+
+    harness.world_mut().resource_mut::<UiInspector>().picked = Some(panel);
+    harness.step(1);
+    let (header, rows) = ui_inspector_rows(&harness);
+    assert!(header.starts_with("Panel "), "{header}");
+    assert_eq!(value(&rows, "key").as_deref(), Some("-"), "unset");
+    assert_eq!(value(&rows, "style").as_deref(), Some("-"), "unset");
+}
+
+#[test]
+fn the_views_fit_at_the_owners_scale() {
+    let (mut harness, _sink) = all_five_at_the_owners_scale();
+    assert_eq!(harness.tree().debug_scale(), 0.75, "step 3/4");
+    harness.assert_fits("the five views at 1280×720 on 1.75");
 }
 
 // ---- debug-pass: the views' counter guards ----

@@ -41,6 +41,7 @@ use std::sync::atomic::Ordering;
 use glam::Vec2;
 use tungsten_core::input::{ActionMap, InputState, KeyCode, MouseButton, RawInput};
 use tungsten_core::text::{EllipsisAt, StyledText, TextAlign, TextOverflow, TextWrap};
+use tungsten_core::ui::widgets::{self, Meter};
 use tungsten_core::ui::{
     Align, Anchor, Direction, Edges, LayoutStyle, PaintCommand, PaintList, Placement, Rect, Role,
     Sizing, StyleOverrides, TextOverrides, UiLayer, UiShadow, UiTree, UiVertex, Visibility,
@@ -645,6 +646,10 @@ impl ViewFrame<'_> {
         tree.set_overrides(root, look.root(look.border, 0.0));
         tree.set_clip_children(root, true);
         tree.set_role(root, Role::Window);
+        // The UI pass's surface (debug-pass): the root keyed by its place
+        // name, its boxes on whole pixels.
+        tree.set_key(root, spec.name);
+        tree.set_pixel_snap(root, true);
         tree.set_accessible_name(root, Some(spec.title.to_string()));
         tree.set_shadow(
             root,
@@ -685,7 +690,9 @@ impl ViewFrame<'_> {
         let key = tree.label(title, "");
         tree.set_overrides(key, look.plain(Ink::body(LABEL)));
         let collapse = title_button(tree, look, title, COLLAPSE);
+        tree.set_key(collapse, "collapse");
         let close = title_button(tree, look, title, CLOSE);
+        tree.set_key(close, "close");
         let mut rules = vec![rule(tree, look, root)];
 
         let mut stats = Vec::new();
@@ -793,7 +800,7 @@ impl ViewFrame<'_> {
                     if i == filters && filters > 0 {
                         // Three insets from the filters: the line's gap and
                         // two more.
-                        restyle(tree, button, |style| style.margin.start = 2.0 * INSET);
+                        tree.edit_layout(button, |style| style.margin.start = 2.0 * INSET);
                     }
                     tree.set_focusable(button, false);
                     tree.set_overrides(button, look.plain(Ink::body(LABEL)));
@@ -917,7 +924,7 @@ impl ViewFrame<'_> {
         let width = window.look.border_width(self.scale * tree.debug_scale());
         if window.border.map(|(_, was)| was) != Some(width) {
             for rule in &window.rules {
-                restyle(tree, *rule, |style| style.height = Sizing::Px(width));
+                tree.edit_layout(*rule, |style| style.height = Sizing::Px(width));
             }
         }
         if window.border != Some((hot, width)) {
@@ -984,7 +991,7 @@ impl ViewFrame<'_> {
             (Sizing::Auto, width, viewport.y * HEIGHT_SHARE)
         };
         let saved = window.saved;
-        restyle(self.tree, window.root, |style| {
+        self.tree.edit_layout(window.root, |style| {
             style.width = width;
             style.max_width = Some(max_width);
             if saved {
@@ -1137,7 +1144,7 @@ impl ViewFrame<'_> {
                 (dock.corner, offset)
             };
             let placement = corner_placement(corner, offset);
-            restyle(self.tree, dock.root, |style| {
+            self.tree.edit_layout(dock.root, |style| {
                 style.placement = placement;
                 style.height = Sizing::Px(given);
             });
@@ -1162,7 +1169,7 @@ impl ViewFrame<'_> {
             .zip(width(tree, window.caption))
             .zip(width(tree, window.spacer))
             .map(|((title, caption), spacer)| (title - spacer, title - caption - spacer));
-        restyle(tree, window.caption, |style| {
+        tree.edit_layout(window.caption, |style| {
             style.max_width = title.map(|(_, rest)| (inner - rest).max(0.0));
         });
         // The header's content, and the fixed panel's padding around it.
@@ -1191,7 +1198,7 @@ impl ViewFrame<'_> {
             .iter()
             .all(|panel| tree.rect(*panel).is_some());
         for (panel, column) in window.columns.iter().zip(window.shape.columns) {
-            restyle(tree, *panel, |style| {
+            tree.edit_layout(*panel, |style| {
                 (style.min_width, style.max_width) = match column.width {
                     Width::Capped(percent) => (None, Some(max_width * f32::from(percent) / 100.0)),
                     Width::Fill if measured => {
@@ -1265,16 +1272,6 @@ fn glyph_look(look: &Look, color: [u8; 4]) -> StyleOverrides {
         title: true,
         ..Ink::body(color).aligned(TextAlign::Center)
     })
-}
-
-/// Changes `id`'s layout style through `change`; an equal style marks
-/// nothing.
-fn restyle(tree: &mut UiTree, id: WidgetId, change: impl FnOnce(&mut LayoutStyle)) {
-    let Some(mut style) = tree.layout_style(id).cloned() else {
-        return;
-    };
-    change(&mut style);
-    tree.set_layout_style(id, style);
 }
 
 /// A root's anchored offset as its layout style holds it now.
@@ -1501,8 +1498,8 @@ pub(crate) fn write_table(tree: &mut UiTree, window: &ViewWindow, rows: &[Row]) 
 
 impl ViewWindow {
     /// Writes column `c`'s bars (M58): each row's cell a panel one line
-    /// tall, striped as its row, holding a track that holds the fill; a row
-    /// with no bar hides its track.
+    /// tall, striped as its row, holding a meter (debug-pass) of its share;
+    /// a row with no bar hides its track.
     fn write_bars(&self, tree: &mut UiTree, c: usize, rows: &[Row], looks: &[RowLook]) {
         let column = self.columns[c];
         let cells = tree.children(column).to_vec();
@@ -1521,13 +1518,11 @@ impl ViewWindow {
                         ..LayoutStyle::default()
                     },
                 );
-                let track = tree.panel(
-                    cell,
-                    LayoutStyle::row().with_size(Sizing::Px(BAR_WIDTH), Sizing::Px(BAR_HEIGHT)),
-                );
-                tree.set_overrides(track, self.look.cell(BORDER, ink));
-                let part = tree.panel(track, LayoutStyle::default());
-                tree.set_overrides(part, self.look.cell(TRANSPARENT, ink));
+                // The UI pass's meter (debug-pass), every override the view's
+                // own: `meter` fills in the theme's accent.
+                let meter = widgets::meter(tree, cell, BAR_WIDTH, BAR_HEIGHT);
+                tree.set_overrides(meter.track, self.look.cell(BORDER, ink));
+                tree.set_overrides(meter.fill, self.look.cell(TRANSPARENT, ink));
                 cell
             };
             let fill = if look.striped {
@@ -1539,6 +1534,9 @@ impl ViewWindow {
             let Some(&track) = tree.children(cell).first() else {
                 continue;
             };
+            let Some(&fill) = tree.children(track).first() else {
+                continue;
+            };
             let bar = row.cells.get(c).and_then(|cell| cell.bar);
             tree.set_visibility(
                 track,
@@ -1548,13 +1546,8 @@ impl ViewWindow {
                     Visibility::Hidden
                 },
             );
-            if let (Some((fraction, color)), Some(&part)) = (bar, tree.children(track).first()) {
-                let width = BAR_WIDTH * fraction.clamp(0.0, 1.0);
-                tree.set_layout_style(
-                    part,
-                    LayoutStyle::default().with_size(Sizing::Px(width), Sizing::Fill),
-                );
-                tree.set_overrides(part, self.look.cell(color, ink));
+            if let Some((fraction, color)) = bar {
+                Meter { track, fill }.set(tree, fraction, color);
             }
         }
         for cell in cells.iter().skip(rows.len()) {
@@ -2029,6 +2022,10 @@ const LEVELS: [log::Level; 5] = [
 const PAUSE: usize = LEVELS.len();
 const CLEAR: usize = LEVELS.len() + 1;
 
+/// Each control's key, in the controls' order (debug-pass).
+const CONTROL_KEYS: [&str; LEVELS.len() + 2] =
+    ["error", "warn", "info", "debug", "trace", "pause", "clear"];
+
 /// A level's hue (M58): `ERROR` red, `WARN` amber, `INFO` cyan, `DEBUG`
 /// violet, `TRACE` grey.
 pub(crate) fn level_hue(level: log::Level) -> [u8; 4] {
@@ -2224,7 +2221,14 @@ impl LogConsole {
         }
         if self.rows_in != Some(root) {
             // A new window: every kept record is new to it, and its body
-            // follows the end.
+            // follows the end; its controls take their keys (debug-pass).
+            let controls = self
+                .window
+                .as_ref()
+                .map_or(&[][..], |window| &window.controls);
+            for (button, key) in controls.iter().zip(CONTROL_KEYS) {
+                frame.tree.set_key(*button, key);
+            }
             self.rows.clear();
             self.rows_in = Some(root);
             self.rebuild = true;
@@ -2504,7 +2508,7 @@ impl UiInspector {
         self.shown_laid_out = laid_out;
         let (header, rows) = match self.picked {
             Some(widget) => (
-                format!("widget {}:{}", widget.index(), widget.generation()),
+                pick_name(frame.tree, widget),
                 widget_rows(frame.tree, widget, paint),
             ),
             None => ("middle-click a widget to pick".to_string(), Vec::new()),
@@ -2581,7 +2585,22 @@ fn hex(color: [u8; 4]) -> String {
     )
 }
 
-/// The UI inspector's rows for `widget`.
+/// The UI inspector's header for `widget` (debug-pass): its kind, ID and
+/// layer, `Label 2:0 · Game`.
+fn pick_name(tree: &UiTree, widget: WidgetId) -> String {
+    let debug = |value: Option<String>| value.unwrap_or_else(|| "-".to_string());
+    format!(
+        "{} {}:{} \u{b7} {}",
+        debug(tree.kind(widget).map(|kind| format!("{kind:?}"))),
+        widget.index(),
+        widget.generation(),
+        debug(tree.layer(widget).map(|layer| format!("{layer:?}"))),
+    )
+}
+
+/// The UI inspector's rows for `widget`: its role and root, key, text
+/// style, rects, look, a label's or button's text, state, flags, pending
+/// work and text batch.
 fn widget_rows(tree: &UiTree, widget: WidgetId, paint: Option<&PaintList>) -> Vec<Vec<String>> {
     let row = |name: &str, value: String| vec![name.to_string(), value];
     let mut rows = Vec::new();
@@ -2591,14 +2610,16 @@ fn widget_rows(tree: &UiTree, widget: WidgetId, paint: Option<&PaintList>) -> Ve
     rows.push(row(
         "widget",
         format!(
-            "{}:{} {} {} {} root {}",
-            widget.index(),
-            widget.generation(),
-            debug(kind.map(|kind| format!("{kind:?}"))),
+            "{} root {}",
             debug(tree.role(widget).map(|role| format!("{role:?}"))),
-            debug(tree.layer(widget).map(|layer| format!("{layer:?}"))),
             debug(root.map(|root| format!("{}:{}", root.index(), root.generation()))),
         ),
+    ));
+    // The UI pass's names (debug-pass), `-` when unset.
+    rows.push(row("key", tree.key_name(widget).unwrap_or("-").to_string()));
+    rows.push(row(
+        "style",
+        tree.text_style(widget).unwrap_or("-").to_string(),
     ));
     rows.push(row("layout", rect_text(tree.rect(widget))));
     rows.push(row("visual", rect_text(tree.visual_rect(widget))));
