@@ -291,5 +291,6 @@ A sweep of round 2's fixes then found the hold could last forever for a dead rec
 | 6 | 2026-11-03 | skipped | Not run: depends on Step 4 (§6) | none |
 | 7 | 2026-11-03 | skipped | Not run: depends on Step 4 (§6) | none |
 | 8 | 2026-11-03 | skipped | Not run: depends on Step 4 (§6) | none |
+| 9 | 2026-11-03 | landed, for Steps 1 and 2 | `rg -c '^## D-24[0] ' DECISIONS.md` → `1`; `python3 -B scripts/check-repo.py` → exit 0; `just ctx` → exit 0 (the LLM index 12,282 of 12,288 bytes); `git diff --check` → exit 0; the decision index test → `2 passed`. `D-240` records the statuses and the light query alone, chemistry named as not landed, and amends `D-061`, `D-173` and `D-177`; `D-054`, `D-172`, `D-176` and `D-238` stand (read, unchanged by Steps 1–2), and `D-228` and `D-230` wait with chemistry. `DESIGN.md`'s lighting and effects sections gain a paragraph each; the LLM index's kit row reads `D-238`–`D-240`; Later takes Q2's line, while Q10's, Q13's and Q15's, chemistry's, travel with its re-plan. The commit's subject names what landed, not chemistry | `DECISIONS.md`, `docs/DECISION_INDEX.md`, `DESIGN.md`, `docs/LLM_INDEX.md`, `ROADMAP.md` |
 
 ## Follow-ups
