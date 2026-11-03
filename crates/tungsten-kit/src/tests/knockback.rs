@@ -256,3 +256,78 @@ fn a_save_keeps_a_running_push_and_refuses_bad_values() {
 fn a_resist_over_one_panics() {
     let _ = Knockback::new(0.2).with_resist(1.5);
 }
+
+#[test]
+fn stacking_knockback_adds_to_a_running_push() {
+    // Two pushes 0.05 s apart on a bodiless entity with a 0.2 s knockback:
+    // stacking, the second starts from the first's value then plus its own,
+    // its seconds restarting; without, it replaces the first.
+    for stacks in [true, false] {
+        let (mut world, mut schedule) = rig();
+        let take = Knockback::new(0.2).with_stacking(stacks);
+        let brute = world.spawn_with((take, Position::new(0.0, 0.0), PrevPosition(Vec2::ZERO)));
+        assert!(knock_back(&mut world, brute, Vec2::new(-400.0, 0.0)));
+        steps(&mut world, &mut schedule, 3);
+        let first = world.get::<Knockback>(brute).unwrap().push();
+        assert!(first.abs_diff_eq(Vec2::new(-300.0, 0.0), 1e-3), "{first}");
+        assert!(knock_back(&mut world, brute, Vec2::new(0.0, -200.0)));
+        let knockback = world.get::<Knockback>(brute).unwrap();
+        let expected = if stacks {
+            first + Vec2::new(0.0, -200.0)
+        } else {
+            Vec2::new(0.0, -200.0)
+        };
+        assert!(
+            knockback.push().abs_diff_eq(expected, 1e-4),
+            "stacks {stacks}: {}",
+            knockback.push()
+        );
+        assert_eq!(knockback.left, knockback.seconds(), "stacks {stacks}");
+    }
+    // A platformer's launch takes each push as it does without stacking.
+    let (mut world, _) = rig();
+    let hero = world.spawn_with(
+        RigidBodyBundle::kinematic(Position::new(0.0, 0.0), Collider::aabb(Vec2::splat(8.0))).with(
+            (
+                crate::PlatformerController::new(200.0, 600.0),
+                Knockback::new(0.2).with_stacking(true),
+            ),
+        ),
+    );
+    assert!(knock_back(&mut world, hero, Vec2::new(-400.0, 0.0)));
+    assert!(knock_back(&mut world, hero, Vec2::new(0.0, -200.0)));
+    assert_eq!(
+        world.get::<Knockback>(hero).unwrap().push(),
+        Vec2::new(0.0, -200.0)
+    );
+}
+
+#[test]
+fn knockback_reports_its_data() {
+    let take = Knockback::new(0.25).with_resist(0.5).with_stacking(true);
+    assert_eq!(
+        (take.seconds(), take.resist(), take.stacks()),
+        (0.25, 0.5, true)
+    );
+    let plain = Knockback::new(0.2);
+    assert_eq!(
+        (plain.seconds(), plain.resist(), plain.stacks()),
+        (0.2, 0.0, false)
+    );
+    // `stacks` in data and in a save, which leaves it out when off.
+    let saved = serde_json::to_value(&take).unwrap();
+    assert_eq!(saved["stacks"], json!(true));
+    assert_eq!(serde_json::from_value::<Knockback>(saved).unwrap(), take);
+    let saved = serde_json::to_value(&plain).unwrap();
+    assert!(saved.get("stacks").is_none());
+    let (world, _) = rig();
+    let components = world.resource::<tungsten_core::ComponentRegistry>();
+    components
+        .check("knockback", &json!({ "seconds": 0.3, "stacks": true }))
+        .unwrap();
+    assert!(
+        components
+            .check("knockback", &json!({ "stacks": 1 }))
+            .is_err()
+    );
+}

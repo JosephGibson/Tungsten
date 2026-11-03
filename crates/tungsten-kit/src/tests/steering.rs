@@ -235,3 +235,166 @@ fn a_stat_stopped_save_loads_and_the_scene_refuses_a_zero_top_speed() {
 fn a_zero_top_speed_panics() {
     let _ = Steering::seek(Target::source(), 0.0);
 }
+
+/// A world with the physics, a top-down mover's plugin and steering's, the
+/// two built in either order.
+fn mover_rig(steering_first: bool) -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    if steering_first {
+        SteeringPlugin.build(&mut schedule, &mut world);
+        crate::TopDownMoverPlugin.build(&mut schedule, &mut world);
+    } else {
+        crate::TopDownMoverPlugin.build(&mut schedule, &mut world);
+        SteeringPlugin.build(&mut schedule, &mut world);
+    }
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// A mover of speed 120 at `at`, on a kinematic body of half 10 or bodiless,
+/// steered to arrive at `point`.
+fn steered_mover(
+    world: &mut World,
+    at: Vec2,
+    point: Vec2,
+    body: bool,
+    mover: crate::TopDownMover,
+) -> Entity {
+    let steering = Steering::arrive(Target::point(point), 120.0)
+        .with_acceleration(600.0)
+        .with_radius(32.0);
+    if body {
+        world.spawn_with(
+            RigidBodyBundle::kinematic(Position(at), Collider::aabb(Vec2::splat(10.0)))
+                .with((mover, steering)),
+        )
+    } else {
+        world.spawn_with((
+            mover,
+            steering,
+            Position(at),
+            PrevPosition(at),
+            Velocity(Vec2::ZERO),
+        ))
+    }
+}
+
+#[test]
+fn steering_drives_a_top_down_mover_by_its_walls() {
+    // An arrive at a point behind a wall whose left face is at x 100: the
+    // mover's casts stop it at the wall and it slides along it toward the
+    // point's height.
+    let (mut world, mut schedule) = mover_rig(true);
+    world.spawn_with(RigidBodyBundle::r#static(
+        Position::new(110.0, 0.0),
+        Collider::aabb(Vec2::new(10.0, 500.0)),
+    ));
+    let entity = steered_mover(
+        &mut world,
+        Vec2::new(0.0, 0.0),
+        Vec2::new(200.0, 80.0),
+        true,
+        crate::TopDownMover::new(120.0),
+    );
+    steps(&mut world, &mut schedule, 120, DT);
+    let at = position(&world, entity);
+    assert!(at.x <= 90.0 && at.x > 89.9, "at the wall: {at}");
+    assert!(at.y > 40.0, "slid along it: {at}");
+
+    // In the open it lands on the point and stops, on a body and bodiless,
+    // and so does a mover with rates of its own moving at 100 px/s when the
+    // steering starts; the body's `Velocity` is the mover's.
+    for body in [true, false] {
+        for rated in [false, true] {
+            let (mut world, mut schedule) = mover_rig(true);
+            let point = Vec2::new(300.0, -60.0);
+            let mover = if rated {
+                let mut mover = crate::TopDownMover::new(120.0)
+                    .with_acceleration(60.0)
+                    .with_deceleration(60.0);
+                mover.set_direction(Vec2::new(100.0 / 120.0, 0.0));
+                mover
+            } else {
+                crate::TopDownMover::new(120.0)
+            };
+            let entity = if rated {
+                let entity = if body {
+                    world.spawn_with(
+                        RigidBodyBundle::kinematic(
+                            Position::new(0.0, 0.0),
+                            Collider::aabb(Vec2::splat(10.0)),
+                        )
+                        .with((mover,)),
+                    )
+                } else {
+                    world.spawn_with((
+                        mover,
+                        Position::new(0.0, 0.0),
+                        PrevPosition(Vec2::ZERO),
+                        Velocity(Vec2::ZERO),
+                    ))
+                };
+                steps(&mut world, &mut schedule, 120, DT);
+                let moving = world.get::<crate::TopDownMover>(entity).unwrap().velocity();
+                assert!((moving.x - 100.0).abs() < 1e-3, "{moving}");
+                let steering = Steering::arrive(Target::point(point), 120.0)
+                    .with_acceleration(600.0)
+                    .with_radius(32.0);
+                world.insert(entity, steering);
+                entity
+            } else {
+                steered_mover(&mut world, Vec2::ZERO, point, body, mover)
+            };
+            steps(&mut world, &mut schedule, 600, DT);
+            let at = position(&world, entity);
+            let at_label = format!("body {body}, rated {rated}: {at}");
+            assert!(at.distance(point) < 1e-3, "{at_label}");
+            let velocity = world.get::<crate::TopDownMover>(entity).unwrap().velocity();
+            assert!(velocity.length() < 1e-2, "{at_label}: {velocity}");
+            if body {
+                assert_eq!(
+                    world.get::<Velocity>(entity).unwrap().0,
+                    velocity,
+                    "{at_label}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn steering_runs_before_the_mover_either_way_round() {
+    // The mover steers its entity at its own step, so the two plugins built
+    // in both orders move a steered mover alike, bit for bit, along a wall
+    // and onto its point.
+    let run = |steering_first: bool| {
+        let (mut world, mut schedule) = mover_rig(steering_first);
+        world.spawn_with(RigidBodyBundle::r#static(
+            Position::new(110.0, 0.0),
+            Collider::aabb(Vec2::new(10.0, 40.0)),
+        ));
+        let entity = steered_mover(
+            &mut world,
+            Vec2::ZERO,
+            Vec2::new(200.0, 80.0),
+            true,
+            crate::TopDownMover::new(120.0).with_acceleration(300.0),
+        );
+        (0..480)
+            .map(|_| {
+                steps(&mut world, &mut schedule, 1, DT);
+                position(&world, entity)
+            })
+            .collect::<Vec<_>>()
+    };
+    let (first, second) = (run(true), run(false));
+    assert_eq!(first, second);
+    assert!(
+        first.last().unwrap().distance(Vec2::new(200.0, 80.0)) < 1e-3,
+        "{:?}",
+        first.last()
+    );
+}

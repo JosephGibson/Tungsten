@@ -149,6 +149,7 @@ component hurtbox: What hitboxes, contact damage and pickups meet: a circle or a
 component knockback: How the entity takes a push from `knock_back`: a push that falls to 0 over its seconds.
   field seconds: f32 (> 0) = 0.2 — seconds of game time a push lasts, and a platformer's input stays locked
   field resist: f32 (>= 0, <= 1) = 0.0 — the part of each push it ignores
+  field stacks: bool = false — a push adds to the one still running, where the knockback runs it, instead of replacing it
   genres: platformer, top_down
   sample: {}
 component level: A level climbed along a curve by a counter, each level up sending an event and drawing offers.

@@ -10,7 +10,8 @@
 //! M75's guard saved mid-swing; M76's arrow through hedges, saved
 //! mid-flight; 7.10a's veteran with its scoped lines, a focused effect and
 //! a difficulty world source, a bulwark braced on its front, and a
-//! marksman whose embers crit from its stats.
+//! marksman whose embers crit from its stats; 7.10m's skiff pulled along a
+//! wall, an ox that stacks its knockback and a wisp steering its mover.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -2196,5 +2197,91 @@ fn a_casters_bolt_carries_its_skills_snapshot_converted_and_hits_after_the_caste
                 .contains("cold part  1.50   from fire 3–3 at u "),
             "dt {dt}: {hit}"
         );
+    }
+}
+
+#[test]
+fn a_skiff_slides_along_a_wall_under_a_steady_pull_and_an_ox_stacks_its_pushes() {
+    for dt in DTS {
+        // A pull of (120, 80) px/s pushed each frame into a wall whose left
+        // face is at x 290: the skiff stays out of the wall and slides down.
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "wall", [300.0, 0.0]);
+        let skiff = spawn(&mut harness, "skiff", [270.0, 0.0]);
+        harness.step(2);
+        let mut y = body_at(&harness, skiff).y;
+        for frame in 0..frames_for(0.5, dt) {
+            harness
+                .world_mut()
+                .get_mut::<TopDownMover>(skiff)
+                .unwrap()
+                .push(Vec2::new(120.0, 80.0));
+            harness.step(1);
+            let at = body_at(&harness, skiff);
+            assert!(
+                at.x <= 280.0 + 1e-3,
+                "dt {dt}, frame {frame}: into the wall: {at}"
+            );
+            assert!(at.y > y, "dt {dt}, frame {frame}: down along it: {at}");
+            y = at.y;
+        }
+        // Each push lasts one fixed step: the frame's first, so a frame of
+        // two steps moves by half its pull.
+        let fixed = harness
+            .world()
+            .resource::<tungsten_core::Time>()
+            .fixed_step();
+        let pulled = 80.0 * fixed * frames_for(0.5, dt) as f32;
+        assert!((y - pulled).abs() < 1e-2, "dt {dt}: {y}, pulled {pulled}");
+
+        // The ox stacks: a second push 0.05 s after the first starts from
+        // the first's value then.
+        let ox = spawn(&mut harness, "ox", [100.0, 100.0]);
+        harness.step(1);
+        assert!(knock_back(harness.world_mut(), ox, Vec2::new(-400.0, 0.0)));
+        harness.step(frames_for(0.05, dt));
+        let first = harness.world().get::<Knockback>(ox).unwrap().push();
+        assert!(knock_back(harness.world_mut(), ox, Vec2::new(0.0, -200.0)));
+        let second = harness.world().get::<Knockback>(ox).unwrap().push();
+        assert!(
+            second.abs_diff_eq(first + Vec2::new(0.0, -200.0), 1e-3),
+            "dt {dt}: {first} then {second}"
+        );
+    }
+}
+
+#[test]
+fn a_wisp_steers_its_mover_along_a_wall_and_lands_on_a_point() {
+    for dt in DTS {
+        // Arriving at a point behind a wall whose left face is at x 290:
+        // the mover's casts stop the wisp at the wall and it slides along
+        // it to the point's height.
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "wall", [300.0, 0.0]);
+        let wisp = spawn(&mut harness, "wisp", [200.0, 0.0]);
+        harness.step(frames_for(3.0, dt));
+        let at = body_at(&harness, wisp);
+        assert!(
+            at.x <= 282.0 + 1e-3 && at.x > 281.9,
+            "dt {dt}: at the wall: {at}"
+        );
+        assert!(at.y > 40.0 && at.y <= 60.0, "dt {dt}: slid along it: {at}");
+        let world = harness.world();
+        assert_eq!(
+            world.get::<Velocity>(wisp).unwrap().0,
+            world.get::<TopDownMover>(wisp).unwrap().velocity(),
+            "dt {dt}: the body moves by the mover"
+        );
+
+        // A point the game sets in the open: it lands on it.
+        let point = Vec2::new(150.0, -40.0);
+        harness
+            .world_mut()
+            .get_mut::<Steering>(wisp)
+            .unwrap()
+            .set_target(crate::kit::Target::point(point));
+        harness.step(frames_for(6.0, dt));
+        let at = body_at(&harness, wisp);
+        assert!(at.distance(point) < 1e-3, "dt {dt}: on the point: {at}");
     }
 }

@@ -1,0 +1,9 @@
+{
+  "tag": "ox",
+  "components": {
+    "knockback": {
+      "seconds": 0.2,
+      "stacks": true
+    }
+  }
+}

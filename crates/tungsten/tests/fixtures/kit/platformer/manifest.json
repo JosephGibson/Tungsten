@@ -98,6 +98,9 @@
     },
     "crusher": {
       "path": "prefabs/crusher.json"
+    },
+    "wisp": {
+      "path": "prefabs/wisp.json"
     }
   },
   "data": {

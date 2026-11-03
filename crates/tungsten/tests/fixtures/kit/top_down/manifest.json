@@ -125,6 +125,15 @@
     },
     "caster": {
       "path": "prefabs/caster.json"
+    },
+    "skiff": {
+      "path": "prefabs/skiff.json"
+    },
+    "ox": {
+      "path": "prefabs/ox.json"
+    },
+    "wisp": {
+      "path": "prefabs/wisp.json"
     }
   },
   "data": {

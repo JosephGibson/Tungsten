@@ -7,8 +7,8 @@
 //! that halves blasts, floors its cold factor and crits from its stats;
 //! 7.10m's rambler up a 2:1 ramp, down a steep one and through a ledge, and
 //! its porter, whose body's mass a rolled ball pushes, carried up to a
-//! ceiling, and the hero pushed out of a sliding platform and crushed under
-//! a falling deck.
+//! ceiling, the hero pushed out of a sliding platform and crushed under a
+//! falling deck, and a wisp steering its mover along a brick.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1391,5 +1391,34 @@ fn the_hero_is_pushed_out_of_a_sliding_platform_and_crushed_under_a_falling_deck
                 .crushed();
         }
         assert!(crushed, "dt {dt}: crushed under the deck");
+    }
+}
+
+#[test]
+fn a_wisp_steers_its_mover_along_a_brick_and_lands_on_a_point() {
+    for dt in DTS {
+        // Arriving at a point behind a brick whose left face is at x 290: the
+        // mover's casts stop the wisp at the brick, at the point's height.
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "brick", [300.0, 0.0]);
+        let wisp = spawn(&mut harness, "wisp", [200.0, 0.0]);
+        harness.step(frames_for(3.0, dt));
+        let at = body_at(&harness, wisp);
+        assert!(
+            at.x <= 282.0 + 1e-3 && at.x > 281.9,
+            "dt {dt}: at the brick: {at}"
+        );
+        assert!(at.y > 10.0 && at.y <= 20.0, "dt {dt}: slid along it: {at}");
+
+        // A point the game sets in the open: it lands on it.
+        let point = Vec2::new(150.0, -40.0);
+        harness
+            .world_mut()
+            .get_mut::<crate::kit::Steering>(wisp)
+            .unwrap()
+            .set_target(crate::kit::Target::point(point));
+        harness.step(frames_for(6.0, dt));
+        let at = body_at(&harness, wisp);
+        assert!(at.distance(point) < 1e-3, "dt {dt}: on the point: {at}");
     }
 }

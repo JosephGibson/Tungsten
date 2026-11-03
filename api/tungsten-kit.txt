@@ -2100,7 +2100,11 @@ impl tungsten_kit::Knockback
 pub fn tungsten_kit::Knockback::is_active(&self) -> bool
 pub fn tungsten_kit::Knockback::new(f32) -> Self
 pub fn tungsten_kit::Knockback::push(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::Knockback::resist(&self) -> f32
+pub fn tungsten_kit::Knockback::seconds(&self) -> f32
+pub fn tungsten_kit::Knockback::stacks(&self) -> bool
 pub fn tungsten_kit::Knockback::with_resist(self, f32) -> Self
+pub fn tungsten_kit::Knockback::with_stacking(self, bool) -> Self
 impl core::clone::Clone for tungsten_kit::Knockback
 pub fn tungsten_kit::Knockback::clone(&self) -> tungsten_kit::Knockback
 impl core::cmp::PartialEq for tungsten_kit::Knockback
@@ -3280,6 +3284,7 @@ impl tungsten_kit::Steering
 pub fn tungsten_kit::Steering::arrive(tungsten_kit::Target, f32) -> Self
 pub fn tungsten_kit::Steering::flee(tungsten_kit::Target, f32) -> Self
 pub fn tungsten_kit::Steering::seek(tungsten_kit::Target, f32) -> Self
+pub fn tungsten_kit::Steering::set_target(&mut self, tungsten_kit::Target)
 pub fn tungsten_kit::Steering::target_entity(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::Steering::velocity(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Steering::with_acceleration(self, f32) -> Self
@@ -3456,7 +3461,9 @@ pub struct tungsten_kit::prelude::TopDownMover
 impl tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::new(f32) -> Self
+pub fn tungsten_kit::TopDownMover::push(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::TopDownMover::set_direction(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::TopDownMover::velocity(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::with_acceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_deceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self
@@ -6219,7 +6226,11 @@ impl tungsten_kit::Knockback
 pub fn tungsten_kit::Knockback::is_active(&self) -> bool
 pub fn tungsten_kit::Knockback::new(f32) -> Self
 pub fn tungsten_kit::Knockback::push(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::Knockback::resist(&self) -> f32
+pub fn tungsten_kit::Knockback::seconds(&self) -> f32
+pub fn tungsten_kit::Knockback::stacks(&self) -> bool
 pub fn tungsten_kit::Knockback::with_resist(self, f32) -> Self
+pub fn tungsten_kit::Knockback::with_stacking(self, bool) -> Self
 impl core::clone::Clone for tungsten_kit::Knockback
 pub fn tungsten_kit::Knockback::clone(&self) -> tungsten_kit::Knockback
 impl core::cmp::PartialEq for tungsten_kit::Knockback
@@ -7668,6 +7679,7 @@ impl tungsten_kit::Steering
 pub fn tungsten_kit::Steering::arrive(tungsten_kit::Target, f32) -> Self
 pub fn tungsten_kit::Steering::flee(tungsten_kit::Target, f32) -> Self
 pub fn tungsten_kit::Steering::seek(tungsten_kit::Target, f32) -> Self
+pub fn tungsten_kit::Steering::set_target(&mut self, tungsten_kit::Target)
 pub fn tungsten_kit::Steering::target_entity(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::Steering::velocity(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Steering::with_acceleration(self, f32) -> Self
@@ -7868,7 +7880,9 @@ pub struct tungsten_kit::TopDownMover
 impl tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::new(f32) -> Self
+pub fn tungsten_kit::TopDownMover::push(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::TopDownMover::set_direction(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::TopDownMover::velocity(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::with_acceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_deceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self
