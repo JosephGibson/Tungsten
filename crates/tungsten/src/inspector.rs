@@ -161,6 +161,7 @@ impl InspectorState {
             shape: Shape {
                 columns: COLUMNS,
                 header: Header::Line,
+                buttons: 0,
             },
         };
         if !frame.sync(&mut self.window, &spec) {

@@ -1077,6 +1077,67 @@ fn the_title_bar_holds_the_title_the_key_and_two_buttons_neither_focusable() {
 }
 
 #[test]
+fn the_title_bar_holds_a_views_buttons_before_collapse_and_close() {
+    let mut harness = sized(app(), 1280, 720, 1.75);
+    harness
+        .world_mut()
+        .resource_mut::<SystemTimingOverlay>()
+        .enabled = true;
+    harness.step(3);
+    let (title, parts, buttons) = {
+        let window = harness
+            .world()
+            .resource::<SystemTimingOverlay>()
+            .window
+            .as_ref()
+            .unwrap();
+        let parts = vec![
+            window.caption,
+            window.spacer,
+            window.key,
+            window.buttons[0],
+            window.buttons[1],
+            window.collapse,
+            window.close,
+        ];
+        (window.title, parts, window.buttons.clone())
+    };
+    assert_eq!(harness.tree().children(title), parts, "after the key");
+    // Each as wide as its whole label at the measure double's 7.5-unit
+    // advance, padded a cell's 6 a side.
+    let width = |harness: &UiHarness, button: WidgetId| {
+        let label = text_of(harness.tree(), button);
+        let rect = harness.tree().rect(button).unwrap();
+        (
+            label.clone(),
+            rect.width() - (label.chars().count() as f32 * 7.5 + 12.0),
+        )
+    };
+    for &button in &buttons {
+        assert!(harness.tree().interactive(button));
+        assert!(
+            !harness.tree().focusable(button),
+            "the game keeps the keyboard"
+        );
+    }
+    let mut seen = Vec::new();
+    for round in 0..2 {
+        for &button in &buttons {
+            let (label, off) = width(&harness, button);
+            assert!(off.abs() < 1e-3, "{label}: {off} off");
+            seen.push(label);
+        }
+        if round == 0 {
+            for &button in &buttons {
+                harness.click(button);
+                harness.step(2);
+            }
+        }
+    }
+    assert_eq!(seen, ["flat", "pause", "stages", "resume"]);
+}
+
+#[test]
 fn close_turns_a_view_off_and_collapse_collapses_its_header_and_body() {
     use tungsten_core::ui::Visibility;
     let mut harness = UiHarness::new(app());

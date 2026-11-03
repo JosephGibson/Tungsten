@@ -440,6 +440,10 @@ pub(crate) struct Shape {
     /// The table's columns.
     pub(crate) columns: &'static [Column],
     pub(crate) header: Header,
+    /// Word buttons in the title bar between the key and collapse, which
+    /// the view labels and reads (debug-pass): the systems overlay's view
+    /// and pause.
+    pub(crate) buttons: usize,
 }
 
 /// What one view asks of its window this frame.
@@ -481,8 +485,10 @@ pub(crate) struct ViewWindow {
     /// and the key, which keeps the key and the buttons at the right.
     pub(crate) caption: WidgetId,
     spacer: WidgetId,
-    /// The title bar's toggle key, and its collapse and close buttons.
+    /// The title bar's toggle key, its word buttons (debug-pass), and its
+    /// collapse and close buttons.
     pub(crate) key: WidgetId,
+    pub(crate) buttons: Vec<WidgetId>,
     pub(crate) collapse: WidgetId,
     pub(crate) close: WidgetId,
     /// The fixed header's panel, when the shape has one.
@@ -689,6 +695,9 @@ impl ViewFrame<'_> {
         tree.set_overrides(spacer, look.plain(Ink::body(look.color)));
         let key = tree.label(title, "");
         tree.set_overrides(key, look.plain(Ink::body(LABEL)));
+        let buttons = (0..spec.shape.buttons)
+            .map(|_| word_button(tree, look, title))
+            .collect();
         let collapse = title_button(tree, look, title, COLLAPSE);
         tree.set_key(collapse, "collapse");
         let close = title_button(tree, look, title, CLOSE);
@@ -869,6 +878,7 @@ impl ViewFrame<'_> {
             caption,
             spacer,
             key,
+            buttons,
             collapse,
             close,
             fixed,
@@ -939,19 +949,26 @@ impl ViewFrame<'_> {
             }
             None => tree.set_visibility(window.key, Visibility::Collapsed),
         }
-        let hovered = tree
-            .hovered()
-            .filter(|hovered| [window.collapse, window.close].contains(hovered));
+        let hovered = tree.hovered().filter(|hovered| {
+            [window.collapse, window.close].contains(hovered) || window.buttons.contains(hovered)
+        });
         if window.glyph_hovered != hovered {
             window.glyph_hovered = hovered;
-            for button in [window.collapse, window.close] {
-                let color = if hovered == Some(button) {
+            let color = |button: WidgetId| {
+                if hovered == Some(button) {
                     window.look.color
                 } else {
                     LABEL
-                };
+                }
+            };
+            for button in [window.collapse, window.close] {
                 if let Some(&glyph) = tree.children(button).first() {
-                    tree.set_overrides(glyph, glyph_look(&window.look, color));
+                    tree.set_overrides(glyph, glyph_look(&window.look, color(button)));
+                }
+            }
+            for &button in &window.buttons {
+                if let Some(&label) = tree.children(button).first() {
+                    tree.set_overrides(label, window.look.plain(Ink::body(color(button))));
                 }
             }
         }
@@ -1247,6 +1264,27 @@ fn title_button(tree: &mut UiTree, look: &Look, title: WidgetId, glyph: &str) ->
     tree.set_overrides(button, look.plain(Ink::body(LABEL)));
     if let Some(&label) = tree.children(button).first() {
         tree.set_overrides(label, glyph_look(look, LABEL));
+    }
+    button
+}
+
+/// A word button in the title bar (debug-pass): interactive, not
+/// focusable, as wide as the label its view gives it in body-size text with
+/// [`CELL_PAD`] a side, which `title_button`'s square in title-size text
+/// would cut; its label in the glyphs' grey, brighter while hovered.
+fn word_button(tree: &mut UiTree, look: &Look, title: WidgetId) -> WidgetId {
+    let button = tree.button(title, "");
+    tree.set_focusable(button, false);
+    tree.set_layout_style(
+        button,
+        LayoutStyle {
+            padding: Edges::symmetric(CELL_PAD, 0.0),
+            ..LayoutStyle::default()
+        },
+    );
+    tree.set_overrides(button, look.plain(Ink::body(LABEL)));
+    if let Some(&label) = tree.children(button).first() {
+        tree.set_overrides(label, look.plain(Ink::body(LABEL)));
     }
     button
 }
@@ -2182,6 +2220,7 @@ impl LogConsole {
                     filters: LEVELS.len(),
                     actions: 2,
                 },
+                buttons: 0,
             },
         };
         if !frame.sync(&mut self.window, &spec) {
@@ -2483,6 +2522,7 @@ impl UiInspector {
             shape: Shape {
                 columns: UI_INSPECTOR_COLUMNS,
                 header: Header::Line,
+                buttons: 0,
             },
         };
         if !frame.sync(&mut self.window, &spec) {

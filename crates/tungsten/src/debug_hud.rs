@@ -215,6 +215,7 @@ impl DebugHud {
             shape: Shape {
                 columns: COLUMNS,
                 header: Header::Graph,
+                buttons: 0,
             },
         };
         if !frame.sync(&mut self.window, &spec) {
