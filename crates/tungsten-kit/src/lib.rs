@@ -239,7 +239,7 @@ pub use foundation::debug::{KIT_DEBUG_DRAW, KitDebug, KitDebugPlugin};
 pub use foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, KitDescriptions,
 };
-pub use foundation::lines::{Line, Read, Sums, TagSet};
+pub use foundation::lines::{Line, Read, Scope, Sums, TagSet};
 pub use foundation::phases::{
     KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_PRESENT, KIT_REACT, KIT_RESOLVE, KIT_TICK, Phase,
     ensure_phases,
@@ -259,6 +259,7 @@ pub use intent::ability::{
 pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
 pub use intent::aim::{AIM, Aim, AimPlugin};
 pub use intent::cursor::cursor_to_world;
+pub use intent::sheet::{Delivery, Skill, SkillLine};
 pub use intent::state_machine::{StateMachine, StateMachinePlugin};
 pub use lifecycle::children::{SPAWN_CHILDREN, SpawnChildren, SpawnChildrenPlugin};
 pub use lifecycle::cooldown::{COOLDOWN_TICK, Cooldown, CooldownElapsed, CooldownPlugin};

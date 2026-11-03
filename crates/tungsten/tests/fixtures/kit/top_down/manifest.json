@@ -119,6 +119,12 @@
     },
     "marksman": {
       "path": "prefabs/marksman.json"
+    },
+    "cinder_bolt": {
+      "path": "prefabs/cinder_bolt.json"
+    },
+    "caster": {
+      "path": "prefabs/caster.json"
     }
   },
   "data": {
@@ -202,6 +208,9 @@
       },
       "sprint": {
         "path": "data/abilities/sprint.json"
+      },
+      "cinder": {
+        "path": "data/abilities/cinder.json"
       }
     },
     "offers": {

@@ -30,6 +30,9 @@ use crate::foundation::trace::{TraceKind, trace};
 use crate::foundation::{non_negative, positive};
 use crate::intent::action_input::{ACTION_INPUT, Intent};
 use crate::intent::aim::{AIM, Aim};
+use crate::intent::sheet::{
+    DELIVERY, Skill, SkillLine, delivery_saved, describe_skills, resolve as resolve_sheet,
+};
 use crate::lifecycle::ended::Despawning;
 use crate::motion::drive::point_of;
 use crate::motion::knockback::knock_back;
@@ -53,6 +56,9 @@ const ABILITY_CHARGES: &str = "ability_charges";
 const ABILITY_TARGET: &str = "ability_target";
 const ABILITY_PAYLOAD: &str = "ability_payload";
 const SPAWN_PAYLOAD: &str = "spawn_payload";
+const SKILL: &str = "skill";
+const SKILL_BASES: &str = "skill_bases";
+const SKILL_LINE: &str = "skill_line";
 /// The target's `nearest` shape, which [`describe_target`] describes.
 const NEAREST_SHAPE: &str = "nearest";
 /// The scene component the spawn payload's prefab must hold with a speed.
@@ -223,6 +229,10 @@ pub struct Ability {
     charges: Option<Charges>,
     target: AbilityTarget,
     payload: Vec<Payload>,
+    /// Its context, `skill.*` by convention; sorted.
+    tags: Vec<String>,
+    /// Its skill sheet, when it has one.
+    skill: Option<Box<Skill>>,
 }
 
 impl Default for Ability {
@@ -245,7 +255,51 @@ impl Ability {
             charges: None,
             target: AbilityTarget::Itself,
             payload: Vec::new(),
+            tags: Vec::new(),
+            skill: None,
         }
+    }
+
+    /// The ability, in the context `tags` (`skill.spell`), which a skill's
+    /// sheet and its hits read; sorted and deduplicated.
+    ///
+    /// # Panics
+    ///
+    /// When a name is not a tag name.
+    #[must_use]
+    #[track_caller]
+    pub fn with_tags(mut self, tags: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.tags.extend(tags.into_iter().map(Into::into));
+        for tag in &self.tags {
+            assert!(
+                valid_tag(tag),
+                "Ability::with_tags: `{tag}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+            );
+        }
+        self.tags.sort();
+        self.tags.dedup();
+        self
+    }
+
+    /// The ability, a skill: a use resolves `skill`'s sheet before its
+    /// cost, the sheet's cost and cooldown replace its own, and each
+    /// payload carries the sheet's [`Delivery`].
+    #[must_use]
+    pub fn with_skill(mut self, skill: Skill) -> Self {
+        self.skill = Some(Box::new(skill));
+        self
+    }
+
+    /// Its context tags, sorted.
+    #[must_use]
+    pub fn tags(&self) -> &[String] {
+        &self.tags
+    }
+
+    /// Its skill sheet, when it is a skill.
+    #[must_use]
+    pub fn skill(&self) -> Option<&Skill> {
+        self.skill.as_deref()
     }
 
     /// The ability, fired by `trigger`.
@@ -510,6 +564,12 @@ impl Ability {
                 Payload::Impulse(_) | Payload::Hitbox(_) => {}
             }
         }
+        for (i, tag) in self.tags.iter().enumerate() {
+            check_declared(world, &format!("tags.{i}"), tag)?;
+        }
+        if let Some(skill) = &self.skill {
+            skill.check(world, "skill")?;
+        }
         Ok(())
     }
 }
@@ -561,6 +621,10 @@ struct AbilityDef {
     #[serde(default)]
     target: TargetDef,
     payload: Vec<PayloadDef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    skill: Option<Skill>,
 }
 
 /// `{}`: a form that takes no value.
@@ -811,7 +875,17 @@ impl TryFrom<AbilityDef> for Ability {
         if def.payload.is_empty() {
             return Err("payload: at least one".to_string());
         }
+        if let Some(name) = def.tags.iter().find(|name| !valid_tag(name)) {
+            return Err(format!(
+                "tags: `{name}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+            ));
+        }
+        let mut tags = def.tags;
+        tags.sort();
+        tags.dedup();
         Ok(Self {
+            tags,
+            skill: def.skill.map(Box::new),
             trigger: match def.trigger {
                 TriggerDef::Manual(_) => Trigger::Manual,
                 TriggerDef::Action(slot) => Trigger::Action(slot),
@@ -902,6 +976,8 @@ impl From<Ability> for AbilityDef {
                     Payload::Hitbox(seconds) => PayloadDef::Hitbox(seconds),
                 })
                 .collect(),
+            tags: ability.tags,
+            skill: ability.skill.map(|skill| *skill),
         }
     }
 }
@@ -1017,6 +1093,25 @@ fn valid_name(name: &str) -> bool {
 pub struct Abilities {
     /// In list order.
     entries: Vec<Entry>,
+    /// The skills' levels and lines, when there are any.
+    skills: Option<Box<SkillState>>,
+}
+
+/// The entries' levels and the lines placed on skills.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct SkillState {
+    /// An entry's level, by name, where it is not 1.
+    levels: Vec<(String, u32)>,
+    /// Skill-local lines: the entry they reach, their source, the line.
+    lines: Vec<(String, String, SkillLine)>,
+    /// Lines that reach every skill the holder uses, by source.
+    holder: Vec<(String, SkillLine)>,
+}
+
+impl SkillState {
+    fn is_empty(&self) -> bool {
+        self.levels.is_empty() && self.lines.is_empty() && self.holder.is_empty()
+    }
 }
 
 /// The component as a save writes it.
@@ -1024,6 +1119,12 @@ pub struct Abilities {
 #[serde(default, deny_unknown_fields)]
 struct AbilitiesSave {
     entries: Vec<Entry>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    levels: Vec<(String, u32)>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    skill_lines: Vec<(String, String, SkillLine)>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    lines: Vec<(String, SkillLine)>,
 }
 
 impl TryFrom<AbilitiesSave> for Abilities {
@@ -1038,16 +1139,33 @@ impl TryFrom<AbilitiesSave> for Abilities {
                 return Err(format!("entries.{i}: `{}` is named twice", entry.name));
             }
         }
+        if let Some((name, level)) = save
+            .levels
+            .iter()
+            .find(|(_, level)| !(1..=40).contains(level))
+        {
+            return Err(format!("levels: {name}: {level} is not in 1..=40"));
+        }
+        let skills = SkillState {
+            levels: save.levels,
+            lines: save.skill_lines,
+            holder: save.lines,
+        };
         Ok(Self {
             entries: save.entries,
+            skills: (!skills.is_empty()).then(|| Box::new(skills)),
         })
     }
 }
 
 impl From<Abilities> for AbilitiesSave {
     fn from(abilities: Abilities) -> Self {
+        let skills = abilities.skills.map(|skills| *skills).unwrap_or_default();
         Self {
             entries: abilities.entries,
+            levels: skills.levels,
+            skill_lines: skills.lines,
+            lines: skills.holder,
         }
     }
 }
@@ -1128,6 +1246,137 @@ impl Abilities {
         true
     }
 
+    /// The abilities, `name`'s level set to `level`.
+    ///
+    /// # Panics
+    ///
+    /// When `level` is outside `1..=40`.
+    #[must_use]
+    #[track_caller]
+    pub fn with_level(mut self, name: &str, level: u32) -> Self {
+        self.set_level(name, level);
+        self
+    }
+
+    /// Sets `name`'s level, from 1 to 40, which its skill reads.
+    ///
+    /// # Panics
+    ///
+    /// When `level` is outside `1..=40`.
+    #[track_caller]
+    pub fn set_level(&mut self, name: &str, level: u32) {
+        assert!(
+            (1..=40).contains(&level),
+            "Abilities::set_level: {level} is not in 1..=40"
+        );
+        let skills = self.skills.get_or_insert_with(Box::default);
+        skills.levels.retain(|(entry, _)| entry != name);
+        if level != 1 {
+            skills.levels.push((name.to_owned(), level));
+        }
+        self.drop_empty_skills();
+    }
+
+    /// `name`'s level, 1 unless set; `None` when not owned.
+    #[must_use]
+    pub fn level(&self, name: &str) -> Option<u32> {
+        self.find(name)?;
+        Some(
+            self.skills
+                .iter()
+                .flat_map(|skills| &skills.levels)
+                .find(|(entry, _)| entry == name)
+                .map_or(1, |&(_, level)| level),
+        )
+    }
+
+    /// Places `lines` on the skill `entry` alone, from `source` (a
+    /// support's `support:<id>`), after its earlier ones.
+    ///
+    /// # Panics
+    ///
+    /// When a line waits for the hit on what a use spends; see
+    /// [`SkillLine`].
+    #[track_caller]
+    pub fn add_skill_lines(
+        &mut self,
+        entry: &str,
+        source: &str,
+        lines: impl IntoIterator<Item = SkillLine>,
+    ) {
+        let skills = self.skills.get_or_insert_with(Box::default);
+        for line in lines {
+            skills
+                .lines
+                .push((entry.to_owned(), source.to_owned(), line));
+        }
+        self.drop_empty_skills();
+    }
+
+    /// Takes back every line `source` placed on the skill `entry`; how
+    /// many.
+    pub fn remove_skill_lines(&mut self, entry: &str, source: &str) -> usize {
+        let Some(skills) = &mut self.skills else {
+            return 0;
+        };
+        let before = skills.lines.len();
+        skills
+            .lines
+            .retain(|(name, from, _)| !(name == entry && from == source));
+        let removed = before - skills.lines.len();
+        self.drop_empty_skills();
+        removed
+    }
+
+    /// Places `lines` on every skill the holder uses, from `source` (an
+    /// item's `item:<uid>`): the `added` and `pen` lines that are no stat's.
+    #[track_caller]
+    pub fn add_lines(&mut self, source: &str, lines: impl IntoIterator<Item = SkillLine>) {
+        let skills = self.skills.get_or_insert_with(Box::default);
+        for line in lines {
+            skills.holder.push((source.to_owned(), line));
+        }
+        self.drop_empty_skills();
+    }
+
+    /// Takes back every holder-wide line `source` placed; how many.
+    pub fn remove_lines(&mut self, source: &str) -> usize {
+        let Some(skills) = &mut self.skills else {
+            return 0;
+        };
+        let before = skills.holder.len();
+        skills.holder.retain(|(from, _)| from != source);
+        let removed = before - skills.holder.len();
+        self.drop_empty_skills();
+        removed
+    }
+
+    /// The lines placed on the skill `entry`, with their sources.
+    pub(crate) fn skill_lines<'s>(
+        &'s self,
+        entry: &'s str,
+    ) -> impl Iterator<Item = (&'s str, &'s SkillLine)> {
+        self.skills
+            .iter()
+            .flat_map(|skills| &skills.lines)
+            .filter(move |(name, _, _)| name == entry)
+            .map(|(_, source, line)| (source.as_str(), line))
+    }
+
+    /// The holder-wide lines, with their sources.
+    pub(crate) fn holder_lines(&self) -> impl Iterator<Item = (&str, &SkillLine)> {
+        self.skills
+            .iter()
+            .flat_map(|skills| &skills.holder)
+            .map(|(source, line)| (source.as_str(), line))
+    }
+
+    fn drop_empty_skills(&mut self) {
+        if self.skills.as_ref().is_some_and(|skills| skills.is_empty()) {
+            self.skills = None;
+        }
+    }
+
     fn find(&self, name: &str) -> Option<&Entry> {
         self.entries.iter().find(|entry| entry.name == name)
     }
@@ -1139,16 +1388,16 @@ impl Abilities {
 
 /// `components.abilities` as a scene writes it: the entries, names unique.
 #[derive(Serialize, Deserialize)]
-#[serde(try_from = "Vec<DataRef<Ability>>")]
-struct AbilitiesDef(Vec<DataRef<Ability>>);
+#[serde(try_from = "Vec<EntryDef>")]
+struct AbilitiesDef(Vec<EntryDef>);
 
-impl TryFrom<Vec<DataRef<Ability>>> for AbilitiesDef {
+impl TryFrom<Vec<EntryDef>> for AbilitiesDef {
     type Error = String;
 
-    fn try_from(list: Vec<DataRef<Ability>>) -> Result<Self, Self::Error> {
-        for (i, ability) in list.iter().enumerate() {
-            if let Some(id) = ability.id()
-                && list[..i].iter().any(|other| other.id() == Some(id))
+    fn try_from(list: Vec<EntryDef>) -> Result<Self, Self::Error> {
+        for (i, entry) in list.iter().enumerate() {
+            if let Some(id) = entry.ability.id()
+                && list[..i].iter().any(|other| other.ability.id() == Some(id))
             {
                 return Err(format!("{i}: `{id}` is named twice"));
             }
@@ -1159,10 +1408,63 @@ impl TryFrom<Vec<DataRef<Ability>>> for AbilitiesDef {
 
 impl AbilitiesDef {
     fn check(&self, world: &World) -> Result<(), MissingAsset> {
-        for (i, ability) in self.0.iter().enumerate() {
-            ability.check(world, &i.to_string())?;
+        for (i, entry) in self.0.iter().enumerate() {
+            entry.ability.check(world, &i.to_string())?;
         }
         Ok(())
+    }
+}
+
+/// One entry as a scene writes it: an `abilities` entry's ID or an ability
+/// in place, or an ID with its level, `{ "id": "cinder_volley", "level": 10 }`.
+struct EntryDef {
+    ability: DataRef<Ability>,
+    level: Option<u32>,
+}
+
+/// The leveled form of an [`EntryDef`].
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LeveledDef {
+    id: String,
+    level: u32,
+}
+
+impl Serialize for EntryDef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match (self.level, self.ability.id()) {
+            (Some(level), Some(id)) => LeveledDef {
+                id: id.to_owned(),
+                level,
+            }
+            .serialize(serializer),
+            _ => self.ability.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EntryDef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if value.get("id").is_some() {
+            let leveled: LeveledDef = serde_json::from_value(value).map_err(D::Error::custom)?;
+            if !(1..=40).contains(&leveled.level) {
+                return Err(D::Error::custom(format!(
+                    "level: {} is not in 1..=40",
+                    leveled.level
+                )));
+            }
+            return Ok(Self {
+                ability: DataRef::by_id(leveled.id),
+                level: Some(leveled.level),
+            });
+        }
+        let ability = DataRef::<Ability>::deserialize(value).map_err(D::Error::custom)?;
+        Ok(Self {
+            ability,
+            level: None,
+        })
     }
 }
 
@@ -1444,7 +1746,17 @@ fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch
     if charges == Some(0) {
         return Used::NoCharge;
     }
-    let cost = ability.cost_for(world.get::<Stats>(entity));
+    // A skill's sheet, before its cost: its cost and cooldown replace the
+    // ability's, and its delivery rides each payload.
+    let sheet = ability
+        .skill()
+        .map(|skill| resolve_sheet(world, entity, name, &ability, skill));
+    let cost = match &sheet {
+        Some(sheet) => ability
+            .cost()
+            .and_then(|(stat, _)| sheet.cost.map(|amount| (stat, amount))),
+        None => ability.cost_for(world.get::<Stats>(entity)),
+    };
     if let Some((stat, amount)) = cost {
         let base = world
             .get::<Stats>(entity)
@@ -1471,7 +1783,9 @@ fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch
     {
         let abilities = world.get_mut::<Abilities>(entity).unwrap();
         let entry = abilities.find_mut(name).unwrap();
-        entry.cooldown_left = ability.cooldown;
+        entry.cooldown_left = sheet
+            .as_ref()
+            .map_or(ability.cooldown, |sheet| sheet.cooldown);
         if let (Some(left), Some(c)) = (charges, ability.charges) {
             let left = left - 1;
             entry.charges = Some(left);
@@ -1506,6 +1820,10 @@ fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch
                         } else {
                             prepared
                         };
+                        let prepared = match &sheet {
+                            Some(sheet) => prepared.with((sheet.delivery.clone(),)),
+                            None => prepared,
+                        };
                         world
                             .resource_mut::<CommandBuffer>()
                             .spawn_prefab_from(entity, prepared);
@@ -1537,7 +1855,13 @@ fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch
                 }
             }
             Payload::Hitbox(seconds) => match world.get_mut::<Hitbox>(entity) {
-                Some(hitbox) => hitbox.arm_for(*seconds),
+                Some(hitbox) => {
+                    hitbox.arm_for(*seconds);
+                    let activation = hitbox.activation();
+                    if let Some(sheet) = &sheet {
+                        world.insert(entity, sheet.delivery.clone().armed(activation));
+                    }
+                }
                 None => skip(world, entity, "hitbox", NO_HITBOX),
             },
         }
@@ -1686,8 +2010,10 @@ impl Plugin for AbilitiesPlugin {
         ensure_phases(schedule);
         register_rows::<Abilities>(world, "Abilities");
         world.register_saved::<Abilities>(ABILITIES);
+        world.register_saved_with(DELIVERY, delivery_saved());
         describe_target(world);
         describe_abilities(world);
+        describe_skills(world, SKILL, SKILL_BASES, SKILL_LINE);
         world.register_event::<AbilityUsed>();
         world.register_data_kind_with_assets(ABILITIES, |ability: &Ability, world: &World| {
             ability.check(world)
@@ -1697,8 +2023,12 @@ impl Plugin for AbilitiesPlugin {
             |def: &AbilitiesDef, world: &World| def.check(world),
             |def: AbilitiesDef, _: &SpawnContext<'_>| {
                 let mut abilities = Abilities::new();
-                for ability in def.0 {
-                    abilities.add(ability);
+                for entry in def.0 {
+                    let name = entry.ability.id().map(str::to_owned);
+                    abilities.add(entry.ability);
+                    if let (Some(name), Some(level)) = (name, entry.level) {
+                        abilities.set_level(&name, level);
+                    }
                 }
                 (abilities,)
             },
@@ -1727,7 +2057,7 @@ fn describe_abilities(world: &mut World) {
         .field(FieldDescription::new(
             "list",
             FieldType::List(Box::new(FieldType::Data(ABILITIES))),
-            "the value itself: each an `abilities` entry's ID or an ability in place, names unique; the load checks each",
+            "the value itself: each an `abilities` entry's ID, an ability in place, or `{ id, level }` with its skill's level from 1 to 40; names unique; the load checks each",
         ))
         .event("AbilityUsed")
         .genre(TOP_DOWN)
@@ -1789,6 +2119,22 @@ fn describe_abilities(world: &mut World) {
             FieldType::List(Box::new(FieldType::Shape(ABILITY_PAYLOAD))),
             "what a use does, in order; at least one",
         ))
+        .field(
+            FieldDescription::new(
+                "tags",
+                FieldType::List(Box::new(FieldType::Tag)),
+                "its context, `skill.*` by convention, which its sheet's lines and its hits read; the load checks each",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "skill",
+                FieldType::Shape(SKILL),
+                "a skill sheet, resolved at a use before the cost: its cost and cooldown replace the ability's, and each payload carries its snapshot to the hits",
+            )
+            .default("null"),
+        )
         .sample(r#"{ "payload": [{ "effect": "swift" }] }"#)
         .roundtrip(round_trip::<AbilityDef>),
         ComponentDescription::new(ABILITY_TRIGGER, "What fires an ability.")

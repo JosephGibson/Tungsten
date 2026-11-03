@@ -16,5 +16,6 @@
   "status.thawed",
   "status.poisoned",
   "flammable",
-  "sprinting"
+  "sprinting",
+  "skill.spell"
 ]

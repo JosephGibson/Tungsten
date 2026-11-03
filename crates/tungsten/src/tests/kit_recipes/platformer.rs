@@ -1034,3 +1034,51 @@ fn a_knights_hits_crit_from_its_stats_at_the_resolve_or_its_builder() {
         assert_eq!(harness.world().resource::<KitRng>().draws(), 2, "dt {dt}");
     }
 }
+
+#[test]
+fn a_knights_skill_arms_its_hitbox_with_the_snapshot_for_that_swing() {
+    use crate::kit::{Abilities, Ability, KitRng, Payload, Skill, Used, use_ability};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let knight = spawn(&mut harness, "knight", [2000.0, -2000.0]);
+        let squire = spawn(&mut harness, "squire", [2010.0, -2000.0]);
+        // The swing: its hitbox armed for 0.1 s with the skill's 3 to 3.
+        let swing = Ability::new()
+            .with_payload(Payload::Hitbox(0.1))
+            .with_skill(Skill::new().with_damage("damage.fire", 3.0, 3.0));
+        harness
+            .world_mut()
+            .insert(knight, Abilities::new().with(DataRef::inline(swing)));
+        harness.step(1);
+        // Its crit (Step 3's knight crits half the time) draws after the
+        // range: a seed whose second draw misses.
+        let seed = (0..10_000)
+            .find(|&seed| {
+                let mut rng = KitRng::seeded(seed);
+                rng.unit();
+                rng.unit() >= 0.5
+            })
+            .unwrap();
+        harness.world_mut().insert_resource(KitRng::seeded(seed));
+        assert_eq!(
+            use_ability(harness.world_mut(), knight, "#0"),
+            Used::Used,
+            "dt {dt}"
+        );
+        let mut hits = Vec::new();
+        for _ in 0..frames_for(0.2, dt) {
+            harness.step(1);
+            hits.extend(
+                harness
+                    .events::<crate::kit::Damaged>()
+                    .filter(|hit| hit.entity == squire)
+                    .map(|hit| (hit.amount, hit.crit, hit.source)),
+            );
+        }
+        assert_eq!(
+            hits,
+            [(3.0, false, Some(knight))],
+            "dt {dt}: once, the snapshot's 3, not the hitbox's 1"
+        );
+    }
+}

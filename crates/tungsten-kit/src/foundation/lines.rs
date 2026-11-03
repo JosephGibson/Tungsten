@@ -49,9 +49,103 @@ use crate::foundation::tags::{STATE_TAGS, TagFilter, Tags, covers};
 #[serde(try_from = "LineFields", into = "LineFields")]
 pub struct Line {
     modifier: Modifier,
+    scope: Scope,
+}
+
+/// A line's filters: `with` over a read's context, `while` over its
+/// holder's tags, `against` over the other party's at a hit. A scope that
+/// names no tag reaches every read. A skill's lines that are no stat's
+/// (`added`, `pen`) carry one too.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_kit::{Scope, TagFilter};
+///
+/// let chained = Scope::new().with(TagFilter::new().all(["delivery.chained"]));
+/// assert!(chained.waits_for_hit(), "a state tag: only the hit knows it");
+/// assert!(!Scope::new().with(TagFilter::new().all(["skill.spell"])).waits_for_hit());
+/// assert!(Scope::new().is_everything());
+/// ```
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Scope {
     with: TagFilter,
     holder: TagFilter,
     against: TagFilter,
+}
+
+impl Scope {
+    /// A scope that names no tag.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The scope, read only where `filter` passes the read's context.
+    #[must_use]
+    pub fn with(mut self, filter: TagFilter) -> Self {
+        self.with = filter;
+        self
+    }
+
+    /// The scope, read only while `filter` passes the holder's tags.
+    #[must_use]
+    pub fn while_holder(mut self, filter: TagFilter) -> Self {
+        self.holder = filter;
+        self
+    }
+
+    /// The scope, read only at a hit whose other party's tags pass
+    /// `filter`.
+    #[must_use]
+    pub fn against(mut self, filter: TagFilter) -> Self {
+        self.against = filter;
+        self
+    }
+
+    /// Its filter over the read's context (`with`).
+    #[must_use]
+    pub fn context_filter(&self) -> &TagFilter {
+        &self.with
+    }
+
+    /// Its filter over the holder's tags (`while`).
+    #[must_use]
+    pub fn holder_filter(&self) -> &TagFilter {
+        &self.holder
+    }
+
+    /// Its filter over the other party's tags at a hit (`against`).
+    #[must_use]
+    pub fn against_filter(&self) -> &TagFilter {
+        &self.against
+    }
+
+    /// Whether no filter names a tag.
+    #[must_use]
+    pub fn is_everything(&self) -> bool {
+        self.with.is_everything() && self.holder.is_everything() && self.against.is_everything()
+    }
+
+    /// Whether a read at use leaves it for the hit (§5.4 of the ARPG
+    /// design): an `against` filter, or a `with` that names a state tag
+    /// (`delivery.pierced`, `delivery.forked`, `delivery.chained`,
+    /// `delivery.repeated`), which only the hit knows.
+    #[must_use]
+    pub fn waits_for_hit(&self) -> bool {
+        !self.against.is_everything()
+            || self
+                .with
+                .names()
+                .any(|name| STATE_TAGS.iter().any(|state| covers(state, name)))
+    }
+
+    /// The load's check: every tag its filters name declared.
+    pub(crate) fn check(&self, world: &World, field: &str) -> Result<(), MissingAsset> {
+        self.with.check(world, &format!("{field}.with"))?;
+        self.holder.check(world, &format!("{field}.while"))?;
+        self.against.check(world, &format!("{field}.against"))
+    }
 }
 
 /// A line as data writes it, each filter left out when it passes
@@ -84,9 +178,9 @@ impl From<Line> for LineFields {
     fn from(line: Line) -> Self {
         Self {
             modifier: line.modifier,
-            with: line.with,
-            holder: line.holder,
-            against: line.against,
+            with: line.scope.with,
+            holder: line.scope.holder,
+            against: line.scope.against,
         }
     }
 }
@@ -106,9 +200,7 @@ impl Line {
         );
         Self {
             modifier,
-            with: TagFilter::new(),
-            holder: TagFilter::new(),
-            against: TagFilter::new(),
+            scope: Scope::new(),
         }
     }
 
@@ -120,15 +212,22 @@ impl Line {
         holder: TagFilter,
         against: TagFilter,
     ) -> Result<Self, String> {
+        Self::scoped(
+            modifier,
+            Scope {
+                with,
+                holder,
+                against,
+            },
+        )
+    }
+
+    /// A line of `modifier` in `scope`, checked as data is.
+    pub(crate) fn scoped(modifier: Modifier, scope: Scope) -> Result<Self, String> {
         if !modifier.is_finite() {
             return Err(format!("modifier: must be finite (got {modifier:?})"));
         }
-        let line = Self {
-            modifier,
-            with,
-            holder,
-            against,
-        };
+        let line = Self { modifier, scope };
         line.check_override()?;
         Ok(line)
     }
@@ -158,7 +257,7 @@ impl Line {
     #[must_use]
     #[track_caller]
     pub fn with(mut self, filter: TagFilter) -> Self {
-        self.with = filter;
+        self.scope.with = filter;
         self.checked("with")
     }
 
@@ -171,7 +270,7 @@ impl Line {
     #[must_use]
     #[track_caller]
     pub fn while_holder(mut self, filter: TagFilter) -> Self {
-        self.holder = filter;
+        self.scope.holder = filter;
         self.checked("while_holder")
     }
 
@@ -185,7 +284,7 @@ impl Line {
     #[must_use]
     #[track_caller]
     pub fn against(mut self, filter: TagFilter) -> Self {
-        self.against = filter;
+        self.scope.against = filter;
         self.checked("against")
     }
 
@@ -195,29 +294,35 @@ impl Line {
         self.modifier
     }
 
+    /// Its filters.
+    #[must_use]
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
+
     /// Its filter over the read's context (`with`).
     #[must_use]
     pub fn context_filter(&self) -> &TagFilter {
-        &self.with
+        &self.scope.with
     }
 
     /// Its filter over the holder's tags (`while`).
     #[must_use]
     pub fn holder_filter(&self) -> &TagFilter {
-        &self.holder
+        &self.scope.holder
     }
 
     /// Its filter over the other party's tags at a hit (`against`).
     #[must_use]
     pub fn against_filter(&self) -> &TagFilter {
-        &self.against
+        &self.scope.against
     }
 
     /// Whether a filter names a tag, so only the reads that take a context
     /// take it.
     #[must_use]
     pub fn is_scoped(&self) -> bool {
-        !(self.with.is_everything() && self.holder.is_everything() && self.against.is_everything())
+        !self.scope.is_everything()
     }
 
     /// Whether a read at use leaves it for the hit (§5.4 of the ARPG
@@ -226,11 +331,12 @@ impl Line {
     /// `delivery.repeated`), which only the hit knows.
     #[must_use]
     pub fn waits_for_hit(&self) -> bool {
-        !self.against.is_everything()
-            || self
-                .with
-                .names()
-                .any(|name| STATE_TAGS.iter().any(|state| covers(state, name)))
+        self.scope.waits_for_hit()
+    }
+
+    /// Its modifier and its scope, taken apart.
+    pub(crate) fn into_parts(self) -> (Modifier, Scope) {
+        (self.modifier, self.scope)
     }
 
     /// The line with `modifier` in place of its own, as an effect's scale
@@ -242,9 +348,7 @@ impl Line {
 
     /// The load's check: every tag its filters name declared.
     pub(crate) fn check(&self, world: &World, field: &str) -> Result<(), MissingAsset> {
-        self.with.check(world, &format!("{field}.with"))?;
-        self.holder.check(world, &format!("{field}.while"))?;
-        self.against.check(world, &format!("{field}.against"))
+        self.scope.check(world, field)
     }
 }
 
@@ -369,20 +473,25 @@ impl<'a> Read<'a> {
 
     /// What the read does with `line`.
     pub(crate) fn reach(&self, line: &Line) -> Reach {
-        if self.at_use && line.waits_for_hit() {
+        self.reach_scope(&line.scope)
+    }
+
+    /// What the read does with a line of `scope`.
+    pub(crate) fn reach_scope(&self, scope: &Scope) -> Reach {
+        if self.at_use && scope.waits_for_hit() {
             return Reach::Deferred;
         }
-        if !line.with.matches_by(|tag| self.has(tag)) {
+        if !scope.with.matches_by(|tag| self.has(tag)) {
             return Reach::Skipped(Skip::Context);
         }
-        if !line.holder.matches(self.holder) {
+        if !scope.holder.matches(self.holder) {
             return Reach::Skipped(Skip::Holder);
         }
-        if !line.against.is_everything() {
+        if !scope.against.is_everything() {
             if !self.at_hit {
                 return Reach::Skipped(Skip::NoHit);
             }
-            if !line.against.matches(self.other) {
+            if !scope.against.matches(self.other) {
                 return Reach::Skipped(Skip::Against);
             }
         }
@@ -476,6 +585,31 @@ impl Sums {
         self.deferred
             .iter()
             .map(|(source, line)| (source.as_str(), line))
+    }
+
+    /// The sums as numbers: the sum with the base, the percentage factor,
+    /// the product of the non-zero factors, whether a zero joined them, and
+    /// the override.
+    pub(crate) fn numbers(&self) -> (f64, f64, f64, bool, Option<f64>) {
+        (self.add, self.factor, self.product, self.zero, self.over)
+    }
+
+    /// Sums of [`numbers`](Self::numbers)' numbers, with no deferred line.
+    pub(crate) fn from_numbers(
+        add: f64,
+        factor: f64,
+        product: f64,
+        zero: bool,
+        over: Option<f64>,
+    ) -> Self {
+        Self {
+            add,
+            factor,
+            product,
+            zero,
+            over,
+            deferred: Vec::new(),
+        }
     }
 
     /// Leaves `line` from `source` for the hit.

@@ -664,3 +664,34 @@ fn shots_meet_tiles_by_their_layers() {
         assert!(same_meetings(&got, &want), "two layers, dt {dt}: {got:?}");
     }
 }
+
+#[test]
+fn a_bolt_carrying_a_delivery_strikes_from_it_whatever_its_hitboxs_damage() {
+    let (mut world, mut schedule) = projectile_rig(&["fire"]);
+    target(&mut world);
+    let holder = world.spawn_with((Tags::new(["fire"]),));
+    let zap = crate::Ability::new()
+        .with_payload(crate::Payload::Hitbox(0.1))
+        .with_skill(crate::Skill::new().with_damage("fire", 5.0, 5.0));
+    let delivery =
+        crate::intent::sheet::resolve(&world, holder, "zap", &zap, zap.skill().unwrap()).delivery;
+    world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        Hitbox::new(HitShape::circle(2.0), 0.0),
+        Projectile::new(),
+        delivery,
+    ));
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(
+        parts_sent(&world),
+        [(5.0, vec!["fire"])],
+        "the snapshot's part"
+    );
+    let hit = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .next()
+        .copied()
+        .unwrap();
+    assert_eq!(hit.source, Some(holder), "its holder's credit");
+}

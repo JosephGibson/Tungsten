@@ -1,5 +1,5 @@
 component abilities: The abilities the entity owns, by name: an entry's ID, or `#<index>` for one written in place.
-  field list: list of abilities ID or entry — the value itself: each an `abilities` entry's ID or an ability in place, names unique; the load checks each
+  field list: list of abilities ID or entry — the value itself: each an `abilities` entry's ID, an ability in place, or `{ id, level }` with its skill's level from 1 to 40; names unique; the load checks each
   events: AbilityUsed
   genres: top_down, shmup
   sample: ["wand"]
@@ -297,6 +297,8 @@ shape ability: What an entity can do: fired by a trigger, at a cost, with a cool
   field charges: shape ability_charges = null — uses in hand, refilled by time
   field target: shape ability_target = { "self": {} } — what it aims at; the load checks a filter's tags
   field payload: list of shape ability_payload — what a use does, in order; at least one
+  field tags: list of tag = null — its context, `skill.*` by convention, which its sheet's lines and its hits read; the load checks each
+  field skill: shape skill = null — a skill sheet, resolved at a use before the cost: its cost and cooldown replace the ability's, and each payload carries its snapshot to the hits
   sample: { "payload": [{ "effect": "swift" }] }
 shape ability_action: An ability of the subject or the other entity used now, as `use_ability` uses it, or made ready with every charge.
   field name: text — the ability's name in the entity's `abilities`: an entry's ID or `#<index>`
@@ -477,6 +479,26 @@ shape resist_modifier: A modifier on the target's resistance to one damage tag, 
   field against: tag filter = null — the modifier reaches only a hit whose attacker's tags pass it; the load checks its tags
   field floor: shape modifier = null — a change to the tag's floor, over a base of 0 without one: the lowest a factor above 0 goes in a hit
   sample: { "tag": "arcane", "modifier": { "mul": 2 } }
+shape skill: An ability's skill sheet: its bases, the curves its level reads them through, and its skill-local lines.
+  field bases: shape skill_bases = { "damage": {}, "crit_chance": null, "cost": null, "cooldown": null } — the sheet's own values before any line
+  field levels: base (`damage`, `crit_chance`, `cost` or `cooldown`) → curves ID = {} — each read at the skill's level, its owner's entry's plus `add` lines on `skill_level`, 1 to 40; a damage range scaled about its midpoint to the curve's value
+  field lines: list of shape skill_line = [] — skill-local lines, under the source `skill:<entry>`
+  sample: { "bases": { "damage": { "damage.fire": [16, 24] }, "cost": 12 } }
+shape skill_bases: A skill sheet's own values.
+  field damage: damage type → [min, max] = {} — a part's range by type, 0 <= min <= max; the load checks each type
+  field crit_chance: f32 (>= 0, <= 1) = null — the chance its hits crit, before lines
+  field cost: f32 (>= 0) = null — replaces the ability's cost amount, its stat the ability's
+  field cooldown: f32 (>= 0) = null — replaces the ability's cooldown, in seconds
+  sample: {}
+shape skill_line: A line a skill reads: a stat's modifier, flat damage of a type, or penetration for a type's parts, with its filters.
+  field stat: text = null — the stat its `modifier` changes; beside `modifier` alone
+  field modifier: shape modifier = null — the change, with `stat`
+  field added: one damage type → [min, max] = null — flat damage added to that type's part; may not wait for the hit
+  field pen: one damage type → points = null — penetration for the parts of that type and its descendants, by type or history
+  field with: tag filter = null — read only where it passes the context: the skill's tags, a part's track, type and history
+  field while: tag filter = null — read only while it passes the holder's tags at the use
+  field against: tag filter = null — read at the hit, against the target's tags; only `damage`, `crit_chance`, `crit_multiplier` and `pen` may wait for the hit
+  sample: { "stat": "damage", "modifier": { "mul": 0.8 } }
 shape sound_action: A manifest sound played at its volume, never looping.
   field id: text — the manifest sound; the load checks the ID
   field min_interval: f32 (>= 0) = 0.0 — game seconds before this sound plays again from a cue

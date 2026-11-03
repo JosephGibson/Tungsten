@@ -17,7 +17,7 @@ use crate::foundation::describe::{
     describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
-use crate::foundation::lines::{Line, Reach, Read, Sums};
+use crate::foundation::lines::{Line, Reach, Read, Scope, Sums};
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::world_sources::{WorldSources, bring_stale};
 use crate::lifecycle::cooldown::Cooldown;
@@ -342,6 +342,7 @@ impl TryFrom<BTreeMap<String, StatFields>> for Stats {
                 None => {}
             }
             for (source, line) in lines {
+                check_at_use(&name, line.scope()).map_err(|e| format!("{name}: {e}"))?;
                 stats.add_line(&name, &source, line);
             }
         }
@@ -381,6 +382,59 @@ impl From<Stats> for BTreeMap<String, StatFields> {
                 .push((source, line));
         }
         out
+    }
+}
+
+/// One line on a stat, as [`Stats::lines_on`] gives it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum StatLine<'a> {
+    /// An unscoped modifier, from its source.
+    Modifier(&'a str, Modifier),
+    /// A kept line, from its source.
+    Kept(&'a str, &'a Line),
+}
+
+impl<'a> StatLine<'a> {
+    pub(crate) fn source(self) -> &'a str {
+        match self {
+            StatLine::Modifier(source, _) | StatLine::Kept(source, _) => source,
+        }
+    }
+
+    pub(crate) fn modifier(self) -> Modifier {
+        match self {
+            StatLine::Modifier(_, modifier) => modifier,
+            StatLine::Kept(_, line) => line.modifier(),
+        }
+    }
+
+    /// Its filters; none for an unscoped modifier.
+    pub(crate) fn scope(self) -> Option<&'a Scope> {
+        self.line().map(Line::scope)
+    }
+
+    /// The kept line; none for an unscoped modifier.
+    pub(crate) fn line(self) -> Option<&'a Line> {
+        match self {
+            StatLine::Modifier(..) => None,
+            StatLine::Kept(_, line) => Some(line),
+        }
+    }
+}
+
+/// Whether `stat` is one a sheet spends at its use.
+pub(crate) fn spent_at_use(stat: &str) -> bool {
+    [Stats::SKILL_LEVEL, Stats::COST, Stats::COOLDOWN].contains(&stat)
+}
+
+/// A line on a stat spent at a use may not wait for the hit.
+pub(crate) fn check_at_use(stat: &str, scope: &Scope) -> Result<(), String> {
+    if spent_at_use(stat) && scope.waits_for_hit() {
+        Err(format!(
+            "a line on `{stat}`, spent at a use, may not wait for the hit (`against`, or a state tag in `with`)"
+        ))
+    } else {
+        Ok(())
     }
 }
 
@@ -425,6 +479,14 @@ impl Stats {
     /// context: `damage_taken` lines scoped by a hit's tags shape what it
     /// takes.
     pub const DAMAGE_TAKEN: &'static str = "damage_taken";
+    /// A skill's level at a use: its owner's level plus `add` lines in its
+    /// context, from 1 to 40 (a sheet's stat, read through
+    /// [`sums`](Self::sums)).
+    pub const SKILL_LEVEL: &'static str = "skill_level";
+    /// A skill's cost at a use (a sheet's stat).
+    pub const COST: &'static str = "cost";
+    /// A skill's cooldown at a use, in seconds (a sheet's stat).
+    pub const COOLDOWN: &'static str = "cooldown";
     /// The stats every game knows without declaring them.
     pub const WELL_KNOWN: [&'static str; 10] = [
         Self::MOVE_SPEED,
@@ -565,15 +627,24 @@ impl Stats {
     /// [`Line`] cannot be a scoped override, which its builders and the
     /// loads refuse.
     ///
+    /// A sheet spends [`SKILL_LEVEL`](Self::SKILL_LEVEL),
+    /// [`COST`](Self::COST) and [`COOLDOWN`](Self::COOLDOWN) at its use, so
+    /// a line on one may not wait for the hit (`against`, or a state tag in
+    /// `with`).
+    ///
     /// # Panics
     ///
-    /// When `stat` is not `[a-z][a-z0-9_]*`.
+    /// When `stat` is not `[a-z][a-z0-9_]*`, or a line on a stat spent at
+    /// a use waits for the hit.
     #[track_caller]
     pub fn add_line(&mut self, stat: &str, source: &str, line: Line) {
         assert!(
             valid_stat(stat),
             "Stats::add_line: `{stat}` is not a stat name (`[a-z][a-z0-9_]*`)"
         );
+        if let Err(error) = check_at_use(stat, line.scope()) {
+            panic!("Stats::add_line: {error}");
+        }
         if !line.is_scoped()
             && let Some(entry) = self.find_mut(stat)
         {
@@ -629,6 +700,21 @@ impl Stats {
             }
         }
         sums
+    }
+
+    /// Each line on `stat`: its unscoped modifiers in add order, then its
+    /// kept lines in add order, each with its source.
+    pub(crate) fn lines_on<'s>(&'s self, stat: &'s str) -> impl Iterator<Item = StatLine<'s>> {
+        let modifiers = self.find(stat).into_iter().flat_map(|entry| {
+            entry
+                .modifiers
+                .iter()
+                .map(|(source, modifier)| StatLine::Modifier(source, *modifier))
+        });
+        modifiers.chain(
+            self.kept_on(stat)
+                .map(|kept| StatLine::Kept(&kept.source, &kept.line)),
+        )
     }
 
     /// Each kept line: its stat, its source and the line, by stat and then
@@ -862,6 +948,9 @@ impl TryFrom<BTreeMap<String, StatEntryDef>> for StatsDef {
             }
             if !entry.base.is_finite() {
                 return Err(format!("{name}: must be finite (got {})", entry.base));
+            }
+            for line in &entry.lines {
+                check_at_use(name, line.scope()).map_err(|e| format!("{name}: {e}"))?;
             }
         }
         Ok(Self(entries))

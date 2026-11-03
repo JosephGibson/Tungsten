@@ -1,0 +1,25 @@
+{
+  "tag": "cinder_bolt",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        0,
+        0
+      ]
+    },
+    "hitbox": {
+      "shape": {
+        "circle": 3
+      },
+      "damage": 0,
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    },
+    "projectile": {
+      "range": 400
+    }
+  }
+}

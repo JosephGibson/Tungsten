@@ -8,6 +8,7 @@ use crate::damage::health::HealthPlugin;
 use crate::foundation::stats::StatsPlugin;
 use crate::foundation::tags::TagsPlugin;
 use crate::foundation::trace::KitTrace;
+use crate::intent::sheet::SkillLine;
 use crate::motion::knockback::Knockback;
 use crate::motion::linear::LinearMotionPlugin;
 use crate::overlap::hit::HitShape;
@@ -1026,4 +1027,126 @@ fn the_ability_cue_action_uses_or_refills_the_subject_or_the_other() {
         .unwrap(),
         CueAction::refill_ability("volley")
     );
+}
+
+// 7.10a: skills, their levels and lines, and the delivery a spawn carries.
+
+#[test]
+fn an_entry_takes_a_level_in_data_and_a_skilled_ability_round_trips() {
+    let (mut world, _) = rig();
+    let skilled = json!({
+        "tags": ["status.swift"],
+        "skill": { "bases": { "cost": 3 }, "lines": [{ "stat": "cost", "modifier": { "mul": 2 } }] },
+        "payload": [{ "spawn": { "prefab": "puff" } }]
+    });
+    let ability: Ability = serde_json::from_value(skilled.clone()).unwrap();
+    assert_eq!(ability.tags(), ["status.swift"]);
+    assert_eq!(ability.skill().unwrap().cost(), Some(3.0));
+    let back = serde_json::to_value(&ability).unwrap();
+    assert_eq!(serde_json::from_value::<Ability>(back).unwrap(), ability);
+    let plain = serde_json::to_value(Ability::new().with_payload(Payload::Impulse(1.0))).unwrap();
+    assert!(
+        plain.get("tags").is_none() && plain.get("skill").is_none(),
+        "as before 7.10a"
+    );
+    world.resource_mut::<DataRegistry>().insert("zap", ability);
+    let components = world.resource::<ComponentRegistry>();
+    let check = |value: serde_json::Value| components.check_in(ABILITIES, &value, &world);
+    assert!(check(json!([{ "id": "zap", "level": 10 }])).is_ok());
+    for bad in [
+        json!([{ "id": "zap", "level": 41 }]),
+        json!([{ "id": "zap", "level": 0 }]),
+        json!([{ "id": "zap", "level": 2, "spare": 1 }]),
+        json!([{ "id": "zap", "level": 2 }, "zap"]),
+    ] {
+        assert!(check(bad.clone()).is_err(), "{bad}");
+    }
+    let prefab: PrefabData = serde_json::from_value(
+        json!({ "components": { "abilities": [{ "id": "zap", "level": 10 }, "zap_b"] } }),
+    )
+    .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("zap_b", Ability::new().with_payload(Payload::Impulse(1.0)));
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("mage".to_string(), prefab);
+    let mage = world.spawn_prefab("mage", [0.0, 0.0]).unwrap();
+    let abilities = world.get::<Abilities>(mage).unwrap();
+    assert_eq!(
+        (
+            abilities.level("zap"),
+            abilities.level("zap_b"),
+            abilities.level("nope")
+        ),
+        (Some(10), Some(1), None)
+    );
+}
+
+#[test]
+fn levels_and_placed_lines_save_with_the_abilities_and_leave_with_their_source() {
+    let mut abilities = Abilities::new()
+        .with(DataRef::by_id("zap"))
+        .with_level("zap", 7);
+    abilities.add_skill_lines(
+        "zap",
+        "support:twin",
+        [SkillLine::added("damage.fire", 1.0, 2.0)],
+    );
+    abilities.add_lines("item:9", [SkillLine::pen("damage.fire", 0.1)]);
+    let saved = serde_json::to_value(&abilities).unwrap();
+    assert_eq!(saved["levels"], json!([["zap", 7]]));
+    assert_eq!(saved["skill_lines"][0][1], json!("support:twin"));
+    assert_eq!(saved["lines"][0][0], json!("item:9"));
+    assert_eq!(
+        serde_json::from_value::<Abilities>(saved).unwrap(),
+        abilities
+    );
+    assert_eq!(abilities.remove_skill_lines("zap", "support:twin"), 1);
+    assert_eq!(abilities.remove_lines("item:9"), 1);
+    abilities.set_level("zap", 1);
+    assert_eq!(
+        serde_json::to_value(&abilities)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .len(),
+        1,
+        "only the entries again"
+    );
+}
+
+#[test]
+fn a_skills_spawn_carries_its_delivery_and_a_plain_one_none() {
+    let (mut world, mut schedule) = rig();
+    let skilled = Ability::new()
+        .with_payload(Payload::Spawn {
+            prefab: "puff".to_string(),
+            speed: 0.0,
+            offset: 0.0,
+        })
+        .with_skill(crate::Skill::new().with_damage("damage.fire", 3.0, 5.0));
+    let plain = Ability::new().with_payload(Payload::Spawn {
+        prefab: "bolt".to_string(),
+        speed: 0.0,
+        offset: 0.0,
+    });
+    let caster = world.spawn_with((
+        Transform::from_position(Vec2::ZERO),
+        Abilities::new()
+            .with(DataRef::inline(skilled))
+            .with(DataRef::inline(plain)),
+    ));
+    assert_eq!(use_ability(&mut world, caster, "#0"), Used::Used);
+    assert_eq!(use_ability(&mut world, caster, "#1"), Used::Used);
+    step(&mut world, &mut schedule, STEP);
+    let carried: Vec<(String, Option<Entity>)> = world
+        .query::<(&tungsten_core::Tag, Option<&crate::Delivery>)>()
+        .map(|(tag, delivery)| (tag.name.clone(), delivery.and_then(crate::Delivery::holder)))
+        .collect();
+    assert!(
+        carried.contains(&("puff".to_string(), Some(caster))),
+        "{carried:?}"
+    );
+    assert!(carried.contains(&("bolt".to_string(), None)), "{carried:?}");
 }

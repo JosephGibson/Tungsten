@@ -2043,3 +2043,45 @@ fn a_marksmans_embers_crit_from_its_stats_at_a_pinned_seed() {
         );
     }
 }
+
+#[test]
+fn a_casters_bolt_carries_its_skills_snapshot_and_hits_after_the_caster_is_gone() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let caster = spawn(&mut harness, "caster", [6000.0, 6000.0]);
+        let veteran = spawn(&mut harness, "veteran", [6100.0, 6000.0]);
+        harness.step(1);
+        assert_eq!(
+            crate::kit::use_ability(harness.world_mut(), caster, "cinder"),
+            crate::kit::Used::Used,
+            "dt {dt}"
+        );
+        harness.step(1);
+        let bolts: Vec<Option<Entity>> = harness
+            .world()
+            .query::<&crate::kit::Delivery>()
+            .map(crate::kit::Delivery::holder)
+            .collect();
+        assert_eq!(
+            bolts,
+            [Some(caster)],
+            "dt {dt}: the bolt carries the snapshot"
+        );
+        harness.world_mut().despawn(caster);
+        let mut hits = Vec::new();
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            hits.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|hit| hit.entity == veteran)
+                    .map(|hit| (hit.amount, hit.source)),
+            );
+        }
+        assert_eq!(
+            hits,
+            [(3.0, None)],
+            "dt {dt}: the snapshot's fire, with no source"
+        );
+    }
+}

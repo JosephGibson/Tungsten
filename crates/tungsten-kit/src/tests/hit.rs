@@ -683,3 +683,60 @@ fn a_loaded_hitbox_given_its_targets_hits_none_again() {
         "unnamed: a fresh activation"
     );
 }
+
+#[test]
+fn a_hitbox_a_skill_arms_strikes_from_its_delivery_for_that_activation_alone() {
+    use tungsten_core::{CommandBuffer, DataRef, Time, Transform};
+
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    let mut schedule = Schedule::new();
+    crate::KitPlugins::set()
+        .without::<TagsPlugin>()
+        .with(TagsPlugin::new().with_tags(["fire"]))
+        .build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let types: crate::damage::kinds::DamageTypes =
+        serde_json::from_value(json!({ "fire": {} })).unwrap();
+    world
+        .resource_mut::<tungsten_core::DataRegistry>()
+        .insert("types", types);
+    let swing = crate::Ability::new()
+        .with_payload(crate::Payload::Hitbox(0.05))
+        .with_skill(crate::Skill::new().with_damage("fire", 7.0, 7.0));
+    let knight = world.spawn_with((
+        Transform::from_position(Vec2::ZERO),
+        Hitbox::new(HitShape::circle(4.0), 1.0).with_window(0.05),
+        crate::Abilities::new().with(DataRef::inline(swing)),
+    ));
+    let dummy = world.spawn_with((
+        Transform::from_position(Vec2::new(2.0, 0.0)),
+        Hurtbox::new(HitShape::circle(4.0)),
+        crate::Health::new(100.0),
+    ));
+    let step = |world: &mut World, schedule: &mut Schedule| {
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+        let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+        world.flush_reusing(&mut commands);
+        world.insert_resource(commands);
+    };
+    let health = |world: &World| world.get::<crate::Health>(dummy).unwrap().current();
+    assert_eq!(
+        crate::use_ability(&mut world, knight, "#0"),
+        crate::Used::Used
+    );
+    step(&mut world, &mut schedule);
+    assert_eq!(health(&world), 93.0, "the skill's 7, not the hitbox's 1");
+    for _ in 0..6 {
+        step(&mut world, &mut schedule);
+    }
+    world.get_mut::<Hitbox>(knight).unwrap().arm_for(0.05);
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        health(&world),
+        92.0,
+        "a later activation the skill did not arm: its own 1"
+    );
+}

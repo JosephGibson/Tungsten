@@ -21,6 +21,7 @@ use crate::foundation::stats::Stats;
 use crate::foundation::tags::{SIDE_FRONT, SIDE_REAR, TRACK_DOT, TRACK_HIT, Tags};
 use crate::foundation::trace::{TraceKind, trace};
 use crate::intent::aim::Aim;
+use crate::intent::sheet::Delivery;
 use crate::lifecycle::ended::Despawning;
 use crate::motion::knockback::knock_back;
 
@@ -313,6 +314,8 @@ struct Extras {
     context: Tags,
     state: Tags,
     direction: Option<Vec2>,
+    /// The skill's snapshot a delivery's hit resolves from.
+    sheet: Option<Delivery>,
 }
 
 /// The side of a target a hit lands on, judged from the way the hit
@@ -440,6 +443,37 @@ impl DamageRequest {
             Some(Own::Extras(extras)) => Some(extras),
             _ => None,
         }
+    }
+
+    /// A request of `delivery`'s snapshot on `target` (§6.4 of the ARPG
+    /// design): a part per snapshot part, of its damage type, reading its
+    /// range's midpoint until the resolve draws it; the skill's context and
+    /// the delivery's state tags; from the delivery's holder while it lives
+    /// in `world`, else from no one. At the resolve the lines it left for
+    /// the hit fold in (`against` on the target's tags, `with` on the state
+    /// tags), one draw sets every part in its range, a second draws its
+    /// crit under the snapshot's chance, and its parts meet the target's
+    /// defences with their own penetration, its holder's tags at the use
+    /// read for every `against`; it converts nothing further. A kit hit by
+    /// an entity that carries a [`Delivery`] is one.
+    #[must_use]
+    pub fn from_delivery(world: &World, target: Entity, delivery: &Delivery) -> Self {
+        let parts = delivery.parts.iter().map(|part| DamagePart {
+            tags: Tags::new([part.kind.as_str()]),
+            amount: f64::midpoint(f64::from(part.range[0]), f64::from(part.range[1])) as f32,
+        });
+        let mut request = Self::of(target, Parts::Many(parts.collect()));
+        request.source = delivery.credit(world);
+        let extras = request.extras_mut();
+        extras.context = Tags::new(delivery.context().iter().map(String::as_str));
+        extras.state = delivery.state().clone();
+        extras.sheet = Some(delivery.clone());
+        request
+    }
+
+    /// The snapshot it resolves from, for a delivery's hit.
+    pub(crate) fn sheet(&self) -> Option<&Delivery> {
+        self.extras().and_then(|extras| extras.sheet.as_ref())
     }
 
     /// The request, landing on `side`: a kit hit's, set at its strike.
@@ -922,6 +956,8 @@ struct DamageSave {
     direction: Option<[f32; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     side: Option<Side>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sheet: Option<Delivery>,
 }
 
 impl From<&DamageRequest> for DamageSave {
@@ -949,6 +985,7 @@ impl From<&DamageRequest> for DamageSave {
             state: request.state().clone(),
             direction: request.direction().map(|at| at.to_array()),
             side: request.side,
+            sheet: request.sheet().cloned(),
         }
     }
 }
@@ -999,6 +1036,9 @@ impl From<DamageSave> for DamageRequest {
             && direction.is_finite()
         {
             request = request.with_direction(direction);
+        }
+        if let Some(sheet) = saved.sheet {
+            request.extras_mut().sheet = Some(sheet);
         }
         request
     }
@@ -1264,16 +1304,23 @@ impl Defences<'_> {
     /// Steps 3 and 4 for one part: its points, then its factors and the
     /// target's `damage_taken`, read in the hit's context.
     fn land(&self, tags: &Tags, amount: f64) -> Landing {
+        let points = if self.hit.periodic {
+            0.0
+        } else {
+            self.own.map_or(0.0, |own| own.sum(tags)) + self.lent.map_or(0.0, |lent| lent.sum(tags))
+        };
+        self.land_with(tags, &[], amount, points)
+    }
+
+    /// Step 4 for one part of `tags` and `history`, with `points` of
+    /// penetration: its factors and the target's `damage_taken`, read in
+    /// the hit's context.
+    fn land_with(&self, tags: &Tags, history: &[String], amount: f64, points: f32) -> Landing {
         let kinds = || {
             self.table
                 .map_or(DamageKinds::NONE, |table| table.mask(tags))
         };
         let hit = &self.hit;
-        let points = if hit.periodic {
-            0.0
-        } else {
-            self.own.map_or(0.0, |own| own.sum(tags)) + self.lent.map_or(0.0, |lent| lent.sum(tags))
-        };
         let amount = if self.plain() {
             match self.resist {
                 None => clamped(amount),
@@ -1295,6 +1342,7 @@ impl Defences<'_> {
                 TagSet::Tags(hit.state),
                 side,
                 TagSet::Tags(tags),
+                TagSet::Names(history),
             ];
             let read = Read::new(&sets).holder(hit.holder).against(hit.attacker);
             let product = match self.resist {
@@ -1340,6 +1388,7 @@ fn land_parts<'a>(
     world: &'a World,
     request: &'a DamageRequest,
     crit: f64,
+    drawn: &[(f64, f32)],
     landed: &mut Vec<Landed>,
     immune: &mut Vec<Landed>,
 ) {
@@ -1371,10 +1420,25 @@ fn land_parts<'a>(
             },
             side: side.map(Side::tag),
             holder: world.get::<Tags>(target),
-            attacker: request.source.and_then(|source| world.get::<Tags>(source)),
+            attacker: match request.sheet() {
+                Some(sheet) => Some(sheet.holder_tags()),
+                None => request.source.and_then(|source| world.get::<Tags>(source)),
+            },
             periodic: request.periodic,
         },
     };
+    // A delivery's hit: its drawn amounts and own points, converted at use.
+    if let Some(sheet) = request.sheet() {
+        for (part, &(amount, points)) in sheet.parts.iter().zip(drawn) {
+            if amount > 0.0 {
+                let tags = Tags::new([part.kind.as_str()]);
+                let amount = amount.min(f64::from(f32::MAX));
+                let landing = defences.land_with(&tags, &part.history, amount, points);
+                record(landing, landed, immune);
+            }
+        }
+        return;
+    }
     let own_rules = request.conversion().map_or(&[][..], Conversion::rules);
     let lent_rules = request
         .source
@@ -1489,7 +1553,16 @@ fn resolve(
     let target = request.target;
     let mut crit = request.crit == Crit::Yes;
     let mut factor = 1.0;
-    if request.crit == Crit::Open
+    let mut drawn = Vec::new();
+    if let Some(sheet) = request.sheet() {
+        // A delivery's hit: the range draw, then the crit draw.
+        if !world.has_resource::<KitRng>() {
+            world.insert_resource(KitRng::default());
+        }
+        let rng = world.resource_mut::<KitRng>();
+        let (u, roll) = (rng.unit(), rng.unit());
+        crit = sheet.amounts(world.get::<Tags>(target), u, roll, &mut drawn);
+    } else if request.crit == Crit::Open
         && !request.periodic
         && let Some((chance, multiplier)) = crit_odds(world, request.source)
         && draw_crit(world, chance)
@@ -1503,7 +1576,7 @@ fn resolve(
         push_ignored(world, request);
         return Hit::Ignored;
     }
-    land_parts(world, request, factor, landed, immune);
+    land_parts(world, request, factor, &drawn, landed, immune);
     if !immune.is_empty() {
         send_immune(world, request, immune, crit);
     }

@@ -13,9 +13,10 @@ use crate::foundation::source::Source;
 use crate::foundation::tags::Tags;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::intent::aim::Aim;
+use crate::intent::sheet::Delivery;
 use crate::lifecycle::ended::Despawning;
 use crate::motion::knockback::knock_back;
-use crate::overlap::hit::{HitPayload, Hurtbox, Struck};
+use crate::overlap::hit::{HitPayload, Hitbox, Hurtbox, Struck};
 use crate::transform::hierarchy::Parent;
 
 /// The grid's cell size, in world pixels (Q12).
@@ -446,7 +447,9 @@ pub(crate) struct Blow<'a> {
 /// that way of travel meets against the target's [`Aim`]. The request is
 /// one part of the damage, or a typed item's parts split to it, its
 /// untyped parts of the item's tags, with the item's penetration and
-/// conversion.
+/// conversion; a hitter that carries a skill's [`Delivery`] for this hit
+/// (a spawn's, or its armed hitbox's for the activation) strikes from the
+/// snapshot instead, its damage whatever the item's.
 pub(crate) fn strike(world: &mut World, blow: &Blow<'_>) {
     strike_with(world, blow, false);
 }
@@ -468,7 +471,10 @@ pub(crate) fn strike_with(world: &mut World, blow: &Blow<'_>, push_always: bool)
         other: Some(blow.target),
         amount: Some(blow.damage),
     });
-    if blow.damage <= 0.0 {
+    let delivery = world.get::<Delivery>(blow.hitter).filter(|delivery| {
+        delivery.reaches(world.get::<Hitbox>(blow.hitter).map(Hitbox::activation))
+    });
+    if blow.damage <= 0.0 && delivery.is_none() {
         if push_always
             && let Some(push) = push_of(blow)
             && !world.has::<Despawning>(blow.target)
@@ -480,16 +486,16 @@ pub(crate) fn strike_with(world: &mut World, blow: &Blow<'_>, push_always: bool)
     let source = world
         .get::<Source>(blow.hitter)
         .map_or(blow.hitter, |source| source.entity());
-    let request = match blow.typed {
-        Some(typed) => typed.request(blow.target, blow.damage),
-        None => DamageRequest::new(blow.target, blow.damage),
+    let request = match (delivery, blow.typed) {
+        (Some(delivery), _) => DamageRequest::from_delivery(world, blow.target, delivery),
+        (None, Some(typed)) => typed.request(blow.target, blow.damage).with_source(source),
+        (None, None) => DamageRequest::new(blow.target, blow.damage).with_source(source),
     };
     let side = direction_of(blow).and_then(|direction| {
         let aim = world.get::<Aim>(blow.target)?.direction()?;
         Side::of(direction, aim)
     });
     let mut request = request
-        .with_source(source)
         .with_tags(blow.tags.clone())
         .with_position(blow.target_at)
         .with_side(side);
