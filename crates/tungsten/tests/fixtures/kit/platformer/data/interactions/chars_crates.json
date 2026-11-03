@@ -1,0 +1,16 @@
+{
+  "stimulus": "elemental.fire",
+  "on": {
+    "all": [
+      "material.crate"
+    ]
+  },
+  "min": 5,
+  "outputs": [
+    {
+      "become": {
+        "prefab": "crate_charred"
+      }
+    }
+  ]
+}

@@ -26,5 +26,8 @@
   "heat",
   "status.lit",
   "creature.lurker",
-  "grass"
+  "grass",
+  "stimulus.wet",
+  "light.lamp",
+  "light.doused"
 ]

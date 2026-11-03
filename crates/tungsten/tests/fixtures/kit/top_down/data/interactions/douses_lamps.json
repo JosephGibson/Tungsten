@@ -1,0 +1,19 @@
+{
+  "stimulus": "stimulus.wet",
+  "on": {
+    "all": [
+      "light.lamp"
+    ]
+  },
+  "outputs": [
+    {
+      "become": {
+        "prefab": "lamp_doused",
+        "revert": {
+          "after": 3,
+          "to": "lamp"
+        }
+      }
+    }
+  ]
+}

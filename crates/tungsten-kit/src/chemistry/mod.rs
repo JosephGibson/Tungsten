@@ -5,6 +5,8 @@
 //! receivers in a radius, a body by its impact and a receiver by the light
 //! at its point; a status's end and a band's entry run their own outputs.
 
+#[path = "become.rs"]
+pub(crate) mod becoming;
 pub(crate) mod grid;
 pub(crate) mod outputs;
 pub(crate) mod queue;
@@ -35,6 +37,7 @@ pub use queue::Chemistry;
 pub use rules::Interaction;
 pub use tiles::TileStatuses;
 
+use becoming::{BECAME, Became};
 use outputs::{Handler, Handlers, run_outputs};
 use queue::{CHEMISTRY_QUEUE, Entry, Receiver, Settings, StatusList, Stimulus, queue_saved};
 use rules::{INTERACTIONS, answered, answers, any_rule, register_interactions, snapshot, winner};
@@ -255,6 +258,7 @@ impl Plugin for ChemistryPlugin {
             world.insert_resource(TileStatuses::default());
         }
         world.register_saved_resource_with(TILE_STATUSES, tile_saved());
+        world.register_saved::<Became>(BECAME);
         if schedule.contains(CHEMISTRY) {
             return;
         }
@@ -298,10 +302,12 @@ fn ticking(world: &World) -> bool {
             .is_some_and(|statuses| !statuses.is_empty())
 }
 
-/// [`CHEMISTRY_TICK`]'s state between steps: the light sampler's lists.
+/// [`CHEMISTRY_TICK`]'s state between steps: the light sampler's lists and
+/// the replacements due.
 #[derive(Default)]
 struct Ticker {
     light: LightSampler,
+    due: Vec<(Entity, String)>,
 }
 
 impl Ticker {
@@ -320,6 +326,7 @@ impl Ticker {
             .map_or(0.0, Time::delta)
             .max(0.0);
         tiles::tick(world, dt);
+        becoming::tick(world, dt, &mut self.due);
         self.light.tick(world, &settings, dt);
     }
 }
@@ -664,6 +671,11 @@ fn describe_chemistry(world: &mut World) {
             "on a tile cell, a sprite written through the registry, which every placement of the map shows",
         ))
         .field(FieldDescription::new(
+            "become",
+            FieldType::Shape("become_output"),
+            "the receiver replaced by a prefab at its point under its save identity, its statuses not carried",
+        ))
+        .field(FieldDescription::new(
             "handler",
             FieldType::Text,
             "a game's Rust handler by name; the load refuses one no plugin registered",
@@ -783,6 +795,41 @@ fn describe_chemistry(world: &mut World) {
         )
         .sample(r#"{ "tile": "ash" }"#)
         .roundtrip(round_trip::<outputs::SetTileDef>),
+        ComponentDescription::new(
+            "become_output",
+            "The receiver replaced by another prefab under its save identity, and turned back after a while.",
+        )
+        .field(FieldDescription::new(
+            "prefab",
+            FieldType::Prefab,
+            "what it becomes, at its point; it keeps the receiver's source",
+        ))
+        .field(
+            FieldDescription::new(
+                "revert",
+                FieldType::Shape("become_revert"),
+                "turns it into `to` after `after` seconds, under the same identity; saved",
+            )
+            .default("null"),
+        )
+        .sample(r#"{ "prefab": "lamp_doused" }"#)
+        .roundtrip(round_trip::<becoming::BecomeDef>),
+        ComponentDescription::new("become_revert", "A replacement turned back after a while.")
+            .field(FieldDescription::new(
+                "after",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Open,
+                },
+                "game seconds until it turns back",
+            ))
+            .field(FieldDescription::new(
+                "to",
+                FieldType::Prefab,
+                "the prefab it turns into; data names it, since a named entity's save holds no prefab",
+            ))
+            .sample(r#"{ "after": 3, "to": "lamp" }"#)
+            .roundtrip(round_trip::<becoming::RevertDef>),
     ];
     for shape in shapes {
         describe_shape(world, shape);

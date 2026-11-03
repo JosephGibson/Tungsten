@@ -1,0 +1,11 @@
+{
+  "tag": "crate_charred",
+  "components": {
+    "health": {
+      "max": 5
+    },
+    "tags": [
+      "material.char"
+    ]
+  }
+}

@@ -16,5 +16,7 @@
   "status.cracked",
   "glass",
   "planks",
-  "heat"
+  "heat",
+  "material.crate",
+  "material.char"
 ]

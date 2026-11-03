@@ -31,7 +31,7 @@ const STEP: f32 = 1.0 / 60.0;
 struct Restored;
 
 /// The tags the tests declare.
-const TAGS: [&str; 13] = [
+const TAGS: [&str; 16] = [
     "material.wood",
     "material.stone",
     "material.glass",
@@ -45,6 +45,9 @@ const TAGS: [&str; 13] = [
     "pong",
     "node",
     "creature",
+    "wet",
+    "light.lamp",
+    "light.doused",
 ];
 
 /// A World with time, a command buffer, a trace, tags, stats, health,
@@ -1964,4 +1967,149 @@ fn tile_statuses_drop_with_their_placement() {
         "kept"
     );
     let _ = held;
+}
+
+// Step 4: `become` keeping identity.
+
+/// [`rig_with`] with the source derivation and the prefabs `lamp`
+/// (`light.lamp`) and `lamp_doused` (`light.doused`).
+fn become_rig(plugin: &ChemistryPlugin) -> (World, Schedule) {
+    let (mut world, mut schedule) = rig_with(plugin);
+    crate::SourcePlugin.build(&mut schedule, &mut world);
+    let mut prefabs = tungsten_core::PrefabRegistry::new();
+    for (id, tag) in [("lamp", "light.lamp"), ("lamp_doused", "light.doused")] {
+        prefabs.insert(
+            id.to_string(),
+            serde_json::from_value(json!({ "tag": id, "components": { "tags": [tag] } })).unwrap(),
+        );
+    }
+    world.insert_resource(prefabs);
+    rule(
+        &mut world,
+        "douses",
+        json!({
+            "stimulus": "wet", "on": { "all": ["light.lamp"] },
+            "outputs": [{ "become": { "prefab": "lamp_doused", "revert": { "after": 3, "to": "lamp" } } }]
+        }),
+    );
+    (world, schedule)
+}
+
+/// The entity tagged `tag`, when exactly one is.
+fn tagged_one(world: &World, tag: &str) -> Option<Entity> {
+    let found: Vec<Entity> = world
+        .query::<(Entity, &tungsten_core::Tag)>()
+        .filter(|(_, found)| found.name == tag)
+        .map(|(entity, _)| entity)
+        .collect();
+    (found.len() == 1).then(|| found[0])
+}
+
+#[test]
+fn become_replaces_and_reverts() {
+    let wet = queue::Stimulus {
+        amount: 1.0,
+        status_effect: 1.0,
+        dot_base: 1.0,
+        depth: 0,
+        credit: None,
+    };
+    // At `depth`: the take order runs the shallower entry first.
+    let stimulate = |world: &mut World, entity: Entity, name: &str, depth: u8| {
+        let chemistry = world.resource_mut::<Chemistry>();
+        let run = chemistry.run;
+        let stimulus = queue::Stimulus { depth, ..wet };
+        chemistry.stimulate(
+            &Settings::default(),
+            Receiver::Entity(entity),
+            name,
+            stimulus,
+            run,
+        );
+    };
+    let lit = |world: &mut World, owner: Option<Entity>| {
+        let lamp = world.spawn_prefab("lamp", [40.0, 40.0]).unwrap();
+        world.insert(lamp, Health::new(10.0));
+        if let Some(owner) = owner {
+            world.insert(lamp, crate::Source::new(owner));
+        }
+        tungsten_core::save::name(world, lamp, None, "hall_lamp").unwrap();
+        lamp
+    };
+    for owned in [true, false] {
+        let (mut world, mut schedule) = become_rig(&ChemistryPlugin::new().with_cap(1));
+        let owner = world.spawn();
+        let lamp = lit(&mut world, owned.then_some(owner));
+        let id = world.get::<tungsten_core::save::Saved>(lamp).unwrap().id();
+        EffectRequest::new(lamp, DataRef::by_id("mark")).apply(&mut world);
+        // `wet` first, then an entry that runs after the flush.
+        stimulate(&mut world, lamp, "wet", 0);
+        stimulate(&mut world, lamp, "heat", 1);
+        step(&mut world, &mut schedule);
+        assert!(!world.is_alive(lamp));
+        let doused = tagged_one(&world, "lamp_doused").expect("the doused lamp");
+        assert_eq!(
+            world.get::<Transform>(doused).unwrap().position,
+            Vec2::new(40.0, 40.0),
+            "at its point"
+        );
+        let saved = world.get::<tungsten_core::save::Saved>(doused).unwrap();
+        assert_eq!((saved.id(), saved.prefab()), (id, Some("lamp_doused")));
+        let source = world
+            .get::<crate::Source>(doused)
+            .map(|source| source.entity());
+        assert_eq!(
+            source,
+            Some(if owned { owner } else { lamp }),
+            "owned {owned}"
+        );
+        assert!(!has(&world, doused, "mark"), "statuses are not carried");
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            skips(&world, lamp),
+            [("all", GONE)],
+            "the old entity's entry"
+        );
+        // `lamp` again 3 s after the flush, within a step: frame counts the
+        // steps since it.
+        let mut back = None;
+        for frame in 2..=200 {
+            step(&mut world, &mut schedule);
+            if back.is_none() && tagged_one(&world, "lamp").is_some() {
+                back = Some(frame);
+            }
+        }
+        assert_eq!(back, Some(180), "owned {owned}");
+        let relit = tagged_one(&world, "lamp").unwrap();
+        let saved = world.get::<tungsten_core::save::Saved>(relit).unwrap();
+        assert_eq!((saved.id(), saved.prefab()), (id, Some("lamp")));
+        assert!(tagged_one(&world, "lamp_doused").is_none());
+    }
+    // Through a save between: the doused lamp comes back with its revert,
+    // turning back on the uninterrupted run's step.
+    let (mut world, mut schedule) = become_rig(&ChemistryPlugin::new());
+    let lamp = lit(&mut world, None);
+    stimulate(&mut world, lamp, "wet", 0);
+    step(&mut world, &mut schedule);
+    for _ in 0..60 {
+        step(&mut world, &mut schedule);
+    }
+    let saved = capture_world(&world).unwrap();
+    let (mut loaded, mut loaded_schedule) = become_rig(&ChemistryPlugin::new());
+    let fresh = lit(&mut loaded, None);
+    restore_world(&mut loaded, &saved, &(Restored,)).unwrap();
+    assert!(!loaded.is_alive(fresh), "the named lamp reads as gone");
+    assert!(tagged_one(&loaded, "lamp_doused").is_some());
+    let mut back = (None, None);
+    for frame in 1..=200 {
+        step(&mut world, &mut schedule);
+        step(&mut loaded, &mut loaded_schedule);
+        if back.0.is_none() && tagged_one(&world, "lamp").is_some() {
+            back.0 = Some(frame);
+        }
+        if back.1.is_none() && tagged_one(&loaded, "lamp").is_some() {
+            back.1 = Some(frame);
+        }
+    }
+    assert_eq!(back, (Some(120), Some(120)), "at 3 s both ways");
 }

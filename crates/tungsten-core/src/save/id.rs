@@ -317,6 +317,19 @@ pub(crate) fn saved_spawn(world: &mut World, source: Entity, prefab: String) -> 
     })
 }
 
+/// The identity a spawn of `prefab` that takes `source`'s place takes at
+/// the flush: `source`'s ID and area with `prefab` as its prefab, so a
+/// capture writes it as a spawn record under that ID (a named source's name
+/// then reads as gone), when `source` is saved.
+pub(crate) fn replaced_identity(world: &World, source: Entity, prefab: String) -> Option<Saved> {
+    let saved = world.get::<Saved>(source)?;
+    Some(Saved {
+        id: saved.id,
+        area: saved.area.clone(),
+        prefab: Some(prefab),
+    })
+}
+
 /// Whether the World has save state: whether anything was ever named in it.
 #[must_use]
 pub fn saving(world: &World) -> bool {

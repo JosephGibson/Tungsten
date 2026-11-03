@@ -2,7 +2,7 @@ use std::any::{TypeId, type_name};
 use std::collections::HashSet;
 
 use super::bundle::{Bundle, BundleScratch, BundleSink};
-use super::command_buffer::{Command, CommandBuffer, CommandTarget, SavedPrefab};
+use super::command_buffer::{Command, CommandBuffer, CommandTarget, ReplacedPrefab, SavedPrefab};
 use super::entity::Entity;
 use super::event_queue::EventQueue;
 use super::query::{Columns, ColumnsMut, QueryData, QueryFilter, ReadOnlyQueryData};
@@ -236,6 +236,26 @@ impl World {
         if !self.bundle_scratch.run.is_empty() {
             self.apply_bundle(target);
         }
+    }
+
+    /// Gives `target` `source`'s place: what the spawn inheritance derives
+    /// from `source`, then, with a `prefab`, `source`'s save identity (its
+    /// ID and area, `prefab` as its prefab) in the same archetype move; then
+    /// despawns `source`.
+    fn replace_from(&mut self, source: Entity, target: Entity, prefab: Option<String>) {
+        self.bundle_scratch.reset();
+        for i in 0..self.source_derivers.len() {
+            (self.source_derivers[i])(self, source, target);
+        }
+        if let Some(prefab) = prefab
+            && let Some(saved) = crate::save::id::replaced_identity(self, source, prefab)
+        {
+            self.bundle_scratch.put(saved);
+        }
+        if !self.bundle_scratch.run.is_empty() {
+            self.apply_bundle(target);
+        }
+        self.despawn(source);
     }
 
     /// Spawn entity in empty archetype.
@@ -588,6 +608,26 @@ impl World {
                     // whole: its run has applied, so nothing of it remains.
                     if self.is_alive(source) {
                         self.derive_from(source, entity, prefab);
+                    } else {
+                        self.despawn(entity);
+                    }
+                }
+                Command::Replace { source, target } => {
+                    let prefab = values
+                        .take::<ReplacedPrefab>()
+                        .and_then(|ReplacedPrefab(id)| id);
+                    index += 1;
+                    let entity = match target {
+                        CommandTarget::Live(entity) => entity,
+                        CommandTarget::Pending(id) => pending_entities[id as usize],
+                    };
+                    if !self.is_alive(entity) {
+                        continue;
+                    }
+                    // A dead entity to replace drops the spawn whole, as a
+                    // dead source does.
+                    if self.is_alive(source) {
+                        self.replace_from(source, entity, prefab);
                     } else {
                         self.despawn(entity);
                     }

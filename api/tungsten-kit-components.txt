@@ -353,6 +353,14 @@ shape apply_output: A status applied, with a damage-over-time rate and lines.
   field dot: f32 (>= 0) = null — its damage over time a second: this times the hit's base, the drawn amount before the factors times the `delivery.dot` sums and the status effect
   field lines: list of shape stat_modifier = null — lines on the instance, beside the status's own
   sample: { "status": "burning" }
+shape become_output: The receiver replaced by another prefab under its save identity, and turned back after a while.
+  field prefab: prefab ID — what it becomes, at its point; it keeps the receiver's source
+  field revert: shape become_revert = null — turns it into `to` after `after` seconds, under the same identity; saved
+  sample: { "prefab": "lamp_doused" }
+shape become_revert: A replacement turned back after a while.
+  field after: f32 (> 0) — game seconds until it turns back
+  field to: prefab ID — the prefab it turns into; data names it, since a named entity's save holds no prefab
+  sample: { "after": 3, "to": "lamp" }
 shape build_output: A status built by a fixed amount or by the entry's hits.
   field status: effects ID or entry — the status; the load checks it
   field amount: f32 (>= 0) = null — a fixed build, at the entry's largest status effect
@@ -498,6 +506,7 @@ shape interaction_output: One thing a rule, a status's end or a band's entry doe
   field spawn: prefab ID — a prefab at the receiver's point, from it
   field emit: shape emit_output — a stimulus sent once from the receiver's point to every receiver in a radius but itself, one reaction deeper
   field set_tile: shape set_tile_output — on a tile cell, a sprite written through the registry, which every placement of the map shows
+  field become: shape become_output — the receiver replaced by a prefab at its point under its save identity, its statuses not carried
   field handler: text — a game's Rust handler by name; the load refuses one no plugin registered
   sample: { "remove": "burning" }
 shape label_action: A `label` action: a `label_style` that names its font, or on `damaged_part` none, its part's type's style, which the grouping fields take.

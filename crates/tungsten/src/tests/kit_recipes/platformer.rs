@@ -10,8 +10,9 @@
 //! ceiling, the hero pushed out of a sliding platform and crushed under a
 //! falling deck, and a wisp steering its mover along a brick; 7.10b's
 //! lamp, which burns its oil and goes out; its chemistry's kindling, lit
-//! by a torch's hit, a clay pot cracked by a hard landing, and a floor of
-//! glass a pot cracks and planks a flare scorches for a while.
+//! by a torch's hit, a clay pot cracked by a hard landing, a floor of
+//! glass a pot cracks and planks a flare scorches for a while, and a crate
+//! fire chars.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1600,5 +1601,34 @@ fn a_glass_floor_cracks_and_a_scorched_cell_reverts() {
             "glass_cracked",
             "dt {dt}: a crack stays"
         );
+    }
+}
+
+#[test]
+fn a_crate_chars_in_fire() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let burnt = spawn(&mut harness, "wood_crate", [100.0, 100.0]);
+        let singed = spawn(&mut harness, "wood_crate", [300.0, 100.0]);
+        harness.step(1);
+        // Fire of 6 on one and 3 on the other: `chars_crates` (min 5) makes
+        // the first a charred crate at its point.
+        for (target, amount) in [(burnt, 6.0), (singed, 3.0)] {
+            DamageRequest::from_parts(
+                target,
+                [DamagePart::new(amount).with_tags(Tags::new(["elemental.fire"]))],
+            )
+            .apply(harness.world_mut());
+        }
+        harness.step(1);
+        let world = harness.world();
+        assert!(!world.is_alive(burnt), "dt {dt}");
+        assert!(world.is_alive(singed), "dt {dt}: under the rule's min");
+        let charred: Vec<Vec2> = world
+            .query::<(&tungsten_core::Tag, &Transform)>()
+            .filter(|(tag, _)| tag.name == "crate_charred")
+            .map(|(_, transform)| transform.position)
+            .collect();
+        assert_eq!(charred, [Vec2::new(100.0, 100.0)], "dt {dt}");
     }
 }

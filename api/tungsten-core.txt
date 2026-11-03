@@ -6613,6 +6613,7 @@ pub fn tungsten_core::CommandBuffer::remove_component<T: 'static>(&mut self, tun
 pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
 impl tungsten_core::CommandBuffer
+pub fn tungsten_core::CommandBuffer::replace_prefab(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_prefab(&mut self, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_prefab_from(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer
@@ -18377,6 +18378,7 @@ pub fn tungsten_core::CommandBuffer::remove_component<T: 'static>(&mut self, tun
 pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
 impl tungsten_core::CommandBuffer
+pub fn tungsten_core::CommandBuffer::replace_prefab(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_prefab(&mut self, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_prefab_from(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer

@@ -1,0 +1,11 @@
+{
+  "tag": "lamp_doused",
+  "components": {
+    "health": {
+      "max": 10
+    },
+    "tags": [
+      "light.doused"
+    ]
+  }
+}

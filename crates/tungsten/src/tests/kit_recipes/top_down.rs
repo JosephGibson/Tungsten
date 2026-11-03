@@ -14,7 +14,8 @@
 //! wall, an ox that stacks its knockback and a wisp steering its mover;
 //! 7.10b's trooper, suppressed by the rounds that pass it; its chemistry's
 //! wooden crates, lit by fire, doused by cold and setting each other
-//! alight, a lurker a lamp lights and a grass strip a crate sets burning.
+//! alight, a lurker a lamp lights, a grass strip a crate sets burning and
+//! a lamp a bucket's water douses for 3 s.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -2541,5 +2542,41 @@ fn a_grass_strip_burns_across_from_a_crate() {
             lit.windows(2).all(|pair| pair[0] < pair[1]),
             "dt {dt}: in turn {lit:?}"
         );
+    }
+}
+
+#[test]
+fn a_lamp_doused_by_water_relights() {
+    let tagged_one = |harness: &Harness, tag: &str| -> Option<Entity> {
+        let found: Vec<Entity> = harness
+            .world()
+            .query::<(Entity, &tungsten_core::Tag)>()
+            .filter(|(_, found)| found.name == tag)
+            .map(|(entity, _)| entity)
+            .collect();
+        (found.len() == 1).then(|| found[0])
+    };
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let lamp = spawn(&mut harness, "lamp", [200.0, 100.0]);
+        // A bucket 30 px off sends `stimulus.wet` within 40 px every 0.5 s
+        // for 0.6 s: `douses_lamps` makes the lamp `lamp_doused` for 3 s.
+        let bucket = harness
+            .world_mut()
+            .spawn_with((Transform::from_position(Vec2::new(230.0, 100.0)),));
+        crate::kit::EffectRequest::new(bucket, DataRef::by_id("drenched"))
+            .apply(harness.world_mut());
+        harness.step(frames_for(0.6, dt));
+        assert!(!harness.world().is_alive(lamp), "dt {dt}: replaced");
+        let doused = tagged_one(&harness, "lamp_doused").expect("doused");
+        assert_eq!(
+            drawn_at(&harness, doused),
+            Vec2::new(200.0, 100.0),
+            "dt {dt}"
+        );
+        assert!(tagged_one(&harness, "lamp").is_none(), "dt {dt}");
+        harness.step(frames_for(3.0, dt));
+        assert!(tagged_one(&harness, "lamp").is_some(), "dt {dt}: relit");
+        assert!(tagged_one(&harness, "lamp_doused").is_none(), "dt {dt}");
     }
 }

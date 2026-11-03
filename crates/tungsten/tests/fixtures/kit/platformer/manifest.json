@@ -110,6 +110,12 @@
     },
     "clay_pot": {
       "path": "prefabs/clay_pot.json"
+    },
+    "wood_crate": {
+      "path": "prefabs/wood_crate.json"
+    },
+    "crate_charred": {
+      "path": "prefabs/crate_charred.json"
     }
   },
   "data": {
@@ -190,6 +196,9 @@
       },
       "planks_scorch": {
         "path": "data/interactions/planks_scorch.json"
+      },
+      "chars_crates": {
+        "path": "data/interactions/chars_crates.json"
       }
     }
   },

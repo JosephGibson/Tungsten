@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::physics::Position;
 use tungsten_core::{CommandBuffer, DataRef, Entity, MissingAsset, Transform, World};
 
+use crate::chemistry::becoming::BecomeDef;
 use crate::chemistry::queue::Receiver;
 use crate::chemistry::rules::check_stimulus;
 use crate::chemistry::stimuli::{Named, emit_from};
@@ -27,6 +28,7 @@ pub(crate) const DEAD: &str = "the receiver is dead: a status is refused";
 const NO_STATUS: &str = "the receiver carries no such status";
 const NO_HANDLER: &str = "no handler of that name is registered";
 const NO_SPAWN: &str = "the prefab did not prepare";
+const NOT_AN_ENTITY: &str = "the receiver is a tile cell, not an entity";
 
 /// One output of a rule, a status's `on_end` or a band's `enter`, run on
 /// the receiver. Data form, an object of one field:
@@ -41,6 +43,7 @@ const NO_SPAWN: &str = "the prefab did not prepare";
 /// | spawn | `{ "spawn": "puff" }` | spawns a prefab at the receiver's point, from it |
 /// | emit | `{ "emit": { "stimulus": "heat", "amount": 1, "radius": 40 } }` | sends a stimulus once from the receiver's point to every receiver within the radius but itself, at the next run |
 /// | set_tile | `{ "set_tile": { "tile": "ash", "revert": 5 } }` | on a tile cell, writes the first tileset entry with that sprite through the registry, every placement of the map showing it; `revert` writes the old tile back after that many seconds |
+/// | become | `{ "become": { "prefab": "lamp_doused", "revert": { "after": 3, "to": "lamp" } } }` | replaces the receiver by a prefab at its point under its save identity, keeping its source, its statuses not carried; `revert` turns it into `to` after `after` seconds, under the same identity |
 /// | handler | `{ "handler": "douse" }` | runs a game's Rust handler ([`ChemistryPlugin::with_handler`](crate::ChemistryPlugin::with_handler)) |
 ///
 /// On a dead receiver `build` and `apply` are refused, as effects refuse the
@@ -48,7 +51,7 @@ const NO_SPAWN: &str = "the prefab did not prepare";
 /// statuses, `damage` damages it by the parts' sum through
 /// `TilemapRegistry::damage_tile`, `emit` and `spawn` go from its centre
 /// (the spawn with no source), and `set_tile` writes it; `set_tile` on an
-/// entity does nothing. The load checks each status, prefab, damage type,
+/// entity and `become` on a cell do nothing. The load checks each status, prefab, damage type,
 /// tag and handler.
 ///
 /// # Examples
@@ -76,12 +79,13 @@ enum Kind {
     Spawn(String),
     Emit(EmitDef),
     SetTile(SetTileDef),
+    Become(BecomeDef),
     Handler(String),
 }
 
 impl Output {
     /// Its name, as data writes it: `build`, `apply`, `remove`, `consume`,
-    /// `damage`, `spawn`, `emit`, `set_tile` or `handler`.
+    /// `damage`, `spawn`, `emit`, `set_tile`, `become` or `handler`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match &self.0 {
@@ -93,6 +97,7 @@ impl Output {
             Kind::Spawn(_) => "spawn",
             Kind::Emit(_) => "emit",
             Kind::SetTile(_) => "set_tile",
+            Kind::Become(_) => "become",
             Kind::Handler(_) => "handler",
         }
     }
@@ -416,6 +421,7 @@ pub(crate) fn check_outputs(
             Kind::Spawn(prefab) => world.check_prefab_id(&at, prefab)?,
             Kind::Emit(def) => check_stimulus(world, &format!("{at}.stimulus"), &def.stimulus)?,
             Kind::SetTile(_) => {}
+            Kind::Become(def) => def.check(world, &at)?,
             Kind::Handler(name) => {
                 let known = world
                     .get_resource::<Handlers>()
@@ -575,6 +581,7 @@ fn on_entity(
             Ok(())
         }
         Kind::SetTile(_) => Err(NOT_A_TILE),
+        Kind::Become(def) => def.run(world, receiver),
         Kind::Handler(_) => unreachable!("handlers run apart"),
     }
 }
@@ -651,6 +658,7 @@ fn on_cell(
             Ok(())
         }
         Kind::SetTile(def) => tiles::set_tile(world, cell, &def.tile, def.revert),
+        Kind::Become(_) => Err(NOT_AN_ENTITY),
         Kind::Handler(_) => unreachable!("handlers run apart"),
     }
 }
