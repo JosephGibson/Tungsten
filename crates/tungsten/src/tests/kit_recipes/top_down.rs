@@ -2048,6 +2048,9 @@ fn a_marksmans_embers_crit_from_its_stats_at_a_pinned_seed() {
 fn a_casters_bolt_carries_its_skills_snapshot_converted_and_hits_after_the_caster_is_gone() {
     for dt in DTS {
         let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness
+            .world_mut()
+            .insert_resource(crate::kit::KitExplain::new());
         let caster = spawn(&mut harness, "caster", [6000.0, 6000.0]);
         let veteran = spawn(&mut harness, "veteran", [6100.0, 6000.0]);
         harness.step(1);
@@ -2097,6 +2100,39 @@ fn a_casters_bolt_carries_its_skills_snapshot_converted_and_hits_after_the_caste
                 ),
             ],
             "dt {dt}: half its fire converted to cold at the use"
+        );
+        // Its why-record: each part with where it came from, and the sheet
+        // its bolt carried.
+        let hit = harness
+            .world()
+            .resource::<crate::kit::KitExplain>()
+            .last_hit()
+            .unwrap();
+        let parts: Vec<(&str, f32)> = hit
+            .parts
+            .iter()
+            .map(|part| (part.tags[0].as_str(), part.after))
+            .collect();
+        assert_eq!(
+            parts,
+            [("elemental.fire", 1.5), ("elemental.cold", 1.5)],
+            "dt {dt}"
+        );
+        assert_eq!(
+            hit.parts[1].origins[0].steps,
+            [crate::kit::OriginStep::Converted {
+                share: 0.5,
+                to: "elemental.cold".to_string(),
+                source: "skill:cinder".to_string(),
+            }],
+            "dt {dt}"
+        );
+        let sheet = hit.sheet.as_deref().unwrap();
+        assert_eq!((sheet.holder, sheet.ability.as_str()), (caster, "cinder"));
+        assert!(
+            hit.to_string()
+                .contains("cold part  1.50   from fire 3–3 at u "),
+            "dt {dt}: {hit}"
         );
     }
 }

@@ -14,6 +14,9 @@ use crate::damage::health::{Damaged, DamagedPart, Health, Hit, ImmunePart, start
 use crate::damage::kinds::{
     Conversion, ConversionRule, DamageKinds, DamageTypeTable, Penetration, merge_types,
 };
+use crate::foundation::explain::{
+    CritRecord, ExplainRecord, HitPartRecord, HitRecord, KitExplain, ResistRecord,
+};
 use crate::foundation::lines::{Read, TagSet};
 use crate::foundation::rng::KitRng;
 use crate::foundation::saved::order_of;
@@ -290,13 +293,13 @@ fn crit_odds(world: &World, source: Option<Entity>) -> Option<(f32, f32)> {
     Some((chance.min(1.0), multiplier))
 }
 
-/// One draw of the kit's stream under `chance`: whether it crits. The
-/// stream is the World's, or a default one inserted.
-fn draw_crit(world: &mut World, chance: f32) -> bool {
+/// One draw of the kit's stream, a crit's roll: it crits under the chance.
+/// The stream is the World's, or a default one inserted.
+fn draw_roll(world: &mut World) -> f32 {
     if !world.has_resource::<KitRng>() {
         world.insert_resource(KitRng::default());
     }
-    world.resource_mut::<KitRng>().unit() < chance
+    world.resource_mut::<KitRng>().unit()
 }
 
 /// A request's own conversion alone, or its boxed extras.
@@ -620,7 +623,7 @@ impl DamageRequest {
         let odds = (!self.periodic)
             .then(|| crit_odds(world, self.source))
             .flatten();
-        let crit = odds.is_some_and(|(chance, _)| draw_crit(world, chance));
+        let crit = odds.is_some_and(|(chance, _)| draw_roll(world) < chance);
         if crit && let Some((_, multiplier)) = odds {
             let times = |part: &mut DamagePart| {
                 part.amount = clamped(f64::from(part.amount) * f64::from(multiplier)).max(0.0);
@@ -1301,15 +1304,112 @@ impl Defences<'_> {
         self.taken.is_none() && self.resist.is_none_or(|resist| !resist.reads_context())
     }
 
-    /// Steps 3 and 4 for one part: its points, then its factors and the
-    /// target's `damage_taken`, read in the hit's context.
-    fn land(&self, tags: &Tags, amount: f64) -> Landing {
-        let points = if self.hit.periodic {
+    /// Step 3 for one part: the request's points and its source's, none on
+    /// a periodic hit.
+    fn points(&self, tags: &Tags) -> f32 {
+        if self.hit.periodic {
             0.0
         } else {
             self.own.map_or(0.0, |own| own.sum(tags)) + self.lent.map_or(0.0, |lent| lent.sum(tags))
+        }
+    }
+
+    /// Steps 3 and 4 for one part: its points, then its factors and the
+    /// target's `damage_taken`, read in the hit's context.
+    fn land(&self, tags: &Tags, amount: f64) -> Landing {
+        self.land_with(tags, &[], amount, self.points(tags))
+    }
+
+    /// The sets the target's lines read a part of `tags` and `history` in:
+    /// the hit's context, track, state tags and side, the part's types and
+    /// its history.
+    fn sets<'s>(&'s self, tags: &'s Tags, history: &'s [String]) -> [TagSet<'s>; 6] {
+        let hit = &self.hit;
+        [
+            TagSet::Tags(hit.context),
+            TagSet::Name(hit.track),
+            TagSet::Tags(hit.state),
+            hit.side.map_or(TagSet::Names(&[]), TagSet::Name),
+            TagSet::Tags(tags),
+            TagSet::Names(history),
+        ]
+    }
+
+    /// Step 4 for one part as its record keeps it: the resistance's factor
+    /// in the hit's context, the floor of the part's types, the `points` and
+    /// the product they make, the target's `damage_taken`, and what
+    /// `landing` left.
+    fn note(
+        &self,
+        part: &mut HitPartRecord,
+        tags: &Tags,
+        history: &[String],
+        points: f32,
+        landing: Landing,
+    ) {
+        let sets = self.sets(tags, history);
+        let read = Read::new(&sets)
+            .holder(self.hit.holder)
+            .against(self.hit.attacker);
+        let points = points.min(1.0);
+        let plain = self.plain();
+        part.resist = self.resist.map(|resist| {
+            let (factor, product) = if plain {
+                (resist.factor(tags), resist.product_with(tags, points))
+            } else {
+                (
+                    resist.factor_in(tags, &read),
+                    resist.product_in(tags, points, &read),
+                )
+            };
+            // A floor on a type or its ancestors, as the factors match.
+            let floor = tags.iter().find_map(|tag| {
+                std::iter::successors(Some(tag), |tag| tag.rsplit_once('.').map(|(up, _)| up))
+                    .find_map(|tag| resist.floor(tag))
+            });
+            ResistRecord {
+                factor,
+                floor,
+                pen: points,
+                product: product.unwrap_or(0.0),
+            }
+        });
+        part.taken = if plain {
+            1.0
+        } else {
+            self.taken
+                .and_then(|stats| stats.read(Stats::DAMAGE_TAKEN, &read))
+                .map_or(1.0, f64::from)
         };
-        self.land_with(tags, &[], amount, points)
+        (part.after, part.immune) = match landing {
+            Landing::Landed(landed) => (landed.amount, false),
+            Landing::Immune(_) => (0.0, true),
+            Landing::Dropped => (0.0, false),
+        };
+    }
+
+    /// A request's part without a sheet as its record keeps it: its types,
+    /// its amount `before` the defences, the crit's factor `crit` in it, and
+    /// step 4.
+    fn noted(&self, tags: &Tags, before: f64, crit: f64, landing: Landing) -> HitPartRecord {
+        let mut part = HitPartRecord {
+            tags: tags.iter().map(str::to_owned).collect(),
+            history: Vec::new(),
+            origins: Vec::new(),
+            base: if crit > 0.0 { before / crit } else { before },
+            lines: Vec::new(),
+            pct: 0.0,
+            mul: 1.0,
+            factor: 1.0,
+            crit,
+            before,
+            resist: None,
+            taken: 1.0,
+            after: 0.0,
+            immune: false,
+        };
+        self.note(&mut part, tags, &[], self.points(tags), landing);
+        part
     }
 
     /// Step 4 for one part of `tags` and `history`, with `points` of
@@ -1335,15 +1435,7 @@ impl Defences<'_> {
                 }
             }
         } else {
-            let side = hit.side.map_or(TagSet::Names(&[]), TagSet::Name);
-            let sets = [
-                TagSet::Tags(hit.context),
-                TagSet::Name(hit.track),
-                TagSet::Tags(hit.state),
-                side,
-                TagSet::Tags(tags),
-                TagSet::Names(history),
-            ];
+            let sets = self.sets(tags, history);
             let read = Read::new(&sets).holder(hit.holder).against(hit.attacker);
             let product = match self.resist {
                 None => Some(1.0),
@@ -1383,7 +1475,8 @@ fn record(landing: Landing, landed: &mut Vec<Landed>, immune: &mut Vec<Landed>) 
 /// Steps 1 to 4 of `request`'s resolution: its parts after the
 /// conversion, the penetration and the target's resistances, in part
 /// order, into `landed`, and those an immunity dropped into `immune`;
-/// `landed` is empty when every part dropped.
+/// `landed` is empty when every part dropped. With `notes`, each part's
+/// defences go in its record.
 fn land_parts<'a>(
     world: &'a World,
     request: &'a DamageRequest,
@@ -1391,6 +1484,7 @@ fn land_parts<'a>(
     drawn: &[(f64, f32)],
     landed: &mut Vec<Landed>,
     immune: &mut Vec<Landed>,
+    mut notes: Option<&mut HitRecord>,
 ) {
     landed.clear();
     immune.clear();
@@ -1429,11 +1523,17 @@ fn land_parts<'a>(
     };
     // A delivery's hit: its drawn amounts and own points, converted at use.
     if let Some(sheet) = request.sheet() {
-        for (part, &(amount, points)) in sheet.parts.iter().zip(drawn) {
+        for (at, (part, &(amount, points))) in sheet.parts.iter().zip(drawn).enumerate() {
             if amount > 0.0 {
                 let tags = Tags::new([part.kind.as_str()]);
                 let amount = amount.min(f64::from(f32::MAX));
                 let landing = defences.land_with(&tags, &part.history, amount, points);
+                if let Some(noted) = notes
+                    .as_deref_mut()
+                    .and_then(|notes| notes.parts.get_mut(at))
+                {
+                    defences.note(noted, &tags, &part.history, points, landing);
+                }
                 record(landing, landed, immune);
             }
         }
@@ -1459,6 +1559,11 @@ fn land_parts<'a>(
         if part.amount != 0.0 {
             let amount = (f64::from(part.amount) * crit).min(f64::from(f32::MAX));
             let landing = defences.land(typed(part), amount);
+            if let Some(notes) = notes {
+                notes
+                    .parts
+                    .push(defences.noted(typed(part), amount, crit, landing));
+            }
             record(landing, landed, immune);
         }
         return;
@@ -1473,7 +1578,13 @@ fn land_parts<'a>(
         );
     }
     for &(tags, amount) in &working {
-        let landing = defences.land(tags, amount.min(f64::from(f32::MAX)));
+        let amount = amount.min(f64::from(f32::MAX));
+        let landing = defences.land(tags, amount);
+        if let Some(notes) = notes.as_deref_mut() {
+            notes
+                .parts
+                .push(defences.noted(tags, amount, crit, landing));
+        }
         record(landing, landed, immune);
     }
 }
@@ -1554,6 +1665,9 @@ fn resolve(
     let mut crit = request.crit == Crit::Yes;
     let mut factor = 1.0;
     let mut drawn = Vec::new();
+    let mut notes = world
+        .has_resource::<KitExplain>()
+        .then(|| HitRecord::new(target, request.source, request.periodic));
     if let Some(sheet) = request.sheet() {
         // A delivery's hit: the range draw, then the crit draw.
         if !world.has_resource::<KitRng>() {
@@ -1561,14 +1675,33 @@ fn resolve(
         }
         let rng = world.resource_mut::<KitRng>();
         let (u, roll) = (rng.unit(), rng.unit());
-        crit = sheet.amounts(world.get::<Tags>(target), u, roll, &mut drawn);
+        crit = sheet.amounts(
+            world.get::<Tags>(target),
+            u,
+            roll,
+            &mut drawn,
+            notes.as_mut(),
+        );
     } else if request.crit == Crit::Open
         && !request.periodic
         && let Some((chance, multiplier)) = crit_odds(world, request.source)
-        && draw_crit(world, chance)
     {
-        crit = true;
-        factor = f64::from(multiplier);
+        let roll = draw_roll(world);
+        if roll < chance {
+            crit = true;
+            factor = f64::from(multiplier);
+        }
+        if let Some(notes) = &mut notes {
+            notes.crit = CritRecord::Drawn {
+                chance,
+                roll,
+                multiplier,
+            };
+        }
+    } else if request.crit != Crit::Open
+        && let Some(notes) = &mut notes
+    {
+        notes.crit = CritRecord::Decided(crit);
     }
     if request.parts().iter().all(|part| part.amount == 0.0)
         || !takes_hits(world, target, request.periodic)
@@ -1576,11 +1709,20 @@ fn resolve(
         push_ignored(world, request);
         return Hit::Ignored;
     }
-    land_parts(world, request, factor, &drawn, landed, immune);
+    land_parts(
+        world,
+        request,
+        factor,
+        &drawn,
+        landed,
+        immune,
+        notes.as_mut(),
+    );
     if !immune.is_empty() {
         send_immune(world, request, immune, crit);
     }
     if landed.is_empty() {
+        keep(world, notes);
         push_ignored(world, request);
         return Hit::Ignored;
     }
@@ -1596,6 +1738,11 @@ fn resolve(
         .get_mut::<Health>(target)
         .unwrap()
         .hurt(rest, request.periodic);
+    if let Some(mut notes) = notes {
+        notes.amount = amount;
+        notes.killed = killed;
+        keep(world, Some(notes));
+    }
     if !request.periodic {
         start_flash(world, target);
     }
@@ -1652,6 +1799,15 @@ fn resolve(
         knock_back(world, target, velocity);
     }
     if rest > 0.0 { Hit::Hurt } else { Hit::Absorbed }
+}
+
+/// Puts a hit's record in the world's [`KitExplain`], while one is kept.
+fn keep(world: &World, notes: Option<HitRecord>) {
+    if let Some(notes) = notes
+        && let Some(explain) = world.get_resource::<KitExplain>()
+    {
+        explain.push(ExplainRecord::Hit(notes));
+    }
 }
 
 /// [`HealRequest`]'s resolution: the health restored.

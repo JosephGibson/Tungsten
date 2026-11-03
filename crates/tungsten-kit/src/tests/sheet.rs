@@ -4,7 +4,8 @@ use tungsten_core::{CommandBuffer, EventQueue, PrefabRegistry, Schedule, Time};
 
 use super::*;
 use crate::{
-    DamageRequest, Damaged, DamagedPart, Health, KitPlugins, KitRng, Resist, TagsPlugin, damage,
+    DamageRequest, Damaged, DamagedPart, Health, KitExplain, KitPlugins, KitRng, LineOutcome,
+    ReadAt, Resist, TagsPlugin, damage,
 };
 
 /// Spawns the empty prefab `id`, named `id` for a save.
@@ -1018,4 +1019,265 @@ fn nine_one_hits_at_32_07_crits_at_60_94_chains_at_27_26_and_the_ring_adds_2_89(
         "the ring's extra fire: {}",
         with_ring - hit
     );
+}
+
+// 7.10a, Step 7: why-records.
+
+#[test]
+fn nine_ones_cold_part_records_its_listing_as_a_set_with_its_draw_factor_and_damage_taken() {
+    let (mut world, _) = rig();
+    world.insert_resource(KitExplain::new());
+    let holder = nine_one(&mut world, false);
+    let delivery = sheet_of(&world, holder).delivery;
+    let target = brute(&mut world);
+    landing(&mut world, target, &delivery, PLAIN);
+    let hit = world.resource::<KitExplain>().last_hit().unwrap();
+    let part = &hit.parts[1];
+    assert_eq!((&part.tags, &part.history), (&vec![cold()], &vec![fire()]));
+    let all = |tag: &str| Scope::new().with(TagFilter::new().all([tag]));
+    let any = |tag: &str| Scope::new().with(TagFilter::new().any([tag]));
+    let against = Scope::new().against(TagFilter::new().all(["status.chilled"]));
+    let use_ = (ReadAt::Use, LineOutcome::Applied);
+    let history = (ReadAt::Use, LineOutcome::ThroughHistory);
+    let skipped = |read, why: &str| (read, LineOutcome::Skipped(why.to_owned()));
+    let mut want = vec![
+        (
+            "passive:spellcraft",
+            Modifier::Pct(0.40),
+            all("skill.spell"),
+            use_.clone(),
+        ),
+        (
+            "item:9137 implicit",
+            Modifier::Pct(0.08),
+            all("skill.spell"),
+            use_.clone(),
+        ),
+        (
+            "item:9137 spellwoven",
+            Modifier::Pct(0.26),
+            all("skill.spell"),
+            use_.clone(),
+        ),
+        (
+            "item:9137 searing",
+            Modifier::Pct(0.22),
+            any("damage.fire"),
+            history.clone(),
+        ),
+        (
+            "passive:frostcraft",
+            Modifier::Pct(0.20),
+            any("damage.cold"),
+            use_.clone(),
+        ),
+        (
+            "passive:marksman",
+            Modifier::Pct(0.25),
+            all("skill.projectile"),
+            use_.clone(),
+        ),
+        (
+            "passive:brawler",
+            Modifier::Pct(0.30),
+            all("skill.melee"),
+            skipped(ReadAt::Use, "skill.melee not in context"),
+        ),
+        ("status#41", Modifier::Mul(1.1), any("damage.fire"), history),
+        (
+            "passive:cold_snap",
+            Modifier::Pct(0.20),
+            against,
+            (ReadAt::Hit, LineOutcome::Applied),
+        ),
+        ("support:threefold", Modifier::Mul(0.8), Scope::new(), use_),
+        (
+            "support:ricochet",
+            Modifier::Mul(0.85),
+            all("delivery.chained"),
+            skipped(ReadAt::Hit, "delivery.chained not set"),
+        ),
+    ];
+    let mut got: Vec<_> = part
+        .lines
+        .iter()
+        .map(|line| {
+            assert_eq!(line.stat, "damage");
+            (
+                line.source.as_str(),
+                line.modifier,
+                line.scope.clone(),
+                (line.read, line.outcome.clone()),
+            )
+        })
+        .collect();
+    want.sort_by(|a, b| a.0.cmp(b.0));
+    got.sort_by(|a, b| a.0.cmp(b.0));
+    assert_eq!(got, want);
+    // Its draw, factor, crit draw, resistance and damage taken.
+    let mut rng = KitRng::seeded(PLAIN);
+    let (u, roll) = (rng.unit(), rng.unit());
+    assert_eq!(hit.draw, Some(u));
+    assert_eq!(
+        hit.crit,
+        crate::CritRecord::Drawn {
+            chance: delivery.crit_chance.sums().value(0.0, 1.0),
+            roll,
+            multiplier: delivery.crit_multiplier.sums().value(1.0, f32::INFINITY),
+        }
+    );
+    let near = |got: f64, want: f64| (got - want).abs() < 0.005;
+    assert!(near(part.base, 10.0) && near(1.0 + part.pct, 2.61) && near(part.mul, 0.88));
+    assert!(near(part.before, 22.97) && part.crit == 1.0, "{part:?}");
+    let resist = part.resist.unwrap();
+    assert_eq!((resist.factor, resist.floor, resist.pen), (0.75, None, 0.0));
+    assert!(near(resist.product, 0.75) && part.taken == 1.0);
+    assert!(near(f64::from(part.after), 17.23), "{}", part.after);
+    assert_eq!(
+        hit.parts[0].resist.unwrap().pen,
+        0.10,
+        "the ring's pen on the fire part"
+    );
+    // The listing, a line each.
+    let listing = hit.to_string();
+    for line in [
+        "cold part  10.00   from fire 16–24 at u 0.50 → 20.00, converted 0.5 to cold (support:rimecraft)",
+        "  pct  +0.40 passive:spellcraft   with skill.spell              use",
+        "  pct  +0.22 item:9137 searing    with damage.fire              use (history)",
+        "  pct  +0.20 passive:cold_snap    against status.chilled        hit",
+        "  pct   0.30 passive:brawler      with skill.melee              skipped: skill.melee not in context",
+        "  mul  ×0.80 support:threefold                                  use",
+        "  mul  ×0.85 support:ricochet     with delivery.chained         skipped: delivery.chained not set",
+        "  = 10.00 × 2.61 × 0.88 = 22.97; no crit (draw 0.85 ≥ 0.09)",
+        "  resist  damage.cold 0.75 (no floor; no penetration) → 17.23",
+        "  damage_taken 1.00 → 17.23",
+    ] {
+        assert!(listing.lines().any(|got| got == line), "{line}\n{listing}");
+    }
+}
+
+#[test]
+fn a_skipped_line_names_why() {
+    let (mut world, _) = rig();
+    world.insert_resource(KitExplain::new());
+    let all = |tag: &str| TagFilter::new().all([tag]);
+    let mut stats = Stats::new();
+    for (source, line) in [
+        (
+            "passive:brawler",
+            Line::new(Modifier::Pct(0.3)).with(all("skill.melee")),
+        ),
+        (
+            "passive:chill",
+            Line::new(Modifier::Pct(0.2)).while_holder(all("status.chilled")),
+        ),
+        (
+            "passive:hunter",
+            Line::new(Modifier::Pct(0.1)).against(all("status.marked")),
+        ),
+    ] {
+        stats.add_line(Stats::DAMAGE, source, line);
+    }
+    let holder = caster(&mut world, cinder(), stats);
+    world.get_mut::<Abilities>(holder).unwrap().add_skill_lines(
+        "cinder",
+        "support:ricochet",
+        [SkillLine::stat(
+            "damage",
+            Line::new(Modifier::Mul(0.85)).with(all("delivery.chained")),
+        )],
+    );
+    let delivery = sheet_of(&world, holder).delivery;
+    let target = world.spawn_with((Health::new(1000.0),));
+    DamageRequest::from_delivery(&world, target, &delivery).apply(&mut world);
+    let hit = world.resource::<KitExplain>().last_hit().unwrap();
+    let why: Vec<(&str, ReadAt, &LineOutcome)> = hit.parts[0]
+        .lines
+        .iter()
+        .map(|line| (line.source.as_str(), line.read, &line.outcome))
+        .collect();
+    let skipped = |why: &str| LineOutcome::Skipped(why.to_owned());
+    assert_eq!(
+        why,
+        [
+            (
+                "passive:brawler",
+                ReadAt::Use,
+                &skipped("skill.melee not in context")
+            ),
+            (
+                "passive:chill",
+                ReadAt::Use,
+                &skipped("status.chilled not on the holder")
+            ),
+            (
+                "passive:hunter",
+                ReadAt::Hit,
+                &skipped("status.marked not on the target")
+            ),
+            (
+                "support:ricochet",
+                ReadAt::Hit,
+                &skipped("delivery.chained not set")
+            ),
+        ]
+    );
+}
+
+#[test]
+fn a_sheets_record_rides_its_delivery_to_the_hit() {
+    let (mut world, _) = rig();
+    world.insert_resource(KitExplain::new());
+    let holder = caster(&mut world, cinder(), Stats::new());
+    world.insert(
+        holder,
+        crate::Hitbox::new(crate::HitShape::circle(8.0), 1.0),
+    );
+    assert_eq!(
+        crate::use_ability(&mut world, holder, "cinder"),
+        crate::Used::Used
+    );
+    let sheet = world.resource::<KitExplain>().last_sheet().unwrap();
+    assert_eq!((sheet.holder, sheet.ability.as_str()), (holder, "cinder"));
+    let names: Vec<&str> = sheet.stats.iter().map(|stat| stat.stat.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "skill_level",
+            "crit_chance",
+            "crit_multiplier",
+            "cost",
+            "cooldown"
+        ]
+    );
+    let armed = world.get::<Delivery>(holder).unwrap().clone();
+    assert_eq!(
+        armed.explain.as_deref(),
+        Some(&sheet),
+        "on the armed hitbox"
+    );
+    let target = world.spawn_with((Health::new(1000.0),));
+    DamageRequest::from_delivery(&world, target, &armed).apply(&mut world);
+    let explain = world.resource::<KitExplain>();
+    assert_eq!(explain.last_hit().unwrap().sheet.as_deref(), Some(&sheet));
+    assert_eq!(explain.len(), 2, "the use's sheet, then the hit");
+}
+
+#[test]
+fn without_the_resource_nothing_is_recorded() {
+    let (mut world, _) = rig();
+    let holder = caster(&mut world, cinder(), Stats::new());
+    let delivery = sheet_of(&world, holder).delivery;
+    assert!(delivery.explain.is_none());
+    let target = world.spawn_with((Health::new(1000.0),));
+    DamageRequest::from_delivery(&world, target, &delivery).apply(&mut world);
+    assert!(!world.has_resource::<KitExplain>());
+    // A delivery recorded while it was kept hits without it unrecorded.
+    world.insert_resource(KitExplain::new());
+    let carried = sheet_of(&world, holder).delivery;
+    let explain = world.remove_resource::<KitExplain>().unwrap();
+    assert_eq!(explain.len(), 1);
+    DamageRequest::from_delivery(&world, target, &carried).apply(&mut world);
+    assert!(!world.has_resource::<KitExplain>());
+    assert_eq!(world.resource::<EventQueue<Damaged>>().iter().count(), 2);
 }

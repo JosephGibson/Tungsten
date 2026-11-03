@@ -239,6 +239,10 @@ pub use foundation::debug::{KIT_DEBUG_DRAW, KitDebug, KitDebugPlugin};
 pub use foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, KitDescriptions,
 };
+pub use foundation::explain::{
+    CritRecord, EXPLAIN_RECORDS, ExplainRecord, HitPartRecord, HitRecord, KitExplain, LineOutcome,
+    LineRecord, OriginStep, PartOrigin, PartRecord, ReadAt, ResistRecord, SheetRecord, StatRecord,
+};
 pub use foundation::lines::{Line, Read, Scope, Sums, TagSet};
 pub use foundation::phases::{
     KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_PRESENT, KIT_REACT, KIT_RESOLVE, KIT_TICK, Phase,

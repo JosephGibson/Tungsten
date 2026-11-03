@@ -1,11 +1,13 @@
 //! The kit's foundations: the phases every kit system joins, the plugin
 //! set, tags and the spawn chain's origin, stats with their scoped lines
-//! and world sources, curves, the random stream, the event trace, and the
-//! field checks the scene components share.
+//! and world sources, curves, the random stream, the event trace, the
+//! why-records of sheets and hits, and the field checks the scene
+//! components share.
 
 pub(crate) mod curve;
 pub(crate) mod debug;
 pub(crate) mod describe;
+pub(crate) mod explain;
 pub(crate) mod inspect;
 pub(crate) mod lines;
 pub(crate) mod phases;

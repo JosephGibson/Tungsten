@@ -1042,6 +1042,9 @@ fn a_knights_skill_arms_its_hitbox_with_the_snapshot_for_that_swing() {
     };
     for dt in DTS {
         let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness
+            .world_mut()
+            .insert_resource(crate::kit::KitExplain::new());
         let knight = spawn(&mut harness, "knight", [2000.0, -2000.0]);
         let squire = spawn(&mut harness, "squire", [2010.0, -2000.0]);
         // The swing: its hitbox armed for 0.1 s with the skill's physical 3
@@ -1096,6 +1099,28 @@ fn a_knights_skill_arms_its_hitbox_with_the_snapshot_for_that_swing() {
             parts,
             [3.0, 0.75],
             "dt {dt}: the physical part, then a quarter of it as extra cold"
+        );
+        // Its why-record: the extra cold part from the knight's edge, the
+        // crit draw that missed.
+        let hit = harness
+            .world()
+            .resource::<crate::kit::KitExplain>()
+            .last_hit()
+            .unwrap();
+        assert_eq!((hit.source, hit.amount), (Some(knight), 3.75), "dt {dt}");
+        assert_eq!(
+            hit.parts[1].origins[0].steps,
+            [crate::kit::OriginStep::Extra {
+                share: 0.25,
+                to: "damage.cold".to_string(),
+                source: "item:rime_edge".to_string(),
+            }],
+            "dt {dt}"
+        );
+        assert!(
+            matches!(hit.crit, crate::kit::CritRecord::Drawn { chance, roll, .. } if chance == 0.5 && roll >= 0.5),
+            "dt {dt}: {:?}",
+            hit.crit
         );
     }
 }

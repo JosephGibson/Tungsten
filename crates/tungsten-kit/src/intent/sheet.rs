@@ -15,6 +15,10 @@ use crate::foundation::curve::Curve;
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, describe_shape, round_trip,
 };
+use crate::foundation::explain::{
+    CritRecord, ExplainRecord, HitPartRecord, HitRecord, KitExplain, LineOutcome, LineRecord,
+    OriginStep, PartOrigin, PartRecord, ReadAt, SheetRecord, StatRecord, outcome, why,
+};
 use crate::foundation::lines::{Line, Reach, Read, Scope, Sums, TagSet};
 use crate::foundation::optional_non_negative;
 use crate::foundation::stats::{Modifier, StatLine, Stats, check_at_use, valid_stat};
@@ -849,7 +853,8 @@ pub(crate) struct DeliveryPart {
 /// from either resolves from it ([`DamageRequest::from_delivery`]), never
 /// reading its user again, so a user who died, swapped gear or lost a buff
 /// changes nothing in flight. It is saved, the holder by save ID, and a hit
-/// after its holder is gone has no source.
+/// after its holder is gone has no source. While [`KitExplain`] is kept it
+/// carries its sheet's record to its hits' records, never saved.
 ///
 /// [`DamageRequest::from_delivery`]: crate::DamageRequest::from_delivery
 #[derive(Debug, Clone, PartialEq)]
@@ -866,6 +871,8 @@ pub struct Delivery {
     deferred: Vec<(String, SkillLine)>,
     /// The hitbox activation it arms, for one a `hitbox` payload placed.
     activation: Option<u32>,
+    /// Its sheet's why-record, while one is kept.
+    explain: Option<Box<SheetRecord>>,
 }
 
 impl Delivery {
@@ -936,13 +943,16 @@ impl Delivery {
     /// hit's `context` (its track and the state tags among it): the
     /// deferred lines folded in, one range draw `u` shared by every part,
     /// the factors, then the crit draw `crit` under the chance; each part's
-    /// amount in `f64` and its penetration, and whether it crit.
+    /// amount in `f64` and its penetration, and whether it crit. With a
+    /// `record`, each part's lines, sums and origins go in it with the
+    /// draws and the sheet's record.
     pub(crate) fn amounts(
         &self,
         target: Option<&Tags>,
         u: f32,
         crit: f32,
         out: &mut Vec<(f64, f32)>,
+        mut record: Option<&mut HitRecord>,
     ) -> bool {
         out.clear();
         let mut chance = self.crit_chance.sums();
@@ -966,7 +976,7 @@ impl Delivery {
                 }
             }
         }
-        for part in &self.parts {
+        for (at, part) in self.parts.iter().enumerate() {
             let sets = [
                 TagSet::Names(&self.context),
                 TagSet::Name(TRACK_HIT),
@@ -994,16 +1004,108 @@ impl Delivery {
             let [min, max] = part.range;
             let rolled = f64::from(min) + f64::from(u) * (f64::from(max) - f64::from(min));
             out.push((rolled * factor_of(&hit), pen.clamp(0.0, 1.0)));
+            if let Some(record) = record.as_deref_mut() {
+                let noted = self.noted(at, target, &read, &hit, rolled);
+                record.parts.push(noted);
+            }
         }
         let chance = chance.value(0.0, 1.0);
-        let crit = crit < chance;
+        let multiplier = multiplier.value(1.0, f32::INFINITY);
+        let roll = crit;
+        let crit = roll < chance;
         if crit {
-            let multiplier = f64::from(multiplier.value(1.0, f32::INFINITY));
             for (amount, _) in out.iter_mut() {
-                *amount *= multiplier;
+                *amount *= f64::from(multiplier);
+            }
+        }
+        if let Some(record) = record {
+            record.draw = Some(u);
+            record.crit = CritRecord::Drawn {
+                chance,
+                roll,
+                multiplier,
+            };
+            record.sheet.clone_from(&self.explain);
+            if crit {
+                for part in &mut record.parts {
+                    part.crit = f64::from(multiplier);
+                    part.before *= part.crit;
+                }
             }
         }
         crit
+    }
+
+    /// Part `at`'s record at a hit `read` met: the lines of its use from the
+    /// sheet's record, those the use left for the hit as the read met them,
+    /// its origins, its sums `hit` and its amount `rolled` at the draw.
+    fn noted(
+        &self,
+        at: usize,
+        target: Option<&Tags>,
+        read: &Read<'_>,
+        hit: &Sums,
+        rolled: f64,
+    ) -> HitPartRecord {
+        let part = &self.parts[at];
+        let used = self.explain.as_ref().and_then(|sheet| sheet.parts.get(at));
+        let mut lines: Vec<LineRecord> = used.map_or_else(Vec::new, |used| {
+            used.lines
+                .iter()
+                .filter(|line| line.outcome != LineOutcome::Deferred)
+                .cloned()
+                .collect()
+        });
+        let bare_sets = [
+            TagSet::Names(&self.context),
+            TagSet::Name(TRACK_HIT),
+            TagSet::Tags(&self.state),
+            TagSet::Name(&part.kind),
+        ];
+        let bare = Read::new(&bare_sets)
+            .holder(Some(&self.holder_tags))
+            .against(target);
+        for (source, line) in &self.deferred {
+            let (stat, modifier) = match &line.kind {
+                LineKind::Stat { stat, modifier } if stat == Stats::DAMAGE => {
+                    (Stats::DAMAGE, *modifier)
+                }
+                LineKind::Pen { kind, points } if covers(&part.kind, kind) => {
+                    ("pen", Modifier::Add(*points))
+                }
+                _ => continue,
+            };
+            let outcome = outcome(
+                read.reach_scope(&line.scope),
+                || bare.reach_scope(&line.scope),
+                |skip| why(skip, &line.scope, read, Some(&self.holder_tags), target),
+            );
+            lines.push(LineRecord {
+                source: source.clone(),
+                stat: stat.to_owned(),
+                modifier,
+                scope: line.scope.clone(),
+                read: ReadAt::Hit,
+                outcome,
+            });
+        }
+        let factor = factor_of(hit);
+        HitPartRecord {
+            tags: vec![part.kind.clone()],
+            history: part.history.clone(),
+            origins: used.map_or_else(Vec::new, |used| used.origins.clone()),
+            base: rolled,
+            lines,
+            pct: hit.pct(),
+            mul: hit.mul(),
+            factor,
+            crit: 1.0,
+            before: rolled * factor,
+            resist: None,
+            taken: 1.0,
+            after: 0.0,
+            immune: false,
+        }
     }
 }
 
@@ -1065,6 +1167,7 @@ impl From<DeliverySave> for Delivery {
             crit_multiplier: save.crit_multiplier,
             deferred: save.deferred,
             activation: save.activation,
+            explain: None,
         }
     }
 }
@@ -1271,6 +1374,16 @@ enum Source<'a> {
     Skill(&'a str, &'a SkillLine),
 }
 
+impl<'a> Source<'a> {
+    /// The source key that placed the line.
+    fn source(self) -> &'a str {
+        match self {
+            Source::Stat(_, stat_line) => stat_line.source(),
+            Source::Skill(source, _) => source,
+        }
+    }
+}
+
 /// `curve`'s definition.
 fn curve_of<'a>(world: &'a World, curve: &'a DataRef<Curve>) -> Option<&'a Curve> {
     match world.get_resource::<DataRegistry>() {
@@ -1280,11 +1393,51 @@ fn curve_of<'a>(world: &'a World, curve: &'a DataRef<Curve>) -> Option<&'a Curve
 }
 
 /// A part between its base and its snapshot: its type, its history (the
-/// types it came from, sorted) and its range.
-type Working = (String, Vec<String>, [f64; 2]);
+/// types it came from, sorted), its range and, while a record is kept,
+/// where it came from.
+struct Working {
+    kind: String,
+    history: Vec<String>,
+    range: [f64; 2],
+    origins: Vec<PartOrigin>,
+}
 
-/// A conversion or extra line's rule, with its scope.
-type Rule<'a> = ((&'a str, &'a str, f32), &'a Scope);
+impl Working {
+    /// A base part of `kind` over `range`, the skill's own or an `added`
+    /// line's, its origin kept while `explaining`.
+    fn base(kind: &str, range: [f64; 2], added: Option<&str>, explaining: bool) -> Self {
+        let origins = if explaining {
+            vec![PartOrigin::new(kind, range.map(|v| v as f32), added)]
+        } else {
+            Vec::new()
+        };
+        Self {
+            kind: kind.to_owned(),
+            history: Vec::new(),
+            range,
+            origins,
+        }
+    }
+
+    /// Its origins, each with `step` after its own: none while none is kept.
+    fn stepped(&self, step: impl FnOnce() -> OriginStep) -> Vec<PartOrigin> {
+        if self.origins.is_empty() {
+            Vec::new()
+        } else {
+            PartOrigin::stepped(&self.origins, &step())
+        }
+    }
+}
+
+/// A conversion or extra line's rule: its types and share, its scope and
+/// its source.
+struct Rule<'a> {
+    from: &'a str,
+    to: &'a str,
+    pct: f32,
+    scope: &'a Scope,
+    source: &'a str,
+}
 
 /// A line's rule of one kind: [`SkillLine::as_convert`] or
 /// [`SkillLine::as_extra`].
@@ -1327,32 +1480,44 @@ fn convert(
     holder: Option<&Tags>,
 ) -> Vec<Working> {
     let mut out = Vec::with_capacity(parts.len());
-    for (kind, history, range) in parts {
+    for part in parts {
         let matching: Vec<&Rule<'_>> = rules
             .iter()
-            .filter(|((from, _, _), scope)| {
-                covers(&kind, from) && rule_reaches(scope, context, holder, &kind, &history)
+            .filter(|rule| {
+                covers(&part.kind, rule.from)
+                    && rule_reaches(rule.scope, context, holder, &part.kind, &part.history)
             })
             .collect();
-        let sum: f64 = matching
-            .iter()
-            .map(|((_, _, pct), _)| f64::from(*pct))
-            .sum();
+        if matching.is_empty() {
+            out.push(part);
+            continue;
+        }
+        let sum: f64 = matching.iter().map(|rule| f64::from(rule.pct)).sum();
         if sum < 1.0 {
             let keep = 1.0 - sum;
-            out.push((kind.clone(), history.clone(), range.map(|v| v * keep)));
+            out.push(Working {
+                kind: part.kind.clone(),
+                history: part.history.clone(),
+                range: part.range.map(|v| v * keep),
+                origins: part.stepped(|| OriginStep::Kept(keep as f32)),
+            });
         }
-        for ((_, to, pct), _) in matching {
+        for rule in matching {
             let share = if sum > 1.0 {
-                f64::from(*pct) / sum
+                f64::from(rule.pct) / sum
             } else {
-                f64::from(*pct)
+                f64::from(rule.pct)
             };
-            out.push((
-                (*to).to_owned(),
-                grown(&history, &kind),
-                range.map(|v| v * share),
-            ));
+            out.push(Working {
+                kind: rule.to.to_owned(),
+                history: grown(&part.history, &part.kind),
+                range: part.range.map(|v| v * share),
+                origins: part.stepped(|| OriginStep::Converted {
+                    share: share as f32,
+                    to: rule.to.to_owned(),
+                    source: rule.source.to_owned(),
+                }),
+            });
         }
     }
     out
@@ -1368,16 +1533,22 @@ fn extra(
     holder: Option<&Tags>,
 ) -> Vec<Working> {
     let mut added = Vec::new();
-    for (kind, history, range) in &parts {
-        for ((from, to, pct), scope) in rules {
-            let carries = covers(kind, from) || history.iter().any(|h| covers(h, from));
-            if carries && rule_reaches(scope, context, holder, kind, history) {
-                let pct = f64::from(*pct);
-                added.push((
-                    (*to).to_owned(),
-                    grown(history, kind),
-                    range.map(|v| v * pct),
-                ));
+    for part in &parts {
+        for rule in rules {
+            let carries = covers(&part.kind, rule.from)
+                || part.history.iter().any(|kind| covers(kind, rule.from));
+            if carries && rule_reaches(rule.scope, context, holder, &part.kind, &part.history) {
+                let pct = f64::from(rule.pct);
+                added.push(Working {
+                    kind: rule.to.to_owned(),
+                    history: grown(&part.history, &part.kind),
+                    range: part.range.map(|v| v * pct),
+                    origins: part.stepped(|| OriginStep::Extra {
+                        share: rule.pct,
+                        to: rule.to.to_owned(),
+                        source: rule.source.to_owned(),
+                    }),
+                });
             }
         }
     }
@@ -1387,22 +1558,23 @@ fn extra(
 }
 
 /// §6.2 step 8: parts of equal type and history merged, in first-appearance
-/// order; a part of nothing drops.
+/// order, their origins together; a part of nothing drops.
 fn merge(parts: Vec<Working>) -> Vec<Working> {
     let mut out: Vec<Working> = Vec::with_capacity(parts.len());
-    for (kind, history, range) in parts {
-        if range[0] <= 0.0 && range[1] <= 0.0 {
+    for part in parts {
+        if part.range[0] <= 0.0 && part.range[1] <= 0.0 {
             continue;
         }
         match out
             .iter_mut()
-            .find(|(known, known_history, _)| *known == kind && *known_history == history)
+            .find(|known| known.kind == part.kind && known.history == part.history)
         {
-            Some((_, _, sum)) => {
-                sum[0] += range[0];
-                sum[1] += range[1];
+            Some(known) => {
+                known.range[0] += part.range[0];
+                known.range[1] += part.range[1];
+                known.origins.extend(part.origins);
             }
-            None => out.push((kind, history, range)),
+            None => out.push(part),
         }
     }
     out
@@ -1461,11 +1633,17 @@ pub(crate) fn resolve(
             .as_stat()
             .map_or(Modifier::Add(0.0), |(_, modifier)| modifier),
     };
+    let scope_of = |line: Source<'_>| match line {
+        Source::Stat(_, stat_line) => stat_line.scope().cloned().unwrap_or_default(),
+        Source::Skill(_, line) => line.scope.clone(),
+    };
     let in_context = [TagSet::Names(context)];
     let at_use = Read::new(&in_context).holder(holder_tags).at_use();
+    let explain = world.get_resource::<KitExplain>();
 
     // The level: the entry's, plus `add` lines in the context.
-    let mut level = abilities.and_then(|a| a.level(entry)).unwrap_or(1) as f32;
+    let entry_level = abilities.and_then(|a| a.level(entry)).unwrap_or(1) as f32;
+    let mut level = entry_level;
     for line in lines_on(Stats::SKILL_LEVEL) {
         if let (Reach::Applies, Modifier::Add(v)) = (reach(&at_use, line), modifier_of(line)) {
             level += v;
@@ -1500,23 +1678,20 @@ pub(crate) fn resolve(
         .and_then(|s| s.base(Stats::CRIT_MULTIPLIER))
         .unwrap_or(CRIT_MULTIPLIER);
     let crit_multiplier = sums_of(Stats::CRIT_MULTIPLIER, multiplier_base);
-    let cost = curve_at("cost")
+    let cost_base = curve_at("cost")
         .or(skill.cost)
-        .or(ability.cost().map(|(_, amount)| amount))
-        .map(|base| {
-            let scale = ability
-                .cost_scale()
-                .and_then(|scale| stats?.get(scale))
-                .unwrap_or(1.0);
-            (sums_of(Stats::COST, base).value(0.0, f32::INFINITY) * scale).max(0.0)
-        });
-    let cooldown = sums_of(
-        Stats::COOLDOWN,
-        curve_at("cooldown")
-            .or(skill.cooldown)
-            .unwrap_or(ability.cooldown()),
-    )
-    .value(0.0, f32::INFINITY);
+        .or(ability.cost().map(|(_, amount)| amount));
+    let cost = cost_base.map(|base| {
+        let scale = ability
+            .cost_scale()
+            .and_then(|scale| stats?.get(scale))
+            .unwrap_or(1.0);
+        (sums_of(Stats::COST, base).value(0.0, f32::INFINITY) * scale).max(0.0)
+    });
+    let cooldown_base = curve_at("cooldown")
+        .or(skill.cooldown)
+        .unwrap_or(ability.cooldown());
+    let cooldown = sums_of(Stats::COOLDOWN, cooldown_base).value(0.0, f32::INFINITY);
 
     // The lines kept for the hit.
     let mut deferred: Vec<(String, SkillLine)> = Vec::new();
@@ -1542,8 +1717,10 @@ pub(crate) fn resolve(
         }
     }
 
-    // The parts: each damage type's base, at the level, plus `added` lines.
-    let mut ranges: Vec<(String, [f64; 2])> = Vec::new();
+    // The parts: each damage type's base, at the level, plus `added` lines,
+    // converted, with their extras, merged.
+    let to_f32 = |v: f64| v.clamp(0.0, f64::from(f32::MAX)) as f32;
+    let mut ranges: Vec<Working> = Vec::new();
     let damage_curve = curve_at("damage");
     for (kind, [min, max]) in &skill.damage {
         let (mut min, mut max) = (f64::from(*min), f64::from(*max));
@@ -1554,81 +1731,240 @@ pub(crate) fn resolve(
             let k = f64::from(at) / mid;
             (min, max) = (min * k, max * k);
         }
-        ranges.push((kind.clone(), [min, max]));
+        ranges.push(Working::base(kind, [min, max], None, explain.is_some()));
     }
-    for &(_, line) in &local {
+    for &(source, line) in &local {
         if let Some((kind, [min, max])) = line.as_added()
             && at_use.reach_scope(&line.scope) == Reach::Applies
         {
-            match ranges.iter_mut().find(|(name, _)| name == kind) {
-                Some((_, range)) => {
-                    range[0] += f64::from(min);
-                    range[1] += f64::from(max);
+            let range = [f64::from(min), f64::from(max)];
+            match ranges.iter_mut().find(|part| part.kind == kind) {
+                Some(part) => {
+                    part.range[0] += range[0];
+                    part.range[1] += range[1];
+                    if explain.is_some() {
+                        part.origins
+                            .push(PartOrigin::new(kind, [min, max], Some(source)));
+                    }
                 }
-                None => ranges.push((kind.to_owned(), [f64::from(min), f64::from(max)])),
+                None => ranges.push(Working::base(kind, range, Some(source), explain.is_some())),
             }
         }
     }
-    let to_f32 = |v: f64| v.clamp(0.0, f64::from(f32::MAX)) as f32;
-    let ranges: Vec<Working> = ranges
-        .into_iter()
-        .filter(|(_, [min, max])| *min > 0.0 || *max > 0.0)
-        .map(|(kind, range)| (kind, Vec::new(), range))
-        .collect();
+    ranges.retain(|part| part.range[0] > 0.0 || part.range[1] > 0.0);
     let rules = |kind: RuleOf| {
         local
             .iter()
-            .filter_map(|&(_, line)| kind(line).map(|rule| (rule, &line.scope)))
+            .filter_map(|&(source, line)| {
+                kind(line).map(|(from, to, pct)| Rule {
+                    from,
+                    to,
+                    pct,
+                    scope: &line.scope,
+                    source,
+                })
+            })
             .collect::<Vec<_>>()
     };
     let converted = convert(ranges, &rules(SkillLine::as_convert), context, holder_tags);
-    let parts = merge(extra(
+    let merged = merge(extra(
         converted,
         &rules(SkillLine::as_extra),
         context,
         holder_tags,
-    ))
-    .into_iter()
-    .map(|(kind, history, [min, max])| {
-        let track = |track: &str| {
-            let sets = [
-                TagSet::Names(context),
-                TagSet::Name(track),
-                TagSet::Name(&kind),
-                TagSet::Names(&history),
-            ];
-            let read = Read::new(&sets).holder(holder_tags).at_use();
-            let mut sums = Sums::new(0.0);
-            for line in lines_on(Stats::DAMAGE) {
-                if reach(&read, line) == Reach::Applies
-                    && let modifier @ (Modifier::Pct(_) | Modifier::Mul(_)) = modifier_of(line)
+    ));
+
+    // The why-record, while one is kept: each sheet stat's lines and each
+    // part's on the hit track, read as the use read them.
+    let explained = explain.map(|explain| {
+        let stat_record = |stat: &'static str, base: f32, clamp: [f32; 2], value: f32| {
+            let mut sums = Sums::new(base);
+            let mut lines = Vec::new();
+            for line in lines_on(stat) {
+                let modifier = modifier_of(line);
+                let scope = scope_of(line);
+                let mut outcome = outcome(
+                    reach(&at_use, line),
+                    || Reach::Applies,
+                    |skip| why(skip, &scope, &at_use, holder_tags, None),
+                );
+                if stat == Stats::SKILL_LEVEL
+                    && outcome == LineOutcome::Applied
+                    && !matches!(modifier, Modifier::Add(_))
                 {
+                    outcome = LineOutcome::Skipped("a level takes add lines only".to_owned());
+                }
+                if outcome == LineOutcome::Applied {
                     sums.fold(modifier);
                 }
+                lines.push(LineRecord {
+                    source: line.source().to_owned(),
+                    stat: stat.to_owned(),
+                    modifier,
+                    scope,
+                    read: ReadAt::Use,
+                    outcome,
+                });
             }
-            let mut pen = 0.0_f32;
-            for &(_, line) in &local {
+            StatRecord {
+                stat: stat.to_owned(),
+                base,
+                lines,
+                sums,
+                clamp,
+                value,
+            }
+        };
+        let part_lines = |part: &Working| {
+            let sets = [
+                TagSet::Names(context),
+                TagSet::Name(TRACK_HIT),
+                TagSet::Name(&part.kind),
+                TagSet::Names(&part.history),
+            ];
+            let bare_sets = [
+                TagSet::Names(context),
+                TagSet::Name(TRACK_HIT),
+                TagSet::Name(&part.kind),
+            ];
+            let read = Read::new(&sets).holder(holder_tags).at_use();
+            let bare = Read::new(&bare_sets).holder(holder_tags).at_use();
+            let mut lines = Vec::new();
+            for line in lines_on(Stats::DAMAGE) {
+                let modifier = modifier_of(line);
+                if !matches!(modifier, Modifier::Pct(_) | Modifier::Mul(_)) {
+                    continue;
+                }
+                let scope = scope_of(line);
+                let outcome = outcome(
+                    reach(&read, line),
+                    || reach(&bare, line),
+                    |skip| why(skip, &scope, &read, holder_tags, None),
+                );
+                lines.push(LineRecord {
+                    source: line.source().to_owned(),
+                    stat: Stats::DAMAGE.to_owned(),
+                    modifier,
+                    scope,
+                    read: ReadAt::Use,
+                    outcome,
+                });
+            }
+            for &(source, line) in &local {
                 if let Some((pen_kind, points)) = line.as_pen()
-                    && covers(&kind, pen_kind)
-                    && read.reach_scope(&line.scope) == Reach::Applies
+                    && covers(&part.kind, pen_kind)
                 {
-                    pen += points;
+                    let outcome = outcome(
+                        read.reach_scope(&line.scope),
+                        || bare.reach_scope(&line.scope),
+                        |skip| why(skip, &line.scope, &read, holder_tags, None),
+                    );
+                    lines.push(LineRecord {
+                        source: source.to_owned(),
+                        stat: "pen".to_owned(),
+                        modifier: Modifier::Add(points),
+                        scope: line.scope.clone(),
+                        read: ReadAt::Use,
+                        outcome,
+                    });
                 }
             }
-            (Partial::of(&sums), pen)
+            lines
         };
-        let (hit, pen) = track(TRACK_HIT);
-        let (dot, _) = track(TRACK_DOT);
-        DeliveryPart {
-            range: [to_f32(min), to_f32(max)],
-            kind,
-            history,
-            hit,
-            dot,
-            pen: pen.clamp(0.0, 1.0),
+        let mut sheet_stats = vec![
+            stat_record(Stats::SKILL_LEVEL, entry_level, [LEVELS.0, LEVELS.1], level),
+            stat_record(
+                Stats::CRIT_CHANCE,
+                crit_base,
+                [0.0, 1.0],
+                crit_chance.value(0.0, 1.0),
+            ),
+            stat_record(
+                Stats::CRIT_MULTIPLIER,
+                multiplier_base,
+                [1.0, f32::INFINITY],
+                crit_multiplier.value(1.0, f32::INFINITY),
+            ),
+        ];
+        if let (Some(base), Some(cost)) = (cost_base, cost) {
+            sheet_stats.push(stat_record(Stats::COST, base, [0.0, f32::INFINITY], cost));
         }
-    })
-    .collect();
+        sheet_stats.push(stat_record(
+            Stats::COOLDOWN,
+            cooldown_base,
+            [0.0, f32::INFINITY],
+            cooldown,
+        ));
+        let record = SheetRecord {
+            holder,
+            ability: entry.to_owned(),
+            level,
+            stats: sheet_stats,
+            parts: merged
+                .iter()
+                .map(|part| PartRecord {
+                    kind: part.kind.clone(),
+                    history: part.history.clone(),
+                    range: part.range.map(to_f32),
+                    origins: part.origins.clone(),
+                    lines: part_lines(part),
+                })
+                .collect(),
+        };
+        explain.push(ExplainRecord::Sheet(record.clone()));
+        Box::new(record)
+    });
+
+    let parts = merged
+        .into_iter()
+        .map(
+            |Working {
+                 kind,
+                 history,
+                 range: [min, max],
+                 ..
+             }| {
+                let track = |track: &str| {
+                    let sets = [
+                        TagSet::Names(context),
+                        TagSet::Name(track),
+                        TagSet::Name(&kind),
+                        TagSet::Names(&history),
+                    ];
+                    let read = Read::new(&sets).holder(holder_tags).at_use();
+                    let mut sums = Sums::new(0.0);
+                    for line in lines_on(Stats::DAMAGE) {
+                        if reach(&read, line) == Reach::Applies
+                            && let modifier @ (Modifier::Pct(_) | Modifier::Mul(_)) =
+                                modifier_of(line)
+                        {
+                            sums.fold(modifier);
+                        }
+                    }
+                    let mut pen = 0.0_f32;
+                    for &(_, line) in &local {
+                        if let Some((pen_kind, points)) = line.as_pen()
+                            && covers(&kind, pen_kind)
+                            && read.reach_scope(&line.scope) == Reach::Applies
+                        {
+                            pen += points;
+                        }
+                    }
+                    (Partial::of(&sums), pen)
+                };
+                let (hit, pen) = track(TRACK_HIT);
+                let (dot, _) = track(TRACK_DOT);
+                DeliveryPart {
+                    range: [to_f32(min), to_f32(max)],
+                    kind,
+                    history,
+                    hit,
+                    dot,
+                    pen: pen.clamp(0.0, 1.0),
+                }
+            },
+        )
+        .collect();
 
     Sheet {
         cost,
@@ -1644,6 +1980,7 @@ pub(crate) fn resolve(
             crit_multiplier: Partial::of(&crit_multiplier),
             deferred,
             activation: None,
+            explain: explained,
         },
     }
 }
