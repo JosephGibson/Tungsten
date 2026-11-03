@@ -321,3 +321,53 @@ fn the_overlay_draws_a_slopes_face() {
     got.sort_unstable();
     assert_eq!(got, want);
 }
+
+/// Every outline's thickness the emit passes for a box and a circle, under
+/// a camera at `zoom` on an OS scale of `os`; neither resource with `None`.
+fn outline_widths(view: Option<(f32, f32)>) -> Vec<f32> {
+    let mut world = World::new();
+    world.insert_resource(DebugDraw::new());
+    world.insert_resource(PhysicsDebugOverlay {
+        enabled: true,
+        ..Default::default()
+    });
+    if let Some((zoom, os)) = view {
+        let mut camera = tungsten_core::CameraState::new();
+        camera.zoom = zoom;
+        world.insert_resource(camera);
+        let mut scale = tungsten_core::ScaleFactor::default();
+        scale.set_os(os);
+        world.insert_resource(scale);
+    }
+    let a = world.spawn();
+    world.insert(a, Position(Vec2::ZERO));
+    world.insert(a, Collider::aabb(Vec2::splat(2.0)));
+    let b = world.spawn();
+    world.insert(b, Position(Vec2::new(10.0, 0.0)));
+    world.insert(b, Collider::circle(3.0));
+    physics_debug_emit_system(&mut world);
+    let commands = world.get_resource::<DebugDraw>().unwrap().commands();
+    assert_eq!(commands.len(), 2);
+    commands.iter().map(|command| command.thickness).collect()
+}
+
+/// F1's outlines keep their width on screen (debug-pass): `thickness`
+/// OS-logical pixels at any camera zoom, the projection's own, at least
+/// `f32::EPSILON`.
+#[test]
+fn outlines_keep_their_width_on_screen_at_any_zoom() {
+    for width in outline_widths(Some((4.0, 1.75))) {
+        assert!(
+            (width - 1.5 * 1.75 / 4.0).abs() < 1e-6,
+            "zoom 4 on 1.75: {width}"
+        );
+    }
+    assert_eq!(outline_widths(Some((1.0, 1.0))), [1.5, 1.5]);
+    for zoom in [0.0, -1.0, f32::NAN] {
+        for width in outline_widths(Some((zoom, 1.0))) {
+            assert!(width.is_finite() && width > 0.0, "zoom {zoom}: {width}");
+            assert_eq!(width, 1.5 / f32::EPSILON, "zoom {zoom}");
+        }
+    }
+    assert_eq!(outline_widths(None), [1.5, 1.5], "no camera, no scale");
+}

@@ -5,7 +5,9 @@
 use tungsten_core::physics::{
     BodyKind, Collider, PhysicsBuffers, Position, PrevPosition, RigidBody, Shape,
 };
-use tungsten_core::{ActionMap, DebugDraw, Entity, InputState, Time, World};
+use tungsten_core::{
+    ActionMap, CameraState, DebugDraw, Entity, InputState, ScaleFactor, Time, World,
+};
 
 /// Physics debug overlay config. A kinematic body or a sensor is outlined in
 /// its kind's colour, whatever its shape; every other collider in its
@@ -25,7 +27,8 @@ pub struct PhysicsDebugOverlay {
     pub color_kinematic: [f32; 4],
     /// Sensors, either shape, and one-way tiles' faces.
     pub color_sensor: [f32; 4],
-    /// Outline width.
+    /// Outline width in OS-logical pixels on screen (debug-pass), at any
+    /// camera zoom: 1.5.
     pub thickness: f32,
 }
 
@@ -69,7 +72,10 @@ pub(crate) fn physics_debug_toggle_system(world: &mut World) {
 /// [`Time::interpolate`] is on, where its sprite is drawn, so the outline
 /// does not lead the sprite by up to a step; every other collider at its
 /// `Position`. Then a line for each exposed face of the last step's tile
-/// outline ([`PhysicsBuffers::terrain_faces`]).
+/// outline ([`PhysicsBuffers::terrain_faces`]). Each outline is the
+/// overlay's thickness times the OS scale over the camera's zoom, at least
+/// `f32::EPSILON` as the projection takes it, in world units: as wide on
+/// screen at any zoom (debug-pass).
 pub(crate) fn physics_debug_emit_system(world: &mut World) {
     let Some(overlay) = world.get_resource::<PhysicsDebugOverlay>() else {
         return;
@@ -81,7 +87,13 @@ pub(crate) fn physics_debug_emit_system(world: &mut World) {
     let color_circle = overlay.color_circle;
     let color_kinematic = overlay.color_kinematic;
     let color_sensor = overlay.color_sensor;
-    let thickness = overlay.thickness;
+    let zoom = world
+        .get_resource::<CameraState>()
+        .map_or(1.0, |camera| camera.zoom.max(f32::EPSILON));
+    let os = world
+        .get_resource::<ScaleFactor>()
+        .map_or(1.0, ScaleFactor::os);
+    let thickness = overlay.thickness * os / zoom;
     let alpha = world
         .get_resource::<Time>()
         .filter(|time| time.interpolate())
