@@ -1927,6 +1927,61 @@ fn the_controls_line_stays_in_view_and_takes_a_click_while_the_log_follows_its_e
     assert!(harness.world().resource::<LogConsole>().paused.is_some());
 }
 
+/// A paused console holds its rows (debug-pass) while its ring turns over
+/// and while a filter changes, the filter's button marked at once; resume
+/// shows the ring's records that pass the filters.
+#[test]
+fn a_paused_console_keeps_its_rows_while_the_ring_turns_over() {
+    let (sink, feed) = crate::logging::console_channel(1024);
+    let mut harness = UiHarness::new(app());
+    harness.world_mut().insert_resource(LogConsole {
+        enabled: true,
+        refresh_interval_ms: 0.0,
+        capacity: 8,
+        ..LogConsole::with_feed(Some(feed))
+    });
+    harness.step(2);
+    for n in 0..8 {
+        sink.send(record("INFO", "a", &format!("first {n}")).as_bytes());
+    }
+    harness.step(1);
+    let messages = |harness: &UiHarness| console_columns(harness.world())[3].clone();
+    let first: Vec<String> = (0..8).map(|n| format!("first {n}")).collect();
+    assert_eq!(messages(&harness), first);
+
+    press_control(&mut harness, PAUSE);
+    for n in 0..20 {
+        let level = if n % 2 == 0 { "WARN" } else { "INFO" };
+        sink.send(record(level, "a", &format!("then {n}")).as_bytes());
+    }
+    harness.step(1);
+    assert_eq!(messages(&harness), first, "held past the ring's turn");
+
+    let info = LEVELS
+        .iter()
+        .position(|level| *level == log::Level::Info)
+        .unwrap();
+    press_control(&mut harness, info);
+    assert_eq!(messages(&harness), first, "the filter waits for the resume");
+    let filter = console_controls(&harness)[info];
+    assert_eq!(
+        text_of(harness.tree(), filter),
+        "[ ] INFO",
+        "marked at once"
+    );
+
+    press_control(&mut harness, PAUSE);
+    let passing: Vec<String> = (12..20)
+        .filter(|n| n % 2 == 0)
+        .map(|n| format!("then {n}"))
+        .collect();
+    assert_eq!(
+        messages(&harness),
+        passing,
+        "the ring's last eight records, its WARN ones"
+    );
+}
+
 #[test]
 fn debug_views_keep_their_size_under_a_reference_height() {
     // The template's policy: the UI sized from a 720-unit reference height

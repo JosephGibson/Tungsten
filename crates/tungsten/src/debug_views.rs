@@ -2114,7 +2114,9 @@ impl LogConsole {
 
     /// The console's frame: its controls' presses, then on its interval
     /// the new records into the window and the controls line; while it is
-    /// shown.
+    /// shown. While paused its rows hold as the ring turns over, and a
+    /// filter marks its button at once but reaches the rows at the resume,
+    /// which rebuilds them from the ring (debug-pass).
     fn update_window(&mut self, world: &World, frame: &mut ViewFrame<'_>) {
         if frame.closes(self.window.as_ref()) {
             self.enabled = false;
@@ -2151,14 +2153,19 @@ impl LogConsole {
             match i {
                 PAUSE => {
                     self.paused = match self.paused {
-                        Some(_) => None,
+                        Some(_) => {
+                            self.rebuild = true;
+                            None
+                        }
                         None => Some(self.taken),
                     };
                 }
                 CLEAR => self.clear(),
                 level => {
                     self.levels[level] = !self.levels[level];
-                    self.rebuild = true;
+                    // Past the pause point a rebuild would find no record
+                    // to show: the rows take the filter at the resume.
+                    self.rebuild |= self.paused.is_none();
                 }
             }
             self.time_since_refresh_ms = f32::INFINITY;
@@ -2189,7 +2196,7 @@ impl LogConsole {
             self.appended = 0;
             self.taken = first;
         }
-        while self.rows.front().is_some_and(|seq| *seq < first) {
+        while self.paused.is_none() && self.rows.front().is_some_and(|seq| *seq < first) {
             self.rows.pop_front();
             for column in &window.columns {
                 if let Some(&cell) = frame.tree.children(*column).first() {
