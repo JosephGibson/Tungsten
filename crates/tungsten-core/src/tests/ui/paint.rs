@@ -629,6 +629,87 @@ fn the_debug_flags_hide_the_game_layers_and_outline_every_painted_node() {
     assert_eq!(kinds(&both), "RTRR", "hidden layers get no outline");
 }
 
+/// F5's outlines (debug-pass): after every other command, each in the clip
+/// its node paints in, and none for a node wholly outside that clip: a
+/// scroll panel three rows tall holding ten rows, at its top and scrolled
+/// by a row and a half.
+#[test]
+fn bounds_outline_only_what_their_clips_show() {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Game, at(0.0, 0.0, 200.0, 90.0));
+    tree.set_overrides(root, bare());
+    let panel = tree.scroll_panel(root, fixed(200.0, 90.0));
+    tree.set_overrides(panel, bare());
+    for _ in 0..10 {
+        let row = tree.panel(panel, fixed(100.0, 30.0));
+        tree.set_overrides(row, bare());
+    }
+    let sprites = AssetRegistry::new();
+    let shown = UiDebug {
+        hide_game_layers: false,
+        show_bounds: true,
+    };
+    let outlines = |tree: &mut UiTree| {
+        let plain = paint(tree, 1.0, UiDebug::default(), &sprites);
+        let outlined = paint(tree, 1.0, shown, &sprites);
+        let end = plain.commands.len();
+        assert_eq!(
+            &outlined.commands[..end],
+            &plain.commands[..],
+            "outlines last"
+        );
+        assert_eq!(outlined.clips, plain.clips);
+        let outlines: Vec<(Rect, u32)> = outlined.commands[end..]
+            .iter()
+            .map(|command| match *command {
+                PaintCommand::Rect {
+                    rect,
+                    fill: [0, 0, 0, 0],
+                    border: BOUNDS_OUTLINE,
+                    clip,
+                    ..
+                } => (rect, clip),
+                ref other => panic!("not an outline: {other:?}"),
+            })
+            .collect();
+        (outlined.clips, outlines)
+    };
+    let (clips, top) = outlines(&mut tree);
+    assert_eq!(
+        clips[1],
+        ClipRect {
+            x: 0,
+            y: 0,
+            width: 200,
+            height: 90
+        },
+        "the panel's clip"
+    );
+    assert_eq!(
+        top,
+        [
+            (rect(0.0, 0.0, 200.0, 90.0), 0),
+            (rect(0.0, 0.0, 200.0, 90.0), 0),
+            (rect(0.0, 0.0, 100.0, 30.0), 1),
+            (rect(0.0, 30.0, 100.0, 30.0), 1),
+            (rect(0.0, 60.0, 100.0, 30.0), 1),
+        ],
+        "the root, the panel and the three rows in its box; none past it"
+    );
+    assert!(tree.set_scroll(panel, 45.0));
+    let (_, scrolled) = outlines(&mut tree);
+    assert_eq!(
+        scrolled[2..],
+        [
+            (rect(0.0, -15.0, 100.0, 30.0), 1),
+            (rect(0.0, 15.0, 100.0, 30.0), 1),
+            (rect(0.0, 45.0, 100.0, 30.0), 1),
+            (rect(0.0, 75.0, 100.0, 30.0), 1),
+        ],
+        "a row partly in the box keeps its outline, one wholly above it has none"
+    );
+}
+
 #[test]
 fn the_dump_is_the_snapshot_format() {
     let mut tree = UiTree::new();
