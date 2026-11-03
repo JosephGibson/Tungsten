@@ -17,7 +17,7 @@ use tungsten_core::{
 };
 
 use crate::chemistry::outputs::check_outputs;
-use crate::chemistry::queue::StatusList;
+use crate::chemistry::queue::{Receiver, StatusList};
 use crate::chemistry::rules::check_stimulus;
 use crate::chemistry::stimuli::{Named, emit_from};
 use crate::chemistry::{CHEMISTRY, Chemistry, Output, queue_status_list};
@@ -1106,7 +1106,7 @@ impl Effect {
 
     /// How many of its bands an intensity of `intensity` reaches; none
     /// without one.
-    fn bands_reached(&self, intensity: Option<f32>) -> usize {
+    pub(crate) fn bands_reached(&self, intensity: Option<f32>) -> usize {
         intensity.map_or(0, |intensity| {
             self.bands
                 .iter()
@@ -1121,7 +1121,7 @@ impl Effect {
     }
 
     /// The duration an instance applied at `factor` takes.
-    fn scaled_duration(&self, factor: f32) -> Option<f32> {
+    pub(crate) fn scaled_duration(&self, factor: f32) -> Option<f32> {
         self.duration.map(|duration| {
             if self.scales(Scaled::scales_duration) {
                 scaled(duration, f64::from(factor)).max(0.0)
@@ -2776,7 +2776,13 @@ fn queue_on_end(world: &mut World, entity: Entity, instance: &EffectInstance, de
             effect: instance.effect.clone(),
             band: None,
         };
-        queue_status_list(world, entity, list, depth, instance.source);
+        queue_status_list(
+            world,
+            Receiver::Entity(entity),
+            list,
+            depth,
+            instance.source,
+        );
     }
 }
 
@@ -3106,7 +3112,7 @@ fn curve_of<'a>(world: &'a World, curve: &'a DataRef<Curve>) -> Option<&'a Curve
 
 /// The factor `effect` takes at `scale`: its curve there, 1 without a
 /// curve, never below 0.
-fn factor_of(world: &World, effect: &Effect, scale: f32) -> f32 {
+pub(crate) fn factor_of(world: &World, effect: &Effect, scale: f32) -> f32 {
     effect.scale.as_ref().map_or(1.0, |(curve, _)| {
         curve_of(world, curve).map_or(1.0, |curve| curve.at(scale).max(0.0))
     })
@@ -3399,7 +3405,13 @@ fn reach_bands(
                 effect: instance.effect.clone(),
                 band: Some(at as u32),
             };
-            queue_status_list(world, target, list, depth, instance.source);
+            queue_status_list(
+                world,
+                Receiver::Entity(target),
+                list,
+                depth,
+                instance.source,
+            );
         }
     }
     changed
@@ -3419,7 +3431,7 @@ fn status_effect_of(world: &World, request: &EffectRequest) -> f32 {
 
 /// A status's intensity after a build of `amount` on `prior`, capped at
 /// `max`, in `f64`.
-fn built(prior: f32, amount: f32, status_effect: f32, max: f32) -> f32 {
+pub(crate) fn built(prior: f32, amount: f32, status_effect: f32, max: f32) -> f32 {
     (f64::from(prior) + f64::from(amount) * f64::from(status_effect)).min(f64::from(max)) as f32
 }
 
@@ -3488,7 +3500,13 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
                 effect: request.effect.clone(),
                 band: None,
             };
-            queue_status_list(world, target, list, request.depth, request.source);
+            queue_status_list(
+                world,
+                Receiver::Entity(target),
+                list,
+                request.depth,
+                request.source,
+            );
         }
         return Applied::Applied;
     }

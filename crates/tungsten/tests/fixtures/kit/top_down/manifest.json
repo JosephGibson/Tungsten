@@ -263,6 +263,9 @@
       },
       "light_reveals": {
         "path": "data/interactions/light_reveals.json"
+      },
+      "grass_burns": {
+        "path": "data/interactions/grass_burns.json"
       }
     }
   },

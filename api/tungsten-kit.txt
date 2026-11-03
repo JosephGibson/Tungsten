@@ -690,8 +690,8 @@ pub fn tungsten_kit::Chemistry::default() -> Self
 impl core::fmt::Debug for tungsten_kit::Chemistry
 pub fn tungsten_kit::Chemistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tungsten_kit::Chemistry
-impl core::marker::Send for tungsten_kit::Chemistry
-impl core::marker::Sync for tungsten_kit::Chemistry
+impl !core::marker::Send for tungsten_kit::Chemistry
+impl !core::marker::Sync for tungsten_kit::Chemistry
 impl core::marker::Unpin for tungsten_kit::Chemistry
 impl core::marker::UnsafeUnpin for tungsten_kit::Chemistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Chemistry
@@ -2943,9 +2943,10 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectilePlugin
 pub struct tungsten_kit::prelude::Reaction
 impl tungsten_kit::Reaction
 pub fn tungsten_kit::Reaction::amount(&self) -> f32
+pub fn tungsten_kit::Reaction::cell(&self) -> core::option::Option<tungsten_kit::TileCell<'_>>
 pub fn tungsten_kit::Reaction::credit(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::Reaction::depth(&self) -> u8
-pub fn tungsten_kit::Reaction::receiver(&self) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::Reaction::receiver(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::Reaction::rule(&self) -> &str
 pub fn tungsten_kit::Reaction::stimulus(&self) -> &str
 impl core::clone::Clone for tungsten_kit::Reaction
@@ -2956,8 +2957,8 @@ impl core::fmt::Debug for tungsten_kit::Reaction
 pub fn tungsten_kit::Reaction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tungsten_kit::Reaction
 impl core::marker::Freeze for tungsten_kit::Reaction
-impl core::marker::Send for tungsten_kit::Reaction
-impl core::marker::Sync for tungsten_kit::Reaction
+impl !core::marker::Send for tungsten_kit::Reaction
+impl !core::marker::Sync for tungsten_kit::Reaction
 impl core::marker::Unpin for tungsten_kit::Reaction
 impl core::marker::UnsafeUnpin for tungsten_kit::Reaction
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Reaction
@@ -4755,8 +4756,8 @@ pub fn tungsten_kit::Chemistry::default() -> Self
 impl core::fmt::Debug for tungsten_kit::Chemistry
 pub fn tungsten_kit::Chemistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tungsten_kit::Chemistry
-impl core::marker::Send for tungsten_kit::Chemistry
-impl core::marker::Sync for tungsten_kit::Chemistry
+impl !core::marker::Send for tungsten_kit::Chemistry
+impl !core::marker::Sync for tungsten_kit::Chemistry
 impl core::marker::Unpin for tungsten_kit::Chemistry
 impl core::marker::UnsafeUnpin for tungsten_kit::Chemistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Chemistry
@@ -7295,9 +7296,10 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectilePlugin
 pub struct tungsten_kit::Reaction
 impl tungsten_kit::Reaction
 pub fn tungsten_kit::Reaction::amount(&self) -> f32
+pub fn tungsten_kit::Reaction::cell(&self) -> core::option::Option<tungsten_kit::TileCell<'_>>
 pub fn tungsten_kit::Reaction::credit(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::Reaction::depth(&self) -> u8
-pub fn tungsten_kit::Reaction::receiver(&self) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::Reaction::receiver(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::Reaction::rule(&self) -> &str
 pub fn tungsten_kit::Reaction::stimulus(&self) -> &str
 impl core::clone::Clone for tungsten_kit::Reaction
@@ -7308,8 +7310,8 @@ impl core::fmt::Debug for tungsten_kit::Reaction
 pub fn tungsten_kit::Reaction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tungsten_kit::Reaction
 impl core::marker::Freeze for tungsten_kit::Reaction
-impl core::marker::Send for tungsten_kit::Reaction
-impl core::marker::Sync for tungsten_kit::Reaction
+impl !core::marker::Send for tungsten_kit::Reaction
+impl !core::marker::Sync for tungsten_kit::Reaction
 impl core::marker::Unpin for tungsten_kit::Reaction
 impl core::marker::UnsafeUnpin for tungsten_kit::Reaction
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Reaction
@@ -8145,6 +8147,42 @@ impl core::marker::Unpin for tungsten_kit::Target
 impl core::marker::UnsafeUnpin for tungsten_kit::Target
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Target
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Target
+pub struct tungsten_kit::TileCell<'a>
+pub tungsten_kit::TileCell::col: u32
+pub tungsten_kit::TileCell::layer: usize
+pub tungsten_kit::TileCell::map: &'a str
+pub tungsten_kit::TileCell::origin: glam::f32::vec2::Vec2
+pub tungsten_kit::TileCell::row: u32
+impl<'a> core::clone::Clone for tungsten_kit::TileCell<'a>
+pub fn tungsten_kit::TileCell<'a>::clone(&self) -> tungsten_kit::TileCell<'a>
+impl<'a> core::cmp::PartialEq for tungsten_kit::TileCell<'a>
+pub fn tungsten_kit::TileCell<'a>::eq(&self, &tungsten_kit::TileCell<'a>) -> bool
+impl<'a> core::fmt::Debug for tungsten_kit::TileCell<'a>
+pub fn tungsten_kit::TileCell<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for tungsten_kit::TileCell<'a>
+impl<'a> core::marker::StructuralPartialEq for tungsten_kit::TileCell<'a>
+impl<'a> core::marker::Freeze for tungsten_kit::TileCell<'a>
+impl<'a> core::marker::Send for tungsten_kit::TileCell<'a>
+impl<'a> core::marker::Sync for tungsten_kit::TileCell<'a>
+impl<'a> core::marker::Unpin for tungsten_kit::TileCell<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten_kit::TileCell<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TileCell<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_kit::TileCell<'a>
+pub struct tungsten_kit::TileStatuses
+impl tungsten_kit::TileStatuses
+pub fn tungsten_kit::TileStatuses::carries(&self, tungsten_kit::TileCell<'_>, &str) -> bool
+pub fn tungsten_kit::TileStatuses::intensity(&self, tungsten_kit::TileCell<'_>, &str) -> core::option::Option<f32>
+impl core::default::Default for tungsten_kit::TileStatuses
+pub fn tungsten_kit::TileStatuses::default() -> tungsten_kit::TileStatuses
+impl core::fmt::Debug for tungsten_kit::TileStatuses
+pub fn tungsten_kit::TileStatuses::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::TileStatuses
+impl !core::marker::Send for tungsten_kit::TileStatuses
+impl !core::marker::Sync for tungsten_kit::TileStatuses
+impl core::marker::Unpin for tungsten_kit::TileStatuses
+impl core::marker::UnsafeUnpin for tungsten_kit::TileStatuses
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TileStatuses
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TileStatuses
 pub struct tungsten_kit::TopDownMover
 impl tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::direction(&self) -> glam::f32::vec2::Vec2

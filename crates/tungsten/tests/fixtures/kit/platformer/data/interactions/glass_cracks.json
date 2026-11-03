@@ -1,0 +1,16 @@
+{
+  "stimulus": "stimulus.impact",
+  "on": {
+    "all": [
+      "glass"
+    ]
+  },
+  "min": 300,
+  "outputs": [
+    {
+      "set_tile": {
+        "tile": "glass_cracked"
+      }
+    }
+  ]
+}

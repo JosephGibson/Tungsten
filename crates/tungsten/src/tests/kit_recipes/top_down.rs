@@ -14,7 +14,7 @@
 //! wall, an ox that stacks its knockback and a wisp steering its mover;
 //! 7.10b's trooper, suppressed by the rounds that pass it; its chemistry's
 //! wooden crates, lit by fire, doused by cold and setting each other
-//! alight, and a lurker a lamp lights.
+//! alight, a lurker a lamp lights and a grass strip a crate sets burning.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -2477,5 +2477,69 @@ fn a_lamp_lights_a_lurker() {
         assert!(!lit(&harness, hidden), "dt {dt}: in the dark");
         harness.step(frames_for(2.0, dt));
         assert!(lit(&harness, lurker) && !lit(&harness, hidden), "dt {dt}");
+    }
+}
+
+#[test]
+fn a_grass_strip_burns_across_from_a_crate() {
+    use crate::kit::{TileCell, TileStatuses};
+    use tungsten_core::{LayerKind, TileProps, TilemapData, TilemapInstance, TilemapRegistry};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // Six 32 px grass cells from x 332, their centres 348 to 508 at
+        // y 100, built in code with their material.
+        let mut map = TilemapData::new(32, 32, 6, 1);
+        let grass = map.add_tile("grass");
+        let mut props = TileProps::default();
+        props.material = Some("grass".into());
+        map.set_tile_props(grass, props);
+        let layer = map.add_layer("meadow", LayerKind::Render);
+        map.fill(layer, grass);
+        let origin = Vec2::new(332.0, 84.0);
+        let world = harness.world_mut();
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("meadow".into(), map);
+        world.spawn_with((TilemapInstance::new("meadow", origin),));
+        // A crate 48 px from the first cell, lit by fire: `ablaze` sends
+        // `heat` within 48 px every 0.5 s, which builds it on grass too.
+        let crate_ = spawn(&mut harness, "wooden_crate", [300.0, 100.0]);
+        harness.step(1);
+        DamageRequest::from_parts(
+            crate_,
+            [DamagePart::new(3.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .apply(harness.world_mut());
+        let burning = |harness: &Harness, col: u32| {
+            let cell = TileCell {
+                map: "meadow",
+                origin,
+                layer: 0,
+                col,
+                row: 0,
+            };
+            harness
+                .world()
+                .resource::<TileStatuses>()
+                .carries(cell, "ablaze")
+        };
+        let mut lit = [None; 6];
+        for frame in 0..frames_for(4.0, dt) {
+            harness.step(1);
+            for (col, at) in lit.iter_mut().enumerate() {
+                if at.is_none() && burning(&harness, col as u32) {
+                    *at = Some(frame);
+                }
+            }
+        }
+        let lit: Vec<u32> = lit
+            .iter()
+            .map(|at| at.unwrap_or_else(|| panic!("dt {dt}: every cell burns")))
+            .collect();
+        assert!(
+            lit.windows(2).all(|pair| pair[0] < pair[1]),
+            "dt {dt}: in turn {lit:?}"
+        );
     }
 }

@@ -497,6 +497,7 @@ shape interaction_output: One thing a rule, a status's end or a band's entry doe
   field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 — queued on the receiver from the credit for the next step's resolve, one reaction deeper
   field spawn: prefab ID — a prefab at the receiver's point, from it
   field emit: shape emit_output — a stimulus sent once from the receiver's point to every receiver in a radius but itself, one reaction deeper
+  field set_tile: shape set_tile_output — on a tile cell, a sprite written through the registry, which every placement of the map shows
   field handler: text — a game's Rust handler by name; the load refuses one no plugin registered
   sample: { "remove": "burning" }
 shape label_action: A `label` action: a `label_style` that names its font, or on `damaged_part` none, its part's type's style, which the grouping fields take.
@@ -558,6 +559,10 @@ shape resist_modifier: A modifier on the target's resistance to one damage tag, 
   field against: tag filter = null — the modifier reaches only a hit whose attacker's tags pass it; the load checks its tags
   field floor: shape modifier = null — a change to the tag's floor, over a base of 0 without one: the lowest a factor above 0 goes in a hit
   sample: { "tag": "arcane", "modifier": { "mul": 2 } }
+shape set_tile_output: A tile cell written: the first tileset entry with a sprite, and the old tile back after a while.
+  field tile: text — the sprite ID; a map whose tileset lacks it changes nothing
+  field revert: f32 (> 0) = null — seconds until the old tile comes back, kept per map cell and saved; a later write on the cell since drops it
+  sample: { "tile": "ash" }
 shape skill: An ability's skill sheet: its bases, the curves its level reads them through, and its skill-local lines.
   field bases: shape skill_bases = { "damage": {}, "crit_chance": null, "cost": null, "cooldown": null } — the sheet's own values before any line
   field levels: base (`damage`, `crit_chance`, `cost` or `cooldown`) → curves ID = {} — each read at the skill's level, its owner's entry's plus `add` lines on `skill_level`, 1 to 40; a damage range scaled about its midpoint to the curve's value

@@ -7,9 +7,10 @@ use tungsten_core::lighting::{light_from, luma};
 use tungsten_core::physics::ContactBegan;
 use tungsten_core::{Entity, Light, Transform, World};
 
-use crate::chemistry::grid::{Grid, locate};
-use crate::chemistry::queue::{Chemistry, Settings, Stimulus};
+use crate::chemistry::grid::{Candidate, Grid, locate};
+use crate::chemistry::queue::{Chemistry, Receiver, Settings, Stimulus};
 use crate::chemistry::rules::{Interaction, rules_of};
+use crate::chemistry::tiles::{Cell, MapNames, cell_of_hit, cells_within};
 use crate::foundation::saved::order_of;
 use crate::foundation::source::Source;
 use crate::foundation::tags::{STIMULUS_LIGHT, Tags, covers};
@@ -31,7 +32,7 @@ pub(crate) struct Emission {
     pub(crate) radius: f32,
     pub(crate) point: Vec2,
     /// The emitter, which it does not reach.
-    pub(crate) from: Option<Entity>,
+    pub(crate) from: Option<Receiver>,
     pub(crate) credit: Option<Entity>,
     pub(crate) depth: u8,
 }
@@ -62,10 +63,60 @@ pub(crate) fn emit_from(
         amount,
         radius,
         point,
-        from: Some(from),
+        from: Some(Receiver::Entity(from)),
         credit,
         depth,
     });
+}
+
+/// A run's kept lists for radius work: the grid of entities, a query's
+/// finds in it, the tile cells in a radius and the map IDs they name.
+#[derive(Default)]
+pub(crate) struct Reach {
+    pub(crate) grid: Grid,
+    found: Vec<u32>,
+    cells: Vec<Cell>,
+    pub(crate) names: MapNames,
+}
+
+impl Reach {
+    /// Forgets the last run's grid.
+    pub(crate) fn clear(&mut self) {
+        self.grid.clear();
+    }
+
+    /// Gathers what lies within `radius` of `point` but `from`: the grid's
+    /// candidates (built once a run) and the material cells of every
+    /// placement.
+    pub(crate) fn gather(
+        &mut self,
+        world: &World,
+        point: Vec2,
+        radius: f32,
+        from: Option<&Receiver>,
+    ) {
+        self.grid.build(world);
+        self.grid.within(point, radius, &mut self.found);
+        if let Some(Receiver::Entity(from)) = from {
+            let grid = &self.grid;
+            self.found.retain(|&index| grid.get(index).entity != *from);
+        }
+        let skip = match from {
+            Some(Receiver::Cell(cell)) => Some(cell),
+            _ => None,
+        };
+        cells_within(world, point, radius, skip, &mut self.names, &mut self.cells);
+    }
+
+    /// The gathered candidates, in the grid's order.
+    pub(crate) fn entities(&self) -> impl Iterator<Item = &Candidate> + '_ {
+        self.found.iter().map(|&index| self.grid.get(index))
+    }
+
+    /// The gathered cells, in their order.
+    pub(crate) fn cells(&self) -> &[Cell] {
+        &self.cells
+    }
 }
 
 /// The stimulus an amount makes, at status effect 1, its damage-over-time
@@ -81,15 +132,14 @@ fn plain(amount: f32, depth: u8, credit: Option<Entity>) -> Stimulus {
 }
 
 /// Queues `emissions` on the receivers each reaches, for run `run`: each
-/// tagged candidate of `grid` within its radius but its emitter, in the
-/// grid's order. `answered` says whether some rule answers a name; an
-/// emission no rule answers is dropped before the grid is built.
+/// tagged entity within its radius but its emitter, in the grid's order,
+/// then each material cell. `answered` says whether some rule answers a
+/// name; an emission no rule answers is dropped before the grid is built.
 pub(crate) fn spread(
     world: &mut World,
     settings: &Settings,
     emissions: &mut Vec<Emission>,
-    grid: &mut Grid,
-    found: &mut Vec<u32>,
+    reach: &mut Reach,
     answered: impl Fn(&str) -> bool,
     run: u64,
 ) {
@@ -98,16 +148,23 @@ pub(crate) fn spread(
         if !answered(name) {
             continue;
         }
-        grid.build(world);
-        grid.within(emission.point, emission.radius, found);
+        reach.gather(
+            world,
+            emission.point,
+            emission.radius,
+            emission.from.as_ref(),
+        );
         let chemistry = world.resource_mut::<Chemistry>();
         let stimulus = plain(emission.amount, emission.depth, emission.credit);
-        for &index in found.iter() {
-            let candidate = grid.get(index);
-            if !candidate.tagged || Some(candidate.entity) == emission.from {
-                continue;
+        for candidate in reach.entities() {
+            if candidate.tagged {
+                let receiver = Receiver::Entity(candidate.entity);
+                chemistry.stimulate_id(settings, receiver, emission.stimulus, stimulus, run);
             }
-            chemistry.stimulate_id(settings, candidate.entity, emission.stimulus, stimulus, run);
+        }
+        for cell in reach.cells() {
+            let receiver = Receiver::Cell(cell.clone());
+            chemistry.stimulate_id(settings, receiver, emission.stimulus, stimulus, run);
         }
     }
 }
@@ -122,28 +179,36 @@ fn impact_credit(world: &World, other: Option<Entity>) -> Option<Entity> {
     })
 }
 
-/// Queues each begin of `begins` as `stimulus.impact` on both its bodies,
-/// by its closing speed, for run `run`.
+/// Queues each begin of `begins` as `stimulus.impact` on both its sides,
+/// by its closing speed, for run `run`: a body, or a tile's cell when its
+/// tile has a material, credited to the body.
 pub(crate) fn impacts(
     world: &mut World,
     settings: &Settings,
     begins: &[ContactBegan],
     impact: u32,
+    names: &mut MapNames,
     run: u64,
 ) {
     for begin in begins {
         let credit_a = impact_credit(world, begin.b);
         let credit_b = impact_credit(world, Some(begin.a));
+        let other = match (begin.b, &begin.tile) {
+            (Some(b), _) => Some(Receiver::Entity(b)),
+            (None, Some(hit)) => cell_of_hit(world, hit, names).map(Receiver::Cell),
+            (None, None) => None,
+        };
         let chemistry = world.resource_mut::<Chemistry>();
-        chemistry.stimulate_id(
-            settings,
-            begin.a,
-            impact,
-            plain(begin.speed, 0, credit_a),
-            run,
-        );
-        if let Some(b) = begin.b {
-            chemistry.stimulate_id(settings, b, impact, plain(begin.speed, 0, credit_b), run);
+        let a = Receiver::Entity(begin.a);
+        chemistry.stimulate_id(settings, a, impact, plain(begin.speed, 0, credit_a), run);
+        if let Some(other) = other {
+            chemistry.stimulate_id(
+                settings,
+                other,
+                impact,
+                plain(begin.speed, 0, credit_b),
+                run,
+            );
         }
     }
 }
@@ -217,7 +282,8 @@ impl LightSampler {
                 .fold(glam::Vec3::ZERO, |sum, (position, light)| {
                     sum + light_from(light, *position, point)
                 });
-            chemistry.stimulate_id(settings, entity, id, plain(luma(rgb), 0, None), run);
+            let receiver = Receiver::Entity(entity);
+            chemistry.stimulate_id(settings, receiver, id, plain(luma(rgb), 0, None), run);
         }
     }
 }

@@ -10,6 +10,7 @@ pub(crate) mod outputs;
 pub(crate) mod queue;
 pub(crate) mod rules;
 pub(crate) mod stimuli;
+pub(crate) mod tiles;
 
 use std::rc::Rc;
 
@@ -29,15 +30,16 @@ use crate::foundation::tags::{STIMULUS_IMPACT, Tags, covers};
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::ended::Despawning;
 
-pub use outputs::{Output, Reaction};
+pub use outputs::{Output, Reaction, TileCell};
 pub use queue::Chemistry;
 pub use rules::Interaction;
+pub use tiles::TileStatuses;
 
-use grid::Grid;
 use outputs::{Handler, Handlers, run_outputs};
-use queue::{CHEMISTRY_QUEUE, Entry, Settings, StatusList, Stimulus, queue_saved};
+use queue::{CHEMISTRY_QUEUE, Entry, Receiver, Settings, StatusList, Stimulus, queue_saved};
 use rules::{INTERACTIONS, answered, answers, any_rule, register_interactions, snapshot, winner};
-use stimuli::{Emission, LightSampler, impacts, spread};
+use stimuli::{Emission, LightSampler, Reach, impacts, spread};
+use tiles::{TILE_STATUSES, tile_saved};
 
 /// [`ChemistryPlugin`]'s system, in the resolve phase after
 /// [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) and the ailment feed when they
@@ -249,6 +251,10 @@ impl Plugin for ChemistryPlugin {
             light_period: self.light_period,
         });
         world.register_saved_resource_with(CHEMISTRY_QUEUE, queue_saved());
+        if !world.has_resource::<TileStatuses>() {
+            world.insert_resource(TileStatuses::default());
+        }
+        world.register_saved_resource_with(TILE_STATUSES, tile_saved());
         if schedule.contains(CHEMISTRY) {
             return;
         }
@@ -283,6 +289,15 @@ fn busy(world: &World) -> bool {
     waiting || any_rule(world)
 }
 
+/// Whether [`CHEMISTRY_TICK`] has work: [`busy`], or a tile status or a
+/// revert waiting.
+fn ticking(world: &World) -> bool {
+    busy(world)
+        || world
+            .get_resource::<TileStatuses>()
+            .is_some_and(|statuses| !statuses.is_empty())
+}
+
 /// [`CHEMISTRY_TICK`]'s state between steps: the light sampler's lists.
 #[derive(Default)]
 struct Ticker {
@@ -291,7 +306,7 @@ struct Ticker {
 
 impl Ticker {
     fn run(&mut self, world: &mut World) {
-        if !busy(world) {
+        if !ticking(world) {
             return;
         }
         // The contact record runs for a step that starts with the queue,
@@ -304,6 +319,7 @@ impl Ticker {
             .get_resource::<Time>()
             .map_or(0.0, Time::delta)
             .max(0.0);
+        tiles::tick(world, dt);
         self.light.tick(world, &settings, dt);
     }
 }
@@ -317,8 +333,7 @@ struct Runner {
     begins_cursor: EventCursor<ContactBegan>,
     begins: Vec<ContactBegan>,
     emitted: Vec<Emission>,
-    grid: Grid,
-    found: Vec<u32>,
+    reach: Reach,
     rules: Vec<(String, Interaction)>,
     taken: Vec<Entry>,
     /// A part's deepest types that some rule answers.
@@ -379,7 +394,8 @@ impl Runner {
             };
             let chemistry = world.resource_mut::<Chemistry>();
             for name in &self.leaves {
-                chemistry.stimulate(&settings, part.entity, name, stimulus, run);
+                let receiver = Receiver::Entity(part.entity);
+                chemistry.stimulate(&settings, receiver, name, stimulus, run);
             }
         }
         self.parts = parts;
@@ -391,11 +407,18 @@ impl Runner {
         }
         if !self.begins.is_empty() && answered(&self.rules, STIMULUS_IMPACT) {
             let impact = world.resource_mut::<Chemistry>().intern(STIMULUS_IMPACT);
-            impacts(world, &settings, &self.begins, impact, run);
+            impacts(
+                world,
+                &settings,
+                &self.begins,
+                impact,
+                &mut self.reach.names,
+                run,
+            );
         }
 
-        // The emissions since the last run, through the grid.
-        self.grid.clear();
+        // The emissions since the last run, through the grid and the cells.
+        self.reach.clear();
         std::mem::swap(
             &mut self.emitted,
             &mut world.resource_mut::<Chemistry>().emitted,
@@ -406,8 +429,7 @@ impl Runner {
                 world,
                 &settings,
                 &mut self.emitted,
-                &mut self.grid,
-                &mut self.found,
+                &mut self.reach,
                 |name| answered(rules, name),
                 run,
             );
@@ -456,22 +478,35 @@ impl Runner {
 
     /// Decides `entry` as it runs.
     fn react(&mut self, world: &mut World, entry: Entry) {
-        let receiver = entry.receiver;
-        if !world.is_alive(receiver) || world.has::<Despawning>(receiver) {
-            trace(world, receiver, || TraceKind::Skipped {
-                event: "interaction",
-                action: "all",
-                why: GONE,
-            });
-            return;
-        }
-        let dead = world.get::<Health>(receiver).is_some_and(Health::is_dead);
+        let (dead, cell_tags) = match &entry.receiver {
+            Receiver::Entity(receiver) => {
+                let receiver = *receiver;
+                if !world.is_alive(receiver) || world.has::<Despawning>(receiver) {
+                    trace(world, receiver, || TraceKind::Skipped {
+                        event: "interaction",
+                        action: "all",
+                        why: GONE,
+                    });
+                    return;
+                }
+                (
+                    world.get::<Health>(receiver).is_some_and(Health::is_dead),
+                    None,
+                )
+            }
+            Receiver::Cell(cell) => {
+                if !tiles::placed(world, cell) {
+                    return;
+                }
+                (false, Some(tiles::tags_of(world, cell)))
+            }
+        };
         let stimulus = world
             .resource::<Chemistry>()
             .name(entry.stimulus)
             .to_owned();
         let mut reaction = Reaction {
-            receiver,
+            receiver: entry.receiver.clone(),
             stimulus,
             rule: String::new(),
             raw: entry.raw,
@@ -495,13 +530,19 @@ impl Runner {
             run_outputs(world, &reaction, &outputs, &label, dead);
             return;
         }
-        let tags: Option<&Tags> = world.get::<Tags>(receiver);
+        let tags: Option<&Tags> = match (&cell_tags, &entry.receiver) {
+            (Some(tags), _) => Some(tags),
+            (None, Receiver::Entity(receiver)) => world.get::<Tags>(*receiver),
+            (None, Receiver::Cell(_)) => None,
+        };
         let Some((id, rule)) = winner(&self.rules, &reaction.stimulus, entry.raw, tags) else {
-            trace(world, receiver, || TraceKind::Skipped {
-                event: "interaction",
-                action: "all",
-                why: NO_RULE,
-            });
+            if let Some(receiver) = entry.receiver.entity() {
+                trace(world, receiver, || TraceKind::Skipped {
+                    event: "interaction",
+                    action: "all",
+                    why: NO_RULE,
+                });
+            }
             return;
         };
         reaction.rule.clone_from(id);
@@ -526,7 +567,7 @@ pub(crate) fn holds(world: &mut World, entity: Entity) -> bool {
 /// chemistry queues nothing.
 pub(crate) fn queue_status_list(
     world: &mut World,
-    receiver: Entity,
+    receiver: Receiver,
     list: StatusList,
     depth: u8,
     credit: Option<Entity>,
@@ -616,6 +657,11 @@ fn describe_chemistry(world: &mut World) {
             "emit",
             FieldType::Shape("emit_output"),
             "a stimulus sent once from the receiver's point to every receiver in a radius but itself, one reaction deeper",
+        ))
+        .field(FieldDescription::new(
+            "set_tile",
+            FieldType::Shape("set_tile_output"),
+            "on a tile cell, a sprite written through the registry, which every placement of the map shows",
         ))
         .field(FieldDescription::new(
             "handler",
@@ -715,6 +761,28 @@ fn describe_chemistry(world: &mut World) {
         ))
         .sample(r#"{ "stimulus": "heat", "amount": 1, "radius": 40 }"#)
         .roundtrip(round_trip::<outputs::EmitDef>),
+        ComponentDescription::new(
+            "set_tile_output",
+            "A tile cell written: the first tileset entry with a sprite, and the old tile back after a while.",
+        )
+        .field(FieldDescription::new(
+            "tile",
+            FieldType::Text,
+            "the sprite ID; a map whose tileset lacks it changes nothing",
+        ))
+        .field(
+            FieldDescription::new(
+                "revert",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Open,
+                },
+                "seconds until the old tile comes back, kept per map cell and saved; a later write on the cell since drops it",
+            )
+            .default("null"),
+        )
+        .sample(r#"{ "tile": "ash" }"#)
+        .roundtrip(round_trip::<outputs::SetTileDef>),
     ];
     for shape in shapes {
         describe_shape(world, shape);

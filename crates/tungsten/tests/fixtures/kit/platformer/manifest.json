@@ -150,6 +150,12 @@
       },
       "cracked": {
         "path": "data/effects/cracked.json"
+      },
+      "scorched": {
+        "path": "data/effects/scorched.json"
+      },
+      "flare": {
+        "path": "data/effects/flare.json"
       }
     },
     "curves": {
@@ -178,6 +184,12 @@
       },
       "cracks": {
         "path": "data/interactions/cracks.json"
+      },
+      "glass_cracks": {
+        "path": "data/interactions/glass_cracks.json"
+      },
+      "planks_scorch": {
+        "path": "data/interactions/planks_scorch.json"
       }
     }
   },

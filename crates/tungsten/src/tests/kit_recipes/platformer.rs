@@ -10,7 +10,8 @@
 //! ceiling, the hero pushed out of a sliding platform and crushed under a
 //! falling deck, and a wisp steering its mover along a brick; 7.10b's
 //! lamp, which burns its oil and goes out; its chemistry's kindling, lit
-//! by a torch's hit, and a clay pot cracked by a hard landing.
+//! by a torch's hit, a clay pot cracked by a hard landing, and a floor of
+//! glass a pot cracks and planks a flare scorches for a while.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1529,5 +1530,75 @@ fn a_clay_pot_cracks_on_a_hard_landing() {
         };
         assert!(cracked(&harness, hard), "dt {dt}: the hard landing");
         assert!(!cracked(&harness, soft), "dt {dt}: the soft one");
+    }
+}
+
+#[test]
+fn a_glass_floor_cracks_and_a_scorched_cell_reverts() {
+    use tungsten_core::{LayerKind, TileProps, TilemapData, TilemapInstance, TilemapRegistry};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // A floor of 16 px cells from x 100 at y 300: glass in columns 0 to
+        // 5, planks in 6 to 11, built in code with their materials.
+        let mut map = TilemapData::new(16, 16, 12, 1);
+        let tile = |map: &mut TilemapData, sprite: &str, material: Option<&str>| {
+            let tile = map.add_tile(sprite);
+            if let Some(material) = material {
+                let mut props = TileProps::default();
+                props.material = Some(material.into());
+                map.set_tile_props(tile, props);
+            }
+            tile
+        };
+        let glass = tile(&mut map, "glass", Some("glass"));
+        tile(&mut map, "glass_cracked", None);
+        let planks = tile(&mut map, "planks", Some("planks"));
+        tile(&mut map, "soot", None);
+        let layer = map.add_layer("floor", LayerKind::Collision);
+        for col in 0..12 {
+            map.set_tile(layer, col, 0, if col < 6 { glass } else { planks });
+        }
+        let world = harness.world_mut();
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("floor".into(), map);
+        world.spawn_with((TilemapInstance::new("floor", Vec2::new(100.0, 300.0)),));
+        let sprite = |harness: &crate::testing::Harness, col: u32| {
+            let data = harness
+                .world()
+                .resource::<TilemapRegistry>()
+                .get("floor")
+                .unwrap();
+            data.tileset[data.tile_at(0, col, 0).unwrap() as usize].clone()
+        };
+        // A pot dropped at 600 px/s onto column 2: `glass_cracks` sets the
+        // glass it lands on to `glass_cracked`.
+        let pot = spawn(&mut harness, "clay_pot", [140.0, 280.0]);
+        harness.world_mut().get_mut::<Velocity>(pot).unwrap().0 = Vec2::new(0.0, 600.0);
+        // A flare 18 px above column 8's centre, sending `heat` within 24 px
+        // for a second: `planks_scorch` applies `scorched`, whose end sets
+        // `soot` for 2 s.
+        let brand = harness
+            .world_mut()
+            .spawn_with((Transform::from_position(Vec2::new(236.0, 290.0)),));
+        EffectRequest::new(brand, DataRef::by_id("flare")).apply(harness.world_mut());
+        harness.step(frames_for(0.5, dt));
+        assert_eq!(sprite(&harness, 2), "glass_cracked", "dt {dt}");
+        assert_eq!(sprite(&harness, 5), "glass", "dt {dt}: away from the pot");
+        assert_eq!(sprite(&harness, 8), "planks", "dt {dt}: still scorching");
+        harness.step(frames_for(2.0, dt));
+        assert_eq!(sprite(&harness, 8), "soot", "dt {dt}");
+        assert_eq!(
+            (sprite(&harness, 7), sprite(&harness, 9)),
+            ("planks".into(), "planks".into())
+        );
+        harness.step(frames_for(2.0, dt));
+        assert_eq!(sprite(&harness, 8), "planks", "dt {dt}: reverted");
+        assert_eq!(
+            sprite(&harness, 2),
+            "glass_cracked",
+            "dt {dt}: a crack stays"
+        );
     }
 }

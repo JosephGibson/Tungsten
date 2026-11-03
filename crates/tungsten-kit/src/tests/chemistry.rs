@@ -8,9 +8,11 @@ use tungsten_core::physics::{
 };
 use tungsten_core::save::{capture_world, restore_world};
 use tungsten_core::{
-    CommandBuffer, DataRef, DataRegistry, Light, Schedule, Stage, Time, Transform,
+    CommandBuffer, DataRef, DataRegistry, LayerKind, Light, Schedule, Stage, TileChanges,
+    TileIndex, TileProps, TilemapData, TilemapInstance, TilemapRegistry, Time, Transform,
 };
 
+use super::tiles::Cell;
 use super::*;
 use crate::HealthPlugin;
 use crate::damage::defense::Resist;
@@ -125,7 +127,7 @@ fn seeing(seen: &Seen) -> impl Fn(&mut World, &Reaction) + 'static {
     let seen = Rc::clone(seen);
     move |_, reaction| {
         seen.borrow_mut().push((
-            reaction.receiver(),
+            reaction.receiver().unwrap_or(Entity::PLACEHOLDER),
             reaction.stimulus().to_owned(),
             reaction.amount(),
             reaction.credit(),
@@ -515,7 +517,7 @@ fn a_reaction_outlives_its_receivers_death() {
     chemistry_mut.hold(held);
     chemistry_mut.stimulate(
         &Settings::default(),
-        held,
+        Receiver::Entity(held),
         "elemental.fire",
         queue::Stimulus {
             amount: 1.0,
@@ -1167,9 +1169,13 @@ fn a_two_rule_cycle_ends() {
         depth: 0,
         credit: None,
     };
-    world
-        .resource_mut::<Chemistry>()
-        .stimulate(&Settings::default(), a, "ping", stimulus, 0);
+    world.resource_mut::<Chemistry>().stimulate(
+        &Settings::default(),
+        Receiver::Entity(a),
+        "ping",
+        stimulus,
+        0,
+    );
     for _ in 0..10 {
         step(&mut world, &mut schedule);
     }
@@ -1395,4 +1401,567 @@ fn light_stimulates_on_its_period() {
         counts.push(seen.borrow().len());
     }
     assert_eq!(counts, [9, 9, 9]);
+}
+
+// Step 3: statuses on tiles.
+
+/// The tiles a strip's tileset holds, in order: `grass` (material
+/// `grass`), `ash` (none), `stone` (material `stone`, health 3, breaking to
+/// `ash`), `ember` (none), and a `turf` style: its brush and the variants
+/// closed (0), open right (2), open left (8) and open both ways (10).
+const STRIP_TILES: [&str; 8] = [
+    "grass",
+    "ash",
+    "stone",
+    "ember",
+    "turf",
+    "turf_mid",
+    "turf_right",
+    "turf_left",
+];
+
+/// A one-row map `id` of `len` 16 px cells of `fill`, on one layer of
+/// `kind`, its tileset [`STRIP_TILES`] (reversed when `reversed`, so the
+/// sprites' indices differ), registered in the World's registry.
+fn strip_map(world: &mut World, id: &str, len: u32, fill: &str, kind: LayerKind, reversed: bool) {
+    if !world.has_resource::<TilemapRegistry>() {
+        world.insert_resource(TilemapRegistry::new());
+    }
+    let mut map = TilemapData::new(16, 16, len, 1);
+    let mut names: Vec<&str> = STRIP_TILES.to_vec();
+    if reversed {
+        names.reverse();
+    }
+    for name in &names {
+        map.add_tile(*name);
+    }
+    let index = |name: &str| names.iter().position(|known| *known == name).unwrap() as TileIndex;
+    let mut props = |name: &str, edit: &dyn Fn(&mut TileProps)| {
+        let mut tile = TileProps::default();
+        edit(&mut tile);
+        map.set_tile_props(index(name), tile);
+    };
+    props("grass", &|tile| tile.material = Some("grass".into()));
+    props("stone", &|tile| {
+        tile.material = Some("stone".into());
+        tile.health = Some(3.0);
+        tile.broken = index("ash");
+    });
+    props("turf", &|tile| {
+        tile.material = Some("grass".into());
+        tile.style = Some("turf".into());
+    });
+    for (name, mask) in [("turf_mid", 0), ("turf_right", 2), ("turf_left", 8)] {
+        props(name, &|tile| {
+            tile.material = Some("grass".into());
+            tile.style = Some("turf".into());
+            tile.mask = Some(mask);
+        });
+    }
+    let layer = map.add_layer("ground", kind);
+    map.fill(layer, index(fill));
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert(id.to_owned(), map);
+}
+
+/// A placement of map `id` at `origin`.
+fn place(world: &mut World, id: &str, origin: Vec2) -> Entity {
+    world.spawn_with((TilemapInstance::new(id, origin),))
+}
+
+/// The cell at `col` of map `id`'s placement at `origin`.
+fn cell(id: &str, origin: Vec2, col: u32) -> Cell {
+    Cell::new(Rc::from(id), origin, 0, col, 0)
+}
+
+/// The sprite map `id` holds at `col`.
+fn sprite_at(world: &World, id: &str, col: u32) -> String {
+    let data = world.resource::<TilemapRegistry>().get(id).unwrap();
+    let tile = data.tile_at(0, col, 0).unwrap();
+    data.tileset[tile as usize].clone()
+}
+
+/// Whether `cell` carries the status `id`.
+fn tile_has(world: &World, cell: &Cell, id: &str) -> bool {
+    world
+        .resource::<TileStatuses>()
+        .on(cell)
+        .iter()
+        .any(|instance| instance.effect().id() == Some(id))
+}
+
+/// A burning status for tiles and crates: intensity 2 that holds,
+/// granting `status.burning`, sending `heat` within 20 px every 0.25 s;
+/// and the rule `heat` on `grass` building it by 1.
+fn burning_tiles(world: &mut World) {
+    world.resource_mut::<DataRegistry>().insert(
+        "burning",
+        Effect::new()
+            .with_intensity(2.0, 0.0)
+            .with_grant(["status.burning"])
+            .with_emit("heat", 1.0, 20.0, 0.25),
+    );
+    rule(
+        world,
+        "catches",
+        json!({ "stimulus": "heat", "on": { "all": ["grass"] }, "outputs": [{ "build": { "status": "burning", "amount": 1 } }] }),
+    );
+}
+
+#[test]
+fn heat_spreads_across_material_tiles() {
+    let (mut world, mut schedule) = rig();
+    burning_tiles(&mut world);
+    strip_map(&mut world, "strip", 10, "grass", LayerKind::Render, false);
+    place(&mut world, "strip", Vec2::ZERO);
+    // A burning crate 16 px left of the first cell's centre.
+    let crate_ = world.spawn_with((
+        Tags::new(["material.wood"]),
+        Transform::from_position(Vec2::new(-8.0, 8.0)),
+    ));
+    EffectRequest::new(crate_, DataRef::by_id("burning")).apply(&mut world);
+    let cells: Vec<Cell> = (0..10).map(|col| cell("strip", Vec2::ZERO, col)).collect();
+    let mut lit_at = [None; 10];
+    let mut saved = None;
+    for frame in 1..=200 {
+        step(&mut world, &mut schedule);
+        for (i, cell) in cells.iter().enumerate() {
+            if lit_at[i].is_none() && tile_has(&world, cell, "burning") {
+                lit_at[i] = Some(frame);
+            }
+        }
+        if frame == 75 {
+            saved = Some(capture_world(&world).unwrap());
+        }
+    }
+    let lit: Vec<u32> = lit_at
+        .iter()
+        .map(|at| at.expect("every cell burns"))
+        .collect();
+    assert!(
+        lit.windows(2).all(|pair| pair[0] < pair[1]),
+        "in turn: {lit:?}"
+    );
+    // Restored into a fresh World with the map placed: the cells burning
+    // at the capture burn there, and the rest catch in turn.
+    let (mut loaded, mut loaded_schedule) = rig();
+    burning_tiles(&mut loaded);
+    strip_map(&mut loaded, "strip", 10, "grass", LayerKind::Render, false);
+    place(&mut loaded, "strip", Vec2::ZERO);
+    restore_world(&mut loaded, &saved.unwrap(), &(Restored,)).unwrap();
+    let burning_then: Vec<bool> = cells
+        .iter()
+        .map(|cell| tile_has(&loaded, cell, "burning"))
+        .collect();
+    let expected: Vec<bool> = lit.iter().map(|&at| at <= 75).collect();
+    assert_eq!(burning_then, expected);
+    assert!(burning_then.contains(&false), "some still to catch");
+    for _ in 0..125 {
+        step(&mut loaded, &mut loaded_schedule);
+    }
+    assert!(cells.iter().all(|cell| tile_has(&loaded, cell, "burning")));
+}
+
+#[test]
+fn set_tile_writes_a_cell_and_reverts() {
+    // A cell's `on_end` sets `ash` for 5 s.
+    let scorched = |world: &mut World| {
+        world.resource_mut::<DataRegistry>().insert(
+            "scorched",
+            serde_json::from_value::<Effect>(json!({
+                "duration": 0.1, "on_end": [{ "set_tile": { "tile": "ash", "revert": 5 } }]
+            }))
+            .unwrap(),
+        );
+    };
+    let (mut world, mut schedule) = rig();
+    scorched(&mut world);
+    strip_map(&mut world, "strip", 3, "grass", LayerKind::Render, false);
+    place(&mut world, "strip", Vec2::ZERO);
+    let target = cell("strip", Vec2::ZERO, 1);
+    // Each journal entry read from the cursor before it: the map after
+    // both is the map before, which one cursor reads as unchanged.
+    fn journaled(world: &World, cursor: &tungsten_core::MapCursor) -> usize {
+        match world
+            .resource::<TilemapRegistry>()
+            .changes_since("strip", cursor)
+        {
+            Some(TileChanges::Cells(cells)) => cells.count(),
+            other => panic!("{other:?}"),
+        }
+    }
+    let mut cursor = world.resource::<TilemapRegistry>().cursor("strip").unwrap();
+    assert!(tiles::apply(
+        &mut world,
+        &target,
+        &DataRef::by_id("scorched"),
+        1.0,
+        1.0,
+        None,
+        0
+    ));
+    let (mut written, mut entries) = (None, 0);
+    for frame in 1..=400 {
+        step(&mut world, &mut schedule);
+        let now = sprite_at(&world, "strip", 1);
+        match (written, now.as_str()) {
+            (None, "ash") => {
+                written = Some(frame);
+                entries += journaled(&world, &cursor);
+                cursor = world.resource::<TilemapRegistry>().cursor("strip").unwrap();
+            }
+            (Some(at), "grass") => {
+                assert_eq!(frame - at, 300, "5 s later, within a step");
+                entries += journaled(&world, &cursor);
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(sprite_at(&world, "strip", 1), "grass");
+    assert_eq!(entries, 2, "the write and the revert");
+
+    // Through a save between, into a map whose tileset is in another
+    // order: the old tile by sprite ID.
+    let (mut world, mut schedule) = rig();
+    strip_map(&mut world, "strip", 3, "grass", LayerKind::Render, false);
+    place(&mut world, "strip", Vec2::ZERO);
+    tiles::set_tile(&mut world, &target, "ash", Some(5.0)).unwrap();
+    for _ in 0..60 {
+        step(&mut world, &mut schedule);
+    }
+    let saved = capture_world(&world).unwrap();
+    let (mut loaded, mut loaded_schedule) = rig();
+    strip_map(&mut loaded, "strip", 3, "grass", LayerKind::Render, true);
+    place(&mut loaded, "strip", Vec2::ZERO);
+    restore_world(&mut loaded, &saved, &(Restored,)).unwrap();
+    // The area's restore writes the edited cell back by sprite ID.
+    let ash = STRIP_TILES.len() as TileIndex - 2;
+    loaded
+        .resource_mut::<TilemapRegistry>()
+        .set_tile("strip", 0, 1, 0, ash);
+    assert_eq!(sprite_at(&loaded, "strip", 1), "ash");
+    for _ in 0..239 {
+        step(&mut loaded, &mut loaded_schedule);
+    }
+    assert_eq!(sprite_at(&loaded, "strip", 1), "ash", "4.98 s");
+    step(&mut loaded, &mut loaded_schedule);
+    assert_eq!(sprite_at(&loaded, "strip", 1), "grass", "5 s");
+
+    // An auto cell of a styled strip reverts to an auto cell, so a
+    // neighbour's later edit re-picks it, with and without a save between.
+    for through_save in [false, true] {
+        let (mut world, mut schedule) = rig();
+        strip_map(&mut world, "turf", 5, "turf", LayerKind::Render, false);
+        place(&mut world, "turf", Vec2::ZERO);
+        assert_eq!(sprite_at(&world, "turf", 2), "turf_mid");
+        let middle = cell("turf", Vec2::ZERO, 2);
+        tiles::set_tile(&mut world, &middle, "ash", Some(1.0)).unwrap();
+        assert_eq!(
+            (sprite_at(&world, "turf", 1), sprite_at(&world, "turf", 3)),
+            ("turf_right".to_string(), "turf_left".to_string()),
+            "its neighbours open toward it"
+        );
+        if through_save {
+            for _ in 0..10 {
+                step(&mut world, &mut schedule);
+            }
+            let saved = capture_world(&world).unwrap();
+            let (mut loaded, loaded_schedule) = rig();
+            strip_map(&mut loaded, "turf", 5, "turf", LayerKind::Render, false);
+            place(&mut loaded, "turf", Vec2::ZERO);
+            restore_world(&mut loaded, &saved, &(Restored,)).unwrap();
+            loaded
+                .resource_mut::<TilemapRegistry>()
+                .set_tile("turf", 0, 2, 0, 1);
+            world = loaded;
+            schedule = loaded_schedule;
+        }
+        for _ in 0..70 {
+            step(&mut world, &mut schedule);
+        }
+        assert_eq!(
+            sprite_at(&world, "turf", 2),
+            "turf_mid",
+            "save {through_save}"
+        );
+        assert!(
+            world
+                .resource::<TilemapRegistry>()
+                .get("turf")
+                .unwrap()
+                .is_auto(0, 2, 0)
+        );
+        // `stone` beside it opens its right side: the auto-tiler re-picks it.
+        world
+            .resource_mut::<TilemapRegistry>()
+            .set_tile("turf", 0, 3, 0, 2);
+        assert_eq!(
+            sprite_at(&world, "turf", 2),
+            "turf_right",
+            "save {through_save}"
+        );
+    }
+
+    // A game's write of `stone` before the revert runs out drops it.
+    let (mut world, mut schedule) = rig();
+    strip_map(&mut world, "strip", 3, "grass", LayerKind::Render, false);
+    place(&mut world, "strip", Vec2::ZERO);
+    tiles::set_tile(&mut world, &target, "ash", Some(5.0)).unwrap();
+    for _ in 0..120 {
+        step(&mut world, &mut schedule);
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .set_tile("strip", 0, 1, 0, 2);
+    for _ in 0..300 {
+        step(&mut world, &mut schedule);
+    }
+    assert_eq!(
+        sprite_at(&world, "strip", 1),
+        "stone",
+        "the game's write stands"
+    );
+
+    // Two placements' overlapping reverts on one map cell end on the
+    // original tile, through a save.
+    let (mut world, mut schedule) = rig();
+    strip_map(&mut world, "strip", 3, "grass", LayerKind::Render, false);
+    let far = Vec2::new(500.0, 0.0);
+    place(&mut world, "strip", Vec2::ZERO);
+    place(&mut world, "strip", far);
+    tiles::set_tile(&mut world, &target, "ash", Some(5.0)).unwrap();
+    for _ in 0..120 {
+        step(&mut world, &mut schedule);
+    }
+    tiles::set_tile(&mut world, &cell("strip", far, 1), "ember", Some(5.0)).unwrap();
+    for _ in 0..60 {
+        step(&mut world, &mut schedule);
+    }
+    let saved = capture_world(&world).unwrap();
+    let (mut loaded, mut loaded_schedule) = rig();
+    strip_map(&mut loaded, "strip", 3, "grass", LayerKind::Render, false);
+    place(&mut loaded, "strip", Vec2::ZERO);
+    place(&mut loaded, "strip", far);
+    restore_world(&mut loaded, &saved, &(Restored,)).unwrap();
+    loaded
+        .resource_mut::<TilemapRegistry>()
+        .set_tile("strip", 0, 1, 0, 3);
+    for _ in 0..239 {
+        step(&mut loaded, &mut loaded_schedule);
+    }
+    assert_eq!(sprite_at(&loaded, "strip", 1), "ember");
+    step(&mut loaded, &mut loaded_schedule);
+    assert_eq!(
+        sprite_at(&loaded, "strip", 1),
+        "grass",
+        "the original, not ash"
+    );
+}
+
+#[test]
+fn two_placements_of_a_map_keep_apart() {
+    let (mut world, mut schedule) = rig();
+    burning_tiles(&mut world);
+    strip_map(&mut world, "pair", 4, "grass", LayerKind::Render, false);
+    let far = Vec2::new(1000.0, 0.0);
+    place(&mut world, "pair", Vec2::ZERO);
+    place(&mut world, "pair", far);
+    // A crate beside the near placement's first cell, burning once.
+    let crate_ = world.spawn_with((Transform::from_position(Vec2::new(-8.0, 8.0)),));
+    EffectRequest::new(crate_, DataRef::by_id("burning")).apply(&mut world);
+    for _ in 0..16 {
+        step(&mut world, &mut schedule);
+    }
+    assert!(tile_has(&world, &cell("pair", Vec2::ZERO, 0), "burning"));
+    assert!(
+        !tile_has(&world, &cell("pair", far, 0), "burning"),
+        "the far placement's own"
+    );
+    let saved = capture_world(&world).unwrap();
+    let (mut loaded, _) = rig();
+    burning_tiles(&mut loaded);
+    strip_map(&mut loaded, "pair", 4, "grass", LayerKind::Render, false);
+    place(&mut loaded, "pair", Vec2::ZERO);
+    place(&mut loaded, "pair", far);
+    restore_world(&mut loaded, &saved, &(Restored,)).unwrap();
+    assert!(tile_has(&loaded, &cell("pair", Vec2::ZERO, 0), "burning"));
+    assert!(!tile_has(&loaded, &cell("pair", far, 0), "burning"));
+
+    // An impact on the far placement's tile stimulates its own cell.
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let noted = Rc::clone(&seen);
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new().with_handler(
+        "struck",
+        move |_, reaction: &Reaction| {
+            let cell = reaction.cell().unwrap();
+            noted.borrow_mut().push((cell.origin, cell.col));
+        },
+    ));
+    rule(
+        &mut world,
+        "cracks",
+        json!({ "stimulus": "stimulus.impact", "on": { "all": ["grass"] }, "outputs": [{ "handler": "struck" }] }),
+    );
+    strip_map(&mut world, "pair", 4, "grass", LayerKind::Collision, false);
+    place(&mut world, "pair", Vec2::ZERO);
+    place(&mut world, "pair", far);
+    let ball = world.spawn_with(RigidBodyBundle::dynamic(
+        Position::new(1000.0 + 24.0, -20.0),
+        Collider::circle(5.0),
+    ));
+    world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(0.0, 400.0);
+    for _ in 0..20 {
+        step(&mut world, &mut schedule);
+    }
+    let seen = seen.borrow();
+    assert!(seen.contains(&(far, 1)), "the struck cell: {seen:?}");
+    assert!(seen.iter().all(|(origin, _)| *origin == far), "{seen:?}");
+}
+
+#[test]
+fn damage_breaks_a_cell_at_its_health() {
+    let (mut world, mut schedule) = rig();
+    rule(
+        &mut world,
+        "chips",
+        json!({ "stimulus": "heat", "on": { "all": ["stone"] }, "outputs": [{ "damage": 2 }] }),
+    );
+    strip_map(&mut world, "wall", 3, "stone", LayerKind::Render, false);
+    place(&mut world, "wall", Vec2::ZERO);
+    let block = cell("wall", Vec2::ZERO, 1);
+    let heat = |world: &mut World| {
+        let settings = Settings::default();
+        let stimulus = queue::Stimulus {
+            amount: 1.0,
+            status_effect: 1.0,
+            dot_base: 1.0,
+            depth: 0,
+            credit: None,
+        };
+        let chemistry = world.resource_mut::<Chemistry>();
+        let run = chemistry.run;
+        chemistry.stimulate(
+            &settings,
+            Receiver::Cell(block.clone()),
+            "heat",
+            stimulus,
+            run,
+        );
+    };
+    heat(&mut world);
+    step(&mut world, &mut schedule);
+    let registry = world.resource::<TilemapRegistry>();
+    assert_eq!(registry.health("wall", 0, 1, 0), Some(1.0), "3 less 2");
+    assert_eq!(sprite_at(&world, "wall", 1), "stone");
+    heat(&mut world);
+    step(&mut world, &mut schedule);
+    assert_eq!(sprite_at(&world, "wall", 1), "ash", "broken at the next");
+}
+
+#[test]
+fn a_tile_without_a_material_takes_nothing() {
+    let (mut world, mut schedule) = rig();
+    burning_tiles(&mut world);
+    rule(
+        &mut world,
+        "anything",
+        json!({ "stimulus": "heat", "outputs": [{ "remove": "mark" }] }),
+    );
+    strip_map(&mut world, "ashes", 4, "ash", LayerKind::Render, false);
+    place(&mut world, "ashes", Vec2::ZERO);
+    let crate_ = world.spawn_with((Transform::from_position(Vec2::new(-8.0, 8.0)),));
+    EffectRequest::new(crate_, DataRef::by_id("burning")).apply(&mut world);
+    for _ in 0..40 {
+        step(&mut world, &mut schedule);
+    }
+    assert_eq!(chemistry(&world).ran(), 0, "no cell received");
+    assert!(world.resource::<TileStatuses>().is_empty());
+}
+
+#[test]
+fn an_impact_on_a_tile_stimulates_its_cell() {
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let noted = Rc::clone(&seen);
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new().with_handler(
+        "struck",
+        move |_, reaction: &Reaction| {
+            let cell = reaction.cell().unwrap();
+            noted.borrow_mut().push((
+                cell.map.to_owned(),
+                cell.col,
+                reaction.amount(),
+                reaction.credit(),
+            ));
+        },
+    ));
+    rule(
+        &mut world,
+        "cracks",
+        json!({ "stimulus": "stimulus.impact", "on": { "all": ["grass"] }, "outputs": [{ "handler": "struck" }] }),
+    );
+    strip_map(&mut world, "floor", 4, "grass", LayerKind::Collision, false);
+    place(&mut world, "floor", Vec2::ZERO);
+    let ball = world.spawn_with(RigidBodyBundle::dynamic(
+        Position::new(40.0, -20.0),
+        Collider::circle(5.0),
+    ));
+    world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(0.0, 400.0);
+    for _ in 0..20 {
+        step(&mut world, &mut schedule);
+    }
+    // The physics begins a contact with each cell whose face the ball's
+    // reach spans: the struck cell and its neighbours, each stimulated by
+    // the closing speed, credited to the ball.
+    let seen = seen.borrow();
+    let cols: Vec<u32> = seen.iter().map(|(_, col, ..)| *col).collect();
+    assert_eq!(cols, [1, 2, 3], "the struck cell 2 among them");
+    for (map, _, amount, credit) in seen.iter() {
+        assert_eq!((map.as_str(), *credit), ("floor", Some(ball)));
+        assert!((amount - 400.0).abs() <= 4.0, "{amount}");
+    }
+}
+
+#[test]
+fn tile_statuses_drop_with_their_placement() {
+    let (mut world, mut schedule) = rig();
+    burning_tiles(&mut world);
+    strip_map(&mut world, "strip", 2, "grass", LayerKind::Render, false);
+    let near = place(&mut world, "strip", Vec2::ZERO);
+    let moved = place(&mut world, "strip", Vec2::new(500.0, 0.0));
+    let held = place(&mut world, "strip", Vec2::new(900.0, 0.0));
+    for origin in [Vec2::ZERO, Vec2::new(500.0, 0.0), Vec2::new(900.0, 0.0)] {
+        assert!(tiles::apply(
+            &mut world,
+            &cell("strip", origin, 0),
+            &DataRef::by_id("burning"),
+            1.0,
+            1.0,
+            None,
+            0
+        ));
+    }
+    step(&mut world, &mut schedule);
+    world.despawn(near);
+    world.get_mut::<TilemapInstance>(moved).unwrap().origin = Vec2::new(600.0, 0.0);
+    step(&mut world, &mut schedule);
+    let statuses = world.resource::<TileStatuses>();
+    assert!(
+        statuses.on(&cell("strip", Vec2::ZERO, 0)).is_empty(),
+        "gone"
+    );
+    assert!(
+        statuses
+            .on(&cell("strip", Vec2::new(500.0, 0.0), 0))
+            .is_empty(),
+        "moved"
+    );
+    assert!(
+        !statuses
+            .on(&cell("strip", Vec2::new(900.0, 0.0), 0))
+            .is_empty(),
+        "kept"
+    );
+    let _ = held;
 }

@@ -1,0 +1,16 @@
+{
+  "stimulus": "heat",
+  "on": {
+    "all": [
+      "grass"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "ablaze",
+        "amount": 1
+      }
+    }
+  ]
+}

@@ -13,5 +13,8 @@
   "status.lit",
   "material.kindling",
   "material.clay",
-  "status.cracked"
+  "status.cracked",
+  "glass",
+  "planks",
+  "heat"
 ]

@@ -231,7 +231,8 @@ mod react;
 mod transform;
 
 pub use chemistry::{
-    CHEMISTRY, CHEMISTRY_TICK, Chemistry, ChemistryPlugin, Interaction, Output, Reaction,
+    CHEMISTRY, CHEMISTRY_TICK, Chemistry, ChemistryPlugin, Interaction, Output, Reaction, TileCell,
+    TileStatuses,
 };
 pub use damage::ailments::{
     AILMENT_FEED, AILMENT_TICK, AilmentBuckets, AilmentRung, AilmentThreshold,

@@ -1,5 +1,6 @@
 //! Chemistry's queue: one entry per stimulus and receiver, merged, bounded
-//! and capped, saved with its receivers and credits by save ID.
+//! and capped, saved with its receivers and credits by save ID and its tile
+//! cells by their keys.
 
 use std::collections::HashMap;
 
@@ -8,12 +9,38 @@ use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{DataRef, Entity, World};
 
 use crate::chemistry::stimuli::Emission;
+use crate::chemistry::tiles::{Cell, CellSave};
 use crate::damage::effects::Effect;
 use crate::foundation::saved::{Order, order_of};
 
-/// An entry's place in a run's order (its age, depth, receiver's save
-/// order and stimulus rank) and its slot.
-type TakeKey = (u64, u8, (bool, u64), u32, usize);
+/// What an entry runs on: an entity, or a placement's tile cell.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum Receiver {
+    Entity(Entity),
+    Cell(Cell),
+}
+
+impl Receiver {
+    /// The entity, when it is one.
+    pub(crate) fn entity(&self) -> Option<Entity> {
+        match self {
+            Self::Entity(entity) => Some(*entity),
+            Self::Cell(_) => None,
+        }
+    }
+}
+
+/// A receiver's place in a run's order: entities by their save order, then
+/// cells by map ID, origin, layer, row and column.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum ReceiverKey {
+    Entity((bool, u64)),
+    Cell(Cell),
+}
+
+/// An entry's place in a run's order (its age, depth, receiver's order and
+/// stimulus rank) and its slot.
+type TakeKey = (u64, u8, ReceiverKey, u32, usize);
 
 /// The name a save holds the queue under.
 pub(crate) const CHEMISTRY_QUEUE: &str = "chemistry_queue";
@@ -68,7 +95,7 @@ pub(crate) struct StatusList {
 /// brought it, or a status's own list.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Entry {
-    pub(crate) receiver: Entity,
+    pub(crate) receiver: Receiver,
     /// The stimulus's interned name; a status list's label.
     pub(crate) stimulus: u32,
     pub(crate) status: Option<Box<StatusList>>,
@@ -126,9 +153,11 @@ pub struct Chemistry {
     slots: Vec<Option<Entry>>,
     free: Vec<usize>,
     /// A stimulus entry's slot by receiver and stimulus.
-    index: HashMap<(Entity, u32), usize>,
-    /// Each receiver's entries.
+    index: HashMap<(Receiver, u32), usize>,
+    /// Each entity receiver's entries.
     counts: HashMap<Entity, u32>,
+    /// A run's take keys, kept so a warm run allocates nothing.
+    keys: Vec<TakeKey>,
     /// The interned stimulus names and status labels, and each one's rank
     /// by name.
     names: Vec<String>,
@@ -162,6 +191,7 @@ impl Default for Chemistry {
             free: Vec::new(),
             index: HashMap::new(),
             counts: HashMap::new(),
+            keys: Vec::new(),
             names: Vec::new(),
             ranks: Vec::new(),
             held: Vec::new(),
@@ -260,7 +290,7 @@ impl Chemistry {
     pub(crate) fn stimulate(
         &mut self,
         settings: &Settings,
-        receiver: Entity,
+        receiver: Receiver,
         name: &str,
         stimulus: Stimulus,
         age: u64,
@@ -273,7 +303,7 @@ impl Chemistry {
     pub(crate) fn stimulate_id(
         &mut self,
         settings: &Settings,
-        receiver: Entity,
+        receiver: Receiver,
         id: u32,
         stimulus: Stimulus,
         age: u64,
@@ -282,11 +312,12 @@ impl Chemistry {
             self.cut += 1;
             return;
         }
-        if self.held.contains(&receiver) {
+        if self.is_held(&receiver) {
             return;
         }
         let weighted = f64::from(stimulus.amount) * f64::from(stimulus.status_effect);
-        if let Some(&slot) = self.index.get(&(receiver, id)) {
+        let key = (receiver, id);
+        if let Some(&slot) = self.index.get(&key) {
             let entry = self.slots[slot]
                 .as_mut()
                 .expect("an indexed slot holds its entry");
@@ -302,7 +333,7 @@ impl Chemistry {
             return;
         }
         let entry = Entry {
-            receiver,
+            receiver: key.0.clone(),
             stimulus: id,
             status: None,
             raw: f64::from(stimulus.amount),
@@ -314,8 +345,15 @@ impl Chemistry {
             age,
         };
         if let Some(slot) = self.insert(settings.bound, entry) {
-            self.index.insert((receiver, id), slot);
+            self.index.insert(key, slot);
         }
+    }
+
+    /// Whether `receiver` is an entity the kit's despawn holds.
+    fn is_held(&self, receiver: &Receiver) -> bool {
+        receiver
+            .entity()
+            .is_some_and(|entity| self.held.contains(&entity))
     }
 
     /// Queues a status's own list on `receiver` for run `age`, unmerged,
@@ -323,7 +361,7 @@ impl Chemistry {
     pub(crate) fn queue_list(
         &mut self,
         settings: &Settings,
-        receiver: Entity,
+        receiver: Receiver,
         list: StatusList,
         depth: u8,
         credit: Option<Entity>,
@@ -333,7 +371,7 @@ impl Chemistry {
             self.cut += 1;
             return;
         }
-        if self.held.contains(&receiver) {
+        if self.is_held(&receiver) {
             return;
         }
         let label = match list.band {
@@ -365,7 +403,9 @@ impl Chemistry {
             self.dropped_now = true;
             return None;
         }
-        *self.counts.entry(entry.receiver).or_insert(0) += 1;
+        if let Some(entity) = entry.receiver.entity() {
+            *self.counts.entry(entity).or_insert(0) += 1;
+        }
         self.pending += 1;
         if let Some(slot) = self.free.pop() {
             self.slots[slot] = Some(entry);
@@ -379,10 +419,14 @@ impl Chemistry {
     /// The take order's key of the entry in `slot`: its age, depth,
     /// receiver's save order and stimulus rank.
     fn key(&self, order: Order<'_>, slot: usize, entry: &Entry) -> TakeKey {
+        let receiver = match &entry.receiver {
+            Receiver::Entity(entity) => ReceiverKey::Entity(order.key(*entity)),
+            Receiver::Cell(cell) => ReceiverKey::Cell(cell.clone()),
+        };
         (
             entry.age,
             entry.depth,
-            order.key(entry.receiver),
+            receiver,
             self.ranks[entry.stimulus as usize],
             slot,
         )
@@ -396,12 +440,14 @@ impl Chemistry {
         self.free.push(slot);
         self.pending -= 1;
         if entry.status.is_none() {
-            self.index.remove(&(entry.receiver, entry.stimulus));
+            self.index.remove(&(entry.receiver.clone(), entry.stimulus));
         }
-        if let Some(count) = self.counts.get_mut(&entry.receiver) {
+        if let Some(entity) = entry.receiver.entity()
+            && let Some(count) = self.counts.get_mut(&entity)
+        {
             *count -= 1;
             if *count == 0 {
-                self.counts.remove(&entry.receiver);
+                self.counts.remove(&entity);
             }
         }
         entry
@@ -438,7 +484,7 @@ impl Chemistry {
             .filter_map(|(slot, entry)| Some(self.key(order, slot, entry.as_ref()?)))
             .collect();
         keys.sort_unstable();
-        for &(.., slot) in &keys[settings.bound..] {
+        for (.., slot) in keys.drain(settings.bound..) {
             self.remove(slot);
             self.dropped += 1;
             self.dropped_now = true;
@@ -451,23 +497,21 @@ impl Chemistry {
     pub(crate) fn take(&mut self, world: &World, cap: usize, run: u64, out: &mut Vec<Entry>) {
         out.clear();
         let order = order_of(world);
-        let mut chosen: Vec<TakeKey> = self
-            .slots
-            .iter()
-            .enumerate()
-            .filter_map(|(slot, entry)| {
-                let entry = entry.as_ref()?;
-                (entry.age <= run).then(|| self.key(order, slot, entry))
-            })
-            .collect();
+        let mut chosen = std::mem::take(&mut self.keys);
+        chosen.clear();
+        chosen.extend(self.slots.iter().enumerate().filter_map(|(slot, entry)| {
+            let entry = entry.as_ref()?;
+            (entry.age <= run).then(|| self.key(order, slot, entry))
+        }));
         if chosen.len() > cap {
             chosen.select_nth_unstable(cap);
             chosen.truncate(cap);
         }
         chosen.sort_unstable();
-        for (.., slot) in chosen {
+        for (.., slot) in chosen.drain(..) {
             out.push(self.remove(slot));
         }
+        self.keys = chosen;
     }
 
     /// Counts `count` entries run.
@@ -475,15 +519,19 @@ impl Chemistry {
         self.ran += count as u64;
     }
 
-    /// The entries in a stable order: by age, depth, receiver index and
-    /// name, for the save.
+    /// The entries in a stable order: by age, depth, receiver (entities by
+    /// index, then cells) and name, for the save.
     fn sorted(&self) -> Vec<&Entry> {
+        let receiver = |entry: &Entry| match &entry.receiver {
+            Receiver::Entity(entity) => (0, entity.id(), None),
+            Receiver::Cell(cell) => (1, 0, Some(cell.clone())),
+        };
         let mut entries: Vec<&Entry> = self.slots.iter().flatten().collect();
         entries.sort_by(|a, b| {
-            (a.age, a.depth, a.receiver.id(), self.name(a.stimulus)).cmp(&(
+            (a.age, a.depth, receiver(a), self.name(a.stimulus)).cmp(&(
                 b.age,
                 b.depth,
-                b.receiver.id(),
+                receiver(b),
                 self.name(b.stimulus),
             ))
         });
@@ -495,6 +543,9 @@ impl Chemistry {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct EntrySave {
+    /// A tile cell's receiver; an entity's is a reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cell: Option<CellSave>,
     /// The stimulus's name; for a status's list, the status.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     stimulus: Option<String>,
@@ -544,7 +595,12 @@ impl From<&Chemistry> for ChemistrySave {
                         None => (Some(chemistry.name(entry.stimulus).to_owned()), None, None),
                         Some(list) => (None, Some(list.effect.clone()), list.band),
                     };
+                    let cell = match &entry.receiver {
+                        Receiver::Entity(_) => None,
+                        Receiver::Cell(cell) => Some(cell.save()),
+                    };
                     EntrySave {
+                        cell,
                         stimulus,
                         status,
                         band,
@@ -603,8 +659,12 @@ impl From<ChemistrySave> for Chemistry {
                 }
             };
             let stimulus = chemistry.intern(&label);
+            let receiver = match &entry.cell {
+                Some(cell) => Receiver::Cell(cell.cell()),
+                None => Receiver::Entity(Entity::PLACEHOLDER),
+            };
             chemistry.slots.push(Some(Entry {
-                receiver: Entity::PLACEHOLDER,
+                receiver,
                 stimulus,
                 status,
                 raw: entry.raw.max(0.0),
@@ -633,15 +693,18 @@ impl Chemistry {
                 self.free.push(slot);
                 continue;
             };
-            if entry.receiver == Entity::PLACEHOLDER {
+            if entry.receiver == Receiver::Entity(Entity::PLACEHOLDER) {
                 self.slots[slot] = None;
                 self.free.push(slot);
                 continue;
             }
             if entry.status.is_none() {
-                self.index.insert((entry.receiver, entry.stimulus), slot);
+                self.index
+                    .insert((entry.receiver.clone(), entry.stimulus), slot);
             }
-            *self.counts.entry(entry.receiver).or_insert(0) += 1;
+            if let Some(entity) = entry.receiver.entity() {
+                *self.counts.entry(entity).or_insert(0) += 1;
+            }
             self.pending += 1;
         }
     }
@@ -654,11 +717,16 @@ fn queue_refs(chemistry: &Chemistry) -> impl Iterator<Item = (String, Entity)> +
         .into_iter()
         .enumerate()
         .flat_map(|(index, entry)| {
-            std::iter::once((format!("entries.{index}.receiver"), entry.receiver)).chain(
-                entry
-                    .credit
-                    .map(|credit| (format!("entries.{index}.credit"), credit)),
-            )
+            entry
+                .receiver
+                .entity()
+                .map(|receiver| (format!("entries.{index}.receiver"), receiver))
+                .into_iter()
+                .chain(
+                    entry
+                        .credit
+                        .map(|credit| (format!("entries.{index}.credit"), credit)),
+                )
         })
 }
 
@@ -677,8 +745,10 @@ pub(crate) fn queue_saved() -> SaveOptions<Chemistry> {
                 let Some(entry) = slot else {
                     continue;
                 };
-                if let Some(receiver) = refs.first(&format!("entries.{index}.receiver")) {
-                    entry.receiver = receiver;
+                if matches!(entry.receiver, Receiver::Entity(_))
+                    && let Some(receiver) = refs.first(&format!("entries.{index}.receiver"))
+                {
+                    entry.receiver = Receiver::Entity(receiver);
                 }
                 entry.credit = refs.first(&format!("entries.{index}.credit"));
             }

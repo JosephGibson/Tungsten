@@ -1,0 +1,11 @@
+{
+  "duration": 0.5,
+  "on_end": [
+    {
+      "set_tile": {
+        "tile": "soot",
+        "revert": 2
+      }
+    }
+  ]
+}

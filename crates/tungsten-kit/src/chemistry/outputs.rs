@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::physics::Position;
 use tungsten_core::{CommandBuffer, DataRef, Entity, MissingAsset, Transform, World};
 
+use crate::chemistry::queue::Receiver;
 use crate::chemistry::rules::check_stimulus;
 use crate::chemistry::stimuli::{Named, emit_from};
+use crate::chemistry::tiles::{self, Cell, NOT_A_TILE};
 use crate::damage::effects::{Effect, EffectRequest, StatModifierDef, consume, end_effect_at};
 use crate::damage::pipeline::DamageRequest;
 use crate::foundation::lines::Line;
@@ -38,10 +40,15 @@ const NO_SPAWN: &str = "the prefab did not prepare";
 /// | damage | `{ "damage": { "elemental.fire": 2 } }` | queues typed damage on the receiver from the credit, for the next step's resolve |
 /// | spawn | `{ "spawn": "puff" }` | spawns a prefab at the receiver's point, from it |
 /// | emit | `{ "emit": { "stimulus": "heat", "amount": 1, "radius": 40 } }` | sends a stimulus once from the receiver's point to every receiver within the radius but itself, at the next run |
+/// | set_tile | `{ "set_tile": { "tile": "ash", "revert": 5 } }` | on a tile cell, writes the first tileset entry with that sprite through the registry, every placement of the map showing it; `revert` writes the old tile back after that many seconds |
 /// | handler | `{ "handler": "douse" }` | runs a game's Rust handler ([`ChemistryPlugin::with_handler`](crate::ChemistryPlugin::with_handler)) |
 ///
 /// On a dead receiver `build` and `apply` are refused, as effects refuse the
-/// dead, and the rest run. The load checks each status, prefab, damage type,
+/// dead, and the rest run. On a tile cell the status outputs keep its
+/// statuses, `damage` damages it by the parts' sum through
+/// `TilemapRegistry::damage_tile`, `emit` and `spawn` go from its centre
+/// (the spawn with no source), and `set_tile` writes it; `set_tile` on an
+/// entity does nothing. The load checks each status, prefab, damage type,
 /// tag and handler.
 ///
 /// # Examples
@@ -68,12 +75,13 @@ enum Kind {
     Damage(DamageDef),
     Spawn(String),
     Emit(EmitDef),
+    SetTile(SetTileDef),
     Handler(String),
 }
 
 impl Output {
     /// Its name, as data writes it: `build`, `apply`, `remove`, `consume`,
-    /// `damage`, `spawn`, `emit` or `handler`.
+    /// `damage`, `spawn`, `emit`, `set_tile` or `handler`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match &self.0 {
@@ -84,6 +92,7 @@ impl Output {
             Kind::Damage(_) => "damage",
             Kind::Spawn(_) => "spawn",
             Kind::Emit(_) => "emit",
+            Kind::SetTile(_) => "set_tile",
             Kind::Handler(_) => "handler",
         }
     }
@@ -244,11 +253,66 @@ impl TryFrom<EmitFields> for EmitDef {
     }
 }
 
-/// What an output runs for, which a handler reads: the receiver, what
-/// reached it, the rule, the amounts, the credit and the depth.
+/// A `set_tile` as data writes it: the sprite the cell takes, and the
+/// seconds after which its old tile comes back.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, try_from = "SetTileFields")]
+pub(crate) struct SetTileDef {
+    tile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    revert: Option<f32>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetTileFields {
+    tile: String,
+    #[serde(default)]
+    revert: Option<f32>,
+}
+
+impl TryFrom<SetTileFields> for SetTileDef {
+    type Error = String;
+
+    fn try_from(fields: SetTileFields) -> Result<Self, Self::Error> {
+        if fields.tile.is_empty() {
+            return Err("tile: must name a sprite".into());
+        }
+        if let Some(revert) = fields.revert
+            && !(revert.is_finite() && revert > 0.0)
+        {
+            return Err(format!("revert: must be finite and > 0 (got {revert})"));
+        }
+        Ok(Self {
+            tile: fields.tile,
+            revert: fields.revert,
+        })
+    }
+}
+
+/// A tile cell: its placement's map ID and top-left, its layer's index, its
+/// column and its row; what a reaction runs on ([`Reaction::cell`]) and
+/// what [`TileStatuses`](crate::TileStatuses) reads by.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TileCell<'a> {
+    /// The placed map's ID.
+    pub map: &'a str,
+    /// The placement's top-left.
+    pub origin: Vec2,
+    /// The layer's index in the map's layers.
+    pub layer: usize,
+    /// The cell's column, from the map's left.
+    pub col: u32,
+    /// The cell's row, from the map's top.
+    pub row: u32,
+}
+
+/// What an output runs for, which a handler reads: the receiver (an entity
+/// or a tile cell), what reached it, the rule, the amounts, the credit and
+/// the depth.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reaction {
-    pub(crate) receiver: Entity,
+    pub(crate) receiver: Receiver,
     pub(crate) stimulus: String,
     pub(crate) rule: String,
     pub(crate) raw: f64,
@@ -260,10 +324,25 @@ pub struct Reaction {
 }
 
 impl Reaction {
-    /// The entity it runs on.
+    /// The entity it runs on; `None` on a tile cell.
     #[must_use]
-    pub fn receiver(&self) -> Entity {
-        self.receiver
+    pub fn receiver(&self) -> Option<Entity> {
+        self.receiver.entity()
+    }
+
+    /// The tile cell it runs on; `None` on an entity.
+    #[must_use]
+    pub fn cell(&self) -> Option<TileCell<'_>> {
+        match &self.receiver {
+            Receiver::Entity(_) => None,
+            Receiver::Cell(cell) => Some(TileCell {
+                map: &cell.map,
+                origin: cell.origin(),
+                layer: cell.layer as usize,
+                col: cell.col,
+                row: cell.row,
+            }),
+        }
     }
 
     /// The stimulus's name; for a status's own list, its label
@@ -336,6 +415,7 @@ pub(crate) fn check_outputs(
             Kind::Damage(damage) => damage.check(world)?,
             Kind::Spawn(prefab) => world.check_prefab_id(&at, prefab)?,
             Kind::Emit(def) => check_stimulus(world, &format!("{at}.stimulus"), &def.stimulus)?,
+            Kind::SetTile(_) => {}
             Kind::Handler(name) => {
                 let known = world
                     .get_resource::<Handlers>()
@@ -358,8 +438,8 @@ pub(crate) fn point_of(world: &World, entity: Entity) -> Option<Vec2> {
 }
 
 /// Runs `outputs` for `reaction` on its receiver, in order, each traced
-/// under `label.<index>`; on a `dead` receiver `build` and `apply` are
-/// refused.
+/// under `label.<index>` about the receiver (a cell's about its placement);
+/// on a `dead` receiver `build` and `apply` are refused.
 pub(crate) fn run_outputs(
     world: &mut World,
     reaction: &Reaction,
@@ -367,78 +447,10 @@ pub(crate) fn run_outputs(
     label: &str,
     dead: bool,
 ) {
-    let receiver = reaction.receiver;
     // What the outputs set off runs one reaction deeper.
     let deeper = reaction.depth.saturating_add(1);
     for (index, output) in outputs.iter().enumerate() {
         let ran = match &output.0 {
-            Kind::Build(_) | Kind::Apply(_) if dead => Err(DEAD),
-            Kind::Build(def) => {
-                // A fixed build at the entry's largest status effect; a
-                // scaled one of the hits, each at its own.
-                let (amount, status_effect) = if let Some(amount) = def.amount {
-                    (amount, reaction.status_effect)
-                } else {
-                    let scale = f64::from(def.scale.unwrap_or(1.0));
-                    let amount = (scale * reaction.weighted).min(f64::from(f32::MAX)) as f32;
-                    (amount, 1.0)
-                };
-                let request = EffectRequest::new(receiver, def.status.clone())
-                    .with_amount(amount)
-                    .with_status_effect(status_effect);
-                request_from(world, request, reaction.credit, deeper);
-                Ok(())
-            }
-            Kind::Apply(def) => {
-                let mut request = EffectRequest::new(receiver, def.status.clone())
-                    .with_status_effect(reaction.status_effect)
-                    .with_lines(def.lines.iter().map(StatModifierDef::line));
-                if let Some(dot) = def.dot {
-                    let rate = (f64::from(dot) * f64::from(reaction.dot_base))
-                        .min(f64::from(f32::MAX)) as f32;
-                    request = request.with_rate(rate);
-                }
-                request_from(world, request, reaction.credit, deeper);
-                Ok(())
-            }
-            Kind::Remove(status) => {
-                if end_effect_at(world, receiver, status, deeper) {
-                    Ok(())
-                } else {
-                    Err(NO_STATUS)
-                }
-            }
-            Kind::Consume(def) => {
-                if consume(world, receiver, &def.status, def.amount, deeper) {
-                    Ok(())
-                } else {
-                    Err(NO_STATUS)
-                }
-            }
-            Kind::Damage(damage) => {
-                let mut request = match damage.parts() {
-                    Some(parts) => DamageRequest::from_parts(receiver, parts),
-                    None => DamageRequest::new(receiver, damage.total()),
-                };
-                if let Some(credit) = reaction.credit {
-                    request = request.with_source(credit);
-                }
-                request.with_depth(deeper).queue(world);
-                Ok(())
-            }
-            Kind::Spawn(prefab) => spawn_from(world, receiver, prefab),
-            Kind::Emit(def) => {
-                emit_from(
-                    world,
-                    receiver,
-                    Named::New(def.stimulus.clone()),
-                    def.amount,
-                    def.radius,
-                    reaction.credit,
-                    deeper,
-                );
-                Ok(())
-            }
             Kind::Handler(name) => {
                 let handler = world
                     .get_resource::<Handlers>()
@@ -451,19 +463,195 @@ pub(crate) fn run_outputs(
                     None => Err(NO_HANDLER),
                 }
             }
+            _ => match &reaction.receiver {
+                Receiver::Entity(receiver) => {
+                    on_entity(world, reaction, *receiver, output, deeper, dead)
+                }
+                Receiver::Cell(cell) => on_cell(world, reaction, cell, output, deeper),
+            },
+        };
+        let about = match &reaction.receiver {
+            Receiver::Entity(receiver) => Some(*receiver),
+            Receiver::Cell(cell) => cell.placement(world),
+        };
+        let Some(about) = about else {
+            continue;
         };
         match ran {
-            Ok(()) => trace(world, receiver, || TraceKind::Cue {
+            Ok(()) => trace(world, about, || TraceKind::Cue {
                 event: INTERACTION,
                 action: output.name(),
                 rule: Some(format!("{label}.{index}")),
             }),
-            Err(why) => trace(world, receiver, || TraceKind::Skipped {
+            Err(why) => trace(world, about, || TraceKind::Skipped {
                 event: INTERACTION,
                 action: output.name(),
                 why,
             }),
         }
+    }
+}
+
+/// A fixed build's amount and status effect, or a scaled one's: the
+/// entry's largest status effect for a fixed amount, the hits each at
+/// their own for a scale.
+fn build_of(def: &BuildDef, reaction: &Reaction) -> (f32, f32) {
+    if let Some(amount) = def.amount {
+        (amount, reaction.status_effect)
+    } else {
+        let scale = f64::from(def.scale.unwrap_or(1.0));
+        let amount = (scale * reaction.weighted).min(f64::from(f32::MAX)) as f32;
+        (amount, 1.0)
+    }
+}
+
+/// One output, not a handler, on the entity `receiver`.
+fn on_entity(
+    world: &mut World,
+    reaction: &Reaction,
+    receiver: Entity,
+    output: &Output,
+    deeper: u8,
+    dead: bool,
+) -> Result<(), &'static str> {
+    match &output.0 {
+        Kind::Build(_) | Kind::Apply(_) if dead => Err(DEAD),
+        Kind::Build(def) => {
+            let (amount, status_effect) = build_of(def, reaction);
+            let request = EffectRequest::new(receiver, def.status.clone())
+                .with_amount(amount)
+                .with_status_effect(status_effect);
+            request_from(world, request, reaction.credit, deeper);
+            Ok(())
+        }
+        Kind::Apply(def) => {
+            let mut request = EffectRequest::new(receiver, def.status.clone())
+                .with_status_effect(reaction.status_effect)
+                .with_lines(def.lines.iter().map(StatModifierDef::line));
+            if let Some(dot) = def.dot {
+                let rate =
+                    (f64::from(dot) * f64::from(reaction.dot_base)).min(f64::from(f32::MAX)) as f32;
+                request = request.with_rate(rate);
+            }
+            request_from(world, request, reaction.credit, deeper);
+            Ok(())
+        }
+        Kind::Remove(status) => {
+            if end_effect_at(world, receiver, status, deeper) {
+                Ok(())
+            } else {
+                Err(NO_STATUS)
+            }
+        }
+        Kind::Consume(def) => {
+            if consume(world, receiver, &def.status, def.amount, deeper) {
+                Ok(())
+            } else {
+                Err(NO_STATUS)
+            }
+        }
+        Kind::Damage(damage) => {
+            let mut request = match damage.parts() {
+                Some(parts) => DamageRequest::from_parts(receiver, parts),
+                None => DamageRequest::new(receiver, damage.total()),
+            };
+            if let Some(credit) = reaction.credit {
+                request = request.with_source(credit);
+            }
+            request.with_depth(deeper).queue(world);
+            Ok(())
+        }
+        Kind::Spawn(prefab) => spawn_from(world, receiver, prefab),
+        Kind::Emit(def) => {
+            emit_from(
+                world,
+                receiver,
+                Named::New(def.stimulus.clone()),
+                def.amount,
+                def.radius,
+                reaction.credit,
+                deeper,
+            );
+            Ok(())
+        }
+        Kind::SetTile(_) => Err(NOT_A_TILE),
+        Kind::Handler(_) => unreachable!("handlers run apart"),
+    }
+}
+
+/// One output, not a handler, on the tile cell `cell`.
+fn on_cell(
+    world: &mut World,
+    reaction: &Reaction,
+    cell: &Cell,
+    output: &Output,
+    deeper: u8,
+) -> Result<(), &'static str> {
+    match &output.0 {
+        Kind::Build(def) => {
+            let (amount, status_effect) = build_of(def, reaction);
+            tiles::apply(
+                world,
+                cell,
+                &def.status,
+                amount,
+                status_effect,
+                reaction.credit,
+                deeper,
+            );
+            Ok(())
+        }
+        Kind::Apply(def) => {
+            let status_effect = reaction.status_effect;
+            tiles::apply(
+                world,
+                cell,
+                &def.status,
+                1.0,
+                status_effect,
+                reaction.credit,
+                deeper,
+            );
+            Ok(())
+        }
+        Kind::Remove(status) => {
+            if tiles::remove(world, cell, status, deeper) {
+                Ok(())
+            } else {
+                Err(NO_STATUS)
+            }
+        }
+        Kind::Consume(def) => {
+            if tiles::consume(world, cell, &def.status, def.amount, deeper) {
+                Ok(())
+            } else {
+                Err(NO_STATUS)
+            }
+        }
+        Kind::Damage(damage) => tiles::damage(world, cell, damage.total()),
+        Kind::Spawn(prefab) => {
+            let at = cell.centre_in(world).ok_or(tiles::NO_MAP)?;
+            if !world.has_resource::<CommandBuffer>() {
+                return Err(NO_SPAWN);
+            }
+            let prepared = world.prepare_prefab(prefab, at).map_err(|_| NO_SPAWN)?;
+            world.resource_mut::<CommandBuffer>().spawn_prefab(prepared);
+            Ok(())
+        }
+        Kind::Emit(def) => {
+            tiles::emit_from_cell(
+                world,
+                cell,
+                Named::New(def.stimulus.clone()),
+                def.amount,
+                def.radius,
+                reaction.credit,
+                deeper,
+            );
+            Ok(())
+        }
+        Kind::SetTile(def) => tiles::set_tile(world, cell, &def.tile, def.revert),
+        Kind::Handler(_) => unreachable!("handlers run apart"),
     }
 }
 
