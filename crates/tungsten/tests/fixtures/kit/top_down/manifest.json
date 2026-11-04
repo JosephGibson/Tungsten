@@ -176,6 +176,15 @@
     },
     "cleaver": {
       "path": "prefabs/cleaver.json"
+    },
+    "stormcaller": {
+      "path": "prefabs/stormcaller.json"
+    },
+    "pylon": {
+      "path": "prefabs/pylon.json"
+    },
+    "frozen_pylon": {
+      "path": "prefabs/frozen_pylon.json"
     }
   },
   "data": {
@@ -187,6 +196,9 @@
     "tags": {
       "game": {
         "path": "data/tags.json"
+      },
+      "storm": {
+        "path": "data/storm_tags.json"
       }
     },
     "stats": {
@@ -300,6 +312,9 @@
       },
       "cinder": {
         "path": "data/abilities/cinder.json"
+      },
+      "chain_bolt": {
+        "path": "data/abilities/chain_bolt.json"
       }
     },
     "offers": {

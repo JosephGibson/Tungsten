@@ -1,0 +1,11 @@
+{
+  "tag": "stormcaller",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "abilities": [
+      "chain_bolt"
+    ]
+  }
+}

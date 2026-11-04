@@ -139,6 +139,7 @@ impl core::marker::UnsafeUnpin for tungsten_kit::Modifier
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Modifier
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Modifier
 #[non_exhaustive] pub enum tungsten_kit::prelude::Payload
+pub tungsten_kit::prelude::Payload::Conduct(alloc::boxed::Box<tungsten_kit::intent::ability::Conduct>)
 pub tungsten_kit::prelude::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
 pub tungsten_kit::prelude::Payload::Effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>)
 pub tungsten_kit::prelude::Payload::Hitbox(f32)
@@ -4300,6 +4301,7 @@ impl core::marker::UnsafeUnpin for tungsten_kit::OriginStep
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::OriginStep
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::OriginStep
 #[non_exhaustive] pub enum tungsten_kit::Payload
+pub tungsten_kit::Payload::Conduct(alloc::boxed::Box<tungsten_kit::intent::ability::Conduct>)
 pub tungsten_kit::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
 pub tungsten_kit::Payload::Effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>)
 pub tungsten_kit::Payload::Hitbox(f32)

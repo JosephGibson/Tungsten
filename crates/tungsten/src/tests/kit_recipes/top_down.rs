@@ -2994,3 +2994,51 @@ fn a_drop_rolls_onto_the_dead_brutes_centre() {
         );
     }
 }
+
+// 7.10c, Step 7: a chain bolt conducting along pylons (S-5).
+
+#[test]
+fn a_chain_bolt_jumps_three_conductors_and_ends_at_the_frozen_one() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let caller = spawn(&mut harness, "stormcaller", [8000.0, 8000.0]);
+        let pylons: Vec<Entity> = [100.0, 200.0, 300.0]
+            .map(|x| spawn(&mut harness, "pylon", [8000.0 + x, 8000.0]))
+            .into();
+        let frozen = spawn(&mut harness, "frozen_pylon", [8400.0, 8000.0]);
+        harness.step(1);
+        assert_eq!(
+            crate::kit::use_ability(harness.world_mut(), caller, "chain_bolt"),
+            crate::kit::Used::Used
+        );
+        // One strike a fixed step, each 0.7 of the last; read per step.
+        let mut struck = Vec::new();
+        let steps = (dt * 60.0).round() as u32;
+        for _ in 0..frames_for(0.25, dt) {
+            harness.step(1);
+            let mut this: Vec<(Entity, f32)> = harness
+                .events::<Damaged>()
+                .map(|hit| (hit.entity, hit.amount))
+                .collect();
+            this.sort_by_key(|&(entity, _)| entity.id());
+            struck.extend(this);
+        }
+        let amounts: Vec<f32> = struck.iter().map(|&(_, amount)| amount).collect();
+        assert_eq!(
+            struck.iter().map(|&(entity, _)| entity).collect::<Vec<_>>(),
+            pylons,
+            "dt {dt}: the three in order, one a step ({steps} a frame), none on the frozen"
+        );
+        for (got, want) in amounts.iter().zip([30.0, 21.0, 14.7]) {
+            assert!(
+                (got - want).abs() < 1e-3,
+                "dt {dt}: weaker each: {amounts:?}"
+            );
+        }
+        assert_eq!(
+            harness.world().get::<Health>(frozen).unwrap().current(),
+            100.0,
+            "dt {dt}: the frozen one ends it unstruck"
+        );
+    }
+}

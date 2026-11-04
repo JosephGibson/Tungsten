@@ -14,8 +14,10 @@ use tungsten_core::{
 };
 
 use crate::count_down;
+use crate::damage::defense::Resist;
 use crate::damage::effects::{EFFECTS, Effect, EffectRequest};
 use crate::damage::health::Health;
+use crate::damage::pipeline::{DamagePart, DamageRequest};
 use crate::foundation::describe::{
     ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER,
     TOP_DOWN, describe, describe_kind, describe_shape, round_trip,
@@ -62,6 +64,9 @@ const ABILITY_TARGET: &str = "ability_target";
 const ABILITY_PAYLOAD: &str = "ability_payload";
 const SPAWN_PAYLOAD: &str = "spawn_payload";
 const LOB: &str = "lob";
+const CONDUCT_PAYLOAD: &str = "conduct_payload";
+/// The most chains a World runs at once.
+const MAX_CHAINS: usize = 64;
 const SKILL: &str = "skill";
 const SKILL_BASES: &str = "skill_bases";
 const SKILL_LINE: &str = "skill_line";
@@ -177,6 +182,9 @@ pub enum Payload {
     /// Rays fanned about the direction, hitting and pushing what they meet,
     /// at once or as a widening front ([`Cone`]).
     Cone(Box<Cone>),
+    /// A strike on the target that jumps on, one receiver a step, weaker
+    /// each jump ([`Conduct`]); for a `nearest` or `random` target.
+    Conduct(Box<Conduct>),
     /// An effect queued on the target entity, from the entity.
     Effect(DataRef<Effect>),
     /// The entity pushed along the direction at this speed, through its
@@ -193,7 +201,7 @@ impl Payload {
             Payload::Spawn { speed, .. } => *speed > 0.0,
             Payload::SpawnWith(spawn) => spawn.speed > 0.0,
             Payload::Impulse(_) | Payload::Cone(_) => true,
-            Payload::Effect(_) | Payload::Hitbox(_) => false,
+            Payload::Effect(_) | Payload::Hitbox(_) | Payload::Conduct(_) => false,
         }
     }
 
@@ -816,8 +824,10 @@ impl Ability {
                 seconds.is_finite() && *seconds > 0.0,
                 "Ability::with_payload: a hitbox window must be finite and > 0 (got {seconds})"
             ),
-            // A spawn with options and a cone were checked by their builders.
-            Payload::SpawnWith(_) | Payload::Cone(_) | Payload::Effect(_) => {}
+            // A spawn with options, a cone and a conduction were checked by
+            // their builders.
+            Payload::SpawnWith(_) | Payload::Cone(_) | Payload::Conduct(_) | Payload::Effect(_) => {
+            }
         }
         self.payload.push(payload);
         self
@@ -939,6 +949,9 @@ impl Ability {
                 }
                 Payload::Effect(effect) => effect.check(world, &format!("payload.{i}.effect"))?,
                 Payload::Cone(cone) => cone.check(world, &format!("payload.{i}.cone"))?,
+                Payload::Conduct(conduct) => {
+                    conduct.check(world, &format!("payload.{i}.conduct"))?;
+                }
                 Payload::Impulse(_) | Payload::Hitbox(_) => {}
             }
         }
@@ -1259,6 +1272,7 @@ impl Default for TargetDef {
 enum PayloadDef {
     Spawn(SpawnDef),
     Cone(ConeDef),
+    Conduct(ConductDef),
     Effect(DataRef<Effect>),
     Impulse(#[serde(deserialize_with = "non_negative")] f32),
     Hitbox(#[serde(deserialize_with = "positive")] f32),
@@ -1338,6 +1352,16 @@ impl TryFrom<AbilityDef> for Ability {
                 "tags: `{name}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
             ));
         }
+        if let Some(i) = def
+            .payload
+            .iter()
+            .position(|payload| matches!(payload, PayloadDef::Conduct(_)))
+            && matches!(def.target, TargetDef::Itself(_) | TargetDef::Aim(_))
+        {
+            return Err(format!(
+                "payload.{i}.conduct: a conduction's first strike needs a `nearest` or `random` target"
+            ));
+        }
         if let Some(i) = def.payload.iter().position(|payload| {
             matches!(payload, PayloadDef::Spawn(spawn) if spawn.lob.is_some() && spawn.speed > 0.0)
         }) {
@@ -1403,6 +1427,9 @@ impl TryFrom<AbilityDef> for Ability {
                         offset: spawn.offset,
                     },
                     PayloadDef::Cone(cone) => Payload::Cone(Box::new(Cone::from(cone))),
+                    PayloadDef::Conduct(conduct) => {
+                        Payload::Conduct(Box::new(Conduct::from(conduct)))
+                    }
                     PayloadDef::Effect(effect) => Payload::Effect(effect),
                     PayloadDef::Impulse(speed) => Payload::Impulse(speed),
                     PayloadDef::Hitbox(seconds) => Payload::Hitbox(seconds),
@@ -1462,6 +1489,7 @@ impl From<Ability> for AbilityDef {
                         lob: None,
                     }),
                     Payload::Cone(cone) => PayloadDef::Cone(ConeDef::from(*cone)),
+                    Payload::Conduct(conduct) => PayloadDef::Conduct(ConductDef::from(*conduct)),
                     Payload::SpawnWith(spawn) => PayloadDef::Spawn(SpawnDef {
                         prefab: spawn.prefab,
                         speed: spawn.speed,
@@ -2091,12 +2119,323 @@ impl AbilityUsed {
     }
 }
 
+/// A conduction: a strike of `damage` on the use's target, which jumps on
+/// one receiver a step from its last receiver to the nearest live receiver
+/// within `reach`, centre to centre, not yet in the chain, ties by save
+/// order, its damage times `keep` each jump, at most `jumps` jumps. A
+/// receiver whose `Resist` factor for the damage's types is 0, or whose
+/// tags pass `stop`, takes no strike and ends it. Each strike is a damage
+/// request from the user at the receiver. A World runs at most 64 chains,
+/// a use past them striking its target alone, traced; chains are not
+/// saved, and one ends as soon as its user or its last receiver is gone or
+/// despawning. It is a [`Payload::Conduct`], for a `nearest` or `random`
+/// target, which the load checks.
+///
+/// Data form: `{ "damage": 30, "tags": ["damage.lightning"], "reach": 256,
+/// "keep": 0.7, "jumps": 6, "receivers": { "all": ["conductive"] },
+/// "stop": { "any": ["status.frozen"] } }`, `damage`, `reach` and
+/// `receivers` needed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Conduct {
+    damage: f32,
+    tags: Vec<String>,
+    reach: f32,
+    keep: f32,
+    jumps: u32,
+    receivers: TagFilter,
+    stop: TagFilter,
+}
+
+impl Conduct {
+    /// A conduction of `damage`, jumping within `reach` to the entities
+    /// whose tags pass `receivers`, keeping 0.7 a jump, six jumps at most.
+    ///
+    /// # Panics
+    ///
+    /// Unless `damage` is finite and at least 0, `reach` finite and above
+    /// 0, and `receivers` names an `all` or an `any` tag.
+    #[must_use]
+    #[track_caller]
+    pub fn new(damage: f32, reach: f32, receivers: TagFilter) -> Self {
+        assert!(
+            damage.is_finite() && damage >= 0.0,
+            "Conduct::new: damage must be finite and >= 0 (got {damage})"
+        );
+        assert!(
+            reach.is_finite() && reach > 0.0,
+            "Conduct::new: reach must be finite and > 0 (got {reach})"
+        );
+        assert!(
+            !receivers.matches(None),
+            "Conduct::new: the receivers' filter names no `all` or `any` tag"
+        );
+        Self {
+            damage,
+            tags: Vec::new(),
+            reach,
+            keep: 0.7,
+            jumps: 6,
+            receivers,
+            stop: TagFilter::new(),
+        }
+    }
+
+    /// The conduction, of the damage types `tags`.
+    #[must_use]
+    pub fn with_tags(mut self, tags: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.tags = tags.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// The conduction, keeping `share` of its damage each jump.
+    ///
+    /// # Panics
+    ///
+    /// Unless `share` is in (0, 1].
+    #[must_use]
+    #[track_caller]
+    pub fn with_keep(mut self, share: f32) -> Self {
+        assert!(
+            share > 0.0 && share <= 1.0,
+            "Conduct::with_keep: share must be in (0, 1] (got {share})"
+        );
+        self.keep = share;
+        self
+    }
+
+    /// The conduction, jumping at most `jumps` times.
+    #[must_use]
+    pub fn with_jumps(mut self, jumps: u32) -> Self {
+        self.jumps = jumps;
+        self
+    }
+
+    /// The conduction, ended at a receiver whose tags pass `stop`.
+    #[must_use]
+    pub fn with_stop(mut self, stop: TagFilter) -> Self {
+        self.stop = stop;
+        self
+    }
+
+    /// The load's check: its tags and its filters' names declared.
+    fn check(&self, world: &World, field: &str) -> Result<(), MissingAsset> {
+        for (i, tag) in self.tags.iter().enumerate() {
+            check_declared(world, &format!("{field}.tags.{i}"), tag)?;
+        }
+        for (list, filter) in [("receivers", &self.receivers), ("stop", &self.stop)] {
+            for (name_at, name) in filter_names(filter) {
+                check_declared(world, &format!("{field}.{list}.{name_at}"), &name)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A conduction as data writes it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, try_from = "ConductFields")]
+struct ConductDef {
+    damage: f32,
+    tags: Vec<String>,
+    reach: f32,
+    keep: f32,
+    jumps: u32,
+    receivers: TagFilter,
+    stop: TagFilter,
+}
+
+fn default_keep() -> f32 {
+    0.7
+}
+
+fn default_jumps() -> u32 {
+    6
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConductFields {
+    #[serde(deserialize_with = "non_negative")]
+    damage: f32,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(deserialize_with = "positive")]
+    reach: f32,
+    #[serde(default = "default_keep")]
+    keep: f32,
+    #[serde(default = "default_jumps")]
+    jumps: u32,
+    receivers: TagFilter,
+    #[serde(default)]
+    stop: TagFilter,
+}
+
+impl TryFrom<ConductFields> for ConductDef {
+    type Error = String;
+
+    fn try_from(fields: ConductFields) -> Result<Self, Self::Error> {
+        if !(fields.keep > 0.0 && fields.keep <= 1.0) {
+            return Err(format!("keep: must be in (0, 1] (got {})", fields.keep));
+        }
+        if fields.receivers.matches(None) {
+            return Err(
+                "receivers: names no `all` or `any` tag, so untagged entities would pass it"
+                    .to_string(),
+            );
+        }
+        if let Some(name) = fields.tags.iter().find(|name| !valid_tag(name)) {
+            return Err(format!(
+                "tags: `{name}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+            ));
+        }
+        Ok(Self {
+            damage: fields.damage,
+            tags: fields.tags,
+            reach: fields.reach,
+            keep: fields.keep,
+            jumps: fields.jumps,
+            receivers: fields.receivers,
+            stop: fields.stop,
+        })
+    }
+}
+
+impl From<ConductDef> for Conduct {
+    fn from(def: ConductDef) -> Self {
+        Self {
+            damage: def.damage,
+            tags: def.tags,
+            reach: def.reach,
+            keep: def.keep,
+            jumps: def.jumps,
+            receivers: def.receivers,
+            stop: def.stop,
+        }
+    }
+}
+
+impl From<Conduct> for ConductDef {
+    fn from(conduct: Conduct) -> Self {
+        Self {
+            damage: conduct.damage,
+            tags: conduct.tags,
+            reach: conduct.reach,
+            keep: conduct.keep,
+            jumps: conduct.jumps,
+            receivers: conduct.receivers,
+            stop: conduct.stop,
+        }
+    }
+}
+
+/// A conduction in flight: its user, its last receiver and every one it
+/// struck, its damage now, its jumps left and its rule.
+#[derive(Debug)]
+struct Chain {
+    user: Entity,
+    last: Entity,
+    chained: Vec<Entity>,
+    damage: f32,
+    jumps: u32,
+    conduct: Conduct,
+}
+
+/// The chains in flight, a World resource the first conduction inserts,
+/// which [`ABILITY_TICK`] jumps once each step; not saved.
+#[derive(Debug, Default)]
+struct Chains(Vec<Chain>);
+
+/// Strikes `receiver` for `damage` of `conduct`'s types from `user`, at its
+/// centre; false, with no strike, when it is immune to them or its tags
+/// pass the stop, which ends the chain.
+fn conduct_strike(
+    world: &mut World,
+    user: Entity,
+    receiver: Entity,
+    damage: f32,
+    conduct: &Conduct,
+) -> bool {
+    let types = Tags::new(conduct.tags.iter().map(String::as_str));
+    let immune = world
+        .get::<Resist>(receiver)
+        .is_some_and(|resist| !conduct.tags.is_empty() && resist.factor(&types) == 0.0);
+    let stopped = conduct.stop.matches(world.get::<Tags>(receiver)) && !conduct.stop.matches(None);
+    if immune || stopped {
+        return false;
+    }
+    let at = centre_of(world, receiver).unwrap_or_default();
+    DamageRequest::from_parts(receiver, [DamagePart::new(damage).with_tags(types)])
+        .with_source(user)
+        .with_position(at)
+        .queue(world);
+    true
+}
+
+/// Jumps each chain once: to the nearest live receiver within its reach of
+/// its last, not yet chained, ties by save order, striking it for its damage
+/// times its keep; a chain ends at its jumps, with no receiver in reach, at
+/// an immune or stopping receiver, or with its user or last receiver gone
+/// or despawning. A World with no chain does nothing.
+fn jump_chains(world: &mut World) {
+    let Some(chains) = world.get_resource_mut::<Chains>() else {
+        return;
+    };
+    if chains.0.is_empty() {
+        return;
+    }
+    let mut chains = std::mem::take(&mut chains.0);
+    chains.retain_mut(|chain| {
+        let gone = |entity: Entity| !world.is_alive(entity) || world.has::<Despawning>(entity);
+        if gone(chain.user) || gone(chain.last) {
+            return false;
+        }
+        let Some(from) = centre_of(world, chain.last) else {
+            return false;
+        };
+        let reach = chain.conduct.reach * chain.conduct.reach;
+        let order = order_of(world);
+        let next = world
+            .query::<(Entity, &Tags)>()
+            .filter(|(entity, tags)| {
+                chain.conduct.receivers.matches(Some(tags))
+                    && !chain.chained.contains(entity)
+                    && !world.has::<Despawning>(*entity)
+                    && !world.get::<Health>(*entity).is_some_and(Health::is_dead)
+            })
+            .filter_map(|(entity, _)| {
+                let distance = centre_of(world, entity)?.distance_squared(from);
+                (distance <= reach).then_some((entity, distance))
+            })
+            .min_by(|a, b| {
+                a.1.total_cmp(&b.1)
+                    .then_with(|| order.key(a.0).cmp(&order.key(b.0)))
+            })
+            .map(|(entity, _)| entity);
+        let Some(next) = next else {
+            return false;
+        };
+        chain.damage *= chain.conduct.keep;
+        if !conduct_strike(world, chain.user, next, chain.damage, &chain.conduct) {
+            return false;
+        }
+        chain.chained.push(next);
+        chain.last = next;
+        chain.jumps -= 1;
+        chain.jumps > 0
+    });
+    let list = world.resource_mut::<Chains>();
+    chains.append(&mut list.0);
+    list.0 = chains;
+}
+
 /// Why a use or a payload did not run, for the trace.
 const NO_COMMANDS: &str = "the World has no CommandBuffer";
 const NO_KNOCKBACK: &str = "the entity has no Knockback, or is dead";
 const NO_HITBOX: &str = "the entity has no Hitbox";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
 const NO_PREFAB: &str = "the prefab does not prepare";
+const NO_RECEIVER: &str = "a conduction needs a target other than its user";
+const TOO_MANY_CHAINS: &str = "64 chains run; this one strikes its target alone";
 
 /// Traces why `action` of the ability did not run on `entity`.
 fn skip(world: &mut World, entity: Entity, action: &'static str, why: &'static str) {
@@ -2488,6 +2827,34 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
                 let delivery = sheet.as_ref().map(|sheet| sheet.delivery.clone());
                 fire_cone(world, entity, along, cone, delivery);
             }
+            Payload::Conduct(conduct) => {
+                if target == entity {
+                    skip(world, entity, "conduct", NO_RECEIVER);
+                    continue;
+                }
+                if !conduct_strike(world, entity, target, conduct.damage, conduct) {
+                    continue;
+                }
+                if conduct.jumps == 0 {
+                    continue;
+                }
+                if !world.has_resource::<Chains>() {
+                    world.insert_resource(Chains::default());
+                }
+                let chains = world.resource_mut::<Chains>();
+                if chains.0.len() >= MAX_CHAINS {
+                    skip(world, entity, "conduct", TOO_MANY_CHAINS);
+                    continue;
+                }
+                chains.0.push(Chain {
+                    user: entity,
+                    last: target,
+                    chained: vec![target],
+                    damage: conduct.damage,
+                    jumps: conduct.jumps,
+                    conduct: (**conduct).clone(),
+                });
+            }
             Payload::Hitbox(seconds) => match world.get_mut::<Hitbox>(entity) {
                 Some(hitbox) => {
                     hitbox.arm_for(*seconds);
@@ -2533,6 +2900,9 @@ impl Ticker {
             .map_or(0.0, Time::delta)
             .max(0.0);
         widen(world, dt);
+        if dt > 0.0 {
+            jump_chains(world);
+        }
         self.scratch.begin();
         self.scratch.entities.clear();
         self.scratch.entities.extend(
@@ -2962,6 +3332,11 @@ fn describe_abilities(world: &mut World) {
                 FieldType::Shape(CONE_PAYLOAD),
                 "rays fanned about the direction from the entity's centre, hitting and pushing what they meet, at once or as a widening front",
             ))
+            .field(FieldDescription::new(
+                "conduct",
+                FieldType::Shape(CONDUCT_PAYLOAD),
+                "a strike on the target jumping on one receiver a step, weaker each jump; for a `nearest` or `random` target, which the load checks",
+            ))
             .sample(r#"{ "impulse": 600 }"#)
             .roundtrip(round_trip::<PayloadDef>),
         ComponentDescription::new(SPAWN_PAYLOAD, "A prefab spawned from the entity at its point.")
@@ -3029,6 +3404,71 @@ fn describe_abilities(world: &mut World) {
         ))
         .sample(r#"{ "speed": 600, "time": [0.3, 1.2] }"#)
         .roundtrip(round_trip::<LobDef>),
+        ComponentDescription::new(
+            CONDUCT_PAYLOAD,
+            "A strike on the use's target that jumps on, one receiver a step, from its last receiver to the nearest live receiver within reach, not yet struck, weaker each jump; an immune or stopping receiver ends it unstruck.",
+        )
+        .field(FieldDescription::new(
+            "damage",
+            FieldType::F32 {
+                min: Bound::Inclusive(0.0),
+                max: Bound::Open,
+            },
+            "the first strike's damage, a request from the user at the receiver",
+        ))
+        .field(
+            FieldDescription::new(
+                "tags",
+                FieldType::List(Box::new(FieldType::Tag)),
+                "the damage's types; a receiver whose `resist` factor for them is 0 ends it; the load checks each",
+            )
+            .default("[]"),
+        )
+        .field(FieldDescription::new(
+            "reach",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "world pixels a jump spans, centre to centre",
+        ))
+        .field(
+            FieldDescription::new(
+                "keep",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Inclusive(1.0),
+                },
+                "the share of its damage each jump keeps",
+            )
+            .default("0.7"),
+        )
+        .field(
+            FieldDescription::new(
+                "jumps",
+                FieldType::U32 {
+                    min: None,
+                    max: None,
+                },
+                "the most jumps after the first strike",
+            )
+            .default("6"),
+        )
+        .field(FieldDescription::new(
+            "receivers",
+            FieldType::Filter,
+            "what it jumps to, by tags; names an `all` or an `any` tag; the load checks its tags",
+        ))
+        .field(
+            FieldDescription::new(
+                "stop",
+                FieldType::Filter,
+                "a receiver whose tags pass it ends the chain unstruck; none by default",
+            )
+            .default("{}"),
+        )
+        .sample(r#"{ "damage": 30, "reach": 256, "receivers": { "all": ["conductive"] } }"#)
+        .roundtrip(round_trip::<ConductDef>),
     ];
     for shape in shapes {
         describe_shape(world, shape);

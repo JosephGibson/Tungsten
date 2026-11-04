@@ -338,6 +338,7 @@ shape ability_payload: One thing a use does.
   field impulse: f32 (>= 0) — world pixels per second the entity is pushed along the direction, through its knockback
   field hitbox: f32 (> 0) — seconds the entity's own hitbox is armed for
   field cone: shape cone_payload — rays fanned about the direction from the entity's centre, hitting and pushing what they meet, at once or as a widening front
+  field conduct: shape conduct_payload — a strike on the target jumping on one receiver a step, weaker each jump; for a `nearest` or `random` target, which the load checks
   sample: { "impulse": 600 }
 shape ability_target: What an ability aims at.
   exactly one of its fields
@@ -390,6 +391,15 @@ shape child: One child: its prefab and its offset from the parent.
   field prefab: prefab ID — what it spawns; the load checks the ID and refuses a prefab with a `rigid_body`
   field offset: [x, y] = [0.0, 0.0] — world pixels from the parent's position
   sample: { "prefab": "glow" }
+shape conduct_payload: A strike on the use's target that jumps on, one receiver a step, from its last receiver to the nearest live receiver within reach, not yet struck, weaker each jump; an immune or stopping receiver ends it unstruck.
+  field damage: f32 (>= 0) — the first strike's damage, a request from the user at the receiver
+  field tags: list of tag = [] — the damage's types; a receiver whose `resist` factor for them is 0 ends it; the load checks each
+  field reach: f32 (> 0) — world pixels a jump spans, centre to centre
+  field keep: f32 (> 0, <= 1) = 0.7 — the share of its damage each jump keeps
+  field jumps: u32 = 6 — the most jumps after the first strike
+  field receivers: tag filter — what it jumps to, by tags; names an `all` or an `any` tag; the load checks its tags
+  field stop: tag filter = {} — a receiver whose tags pass it ends the chain unstruck; none by default
+  sample: { "damage": 30, "reach": 256, "receivers": { "all": ["conductive"] } }
 shape cone_payload: Rays fanned about the use's direction from the user's centre, each to its first wall, a solid tile or a static body: the hurtboxes they meet hit once, the dynamic bodies pushed once, at once or as a widening front.
   field reach: f32 (> 0) — world pixels each ray runs, short of a wall
   field half_angle: f32 (> 0, <= 180) — degrees either side of the direction the rays fan across

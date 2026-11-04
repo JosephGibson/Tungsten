@@ -1,0 +1,33 @@
+{
+  "target": {
+    "nearest": {
+      "all": [
+        "conductive"
+      ],
+      "range": 300
+    }
+  },
+  "payload": [
+    {
+      "conduct": {
+        "damage": 30,
+        "tags": [
+          "elemental.lightning"
+        ],
+        "reach": 120,
+        "keep": 0.7,
+        "jumps": 6,
+        "receivers": {
+          "all": [
+            "conductive"
+          ]
+        },
+        "stop": {
+          "any": [
+            "status.frozen"
+          ]
+        }
+      }
+    }
+  ]
+}

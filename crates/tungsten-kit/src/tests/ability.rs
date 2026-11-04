@@ -1963,3 +1963,220 @@ fn a_lob_lands_on_the_aims_point_by_its_body_kind() {
     let error = still.check(&world).unwrap_err();
     assert_eq!(error.field, "payload.0.spawn.prefab", "{error:?}");
 }
+
+// 7.10c, Step 7: conduction.
+
+/// The filter of conductors.
+fn conductive() -> TagFilter {
+    TagFilter::new().all(["conductive"])
+}
+
+/// A conductor at `x, y` with 100 health and `more` tags.
+fn conductor(world: &mut World, x: f32, y: f32, more: &[&str]) -> Entity {
+    let mut tags = vec!["conductive"];
+    tags.extend_from_slice(more);
+    at(world, x, y, (Tags::new(tags), Health::new(100.0)))
+}
+
+/// A caster at the origin whose `zap` fires on the slot `zap`, conducting
+/// `conduct` from the nearest conductor.
+fn zapper(world: &mut World, conduct: Conduct) -> Entity {
+    let zap = insert(
+        world,
+        "zap",
+        Ability::new()
+            .with_trigger(Trigger::Action("zap".to_string()))
+            .with_target(AbilityTarget::Nearest {
+                filter: conductive(),
+                range: None,
+            })
+            .with_payload(Payload::Conduct(Box::new(conduct))),
+    );
+    at(
+        world,
+        0.0,
+        0.0,
+        (Abilities::new().with(zap), Intent::default()),
+    )
+}
+
+/// `count` steps, `zap` pressed on `caster` at the first when `press`:
+/// each step's damage, by target.
+fn zap_steps(
+    world: &mut World,
+    schedule: &mut Schedule,
+    caster: Entity,
+    count: usize,
+    press: bool,
+) -> Vec<Vec<(Entity, f32)>> {
+    (1..=count)
+        .map(|i| {
+            if world.is_alive(caster) {
+                world.get_mut::<Intent>(caster).unwrap().set_slot(
+                    "zap",
+                    press && i == 1,
+                    press && i == 1,
+                );
+            }
+            steps(world, schedule, 1);
+            world
+                .resource::<EventQueue<crate::Damaged>>()
+                .iter()
+                .map(|hit| (hit.entity, hit.amount))
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn a_conduction_jumps_to_the_nearest_unchained_receiver_one_a_step() {
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(
+        &mut world,
+        Conduct::new(32.0, 120.0, conductive()).with_keep(0.5),
+    );
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let near = conductor(&mut world, 150.0, 80.0, &[]);
+    let last = conductor(&mut world, 200.0, 0.0, &[]);
+    let away = conductor(&mut world, 900.0, 0.0, &[]);
+    assert_eq!(
+        zap_steps(&mut world, &mut schedule, caster, 5, true),
+        [
+            vec![(first, 32.0)],
+            vec![(near, 16.0)],
+            vec![(last, 8.0)],
+            vec![],
+            vec![],
+        ],
+        "the target, then 94 px on to the nearer, then the last, halving; none in reach after"
+    );
+    assert_eq!(world.get::<Health>(away).unwrap().current(), 100.0);
+    // Equally near, the lower in save order goes first.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(
+        &mut world,
+        Conduct::new(10.0, 120.0, conductive()).with_jumps(1),
+    );
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let lower = conductor(&mut world, 100.0, 90.0, &[]);
+    let higher = conductor(&mut world, 100.0, -90.0, &[]);
+    let struck = zap_steps(&mut world, &mut schedule, caster, 3, true);
+    assert_eq!(struck[1].len(), 1);
+    assert_eq!(struck[1][0].0, lower, "{struck:?}");
+    assert_eq!(world.get::<Health>(higher).unwrap().current(), 100.0);
+    let _ = first;
+}
+
+#[test]
+fn a_conduction_ends_at_an_immune_or_stopping_receiver_and_at_its_jumps() {
+    use crate::damage::defense::Resist;
+    let bolt = || {
+        Conduct::new(20.0, 120.0, conductive())
+            .with_tags(["damage.lightning"])
+            .with_stop(TagFilter::new().any(["status.frozen"]))
+    };
+    for case in ["immune", "frozen", "jumps"] {
+        let (mut world, mut schedule) = rig();
+        let conduct = if case == "jumps" {
+            bolt().with_jumps(1)
+        } else {
+            bolt()
+        };
+        let caster = zapper(&mut world, conduct);
+        let first = conductor(&mut world, 100.0, 0.0, &[]);
+        let second = match case {
+            "frozen" => conductor(&mut world, 200.0, 0.0, &["status.frozen"]),
+            _ => conductor(&mut world, 200.0, 0.0, &[]),
+        };
+        if case == "immune" {
+            world.insert(second, Resist::new().with_factor("damage.lightning", 0.0));
+        }
+        let third = conductor(&mut world, 300.0, 0.0, &[]);
+        let struck: Vec<Entity> = zap_steps(&mut world, &mut schedule, caster, 5, true)
+            .into_iter()
+            .flatten()
+            .map(|(entity, _)| entity)
+            .collect();
+        let expected = if case == "jumps" {
+            vec![first, second]
+        } else {
+            vec![first]
+        };
+        assert_eq!(struck, expected, "{case}");
+        assert_eq!(
+            world.get::<Health>(third).unwrap().current(),
+            100.0,
+            "{case}"
+        );
+    }
+    // A frozen target takes no strike at all.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(&mut world, bolt());
+    conductor(&mut world, 100.0, 0.0, &["status.frozen"]);
+    assert!(
+        zap_steps(&mut world, &mut schedule, caster, 3, true)
+            .iter()
+            .all(Vec::is_empty)
+    );
+    // The load refuses a conduction on a `self` or `aim` target.
+    for target in [json!({ "self": {} }), json!({ "aim": {} })] {
+        assert!(
+            serde_json::from_value::<Ability>(json!({
+                "target": target,
+                "payload": [{ "conduct": { "damage": 5, "reach": 100, "receivers": { "all": ["conductive"] } } }]
+            }))
+            .is_err()
+        );
+    }
+}
+
+/// What a restored entity takes, as a state's marker.
+#[derive(Debug, Clone, Copy)]
+struct Restored;
+
+#[test]
+fn a_chain_ends_when_its_user_or_last_receiver_goes() {
+    use tungsten_core::save::{capture_world, name, restore_world};
+    let bolt = || Conduct::new(20.0, 120.0, conductive());
+    for gone in ["user", "receiver"] {
+        let (mut world, mut schedule) = rig();
+        let caster = zapper(&mut world, bolt());
+        let first = conductor(&mut world, 100.0, 0.0, &[]);
+        let next = conductor(&mut world, 200.0, 0.0, &[]);
+        assert_eq!(
+            zap_steps(&mut world, &mut schedule, caster, 1, true),
+            [vec![(first, 20.0)]]
+        );
+        world.despawn(if gone == "user" { caster } else { first });
+        assert!(
+            zap_steps(&mut world, &mut schedule, caster, 4, false)
+                .iter()
+                .all(Vec::is_empty),
+            "{gone} gone: no strike after"
+        );
+        assert_eq!(world.get::<Health>(next).unwrap().current(), 100.0);
+    }
+    // A capture restored into the same World, as a load's new run.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(&mut world, bolt());
+    name(&mut world, caster, None, "caster").unwrap();
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let next = conductor(&mut world, 200.0, 0.0, &[]);
+    zap_steps(&mut world, &mut schedule, caster, 1, true);
+    let saved = capture_world(&world).unwrap();
+    world.despawn(caster);
+    let caster = zapper(&mut world, bolt());
+    name(&mut world, caster, None, "caster").unwrap();
+    restore_world(&mut world, &saved, &(Restored,)).unwrap();
+    for _ in 0..4 {
+        steps(&mut world, &mut schedule, 1);
+        assert!(
+            world
+                .resource::<EventQueue<crate::Damaged>>()
+                .iter()
+                .all(|hit| hit.entity != next),
+            "the chain ended with its run"
+        );
+    }
+    let _ = first;
+}
