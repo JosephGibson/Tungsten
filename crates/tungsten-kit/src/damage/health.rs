@@ -359,6 +359,9 @@ pub struct Damaged {
     /// The damage types of every part that landed, together; none for an
     /// untyped hit.
     pub kinds: DamageKinds,
+    /// What the target's [`Shield`](crate::Shield) took of `amount`; 0
+    /// without one. A hit it took whole has `absorbed` equal to `amount`.
+    pub absorbed: f32,
 }
 
 impl Damaged {
@@ -375,7 +378,21 @@ impl Damaged {
             crit: false,
             periodic: false,
             kinds: DamageKinds::NONE,
+            absorbed: 0.0,
         }
+    }
+
+    /// The event, the shield having taken `absorbed` of its amount.
+    #[must_use]
+    pub fn with_absorbed(mut self, absorbed: f32) -> Self {
+        self.absorbed = absorbed;
+        self
+    }
+
+    /// Its shield took it whole: health did not fall.
+    #[must_use]
+    pub fn is_absorbed(&self) -> bool {
+        self.absorbed > 0.0 && self.absorbed >= self.amount
     }
 
     /// The event, periodic when `periodic`.
@@ -689,8 +706,16 @@ pub fn damage(world: &mut World, target: Entity, amount: f32) -> Hit {
 /// but the lit shader mixes in the block's same colour and amount, so it
 /// flashes too (redo 7.9); a flashing sprite is a batch of its own.
 ///
+/// With [`with_min_interval`](HitFlash::with_min_interval), a start within
+/// that many seconds of game time of the last one, a hit's or a `flash`
+/// cue's, leaves the flash as it runs, the time counted by the tick, so a
+/// beam's rapid pulses flash once an interval and the sprite shows between;
+/// with [`with_shield`](HitFlash::with_shield), a hit the
+/// [`Shield`](crate::Shield) takes whole flashes the shield's colour.
+///
 /// Scene name `hit_flash`: `{ "color": [1, 1, 1, 1], "seconds": 0.1 }`,
-/// both optional with those defaults.
+/// both optional with those defaults, and `min_interval` (0) and `shield`
+/// (none).
 ///
 /// # Examples
 ///
@@ -739,6 +764,15 @@ pub fn damage(world: &mut World, target: Entity, amount: f32) -> Hit {
 pub struct HitFlash {
     color: [f32; 4],
     seconds: f32,
+    /// Game seconds a start waits after the last one; 0 for none.
+    min_interval: f32,
+    /// The colour of a hit the shield takes whole; `None` flashes `color`.
+    shield: Option<[f32; 4]>,
+    /// The colour the running flash shows.
+    showing: [f32; 4],
+    /// Game seconds since the last start, as the tick counts them, up to
+    /// the interval.
+    since: f32,
     left: f32,
     /// The first tick leaves the flash at full strength.
     fresh: bool,
@@ -779,11 +813,63 @@ impl HitFlash {
         Self {
             color,
             seconds,
+            min_interval: 0.0,
+            shield: None,
+            showing: color,
+            since: 0.0,
             left: 0.0,
             fresh: false,
             kept: None,
             missing: false,
         }
+    }
+
+    /// The flash, starting at most once per `seconds` of game time: a hit
+    /// or a `flash` cue within them of the last start leaves the flash as
+    /// it runs.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_min_interval(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds >= 0.0,
+            "HitFlash::with_min_interval: seconds must be finite and >= 0 (got {seconds})"
+        );
+        self.min_interval = seconds;
+        self.since = seconds;
+        self
+    }
+
+    /// The flash, showing `color` for a hit the entity's
+    /// [`Shield`](crate::Shield) takes whole.
+    ///
+    /// # Panics
+    ///
+    /// When a colour channel is not finite.
+    #[must_use]
+    #[track_caller]
+    pub fn with_shield(mut self, color: [f32; 4]) -> Self {
+        assert!(
+            color.iter().all(|channel| channel.is_finite()),
+            "HitFlash::with_shield: color must be finite (got {color:?})"
+        );
+        self.shield = Some(color);
+        self
+    }
+
+    /// The seconds a start waits after the last one; 0 for none.
+    #[must_use]
+    pub fn min_interval(&self) -> f32 {
+        self.min_interval
+    }
+
+    /// The colour a hit the shield takes whole flashes, if set.
+    #[must_use]
+    pub fn shield(&self) -> Option<[f32; 4]> {
+        self.shield
     }
 
     /// It is flashing.
@@ -796,6 +882,17 @@ impl HitFlash {
 /// Starts the flash on `target` when it has a [`HitFlash`] and a `Sprite`:
 /// a hit's, or a cue's `flash` action.
 pub(crate) fn start_flash(world: &mut World, target: Entity) {
+    start_flash_as(world, target, false);
+}
+
+/// Seconds a flash's interval may end early by and still pass, against the
+/// frames' sum.
+const INTERVAL_SLACK: f32 = 1e-4;
+
+/// Starts the flash on `target`, in its shield colour when `shielded`, a
+/// hit its [`Shield`](crate::Shield) took whole, unless its interval holds
+/// it.
+pub(crate) fn start_flash_as(world: &mut World, target: Entity, shielded: bool) {
     let Some(material_id) = world.get::<Sprite>(target).map(|sprite| sprite.material_id) else {
         return;
     };
@@ -811,6 +908,14 @@ pub(crate) fn start_flash(world: &mut World, target: Entity) {
     };
     let block = world.get::<UniformOverrideBlock>(target).copied();
     let flash = world.get_mut::<HitFlash>(target).unwrap();
+    if flash.min_interval > 0.0 && flash.since + INTERVAL_SLACK < flash.min_interval {
+        return;
+    }
+    flash.since = 0.0;
+    flash.showing = match flash.shield {
+        Some(shield) if shielded => shield,
+        _ => flash.color,
+    };
     if flash.kept.is_none() {
         flash.kept = Some(Kept {
             flash: flash_material,
@@ -820,7 +925,7 @@ pub(crate) fn start_flash(world: &mut World, target: Entity) {
     }
     flash.left = flash.seconds;
     flash.fresh = true;
-    let color = flash.color;
+    let color = flash.showing;
     world.get_mut::<Sprite>(target).unwrap().material_id = Some(flash_material);
     let mut block = block.unwrap_or_default();
     block.vec4[0] = color;
@@ -924,6 +1029,25 @@ impl Plugin for HealthPlugin {
                 )
                 .default("0.1"),
             )
+            .field(
+                FieldDescription::new(
+                    "min_interval",
+                    FieldType::F32 {
+                        min: Bound::Inclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "game seconds a start waits after the last one: a hit or a `flash` cue within them leaves the flash as it runs",
+                )
+                .default("0.0"),
+            )
+            .field(
+                FieldDescription::new(
+                    "shield",
+                    FieldType::Color,
+                    "the colour of a hit the entity's `shield` takes whole; `color` when left out",
+                )
+                .default("null"),
+            )
             .genre(TOP_DOWN)
             .genre(SHMUP)
             .sample("{}")
@@ -947,7 +1071,11 @@ impl Plugin for HealthPlugin {
             }
         });
         world.register_component_with(HIT_FLASH, |def: HitFlashDef, _: &SpawnContext<'_>| {
-            (HitFlash::new(def.color, def.seconds),)
+            let flash = HitFlash::new(def.color, def.seconds).with_min_interval(def.min_interval);
+            match def.shield {
+                Some(shield) => (flash.with_shield(shield),),
+                None => (flash,),
+            }
         });
         world.register_component_with_assets(
             RESIST,
@@ -1015,6 +1143,23 @@ struct HitFlashDef {
     color: [f32; 4],
     #[serde(default = "default_flash_seconds", deserialize_with = "positive")]
     seconds: f32,
+    #[serde(default, deserialize_with = "non_negative")]
+    min_interval: f32,
+    #[serde(default, deserialize_with = "optional_finite_color")]
+    shield: Option<[f32; 4]>,
+}
+
+/// An optional colour, each channel finite.
+fn optional_finite_color<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<[f32; 4]>, D::Error> {
+    let color = Option::<[f32; 4]>::deserialize(deserializer)?;
+    if color.is_some_and(|color| color.iter().any(|channel| !channel.is_finite())) {
+        return Err(serde::de::Error::custom(
+            "a colour's channels must be finite",
+        ));
+    }
+    Ok(color)
 }
 
 fn default_flash_color() -> [f32; 4] {
@@ -1075,6 +1220,9 @@ impl Flashes {
             Option<&mut UniformOverrideBlock>,
         )>() {
             missing |= std::mem::take(&mut flash.missing);
+            if flash.since < flash.min_interval {
+                flash.since = (flash.since + dt).min(flash.min_interval);
+            }
             let Some(kept) = flash.kept else {
                 continue;
             };
@@ -1088,7 +1236,7 @@ impl Flashes {
                     sprite.material_id = Some(kept.flash);
                 }
                 if let Some(block) = block {
-                    block.vec4[0] = flash.color;
+                    block.vec4[0] = flash.showing;
                     block.f32s[0] = flash.left / flash.seconds;
                 }
                 continue;

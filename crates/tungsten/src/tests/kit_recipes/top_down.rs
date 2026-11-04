@@ -18,8 +18,9 @@
 //! lamp a bucket's water douses for 3 s, and a bomb whose fuse ends in a
 //! blast among crates and a target; 7.10p's practice dummy, whose burn's
 //! ticks and a blow pass a rule's `periodic` apart, and a campfire whose
-//! crackle loops by a listener following the hero past it, and a storm
-//! whose recipe system plays the `thunder` world cue each second.
+//! crackle loops by a listener following the hero past it, a storm whose
+//! recipe system plays the `thunder` world cue each second, and a
+//! shield-bearer whose whole blocks flash the shield's colour.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -1110,6 +1111,35 @@ fn a_storms_thunder_world_cue_strikes_each_second_by_its_falloff() {
         assert!(
             shakes.iter().all(|&trauma| (trauma - 0.48).abs() < 1e-5),
             "dt {dt}: 200 px off, near 100, far 600: {shakes:?}"
+        );
+    }
+}
+
+#[test]
+fn a_shieldbearers_whole_blocks_flash_its_shield_colour_until_it_breaks() {
+    use tungsten_core::UniformOverrideBlock;
+
+    const BLUE: [f32; 4] = [0.25, 0.5, 1.0, 1.0];
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let bearer = spawn(&mut harness, "shieldbearer", [100.0, 100.0]);
+        harness.step(1);
+        let mut seen = Vec::new();
+        for _ in 0..3 {
+            damage(harness.world_mut(), bearer, 20.0);
+            harness.step(1);
+            let world = harness.world();
+            seen.push((
+                world.get::<UniformOverrideBlock>(bearer).unwrap().vec4[0],
+                world.resource::<Counters>().get("blocked"),
+                world.get::<Health>(bearer).unwrap().current(),
+            ));
+            harness.step(frames_for(0.3, dt));
+        }
+        assert_eq!(
+            seen,
+            [(BLUE, 1, 100.0), (BLUE, 2, 100.0), ([1.0; 4], 2, 90.0)],
+            "dt {dt}: two whole blocks, then the shield breaks under the third"
         );
     }
 }

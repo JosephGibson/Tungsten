@@ -1579,7 +1579,7 @@ mod filters {
 
     use crate::damage::effects::{EffectRequest, EffectsPlugin, end_effect};
     use crate::foundation::trace::KitTrace;
-    use crate::{CountersPlugin, Health, HealthPlugin, StatsPlugin, damage};
+    use crate::{CountersPlugin, Damaged, Health, HealthPlugin, StatsPlugin, damage};
 
     /// The cue rig with time, a command buffer, a trace, stats, health,
     /// counters and effects, and the game event `rang`.
@@ -1922,6 +1922,47 @@ mod filters {
             .collect();
         puffs.sort_by(|a, b| a.x.total_cmp(&b.x));
         assert_eq!(puffs, [Vec2::new(3.0, 4.0), Vec2::new(12.0, -7.0)]);
+    }
+
+    #[test]
+    fn damaged_says_what_the_shield_took() {
+        use crate::Shield;
+
+        let (mut world, mut schedule) = rig();
+        insert_rules(
+            &mut world,
+            json!([
+                { "on": "damaged", "absorbed": true, "do": count("blocked") },
+                { "on": "damaged", "absorbed": false, "do": count("hurt") }
+            ]),
+        );
+        let knight = world.spawn_with((Health::new(100.0), Shield::new(50.0)));
+        let squire = world.spawn_with((Health::new(100.0),));
+        let absorbed = |world: &World| -> Vec<f32> {
+            world
+                .resource::<EventQueue<Damaged>>()
+                .iter_current()
+                .map(|event| event.absorbed)
+                .collect()
+        };
+        damage(&mut world, knight, 30.0);
+        assert_eq!(absorbed(&world), [30.0], "the whole hit");
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!((game(&world, "blocked"), game(&world, "hurt")), (1, 0));
+        damage(&mut world, knight, 80.0);
+        damage(&mut world, squire, 5.0);
+        assert_eq!(
+            absorbed(&world),
+            [20.0, 0.0],
+            "20 of the 80; none without a shield"
+        );
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!((game(&world, "blocked"), game(&world, "hurt")), (1, 2));
+        let error = load_error(
+            &mut world,
+            json!([{ "on": "killed", "absorbed": true, "do": [] }]),
+        );
+        assert!(error.ends_with("at 0.absorbed"), "{error}");
     }
 
     #[test]

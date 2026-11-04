@@ -1,5 +1,8 @@
 {
   "prefabs": {
+    "shieldbearer": {
+      "path": "prefabs/shieldbearer.json"
+    },
     "campfire": {
       "path": "prefabs/campfire.json"
     },
@@ -183,6 +186,9 @@
       }
     },
     "cue_rules": {
+      "wards": {
+        "path": "data/cue_rules/wards.json"
+      },
       "ticks": {
         "path": "data/cue_rules/ticks.json"
       },

@@ -1,0 +1,15 @@
+{
+  "sprite": {
+    "asset_id": "turret"
+  },
+  "tag": "turret",
+  "components": {
+    "health": {
+      "max": 1000
+    },
+    "hit_flash": {
+      "seconds": 0.12,
+      "min_interval": 0.5
+    }
+  }
+}

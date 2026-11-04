@@ -1267,6 +1267,7 @@ impl core::marker::UnsafeUnpin for tungsten_kit::DamageRequest
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DamageRequest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DamageRequest
 #[non_exhaustive] pub struct tungsten_kit::prelude::Damaged
+pub tungsten_kit::prelude::Damaged::absorbed: f32
 pub tungsten_kit::prelude::Damaged::amount: f32
 pub tungsten_kit::prelude::Damaged::crit: bool
 pub tungsten_kit::prelude::Damaged::entity: tungsten_core::ecs::entity::Entity
@@ -1276,7 +1277,9 @@ pub tungsten_kit::prelude::Damaged::periodic: bool
 pub tungsten_kit::prelude::Damaged::position: core::option::Option<glam::f32::vec2::Vec2>
 pub tungsten_kit::prelude::Damaged::source: core::option::Option<tungsten_core::ecs::entity::Entity>
 impl tungsten_kit::Damaged
+pub fn tungsten_kit::Damaged::is_absorbed(&self) -> bool
 pub fn tungsten_kit::Damaged::new(tungsten_core::ecs::entity::Entity, f32, bool) -> Self
+pub fn tungsten_kit::Damaged::with_absorbed(self, f32) -> Self
 pub fn tungsten_kit::Damaged::with_crit(self, bool) -> Self
 pub fn tungsten_kit::Damaged::with_kinds(self, tungsten_kit::DamageKinds) -> Self
 pub fn tungsten_kit::Damaged::with_periodic(self, bool) -> Self
@@ -1881,7 +1884,11 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HierarchyPlugin
 pub struct tungsten_kit::prelude::HitFlash
 impl tungsten_kit::HitFlash
 pub fn tungsten_kit::HitFlash::is_active(&self) -> bool
+pub fn tungsten_kit::HitFlash::min_interval(&self) -> f32
 pub fn tungsten_kit::HitFlash::new([f32; 4], f32) -> Self
+pub fn tungsten_kit::HitFlash::shield(&self) -> core::option::Option<[f32; 4]>
+pub fn tungsten_kit::HitFlash::with_min_interval(self, f32) -> Self
+pub fn tungsten_kit::HitFlash::with_shield(self, [f32; 4]) -> Self
 impl core::clone::Clone for tungsten_kit::HitFlash
 pub fn tungsten_kit::HitFlash::clone(&self) -> tungsten_kit::HitFlash
 impl core::fmt::Debug for tungsten_kit::HitFlash
@@ -5419,6 +5426,7 @@ impl core::marker::UnsafeUnpin for tungsten_kit::DamageRequest
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DamageRequest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DamageRequest
 #[non_exhaustive] pub struct tungsten_kit::Damaged
+pub tungsten_kit::Damaged::absorbed: f32
 pub tungsten_kit::Damaged::amount: f32
 pub tungsten_kit::Damaged::crit: bool
 pub tungsten_kit::Damaged::entity: tungsten_core::ecs::entity::Entity
@@ -5428,7 +5436,9 @@ pub tungsten_kit::Damaged::periodic: bool
 pub tungsten_kit::Damaged::position: core::option::Option<glam::f32::vec2::Vec2>
 pub tungsten_kit::Damaged::source: core::option::Option<tungsten_core::ecs::entity::Entity>
 impl tungsten_kit::Damaged
+pub fn tungsten_kit::Damaged::is_absorbed(&self) -> bool
 pub fn tungsten_kit::Damaged::new(tungsten_core::ecs::entity::Entity, f32, bool) -> Self
+pub fn tungsten_kit::Damaged::with_absorbed(self, f32) -> Self
 pub fn tungsten_kit::Damaged::with_crit(self, bool) -> Self
 pub fn tungsten_kit::Damaged::with_kinds(self, tungsten_kit::DamageKinds) -> Self
 pub fn tungsten_kit::Damaged::with_periodic(self, bool) -> Self
@@ -6080,7 +6090,11 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HierarchyPlugin
 pub struct tungsten_kit::HitFlash
 impl tungsten_kit::HitFlash
 pub fn tungsten_kit::HitFlash::is_active(&self) -> bool
+pub fn tungsten_kit::HitFlash::min_interval(&self) -> f32
 pub fn tungsten_kit::HitFlash::new([f32; 4], f32) -> Self
+pub fn tungsten_kit::HitFlash::shield(&self) -> core::option::Option<[f32; 4]>
+pub fn tungsten_kit::HitFlash::with_min_interval(self, f32) -> Self
+pub fn tungsten_kit::HitFlash::with_shield(self, [f32; 4]) -> Self
 impl core::clone::Clone for tungsten_kit::HitFlash
 pub fn tungsten_kit::HitFlash::clone(&self) -> tungsten_kit::HitFlash
 impl core::fmt::Debug for tungsten_kit::HitFlash

@@ -386,9 +386,10 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 141,
+        checked, 142,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
-         four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's"
+         four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, and \
+         the hit flash's interval"
     );
 }
 

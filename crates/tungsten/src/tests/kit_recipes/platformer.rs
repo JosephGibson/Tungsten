@@ -15,8 +15,9 @@
 //! fire chars, and a powder keg whose blast chars the crate beside it;
 //! 7.10p's balls whose hard impacts spark under a rule's amount and
 //! interval, charges whose blasts shake by their distance from a listener
-//! following the hero, and a crate whose break a recipe system plays as
-//! the `crate_break` world cue.
+//! following the hero, a crate whose break a recipe system plays as the
+//! `crate_break` world cue, and a turret under rapid fire whose flash
+//! waits its interval.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1840,5 +1841,49 @@ fn a_crates_break_plays_its_world_cue_at_its_point() {
             1,
             "dt {dt}: once"
         );
+    }
+}
+
+// 7.10p: the hit flash's interval.
+
+#[test]
+fn a_turret_under_rapid_fire_flashes_once_an_interval() {
+    use tungsten_core::{MaterialRegistry, Sprite};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let turret = spawn(&mut harness, "turret", [0.0, 0.0]);
+        harness.step(1);
+        let flash = harness
+            .world()
+            .resource::<MaterialRegistry>()
+            .get("damage_flash")
+            .unwrap();
+        // A blow every 0.1 s for 2 s.
+        let every = frames_for(0.1, dt);
+        let frames = frames_for(2.0, dt);
+        let (mut starts, mut off, mut was) = (Vec::new(), 0, false);
+        for frame in 0..frames {
+            if frame % every == 0 {
+                damage(harness.world_mut(), turret, 1.0);
+            }
+            harness.step(1);
+            let on = harness.world().get::<Sprite>(turret).unwrap().material_id == Some(flash);
+            if on && !was {
+                starts.push(frame as f32 * dt);
+            }
+            off += u32::from(!on);
+            was = on;
+        }
+        let expected = [0.0, 0.5, 1.0, 1.5];
+        assert_eq!(starts.len(), 4, "dt {dt}: {starts:?}");
+        assert!(
+            starts
+                .iter()
+                .zip(expected)
+                .all(|(at, want)| (at - want).abs() < 1e-3),
+            "dt {dt}: {starts:?}"
+        );
+        assert!(off * 2 >= frames, "dt {dt}: off {off} of {frames} frames");
     }
 }

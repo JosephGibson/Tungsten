@@ -126,6 +126,8 @@ component health: Health with an invulnerability window after each hit, which `d
 component hit_flash: A flash of colour on the sprite when `damage` hits the entity, through the `damage_flash` material.
   field color: [r, g, b, a] = [1.0, 1.0, 1.0, 1.0] — the flash's colour; its alpha weighs the mix
   field seconds: f32 (> 0) = 0.1 — how long the flash fades over
+  field min_interval: f32 (>= 0) = 0.0 — game seconds a start waits after the last one: a hit or a `flash` cue within them leaves the flash as it runs
+  field shield: [r, g, b, a] = null — the colour of a hit the entity's `shield` takes whole; `color` when left out
   genres: top_down, shmup
   sample: {}
 component hitbox: Hits the hurtboxes its shape meets over each step, each target once per activation, through the damage pipeline.
@@ -423,6 +425,7 @@ shape cue_rule: A shared reaction: on an event, for each subject whose tags pass
   field effect: text = null — an `effects` entry ID, which the load checks; `effect_applied` and `effect_expired` only
   field fresh: bool = null — `true` passes a new instance or an instant effect's landing, `false` a stack or a refresh; `effect_applied` only
   field ended: bool = null — `false` passes an instance that ran out, `true` one ended early; `effect_expired` only
+  field absorbed: bool = null — `true` passes a hit the shield took whole, `false` one that hurt; `damaged` only
   field min_interval: f32 (>= 0) = 0.0 — game seconds the rule waits for a subject once it ran for it
   field cap: u32 (>= 1) = null — the rule's runs a step at most
   field do: list of shape cue_action — the actions, in order

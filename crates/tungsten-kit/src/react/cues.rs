@@ -1607,7 +1607,8 @@ pub(crate) struct Occurrence {
     pub(crate) other: Option<Entity>,
     /// A damage event's kinds: a part's, or a hit's parts' together.
     pub(crate) kinds: DamageKinds,
-    /// Its flags, packed: [`PERIODIC`], [`CRIT`], [`FRESH`] and [`ENDED`].
+    /// Its flags, packed: [`PERIODIC`], [`CRIT`], [`FRESH`], [`ENDED`] and
+    /// [`ABSORBED`].
     pub(crate) bits: u8,
     /// An effect event's entry: an index into the step's effect IDs, or
     /// [`NO_EFFECT`].
@@ -1623,6 +1624,8 @@ pub(crate) const CRIT: u8 = 1 << 1;
 pub(crate) const FRESH: u8 = 1 << 2;
 /// An `effect_expired` occurrence's bit: ended before its time.
 pub(crate) const ENDED: u8 = 1 << 3;
+/// A `damaged` occurrence's bit: the shield took the hit whole.
+pub(crate) const ABSORBED: u8 = 1 << 4;
 /// An occurrence's effect when it names no entry.
 pub(crate) const NO_EFFECT: u16 = u16::MAX;
 
@@ -1896,6 +1899,8 @@ struct CueRuleDef {
     fresh: Option<bool>,
     #[serde(default)]
     ended: Option<bool>,
+    #[serde(default)]
+    absorbed: Option<bool>,
     #[serde(default, deserialize_with = "non_negative")]
     min_interval: f32,
     #[serde(default, deserialize_with = "positive_cap")]
@@ -2110,6 +2115,7 @@ struct CueRule {
     effect: Option<String>,
     fresh: Option<bool>,
     ended: Option<bool>,
+    absorbed: Option<bool>,
     /// Game seconds per subject between runs; 0 for none.
     min_interval: f32,
     /// Runs a step at most.
@@ -2131,6 +2137,7 @@ impl CueRule {
         bit(self.periodic, PERIODIC)
             && bit(self.fresh, FRESH)
             && bit(self.ended, ENDED)
+            && bit(self.absorbed, ABSORBED)
             && self
                 .amount
                 .is_none_or(|range| range.passes(occurrence.amount))
@@ -2176,6 +2183,7 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                 effect: rule.effect,
                 fresh: rule.fresh,
                 ended: rule.ended,
+                absorbed: rule.absorbed,
                 min_interval: rule.min_interval,
                 cap: rule.cap,
                 actions: rule.actions.into(),
@@ -2220,6 +2228,9 @@ fn check_rule_list(rules: &CueRules, world: &World) -> Result<(), MissingAsset> 
         }
         if rule.ended.is_some() && event.name != EFFECT_EXPIRED {
             return refuse("ended", "cue event with an ended instance");
+        }
+        if rule.absorbed.is_some() && event.name != DAMAGED {
+            return refuse("absorbed", "cue event with a shield's take");
         }
         for (field, name) in rule.kind.names() {
             check_type(world, &format!("{i}.kind.{field}"), name, true)?;
@@ -2411,7 +2422,8 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// `effect_applied`, `true` passing a new instance or an instant effect's
 /// landing and `false` a stack or a refresh; and `ended` on
 /// `effect_expired`, `false` passing an instance that ran out and `true`
-/// one ended early. Its limits come last, so an occurrence a filter turns
+/// one ended early; and `absorbed` on `damaged`, `true` passing a hit the
+/// [`Shield`](crate::Shield) took whole and `false` one that hurt. Its limits come last, so an occurrence a filter turns
 /// away spends neither: `min_interval`, the game seconds a rule waits for a
 /// subject once it ran for it, and `cap`, its runs a step at most. A held
 /// rule is traced as skipped; the limits are the cue system's, unsaved. The
@@ -3457,7 +3469,8 @@ impl Reactor {
                     amount: Some(event.amount),
                     other: event.source,
                     kinds: event.kinds,
-                    bits: damage_bits(event.periodic, event.crit),
+                    bits: damage_bits(event.periodic, event.crit)
+                        | (u8::from(event.is_absorbed()) * ABSORBED),
                     ..Occurrence::new(DAMAGED, event.entity, position)
                 };
                 occurrences.push(hit);
@@ -4129,6 +4142,14 @@ fn describe_cues(world: &mut World) {
                 "ended",
                 FieldType::Bool,
                 "`false` passes an instance that ran out, `true` one ended early; `effect_expired` only",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "absorbed",
+                FieldType::Bool,
+                "`true` passes a hit the shield took whole, `false` one that hurt; `damaged` only",
             )
             .default("null"),
         )

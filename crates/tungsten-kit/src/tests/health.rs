@@ -468,7 +468,89 @@ fn a_hit_on_a_shield_still_starts_the_window_and_sends_damaged() {
     ));
     assert_eq!(damage(&mut world, target, 2.0), Hit::Absorbed);
     assert!(world.get::<Health>(target).unwrap().is_invulnerable());
-    assert_eq!(sent(&world), [Damaged::new(target, 2.0, false)]);
+    assert_eq!(
+        sent(&world),
+        [Damaged::new(target, 2.0, false).with_absorbed(2.0)],
+        "the shield took it whole"
+    );
     let queue = world.resource::<EventQueue<Damaged>>();
     assert_eq!(queue.iter().count(), 1);
+}
+
+// 7.10p: the flash's interval and the shield's take.
+
+#[test]
+fn a_flash_waits_its_interval() {
+    for (interval, starts_every) in [(0.5, 30), (0.0, 6)] {
+        let (mut world, mut schedule, flash_material, _) = flash_rig();
+        let flash = HitFlash::new([1.0; 4], 0.12).with_min_interval(interval);
+        let target = world.spawn_with((
+            Health::new(1000.0),
+            flash,
+            Sprite::new(SpriteAssetId::new(0)),
+        ));
+        // A blow every 0.1 s for 2 s, at frames of 1/60 s.
+        let (mut starts, mut off) = (Vec::new(), 0);
+        for frame in 0..120 {
+            if frame % 6 == 0 {
+                damage(&mut world, target, 1.0);
+                if world.get::<HitFlash>(target).unwrap().fresh {
+                    starts.push(frame);
+                }
+            }
+            post_update(&mut world, &mut schedule, STEP);
+            if world.get::<Sprite>(target).unwrap().material_id != Some(flash_material) {
+                off += 1;
+            }
+        }
+        let expected: Vec<i32> = (0..120).step_by(starts_every).collect();
+        assert_eq!(starts, expected, "interval {interval}");
+        if interval > 0.0 {
+            assert!(
+                off >= 60,
+                "off {off} of 120 frames: the sprite shows between"
+            );
+        } else {
+            assert_eq!(off, 0, "every blow restarts it, as before");
+        }
+    }
+}
+
+#[test]
+fn a_whole_shield_hit_flashes_its_shield_colour() {
+    const WHITE: [f32; 4] = [1.0; 4];
+    const BLUE: [f32; 4] = [0.25, 0.5, 1.0, 1.0];
+    for shield_colour in [Some(BLUE), None] {
+        let (mut world, mut schedule, _, _) = flash_rig();
+        let mut flash = HitFlash::new(WHITE, 0.1);
+        if let Some(colour) = shield_colour {
+            flash = flash.with_shield(colour);
+        }
+        let knight = world.spawn_with((
+            Health::new(100.0),
+            Shield::new(50.0),
+            flash,
+            Sprite::new(SpriteAssetId::new(0)),
+        ));
+        let shown = |world: &World| world.get::<UniformOverrideBlock>(knight).unwrap().vec4[0];
+        assert_eq!(damage(&mut world, knight, 30.0), Hit::Absorbed);
+        assert_eq!(
+            world.get::<Health>(knight).unwrap().current(),
+            100.0,
+            "whole"
+        );
+        assert_eq!(shown(&world), shield_colour.unwrap_or(WHITE));
+        post_update(&mut world, &mut schedule, STEP);
+        assert_eq!(
+            shown(&world),
+            shield_colour.unwrap_or(WHITE),
+            "the tick keeps it"
+        );
+        for _ in 0..12 {
+            post_update(&mut world, &mut schedule, STEP);
+        }
+        damage(&mut world, knight, 80.0);
+        assert_eq!(world.get::<Health>(knight).unwrap().current(), 40.0);
+        assert_eq!(shown(&world), WHITE, "a hit that hurt");
+    }
 }

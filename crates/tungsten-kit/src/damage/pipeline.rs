@@ -10,7 +10,7 @@ use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{Entity, EventQueue, World};
 
 use crate::damage::defense::{Resist, Shield};
-use crate::damage::health::{Damaged, DamagedPart, Health, Hit, ImmunePart, start_flash};
+use crate::damage::health::{Damaged, DamagedPart, Health, Hit, ImmunePart, start_flash_as};
 use crate::damage::kinds::{
     Conversion, ConversionRule, DamageKinds, DamageTypeTable, Penetration, merge_types,
 };
@@ -1825,10 +1825,10 @@ fn resolve(
     let kinds = landed
         .iter()
         .fold(DamageKinds::NONE, |kinds, part| kinds.union(part.kinds));
-    let rest = match world.get_mut::<Shield>(target) {
-        Some(shield) => amount - shield.take(amount),
-        None => amount,
-    };
+    let absorbed = world
+        .get_mut::<Shield>(target)
+        .map_or(0.0, |shield| shield.take(amount));
+    let rest = amount - absorbed;
     let killed = world
         .get_mut::<Health>(target)
         .unwrap()
@@ -1839,7 +1839,7 @@ fn resolve(
         keep(world, Some(notes));
     }
     if !request.is_periodic() {
-        start_flash(world, target);
+        start_flash_as(world, target, absorbed > 0.0 && rest <= 0.0);
     }
     if world.has_event::<DamagedPart>() {
         let queue = world.resource_mut::<EventQueue<DamagedPart>>();
@@ -1864,7 +1864,8 @@ fn resolve(
         let mut event = Damaged::new(target, amount, killed)
             .with_crit(crit)
             .with_periodic(request.is_periodic())
-            .with_kinds(kinds);
+            .with_kinds(kinds)
+            .with_absorbed(absorbed);
         if let Some(source) = request.source {
             event = event.with_source(source);
         }

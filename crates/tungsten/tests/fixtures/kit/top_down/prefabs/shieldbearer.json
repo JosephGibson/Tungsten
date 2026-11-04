@@ -1,0 +1,31 @@
+{
+  "sprite": {
+    "asset_id": "knight"
+  },
+  "tag": "shieldbearer",
+  "components": {
+    "health": {
+      "max": 100
+    },
+    "shield": {
+      "max": 50
+    },
+    "hit_flash": {
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "shield": [
+        0.25,
+        0.5,
+        1,
+        1
+      ]
+    },
+    "tags": [
+      "warded"
+    ]
+  }
+}
