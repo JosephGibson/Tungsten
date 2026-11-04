@@ -399,13 +399,15 @@ shape cue_action: One reaction to an event.
   field flag: shape flag_action — a flag set or cleared
   field despawn: shape despawn_action — the subject or the other despawned with its children, after the step's spawns
   field sound: shape sound_action — a manifest sound played at its volume
-  field shake: f32 (>= 0) — camera trauma added
+  field shake: shape shake_action — camera trauma added, falling off from the cue listener with `near` and `far`; a number alone reads as `{ "trauma": .. }`
   field squash: one of on_land | on_hit | on_pickup | manual — the subject's squash armed for this trigger
   field flash: shape flash_action — the subject's hit flash started
   field label: shape label_action — the event's amount floated at its position in a `label_style`; on `damaged_part`, without a font, in its type's, grouped by `merge`, `ticks` and `crit`
   field roll: loot_tables ID or entry — a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject; the load checks its IDs
   field effect: shape effect_action — an effect queued on the subject from the event's other entity, or on the other from the subject; an ID alone reads as `{ "id": .. }`
   field ability: shape ability_action — the subject's or the other's ability used now, or made ready; a name alone reads as `{ "name": .. }`
+  field loop: shape loop_action — the subject wants a manifest sound looping: one voice per sound at its loudest want by the cue listener
+  field stop: shape stop_action — the subject's want of a looping sound ends; the last one's voice fades out
   sample: { "despawn": {} }
 shape cue_amount: A rule's range over an occurrence's amount, each end inclusive and optional.
   field min: f32 = null — the least amount that passes
@@ -551,6 +553,11 @@ shape label_ticks: A type label's periodic parts: summed on their own over its w
   field size: f32 (> 0) — UI units tall
   field kind: tag filter = {} — the periodic parts it takes by their damage kinds, each a declared damage type or an ancestor of one
   sample: { "size": 10 }
+shape loop_action: A manifest sound the subject wants looping: one voice per sound ID, at the loudest of its wants, each its volume times the cue listener's gain at its wanter, panned toward that one; unsaved.
+  field id: text — the manifest sound; the load checks the ID
+  field volume: f32 (>= 0) = 1.0 — the want's share of the sound's volume
+  field fade: f32 (>= 0) = 0.1 — seconds the voice rises over when this want starts it
+  sample: { "id": "crackle" }
 shape modifier: A change to a value: added to the base, added to the percentage factor, multiplied, or replaced.
   exactly one of its fields
   field add: f32 — added to the base
@@ -592,6 +599,11 @@ shape set_tile_output: A tile cell written: the first tileset entry with a sprit
   field tile: text — the sprite ID; a map whose tileset lacks it changes nothing
   field revert: f32 (> 0) = null — seconds until the old tile comes back, kept per map cell and saved; a later write on the cell since drops it
   sample: { "tile": "ash" }
+shape shake_action: Camera trauma added: whole within `near` of the cue listener, falling linearly to none at `far`; whole without a listener or a `far`.
+  field trauma: f32 (>= 0) — camera trauma added
+  field near: f32 (>= 0) = 0.0 — world pixels from the listener within which it is whole
+  field far: f32 (> 0) = null — world pixels from the listener at which it is none; above `near`
+  sample: { "trauma": 0.3 }
 shape skill: An ability's skill sheet: its bases, the curves its level reads them through, and its skill-local lines.
   field bases: shape skill_bases = { "damage": {}, "crit_chance": null, "cost": null, "cooldown": null } — the sheet's own values before any line
   field levels: base (`damage`, `crit_chance`, `cost` or `cooldown`) → curves ID = {} — each read at the skill's level, its owner's entry's plus `add` lines on `skill_level`, 1 to 40; a damage range scaled about its midpoint to the curve's value
@@ -634,6 +646,10 @@ shape stat_modifier: A modifier on one of the target's stats.
   field while: tag filter = null — read only while it passes the target's own tags, in a read that takes a context; the load checks its tags
   field against: tag filter = null — read only at a hit whose other party's tags pass it; the load checks its tags
   sample: { "stat": "move_speed", "modifier": { "pct": -0.2 } }
+shape stop_action: The subject's want of a looping sound ended; the sound's last want fades its voice out.
+  field id: text — the manifest sound; the load checks the ID
+  field fade: f32 (>= 0) = 0.1 — seconds the voice fades out over when this was its last want
+  sample: { "id": "crackle" }
 shape target: What an item follows, circles, steers toward or aims at, resolved again each step.
   exactly one of its fields
   field source: {} — the entity's `Source`: the origin of the spawn chain it came from

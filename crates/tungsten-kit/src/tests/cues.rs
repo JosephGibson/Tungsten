@@ -1933,3 +1933,374 @@ mod filters {
         );
     }
 }
+
+/// 7.10p's listener: following, panning, a shake's falloff and loops.
+mod listening {
+    use super::*;
+    use tungsten_core::{AudioCommand, Stage};
+
+    use crate::foundation::trace::KitTrace;
+
+    /// A game event about an entity: `rang` plays a cue, `hushed` stops a
+    /// loop.
+    struct Rang(Entity);
+    struct Hushed(Entity);
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn rang(event: &Rang) -> Option<CueEvent> {
+        Some(CueEvent::of(event.0))
+    }
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn hushed(event: &Hushed) -> Option<CueEvent> {
+        Some(CueEvent::of(event.0))
+    }
+
+    /// The cue rig with time, a trace, audio, the shake queue and the game
+    /// events `rang` and `hushed`.
+    fn rig() -> (World, Schedule) {
+        let (mut world, _) = super::rig();
+        world.insert_resource(Time::new());
+        world.insert_resource(CommandBuffer::new());
+        world.insert_resource(KitTrace::default());
+        world.insert_resource(AudioCommands::new());
+        world.register_event::<ShakeEvent>();
+        let mut schedule = Schedule::new();
+        CuesPlugin.build(&mut schedule, &mut world);
+        CuesOnEvent::<Rang>::new("rang", rang).build(&mut schedule, &mut world);
+        CuesOnEvent::<Hushed>::new("hushed", hushed).build(&mut schedule, &mut world);
+        schedule.resolve().unwrap();
+        (world, schedule)
+    }
+
+    fn step(world: &mut World, schedule: &mut Schedule) {
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+        let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+        world.flush_reusing(&mut commands);
+        world.insert_resource(commands);
+        world.flush_events();
+    }
+
+    fn ring(world: &mut World, entity: Entity) {
+        world.resource_mut::<EventQueue<Rang>>().send(Rang(entity));
+    }
+
+    fn hush(world: &mut World, entity: Entity) {
+        world
+            .resource_mut::<EventQueue<Hushed>>()
+            .send(Hushed(entity));
+    }
+
+    /// A command as the tests read it.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    enum Heard {
+        Play {
+            volume: f32,
+            looping: bool,
+            fade: f32,
+            pan: f32,
+        },
+        Volume(f32),
+        Pan(f32),
+        Stop(f32),
+        Other,
+    }
+
+    fn heard(world: &mut World) -> Vec<Heard> {
+        world
+            .resource_mut::<AudioCommands>()
+            .drain()
+            .into_iter()
+            .map(|command| match command {
+                AudioCommand::Play {
+                    volume,
+                    looping,
+                    fade,
+                    pan,
+                    ..
+                } => Heard::Play {
+                    volume,
+                    looping,
+                    fade,
+                    pan: pan.get(),
+                },
+                AudioCommand::SetVoiceVolume { volume, .. } => Heard::Volume(volume),
+                AudioCommand::SetVoicePan { pan, .. } => Heard::Pan(pan.get()),
+                AudioCommand::StopVoice { fade, .. } => Heard::Stop(fade),
+                _ => Heard::Other,
+            })
+            .collect()
+    }
+
+    /// `pan` as a command carries it, to the nearest 1/16,384.
+    fn quantized(pan: f32) -> f32 {
+        tungsten_core::audio::Pan::new(pan).get()
+    }
+
+    fn at(world: &mut World, x: f32, cues: Cues) -> Entity {
+        world.spawn_with((Position(Vec2::new(x, 0.0)), cues))
+    }
+
+    #[test]
+    fn the_listener_follows_its_entity() {
+        let (mut world, mut schedule) = rig();
+        let hero = world.spawn_with((Position(Vec2::new(400.0, 0.0)),));
+        world.insert_resource(CueListener::new(10.0, 100.0).following(hero));
+        let bell = at(
+            &mut world,
+            900.0,
+            Cues::new().on("rang", [CueAction::sound("blip")]),
+        );
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(400.0, 0.0)
+        );
+        // Moved before the step's occurrences: a cue at the hero's new
+        // place is heard whole.
+        world.get_mut::<Position>(hero).unwrap().0 = Vec2::new(900.0, 0.0);
+        ring(&mut world, bell);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            heard(&mut world),
+            [Heard::Play {
+                volume: 1.0,
+                looping: false,
+                fade: 0.0,
+                pan: 0.0
+            }]
+        );
+        world.despawn(hero);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(900.0, 0.0),
+            "a gone entity leaves it"
+        );
+    }
+
+    #[test]
+    fn a_panned_listener_pans_cue_sounds() {
+        let (mut world, mut schedule) = rig();
+        world.insert_resource(CueListener::new(1000.0, 2000.0).with_pan(200.0));
+        let blip = || Cues::new().on("rang", [CueAction::sound("blip")]);
+        let left = at(&mut world, -100.0, blip());
+        let right = at(&mut world, 300.0, blip());
+        ring(&mut world, left);
+        ring(&mut world, right);
+        step(&mut world, &mut schedule);
+        let pans: Vec<f32> = heard(&mut world)
+            .into_iter()
+            .map(|heard| match heard {
+                Heard::Play { pan, .. } => pan,
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(pans, [-0.5, 1.0]);
+        // Without a pan width, the commands are today's byte for byte.
+        let (mut world, mut schedule) = rig();
+        world.insert_resource(CueListener::new(1000.0, 2000.0));
+        let left = at(&mut world, -100.0, blip());
+        ring(&mut world, left);
+        step(&mut world, &mut schedule);
+        let handle = world.resource::<SoundRegistry>().get_by_id("blip").unwrap();
+        let mut today = AudioCommands::new();
+        today.play_with(handle, 1.0, false);
+        assert_eq!(world.resource_mut::<AudioCommands>().drain(), today.drain());
+    }
+
+    fn shakes(world: &World) -> Vec<f32> {
+        world
+            .resource::<EventQueue<ShakeEvent>>()
+            .iter()
+            .map(|shake| shake.trauma_add)
+            .collect()
+    }
+
+    #[test]
+    fn a_shake_falls_off_from_the_listener() {
+        let (mut world, mut schedule) = rig();
+        world.insert_resource(CueListener::new(10.0, 100.0));
+        let blast = || Cues::new().on("rang", [CueAction::shake(0.8).with_falloff(100.0, 500.0)]);
+        let near = at(&mut world, 50.0, blast());
+        let middle = at(&mut world, 300.0, blast());
+        let far = at(&mut world, 600.0, blast());
+        for entity in [near, middle, far] {
+            ring(&mut world, entity);
+        }
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+        assert_eq!(shakes(&world), [0.8, 0.4], "whole, half, none");
+        world.flush_events();
+        world.flush_events();
+        world.remove_resource::<CueListener>();
+        ring(&mut world, far);
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+        assert_eq!(shakes(&world), [0.8], "whole with no listener");
+        let number: CueAction = serde_json::from_value(json!({ "shake": 0.5 })).unwrap();
+        assert_eq!(number, CueAction::shake(0.5));
+        assert_eq!(
+            serde_json::to_value(&number).unwrap(),
+            json!({ "shake": 0.5 })
+        );
+        let falloff: CueAction =
+            serde_json::from_value(json!({ "shake": { "trauma": 0.8, "near": 100, "far": 500 } }))
+                .unwrap();
+        assert_eq!(falloff, CueAction::shake(0.8).with_falloff(100.0, 500.0));
+        for bad in [
+            json!({ "shake": { "trauma": 0.8, "near": 500, "far": 100 } }),
+            json!({ "shake": { "trauma": -1 } }),
+            json!({ "shake": -1 }),
+        ] {
+            assert!(
+                serde_json::from_value::<CueAction>(bad.clone()).is_err(),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_loop_follows_its_subject_and_stops() {
+        let (mut world, mut schedule) = rig();
+        world.insert_resource(CueListener::new(100.0, 500.0));
+        let quiet = world.spawn();
+        for _ in 0..60 {
+            ring(&mut world, quiet);
+            step(&mut world, &mut schedule);
+        }
+        assert!(heard(&mut world).is_empty(), "no loop, no audio command");
+        let brazier = at(
+            &mut world,
+            0.0,
+            Cues::new()
+                .on(
+                    "rang",
+                    [CueAction::looping("blip"), CueAction::looping("blip")],
+                )
+                .on("hushed", [CueAction::stop_loop("blip").with_fade(0.5)]),
+        );
+        ring(&mut world, brazier);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            heard(&mut world),
+            [Heard::Play {
+                volume: 1.0,
+                looping: true,
+                fade: 0.1,
+                pan: 0.0
+            }],
+            "one voice from two loops"
+        );
+        // Away from the listener, the voice follows the gain; under 1/64
+        // no command goes.
+        world.get_mut::<Position>(brazier).unwrap().0.x = 300.0;
+        step(&mut world, &mut schedule);
+        assert_eq!(heard(&mut world), [Heard::Volume(0.25)]);
+        world.get_mut::<Position>(brazier).unwrap().0.x = 301.0;
+        step(&mut world, &mut schedule);
+        assert!(heard(&mut world).is_empty(), "under 1/64");
+        world.get_mut::<Position>(brazier).unwrap().0.x = 460.0;
+        step(&mut world, &mut schedule);
+        assert_eq!(heard(&mut world), [Heard::Volume(0.010_000_004)]);
+        world.get_mut::<Position>(brazier).unwrap().0.x = 600.0;
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            heard(&mut world),
+            [Heard::Volume(0.0)],
+            "to 0, though under 1/64"
+        );
+        hush(&mut world, brazier);
+        step(&mut world, &mut schedule);
+        assert_eq!(heard(&mut world), [Heard::Stop(0.5)], "its stop's fade");
+        // Despawned, its want lets go over 0.1 s.
+        ring(&mut world, brazier);
+        step(&mut world, &mut schedule);
+        assert_eq!(heard(&mut world).len(), 1);
+        world.despawn(brazier);
+        step(&mut world, &mut schedule);
+        assert_eq!(heard(&mut world), [Heard::Stop(0.1)]);
+        assert!(world.resource::<CueLoops>().is_idle());
+    }
+
+    #[test]
+    fn subjects_share_a_sounds_voice() {
+        let (mut world, mut schedule) = rig();
+        let handle = world.resource::<SoundRegistry>().get_by_id("blip").unwrap();
+        world
+            .resource_mut::<SoundRegistry>()
+            .set_max_voices(handle, 1);
+        world.insert_resource(CueListener::new(100.0, 500.0).with_pan(200.0));
+        let looper = |volume: f32| {
+            Cues::new()
+                .on("rang", [CueAction::looping("blip").with_volume(volume)])
+                .on("hushed", [CueAction::stop_loop("blip")])
+        };
+        let near = at(&mut world, -40.0, looper(0.5));
+        let far = at(&mut world, 600.0, looper(1.0));
+        ring(&mut world, near);
+        ring(&mut world, far);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            heard(&mut world),
+            [
+                Heard::Play {
+                    volume: 0.5,
+                    looping: true,
+                    fade: 0.1,
+                    pan: 0.0
+                },
+                Heard::Pan(quantized(-0.2))
+            ],
+            "one voice: the want of 1 past hearing, the 0.5 at the listener heard"
+        );
+        // The near one comes loud: the voice follows it, panned to it.
+        world.get_mut::<Position>(far).unwrap().0.x = 200.0;
+        step(&mut world, &mut schedule);
+        assert_eq!(heard(&mut world), [Heard::Volume(0.5625), Heard::Pan(1.0)]);
+        // The louder's stop hands the voice to the other, no new play.
+        hush(&mut world, far);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            heard(&mut world),
+            [Heard::Volume(0.5), Heard::Pan(quantized(-0.2))]
+        );
+        hush(&mut world, near);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            heard(&mut world),
+            [Heard::Stop(0.1)],
+            "the last stop fades it"
+        );
+    }
+
+    /// What a restored spawn takes, as a state's marker.
+    #[derive(Debug, Clone, Copy)]
+    struct Marker;
+
+    #[test]
+    fn a_new_run_ends_the_old_runs_loops() {
+        use tungsten_core::save::{self, capture_world, restore_world};
+
+        let (mut world, mut schedule) = rig();
+        let fire = || Cues::new().on("rang", [CueAction::looping("blip")]);
+        let brazier = at(&mut world, 0.0, fire());
+        save::name(&mut world, brazier, None, "brazier").unwrap();
+        ring(&mut world, brazier);
+        step(&mut world, &mut schedule);
+        assert_eq!(heard(&mut world).len(), 1, "playing at the capture");
+        let saved = capture_world(&world).unwrap();
+        // The run ends and a new one spawns; the capture goes back on it.
+        world.despawn(brazier);
+        let again = at(&mut world, 0.0, fire());
+        save::name(&mut world, again, None, "brazier").unwrap();
+        restore_world(&mut world, &saved, &(Marker,)).unwrap();
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            heard(&mut world),
+            [Heard::Stop(0.1)],
+            "the old voice fades out"
+        );
+    }
+}

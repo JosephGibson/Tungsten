@@ -11,9 +11,9 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use tungsten_core::physics::Position;
 use tungsten_core::{
-    AudioCommands, CommandBuffer, DataRef, DataRegistry, Entity, EventCursor, EventQueue,
-    Inspectable, MissingAsset, Plugin, Schedule, ShakeEvent, SoundRegistry, SpawnContext,
-    SquashEvent, SquashTrigger, Time, Transform, World, system,
+    AudioCommands, AudioHandle, CommandBuffer, DataRef, DataRegistry, Entity, EventCursor,
+    EventQueue, Inspectable, MissingAsset, Plugin, Schedule, ShakeEvent, SoundRegistry,
+    SpawnContext, SquashEvent, SquashTrigger, Time, Transform, Voice, World, system,
 };
 
 use crate::damage::effects::{EFFECTS, Effect, EffectApplied, EffectExpired, EffectRequest};
@@ -25,11 +25,11 @@ use crate::foundation::describe::{
     describe, describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
-use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::rng::{KIT_RNG, KitRng};
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
+use crate::foundation::{non_negative, optional_positive};
 use crate::intent::ability::{Abilities, AbilityUsed, Used, use_ability};
 use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
@@ -242,13 +242,15 @@ impl Cues {
 /// | flag | `{ "flag": { "name": "has_key", "set": true, "target": "other" } }`; `set` true by default |
 /// | despawn | `{ "despawn": {} }`, or `{ "despawn": { "target": "other" } }` |
 /// | sound | `{ "sound": { "id": "blip", "min_interval": 0.1 } }`, at most once per interval of game time per sound |
-/// | shake | `{ "shake": 0.3 }`, camera trauma added |
+/// | shake | `{ "shake": 0.3 }`, camera trauma added, or `{ "shake": { "trauma": 0.3, "near": 100, "far": 500 } }`, whole within `near` of the [`CueListener`] and falling to none at `far` |
 /// | squash | `{ "squash": "on_hit" }`, the subject's squash trigger |
 /// | flash | `{ "flash": {} }`, the subject's [`HitFlash`](crate::HitFlash) |
 /// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label; on `damaged_part`, `{ "label": {} }` floats it in its type's style, `merge`, `ticks` and `crit` grouping a target's numbers ([`type_label`](CueAction::type_label)) |
 /// | roll | `{ "roll": "slime_drops" }`, a `loot_tables` entry or the [`WeightedTable`] in place: each prefab drawn spawned at the event's position from the subject |
 /// | effect | `{ "effect": "burning" }`, or `{ "effect": { "id": "burning", "target": "other" } }`, an `effects` entry or the [`Effect`] in place under `id`, queued on the subject from the event's other entity, or on the other from the subject |
 /// | ability | `{ "ability": "wand" }`, or `{ "ability": { "name": "wand", "op": "refill", "target": "other" } }`, the named ability of the subject or the other used now (`op` `use`), or made ready with every charge (`refill`) |
+/// | loop | `{ "loop": { "id": "crackle", "volume": 1.0, "fade": 0.1 } }`, the subject wants the sound looping: one voice per sound ID at its loudest want by the [`CueListener`] |
+/// | stop | `{ "stop": { "id": "crackle", "fade": 0.1 } }`, the subject's want of the loop ends; the last one's voice fades out |
 ///
 /// # Examples
 ///
@@ -290,7 +292,12 @@ pub(crate) enum ActionKind {
         id: String,
         min_interval: f32,
     },
-    Shake(f32),
+    /// Trauma, whole within the falloff's near of the listener and none
+    /// from its far.
+    Shake {
+        trauma: f32,
+        falloff: Option<(f32, f32)>,
+    },
     Squash(SquashTrigger),
     Flash,
     /// `None`: a `damaged_part`'s amount in its type's style.
@@ -306,6 +313,19 @@ pub(crate) enum ActionKind {
         name: String,
         refill: bool,
         target: Target,
+    },
+    /// The subject wants sound `id` looping at `volume`, its voice rising
+    /// over `fade` when it starts.
+    Loop {
+        id: String,
+        volume: f32,
+        fade: f32,
+    },
+    /// The subject's want of sound `id` ends, its voice fading over `fade`
+    /// when it was the last.
+    Stop {
+        id: String,
+        fade: f32,
     },
 }
 
@@ -480,7 +500,129 @@ impl CueAction {
             trauma.is_finite() && trauma >= 0.0,
             "CueAction::shake: trauma must be finite and >= 0 (got {trauma})"
         );
-        Self::of(ActionKind::Shake(trauma))
+        Self::of(ActionKind::Shake {
+            trauma,
+            falloff: None,
+        })
+    }
+
+    /// The shake, falling off from the World's [`CueListener`]: whole within
+    /// `near` of it, falling linearly to none at `far`; whole without a
+    /// listener. Data form
+    /// `{ "shake": { "trauma": 0.8, "near": 100, "far": 500 } }`.
+    ///
+    /// ```
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let blast = CueAction::shake(0.75).with_falloff(100.0, 500.0);
+    /// assert_eq!(
+    ///     serde_json::to_value(&blast).unwrap(),
+    ///     serde_json::json!({ "shake": { "trauma": 0.75, "near": 100.0, "far": 500.0 } })
+    /// );
+    /// // The number form stays a number.
+    /// assert_eq!(serde_json::to_value(CueAction::shake(0.5)).unwrap(), serde_json::json!({ "shake": 0.5 }));
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// When the action is not a `shake`, or unless `0 <= near < far`, both
+    /// finite.
+    #[must_use]
+    #[track_caller]
+    pub fn with_falloff(mut self, near: f32, far: f32) -> Self {
+        assert!(
+            near.is_finite() && far.is_finite() && 0.0 <= near && near < far,
+            "CueAction::with_falloff: needs finite distances with 0 <= near < far (got {near} and {far})"
+        );
+        let name = self.name();
+        match &mut self.kind {
+            ActionKind::Shake { falloff, .. } => *falloff = Some((near, far)),
+            _ => panic!("CueAction::with_falloff: a `{name}` action shakes nothing"),
+        }
+        self
+    }
+
+    /// The subject wants manifest sound `id` looping, at its volume: the kit
+    /// plays one voice per looping sound ID, rising over 0.1 s as its first
+    /// want starts it, at the loudest of its wants, each its volume times
+    /// the [`CueListener`]'s gain at its wanter, panned toward that one,
+    /// and fading out over its last want's [`stop_loop`](Self::stop_loop)
+    /// fade, or over 0.1 s once its wanters are gone or despawning. Wants
+    /// are unsaved. Data form `{ "loop": { "id": "crackle" } }`, with
+    /// `volume` and `fade`.
+    ///
+    /// ```
+    /// use tungsten_kit::{CueAction, Cues};
+    ///
+    /// let fire = Cues::new()
+    ///     .on("effect_applied", [CueAction::looping("crackle").with_volume(0.5)])
+    ///     .on("effect_expired", [CueAction::stop_loop("crackle").with_fade(0.5)]);
+    /// let data = serde_json::to_value(&fire).unwrap();
+    /// assert_eq!(data["effect_applied"][0]["loop"]["volume"], serde_json::json!(0.5));
+    /// let back: Cues = serde_json::from_value(data.clone()).unwrap();
+    /// assert_eq!(back, fire);
+    /// assert_eq!(data["effect_expired"][0], serde_json::json!({ "stop": { "id": "crackle", "fade": 0.5 } }));
+    /// ```
+    #[must_use]
+    pub fn looping(id: impl Into<String>) -> Self {
+        Self::of(ActionKind::Loop {
+            id: id.into(),
+            volume: 1.0,
+            fade: LOOP_FADE,
+        })
+    }
+
+    /// Ends the subject's want of looping sound `id`; the sound's last want
+    /// fades its voice out over 0.1 s.
+    #[must_use]
+    pub fn stop_loop(id: impl Into<String>) -> Self {
+        Self::of(ActionKind::Stop {
+            id: id.into(),
+            fade: LOOP_FADE,
+        })
+    }
+
+    /// The loop, at `volume` times its sound's.
+    ///
+    /// # Panics
+    ///
+    /// When the action is not a `loop`, or `volume` is not finite and at
+    /// least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_volume(mut self, volume: f32) -> Self {
+        assert!(
+            volume.is_finite() && volume >= 0.0,
+            "CueAction::with_volume: volume must be finite and >= 0 (got {volume})"
+        );
+        let name = self.name();
+        match &mut self.kind {
+            ActionKind::Loop { volume: at, .. } => *at = volume,
+            _ => panic!("CueAction::with_volume: a `{name}` action loops nothing"),
+        }
+        self
+    }
+
+    /// The loop's voice rising over `seconds` as it starts, or the stop's
+    /// fading over them.
+    ///
+    /// # Panics
+    ///
+    /// When the action is not a `loop` or a `stop`, or `seconds` is not
+    /// finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_fade(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds >= 0.0,
+            "CueAction::with_fade: seconds must be finite and >= 0 (got {seconds})"
+        );
+        let name = self.name();
+        match &mut self.kind {
+            ActionKind::Loop { fade, .. } | ActionKind::Stop { fade, .. } => *fade = seconds,
+            _ => panic!("CueAction::with_fade: a `{name}` action fades nothing"),
+        }
+        self
     }
 
     /// Arms the subject's squash for `trigger`.
@@ -642,8 +784,8 @@ impl CueAction {
     }
 
     /// The action's data name: `prefab`, `counter`, `flag`, `despawn`,
-    /// `sound`, `shake`, `squash`, `flash`, `label`, `roll`, `effect` or
-    /// `ability`.
+    /// `sound`, `shake`, `squash`, `flash`, `label`, `roll`, `effect`,
+    /// `ability`, `loop` or `stop`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self.kind {
@@ -652,13 +794,15 @@ impl CueAction {
             ActionKind::Flag { .. } => "flag",
             ActionKind::Despawn(_) => "despawn",
             ActionKind::Sound { .. } => "sound",
-            ActionKind::Shake(_) => "shake",
+            ActionKind::Shake { .. } => "shake",
             ActionKind::Squash(_) => "squash",
             ActionKind::Flash => "flash",
             ActionKind::Label(_) | ActionKind::PartLabel(_) => "label",
             ActionKind::Roll(_) => "roll",
             ActionKind::Effect { .. } => "effect",
             ActionKind::Ability { .. } => "ability",
+            ActionKind::Loop { .. } => "loop",
+            ActionKind::Stop { .. } => "stop",
         }
     }
 }
@@ -688,14 +832,96 @@ pub(crate) enum CueActionDef {
     Flag(FlagDef),
     Despawn(DespawnDef),
     Sound(SoundDef),
-    Shake(#[serde(deserialize_with = "non_negative")] f32),
+    Shake(ShakeDef),
     Squash(SquashName),
     Flash(FlashDef),
     Label(LabelDef),
     Roll(DataRef<WeightedTable>),
     Effect(EffectActionDef),
     Ability(AbilityActionDef),
+    Loop(LoopDef),
+    Stop(StopDef),
 }
+
+/// A `shake` action as data writes it: the trauma alone, or an object of
+/// `trauma` and the falloff's `near` and `far`; written back as the number
+/// without a falloff.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum ShakeDef {
+    Trauma(#[serde(deserialize_with = "non_negative")] f32),
+    Falloff(ShakeObject),
+}
+
+/// The object form of a `shake` action: `near` 0 by default; `far`, when
+/// set, above `near`.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, try_from = "ShakeFields")]
+pub(crate) struct ShakeObject {
+    trauma: f32,
+    near: f32,
+    far: Option<f32>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ShakeFields {
+    #[serde(deserialize_with = "non_negative")]
+    trauma: f32,
+    #[serde(default, deserialize_with = "non_negative")]
+    near: f32,
+    #[serde(default, deserialize_with = "optional_positive")]
+    far: Option<f32>,
+}
+
+impl TryFrom<ShakeFields> for ShakeObject {
+    type Error = String;
+
+    fn try_from(fields: ShakeFields) -> Result<Self, Self::Error> {
+        if let Some(far) = fields.far
+            && fields.near >= far
+        {
+            return Err(format!("near {} must be below far {far}", fields.near));
+        }
+        Ok(Self {
+            trauma: fields.trauma,
+            near: fields.near,
+            far: fields.far,
+        })
+    }
+}
+
+/// A `loop` action as data writes it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LoopDef {
+    id: String,
+    #[serde(default = "full", deserialize_with = "non_negative")]
+    volume: f32,
+    #[serde(default = "loop_fade", deserialize_with = "non_negative")]
+    fade: f32,
+}
+
+/// A `stop` action as data writes it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StopDef {
+    id: String,
+    #[serde(default = "loop_fade", deserialize_with = "non_negative")]
+    fade: f32,
+}
+
+fn full() -> f32 {
+    1.0
+}
+
+fn loop_fade() -> f32 {
+    LOOP_FADE
+}
+
+/// Seconds a loop's voice rises over as it starts, and falls over as it
+/// stops, by default.
+const LOOP_FADE: f32 = 0.1;
 
 /// A `counter` action as data writes it: exactly one of `add` and `set`.
 #[derive(Serialize, Deserialize)]
@@ -1027,7 +1253,14 @@ impl TryFrom<CueActionDef> for CueAction {
                 id: def.id,
                 min_interval: def.min_interval,
             },
-            CueActionDef::Shake(trauma) => ActionKind::Shake(trauma),
+            CueActionDef::Shake(ShakeDef::Trauma(trauma)) => ActionKind::Shake {
+                trauma,
+                falloff: None,
+            },
+            CueActionDef::Shake(ShakeDef::Falloff(shake)) => ActionKind::Shake {
+                trauma: shake.trauma,
+                falloff: shake.far.map(|far| (shake.near, far)),
+            },
             CueActionDef::Squash(name) => ActionKind::Squash(name.into()),
             CueActionDef::Flash(FlashDef {}) => ActionKind::Flash,
             CueActionDef::Label(LabelDef(style, None)) => ActionKind::Label(style),
@@ -1041,6 +1274,15 @@ impl TryFrom<CueActionDef> for CueAction {
                 name: def.name,
                 refill: def.op == AbilityOp::Refill,
                 target: def.target.into(),
+            },
+            CueActionDef::Loop(def) => ActionKind::Loop {
+                id: def.id,
+                volume: def.volume,
+                fade: def.fade,
+            },
+            CueActionDef::Stop(def) => ActionKind::Stop {
+                id: def.id,
+                fade: def.fade,
             },
         };
         Ok(Self { kind })
@@ -1074,7 +1316,18 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Sound { id, min_interval } => {
                 CueActionDef::Sound(SoundDef { id, min_interval })
             }
-            ActionKind::Shake(trauma) => CueActionDef::Shake(trauma),
+            ActionKind::Shake {
+                trauma,
+                falloff: None,
+            } => CueActionDef::Shake(ShakeDef::Trauma(trauma)),
+            ActionKind::Shake {
+                trauma,
+                falloff: Some((near, far)),
+            } => CueActionDef::Shake(ShakeDef::Falloff(ShakeObject {
+                trauma,
+                near,
+                far: Some(far),
+            })),
             ActionKind::Squash(trigger) => CueActionDef::Squash(trigger.into()),
             ActionKind::Flash => CueActionDef::Flash(FlashDef {}),
             ActionKind::Label(style) => CueActionDef::Label(LabelDef(style, None)),
@@ -1097,6 +1350,10 @@ impl From<CueAction> for CueActionDef {
                 },
                 target: target.into(),
             }),
+            ActionKind::Loop { id, volume, fade } => {
+                CueActionDef::Loop(LoopDef { id, volume, fade })
+            }
+            ActionKind::Stop { id, fade } => CueActionDef::Stop(StopDef { id, fade }),
         }
     }
 }
@@ -1178,7 +1435,9 @@ impl CueEvent {
 /// the listener's hearing without marking its `min_interval`, so a nearer
 /// one may still play; without one, every cue sound plays at its volume.
 /// The game moves it, to its player or its camera, each step before
-/// [`CUES`].
+/// [`CUES`], or has it [follow](Self::following) an entity. With a
+/// [pan width](Self::with_pan), a cue sound plays panned toward its side;
+/// a `loop` plays by it, and a `shake` with a falloff falls off from it.
 ///
 /// ```
 /// use glam::Vec2;
@@ -1190,12 +1449,19 @@ impl CueEvent {
 /// assert_eq!(listener.gain(Vec2::new(300.0, 0.0)), 0.0);
 /// listener.set_position(Vec2::new(300.0, 0.0));
 /// assert_eq!(listener.gain(Vec2::new(300.0, 0.0)), 1.0);
+/// let panned = listener.with_pan(200.0);
+/// assert_eq!(panned.pan(Vec2::new(200.0, 0.0)), -0.5);
+/// assert_eq!(panned.pan(Vec2::new(900.0, 0.0)), 1.0);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CueListener {
     position: Vec2,
     full: f32,
     silent: f32,
+    /// The entity the cue system moves it to, each step.
+    follows: Option<Entity>,
+    /// The distance along x at which a sound plays wholly to one side.
+    pan: Option<f32>,
 }
 
 impl CueListener {
@@ -1215,6 +1481,68 @@ impl CueListener {
             position: Vec2::ZERO,
             full,
             silent,
+            follows: None,
+            pan: None,
+        }
+    }
+
+    /// The listener, following `entity`: at each run's start, before any
+    /// occurrence, the cue system moves it to the entity's point, its
+    /// `Position`, else its `Transform`'s; an entity gone, or without
+    /// either, leaves it where it was.
+    #[must_use]
+    pub fn following(mut self, entity: Entity) -> Self {
+        self.follows = Some(entity);
+        self
+    }
+
+    /// The listener, panning: a cue sound `dx` along x from it plays at pan
+    /// `dx / width`, clamped to −1 (left) to 1 (right), through
+    /// `AudioCommands::play_panned`; without it, centred, as before.
+    ///
+    /// # Panics
+    ///
+    /// Unless `width` is finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_pan(mut self, width: f32) -> Self {
+        assert!(
+            width.is_finite() && width > 0.0,
+            "CueListener::with_pan: width must be finite and > 0 (got {width})"
+        );
+        self.pan = Some(width);
+        self
+    }
+
+    /// The entity it follows, if any.
+    #[must_use]
+    pub fn follows(&self) -> Option<Entity> {
+        self.follows
+    }
+
+    /// Follows `entity`, or stops following with `None`.
+    pub fn set_following(&mut self, entity: Option<Entity>) {
+        self.follows = entity;
+    }
+
+    /// Its pan width, if it pans.
+    #[must_use]
+    pub fn pan_width(&self) -> Option<f32> {
+        self.pan
+    }
+
+    /// The pan a sound at `at` plays at: `dx / width` clamped to −1 to 1;
+    /// 0 without a pan width or at a point that is not finite.
+    #[must_use]
+    pub fn pan(&self, at: Vec2) -> f32 {
+        let Some(width) = self.pan else {
+            return 0.0;
+        };
+        let pan = (at.x - self.position.x) / width;
+        if pan.is_finite() {
+            pan.clamp(-1.0, 1.0)
+        } else {
+            0.0
         }
     }
 
@@ -1924,7 +2252,9 @@ fn check_actions(
                     ));
                 }
             }
-            ActionKind::Sound { id, .. } => {
+            ActionKind::Sound { id, .. }
+            | ActionKind::Loop { id, .. }
+            | ActionKind::Stop { id, .. } => {
                 if let Some(sounds) = world.get_resource::<SoundRegistry>()
                     && sounds.get_by_id(id).is_none()
                 {
@@ -2110,6 +2440,107 @@ impl Plugin for CuesPlugin {
     }
 }
 
+/// Who wants a looping sound: an entity's cue loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Wanter {
+    Cue(Entity),
+}
+
+/// One want of a looping sound: whose place it is heard from, and its
+/// volume as a share of the sound's.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LoopWant {
+    pub(crate) place: Entity,
+    pub(crate) volume: f32,
+}
+
+/// A looping sound's voice and its wants.
+#[derive(Debug)]
+struct LoopSound {
+    id: String,
+    voice: Option<Voice>,
+    wants: Vec<(Wanter, LoopWant)>,
+    /// The volume and pan last sent to its voice.
+    volume: f32,
+    pan: f32,
+    /// Seconds its voice rises over as it starts, and fades over as it
+    /// stops.
+    fade_in: f32,
+    fade_out: f32,
+}
+
+/// The kit's looping sounds, a World resource the first want inserts: per
+/// sound ID its wants by wanter, apart from its one voice. Unsaved: a load
+/// into a new run finds the old wanters gone, and their voices fade.
+#[derive(Debug, Default)]
+pub(crate) struct CueLoops {
+    sounds: Vec<LoopSound>,
+}
+
+impl CueLoops {
+    /// `wanter` wants sound `id` looping at `volume`, heard from `place`;
+    /// a want it held is replaced. A sound's first want starts its voice
+    /// over `fade`.
+    pub(crate) fn want(&mut self, id: &str, wanter: Wanter, want: LoopWant, fade: f32) {
+        let at = self
+            .sounds
+            .iter()
+            .position(|sound| sound.id == id)
+            .unwrap_or_else(|| {
+                self.sounds.push(LoopSound {
+                    id: id.to_owned(),
+                    voice: None,
+                    wants: Vec::new(),
+                    volume: 0.0,
+                    pan: 0.0,
+                    fade_in: fade,
+                    fade_out: LOOP_FADE,
+                });
+                self.sounds.len() - 1
+            });
+        let wants = &mut self.sounds[at].wants;
+        match wants.iter_mut().find(|(known, _)| *known == wanter) {
+            Some((_, held)) => *held = want,
+            None => wants.push((wanter, want)),
+        }
+    }
+
+    /// `wanter`'s want of sound `id` ends; the sound's last fades its voice
+    /// out over `fade`.
+    pub(crate) fn let_go(&mut self, id: &str, wanter: Wanter, fade: f32) {
+        if let Some(sound) = self.sounds.iter_mut().find(|sound| sound.id == id) {
+            let before = sound.wants.len();
+            sound.wants.retain(|(known, _)| *known != wanter);
+            if sound.wants.len() < before {
+                sound.fade_out = fade;
+            }
+        }
+    }
+
+    /// Whether it holds no sound.
+    fn is_idle(&self) -> bool {
+        self.sounds.is_empty()
+    }
+}
+
+/// What the loops' pass decided for one sound.
+#[derive(Debug, Clone, Copy)]
+struct LoopPlan {
+    handle: Option<AudioHandle>,
+    /// Its voice's volume: the sound's times the loudest want's, its gain
+    /// at its place counted; and the pan toward that want.
+    volume: f32,
+    pan: f32,
+    /// No want held on.
+    silent: bool,
+}
+
+/// A loop's change of volume or pan that sends a command.
+const LOOP_STEP: f32 = 1.0 / 64.0;
+
+/// Seconds a loop's voice moves to a new volume or pan over.
+const LOOP_RAMP: f32 = 0.05;
+
 /// Why an action or an occurrence did not run, for the trace.
 const GONE: &str = "the subject is gone";
 const DESPAWNING: &str = "the subject is despawning";
@@ -2120,6 +2551,7 @@ const NO_QUEUE: &str = "the World has no queue for it";
 const NO_SOUND: &str = "the World has no sound or audio for it";
 const TOO_SOON: &str = "the sound played within its min_interval";
 const UNHEARD: &str = "the cue's position is past the listener's hearing";
+const FAR: &str = "the cue's position is past the shake's far";
 const NO_TABLE: &str = "the World has no such loot table";
 const NO_STYLE: &str = "the part's types set no label style";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
@@ -2183,6 +2615,9 @@ struct Reactor {
     runs: HashMap<String, u32>,
     /// Why each rule its limits held for one occurrence did not run.
     held: Vec<&'static str>,
+    /// The loops' pass's plans, one a sound, kept so a step allocates
+    /// nothing once warm.
+    plans: Vec<LoopPlan>,
 }
 
 /// A part label's sum while it is open: its label and target, the sum and
@@ -2205,6 +2640,13 @@ const SUM_SLACK: f32 = 1e-4;
 
 impl Reactor {
     fn run(&mut self, world: &mut World) {
+        follow_listener(world);
+        self.react(world);
+        self.loops(world);
+    }
+
+    /// Reads the step's occurrences and runs their cues and rules.
+    fn react(&mut self, world: &mut World) {
         let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
         self.clock += f64::from(dt);
         self.close_sums(world, dt);
@@ -2474,25 +2916,56 @@ impl Reactor {
                 else {
                     return skip(world, NO_SOUND);
                 };
-                let gain = world
-                    .get_resource::<CueListener>()
-                    .map_or(1.0, |listener| listener.gain(occurrence.position));
+                let listener = world.get_resource::<CueListener>();
+                let gain = listener.map_or(1.0, |listener| listener.gain(occurrence.position));
+                let pan = listener
+                    .filter(|listener| listener.pan.is_some())
+                    .map(|listener| listener.pan(occurrence.position));
                 if gain <= 0.0 {
                     return skip(world, UNHEARD);
                 }
                 let Some(commands) = world.get_resource_mut::<AudioCommands>() else {
                     return skip(world, NO_SOUND);
                 };
-                commands.play_with(handle, volume * gain, false);
+                match pan {
+                    Some(pan) => commands.play_panned(handle, volume * gain, false, pan),
+                    None => commands.play_with(handle, volume * gain, false),
+                };
                 self.played.insert(id.clone(), self.clock);
             }
-            ActionKind::Shake(trauma) => {
+            ActionKind::Shake { trauma, falloff } => {
+                let share = match (falloff, world.get_resource::<CueListener>()) {
+                    (Some((near, far)), Some(listener)) => {
+                        falloff_share(listener.position.distance(occurrence.position), *near, *far)
+                    }
+                    _ => 1.0,
+                };
+                if share <= 0.0 {
+                    return skip(world, FAR);
+                }
                 let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>() else {
                     return skip(world, NO_QUEUE);
                 };
                 queue.send(ShakeEvent {
-                    trauma_add: *trauma,
+                    trauma_add: trauma * share,
                 });
+            }
+            ActionKind::Loop { id, volume, fade } => {
+                if !world.has_resource::<CueLoops>() {
+                    world.insert_resource(CueLoops::default());
+                }
+                let want = LoopWant {
+                    place: subject,
+                    volume: *volume,
+                };
+                world
+                    .resource_mut::<CueLoops>()
+                    .want(id, Wanter::Cue(subject), want, *fade);
+            }
+            ActionKind::Stop { id, fade } => {
+                if let Some(loops) = world.get_resource_mut::<CueLoops>() {
+                    loops.let_go(id, Wanter::Cue(subject), *fade);
+                }
             }
             ActionKind::Squash(trigger) => {
                 let Some(queue) = world.get_resource_mut::<EventQueue<SquashEvent>>() else {
@@ -2624,6 +3097,94 @@ impl Reactor {
         }
         world.insert_resource(rng);
         resolved
+    }
+
+    /// Keeps each looping sound's one voice: started with its first want,
+    /// at the loudest of its wants, each its volume times the listener's
+    /// gain at its place, panned toward that one, a command past a change
+    /// of 1/64 and always one to or from 0; a want whose place is gone or
+    /// despawning lets go, and a sound with no want left fades its voice
+    /// out. With no loop it returns at once.
+    fn loops(&mut self, world: &mut World) {
+        if world
+            .get_resource::<CueLoops>()
+            .is_none_or(CueLoops::is_idle)
+            || !world.has_resource::<AudioCommands>()
+        {
+            return;
+        }
+        let mut loops = std::mem::take(world.resource_mut::<CueLoops>());
+        // The wants whose place is gone or despawning let go, as over a
+        // stop of the default fade.
+        for sound in &mut loops.sounds {
+            let before = sound.wants.len();
+            sound.wants.retain(|(_, want)| {
+                world.is_alive(want.place) && !world.has::<Despawning>(want.place)
+            });
+            if sound.wants.len() < before && sound.wants.is_empty() {
+                sound.fade_out = LOOP_FADE;
+            }
+        }
+        let listener = world.get_resource::<CueListener>();
+        let sounds = world.get_resource::<SoundRegistry>();
+        self.plans.clear();
+        for sound in &loops.sounds {
+            let handle = sounds.and_then(|sounds| sounds.get_by_id(&sound.id));
+            let base = match (sounds, handle) {
+                (Some(sounds), Some(handle)) => sounds.get_volume(handle),
+                _ => 0.0,
+            };
+            let mut loudest = (0.0_f32, 0.0_f32);
+            for (_, want) in &sound.wants {
+                let at = point_of(world, want.place);
+                let level = want.volume * listener.map_or(1.0, |listener| listener.gain(at));
+                if level > loudest.0 || loudest == (0.0, 0.0) {
+                    loudest = (level, listener.map_or(0.0, |listener| listener.pan(at)));
+                }
+            }
+            self.plans.push(LoopPlan {
+                handle,
+                volume: base * loudest.0,
+                pan: loudest.1,
+                silent: sound.wants.is_empty(),
+            });
+        }
+        let commands = world.resource_mut::<AudioCommands>();
+        for (sound, plan) in loops.sounds.iter_mut().zip(&self.plans) {
+            match (sound.voice, plan.silent) {
+                (Some(voice), true) => {
+                    commands.stop_voice(voice, sound.fade_out);
+                    sound.voice = None;
+                }
+                (None, true) => {}
+                (None, false) => {
+                    let Some(handle) = plan.handle else {
+                        continue;
+                    };
+                    let voice = commands.play_faded(handle, plan.volume, true, sound.fade_in);
+                    if plan.pan != 0.0 {
+                        commands.set_voice_pan(voice, plan.pan, 0.0);
+                    }
+                    sound.voice = Some(voice);
+                    sound.volume = plan.volume;
+                    sound.pan = plan.pan;
+                }
+                (Some(voice), false) => {
+                    if moved(sound.volume, plan.volume) {
+                        commands.set_voice_volume(voice, plan.volume, LOOP_RAMP);
+                        sound.volume = plan.volume;
+                    }
+                    if moved(sound.pan, plan.pan) {
+                        commands.set_voice_pan(voice, plan.pan, LOOP_RAMP);
+                        sound.pan = plan.pan;
+                    }
+                }
+            }
+        }
+        loops
+            .sounds
+            .retain(|sound| sound.voice.is_some() || !sound.wants.is_empty());
+        *world.resource_mut::<CueLoops>() = loops;
     }
 
     /// Drops the rules' waits that have passed or whose subject is gone, at
@@ -2897,6 +3458,41 @@ impl Reactor {
     }
 }
 
+/// Moves the World's [`CueListener`] to the entity it follows, when that
+/// entity is alive with a point.
+fn follow_listener(world: &mut World) {
+    let Some(entity) = world
+        .get_resource::<CueListener>()
+        .and_then(|listener| listener.follows)
+    else {
+        return;
+    };
+    if !world.is_alive(entity) || !(world.has::<Position>(entity) || world.has::<Transform>(entity))
+    {
+        return;
+    }
+    let at = point_of(world, entity);
+    world.resource_mut::<CueListener>().position = at;
+}
+
+/// A shake's share `distance` from the listener: whole within `near`,
+/// falling linearly to none at `far`.
+fn falloff_share(distance: f32, near: f32, far: f32) -> f32 {
+    if distance <= near {
+        1.0
+    } else if distance >= far || distance.is_nan() {
+        0.0
+    } else {
+        1.0 - (distance - near) / (far - near)
+    }
+}
+
+/// Whether a loop's volume or pan moved from `sent` to `now` by enough to
+/// send: past 1/64, or to or from 0.
+fn moved(sent: f32, now: f32) -> bool {
+    (sent - now).abs() > LOOP_STEP || ((sent == 0.0) != (now == 0.0))
+}
+
 /// Where `entity` is: its `Position`, else its `Transform.position`, else
 /// the origin.
 fn point_of(world: &World, entity: Entity) -> Vec2 {
@@ -2984,11 +3580,8 @@ fn describe_cues(world: &mut World) {
             ))
             .field(FieldDescription::new(
                 "shake",
-                FieldType::F32 {
-                    min: Bound::Inclusive(0.0),
-                    max: Bound::Open,
-                },
-                "camera trauma added",
+                FieldType::Shape("shake_action"),
+                "camera trauma added, falling off from the cue listener with `near` and `far`; a number alone reads as `{ \"trauma\": .. }`",
             ))
             .field(FieldDescription::new(
                 "squash",
@@ -3019,6 +3612,16 @@ fn describe_cues(world: &mut World) {
                 "ability",
                 FieldType::Shape("ability_action"),
                 "the subject's or the other's ability used now, or made ready; a name alone reads as `{ \"name\": .. }`",
+            ))
+            .field(FieldDescription::new(
+                "loop",
+                FieldType::Shape("loop_action"),
+                "the subject wants a manifest sound looping: one voice per sound at its loudest want by the cue listener",
+            ))
+            .field(FieldDescription::new(
+                "stop",
+                FieldType::Shape("stop_action"),
+                "the subject's want of a looping sound ends; the last one's voice fades out",
             ))
             .sample(r#"{ "despawn": {} }"#)
             .roundtrip(round_trip::<CueActionDef>),
@@ -3127,6 +3730,97 @@ fn describe_cues(world: &mut World) {
             )
             .sample(r#"{ "id": "blip" }"#)
             .roundtrip(round_trip::<SoundDef>),
+        ComponentDescription::new(
+            "shake_action",
+            "Camera trauma added: whole within `near` of the cue listener, falling linearly to none at `far`; whole without a listener or a `far`.",
+        )
+        .field(FieldDescription::new(
+            "trauma",
+            FieldType::F32 {
+                min: Bound::Inclusive(0.0),
+                max: Bound::Open,
+            },
+            "camera trauma added",
+        ))
+        .field(
+            FieldDescription::new(
+                "near",
+                FieldType::F32 {
+                    min: Bound::Inclusive(0.0),
+                    max: Bound::Open,
+                },
+                "world pixels from the listener within which it is whole",
+            )
+            .default("0.0"),
+        )
+        .field(
+            FieldDescription::new(
+                "far",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Open,
+                },
+                "world pixels from the listener at which it is none; above `near`",
+            )
+            .default("null"),
+        )
+        .sample(r#"{ "trauma": 0.3 }"#)
+        .roundtrip(round_trip::<ShakeObject>),
+        ComponentDescription::new(
+            "loop_action",
+            "A manifest sound the subject wants looping: one voice per sound ID, at the loudest of its wants, each its volume times the cue listener's gain at its wanter, panned toward that one; unsaved.",
+        )
+        .field(FieldDescription::new(
+            "id",
+            FieldType::Text,
+            "the manifest sound; the load checks the ID",
+        ))
+        .field(
+            FieldDescription::new(
+                "volume",
+                FieldType::F32 {
+                    min: Bound::Inclusive(0.0),
+                    max: Bound::Open,
+                },
+                "the want's share of the sound's volume",
+            )
+            .default("1.0"),
+        )
+        .field(
+            FieldDescription::new(
+                "fade",
+                FieldType::F32 {
+                    min: Bound::Inclusive(0.0),
+                    max: Bound::Open,
+                },
+                "seconds the voice rises over when this want starts it",
+            )
+            .default("0.1"),
+        )
+        .sample(r#"{ "id": "crackle" }"#)
+        .roundtrip(round_trip::<LoopDef>),
+        ComponentDescription::new(
+            "stop_action",
+            "The subject's want of a looping sound ended; the sound's last want fades its voice out.",
+        )
+        .field(FieldDescription::new(
+            "id",
+            FieldType::Text,
+            "the manifest sound; the load checks the ID",
+        ))
+        .field(
+            FieldDescription::new(
+                "fade",
+                FieldType::F32 {
+                    min: Bound::Inclusive(0.0),
+                    max: Bound::Open,
+                },
+                "seconds the voice fades out over when this was its last want",
+            )
+            .default("0.1"),
+        )
+        .sample(r#"{ "id": "crackle" }"#)
+        .roundtrip(round_trip::<StopDef>),
         ComponentDescription::new("flash_action", "The subject's hit flash started, as a hit starts it.")
             .sample("{}")
             .roundtrip(round_trip::<FlashDef>),

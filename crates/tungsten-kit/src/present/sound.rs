@@ -3,12 +3,14 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use glam::Vec2;
 use tungsten_core::{
     AudioCommands, AudioHandle, EventCursor, EventQueue, Plugin, Schedule, SoundRegistry, Time,
     World, system,
 };
 
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::react::cues::CueListener;
 
 /// Plays a manifest sound for each event `E`, once per event: a hit, a
 /// kill, a pickup. The plugin registers `EventQueue<E>` (again is a no-op)
@@ -26,6 +28,8 @@ use crate::foundation::phases::{Phase, ensure_phases};
 /// once per interval of real time, and the events between are read and
 /// dropped. An unknown sound ID logs one warning per ID and plays nothing,
 /// and a world without a `SoundRegistry` or `AudioCommands` plays nothing.
+/// With [`with_point`](Self::with_point), an event with a point plays by
+/// the World's [`CueListener`] as a cue sound does.
 ///
 /// # Examples
 ///
@@ -60,6 +64,7 @@ pub struct SoundOnEvent<E> {
     name: &'static str,
     pick: Pick<E>,
     min_interval: f32,
+    point: Option<fn(&E) -> Option<Vec2>>,
 }
 
 /// Which sound an event plays.
@@ -85,6 +90,7 @@ impl<E: 'static> SoundOnEvent<E> {
             name,
             pick: Pick::Every(sound),
             min_interval: 0.0,
+            point: None,
         }
     }
 
@@ -96,6 +102,7 @@ impl<E: 'static> SoundOnEvent<E> {
             name,
             pick: Pick::Select(pick),
             min_interval: 0.0,
+            point: None,
         }
     }
 
@@ -147,6 +154,47 @@ impl<E: 'static> SoundOnEvent<E> {
         self.min_interval = seconds;
         self
     }
+
+    /// The plugin, playing an event with a point by the World's
+    /// [`CueListener`]: at its volume times the listener's gain there,
+    /// skipped past its hearing without marking the interval, and panned
+    /// when the listener pans. An event `map` gives no point, or a World
+    /// without a listener, plays as before.
+    ///
+    /// ```
+    /// use glam::Vec2;
+    /// use tungsten_core::{
+    ///     AudioCommand, AudioCommands, EventQueue, Plugin, Schedule, SoundData, SoundRegistry,
+    ///     Stage, World,
+    /// };
+    /// use tungsten_kit::{CueListener, SoundOnEvent};
+    ///
+    /// struct Thud(Vec2);
+    ///
+    /// let mut world = World::new();
+    /// let mut sounds = SoundRegistry::new();
+    /// let thud = SoundData { samples: vec![0.0; 4], sample_rate: 44_100, channels: 1 };
+    /// sounds.register("thud".to_string(), thud, 1.0, false);
+    /// world.insert_resource(sounds);
+    /// world.insert_resource(AudioCommands::new());
+    /// world.insert_resource(CueListener::new(100.0, 300.0));
+    /// let mut schedule = Schedule::new();
+    /// SoundOnEvent::<Thud>::new("thud_sound", "thud")
+    ///     .with_point(|thud| Some(thud.0))
+    ///     .build(&mut schedule, &mut world);
+    /// schedule.resolve().unwrap();
+    ///
+    /// world.resource_mut::<EventQueue<Thud>>().send(Thud(Vec2::new(200.0, 0.0)));
+    /// world.resource_mut::<EventQueue<Thud>>().send(Thud(Vec2::new(400.0, 0.0)));
+    /// schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
+    /// let played = world.resource_mut::<AudioCommands>().drain();
+    /// assert!(matches!(played[..], [AudioCommand::Play { volume: 0.25, .. }]), "the far one unheard");
+    /// ```
+    #[must_use]
+    pub fn with_point(mut self, map: fn(&E) -> Option<Vec2>) -> Self {
+        self.point = Some(map);
+        self
+    }
 }
 
 impl<E> Clone for SoundOnEvent<E> {
@@ -155,6 +203,7 @@ impl<E> Clone for SoundOnEvent<E> {
             name: self.name,
             pick: self.pick,
             min_interval: self.min_interval,
+            point: self.point,
         }
     }
 }
@@ -168,6 +217,9 @@ impl<E> fmt::Debug for SoundOnEvent<E> {
             Pick::Select(_) => out.field("sound", &"selected per event"),
         };
         out.field("min_interval", &self.min_interval);
+        if self.point.is_some() {
+            out.field("point", &true);
+        }
         out.finish()
     }
 }
@@ -178,6 +230,7 @@ impl<E: 'static> Plugin for SoundOnEvent<E> {
         let mut reader = Reader {
             pick: self.pick,
             min_interval: self.min_interval,
+            point: self.point,
             cursor: EventCursor::new(),
             warned: HashSet::new(),
             last: HashMap::new(),
@@ -201,6 +254,7 @@ const INTERVAL_SLACK: f64 = 1e-6;
 struct Reader<E> {
     pick: Pick<E>,
     min_interval: f32,
+    point: Option<fn(&E) -> Option<Vec2>>,
     /// The system's place in the queue: what it has played.
     cursor: EventCursor<E>,
     /// The unknown sound IDs already warned about.
@@ -208,9 +262,9 @@ struct Reader<E> {
     /// When each sound ID last played, in real seconds, while an interval
     /// applies.
     last: HashMap<String, f64>,
-    /// This run's sounds and their volumes, kept so a frame allocates
-    /// nothing once warm.
-    play: Vec<(AudioHandle, f32)>,
+    /// This run's sounds, their volumes and pans, kept so a frame
+    /// allocates nothing once warm.
+    play: Vec<(AudioHandle, f32, Option<f32>)>,
 }
 
 impl<E: 'static> Reader<E> {
@@ -228,6 +282,7 @@ impl<E: 'static> Reader<E> {
             return;
         };
         let now = world.get_resource::<Time>().map(Time::real_elapsed);
+        let listener = world.get_resource::<CueListener>();
         let interval = f64::from(self.min_interval);
         self.play.clear();
         for event in events {
@@ -240,6 +295,17 @@ impl<E: 'static> Reader<E> {
             };
             match sounds.get_by_id(id) {
                 Some(handle) => {
+                    let heard = match (self.point.and_then(|point| point(event)), listener) {
+                        (Some(at), Some(listener)) => Some((
+                            listener.gain(at),
+                            listener.pan_width().map(|_| listener.pan(at)),
+                        )),
+                        _ => None,
+                    };
+                    let (gain, pan) = heard.unwrap_or((1.0, None));
+                    if gain <= 0.0 {
+                        continue;
+                    }
                     if interval > 0.0
                         && let Some(now) = now
                     {
@@ -250,7 +316,8 @@ impl<E: 'static> Reader<E> {
                         }
                         self.last.insert(id.to_owned(), now);
                     }
-                    self.play.push((handle, sounds.get_volume(handle)));
+                    self.play
+                        .push((handle, sounds.get_volume(handle) * gain, pan));
                 }
                 None => {
                     if !self.warned.contains(id) {
@@ -265,8 +332,11 @@ impl<E: 'static> Reader<E> {
         let Some(commands) = world.get_resource_mut::<AudioCommands>() else {
             return;
         };
-        for &(handle, volume) in &self.play {
-            commands.play_with(handle, volume, false);
+        for &(handle, volume, pan) in &self.play {
+            match pan {
+                Some(pan) => commands.play_panned(handle, volume, false, pan),
+                None => commands.play_with(handle, volume, false),
+            };
         }
     }
 }

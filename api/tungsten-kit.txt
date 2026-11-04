@@ -991,6 +991,7 @@ pub fn tungsten_kit::CueAction::flash() -> Self
 pub fn tungsten_kit::CueAction::for_game(self) -> Self
 pub fn tungsten_kit::CueAction::for_other(self) -> Self
 pub fn tungsten_kit::CueAction::label(tungsten_kit::LabelStyle) -> Self
+pub fn tungsten_kit::CueAction::looping(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::name(&self) -> &'static str
 pub fn tungsten_kit::CueAction::prefab(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::refill_ability(impl core::convert::Into<alloc::string::String>) -> Self
@@ -998,8 +999,12 @@ pub fn tungsten_kit::CueAction::roll(tungsten_core::assets::data::DataRef<tungst
 pub fn tungsten_kit::CueAction::shake(f32) -> Self
 pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::squash(tungsten_core::components::SquashTrigger) -> Self
+pub fn tungsten_kit::CueAction::stop_loop(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::type_label() -> Self
+pub fn tungsten_kit::CueAction::with_fade(self, f32) -> Self
+pub fn tungsten_kit::CueAction::with_falloff(self, f32, f32) -> Self
 pub fn tungsten_kit::CueAction::with_min_interval(self, f32) -> Self
+pub fn tungsten_kit::CueAction::with_volume(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::clone(&self) -> tungsten_kit::CueAction
 impl core::cmp::PartialEq for tungsten_kit::CueAction
@@ -1046,12 +1051,18 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueEvent
 pub struct tungsten_kit::prelude::CueListener
 impl tungsten_kit::CueListener
 pub fn tungsten_kit::CueListener::at(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::CueListener::following(self, tungsten_core::ecs::entity::Entity) -> Self
+pub fn tungsten_kit::CueListener::follows(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::CueListener::full(&self) -> f32
 pub fn tungsten_kit::CueListener::gain(&self, glam::f32::vec2::Vec2) -> f32
 pub fn tungsten_kit::CueListener::new(f32, f32) -> Self
+pub fn tungsten_kit::CueListener::pan(&self, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_kit::CueListener::pan_width(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::CueListener::position(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::CueListener::set_following(&mut self, core::option::Option<tungsten_core::ecs::entity::Entity>)
 pub fn tungsten_kit::CueListener::set_position(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::CueListener::silent(&self) -> f32
+pub fn tungsten_kit::CueListener::with_pan(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::CueListener
 pub fn tungsten_kit::CueListener::clone(&self) -> tungsten_kit::CueListener
 impl core::cmp::PartialEq for tungsten_kit::CueListener
@@ -3066,6 +3077,7 @@ impl<E: 'static> tungsten_kit::SoundOnEvent<E>
 pub fn tungsten_kit::SoundOnEvent<E>::new(&'static str, &'static str) -> Self
 pub fn tungsten_kit::SoundOnEvent<E>::select(&'static str, fn(&E) -> core::option::Option<&str>) -> Self
 pub fn tungsten_kit::SoundOnEvent<E>::with_min_interval(self, f32) -> Self
+pub fn tungsten_kit::SoundOnEvent<E>::with_point(self, fn(&E) -> core::option::Option<glam::f32::vec2::Vec2>) -> Self
 impl<E: 'static> tungsten_core::schedule::Plugin for tungsten_kit::SoundOnEvent<E>
 pub fn tungsten_kit::SoundOnEvent<E>::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
 impl<E> core::clone::Clone for tungsten_kit::SoundOnEvent<E>
@@ -5109,6 +5121,7 @@ pub fn tungsten_kit::CueAction::flash() -> Self
 pub fn tungsten_kit::CueAction::for_game(self) -> Self
 pub fn tungsten_kit::CueAction::for_other(self) -> Self
 pub fn tungsten_kit::CueAction::label(tungsten_kit::LabelStyle) -> Self
+pub fn tungsten_kit::CueAction::looping(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::name(&self) -> &'static str
 pub fn tungsten_kit::CueAction::prefab(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::refill_ability(impl core::convert::Into<alloc::string::String>) -> Self
@@ -5116,8 +5129,12 @@ pub fn tungsten_kit::CueAction::roll(tungsten_core::assets::data::DataRef<tungst
 pub fn tungsten_kit::CueAction::shake(f32) -> Self
 pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::squash(tungsten_core::components::SquashTrigger) -> Self
+pub fn tungsten_kit::CueAction::stop_loop(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::type_label() -> Self
+pub fn tungsten_kit::CueAction::with_fade(self, f32) -> Self
+pub fn tungsten_kit::CueAction::with_falloff(self, f32, f32) -> Self
 pub fn tungsten_kit::CueAction::with_min_interval(self, f32) -> Self
+pub fn tungsten_kit::CueAction::with_volume(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::clone(&self) -> tungsten_kit::CueAction
 impl core::cmp::PartialEq for tungsten_kit::CueAction
@@ -5164,12 +5181,18 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueEvent
 pub struct tungsten_kit::CueListener
 impl tungsten_kit::CueListener
 pub fn tungsten_kit::CueListener::at(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::CueListener::following(self, tungsten_core::ecs::entity::Entity) -> Self
+pub fn tungsten_kit::CueListener::follows(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::CueListener::full(&self) -> f32
 pub fn tungsten_kit::CueListener::gain(&self, glam::f32::vec2::Vec2) -> f32
 pub fn tungsten_kit::CueListener::new(f32, f32) -> Self
+pub fn tungsten_kit::CueListener::pan(&self, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_kit::CueListener::pan_width(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::CueListener::position(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::CueListener::set_following(&mut self, core::option::Option<tungsten_core::ecs::entity::Entity>)
 pub fn tungsten_kit::CueListener::set_position(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::CueListener::silent(&self) -> f32
+pub fn tungsten_kit::CueListener::with_pan(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::CueListener
 pub fn tungsten_kit::CueListener::clone(&self) -> tungsten_kit::CueListener
 impl core::cmp::PartialEq for tungsten_kit::CueListener
@@ -7579,6 +7602,7 @@ impl<E: 'static> tungsten_kit::SoundOnEvent<E>
 pub fn tungsten_kit::SoundOnEvent<E>::new(&'static str, &'static str) -> Self
 pub fn tungsten_kit::SoundOnEvent<E>::select(&'static str, fn(&E) -> core::option::Option<&str>) -> Self
 pub fn tungsten_kit::SoundOnEvent<E>::with_min_interval(self, f32) -> Self
+pub fn tungsten_kit::SoundOnEvent<E>::with_point(self, fn(&E) -> core::option::Option<glam::f32::vec2::Vec2>) -> Self
 impl<E: 'static> tungsten_core::schedule::Plugin for tungsten_kit::SoundOnEvent<E>
 pub fn tungsten_kit::SoundOnEvent<E>::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
 impl<E> core::clone::Clone for tungsten_kit::SoundOnEvent<E>

@@ -1,5 +1,8 @@
 {
   "prefabs": {
+    "charge": {
+      "path": "prefabs/charge.json"
+    },
     "bouncer": {
       "path": "prefabs/bouncer.json"
     },

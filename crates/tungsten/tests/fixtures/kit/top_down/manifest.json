@@ -1,5 +1,8 @@
 {
   "prefabs": {
+    "campfire": {
+      "path": "prefabs/campfire.json"
+    },
     "practice_dummy": {
       "path": "prefabs/practice_dummy.json"
     },
@@ -367,6 +370,9 @@
     }
   },
   "sounds": {
+    "crackle": {
+      "path": "sounds/crackle.ogg"
+    },
     "blip": {
       "path": "sounds/blip.ogg"
     }

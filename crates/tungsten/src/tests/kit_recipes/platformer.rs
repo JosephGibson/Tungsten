@@ -14,7 +14,8 @@
 //! glass a pot cracks and planks a flare scorches for a while, a crate
 //! fire chars, and a powder keg whose blast chars the crate beside it;
 //! 7.10p's balls whose hard impacts spark under a rule's amount and
-//! interval.
+//! interval, and charges whose blasts shake by their distance from a
+//! listener following the hero.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1744,5 +1745,41 @@ fn a_balls_hard_impact_sparks_once_under_its_rules_amount_and_interval() {
             "dt {dt}: the landing's other cells' begins, held by the interval"
         );
         assert_eq!(sparks(soft), 0, "dt {dt}: the soft one under its amount");
+    }
+}
+
+// 7.10p: a shake's falloff.
+
+#[test]
+fn a_blasts_shake_falls_off_with_its_distance_from_the_hero() {
+    use crate::kit::CueListener;
+    use tungsten_core::{EventQueue, ShakeEvent};
+
+    for dt in DTS {
+        let (mut harness, hero) = hero_on_ground(dt, KitPlugins::set());
+        harness
+            .world_mut()
+            .insert_resource(CueListener::new(100.0, 600.0).following(hero));
+        // Charges at 25, 250 and 600 px from the hero: a shake whole within
+        // 50 px, falling to none at 450.
+        let mut shakes = Vec::new();
+        for x in [25.0, 250.0, 600.0] {
+            let charge = spawn(&mut harness, "charge", [x, 270.0]);
+            harness.step(1);
+            damage(harness.world_mut(), charge, 5.0);
+            harness.step(1);
+            let sent: Vec<f32> = harness
+                .world()
+                .resource::<EventQueue<ShakeEvent>>()
+                .iter()
+                .map(|shake| shake.trauma_add)
+                .collect();
+            shakes.push(sent);
+        }
+        assert_eq!(
+            shakes,
+            [vec![0.8], vec![0.4], vec![]],
+            "dt {dt}: whole, half, none"
+        );
     }
 }

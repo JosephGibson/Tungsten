@@ -17,7 +17,8 @@
 //! alight, a lurker a lamp lights, a grass strip a crate sets burning, a
 //! lamp a bucket's water douses for 3 s, and a bomb whose fuse ends in a
 //! blast among crates and a target; 7.10p's practice dummy, whose burn's
-//! ticks and a blow pass a rule's `periodic` apart.
+//! ticks and a blow pass a rule's `periodic` apart, and a campfire whose
+//! crackle loops by a listener following the hero past it.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -990,6 +991,64 @@ fn a_practice_dummys_burn_ticks_and_a_blow_pass_their_rules_apart() {
             (1, 6),
             "dt {dt}: the blow, then a tick each 0.5 s over the burn's 3 s"
         );
+    }
+}
+
+#[test]
+fn a_campfires_crackle_rises_and_pans_as_the_hero_walks_past() {
+    use crate::kit::CueListener;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let hero = spawn(&mut harness, "hero", [0.0, 0.0]);
+        let fire = spawn(&mut harness, "campfire", [300.0, 0.0]);
+        harness.world_mut().insert_resource(
+            CueListener::new(50.0, 400.0)
+                .with_pan(200.0)
+                .following(hero),
+        );
+        harness.step(1);
+        // The fire's burn starts its loop; the hero walks right, past it.
+        EffectRequest::new(fire, DataRef::by_id("burning")).apply(harness.world_mut());
+        harness.press_action("move_right");
+        let (mut plays, mut volumes, mut pans, mut stops) = (0, Vec::new(), Vec::new(), Vec::new());
+        for _ in 0..frames_for(3.4, dt) {
+            harness.step(1);
+            for command in harness.audio() {
+                match command {
+                    AudioCommand::Play {
+                        looping: true,
+                        volume,
+                        ..
+                    } => {
+                        plays += 1;
+                        volumes.push(*volume);
+                    }
+                    AudioCommand::SetVoiceVolume { volume, .. } => volumes.push(*volume),
+                    AudioCommand::SetVoicePan { pan, .. } => pans.push(pan.get()),
+                    AudioCommand::StopVoice { fade, .. } => stops.push(*fade),
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(plays, 1, "dt {dt}: one voice");
+        assert!(volumes[0] < 0.2, "dt {dt}: far at first: {volumes:?}");
+        let loudest = volumes.iter().copied().fold(0.0, f32::max);
+        assert!(
+            loudest > 1.0 - 1.0 / 64.0,
+            "dt {dt}: whole beside it, within a command's step: {loudest}"
+        );
+        let peak = volumes.iter().position(|&v| v == loudest).unwrap();
+        assert!(
+            volumes[..=peak].windows(2).all(|w| w[1] >= w[0]),
+            "dt {dt}: rising as it nears: {volumes:?}"
+        );
+        assert!(pans[0] > 0.5, "dt {dt}: the fire to its right: {pans:?}");
+        assert!(
+            pans.windows(2).all(|w| w[1] <= w[0]) && *pans.last().unwrap() < 0.0,
+            "dt {dt}: panning across as it passes: {pans:?}"
+        );
+        assert_eq!(stops, [0.5], "dt {dt}: the burn's end stops it");
     }
 }
 
