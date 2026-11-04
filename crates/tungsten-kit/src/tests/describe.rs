@@ -125,7 +125,11 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     assert_eq!(kinds, registered_kinds);
     assert_eq!(described.len(), 45);
     assert_eq!(kinds.len(), 11);
-    assert_eq!(descriptions.shapes().count(), 70);
+    assert_eq!(
+        descriptions.shapes().count(),
+        73,
+        "7.10c's lob and the prefab and roll actions' object forms"
+    );
 }
 
 #[test]
@@ -387,11 +391,11 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 148,
+        checked, 149,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
          four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
-         hit flash's interval, a look's overlay speed and depth and glow radius, and its \
-         light's radius and intensity and sound's volume"
+         hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
+         radius and intensity and sound's volume, and a lob's speed"
     );
 }
 
@@ -401,7 +405,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 45);
-    assert_eq!(count("shape "), 70);
+    assert_eq!(count("shape "), 73);
     assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));
@@ -413,7 +417,8 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
         text.contains("shape cue_action: One reaction to an event.\n  exactly one of its fields\n")
     );
     assert!(text.contains("kind tags: "));
-    assert!(text.contains("  field roll: loot_tables ID or entry "));
+    assert!(text.contains("  field roll: shape roll_action "));
+    assert!(text.contains("  field table: loot_tables ID or entry "));
     assert!(text.contains("shape hit_shape: "));
     let first_shape = text.find("\nshape ").unwrap();
     assert!(text.rfind("\ncomponent ").unwrap() < first_shape);

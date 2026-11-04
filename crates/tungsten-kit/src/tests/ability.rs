@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 use tungsten_core::physics::PrevPosition;
-use tungsten_core::{Bundle, ComponentRegistry, PrefabData, Schedule, Stage};
+use tungsten_core::{AssetRegistry, Bundle, ComponentRegistry, PrefabData, Schedule, Stage};
 
 use crate::damage::effects::{Effect, Effects, EffectsPlugin};
 use crate::damage::health::HealthPlugin;
@@ -1613,4 +1613,353 @@ fn a_held_trigger_cues_its_hold_and_release() {
         .set_slot("run", true, false);
     steps(&mut world, &mut schedule, 1);
     assert_eq!(counts(&world), (3, 1));
+}
+
+// 7.10c, Step 4: spawns by their centre, their motion kept, a lob.
+
+/// Registers sprite `id`, `size` source pixels, anchored at `anchor` when
+/// given, on the World's asset registry.
+fn sprite(world: &mut World, id: &str, size: [u32; 2], anchor: Option<[f32; 2]>) {
+    use std::path::PathBuf;
+    use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
+    if !world.has_resource::<AssetRegistry>() {
+        world.insert_resource(AssetRegistry::new());
+    }
+    let assets = world.resource_mut::<AssetRegistry>();
+    assets.register_sprite(
+        id.to_string(),
+        FilterMode::Nearest,
+        size[0],
+        size[1],
+        PathBuf::from(format!("{id}.png")),
+        TextureHandle(0),
+        UvRect::FULL,
+        None,
+        None,
+        None,
+    );
+    assets.set_sprite_frame(id, None, anchor);
+}
+
+/// Adds prefab `id` as `data` to the World's registry.
+fn prefab(world: &mut World, id: &str, data: serde_json::Value) {
+    let data: PrefabData = serde_json::from_value(data).unwrap();
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert(id.to_string(), data);
+}
+
+/// The entities tagged `name`, by index.
+fn tagged(world: &World, name: &str) -> Vec<Entity> {
+    let mut found: Vec<Entity> = world
+        .query::<(Entity, &tungsten_core::Tag)>()
+        .filter(|(_, tag)| tag.name == name)
+        .map(|(entity, _)| entity)
+        .collect();
+    found.sort_by_key(|entity| entity.id());
+    found
+}
+
+/// The command flush that lands queued spawns.
+fn flush(world: &mut World) {
+    let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+    world.flush_reusing(&mut commands);
+    world.insert_resource(commands);
+}
+
+/// A spawn of `prefab` with no speed or offset, centred or not.
+fn spawn_of(prefab: &str, centred: bool, offset: f32) -> Payload {
+    if centred {
+        Payload::SpawnWith(Box::new(
+            SpawnWith::new(prefab).with_offset(offset).centred(),
+        ))
+    } else {
+        Payload::Spawn {
+            prefab: prefab.to_string(),
+            speed: 0.0,
+            offset,
+        }
+    }
+}
+
+#[test]
+fn a_centred_spawn_puts_the_prefabs_centre_on_the_users() {
+    use tungsten_core::physics::Collider;
+    let (mut world, mut schedule) = rig();
+    sprite(&mut world, "mote", [8, 6], None);
+    prefab(
+        &mut world,
+        "mote",
+        json!({ "tag": "mote", "sprite": { "asset_id": "mote" } }),
+    );
+    let centred = insert(
+        &mut world,
+        "centred",
+        Ability::new().with_payload(spawn_of("mote", true, 0.0)),
+    );
+    let ahead = insert(
+        &mut world,
+        "ahead",
+        Ability::new().with_payload(spawn_of("mote", true, 10.0)),
+    );
+    let plain = insert(
+        &mut world,
+        "plain",
+        Ability::new().with_payload(spawn_of("mote", false, 0.0)),
+    );
+    // A body whose collider sits 8 px above its point.
+    let hero = world.spawn_with((
+        Position(Vec2::new(10.0, 20.0)),
+        Collider::aabb(Vec2::splat(4.0)).with_offset(Vec2::new(0.0, -8.0)),
+        Abilities::new().with(centred).with(ahead).with(plain),
+        Intent::default(),
+    ));
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_aim(Some(Vec2::X));
+    let mut placed = Vec::new();
+    for name in ["centred", "ahead", "plain"] {
+        let before = tagged(&world, "mote");
+        assert_eq!(use_ability(&mut world, hero, name), Used::Used);
+        steps(&mut world, &mut schedule, 1);
+        let mote = tagged(&world, "mote")
+            .into_iter()
+            .find(|mote| !before.contains(mote))
+            .unwrap();
+        placed.push((
+            world.get::<Transform>(mote).unwrap().position,
+            centre_of(&world, mote).unwrap(),
+        ));
+    }
+    assert_eq!(
+        placed,
+        [
+            (Vec2::new(6.0, 9.0), Vec2::new(10.0, 12.0)),
+            (Vec2::new(16.0, 9.0), Vec2::new(20.0, 12.0)),
+            (Vec2::new(10.0, 20.0), Vec2::new(14.0, 23.0)),
+        ],
+        "its sprite's centre on the user's collider centre, then 10 px on along the aim; \
+         uncentred, its point on the user's point"
+    );
+}
+
+#[test]
+fn a_drawn_centre_reads_the_anchor_scale_flip_and_turn() {
+    use tungsten_core::Sprite;
+    use tungsten_core::components::SpriteFlip;
+    let (mut world, mut schedule) = rig();
+    sprite(&mut world, "banner", [16, 8], Some([4.0, 8.0]));
+    let banner = world
+        .resource::<AssetRegistry>()
+        .sprite_id("banner")
+        .unwrap();
+    // Scaled 2, turned a quarter and flipped: the flipped anchor (12, 8),
+    // scaled to (24, 16), sits on the point; the centre (16, 8) lies
+    // (−8, −8) from it, turned a quarter to (8, −8).
+    let mut transform = Transform::from_position(Vec2::new(100.0, 50.0));
+    transform.scale = Vec2::splat(2.0);
+    transform.rotation = std::f32::consts::FRAC_PI_2;
+    let flag = world.spawn_with((transform, Sprite::new(banner), SpriteFlip(true)));
+    let centre = centre_of(&world, flag).unwrap();
+    assert!(
+        (centre - Vec2::new(108.0, 42.0)).length() < 1e-4,
+        "{centre}"
+    );
+    // Unscaled, unturned, unflipped: the anchor (4, 8) on the point, the
+    // centre (8, 4) at (4, −4) from it.
+    let plain = world.spawn_with((
+        Transform::from_position(Vec2::new(100.0, 50.0)),
+        Sprite::new(banner),
+    ));
+    assert_eq!(centre_of(&world, plain), Some(Vec2::new(104.0, 46.0)));
+    // A bodiless prefab anchored so: a centred spawn puts its point 4 px
+    // left of and below the user's centre.
+    prefab(
+        &mut world,
+        "banner",
+        json!({ "tag": "banner", "sprite": { "asset_id": "banner" } }),
+    );
+    let raise = insert(
+        &mut world,
+        "raise",
+        Ability::new().with_payload(spawn_of("banner", true, 0.0)),
+    );
+    let bearer = at(&mut world, 30.0, 30.0, (Abilities::new().with(raise),));
+    assert_eq!(use_ability(&mut world, bearer, "raise"), Used::Used);
+    steps(&mut world, &mut schedule, 1);
+    let [raised] = tagged(&world, "banner")[..] else {
+        panic!("one banner");
+    };
+    assert_eq!(
+        world.get::<Transform>(raised).unwrap().position,
+        Vec2::new(26.0, 34.0)
+    );
+    assert_eq!(centre_of(&world, raised), Some(Vec2::new(30.0, 30.0)));
+}
+
+#[test]
+fn a_spawn_keeps_its_prefabs_acceleration() {
+    let (mut world, mut schedule) = rig();
+    prefab(
+        &mut world,
+        "shell",
+        json!({ "tag": "shell", "components": { "linear_motion": { "velocity": [0, 0], "acceleration": [0, 300] } } }),
+    );
+    let fired = |prefab: &str| Payload::Spawn {
+        prefab: prefab.to_string(),
+        speed: 200.0,
+        offset: 0.0,
+    };
+    let shell = insert(
+        &mut world,
+        "shell",
+        Ability::new()
+            .with_target(AbilityTarget::Aim)
+            .with_payload(fired("shell")),
+    );
+    let bolt = insert(
+        &mut world,
+        "bolt",
+        Ability::new()
+            .with_target(AbilityTarget::Aim)
+            .with_payload(fired("bolt")),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(shell).with(bolt), Intent::default()),
+    );
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_aim(Some(Vec2::X));
+    for name in ["shell", "bolt"] {
+        assert_eq!(use_ability(&mut world, hero, name), Used::Used);
+    }
+    steps(&mut world, &mut schedule, 1);
+    let [thrown] = tagged(&world, "shell")[..] else {
+        panic!("one shell");
+    };
+    let motion = world.get::<LinearMotion>(thrown).unwrap();
+    assert_eq!(
+        (motion.velocity(), motion.acceleration()),
+        (Vec2::new(200.0, 0.0), Vec2::new(0.0, 300.0)),
+        "its speed along the aim, its prefab's acceleration kept"
+    );
+    let [(_, velocity)] = bolts(&world)[..] else {
+        panic!("one bolt");
+    };
+    assert_eq!(velocity, Vec2::new(200.0, 0.0));
+    let [bolt] = tagged(&world, "bolt")[..] else {
+        panic!("one bolt");
+    };
+    assert_eq!(
+        world.get::<LinearMotion>(bolt).unwrap().acceleration(),
+        Vec2::ZERO,
+        "a prefab without one gets none"
+    );
+}
+
+/// A World with a clock at fixed step `dt`, a command buffer, a trace,
+/// gravity 600 px/s² down, the physics and the tags (`team.enemy`), linear
+/// motion and ability plugins.
+fn physics_rig(dt: f32) -> (World, Schedule) {
+    use tungsten_core::physics::{PhysicsConfig, PhysicsPlugin};
+    let mut world = World::new();
+    let mut time = Time::new();
+    time.set_fixed_step(dt);
+    world.insert_resource(time);
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(KitTrace::default());
+    world.insert_resource(PrefabRegistry::new());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, 600.0),
+        ..PhysicsConfig::default()
+    });
+    let mut schedule = Schedule::new();
+    TagsPlugin::new()
+        .with_tags(["team.enemy"])
+        .build(&mut schedule, &mut world);
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    LinearMotionPlugin.build(&mut schedule, &mut world);
+    AbilitiesPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+#[test]
+fn a_lob_lands_on_the_aims_point_by_its_body_kind() {
+    let target = Vec2::new(300.0, -40.0);
+    let dynamic = |scale: Option<f32>| {
+        let mut body = json!({ "kind": "dynamic", "shape": { "kind": "circle", "radius": 2 } });
+        if let Some(scale) = scale {
+            body["gravity_scale"] = json!(scale);
+        }
+        body
+    };
+    let linear = json!({ "velocity": [0, 0], "acceleration": [0, 300] });
+    let kinds = [
+        ("stone", json!({ "rigid_body": dynamic(Some(2.0)) })),
+        ("shell", json!({ "linear_motion": linear })),
+        (
+            "both",
+            json!({ "rigid_body": dynamic(None), "linear_motion": linear }),
+        ),
+    ];
+    for dt in [STEP, 2.0 * STEP] {
+        for (id, components) in &kinds {
+            let (mut world, mut schedule) = physics_rig(dt);
+            prefab(
+                &mut world,
+                id,
+                json!({ "tag": id, "components": components }),
+            );
+            let lob = insert(
+                &mut world,
+                "lob",
+                Ability::new()
+                    .with_target(AbilityTarget::Nearest {
+                        filter: TagFilter::new().all(["team.enemy"]),
+                        range: None,
+                    })
+                    .with_payload(Payload::SpawnWith(Box::new(
+                        SpawnWith::new(*id).with_lob(Lob::new(400.0, [0.2, 2.0])),
+                    ))),
+            );
+            let thrower = at(&mut world, 0.0, 0.0, (Abilities::new().with(lob),));
+            at(&mut world, target.x, target.y, (Tags::new(["team.enemy"]),));
+            assert_eq!(use_ability(&mut world, thrower, "lob"), Used::Used);
+            flush(&mut world);
+            let [thrown] = tagged(&world, id)[..] else {
+                panic!("{id}: one");
+            };
+            // 302.6 px at 400 px/s: 45 steps at 1/60 s, 23 at 1/30 s.
+            let flight = ((target.length() / 400.0).clamp(0.2, 2.0) / dt).round() as usize;
+            for _ in 0..flight {
+                step(&mut world, &mut schedule, dt);
+            }
+            let landed = point_of(&world, thrown).unwrap();
+            assert!(
+                (landed - target).length() < 0.5,
+                "{id} at dt {dt}: {landed} after {flight} steps"
+            );
+        }
+    }
+    // The load refuses a lob beside a speed, and on a prefab that holds
+    // neither a dynamic body nor a `linear_motion`.
+    assert!(
+        serde_json::from_value::<Ability>(json!({
+            "payload": [{ "spawn": { "prefab": "shell", "speed": 100, "lob": { "speed": 400, "time": [0.2, 2] } } }]
+        }))
+        .is_err()
+    );
+    let (mut world, _) = physics_rig(STEP);
+    prefab(&mut world, "puff", json!({ "tag": "puff" }));
+    let still = Ability::new().with_payload(Payload::SpawnWith(Box::new(
+        SpawnWith::new("puff").with_lob(Lob::new(400.0, [0.2, 2.0])),
+    )));
+    let error = still.check(&world).unwrap_err();
+    assert_eq!(error.field, "payload.0.spawn.prefab", "{error:?}");
 }

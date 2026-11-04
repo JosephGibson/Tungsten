@@ -3,13 +3,16 @@
 //! expires, and the camera on the rogue; M64's crawlers and warden; M65's
 //! adventurer and its swing, a chest and its loot, gold and spikes; M67's
 //! blessing and level on the adventurer; 7.10c's lantern warden, Lantern
-//! Ward's: its bell, flask and run as cue events.
+//! Ward's: its bell, flask and run as cue events, its flask from its centre.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
 use tungsten_core::{CameraController, CameraMode, CameraState, Entity, Sprite};
 
-use super::{DTS, body_at, frames_for, point_of, recipe, spawn, tagged, traced_steps};
+use super::{
+    DTS, body_at, drawn_at, frames_for, point_of, recipe, register_sprite, spawn, tagged,
+    traced_steps,
+};
 use crate::kit::{
     Abilities, Cooldown, Counters, Effects, Flags, Health, Hit, KitPlugins, KitRng, Level, Source,
     Tags, TopDownMover, damage,
@@ -446,5 +449,34 @@ fn the_flask_chimes_when_ready() {
         tap(&mut harness, "fire");
         harness.step(frames_for(3.0, dt));
         assert_eq!(counter(&harness, warden, "chimes"), 1, "dt {dt}: once");
+    }
+}
+
+// 7.10c, Step 4: the warden's flask from its centre (LW14, S-88).
+
+#[test]
+fn a_flask_leaves_from_the_wardens_centre() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        register_sprite(&mut harness, "lantern_warden", 16, 32);
+        register_sprite(&mut harness, "oil_flask", 8, 8);
+        let warden = spawn(&mut harness, "lantern_warden", [100.0, 100.0]);
+        harness.step(1);
+        let centre = crate::kit::centre_of(harness.world(), warden).unwrap();
+        assert_eq!(centre, Vec2::new(108.0, 116.0), "dt {dt}: its drawn centre");
+        tap(&mut harness, "attack");
+        let [flask] = tagged(&harness, "oil_flask")[..] else {
+            panic!("dt {dt}: one flask");
+        };
+        assert_eq!(
+            drawn_at(&harness, flask),
+            Vec2::new(104.0, 112.0),
+            "dt {dt}: its point 4 px up and left of the warden's centre"
+        );
+        assert_eq!(
+            crate::kit::centre_of(harness.world(), flask),
+            Some(centre),
+            "dt {dt}: its centre on the warden's"
+        );
     }
 }

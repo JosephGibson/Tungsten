@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
-use tungsten_core::physics::Position;
+use tungsten_core::physics::{BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity};
 use tungsten_core::{
     CommandBuffer, DataRef, DataRegistry, Entity, EventQueue, Inspectable, MissingAsset, Plugin,
     PrefabRegistry, Schedule, SpawnContext, Time, Transform, World, system,
@@ -34,7 +34,7 @@ use crate::intent::sheet::{
     DELIVERY, Skill, SkillLine, delivery_saved, describe_skills, resolve as resolve_sheet,
 };
 use crate::lifecycle::ended::Despawning;
-use crate::motion::drive::point_of;
+use crate::motion::drive::{PrefabMotion, centre_of, point_of, prefab_centre, prefab_motion};
 use crate::motion::knockback::knock_back;
 use crate::motion::linear::LinearMotion;
 use crate::motion::target::describe_target;
@@ -60,6 +60,7 @@ const ABILITY_CHARGES: &str = "ability_charges";
 const ABILITY_TARGET: &str = "ability_target";
 const ABILITY_PAYLOAD: &str = "ability_payload";
 const SPAWN_PAYLOAD: &str = "spawn_payload";
+const LOB: &str = "lob";
 const SKILL: &str = "skill";
 const SKILL_BASES: &str = "skill_bases";
 const SKILL_LINE: &str = "skill_line";
@@ -150,14 +151,17 @@ pub enum AbilityTarget {
 /// since later payloads are additions.
 ///
 /// Data form, one field: `{ "spawn": { "prefab": "bolt", "speed": 420, "offset": 12 } }`,
-/// `{ "effect": "swift" }`, `{ "impulse": 600 }` or `{ "hitbox": 0.2 }`.
+/// `{ "effect": "swift" }`, `{ "impulse": 600 }` or `{ "hitbox": 0.2 }`. A
+/// spawn with `"centred": true` or a `"lob": { "speed": 600, "time": [0.3,
+/// 1.2] }` in place of a `speed` reads as a [`SpawnWith`], boxed so every
+/// payload stays as small as a plain spawn.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Payload {
     /// A prefab spawned from the entity at its point plus `offset` along
-    /// the direction, with a [`LinearMotion`] of `speed` along it when
-    /// `speed` is above 0 (the prefab then holds a `linear_motion`, which
-    /// the load checks).
+    /// the direction, with its [`LinearMotion`]'s velocity `speed` along it
+    /// when `speed` is above 0, its acceleration kept (the prefab then holds
+    /// a `linear_motion`, which the load checks).
     Spawn {
         /// The manifest prefab ID.
         prefab: String,
@@ -167,6 +171,8 @@ pub enum Payload {
         /// World pixels from the entity's point along the direction.
         offset: f32,
     },
+    /// A spawn placed by its centre or lobbed onto the aim's point.
+    SpawnWith(Box<SpawnWith>),
     /// An effect queued on the target entity, from the entity.
     Effect(DataRef<Effect>),
     /// The entity pushed along the direction at this speed, through its
@@ -181,10 +187,322 @@ impl Payload {
     fn needs_direction(&self) -> bool {
         match self {
             Payload::Spawn { speed, .. } => *speed > 0.0,
+            Payload::SpawnWith(spawn) => spawn.speed > 0.0,
             Payload::Impulse(_) => true,
             Payload::Effect(_) | Payload::Hitbox(_) => false,
         }
     }
+
+    /// A spawn's lob and whether it is centred: what needs the aim's point.
+    fn lob(&self) -> Option<(&Lob, bool)> {
+        match self {
+            Payload::SpawnWith(spawn) => spawn.lob.as_ref().map(|lob| (lob, spawn.centred)),
+            _ => None,
+        }
+    }
+
+    /// A spawn's prefab, speed, offset, centring and lob, in either form.
+    fn spawn(&self) -> Option<(&str, f32, f32, bool, Option<&Lob>)> {
+        match self {
+            Payload::Spawn {
+                prefab,
+                speed,
+                offset,
+            } => Some((prefab, *speed, *offset, false, None)),
+            Payload::SpawnWith(spawn) => Some((
+                &spawn.prefab,
+                spawn.speed,
+                spawn.offset,
+                spawn.centred,
+                spawn.lob.as_ref(),
+            )),
+            _ => None,
+        }
+    }
+}
+
+/// A spawn payload with its options: a [`Payload::Spawn`]'s prefab, speed
+/// and offset, and its prefab's centre placed on the entity's centre
+/// ([`centre_of`](crate::centre_of)) rather than its point on the entity's
+/// point, or a [`Lob`] in place of its speed. Its data form is the `spawn`
+/// payload's with `centred` or `lob`.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_kit::{Ability, Lob, Payload, SpawnWith};
+///
+/// let flask = SpawnWith::new("flask").centred().with_lob(Lob::new(600.0, [0.3, 1.2]));
+/// assert!(flask.is_centred() && flask.lob().is_some());
+/// let throw = Ability::new().with_payload(Payload::SpawnWith(Box::new(flask)));
+/// let data = serde_json::to_value(&throw).unwrap();
+/// assert_eq!(data["payload"][0]["spawn"]["centred"], true);
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpawnWith {
+    prefab: String,
+    speed: f32,
+    offset: f32,
+    centred: bool,
+    lob: Option<Lob>,
+}
+
+impl SpawnWith {
+    /// A spawn of the manifest prefab `prefab`, at the entity's point, its
+    /// own motion left.
+    #[must_use]
+    pub fn new(prefab: impl Into<String>) -> Self {
+        Self {
+            prefab: prefab.into(),
+            speed: 0.0,
+            offset: 0.0,
+            centred: false,
+            lob: None,
+        }
+    }
+
+    /// The spawn, its `LinearMotion`'s velocity `speed` along the direction.
+    ///
+    /// # Panics
+    ///
+    /// When `speed` is not finite and at least 0, or the spawn lobs.
+    #[must_use]
+    #[track_caller]
+    pub fn with_speed(mut self, speed: f32) -> Self {
+        assert!(
+            speed.is_finite() && speed >= 0.0,
+            "SpawnWith::with_speed: speed must be finite and >= 0 (got {speed})"
+        );
+        assert!(
+            self.lob.is_none() || speed == 0.0,
+            "SpawnWith::with_speed: a lob takes the speed's place"
+        );
+        self.speed = speed;
+        self
+    }
+
+    /// The spawn, `offset` world pixels on along the direction.
+    ///
+    /// # Panics
+    ///
+    /// When `offset` is not finite.
+    #[must_use]
+    #[track_caller]
+    pub fn with_offset(mut self, offset: f32) -> Self {
+        assert!(
+            offset.is_finite(),
+            "SpawnWith::with_offset: offset must be finite (got {offset})"
+        );
+        self.offset = offset;
+        self
+    }
+
+    /// The spawn, its prefab's centre on the entity's centre.
+    #[must_use]
+    pub fn centred(mut self) -> Self {
+        self.centred = true;
+        self
+    }
+
+    /// The spawn, lobbed onto the aim's point by `lob`.
+    ///
+    /// # Panics
+    ///
+    /// When the spawn has a speed.
+    #[must_use]
+    #[track_caller]
+    pub fn with_lob(mut self, lob: Lob) -> Self {
+        assert!(
+            self.speed == 0.0,
+            "SpawnWith::with_lob: a lob takes the speed's place (got speed {})",
+            self.speed
+        );
+        self.lob = Some(lob);
+        self
+    }
+
+    /// The manifest prefab ID.
+    #[must_use]
+    pub fn prefab(&self) -> &str {
+        &self.prefab
+    }
+
+    /// World pixels per second along the direction; 0 leaves the prefab's
+    /// own motion.
+    #[must_use]
+    pub fn speed(&self) -> f32 {
+        self.speed
+    }
+
+    /// World pixels from the entity's point along the direction.
+    #[must_use]
+    pub fn offset(&self) -> f32 {
+        self.offset
+    }
+
+    /// Whether its prefab's centre lands on the entity's centre.
+    #[must_use]
+    pub fn is_centred(&self) -> bool {
+        self.centred
+    }
+
+    /// Its lob, when it lobs.
+    #[must_use]
+    pub fn lob(&self) -> Option<&Lob> {
+        self.lob.as_ref()
+    }
+}
+
+/// A spawn's lob: the launch that lands its prefab on the aim's point, a
+/// flight of `distance / speed` seconds clamped to `time` and rounded to
+/// whole fixed steps, by the body its prefab gives: a dynamic body's
+/// `Velocity` under the physics' gravity times its `gravity_scale`, else
+/// its `linear_motion`'s velocity under that motion's acceleration. The
+/// aim's point is a `nearest` or `random` target's point (its centre for a
+/// centred spawn), else the entity's [`Aim::point`]; a use without one is
+/// refused before anything is spent.
+///
+/// Data form: `{ "speed": 600, "time": [0.3, 1.2] }`.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_kit::Lob;
+///
+/// let throw = Lob::new(600.0, [0.3, 1.2]);
+/// assert_eq!((throw.speed(), throw.time()), (600.0, [0.3, 1.2]));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Lob {
+    speed: f32,
+    time: [f32; 2],
+}
+
+impl Lob {
+    /// A lob at `speed` world pixels per second over the ground, its flight
+    /// at least `time[0]` and at most `time[1]` seconds.
+    ///
+    /// # Panics
+    ///
+    /// Unless `speed` is finite and above 0 and `0 < time[0] <= time[1]`,
+    /// both finite.
+    #[must_use]
+    #[track_caller]
+    pub fn new(speed: f32, time: [f32; 2]) -> Self {
+        assert!(
+            speed.is_finite() && speed > 0.0,
+            "Lob::new: speed must be finite and > 0 (got {speed})"
+        );
+        assert!(
+            time.iter().all(|t| t.is_finite()) && 0.0 < time[0] && time[0] <= time[1],
+            "Lob::new: time must be finite with 0 < min <= max (got {time:?})"
+        );
+        Self { speed, time }
+    }
+
+    /// World pixels per second over the ground.
+    #[must_use]
+    pub fn speed(&self) -> f32 {
+        self.speed
+    }
+
+    /// The flight's least and greatest seconds.
+    #[must_use]
+    pub fn time(&self) -> [f32; 2] {
+        self.time
+    }
+
+    /// The flight from `from` to `to` in whole steps of `step` seconds:
+    /// the distance over the speed, clamped to its time, at least a step.
+    fn flight(&self, from: Vec2, to: Vec2, step: f32) -> f32 {
+        let seconds = (from.distance(to) / self.speed).clamp(self.time[0], self.time[1]);
+        (seconds / step).round().max(1.0) * step
+    }
+}
+
+/// The launch velocity that carries a body from `from` to `to` in `time`
+/// seconds under a constant `gravity`, an acceleration: `(to − from) / time
+/// − ½ gravity · time`. It is exact for a [`LinearMotion`], whose step
+/// moves by its mean velocity; a dynamic body, which adds its gravity before
+/// it moves in each physics substep `h`, needs `½ gravity · h` less, which a
+/// spawn's [`Lob`] takes off.
+///
+/// # Panics
+///
+/// When `time` is not finite and above 0.
+///
+/// # Examples
+///
+/// ```
+/// use glam::Vec2;
+/// use tungsten_kit::lob_velocity;
+///
+/// let launch = lob_velocity(Vec2::ZERO, Vec2::new(300.0, 0.0), 0.5, Vec2::new(0.0, 800.0));
+/// assert_eq!(launch, Vec2::new(600.0, -200.0));
+/// ```
+#[must_use]
+#[track_caller]
+pub fn lob_velocity(from: Vec2, to: Vec2, time: f32, gravity: Vec2) -> Vec2 {
+    assert!(
+        time.is_finite() && time > 0.0,
+        "lob_velocity: time must be finite and > 0 (got {time})"
+    );
+    (to - from) / time - gravity * (0.5 * time)
+}
+
+/// The substeps a physics step of `step` seconds runs, as
+/// [`PhysicsConfig::substeps`] documents it: its count, or in a World with a
+/// kinematic body with a collider, `clamp(⌈count · step · 60 − 0.001⌉,
+/// count, 2 · count)`.
+fn substeps_of(world: &World, config: &PhysicsConfig, step: f32) -> u32 {
+    let count = config.substeps.max(1);
+    let kinematic = world
+        .query::<(&RigidBody, &Collider)>()
+        .any(|(body, _)| body.kind == BodyKind::Kinematic);
+    if !kinematic {
+        return count;
+    }
+    let wanted = (count as f32 * step * 60.0 - 0.001).ceil();
+    (wanted as u32).clamp(count, count.saturating_mul(2))
+}
+
+/// A lob's launch, by the body its prefab gives.
+enum Launch {
+    /// A dynamic body's `Velocity`.
+    Body(Vec2),
+    /// A `linear_motion` with its velocity and kept acceleration.
+    Linear(LinearMotion),
+}
+
+/// The launch that lands a prefab moving as `motion` says on `to` from
+/// `from`; `None` for a prefab with neither a dynamic body nor a
+/// `linear_motion`, which the load refuses.
+fn launch(
+    world: &World,
+    motion: Option<&PrefabMotion>,
+    from: Vec2,
+    to: Vec2,
+    lob: &Lob,
+) -> Option<Launch> {
+    let motion = motion?;
+    let step = world
+        .get_resource::<Time>()
+        .map_or(1.0 / 60.0, Time::fixed_step);
+    let time = lob.flight(from, to, step);
+    if motion.dynamic {
+        let config = world.get_resource::<PhysicsConfig>();
+        let gravity = config.map_or(Vec2::ZERO, |config| config.gravity) * motion.gravity_scale;
+        let substeps = config.map_or(1, |config| substeps_of(world, config, step));
+        let h = step / substeps as f32;
+        return Some(Launch::Body(
+            lob_velocity(from, to, time, gravity) - gravity * (0.5 * h),
+        ));
+    }
+    let acceleration = motion.acceleration?;
+    Some(Launch::Linear(
+        LinearMotion::new(lob_velocity(from, to, time, acceleration))
+            .with_acceleration(acceleration),
+    ))
 }
 
 /// An ability's charges: a use takes one, time gives them back.
@@ -219,7 +537,7 @@ struct Charges {
 /// movement, else the aim); `payload` at least one, run in order. A
 /// cost's optional `scale` names a stat whose value for the user multiplies
 /// the amount ([`cost_for`](Self::cost_for)). The load checks each prefab (with a `linear_motion` when it spawns with a
-/// speed), each effect and each target's tags.
+/// speed, a dynamic body or a `linear_motion` when it lobs), each effect and each target's tags.
 ///
 /// # Examples
 ///
@@ -494,7 +812,8 @@ impl Ability {
                 seconds.is_finite() && *seconds > 0.0,
                 "Ability::with_payload: a hitbox window must be finite and > 0 (got {seconds})"
             ),
-            Payload::Effect(_) => {}
+            // A spawn with options was checked by its builder.
+            Payload::SpawnWith(_) | Payload::Effect(_) => {}
         }
         self.payload.push(payload);
         self
@@ -589,18 +908,28 @@ impl Ability {
         }
         for (i, payload) in self.payload.iter().enumerate() {
             match payload {
-                Payload::Spawn { prefab, speed, .. } => {
+                Payload::Spawn { .. } | Payload::SpawnWith(_) => {
+                    let (prefab, speed, _, _, lob) = payload.spawn().unwrap();
                     let field = format!("payload.{i}.spawn.prefab");
                     world.check_prefab_id(&field, prefab)?;
                     let moves = world
                         .get_resource::<PrefabRegistry>()
                         .and_then(|prefabs| prefabs.get(prefab))
                         .is_some_and(|data| data.components.contains_key(LINEAR_MOTION));
-                    if *speed > 0.0 && !moves {
+                    if speed > 0.0 && !moves {
                         return Err(MissingAsset::new(
                             field,
                             "prefab with a `linear_motion`, for a spawn with a speed",
-                            prefab.as_str(),
+                            prefab,
+                        ));
+                    }
+                    let launches = prefab_motion(world, prefab)
+                        .is_some_and(|motion| motion.dynamic || motion.acceleration.is_some());
+                    if lob.is_some() && !launches {
+                        return Err(MissingAsset::new(
+                            field,
+                            "prefab with a dynamic `rigid_body` or a `linear_motion`, for a lob",
+                            prefab,
                         ));
                     }
                 }
@@ -929,7 +1258,8 @@ enum PayloadDef {
     Hitbox(#[serde(deserialize_with = "positive")] f32),
 }
 
-/// A spawn payload as data writes it.
+/// A spawn payload as data writes it, `centred` and `lob` left out at
+/// their defaults so a saved ability in place keeps its bytes.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SpawnDef {
@@ -938,6 +1268,56 @@ struct SpawnDef {
     speed: f32,
     #[serde(default, deserialize_with = "crate::foundation::finite")]
     offset: f32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    centred: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lob: Option<LobDef>,
+}
+
+/// The spawn payload's description round trip: `centred`, left out at
+/// `false`, written as its described default.
+fn spawn_round_trip(value: serde_json::Value) -> Result<serde_json::Value, String> {
+    let mut out = round_trip::<SpawnDef>(value)?;
+    if let Some(object) = out.as_object_mut() {
+        object
+            .entry("centred")
+            .or_insert(serde_json::Value::Bool(false));
+    }
+    Ok(out)
+}
+
+/// A lob as data writes it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, try_from = "LobFields")]
+struct LobDef {
+    speed: f32,
+    time: [f32; 2],
+}
+
+/// A lob's fields, before its time is checked.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LobFields {
+    #[serde(deserialize_with = "positive")]
+    speed: f32,
+    time: [f32; 2],
+}
+
+impl TryFrom<LobFields> for LobDef {
+    type Error = String;
+
+    fn try_from(fields: LobFields) -> Result<Self, Self::Error> {
+        let [min, max] = fields.time;
+        if !(min.is_finite() && max.is_finite() && 0.0 < min && min <= max) {
+            return Err(format!(
+                "time: [min, max] finite with 0 < min <= max (got [{min}, {max}])"
+            ));
+        }
+        Ok(Self {
+            speed: fields.speed,
+            time: fields.time,
+        })
+    }
 }
 
 impl TryFrom<AbilityDef> for Ability {
@@ -950,6 +1330,13 @@ impl TryFrom<AbilityDef> for Ability {
         if let Some(name) = def.tags.iter().find(|name| !valid_tag(name)) {
             return Err(format!(
                 "tags: `{name}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+            ));
+        }
+        if let Some(i) = def.payload.iter().position(|payload| {
+            matches!(payload, PayloadDef::Spawn(spawn) if spawn.lob.is_some() && spawn.speed > 0.0)
+        }) {
+            return Err(format!(
+                "payload.{i}.spawn: a `lob` takes the `speed`'s place, so a speed above 0 beside it is refused"
             ));
         }
         let mut tags = def.tags;
@@ -992,6 +1379,18 @@ impl TryFrom<AbilityDef> for Ability {
                 .payload
                 .into_iter()
                 .map(|payload| match payload {
+                    PayloadDef::Spawn(spawn) if spawn.centred || spawn.lob.is_some() => {
+                        Payload::SpawnWith(Box::new(SpawnWith {
+                            prefab: spawn.prefab,
+                            speed: spawn.speed,
+                            offset: spawn.offset,
+                            centred: spawn.centred,
+                            lob: spawn.lob.map(|lob| Lob {
+                                speed: lob.speed,
+                                time: lob.time,
+                            }),
+                        }))
+                    }
                     PayloadDef::Spawn(spawn) => Payload::Spawn {
                         prefab: spawn.prefab,
                         speed: spawn.speed,
@@ -1052,6 +1451,18 @@ impl From<Ability> for AbilityDef {
                         prefab,
                         speed,
                         offset,
+                        centred: false,
+                        lob: None,
+                    }),
+                    Payload::SpawnWith(spawn) => PayloadDef::Spawn(SpawnDef {
+                        prefab: spawn.prefab,
+                        speed: spawn.speed,
+                        offset: spawn.offset,
+                        centred: spawn.centred,
+                        lob: spawn.lob.map(|lob| LobDef {
+                            speed: lob.speed,
+                            time: lob.time,
+                        }),
                     }),
                     Payload::Effect(effect) => PayloadDef::Effect(effect),
                     Payload::Impulse(speed) => PayloadDef::Impulse(speed),
@@ -1851,6 +2262,27 @@ fn resolve_target(
     }
 }
 
+/// Where a use aims: a `nearest` or `random` target's point, its centre
+/// for a `centred` spawn; else the user's [`Aim::point`].
+fn aim_point(
+    world: &World,
+    entity: Entity,
+    aimed_at: &AbilityTarget,
+    target: Entity,
+    centred: bool,
+) -> Option<Vec2> {
+    match aimed_at {
+        AbilityTarget::Nearest { .. } | AbilityTarget::Random { .. } => {
+            if centred {
+                centre_of(world, target)
+            } else {
+                point_of(world, target)
+            }
+        }
+        _ => world.get::<Aim>(entity).and_then(Aim::point),
+    }
+}
+
 /// [`use_ability`]'s work, with `scratch`: a refused use of an owned
 /// ability pushes `ability_refused` with its reason when named.
 fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch) -> Used {
@@ -1929,6 +2361,15 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
     if direction.is_none() && ability.needs_direction() {
         return Used::NoTarget;
     }
+    // A lob needs the aim's point.
+    if ability
+        .payload
+        .iter()
+        .filter_map(Payload::lob)
+        .any(|(_, centred)| aim_point(world, entity, &ability.target, target, centred).is_none())
+    {
+        return Used::NoTarget;
+    }
     // Spend.
     if let Some((stat, amount)) = cost
         && let Some(stats) = world.get_mut::<Stats>(entity)
@@ -1958,21 +2399,45 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
     // The payloads, in order.
     for payload in &ability.payload {
         match payload {
-            Payload::Spawn {
-                prefab,
-                speed,
-                offset,
-            } => {
+            Payload::Spawn { .. } | Payload::SpawnWith(_) => {
+                let (prefab, speed, offset, centred, lob) = payload.spawn().unwrap();
                 if !world.has_resource::<CommandBuffer>() {
                     skip(world, entity, "spawn", NO_COMMANDS);
                     continue;
                 }
                 let along = direction.unwrap_or(Vec2::ZERO);
-                let position = at + along * *offset;
+                // A centred spawn's point puts its centre on the user's.
+                let shift = if centred {
+                    prefab_centre(world, prefab)
+                } else {
+                    Vec2::ZERO
+                };
+                let from = if centred {
+                    centre_of(world, entity).unwrap_or(at)
+                } else {
+                    at
+                };
+                let position = from - shift + along * offset;
                 match world.prepare_prefab(prefab, [position.x, position.y]) {
                     Ok(prepared) => {
-                        let prepared = if *speed > 0.0 {
-                            prepared.with((LinearMotion::new(along * *speed),))
+                        let motion = prefab_motion(world, prefab);
+                        let prepared = if let Some(lob) = lob {
+                            let to = aim_point(world, entity, &ability.target, target, centred)
+                                .map_or(position, |point| point - shift);
+                            match launch(world, motion.as_ref(), position, to, lob) {
+                                Some(Launch::Body(velocity)) => {
+                                    prepared.with((Velocity(velocity),))
+                                }
+                                Some(Launch::Linear(linear)) => prepared.with((linear,)),
+                                None => prepared,
+                            }
+                        } else if speed > 0.0 {
+                            let acceleration = motion
+                                .and_then(|motion| motion.acceleration)
+                                .unwrap_or(Vec2::ZERO);
+                            prepared
+                                .with((LinearMotion::new(along * speed)
+                                    .with_acceleration(acceleration),))
                         } else {
                             prepared
                         };
@@ -1984,13 +2449,13 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
                             .resource_mut::<CommandBuffer>()
                             .spawn_prefab_from(entity, prepared);
                         trace(world, entity, || TraceKind::Spawn {
-                            prefab: prefab.clone(),
+                            prefab: prefab.to_owned(),
                             by: ABILITY,
                         });
                     }
                     Err(err) => {
                         trace(world, entity, || TraceKind::SpawnFailed {
-                            prefab: prefab.clone(),
+                            prefab: prefab.to_owned(),
                             by: ABILITY,
                             error: err.to_string(),
                         });
@@ -2483,7 +2948,7 @@ fn describe_abilities(world: &mut World) {
             .field(FieldDescription::new(
                 "prefab",
                 FieldType::Prefab,
-                "the manifest prefab; the load checks the ID, and that it holds a `linear_motion` with a speed",
+                "the manifest prefab; the load checks the ID, that it holds a `linear_motion` with a speed, and a dynamic `rigid_body` or a `linear_motion` with a lob",
             ))
             .field(
                 FieldDescription::new(
@@ -2492,7 +2957,7 @@ fn describe_abilities(world: &mut World) {
                         min: Bound::Inclusive(0.0),
                         max: Bound::Open,
                     },
-                    "world pixels per second along the direction, as its `linear_motion`; 0 leaves the prefab's own",
+                    "world pixels per second along the direction, as its `linear_motion`'s velocity, its acceleration kept; 0 leaves the prefab's own",
                 )
                 .default("0.0"),
             )
@@ -2507,8 +2972,43 @@ fn describe_abilities(world: &mut World) {
                 )
                 .default("0.0"),
             )
+            .field(
+                FieldDescription::new(
+                    "centred",
+                    FieldType::Bool,
+                    "the prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the entity's centre plus the offset, rather than its point on the entity's point",
+                )
+                .default("false"),
+            )
+            .field(
+                FieldDescription::new(
+                    "lob",
+                    FieldType::Shape(LOB),
+                    "in place of a `speed`: the launch that lands it on the aim's point, a `nearest` or `random` target's (its centre when centred), else the entity's `aim` point; a use with none is refused before anything is spent",
+                )
+                .default("null"),
+            )
             .sample(r#"{ "prefab": "bolt" }"#)
-            .roundtrip(round_trip::<SpawnDef>),
+            .roundtrip(spawn_round_trip),
+        ComponentDescription::new(
+            LOB,
+            "A spawn's launch onto the aim's point, by its prefab's body: a dynamic body's velocity under gravity times its `gravity_scale`, else its `linear_motion`'s under that motion's acceleration.",
+        )
+        .field(FieldDescription::new(
+            "speed",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "world pixels per second over the ground: the flight lasts the distance over it",
+        ))
+        .field(FieldDescription::new(
+            "time",
+            FieldType::Object("[min, max]"),
+            "the flight's least and greatest seconds, finite, 0 < min <= max; rounded to whole fixed steps",
+        ))
+        .sample(r#"{ "speed": 600, "time": [0.3, 1.2] }"#)
+        .roundtrip(round_trip::<LobDef>),
     ];
     for shape in shapes {
         describe_shape(world, shape);

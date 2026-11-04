@@ -6,7 +6,8 @@
   "payload": [
     {
       "spawn": {
-        "prefab": "oil_flask"
+        "prefab": "oil_flask",
+        "centred": true
       }
     }
   ]

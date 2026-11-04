@@ -84,9 +84,12 @@
 //!   an entity aims in, from its intent, the cursor, its movement or a
 //!   target. [`Ability`], [`Abilities`], [`use_ability`], [`AbilityUsed`]
 //!   and [`AbilitiesPlugin`]: what an entity can do on a trigger (an
-//!   action, an interval, or the `ability` cue action), at a cost, with a
-//!   cooldown and charges, at a target: a spawn, an effect, an impulse or a
-//!   hitbox window; the `abilities` data kind and scene component.
+//!   action pressed or held, an interval, or the `ability` cue action), at
+//!   a cost, with a cooldown and charges, at a target, along the aim or the
+//!   movement ([`Direction`]): a spawn (from its centre with
+//!   [`centre_of`], its motion kept, or a [`Lob`] onto the aim's point by
+//!   [`lob_velocity`]), an effect, an impulse or a hitbox window; the
+//!   `abilities` data kind and scene component.
 //! - **Motion.** [`PlatformerController`] and
 //!   [`PlatformerControllerPlugin`]: a platformer character on a kinematic
 //!   body, with a ground check, coyote time, a jump buffer and variable
@@ -274,8 +277,8 @@ pub use foundation::tags::{TagFilter, Tags, TagsPlugin};
 pub use foundation::trace::{KIT_TRACE_STEP, KitTrace, TraceEntry, TraceKind};
 pub use foundation::world_sources::{WorldSource, WorldSources};
 pub use intent::ability::{
-    ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Payload,
-    Trigger, Used, use_ability,
+    ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Direction, Lob,
+    Payload, SpawnWith, Trigger, Used, lob_velocity, use_ability,
 };
 pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
 pub use intent::aim::{AIM, Aim, AimPlugin};
@@ -288,6 +291,7 @@ pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlug
 pub use lifecycle::ended::KIT_DESPAWN;
 pub use lifecycle::lifetime::{LIFETIME_TICK, Lifetime, LifetimePlugin};
 pub use lifecycle::spawner::{SPAWNER_TICK, Spawner, SpawnerPlugin};
+pub use motion::drive::centre_of;
 pub use motion::follow::{FOLLOW, Follow, FollowPlugin};
 pub use motion::knockback::{KNOCKBACK, Knockback, KnockbackPlugin, knock_back};
 pub use motion::linear::{LINEAR_MOTION, LinearMotion, LinearMotionPlugin};
@@ -344,24 +348,24 @@ pub mod prelude {
         ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed, CooldownPlugin, Counters,
         CountersPlugin, CueAction, CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin, Curve,
         DamageKinds, DamagePart, DamageRequest, Damaged, DamagedPart, DepthSort, DepthSortPlugin,
-        DespawnOutside, DespawnOutsidePlugin, Effect, EffectApplied, EffectExpired, EffectInstance,
-        EffectRequest, Effects, EffectsPlugin, Expire, Facing, FacingPlugin, Flags, Follow,
-        FollowPlugin, HealRequest, Healed, Health, HealthPlugin, HierarchyPlugin, Hit, HitFlash,
-        HitPlugin, HitShape, Hitbox, Hurtbox, ImmunePart, Intent, Interaction, KitDebug,
+        DespawnOutside, DespawnOutsidePlugin, Direction, Effect, EffectApplied, EffectExpired,
+        EffectInstance, EffectRequest, Effects, EffectsPlugin, Expire, Facing, FacingPlugin, Flags,
+        Follow, FollowPlugin, HealRequest, Healed, Health, HealthPlugin, HierarchyPlugin, Hit,
+        HitFlash, HitPlugin, HitShape, Hitbox, Hurtbox, ImmunePart, Intent, Interaction, KitDebug,
         KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback, KnockbackPlugin, LabelStyle,
         Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin, LinearMotion, LinearMotionPlugin,
-        LocalOffset, Modifier, Offer, Offers, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin,
-        Output, Parent, PathFollower, PathFollowerPlugin, Payload, Penetration, Phase, PickedUp,
-        Pickup, PickupPlugin, PlatformerController, PlatformerControllerPlugin, Projectile,
-        ProjectileBounced, ProjectileExpired, ProjectilePassed, ProjectilePlugin, Reaction,
-        Refresh, Resist, Scaled, Shield, SoundOnEvent, Source, SourcePlugin, SpawnChildren,
-        SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin, StateMachine,
-        StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin, Steering,
-        SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
-        TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered, TriggerZone, Used,
-        WallContact, WeightedTable, WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin,
-        cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, float_label, heal,
-        knock_back, spawn_child, use_ability,
+        Lob, LocalOffset, Modifier, Offer, Offers, Orbit, OrbitPlugin, Oscillator,
+        OscillatorPlugin, Output, Parent, PathFollower, PathFollowerPlugin, Payload, Penetration,
+        Phase, PickedUp, Pickup, PickupPlugin, PlatformerController, PlatformerControllerPlugin,
+        Projectile, ProjectileBounced, ProjectileExpired, ProjectilePassed, ProjectilePlugin,
+        Reaction, Refresh, Resist, Scaled, Shield, SoundOnEvent, Source, SourcePlugin,
+        SpawnChildren, SpawnChildrenPlugin, SpawnWith, Spawner, SpawnerPlugin, SpeedLimit,
+        SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView,
+        StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target,
+        TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered,
+        TriggerZone, Used, WallContact, WeightedTable, WorldCue, Wrap, WrapPlugin, Zone,
+        ZoneEntered, ZonePlugin, cursor_to_world, damage, despawn_recursive, end_effect,
+        ensure_phases, float_label, heal, knock_back, spawn_child, use_ability,
     };
 }
 

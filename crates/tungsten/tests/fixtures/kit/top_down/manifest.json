@@ -167,6 +167,15 @@
     },
     "blast_dummy": {
       "path": "prefabs/blast_dummy.json"
+    },
+    "ogre": {
+      "path": "prefabs/ogre.json"
+    },
+    "tooth": {
+      "path": "prefabs/tooth.json"
+    },
+    "cleaver": {
+      "path": "prefabs/cleaver.json"
     }
   },
   "data": {
@@ -205,6 +214,9 @@
     "loot_tables": {
       "ghoul_drops": {
         "path": "data/loot_tables/ghoul_drops.json"
+      },
+      "ogre_drops": {
+        "path": "data/loot_tables/ogre_drops.json"
       }
     },
     "damage_types": {

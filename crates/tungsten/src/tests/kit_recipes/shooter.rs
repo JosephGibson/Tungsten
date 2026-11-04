@@ -7,7 +7,7 @@
 //! ship's cannon and the turret's pulse; M74's acid named after a load, the
 //! acid ladder's held rung and a game's own damage numbers; M75's drone
 //! saved mid-volley; 7.10c's breacher, Static Front's: its SMG held, its
-//! dodge along the move stick and its reload's sweep.
+//! dodge along the move stick and its reload's sweep; a lobber's grenade.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -17,7 +17,7 @@ use tungsten_core::{
     SaveSlots, Schedule, Transform, World, system,
 };
 
-use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged, traced_steps};
+use super::{DTS, body_at, drawn_at, frames_for, point_of, recipe, spawn, tagged, traced_steps};
 use crate::kit::{
     Abilities, AbilityUsed, Aim, Children, ContactDamage, ContactTouch, CooldownElapsed, Counters,
     DamagePart, DamageRequest, Damaged, DamagedPart, Effect, EffectInstance, EffectRequest,
@@ -1406,5 +1406,48 @@ fn a_dry_fire_clicks_on_no_charge() {
                 .all(|pair| (14..=16).contains(&((pair[1] - pair[0]) * steps))),
             "dt {dt}: each 0.25 s: {heard:?}"
         );
+    }
+}
+
+// 7.10c, Step 4: Static Front's lobber, its grenade's arc kept (S-53, S-186).
+
+#[test]
+fn a_lobbed_grenade_lands_on_the_breacher() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let breacher = spawn(&mut harness, "breacher", [300.0, 0.0]);
+        spawn(&mut harness, "lobber", [0.0, 0.0]);
+        let target = point_of(&harness, breacher);
+        let mut thrown = None;
+        for _ in 0..frames_for(1.5, dt) {
+            harness.step(1);
+            if let Some(&grenade) = tagged(&harness, "grenade").first() {
+                thrown = Some(grenade);
+                break;
+            }
+        }
+        let grenade = thrown.unwrap_or_else(|| panic!("dt {dt}: a lob each second"));
+        assert_eq!(
+            harness
+                .world()
+                .get::<LinearMotion>(grenade)
+                .unwrap()
+                .acceleration(),
+            Vec2::new(0.0, 600.0),
+            "dt {dt}: its prefab's arc kept"
+        );
+        // 300 px at 375 px/s: a 0.8 s flight, 48 fixed steps, rising 48 px.
+        let steps = (dt * 60.0).round() as u32;
+        let mut highest = 0.0_f32;
+        for _ in 0..48 / steps {
+            harness.step(1);
+            highest = highest.min(point_of(&harness, grenade).y);
+        }
+        let landed = point_of(&harness, grenade);
+        assert!(
+            (landed - target).length() < 0.5,
+            "dt {dt}: on the breacher at its last step: {landed}"
+        );
+        assert!(highest < -45.0, "dt {dt}: an arc: {highest}");
     }
 }

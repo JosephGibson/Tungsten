@@ -1,0 +1,27 @@
+{
+  "trigger": {
+    "interval": 1
+  },
+  "target": {
+    "nearest": {
+      "all": [
+        "team.player"
+      ],
+      "range": 600
+    }
+  },
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "grenade",
+        "lob": {
+          "speed": 375,
+          "time": [
+            0.4,
+            1.2
+          ]
+        }
+      }
+    }
+  ]
+}

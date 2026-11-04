@@ -1,0 +1,11 @@
+{
+  "tag": "lobber",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "abilities": [
+      "lob_grenade"
+    ]
+  }
+}

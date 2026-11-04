@@ -179,3 +179,44 @@ fn a_save_keeps_the_direction_and_refuses_what_is_not_one() {
         "a target with another source is accepted, unused"
     );
 }
+
+#[test]
+fn a_cursor_aim_keeps_its_point() {
+    let (mut world, mut schedule) = rig();
+    let mut camera = CameraState::new();
+    camera.position = Vec2::new(1000.0, 500.0);
+    world.insert_resource(camera);
+    let mut input = InputState::new();
+    input.update_cursor_position(100.0, 0.0);
+    world.insert_resource(input);
+    let point = |world: &World, entity: Entity| world.get::<Aim>(entity).unwrap().point();
+    let turret = world.spawn_with((Aim::cursor(), Position(Vec2::new(1000.0, 500.0))));
+    let walker = world.spawn_with((Aim::intent(), Intent::default(), Position(Vec2::ZERO)));
+    let sentry = world.spawn_with((
+        Aim::at(Target::nearest(TagFilter::new().all(["team.player"]))),
+        Position(Vec2::ZERO),
+    ));
+    world.spawn_with((Tags::new(["team.player"]), Position(Vec2::new(40.0, 30.0))));
+    assert_eq!(point(&world, turret), None, "none before its first step");
+    run(&mut world, &mut schedule);
+    assert_eq!(
+        point(&world, turret),
+        Some(Vec2::new(1100.0, 500.0)),
+        "the cursor's world point"
+    );
+    assert_eq!(
+        point(&world, sentry),
+        Some(Vec2::new(40.0, 30.0)),
+        "its target's point"
+    );
+    assert_eq!(point(&world, walker), None, "an intent's aim has none");
+    // The cursor gone, its last point is kept, as its direction is.
+    world.remove_resource::<InputState>();
+    run(&mut world, &mut schedule);
+    assert_eq!(point(&world, turret), Some(Vec2::new(1100.0, 500.0)));
+    // Unsaved: a restored aim reads none until its next step.
+    let aim = world.get::<Aim>(turret).unwrap();
+    let restored: Aim = serde_json::from_value(serde_json::to_value(aim).unwrap()).unwrap();
+    assert_eq!(restored.point(), None);
+    assert_eq!(restored.direction(), aim.direction(), "its direction kept");
+}

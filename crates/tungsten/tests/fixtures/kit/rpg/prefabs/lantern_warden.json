@@ -1,4 +1,7 @@
 {
+  "sprite": {
+    "asset_id": "lantern_warden"
+  },
   "tag": "lantern_warden",
   "components": {
     "top_down_mover": {

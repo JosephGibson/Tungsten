@@ -1,4 +1,7 @@
 {
+  "sprite": {
+    "asset_id": "oil_flask"
+  },
   "tag": "oil_flask",
   "components": {
     "lifetime": {

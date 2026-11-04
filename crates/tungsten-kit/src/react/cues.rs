@@ -33,6 +33,7 @@ use crate::foundation::{non_negative, optional_positive};
 use crate::intent::ability::{Abilities, AbilityUsed, Used, use_ability};
 use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
+use crate::motion::drive::prefab_centre;
 use crate::overlap::hit::Struck;
 use crate::overlap::pickup::PickedUp;
 use crate::overlap::projectile::ProjectileExpired;
@@ -311,7 +312,11 @@ pub struct CueAction {
 /// What an action does.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ActionKind {
-    Prefab(String),
+    /// A prefab, its centre on the position when `centred`.
+    Prefab {
+        id: String,
+        centred: bool,
+    },
     Counter {
         name: String,
         op: CounterOp,
@@ -339,7 +344,12 @@ pub(crate) enum ActionKind {
     Label(Option<LabelStyle>),
     /// A `damaged_part`'s amount in its type's style, grouped.
     PartLabel(Box<PartLabel>),
-    Roll(DataRef<WeightedTable>),
+    /// A table's draws, each prefab's centre on the position when
+    /// `centred`.
+    Roll {
+        table: DataRef<WeightedTable>,
+        centred: bool,
+    },
     Effect {
         effect: DataRef<Effect>,
         target: Target,
@@ -395,7 +405,34 @@ impl CueAction {
     /// inheritance gives from it.
     #[must_use]
     pub fn prefab(id: impl Into<String>) -> Self {
-        Self::of(ActionKind::Prefab(id.into()))
+        Self::of(ActionKind::Prefab {
+            id: id.into(),
+            centred: false,
+        })
+    }
+
+    /// The `prefab` or `roll` action, placing each prefab's centre (its
+    /// `rigid_body`'s offset or its sprite's drawn centre) on the event's
+    /// position rather than its point. Data form
+    /// `{ "prefab": { "id": "puff", "centred": true } }` or
+    /// `{ "roll": { "table": "slime_drops", "centred": true } }`.
+    ///
+    /// # Panics
+    ///
+    /// When the action is neither.
+    #[must_use]
+    #[track_caller]
+    pub fn centred(mut self) -> Self {
+        match &mut self.kind {
+            ActionKind::Prefab { centred, .. } | ActionKind::Roll { centred, .. } => {
+                *centred = true;
+            }
+            _ => panic!(
+                "CueAction::centred: a `{}` action spawns nothing",
+                self.name()
+            ),
+        }
+        self
     }
 
     /// Despawns the subject, with its children, after the step's spawns.
@@ -740,7 +777,10 @@ impl CueAction {
     /// ```
     #[must_use]
     pub fn roll(table: DataRef<WeightedTable>) -> Self {
-        Self::of(ActionKind::Roll(table))
+        Self::of(ActionKind::Roll {
+            table,
+            centred: false,
+        })
     }
 
     /// Queues `effect`, an `effects` entry or an effect in place, on the
@@ -824,7 +864,7 @@ impl CueAction {
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self.kind {
-            ActionKind::Prefab(_) => "prefab",
+            ActionKind::Prefab { .. } => "prefab",
             ActionKind::Counter { .. } => "counter",
             ActionKind::Flag { .. } => "flag",
             ActionKind::Despawn(_) => "despawn",
@@ -833,7 +873,7 @@ impl CueAction {
             ActionKind::Squash(_) => "squash",
             ActionKind::Flash => "flash",
             ActionKind::Label(_) | ActionKind::PartLabel(_) => "label",
-            ActionKind::Roll(_) => "roll",
+            ActionKind::Roll { .. } => "roll",
             ActionKind::Effect { .. } => "effect",
             ActionKind::Ability { .. } => "ability",
             ActionKind::Loop { .. } => "loop",
@@ -862,7 +902,7 @@ fn checked_name(method: &str, name: &str) -> String {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum CueActionDef {
-    Prefab(String),
+    Prefab(PrefabActionDef),
     Counter(CounterDef),
     Flag(FlagDef),
     Despawn(DespawnDef),
@@ -871,7 +911,7 @@ pub(crate) enum CueActionDef {
     Squash(SquashName),
     Flash(FlashDef),
     Label(LabelDef),
-    Roll(DataRef<WeightedTable>),
+    Roll(RollActionDef),
     Effect(EffectActionDef),
     Ability(AbilityActionDef),
     Loop(LoopDef),
@@ -1217,6 +1257,104 @@ impl<'de> Deserialize<'de> for EffectActionDef {
     }
 }
 
+/// A `prefab` action as data writes it: the prefab's ID alone, or an
+/// object of `id` and `centred`; written back as the ID unless centred.
+#[derive(Clone)]
+pub(crate) struct PrefabActionDef {
+    id: String,
+    centred: bool,
+}
+
+/// The object form of a `prefab` action.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrefabActionObject {
+    id: String,
+    #[serde(default)]
+    centred: bool,
+}
+
+impl Serialize for PrefabActionDef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.centred {
+            PrefabActionObject {
+                id: self.id.clone(),
+                centred: true,
+            }
+            .serialize(serializer)
+        } else {
+            self.id.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PrefabActionDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(id) = value.as_str() {
+            return Ok(Self {
+                id: id.to_owned(),
+                centred: false,
+            });
+        }
+        let object = PrefabActionObject::deserialize(value).map_err(de::Error::custom)?;
+        Ok(Self {
+            id: object.id,
+            centred: object.centred,
+        })
+    }
+}
+
+/// A `roll` action as data writes it: the table's ID or the table in
+/// place, or an object of `table` and `centred`; written back as the table
+/// unless centred.
+#[derive(Clone)]
+pub(crate) struct RollActionDef {
+    table: DataRef<WeightedTable>,
+    centred: bool,
+}
+
+/// The object form of a `roll` action.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RollActionObject {
+    table: DataRef<WeightedTable>,
+    #[serde(default)]
+    centred: bool,
+}
+
+impl Serialize for RollActionDef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.centred {
+            RollActionObject {
+                table: self.table.clone(),
+                centred: true,
+            }
+            .serialize(serializer)
+        } else {
+            self.table.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RollActionDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if value.get("table").is_some() {
+            let object = RollActionObject::deserialize(value).map_err(de::Error::custom)?;
+            return Ok(Self {
+                table: object.table,
+                centred: object.centred,
+            });
+        }
+        let table = DataRef::<WeightedTable>::deserialize(value).map_err(de::Error::custom)?;
+        Ok(Self {
+            table,
+            centred: false,
+        })
+    }
+}
+
 /// A `sound` action as data writes it.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1268,7 +1406,10 @@ impl TryFrom<CueActionDef> for CueAction {
 
     fn try_from(def: CueActionDef) -> Result<Self, Self::Error> {
         let kind = match def {
-            CueActionDef::Prefab(id) => ActionKind::Prefab(id),
+            CueActionDef::Prefab(def) => ActionKind::Prefab {
+                id: def.id,
+                centred: def.centred,
+            },
             CueActionDef::Counter(def) => ActionKind::Counter {
                 name: def.name,
                 op: match (def.add, def.set) {
@@ -1300,7 +1441,10 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Flash(FlashDef {}) => ActionKind::Flash,
             CueActionDef::Label(LabelDef(style, None)) => ActionKind::Label(style),
             CueActionDef::Label(LabelDef(_, Some(part))) => ActionKind::PartLabel(part),
-            CueActionDef::Roll(table) => ActionKind::Roll(table),
+            CueActionDef::Roll(def) => ActionKind::Roll {
+                table: def.table,
+                centred: def.centred,
+            },
             CueActionDef::Effect(def) => ActionKind::Effect {
                 effect: def.id,
                 target: def.target.into(),
@@ -1327,7 +1471,9 @@ impl TryFrom<CueActionDef> for CueAction {
 impl From<CueAction> for CueActionDef {
     fn from(action: CueAction) -> Self {
         match action.kind {
-            ActionKind::Prefab(id) => CueActionDef::Prefab(id),
+            ActionKind::Prefab { id, centred } => {
+                CueActionDef::Prefab(PrefabActionDef { id, centred })
+            }
             ActionKind::Counter { name, op, target } => CueActionDef::Counter(CounterDef {
                 name,
                 add: match op {
@@ -1367,7 +1513,9 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Flash => CueActionDef::Flash(FlashDef {}),
             ActionKind::Label(style) => CueActionDef::Label(LabelDef(style, None)),
             ActionKind::PartLabel(part) => CueActionDef::Label(LabelDef(None, Some(part))),
-            ActionKind::Roll(table) => CueActionDef::Roll(table),
+            ActionKind::Roll { table, centred } => {
+                CueActionDef::Roll(RollActionDef { table, centred })
+            }
             ActionKind::Effect { effect, target } => CueActionDef::Effect(EffectActionDef {
                 id: effect,
                 target: target.into(),
@@ -2529,8 +2677,8 @@ pub(crate) fn check_world_cue(cue: &WorldCueActions, world: &World) -> Result<()
     for (i, action) in cue.0.iter().enumerate() {
         let at = format!("{i}.{}", action.name());
         let refused = match &action.kind {
-            ActionKind::Prefab(_)
-            | ActionKind::Roll(_)
+            ActionKind::Prefab { .. }
+            | ActionKind::Roll { .. }
             | ActionKind::Sound { .. }
             | ActionKind::Shake { .. }
             | ActionKind::Label(Some(_))
@@ -2579,8 +2727,8 @@ fn check_actions(
     for (i, action) in actions.iter().enumerate() {
         let at = format!("{field}.{i}.{}", action.name());
         match &action.kind {
-            ActionKind::Prefab(id) => world.check_prefab_id(&at, id)?,
-            ActionKind::Roll(table) => table.check(world, &at)?,
+            ActionKind::Prefab { id, .. } => world.check_prefab_id(&at, id)?,
+            ActionKind::Roll { table, .. } => table.check(world, &at)?,
             ActionKind::Effect { effect, target } => {
                 effect.check(world, &at)?;
                 if *target == Target::Other && !event.other {
@@ -3222,15 +3370,16 @@ impl Reactor {
             }
         };
         match &action.kind {
-            ActionKind::Prefab(id) => {
+            ActionKind::Prefab { id, centred } => {
                 if !world.has_resource::<CommandBuffer>() {
                     return skip(world, NO_COMMANDS);
                 }
-                if !self.spawn(world, subject, id, occurrence.position) {
+                let at = placed(world, id, occurrence.position, *centred);
+                if !self.spawn(world, subject, id, at) {
                     return;
                 }
             }
-            ActionKind::Roll(table) => {
+            ActionKind::Roll { table, centred } => {
                 if !world.has_resource::<CommandBuffer>() {
                     return skip(world, NO_COMMANDS);
                 }
@@ -3239,7 +3388,8 @@ impl Reactor {
                 }
                 let drawn = std::mem::take(&mut self.drawn);
                 for id in &drawn {
-                    self.spawn(world, subject, id, occurrence.position);
+                    let at = placed(world, id, occurrence.position, *centred);
+                    self.spawn(world, subject, id, at);
                 }
                 self.drawn = drawn;
             }
@@ -3898,6 +4048,16 @@ impl Reactor {
     }
 }
 
+/// Where prefab `id` spawns for a cue at `position`: there, or with
+/// `centred` its point placed so its centre lands there.
+fn placed(world: &World, id: &str, position: Vec2, centred: bool) -> Vec2 {
+    if centred {
+        position - prefab_centre(world, id)
+    } else {
+        position
+    }
+}
+
 /// Moves the World's [`CueListener`] to the entity it follows, when that
 /// entity is alive with a point.
 fn follow_listener(world: &mut World) {
@@ -3995,8 +4155,8 @@ fn describe_cues(world: &mut World) {
             .one_of()
             .field(FieldDescription::new(
                 "prefab",
-                FieldType::Prefab,
-                "spawned at the event's position from the subject; the load checks the ID",
+                FieldType::Shape("prefab_action"),
+                "spawned at the event's position from the subject, or its centre there; an ID alone reads as `{ \"id\": .. }`",
             ))
             .field(FieldDescription::new(
                 "counter",
@@ -4040,8 +4200,8 @@ fn describe_cues(world: &mut World) {
             ))
             .field(FieldDescription::new(
                 "roll",
-                FieldType::Data(LOOT_TABLES),
-                "a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject; the load checks its IDs",
+                FieldType::Shape("roll_action"),
+                "a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject, or its centre there; a table alone reads as `{ \"table\": .. }`",
             ))
             .field(FieldDescription::new(
                 "effect",
@@ -4405,6 +4565,44 @@ fn describe_cues(world: &mut World) {
         ))
         .sample(r#"{ "size": 24, "color": [1.0, 0.7, 0.0, 1.0] }"#)
         .roundtrip(round_trip::<CritLabel>),
+        ComponentDescription::new(
+            "prefab_action",
+            "A prefab spawned from the subject at the event's position, its point or its centre there.",
+        )
+        .field(FieldDescription::new(
+            "id",
+            FieldType::Prefab,
+            "the manifest prefab; the load checks the ID",
+        ))
+        .field(
+            FieldDescription::new(
+                "centred",
+                FieldType::Bool,
+                "its centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point",
+            )
+            .default("false"),
+        )
+        .sample(r#"{ "id": "puff" }"#)
+        .roundtrip(round_trip::<PrefabActionObject>),
+        ComponentDescription::new(
+            "roll_action",
+            "A weighted table drawn, each prefab drawn spawned from the subject at the event's position, its point or its centre there.",
+        )
+        .field(FieldDescription::new(
+            "table",
+            FieldType::Data(LOOT_TABLES),
+            "the table: a `loot_tables` entry's ID or a table in place; the load checks its IDs",
+        ))
+        .field(
+            FieldDescription::new(
+                "centred",
+                FieldType::Bool,
+                "each prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point",
+            )
+            .default("false"),
+        )
+        .sample(r#"{ "table": "drops" }"#)
+        .roundtrip(round_trip::<RollActionObject>),
         ComponentDescription::new(
             "cue_rule",
             "A shared reaction: on an event, for each subject whose tags pass the filter, the actions in order.",

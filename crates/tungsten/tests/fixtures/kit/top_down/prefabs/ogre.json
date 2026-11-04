@@ -1,0 +1,30 @@
+{
+  "tag": "ogre",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 1
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 12
+      },
+      "offset": [
+        16,
+        16
+      ]
+    },
+    "cues": {
+      "killed": [
+        {
+          "roll": {
+            "table": "ogre_drops",
+            "centred": true
+          }
+        }
+      ]
+    }
+  }
+}

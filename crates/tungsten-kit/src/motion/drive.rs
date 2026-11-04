@@ -12,8 +12,9 @@
 use std::collections::HashSet;
 
 use glam::Vec2;
-use tungsten_core::physics::{BodyKind, Position, RigidBody, Velocity};
-use tungsten_core::{Entity, Transform, World};
+use tungsten_core::components::SpriteFlip;
+use tungsten_core::physics::{BodyKind, Collider, Position, RigidBody, Velocity};
+use tungsten_core::{AssetRegistry, Entity, PrefabRegistry, Sprite, Transform, World};
 
 use crate::motion::follow::Follow;
 use crate::motion::linear::LinearMotion;
@@ -23,6 +24,7 @@ use crate::motion::path::PathFollower;
 use crate::motion::platformer::PlatformerController;
 use crate::motion::steering::Steering;
 use crate::motion::top_down::TopDownMover;
+use crate::present::looks::sprite_centre;
 use crate::transform::hierarchy::Parent;
 
 /// What a mover may write on an entity.
@@ -138,6 +140,106 @@ pub(crate) fn point_of(world: &World, entity: Entity) -> Option<Vec2> {
         .get::<Position>(entity)
         .map(|position| position.0)
         .or_else(|| world.get::<Transform>(entity).map(|t| t.position))
+}
+
+/// Where `entity`'s centre is: its collider's centre on its body, else its
+/// sprite's drawn centre (the default extract's, by its asset's size and
+/// anchor, its `Transform`'s scale and turn and its flip), else its point,
+/// its `Position` or its `Transform.position`; `None` for an entity with
+/// none of them. A spawn `centred` on its user puts its prefab's centre here.
+///
+/// # Examples
+///
+/// ```
+/// use glam::Vec2;
+/// use tungsten_core::physics::{Collider, Position};
+/// use tungsten_core::{Transform, World};
+/// use tungsten_kit::centre_of;
+///
+/// let mut world = World::new();
+/// let box_ = Collider::aabb(Vec2::new(8.0, 8.0)).with_offset(Vec2::new(0.0, -8.0));
+/// let crate_ = world.spawn_with((Position::new(10.0, 20.0), box_));
+/// assert_eq!(centre_of(&world, crate_), Some(Vec2::new(10.0, 12.0)));
+/// let mark = world.spawn_with((Transform::from_position(Vec2::new(5.0, 5.0)),));
+/// assert_eq!(centre_of(&world, mark), Some(Vec2::new(5.0, 5.0)), "no sprite: its point");
+/// ```
+#[must_use]
+pub fn centre_of(world: &World, entity: Entity) -> Option<Vec2> {
+    if let (Some(position), Some(collider)) =
+        (world.get::<Position>(entity), world.get::<Collider>(entity))
+    {
+        return Some(collider.center(position.0));
+    }
+    let drawn = world.get::<Transform>(entity).and_then(|transform| {
+        let sprite = world.get::<Sprite>(entity)?;
+        let asset = world
+            .get_resource::<AssetRegistry>()?
+            .sprite(sprite.asset_id)?;
+        let flip = world.get::<SpriteFlip>(entity).is_some_and(|flip| flip.0);
+        Some(sprite_centre(asset, transform, flip))
+    });
+    drawn.or_else(|| point_of(world, entity))
+}
+
+/// Where prefab `id`'s centre sits from its point: its `rigid_body`'s
+/// `offset`, else its sprite's drawn centre at scale 1 with no turn or
+/// flip, as a spawn places it, else none; read from its registry entry.
+pub(crate) fn prefab_centre(world: &World, id: &str) -> Vec2 {
+    let Some(data) = world
+        .get_resource::<PrefabRegistry>()
+        .and_then(|prefabs| prefabs.get(id))
+    else {
+        return Vec2::ZERO;
+    };
+    if let Some(body) = data.components.get("rigid_body") {
+        return body
+            .get("offset")
+            .and_then(|offset| serde_json::from_value::<[f32; 2]>(offset.clone()).ok())
+            .map_or(Vec2::ZERO, Vec2::from);
+    }
+    data.sprite
+        .as_ref()
+        .and_then(|sprite| {
+            let assets = world.get_resource::<AssetRegistry>()?;
+            assets.sprite(assets.sprite_id(&sprite.asset_id)?)
+        })
+        .map_or(Vec2::ZERO, |asset| {
+            sprite_centre(asset, &Transform::default(), false)
+        })
+}
+
+/// What prefab `id`'s registry entry says moves it: its `rigid_body`'s
+/// kind and `gravity_scale` (1 when left out), and its `linear_motion`'s
+/// acceleration when it has one.
+pub(crate) struct PrefabMotion {
+    pub(crate) dynamic: bool,
+    pub(crate) gravity_scale: f32,
+    pub(crate) acceleration: Option<Vec2>,
+}
+
+/// Prefab `id`'s [`PrefabMotion`]; `None` when it is not registered.
+pub(crate) fn prefab_motion(world: &World, id: &str) -> Option<PrefabMotion> {
+    let data = world.get_resource::<PrefabRegistry>()?.get(id)?;
+    let body = data.components.get("rigid_body");
+    let dynamic = body
+        .and_then(|body| body.get("kind"))
+        .and_then(|kind| kind.as_str())
+        == Some("dynamic");
+    let gravity_scale = body
+        .and_then(|body| body.get("gravity_scale"))
+        .and_then(serde_json::Value::as_f64)
+        .map_or(1.0, |scale| scale as f32);
+    let acceleration = data.components.get("linear_motion").map(|motion| {
+        motion
+            .get("acceleration")
+            .and_then(|acceleration| serde_json::from_value::<[f32; 2]>(acceleration.clone()).ok())
+            .map_or(Vec2::ZERO, Vec2::from)
+    });
+    Some(PrefabMotion {
+        dynamic,
+        gravity_scale,
+        acceleration,
+    })
 }
 
 /// Where `entity`'s movers leave it at the end of this step of `dt`: a

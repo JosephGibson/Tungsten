@@ -9,7 +9,7 @@ use tungsten_core::components::SpriteFlip;
 use tungsten_core::{
     AnimationRegistry, AnimationState, AssetRegistry, Entity, MaterialRegistry, MissingAsset,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, SoundRegistry, Sprite,
-    Transform, Visibility, World, sprite_point,
+    SpriteAsset, Transform, Visibility, World, sprite_point,
 };
 
 use crate::foundation::describe::{
@@ -1052,15 +1052,22 @@ fn drawn(world: &World, holder: Entity) -> Option<Drawn> {
             .get_resource::<AssetRegistry>()
             .and_then(|assets| assets.sprite(sprite.asset_id))
     });
-    let Some(asset) = asset else {
-        return Some(Drawn {
-            centre: transform.position,
-            rotation: transform.rotation,
-            scale: transform.scale,
-            flip,
-            z,
-        });
-    };
+    Some(Drawn {
+        centre: asset.map_or(transform.position, |asset| {
+            sprite_centre(asset, &transform, flip)
+        }),
+        rotation: transform.rotation,
+        scale: transform.scale,
+        flip,
+        z,
+    })
+}
+
+/// Where a sprite of `asset` draws its centre for an entity at `transform`,
+/// flipped or not, as the default extract places its quad: its top-left at
+/// the point, or its anchor there, mirrored by a flip, scaled and turned
+/// about it. [`centre_of`](crate::centre_of) and a spawn's centre read it.
+pub(crate) fn sprite_centre(asset: &SpriteAsset, transform: &Transform, flip: bool) -> Vec2 {
     let width = asset.width as f32;
     let size = Vec2::new(width, asset.height as f32) * transform.scale;
     let mut top_left = transform.position;
@@ -1074,13 +1081,7 @@ fn drawn(world: &World, holder: Entity) -> Option<Drawn> {
         let arm = size * 0.5 - anchor;
         top_left += turn(arm, transform.rotation) - arm - anchor;
     }
-    Some(Drawn {
-        centre: top_left + size * 0.5,
-        rotation: transform.rotation,
-        scale: transform.scale,
-        flip,
-        z,
-    })
+    top_left + size * 0.5
 }
 
 fn turn(arm: Vec2, rotation: f32) -> Vec2 {

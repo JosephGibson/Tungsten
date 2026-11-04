@@ -2756,3 +2756,106 @@ mod ability_events {
         }
     }
 }
+
+/// 7.10c's centred spawns: a `prefab` or `roll` action's prefab centred on
+/// the event's position.
+mod centred_spawns {
+    use std::path::PathBuf;
+
+    use super::*;
+    use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
+    use tungsten_core::{AssetRegistry, Stage, Tag, Transform};
+
+    use crate::react::loot::WeightedTable;
+
+    #[test]
+    fn a_centred_prefab_or_roll_lands_its_centre_on_the_event() {
+        let (mut world, _) = super::rig();
+        world.insert_resource(Time::new());
+        world.insert_resource(CommandBuffer::new());
+        world.register_event::<Struck>();
+        let mut schedule = Schedule::new();
+        CuesPlugin.build(&mut schedule, &mut world);
+        schedule.resolve().unwrap();
+        // A 10 × 6 mote, drawn from its top-left: its centre (5, 3) on.
+        let mut assets = AssetRegistry::new();
+        assets.register_sprite(
+            "mote".to_string(),
+            FilterMode::Nearest,
+            10,
+            6,
+            PathBuf::from("mote.png"),
+            TextureHandle(0),
+            UvRect::FULL,
+            None,
+            None,
+            None,
+        );
+        world.insert_resource(assets);
+        let mote: PrefabData =
+            serde_json::from_value(json!({ "tag": "mote", "sprite": { "asset_id": "mote" } }))
+                .unwrap();
+        world
+            .resource_mut::<PrefabRegistry>()
+            .insert("mote".to_string(), mote);
+        let table = || DataRef::inline(WeightedTable::new().with_entry("mote", 1.0));
+        let actions: Vec<CueAction> = serde_json::from_value(json!([
+            { "prefab": "mote" },
+            { "prefab": { "id": "mote", "centred": true } },
+            { "roll": { "table": { "entries": [{ "prefab": "mote", "weight": 1 }] }, "centred": true } }
+        ]))
+        .unwrap();
+        assert_eq!(
+            actions,
+            [
+                CueAction::prefab("mote"),
+                CueAction::prefab("mote").centred(),
+                CueAction::roll(table()).centred(),
+            ]
+        );
+        assert_eq!(
+            serde_json::to_value(&actions).unwrap(),
+            json!([
+                { "prefab": "mote" },
+                { "prefab": { "id": "mote", "centred": true } },
+                { "roll": { "table": { "rolls": 1, "entries": [{ "prefab": "mote", "weight": 1.0 }] }, "centred": true } }
+            ]),
+            "an uncentred action keeps its ID form"
+        );
+        let bell = world.spawn_with((
+            Transform::from_position(Vec2::new(50.0, 50.0)),
+            Cues::new().on(HIT, actions),
+        ));
+        let target = world.spawn();
+        world.resource_mut::<EventQueue<Struck>>().send(Struck::new(
+            bell,
+            target,
+            Vec2::new(20.0, 30.0),
+            1.0,
+        ));
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+        let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+        world.flush_reusing(&mut commands);
+        world.insert_resource(commands);
+        let mut placed: Vec<(u32, Vec2)> = world
+            .query::<(Entity, &Tag, &Transform)>()
+            .filter(|(_, tag, _)| tag.name == "mote")
+            .map(|(entity, _, transform)| (entity.id(), transform.position))
+            .collect();
+        placed.sort_by_key(|&(id, _)| id);
+        let points: Vec<Vec2> = placed.into_iter().map(|(_, at)| at).collect();
+        assert_eq!(
+            points,
+            [
+                Vec2::new(20.0, 30.0),
+                Vec2::new(15.0, 27.0),
+                Vec2::new(15.0, 27.0)
+            ],
+            "the plain prefab's point on the hit's position; the centred prefab's and the \
+             roll's centre (5, 3) on"
+        );
+        let refused = std::panic::catch_unwind(|| CueAction::flash().centred());
+        assert!(refused.is_err(), "a flash spawns nothing");
+    }
+}

@@ -1,0 +1,16 @@
+{
+  "tag": "cleaver",
+  "components": {
+    "hitbox": {
+      "shape": {
+        "circle": 24
+      },
+      "damage": 5,
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    }
+  }
+}

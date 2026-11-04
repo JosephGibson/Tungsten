@@ -2961,3 +2961,36 @@ fn a_bombs_blast_hurts_crates_and_a_target() {
         );
     }
 }
+
+// 7.10c, Step 4: a drop rolled onto the dead brute's centre (S-88).
+
+#[test]
+fn a_drop_rolls_onto_the_dead_brutes_centre() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ogre", [7000.0, 7000.0]);
+        harness.step(1);
+        // Its hurtbox, and so its hit, 16 px right of and below its point.
+        let centre = Vec2::new(7016.0, 7016.0);
+        spawn(&mut harness, "cleaver", [centre.x, centre.y]);
+        let mut dropped = None;
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            if let Some(&tooth) = tagged(&harness, "tooth").first() {
+                dropped = Some(tooth);
+                break;
+            }
+        }
+        let tooth = dropped.unwrap_or_else(|| panic!("dt {dt}: a drop"));
+        assert_eq!(
+            crate::kit::centre_of(harness.world(), tooth),
+            Some(centre),
+            "dt {dt}: its collider's centre on the brute's"
+        );
+        assert_eq!(
+            body_at(&harness, tooth),
+            centre - Vec2::splat(4.0),
+            "dt {dt}: its point 4 px up and left"
+        );
+    }
+}

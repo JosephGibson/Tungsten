@@ -1,0 +1,19 @@
+{
+  "tag": "tooth",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 4
+      },
+      "offset": [
+        4,
+        4
+      ]
+    },
+    "lifetime": {
+      "seconds": 5
+    }
+  }
+}

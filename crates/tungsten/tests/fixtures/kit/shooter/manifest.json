@@ -71,6 +71,12 @@
     },
     "dodge_dust": {
       "path": "prefabs/dodge_dust.json"
+    },
+    "lobber": {
+      "path": "prefabs/lobber.json"
+    },
+    "grenade": {
+      "path": "prefabs/grenade.json"
     }
   },
   "data": {
@@ -118,6 +124,9 @@
       },
       "dodge": {
         "path": "data/abilities/dodge.json"
+      },
+      "lob_grenade": {
+        "path": "data/abilities/lob_grenade.json"
       }
     },
     "stats": {

@@ -406,7 +406,7 @@ shape counter_action: A counter added to or set: exactly one of `add` and `set`.
   sample: { "name": "kills", "add": 1 }
 shape cue_action: One reaction to an event.
   exactly one of its fields
-  field prefab: prefab ID — spawned at the event's position from the subject; the load checks the ID
+  field prefab: shape prefab_action — spawned at the event's position from the subject, or its centre there; an ID alone reads as `{ "id": .. }`
   field counter: shape counter_action — a counter added to or set
   field flag: shape flag_action — a flag set or cleared
   field despawn: shape despawn_action — the subject or the other despawned with its children, after the step's spawns
@@ -415,7 +415,7 @@ shape cue_action: One reaction to an event.
   field squash: one of on_land | on_hit | on_pickup | manual — the subject's squash armed for this trigger
   field flash: shape flash_action — the subject's hit flash started
   field label: shape label_action — the event's amount floated at its position in a `label_style`; on `damaged_part`, without a font, in its type's, grouped by `merge`, `ticks` and `crit`
-  field roll: loot_tables ID or entry — a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject; the load checks its IDs
+  field roll: shape roll_action — a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject, or its centre there; a table alone reads as `{ "table": .. }`
   field effect: shape effect_action — an effect queued on the subject from the event's other entity, or on the other from the subject; an ID alone reads as `{ "id": .. }`
   field ability: shape ability_action — the subject's or the other's ability used now, or made ready; a name alone reads as `{ "name": .. }`
   field loop: shape loop_action — the subject wants a manifest sound looping: one voice per sound at its loudest want by the cue listener
@@ -570,6 +570,10 @@ shape label_ticks: A type label's periodic parts: summed on their own over its w
   field size: f32 (> 0) — UI units tall
   field kind: tag filter = {} — the periodic parts it takes by their damage kinds, each a declared damage type or an ancestor of one
   sample: { "size": 10 }
+shape lob: A spawn's launch onto the aim's point, by its prefab's body: a dynamic body's velocity under gravity times its `gravity_scale`, else its `linear_motion`'s under that motion's acceleration.
+  field speed: f32 (> 0) — world pixels per second over the ground: the flight lasts the distance over it
+  field time: [min, max] — the flight's least and greatest seconds, finite, 0 < min <= max; rounded to whole fixed steps
+  sample: { "speed": 600, "time": [0.3, 1.2] }
 shape look: What a status shows on its holder while it runs, by its share: a tint, an overlay clip and a glow, each optional; unsaved.
   field tint: [r, g, b, a] = null — linear: the holder's sprite colour taken toward it by the share times its alpha; several multiply
   field overlay: shape look_overlay = null — a clip played on an entity riding the holder
@@ -637,6 +641,10 @@ shape position_wave: A position channel: amplitude · sin(2π(t / period + phase
   field amplitude: [x, y] — world pixels at the peak
   field period: f32 (> 0) — seconds of game time a swing takes
   sample: { "amplitude": [0, 3], "period": 1.2 }
+shape prefab_action: A prefab spawned from the subject at the event's position, its point or its centre there.
+  field id: prefab ID — the manifest prefab; the load checks the ID
+  field centred: bool = false — its centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point
+  sample: { "id": "puff" }
 shape resist_modifier: A modifier on the target's resistance to one damage tag, and on its floor.
   field tag: tag — the damage tag; the load checks it
   field modifier: shape modifier = null — the change, over a base of 1 for a tag the target lists no factor for; a scoped one may not override; one of it and `floor` at least
@@ -644,6 +652,10 @@ shape resist_modifier: A modifier on the target's resistance to one damage tag, 
   field against: tag filter = null — the modifier reaches only a hit whose attacker's tags pass it; the load checks its tags
   field floor: shape modifier = null — a change to the tag's floor, over a base of 0 without one: the lowest a factor above 0 goes in a hit
   sample: { "tag": "arcane", "modifier": { "mul": 2 } }
+shape roll_action: A weighted table drawn, each prefab drawn spawned from the subject at the event's position, its point or its centre there.
+  field table: loot_tables ID or entry — the table: a `loot_tables` entry's ID or a table in place; the load checks its IDs
+  field centred: bool = false — each prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point
+  sample: { "table": "drops" }
 shape set_tile_output: A tile cell written: the first tileset entry with a sprite, and the old tile back after a while.
   field tile: text — the sprite ID; a map whose tileset lacks it changes nothing
   field revert: f32 (> 0) = null — seconds until the old tile comes back, kept per map cell and saved; a later write on the cell since drops it
@@ -680,9 +692,11 @@ shape sound_action: A manifest sound played at its volume, never looping.
   field min_interval: f32 (>= 0) = 0.0 — game seconds before this sound plays again from a cue
   sample: { "id": "blip" }
 shape spawn_payload: A prefab spawned from the entity at its point.
-  field prefab: prefab ID — the manifest prefab; the load checks the ID, and that it holds a `linear_motion` with a speed
-  field speed: f32 (>= 0) = 0.0 — world pixels per second along the direction, as its `linear_motion`; 0 leaves the prefab's own
+  field prefab: prefab ID — the manifest prefab; the load checks the ID, that it holds a `linear_motion` with a speed, and a dynamic `rigid_body` or a `linear_motion` with a lob
+  field speed: f32 (>= 0) = 0.0 — world pixels per second along the direction, as its `linear_motion`'s velocity, its acceleration kept; 0 leaves the prefab's own
   field offset: f32 = 0.0 — world pixels from the entity's point along the direction
+  field centred: bool = false — the prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the entity's centre plus the offset, rather than its point on the entity's point
+  field lob: shape lob = null — in place of a `speed`: the launch that lands it on the aim's point, a `nearest` or `random` target's (its centre when centred), else the entity's `aim` point; a use with none is refused before anything is spent
   sample: { "prefab": "bolt" }
 shape stat_bounds: A game stat's clamp.
   field min: f32 = null — the least value; none when left out
