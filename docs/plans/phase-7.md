@@ -144,51 +144,51 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | S-4 | Radial blasts hand-rolled (K10) | 7.13 | open | moved from 7.10 (the kit's `blast` output landed, `8f202a8c`, `D-241`): 01's blasts onto it, replacing its detonation (`elements/cascade.rs:634`); 7.10c's S-73 fires it |
 | P7-6 | Ability fixes | 7.10 | open | 7.10c, with K8 |
 | K8 | `charges { all: true }` refills from the first charge | 7.10 | landed `4d51a071` | qa6, in 0.112; 01's own reload waits on P7-6's held trigger and refill countdown (the seam register's §4) |
-| P7-19 | One-shot clips | 7.10 | open | 7.10c |
-| P7-20 | A hitbox by facing (K3) | 7.10 | open | 7.10c |
-| K3 | A hitbox that follows its owner's facing | 7.10 | open | 7.10c, in P7-20 |
+| P7-19 | One-shot clips | 7.10 | open | 7.10g |
+| P7-20 | A hitbox by facing (K3) | 7.10 | open | 7.10g |
+| K3 | A hitbox that follows its owner's facing | 7.10 | open | 7.10g, in P7-20 |
 | K19 | The magnet and a falling bodiless pickup | 7.13 | open | moved from 7.10 (7.10m's step 7 stopped: `a_magnet_leaves_a_body_or_a_child_with_one_warning` in `crates/tungsten/src/tests/kit.rs`, outside its list, pins a moving pickup held; its work in `perf-runs/20261103-pushes-and-riders/step7-pickups.patch`; 01's orbs onto it) |
 | K20 | A top-down mover's outside velocity; additive knockback | 7.10 | landed `065e1958` | 7.10m, `D-239`: `TopDownMover::push` and a stacking knockback |
-| K22 | A hotkey for `KitDebug`; hit shapes without the trace | 7.10 | open | 7.10c |
+| K22 | A hotkey for `KitDebug`; hit shapes without the trace | 7.10 | open | 7.10g |
 | P7-18 | The kit's genre claims | 7.10 | open | 7.10c: `platformer`, `top_down`, `rpg`, `shooter`, `arpg`; `grid` and `shmup` dropped (G1–G3) |
 | S-1 | Status looks drawn by hand | 7.13 | open | moved from 7.10 (its kit part landed, `D-242`: status looks, a tint, an overlay and a glow (`9a63b31f`), particles, a light and a sound loop (`5bddc01e`); 01's looks onto them) |
 | S-5 | Chain lightning decided and queued in 01's code | 7.10 | open | 7.10c: the conduction payload, on P7-4's tags |
-| S-10 | Presentation shown by an enemy's AI state, drawn in code | 7.10 | open | + 7.10c: attachments shown by a state or tag, scaled over it, mirrored by facing |
+| S-10 | Presentation shown by an enemy's AI state, drawn in code | 7.10 | open | + 7.10g: attachments shown by a state or tag, scaled over it, mirrored by facing |
 | S-12 | Damage numbers shaped in 01's own pass over `DamagedPart` | 7.13 | open | + 7.10a: damage numbers merged over a window, ticks smaller, crits styled with PA-5; moved from 7.10 (its kit part landed `04506c39`, `D-238`; 01's numbers onto it with S-47) |
 | S-15 | Cones by hand | 7.10 | open | 7.10c: the cone payload |
 | S-17 | Summons, toys and props placed at the aim point by 01's own code | 7.10 | open | + 7.10c: a `place` payload (backlog row 86) |
 | S-18 | Live counts capped by hand per kind | 7.10 | open | + 7.10c: a cap on a prefab group's live instances |
-| S-19 | A rider-started lift written in Rust | 7.10 | open | + 7.10c: a path follower a rider starts, with waits and cue events |
-| S-20 | Each kind's clip picked from its AI state in a match | 7.10 | open | + 7.10c: clips chosen by data rules over a state name the game sets |
-| S-31 | A kill row and the level's box by hand | 7.10 | open | + 7.10c: world bounds with a kill row |
-| S-37 | A body carried over a carrier's head in 01's code | 7.10 | open | + 7.10c: a kit carry |
+| S-19 | A rider-started lift written in Rust | 7.10 | open | + 7.10g: a path follower a rider starts, with waits and cue events |
+| S-20 | Each kind's clip picked from its AI state in a match | 7.10 | open | + 7.10g: clips chosen by data rules over a state name the game sets |
+| S-31 | A kill row and the level's box by hand | 7.10 | open | + 7.10g: world bounds with a kill row |
+| S-37 | A body carried over a carrier's head in 01's code | 7.10 | open | + 7.10g: a kit carry |
 | S-39 | Code-sent cue events registered one `CuesOnEvent` per name | 7.13 | open | moved from 7.10 (its kit part landed, `D-243`: `CuesOnEvent::with_names` and `CueEvent::named` (`92a18364`); 01's 91 registrations onto one) |
 | S-41 | Impact cues by hand | 7.13 | open | moved from 7.10 (its kit part landed, `D-242`: a rule's `amount`, `min_interval` and `cap` and `CueEvent::of` (`59fdaff0`); 01's impact cues onto them) |
 | S-48 | The controller's jumps and landing answered in code | 7.13 | open | moved from 7.10 (its kit part landed, `D-243`: the controller's `jumped`, `air_jumped`, `jump_refused` and `landed` cue events at its feet and `PlatformerController::landed` (`92a18364`), after 01's own `air_jumped` became `double_jumped` (`ee6b5224`); 01's jump, bound, refusal and landing code onto them, `double_jumped` onto `air_jumped`) |
 | S-51 | A lit fuse's emitters kept by hand | 7.13 | open | moved from 7.10 (its kit part landed, `D-242`: named sprite points (`42118b13`) and a look's particles at one (`5bddc01e`); 01's fuse emitters onto them, its generator writing the points) |
-| S-52 | A health bar over an enemy drawn as flat quads | 7.10 | open | + 7.10c: a kit health bar |
+| S-52 | A health bar over an enemy drawn as flat quads | 7.10 | open | + 7.10g: a kit health bar |
 | S-53 | Lobs aimed in 01's code | 7.10 | open | + 7.10c: a lob that lands on a point |
 | S-56 | Reactions to an effect applied or run out written in code | 7.13 | open | moved from 7.10 (its kit part landed, `D-242`: a rule's `effect` and `ended` (`59fdaff0`); 01's reactions onto them) |
-| S-66 | A cast's pose picked by the aim's angle by hand | 7.10 | open | + 7.10c: an aim pose in the character animator |
+| S-66 | A cast's pose picked by the aim's angle by hand | 7.10 | open | + 7.10g: an aim pose in the character animator |
 | S-73 | A projectile's end read from its events in Rust to fire its blast | 7.10 | open | + 7.10c: an on-end payload on projectiles, firing S-4's blast |
-| S-78 | Missiles and tracers turned to their flight by hand | 7.10 | open | + 7.10c: `facing`'s mirror past the vertical; 01's prefabs use it |
+| S-78 | Missiles and tracers turned to their flight by hand | 7.10 | open | + 7.10g: `facing`'s mirror past the vertical; 01's prefabs use it |
 | S-79 | A look at a point played statement by statement from code | 7.13 | open | moved from 7.10 (its kit part landed, `D-242`: the `world_cues` kind and `WorldCue` (`4e999198`); 01's looks at a point onto them) |
-| S-84 | A periodic hazard's phase cycle by hand | 7.10 | open | + 7.10c: timed transitions and a start offset on `StateMachine` |
-| S-86 | Fallen enemies brought back at their places by a hand-ticked timer each | 7.10 | open | + 7.10c: a spawner that spawns again after its spawn dies |
+| S-84 | A periodic hazard's phase cycle by hand | 7.10 | open | + 7.10g: timed transitions and a start offset on `StateMachine` |
+| S-86 | Fallen enemies brought back at their places by a hand-ticked timer each | 7.10 | open | + 7.10g: a spawner that spawns again after its spawn dies |
 | S-88 | Spawned prefabs moved by hand onto their source's body centre | 7.10 | open | + 7.10c: spawns centred on the source's body |
 | S-92 | A flyer's arrive at a point on a top-down mover among walls | 7.13 | open | + 7.10m: `steering` driving a `TopDownMover`, with K20; moved from 7.10 (its kit part landed `065e1958`, `D-239`; 01's flyers onto it) |
 | S-96 | A look held after its last trigger by a game-time stamp | 7.13 | open | moved from 7.10 (its kit part landed, `D-242`: a rule's `fresh` (`59fdaff0`); 01's look stamps onto it) |
-| S-105 | A spell's icon and cast gesture as per-spell arms | 7.10 | open | + 7.10c: an ability's icon and cast clip in its data |
+| S-105 | A spell's icon and cast gesture as per-spell arms | 7.10 | open | + 7.10g: an ability's icon and cast clip in its data |
 | S-110 | HUD flashes and a fade ticked by hand; a cooldown's end found by comparison | 7.10 | open | + 7.10c: an event as an ability's cooldown ends; the flashes as UI tracks |
 | S-121 | A shake's share worked out by hand from its distance | 7.13 | open | moved from 7.10 (its kit part landed, `D-242`: a shake's falloff (`e3d0131f`); 01's blast shares onto it) |
 | S-130 | A spell's cast, start and end sounds played from code | 7.10 | open | + 7.10c: `ability_used` rules by the ability's name; a held ability's start and end |
 | S-134 | Each enemy kind's knockback resist restated in its info table | 7.13 | open | + 7.10m: `Knockback::resist()`, with K20's knockback; moved from 7.10 (its kit part landed `065e1958`, `D-239`; 01's table onto it) |
 | S-135 | A refused use's reason mapped from `Used` and played from code | 7.10 | open | + 7.10c: an `ability_refused` cue event with its reason |
-| S-142 | A dead entity disarmed by hand | 7.10 | open | + 7.10c: a death policy that disarms the touch, the hitbox and the controller |
-| S-150 | A heading of 01's own on each enemy | 7.10 | open | + 7.10c: `Facing::face` toward a point |
+| S-142 | A dead entity disarmed by hand | 7.10 | open | + 7.10g: a death policy that disarms the touch, the hitbox and the controller |
+| S-150 | A heading of 01's own on each enemy | 7.10 | open | + 7.10g: `Facing::face` toward a point |
 | S-154 | The cue listener moved to the player each step by 01's system | 7.13 | open | moved from 7.10 (its kit part landed, `D-242`: `CueListener::following` (`e3d0131f`); 01's `audio_listen` removed) |
-| S-156 | A contact damage switched off by taking the component off | 7.10 | open | + 7.10c: an on/off switch on `ContactDamage` |
-| S-159 | A timed pickup blinks over its last seconds at a steady 5 Hz | 7.10 | open | + 7.10c: a blink over a `lifetime`'s last seconds |
+| S-156 | A contact damage switched off by taking the component off | 7.10 | open | + 7.10g: an on/off switch on `ContactDamage` |
+| S-159 | A timed pickup blinks over its last seconds at a steady 5 Hz | 7.10 | open | + 7.10g: a blink over a `lifetime`'s last seconds |
 | S-165 | The damage numbers option copied each frame into a tag | 7.11 | open | moved from 7.10 (its kit part landed, `D-242`: a rule's `flags` (`59fdaff0`); the template's option sets the flag once) |
 | S-186 | A spawned missile's fall put back after the spawn payload drops it | 7.10 | open | + 7.10c: the spawn payload keeps the prefab's motion |
 | S-9 | The shell's UI builders hand-built over the tree | 7.17 | landed `f1998611` | the tree-only builders |
@@ -415,7 +415,7 @@ The brief's kit survey still holds where a row rests on it: crit is a flag and `
 - **Routes:** every step is large under `D-140` and writes its own plan with the tungsten-plan skill, except 7.16, which is medium unless its research spans sessions. Where a step needs several plans:
   - 7.8: runtime terrain, then physics with slopes and the controller last (the redo's 7.8 row).
   - 7.9: saves of many areas, then boot loading with sprite sheets and the small seams.
-  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-10, PA-11, P7-7; 7.5's S-12), the shapes the rest stand on; **7.10m**, the motion plan, after 7.10a, whose hits its impact damage and knockback carry: the impulses and the controller's rules 7.8 moved on, the known issues' slope-cast fix ahead of the slope rules, and the motion 7.10b's blast stands on (P7-2's physics and kit parts, K7, K19, K20, K23, K30; 7.5's S-92, S-99, S-132, S-134); **7.10b** statuses and chemistry on them, with the blast its outputs need (P7-4, P7-5, PA-8, S-4 (K10)); **7.10b's chemistry**, its interactions, rates, spread, tiles, `become` and blast, re-planned after 7.10b's step 3 stopped (P7-4's rest, PA-8's rates, S-4); **7.10p**, the looks and cues on them, after 7.10b, whose statuses its looks and status cues read (K27, K28, P7-13's kit part, S-122 (K1); 7.5's S-1, S-39, S-41, S-48, S-51, S-56, S-79, S-96, S-121, S-154, S-165); **7.10c** abilities, 01's generic code and the genre tags (P7-6, K8, P7-19, P7-20, K3, K22, P7-18; 7.5's S-5, S-10, S-15, S-17, S-18, S-19, S-20, S-31, S-37, S-52, S-53, S-66, S-73, S-78, S-84, S-86, S-88, S-105, S-110, S-130, S-135, S-142, S-150, S-156, S-159, S-186). K11 moved to 7.13 as S-36, the kit's `Cooldown` already being its timer (§2.2). Each plan updates the kit's determinism pin where it changes what the hash serializes (§5). The order is 7.10a → 7.10m → 7.10b → 7.10b's chemistry → 7.10p → 7.10p's Step 2 → 7.10c (2026-10-31; 7.10p on 2026-11-03, when 7.10b's plan passed ten steps with every row, §6; 7.10b's chemistry the same day, when that plan's step 3 stopped and its steps 4 to 8 with it; 7.10p's Step 2, the cue-events plan, re-planned on 2026-11-04, when it stopped at a name 01 holds): 7.10m took the six rows 7.8 moved on, which no plan held, and 7.10c's motion; PA-3, PA-4 and PA-9 moved to 8.7 then, PA-Q2's move taken early (§2.3).
+  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-10, PA-11, P7-7; 7.5's S-12), the shapes the rest stand on; **7.10m**, the motion plan, after 7.10a, whose hits its impact damage and knockback carry: the impulses and the controller's rules 7.8 moved on, the known issues' slope-cast fix ahead of the slope rules, and the motion 7.10b's blast stands on (P7-2's physics and kit parts, K7, K19, K20, K23, K30; 7.5's S-92, S-99, S-132, S-134); **7.10b** statuses and chemistry on them, with the blast its outputs need (P7-4, P7-5, PA-8, S-4 (K10)); **7.10b's chemistry**, its interactions, rates, spread, tiles, `become` and blast, re-planned after 7.10b's step 3 stopped (P7-4's rest, PA-8's rates, S-4); **7.10p**, the looks and cues on them, after 7.10b, whose statuses its looks and status cues read (K27, K28, P7-13's kit part, S-122 (K1); 7.5's S-1, S-39, S-41, S-48, S-51, S-56, S-79, S-96, S-121, S-154, S-165); **7.10c** abilities, their payloads and the genre tags (P7-6, K8, P7-18; 7.5's S-5, S-15, S-17, S-18, S-53, S-73, S-88, S-110, S-130, S-135, S-186), the genre tags first, since every later 7.10 item takes its recipes in them; **7.10g**, the rest of 01's generic code, after 7.10c, whose genre tags its recipes use and whose lob its carry throws with: one-shot clips and clip rules, a hitbox and attachments by facing, the lifecycle and motion items, a health bar and the debug view's hotkey (P7-19, P7-20, K3, K22; 7.5's S-10, S-19, S-20, S-31, S-37, S-52, S-66, S-78, S-84, S-86, S-105, S-142, S-150, S-156, S-159). K11 moved to 7.13 as S-36, the kit's `Cooldown` already being its timer (§2.2). Each plan updates the kit's determinism pin where it changes what the hash serializes (§5). The order is 7.10a → 7.10m → 7.10b → 7.10b's chemistry → 7.10p → 7.10p's Step 2 → 7.10c → 7.10g (2026-10-31; 7.10p on 2026-11-03, when 7.10b's plan passed ten steps with every row, §6; 7.10b's chemistry the same day, when that plan's step 3 stopped and its steps 4 to 8 with it; 7.10p's Step 2, the cue-events plan, re-planned on 2026-11-04, when it stopped at a name 01 holds; 7.10g the same day, when 7.10c's plan passed ten steps with every row): 7.10m took the six rows 7.8 moved on, which no plan held, and 7.10c's motion; PA-3, PA-4 and PA-9 moved to 8.7 then, PA-Q2's move taken early (§2.3).
   - 7.12: the format and CLI, then the editor (the redo's 7.12 row).
 
 ## 3. Steps
@@ -476,7 +476,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 ### Step 9 (7.10): Kit pass
 
-- **Rows:** every row §2.2 sends to 7.10, as 7.10a, 7.10m, 7.10b, 7.10b's chemistry, 7.10p and 7.10c, in that order (§2.8). **Design:** §5.2, §5.3, §5.6 for 7.10m, the ARPG design's §3–§8 and §16.
+- **Rows:** every row §2.2 sends to 7.10, as 7.10a, 7.10m, 7.10b, 7.10b's chemistry, 7.10p, 7.10c and 7.10g, in that order (§2.8). **Design:** §5.2, §5.3, §5.6 for 7.10m, the ARPG design's §3–§8 and §16.
 - **Done-when:** the redo's 7.10 sketch; the ARPG design's §16 row for 7.10 (§9.1's hit resolves to 32.07 in a kit test, its sheet's speed and use time being 8.7's with PA-3 and PA-4; 01's crit, blast share and difficulty are data with its tests' outcomes unchanged); the spread row at 12,000 bodies.
 - **Moves:** the kit's determinism pin, at most once per 7.10 plan, and the physics hashes in 7.10m, each under 7.3's guards (§5).
 
@@ -528,7 +528,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 | --- | --- | --- |
 | Q1 | 7.7 ran before 7.2–7.5. Re-cut the order? | No: the redo's order stands; 7.5's rows join by §2.4, and the lists' numbers come from 7.3's rows at each pass's start |
 | Q2 | The K-rows the redo's §3 doesn't cite (K1, K11, K19–K23, K27, K28, K31) | The steps in §2.2; 7.5's triage may re-cut them with new evidence |
-| Q3 | 7.10 as three plans in dependency order | Yes, as §2.8; four since 2026-10-31, 7.10m holding the motion 7.8 moved on, with PA-3, PA-4 and PA-9 moved to 8.7 (PA-Q2); five since 2026-11-03, 7.10p holding 7.10b's looks and cues (§6's ten steps); six the same day, 7.10b's chemistry re-planned after its step 3 stopped |
+| Q3 | 7.10 as three plans in dependency order | Yes, as §2.8; four since 2026-10-31, 7.10m holding the motion 7.8 moved on, with PA-3, PA-4 and PA-9 moved to 8.7 (PA-Q2); five since 2026-11-03, 7.10p holding 7.10b's looks and cues (§6's ten steps); six the same day, 7.10b's chemistry re-planned after its step 3 stopped; seven on 2026-11-04, 7.10g holding 7.10c's rows past its abilities, payloads and genre tags (§6's ten steps) |
 | Q4 | The lists' floor and target | A floor of 5 % of the row's time at the gate; a target of half the item's measured share; G6 behavioural |
 | Q5 | Where 7.15 measures 01 | A local GPU row of 01's areas in 7.3's set, M77's area survey made a row |
 | Q6 | Where Phase 8's assignments live after this plan | The redo's §3 rows by ID (step 17); the ARPG design stays until 8.7 closes |
