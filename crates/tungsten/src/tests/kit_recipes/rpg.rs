@@ -4,7 +4,8 @@
 //! adventurer and its swing, a chest and its loot, gold and spikes; M67's
 //! blessing and level on the adventurer; 7.10c's lantern warden, Lantern
 //! Ward's: its bell, flask and run as cue events, its flask from its centre,
-//! its toll's wave.
+//! its toll's wave; its wisps, held to two by their cap, the first culled
+//! with a poof.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -522,6 +523,57 @@ fn the_bells_wave_pushes_a_crate_and_knocks_back_once() {
         assert_eq!(
             harness.world().get::<Health>(fogborn).unwrap().current(),
             9.0
+        );
+    }
+}
+
+// 7.10c, Step 5 (place-and-caps): the warden's wisps, two at most (S-18).
+
+#[test]
+fn a_third_wisp_culls_the_first_with_a_poof() {
+    use crate::kit::{Used, centre_of, use_ability};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        register_sprite(&mut harness, "wisp", 8, 8);
+        register_sprite(&mut harness, "poof", 16, 16);
+        let warden = spawn(&mut harness, "lantern_warden", [100.0, 100.0]);
+        harness.step(1);
+        let cast = |harness: &mut Harness| {
+            assert_eq!(
+                use_ability(harness.world_mut(), warden, "wisp"),
+                Used::Used,
+                "dt {dt}"
+            );
+            harness.step(1);
+        };
+        cast(&mut harness);
+        let [first] = tagged(&harness, "wisp")[..] else {
+            panic!("dt {dt}: one wisp");
+        };
+        // Sent off, so its poof shows where it went.
+        harness
+            .world_mut()
+            .get_mut::<tungsten_core::Transform>(first)
+            .unwrap()
+            .position = Vec2::new(40.0, 60.0);
+        let centre = centre_of(harness.world(), first).unwrap();
+        assert_eq!(centre, Vec2::new(44.0, 64.0), "dt {dt}: its drawn centre");
+        cast(&mut harness);
+        assert_eq!(tagged(&harness, "wisp").len(), 2, "dt {dt}: two");
+        assert!(tagged(&harness, "poof").is_empty(), "dt {dt}: none culled");
+        cast(&mut harness);
+        assert!(
+            !harness.world().is_alive(first),
+            "dt {dt}: the first culled"
+        );
+        assert_eq!(tagged(&harness, "wisp").len(), 2, "dt {dt}: still two");
+        let [poof] = tagged(&harness, "poof")[..] else {
+            panic!("dt {dt}: one poof");
+        };
+        assert_eq!(
+            centre_of(harness.world(), poof),
+            Some(centre),
+            "dt {dt}: the poof's centre on the first wisp's"
         );
     }
 }

@@ -56,6 +56,12 @@
     },
     "fogborn": {
       "path": "prefabs/fogborn.json"
+    },
+    "wisp": {
+      "path": "prefabs/wisp.json"
+    },
+    "poof": {
+      "path": "prefabs/poof.json"
     }
   },
   "data": {
@@ -94,6 +100,9 @@
       },
       "toll": {
         "path": "data/abilities/toll.json"
+      },
+      "wisp": {
+        "path": "data/abilities/wisp.json"
       }
     },
     "effects": {

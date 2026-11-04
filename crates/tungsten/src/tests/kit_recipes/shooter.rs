@@ -8,7 +8,8 @@
 //! acid ladder's held rung and a game's own damage numbers; M75's drone
 //! saved mid-volley; 7.10c's breacher, Static Front's: its SMG held, its
 //! dodge along the move stick and its reload's sweep; a lobber's grenade
-//! and its blast where it lands; a cryo trooper's cone.
+//! and its blast where it lands; a cryo trooper's cone; an escort carrier's
+//! escorts, held to three by their cap.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1560,5 +1561,35 @@ fn the_lobbers_grenade_blasts_where_it_lands() {
         let health = |entity: Entity| harness.world().get::<Health>(entity).unwrap().current();
         assert!((health(near) - (40.0 - want)).abs() < 1e-3, "dt {dt}");
         assert_eq!(health(far), 40.0, "dt {dt}");
+    }
+}
+
+// 7.10c, Step 5 (place-and-caps): a carrier's escorts, three at most (S-18).
+
+#[test]
+fn a_carrier_launches_no_more_than_its_cap() {
+    use crate::kit::Spawner;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let carrier = spawn(&mut harness, "escort_carrier", [200.0, 100.0]);
+        let remaining =
+            |harness: &Harness| harness.world().get::<Spawner>(carrier).unwrap().remaining();
+        // Due at 0.25, 0.5 and 0.75 s: three.
+        harness.step(frames_for(0.9, dt));
+        assert_eq!(tagged(&harness, "escort").len(), 3, "dt {dt}: three live");
+        assert_eq!(remaining(&harness), Some(2), "dt {dt}");
+        // The fourth, due at 1 s, refused while full and kept in the count.
+        harness.step(frames_for(0.25, dt));
+        assert_eq!(tagged(&harness, "escort").len(), 3, "dt {dt}: refused");
+        assert_eq!(remaining(&harness), Some(2), "dt {dt}: kept");
+        // Two destroyed, gone 0.1 s after: two more, then none.
+        for escort in tagged(&harness, "escort").into_iter().take(2) {
+            damage(harness.world_mut(), escort, 1.0);
+        }
+        harness.step(frames_for(1.0, dt));
+        assert_eq!(tagged(&harness, "escort").len(), 3, "dt {dt}: two more");
+        assert_eq!(remaining(&harness), Some(0), "dt {dt}: five in all");
+        harness.step(frames_for(1.0, dt));
+        assert_eq!(tagged(&harness, "escort").len(), 3, "dt {dt}: then none");
     }
 }

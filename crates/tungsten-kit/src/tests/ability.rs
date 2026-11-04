@@ -1406,7 +1406,7 @@ fn refill_left_reads_a_running_refill_alone() {
 
 #[test]
 fn a_refusal_carries_its_reason() {
-    use crate::react::cues::AbilityCues;
+    use crate::react::cues::KitCues;
     let (mut world, mut schedule) = rig();
     let hitbox = || Payload::Hitbox(0.1);
     let cool = insert(
@@ -1464,7 +1464,7 @@ fn a_refusal_carries_its_reason() {
     }
     let abilities = world.get::<Abilities>(hero).unwrap();
     let pushed: Vec<(&str, Option<&str>, u8)> = world
-        .resource::<AbilityCues>()
+        .resource::<KitCues>()
         .0
         .iter()
         .map(|cue| {
@@ -1488,7 +1488,7 @@ fn a_refusal_carries_its_reason() {
     steps(&mut world, &mut schedule, 1);
     assert_eq!(world.get::<Counters>(hero).unwrap().get("refused"), 4);
     assert!(
-        world.resource::<AbilityCues>().0.is_empty(),
+        world.resource::<KitCues>().0.is_empty(),
         "the cue system drained them"
     );
 }

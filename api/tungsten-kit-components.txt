@@ -27,6 +27,12 @@ component animation: An animated sprite: its current frame written into the enti
 component camera_target: The marker the camera follows: the lowest-indexed live one.
   genres: platformer, top_down, rpg, shooter
   sample: null
+component cap: Holds its group's live instances to a number: a kit spawn past it ends the group's oldest, or is refused.
+  field group: text — the group's name, dotted: the live holders the kit spawned or that hold a `Source`, a map-placed one aside
+  field max: u32 (>= 1) — the most live instances, counting the frame's admissions
+  field past: one of oldest | refuse = "oldest" — past the max: the oldest end, restored ones first, then by admission, each sending `culled` when named, or the spawn is refused
+  genres: rpg, shooter
+  sample: { "group": "salt", "max": 2 }
 component character_animator: Picks the entity's animation clip each frame: idle, move, rise or fall, by its facing when a clip is a set.
   field idle: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out — what it shows standing; the load checks each ID
   field move: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out = null — what it shows moving; `idle` when left out
@@ -86,6 +92,7 @@ component cues: The entity's reactions: for each event about it, actions run in 
   field ability_ready: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field ability_held: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field ability_released: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field culled: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   events: ShakeEvent, SquashEvent
   genres: platformer, top_down, rpg, shooter
   sample: {}

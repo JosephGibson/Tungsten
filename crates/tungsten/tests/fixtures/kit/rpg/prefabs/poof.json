@@ -1,0 +1,11 @@
+{
+  "sprite": {
+    "asset_id": "poof"
+  },
+  "tag": "poof",
+  "components": {
+    "lifetime": {
+      "seconds": 0.5
+    }
+  }
+}

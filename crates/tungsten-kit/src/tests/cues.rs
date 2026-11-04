@@ -2614,7 +2614,7 @@ mod ability_events {
     /// The pushed ability cues: each event, entity and reason.
     fn pushed(world: &mut World) -> Vec<(&'static str, Entity, u8)> {
         world
-            .resource_mut::<AbilityCues>()
+            .resource_mut::<KitCues>()
             .0
             .drain(..)
             .map(|cue| (cue.event, cue.entity, cue.reason))
@@ -2649,7 +2649,7 @@ mod ability_events {
     #[test]
     fn ability_events_push_only_what_is_named() {
         let (mut world, mut schedule) = rig(false);
-        let capacity = world.resource::<AbilityCues>().0.capacity();
+        let capacity = world.resource::<KitCues>().0.capacity();
         assert!(capacity >= 32, "reserved: {capacity}");
         // Nothing names them: nothing pushed.
         let quiet = user(&mut world, Cues::new());
@@ -2685,7 +2685,7 @@ mod ability_events {
              then the horn let go"
         );
         assert_eq!(
-            world.resource::<AbilityCues>().0.capacity(),
+            world.resource::<KitCues>().0.capacity(),
             capacity,
             "the pushes stayed in the reserve"
         );

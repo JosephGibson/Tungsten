@@ -35,6 +35,7 @@ use crate::intent::aim::{AIM, Aim};
 use crate::intent::sheet::{
     DELIVERY, Skill, SkillLine, delivery_saved, describe_skills, resolve as resolve_sheet,
 };
+use crate::lifecycle::cap::admit;
 use crate::lifecycle::ended::Despawning;
 use crate::motion::drive::{PrefabMotion, centre_of, point_of, prefab_centre, prefab_motion};
 use crate::motion::knockback::knock_back;
@@ -43,8 +44,8 @@ use crate::motion::target::describe_target;
 use crate::overlap::cone::{CONE_PAYLOAD, Cone, ConeDef, describe_cone, fire as fire_cone, widen};
 use crate::overlap::hit::Hitbox;
 use crate::react::cues::{
-    ABILITY_HELD, ABILITY_READY, ABILITY_REFUSED, ABILITY_RELEASED, AbilityCue, cue_named,
-    push_ability_cue, reason_of,
+    ABILITY_HELD, ABILITY_READY, ABILITY_REFUSED, ABILITY_RELEASED, KitCue, cue_named,
+    push_kit_cue, reason_of,
 };
 
 /// [`AbilitiesPlugin`]'s system that counts cooldowns, refills and
@@ -643,7 +644,7 @@ impl Ability {
 
     /// The ability, a skill: a use resolves `skill`'s sheet before its
     /// cost, the sheet's cost and cooldown replace its own, and each
-    /// payload carries the sheet's [`Delivery`].
+    /// payload carries the sheet's [`Delivery`](crate::Delivery).
     #[must_use]
     pub fn with_skill(mut self, skill: Skill) -> Self {
         self.skill = Some(Box::new(skill));
@@ -2641,9 +2642,9 @@ fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch
             .get::<Abilities>(entity)
             .and_then(|abilities| abilities.index_of(name))
     {
-        push_ability_cue(
+        push_kit_cue(
             world,
-            AbilityCue {
+            KitCue {
                 event: ABILITY_REFUSED,
                 entity,
                 at: point_of(world, entity).unwrap_or(Vec2::ZERO),
@@ -2791,6 +2792,13 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
                         let prepared = match &sheet {
                             Some(sheet) => prepared.with((sheet.delivery.clone(),)),
                             None => prepared,
+                        };
+                        let prepared = match admit(world, prefab, Some(entity), prepared) {
+                            Ok(prepared) => prepared,
+                            Err(why) => {
+                                skip(world, entity, "spawn", why);
+                                continue;
+                            }
                         };
                         world
                             .resource_mut::<CommandBuffer>()
@@ -3013,9 +3021,9 @@ impl Ticker {
         if !self.scratch.cues.is_empty() {
             let at = point_of(world, entity).unwrap_or(Vec2::ZERO);
             for (event, entry) in self.scratch.cues.drain(..) {
-                push_ability_cue(
+                push_kit_cue(
                     world,
-                    AbilityCue {
+                    KitCue {
                         event,
                         entity,
                         at,

@@ -12,6 +12,7 @@ use crate::foundation::tags::TagsPlugin;
 use crate::intent::ability::AbilitiesPlugin;
 use crate::intent::action_input::ActionInputPlugin;
 use crate::intent::aim::AimPlugin;
+use crate::lifecycle::cap::CapPlugin;
 use crate::lifecycle::children::SpawnChildrenPlugin;
 use crate::lifecycle::cooldown::CooldownPlugin;
 use crate::lifecycle::despawn::DespawnOutsidePlugin;
@@ -82,7 +83,8 @@ impl KitPlugins {
     /// oscillator, steering, follow, orbit, knockback, the speed limit,
     /// wrap, stay in view, aim, facing, the character animator, depth sort,
     /// the hit shapes, contact damage, projectiles, pickups, effects,
-    /// chemistry, abilities, levels and the debug drawing, in that order.
+    /// chemistry, abilities, levels, caps and the debug drawing, in that
+    /// order.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
@@ -126,6 +128,7 @@ impl KitPlugins {
             .with(ChemistryPlugin::new())
             .with(AbilitiesPlugin)
             .with(LevelPlugin)
+            .with(CapPlugin)
             .with(KitDebugPlugin)
     }
 }

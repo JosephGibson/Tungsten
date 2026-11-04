@@ -1,0 +1,10 @@
+{
+  "tag": "escort_carrier",
+  "components": {
+    "spawner": {
+      "prefab": "escort",
+      "interval": 0.25,
+      "count": 5
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "tag": "escort",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 1,
+      "despawn_on_death": 0.1
+    },
+    "cap": {
+      "group": "escorts",
+      "max": 3,
+      "past": "refuse"
+    }
+  }
+}

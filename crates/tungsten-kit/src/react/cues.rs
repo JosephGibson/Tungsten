@@ -31,6 +31,7 @@ use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared, val
 use crate::foundation::trace::{TraceKind, trace};
 use crate::foundation::{non_negative, optional_positive};
 use crate::intent::ability::{Abilities, AbilityUsed, Used, use_ability};
+use crate::lifecycle::cap::admit;
 use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
 use crate::motion::drive::prefab_centre;
@@ -76,6 +77,7 @@ pub(crate) const ABILITY_REFUSED: &str = "ability_refused";
 pub(crate) const ABILITY_READY: &str = "ability_ready";
 pub(crate) const ABILITY_HELD: &str = "ability_held";
 pub(crate) const ABILITY_RELEASED: &str = "ability_released";
+pub(crate) const CULLED: &str = "culled";
 /// A [`WorldCue`]'s occurrence: no subject, so no entity or rule names it.
 const WORLD_CUE: &str = "world_cue";
 /// The cue events about an ability, whose occurrences carry its name.
@@ -86,7 +88,7 @@ const ABILITY_EVENTS: [&str; 5] = [
     ABILITY_HELD,
     ABILITY_RELEASED,
 ];
-const KIT_EVENTS: [&str; 21] = [
+const KIT_EVENTS: [&str; 22] = [
     DAMAGED_PART,
     DAMAGED,
     KILLED,
@@ -108,6 +110,7 @@ const KIT_EVENTS: [&str; 21] = [
     ABILITY_READY,
     ABILITY_HELD,
     ABILITY_RELEASED,
+    CULLED,
 ];
 
 /// The squash triggers' data names, as a scene's `squash_stretch` writes
@@ -140,8 +143,9 @@ fn valid_event(name: &str) -> bool {
 /// at its feet, an ability's `ability_refused` (a use of an owned ability
 /// refused, with its reason), `ability_ready` (the step its counting makes
 /// it ready), `ability_held` and `ability_released` (a held trigger's slot
-/// going down and up), each about its user, and each name a game's
-/// [`CuesOnEvent`] registers.
+/// going down and up), each about its user, a [`Cap`](crate::Cap)'s `culled`
+/// (about the instance it ended), and each name a game's [`CuesOnEvent`]
+/// registers.
 ///
 /// Scene name `cues`:
 /// `{ "damaged": [{ "flash": {} }], "killed": [{ "prefab": "puff" }, { "despawn": {} }] }`;
@@ -1932,6 +1936,7 @@ impl Default for CueEventNames {
                 (ABILITY_READY, false, false, false),
                 (ABILITY_HELD, false, false, false),
                 (ABILITY_RELEASED, false, false, false),
+                (CULLED, false, false, false),
             ]
             .into_iter()
             .map(|(name, amount, other, kinds)| EventInfo {
@@ -1970,11 +1975,12 @@ pub(crate) struct ControllerCues(pub(crate) Vec<ControllerCue>);
 /// The controller cue events a step holds before the list grows.
 const CONTROLLER_CUES: usize = 32;
 
-/// One of an ability's cue events, as its system pushes it: the event, the
-/// user, its point, the entry's index in its [`Abilities`], which names the
-/// ability when the cue system reads it, and a refusal's [reason](reason_of).
+/// One of an ability's or a cap's cue events, as its pusher pushes it: the
+/// event, the entity it is about, its point, an ability's entry index in
+/// its [`Abilities`], which names the ability when the cue system reads it,
+/// and a refusal's [reason](reason_of).
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct AbilityCue {
+pub(crate) struct KitCue {
     pub(crate) event: &'static str,
     pub(crate) entity: Entity,
     pub(crate) at: Vec2,
@@ -1982,20 +1988,34 @@ pub(crate) struct AbilityCue {
     pub(crate) reason: u8,
 }
 
-/// The step's ability cue events, a World resource [`CuesPlugin`] inserts
-/// with its capacity reserved, which the cue system drains each step: no
-/// event queue, so an ability's refusals, readiness and holds send no
-/// event. Its pushers ask [`cue_named`] first.
-#[derive(Debug)]
-pub(crate) struct AbilityCues(pub(crate) Vec<AbilityCue>);
+impl KitCue {
+    /// `event` about `entity` at `at`, naming no ability.
+    pub(crate) fn about(event: &'static str, entity: Entity, at: Vec2) -> Self {
+        Self {
+            event,
+            entity,
+            at,
+            entry: u16::MAX,
+            reason: 0,
+        }
+    }
+}
 
-/// The ability cue events a step holds before the list grows.
-const ABILITY_CUES: usize = 32;
+/// The step's ability and cap cue events, a World resource [`CuesPlugin`]
+/// inserts with its capacity reserved, which the cue system drains each
+/// step, and again for those its own actions pushed: no event queue, so an
+/// ability's refusals, readiness and holds and a cap's culls send no event.
+/// Its pushers ask [`cue_named`] first.
+#[derive(Debug)]
+pub(crate) struct KitCues(pub(crate) Vec<KitCue>);
+
+/// The ability and cap cue events a step holds before the list grows.
+const KIT_CUES: usize = 32;
 
 /// Pushes `cue` for the cue system's next read, when the World has the
 /// list; its caller asked [`cue_named`] first.
-pub(crate) fn push_ability_cue(world: &mut World, cue: AbilityCue) {
-    if let Some(cues) = world.get_resource_mut::<AbilityCues>() {
+pub(crate) fn push_kit_cue(world: &mut World, cue: KitCue) {
+    if let Some(cues) = world.get_resource_mut::<KitCues>() {
         cues.0.push(cue);
     }
 }
@@ -2911,8 +2931,8 @@ impl Plugin for CuesPlugin {
         if !world.has_resource::<ControllerCues>() {
             world.insert_resource(ControllerCues(Vec::with_capacity(CONTROLLER_CUES)));
         }
-        if !world.has_resource::<AbilityCues>() {
-            world.insert_resource(AbilityCues(Vec::with_capacity(ABILITY_CUES)));
+        if !world.has_resource::<KitCues>() {
+            world.insert_resource(KitCues(Vec::with_capacity(KIT_CUES)));
         }
         if !world.has_resource::<KitRng>() {
             world.insert_resource(KitRng::default());
@@ -3076,6 +3096,9 @@ const SWEEP_EVERY: f64 = 1.0;
 struct Reactor {
     parts: EventCursor<DamagedPart>,
     damaged: EventCursor<Damaged>,
+    /// The late pass's occurrences: the cues the step's own actions and
+    /// world cues pushed.
+    late: Vec<Occurrence>,
     zones: EventCursor<ZoneEntered>,
     cooldowns: EventCursor<CooldownElapsed>,
     struck: EventCursor<Struck>,
@@ -3154,7 +3177,48 @@ impl Reactor {
         follow_listener(world);
         self.react(world);
         self.play_world_cues(world);
+        self.run_late(world);
         self.loops(world);
+    }
+
+    /// The late pass: the cues the step's own actions and world cues pushed
+    /// (a capped spawn's `culled`, an `ability` action's refusal), run as
+    /// the main pass runs its occurrences, before the step's despawn takes
+    /// their subjects, and its own despawns queued; what it pushes waits
+    /// for the next step. An empty list returns at once.
+    fn run_late(&mut self, world: &mut World) {
+        let mut late = std::mem::take(&mut self.late);
+        late.clear();
+        read_kit_cues(
+            world,
+            &mut self.effect_ids,
+            &mut self.effect_count,
+            &mut late,
+        );
+        if !late.is_empty() {
+            self.prepare_types(world);
+            self.run_batch(world, &mut late);
+            for entity in self.despawns.drain(..) {
+                if let Some(commands) = world.get_resource_mut::<CommandBuffer>() {
+                    despawn_recursive(commands, entity);
+                }
+                trace(world, entity, || TraceKind::Despawn { by: CUES });
+            }
+        }
+        self.late = late;
+    }
+
+    /// Merges the damage types and clears the kind filters' masks when the
+    /// type table grew, before a pass runs its occurrences.
+    fn prepare_types(&mut self, world: &mut World) {
+        merge_types(world);
+        let types = world
+            .get_resource::<DamageTypeTable>()
+            .map_or(0, DamageTypeTable::len);
+        if types != self.masked {
+            self.masks.clear();
+            self.masked = types;
+        }
     }
 
     /// Plays the step's [`WorldCue`]s, after every other source, in send
@@ -3206,15 +3270,25 @@ impl Reactor {
         if self.occurrences.is_empty() {
             return;
         }
-        merge_types(world);
-        let types = world
-            .get_resource::<DamageTypeTable>()
-            .map_or(0, DamageTypeTable::len);
-        if types != self.masked {
-            self.masks.clear();
-            self.masked = types;
-        }
+        self.prepare_types(world);
         let mut occurrences = std::mem::take(&mut self.occurrences);
+        self.run_batch(world, &mut occurrences);
+        self.occurrences = occurrences;
+        for open in self.crits.drain(..) {
+            float_label(world, &open.style, open.position, open.sum);
+        }
+        for entity in self.despawns.drain(..) {
+            if let Some(commands) = world.get_resource_mut::<CommandBuffer>() {
+                despawn_recursive(commands, entity);
+            }
+            trace(world, entity, || TraceKind::Despawn { by: CUES });
+        }
+    }
+
+    /// Runs `occurrences`' cues, each live, undespawning subject's own,
+    /// then their rules; one whose subject is gone or despawning is traced
+    /// and dropped.
+    fn run_batch(&mut self, world: &mut World, occurrences: &mut Vec<Occurrence>) {
         occurrences.retain(|occurrence| {
             let why = if !world.is_alive(occurrence.subject) {
                 GONE
@@ -3230,7 +3304,7 @@ impl Reactor {
             });
             false
         });
-        for occurrence in &occurrences {
+        for occurrence in occurrences.iter() {
             let Some(list) = world
                 .get::<Cues>(occurrence.subject)
                 .and_then(|cues| cues.list(occurrence.event))
@@ -3241,7 +3315,7 @@ impl Reactor {
                 self.apply(world, occurrence, action, None);
             }
         }
-        for occurrence in &occurrences {
+        for occurrence in occurrences.iter() {
             self.match_rules(world, occurrence);
             for why in self.held.drain(..) {
                 trace(world, occurrence.subject, || TraceKind::Skipped {
@@ -3258,16 +3332,6 @@ impl Reactor {
             }
             self.matched = matched;
             self.matched.clear();
-        }
-        self.occurrences = occurrences;
-        for open in self.crits.drain(..) {
-            float_label(world, &open.style, open.position, open.sum);
-        }
-        for entity in self.despawns.drain(..) {
-            if let Some(commands) = world.get_resource_mut::<CommandBuffer>() {
-                despawn_recursive(commands, entity);
-            }
-            trace(world, entity, || TraceKind::Despawn { by: CUES });
         }
     }
 
@@ -3375,7 +3439,7 @@ impl Reactor {
                     return skip(world, NO_COMMANDS);
                 }
                 let at = placed(world, id, occurrence.position, *centred);
-                if !self.spawn(world, subject, id, at) {
+                if !self.spawn(world, occurrence, action.name(), id, at) {
                     return;
                 }
             }
@@ -3389,7 +3453,7 @@ impl Reactor {
                 let drawn = std::mem::take(&mut self.drawn);
                 for id in &drawn {
                     let at = placed(world, id, occurrence.position, *centred);
-                    self.spawn(world, subject, id, at);
+                    self.spawn(world, occurrence, action.name(), id, at);
                 }
                 self.drawn = drawn;
             }
@@ -3600,24 +3664,22 @@ impl Reactor {
     }
 
     /// Queues prefab `id` at `position` from `subject` and traces the
-    /// spawn, or traces and logs once why it spawns nothing; whether it
-    /// spawned. The World holds a `CommandBuffer`.
-    fn spawn(&mut self, world: &mut World, subject: Entity, id: &str, position: Vec2) -> bool {
-        match world.prepare_prefab(id, position) {
-            Ok(prepared) => {
-                let commands = world.resource_mut::<CommandBuffer>();
-                // A world cue's spawns have no source.
-                if subject == Entity::PLACEHOLDER {
-                    commands.spawn_prefab(prepared);
-                } else {
-                    commands.spawn_prefab_from(subject, prepared);
-                }
-                trace(world, subject, || TraceKind::Spawn {
-                    prefab: id.to_owned(),
-                    by: CUES,
-                });
-                true
-            }
+    /// spawn, or traces and logs once why it spawns nothing; a refusal at
+    /// its [`Cap`](crate::Cap) is traced as `occurrence`'s `action`
+    /// skipped. Whether it spawned. The World holds a `CommandBuffer`.
+    fn spawn(
+        &mut self,
+        world: &mut World,
+        occurrence: &Occurrence,
+        action: &'static str,
+        id: &str,
+        position: Vec2,
+    ) -> bool {
+        let subject = occurrence.subject;
+        // A world cue's spawns have no source.
+        let source = (subject != Entity::PLACEHOLDER).then_some(subject);
+        let prepared = match world.prepare_prefab(id, position) {
+            Ok(prepared) => prepared,
             Err(err) => {
                 if self.warned.insert(id.to_owned()) {
                     log::error!("cues: prefab `{id}` spawns nothing: {err}");
@@ -3627,9 +3689,30 @@ impl Reactor {
                     by: CUES,
                     error: err.to_string(),
                 });
-                false
+                return false;
             }
-        }
+        };
+        let prepared = match admit(world, id, source, prepared) {
+            Ok(prepared) => prepared,
+            Err(why) => {
+                trace(world, subject, || TraceKind::Skipped {
+                    event: occurrence.event,
+                    action,
+                    why,
+                });
+                return false;
+            }
+        };
+        let commands = world.resource_mut::<CommandBuffer>();
+        match source {
+            Some(source) => commands.spawn_prefab_from(source, prepared),
+            None => commands.spawn_prefab(prepared),
+        };
+        trace(world, subject, || TraceKind::Spawn {
+            prefab: id.to_owned(),
+            by: CUES,
+        });
+        true
     }
 
     /// Draws `table`'s rolls from the World's [`KitRng`] into `drawn`;
@@ -4021,30 +4104,44 @@ impl Reactor {
                 ..Occurrence::new(cue.event, cue.entity, cue.at)
             }));
         }
-        if let Some(cues) = world.get_resource_mut::<AbilityCues>()
-            && !cues.0.is_empty()
-        {
-            let mut cues = std::mem::take(&mut cues.0);
-            for cue in cues.drain(..) {
-                let name = world
-                    .get::<Abilities>(cue.entity)
-                    .and_then(|abilities| abilities.name_at(usize::from(cue.entry)));
-                occurrences.push(Occurrence {
-                    bits: cue.reason << REASON_SHIFT,
-                    effect: effect_index(effect_ids, effect_count, name),
-                    ..Occurrence::new(cue.event, cue.entity, cue.at)
-                });
-            }
-            if let Some(list) = world.get_resource_mut::<AbilityCues>() {
-                list.0 = cues;
-            }
-        }
+        read_kit_cues(world, effect_ids, effect_count, occurrences);
         if let Some(mut sources) = world.remove_resource::<CueSources>() {
             for source in &mut sources.0 {
                 source.read(world, occurrences);
             }
             world.insert_resource(sources);
         }
+    }
+}
+
+/// Drains the World's [`KitCues`] into `out` as occurrences, each ability
+/// event naming its ability through the step's effect IDs; its storage is
+/// kept, so a warm step allocates nothing.
+fn read_kit_cues(
+    world: &mut World,
+    effect_ids: &mut Vec<String>,
+    effect_count: &mut usize,
+    out: &mut Vec<Occurrence>,
+) {
+    let Some(cues) = world.get_resource_mut::<KitCues>() else {
+        return;
+    };
+    if cues.0.is_empty() {
+        return;
+    }
+    let mut cues = std::mem::take(&mut cues.0);
+    for cue in cues.drain(..) {
+        let name = world
+            .get::<Abilities>(cue.entity)
+            .and_then(|abilities| abilities.name_at(usize::from(cue.entry)));
+        out.push(Occurrence {
+            bits: cue.reason << REASON_SHIFT,
+            effect: effect_index(effect_ids, effect_count, name),
+            ..Occurrence::new(cue.event, cue.entity, cue.at)
+        });
+    }
+    if let Some(list) = world.get_resource_mut::<KitCues>() {
+        list.0 = cues;
     }
 }
 

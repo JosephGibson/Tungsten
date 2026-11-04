@@ -92,6 +92,12 @@
     },
     "sandbag": {
       "path": "prefabs/sandbag.json"
+    },
+    "escort_carrier": {
+      "path": "prefabs/escort_carrier.json"
+    },
+    "escort": {
+      "path": "prefabs/escort.json"
     }
   },
   "data": {

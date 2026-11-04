@@ -21,6 +21,7 @@ use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::positive;
 use crate::foundation::saved::{order_of, saving};
 use crate::foundation::trace::{TraceKind, trace};
+use crate::lifecycle::cap::admit;
 
 /// [`SpawnerPlugin`]'s system, in the react phase.
 pub const SPAWNER_TICK: &str = "spawner_tick";
@@ -308,14 +309,31 @@ impl Ticker {
             due.sort_by_key(|&(spawner, ..)| order.key(spawner));
         }
         for (spawner, prefab, position) in due.drain(..) {
-            match world.prepare_prefab(&prefab, position) {
-                Ok(prepared) => {
+            match world
+                .prepare_prefab(&prefab, position)
+                .map(|prepared| admit(world, &prefab, Some(spawner), prepared))
+            {
+                Ok(Ok(prepared)) => {
                     world
                         .resource_mut::<CommandBuffer>()
                         .spawn_prefab_from(spawner, prepared);
                     trace(world, spawner, || TraceKind::Spawn {
                         prefab,
                         by: "spawner",
+                    });
+                }
+                // Refused at its cap: the spawner gets the spawn back.
+                Ok(Err(why)) => {
+                    if let Some(remaining) = world
+                        .get_mut::<Spawner>(spawner)
+                        .and_then(|spawner| spawner.remaining.as_mut())
+                    {
+                        *remaining += 1;
+                    }
+                    trace(world, spawner, || TraceKind::Skipped {
+                        event: SPAWNER,
+                        action: "spawn",
+                        why,
                     });
                 }
                 Err(err) => {

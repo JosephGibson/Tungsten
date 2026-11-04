@@ -11,6 +11,7 @@ use crate::count_down;
 use crate::foundation::saved::order_of;
 use crate::foundation::source::Source;
 use crate::foundation::trace::{TraceKind, trace};
+use crate::lifecycle::cap::{admit_replacement, leave};
 use crate::lifecycle::ended::Despawning;
 
 /// The name a save holds [`Became`] under.
@@ -96,7 +97,9 @@ impl BecomeDef {
 /// identity: the replacement keeps the receiver's `Source` when it has one
 /// (a `with` bundle, which the spawn inheritance leaves) and otherwise
 /// takes the inheritance's, naming the receiver; with `became`, it holds
-/// it. Statuses are not carried.
+/// it. Statuses are not carried. A capped replacement is admitted with
+/// the receiver leaving its group, and refused as a spawn is
+/// ([`Cap`](crate::Cap)), the receiver then left as it is.
 pub(crate) fn replace(
     world: &mut World,
     receiver: Entity,
@@ -118,6 +121,8 @@ pub(crate) fn replace(
             return Err(NO_PREFAB);
         }
     };
+    // Admitted with its receiver leaving the group as it arrives.
+    prepared = admit_replacement(world, prefab, receiver, prepared)?;
     if let Some(source) = world.get::<Source>(receiver).copied() {
         prepared = prepared.with((source,));
     }
@@ -127,6 +132,7 @@ pub(crate) fn replace(
     world
         .resource_mut::<CommandBuffer>()
         .replace_prefab(receiver, prepared);
+    leave(world, receiver);
     trace(world, receiver, || TraceKind::Spawn {
         prefab: prefab.to_owned(),
         by: "interaction",
@@ -159,6 +165,15 @@ pub(crate) fn tick(world: &mut World, dt: f32, due: &mut Vec<(Entity, String)>) 
         if world.has::<Despawning>(entity) {
             continue;
         }
-        let _ = replace(world, entity, &to, None);
+        // A refused revert is spent, its receiver left as it is.
+        if let Err(why) = replace(world, entity, &to, None)
+            && why != NO_PREFAB
+        {
+            trace(world, entity, || TraceKind::Skipped {
+                event: BECAME,
+                action: "become",
+                why,
+            });
+        }
     }
 }

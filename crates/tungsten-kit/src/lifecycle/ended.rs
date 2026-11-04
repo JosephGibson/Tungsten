@@ -46,6 +46,14 @@ pub(crate) fn end(world: &mut World, entity: Entity, by: &'static str) {
     }
 }
 
+/// Whether `entity` is listed for this step's [`KIT_DESPAWN`]: a cap counts
+/// no holder an item already ended.
+pub(crate) fn ending(world: &World, entity: Entity) -> bool {
+    world
+        .get_resource::<Ended>()
+        .is_some_and(|ended| ended.0.iter().any(|&(listed, _)| listed == entity))
+}
+
 /// Inserts the ended list when the World has none and adds [`KIT_DESPAWN`]
 /// when the schedule lacks it: every plugin whose item ends an entity calls
 /// it in `build`.

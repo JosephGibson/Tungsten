@@ -123,7 +123,7 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let kinds: BTreeSet<&str> = descriptions.kinds().map(|(kind, _)| kind).collect();
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
-    assert_eq!(described.len(), 45);
+    assert_eq!(described.len(), 46);
     assert_eq!(kinds.len(), 11);
     assert_eq!(
         descriptions.shapes().count(),
@@ -274,12 +274,30 @@ fn each_described_enum_variant_deserializes() {
     }
     assert_eq!(
         variants,
-        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2 + 3 + 4 + 3 + 4 + 3 + 2 + 3 + 2 + 2 + 2 + 2 + 2 + 4,
+        3 + EASING_NAMES.len()
+            + 4
+            + 3
+            + 3
+            + 2
+            + 3
+            + 4
+            + 3
+            + 4
+            + 3
+            + 2
+            + 3
+            + 2
+            + 2
+            + 2
+            + 2
+            + 2
+            + 4
+            + 2,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
          axes, the effect action's targets, the stack's refresh and expire policies, and the \
          ability action's ops and targets, the level's counter targets, the ability's \
-         directions and a cue rule's reasons"
+         directions, a cue rule's reasons and a cap's past"
     );
 }
 
@@ -392,13 +410,13 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 161,
+        checked, 162,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
          four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
          hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
          radius and intensity and sound's volume, a lob's speed, a cone's reach, half angle, \
-         rays, damage, knockback, sweep, push and far share, and a conduction's damage, \
-         reach, keep and jumps"
+         rays, damage, knockback, sweep, push and far share, a conduction's damage, \
+         reach, keep and jumps, and a cap's max"
     );
 }
 
@@ -407,7 +425,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let world = world();
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
-    assert_eq!(count("component "), 45);
+    assert_eq!(count("component "), 46);
     assert_eq!(count("shape "), 76);
     assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));

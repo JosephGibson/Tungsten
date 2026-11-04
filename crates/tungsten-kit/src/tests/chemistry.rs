@@ -2465,3 +2465,82 @@ fn a_blast_reaches_cells() {
         .collect();
     assert_eq!(broken, [0, 1, 2, 3, 4]);
 }
+
+#[test]
+fn a_capped_spawn_output_culls_the_oldest() {
+    let (mut world, mut schedule) = rig();
+    crate::CapPlugin.build(&mut schedule, &mut world);
+    let mut prefabs = tungsten_core::PrefabRegistry::new();
+    prefabs.insert(
+        "salt".to_string(),
+        serde_json::from_value(
+            json!({ "tag": "salt", "components": { "cap": { "group": "salt", "max": 2 } } }),
+        )
+        .unwrap(),
+    );
+    world.insert_resource(prefabs);
+    rule(
+        &mut world,
+        "salts",
+        json!({ "stimulus": "heat", "outputs": [{ "spawn": "salt" }] }),
+    );
+    strip_map(&mut world, "floor", 3, "grass", LayerKind::Render, false);
+    place(&mut world, "floor", Vec2::ZERO);
+    let vat = world.spawn_with((Transform::from_position(Vec2::new(0.0, -40.0)),));
+    let heat = |world: &mut World, receiver: Receiver| {
+        let stimulus = queue::Stimulus {
+            amount: 1.0,
+            status_effect: 1.0,
+            dot_base: 1.0,
+            depth: 0,
+            credit: None,
+        };
+        let chemistry = world.resource_mut::<Chemistry>();
+        let run = chemistry.run;
+        chemistry.stimulate(&Settings::default(), receiver, "heat", stimulus, run);
+    };
+    let salts = |world: &World| -> Vec<Entity> {
+        let mut found: Vec<Entity> = world
+            .query::<(Entity, &tungsten_core::Tag)>()
+            .filter(|(_, tag)| tag.name == "salt")
+            .map(|(entity, _)| entity)
+            .collect();
+        found.sort_by_key(|entity| entity.id());
+        found
+    };
+    let culled = |world: &World| -> Vec<Entity> {
+        world
+            .resource::<KitTrace>()
+            .iter()
+            .filter(|entry| matches!(entry.kind, TraceKind::Despawn { by } if by == "cap"))
+            .map(|entry| entry.entity)
+            .collect()
+    };
+    // An entity's spawns, from it: the third ends the first.
+    let mut spawned = Vec::new();
+    for _ in 0..3 {
+        heat(&mut world, Receiver::Entity(vat));
+        step(&mut world, &mut schedule);
+        for salt in salts(&world) {
+            if !spawned.contains(&salt) {
+                spawned.push(salt);
+            }
+        }
+    }
+    assert_eq!(spawned.len(), 3);
+    assert_eq!(culled(&world), [spawned[0]]);
+    assert_eq!(salts(&world).len(), 2);
+    // A tile cell's, sourceless, counted all the same: each ends the oldest.
+    for col in [0, 2] {
+        heat(&mut world, Receiver::Cell(cell("floor", Vec2::ZERO, col)));
+        step(&mut world, &mut schedule);
+    }
+    assert_eq!(culled(&world), spawned);
+    let left = salts(&world);
+    assert_eq!(left.len(), 2);
+    assert!(
+        left.iter()
+            .all(|&salt| world.get::<crate::Source>(salt).is_none()),
+        "the cells' spawns"
+    );
+}

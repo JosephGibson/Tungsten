@@ -138,6 +138,27 @@ impl core::marker::Unpin for tungsten_kit::Modifier
 impl core::marker::UnsafeUnpin for tungsten_kit::Modifier
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Modifier
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Modifier
+#[non_exhaustive] pub enum tungsten_kit::prelude::Past
+pub tungsten_kit::prelude::Past::Oldest
+pub tungsten_kit::prelude::Past::Refuse
+impl core::clone::Clone for tungsten_kit::Past
+pub fn tungsten_kit::Past::clone(&self) -> tungsten_kit::Past
+impl core::cmp::Eq for tungsten_kit::Past
+impl core::cmp::PartialEq for tungsten_kit::Past
+pub fn tungsten_kit::Past::eq(&self, &tungsten_kit::Past) -> bool
+impl core::default::Default for tungsten_kit::Past
+pub fn tungsten_kit::Past::default() -> tungsten_kit::Past
+impl core::fmt::Debug for tungsten_kit::Past
+pub fn tungsten_kit::Past::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::Past
+impl core::marker::StructuralPartialEq for tungsten_kit::Past
+impl core::marker::Freeze for tungsten_kit::Past
+impl core::marker::Send for tungsten_kit::Past
+impl core::marker::Sync for tungsten_kit::Past
+impl core::marker::Unpin for tungsten_kit::Past
+impl core::marker::UnsafeUnpin for tungsten_kit::Past
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Past
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Past
 #[non_exhaustive] pub enum tungsten_kit::prelude::Payload
 pub tungsten_kit::prelude::Payload::Conduct(alloc::boxed::Box<tungsten_kit::intent::ability::Conduct>)
 pub tungsten_kit::prelude::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
@@ -663,6 +684,46 @@ impl core::marker::Unpin for tungsten_kit::CameraTargetPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::CameraTargetPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraTargetPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraTargetPlugin
+pub struct tungsten_kit::prelude::Cap
+impl tungsten_kit::Cap
+pub fn tungsten_kit::Cap::group(&self) -> &str
+pub fn tungsten_kit::Cap::max(&self) -> u32
+pub fn tungsten_kit::Cap::new(impl core::convert::Into<alloc::string::String>, u32) -> Self
+pub fn tungsten_kit::Cap::past(&self) -> tungsten_kit::Past
+pub fn tungsten_kit::Cap::refusing(self) -> Self
+impl core::clone::Clone for tungsten_kit::Cap
+pub fn tungsten_kit::Cap::clone(&self) -> tungsten_kit::Cap
+impl core::cmp::PartialEq for tungsten_kit::Cap
+pub fn tungsten_kit::Cap::eq(&self, &tungsten_kit::Cap) -> bool
+impl core::fmt::Debug for tungsten_kit::Cap
+pub fn tungsten_kit::Cap::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Cap
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Cap
+pub fn tungsten_kit::Cap::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl core::marker::Freeze for tungsten_kit::Cap
+impl core::marker::Send for tungsten_kit::Cap
+impl core::marker::Sync for tungsten_kit::Cap
+impl core::marker::Unpin for tungsten_kit::Cap
+impl core::marker::UnsafeUnpin for tungsten_kit::Cap
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Cap
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cap
+pub struct tungsten_kit::prelude::CapPlugin
+impl core::clone::Clone for tungsten_kit::CapPlugin
+pub fn tungsten_kit::CapPlugin::clone(&self) -> tungsten_kit::CapPlugin
+impl core::default::Default for tungsten_kit::CapPlugin
+pub fn tungsten_kit::CapPlugin::default() -> tungsten_kit::CapPlugin
+impl core::fmt::Debug for tungsten_kit::CapPlugin
+pub fn tungsten_kit::CapPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CapPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CapPlugin
+pub fn tungsten_kit::CapPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CapPlugin
+impl core::marker::Send for tungsten_kit::CapPlugin
+impl core::marker::Sync for tungsten_kit::CapPlugin
+impl core::marker::Unpin for tungsten_kit::CapPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CapPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CapPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CapPlugin
 pub struct tungsten_kit::prelude::CharacterAnimator
 impl tungsten_kit::CharacterAnimator
 pub fn tungsten_kit::CharacterAnimator::new(impl core::convert::Into<tungsten_kit::Clips>) -> Self
@@ -4300,6 +4361,27 @@ impl core::marker::Unpin for tungsten_kit::OriginStep
 impl core::marker::UnsafeUnpin for tungsten_kit::OriginStep
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::OriginStep
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::OriginStep
+#[non_exhaustive] pub enum tungsten_kit::Past
+pub tungsten_kit::Past::Oldest
+pub tungsten_kit::Past::Refuse
+impl core::clone::Clone for tungsten_kit::Past
+pub fn tungsten_kit::Past::clone(&self) -> tungsten_kit::Past
+impl core::cmp::Eq for tungsten_kit::Past
+impl core::cmp::PartialEq for tungsten_kit::Past
+pub fn tungsten_kit::Past::eq(&self, &tungsten_kit::Past) -> bool
+impl core::default::Default for tungsten_kit::Past
+pub fn tungsten_kit::Past::default() -> tungsten_kit::Past
+impl core::fmt::Debug for tungsten_kit::Past
+pub fn tungsten_kit::Past::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::Past
+impl core::marker::StructuralPartialEq for tungsten_kit::Past
+impl core::marker::Freeze for tungsten_kit::Past
+impl core::marker::Send for tungsten_kit::Past
+impl core::marker::Sync for tungsten_kit::Past
+impl core::marker::Unpin for tungsten_kit::Past
+impl core::marker::UnsafeUnpin for tungsten_kit::Past
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Past
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Past
 #[non_exhaustive] pub enum tungsten_kit::Payload
 pub tungsten_kit::Payload::Conduct(alloc::boxed::Box<tungsten_kit::intent::ability::Conduct>)
 pub tungsten_kit::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
@@ -4886,6 +4968,46 @@ impl core::marker::Unpin for tungsten_kit::CameraTargetPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::CameraTargetPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraTargetPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraTargetPlugin
+pub struct tungsten_kit::Cap
+impl tungsten_kit::Cap
+pub fn tungsten_kit::Cap::group(&self) -> &str
+pub fn tungsten_kit::Cap::max(&self) -> u32
+pub fn tungsten_kit::Cap::new(impl core::convert::Into<alloc::string::String>, u32) -> Self
+pub fn tungsten_kit::Cap::past(&self) -> tungsten_kit::Past
+pub fn tungsten_kit::Cap::refusing(self) -> Self
+impl core::clone::Clone for tungsten_kit::Cap
+pub fn tungsten_kit::Cap::clone(&self) -> tungsten_kit::Cap
+impl core::cmp::PartialEq for tungsten_kit::Cap
+pub fn tungsten_kit::Cap::eq(&self, &tungsten_kit::Cap) -> bool
+impl core::fmt::Debug for tungsten_kit::Cap
+pub fn tungsten_kit::Cap::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Cap
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Cap
+pub fn tungsten_kit::Cap::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl core::marker::Freeze for tungsten_kit::Cap
+impl core::marker::Send for tungsten_kit::Cap
+impl core::marker::Sync for tungsten_kit::Cap
+impl core::marker::Unpin for tungsten_kit::Cap
+impl core::marker::UnsafeUnpin for tungsten_kit::Cap
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Cap
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cap
+pub struct tungsten_kit::CapPlugin
+impl core::clone::Clone for tungsten_kit::CapPlugin
+pub fn tungsten_kit::CapPlugin::clone(&self) -> tungsten_kit::CapPlugin
+impl core::default::Default for tungsten_kit::CapPlugin
+pub fn tungsten_kit::CapPlugin::default() -> tungsten_kit::CapPlugin
+impl core::fmt::Debug for tungsten_kit::CapPlugin
+pub fn tungsten_kit::CapPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CapPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CapPlugin
+pub fn tungsten_kit::CapPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CapPlugin
+impl core::marker::Send for tungsten_kit::CapPlugin
+impl core::marker::Sync for tungsten_kit::CapPlugin
+impl core::marker::Unpin for tungsten_kit::CapPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CapPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CapPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CapPlugin
 pub struct tungsten_kit::CharacterAnimator
 impl tungsten_kit::CharacterAnimator
 pub fn tungsten_kit::CharacterAnimator::new(impl core::convert::Into<tungsten_kit::Clips>) -> Self

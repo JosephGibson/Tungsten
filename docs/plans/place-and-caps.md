@@ -1,6 +1,6 @@
-# A place payload and caps on a group's live instances (place-and-caps) — draft
+# A place payload and caps on a group's live instances (place-and-caps) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Land redo 7.10c's Step 5, which stopped on 2026-11-04 at a pin outside its list (`D-244`'s not-landed bullet): a `cap` on a prefab group's live instances, past it the group's oldest ending with a `culled` cue or the new one refused, map-placed instances aside (S-18), and a `place` payload that sets a prefab down by its centre at the aim's point, refused before anything is spent with no point, no room for its body or at its cap (S-17). The saved work is ported to `b6f1c7a8` with the repairs this audit found (A2–A10), and 01 and the template keep their behaviour and every pin.
 - **non-goals:**
   - 01's sites onto these (S-17's placement arms and refusals, S-18's hand caps): 7.13, as `D-244`'s rows moved; 01 and the template unchanged but the template's `AGENTS.md`.

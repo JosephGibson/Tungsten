@@ -20,6 +20,7 @@ use crate::damage::pipeline::DamageRequest;
 use crate::foundation::lines::Line;
 use crate::foundation::tags::valid_tag;
 use crate::foundation::trace::{TraceKind, trace};
+use crate::lifecycle::cap::admit;
 use crate::overlap::hit::DamageDef;
 
 /// The event name an output's trace line carries.
@@ -660,6 +661,7 @@ fn on_cell(
                 return Err(NO_SPAWN);
             }
             let prepared = world.prepare_prefab(prefab, at).map_err(|_| NO_SPAWN)?;
+            let prepared = admit(world, prefab, None, prepared)?;
             world.resource_mut::<CommandBuffer>().spawn_prefab(prepared);
             Ok(())
         }
@@ -709,6 +711,7 @@ fn spawn_from(world: &mut World, receiver: Entity, prefab: &str) -> Result<(), &
     }
     match world.prepare_prefab(prefab, at) {
         Ok(prepared) => {
+            let prepared = admit(world, prefab, Some(receiver), prepared)?;
             world
                 .resource_mut::<CommandBuffer>()
                 .spawn_prefab_from(receiver, prepared);
