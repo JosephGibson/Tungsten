@@ -8,7 +8,7 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
     describe, round_trip,
 };
 use crate::foundation::inspect::register_rows;
@@ -116,8 +116,8 @@ impl Plugin for LifetimePlugin {
             ))
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
             .sample(r#"{ "seconds": 0.5 }"#)
             .roundtrip(round_trip::<LifetimeDef>),
         );

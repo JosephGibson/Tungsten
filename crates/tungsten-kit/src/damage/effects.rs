@@ -30,7 +30,7 @@ use crate::damage::health::Health;
 use crate::damage::pipeline::{DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest};
 use crate::foundation::curve::{CURVES, Curve, register_curves};
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, describe,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, TOP_DOWN, describe,
     describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows_with;
@@ -4414,7 +4414,8 @@ fn describe_effects(world: &mut World) {
         .event("EffectApplied")
         .event("EffectExpired")
         .genre(PLATFORMER)
-        .genre(GRID)
+        .genre(TOP_DOWN)
+        .genre(RPG)
         .sample(r#"["regen"]"#)
         .roundtrip(round_trip::<EffectsDef>),
     );

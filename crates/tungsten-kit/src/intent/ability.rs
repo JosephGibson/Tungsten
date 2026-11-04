@@ -17,8 +17,8 @@ use crate::count_down;
 use crate::damage::effects::{EFFECTS, Effect, EffectRequest};
 use crate::damage::health::Health;
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, describe,
-    describe_kind, describe_shape, round_trip,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
+    describe, describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -2060,8 +2060,10 @@ fn describe_abilities(world: &mut World) {
             "the value itself: each an `abilities` entry's ID, an ability in place, or `{ id, level }` with its skill's level from 1 to 40; names unique; the load checks each",
         ))
         .event("AbilityUsed")
+        .genre(PLATFORMER)
         .genre(TOP_DOWN)
-        .genre(SHMUP)
+        .genre(SHOOTER)
+        .genre(ARPG)
         .sample(r#"["wand"]"#)
         .roundtrip(round_trip::<AbilitiesDef>),
     );

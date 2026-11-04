@@ -14,10 +14,10 @@
 //!
 //! An item joins the kit when it is generic, names no game type and passes
 //! a recipe (a fixture of prefabs and data plus a harness test, with no
-//! game Rust) in two of the four reference genres: platformer, top-down,
-//! shmup and grid (`D-155`, as the kit foundations amend it). Each item has
-//! a scene component under its bare name, rustdoc with an example, a unit
-//! test and a harness test.
+//! game Rust) in two of the five reference genres: platformer, top-down,
+//! RPG, shooter and action RPG (`D-155`, as the kit foundations amend it;
+//! `D-218`). Each item has a scene component under its bare name, rustdoc
+//! with an example, a unit test and a harness test.
 //!
 //! # Composing a game
 //!

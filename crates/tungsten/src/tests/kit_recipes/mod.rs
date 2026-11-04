@@ -19,15 +19,16 @@ use crate::kit::{
 };
 use crate::testing::Harness;
 
+mod arpg;
 mod coverage;
 mod determinism;
-mod grid;
 mod platformer;
-mod shmup;
+mod rpg;
+mod shooter;
 mod top_down;
 
-/// The four reference genres, each a fixture folder.
-pub(crate) const GENRES: [&str; 4] = ["platformer", "top_down", "shmup", "grid"];
+/// The five reference genres, each a fixture folder.
+pub(crate) const GENRES: [&str; 5] = ["platformer", "top_down", "rpg", "shooter", "arpg"];
 
 /// The two frame lengths every recipe runs at: one step a frame, and two.
 pub(crate) const DTS: [f32; 2] = [1.0 / 60.0, 1.0 / 30.0];

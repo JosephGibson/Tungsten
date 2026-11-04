@@ -13,7 +13,7 @@ use tungsten_core::{
 
 use crate::damage::health::Health;
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, TOP_DOWN, describe,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, TOP_DOWN, describe,
     describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
@@ -1147,6 +1147,7 @@ impl Plugin for StatsPlugin {
             ))
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
+            .genre(ARPG)
             .sample(r#"{ "move_speed": 160 }"#)
             .roundtrip(round_trip::<StatsDef>),
         );

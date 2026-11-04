@@ -21,7 +21,7 @@ use crate::damage::health::{Damaged, DamagedPart, start_flash};
 use crate::damage::kinds::{DamageKinds, DamageTypeTable, check_type, label_style, merge_types};
 use crate::damage::pipeline::Healed;
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
     describe, describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
@@ -3810,8 +3810,8 @@ fn describe_cues(world: &mut World) {
             .event("SquashEvent")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
             .sample("{}")
             .roundtrip(cues_round_trip),
     );

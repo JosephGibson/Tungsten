@@ -1,7 +1,8 @@
-//! The grid fixture: a bodiless rogue under the move actions, a hole that
-//! spawns rats, a potion that expires, and the camera on the rogue; M64's
-//! crawlers and warden; M65's adventurer and its swing, a chest and its
-//! loot, gold and spikes; M67's blessing and level on the adventurer.
+//! The rpg fixture, a dungeon's staples (the paper designs' G3): a bodiless
+//! rogue under the move actions, a hole that spawns rats, a potion that
+//! expires, and the camera on the rogue; M64's crawlers and warden; M65's
+//! adventurer and its swing, a chest and its loot, gold and spikes; M67's
+//! blessing and level on the adventurer.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -13,7 +14,7 @@ use crate::kit::{
     Tags, TopDownMover, damage,
 };
 
-const GENRE: &str = "grid";
+const GENRE: &str = "rpg";
 
 #[test]
 fn the_rogue_moves_by_position() {

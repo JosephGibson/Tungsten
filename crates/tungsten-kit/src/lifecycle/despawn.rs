@@ -10,7 +10,8 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, describe, round_trip,
+    Bound, ComponentDescription, FieldDescription, FieldType, SHOOTER, TOP_DOWN, describe,
+    round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -152,7 +153,7 @@ impl Plugin for DespawnOutsidePlugin {
                 "the margin outside the last frame's camera view",
             ))
             .genre(TOP_DOWN)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"{ "view": 16 }"#)
             .roundtrip(round_trip::<DespawnOutsideDef>),
         );

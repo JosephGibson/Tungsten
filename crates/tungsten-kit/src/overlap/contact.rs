@@ -15,7 +15,7 @@ use crate::TIME_EPSILON;
 use crate::damage::kinds::{Conversion, ConversionDef, Penetration, PenetrationDef};
 use crate::damage::pipeline::DamagePart;
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, TOP_DOWN, describe,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, TOP_DOWN, describe,
     round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
@@ -793,9 +793,9 @@ impl Plugin for ContactDamagePlugin {
                 .default("false"),
             )
             .event("Struck")
-            .genre(TOP_DOWN)
             .genre(PLATFORMER)
-            .genre(GRID)
+            .genre(TOP_DOWN)
+            .genre(RPG)
             .sample(r#"{ "damage": 1 }"#)
             .roundtrip(round_trip::<ContactDamageDef>),
         );

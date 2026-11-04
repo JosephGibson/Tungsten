@@ -19,8 +19,8 @@ use crate::damage::pipeline::{
     DAMAGE_REQUESTS, DAMAGE_RESOLVE, DamageRequest, Healed, Requests, Resolver, requests_saved,
 };
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
-    describe, round_trip,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER,
+    TOP_DOWN, describe, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -999,8 +999,9 @@ impl Plugin for HealthPlugin {
             .event("Healed")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
+            .genre(ARPG)
             .sample(r#"{ "max": 5 }"#)
             .roundtrip(round_trip::<HealthDef>),
         );
@@ -1048,8 +1049,9 @@ impl Plugin for HealthPlugin {
                 )
                 .default("null"),
             )
+            .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample("{}")
             .roundtrip(round_trip::<HitFlashDef>),
         );

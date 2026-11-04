@@ -1,11 +1,12 @@
-//! The shmup fixture: a bodiless ship under the move actions, bullets that
-//! expire or leave the view, raiders from a wave on a path, and a walker
-//! on a floor under the same actions; M64's fighter, drifter, asteroid,
-//! mine and gun; M65's interceptor, lasers, carrier and bulwark; M66's
-//! sci-fi damage types: a hacker, its payloads and a mainframe; M67's
-//! corruption ladder, the ship's cannon and the turret's pulse; M74's acid
-//! named after a load, the acid ladder's held rung and a game's own damage
-//! numbers; M75's drone saved mid-volley.
+//! The shooter fixture, Static Front's genre (the paper designs' G3): a
+//! bodiless ship under the move actions, bullets that expire or leave the
+//! view, raiders from a wave on a path, and a walker on a floor under the
+//! same actions; M64's fighter, drifter, asteroid, mine and gun; M65's
+//! interceptor, lasers, carrier and bulwark; M66's sci-fi damage types: a
+//! hacker, its payloads and a mainframe; M67's corruption ladder, the
+//! ship's cannon and the turret's pulse; M74's acid named after a load, the
+//! acid ladder's held rung and a game's own damage numbers; M75's drone
+//! saved mid-volley.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -26,7 +27,7 @@ use crate::kit::{
 };
 use crate::testing::Harness;
 
-const GENRE: &str = "shmup";
+const GENRE: &str = "shooter";
 
 #[test]
 fn the_ship_moves_by_position_and_draws_by_transform() {

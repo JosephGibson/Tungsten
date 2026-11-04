@@ -12,7 +12,7 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHMUP, TOP_DOWN,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
     describe, round_trip,
 };
 use crate::foundation::inspect::register_rows;
@@ -594,9 +594,9 @@ impl Plugin for ProjectilePlugin {
             .event("ProjectileBounced")
             .event("ProjectilePassed")
             .event("Struck")
-            .genre(TOP_DOWN)
             .genre(PLATFORMER)
-            .genre(SHMUP)
+            .genre(TOP_DOWN)
+            .genre(SHOOTER)
             .sample("{}")
             .roundtrip(round_trip::<ProjectileDef>),
         );

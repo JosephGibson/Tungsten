@@ -10,7 +10,7 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHMUP, TOP_DOWN,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
     describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
@@ -407,7 +407,7 @@ impl Plugin for FacingPlugin {
             )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample("{}")
             .roundtrip(round_trip::<FacingDef>),
         );

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::{Entity, Plugin, Schedule, SpawnContext, Sprite, Transform, World, system};
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, TOP_DOWN, describe, round_trip,
+    Bound, ComponentDescription, FieldDescription, FieldType, RPG, TOP_DOWN, describe, round_trip,
 };
 use crate::foundation::finite;
 use crate::foundation::inspect::register_rows_with;
@@ -157,7 +157,7 @@ impl Plugin for DepthSortPlugin {
                 .default("0"),
             )
             .genre(TOP_DOWN)
-            .genre(GRID)
+            .genre(RPG)
             .sample("{}")
             .roundtrip(round_trip::<DepthSortDef>),
         );

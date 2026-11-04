@@ -1278,7 +1278,7 @@ fn a_scene_naming_the_four_engine_components_spawns_them_and_steps_the_bodies() 
 fn load_sounds_gives_a_sound_its_manifest_bus_and_voice_limit() {
     let dir = tempdir();
     let blip =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/kit/shmup/sounds/blip.ogg");
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/kit/shooter/sounds/blip.ogg");
     fs::copy(&blip, dir.join("blip.ogg")).unwrap();
     write(
         &dir.join("manifest.json"),

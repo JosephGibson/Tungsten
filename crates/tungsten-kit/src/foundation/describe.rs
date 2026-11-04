@@ -593,11 +593,13 @@ pub(crate) const EASING_NAMES: &[&str] = &[
     "bounce_in_out",
 ];
 
-/// The four reference genres.
+/// The five reference genres, each a recipe fixture folder (`D-172`, as
+/// `D-215` and `D-218` amend it).
 pub(crate) const PLATFORMER: &str = "platformer";
 pub(crate) const TOP_DOWN: &str = "top_down";
-pub(crate) const SHMUP: &str = "shmup";
-pub(crate) const GRID: &str = "grid";
+pub(crate) const RPG: &str = "rpg";
+pub(crate) const SHOOTER: &str = "shooter";
+pub(crate) const ARPG: &str = "arpg";
 
 #[cfg(test)]
 #[path = "../tests/describe.rs"]

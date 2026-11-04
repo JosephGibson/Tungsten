@@ -7,7 +7,7 @@ use tungsten_core::physics::{Position, Velocity};
 use tungsten_core::{Easing, Inspectable, Plugin, Schedule, SpawnContext, World, system};
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, EASING_NAMES, FieldDescription, FieldType, PLATFORMER, SHMUP,
+    Bound, ComponentDescription, EASING_NAMES, FieldDescription, FieldType, PLATFORMER, SHOOTER,
     TOP_DOWN, describe, round_trip,
 };
 use crate::foundation::inspect::register_rows;
@@ -310,7 +310,7 @@ impl Plugin for PathFollowerPlugin {
             )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"{ "points": [[0, 0], [0, -100]], "speed": 100 }"#)
             .roundtrip(round_trip::<PathFollowerDef>),
         );

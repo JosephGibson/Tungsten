@@ -7,7 +7,8 @@ use tungsten_core::physics::{Position, PrevPosition, Velocity};
 use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, World, system};
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, describe, round_trip,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
+    describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -433,8 +434,9 @@ impl Plugin for SteeringPlugin {
                 )
                 .default("64.0"),
             )
+            .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"{ "target": { "nearest": { "all": ["team.player"] } }, "max_speed": 90 }"#)
             .roundtrip(round_trip::<SteeringDef>),
         );

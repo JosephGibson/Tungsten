@@ -10,7 +10,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tungsten_core::{Inspectable, Time, World};
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, round_trip,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
+    round_trip,
 };
 use crate::foundation::lines::{Line, Reach, Read};
 use crate::foundation::stats::{Modifier, modified};
@@ -1155,8 +1156,10 @@ pub(crate) fn resist_description() -> ComponentDescription {
         FieldType::Object("damage tag → factor in [0, 1000], or { factor, floor }"),
         "the value itself: each tag declared, matching a part's type or its dotted descendants; a floor in [0, 1000] is the lowest a factor above 0 goes in a hit, before penetration; a save adds each factor's modifiers and scoped lines",
     ))
+    .genre(PLATFORMER)
     .genre(TOP_DOWN)
-    .genre(SHMUP)
+    .genre(SHOOTER)
+    .genre(ARPG)
     .sample(r#"{ "damage.fire": 0.5 }"#)
     .roundtrip(round_trip::<ResistDef>)
 }
@@ -1196,8 +1199,8 @@ pub(crate) fn shield_description() -> ComponentDescription {
         )
         .default("0.0"),
     )
-    .genre(SHMUP)
     .genre(TOP_DOWN)
+    .genre(SHOOTER)
     .sample(r#"{ "max": 3 }"#)
     .roundtrip(round_trip::<ShieldDef>)
 }

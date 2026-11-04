@@ -1,7 +1,7 @@
 //! The kit determinism hash: each genre's fixture run through a fixed
 //! input script for 300 frames at 1/60 s, with hits and pushes at fixed
 //! frames, the world hashed in entity order and the game's counters and
-//! flags after it, the four hashes combined; equal across two in-process
+//! flags after it, the five hashes combined; equal across two in-process
 //! runs and pinned. The App flushes commands once a frame, so the hash is a
 //! one-step-per-frame claim, as the physics hash is.
 
@@ -18,7 +18,7 @@ use crate::kit::{
 };
 use crate::testing::Harness;
 
-/// The hash of the four recipes, pinned from the first run; moved by M63,
+/// The hash of the five recipes, pinned from the first run; moved by M63,
 /// whose script spawns the stats, cues, cooldowns, counters, flags and
 /// children prefabs and lands hits, then by M64, whose script spawns the
 /// motion and facing prefabs and pushes, and whose rows add the rotation,
@@ -32,8 +32,11 @@ use crate::testing::Harness;
 /// abilities, levels and thresholds, and whose rows add each effect
 /// instance, each bucket, each level and each ability, then by M74, whose
 /// fixture's chilled rung skips a chilled golem, so the script's cold hit
-/// fills the golem's bucket instead of chilling it again.
-const KIT_RECIPES_HASH: u64 = 0x3334_9665_de0c_501a;
+/// fills the golem's bucket instead of chilling it again, then by 7.10c,
+/// whose genres are five, the two moved folders' worlds hashing as before
+/// under their new names, `rpg` and `shooter`, in their new order, and whose
+/// `arpg` script presses `attack` for §9.1's volley on a brute.
+const KIT_RECIPES_HASH: u64 = 0xa2de_8a8e_2368_07d3;
 
 const FRAMES: u32 = 300;
 
@@ -171,8 +174,9 @@ fn hits(genre: &str) -> &'static [(u32, &'static str, f32)] {
     match genre {
         "platformer" => &[(100, "runner", 1.0)],
         "top_down" => &[(50, "brute", 1.0), (51, "brute", 2.0), (150, "slime", 2.0)],
-        "shmup" => &[(120, "wing", 1.0)],
-        "grid" => &[(90, "slug", 1.0), (91, "rogue", 3.0)],
+        "rpg" => &[(90, "slug", 1.0), (91, "rogue", 3.0)],
+        "shooter" => &[(120, "wing", 1.0)],
+        "arpg" => &[],
         other => panic!("no hits for {other}"),
     }
 }
@@ -186,7 +190,7 @@ fn pushes(genre: &str) -> &'static [(u32, &'static str, [f32; 2])] {
             (150, "rover", [-400.0, 0.0]),
             (150, "brawler", [600.0, -300.0]),
         ],
-        "shmup" | "grid" => &[],
+        "rpg" | "shooter" | "arpg" => &[],
         other => panic!("no pushes for {other}"),
     }
 }
@@ -213,18 +217,19 @@ fn motion_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
             ("pet", [0.0, 200.0]),
             ("gem", [700.0, 0.0]),
         ],
-        "shmup" => &[
+        "rpg" => &[
+            ("crawler", [200.0, 40.0]),
+            ("crawler", [200.0, 100.0]),
+            ("warden", [300.0, 120.0]),
+        ],
+        "shooter" => &[
             ("fighter", [900.0, 300.0]),
             ("drifter", [1000.0, 0.0]),
             ("asteroid", [600.0, 150.0]),
             ("mine", [1100.0, 100.0]),
             ("gun", [700.0, 500.0]),
         ],
-        "grid" => &[
-            ("crawler", [200.0, 40.0]),
-            ("crawler", [200.0, 100.0]),
-            ("warden", [300.0, 120.0]),
-        ],
+        "arpg" => &[],
         other => panic!("no motion prefabs for {other}"),
     }
 }
@@ -254,18 +259,19 @@ fn combat_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
             ("ghoul", [85.0, 1000.0]),
             ("orb", [160.0, 1000.0]),
         ],
-        "shmup" => &[
-            ("interceptor", [2000.0, 1000.0]),
-            ("carrier", [2000.0, 700.0]),
-            ("interceptor", [2300.0, 1000.0]),
-            ("bulwark", [2300.0, 700.0]),
-        ],
-        "grid" => &[
+        "rpg" => &[
             ("adventurer", [500.0, 500.0]),
             ("chest", [514.0, 500.0]),
             ("spikes", [488.0, 500.0]),
             ("gold", [500.0, 510.0]),
         ],
+        "shooter" => &[
+            ("interceptor", [2000.0, 1000.0]),
+            ("carrier", [2000.0, 700.0]),
+            ("interceptor", [2300.0, 1000.0]),
+            ("bulwark", [2300.0, 700.0]),
+        ],
+        "arpg" => &[],
         other => panic!("no combat prefabs for {other}"),
     }
 }
@@ -276,8 +282,8 @@ fn combat_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
 fn typed_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
     match genre {
         "top_down" => &[("golem", [600.0, 1400.0]), ("spellblade", [600.0, 1400.0])],
-        "shmup" => &[("mainframe", [2600.0, 700.0]), ("hacker", [2600.0, 1000.0])],
-        "platformer" | "grid" => &[],
+        "shooter" => &[("mainframe", [2600.0, 700.0]), ("hacker", [2600.0, 1000.0])],
+        "platformer" | "rpg" | "arpg" => &[],
         other => panic!("no typed prefabs for {other}"),
     }
 }
@@ -287,8 +293,8 @@ fn typed_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
 fn typed_hits(genre: &str) -> &'static [(u32, &'static str, &'static str, f32)] {
     match genre {
         "top_down" => &[(160, "golem", "elemental.cold", 5.0)],
-        "shmup" => &[(170, "mainframe", "digital.corruption", 60.0)],
-        "platformer" | "grid" => &[],
+        "shooter" => &[(170, "mainframe", "digital.corruption", 60.0)],
+        "platformer" | "rpg" | "arpg" => &[],
         other => panic!("no typed hits for {other}"),
     }
 }
@@ -298,7 +304,7 @@ fn typed_hits(genre: &str) -> &'static [(u32, &'static str, &'static str, f32)] 
 fn effect_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
     match genre {
         "top_down" => &[("ammo", [160.0, 1020.0])],
-        "shmup" | "platformer" | "grid" => &[],
+        "platformer" | "rpg" | "shooter" | "arpg" => &[],
         other => panic!("no effect prefabs for {other}"),
     }
 }
@@ -308,14 +314,14 @@ fn effect_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
 fn curses(genre: &str) -> &'static [(u32, &'static str, &'static str, &'static str, Modifier)] {
     match genre {
         "top_down" => &[(100, "golem", "physical", "curse", Modifier::Mul(1.5))],
-        "shmup" => &[(
+        "shooter" => &[(
             100,
             "mainframe",
             "digital",
             "overclock",
             Modifier::Add(0.25),
         )],
-        "platformer" | "grid" => &[],
+        "platformer" | "rpg" | "arpg" => &[],
         other => panic!("no curses for {other}"),
     }
 }
@@ -345,7 +351,15 @@ fn script(genre: &str, harness: &mut Harness) {
             spawn(harness, "bomb", [450.0, 50.0]);
             spawn(harness, "hopper", [500.0, 50.0]);
         }
-        "shmup" => {
+        "rpg" => {
+            spawn(harness, "rogue", [64.0, 64.0]);
+            spawn(harness, "hole", [96.0, 96.0]);
+            spawn(harness, "potion", [32.0, 32.0]);
+            spawn(harness, "delver", [10.0, 10.0]);
+            spawn(harness, "trapdoor", [20.0, 20.0]);
+            spawn(harness, "slug", [30.0, 30.0]);
+        }
+        "shooter" => {
             spawn(harness, "floor", [0.0, 400.0]);
             spawn(harness, "ship", [640.0, 600.0]);
             spawn(harness, "wave", [300.0, 0.0]);
@@ -354,13 +368,10 @@ fn script(genre: &str, harness: &mut Harness) {
             spawn(harness, "turret", [200.0, 100.0]);
             spawn(harness, "gunship", [100.0, 100.0]);
         }
-        "grid" => {
-            spawn(harness, "rogue", [64.0, 64.0]);
-            spawn(harness, "hole", [96.0, 96.0]);
-            spawn(harness, "potion", [32.0, 32.0]);
-            spawn(harness, "delver", [10.0, 10.0]);
-            spawn(harness, "trapdoor", [20.0, 20.0]);
-            spawn(harness, "slug", [30.0, 30.0]);
+        // §9.1's caster beside a chilled brute; `attack` at frame 30 casts.
+        "arpg" => {
+            spawn(harness, "caster", [0.0, 0.0]);
+            spawn(harness, "brute", [40.0, 0.0]);
         }
         other => panic!("no script for {other}"),
     }
@@ -472,13 +483,7 @@ fn reacted(genre: &str, harness: &Harness) -> bool {
                         .is_some_and(|buckets| buckets.fill("elemental.cold") > 0.0)
                 })
         }
-        // The two wings the script kills, and the carrier the lasers kill.
-        "shmup" => {
-            game.get("score") == 3
-                && game.get("virus_hits") >= 1
-                && affected("mainframe", "corrupted")
-        }
-        "grid" => {
+        "rpg" => {
             game.get("slugs") == 1
                 && counted("adventurer", "gold") == 1
                 && tagged(harness, "adventurer").iter().all(|&adventurer| {
@@ -488,6 +493,27 @@ fn reacted(genre: &str, harness: &Harness) -> bool {
                         .is_some_and(|level| level.level() == 2)
                 })
         }
+        // The two wings the script kills, and the carrier the lasers kill.
+        "shooter" => {
+            game.get("score") == 3
+                && game.get("virus_hits") >= 1
+                && affected("mainframe", "corrupted")
+        }
+        // The volley struck the brute and spent the caster's mana.
+        "arpg" => {
+            tagged(harness, "brute").iter().all(|&brute| {
+                harness
+                    .world()
+                    .get::<Health>(brute)
+                    .is_some_and(|health| health.current() < health.max())
+            }) && tagged(harness, "caster").iter().all(|&caster| {
+                harness
+                    .world()
+                    .get::<Stats>(caster)
+                    .and_then(|stats| stats.base("mana"))
+                    .is_some_and(|mana| mana < 100.0)
+            })
+        }
         other => panic!("no reaction for {other}"),
     }
 }
@@ -496,7 +522,15 @@ fn reacted(genre: &str, harness: &Harness) -> bool {
 fn report(genre: &str, harness: &Harness) -> String {
     let world = harness.world();
     let mut text = format!("game {}", counters_text(world.resource::<Counters>()));
-    for tag in ["ranger", "golem", "mainframe", "adventurer", "runner"] {
+    for tag in [
+        "ranger",
+        "golem",
+        "mainframe",
+        "adventurer",
+        "runner",
+        "brute",
+        "caster",
+    ] {
         for entity in tagged(harness, tag) {
             let _ = write!(text, "; {tag} {entity}");
             if let Some(counters) = world.get::<Counters>(entity) {

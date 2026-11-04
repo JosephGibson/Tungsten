@@ -7,7 +7,7 @@ use tungsten_core::physics::Velocity;
 use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, World, system};
 
 use crate::foundation::describe::{
-    ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, describe, round_trip,
+    ComponentDescription, FieldDescription, FieldType, SHOOTER, TOP_DOWN, describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -300,7 +300,7 @@ impl Plugin for AimPlugin {
                 .default("[0.0, 0.0]"),
             )
             .genre(TOP_DOWN)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"{ "from": "target", "target": { "nearest": { "all": ["team.player"] } } }"#)
             .roundtrip(round_trip::<AimDef>),
         );

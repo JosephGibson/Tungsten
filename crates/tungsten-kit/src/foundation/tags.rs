@@ -7,8 +7,8 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN, describe,
-    describe_kind, round_trip,
+    ARPG, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
+    describe, describe_kind, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::ensure_phases;
@@ -560,8 +560,9 @@ impl Plugin for TagsPlugin {
                 ))
                 .genre(PLATFORMER)
                 .genre(TOP_DOWN)
-                .genre(SHMUP)
-                .genre(GRID)
+                .genre(RPG)
+                .genre(SHOOTER)
+                .genre(ARPG)
                 .sample(r#"["team.player"]"#)
                 .roundtrip(round_trip::<TagsDef>),
         );

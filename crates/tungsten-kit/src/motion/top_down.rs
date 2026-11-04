@@ -9,8 +9,8 @@ use tungsten_core::physics::{Position, PrevPosition, RigidBody, SpatialFilter, V
 use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, World, system};
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, SHMUP, TOP_DOWN, describe,
-    round_trip,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
+    describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -322,9 +322,10 @@ impl Plugin for TopDownMoverPlugin {
                 )
                 .default("null"),
             )
+            .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
             .sample(r#"{ "speed": 240 }"#)
             .roundtrip(round_trip::<TopDownMoverDef>),
         );

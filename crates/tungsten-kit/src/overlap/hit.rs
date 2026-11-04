@@ -21,8 +21,8 @@ use crate::damage::kinds::{
 };
 use crate::damage::pipeline::{DamagePart, DamageRequest};
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
-    describe, describe_shape, round_trip,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER,
+    TOP_DOWN, describe, describe_shape, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -1513,10 +1513,11 @@ impl Plugin for HitPlugin {
                 .default("null"),
             )
             .event("Struck")
-            .genre(TOP_DOWN)
-            .genre(SHMUP)
             .genre(PLATFORMER)
-            .genre(GRID)
+            .genre(TOP_DOWN)
+            .genre(RPG)
+            .genre(SHOOTER)
+            .genre(ARPG)
             .sample(r#"{ "shape": { "circle": 4 }, "damage": 1 }"#)
             .roundtrip(round_trip::<HitboxDef>),
         );
@@ -1529,10 +1530,11 @@ impl Plugin for HitPlugin {
                 ),
                 "its circle or box",
             )
-            .genre(TOP_DOWN)
-            .genre(SHMUP)
             .genre(PLATFORMER)
-            .genre(GRID)
+            .genre(TOP_DOWN)
+            .genre(RPG)
+            .genre(SHOOTER)
+            .genre(ARPG)
             .sample(r#"{ "shape": { "circle": 8 } }"#)
             .roundtrip(round_trip::<HurtboxDef>),
         );

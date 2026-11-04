@@ -1,0 +1,32 @@
+{
+  "prefabs": {
+    "caster": {
+      "path": "prefabs/caster.json"
+    },
+    "brute": {
+      "path": "prefabs/brute.json"
+    }
+  },
+  "data": {
+    "tags": {
+      "game": {
+        "path": "data/tags.json"
+      }
+    },
+    "stats": {
+      "game": {
+        "path": "data/stats.json"
+      }
+    },
+    "damage_types": {
+      "elements": {
+        "path": "data/damage_types/elements.json"
+      }
+    },
+    "abilities": {
+      "cinder": {
+        "path": "data/abilities/cinder.json"
+      }
+    }
+  }
+}

@@ -18,7 +18,7 @@ use tungsten_core::{
 
 use crate::count_down;
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHMUP, describe,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, describe,
     round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
@@ -1455,7 +1455,7 @@ impl Plugin for PlatformerControllerPlugin {
                 .default("[]"),
             )
             .genre(PLATFORMER)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"{ "run_speed": 200, "jump_speed": 600 }"#)
             .roundtrip(round_trip::<PlatformerControllerDef>),
         );
