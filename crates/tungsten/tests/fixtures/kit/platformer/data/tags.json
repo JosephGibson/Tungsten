@@ -19,5 +19,6 @@
   "heat",
   "material.crate",
   "material.char",
-  "explosive"
+  "explosive",
+  "bouncy"
 ]

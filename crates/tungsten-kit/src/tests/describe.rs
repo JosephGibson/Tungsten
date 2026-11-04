@@ -125,7 +125,7 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     assert_eq!(kinds, registered_kinds);
     assert_eq!(described.len(), 45);
     assert_eq!(kinds.len(), 10);
-    assert_eq!(descriptions.shapes().count(), 60);
+    assert_eq!(descriptions.shapes().count(), 61);
 }
 
 #[test]
@@ -386,8 +386,9 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 132,
-        "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases"
+        checked, 136,
+        "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
+         four a cue rule's amount, interval and cap"
     );
 }
 
@@ -397,7 +398,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 45);
-    assert_eq!(count("shape "), 60);
+    assert_eq!(count("shape "), 61);
     assert_eq!(count("kind "), 10);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

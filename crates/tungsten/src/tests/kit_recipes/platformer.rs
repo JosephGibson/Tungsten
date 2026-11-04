@@ -12,7 +12,9 @@
 //! lamp, which burns its oil and goes out; its chemistry's kindling, lit
 //! by a torch's hit, a clay pot cracked by a hard landing, a floor of
 //! glass a pot cracks and planks a flare scorches for a while, a crate
-//! fire chars, and a powder keg whose blast chars the crate beside it.
+//! fire chars, and a powder keg whose blast chars the crate beside it;
+//! 7.10p's balls whose hard impacts spark under a rule's amount and
+//! interval.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1662,5 +1664,85 @@ fn a_powder_kegs_blast_chars_a_crate() {
             10.0,
             "dt {dt}: out of reach"
         );
+    }
+}
+
+// 7.10p: cue rule filters and limits.
+
+/// A contact's begin as the cue event `impact`: the pushed body at its
+/// point, the closing speed its amount.
+#[allow(clippy::unnecessary_wraps)]
+fn impact(event: &tungsten_core::physics::ContactBegan) -> Option<crate::kit::CueEvent> {
+    Some(crate::kit::CueEvent::of(event.a).with_amount(event.speed))
+}
+
+/// A recipe harness whose game registers `impact` and stages the impact
+/// rule, `staged/impacts.json`, outside the shared manifest, which names no
+/// game event.
+fn impact_recipe(dt: f32) -> super::Harness {
+    use crate::kit::CuesOnEvent;
+    use tungsten_core::StagedLoad;
+
+    let plugins = KitPlugins::set().with(CuesOnEvent::<tungsten_core::physics::ContactBegan>::new(
+        "impact", impact,
+    ));
+    let mut harness = recipe(GENRE, plugins, dt);
+    let mut staged = StagedLoad::new();
+    staged
+        .add_data(
+            harness.world(),
+            "cue_rules",
+            "impacts",
+            super::fixture_dir(GENRE).join("staged/impacts.json"),
+        )
+        .unwrap();
+    staged.commit(harness.world_mut()).unwrap();
+    harness
+}
+
+#[test]
+fn a_balls_hard_impact_sparks_once_under_its_rules_amount_and_interval() {
+    use crate::kit::{KitTrace, TraceKind};
+    use tungsten_core::{LayerKind, TilemapData, TilemapInstance, TilemapRegistry};
+
+    for dt in DTS {
+        let mut harness = impact_recipe(dt);
+        // A floor of 16 px cells from x 100 at y 300.
+        let mut map = TilemapData::new(16, 16, 20, 1);
+        let stone = map.add_tile("stone");
+        let layer = map.add_layer("floor", LayerKind::Collision);
+        for col in 0..20 {
+            map.set_tile(layer, col, 0, stone);
+        }
+        let world = harness.world_mut();
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("floor".into(), map);
+        world.spawn_with((TilemapInstance::new("floor", Vec2::new(100.0, 300.0)),));
+        // Dropped at 600 and 150 px/s: the rule sparks an impact of 300 px/s
+        // or more, once a quarter second per ball.
+        let hard = spawn(&mut harness, "bouncer", [140.0, 280.0]);
+        let soft = spawn(&mut harness, "bouncer", [260.0, 280.0]);
+        for (ball, speed) in [(hard, 600.0), (soft, 150.0)] {
+            harness.world_mut().get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(0.0, speed);
+        }
+        harness.step(frames_for(1.0, dt));
+        let trace = harness.world().resource::<KitTrace>();
+        let sparks = |ball| {
+            trace
+                .about(ball)
+                .filter(|entry| matches!(&entry.kind, TraceKind::Spawn { prefab, .. } if prefab == "spark"))
+                .count()
+        };
+        let held = trace
+            .about(hard)
+            .filter(|entry| matches!(entry.kind, TraceKind::Skipped { action: "all", .. }))
+            .count();
+        assert_eq!(sparks(hard), 1, "dt {dt}: the hard landing, once");
+        assert!(
+            held >= 1,
+            "dt {dt}: the landing's other cells' begins, held by the interval"
+        );
+        assert_eq!(sparks(soft), 0, "dt {dt}: the soft one under its amount");
     }
 }

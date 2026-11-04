@@ -1103,7 +1103,8 @@ impl From<CueAction> for CueActionDef {
 
 /// One occurrence of a game's event, as its [`CuesOnEvent`] map gives it:
 /// the subject, where it happened, and the amount and the other entity the
-/// actions may read. Build one with [`CueEvent::new`].
+/// actions may read. Build one with [`CueEvent::new`], or with
+/// [`CueEvent::of`] at the subject's point.
 ///
 /// # Examples
 ///
@@ -1116,13 +1117,17 @@ impl From<CueAction> for CueActionDef {
 /// let (coin, hero) = (world.spawn(), world.spawn());
 /// let event = CueEvent::new(coin, Vec2::new(10.0, 4.0)).with_amount(5.0).with_other(hero);
 /// assert_eq!((event.amount, event.other), (Some(5.0), Some(hero)));
+/// // A contact's speed, at the struck body's point as the cue system reads it.
+/// let impact = CueEvent::of(coin).with_amount(420.0);
+/// assert!(!impact.position.is_finite());
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct CueEvent {
     /// The entity the event is about, whose cues run.
     pub entity: Entity,
-    /// Where it happened: a `prefab` spawns there, a `label` floats there.
+    /// Where it happened: a `prefab` spawns there, a `label` floats there;
+    /// not finite, the subject's point when the cue system reads it.
     pub position: Vec2,
     /// What a `label` shows.
     pub amount: Option<f32>,
@@ -1141,6 +1146,15 @@ impl CueEvent {
             amount: None,
             other: None,
         }
+    }
+
+    /// An occurrence about `entity` at its point as the cue system reads it
+    /// when it runs: its `Position`, else its `Transform`'s, else the
+    /// origin. The position it holds is not finite, which the cue system
+    /// reads so from any occurrence.
+    #[must_use]
+    pub fn of(entity: Entity) -> Self {
+        Self::new(entity, Vec2::NAN)
     }
 
     /// The occurrence, with `amount`.
@@ -1262,10 +1276,72 @@ pub(crate) struct Occurrence {
     pub(crate) other: Option<Entity>,
     /// A damage event's kinds: a part's, or a hit's parts' together.
     pub(crate) kinds: DamageKinds,
-    /// A damage event's: a periodic request's.
-    pub(crate) periodic: bool,
-    /// A damage event's: a crit's.
-    pub(crate) crit: bool,
+    /// Its flags, packed: [`PERIODIC`], [`CRIT`], [`FRESH`] and [`ENDED`].
+    pub(crate) bits: u8,
+    /// An effect event's entry: an index into the step's effect IDs, or
+    /// [`NO_EFFECT`].
+    pub(crate) effect: u16,
+}
+
+/// A damage occurrence's bit: a periodic request's.
+pub(crate) const PERIODIC: u8 = 1;
+/// A damage occurrence's bit: a crit's.
+pub(crate) const CRIT: u8 = 1 << 1;
+/// An `effect_applied` occurrence's bit: a new instance or an instant
+/// effect's landing.
+pub(crate) const FRESH: u8 = 1 << 2;
+/// An `effect_expired` occurrence's bit: ended before its time.
+pub(crate) const ENDED: u8 = 1 << 3;
+/// An occurrence's effect when it names no entry.
+pub(crate) const NO_EFFECT: u16 = u16::MAX;
+
+impl Occurrence {
+    /// An occurrence of `event` about `subject` at `position`, with nothing
+    /// else.
+    fn new(event: &'static str, subject: Entity, position: Vec2) -> Self {
+        Self {
+            event,
+            subject,
+            position,
+            amount: None,
+            other: None,
+            kinds: DamageKinds::NONE,
+            bits: 0,
+            effect: NO_EFFECT,
+        }
+    }
+
+    /// Whether it carries `bit`.
+    pub(crate) fn has(&self, bit: u8) -> bool {
+        self.bits & bit != 0
+    }
+}
+
+/// A damage occurrence's bits.
+fn damage_bits(periodic: bool, crit: bool) -> u8 {
+    (u8::from(periodic) * PERIODIC) | (u8::from(crit) * CRIT)
+}
+
+/// `id`'s index among the step's first `count` effect IDs, reusing their
+/// strings, added when new; [`NO_EFFECT`] for none.
+fn effect_index(ids: &mut Vec<String>, count: &mut usize, id: Option<&str>) -> u16 {
+    let Some(id) = id else {
+        return NO_EFFECT;
+    };
+    if let Some(at) = ids[..*count].iter().position(|known| known == id) {
+        return at as u16;
+    }
+    if *count >= usize::from(NO_EFFECT) {
+        return NO_EFFECT;
+    }
+    if *count < ids.len() {
+        ids[*count].clear();
+        ids[*count].push_str(id);
+    } else {
+        ids.push(id.to_owned());
+    }
+    *count += 1;
+    (*count - 1) as u16
 }
 
 /// What a registered cue event may carry, for the load's checks.
@@ -1413,21 +1489,18 @@ impl<E: 'static> CueSource for GameSource<E> {
         let Some(queue) = world.get_resource::<EventQueue<E>>() else {
             return;
         };
-        out.extend(
-            self.cursor
-                .read(queue)
-                .filter_map(self.map)
-                .map(|event| Occurrence {
-                    event: self.name,
-                    subject: event.entity,
-                    position: event.position,
-                    amount: event.amount,
-                    other: event.other,
-                    kinds: DamageKinds::NONE,
-                    periodic: false,
-                    crit: false,
-                }),
-        );
+        out.extend(self.cursor.read(queue).filter_map(self.map).map(|event| {
+            let position = if event.position.is_finite() {
+                event.position
+            } else {
+                point_of(world, event.entity)
+            };
+            Occurrence {
+                amount: event.amount,
+                other: event.other,
+                ..Occurrence::new(self.name, event.entity, position)
+            }
+        }));
     }
 }
 
@@ -1480,8 +1553,134 @@ struct CueRuleDef {
     filter: TagFilterDef,
     #[serde(default)]
     kind: KindFilterDef,
+    #[serde(default)]
+    periodic: Option<bool>,
+    #[serde(default)]
+    amount: Option<AmountRange>,
+    #[serde(default)]
+    flags: FlagFilterDef,
+    #[serde(default)]
+    effect: Option<String>,
+    #[serde(default)]
+    fresh: Option<bool>,
+    #[serde(default)]
+    ended: Option<bool>,
+    #[serde(default, deserialize_with = "non_negative")]
+    min_interval: f32,
+    #[serde(default, deserialize_with = "positive_cap")]
+    cap: Option<u32>,
     #[serde(rename = "do")]
     actions: Vec<CueAction>,
+}
+
+/// A rule's `cap`: at least 1 when set.
+fn positive_cap<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u32>, D::Error> {
+    match Option::<u32>::deserialize(deserializer)? {
+        Some(0) => Err(de::Error::custom("a cap of at least 1")),
+        cap => Ok(cap),
+    }
+}
+
+/// A rule's `amount`: the inclusive range an occurrence's amount must fall
+/// in, each end optional.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "AmountFields")]
+pub(crate) struct AmountRange {
+    min: Option<f32>,
+    max: Option<f32>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AmountFields {
+    #[serde(default)]
+    min: Option<f32>,
+    #[serde(default)]
+    max: Option<f32>,
+}
+
+impl TryFrom<AmountFields> for AmountRange {
+    type Error = String;
+
+    fn try_from(fields: AmountFields) -> Result<Self, Self::Error> {
+        for (field, value) in [("min", fields.min), ("max", fields.max)] {
+            if value.is_some_and(|value| !value.is_finite()) {
+                return Err(format!("{field}: not a finite number"));
+            }
+        }
+        if let (Some(min), Some(max)) = (fields.min, fields.max)
+            && min > max
+        {
+            return Err(format!("min {min} is above max {max}"));
+        }
+        Ok(Self {
+            min: fields.min,
+            max: fields.max,
+        })
+    }
+}
+
+impl AmountRange {
+    /// Whether `amount` passes: an amount within the range; none fails.
+    fn passes(self, amount: Option<f32>) -> bool {
+        amount.is_some_and(|amount| {
+            self.min.is_none_or(|min| amount >= min) && self.max.is_none_or(|max| amount <= max)
+        })
+    }
+}
+
+/// A rule's filter over the World's own [`Flags`] as data writes it: flag
+/// names in `all`, `any` and `none`, each checked as a tag name and not
+/// declared, as flags are not.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "KindFields")]
+pub(crate) struct FlagFilterDef {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    all: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    any: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    none: Vec<String>,
+}
+
+impl TryFrom<KindFields> for FlagFilterDef {
+    type Error = String;
+
+    fn try_from(fields: KindFields) -> Result<Self, Self::Error> {
+        for (field, names) in [
+            ("all", &fields.all),
+            ("any", &fields.any),
+            ("none", &fields.none),
+        ] {
+            if let Some(name) = names.iter().find(|name| !valid_tag(name)) {
+                return Err(format!(
+                    "{field}: `{name}` is not a flag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+                ));
+            }
+        }
+        Ok(Self {
+            all: fields.all,
+            any: fields.any,
+            none: fields.none,
+        })
+    }
+}
+
+impl FlagFilterDef {
+    /// Whether it names no flag, so every occurrence passes.
+    fn is_everything(&self) -> bool {
+        self.all.is_empty() && self.any.is_empty() && self.none.is_empty()
+    }
+
+    /// Whether the game's `flags` pass, read as a tag filter reads tags:
+    /// every `all`, one `any` when it names any, no `none`; no flags set
+    /// without them.
+    fn matches(&self, flags: Option<&Flags>) -> bool {
+        let has = |name: &String| flags.is_some_and(|flags| flags.has(name));
+        self.all.iter().all(has)
+            && (self.any.is_empty() || self.any.iter().any(has))
+            && !self.none.iter().any(has)
+    }
 }
 
 /// A rule's filter over an occurrence's damage kinds as data writes it:
@@ -1565,7 +1764,8 @@ impl KindFilterDef {
 }
 
 /// One shared rule: on event `on`, for a subject whose tags pass `filter`
-/// and an occurrence whose damage kinds pass `kind`, the actions in order.
+/// and an occurrence whose damage kinds pass `kind` and the rest of its
+/// filters, the actions in order, held by its limits.
 struct CueRule {
     on: String,
     filter: TagFilter,
@@ -1573,7 +1773,43 @@ struct CueRule {
     /// check.
     names: Vec<(String, String)>,
     kind: KindFilterDef,
+    periodic: Option<bool>,
+    amount: Option<AmountRange>,
+    flags: FlagFilterDef,
+    effect: Option<String>,
+    fresh: Option<bool>,
+    ended: Option<bool>,
+    /// Game seconds per subject between runs; 0 for none.
+    min_interval: f32,
+    /// Runs a step at most.
+    cap: Option<u32>,
     actions: Arc<[CueAction]>,
+}
+
+impl CueRule {
+    /// Whether `occurrence` passes the filters past the event, tag and kind
+    /// filters, the game's flags from `flags` and the step's effect IDs
+    /// from `effect_ids`.
+    fn passes(
+        &self,
+        occurrence: &Occurrence,
+        flags: Option<&Flags>,
+        effect_ids: &[String],
+    ) -> bool {
+        let bit = |want: Option<bool>, bit: u8| want.is_none_or(|want| occurrence.has(bit) == want);
+        bit(self.periodic, PERIODIC)
+            && bit(self.fresh, FRESH)
+            && bit(self.ended, ENDED)
+            && self
+                .amount
+                .is_none_or(|range| range.passes(occurrence.amount))
+            && self.effect.as_ref().is_none_or(|id| {
+                effect_ids
+                    .get(usize::from(occurrence.effect))
+                    .is_some_and(|known| known == id)
+            })
+            && (self.flags.is_everything() || self.flags.matches(flags))
+    }
 }
 
 /// A `cue_rules` entry: its rules, in file order.
@@ -1603,6 +1839,14 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                 filter: rule.filter.into(),
                 names,
                 kind: rule.kind,
+                periodic: rule.periodic,
+                amount: rule.amount,
+                flags: rule.flags,
+                effect: rule.effect,
+                fresh: rule.fresh,
+                ended: rule.ended,
+                min_interval: rule.min_interval,
+                cap: rule.cap,
                 actions: rule.actions.into(),
             });
         }
@@ -1611,20 +1855,40 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
 }
 
 /// The `cue_rules` kind's check: each rule's event, its tag filter's
-/// tags, its `kind` filter on an event with damage kinds, each of its names
-/// a declared damage type or an ancestor of one, and its actions.
+/// tags, its `kind` and `periodic` filters on an event with damage kinds,
+/// each `kind` name a declared damage type or an ancestor of one, its
+/// `amount` on an event with one, its `effect` on an effect event and an
+/// `effects` entry, `fresh` on `effect_applied`, `ended` on
+/// `effect_expired`, and its actions.
 fn check_rule_list(rules: &CueRules, world: &World) -> Result<(), MissingAsset> {
     for (i, rule) in rules.0.iter().enumerate() {
         let event = event_info(world, &format!("{i}.on"), &rule.on)?;
         for (field, name) in &rule.names {
             check_declared(world, &format!("{i}.filter.{field}"), name)?;
         }
+        let refuse = |field: &str, needs: &'static str| {
+            Err(MissingAsset::new(format!("{i}.{field}"), needs, event.name))
+        };
         if !rule.kind.is_everything() && !event.kinds {
-            return Err(MissingAsset::new(
-                format!("{i}.kind"),
-                "cue event with damage kinds",
-                event.name,
-            ));
+            return refuse("kind", "cue event with damage kinds");
+        }
+        if rule.periodic.is_some() && !event.kinds {
+            return refuse("periodic", "cue event with damage kinds");
+        }
+        if rule.amount.is_some() && !event.amount {
+            return refuse("amount", "cue event with an amount");
+        }
+        if let Some(id) = &rule.effect {
+            if event.name != EFFECT_APPLIED && event.name != EFFECT_EXPIRED {
+                return refuse("effect", "cue event with an effect");
+            }
+            DataRef::<Effect>::by_id(id.as_str()).check(world, &format!("{i}.effect"))?;
+        }
+        if rule.fresh.is_some() && event.name != EFFECT_APPLIED {
+            return refuse("fresh", "cue event with a fresh instance");
+        }
+        if rule.ended.is_some() && event.name != EFFECT_EXPIRED {
+            return refuse("ended", "cue event with an ended instance");
         }
         for (field, name) in rule.kind.names() {
             check_type(world, &format!("{i}.kind.{field}"), name, true)?;
@@ -1758,14 +2022,30 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// of declared damage types or their ancestors, read as a tag filter reads
 /// tags, passes the occurrences whose damage kinds match it (a kill's are
 /// its hit's); everything by default, and an untyped occurrence passes only
-/// a `kind` without `all` and `any`. The load checks every event name, tag,
-/// damage type, prefab, sound and loot table ID it names, and refuses a
-/// `kind` on another event.
+/// a `kind` without `all` and `any`.
+///
+/// A rule's other filters, each optional, run after those: `periodic` on
+/// the damage events, `true` passing a periodic request's tick and `false`
+/// a blow; `amount`, `{ "min", "max" }`, inclusive, over the occurrence's
+/// amount on an event with one, an occurrence without one failing it;
+/// `flags`, `{ "all", "any", "none" }` over the World's own
+/// [`Flags`](crate::Flags), read as a tag filter reads tags; `effect`, an
+/// `effects` entry ID, on `effect_applied` and `effect_expired`; `fresh` on
+/// `effect_applied`, `true` passing a new instance or an instant effect's
+/// landing and `false` a stack or a refresh; and `ended` on
+/// `effect_expired`, `false` passing an instance that ran out and `true`
+/// one ended early. Its limits come last, so an occurrence a filter turns
+/// away spends neither: `min_interval`, the game seconds a rule waits for a
+/// subject once it ran for it, and `cap`, its runs a step at most. A held
+/// rule is traced as skipped; the limits are the cue system's, unsaved. The
+/// load checks every event name, tag, damage type, effect, prefab, sound
+/// and loot table ID it names, and refuses a filter on an event that
+/// cannot carry it.
 ///
 /// The vocabulary stops there: no conditions, variables or sequences, and
-/// no filter but the rule's tag filter and, on the damage events, its kind
-/// filter; a `roll` draws only from the table it names. A reaction that
-/// needs more is a game's Rust.
+/// no filter but these; a `roll` draws only from the table it names. An
+/// entity's own `cues` take none of them. A reaction that needs more is a
+/// game's Rust.
 ///
 /// # Examples
 ///
@@ -1845,6 +2125,11 @@ const NO_STYLE: &str = "the part's types set no label style";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
 const NO_ABILITY: &str = "the entity owns no such ability";
 const NOT_USED: &str = "the ability was not ready, had no charge, no cost or no target";
+const WAITING: &str = "a rule ran for the subject within its min_interval";
+const CAPPED: &str = "a rule ran its cap this step";
+
+/// Game seconds between sweeps of the rules' intervals.
+const SWEEP_EVERY: f64 = 1.0;
 
 /// The cue system's state between steps: its place in each kit queue, the
 /// step's scratch lists, and each cue sound's last play on its clock.
@@ -1885,6 +2170,19 @@ struct Reactor {
     crits: Vec<OpenSum>,
     /// How many sums have opened: their close order.
     opened: u64,
+    /// The step's effect IDs, which its occurrences index; the first
+    /// `effect_count` are the step's, the rest kept for their strings.
+    effect_ids: Vec<String>,
+    effect_count: usize,
+    /// Each rule with an interval, by name: when it may run again for each
+    /// subject, on `clock`.
+    waits: HashMap<String, HashMap<Entity, f64>>,
+    /// When `waits` was last swept, on `clock`.
+    swept: f64,
+    /// The step's runs of each capped rule, by name.
+    runs: HashMap<String, u32>,
+    /// Why each rule its limits held for one occurrence did not run.
+    held: Vec<&'static str>,
 }
 
 /// A part label's sum while it is open: its label and target, the sum and
@@ -1910,7 +2208,10 @@ impl Reactor {
         let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
         self.clock += f64::from(dt);
         self.close_sums(world, dt);
+        self.sweep(world);
+        self.runs.clear();
         self.occurrences.clear();
+        self.effect_count = 0;
         self.read(world);
         if self.occurrences.is_empty() {
             return;
@@ -1952,6 +2253,13 @@ impl Reactor {
         }
         for occurrence in &occurrences {
             self.match_rules(world, occurrence);
+            for why in self.held.drain(..) {
+                trace(world, occurrence.subject, || TraceKind::Skipped {
+                    event: occurrence.event,
+                    action: "all",
+                    why,
+                });
+            }
             let matched = std::mem::take(&mut self.matched);
             for (rule, list) in &matched {
                 for action in list.iter() {
@@ -1974,15 +2282,28 @@ impl Reactor {
     }
 
     /// The rules for `occurrence`'s event whose tag filter its subject
-    /// passes and whose kind filter its kinds pass, in entry-ID order, then
-    /// file order.
+    /// passes, whose kind filter its kinds pass and whose other filters it
+    /// passes, in entry-ID order, then file order; then each rule's limits,
+    /// a held rule's reason in `held`.
     fn match_rules(&mut self, world: &World, occurrence: &Occurrence) {
         let Some(data) = world.get_resource::<DataRegistry>() else {
             return;
         };
         let table = world.get_resource::<DamageTypeTable>();
         let tags = world.get::<Tags>(occurrence.subject);
-        let Self { matched, masks, .. } = self;
+        let flags = world.get_resource::<Flags>();
+        let Self {
+            matched,
+            masks,
+            effect_ids,
+            effect_count,
+            waits,
+            runs,
+            held,
+            clock,
+            ..
+        } = self;
+        let effect_ids = &effect_ids[..*effect_count];
         let mut mask = |name: &str| -> DamageKinds {
             if let Some(&kinds) = masks.get(name) {
                 return kinds;
@@ -1996,12 +2317,40 @@ impl Reactor {
                 continue;
             };
             for (i, rule) in rules.0.iter().enumerate() {
-                if rule.on == occurrence.event
+                if !(rule.on == occurrence.event
                     && rule.filter.matches(tags)
-                    && (rule.kind.is_everything() || rule.kind.matches(occurrence.kinds, &mut mask))
+                    && (rule.kind.is_everything()
+                        || rule.kind.matches(occurrence.kinds, &mut mask))
+                    && rule.passes(occurrence, flags, effect_ids))
                 {
-                    matched.push((format!("{id}.{i}"), Arc::clone(&rule.actions)));
+                    continue;
                 }
+                let name = format!("{id}.{i}");
+                let interval = f64::from(rule.min_interval);
+                if interval > 0.0
+                    && waits
+                        .get(&name)
+                        .and_then(|subjects| subjects.get(&occurrence.subject))
+                        .is_some_and(|&until| *clock + SOUND_SLACK < until)
+                {
+                    held.push(WAITING);
+                    continue;
+                }
+                if let Some(cap) = rule.cap {
+                    let ran = runs.entry(name.clone()).or_insert(0);
+                    if *ran >= cap {
+                        held.push(CAPPED);
+                        continue;
+                    }
+                    *ran += 1;
+                }
+                if interval > 0.0 {
+                    waits
+                        .entry(name.clone())
+                        .or_default()
+                        .insert(occurrence.subject, *clock + interval);
+                }
+                matched.push((name, Arc::clone(&rule.actions)));
             }
         }
     }
@@ -2277,6 +2626,22 @@ impl Reactor {
         resolved
     }
 
+    /// Drops the rules' waits that have passed or whose subject is gone, at
+    /// most once a game second.
+    fn sweep(&mut self, world: &World) {
+        if self.waits.is_empty() || self.clock - self.swept < SWEEP_EVERY {
+            return;
+        }
+        self.swept = self.clock;
+        let clock = self.clock;
+        self.waits.retain(|_, subjects| {
+            subjects.retain(|&subject, &mut until| {
+                until > clock + SOUND_SLACK && world.is_alive(subject)
+            });
+            !subjects.is_empty()
+        });
+    }
+
     /// Ages the part labels' open sums by `dt` and floats each that closes
     /// with a part in it, in the order they opened.
     fn close_sums(&mut self, world: &mut World, dt: f32) {
@@ -2311,7 +2676,7 @@ impl Reactor {
     ) {
         let id = std::ptr::from_ref(label) as usize;
         let subject = occurrence.subject;
-        if occurrence.crit
+        if occurrence.has(CRIT)
             && let Some(crit) = label.crit
         {
             match self
@@ -2336,7 +2701,7 @@ impl Reactor {
             }
             return;
         }
-        let tick = occurrence.periodic
+        let tick = occurrence.has(PERIODIC)
             && label.ticks.as_ref().is_some_and(|ticks| {
                 ticks.kind.is_everything() || self.passes(world, &ticks.kind, occurrence.kinds)
             });
@@ -2410,21 +2775,21 @@ impl Reactor {
             abilities_used,
             level_ups,
             occurrences,
+            effect_ids,
+            effect_count,
             ..
         } = self;
         if let Some(queue) = world.get_resource::<EventQueue<DamagedPart>>() {
             for event in parts.read(queue) {
+                let position = event
+                    .position
+                    .unwrap_or_else(|| point_of(world, event.entity));
                 occurrences.push(Occurrence {
-                    event: DAMAGED_PART,
-                    subject: event.entity,
-                    position: event
-                        .position
-                        .unwrap_or_else(|| point_of(world, event.entity)),
                     amount: Some(event.amount),
                     other: event.source,
                     kinds: event.kinds,
-                    periodic: event.periodic,
-                    crit: event.crit,
+                    bits: damage_bits(event.periodic, event.crit),
+                    ..Occurrence::new(DAMAGED_PART, event.entity, position)
                 });
             }
         }
@@ -2433,149 +2798,94 @@ impl Reactor {
                 let position = event
                     .position
                     .unwrap_or_else(|| point_of(world, event.entity));
-                let amount = Some(event.amount);
-                occurrences.push(Occurrence {
-                    event: DAMAGED,
-                    subject: event.entity,
-                    position,
-                    amount,
+                let hit = Occurrence {
+                    amount: Some(event.amount),
                     other: event.source,
                     kinds: event.kinds,
-                    periodic: event.periodic,
-                    crit: event.crit,
-                });
+                    bits: damage_bits(event.periodic, event.crit),
+                    ..Occurrence::new(DAMAGED, event.entity, position)
+                };
+                occurrences.push(hit);
                 if event.killed {
                     occurrences.push(Occurrence {
                         event: KILLED,
-                        subject: event.entity,
-                        position,
-                        amount,
-                        other: event.source,
-                        kinds: event.kinds,
-                        periodic: event.periodic,
-                        crit: event.crit,
+                        ..hit
                     });
                 }
             }
         }
         if let Some(queue) = world.get_resource::<EventQueue<ZoneEntered>>() {
             occurrences.extend(zones.read(queue).map(|event| Occurrence {
-                event: ZONE_ENTERED,
-                subject: event.zone,
-                position: event.position,
-                amount: None,
                 other: Some(event.entity),
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
+                ..Occurrence::new(ZONE_ENTERED, event.zone, event.position)
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<CooldownElapsed>>() {
-            occurrences.extend(cooldowns.read(queue).map(|event| Occurrence {
-                event: COOLDOWN_ELAPSED,
-                subject: event.entity,
-                position: point_of(world, event.entity),
-                amount: None,
-                other: None,
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
+            occurrences.extend(cooldowns.read(queue).map(|event| {
+                Occurrence::new(
+                    COOLDOWN_ELAPSED,
+                    event.entity,
+                    point_of(world, event.entity),
+                )
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<Struck>>() {
             occurrences.extend(struck.read(queue).map(|event| Occurrence {
-                event: HIT,
-                subject: event.entity,
-                position: event.position,
                 amount: Some(event.amount),
                 other: Some(event.target),
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
+                ..Occurrence::new(HIT, event.entity, event.position)
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<Healed>>() {
             occurrences.extend(healed.read(queue).map(|event| Occurrence {
-                event: HEALED,
-                subject: event.entity,
-                position: point_of(world, event.entity),
                 amount: Some(event.amount),
                 other: event.source,
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
+                ..Occurrence::new(HEALED, event.entity, point_of(world, event.entity))
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<PickedUp>>() {
             occurrences.extend(picked.read(queue).map(|event| Occurrence {
-                event: PICKED_UP,
-                subject: event.entity,
-                position: event.position,
-                amount: None,
                 other: Some(event.by),
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
+                ..Occurrence::new(PICKED_UP, event.entity, event.position)
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<ProjectileExpired>>() {
-            occurrences.extend(expired.read(queue).map(|event| Occurrence {
-                event: EXPIRED,
-                subject: event.entity,
-                position: event.position,
-                amount: None,
-                other: None,
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
-            }));
+            occurrences.extend(
+                expired
+                    .read(queue)
+                    .map(|event| Occurrence::new(EXPIRED, event.entity, event.position)),
+            );
         }
         if let Some(queue) = world.get_resource::<EventQueue<EffectApplied>>() {
-            occurrences.extend(applied.read(queue).map(|event| Occurrence {
-                event: EFFECT_APPLIED,
-                subject: event.entity,
-                position: point_of(world, event.entity),
-                amount: Some(event.stacks as f32),
-                other: event.source,
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
-            }));
+            for event in applied.read(queue) {
+                occurrences.push(Occurrence {
+                    amount: Some(event.stacks as f32),
+                    other: event.source,
+                    bits: u8::from(event.fresh) * FRESH,
+                    effect: effect_index(effect_ids, effect_count, event.id.as_deref()),
+                    ..Occurrence::new(EFFECT_APPLIED, event.entity, point_of(world, event.entity))
+                });
+            }
         }
         if let Some(queue) = world.get_resource::<EventQueue<EffectExpired>>() {
-            occurrences.extend(effects_expired.read(queue).map(|event| Occurrence {
-                event: EFFECT_EXPIRED,
-                subject: event.entity,
-                position: point_of(world, event.entity),
-                amount: None,
-                other: None,
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
-            }));
+            for event in effects_expired.read(queue) {
+                occurrences.push(Occurrence {
+                    bits: u8::from(event.ended) * ENDED,
+                    effect: effect_index(effect_ids, effect_count, event.id.as_deref()),
+                    ..Occurrence::new(EFFECT_EXPIRED, event.entity, point_of(world, event.entity))
+                });
+            }
         }
         if let Some(queue) = world.get_resource::<EventQueue<AbilityUsed>>() {
             occurrences.extend(abilities_used.read(queue).map(|event| Occurrence {
-                event: ABILITY_USED,
-                subject: event.entity,
-                position: event.position,
-                amount: None,
                 other: event.target,
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
+                ..Occurrence::new(ABILITY_USED, event.entity, event.position)
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<LevelUp>>() {
             occurrences.extend(level_ups.read(queue).map(|event| Occurrence {
-                event: LEVEL_UP,
-                subject: event.entity,
-                position: point_of(world, event.entity),
                 amount: Some(event.level as f32),
-                other: None,
-                kinds: DamageKinds::NONE,
-                periodic: false,
-                crit: false,
+                ..Occurrence::new(LEVEL_UP, event.entity, point_of(world, event.entity))
             }));
         }
         if let Some(mut sources) = world.remove_resource::<CueSources>() {
@@ -2986,6 +3296,76 @@ fn describe_cues(world: &mut World) {
             )
             .default("{}"),
         )
+        .field(
+            FieldDescription::new(
+                "periodic",
+                FieldType::Bool,
+                "`true` passes a periodic request's tick, `false` a blow; `damaged`, `killed` and `damaged_part` only",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "amount",
+                FieldType::Shape("cue_amount"),
+                "the range the occurrence's amount falls in; an event with an amount only",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "flags",
+                FieldType::Filter,
+                "the game's own flags, read as a tag filter reads tags; none set without them",
+            )
+            .default("{}"),
+        )
+        .field(
+            FieldDescription::new(
+                "effect",
+                FieldType::Text,
+                "an `effects` entry ID, which the load checks; `effect_applied` and `effect_expired` only",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "fresh",
+                FieldType::Bool,
+                "`true` passes a new instance or an instant effect's landing, `false` a stack or a refresh; `effect_applied` only",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "ended",
+                FieldType::Bool,
+                "`false` passes an instance that ran out, `true` one ended early; `effect_expired` only",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "min_interval",
+                FieldType::F32 {
+                    min: Bound::Inclusive(0.0),
+                    max: Bound::Open,
+                },
+                "game seconds the rule waits for a subject once it ran for it",
+            )
+            .default("0.0"),
+        )
+        .field(
+            FieldDescription::new(
+                "cap",
+                FieldType::U32 {
+                    min: Some(1),
+                    max: None,
+                },
+                "the rule's runs a step at most",
+            )
+            .default("null"),
+        )
         .field(FieldDescription::new(
             "do",
             FieldType::List(Box::new(FieldType::Shape("cue_action"))),
@@ -2993,6 +3373,34 @@ fn describe_cues(world: &mut World) {
         ))
         .sample(r#"{ "on": "killed", "do": [] }"#)
         .roundtrip(round_trip::<CueRuleDef>),
+        ComponentDescription::new(
+            "cue_amount",
+            "A rule's range over an occurrence's amount, each end inclusive and optional.",
+        )
+        .field(
+            FieldDescription::new(
+                "min",
+                FieldType::F32 {
+                    min: Bound::Open,
+                    max: Bound::Open,
+                },
+                "the least amount that passes",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "max",
+                FieldType::F32 {
+                    min: Bound::Open,
+                    max: Bound::Open,
+                },
+                "the greatest amount that passes",
+            )
+            .default("null"),
+        )
+        .sample("{}")
+        .roundtrip(round_trip::<AmountRange>),
     ];
     for shape in shapes {
         describe_shape(world, shape);

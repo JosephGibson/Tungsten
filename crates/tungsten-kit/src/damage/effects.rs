@@ -2801,10 +2801,13 @@ pub struct EffectApplied {
     pub stacks: u32,
     /// The effect's entry ID; `None` for an effect written in place.
     pub id: Option<String>,
+    /// A new instance or an instant effect's landing; `false` for a stack
+    /// or a refresh of one the entity holds. A cue rule's `fresh` reads it.
+    pub fresh: bool,
 }
 
 impl EffectApplied {
-    /// An event with these fields, no source and no ID.
+    /// An event with these fields, no source, no ID and not fresh.
     #[must_use]
     pub fn new(entity: Entity, stacks: u32) -> Self {
         Self {
@@ -2812,7 +2815,15 @@ impl EffectApplied {
             source: None,
             stacks,
             id: None,
+            fresh: false,
         }
+    }
+
+    /// The event, of a new instance or an instant effect's landing.
+    #[must_use]
+    pub fn with_fresh(mut self) -> Self {
+        self.fresh = true;
+        self
     }
 
     /// The event, from `source`.
@@ -3133,6 +3144,7 @@ fn send_applied(
     source: Option<Entity>,
     stacks: u32,
     id: Option<String>,
+    fresh: bool,
 ) {
     if let Some(queue) = world.get_resource_mut::<EventQueue<EffectApplied>>() {
         queue.send(EffectApplied {
@@ -3140,6 +3152,7 @@ fn send_applied(
             source,
             stacks,
             id,
+            fresh,
         });
     }
     trace(world, entity, || TraceKind::Event {
@@ -3485,7 +3498,7 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
         // An instant effect lands and expires at once: its `on_expire` and
         // its `on_end` outputs at the request's depth, so a cycle through
         // them deepens and ends at chemistry's depth limit.
-        send_applied(world, target, request.source, 1, id.clone());
+        send_applied(world, target, request.source, 1, id.clone(), true);
         land_payload(world, &effect, target, request.source, factor);
         send_expired(world, target, id, false);
         if let Some(on_expire) = &effect.on_expire {
@@ -3582,7 +3595,14 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
         }
     };
     put_back(world, target, effects);
-    send_applied(world, target, request.source, stacks, id);
+    send_applied(
+        world,
+        target,
+        request.source,
+        stacks,
+        id,
+        outcome == Applied::Applied,
+    );
     if outcome == Applied::Applied && effect.period.is_none() {
         land_payload(world, &effect, target, request.source, factor);
     }

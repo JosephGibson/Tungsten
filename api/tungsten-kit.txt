@@ -1025,6 +1025,7 @@ pub tungsten_kit::prelude::CueEvent::other: core::option::Option<tungsten_core::
 pub tungsten_kit::prelude::CueEvent::position: glam::f32::vec2::Vec2
 impl tungsten_kit::CueEvent
 pub fn tungsten_kit::CueEvent::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::CueEvent::of(tungsten_core::ecs::entity::Entity) -> Self
 pub fn tungsten_kit::CueEvent::with_amount(self, f32) -> Self
 pub fn tungsten_kit::CueEvent::with_other(self, tungsten_core::ecs::entity::Entity) -> Self
 impl core::clone::Clone for tungsten_kit::CueEvent
@@ -1471,11 +1472,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Effect
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Effect
 #[non_exhaustive] pub struct tungsten_kit::prelude::EffectApplied
 pub tungsten_kit::prelude::EffectApplied::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::prelude::EffectApplied::fresh: bool
 pub tungsten_kit::prelude::EffectApplied::id: core::option::Option<alloc::string::String>
 pub tungsten_kit::prelude::EffectApplied::source: core::option::Option<tungsten_core::ecs::entity::Entity>
 pub tungsten_kit::prelude::EffectApplied::stacks: u32
 impl tungsten_kit::EffectApplied
 pub fn tungsten_kit::EffectApplied::new(tungsten_core::ecs::entity::Entity, u32) -> Self
+pub fn tungsten_kit::EffectApplied::with_fresh(self) -> Self
 pub fn tungsten_kit::EffectApplied::with_id(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::EffectApplied::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
 impl core::clone::Clone for tungsten_kit::EffectApplied
@@ -5140,6 +5143,7 @@ pub tungsten_kit::CueEvent::other: core::option::Option<tungsten_core::ecs::enti
 pub tungsten_kit::CueEvent::position: glam::f32::vec2::Vec2
 impl tungsten_kit::CueEvent
 pub fn tungsten_kit::CueEvent::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::CueEvent::of(tungsten_core::ecs::entity::Entity) -> Self
 pub fn tungsten_kit::CueEvent::with_amount(self, f32) -> Self
 pub fn tungsten_kit::CueEvent::with_other(self, tungsten_core::ecs::entity::Entity) -> Self
 impl core::clone::Clone for tungsten_kit::CueEvent
@@ -5614,11 +5618,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Effect
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Effect
 #[non_exhaustive] pub struct tungsten_kit::EffectApplied
 pub tungsten_kit::EffectApplied::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::EffectApplied::fresh: bool
 pub tungsten_kit::EffectApplied::id: core::option::Option<alloc::string::String>
 pub tungsten_kit::EffectApplied::source: core::option::Option<tungsten_core::ecs::entity::Entity>
 pub tungsten_kit::EffectApplied::stacks: u32
 impl tungsten_kit::EffectApplied
 pub fn tungsten_kit::EffectApplied::new(tungsten_core::ecs::entity::Entity, u32) -> Self
+pub fn tungsten_kit::EffectApplied::with_fresh(self) -> Self
 pub fn tungsten_kit::EffectApplied::with_id(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::EffectApplied::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
 impl core::clone::Clone for tungsten_kit::EffectApplied

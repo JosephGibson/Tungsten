@@ -407,10 +407,22 @@ shape cue_action: One reaction to an event.
   field effect: shape effect_action — an effect queued on the subject from the event's other entity, or on the other from the subject; an ID alone reads as `{ "id": .. }`
   field ability: shape ability_action — the subject's or the other's ability used now, or made ready; a name alone reads as `{ "name": .. }`
   sample: { "despawn": {} }
+shape cue_amount: A rule's range over an occurrence's amount, each end inclusive and optional.
+  field min: f32 = null — the least amount that passes
+  field max: f32 = null — the greatest amount that passes
+  sample: {}
 shape cue_rule: A shared reaction: on an event, for each subject whose tags pass the filter, the actions in order.
   field on: text — the cue event; the load checks it is registered
   field filter: tag filter = {} — the subjects it runs for; the load checks its tags
   field kind: tag filter = {} — the occurrences it runs for by their damage kinds, each a declared damage type or an ancestor of one; `damaged`, `killed` and `damaged_part` only
+  field periodic: bool = null — `true` passes a periodic request's tick, `false` a blow; `damaged`, `killed` and `damaged_part` only
+  field amount: shape cue_amount = null — the range the occurrence's amount falls in; an event with an amount only
+  field flags: tag filter = {} — the game's own flags, read as a tag filter reads tags; none set without them
+  field effect: text = null — an `effects` entry ID, which the load checks; `effect_applied` and `effect_expired` only
+  field fresh: bool = null — `true` passes a new instance or an instant effect's landing, `false` a stack or a refresh; `effect_applied` only
+  field ended: bool = null — `false` passes an instance that ran out, `true` one ended early; `effect_expired` only
+  field min_interval: f32 (>= 0) = 0.0 — game seconds the rule waits for a subject once it ran for it
+  field cap: u32 (>= 1) = null — the rule's runs a step at most
   field do: list of shape cue_action — the actions, in order
   sample: { "on": "killed", "do": [] }
 shape curve: A piecewise-linear map: linear between its points and held at the ends.

@@ -1,0 +1,15 @@
+{
+  "tag": "bouncer",
+  "components": {
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 8
+      }
+    },
+    "tags": [
+      "bouncy"
+    ]
+  }
+}

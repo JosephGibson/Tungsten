@@ -16,7 +16,8 @@
 //! wooden crates, lit by fire, doused by cold and setting each other
 //! alight, a lurker a lamp lights, a grass strip a crate sets burning, a
 //! lamp a bucket's water douses for 3 s, and a bomb whose fuse ends in a
-//! blast among crates and a target.
+//! blast among crates and a target; 7.10p's practice dummy, whose burn's
+//! ticks and a blow pass a rule's `periodic` apart.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -967,6 +968,28 @@ fn a_burning_hit_slows_the_slime_and_its_fire_ticks_kill_it() {
             })
             .collect();
         assert_eq!(ticks, [0.5, 1.0, 1.0], "dt {dt}: the hit, then two ticks");
+    }
+}
+
+#[test]
+fn a_practice_dummys_burn_ticks_and_a_blow_pass_their_rules_apart() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let dummy = spawn(&mut harness, "practice_dummy", [50.0, 50.0]);
+        let torch = harness.world_mut().spawn();
+        harness.step(1);
+        // One blow, then a burn: the `ticks` rules count each apart.
+        damage(harness.world_mut(), dummy, 1.0);
+        EffectRequest::new(dummy, DataRef::by_id("burning"))
+            .with_source(torch)
+            .apply(harness.world_mut());
+        harness.step(frames_for(4.0, dt));
+        let counters = harness.world().resource::<Counters>();
+        assert_eq!(
+            (counters.get("blows"), counters.get("ticks")),
+            (1, 6),
+            "dt {dt}: the blow, then a tick each 0.5 s over the burn's 3 s"
+        );
     }
 }
 

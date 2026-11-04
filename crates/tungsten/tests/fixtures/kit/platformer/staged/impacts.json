@@ -1,0 +1,19 @@
+[
+  {
+    "on": "impact",
+    "filter": {
+      "all": [
+        "bouncy"
+      ]
+    },
+    "amount": {
+      "min": 300
+    },
+    "min_interval": 0.25,
+    "do": [
+      {
+        "prefab": "spark"
+      }
+    ]
+  }
+]

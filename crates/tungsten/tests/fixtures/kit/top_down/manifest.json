@@ -1,5 +1,8 @@
 {
   "prefabs": {
+    "practice_dummy": {
+      "path": "prefabs/practice_dummy.json"
+    },
     "hero": {
       "path": "prefabs/hero.json"
     },
@@ -172,6 +175,9 @@
       }
     },
     "cue_rules": {
+      "ticks": {
+        "path": "data/cue_rules/ticks.json"
+      },
       "combat": {
         "path": "data/cue_rules/combat.json"
       },

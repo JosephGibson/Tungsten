@@ -1571,3 +1571,365 @@ fn a_grouped_label_is_checked_as_a_type_label_with_its_ticks_kind_declared() {
     .unwrap_err();
     assert!(unknown.contains("ticks.kind.all.0"), "{unknown}");
 }
+
+/// 7.10p's rule filters and limits, and `CueEvent::of`.
+mod filters {
+    use super::*;
+    use tungsten_core::Stage;
+
+    use crate::damage::effects::{EffectRequest, EffectsPlugin, end_effect};
+    use crate::foundation::trace::KitTrace;
+    use crate::{CountersPlugin, Health, HealthPlugin, StatsPlugin, damage};
+
+    /// The cue rig with time, a command buffer, a trace, stats, health,
+    /// counters and effects, and the game event `rang`.
+    fn rig() -> (World, Schedule) {
+        let (mut world, _) = super::rig();
+        world.insert_resource(Time::new());
+        world.insert_resource(CommandBuffer::new());
+        world.insert_resource(KitTrace::default());
+        world.register_event::<ZoneEntered>();
+        let mut schedule = Schedule::new();
+        crate::TagsPlugin::new()
+            .with_tags(["team.enemy"])
+            .build(&mut schedule, &mut world);
+        StatsPlugin::new().build(&mut schedule, &mut world);
+        HealthPlugin.build(&mut schedule, &mut world);
+        CountersPlugin.build(&mut schedule, &mut world);
+        CuesPlugin.build(&mut schedule, &mut world);
+        EffectsPlugin.build(&mut schedule, &mut world);
+        CuesOnEvent::<Rang>::new("rang", rang).build(&mut schedule, &mut world);
+        schedule.resolve().unwrap();
+        (world, schedule)
+    }
+
+    /// A game event about a bell, with an amount when it has one.
+    struct Rang(Entity, Option<f32>);
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn rang(event: &Rang) -> Option<CueEvent> {
+        let at = CueEvent::of(event.0);
+        Some(match event.1 {
+            Some(amount) => at.with_amount(amount),
+            None => at,
+        })
+    }
+
+    fn ring(world: &mut World, bell: Entity, amount: Option<f32>) {
+        world
+            .resource_mut::<EventQueue<Rang>>()
+            .send(Rang(bell, amount));
+    }
+
+    /// One step of `dt` as the frame's game time, then the command and
+    /// event flushes that end the frame.
+    fn step(world: &mut World, schedule: &mut Schedule, dt: f32) {
+        world.resource_mut::<Time>().advance_frame(dt);
+        schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+        let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+        world.flush_reusing(&mut commands);
+        world.insert_resource(commands);
+        world.flush_events();
+    }
+
+    fn insert_rules(world: &mut World, value: Value) {
+        let rules: CueRules = serde_json::from_value(value).unwrap();
+        world.resource_mut::<DataRegistry>().insert("r", rules);
+    }
+
+    /// A rule counting `name` for the game.
+    fn count(name: &str) -> Value {
+        json!([{ "counter": { "name": name, "add": 1, "target": "game" } }])
+    }
+
+    fn game(world: &World, name: &str) -> i64 {
+        world
+            .get_resource::<Counters>()
+            .map_or(0, |counters| counters.get(name))
+    }
+
+    fn load_error(world: &mut World, value: Value) -> String {
+        check_rules(world, value).unwrap_err()
+    }
+
+    #[test]
+    fn a_rule_tells_a_blow_from_a_tick() {
+        let (mut world, mut schedule) = rig();
+        world.resource_mut::<DataRegistry>().insert(
+            "burning",
+            Effect::new()
+                .with_duration(3.0)
+                .with_period(0.5)
+                .with_damage(1.0),
+        );
+        insert_rules(
+            &mut world,
+            json!([
+                { "on": "damaged", "periodic": false, "do": count("blows") },
+                { "on": "damaged", "periodic": true, "do": count("ticks") },
+                { "on": "killed", "periodic": true, "do": count("tick_kills") },
+                { "on": "killed", "periodic": false, "do": count("blow_kills") }
+            ]),
+        );
+        let target = world.spawn_with((Health::new(100.0),));
+        damage(&mut world, target, 1.0);
+        EffectRequest::new(target, DataRef::by_id("burning")).apply(&mut world);
+        for _ in 0..240 {
+            step(&mut world, &mut schedule, 1.0 / 60.0);
+        }
+        assert_eq!(
+            (game(&world, "blows"), game(&world, "ticks")),
+            (1, 6),
+            "the blow alone, then a tick each 0.5 s over 3 s"
+        );
+        let weak = world.spawn_with((Health::new(2.5),));
+        EffectRequest::new(weak, DataRef::by_id("burning")).apply(&mut world);
+        for _ in 0..120 {
+            step(&mut world, &mut schedule, 1.0 / 60.0);
+        }
+        assert!(world.get::<Health>(weak).unwrap().is_dead());
+        assert_eq!(
+            (game(&world, "tick_kills"), game(&world, "blow_kills")),
+            (1, 0),
+            "a kill by a tick passes `killed`'s `true` alone"
+        );
+        let error = load_error(
+            &mut world,
+            json!([{ "on": "zone_entered", "periodic": true, "do": [] }]),
+        );
+        assert!(error.ends_with("at 0.periodic"), "{error}");
+    }
+
+    #[test]
+    fn a_rule_reads_the_amount() {
+        let (mut world, mut schedule) = rig();
+        insert_rules(
+            &mut world,
+            json!([{ "on": "rang", "amount": { "min": 300, "max": 600 }, "do": count("passed") }]),
+        );
+        let bell = world.spawn();
+        for (amount, passes) in [
+            (Some(300.0), 1),
+            (Some(600.0), 2),
+            (Some(299.9), 2),
+            (Some(600.1), 2),
+            (None, 2),
+            (Some(450.0), 3),
+        ] {
+            ring(&mut world, bell, amount);
+            step(&mut world, &mut schedule, 1.0 / 60.0);
+            assert_eq!(game(&world, "passed"), passes, "{amount:?}");
+        }
+        let error = load_error(
+            &mut world,
+            json!([{ "on": "cooldown_elapsed", "amount": { "min": 1 }, "do": [] }]),
+        );
+        assert!(error.ends_with("at 0.amount"), "{error}");
+        assert!(
+            rules(json!([{ "on": "rang", "amount": { "min": 2, "max": 1 }, "do": [] }])).is_err()
+        );
+    }
+
+    #[test]
+    fn a_rule_reads_the_games_flags() {
+        let (mut world, mut schedule) = rig();
+        insert_rules(
+            &mut world,
+            json!([
+                { "on": "rang", "flags": { "all": ["armed"] }, "do": count("all") },
+                { "on": "rang", "flags": { "any": ["red", "blue"] }, "do": count("any") },
+                { "on": "rang", "flags": { "none": ["muted"] }, "do": count("none") },
+                { "on": "rang", "amount": { "min": 1 }, "do": [{ "flag": { "name": "armed", "target": "game" } }] }
+            ]),
+        );
+        let bell = world.spawn();
+        let counts = |world: &World| [game(world, "all"), game(world, "any"), game(world, "none")];
+        world.remove_resource::<Flags>();
+        ring(&mut world, bell, None);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert!(!world.has_resource::<Flags>());
+        assert_eq!(counts(&world), [0, 0, 1], "none set without the resource");
+        // The fourth rule sets `armed` for the game; the next step's ring
+        // reads it.
+        ring(&mut world, bell, Some(1.0));
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(counts(&world), [0, 0, 2], "set after this step's match");
+        ring(&mut world, bell, None);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(counts(&world), [1, 0, 3]);
+        world.resource_mut::<Flags>().set("blue", true);
+        world.resource_mut::<Flags>().set("muted", true);
+        ring(&mut world, bell, None);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(counts(&world), [2, 1, 3]);
+        assert!(rules(json!([{ "on": "rang", "flags": { "all": ["Bad"] }, "do": [] }])).is_err());
+    }
+
+    #[test]
+    fn a_rule_picks_an_effect_fresh_or_ended() {
+        let (mut world, mut schedule) = rig();
+        let scared = Effect::new().with_duration(0.5);
+        world
+            .resource_mut::<DataRegistry>()
+            .insert("scared", scared.clone());
+        world.resource_mut::<DataRegistry>().insert("other", scared);
+        insert_rules(
+            &mut world,
+            json!([
+                { "on": "effect_applied", "effect": "scared", "do": count("applied") },
+                { "on": "effect_applied", "effect": "scared", "fresh": true, "do": count("fresh") },
+                { "on": "effect_applied", "effect": "scared", "fresh": false, "do": count("again") },
+                { "on": "effect_expired", "effect": "scared", "ended": false, "do": count("ran_out") },
+                { "on": "effect_expired", "effect": "scared", "ended": true, "do": count("ended") }
+            ]),
+        );
+        let fox = world.spawn();
+        let apply = |world: &mut World, id: &str| {
+            EffectRequest::new(fox, DataRef::by_id(id)).apply(world);
+        };
+        apply(&mut world, "scared");
+        apply(&mut world, "other");
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        apply(&mut world, "scared");
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        let counts = |world: &World| {
+            ["applied", "fresh", "again", "ran_out", "ended"].map(|name| game(world, name))
+        };
+        assert_eq!(
+            counts(&world),
+            [2, 1, 1, 0, 0],
+            "its entry alone; then a refresh"
+        );
+        for _ in 0..40 {
+            step(&mut world, &mut schedule, 1.0 / 60.0);
+        }
+        assert_eq!(counts(&world), [2, 1, 1, 1, 0], "its natural end");
+        apply(&mut world, "scared");
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert!(end_effect(&mut world, fox, &DataRef::by_id("scared")));
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(counts(&world), [3, 2, 1, 1, 1], "an `end_effect`");
+        let error = load_error(
+            &mut world,
+            json!([{ "on": "effect_applied", "effect": "nope", "do": [] }]),
+        );
+        assert!(error.ends_with("at 0.effect"), "{error}");
+        let error = load_error(
+            &mut world,
+            json!([{ "on": "effect_expired", "fresh": true, "do": [] }]),
+        );
+        assert!(error.ends_with("at 0.fresh"), "{error}");
+        let error = load_error(
+            &mut world,
+            json!([{ "on": "rang", "effect": "scared", "do": [] }]),
+        );
+        assert!(error.ends_with("at 0.effect"), "{error}");
+        let error = load_error(
+            &mut world,
+            json!([{ "on": "rang", "ended": true, "do": [] }]),
+        );
+        assert!(error.ends_with("at 0.ended"), "{error}");
+    }
+
+    /// Runs `reactor` alone for one step of `dt`, then flushes the events.
+    fn react(world: &mut World, reactor: &mut Reactor, dt: f32) {
+        world.resource_mut::<Time>().advance_frame(dt);
+        reactor.run(world);
+        world.flush_events();
+    }
+
+    #[test]
+    fn a_rule_waits_its_interval_and_caps_a_step() {
+        for dt in [1.0_f32 / 60.0, 1.0 / 30.0] {
+            let (mut world, _) = rig();
+            insert_rules(
+                &mut world,
+                json!([
+                    { "on": "rang", "amount": { "min": 10 }, "min_interval": 0.25, "do": [{ "counter": { "name": "runs", "add": 1 } }] },
+                    { "on": "rang", "amount": { "max": 0 }, "cap": 2, "do": count("capped") }
+                ]),
+            );
+            let mut reactor = Reactor::default();
+            let bells = [world.spawn(), world.spawn()];
+            let steps = (1.0 / dt).round() as usize;
+            for _ in 0..steps {
+                for bell in bells {
+                    ring(&mut world, bell, Some(20.0));
+                }
+                react(&mut world, &mut reactor, dt);
+            }
+            for bell in bells {
+                assert_eq!(
+                    world.get::<Counters>(bell).unwrap().get("runs"),
+                    4,
+                    "dt {dt}: each subject at 0, 0.25, 0.5 and 0.75 s"
+                );
+            }
+            let held = world
+                .resource::<KitTrace>()
+                .about(bells[0])
+                .filter(|entry| matches!(entry.kind, TraceKind::Skipped { why: WAITING, .. }))
+                .count();
+            assert_eq!(held, steps - 4, "dt {dt}: each held step traced");
+            // Five matches in a step run twice, each step.
+            for _ in 0..2 {
+                for _ in 0..5 {
+                    ring(&mut world, bells[0], Some(0.0));
+                }
+                react(&mut world, &mut reactor, dt);
+            }
+            assert_eq!(game(&world, "capped"), 4, "dt {dt}");
+            // A ring the filter turns away spends no interval: the next one
+            // runs.
+            let quiet = world.spawn();
+            ring(&mut world, quiet, Some(5.0));
+            react(&mut world, &mut reactor, dt);
+            ring(&mut world, quiet, Some(20.0));
+            react(&mut world, &mut reactor, dt);
+            assert_eq!(world.get::<Counters>(quiet).unwrap().get("runs"), 1);
+            // A gone subject's wait is swept within a game second; a live
+            // one's once its interval passes.
+            world.despawn(bells[1]);
+            let waiting =
+                |reactor: &Reactor, bell: Entity| reactor.waits["r.0"].contains_key(&bell);
+            assert!(waiting(&reactor, bells[1]) && waiting(&reactor, quiet));
+            for _ in 0..steps {
+                react(&mut world, &mut reactor, dt);
+            }
+            assert!(reactor.waits.is_empty(), "dt {dt}: {:?}", reactor.waits);
+        }
+    }
+
+    #[test]
+    fn cue_event_of_takes_its_subjects_point() {
+        let (mut world, mut schedule) = rig();
+        let bell = world.spawn_with((
+            Position(Vec2::new(12.0, -7.0)),
+            Cues::new().on("rang", [CueAction::prefab("puff")]),
+        ));
+        let plain = world.spawn_with((
+            Transform::from_position(Vec2::new(3.0, 4.0)),
+            Cues::new().on("rang", [CueAction::prefab("puff")]),
+        ));
+        ring(&mut world, bell, None);
+        ring(&mut world, plain, None);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        let mut puffs: Vec<Vec2> = world
+            .query::<(&tungsten_core::Tag, &Transform)>()
+            .filter(|(tag, _)| tag.name == "puff")
+            .map(|(_, transform)| transform.position)
+            .collect();
+        puffs.sort_by(|a, b| a.x.total_cmp(&b.x));
+        assert_eq!(puffs, [Vec2::new(3.0, 4.0), Vec2::new(12.0, -7.0)]);
+    }
+
+    #[test]
+    fn the_occurrence_keeps_its_size() {
+        assert_eq!(
+            std::mem::size_of::<Occurrence>(),
+            64,
+            "its size at cda6987a, measured before the filters"
+        );
+    }
+}
