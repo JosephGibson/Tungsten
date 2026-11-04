@@ -98,6 +98,12 @@
     },
     "escort": {
       "path": "prefabs/escort.json"
+    },
+    "sapper": {
+      "path": "prefabs/sapper.json"
+    },
+    "claymore": {
+      "path": "prefabs/claymore.json"
     }
   },
   "data": {
@@ -115,6 +121,9 @@
       },
       "dry_fire": {
         "path": "data/cue_rules/dry_fire.json"
+      },
+      "mines": {
+        "path": "data/cue_rules/mines.json"
       }
     },
     "damage_types": {
@@ -151,6 +160,9 @@
       },
       "cryo": {
         "path": "data/abilities/cryo.json"
+      },
+      "lay_mine": {
+        "path": "data/abilities/lay_mine.json"
       }
     },
     "stats": {

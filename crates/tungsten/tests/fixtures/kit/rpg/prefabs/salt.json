@@ -1,0 +1,19 @@
+{
+  "tag": "salt",
+  "components": {
+    "rigid_body": {
+      "kind": "static",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          6,
+          6
+        ]
+      },
+      "offset": [
+        0,
+        -6
+      ]
+    }
+  }
+}

@@ -165,6 +165,7 @@ pub tungsten_kit::prelude::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
 pub tungsten_kit::prelude::Payload::Effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>)
 pub tungsten_kit::prelude::Payload::Hitbox(f32)
 pub tungsten_kit::prelude::Payload::Impulse(f32)
+pub tungsten_kit::prelude::Payload::Place(alloc::boxed::Box<tungsten_kit::Place>)
 pub tungsten_kit::prelude::Payload::Spawn
 pub tungsten_kit::prelude::Payload::Spawn::offset: f32
 pub tungsten_kit::prelude::Payload::Spawn::prefab: alloc::string::String
@@ -299,9 +300,11 @@ impl core::marker::UnsafeUnpin for tungsten_kit::Trigger
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Trigger
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Trigger
 #[non_exhaustive] pub enum tungsten_kit::prelude::Used
+pub tungsten_kit::prelude::Used::Capped
 pub tungsten_kit::prelude::Used::NoAbility
 pub tungsten_kit::prelude::Used::NoCharge
 pub tungsten_kit::prelude::Used::NoCost
+pub tungsten_kit::prelude::Used::NoRoom
 pub tungsten_kit::prelude::Used::NoTarget
 pub tungsten_kit::prelude::Used::NotReady
 pub tungsten_kit::prelude::Used::Used
@@ -2918,6 +2921,26 @@ impl core::marker::Unpin for tungsten_kit::PickupPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::PickupPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PickupPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PickupPlugin
+pub struct tungsten_kit::prelude::Place
+impl tungsten_kit::Place
+pub fn tungsten_kit::Place::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Place::prefab(&self) -> &str
+pub fn tungsten_kit::Place::range(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Place::within(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Place
+pub fn tungsten_kit::Place::clone(&self) -> tungsten_kit::Place
+impl core::cmp::PartialEq for tungsten_kit::Place
+pub fn tungsten_kit::Place::eq(&self, &tungsten_kit::Place) -> bool
+impl core::fmt::Debug for tungsten_kit::Place
+pub fn tungsten_kit::Place::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Place
+impl core::marker::Freeze for tungsten_kit::Place
+impl core::marker::Send for tungsten_kit::Place
+impl core::marker::Sync for tungsten_kit::Place
+impl core::marker::Unpin for tungsten_kit::Place
+impl core::marker::UnsafeUnpin for tungsten_kit::Place
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Place
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Place
 pub struct tungsten_kit::prelude::PlatformerController
 impl tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::air_jump_cost(&self) -> core::option::Option<(&str, f32)>
@@ -4388,6 +4411,7 @@ pub tungsten_kit::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
 pub tungsten_kit::Payload::Effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>)
 pub tungsten_kit::Payload::Hitbox(f32)
 pub tungsten_kit::Payload::Impulse(f32)
+pub tungsten_kit::Payload::Place(alloc::boxed::Box<tungsten_kit::Place>)
 pub tungsten_kit::Payload::Spawn
 pub tungsten_kit::Payload::Spawn::offset: f32
 pub tungsten_kit::Payload::Spawn::prefab: alloc::string::String
@@ -4583,9 +4607,11 @@ impl core::marker::UnsafeUnpin for tungsten_kit::Trigger
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Trigger
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Trigger
 #[non_exhaustive] pub enum tungsten_kit::Used
+pub tungsten_kit::Used::Capped
 pub tungsten_kit::Used::NoAbility
 pub tungsten_kit::Used::NoCharge
 pub tungsten_kit::Used::NoCost
+pub tungsten_kit::Used::NoRoom
 pub tungsten_kit::Used::NoTarget
 pub tungsten_kit::Used::NotReady
 pub tungsten_kit::Used::Used
@@ -7541,6 +7567,26 @@ impl core::marker::Unpin for tungsten_kit::PickupPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::PickupPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PickupPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PickupPlugin
+pub struct tungsten_kit::Place
+impl tungsten_kit::Place
+pub fn tungsten_kit::Place::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Place::prefab(&self) -> &str
+pub fn tungsten_kit::Place::range(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Place::within(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Place
+pub fn tungsten_kit::Place::clone(&self) -> tungsten_kit::Place
+impl core::cmp::PartialEq for tungsten_kit::Place
+pub fn tungsten_kit::Place::eq(&self, &tungsten_kit::Place) -> bool
+impl core::fmt::Debug for tungsten_kit::Place
+pub fn tungsten_kit::Place::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Place
+impl core::marker::Freeze for tungsten_kit::Place
+impl core::marker::Send for tungsten_kit::Place
+impl core::marker::Sync for tungsten_kit::Place
+impl core::marker::Unpin for tungsten_kit::Place
+impl core::marker::UnsafeUnpin for tungsten_kit::Place
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Place
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Place
 pub struct tungsten_kit::PlatformerController
 impl tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::air_jump_cost(&self) -> core::option::Option<(&str, f32)>

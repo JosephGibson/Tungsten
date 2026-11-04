@@ -1831,13 +1831,16 @@ const REASON_SHIFT: u8 = 5;
 /// A refused use's reason code, which an `ability_refused` occurrence
 /// carries in its top three bits and a rule's `reason` reads: 1 to 4 for
 /// [`Used::NotReady`], [`Used::NoCharge`], [`Used::NoCost`] and
-/// [`Used::NoTarget`]; 0 for a use, or for no owned ability.
+/// [`Used::NoTarget`], 5 and 6 for [`Used::NoRoom`] and [`Used::Capped`];
+/// 0 for a use, or for no owned ability.
 pub(crate) fn reason_of(used: Used) -> u8 {
     match used {
         Used::NotReady => 1,
         Used::NoCharge => 2,
         Used::NoCost => 3,
         Used::NoTarget => 4,
+        Used::NoRoom => 5,
+        Used::Capped => 6,
         _ => 0,
     }
 }
@@ -2324,6 +2327,8 @@ enum ReasonDef {
     NoCharge,
     NoCost,
     NoTarget,
+    NoRoom,
+    Capped,
 }
 
 impl ReasonDef {
@@ -2334,6 +2339,8 @@ impl ReasonDef {
             ReasonDef::NoCharge => Used::NoCharge,
             ReasonDef::NoCost => Used::NoCost,
             ReasonDef::NoTarget => Used::NoTarget,
+            ReasonDef::NoRoom => Used::NoRoom,
+            ReasonDef::Capped => Used::Capped,
         })
     }
 }
@@ -2880,8 +2887,8 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// one ended early; `absorbed` on `damaged`, `true` passing a hit the
 /// [`Shield`](crate::Shield) took whole and `false` one that hurt; `ability`,
 /// an ability's name, on `ability_used` and the four ability events; and
-/// `reason` on `ability_refused`, one of `not_ready`, `no_charge`, `no_cost`
-/// and `no_target`. Its limits come last, so an occurrence a filter turns
+/// `reason` on `ability_refused`, one of `not_ready`, `no_charge`, `no_cost`,
+/// `no_target`, `no_room` and `capped`. Its limits come last, so an occurrence a filter turns
 /// away spends neither: `min_interval`, the game seconds a rule waits for a
 /// subject once it ran for it, and `cap`, its runs a step at most. A held
 /// rule is traced as skipped; the limits are the cue system's, unsaved. The
@@ -4792,7 +4799,14 @@ fn describe_cues(world: &mut World) {
         .field(
             FieldDescription::new(
                 "reason",
-                FieldType::Enum(&["not_ready", "no_charge", "no_cost", "no_target"]),
+                FieldType::Enum(&[
+                    "not_ready",
+                    "no_charge",
+                    "no_cost",
+                    "no_target",
+                    "no_room",
+                    "capped",
+                ]),
                 "why the use was refused; `ability_refused` only",
             )
             .default("null"),

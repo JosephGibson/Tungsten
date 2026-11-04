@@ -34,7 +34,8 @@
       "flask",
       "run",
       "toll",
-      "wisp"
+      "wisp",
+      "salt"
     ],
     "cues": {
       "ability_held": [

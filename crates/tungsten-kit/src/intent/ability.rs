@@ -7,7 +7,9 @@ use std::fmt::Write as _;
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
-use tungsten_core::physics::{BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity};
+use tungsten_core::physics::{
+    BodyKind, Collider, PhysicsConfig, Position, RigidBody, Shape, SpatialFilter, Velocity, overlap,
+};
 use tungsten_core::{
     CommandBuffer, DataRef, DataRegistry, Entity, EventQueue, Inspectable, MissingAsset, Plugin,
     PrefabRegistry, Schedule, SpawnContext, Time, Transform, World, system,
@@ -35,7 +37,7 @@ use crate::intent::aim::{AIM, Aim};
 use crate::intent::sheet::{
     DELIVERY, Skill, SkillLine, delivery_saved, describe_skills, resolve as resolve_sheet,
 };
-use crate::lifecycle::cap::admit;
+use crate::lifecycle::cap::{Tally, admit, refuses};
 use crate::lifecycle::ended::Despawning;
 use crate::motion::drive::{PrefabMotion, centre_of, point_of, prefab_centre, prefab_motion};
 use crate::motion::knockback::knock_back;
@@ -65,6 +67,7 @@ const ABILITY_TARGET: &str = "ability_target";
 const ABILITY_PAYLOAD: &str = "ability_payload";
 const SPAWN_PAYLOAD: &str = "spawn_payload";
 const LOB: &str = "lob";
+const PLACE_PAYLOAD: &str = "place_payload";
 const CONDUCT_PAYLOAD: &str = "conduct_payload";
 /// The most chains a World runs at once.
 const MAX_CHAINS: usize = 64;
@@ -186,6 +189,10 @@ pub enum Payload {
     /// A strike on the target that jumps on, one receiver a step, weaker
     /// each jump ([`Conduct`]); for a `nearest` or `random` target.
     Conduct(Box<Conduct>),
+    /// A prefab set down by its centre at the aim's point ([`Place`]),
+    /// refused before anything is spent with no point, no room or at its
+    /// cap.
+    Place(Box<Place>),
     /// An effect queued on the target entity, from the entity.
     Effect(DataRef<Effect>),
     /// The entity pushed along the direction at this speed, through its
@@ -202,7 +209,9 @@ impl Payload {
             Payload::Spawn { speed, .. } => *speed > 0.0,
             Payload::SpawnWith(spawn) => spawn.speed > 0.0,
             Payload::Impulse(_) | Payload::Cone(_) => true,
-            Payload::Effect(_) | Payload::Hitbox(_) | Payload::Conduct(_) => false,
+            Payload::Effect(_) | Payload::Hitbox(_) | Payload::Conduct(_) | Payload::Place(_) => {
+                false
+            }
         }
     }
 
@@ -461,6 +470,77 @@ pub fn lob_velocity(from: Vec2, to: Vec2, time: f32, gravity: Vec2) -> Vec2 {
         "lob_velocity: time must be finite and > 0 (got {time})"
     );
     (to - from) / time - gravity * (0.5 * time)
+}
+
+/// A prefab set down by its centre at the aim's point: a `nearest` or
+/// `random` target's centre, else the entity's [`Aim::point`], within
+/// `range` of the entity's centre when given. A use is refused before
+/// anything is spent with no point or one past the range
+/// ([`Used::NoTarget`]), with the prefab's body there meeting a solid tile
+/// or a body that is not dynamic, the entity's own aside, in any layer,
+/// sensors and one-way tiles left out ([`Used::NoRoom`]; a prefab without a
+/// body always has room), or with its [`Cap`](crate::Cap) refusing it, the
+/// use's earlier spawns and places into its group counted
+/// ([`Used::Capped`]). It spawns from the entity, with the sheet's delivery
+/// when the ability has one.
+///
+/// Data form: `{ "place": { "prefab": "salt", "range": 240 } }`, `range`
+/// left out for any distance.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_kit::{Ability, Payload, Place};
+///
+/// let salt = Place::new("salt").within(240.0);
+/// assert_eq!((salt.prefab(), salt.range()), ("salt", Some(240.0)));
+/// let ward = Ability::new().with_payload(Payload::Place(Box::new(salt)));
+/// let data = serde_json::to_value(&ward).unwrap();
+/// assert_eq!(data["payload"][0]["place"]["range"], 240.0);
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct Place {
+    prefab: String,
+    range: Option<f32>,
+}
+
+impl Place {
+    /// A place of the manifest prefab `prefab`, at any distance.
+    #[must_use]
+    pub fn new(prefab: impl Into<String>) -> Self {
+        Self {
+            prefab: prefab.into(),
+            range: None,
+        }
+    }
+
+    /// The place, within `range` world pixels of the entity's centre.
+    ///
+    /// # Panics
+    ///
+    /// When `range` is not finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn within(mut self, range: f32) -> Self {
+        assert!(
+            range.is_finite() && range > 0.0,
+            "Place::within: range must be finite and > 0 (got {range})"
+        );
+        self.range = Some(range);
+        self
+    }
+
+    /// The manifest prefab ID.
+    #[must_use]
+    pub fn prefab(&self) -> &str {
+        &self.prefab
+    }
+
+    /// World pixels from the entity's centre; any distance when `None`.
+    #[must_use]
+    pub fn range(&self) -> Option<f32> {
+        self.range
+    }
 }
 
 /// The substeps a physics step of `step` seconds runs, as
@@ -825,10 +905,13 @@ impl Ability {
                 seconds.is_finite() && *seconds > 0.0,
                 "Ability::with_payload: a hitbox window must be finite and > 0 (got {seconds})"
             ),
-            // A spawn with options, a cone and a conduction were checked by
-            // their builders.
-            Payload::SpawnWith(_) | Payload::Cone(_) | Payload::Conduct(_) | Payload::Effect(_) => {
-            }
+            // A spawn with options, a cone, a conduction and a place were
+            // checked by their builders.
+            Payload::SpawnWith(_)
+            | Payload::Cone(_)
+            | Payload::Conduct(_)
+            | Payload::Place(_)
+            | Payload::Effect(_) => {}
         }
         self.payload.push(payload);
         self
@@ -952,6 +1035,9 @@ impl Ability {
                 Payload::Cone(cone) => cone.check(world, &format!("payload.{i}.cone"))?,
                 Payload::Conduct(conduct) => {
                     conduct.check(world, &format!("payload.{i}.conduct"))?;
+                }
+                Payload::Place(place) => {
+                    world.check_prefab_id(&format!("payload.{i}.place.prefab"), &place.prefab)?;
                 }
                 Payload::Impulse(_) | Payload::Hitbox(_) => {}
             }
@@ -1274,6 +1360,7 @@ enum PayloadDef {
     Spawn(SpawnDef),
     Cone(ConeDef),
     Conduct(ConductDef),
+    Place(PlaceDef),
     Effect(DataRef<Effect>),
     Impulse(#[serde(deserialize_with = "non_negative")] f32),
     Hitbox(#[serde(deserialize_with = "positive")] f32),
@@ -1305,6 +1392,19 @@ fn spawn_round_trip(value: serde_json::Value) -> Result<serde_json::Value, Strin
             .or_insert(serde_json::Value::Bool(false));
     }
     Ok(out)
+}
+
+/// A place payload as data writes it, `range` left out when any distance.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlaceDef {
+    prefab: String,
+    #[serde(
+        default,
+        deserialize_with = "crate::foundation::optional_positive",
+        skip_serializing_if = "Option::is_none"
+    )]
+    range: Option<f32>,
 }
 
 /// A lob as data writes it.
@@ -1431,6 +1531,10 @@ impl TryFrom<AbilityDef> for Ability {
                     PayloadDef::Conduct(conduct) => {
                         Payload::Conduct(Box::new(Conduct::from(conduct)))
                     }
+                    PayloadDef::Place(place) => Payload::Place(Box::new(Place {
+                        prefab: place.prefab,
+                        range: place.range,
+                    })),
                     PayloadDef::Effect(effect) => Payload::Effect(effect),
                     PayloadDef::Impulse(speed) => Payload::Impulse(speed),
                     PayloadDef::Hitbox(seconds) => Payload::Hitbox(seconds),
@@ -1491,6 +1595,10 @@ impl From<Ability> for AbilityDef {
                     }),
                     Payload::Cone(cone) => PayloadDef::Cone(ConeDef::from(*cone)),
                     Payload::Conduct(conduct) => PayloadDef::Conduct(ConductDef::from(*conduct)),
+                    Payload::Place(place) => PayloadDef::Place(PlaceDef {
+                        prefab: place.prefab,
+                        range: place.range,
+                    }),
                     Payload::SpawnWith(spawn) => PayloadDef::Spawn(SpawnDef {
                         prefab: spawn.prefab,
                         speed: spawn.speed,
@@ -2038,8 +2146,14 @@ pub enum Used {
     /// The cost's stat is missing or its base is below the amount, as
     /// [`Ability::cost_for`] scales it.
     NoCost,
-    /// Nothing to aim at, or no direction for a payload that needs one.
+    /// Nothing to aim at, or no direction for a payload that needs one, or
+    /// no point (or one past its range) for a lob or a [`Place`].
     NoTarget,
+    /// A [`Place`]'s prefab would meet a solid tile or a body that is not
+    /// dynamic at its point.
+    NoRoom,
+    /// A [`Place`]'s prefab is refused at its [`Cap`](crate::Cap).
+    Capped,
     /// The entity does not own an ability of that name, or its entry is
     /// missing.
     NoAbility,
@@ -2610,6 +2724,54 @@ fn resolve_target(
     }
 }
 
+/// Prefab `id`'s body shape, from its `rigid_body`'s `shape`; `None` for
+/// one without a body.
+fn prefab_shape(world: &World, id: &str) -> Option<Shape> {
+    let shape = world
+        .get_resource::<PrefabRegistry>()?
+        .get(id)?
+        .components
+        .get("rigid_body")?
+        .get("shape")?;
+    match shape.get("kind")?.as_str()? {
+        "aabb" => {
+            let half: [f32; 2] = serde_json::from_value(shape.get("half_extents")?.clone()).ok()?;
+            Some(Shape::Aabb {
+                half_extents: Vec2::from(half),
+            })
+        }
+        "circle" => Some(Shape::Circle {
+            radius: shape.get("radius")?.as_f64()? as f32,
+        }),
+        _ => None,
+    }
+}
+
+/// Whether prefab `id`'s body, centred on `point`, meets no solid tile and
+/// no body that is not dynamic there, `user`'s aside, at the last physics
+/// step's positions: core's overlap under the default filter, every layer,
+/// no sensors. A prefab without a body always has room.
+fn room_for(world: &World, id: &str, point: Vec2, user: Entity) -> bool {
+    let Some(shape) = prefab_shape(world, id) else {
+        return true;
+    };
+    let mut met = Vec::new();
+    overlap(
+        world,
+        shape,
+        point,
+        &SpatialFilter::new().excluding(user),
+        &mut met,
+    );
+    met.iter().all(|hit| {
+        hit.is_some_and(|entity| {
+            world
+                .get::<RigidBody>(entity)
+                .is_some_and(|body| body.kind == BodyKind::Dynamic)
+        })
+    })
+}
+
 /// Where a use aims: a `nearest` or `random` target's point, its centre
 /// for a `centred` spawn; else the user's [`Aim::point`].
 fn aim_point(
@@ -2717,6 +2879,44 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
         .any(|(_, centred)| aim_point(world, entity, &ability.target, target, centred).is_none())
     {
         return Used::NoTarget;
+    }
+    // A place needs a point within its range and room there, and each
+    // capped spawn and place its cap's leave, in payload order, the use's
+    // earlier admissions counted; a spawn refused there is only skipped.
+    if ability
+        .payload
+        .iter()
+        .any(|payload| matches!(payload, Payload::Place(_)))
+    {
+        let mut tally = Tally::default();
+        for payload in &ability.payload {
+            match payload {
+                Payload::Place(place) => {
+                    let Some(point) = aim_point(world, entity, &ability.target, target, true)
+                    else {
+                        return Used::NoTarget;
+                    };
+                    let from = centre_of(world, entity).unwrap_or(at);
+                    if place
+                        .range
+                        .is_some_and(|range| from.distance(point) > range)
+                    {
+                        return Used::NoTarget;
+                    }
+                    if !room_for(world, &place.prefab, point, entity) {
+                        return Used::NoRoom;
+                    }
+                    if refuses(world, &place.prefab, entity, &mut tally) {
+                        return Used::Capped;
+                    }
+                }
+                Payload::Spawn { .. } | Payload::SpawnWith(_) => {
+                    let (prefab, ..) = payload.spawn().unwrap();
+                    refuses(world, prefab, entity, &mut tally);
+                }
+                _ => {}
+            }
+        }
     }
     // Spend.
     if let Some((stat, amount)) = cost
@@ -2829,6 +3029,48 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
                 if !knock_back(world, entity, along * *speed) {
                     skip(world, entity, "impulse", NO_KNOCKBACK);
                 }
+            }
+            Payload::Place(place) => {
+                let prefab = place.prefab.as_str();
+                if !world.has_resource::<CommandBuffer>() {
+                    skip(world, entity, "place", NO_COMMANDS);
+                    continue;
+                }
+                // Its point, room and cap were checked before the spend.
+                let Some(point) = aim_point(world, entity, &ability.target, target, true) else {
+                    continue;
+                };
+                let position = point - prefab_centre(world, prefab);
+                let prepared = match world.prepare_prefab(prefab, [position.x, position.y]) {
+                    Ok(prepared) => prepared,
+                    Err(err) => {
+                        trace(world, entity, || TraceKind::SpawnFailed {
+                            prefab: prefab.to_owned(),
+                            by: ABILITY,
+                            error: err.to_string(),
+                        });
+                        skip(world, entity, "place", NO_PREFAB);
+                        continue;
+                    }
+                };
+                let prepared = match &sheet {
+                    Some(sheet) => prepared.with((sheet.delivery.clone(),)),
+                    None => prepared,
+                };
+                let prepared = match admit(world, prefab, Some(entity), prepared) {
+                    Ok(prepared) => prepared,
+                    Err(why) => {
+                        skip(world, entity, "place", why);
+                        continue;
+                    }
+                };
+                world
+                    .resource_mut::<CommandBuffer>()
+                    .spawn_prefab_from(entity, prepared);
+                trace(world, entity, || TraceKind::Spawn {
+                    prefab: prefab.to_owned(),
+                    by: ABILITY,
+                });
             }
             Payload::Cone(cone) => {
                 let along = direction.unwrap_or(Vec2::X);
@@ -3345,8 +3587,35 @@ fn describe_abilities(world: &mut World) {
                 FieldType::Shape(CONDUCT_PAYLOAD),
                 "a strike on the target jumping on one receiver a step, weaker each jump; for a `nearest` or `random` target, which the load checks",
             ))
+            .field(FieldDescription::new(
+                "place",
+                FieldType::Shape(PLACE_PAYLOAD),
+                "a prefab set down by its centre at the aim's point, refused before anything is spent with no point, no room or at its cap",
+            ))
             .sample(r#"{ "impulse": 600 }"#)
             .roundtrip(round_trip::<PayloadDef>),
+        ComponentDescription::new(
+            PLACE_PAYLOAD,
+            "A prefab set down by its centre at the aim's point, a `nearest` or `random` target's centre or the entity's `aim` point, from the entity; refused before anything is spent with no point or one past the range (`no_target`), its body there meeting a solid tile or a body that is not dynamic, the entity's own aside (`no_room`), or its cap refusing it, the use's earlier spawns and places counted (`capped`).",
+        )
+        .field(FieldDescription::new(
+            "prefab",
+            FieldType::Prefab,
+            "the manifest prefab; the load checks the ID",
+        ))
+        .field(
+            FieldDescription::new(
+                "range",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Open,
+                },
+                "world pixels from the entity's centre; any distance when left out",
+            )
+            .default("null"),
+        )
+        .sample(r#"{ "prefab": "salt" }"#)
+        .roundtrip(round_trip::<PlaceDef>),
         ComponentDescription::new(SPAWN_PAYLOAD, "A prefab spawned from the entity at its point.")
             .field(FieldDescription::new(
                 "prefab",

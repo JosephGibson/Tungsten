@@ -2180,3 +2180,341 @@ fn a_chain_ends_when_its_user_or_last_receiver_goes() {
     }
     let _ = first;
 }
+
+// place-and-caps, Step 2: the place payload (S-17).
+
+/// A World with a clock at the fixed step, a command buffer, a trace,
+/// physics without gravity, and the tags (`spot`), stats (`mana`), aim,
+/// cue, ability and cap plugins.
+fn place_rig() -> (World, Schedule) {
+    use crate::intent::aim::AimPlugin;
+    use crate::lifecycle::cap::CapPlugin;
+    use tungsten_core::physics::{PhysicsConfig, PhysicsPlugin};
+    let mut world = World::new();
+    let mut time = Time::new();
+    time.set_fixed_step(STEP);
+    world.insert_resource(time);
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(KitTrace::default());
+    world.insert_resource(PrefabRegistry::new());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::ZERO,
+        ..PhysicsConfig::default()
+    });
+    let mut schedule = Schedule::new();
+    TagsPlugin::new()
+        .with_tags(["spot"])
+        .build(&mut schedule, &mut world);
+    StatsPlugin::new()
+        .with_stat("mana", 0.0, 100.0)
+        .build(&mut schedule, &mut world);
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    AimPlugin.build(&mut schedule, &mut world);
+    CuesPlugin.build(&mut schedule, &mut world);
+    AbilitiesPlugin.build(&mut schedule, &mut world);
+    CapPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// A place of `prefab` at any distance.
+fn place_of(prefab: &str) -> Payload {
+    Payload::Place(Box::new(Place::new(prefab)))
+}
+
+/// The nearest `spot`.
+fn at_spot() -> AbilityTarget {
+    AbilityTarget::Nearest {
+        filter: TagFilter::new().all(["spot"]),
+        range: None,
+    }
+}
+
+#[test]
+fn a_place_sets_the_prefab_down_at_the_aims_point() {
+    use tungsten_core::physics::{Collider, RigidBodyBundle};
+    use tungsten_core::{CameraState, InputState};
+    let (mut world, mut schedule) = place_rig();
+    // A body's centre is its offset; a bodiless sprite's its drawn centre.
+    prefab(
+        &mut world,
+        "salt",
+        json!({ "tag": "salt", "components": { "rigid_body": {
+            "kind": "static", "shape": { "kind": "aabb", "half_extents": [4, 4] }, "offset": [0, -4]
+        } } }),
+    );
+    sprite(&mut world, "glyph", [8, 6], None);
+    prefab(
+        &mut world,
+        "glyph",
+        json!({ "tag": "glyph", "sprite": { "asset_id": "glyph" } }),
+    );
+    let salt = insert(
+        &mut world,
+        "salt",
+        Ability::new()
+            .with_target(at_spot())
+            .with_payload(Payload::Place(Box::new(Place::new("salt").within(300.0)))),
+    );
+    let glyph = insert(
+        &mut world,
+        "glyph",
+        Ability::new().with_payload(place_of("glyph")),
+    );
+    // The cursor at (60, 30) in the world.
+    world.insert_resource(CameraState::new());
+    let mut input = InputState::new();
+    input.update_cursor_position(60.0, 30.0);
+    world.insert_resource(input);
+    let user = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(salt).with(glyph), Aim::cursor()),
+    );
+    // A spot on a dynamic body whose centre sits 8 px above its point.
+    let spot = world.spawn_with(RigidBodyBundle::dynamic(
+        Position(Vec2::new(100.0, 50.0)),
+        Collider::circle(4.0).with_offset(Vec2::new(0.0, -8.0)),
+    ));
+    world.insert(spot, Tags::new(["spot"]));
+    steps(&mut world, &mut schedule, 1);
+    let mark = centre_of(&world, spot).unwrap();
+    assert_eq!(mark, Vec2::new(100.0, 42.0));
+    assert_eq!(use_ability(&mut world, user, "salt"), Used::Used);
+    assert_eq!(use_ability(&mut world, user, "glyph"), Used::Used);
+    flush(&mut world);
+    let [salt] = tagged(&world, "salt")[..] else {
+        panic!("one salt");
+    };
+    assert_eq!(
+        point_of(&world, salt),
+        Some(Vec2::new(100.0, 46.0)),
+        "its point the target's centre less its offset"
+    );
+    assert_eq!(centre_of(&world, salt), Some(mark), "within its range");
+    assert_eq!(
+        world
+            .get::<crate::Source>(salt)
+            .map(|source| source.entity()),
+        Some(user),
+        "from the user"
+    );
+    let [glyph] = tagged(&world, "glyph")[..] else {
+        panic!("one glyph");
+    };
+    assert_eq!(
+        centre_of(&world, glyph),
+        Some(Vec2::new(60.0, 30.0)),
+        "a bodiless sprite's drawn centre on the cursor's point"
+    );
+}
+
+#[test]
+fn a_place_is_refused_with_no_point_no_room_or_at_its_cap() {
+    use crate::react::cues::KitCues;
+    use tungsten_core::physics::{Collider, RigidBodyBundle};
+    use tungsten_core::{LayerKind, TileProps, TilemapData, TilemapInstance, TilemapRegistry};
+    let (mut world, mut schedule) = place_rig();
+    let capped =
+        |group: &str, max: u32, past: &str| json!({ "group": group, "max": max, "past": past });
+    for (id, components) in [
+        (
+            "block",
+            json!({ "rigid_body": { "kind": "static", "shape": { "kind": "aabb", "half_extents": [4, 4] } } }),
+        ),
+        ("claim", json!({ "cap": capped("claims", 1, "refuse") })),
+        ("seal", json!({ "cap": capped("seals", 1, "oldest") })),
+        ("pair", json!({ "cap": capped("pairs", 1, "refuse") })),
+        ("trio", json!({ "cap": capped("trios", 1, "refuse") })),
+        ("keep", json!({ "cap": capped("mixed", 1, "oldest") })),
+        (
+            "broken_keep",
+            json!({ "cap": capped("mixed", 1, "oldest"), "nonesuch": {} }),
+        ),
+        ("ward", json!({ "cap": capped("mixed", 2, "refuse") })),
+    ] {
+        prefab(
+            &mut world,
+            id,
+            json!({ "tag": id, "components": components }),
+        );
+    }
+    // The refused abilities have a cooldown, two charges and a cost, so a
+    // refusal shows nothing spent; the free ones set the scene.
+    let dear = |payload: &[Payload]| {
+        payload.iter().cloned().fold(
+            Ability::new()
+                .with_target(at_spot())
+                .with_cooldown(1.0)
+                .with_charges(2, 10.0, false)
+                .with_cost("mana", 1.0),
+            Ability::with_payload,
+        )
+    };
+    let free = |payload: Payload| Ability::new().with_target(at_spot()).with_payload(payload);
+    let spawn = |id: &str| Payload::Spawn {
+        prefab: id.to_string(),
+        speed: 0.0,
+        offset: 0.0,
+    };
+    let mut abilities = Abilities::new();
+    for (name, ability) in [
+        // Its own aim, which it lacks: no point.
+        (
+            "aimless",
+            Ability::new()
+                .with_cooldown(1.0)
+                .with_charges(2, 10.0, false)
+                .with_cost("mana", 1.0)
+                .with_payload(place_of("block")),
+        ),
+        (
+            "near",
+            dear(&[Payload::Place(Box::new(Place::new("block").within(50.0)))]),
+        ),
+        ("block", dear(&[place_of("block")])),
+        ("claim", dear(&[place_of("claim")])),
+        ("seal", dear(&[place_of("seal")])),
+        ("pairs", dear(&[place_of("pair"), place_of("pair")])),
+        ("spawn_then_place", dear(&[spawn("trio"), place_of("trio")])),
+        ("mixed", dear(&[spawn("keep"), place_of("ward")])),
+        (
+            "mixed_broken",
+            dear(&[spawn("broken_keep"), place_of("ward")]),
+        ),
+        ("free_block", free(place_of("block"))),
+        ("free_claim", free(place_of("claim"))),
+        ("free_seal", free(place_of("seal"))),
+        ("free_ward", free(place_of("ward"))),
+    ] {
+        abilities = abilities.with(insert(&mut world, name, ability));
+    }
+    // A kinematic user with mana that names its refusals.
+    let user = world.spawn_with(RigidBodyBundle::kinematic(
+        Position(Vec2::ZERO),
+        Collider::aabb(Vec2::new(6.0, 6.0)),
+    ));
+    world.insert(user, Transform::default());
+    world.insert(user, abilities);
+    world.insert(user, Stats::new().with("mana", 10.0));
+    world.insert(
+        user,
+        Cues::new().on("ability_refused", [CueAction::counter_add("refused", 1)]),
+    );
+    let spot = at(&mut world, 0.0, 0.0, (Tags::new(["spot"]),));
+    let aim = |world: &mut World, x: f32, y: f32| {
+        world.insert(spot, Position(Vec2::new(x, y)));
+        world.insert(spot, Transform::from_position(Vec2::new(x, y)));
+    };
+    // The blockers and what passes, each 100 px on along x.
+    let body = |kind: fn(Position, Collider) -> RigidBodyBundle, x: f32| {
+        kind(
+            Position(Vec2::new(x, 0.0)),
+            Collider::aabb(Vec2::new(6.0, 6.0)),
+        )
+    };
+    world.spawn_with(body(RigidBodyBundle::r#static, 200.0));
+    world.spawn_with(body(RigidBodyBundle::kinematic, 300.0));
+    world.spawn_with(body(RigidBodyBundle::dynamic, 500.0));
+    world.spawn_with(body(RigidBodyBundle::sensor, 600.0));
+    // A solid tile's cell centred at (400, 0), a one-way one's at (700, 0).
+    let mut tiles = TilemapRegistry::new();
+    for (id, one_way) in [("solid", false), ("ledge", true)] {
+        let mut map = TilemapData::new(16, 16, 1, 1);
+        let tile = map.add_tile("stone");
+        map.set_tile_props(tile, {
+            let mut props = TileProps::default();
+            props.one_way = one_way;
+            props
+        });
+        let layer = map.add_layer("ground", LayerKind::Collision);
+        map.fill(layer, tile);
+        tiles.insert(id.to_owned(), map);
+    }
+    world.insert_resource(tiles);
+    world.spawn_with((TilemapInstance::new("solid", Vec2::new(392.0, -8.0)),));
+    world.spawn_with((TilemapInstance::new("ledge", Vec2::new(692.0, -8.0)),));
+    steps(&mut world, &mut schedule, 1);
+
+    let spent = |world: &World, name: &str| {
+        let abilities = world.get::<Abilities>(user).unwrap();
+        (
+            abilities.ready(name),
+            abilities.charges(name),
+            mana(world, user),
+        )
+    };
+    let reasons = |world: &mut World| -> Vec<u8> {
+        world
+            .resource_mut::<KitCues>()
+            .0
+            .drain(..)
+            .map(|cue| cue.reason)
+            .collect()
+    };
+    let refuse = |world: &mut World, name: &str, at: [f32; 2], expected: Used, reason: u8| {
+        aim(world, at[0], at[1]);
+        assert_eq!(use_ability(world, user, name), expected, "{name} at {at:?}");
+        assert_eq!(
+            spent(world, name),
+            (true, Some(2), Some(10.0)),
+            "{name}: nothing spent"
+        );
+        assert_eq!(reasons(world), [reason], "{name}: its reason pushed");
+    };
+    // No point, or one past the range.
+    refuse(&mut world, "aimless", [0.0, 0.0], Used::NoTarget, 4);
+    refuse(&mut world, "near", [100.0, 0.0], Used::NoTarget, 4);
+    // No room on a static body, a kinematic one and a solid tile.
+    for x in [200.0, 300.0, 400.0] {
+        refuse(&mut world, "block", [x, 0.0], Used::NoRoom, 5);
+    }
+    // Room over a dynamic body, a sensor, a one-way tile and its user.
+    for x in [500.0, 600.0, 700.0, 0.0] {
+        aim(&mut world, x, 0.0);
+        assert_eq!(
+            use_ability(&mut world, user, "free_block"),
+            Used::Used,
+            "at {x}"
+        );
+    }
+    flush(&mut world);
+    assert_eq!(tagged(&world, "block").len(), 4);
+    // At a full `refuse` cap.
+    aim(&mut world, 0.0, 100.0);
+    assert_eq!(use_ability(&mut world, user, "free_claim"), Used::Used);
+    flush(&mut world);
+    refuse(&mut world, "claim", [0.0, 100.0], Used::Capped, 6);
+    // At an `oldest` cap full of this frame's admissions.
+    assert_eq!(use_ability(&mut world, user, "free_seal"), Used::Used);
+    refuse(&mut world, "seal", [0.0, 100.0], Used::Capped, 6);
+    // Two places into one `max: 1` group, and a spawn then a place.
+    refuse(&mut world, "pairs", [0.0, 100.0], Used::Capped, 6);
+    refuse(
+        &mut world,
+        "spawn_then_place",
+        [0.0, 100.0],
+        Used::Capped,
+        6,
+    );
+    // An `oldest` `max: 1` spawn, then a `refuse` `max: 2` place, into a
+    // group of two, whether or not the spawn's prefab prepares.
+    for _ in 0..2 {
+        assert_eq!(use_ability(&mut world, user, "free_ward"), Used::Used);
+    }
+    flush(&mut world);
+    refuse(&mut world, "mixed", [0.0, 100.0], Used::Capped, 6);
+    refuse(&mut world, "mixed_broken", [0.0, 100.0], Used::Capped, 6);
+    flush(&mut world);
+    let counts: Vec<usize> = ["claim", "seal", "pair", "trio", "keep", "ward"]
+        .iter()
+        .map(|id| tagged(&world, id).len())
+        .collect();
+    assert_eq!(counts, [1, 1, 0, 0, 0, 2], "nothing more spawned");
+}
+
+#[test]
+fn the_payload_keeps_its_size() {
+    assert_eq!(std::mem::size_of::<Payload>(), 32);
+}

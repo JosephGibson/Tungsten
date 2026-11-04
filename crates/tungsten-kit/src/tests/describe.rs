@@ -127,9 +127,9 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     assert_eq!(kinds.len(), 11);
     assert_eq!(
         descriptions.shapes().count(),
-        76,
-        "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction and \
-         the projectile's end"
+        77,
+        "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction, \
+         the projectile's end and the place"
     );
 }
 
@@ -245,9 +245,9 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 51,
+        probed, 52,
         "the cue action's fourteen forms, the target's three, the hit shape's two, the modifier's \
-         four, the ability trigger's four, its target's four, its payload's six, the offer's two, \
+         four, the ability trigger's four, its target's four, its payload's seven, the offer's two, \
          a chemistry output's eleven and a projectile end's one"
     );
 }
@@ -291,7 +291,7 @@ fn each_described_enum_variant_deserializes() {
             + 2
             + 2
             + 2
-            + 4
+            + 6
             + 2,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
@@ -410,13 +410,13 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 162,
+        checked, 163,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
          four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
          hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
          radius and intensity and sound's volume, a lob's speed, a cone's reach, half angle, \
          rays, damage, knockback, sweep, push and far share, a conduction's damage, \
-         reach, keep and jumps, and a cap's max"
+         reach, keep and jumps, a cap's max and a place's range"
     );
 }
 
@@ -426,7 +426,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 46);
-    assert_eq!(count("shape "), 76);
+    assert_eq!(count("shape "), 77);
     assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

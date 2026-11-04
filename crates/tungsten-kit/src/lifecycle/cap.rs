@@ -280,16 +280,58 @@ fn live_holders(world: &World, group: &str, besides: Option<Entity>) -> Vec<Enti
     holders.into_iter().map(|(_, entity)| entity).collect()
 }
 
+/// A use's admissions before it spends, which [`refuses`] counts: each
+/// group's added count, and the victims chosen, still counted but not
+/// chosen again. It allocates only once a capped prefab is met.
+#[derive(Debug, Default)]
+pub(crate) struct Tally {
+    added: Vec<(String, u32)>,
+    chosen: Vec<Entity>,
+}
+
+impl Tally {
+    /// The group's admissions so far.
+    fn added(&self, group: &str) -> u32 {
+        self.added
+            .iter()
+            .find(|(name, _)| name == group)
+            .map_or(0, |&(_, count)| count)
+    }
+}
+
+/// Whether a use's kit spawn of prefab `id` from `source` would be refused
+/// at its cap now, against `tally`, the use's earlier admissions; one
+/// admitted is added to it, its victims chosen. An ability's `place` asks
+/// it for each capped spawn and place in payload order before it spends.
+pub(crate) fn refuses(world: &World, id: &str, source: Entity, tally: &mut Tally) -> bool {
+    let Some(cap) = cap_of(world, id) else {
+        return false;
+    };
+    match verdict(world, &cap, Some(source), None, Some(tally)) {
+        Ok(victims) => {
+            tally.chosen.extend(victims);
+            match tally.added.iter_mut().find(|(name, _)| *name == cap.group) {
+                Some((_, count)) => *count += 1,
+                None => tally.added.push((cap.group.clone(), 1)),
+            }
+            false
+        }
+        Err(_) => true,
+    }
+}
+
 /// A capped spawn's verdict, with no side effect: the oldest holders to
 /// end for it (none when its group has room), or its refusal's reason. A
 /// spawn whose source goes at the flush (despawning, or replaced) is
 /// refused first; then `besides`, a replacement's receiver, is left out
-/// of the count.
+/// of the count. A use's `tally` adds its admissions to the count, its
+/// chosen victims counted but not chosen again.
 fn verdict(
     world: &World,
     cap: &Cap,
     source: Option<Entity>,
     besides: Option<Entity>,
+    tally: Option<&Tally>,
 ) -> Result<Vec<Entity>, &'static str> {
     let now = frame(world);
     let caps = world.get_resource::<Caps>();
@@ -298,7 +340,8 @@ fn verdict(
     {
         return Err(LEAVING);
     }
-    let queued = caps.map_or(0, |caps| caps.queued(now, &cap.group));
+    let queued = caps.map_or(0, |caps| caps.queued(now, &cap.group))
+        + tally.map_or(0, |tally| tally.added(&cap.group));
     let mut holders = live_holders(world, &cap.group, besides);
     let count = holders.len() as u32 + queued;
     if count < cap.max {
@@ -306,6 +349,9 @@ fn verdict(
     }
     if cap.past == Past::Refuse {
         return Err(FULL);
+    }
+    if let Some(tally) = tally {
+        holders.retain(|holder| !tally.chosen.contains(holder));
     }
     // As many as bring the group under its max, the admission included.
     let need = (count + 1 - cap.max) as usize;
@@ -354,7 +400,7 @@ fn admit_besides(
     let Some(cap) = cap_of(world, id) else {
         return Ok(prepared);
     };
-    let victims = verdict(world, &cap, source, besides)?;
+    let victims = verdict(world, &cap, source, besides, None)?;
     for victim in victims {
         end(world, victim, CAP);
         if cue_named(world, victim, CULLED) {

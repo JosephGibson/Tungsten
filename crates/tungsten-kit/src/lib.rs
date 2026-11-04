@@ -278,7 +278,7 @@ pub use foundation::trace::{KIT_TRACE_STEP, KitTrace, TraceEntry, TraceKind};
 pub use foundation::world_sources::{WorldSource, WorldSources};
 pub use intent::ability::{
     ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Direction, Lob,
-    Payload, SpawnWith, Trigger, Used, lob_velocity, use_ability,
+    Payload, Place, SpawnWith, Trigger, Used, lob_velocity, use_ability,
 };
 pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
 pub use intent::aim::{AIM, Aim, AimPlugin};
@@ -359,7 +359,7 @@ pub mod prelude {
         LifetimePlugin, LinearMotion, LinearMotionPlugin, Lob, LocalOffset, Modifier, Offer,
         Offers, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Output, Parent, Past,
         PathFollower, PathFollowerPlugin, Payload, Penetration, Phase, PickedUp, Pickup,
-        PickupPlugin, PlatformerController, PlatformerControllerPlugin, Projectile,
+        PickupPlugin, Place, PlatformerController, PlatformerControllerPlugin, Projectile,
         ProjectileBounced, ProjectileExpired, ProjectilePassed, ProjectilePlugin, Reaction,
         Refresh, Resist, Scaled, Shield, SoundOnEvent, Source, SourcePlugin, SpawnChildren,
         SpawnChildrenPlugin, SpawnWith, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin,

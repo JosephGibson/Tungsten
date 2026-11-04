@@ -5,7 +5,7 @@
 //! blessing and level on the adventurer; 7.10c's lantern warden, Lantern
 //! Ward's: its bell, flask and run as cue events, its flask from its centre,
 //! its toll's wave; its wisps, held to two by their cap, the first culled
-//! with a poof.
+//! with a poof; its salt, set down on a mark and refused inside a wall.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -575,5 +575,51 @@ fn a_third_wisp_culls_the_first_with_a_poof() {
             Some(centre),
             "dt {dt}: the poof's centre on the first wisp's"
         );
+    }
+}
+
+// place-and-caps, Step 2: the warden's salt, set down on its mark (S-17).
+
+#[test]
+fn salt_is_set_down_on_its_mark_and_refused_on_a_wall() {
+    use crate::kit::{Used, centre_of, use_ability};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "lantern_warden", [100.0, 100.0]);
+        let open = spawn(&mut harness, "salt_mark", [160.0, 100.0]);
+        harness.step(1);
+        assert_eq!(
+            use_ability(harness.world_mut(), warden, "salt"),
+            Used::Used,
+            "dt {dt}"
+        );
+        harness.step(1);
+        let [salt] = tagged(&harness, "salt")[..] else {
+            panic!("dt {dt}: one salt");
+        };
+        assert_eq!(
+            centre_of(harness.world(), salt),
+            centre_of(harness.world(), open),
+            "dt {dt}: its centre on the mark's"
+        );
+        // A nearer mark inside a static wall, once the cooldown is out.
+        spawn(&mut harness, "ward_wall", [130.0, 100.0]);
+        spawn(&mut harness, "salt_mark", [130.0, 100.0]);
+        harness.step(frames_for(2.0, dt));
+        assert_eq!(
+            use_ability(harness.world_mut(), warden, "salt"),
+            Used::NoRoom,
+            "dt {dt}: no room inside the wall"
+        );
+        assert!(
+            harness
+                .world()
+                .get::<Abilities>(warden)
+                .unwrap()
+                .ready("salt"),
+            "dt {dt}: its cooldown unspent"
+        );
+        harness.step(1);
+        assert_eq!(tagged(&harness, "salt").len(), 1, "dt {dt}");
     }
 }

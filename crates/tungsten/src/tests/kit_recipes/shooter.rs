@@ -9,7 +9,8 @@
 //! saved mid-volley; 7.10c's breacher, Static Front's: its SMG held, its
 //! dodge along the move stick and its reload's sweep; a lobber's grenade
 //! and its blast where it lands; a cryo trooper's cone; an escort carrier's
-//! escorts, held to three by their cap.
+//! escorts, held to three by their cap; a sapper's mines, a fourth refused
+//! at their cap with a blip.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1591,5 +1592,50 @@ fn a_carrier_launches_no_more_than_its_cap() {
         assert_eq!(remaining(&harness), Some(0), "dt {dt}: five in all");
         harness.step(frames_for(1.0, dt));
         assert_eq!(tagged(&harness, "escort").len(), 3, "dt {dt}: then none");
+    }
+}
+
+// place-and-caps, Step 2: a sapper's mines, three at most (S-17, S-18).
+
+#[test]
+fn a_fourth_mine_is_refused_at_its_cap() {
+    use crate::kit::{Used, use_ability};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let sapper = spawn(&mut harness, "sapper", [100.0, 100.0]);
+        spawn(&mut harness, "wing", [300.0, 100.0]);
+        harness.step(1);
+        let blips = |harness: &Harness| {
+            harness
+                .audio()
+                .iter()
+                .filter(|command| matches!(command, AudioCommand::Play { .. }))
+                .count()
+        };
+        for laid in 1..=3 {
+            assert_eq!(
+                use_ability(harness.world_mut(), sapper, "lay_mine"),
+                Used::Used,
+                "dt {dt}: mine {laid}"
+            );
+            harness.step(frames_for(0.3, dt));
+        }
+        assert_eq!(tagged(&harness, "claymore").len(), 3, "dt {dt}: three laid");
+        assert_eq!(
+            use_ability(harness.world_mut(), sapper, "lay_mine"),
+            Used::Capped,
+            "dt {dt}: the fourth"
+        );
+        assert!(
+            harness
+                .world()
+                .get::<Abilities>(sapper)
+                .unwrap()
+                .ready("lay_mine"),
+            "dt {dt}: nothing spent"
+        );
+        harness.step(1);
+        assert_eq!(blips(&harness), 1, "dt {dt}: its blip");
+        assert_eq!(tagged(&harness, "claymore").len(), 3, "dt {dt}");
     }
 }

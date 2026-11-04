@@ -347,6 +347,7 @@ shape ability_payload: One thing a use does.
   field hitbox: f32 (> 0) — seconds the entity's own hitbox is armed for
   field cone: shape cone_payload — rays fanned about the direction from the entity's centre, hitting and pushing what they meet, at once or as a widening front
   field conduct: shape conduct_payload — a strike on the target jumping on one receiver a step, weaker each jump; for a `nearest` or `random` target, which the load checks
+  field place: shape place_payload — a prefab set down by its centre at the aim's point, refused before anything is spent with no point, no room or at its cap
   sample: { "impulse": 600 }
 shape ability_target: What an ability aims at.
   exactly one of its fields
@@ -468,7 +469,7 @@ shape cue_rule: A shared reaction: on an event, for each subject whose tags pass
   field ended: bool = null — `false` passes an instance that ran out, `true` one ended early; `effect_expired` only
   field absorbed: bool = null — `true` passes a hit the shield took whole, `false` one that hurt; `damaged` only
   field ability: text = null — an ability's name in its user's `abilities`; `ability_used`, `ability_refused`, `ability_ready`, `ability_held` and `ability_released` only
-  field reason: one of not_ready | no_charge | no_cost | no_target = null — why the use was refused; `ability_refused` only
+  field reason: one of not_ready | no_charge | no_cost | no_target | no_room | capped = null — why the use was refused; `ability_refused` only
   field min_interval: f32 (>= 0) = 0.0 — game seconds the rule waits for a subject once it ran for it
   field cap: u32 (>= 1) = null — the rule's runs a step at most
   field do: list of shape cue_action — the actions, in order
@@ -668,6 +669,10 @@ shape offers: What a level up offers: distinct entries drawn by weight without r
   field count: u32 (>= 1) — how many entries a level up draws; every one when there are no more
   field entries: list of shape offer = [] — what a draw may give, each by its weight over the rest
   sample: { "count": 1 }
+shape place_payload: A prefab set down by its centre at the aim's point, a `nearest` or `random` target's centre or the entity's `aim` point, from the entity; refused before anything is spent with no point or one past the range (`no_target`), its body there meeting a solid tile or a body that is not dynamic, the entity's own aside (`no_room`), or its cap refusing it, the use's earlier spawns and places counted (`capped`).
+  field prefab: prefab ID — the manifest prefab; the load checks the ID
+  field range: f32 (> 0) = null — world pixels from the entity's centre; any distance when left out
+  sample: { "prefab": "salt" }
 shape position_wave: A position channel: amplitude · sin(2π(t / period + phase)), less its value at the start.
   field amplitude: [x, y] — world pixels at the peak
   field period: f32 (> 0) — seconds of game time a swing takes

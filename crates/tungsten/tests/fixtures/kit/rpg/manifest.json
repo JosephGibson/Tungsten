@@ -62,6 +62,15 @@
     },
     "poof": {
       "path": "prefabs/poof.json"
+    },
+    "salt": {
+      "path": "prefabs/salt.json"
+    },
+    "salt_mark": {
+      "path": "prefabs/salt_mark.json"
+    },
+    "ward_wall": {
+      "path": "prefabs/ward_wall.json"
     }
   },
   "data": {
@@ -71,6 +80,9 @@
       },
       "ward": {
         "path": "data/ward_tags.json"
+      },
+      "marks": {
+        "path": "data/mark_tags.json"
       }
     },
     "loot_tables": {
@@ -103,6 +115,9 @@
       },
       "wisp": {
         "path": "data/abilities/wisp.json"
+      },
+      "salt": {
+        "path": "data/abilities/salt.json"
       }
     },
     "effects": {

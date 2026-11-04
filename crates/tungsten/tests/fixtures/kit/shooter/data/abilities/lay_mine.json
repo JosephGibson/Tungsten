@@ -1,0 +1,10 @@
+{
+  "cooldown": 0.25,
+  "payload": [
+    {
+      "place": {
+        "prefab": "claymore"
+      }
+    }
+  ]
+}
