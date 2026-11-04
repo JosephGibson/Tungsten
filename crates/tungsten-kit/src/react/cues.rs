@@ -71,9 +71,21 @@ pub(crate) const JUMPED: &str = "jumped";
 pub(crate) const AIR_JUMPED: &str = "air_jumped";
 pub(crate) const JUMP_REFUSED: &str = "jump_refused";
 pub(crate) const LANDED: &str = "landed";
+pub(crate) const ABILITY_REFUSED: &str = "ability_refused";
+pub(crate) const ABILITY_READY: &str = "ability_ready";
+pub(crate) const ABILITY_HELD: &str = "ability_held";
+pub(crate) const ABILITY_RELEASED: &str = "ability_released";
 /// A [`WorldCue`]'s occurrence: no subject, so no entity or rule names it.
 const WORLD_CUE: &str = "world_cue";
-const KIT_EVENTS: [&str; 17] = [
+/// The cue events about an ability, whose occurrences carry its name.
+const ABILITY_EVENTS: [&str; 5] = [
+    ABILITY_USED,
+    ABILITY_REFUSED,
+    ABILITY_READY,
+    ABILITY_HELD,
+    ABILITY_RELEASED,
+];
+const KIT_EVENTS: [&str; 21] = [
     DAMAGED_PART,
     DAMAGED,
     KILLED,
@@ -91,6 +103,10 @@ const KIT_EVENTS: [&str; 17] = [
     AIR_JUMPED,
     JUMP_REFUSED,
     LANDED,
+    ABILITY_REFUSED,
+    ABILITY_READY,
+    ABILITY_HELD,
+    ABILITY_RELEASED,
 ];
 
 /// The squash triggers' data names, as a scene's `squash_stretch` writes
@@ -120,7 +136,11 @@ fn valid_event(name: &str) -> bool {
 /// ground or coyote jump), `air_jumped` (the stat amount it paid the
 /// amount, 0 for a free one), `jump_refused` (a press in the air refused
 /// for its cost) and `landed` (the speed it fell at the amount, px/s), each
-/// at its feet, and each name a game's [`CuesOnEvent`] registers.
+/// at its feet, an ability's `ability_refused` (a use of an owned ability
+/// refused, with its reason), `ability_ready` (the step its counting makes
+/// it ready), `ability_held` and `ability_released` (a held trigger's slot
+/// going down and up), each about its user, and each name a game's
+/// [`CuesOnEvent`] registers.
 ///
 /// Scene name `cues`:
 /// `{ "damaged": [{ "flash": {} }], "killed": [{ "prefab": "puff" }, { "despawn": {} }] }`;
@@ -1632,10 +1652,11 @@ pub(crate) struct Occurrence {
     /// A damage event's kinds: a part's, or a hit's parts' together.
     pub(crate) kinds: DamageKinds,
     /// Its flags, packed: [`PERIODIC`], [`CRIT`], [`FRESH`], [`ENDED`] and
-    /// [`ABSORBED`].
+    /// [`ABSORBED`], and an `ability_refused` occurrence's reason in the top
+    /// three bits ([`reason_of`]).
     pub(crate) bits: u8,
-    /// An effect event's entry: an index into the step's effect IDs, or
-    /// [`NO_EFFECT`].
+    /// An effect event's entry, or an ability event's ability: an index
+    /// into the step's effect IDs, or [`NO_EFFECT`].
     pub(crate) effect: u16,
 }
 
@@ -1652,6 +1673,22 @@ pub(crate) const ENDED: u8 = 1 << 3;
 pub(crate) const ABSORBED: u8 = 1 << 4;
 /// An occurrence's effect when it names no entry.
 pub(crate) const NO_EFFECT: u16 = u16::MAX;
+/// Where an `ability_refused` occurrence's reason starts in its bits.
+const REASON_SHIFT: u8 = 5;
+
+/// A refused use's reason code, which an `ability_refused` occurrence
+/// carries in its top three bits and a rule's `reason` reads: 1 to 4 for
+/// [`Used::NotReady`], [`Used::NoCharge`], [`Used::NoCost`] and
+/// [`Used::NoTarget`]; 0 for a use, or for no owned ability.
+pub(crate) fn reason_of(used: Used) -> u8 {
+    match used {
+        Used::NotReady => 1,
+        Used::NoCharge => 2,
+        Used::NoCost => 3,
+        Used::NoTarget => 4,
+        _ => 0,
+    }
+}
 
 impl Occurrence {
     /// An occurrence of `event` about `subject` at `position`, with nothing
@@ -1672,6 +1709,11 @@ impl Occurrence {
     /// Whether it carries `bit`.
     pub(crate) fn has(&self, bit: u8) -> bool {
         self.bits & bit != 0
+    }
+
+    /// An `ability_refused` occurrence's reason code; 0 for any other.
+    fn reason(&self) -> u8 {
+        self.bits >> REASON_SHIFT
     }
 }
 
@@ -1738,6 +1780,10 @@ impl Default for CueEventNames {
                 (AIR_JUMPED, true, false, false),
                 (JUMP_REFUSED, false, false, false),
                 (LANDED, true, false, false),
+                (ABILITY_REFUSED, false, false, false),
+                (ABILITY_READY, false, false, false),
+                (ABILITY_HELD, false, false, false),
+                (ABILITY_RELEASED, false, false, false),
             ]
             .into_iter()
             .map(|(name, amount, other, kinds)| EventInfo {
@@ -1776,6 +1822,36 @@ pub(crate) struct ControllerCues(pub(crate) Vec<ControllerCue>);
 /// The controller cue events a step holds before the list grows.
 const CONTROLLER_CUES: usize = 32;
 
+/// One of an ability's cue events, as its system pushes it: the event, the
+/// user, its point, the entry's index in its [`Abilities`], which names the
+/// ability when the cue system reads it, and a refusal's [reason](reason_of).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AbilityCue {
+    pub(crate) event: &'static str,
+    pub(crate) entity: Entity,
+    pub(crate) at: Vec2,
+    pub(crate) entry: u16,
+    pub(crate) reason: u8,
+}
+
+/// The step's ability cue events, a World resource [`CuesPlugin`] inserts
+/// with its capacity reserved, which the cue system drains each step: no
+/// event queue, so an ability's refusals, readiness and holds send no
+/// event. Its pushers ask [`cue_named`] first.
+#[derive(Debug)]
+pub(crate) struct AbilityCues(pub(crate) Vec<AbilityCue>);
+
+/// The ability cue events a step holds before the list grows.
+const ABILITY_CUES: usize = 32;
+
+/// Pushes `cue` for the cue system's next read, when the World has the
+/// list; its caller asked [`cue_named`] first.
+pub(crate) fn push_ability_cue(world: &mut World, cue: AbilityCue) {
+    if let Some(cues) = world.get_resource_mut::<AbilityCues>() {
+        cues.0.push(cue);
+    }
+}
+
 /// Whether the cue event `event` about `entity` has anything to run: the
 /// entity's own [`Cues`] list an action for it, or a loaded `cue_rules`
 /// rule is on it, whatever its filters, which the cue system reads later as
@@ -1792,6 +1868,21 @@ pub(crate) fn cue_named(world: &World, entity: Entity, event: &str) -> bool {
                     .is_some_and(|rules| rules.0.iter().any(|rule| rule.on == event))
             })
         })
+}
+
+/// Whether a loaded `cue_rules` rule on `ability_used` filters on an
+/// ability's name, so the cue system names its occurrences.
+fn filters_ability(world: &World) -> bool {
+    world.get_resource::<DataRegistry>().is_some_and(|data| {
+        data.ids(CUE_RULES).any(|id| {
+            data.get::<CueRules>(id).is_some_and(|rules| {
+                rules
+                    .0
+                    .iter()
+                    .any(|rule| rule.on == ABILITY_USED && rule.ability.is_some())
+            })
+        })
+    })
 }
 
 /// A game event's reader, kept in [`CueSources`].
@@ -2045,12 +2136,38 @@ struct CueRuleDef {
     ended: Option<bool>,
     #[serde(default)]
     absorbed: Option<bool>,
+    #[serde(default)]
+    ability: Option<String>,
+    #[serde(default)]
+    reason: Option<ReasonDef>,
     #[serde(default, deserialize_with = "non_negative")]
     min_interval: f32,
     #[serde(default, deserialize_with = "positive_cap")]
     cap: Option<u32>,
     #[serde(rename = "do")]
     actions: Vec<CueAction>,
+}
+
+/// A rule's `reason`, as data writes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ReasonDef {
+    NotReady,
+    NoCharge,
+    NoCost,
+    NoTarget,
+}
+
+impl ReasonDef {
+    /// Its code, as [`reason_of`] gives it.
+    fn code(self) -> u8 {
+        reason_of(match self {
+            ReasonDef::NotReady => Used::NotReady,
+            ReasonDef::NoCharge => Used::NoCharge,
+            ReasonDef::NoCost => Used::NoCost,
+            ReasonDef::NoTarget => Used::NoTarget,
+        })
+    }
 }
 
 /// A rule's `cap`: at least 1 when set.
@@ -2260,6 +2377,10 @@ struct CueRule {
     fresh: Option<bool>,
     ended: Option<bool>,
     absorbed: Option<bool>,
+    /// An ability's name, on the ability events.
+    ability: Option<String>,
+    /// A refusal's reason code, on `ability_refused`.
+    reason: Option<u8>,
     /// Game seconds per subject between runs; 0 for none.
     min_interval: f32,
     /// Runs a step at most.
@@ -2290,6 +2411,12 @@ impl CueRule {
                     .get(usize::from(occurrence.effect))
                     .is_some_and(|known| known == id)
             })
+            && self.ability.as_ref().is_none_or(|name| {
+                effect_ids
+                    .get(usize::from(occurrence.effect))
+                    .is_some_and(|known| known == name)
+            })
+            && self.reason.is_none_or(|code| occurrence.reason() == code)
             && (self.flags.is_everything() || self.flags.matches(flags))
     }
 }
@@ -2311,6 +2438,9 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                     rule.on
                 ));
             }
+            if rule.ability.as_deref() == Some("") {
+                return Err(format!("{i}.ability: an ability's name, not empty"));
+            }
             let names = rule
                 .filter
                 .names()
@@ -2328,6 +2458,8 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                 fresh: rule.fresh,
                 ended: rule.ended,
                 absorbed: rule.absorbed,
+                ability: rule.ability,
+                reason: rule.reason.map(ReasonDef::code),
                 min_interval: rule.min_interval,
                 cap: rule.cap,
                 actions: rule.actions.into(),
@@ -2375,6 +2507,12 @@ fn check_rule_list(rules: &CueRules, world: &World) -> Result<(), MissingAsset> 
         }
         if rule.absorbed.is_some() && event.name != DAMAGED {
             return refuse("absorbed", "cue event with a shield's take");
+        }
+        if rule.ability.is_some() && !ABILITY_EVENTS.contains(&event.name) {
+            return refuse("ability", "cue event about an ability");
+        }
+        if rule.reason.is_some() && event.name != ABILITY_REFUSED {
+            return refuse("reason", "cue event with a refusal's reason");
         }
         for (field, name) in rule.kind.names() {
             check_type(world, &format!("{i}.kind.{field}"), name, true)?;
@@ -2534,7 +2672,9 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// [`LevelUp`](crate::LevelUp) (`level_up`), then the
 /// [`PlatformerController`](crate::PlatformerController)s' `jumped`,
 /// `air_jumped`, `jump_refused` and `landed` from a list the controller's
-/// system fills, no event queue, then each [`CuesOnEvent`] in build order,
+/// system fills, no event queue, then the abilities' `ability_refused`,
+/// `ability_ready`, `ability_held` and `ability_released` from a list the
+/// abilities fill, each pushed only when named, then each [`CuesOnEvent`] in build order,
 /// each queue in send order, and last the step's [`WorldCue`]s. It runs
 /// every
 /// occurrence's entity cues, then every occurrence's matching rules (rules
@@ -2569,8 +2709,11 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// `effect_applied`, `true` passing a new instance or an instant effect's
 /// landing and `false` a stack or a refresh; and `ended` on
 /// `effect_expired`, `false` passing an instance that ran out and `true`
-/// one ended early; and `absorbed` on `damaged`, `true` passing a hit the
-/// [`Shield`](crate::Shield) took whole and `false` one that hurt. Its limits come last, so an occurrence a filter turns
+/// one ended early; `absorbed` on `damaged`, `true` passing a hit the
+/// [`Shield`](crate::Shield) took whole and `false` one that hurt; `ability`,
+/// an ability's name, on `ability_used` and the four ability events; and
+/// `reason` on `ability_refused`, one of `not_ready`, `no_charge`, `no_cost`
+/// and `no_target`. Its limits come last, so an occurrence a filter turns
 /// away spends neither: `min_interval`, the game seconds a rule waits for a
 /// subject once it ran for it, and `cap`, its runs a step at most. A held
 /// rule is traced as skipped; the limits are the cue system's, unsaved. The
@@ -2619,6 +2762,9 @@ impl Plugin for CuesPlugin {
         }
         if !world.has_resource::<ControllerCues>() {
             world.insert_resource(ControllerCues(Vec::with_capacity(CONTROLLER_CUES)));
+        }
+        if !world.has_resource::<AbilityCues>() {
+            world.insert_resource(AbilityCues(Vec::with_capacity(ABILITY_CUES)));
         }
         if !world.has_resource::<KitRng>() {
             world.insert_resource(KitRng::default());
@@ -3697,10 +3843,21 @@ impl Reactor {
             }
         }
         if let Some(queue) = world.get_resource::<EventQueue<AbilityUsed>>() {
-            occurrences.extend(abilities_used.read(queue).map(|event| Occurrence {
-                other: event.target,
-                ..Occurrence::new(ABILITY_USED, event.entity, event.position)
-            }));
+            // The name only for a rule that filters on one, so a World with
+            // none indexes nothing.
+            let mut by_name = None;
+            for event in abilities_used.read(queue) {
+                let named = *by_name.get_or_insert_with(|| filters_ability(world));
+                occurrences.push(Occurrence {
+                    other: event.target,
+                    effect: if named {
+                        effect_index(effect_ids, effect_count, Some(&event.name))
+                    } else {
+                        NO_EFFECT
+                    },
+                    ..Occurrence::new(ABILITY_USED, event.entity, event.position)
+                });
+            }
         }
         if let Some(queue) = world.get_resource::<EventQueue<LevelUp>>() {
             occurrences.extend(level_ups.read(queue).map(|event| Occurrence {
@@ -3713,6 +3870,24 @@ impl Reactor {
                 amount: cue.amount,
                 ..Occurrence::new(cue.event, cue.entity, cue.at)
             }));
+        }
+        if let Some(cues) = world.get_resource_mut::<AbilityCues>()
+            && !cues.0.is_empty()
+        {
+            let mut cues = std::mem::take(&mut cues.0);
+            for cue in cues.drain(..) {
+                let name = world
+                    .get::<Abilities>(cue.entity)
+                    .and_then(|abilities| abilities.name_at(usize::from(cue.entry)));
+                occurrences.push(Occurrence {
+                    bits: cue.reason << REASON_SHIFT,
+                    effect: effect_index(effect_ids, effect_count, name),
+                    ..Occurrence::new(cue.event, cue.entity, cue.at)
+                });
+            }
+            if let Some(list) = world.get_resource_mut::<AbilityCues>() {
+                list.0 = cues;
+            }
         }
         if let Some(mut sources) = world.remove_resource::<CueSources>() {
             for source in &mut sources.0 {
@@ -4308,6 +4483,22 @@ fn describe_cues(world: &mut World) {
                 "absorbed",
                 FieldType::Bool,
                 "`true` passes a hit the shield took whole, `false` one that hurt; `damaged` only",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "ability",
+                FieldType::Text,
+                "an ability's name in its user's `abilities`; `ability_used`, `ability_refused`, `ability_ready`, `ability_held` and `ability_released` only",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "reason",
+                FieldType::Enum(&["not_ready", "no_charge", "no_cost", "no_target"]),
+                "why the use was refused; `ability_refused` only",
             )
             .default("null"),
         )

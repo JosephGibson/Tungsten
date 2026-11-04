@@ -2,7 +2,8 @@
 //! rogue under the move actions, a hole that spawns rats, a potion that
 //! expires, and the camera on the rogue; M64's crawlers and warden; M65's
 //! adventurer and its swing, a chest and its loot, gold and spikes; M67's
-//! blessing and level on the adventurer.
+//! blessing and level on the adventurer; 7.10c's lantern warden, Lantern
+//! Ward's: its bell, flask and run as cue events.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -13,6 +14,7 @@ use crate::kit::{
     Abilities, Cooldown, Counters, Effects, Flags, Health, Hit, KitPlugins, KitRng, Level, Source,
     Tags, TopDownMover, damage,
 };
+use crate::testing::Harness;
 
 const GENRE: &str = "rpg";
 
@@ -349,5 +351,100 @@ fn the_adventurers_inline_effect_expires_and_its_level_grants_an_ability() {
             "dt {dt}: the inline ability"
         );
         assert!(abilities.ready("#0"));
+    }
+}
+
+// 7.10c, Step 3: Lantern Ward's warden (LW14, LW28) and its ability events.
+
+/// The lantern warden, a step in.
+fn warden(dt: f32) -> (Harness, Entity) {
+    let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+    let warden = spawn(&mut harness, "lantern_warden", [100.0, 100.0]);
+    harness.step(1);
+    (harness, warden)
+}
+
+/// `entity`'s counter `name`.
+fn counter(harness: &Harness, entity: Entity, name: &str) -> i64 {
+    harness.world().get::<Counters>(entity).unwrap().get(name)
+}
+
+/// Presses `action` for a frame, then lets it go.
+fn tap(harness: &mut Harness, action: &str) {
+    harness.press_action(action);
+    harness.step(1);
+    harness.release_action(action);
+}
+
+#[test]
+fn the_bell_rings_for_the_bell_alone() {
+    for dt in DTS {
+        let (mut harness, warden) = warden(dt);
+        tap(&mut harness, "fire");
+        assert_eq!(counter(&harness, warden, "rings"), 1, "dt {dt}: the bell");
+        assert_eq!(tagged(&harness, "noise").len(), 1, "dt {dt}: its noise");
+        tap(&mut harness, "attack");
+        assert_eq!(tagged(&harness, "oil_flask").len(), 1, "dt {dt}: a flask");
+        assert_eq!(
+            counter(&harness, warden, "rings"),
+            1,
+            "dt {dt}: the flask rings nothing"
+        );
+        harness.step(frames_for(2.0, dt));
+        tap(&mut harness, "fire");
+        assert_eq!(counter(&harness, warden, "rings"), 2, "dt {dt}: again");
+    }
+}
+
+#[test]
+fn the_wardens_run_cues_its_hold_and_release() {
+    for dt in DTS {
+        let (mut harness, warden) = warden(dt);
+        let running = |harness: &Harness| {
+            let world = harness.world();
+            (
+                world.get::<Flags>(warden).unwrap().has("running"),
+                world.get::<Tags>(warden).unwrap().has("state.running"),
+            )
+        };
+        assert_eq!(running(&harness), (false, false));
+        harness.press_action("dash");
+        harness.step(1);
+        assert_eq!(running(&harness), (true, true), "dt {dt}: the hold's cue");
+        harness.step(frames_for(0.5, dt));
+        assert_eq!(running(&harness), (true, true), "dt {dt}: held");
+        harness.release_action("dash");
+        harness.step(1);
+        assert!(!running(&harness).0, "dt {dt}: the release's cue");
+        harness.step(frames_for(0.2, dt));
+        assert_eq!(
+            running(&harness),
+            (false, false),
+            "dt {dt}: the run's effect ran out"
+        );
+    }
+}
+
+#[test]
+fn the_flask_chimes_when_ready() {
+    for dt in DTS {
+        let (mut harness, warden) = warden(dt);
+        tap(&mut harness, "attack");
+        assert_eq!(tagged(&harness, "oil_flask").len(), 1, "dt {dt}: thrown");
+        let mut frames = 0;
+        while counter(&harness, warden, "chimes") == 0 {
+            harness.step(1);
+            frames += 1;
+            assert!(frames <= frames_for(2.0, dt), "dt {dt}: no chime");
+        }
+        let after = frames as f32 * dt;
+        assert!(
+            (after - 1.0).abs() <= dt + 1e-4,
+            "dt {dt}: its 1 s cooldown out: {after}"
+        );
+        // Once; the bell turning ready chimes nothing.
+        tap(&mut harness, "fire");
+        harness.step(frames_for(3.0, dt));
+        assert_eq!(counter(&harness, warden, "chimes"), 1, "dt {dt}: once");
     }
 }

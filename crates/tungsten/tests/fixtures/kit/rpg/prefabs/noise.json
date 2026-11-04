@@ -1,0 +1,8 @@
+{
+  "tag": "noise",
+  "components": {
+    "lifetime": {
+      "seconds": 0.5
+    }
+  }
+}

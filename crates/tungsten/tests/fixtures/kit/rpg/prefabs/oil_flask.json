@@ -1,0 +1,8 @@
+{
+  "tag": "oil_flask",
+  "components": {
+    "lifetime": {
+      "seconds": 0.6
+    }
+  }
+}

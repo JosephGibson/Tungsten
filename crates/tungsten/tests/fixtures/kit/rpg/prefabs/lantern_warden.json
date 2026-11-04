@@ -1,0 +1,52 @@
+{
+  "tag": "lantern_warden",
+  "components": {
+    "top_down_mover": {
+      "speed": 140
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ],
+      "slots": {
+        "bell": "fire",
+        "throw": "attack",
+        "run": "dash"
+      }
+    },
+    "tags": [
+      "team.player"
+    ],
+    "counters": {
+      "rings": 0,
+      "chimes": 0
+    },
+    "flags": [],
+    "effects": [],
+    "abilities": [
+      "bell",
+      "flask",
+      "run"
+    ],
+    "cues": {
+      "ability_held": [
+        {
+          "flag": {
+            "name": "running"
+          }
+        }
+      ],
+      "ability_released": [
+        {
+          "flag": {
+            "name": "running",
+            "set": false
+          }
+        }
+      ]
+    }
+  }
+}

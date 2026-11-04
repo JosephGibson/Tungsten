@@ -41,12 +41,24 @@
     },
     "spikes": {
       "path": "prefabs/spikes.json"
+    },
+    "lantern_warden": {
+      "path": "prefabs/lantern_warden.json"
+    },
+    "noise": {
+      "path": "prefabs/noise.json"
+    },
+    "oil_flask": {
+      "path": "prefabs/oil_flask.json"
     }
   },
   "data": {
     "tags": {
       "game": {
         "path": "data/tags.json"
+      },
+      "ward": {
+        "path": "data/ward_tags.json"
       }
     },
     "loot_tables": {
@@ -62,6 +74,27 @@
     "offers": {
       "delver_offers": {
         "path": "data/offers/delver_offers.json"
+      }
+    },
+    "abilities": {
+      "bell": {
+        "path": "data/abilities/bell.json"
+      },
+      "flask": {
+        "path": "data/abilities/flask.json"
+      },
+      "run": {
+        "path": "data/abilities/run.json"
+      }
+    },
+    "effects": {
+      "running": {
+        "path": "data/effects/running.json"
+      }
+    },
+    "cue_rules": {
+      "ward": {
+        "path": "data/cue_rules/ward.json"
       }
     }
   }

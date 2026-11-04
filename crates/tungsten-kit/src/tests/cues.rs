@@ -2538,3 +2538,221 @@ mod named {
         }
     }
 }
+
+/// 7.10c's ability events: pushed only when named, and filtered by an
+/// ability's name and a refusal's reason.
+mod ability_events {
+    use super::*;
+    use tungsten_core::Stage;
+
+    use crate::foundation::trace::KitTrace;
+    use crate::intent::action_input::Intent;
+    use crate::{AbilitiesPlugin, Ability, CountersPlugin, Payload, StatsPlugin, Trigger};
+
+    /// One step at 1/60 s, then the flushes that end the frame.
+    fn step(world: &mut World, schedule: &mut Schedule) {
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+        world.resource_mut::<Time>().leave_fixed_steps();
+        let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+        world.flush_reusing(&mut commands);
+        world.insert_resource(commands);
+        world.flush_events();
+    }
+
+    /// The cue rig with time, a command buffer, a trace, stats, counters
+    /// and abilities: the `bell` (a 3-step cooldown), the `flask` (one
+    /// charge, refilled after 3 steps) and the `horn` (held on `horn`). With
+    /// `reacting`, the cue system runs each step; without, its list keeps
+    /// what the abilities push.
+    fn rig(reacting: bool) -> (World, Schedule) {
+        let (mut world, _) = super::rig();
+        world.insert_resource(Time::new());
+        world.insert_resource(CommandBuffer::new());
+        world.insert_resource(KitTrace::default());
+        let mut schedule = Schedule::new();
+        StatsPlugin::new().build(&mut schedule, &mut world);
+        CountersPlugin.build(&mut schedule, &mut world);
+        AbilitiesPlugin.build(&mut schedule, &mut world);
+        if reacting {
+            CuesPlugin.build(&mut schedule, &mut world);
+        }
+        schedule.resolve().unwrap();
+        let step = 1.0 / 60.0;
+        let data = world.resource_mut::<DataRegistry>();
+        data.insert(
+            "bell",
+            Ability::new()
+                .with_cooldown(3.0 * step)
+                .with_payload(Payload::Hitbox(0.1)),
+        );
+        data.insert(
+            "flask",
+            Ability::new()
+                .with_charges(1, 3.0 * step, false)
+                .with_payload(Payload::Hitbox(0.1)),
+        );
+        data.insert(
+            "horn",
+            Ability::new()
+                .with_trigger(Trigger::Held("horn".to_string()))
+                .with_payload(Payload::Hitbox(0.1)),
+        );
+        (world, schedule)
+    }
+
+    /// A user of the three, with `cues`; empty ones name nothing.
+    fn user(world: &mut World, cues: Cues) -> Entity {
+        let abilities = ["bell", "flask", "horn"]
+            .into_iter()
+            .fold(Abilities::new(), |abilities, id| {
+                abilities.with(DataRef::by_id(id))
+            });
+        world.spawn_with((abilities, Intent::default(), Counters::new(), cues))
+    }
+
+    /// The pushed ability cues: each event, entity and reason.
+    fn pushed(world: &mut World) -> Vec<(&'static str, Entity, u8)> {
+        world
+            .resource_mut::<AbilityCues>()
+            .0
+            .drain(..)
+            .map(|cue| (cue.event, cue.entity, cue.reason))
+            .collect()
+    }
+
+    /// Refuses the bell (not ready) and the flask (no charge), holds and
+    /// releases the horn, and steps until both turn ready: what `user`'s
+    /// abilities push, by step.
+    fn run_through(
+        world: &mut World,
+        schedule: &mut Schedule,
+        user: Entity,
+    ) -> Vec<(&'static str, Entity, u8)> {
+        let mut all = Vec::new();
+        for name in ["bell", "flask"] {
+            assert_eq!(use_ability(world, user, name), Used::Used);
+            assert_ne!(use_ability(world, user, name), Used::Used);
+        }
+        all.extend(pushed(world));
+        for i in 1..=5 {
+            world
+                .get_mut::<Intent>(user)
+                .unwrap()
+                .set_slot("horn", i <= 2, i == 1);
+            step(world, schedule);
+            all.extend(pushed(world));
+        }
+        all
+    }
+
+    #[test]
+    fn ability_events_push_only_what_is_named() {
+        let (mut world, mut schedule) = rig(false);
+        let capacity = world.resource::<AbilityCues>().0.capacity();
+        assert!(capacity >= 32, "reserved: {capacity}");
+        // Nothing names them: nothing pushed.
+        let quiet = user(&mut world, Cues::new());
+        assert_eq!(run_through(&mut world, &mut schedule, quiet), []);
+        // Its own cues name `ability_held` alone.
+        let held = user(
+            &mut world,
+            Cues::new().on(ABILITY_HELD, [CueAction::counter_add("held", 1)]),
+        );
+        assert_eq!(
+            run_through(&mut world, &mut schedule, held),
+            [(ABILITY_HELD, held, 0)]
+        );
+        // A rule on each names it for every entity, whatever its filters.
+        let rules: CueRules = serde_json::from_value(json!([
+            { "on": "ability_refused", "filter": { "all": ["team.enemy"] }, "do": [] },
+            { "on": "ability_ready", "do": [] },
+            { "on": "ability_released", "do": [] }
+        ]))
+        .unwrap();
+        world.resource_mut::<DataRegistry>().insert("all", rules);
+        let named = user(&mut world, Cues::new());
+        assert_eq!(
+            run_through(&mut world, &mut schedule, named),
+            [
+                (ABILITY_REFUSED, named, 1),
+                (ABILITY_REFUSED, named, 2),
+                (ABILITY_READY, named, 0),
+                (ABILITY_READY, named, 0),
+                (ABILITY_RELEASED, named, 0),
+            ],
+            "the bell not ready, the flask out of charges; at step 3 both ready, in list order, \
+             then the horn let go"
+        );
+        assert_eq!(
+            world.resource::<AbilityCues>().0.capacity(),
+            capacity,
+            "the pushes stayed in the reserve"
+        );
+    }
+
+    #[test]
+    fn a_rule_filters_ability_events_by_name_and_reason() {
+        let (mut world, mut schedule) = rig(true);
+        let count =
+            |name: &str| json!([{ "counter": { "name": name, "add": 1, "target": "game" } }]);
+        let filters: CueRules = serde_json::from_value(json!([
+            { "on": "ability_used", "ability": "bell", "do": count("bells") },
+            { "on": "ability_refused", "reason": "no_charge", "do": count("dry") },
+            { "on": "ability_refused", "ability": "bell", "reason": "not_ready", "do": count("bell_wait") },
+            { "on": "ability_ready", "ability": "flask", "do": count("flask_ready") },
+            { "on": "ability_held", "ability": "horn", "do": count("horn_down") }
+        ]))
+        .unwrap();
+        world
+            .resource_mut::<DataRegistry>()
+            .insert("filters", filters);
+        let hero = user(&mut world, Cues::new());
+        let game = |world: &World, name: &str| world.resource::<Counters>().get(name);
+        let mut seen = Vec::new();
+        for (i, name) in ["bell", "flask", "bell", "flask"].into_iter().enumerate() {
+            use_ability(&mut world, hero, name);
+            if i == 3 {
+                world
+                    .get_mut::<Intent>(hero)
+                    .unwrap()
+                    .set_slot("horn", true, true);
+            }
+            step(&mut world, &mut schedule);
+            seen.push(
+                ["bells", "dry", "bell_wait", "flask_ready", "horn_down"].map(|n| game(&world, n)),
+            );
+        }
+        assert_eq!(
+            seen,
+            [
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 0, 1, 0, 0],
+                [1, 1, 1, 1, 1],
+            ],
+            "the bell's use alone; its wait as not ready, the flask's as no charge; the flask \
+             ready after its three-step refill; the horn's hold by its name"
+        );
+        // The load refuses a filter its event cannot carry.
+        for (rule, field) in [
+            (
+                json!({ "on": "damaged", "ability": "bell", "do": [] }),
+                "ability",
+            ),
+            (
+                json!({ "on": "ability_used", "reason": "no_charge", "do": [] }),
+                "reason",
+            ),
+        ] {
+            let error = check_rules(&mut world, json!([rule])).unwrap_err();
+            assert!(error.ends_with(&format!("at 0.{field}")), "{error}");
+        }
+        for rule in [
+            json!({ "on": "ability_refused", "reason": "no_mana", "do": [] }),
+            json!({ "on": "ability_ready", "ability": "", "do": [] }),
+        ] {
+            assert!(rules(json!([rule])).is_err(), "{rule}");
+        }
+    }
+}

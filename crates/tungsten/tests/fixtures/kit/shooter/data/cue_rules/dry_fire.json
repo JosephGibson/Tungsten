@@ -1,0 +1,15 @@
+[
+  {
+    "on": "ability_refused",
+    "ability": "smg",
+    "reason": "no_charge",
+    "min_interval": 0.25,
+    "do": [
+      {
+        "sound": {
+          "id": "blip"
+        }
+      }
+    ]
+  }
+]

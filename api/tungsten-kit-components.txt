@@ -1,7 +1,7 @@
 component abilities: The abilities the entity owns, by name: an entry's ID, or `#<index>` for one written in place.
   field list: list of abilities ID or entry — the value itself: each an `abilities` entry's ID, an ability in place, or `{ id, level }` with its skill's level from 1 to 40; names unique; the load checks each
   events: AbilityUsed
-  genres: platformer, top_down, shooter, arpg
+  genres: platformer, top_down, rpg, shooter, arpg
   sample: ["wand"]
 component action_input: The actions that steer the entity, read into its Intent each fixed step.
   field move: list of text — [left, right] or [left, right, up, down]: the movement actions
@@ -82,6 +82,10 @@ component cues: The entity's reactions: for each event about it, actions run in 
   field air_jumped: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field jump_refused: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field landed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field ability_refused: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field ability_ready: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field ability_held: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field ability_released: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   events: ShakeEvent, SquashEvent
   genres: platformer, top_down, rpg, shooter
   sample: {}
@@ -432,6 +436,8 @@ shape cue_rule: A shared reaction: on an event, for each subject whose tags pass
   field fresh: bool = null — `true` passes a new instance or an instant effect's landing, `false` a stack or a refresh; `effect_applied` only
   field ended: bool = null — `false` passes an instance that ran out, `true` one ended early; `effect_expired` only
   field absorbed: bool = null — `true` passes a hit the shield took whole, `false` one that hurt; `damaged` only
+  field ability: text = null — an ability's name in its user's `abilities`; `ability_used`, `ability_refused`, `ability_ready`, `ability_held` and `ability_released` only
+  field reason: one of not_ready | no_charge | no_cost | no_target = null — why the use was refused; `ability_refused` only
   field min_interval: f32 (>= 0) = 0.0 — game seconds the rule waits for a subject once it ran for it
   field cap: u32 (>= 1) = null — the rule's runs a step at most
   field do: list of shape cue_action — the actions, in order

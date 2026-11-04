@@ -85,6 +85,9 @@
       },
       "typed": {
         "path": "data/cue_rules/typed.json"
+      },
+      "dry_fire": {
+        "path": "data/cue_rules/dry_fire.json"
       }
     },
     "damage_types": {

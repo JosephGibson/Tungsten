@@ -1,0 +1,13 @@
+{
+  "trigger": {
+    "action": "throw"
+  },
+  "cooldown": 1,
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "oil_flask"
+      }
+    }
+  ]
+}

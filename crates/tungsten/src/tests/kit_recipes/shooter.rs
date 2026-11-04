@@ -1362,3 +1362,49 @@ fn the_reload_sweep_reads_the_refill() {
         );
     }
 }
+
+// 7.10c, Step 3: a dry fire on `no_charge` (SF6).
+
+#[test]
+fn a_dry_fire_clicks_on_no_charge() {
+    for dt in DTS {
+        let (mut harness, breacher) = breacher(dt);
+        let clicks = |harness: &Harness| {
+            harness
+                .audio()
+                .iter()
+                .filter(|command| matches!(command, AudioCommand::Play { .. }))
+                .count()
+        };
+        harness.press_action("fire");
+        let mut rounds = 0;
+        for _ in 0..frames_for(4.0, dt) {
+            if rounds == 24 {
+                break;
+            }
+            harness.step(1);
+            rounds += used(&harness, breacher, "smg");
+            assert_eq!(clicks(&harness), 0, "dt {dt}: no click while rounds remain");
+        }
+        assert_eq!(rounds, 24, "dt {dt}: the magazine");
+        // Held through the reload: a click once the 0.1 s cooldown is out,
+        // then each 0.25 s, the rule's `min_interval`.
+        let mut heard = Vec::new();
+        for frame in 0..frames_for(1.5, dt) {
+            harness.step(1);
+            assert_eq!(used(&harness, breacher, "smg"), 0, "dt {dt}: reloading");
+            for _ in 0..clicks(&harness) {
+                heard.push(frame);
+            }
+        }
+        assert_eq!(heard.len(), 6, "dt {dt}: {heard:?}");
+        // Fifteen steps apart, a frame's two steps rounding at dt 1/30.
+        let steps = (dt * 60.0).round() as u32;
+        assert!(
+            heard
+                .windows(2)
+                .all(|pair| (14..=16).contains(&((pair[1] - pair[0]) * steps))),
+            "dt {dt}: each 0.25 s: {heard:?}"
+        );
+    }
+}

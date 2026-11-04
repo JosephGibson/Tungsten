@@ -269,12 +269,12 @@ fn each_described_enum_variant_deserializes() {
     }
     assert_eq!(
         variants,
-        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2 + 3 + 4 + 3 + 4 + 3 + 2 + 3 + 2 + 2 + 2 + 2 + 2,
+        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2 + 3 + 4 + 3 + 4 + 3 + 2 + 3 + 2 + 2 + 2 + 2 + 2 + 4,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
          axes, the effect action's targets, the stack's refresh and expire policies, and the \
-         ability action's ops and targets, the level's counter targets and the ability's \
-         directions"
+         ability action's ops and targets, the level's counter targets, the ability's \
+         directions and a cue rule's reasons"
     );
 }
 

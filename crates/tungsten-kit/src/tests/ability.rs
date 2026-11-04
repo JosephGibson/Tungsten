@@ -1401,3 +1401,216 @@ fn refill_left_reads_a_running_refill_alone() {
     assert_eq!(refill(&world, "plain"), None);
     assert_eq!(refill(&world, "sword"), None);
 }
+
+// 7.10c, Step 3: the ability cue events.
+
+#[test]
+fn a_refusal_carries_its_reason() {
+    use crate::react::cues::AbilityCues;
+    let (mut world, mut schedule) = rig();
+    let hitbox = || Payload::Hitbox(0.1);
+    let cool = insert(
+        &mut world,
+        "cool",
+        Ability::new().with_cooldown(1.0).with_payload(hitbox()),
+    );
+    let spent = insert(
+        &mut world,
+        "spent",
+        Ability::new()
+            .with_charges(1, 100.0, false)
+            .with_payload(hitbox()),
+    );
+    let dear = insert(
+        &mut world,
+        "dear",
+        Ability::new()
+            .with_cost("mana", 50.0)
+            .with_payload(hitbox()),
+    );
+    let aimed = insert(
+        &mut world,
+        "aimed",
+        Ability::new()
+            .with_target(AbilityTarget::Aim)
+            .with_payload(hitbox()),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new()
+                .with(cool)
+                .with(spent)
+                .with(dear)
+                .with(aimed),
+            Stats::new().with("mana", 5.0),
+            Cues::new().on(ABILITY_REFUSED, [CueAction::counter_add("refused", 1)]),
+            Counters::new(),
+        ),
+    );
+    for name in ["cool", "spent"] {
+        assert_eq!(use_ability(&mut world, hero, name), Used::Used);
+    }
+    for (name, used) in [
+        ("cool", Used::NotReady),
+        ("spent", Used::NoCharge),
+        ("dear", Used::NoCost),
+        ("aimed", Used::NoTarget),
+        ("sword", Used::NoAbility),
+    ] {
+        assert_eq!(use_ability(&mut world, hero, name), used, "{name}");
+    }
+    let abilities = world.get::<Abilities>(hero).unwrap();
+    let pushed: Vec<(&str, Option<&str>, u8)> = world
+        .resource::<AbilityCues>()
+        .0
+        .iter()
+        .map(|cue| {
+            (
+                cue.event,
+                abilities.name_at(usize::from(cue.entry)),
+                cue.reason,
+            )
+        })
+        .collect();
+    assert_eq!(
+        pushed,
+        [
+            (ABILITY_REFUSED, Some("cool"), 1),
+            (ABILITY_REFUSED, Some("spent"), 2),
+            (ABILITY_REFUSED, Some("dear"), 3),
+            (ABILITY_REFUSED, Some("aimed"), 4),
+        ],
+        "each owned ability's refusal with its reason; none for a name it does not own"
+    );
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(world.get::<Counters>(hero).unwrap().get("refused"), 4);
+    assert!(
+        world.resource::<AbilityCues>().0.is_empty(),
+        "the cue system drained them"
+    );
+}
+
+#[test]
+fn an_entry_turns_ready_once_a_cooldown() {
+    let (mut world, mut schedule) = rig();
+    let hitbox = || Payload::Hitbox(0.1);
+    let cool = insert(
+        &mut world,
+        "cool",
+        Ability::new()
+            .with_cooldown(3.0 * STEP)
+            .with_payload(hitbox()),
+    );
+    let shot = insert(
+        &mut world,
+        "shot",
+        Ability::new()
+            .with_charges(1, 2.0 * STEP, false)
+            .with_payload(hitbox()),
+    );
+    let free = insert(&mut world, "free", Ability::new().with_payload(hitbox()));
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(cool).with(shot).with(free),
+            Cues::new().on(ABILITY_READY, [CueAction::counter_add("ready", 1)]),
+            Counters::new(),
+        ),
+    );
+    let ready = |world: &World| world.get::<Counters>(hero).unwrap().get("ready");
+    steps(&mut world, &mut schedule, 5);
+    assert_eq!(
+        ready(&world),
+        0,
+        "an entry starts ready: a spawn sends none"
+    );
+    for name in ["cool", "shot", "free"] {
+        assert_eq!(use_ability(&mut world, hero, name), Used::Used);
+    }
+    let mut seen = Vec::new();
+    for _ in 0..6 {
+        steps(&mut world, &mut schedule, 1);
+        seen.push(ready(&world));
+    }
+    assert_eq!(
+        seen,
+        [0, 1, 2, 2, 2, 2],
+        "the shot's charge back at step 2, the cooldown out at step 3; the free one never waits"
+    );
+    // A refill makes it ready at once, which no counting sees.
+    assert_eq!(use_ability(&mut world, hero, "cool"), Used::Used);
+    assert!(world.get_mut::<Abilities>(hero).unwrap().refill("cool"));
+    steps(&mut world, &mut schedule, 4);
+    assert_eq!(ready(&world), 2);
+}
+
+#[test]
+fn a_held_trigger_cues_its_hold_and_release() {
+    let (mut world, mut schedule) = rig();
+    let run = insert(
+        &mut world,
+        "run",
+        Ability::new()
+            .with_trigger(Trigger::Held("run".to_string()))
+            .with_payload(Payload::Hitbox(0.05)),
+    );
+    let dash = insert(
+        &mut world,
+        "dash",
+        Ability::new()
+            .with_trigger(Trigger::Action("run".to_string()))
+            .with_payload(Payload::Hitbox(0.05)),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(run).with(dash),
+            Intent::default(),
+            Cues::new()
+                .on(ABILITY_HELD, [CueAction::counter_add("held", 1)])
+                .on(ABILITY_RELEASED, [CueAction::counter_add("released", 1)]),
+            Counters::new(),
+        ),
+    );
+    let counts = |world: &World| {
+        let counters = world.get::<Counters>(hero).unwrap();
+        (counters.get("held"), counters.get("released"))
+    };
+    let mut seen = Vec::new();
+    for i in 1..=7 {
+        world
+            .get_mut::<Intent>(hero)
+            .unwrap()
+            .set_slot("run", (2..=4).contains(&i), i == 2);
+        steps(&mut world, &mut schedule, 1);
+        seen.push(counts(&world));
+    }
+    assert_eq!(
+        seen,
+        [(0, 0), (1, 0), (1, 0), (1, 0), (1, 1), (1, 1), (1, 1)],
+        "down at step 2 and up at step 5, once each; the action trigger on the slot cues no hold"
+    );
+    // The flag is unsaved, so a load sees a held slot's hold begin again.
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_slot("run", true, true);
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(counts(&world), (2, 1));
+    let saved = serde_json::to_value(world.get::<Abilities>(hero).unwrap()).unwrap();
+    assert!(!saved.to_string().contains("held"), "{saved}");
+    *world.get_mut::<Abilities>(hero).unwrap() = serde_json::from_value(saved).unwrap();
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_slot("run", true, false);
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(counts(&world), (3, 1));
+}

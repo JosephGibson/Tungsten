@@ -1,0 +1,13 @@
+{
+  "trigger": {
+    "action": "bell"
+  },
+  "cooldown": 2,
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "noise"
+      }
+    }
+  ]
+}

@@ -17,8 +17,8 @@ use crate::count_down;
 use crate::damage::effects::{EFFECTS, Effect, EffectRequest};
 use crate::damage::health::Health;
 use crate::foundation::describe::{
-    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
-    describe, describe_kind, describe_shape, round_trip,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER,
+    TOP_DOWN, describe, describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -39,6 +39,10 @@ use crate::motion::knockback::knock_back;
 use crate::motion::linear::LinearMotion;
 use crate::motion::target::describe_target;
 use crate::overlap::hit::Hitbox;
+use crate::react::cues::{
+    ABILITY_HELD, ABILITY_READY, ABILITY_REFUSED, ABILITY_RELEASED, AbilityCue, cue_named,
+    push_ability_cue, reason_of,
+};
 
 /// [`AbilitiesPlugin`]'s system that counts cooldowns, refills and
 /// intervals and fires the triggers, in the intent phase after
@@ -1073,6 +1077,9 @@ struct Entry {
     refill_left: f32,
     /// Game seconds to the next use of an interval trigger.
     interval_left: f32,
+    /// Whether a held trigger's slot was down at its last tick; unsaved, so
+    /// a load sees a held slot's hold begin again.
+    held: bool,
 }
 
 /// An entry as a save writes it, before its values are checked.
@@ -1117,6 +1124,7 @@ impl TryFrom<EntryFields> for Entry {
             charges: fields.charges,
             refill_left: fields.refill_left,
             interval_left: fields.interval_left,
+            held: false,
         })
     }
 }
@@ -1276,6 +1284,7 @@ impl Abilities {
             charges: None,
             refill_left: 0.0,
             interval_left: 0.0,
+            held: false,
         };
         match self.entries.iter().position(|e| e.name == entry.name) {
             Some(at) => self.entries[at] = entry,
@@ -1468,6 +1477,16 @@ impl Abilities {
 
     fn find(&self, name: &str) -> Option<&Entry> {
         self.entries.iter().find(|entry| entry.name == name)
+    }
+
+    /// The name of the entry at `index` in list order.
+    pub(crate) fn name_at(&self, index: usize) -> Option<&str> {
+        self.entries.get(index).map(|entry| entry.name.as_str())
+    }
+
+    /// `name`'s index in list order.
+    fn index_of(&self, name: &str) -> Option<usize> {
+        self.entries.iter().position(|entry| entry.name == name)
     }
 
     fn find_mut(&mut self, name: &str) -> Option<&mut Entry> {
@@ -1689,6 +1708,9 @@ struct Scratch {
     entities: Vec<Entity>,
     /// The names to use this step for one entity.
     uses: Vec<String>,
+    /// The named ability cue events of one entity's tick: each event and
+    /// its entry's index.
+    cues: Vec<(&'static str, u16)>,
 }
 
 impl Scratch {
@@ -1829,8 +1851,33 @@ fn resolve_target(
     }
 }
 
-/// [`use_ability`]'s work, with `scratch`.
+/// [`use_ability`]'s work, with `scratch`: a refused use of an owned
+/// ability pushes `ability_refused` with its reason when named.
 fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch) -> Used {
+    let used = try_use(world, entity, name, scratch);
+    let reason = reason_of(used);
+    if reason != 0
+        && cue_named(world, entity, ABILITY_REFUSED)
+        && let Some(entry) = world
+            .get::<Abilities>(entity)
+            .and_then(|abilities| abilities.index_of(name))
+    {
+        push_ability_cue(
+            world,
+            AbilityCue {
+                event: ABILITY_REFUSED,
+                entity,
+                at: point_of(world, entity).unwrap_or(Vec2::ZERO),
+                entry: entry as u16,
+                reason,
+            },
+        );
+    }
+    used
+}
+
+/// A use's attempt: its checks, its spending and its payloads.
+fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch) -> Used {
     if !world.is_alive(entity) || world.has::<Despawning>(entity) {
         return Used::NoAbility;
     }
@@ -2045,11 +2092,16 @@ impl Ticker {
                 .get::<Intent>(entity)
                 .is_some_and(|intent| intent.held(slot))
         };
-        for entry in &mut abilities.entries {
+        let ready = |entry: &Entry| {
+            entry.cooldown_left <= 0.0 && entry.charges.is_none_or(|charges| charges > 0)
+        };
+        for (index, entry) in abilities.entries.iter_mut().enumerate() {
             let Some(ability) = definition(world, &entry.ability) else {
                 continue;
             };
+            let index = index as u16;
             if dt > 0.0 {
+                let was_ready = ready(entry);
                 entry.cooldown_left = count_down(entry.cooldown_left, dt * rate);
                 if let Some(c) = ability.charges {
                     let left = entry.charges.get_or_insert(c.max);
@@ -2068,6 +2120,9 @@ impl Ticker {
                 } else {
                     entry.charges = None;
                 }
+                if !was_ready && ready(entry) && cue_named(world, entity, ABILITY_READY) {
+                    self.scratch.cues.push((ABILITY_READY, index));
+                }
             }
             match &ability.trigger {
                 Trigger::Action(slot) => {
@@ -2075,10 +2130,18 @@ impl Ticker {
                         self.scratch.uses.push(entry.name.clone());
                     }
                 }
-                // A try each step held; the cooldown and charges refuse the
-                // rest, sending nothing.
+                // A try each step held, its cooldown and charges refusing the
+                // rest; the slot's going down and up cue when named.
                 Trigger::Held(slot) => {
-                    if held(slot) {
+                    let down = held(slot);
+                    if down != entry.held {
+                        entry.held = down;
+                        let event = if down { ABILITY_HELD } else { ABILITY_RELEASED };
+                        if cue_named(world, entity, event) {
+                            self.scratch.cues.push((event, index));
+                        }
+                    }
+                    if down {
                         self.scratch.uses.push(entry.name.clone());
                     }
                 }
@@ -2098,6 +2161,21 @@ impl Ticker {
             }
         }
         *world.get_mut::<Abilities>(entity).unwrap() = abilities;
+        if !self.scratch.cues.is_empty() {
+            let at = point_of(world, entity).unwrap_or(Vec2::ZERO);
+            for (event, entry) in self.scratch.cues.drain(..) {
+                push_ability_cue(
+                    world,
+                    AbilityCue {
+                        event,
+                        entity,
+                        at,
+                        entry,
+                        reason: 0,
+                    },
+                );
+            }
+        }
         let uses = std::mem::take(&mut self.scratch.uses);
         for name in &uses {
             use_with(world, entity, name, &mut self.scratch);
@@ -2183,6 +2261,7 @@ fn describe_abilities(world: &mut World) {
         .event("AbilityUsed")
         .genre(PLATFORMER)
         .genre(TOP_DOWN)
+        .genre(RPG)
         .genre(SHOOTER)
         .genre(ARPG)
         .sample(r#"["wand"]"#)
