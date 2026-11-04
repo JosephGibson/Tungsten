@@ -50,6 +50,12 @@
     },
     "oil_flask": {
       "path": "prefabs/oil_flask.json"
+    },
+    "ward_crate": {
+      "path": "prefabs/ward_crate.json"
+    },
+    "fogborn": {
+      "path": "prefabs/fogborn.json"
     }
   },
   "data": {
@@ -85,6 +91,9 @@
       },
       "run": {
         "path": "data/abilities/run.json"
+      },
+      "toll": {
+        "path": "data/abilities/toll.json"
       }
     },
     "effects": {

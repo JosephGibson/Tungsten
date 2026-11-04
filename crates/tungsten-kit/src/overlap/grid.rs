@@ -458,6 +458,17 @@ pub(crate) fn strike(world: &mut World, blow: &Blow<'_>) {
 /// `push_always`, as contact damage's does: its request carries the flag,
 /// and with no damage it pushes at once.
 pub(crate) fn strike_with(world: &mut World, blow: &Blow<'_>, push_always: bool) {
+    strike_from(world, blow, push_always, None);
+}
+
+/// [`strike_with`], striking from `carried`, a skill's delivery the item
+/// holds apart from its hitter, such as a cone's, when given.
+pub(crate) fn strike_from(
+    world: &mut World,
+    blow: &Blow<'_>,
+    push_always: bool,
+    carried: Option<&Delivery>,
+) {
     if let Some(queue) = world.get_resource_mut::<EventQueue<Struck>>() {
         queue.send(Struck::new(
             blow.hitter,
@@ -471,8 +482,10 @@ pub(crate) fn strike_with(world: &mut World, blow: &Blow<'_>, push_always: bool)
         other: Some(blow.target),
         amount: Some(blow.damage),
     });
-    let delivery = world.get::<Delivery>(blow.hitter).filter(|delivery| {
-        delivery.reaches(world.get::<Hitbox>(blow.hitter).map(Hitbox::activation))
+    let delivery = carried.or_else(|| {
+        world.get::<Delivery>(blow.hitter).filter(|delivery| {
+            delivery.reaches(world.get::<Hitbox>(blow.hitter).map(Hitbox::activation))
+        })
     });
     if blow.damage <= 0.0 && delivery.is_none() {
         if push_always

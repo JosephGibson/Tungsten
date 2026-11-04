@@ -1,0 +1,23 @@
+{
+  "tag": "fogborn",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 10
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 8
+      }
+    },
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 8
+      }
+    }
+  }
+}

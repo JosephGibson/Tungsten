@@ -38,6 +38,7 @@ use crate::motion::drive::{PrefabMotion, centre_of, point_of, prefab_centre, pre
 use crate::motion::knockback::knock_back;
 use crate::motion::linear::LinearMotion;
 use crate::motion::target::describe_target;
+use crate::overlap::cone::{CONE_PAYLOAD, Cone, ConeDef, describe_cone, fire as fire_cone, widen};
 use crate::overlap::hit::Hitbox;
 use crate::react::cues::{
     ABILITY_HELD, ABILITY_READY, ABILITY_REFUSED, ABILITY_RELEASED, AbilityCue, cue_named,
@@ -173,6 +174,9 @@ pub enum Payload {
     },
     /// A spawn placed by its centre or lobbed onto the aim's point.
     SpawnWith(Box<SpawnWith>),
+    /// Rays fanned about the direction, hitting and pushing what they meet,
+    /// at once or as a widening front ([`Cone`]).
+    Cone(Box<Cone>),
     /// An effect queued on the target entity, from the entity.
     Effect(DataRef<Effect>),
     /// The entity pushed along the direction at this speed, through its
@@ -188,7 +192,7 @@ impl Payload {
         match self {
             Payload::Spawn { speed, .. } => *speed > 0.0,
             Payload::SpawnWith(spawn) => spawn.speed > 0.0,
-            Payload::Impulse(_) => true,
+            Payload::Impulse(_) | Payload::Cone(_) => true,
             Payload::Effect(_) | Payload::Hitbox(_) => false,
         }
     }
@@ -812,8 +816,8 @@ impl Ability {
                 seconds.is_finite() && *seconds > 0.0,
                 "Ability::with_payload: a hitbox window must be finite and > 0 (got {seconds})"
             ),
-            // A spawn with options was checked by its builder.
-            Payload::SpawnWith(_) | Payload::Effect(_) => {}
+            // A spawn with options and a cone were checked by their builders.
+            Payload::SpawnWith(_) | Payload::Cone(_) | Payload::Effect(_) => {}
         }
         self.payload.push(payload);
         self
@@ -934,6 +938,7 @@ impl Ability {
                     }
                 }
                 Payload::Effect(effect) => effect.check(world, &format!("payload.{i}.effect"))?,
+                Payload::Cone(cone) => cone.check(world, &format!("payload.{i}.cone"))?,
                 Payload::Impulse(_) | Payload::Hitbox(_) => {}
             }
         }
@@ -1253,6 +1258,7 @@ impl Default for TargetDef {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 enum PayloadDef {
     Spawn(SpawnDef),
+    Cone(ConeDef),
     Effect(DataRef<Effect>),
     Impulse(#[serde(deserialize_with = "non_negative")] f32),
     Hitbox(#[serde(deserialize_with = "positive")] f32),
@@ -1396,6 +1402,7 @@ impl TryFrom<AbilityDef> for Ability {
                         speed: spawn.speed,
                         offset: spawn.offset,
                     },
+                    PayloadDef::Cone(cone) => Payload::Cone(Box::new(Cone::from(cone))),
                     PayloadDef::Effect(effect) => Payload::Effect(effect),
                     PayloadDef::Impulse(speed) => Payload::Impulse(speed),
                     PayloadDef::Hitbox(seconds) => Payload::Hitbox(seconds),
@@ -1454,6 +1461,7 @@ impl From<Ability> for AbilityDef {
                         centred: false,
                         lob: None,
                     }),
+                    Payload::Cone(cone) => PayloadDef::Cone(ConeDef::from(*cone)),
                     Payload::SpawnWith(spawn) => PayloadDef::Spawn(SpawnDef {
                         prefab: spawn.prefab,
                         speed: spawn.speed,
@@ -2475,6 +2483,11 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
                     skip(world, entity, "impulse", NO_KNOCKBACK);
                 }
             }
+            Payload::Cone(cone) => {
+                let along = direction.unwrap_or(Vec2::X);
+                let delivery = sheet.as_ref().map(|sheet| sheet.delivery.clone());
+                fire_cone(world, entity, along, cone, delivery);
+            }
             Payload::Hitbox(seconds) => match world.get_mut::<Hitbox>(entity) {
                 Some(hitbox) => {
                     hitbox.arm_for(*seconds);
@@ -2519,6 +2532,7 @@ impl Ticker {
             .get_resource::<Time>()
             .map_or(0.0, Time::delta)
             .max(0.0);
+        widen(world, dt);
         self.scratch.begin();
         self.scratch.entities.clear();
         self.scratch.entities.extend(
@@ -2676,6 +2690,7 @@ impl Plugin for AbilitiesPlugin {
         world.register_saved::<Abilities>(ABILITIES);
         world.register_saved_with(DELIVERY, delivery_saved());
         describe_target(world);
+        describe_cone(world);
         describe_abilities(world);
         describe_skills(world, SKILL, SKILL_BASES, SKILL_LINE);
         world.register_event::<AbilityUsed>();
@@ -2941,6 +2956,11 @@ fn describe_abilities(world: &mut World) {
                     max: Bound::Open,
                 },
                 "seconds the entity's own hitbox is armed for",
+            ))
+            .field(FieldDescription::new(
+                "cone",
+                FieldType::Shape(CONE_PAYLOAD),
+                "rays fanned about the direction from the entity's centre, hitting and pushing what they meet, at once or as a widening front",
             ))
             .sample(r#"{ "impulse": 600 }"#)
             .roundtrip(round_trip::<PayloadDef>),

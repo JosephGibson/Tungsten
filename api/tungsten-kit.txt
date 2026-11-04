@@ -139,6 +139,7 @@ impl core::marker::UnsafeUnpin for tungsten_kit::Modifier
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Modifier
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Modifier
 #[non_exhaustive] pub enum tungsten_kit::prelude::Payload
+pub tungsten_kit::prelude::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
 pub tungsten_kit::prelude::Payload::Effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>)
 pub tungsten_kit::prelude::Payload::Hitbox(f32)
 pub tungsten_kit::prelude::Payload::Impulse(f32)
@@ -797,6 +798,36 @@ impl core::marker::Unpin for tungsten_kit::Clips
 impl core::marker::UnsafeUnpin for tungsten_kit::Clips
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Clips
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Clips
+pub struct tungsten_kit::prelude::Cone
+impl tungsten_kit::Cone
+pub fn tungsten_kit::Cone::far(&self) -> f32
+pub fn tungsten_kit::Cone::half_angle(&self) -> f32
+pub fn tungsten_kit::Cone::new(f32, f32, f32) -> Self
+pub fn tungsten_kit::Cone::push(&self) -> f32
+pub fn tungsten_kit::Cone::rays(&self) -> u32
+pub fn tungsten_kit::Cone::reach(&self) -> f32
+pub fn tungsten_kit::Cone::sweep(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Cone::with_far(self, f32) -> Self
+pub fn tungsten_kit::Cone::with_filter(self, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::Cone::with_knockback(self, f32) -> Self
+pub fn tungsten_kit::Cone::with_push(self, f32) -> Self
+pub fn tungsten_kit::Cone::with_rays(self, u32) -> Self
+pub fn tungsten_kit::Cone::with_sweep(self, f32) -> Self
+pub fn tungsten_kit::Cone::with_tags(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+impl core::clone::Clone for tungsten_kit::Cone
+pub fn tungsten_kit::Cone::clone(&self) -> tungsten_kit::Cone
+impl core::cmp::PartialEq for tungsten_kit::Cone
+pub fn tungsten_kit::Cone::eq(&self, &tungsten_kit::Cone) -> bool
+impl core::fmt::Debug for tungsten_kit::Cone
+pub fn tungsten_kit::Cone::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Cone
+impl core::marker::Freeze for tungsten_kit::Cone
+impl core::marker::Send for tungsten_kit::Cone
+impl core::marker::Sync for tungsten_kit::Cone
+impl core::marker::Unpin for tungsten_kit::Cone
+impl core::marker::UnsafeUnpin for tungsten_kit::Cone
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Cone
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cone
 pub struct tungsten_kit::prelude::ContactDamage
 impl tungsten_kit::ContactDamage
 pub fn tungsten_kit::ContactDamage::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
@@ -4269,6 +4300,7 @@ impl core::marker::UnsafeUnpin for tungsten_kit::OriginStep
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::OriginStep
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::OriginStep
 #[non_exhaustive] pub enum tungsten_kit::Payload
+pub tungsten_kit::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
 pub tungsten_kit::Payload::Effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>)
 pub tungsten_kit::Payload::Hitbox(f32)
 pub tungsten_kit::Payload::Impulse(f32)
@@ -5016,6 +5048,36 @@ impl core::marker::Unpin for tungsten_kit::ComponentDescription
 impl core::marker::UnsafeUnpin for tungsten_kit::ComponentDescription
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ComponentDescription
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ComponentDescription
+pub struct tungsten_kit::Cone
+impl tungsten_kit::Cone
+pub fn tungsten_kit::Cone::far(&self) -> f32
+pub fn tungsten_kit::Cone::half_angle(&self) -> f32
+pub fn tungsten_kit::Cone::new(f32, f32, f32) -> Self
+pub fn tungsten_kit::Cone::push(&self) -> f32
+pub fn tungsten_kit::Cone::rays(&self) -> u32
+pub fn tungsten_kit::Cone::reach(&self) -> f32
+pub fn tungsten_kit::Cone::sweep(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Cone::with_far(self, f32) -> Self
+pub fn tungsten_kit::Cone::with_filter(self, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::Cone::with_knockback(self, f32) -> Self
+pub fn tungsten_kit::Cone::with_push(self, f32) -> Self
+pub fn tungsten_kit::Cone::with_rays(self, u32) -> Self
+pub fn tungsten_kit::Cone::with_sweep(self, f32) -> Self
+pub fn tungsten_kit::Cone::with_tags(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+impl core::clone::Clone for tungsten_kit::Cone
+pub fn tungsten_kit::Cone::clone(&self) -> tungsten_kit::Cone
+impl core::cmp::PartialEq for tungsten_kit::Cone
+pub fn tungsten_kit::Cone::eq(&self, &tungsten_kit::Cone) -> bool
+impl core::fmt::Debug for tungsten_kit::Cone
+pub fn tungsten_kit::Cone::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Cone
+impl core::marker::Freeze for tungsten_kit::Cone
+impl core::marker::Send for tungsten_kit::Cone
+impl core::marker::Sync for tungsten_kit::Cone
+impl core::marker::Unpin for tungsten_kit::Cone
+impl core::marker::UnsafeUnpin for tungsten_kit::Cone
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Cone
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cone
 pub struct tungsten_kit::ContactDamage
 impl tungsten_kit::ContactDamage
 pub fn tungsten_kit::ContactDamage::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>

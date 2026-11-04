@@ -77,6 +77,15 @@
     },
     "grenade": {
       "path": "prefabs/grenade.json"
+    },
+    "cryo_trooper": {
+      "path": "prefabs/cryo_trooper.json"
+    },
+    "drone": {
+      "path": "prefabs/drone.json"
+    },
+    "bulkhead": {
+      "path": "prefabs/bulkhead.json"
     }
   },
   "data": {
@@ -127,6 +136,9 @@
       },
       "lob_grenade": {
         "path": "data/abilities/lob_grenade.json"
+      },
+      "cryo": {
+        "path": "data/abilities/cryo.json"
       }
     },
     "stats": {

@@ -3,7 +3,8 @@
 //! expires, and the camera on the rogue; M64's crawlers and warden; M65's
 //! adventurer and its swing, a chest and its loot, gold and spikes; M67's
 //! blessing and level on the adventurer; 7.10c's lantern warden, Lantern
-//! Ward's: its bell, flask and run as cue events, its flask from its centre.
+//! Ward's: its bell, flask and run as cue events, its flask from its centre,
+//! its toll's wave.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -477,6 +478,50 @@ fn a_flask_leaves_from_the_wardens_centre() {
             crate::kit::centre_of(harness.world(), flask),
             Some(centre),
             "dt {dt}: its centre on the warden's"
+        );
+    }
+}
+
+// 7.10c, Step 6: the warden's toll, a sweeping cone (S-15).
+
+#[test]
+fn the_bells_wave_pushes_a_crate_and_knocks_back_once() {
+    use tungsten_core::physics::Velocity;
+    for dt in DTS {
+        let (mut harness, warden) = warden(dt);
+        let fogborn = spawn(&mut harness, "fogborn", [200.0, 100.0]);
+        let crate_ = spawn(&mut harness, "ward_crate", [150.0, 120.0]);
+        harness.step(1);
+        assert_eq!(
+            crate::kit::use_ability(harness.world_mut(), warden, "toll"),
+            crate::kit::Used::Used
+        );
+        let mut hits = 0;
+        for _ in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            hits += harness
+                .events::<crate::kit::Damaged>()
+                .filter(|hit| hit.entity == fogborn)
+                .count();
+        }
+        let velocity = |entity: Entity| harness.world().get::<Velocity>(entity).unwrap().0;
+        let pushed = velocity(crate_);
+        // Nine rays every 7.5 degrees along +x, toward the fogborn: the
+        // crate, 21.8 degrees off, met by the 22.5-degree ray.
+        let along = glam::Vec2::from_angle(22.5_f32.to_radians()) * 400.0;
+        assert!(
+            (pushed - along).length() < 0.5,
+            "dt {dt}: the crate pushed once along its ray: {pushed}"
+        );
+        assert!(
+            (velocity(fogborn) - glam::Vec2::new(400.0, 0.0)).length() < 0.5,
+            "dt {dt}: the fogborn knocked back once: {}",
+            velocity(fogborn)
+        );
+        assert_eq!(hits, 1, "dt {dt}: and hit once");
+        assert_eq!(
+            harness.world().get::<Health>(fogborn).unwrap().current(),
+            9.0
         );
     }
 }

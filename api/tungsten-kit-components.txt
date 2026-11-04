@@ -337,6 +337,7 @@ shape ability_payload: One thing a use does.
   field effect: effects ID or entry — an effect queued on the target from the entity; the load checks it
   field impulse: f32 (>= 0) — world pixels per second the entity is pushed along the direction, through its knockback
   field hitbox: f32 (> 0) — seconds the entity's own hitbox is armed for
+  field cone: shape cone_payload — rays fanned about the direction from the entity's centre, hitting and pushing what they meet, at once or as a widening front
   sample: { "impulse": 600 }
 shape ability_target: What an ability aims at.
   exactly one of its fields
@@ -389,6 +390,18 @@ shape child: One child: its prefab and its offset from the parent.
   field prefab: prefab ID — what it spawns; the load checks the ID and refuses a prefab with a `rigid_body`
   field offset: [x, y] = [0.0, 0.0] — world pixels from the parent's position
   sample: { "prefab": "glow" }
+shape cone_payload: Rays fanned about the use's direction from the user's centre, each to its first wall, a solid tile or a static body: the hurtboxes they meet hit once, the dynamic bodies pushed once, at once or as a widening front.
+  field reach: f32 (> 0) — world pixels each ray runs, short of a wall
+  field half_angle: f32 (> 0, <= 180) — degrees either side of the direction the rays fan across
+  field rays: u32 (>= 1) = 7 — rays fanned evenly across the cone
+  field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 = 0.0 — each hit's damage, which a `damage` stat writes; a map of declared damage types to amounts gives its typed parts, in name order, which the stat scales; 0 is a trigger whose `hit` cues run
+  field tags: list of tag = [] — the damage's types, as a hitbox's; refused beside a `damage` map
+  field filter: tag filter = {} — the hurtboxes it hits, by their entity's tags; the load checks its tags
+  field knockback: f32 (>= 0) = 0.0 — world pixels per second pushing a target it hurts away, as a hitbox's
+  field sweep: f32 (> 0) = null — world pixels per second a front widens from the user, landing each as it passes; at once when left out
+  field push: f32 (>= 0) = 0.0 — world pixels per second a dynamic body of mass 1 is pushed along the ray that meets it, once
+  field far: f32 (>= 0, <= 1) = 1.0 — the strengths' share at the reach, falling linearly from whole at the user
+  sample: { "reach": 380, "half_angle": 14 }
 shape consume_output: Intensity taken off a status.
   field status: effects ID or entry — the status; the load checks it
   field amount: f32 (> 0) — taken off; at 0 it has run out

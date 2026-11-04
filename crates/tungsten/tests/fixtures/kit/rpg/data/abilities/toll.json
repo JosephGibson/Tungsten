@@ -1,0 +1,27 @@
+{
+  "target": {
+    "nearest": {
+      "all": [
+        "team.enemy"
+      ],
+      "range": 400
+    }
+  },
+  "payload": [
+    {
+      "cone": {
+        "reach": 240,
+        "half_angle": 30,
+        "rays": 9,
+        "damage": 1,
+        "filter": {
+          "all": [
+            "team.enemy"
+          ]
+        },
+        "sweep": 600,
+        "push": 400
+      }
+    }
+  ]
+}

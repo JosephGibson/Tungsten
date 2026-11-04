@@ -7,7 +7,8 @@
 //! ship's cannon and the turret's pulse; M74's acid named after a load, the
 //! acid ladder's held rung and a game's own damage numbers; M75's drone
 //! saved mid-volley; 7.10c's breacher, Static Front's: its SMG held, its
-//! dodge along the move stick and its reload's sweep; a lobber's grenade.
+//! dodge along the move stick and its reload's sweep; a lobber's grenade; a
+//! cryo trooper's cone.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1449,5 +1450,39 @@ fn a_lobbed_grenade_lands_on_the_breacher() {
             "dt {dt}: on the breacher at its last step: {landed}"
         );
         assert!(highest < -45.0, "dt {dt}: an arc: {highest}");
+    }
+}
+
+// 7.10c, Step 6: Static Front's cryo sprayer, a cone stopped by walls (SF30, S-15).
+
+#[test]
+fn the_cryo_sprayer_hits_the_drones_its_rays_reach() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "cryo_trooper", [0.0, 0.0]);
+        // Seven rays at 0, ±4.7, ±9.3 and ±14 degrees along +x; the
+        // bulkhead covers y 30 to 70 at x 150, across the upper ray.
+        let near = spawn(&mut harness, "drone", [200.0, 10.0]);
+        let far = spawn(&mut harness, "drone", [320.0, -30.0]);
+        let walled = spawn(&mut harness, "drone", [260.0, 60.0]);
+        spawn(&mut harness, "bulkhead", [150.0, 50.0]);
+        harness.step(1);
+        harness.press_action("fire");
+        harness.step(1);
+        harness.release_action("fire");
+        let mut struck: Vec<Entity> = harness.events::<Struck>().map(|hit| hit.target).collect();
+        struck.sort_by_key(|entity| entity.id());
+        assert_eq!(
+            struck,
+            [near, far],
+            "dt {dt}: each once, none behind the wall"
+        );
+        harness.step(frames_for(0.2, dt));
+        let health = |entity: Entity| harness.world().get::<Health>(entity).unwrap().current();
+        assert_eq!(
+            [near, far, walled].map(health),
+            [17.0, 17.0, 20.0],
+            "dt {dt}: 3 each where the rays reach"
+        );
     }
 }

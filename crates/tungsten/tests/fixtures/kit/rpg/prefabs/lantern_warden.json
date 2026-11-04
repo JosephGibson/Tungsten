@@ -32,7 +32,8 @@
     "abilities": [
       "bell",
       "flask",
-      "run"
+      "run",
+      "toll"
     ],
     "cues": {
       "ability_held": [

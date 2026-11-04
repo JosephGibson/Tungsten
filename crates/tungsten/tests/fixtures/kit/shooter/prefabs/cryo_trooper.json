@@ -1,0 +1,31 @@
+{
+  "tag": "cryo_trooper",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ],
+      "slots": {
+        "spray": "fire"
+      }
+    },
+    "aim": {
+      "from": "target",
+      "target": {
+        "point": [
+          1000,
+          0
+        ]
+      }
+    },
+    "abilities": [
+      "cryo"
+    ]
+  }
+}

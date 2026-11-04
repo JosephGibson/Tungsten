@@ -127,8 +127,8 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     assert_eq!(kinds.len(), 11);
     assert_eq!(
         descriptions.shapes().count(),
-        73,
-        "7.10c's lob and the prefab and roll actions' object forms"
+        74,
+        "7.10c's lob, the prefab and roll actions' object forms and the cone payload"
     );
 }
 
@@ -244,9 +244,9 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 48,
+        probed, 49,
         "the cue action's fourteen forms, the target's three, the hit shape's two, the modifier's \
-         four, the ability trigger's four, its target's four, its payload's four, the offer's two \
+         four, the ability trigger's four, its target's four, its payload's five, the offer's two \
          and a chemistry output's eleven"
     );
 }
@@ -391,11 +391,12 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 149,
+        checked, 157,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
          four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
          hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
-         radius and intensity and sound's volume, and a lob's speed"
+         radius and intensity and sound's volume, a lob's speed, and a cone's reach, half \
+         angle, rays, damage, knockback, sweep, push and far share"
     );
 }
 
@@ -405,7 +406,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 45);
-    assert_eq!(count("shape "), 73);
+    assert_eq!(count("shape "), 74);
     assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

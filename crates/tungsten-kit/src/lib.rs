@@ -307,6 +307,7 @@ pub use motion::steering::{STEERING, Steering, SteeringPlugin};
 pub use motion::target::Target;
 pub use motion::top_down::{TOP_DOWN_MOVER, TopDownMover, TopDownMoverPlugin};
 pub use motion::wrap::{WRAP, Wrap, WrapPlugin};
+pub use overlap::cone::Cone;
 pub use overlap::contact::{CONTACT_DAMAGE, ContactDamage, ContactDamagePlugin, ContactTouch};
 pub use overlap::hit::{HIT_GRID, HITBOX_TICK, HitPlugin, HitShape, Hitbox, Hurtbox, Struck};
 pub use overlap::pickup::{PICKUP_MAGNET, PICKUP_TICK, PickedUp, Pickup, PickupPlugin};
@@ -344,7 +345,7 @@ pub mod prelude {
         Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, ActionInput,
         ActionInputPlugin, AilmentBuckets, AilmentRung, AilmentThreshold, Aim, AimPlugin,
         AnimationPlugin, Applied, CameraTarget, CameraTargetPlugin, CharacterAnimator,
-        CharacterAnimatorPlugin, Chemistry, ChemistryPlugin, Children, Clips, ContactDamage,
+        CharacterAnimatorPlugin, Chemistry, ChemistryPlugin, Children, Clips, Cone, ContactDamage,
         ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed, CooldownPlugin, Counters,
         CountersPlugin, CueAction, CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin, Curve,
         DamageKinds, DamagePart, DamageRequest, Damaged, DamagedPart, DepthSort, DepthSortPlugin,

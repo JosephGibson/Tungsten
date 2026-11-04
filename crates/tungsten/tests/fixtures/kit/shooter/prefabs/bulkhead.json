@@ -1,0 +1,15 @@
+{
+  "tag": "bulkhead",
+  "components": {
+    "rigid_body": {
+      "kind": "static",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          5,
+          20
+        ]
+      }
+    }
+  }
+}

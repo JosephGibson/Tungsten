@@ -1,0 +1,12 @@
+{
+  "tag": "ward_crate",
+  "components": {
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 6
+      }
+    }
+  }
+}

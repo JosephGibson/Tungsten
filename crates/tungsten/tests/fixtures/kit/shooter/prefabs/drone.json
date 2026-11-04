@@ -1,0 +1,16 @@
+{
+  "tag": "drone",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 20
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 8
+      }
+    }
+  }
+}
