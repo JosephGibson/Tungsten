@@ -21,7 +21,8 @@
 //! crackle loops by a listener following the hero past it, a storm whose
 //! recipe system plays the `thunder` world cue each second, and a
 //! shield-bearer whose whole blocks flash the shield's colour, and a
-//! kindled lantern whose look tints it over a colour tween and glows.
+//! kindled lantern whose look tints it over a colour tween and glows, and
+//! a blazing crate whose look lights a lurker and crackles.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -1225,6 +1226,37 @@ fn a_kindled_lanterns_tint_rides_its_colour_tween_and_glows_under_it() {
             "dt {dt}: {lit_frames} and {after}"
         );
     }
+}
+
+#[test]
+fn a_blazing_crates_light_reaches_a_lurker_alike_at_any_frame_rate_and_crackles() {
+    let mut taken = Vec::new();
+    for dt in [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0] {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let crate_ = spawn(&mut harness, "crate", [100.0, 100.0]);
+        let lurker = spawn(&mut harness, "lurker", [150.0, 100.0]);
+        EffectRequest::new(crate_, DataRef::by_id("blazing")).apply(harness.world_mut());
+        let (mut plays, mut stops) = (0, 0);
+        for _ in 0..frames_for(3.5, dt) {
+            harness.step(1);
+            for command in harness.audio() {
+                match command {
+                    AudioCommand::Play { looping: true, .. } => plays += 1,
+                    AudioCommand::StopVoice { .. } => stops += 1,
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(
+            (plays, stops),
+            (1, 1),
+            "dt {dt}: one crackle, ended with the blaze"
+        );
+        taken.push(traced_steps(&harness, lurker, "effect_applied"));
+    }
+    assert!(!taken[0].is_empty(), "the light reached it: {:?}", taken[0]);
+    assert_eq!(taken[0], taken[1], "dt 1/30, two fixed steps a frame");
+    assert_eq!(taken[0], taken[2], "dt 1/144");
 }
 
 #[test]

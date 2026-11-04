@@ -17,7 +17,8 @@
 //! interval, charges whose blasts shake by their distance from a listener
 //! following the hero, a crate whose break a recipe system plays as the
 //! `crate_break` world cue, a turret under rapid fire whose flash waits
-//! its interval, and a blob whose frosting shows its band's overlay.
+//! its interval, a blob whose frosting shows its band's overlay, and a keg
+//! whose sparking look emits at its sheet's `fuse` point frame by frame.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1939,5 +1940,69 @@ fn a_blobs_frosting_shows_its_bands_overlay_as_it_wears() {
         );
         harness.step(frames_for(3.0, dt));
         assert!(overlays(&harness).is_empty(), "dt {dt}: worn out");
+    }
+}
+
+#[test]
+fn a_kegs_sparks_start_at_its_fuse_point_frame_by_frame() {
+    use std::collections::HashSet;
+    use tungsten_core::{AnimationState, AssetRegistry, Particle, Sprite, Visibility};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness
+            .register_sprites(super::fixture_dir(GENRE).join("manifest.json"))
+            .unwrap();
+        let assets = harness.world().resource::<AssetRegistry>();
+        let frames = [
+            assets.sprite_id("keg_0").unwrap(),
+            assets.sprite_id("keg_1").unwrap(),
+        ];
+        let fuse = |sprite| {
+            if sprite == frames[0] {
+                Vec2::new(4.0, 0.0)
+            } else {
+                Vec2::new(12.0, 1.0)
+            }
+        };
+        let keg = harness.world_mut().spawn_with((
+            Transform::from_position(Vec2::new(0.0, 100.0)),
+            Sprite::new(frames[0]),
+            AnimationState::new("keg_burn"),
+            Visibility::default(),
+        ));
+        EffectRequest::new(keg, DataRef::by_id("sparking")).apply(harness.world_mut());
+        let (mut seen, mut checked, mut changes) = (HashSet::new(), 0, 0);
+        let mut shown = frames[0];
+        for _ in 0..frames_for(1.0, dt) {
+            // The keg moves at 600 px/s; the sparks emit before this frame's
+            // animation, from the frame it shows now.
+            let at = {
+                let transform = harness.world_mut().get_mut::<Transform>(keg).unwrap();
+                transform.position.x += 600.0 * dt;
+                transform.position
+            };
+            let expected = at + fuse(shown);
+            harness.step(1);
+            let new: Vec<(tungsten_core::Entity, Vec2)> = harness
+                .world()
+                .query::<(tungsten_core::Entity, &Particle, &Transform)>()
+                .filter(|(entity, ..)| !seen.contains(entity))
+                .map(|(entity, _, transform)| (entity, transform.position))
+                .collect();
+            for (entity, start) in new {
+                assert!(
+                    start.distance(expected) < 1e-3,
+                    "dt {dt}: a spark at {start}, the fuse at {expected}"
+                );
+                seen.insert(entity);
+                checked += 1;
+            }
+            let now = harness.world().get::<Sprite>(keg).unwrap().asset_id;
+            changes += u32::from(now != shown);
+            shown = now;
+        }
+        assert!(checked >= 20, "dt {dt}: {checked} sparks");
+        assert!(changes >= 5, "dt {dt}: {changes} frame changes");
     }
 }

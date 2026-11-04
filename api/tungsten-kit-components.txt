@@ -562,11 +562,19 @@ shape look: What a status shows on its holder while it runs, by its share: a tin
   field tint: [r, g, b, a] = null — linear: the holder's sprite colour taken toward it by the share times its alpha; several multiply
   field overlay: shape look_overlay = null — a clip played on an entity riding the holder
   field glow: shape look_glow = null — `engine_white` through `engine_glow` under the holder, its alpha by the share
+  field particles: shape look_particles = null — an emitter at the holder's named sprite point, following its frame, flip and turn, its rate by the share
+  field light: shape look_light = null — a point light at the holder, its intensity by the share, kept on the fixed step
+  field sound: shape look_sound = null — a looping sound the instance wants by the holder's place, its volume by the share
   sample: {}
 shape look_glow: A soft glow under the holder.
   field color: [r, g, b, a] — linear; its alpha by the share
   field radius: f32 (> 0) — world pixels about the holder's drawn centre
   sample: { "color": [1.0, 0.5, 0.0, 1.0], "radius": 16 }
+shape look_light: A point light at the holder, kept on the fixed step.
+  field color: [r, g, b, a] — linear; its alpha scales the intensity
+  field radius: f32 (> 0) — world pixels it reaches
+  field intensity: f32 (>= 0) = 1.0 — at a share of 1
+  sample: { "color": [1.0, 0.6, 0.2, 1.0], "radius": 64 }
 shape look_overlay: A clip looped on an entity at the holder's drawn centre plus its offset, mirrored and turned with it.
   field animation: text — the manifest animation; the load checks it
   field speed: f32 (>= 0) = 1.0 — its playback rate
@@ -574,6 +582,14 @@ shape look_overlay: A clip looped on an entity at the holder's drawn centre plus
   field z: i64 (>= -2147483648, <= 2147483647) = 1 — its depth above the holder's
   field material: text = null — a manifest material it draws through; the load checks it
   sample: { "animation": "frost" }
+shape look_particles: An emitter riding the holder.
+  field config: text — the manifest particle config; the load checks it
+  field at: text = null — the holder's sprite point it emits at, its drawn centre on a frame without it
+  sample: { "config": "sparks" }
+shape look_sound: A looping sound the running look wants.
+  field id: text — the manifest sound; the load checks it
+  field volume: f32 (>= 0) = 1.0 — its want's share of the sound's volume at a share of 1
+  sample: { "id": "crackle" }
 shape loop_action: A manifest sound the subject wants looping: one voice per sound ID, at the loudest of its wants, each its volume times the cue listener's gain at its wanter, panned toward that one; unsaved.
   field id: text — the manifest sound; the load checks the ID
   field volume: f32 (>= 0) = 1.0 — the want's share of the sound's volume

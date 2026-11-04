@@ -1,0 +1,19 @@
+{
+  "sprite": "keg_0",
+  "max_alive": 64,
+  "emission": {
+    "kind": "continuous",
+    "rate_hz": 30.0
+  },
+  "lifetime": {
+    "min": 0.5,
+    "max": 0.5
+  },
+  "initial_velocity": {
+    "kind": "radial",
+    "speed": {
+      "min": 0.0,
+      "max": 0.0
+    }
+  }
+}

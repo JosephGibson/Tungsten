@@ -6817,7 +6817,11 @@ impl tungsten_kit::Look
 pub fn tungsten_kit::Look::new() -> Self
 pub fn tungsten_kit::Look::tint(&self) -> core::option::Option<[f32; 4]>
 pub fn tungsten_kit::Look::with_glow(self, [f32; 4], f32) -> Self
+pub fn tungsten_kit::Look::with_light(self, [f32; 4], f32, f32) -> Self
 pub fn tungsten_kit::Look::with_overlay(self, tungsten_kit::Overlay) -> Self
+pub fn tungsten_kit::Look::with_particles(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Look::with_particles_at(self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Look::with_sound(self, impl core::convert::Into<alloc::string::String>, f32) -> Self
 pub fn tungsten_kit::Look::with_tint(self, [f32; 4]) -> Self
 impl core::clone::Clone for tungsten_kit::Look
 pub fn tungsten_kit::Look::clone(&self) -> tungsten_kit::Look

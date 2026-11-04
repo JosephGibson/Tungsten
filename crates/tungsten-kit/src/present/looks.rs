@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::components::SpriteFlip;
 use tungsten_core::{
     AnimationRegistry, AnimationState, AssetRegistry, Entity, MaterialRegistry, MissingAsset,
-    Sprite, Transform, Visibility, World,
+    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, SoundRegistry, Sprite,
+    Transform, Visibility, World, sprite_point,
 };
 
 use crate::foundation::describe::{
@@ -49,6 +50,17 @@ const ENGINE_GLOW: &str = "engine_glow";
 /// - `glow`, `{ "color", "radius" }`: `engine_white` through `engine_glow`,
 ///   `radius` px about the drawn centre, one below the holder, its alpha by
 ///   the share.
+/// - `particles`, `{ "config", "at" }`: an emitter of the particle config at
+///   the holder's named sprite point `at`, else its drawn centre, moved
+///   there each frame, so it follows the frame, the flip and the turn, its
+///   `rate_scale` the share; its live particles age out after it.
+/// - `light`, `{ "color", "radius", "intensity" }`: a point `Light` at the
+///   holder's point, its `Position`, else its `Transform`, its intensity
+///   times the share, kept on the fixed step, so chemistry's light reads it
+///   alike at any frame rate.
+/// - `sound`, `{ "id", "volume" }`: the instance wants the looping sound at
+///   its volume times the share by the holder's place, sharing its one
+///   voice with any other look's or cue `loop`'s, the largest want heard.
 ///
 /// An [`Effect`](crate::Effect)'s `look`, or a band's, which replaces the
 /// effect's while that band is the highest its intensity holds. The parts
@@ -73,6 +85,32 @@ pub struct Look {
     tint: Option<[f32; 4]>,
     overlay: Option<Overlay>,
     glow: Option<Glow>,
+    particles: Option<LookParticles>,
+    pub(crate) light: Option<LookLight>,
+    pub(crate) sound: Option<LookSound>,
+}
+
+/// A look's particles: the config and the named point they emit at.
+#[derive(Debug, Clone, PartialEq)]
+struct LookParticles {
+    config: String,
+    at: Option<String>,
+}
+
+/// A look's light: a point light's colour, its alpha scaling the
+/// intensity, its radius and intensity.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LookLight {
+    pub(crate) color: [f32; 4],
+    pub(crate) radius: f32,
+    pub(crate) intensity: f32,
+}
+
+/// A look's sound: the looping sound it wants and its volume.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LookSound {
+    pub(crate) id: String,
+    pub(crate) volume: f32,
 }
 
 /// A look's overlay: a clip played on an entity riding the holder. Build
@@ -144,15 +182,89 @@ impl Look {
         self
     }
 
+    /// The look, emitting particle config `config` from its holder's
+    /// drawn centre, its rate by the share.
+    #[must_use]
+    pub fn with_particles(mut self, config: impl Into<String>) -> Self {
+        self.particles = Some(LookParticles {
+            config: config.into(),
+            at: None,
+        });
+        self
+    }
+
+    /// The look, emitting particle config `config` from its holder's named
+    /// sprite point `point` ([`sprite_point`]), its drawn centre on a frame
+    /// without it.
+    #[must_use]
+    pub fn with_particles_at(
+        mut self,
+        config: impl Into<String>,
+        point: impl Into<String>,
+    ) -> Self {
+        self.particles = Some(LookParticles {
+            config: config.into(),
+            at: Some(point.into()),
+        });
+        self
+    }
+
+    /// The look, lighting its holder: a point light of linear `color`, its
+    /// alpha scaling the intensity, `radius` px, at `intensity` times the
+    /// share.
+    ///
+    /// # Panics
+    ///
+    /// When a channel is not finite, `radius` is not finite and above 0,
+    /// or `intensity` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_light(mut self, color: [f32; 4], radius: f32, intensity: f32) -> Self {
+        assert!(
+            color.iter().all(|channel| channel.is_finite())
+                && radius.is_finite()
+                && radius > 0.0
+                && intensity.is_finite()
+                && intensity >= 0.0,
+            "Look::with_light: needs a finite colour, a radius above 0 and an intensity of at least 0"
+        );
+        self.light = Some(LookLight {
+            color,
+            radius,
+            intensity,
+        });
+        self
+    }
+
+    /// The look, looping manifest sound `id` at `volume` times the share
+    /// while it runs.
+    ///
+    /// # Panics
+    ///
+    /// When `volume` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_sound(mut self, id: impl Into<String>, volume: f32) -> Self {
+        assert!(
+            volume.is_finite() && volume >= 0.0,
+            "Look::with_sound: volume must be finite and >= 0 (got {volume})"
+        );
+        self.sound = Some(LookSound {
+            id: id.into(),
+            volume,
+        });
+        self
+    }
+
     /// Its tint, if any.
     #[must_use]
     pub fn tint(&self) -> Option<[f32; 4]> {
         self.tint
     }
 
-    /// Whether it shows anything the passes keep entities for.
+    /// Whether it shows anything the frame passes keep entities for.
     fn has_parts(&self) -> bool {
-        self.overlay.is_some() || self.glow.is_some()
+        self.overlay.is_some() || self.glow.is_some() || self.particles.is_some()
     }
 
     /// Checks the IDs it names against the World's registries: the
@@ -178,6 +290,26 @@ impl Look {
                     material.as_str(),
                 ));
             }
+        }
+        if let Some(particles) = &self.particles
+            && let Some(configs) = world.get_resource::<ParticleConfigRegistry>()
+            && configs.id_for_name(&particles.config).is_none()
+        {
+            return Err(MissingAsset::new(
+                format!("{field}.particles.config"),
+                "particle config",
+                particles.config.as_str(),
+            ));
+        }
+        if let Some(sound) = &self.sound
+            && let Some(sounds) = world.get_resource::<SoundRegistry>()
+            && sounds.get_by_id(&sound.id).is_none()
+        {
+            return Err(MissingAsset::new(
+                format!("{field}.sound.id"),
+                "sound",
+                sound.id.as_str(),
+            ));
         }
         Ok(())
     }
@@ -250,6 +382,64 @@ pub(crate) struct LookDef {
     overlay: Option<OverlayDef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     glow: Option<GlowDef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    particles: Option<ParticlesDef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    light: Option<LightDef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sound: Option<LookSoundDef>,
+}
+
+/// A look's particles as data writes them.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ParticlesDef {
+    config: String,
+    #[serde(default)]
+    at: Option<String>,
+}
+
+/// A look's light as data writes it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, try_from = "LightFields")]
+pub(crate) struct LightDef {
+    color: [f32; 4],
+    radius: f32,
+    intensity: f32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LightFields {
+    color: [f32; 4],
+    #[serde(deserialize_with = "positive")]
+    radius: f32,
+    #[serde(default = "one", deserialize_with = "non_negative")]
+    intensity: f32,
+}
+
+impl TryFrom<LightFields> for LightDef {
+    type Error = String;
+
+    fn try_from(fields: LightFields) -> Result<Self, Self::Error> {
+        if fields.color.iter().any(|channel| !channel.is_finite()) {
+            return Err("color: a colour's channels must be finite".into());
+        }
+        Ok(Self {
+            color: fields.color,
+            radius: fields.radius,
+            intensity: fields.intensity,
+        })
+    }
+}
+
+/// A look's sound as data writes it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LookSoundDef {
+    id: String,
+    #[serde(default = "one", deserialize_with = "non_negative")]
+    volume: f32,
 }
 
 /// An overlay as data writes it.
@@ -315,6 +505,19 @@ impl TryFrom<LookDef> for Look {
                 color: glow.color,
                 radius: glow.radius,
             }),
+            particles: def.particles.map(|particles| LookParticles {
+                config: particles.config,
+                at: particles.at,
+            }),
+            light: def.light.map(|light| LookLight {
+                color: light.color,
+                radius: light.radius,
+                intensity: light.intensity,
+            }),
+            sound: def.sound.map(|sound| LookSound {
+                id: sound.id,
+                volume: sound.volume,
+            }),
         })
     }
 }
@@ -333,6 +536,19 @@ impl From<Look> for LookDef {
             glow: look.glow.map(|glow| GlowDef {
                 color: glow.color,
                 radius: glow.radius,
+            }),
+            particles: look.particles.map(|particles| ParticlesDef {
+                config: particles.config,
+                at: particles.at,
+            }),
+            light: look.light.map(|light| LightDef {
+                color: light.color,
+                radius: light.radius,
+                intensity: light.intensity,
+            }),
+            sound: look.sound.map(|sound| LookSoundDef {
+                id: sound.id,
+                volume: sound.volume,
             }),
         }
     }
@@ -366,6 +582,30 @@ pub(crate) fn describe_looks(world: &mut World) {
                 "glow",
                 FieldType::Shape("look_glow"),
                 "`engine_white` through `engine_glow` under the holder, its alpha by the share",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "particles",
+                FieldType::Shape("look_particles"),
+                "an emitter at the holder's named sprite point, following its frame, flip and turn, its rate by the share",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "light",
+                FieldType::Shape("look_light"),
+                "a point light at the holder, its intensity by the share, kept on the fixed step",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "sound",
+                FieldType::Shape("look_sound"),
+                "a looping sound the instance wants by the holder's place, its volume by the share",
             )
             .default("null"),
         )
@@ -436,6 +676,68 @@ pub(crate) fn describe_looks(world: &mut World) {
             ))
             .sample(r#"{ "color": [1.0, 0.5, 0.0, 1.0], "radius": 16 }"#)
             .roundtrip(round_trip::<GlowDef>),
+        ComponentDescription::new("look_particles", "An emitter riding the holder.")
+            .field(FieldDescription::new(
+                "config",
+                FieldType::Text,
+                "the manifest particle config; the load checks it",
+            ))
+            .field(
+                FieldDescription::new(
+                    "at",
+                    FieldType::Text,
+                    "the holder's sprite point it emits at, its drawn centre on a frame without it",
+                )
+                .default("null"),
+            )
+            .sample(r#"{ "config": "sparks" }"#)
+            .roundtrip(round_trip::<ParticlesDef>),
+        ComponentDescription::new("look_light", "A point light at the holder, kept on the fixed step.")
+            .field(FieldDescription::new(
+                "color",
+                FieldType::Color,
+                "linear; its alpha scales the intensity",
+            ))
+            .field(FieldDescription::new(
+                "radius",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Open,
+                },
+                "world pixels it reaches",
+            ))
+            .field(
+                FieldDescription::new(
+                    "intensity",
+                    FieldType::F32 {
+                        min: Bound::Inclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "at a share of 1",
+                )
+                .default("1.0"),
+            )
+            .sample(r#"{ "color": [1.0, 0.6, 0.2, 1.0], "radius": 64 }"#)
+            .roundtrip(round_trip::<LightDef>),
+        ComponentDescription::new("look_sound", "A looping sound the running look wants.")
+            .field(FieldDescription::new(
+                "id",
+                FieldType::Text,
+                "the manifest sound; the load checks it",
+            ))
+            .field(
+                FieldDescription::new(
+                    "volume",
+                    FieldType::F32 {
+                        min: Bound::Inclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "its want's share of the sound's volume at a share of 1",
+                )
+                .default("1.0"),
+            )
+            .sample(r#"{ "id": "crackle" }"#)
+            .roundtrip(round_trip::<LookSoundDef>),
     ];
     for shape in shapes {
         describe_shape(world, shape);
@@ -475,6 +777,7 @@ struct Parts {
     band: Option<usize>,
     overlay: Option<Entity>,
     glow: Option<Entity>,
+    emitter: Option<Entity>,
 }
 
 /// The look passes' state between frames, shared by the two.
@@ -537,7 +840,10 @@ impl LookState {
                 continue;
             }
             let parts = self.parts.swap_remove(i);
-            for part in [parts.overlay, parts.glow].into_iter().flatten() {
+            for part in [parts.overlay, parts.glow, parts.emitter]
+                .into_iter()
+                .flatten()
+            {
                 if world.is_alive(part) {
                     world.despawn(part);
                 }
@@ -556,6 +862,29 @@ impl LookState {
             if look.has_parts() {
                 let parts = self.spawn_parts(world, entry, &look);
                 self.parts.push(parts);
+            }
+        }
+        // The emitters, at the holder's point this frame, before the
+        // particles emit.
+        for parts in &self.parts {
+            let Some(emitter) = parts.emitter else {
+                continue;
+            };
+            let Some(entry) = entries.iter().find(|entry| entry.owns(parts)) else {
+                continue;
+            };
+            let at = crate::damage::effects::running_look(world, entry.holder, entry.serial)
+                .and_then(|(look, _, _)| look.particles.as_ref())
+                .and_then(|particles| particles.at.as_deref())
+                .and_then(|point| sprite_point(world, parts.holder, point))
+                .or_else(|| drawn(world, parts.holder).map(|drawn| drawn.centre));
+            if let Some(at) = at
+                && let Some(transform) = world.get_mut::<Transform>(emitter)
+            {
+                transform.position = at;
+            }
+            if let Some(particles) = world.get_mut::<ParticleEmitter>(emitter) {
+                particles.rate_scale = entry.share;
             }
         }
         self.entries = entries;
@@ -592,12 +921,25 @@ impl LookState {
                 Visibility::default(),
             )))
         });
+        let emitter = look.particles.as_ref().and_then(|particles| {
+            let config = world
+                .get_resource::<ParticleConfigRegistry>()?
+                .id_for_name(&particles.config)?;
+            let mut emitter = ParticleEmitter::new(config);
+            emitter.rate_scale = entry.share;
+            Some(world.spawn_with((
+                Transform::from_position(at),
+                emitter,
+                ParticleEmitterState::default(),
+            )))
+        });
         Parts {
             holder: entry.holder,
             serial: entry.serial,
             band: entry.band,
             overlay,
             glow,
+            emitter,
         }
     }
 

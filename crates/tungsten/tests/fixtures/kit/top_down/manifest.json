@@ -213,6 +213,9 @@
       }
     },
     "effects": {
+      "blazing": {
+        "path": "data/effects/blazing.json"
+      },
       "kindled": {
         "path": "data/effects/kindled.json"
       },

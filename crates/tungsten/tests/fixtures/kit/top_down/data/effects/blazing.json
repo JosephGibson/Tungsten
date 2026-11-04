@@ -1,0 +1,17 @@
+{
+  "duration": 3,
+  "look": {
+    "light": {
+      "color": [
+        1,
+        0.6,
+        0.2,
+        1
+      ],
+      "radius": 120
+    },
+    "sound": {
+      "id": "crackle"
+    }
+  }
+}

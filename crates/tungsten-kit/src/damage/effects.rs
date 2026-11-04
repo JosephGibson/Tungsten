@@ -9,12 +9,15 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use glam::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
+use tungsten_core::physics::Position;
 use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{
     DataRef, DataRegistry, Entity, EventQueue, Inspectable, MissingAsset, Plugin, Schedule,
     SpawnContext, Time, World, system,
 };
+use tungsten_core::{Light, Transform};
 
 use crate::chemistry::outputs::check_outputs;
 use crate::chemistry::queue::{Receiver, StatusList};
@@ -44,6 +47,7 @@ use crate::overlap::hit::DamageDef;
 use crate::present::looks::{
     EFFECT_LOOK, EFFECT_LOOK_LATE, Look, LookEntry, LookHolders, LookState, describe_looks,
 };
+use crate::react::cues::{CueLoops, LOOP_FADE, LoopWant, Wanter};
 use crate::{TIME_EPSILON, count_down};
 
 /// [`EffectsPlugin`]'s system that counts effects down and lands their
@@ -3774,6 +3778,12 @@ struct Ticker {
     fuel: String,
     /// An entity's running looks, before they join the World's list.
     looks: Vec<LookEntry>,
+    /// Each running look's light: its holder, its instance's serial, the
+    /// light's entity and whether this step kept it.
+    lights: Vec<(Entity, u64, Entity, bool)>,
+    /// Each running look's sound want: its holder, serial, sound ID and
+    /// whether this step kept it.
+    sounds: Vec<(Entity, u64, String, bool)>,
 }
 
 impl Ticker {
@@ -3800,6 +3810,9 @@ impl Ticker {
             self.tick_entity(world, entity, dt);
         }
         self.entities = entities;
+        if !(self.lights.is_empty() && self.sounds.is_empty()) {
+            self.end_looks(world);
+        }
         if dt > 0.0 {
             self.suppressed_now
                 .sort_by_key(|&(entity, serial)| (entity.id(), serial));
@@ -3828,12 +3841,108 @@ impl Ticker {
                 }
             }
         }
+        for i in 0..self.looks.len() {
+            let entry = self.looks[i];
+            self.keep_look(world, entry);
+        }
         if !self.looks.is_empty() {
             world
                 .resource_mut::<LookHolders>()
                 .0
                 .append(&mut self.looks);
         }
+    }
+
+    /// Keeps `entry`'s light and sound on the fixed step: its light at the
+    /// holder's point, its intensity by the share, spawned at once; its
+    /// sound wanted at its volume by the share.
+    fn keep_look(&mut self, world: &mut World, entry: LookEntry) {
+        let Some((look, _, share)) = running_look(world, entry.holder, entry.serial) else {
+            return;
+        };
+        let light = look.light;
+        let sound = look.sound.as_ref().map(|sound| sound.volume);
+        if let Some(light) = light {
+            let at = world.get::<Position>(entry.holder).map_or_else(
+                || {
+                    world
+                        .get::<Transform>(entry.holder)
+                        .map_or(Vec2::ZERO, |transform| transform.position)
+                },
+                |position| position.0,
+            );
+            let intensity = light.intensity * light.color[3] * share;
+            let color = Vec3::new(light.color[0], light.color[1], light.color[2]);
+            if let Some((_, _, part, seen)) = self
+                .lights
+                .iter_mut()
+                .find(|(holder, serial, ..)| (*holder, *serial) == (entry.holder, entry.serial))
+            {
+                *seen = true;
+                let part = *part;
+                if let Some(transform) = world.get_mut::<Transform>(part) {
+                    transform.position = at;
+                }
+                if let Some(lamp) = world.get_mut::<Light>(part) {
+                    lamp.intensity = intensity;
+                }
+            } else {
+                let mut lamp = Light::point(color, light.radius);
+                lamp.intensity = intensity;
+                let part = world.spawn_with((Transform::from_position(at), lamp));
+                self.lights.push((entry.holder, entry.serial, part, true));
+            }
+        }
+        if let Some(volume) = sound {
+            let held = self.sounds.iter().position(|(holder, serial, ..)| {
+                (*holder, *serial) == (entry.holder, entry.serial)
+            });
+            let at = held.unwrap_or_else(|| {
+                // The ID's one copy, at the want's start.
+                let id = running_look(world, entry.holder, entry.serial)
+                    .and_then(|(look, _, _)| look.sound.as_ref())
+                    .map(|sound| sound.id.clone())
+                    .unwrap_or_default();
+                self.sounds.push((entry.holder, entry.serial, id, false));
+                self.sounds.len() - 1
+            });
+            self.sounds[at].3 = true;
+            if !world.has_resource::<CueLoops>() {
+                world.insert_resource(CueLoops::default());
+            }
+            let want = LoopWant {
+                place: entry.holder,
+                volume: volume * share,
+            };
+            world.resource_mut::<CueLoops>().want(
+                &self.sounds[at].2,
+                Wanter::Look(entry.holder, entry.serial),
+                want,
+                LOOP_FADE,
+            );
+        }
+    }
+
+    /// Ends the lights and sound wants no running look kept this step.
+    fn end_looks(&mut self, world: &mut World) {
+        self.lights.retain_mut(|(_, _, part, seen)| {
+            if std::mem::take(seen) {
+                return true;
+            }
+            if world.is_alive(*part) {
+                world.despawn(*part);
+            }
+            false
+        });
+        self.sounds.retain_mut(|(holder, serial, id, seen)| {
+            if std::mem::take(seen) {
+                return true;
+            }
+            if let Some(loops) = world.get_resource_mut::<CueLoops>() {
+                loops.let_go(id, Wanter::Look(*holder, *serial), LOOP_FADE);
+            }
+            false
+        });
     }
 
     /// Notes `entity`'s instance `serial` as held this step, tracing it

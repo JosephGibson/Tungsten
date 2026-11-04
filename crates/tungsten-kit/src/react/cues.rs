@@ -924,7 +924,7 @@ fn loop_fade() -> f32 {
 
 /// Seconds a loop's voice rises over as it starts, and falls over as it
 /// stops, by default.
-const LOOP_FADE: f32 = 0.1;
+pub(crate) const LOOP_FADE: f32 = 0.1;
 
 /// A `counter` action as data writes it: exactly one of `add` and `set`.
 #[derive(Serialize, Deserialize)]
@@ -2500,10 +2500,12 @@ impl Plugin for CuesPlugin {
     }
 }
 
-/// Who wants a looping sound: an entity's cue loop.
+/// Who wants a looping sound: an entity's cue loop, or a status look's
+/// instance on its holder by serial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Wanter {
     Cue(Entity),
+    Look(Entity, u64),
 }
 
 /// One want of a looping sound: whose place it is heard from, and its

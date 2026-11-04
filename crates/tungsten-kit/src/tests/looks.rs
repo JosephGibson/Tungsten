@@ -364,3 +364,260 @@ fn the_tint_shows_between_flashes() {
     }
     assert!(off >= 60, "off {off} of 120 frames");
 }
+
+// Step 8: particles at a point, a light and a sound loop.
+
+/// The rig with the particle config `sparks`, the slime's `fuse` point at
+/// (12, 2), and the cue plugin with audio, the looping sound `hum` and a
+/// listener at the origin.
+fn rig_with_parts() -> (World, Schedule) {
+    use std::sync::Arc;
+    use tungsten_core::{AudioCommands, ParticleConfig, SoundData};
+
+    let (mut world, _) = rig();
+    let sparks: ParticleConfig = serde_json::from_value(serde_json::json!({
+        "sprite": "rime_0",
+        "max_alive": 64,
+        "emission": { "kind": "continuous", "rate_hz": 30.0 },
+        "lifetime": { "min": 0.5, "max": 0.5 },
+        "initial_velocity": { "kind": "radial", "speed": { "min": 0.0, "max": 0.0 } }
+    }))
+    .unwrap();
+    let mut configs = ParticleConfigRegistry::new();
+    configs.register(
+        "sparks".into(),
+        PathBuf::from("sparks.json"),
+        Arc::new(sparks),
+    );
+    world.insert_resource(configs);
+    world
+        .resource_mut::<AssetRegistry>()
+        .set_sprite_points("slime", [("fuse".to_string(), [12.0, 2.0])].into());
+    let mut sounds = SoundRegistry::new();
+    let hum = SoundData {
+        samples: vec![0.0; 4],
+        sample_rate: 44_100,
+        channels: 1,
+    };
+    sounds.register("hum".to_string(), hum, 1.0, true);
+    world.insert_resource(sounds);
+    world.insert_resource(AudioCommands::new());
+    world.insert_resource(crate::CueListener::new(100.0, 500.0));
+    let mut schedule = Schedule::new();
+    TagsPlugin::new()
+        .with_tags(["status.other", "status.more"])
+        .build(&mut schedule, &mut world);
+    StatsPlugin::new().build(&mut schedule, &mut world);
+    HealthPlugin.build(&mut schedule, &mut world);
+    crate::CuesPlugin.build(&mut schedule, &mut world);
+    EffectsPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+fn emitter(world: &World) -> Option<(Vec2, f32)> {
+    world
+        .query::<(&tungsten_core::ParticleEmitter, &Transform)>()
+        .map(|(emitter, transform)| (transform.position, emitter.rate_scale))
+        .next()
+}
+
+#[test]
+fn look_particles_follow_a_named_point() {
+    let (mut world, mut schedule) = rig_with_parts();
+    let half = |look: Look| {
+        Effect::new()
+            .with_stack(2, crate::Refresh::Refresh, crate::Expire::Clear)
+            .with_look(look)
+    };
+    insert(
+        &mut world,
+        "fused",
+        half(Look::new().with_particles_at("sparks", "fuse")),
+    );
+    insert(
+        &mut world,
+        "aimless",
+        half(Look::new().with_particles_at("sparks", "spout")),
+    );
+    let keg = slime(&mut world, Vec2::new(100.0, 50.0));
+    apply(&mut world, keg, "fused", 1.0);
+    frame(&mut world, &mut schedule);
+    let (at, rate) = emitter(&world).unwrap();
+    assert!(close(at, Vec2::new(112.0, 52.0)), "{at}");
+    assert_eq!(rate, 0.5, "the share: one stack of two");
+    // Mirrored with its holder, then turned with it about its centre.
+    world.insert(keg, SpriteFlip(true));
+    frame(&mut world, &mut schedule);
+    assert!(close(emitter(&world).unwrap().0, Vec2::new(104.0, 52.0)));
+    world.insert(keg, SpriteFlip(false));
+    world.get_mut::<Transform>(keg).unwrap().rotation = std::f32::consts::FRAC_PI_2;
+    frame(&mut world, &mut schedule);
+    assert!(close(emitter(&world).unwrap().0, Vec2::new(114.0, 62.0)));
+    // A point the frame lacks: the drawn centre.
+    assert!(end_effect(&mut world, keg, &DataRef::by_id("fused")));
+    world.get_mut::<Transform>(keg).unwrap().rotation = 0.0;
+    apply(&mut world, keg, "aimless", 1.0);
+    frame(&mut world, &mut schedule);
+    let emitters: Vec<_> = world
+        .query::<&tungsten_core::ParticleEmitter>()
+        .map(|emitter| emitter.rate_scale)
+        .collect();
+    assert_eq!(emitters.len(), 1, "the old emitter went with its look");
+    assert!(close(emitter(&world).unwrap().0, Vec2::new(108.0, 58.0)));
+}
+
+/// One fixed step of 1/60 s, its spawns flushed.
+fn step(world: &mut World, schedule: &mut Schedule) {
+    world.resource_mut::<Time>().advance_frame(DT);
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+    let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+    world.flush_reusing(&mut commands);
+    world.insert_resource(commands);
+    world.flush_events();
+}
+
+#[test]
+fn a_look_lights_its_holder() {
+    use tungsten_core::Light;
+    use tungsten_core::physics::Position;
+
+    let (mut world, mut schedule) = rig_with_parts();
+    let glowing = Effect::new()
+        .with_intensity(4.0, 1.0)
+        .with_look(Look::new().with_light([1.0, 0.5, 0.25, 1.0], 40.0, 2.0));
+    insert(&mut world, "glowing", glowing);
+    let holder = world.spawn_with((Position(Vec2::new(100.0, 50.0)),));
+    apply(&mut world, holder, "glowing", 4.0);
+    let light = |world: &World| -> Vec<(Vec2, f32)> {
+        world
+            .query::<(&Transform, &Light)>()
+            .map(|(transform, light)| (transform.position, light.intensity))
+            .collect()
+    };
+    step(&mut world, &mut schedule);
+    let lit = light(&world);
+    assert_eq!(lit.len(), 1, "spawned at once");
+    assert!(close(lit[0].0, Vec2::new(100.0, 50.0)));
+    assert!((lit[0].1 - 2.0 * (4.0 - DT) / 4.0).abs() < 1e-4, "{lit:?}");
+    // Moved and dimmed each step as the intensity wears.
+    world.get_mut::<Position>(holder).unwrap().0 = Vec2::new(140.0, 50.0);
+    for _ in 0..59 {
+        step(&mut world, &mut schedule);
+    }
+    let lit = light(&world);
+    assert!(close(lit[0].0, Vec2::new(140.0, 50.0)));
+    assert!((lit[0].1 - 1.5).abs() < 1e-3, "a second worn: {lit:?}");
+    assert!(end_effect(&mut world, holder, &DataRef::by_id("glowing")));
+    step(&mut world, &mut schedule);
+    assert!(
+        light(&world).is_empty(),
+        "gone the step after the look ends"
+    );
+}
+
+/// The audio commands since the last drain: plays' volumes, volume
+/// changes and stops' fades.
+fn heard(world: &mut World) -> Vec<(&'static str, f32)> {
+    use tungsten_core::{AudioCommand, AudioCommands};
+
+    world
+        .resource_mut::<AudioCommands>()
+        .drain()
+        .into_iter()
+        .filter_map(|command| match command {
+            AudioCommand::Play { volume, .. } => Some(("play", volume)),
+            AudioCommand::SetVoiceVolume { volume, .. } => Some(("volume", volume)),
+            AudioCommand::StopVoice { fade, .. } => Some(("stop", fade)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_look_loops_its_sound() {
+    use tungsten_core::physics::Position;
+
+    let (mut world, mut schedule) = rig_with_parts();
+    let humming = Effect::new()
+        .with_intensity(4.0, 0.0)
+        .with_look(Look::new().with_sound("hum", 1.0));
+    let droning = Effect::new().with_look(Look::new().with_sound("hum", 0.25));
+    insert(&mut world, "humming", humming);
+    insert(&mut world, "droning", droning);
+    let holder = world.spawn_with((Position(Vec2::ZERO),));
+    apply(&mut world, holder, "humming", 2.0);
+    step(&mut world, &mut schedule);
+    assert_eq!(heard(&mut world), [("play", 0.5)], "one voice at the share");
+    apply(&mut world, holder, "humming", 2.0);
+    step(&mut world, &mut schedule);
+    assert_eq!(heard(&mut world), [("volume", 1.0)]);
+    // Away from the listener, by its gain.
+    world.get_mut::<Position>(holder).unwrap().0 = Vec2::new(300.0, 0.0);
+    step(&mut world, &mut schedule);
+    assert_eq!(heard(&mut world), [("volume", 0.25)]);
+    world.get_mut::<Position>(holder).unwrap().0 = Vec2::ZERO;
+    // Two looks and a cue loop on one sound share its voice at the
+    // largest want; the first look's end leaves it playing.
+    world.insert(
+        holder,
+        crate::Cues::new().on(
+            "effect_applied",
+            [crate::CueAction::looping("hum").with_volume(0.75)],
+        ),
+    );
+    apply(&mut world, holder, "droning", 1.0);
+    step(&mut world, &mut schedule);
+    assert_eq!(heard(&mut world), [("volume", 1.0)], "the largest, 1.0");
+    assert!(end_effect(&mut world, holder, &DataRef::by_id("humming")));
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        heard(&mut world),
+        [("volume", 0.75)],
+        "the cue's, still playing"
+    );
+    world.remove_component::<crate::Cues>(holder);
+    world.resource_mut::<crate::react::cues::CueLoops>().let_go(
+        "hum",
+        crate::react::cues::Wanter::Cue(holder),
+        0.1,
+    );
+    step(&mut world, &mut schedule);
+    assert_eq!(heard(&mut world), [("volume", 0.25)], "the drone's");
+    assert!(end_effect(&mut world, holder, &DataRef::by_id("droning")));
+    step(&mut world, &mut schedule);
+    assert_eq!(heard(&mut world), [("stop", 0.1)], "faded out at the end");
+}
+
+#[test]
+fn a_look_names_only_what_the_world_holds() {
+    let (world, _) = rig_with_parts();
+    for (look, field) in [
+        (Look::new().with_particles("nope"), "look.particles.config"),
+        (
+            Look::new().with_overlay(Overlay::new("nope")),
+            "look.overlay.animation",
+        ),
+        (
+            Look::new().with_overlay(Overlay::new("rime").with_material("nope")),
+            "look.overlay.material",
+        ),
+        (Look::new().with_sound("nope", 1.0), "look.sound.id"),
+    ] {
+        let error = Effect::new().with_look(look).check(&world).unwrap_err();
+        assert_eq!(error.field, field);
+    }
+    let fine = Look::new()
+        .with_particles("sparks")
+        .with_overlay(Overlay::new("rime").with_material("engine_glow"))
+        .with_sound("hum", 1.0);
+    assert!(Effect::new().with_look(fine).check(&world).is_ok());
+    let banded = Effect::new()
+        .with_intensity(2.0, 0.0)
+        .with_band(1.0, ["status.other"])
+        .with_band_look(1.0, Look::new().with_sound("nope", 1.0));
+    assert_eq!(
+        banded.check(&world).unwrap_err().field,
+        "bands.0.look.sound.id"
+    );
+}

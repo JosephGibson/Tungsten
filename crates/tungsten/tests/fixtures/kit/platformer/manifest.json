@@ -147,6 +147,9 @@
       }
     },
     "effects": {
+      "sparking": {
+        "path": "data/effects/sparking.json"
+      },
       "frosting": {
         "path": "data/effects/frosting.json"
       },
@@ -226,6 +229,9 @@
     }
   },
   "animations": {
+    "keg_burn": {
+      "path": "animations/keg_burn.json"
+    },
     "frost_heavy": {
       "path": "animations/frost_heavy.json"
     },
@@ -302,6 +308,32 @@
   "shaders": {
     "damage_flash": {
       "path": "shaders/damage_flash.wgsl"
+    }
+  },
+  "sheets": {
+    "keg": {
+      "path": "sprites/keg.png",
+      "frame": [
+        16,
+        16
+      ],
+      "points": {
+        "fuse": [
+          [
+            4,
+            0
+          ],
+          [
+            12,
+            1
+          ]
+        ]
+      }
+    }
+  },
+  "particles": {
+    "fuse_sparks": {
+      "path": "particles/fuse_sparks.json"
     }
   }
 }
