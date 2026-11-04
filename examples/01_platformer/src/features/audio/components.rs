@@ -145,7 +145,7 @@ pub enum Sound {
     Racked,
     /// The flamethrower let go.
     FireEnded,
-    /// The courier's air jump.
+    /// The courier's free air jump, the double jump.
     AirJumped,
     /// A cast refused for want of mana.
     NoMana,
@@ -376,7 +376,7 @@ impl Sound {
             Sound::DryFired => "dry_fired",
             Sound::Racked => "racked",
             Sound::FireEnded => "fire_ended",
-            Sound::AirJumped => "air_jumped",
+            Sound::AirJumped => "double_jumped",
             Sound::NoMana => "no_mana",
             Sound::Switched => "switched",
             Sound::NotReady => "not_ready",

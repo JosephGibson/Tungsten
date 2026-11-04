@@ -1,6 +1,6 @@
-# Named game events and the controller's cue events (cue-events) — draft
+# Named game events and the controller's cue events (cue-events) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Land redo 7.10p's Step 2, which stopped on 2026-11-04 at a name 01 holds (`D-242`'s not-landed bullet): a game event that carries its cue name, so one `CuesOnEvent` brings a Rust event in under several names (S-39), and the platformer controller's jumps, refused air jump and landing as the kit's cue events `jumped`, `air_jumped`, `jump_refused` and `landed`, about the controller at its feet (S-48). 01's own `air_jumped` event takes another name first, and a controller sends its events only when something names them, so 01 and the template keep their behaviour and every pin.
 - **non-goals:**
   - 01's sites: its 91 registrations onto one `with_names` (S-39), and its jump, bound, refusal and landing code onto the four events with `double_jumped` onto `air_jumped` (S-48): 7.13, as `D-242`'s rows moved.
@@ -173,6 +173,7 @@ Round 2: the same reviewer at xhigh, 2026-11-04, reading the plan with §7 and t
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-04 | landed | `cmp` content source vs `assets/` copy → exit 0; `rg -c '"on": "double_jumped"'` → `1` on each; `rg -q '"air_jumped"'` over 01's `src`, `tools/content`, `assets/data` → exit 1 (none); `rg -c 'Sound::AirJumped => "double_jumped",'` → `1`; `cargo fmt --all -- --check` and `cargo clippy -p example-01-platformer --all-targets --locked -- -D warnings` → exit 0; `cargo test -p example-01-platformer --locked` → exit 0, 443 passed, 1 ignored, with `data::every_sound_event_has_a_rule_and_its_sound_is_in_the_manifest`, `player::an_air_jump_and_a_spell_switch_each_sound_once`, `tomes::a_bound_sounds_bounded_and_bursts_its_sparks_never_the_air_jump` and `guards::the_full_pit_holds_its_counts` ok; venv + `pip install -r tools/requirements.txt` → exit 0, `just level-check` → exit 0 (46 tests OK, 428.8 s), venv removed; `git diff --quiet HEAD` outside the three files → exit 0 with this plan also excluded (its status line moves in this commit, as the skill asks) | Moves: the event's name only. `examples/01_platformer/src/features/audio/components.rs`, `examples/01_platformer/tools/content/data/cue_rules/sounds.json`, `examples/01_platformer/assets/data/cue_rules/sounds.json` |
 
 ## Follow-ups
 
