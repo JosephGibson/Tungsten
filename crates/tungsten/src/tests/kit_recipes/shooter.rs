@@ -7,8 +7,8 @@
 //! ship's cannon and the turret's pulse; M74's acid named after a load, the
 //! acid ladder's held rung and a game's own damage numbers; M75's drone
 //! saved mid-volley; 7.10c's breacher, Static Front's: its SMG held, its
-//! dodge along the move stick and its reload's sweep; a lobber's grenade; a
-//! cryo trooper's cone.
+//! dodge along the move stick and its reload's sweep; a lobber's grenade
+//! and its blast where it lands; a cryo trooper's cone.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1484,5 +1484,81 @@ fn the_cryo_sprayer_hits_the_drones_its_rays_reach() {
             [17.0, 17.0, 20.0],
             "dt {dt}: 3 each where the rays reach"
         );
+    }
+}
+
+// 7.10c, Step 8: Static Front's lobber, its grenade's blast where it lands
+// (S-73).
+
+#[test]
+fn the_lobbers_grenade_blasts_where_it_lands() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // The floor's top at y 8, under the breacher the lob lands on.
+        let floor = spawn(&mut harness, "floor", [300.0, 16.0]);
+        spawn(&mut harness, "breacher", [300.0, 0.0]);
+        let lobber = spawn(&mut harness, "lobber", [0.0, 0.0]);
+        let near = spawn(&mut harness, "sandbag", [340.0, 0.0]);
+        let far = spawn(&mut harness, "sandbag", [420.0, 0.0]);
+        let mut hits = Vec::new();
+        let mut collect = |harness: &Harness| {
+            hits.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|hit| hit.entity == near || hit.entity == far)
+                    .map(|hit| (hit.entity, hit.amount, hit.source)),
+            );
+        };
+        let mut landed = None;
+        for _ in 0..frames_for(2.5, dt) {
+            harness.step(1);
+            collect(&harness);
+            if let Some(expired) = harness.events::<ProjectileExpired>().next().copied() {
+                let played = harness
+                    .audio()
+                    .iter()
+                    .filter(|command| matches!(command, AudioCommand::Play { .. }))
+                    .count();
+                landed = Some((expired, played));
+                break;
+            }
+        }
+        let (expired, played) = landed.unwrap_or_else(|| panic!("dt {dt}: the grenade lands"));
+        // Past the breacher's point, on the floor's top.
+        let at = expired.position;
+        assert!(
+            (at.y - 8.0).abs() < 1e-3 && at.x > 305.0 && at.x < 320.0,
+            "dt {dt}: on the floor: {at}"
+        );
+        assert_eq!(
+            expired.wall.and_then(|wall| wall.entity),
+            Some(floor),
+            "dt {dt}"
+        );
+        // Its look, the `expired` cue: a burst where it landed and a blip.
+        let bursts = tagged(&harness, "burst");
+        assert_eq!(bursts.len(), 1, "dt {dt}");
+        assert!(
+            (point_of(&harness, bursts[0]) - at).length() < 1e-3,
+            "dt {dt}"
+        );
+        assert_eq!(played, 1, "dt {dt}: a blip");
+        // Its blast, at the next step's resolve: 20 at 1 - d / 64 on the
+        // near sandbag, from the lobber; the far one out of its reach.
+        for _ in 0..2 {
+            harness.step(1);
+            collect(&harness);
+        }
+        let d = (Vec2::new(340.0, 0.0) - at).length();
+        let want = 20.0 * (1.0 - d / 64.0);
+        assert_eq!(hits.len(), 1, "dt {dt}: {hits:?}");
+        assert_eq!((hits[0].0, hits[0].2), (near, Some(lobber)), "dt {dt}");
+        assert!(
+            (hits[0].1 - want).abs() < 1e-3,
+            "dt {dt}: {hits:?} of {want}"
+        );
+        let health = |entity: Entity| harness.world().get::<Health>(entity).unwrap().current();
+        assert!((health(near) - (40.0 - want)).abs() < 1e-3, "dt {dt}");
+        assert_eq!(health(far), 40.0, "dt {dt}");
     }
 }

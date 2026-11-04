@@ -13,6 +13,26 @@
     },
     "lifetime": {
       "seconds": 2
+    },
+    "projectile": {
+      "end": {
+        "blast": {
+          "radius": 64,
+          "damage": 20
+        }
+      }
+    },
+    "cues": {
+      "expired": [
+        {
+          "prefab": "burst"
+        },
+        {
+          "sound": {
+            "id": "blip"
+          }
+        }
+      ]
     }
   }
 }

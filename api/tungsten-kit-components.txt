@@ -236,6 +236,7 @@ component projectile: Ends at its hitbox's first hit, its first wall or its rang
   field bounces: u32 = 0 — walls it turns at before the next ends it
   field bounce_layers: list of u32 (<= 31) = null — physics layers whose walls it turns at while it has bounces left, a tile in its collision layer's; a wall outside them ends it; every layer when left out
   field pass_layers: list of u32 (<= 31) = [] — physics layers whose walls it passes as if open, before the bounce layers
+  field end: shape projectile_end = null — what it sets off at each of its own ends, a hit past its pierce, a wall or its range, not at a lifetime's; none when left out
   events: ProjectileExpired, ProjectileBounced, ProjectilePassed, Struck
   genres: platformer, top_down, shooter
   sample: {}
@@ -668,6 +669,10 @@ shape prefab_action: A prefab spawned from the subject at the event's position, 
   field id: prefab ID — the manifest prefab; the load checks the ID
   field centred: bool = false — its centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point
   sample: { "id": "puff" }
+shape projectile_end: What a projectile sets off at its own end: a hit past its pierce, a wall it neither passes nor turns at, or its range.
+  exactly one of its fields
+  field blast: shape blast_output — a blast at its hitbox's centre there, from its source, else itself, which it neither hurts nor pushes, in chemistry's run that step
+  sample: { "blast": { "radius": 64 } }
 shape resist_modifier: A modifier on the target's resistance to one damage tag, and on its floor.
   field tag: tag — the damage tag; the load checks it
   field modifier: shape modifier = null — the change, over a base of 1 for a tag the target lists no factor for; a scoped one may not override; one of it and `floor` at least

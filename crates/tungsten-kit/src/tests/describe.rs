@@ -127,8 +127,9 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     assert_eq!(kinds.len(), 11);
     assert_eq!(
         descriptions.shapes().count(),
-        75,
-        "7.10c's lob, the prefab and roll actions' object forms, the cone and the conduction"
+        76,
+        "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction and \
+         the projectile's end"
     );
 }
 
@@ -244,10 +245,10 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 50,
+        probed, 51,
         "the cue action's fourteen forms, the target's three, the hit shape's two, the modifier's \
-         four, the ability trigger's four, its target's four, its payload's six, the offer's two \
-         and a chemistry output's eleven"
+         four, the ability trigger's four, its target's four, its payload's six, the offer's two, \
+         a chemistry output's eleven and a projectile end's one"
     );
 }
 
@@ -407,7 +408,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 45);
-    assert_eq!(count("shape "), 75);
+    assert_eq!(count("shape "), 76);
     assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

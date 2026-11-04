@@ -89,7 +89,7 @@ impl BlastDef {
 
     /// Queues the blast at `centre` for chemistry's run to set off once its
     /// reactions are done: from `from`, credited to `credit`, `depth`
-    /// reactions deep.
+    /// reactions deep. A World without [`Blasts`] queues nothing.
     pub(crate) fn queue(
         &self,
         world: &mut World,
@@ -110,9 +110,10 @@ impl BlastDef {
     }
 }
 
-/// The blasts a run's reactions set off, which the run detonates once they
-/// are done: a World resource [`ChemistryPlugin`](crate::ChemistryPlugin)
-/// inserts and no save holds, since a run makes and takes them.
+/// The blasts a run's reactions and the step's projectile ends set off,
+/// which the run detonates once its reactions are done: a World resource
+/// [`ChemistryPlugin`](crate::ChemistryPlugin) inserts and no save holds,
+/// since a step makes and takes them.
 #[derive(Debug, Default)]
 pub(crate) struct Blasts(pub(crate) Vec<Blast>);
 

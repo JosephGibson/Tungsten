@@ -1,0 +1,8 @@
+{
+  "tag": "sandbag",
+  "components": {
+    "health": {
+      "max": 40
+    }
+  }
+}

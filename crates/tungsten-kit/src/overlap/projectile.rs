@@ -8,17 +8,21 @@ use tungsten_core::physics::{
     cast_shape, overlap,
 };
 use tungsten_core::{
-    Entity, EventQueue, Inspectable, Plugin, Schedule, SpawnContext, Transform, World, system,
+    Entity, EventQueue, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, Transform,
+    World, system,
 };
 
+use crate::chemistry::blast::{BlastDef, Blasts};
+use crate::chemistry::queue::Receiver;
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
-    describe, round_trip,
+    describe, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::optional_positive;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::saved::order_of;
+use crate::foundation::source::Source;
 use crate::foundation::tags::Tags;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::ended::{Despawning, end, ensure_kit_despawn};
@@ -37,6 +41,9 @@ pub const PROJECTILE_TICK: &str = "projectile_tick";
 /// The scene component the plugin registers.
 const PROJECTILE: &str = "projectile";
 
+/// The shape of `projectile.end`.
+const PROJECTILE_END: &str = "projectile_end";
+
 /// A bolt, an arrow, a fireball: an entity whose
 /// [`Hitbox`](crate::Hitbox) hits the hurtboxes its sweep meets, in the
 /// order it meets them, and which ends at its first hit, its first wall or
@@ -54,6 +61,15 @@ const PROJECTILE: &str = "projectile";
 ///   has bounces left; a wall outside them ends it. Every layer by default.
 /// - `pass_layers`: the physics layers whose walls it passes as if they
 ///   were open. None by default.
+/// - `end`: what it sets off at each of its own ends, a hit past its
+///   pierce, a wall it neither passes nor turns at, or its range: a
+///   `blast`, in the chemistry output's form, at its hitbox's centre there
+///   (its point without a hitbox), which neither hurts nor pushes it and
+///   is credited to its [`Source`](crate::Source), else to itself, for
+///   [`ChemistryPlugin`](crate::ChemistryPlugin)'s run that step; a World
+///   without that plugin traces the end's blast as skipped. A
+///   [`Lifetime`](crate::Lifetime)'s despawn is no end of its own and sets
+///   off nothing. None by default.
 ///
 /// Walls are tiles of collision layers, in their layer's physics layers
 /// (layer 0 by default, [`LayerPhysics`](tungsten_core::LayerPhysics)), and
@@ -71,10 +87,12 @@ const PROJECTILE: &str = "projectile";
 /// dynamic body or a child is skipped, with one warning.
 ///
 /// Scene name `projectile`: `{ "pierce": 1, "range": 600, "bounces": 0,
-/// "bounce_layers": [0, 2], "pass_layers": [3] }`, each optional: `pierce`
-/// and `bounces` 0, `range` none, `bounce_layers` every layer and
-/// `pass_layers` none, as lists of layer numbers 0 to 31. It is data: a
-/// game's save can hold it, its hits, distance and bounces included.
+/// "bounce_layers": [0, 2], "pass_layers": [3], "end": { "blast": {
+/// "radius": 64, "damage": 20 } } }`, each optional: `pierce` and
+/// `bounces` 0, `range` none, `bounce_layers` every layer, `pass_layers`
+/// none, as lists of layer numbers 0 to 31, and `end` none; the load checks
+/// the blast's damage types and context tags. It is data: a game's save
+/// can hold it, its end, hits, distance and bounces included.
 ///
 /// # Examples
 ///
@@ -100,6 +118,8 @@ pub struct Projectile {
     bounce_layers: u32,
     /// The layers whose walls it passes.
     pass_layers: u32,
+    /// What it sets off at its own end; taken when it goes off.
+    end: Option<ProjectileEnd>,
     /// The targets it has hit.
     hits: u32,
     /// The world pixels it has covered.
@@ -119,6 +139,7 @@ impl Default for Projectile {
             bounces: 0,
             bounce_layers: RigidBody::ALL_LAYERS,
             pass_layers: 0,
+            end: None,
             hits: 0,
             travelled: 0.0,
             bounced: 0,
@@ -143,6 +164,8 @@ struct ProjectileFields {
     bounce_layers: u32,
     #[serde(default, skip_serializing_if = "is_no_layer")]
     pass_layers: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    end: Option<ProjectileEnd>,
     #[serde(default)]
     hits: u32,
     #[serde(default)]
@@ -190,6 +213,7 @@ impl TryFrom<ProjectileFields> for Projectile {
             bounces: fields.bounces,
             bounce_layers: fields.bounce_layers,
             pass_layers: fields.pass_layers,
+            end: fields.end,
             hits: fields.hits,
             travelled: fields.travelled,
             bounced: fields.bounced,
@@ -206,6 +230,7 @@ impl From<Projectile> for ProjectileFields {
             bounces: projectile.bounces,
             bounce_layers: projectile.bounce_layers,
             pass_layers: projectile.pass_layers,
+            end: projectile.end,
             hits: projectile.hits,
             travelled: projectile.travelled,
             bounced: projectile.bounced,
@@ -434,6 +459,24 @@ impl ProjectilePassed {
     }
 }
 
+/// What a projectile sets off at its own end: `{ "blast": { … } }`, a
+/// blast in the chemistry output's form.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ProjectileEnd {
+    /// A blast at its hitbox's centre where it ended.
+    Blast(Box<BlastDef>),
+}
+
+impl ProjectileEnd {
+    /// The load's check: the blast's damage types and context tags.
+    fn check(&self, world: &World) -> Result<(), MissingAsset> {
+        match self {
+            Self::Blast(blast) => blast.check(world, "end.blast"),
+        }
+    }
+}
+
 /// One layer number in `projectile.bounce_layers` or
 /// `projectile.pass_layers`: 0 to 31.
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -481,11 +524,13 @@ struct ProjectileDef {
     bounce_layers: Option<Vec<SceneLayer>>,
     #[serde(default)]
     pass_layers: Vec<SceneLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    end: Option<ProjectileEnd>,
 }
 
 impl From<ProjectileDef> for Projectile {
     fn from(def: ProjectileDef) -> Self {
-        let projectile = Projectile::new()
+        let mut projectile = Projectile::new()
             .with_pierce(def.pierce)
             .with_bounces(def.bounces)
             .with_bounce_layers(
@@ -494,6 +539,7 @@ impl From<ProjectileDef> for Projectile {
                     .map_or(RigidBody::ALL_LAYERS, mask_of),
             )
             .with_pass_layers(mask_of(&def.pass_layers));
+        projectile.end = def.end;
         match def.range {
             Some(range) => projectile.with_range(range),
             None => projectile,
@@ -590,6 +636,14 @@ impl Plugin for ProjectilePlugin {
                 )
                 .default("[]"),
             )
+            .field(
+                FieldDescription::new(
+                    "end",
+                    FieldType::Shape(PROJECTILE_END),
+                    "what it sets off at each of its own ends, a hit past its pierce, a wall or its range, not at a lifetime's; none when left out",
+                )
+                .default("null"),
+            )
             .event("ProjectileExpired")
             .event("ProjectileBounced")
             .event("ProjectilePassed")
@@ -600,13 +654,32 @@ impl Plugin for ProjectilePlugin {
             .sample("{}")
             .roundtrip(round_trip::<ProjectileDef>),
         );
+        describe_shape(
+            world,
+            ComponentDescription::new(
+                PROJECTILE_END,
+                "What a projectile sets off at its own end: a hit past its pierce, a wall it neither passes nor turns at, or its range.",
+            )
+            .one_of()
+            .field(FieldDescription::new(
+                "blast",
+                FieldType::Shape("blast_output"),
+                "a blast at its hitbox's centre there, from its source, else itself, which it neither hurts nor pushes, in chemistry's run that step",
+            ))
+            .sample(r#"{ "blast": { "radius": 64 } }"#)
+            .roundtrip(round_trip::<ProjectileEnd>),
+        );
         world.register_event::<ProjectileExpired>();
         world.register_event::<ProjectileBounced>();
         world.register_event::<ProjectilePassed>();
         world.register_event::<Struck>();
-        world.register_component_with(PROJECTILE, |def: ProjectileDef, _: &SpawnContext<'_>| {
-            (Projectile::from(def),)
-        });
+        world.register_component_with_assets(
+            PROJECTILE,
+            |def: &ProjectileDef, world: &World| {
+                def.end.as_ref().map_or(Ok(()), |end| end.check(world))
+            },
+            |def: ProjectileDef, _: &SpawnContext<'_>| (Projectile::from(def),),
+        );
         ensure_emitter(world);
         ensure_grid(schedule);
         let mut runner = ProjectileRunner::default();
@@ -981,6 +1054,7 @@ fn finish(
     let projectile = world.get_mut::<Projectile>(entity).unwrap();
     projectile.travelled += length * t;
     projectile.spent = true;
+    let goes_off = projectile.end.take();
     if let Some(queue) = world.get_resource_mut::<EventQueue<ProjectileExpired>>() {
         queue.send(ProjectileExpired {
             entity,
@@ -993,7 +1067,29 @@ fn finish(
         other: None,
         amount: None,
     });
+    if let Some(ProjectileEnd::Blast(blast)) = goes_off {
+        set_off(world, entity, &blast, sweep.at(t));
+    }
     end(world, entity, "projectile");
+}
+
+/// Queues `blast` at `centre` for chemistry's run, from the projectile,
+/// which it neither hurts nor pushes, credited to its [`Source`], else to
+/// itself, at depth 0; traced as skipped in a World without chemistry's
+/// blasts.
+fn set_off(world: &mut World, entity: Entity, blast: &BlastDef, centre: Vec2) {
+    if !world.has_resource::<Blasts>() {
+        trace(world, entity, || TraceKind::Skipped {
+            event: "expired",
+            action: "blast",
+            why: "the World has no ChemistryPlugin",
+        });
+        return;
+    }
+    let credit = world
+        .get::<Source>(entity)
+        .map_or(entity, |source| source.entity());
+    blast.queue(world, centre, Receiver::Entity(entity), Some(credit), 0);
 }
 
 impl Inspectable for Projectile {
