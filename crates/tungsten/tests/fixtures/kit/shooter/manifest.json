@@ -62,6 +62,15 @@
     },
     "mainframe": {
       "path": "prefabs/mainframe.json"
+    },
+    "breacher": {
+      "path": "prefabs/breacher.json"
+    },
+    "round": {
+      "path": "prefabs/round.json"
+    },
+    "dodge_dust": {
+      "path": "prefabs/dodge_dust.json"
     }
   },
   "data": {
@@ -100,6 +109,12 @@
       },
       "pulse": {
         "path": "data/abilities/pulse.json"
+      },
+      "smg": {
+        "path": "data/abilities/smg.json"
+      },
+      "dodge": {
+        "path": "data/abilities/dodge.json"
       }
     },
     "stats": {

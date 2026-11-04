@@ -6,7 +6,8 @@
 //! hacker, its payloads and a mainframe; M67's corruption ladder, the
 //! ship's cannon and the turret's pulse; M74's acid named after a load, the
 //! acid ladder's held rung and a game's own damage numbers; M75's drone
-//! saved mid-volley.
+//! saved mid-volley; 7.10c's breacher, Static Front's: its SMG held, its
+//! dodge along the move stick and its reload's sweep.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -18,12 +19,12 @@ use tungsten_core::{
 
 use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged, traced_steps};
 use crate::kit::{
-    Abilities, Aim, Children, ContactDamage, ContactTouch, CooldownElapsed, Counters, DamagePart,
-    DamageRequest, Damaged, DamagedPart, Effect, EffectInstance, EffectRequest, Effects, Health,
-    Hit, HitShape, Hitbox, Hurtbox, KitPlugins, KitTrace, LabelStyle, LinearMotion, Phase,
-    PlatformerController, Projectile, ProjectileExpired, Shield, Source, StateMachine,
-    StateMachinePlugin, Steering, Struck, TagFilter, Tags, TopDownMover, TraceKind, damage,
-    float_label,
+    Abilities, AbilityUsed, Aim, Children, ContactDamage, ContactTouch, CooldownElapsed, Counters,
+    DamagePart, DamageRequest, Damaged, DamagedPart, Effect, EffectInstance, EffectRequest,
+    Effects, Health, Hit, HitShape, Hitbox, Hurtbox, KitPlugins, KitTrace, LabelStyle,
+    LinearMotion, Phase, PlatformerController, Projectile, ProjectileExpired, Shield, Source,
+    StateMachine, StateMachinePlugin, Steering, Struck, TagFilter, Tags, TopDownMover, TraceKind,
+    damage, float_label,
 };
 use crate::testing::Harness;
 
@@ -1210,5 +1211,154 @@ fn a_drone_saved_mid_volley_resumes_exactly() {
         // Loaded without its targets named, the beam and the ram hit at once.
         let (unnamed, _, _) = drone_run(dt, Some(false));
         assert_eq!(unnamed[0].struck.len(), 2, "dt {dt}: {:?}", unnamed[0]);
+    }
+}
+
+// 7.10c, Step 2: Static Front's breacher (SF2, SF6, SF25).
+
+/// The uses of `name` by `breacher` in the last frame.
+fn used(harness: &Harness, breacher: Entity, name: &str) -> usize {
+    harness
+        .events::<AbilityUsed>()
+        .filter(|used| used.entity == breacher && used.name == name)
+        .count()
+}
+
+/// The breacher, aiming at a wing to its left.
+fn breacher(dt: f32) -> (Harness, Entity) {
+    let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+    let breacher = spawn(&mut harness, "breacher", [0.0, 0.0]);
+    spawn(&mut harness, "wing", [-200.0, 0.0]);
+    harness.step(1);
+    (harness, breacher)
+}
+
+/// The velocities of the entities tagged `tag`.
+fn velocities(harness: &Harness, tag: &str) -> Vec<Vec2> {
+    tagged(harness, tag)
+        .iter()
+        .map(|&entity| {
+            harness
+                .world()
+                .get::<LinearMotion>(entity)
+                .unwrap()
+                .velocity()
+        })
+        .collect()
+}
+
+#[test]
+fn the_smg_fires_five_rounds_in_half_a_second_held() {
+    for dt in DTS {
+        let (mut harness, breacher) = breacher(dt);
+        harness.press_action("fire");
+        let mut rounds = 0;
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            rounds += used(&harness, breacher, "smg");
+        }
+        assert_eq!(rounds, 5, "dt {dt}: a round each 0.1 s held");
+        let flown = velocities(&harness, "round");
+        assert!(
+            flown.len() == 5
+                && flown
+                    .iter()
+                    .all(|v| (*v - Vec2::new(-900.0, 0.0)).length() < 1e-2),
+            "dt {dt}: each along the aim, at the wing: {flown:?}"
+        );
+        harness.release_action("fire");
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            rounds += used(&harness, breacher, "smg");
+        }
+        assert_eq!(rounds, 5, "dt {dt}: none after the release");
+    }
+}
+
+#[test]
+fn the_dodge_follows_the_move_stick_not_the_aim() {
+    for dt in DTS {
+        let (mut harness, breacher) = breacher(dt);
+        harness.press_action("move_right");
+        harness.press_action("dash");
+        harness.step(1);
+        harness.release_action("dash");
+        let aim = harness
+            .world()
+            .get::<Aim>(breacher)
+            .and_then(Aim::direction)
+            .unwrap();
+        assert!(aim.x < -0.99, "dt {dt}: aiming at the wing: {aim}");
+        let [along] = velocities(&harness, "dodge_dust")[..] else {
+            panic!("dt {dt}: one dodge");
+        };
+        assert!(
+            (along - Vec2::new(400.0, 0.0)).length() < 1e-2,
+            "dt {dt}: along the move stick: {along}"
+        );
+        // At rest, past its cooldown and the dust's life, it takes the aim.
+        harness.release_action("move_right");
+        harness.step(frames_for(1.0, dt));
+        harness.press_action("dash");
+        harness.step(1);
+        let [still] = velocities(&harness, "dodge_dust")[..] else {
+            panic!("dt {dt}: one dodge at rest");
+        };
+        assert!(
+            (still - Vec2::new(-400.0, 0.0)).length() < 1e-2,
+            "dt {dt}: the aim at rest: {still}"
+        );
+    }
+}
+
+#[test]
+fn the_reload_sweep_reads_the_refill() {
+    for dt in DTS {
+        let (mut harness, breacher) = breacher(dt);
+        let smg = |harness: &Harness| {
+            let abilities = harness.world().get::<Abilities>(breacher).unwrap();
+            (abilities.charges("smg"), abilities.refill_left("smg"))
+        };
+        harness.press_action("fire");
+        let mut rounds = 0;
+        for _ in 0..frames_for(4.0, dt) {
+            if smg(&harness).0 == Some(0) {
+                break;
+            }
+            harness.step(1);
+            rounds += used(&harness, breacher, "smg");
+        }
+        harness.release_action("fire");
+        assert_eq!(rounds, 24, "dt {dt}: the magazine");
+        // From 1.6 after the last round, down each frame, to every round back.
+        let first = smg(&harness).1.unwrap();
+        assert!(
+            first <= 1.6 && first >= 1.6 - dt - 1e-4,
+            "dt {dt}: the sweep starts at the refill: {first}"
+        );
+        let (mut left, mut frames) = (first, 0);
+        loop {
+            harness.step(1);
+            frames += 1;
+            assert!(frames <= frames_for(2.0, dt), "dt {dt}: no reload");
+            match smg(&harness) {
+                (_, Some(now)) => {
+                    assert!(
+                        now < left,
+                        "dt {dt}: the sweep runs down: {now} after {left}"
+                    );
+                    left = now;
+                }
+                (charges, None) => {
+                    assert_eq!(charges, Some(24), "dt {dt}: every round back");
+                    break;
+                }
+            }
+        }
+        let elapsed = frames as f32 * dt;
+        assert!(
+            (elapsed - first).abs() <= dt + 1e-4,
+            "dt {dt}: back after {elapsed} s of {first}"
+        );
     }
 }

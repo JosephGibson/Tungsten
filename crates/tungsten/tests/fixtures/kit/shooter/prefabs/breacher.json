@@ -1,0 +1,37 @@
+{
+  "tag": "breacher",
+  "components": {
+    "top_down_mover": {
+      "speed": 200
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ],
+      "slots": {
+        "fire": "fire",
+        "dodge": "dash"
+      }
+    },
+    "aim": {
+      "from": "target",
+      "target": {
+        "nearest": {
+          "all": [
+            "team.enemy"
+          ]
+        }
+      }
+    },
+    "tags": [
+      "team.player"
+    ],
+    "abilities": [
+      "smg",
+      "dodge"
+    ]
+  }
+}

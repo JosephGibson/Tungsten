@@ -240,9 +240,9 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 47,
+        probed, 48,
         "the cue action's fourteen forms, the target's three, the hit shape's two, the modifier's \
-         four, the ability trigger's three, its target's four, its payload's four, the offer's two \
+         four, the ability trigger's four, its target's four, its payload's four, the offer's two \
          and a chemistry output's eleven"
     );
 }
@@ -269,11 +269,12 @@ fn each_described_enum_variant_deserializes() {
     }
     assert_eq!(
         variants,
-        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2 + 3 + 4 + 3 + 4 + 3 + 2 + 3 + 2 + 2 + 2 + 2,
+        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2 + 3 + 4 + 3 + 4 + 3 + 2 + 3 + 2 + 2 + 2 + 2 + 2,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
          axes, the effect action's targets, the stack's refresh and expire policies, and the \
-         ability action's ops and targets, and the level's counter targets"
+         ability action's ops and targets, the level's counter targets and the ability's \
+         directions"
     );
 }
 

@@ -1150,3 +1150,254 @@ fn a_skills_spawn_carries_its_delivery_and_a_plain_one_none() {
     );
     assert!(carried.contains(&("bolt".to_string(), None)), "{carried:?}");
 }
+
+// 7.10c, Step 2: a held trigger, a direction and the refill.
+
+#[test]
+fn a_held_trigger_uses_each_cooldown_while_its_slot_is_held() {
+    let (mut world, mut schedule) = rig();
+    let smg = insert(
+        &mut world,
+        "smg",
+        Ability::new()
+            .with_trigger(Trigger::Held("fire".to_string()))
+            .with_cooldown(6.0 * STEP)
+            .with_payload(Payload::Hitbox(0.05)),
+    );
+    let burst = insert(
+        &mut world,
+        "burst",
+        Ability::new()
+            .with_trigger(Trigger::Held("burst".to_string()))
+            .with_charges(2, 100.0, false)
+            .with_payload(Payload::Hitbox(0.05)),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(smg).with(burst), Intent::default()),
+    );
+    let mut used = Vec::new();
+    for i in 1..=40 {
+        // Held from step 1 through step 30, pressed at the first.
+        let intent = world.get_mut::<Intent>(hero).unwrap();
+        intent.set_slot("fire", i <= 30, i == 1);
+        intent.set_slot("burst", i <= 30, i == 1);
+        steps(&mut world, &mut schedule, 1);
+        used.extend(uses(&world).into_iter().map(|(_, name, _)| (i, name)));
+    }
+    let at_steps = |name: &str| -> Vec<usize> {
+        used.iter()
+            .filter(|(_, used)| used == name)
+            .map(|&(i, _)| i)
+            .collect()
+    };
+    assert_eq!(
+        at_steps("smg"),
+        [1, 7, 13, 19, 25],
+        "a use each 0.1 s while held, none after the release"
+    );
+    assert_eq!(
+        at_steps("burst"),
+        [1, 2],
+        "a use each step held until the charges run out"
+    );
+    // The data form.
+    let held: Ability = serde_json::from_value(json!({
+        "trigger": { "held": "fire" },
+        "payload": [{ "hitbox": 0.1 }]
+    }))
+    .unwrap();
+    assert_eq!(held.trigger(), &Trigger::Held("fire".to_string()));
+    assert_eq!(
+        serde_json::to_value(&held).unwrap()["trigger"],
+        json!({ "held": "fire" })
+    );
+    assert!(
+        serde_json::from_value::<Ability>(json!({
+            "trigger": { "held": "Fire" },
+            "payload": [{ "hitbox": 0.1 }]
+        }))
+        .is_err()
+    );
+}
+
+#[test]
+fn a_movement_direction_follows_the_intent_else_the_aim() {
+    let (mut world, mut schedule) = rig();
+    let bolt = || Payload::Spawn {
+        prefab: "bolt".to_string(),
+        speed: 100.0,
+        offset: 0.0,
+    };
+    let dodge = insert(
+        &mut world,
+        "dodge",
+        Ability::new()
+            .with_direction(Direction::Movement)
+            .with_payload(bolt())
+            .with_payload(Payload::Impulse(50.0)),
+    );
+    let shot = insert(&mut world, "shot", Ability::new().with_payload(bolt()));
+    let seek = insert(
+        &mut world,
+        "seek",
+        Ability::new()
+            .with_direction(Direction::Movement)
+            .with_target(AbilityTarget::Nearest {
+                filter: TagFilter::new().all(["team.enemy"]),
+                range: None,
+            })
+            .with_payload(bolt()),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(dodge).with(shot).with(seek),
+            Intent::default(),
+            Knockback::new(0.2),
+        ),
+    );
+    at(&mut world, 0.0, 50.0, (Tags::new(["team.enemy"]),));
+    // Each use's new bolt's velocity.
+    let fired = |world: &mut World, schedule: &mut Schedule, name: &str| -> Vec2 {
+        let before: Vec<Entity> = bolts(world).iter().map(|&(bolt, _)| bolt).collect();
+        assert_eq!(use_ability(world, hero, name), Used::Used, "{name}");
+        steps(world, schedule, 1);
+        bolts(world)
+            .into_iter()
+            .find(|(bolt, _)| !before.contains(bolt))
+            .map(|(_, velocity)| velocity)
+            .unwrap()
+    };
+    let near = |a: Vec2, b: Vec2| (a - b).length() < 1e-4;
+    // Moving right while aiming up: the dodge goes right, the shot up.
+    {
+        let intent = world.get_mut::<Intent>(hero).unwrap();
+        intent.set_movement(Vec2::X);
+        intent.set_aim(Some(Vec2::NEG_Y));
+    }
+    let dodged = fired(&mut world, &mut schedule, "dodge");
+    assert!(near(dodged, Vec2::new(100.0, 0.0)), "{dodged}");
+    assert_eq!(
+        world.get::<Knockback>(hero).unwrap().push(),
+        Vec2::new(50.0, 0.0),
+        "the impulse along the move stick"
+    );
+    let shot = fired(&mut world, &mut schedule, "shot");
+    assert!(near(shot, Vec2::new(0.0, -100.0)), "{shot}");
+    // A nearest target keeps the direction to its target.
+    let sought = fired(&mut world, &mut schedule, "seek");
+    assert!(near(sought, Vec2::new(0.0, 100.0)), "{sought}");
+    // At rest the dodge takes the aim's direction.
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_movement(Vec2::ZERO);
+    let still = fired(&mut world, &mut schedule, "dodge");
+    assert!(near(still, Vec2::new(0.0, -100.0)), "{still}");
+    // With neither, no direction: no use.
+    world.get_mut::<Intent>(hero).unwrap().set_aim(None);
+    assert_eq!(use_ability(&mut world, hero, "dodge"), Used::NoTarget);
+    // The data form: `movement` written, `aim` left out.
+    let dodge: Ability = serde_json::from_value(json!({
+        "direction": "movement",
+        "payload": [{ "impulse": 600 }]
+    }))
+    .unwrap();
+    assert_eq!(dodge.direction(), Direction::Movement);
+    assert_eq!(
+        serde_json::to_value(&dodge).unwrap()["direction"],
+        json!("movement")
+    );
+    let aimed = Ability::new().with_payload(Payload::Impulse(600.0));
+    assert_eq!(aimed.direction(), Direction::Aim);
+    assert!(
+        serde_json::to_value(&aimed)
+            .unwrap()
+            .get("direction")
+            .is_none()
+    );
+    assert!(
+        serde_json::from_value::<Ability>(json!({
+            "direction": "behind",
+            "payload": [{ "impulse": 600 }]
+        }))
+        .is_err()
+    );
+}
+
+#[test]
+fn refill_left_reads_a_running_refill_alone() {
+    let (mut world, mut schedule) = rig();
+    let each = insert(
+        &mut world,
+        "each",
+        Ability::new()
+            .with_charges(3, 2.0 * STEP, false)
+            .with_payload(Payload::Hitbox(0.1)),
+    );
+    let all = insert(
+        &mut world,
+        "all",
+        Ability::new()
+            .with_charges(3, 2.0 * STEP, true)
+            .with_payload(Payload::Hitbox(0.1)),
+    );
+    let plain = insert(
+        &mut world,
+        "plain",
+        Ability::new()
+            .with_cooldown(1.0)
+            .with_payload(Payload::Hitbox(0.1)),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(each).with(all).with(plain),),
+    );
+    let refill =
+        |world: &World, name: &str| world.get::<Abilities>(hero).unwrap().refill_left(name);
+    assert_eq!(
+        (refill(&world, "each"), refill(&world, "all")),
+        (None, None),
+        "full, not yet counted"
+    );
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(
+        (refill(&world, "each"), refill(&world, "all")),
+        (None, None),
+        "every charge"
+    );
+    // One spent: the one-at-a-time refill runs, a partial `all` magazine's
+    // waits for its last charge.
+    assert_eq!(use_ability(&mut world, hero, "each"), Used::Used);
+    assert_eq!(use_ability(&mut world, hero, "all"), Used::Used);
+    assert!(refill(&world, "each").is_some_and(|left| close(left, 2.0 * STEP)));
+    assert_eq!(refill(&world, "all"), None, "charges left");
+    steps(&mut world, &mut schedule, 1);
+    assert!(refill(&world, "each").is_some_and(|left| close(left, STEP)));
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(refill(&world, "each"), None, "its charge back, full");
+    // The magazine emptied: its refill runs from the last charge.
+    assert_eq!(use_ability(&mut world, hero, "all"), Used::Used);
+    assert_eq!(refill(&world, "all"), None, "one left");
+    assert_eq!(use_ability(&mut world, hero, "all"), Used::Used);
+    assert!(refill(&world, "all").is_some_and(|left| close(left, 2.0 * STEP)));
+    steps(&mut world, &mut schedule, 1);
+    assert!(refill(&world, "all").is_some_and(|left| close(left, STEP)));
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(refill(&world, "all"), None);
+    assert_eq!(
+        world.get::<Abilities>(hero).unwrap().charges("all"),
+        Some(3)
+    );
+    // Without charges, or not owned: none.
+    assert_eq!(use_ability(&mut world, hero, "plain"), Used::Used);
+    assert_eq!(refill(&world, "plain"), None);
+    assert_eq!(refill(&world, "sword"), None);
+}

@@ -75,8 +75,10 @@ fn valid_stat(name: &str) -> bool {
 /// since later forms are additions.
 ///
 /// Data form, one field: `{ "action": "attack" }`, an [`Intent`] slot
-/// pressed; `{ "interval": 1.5 }`, seconds of game time between uses; or
-/// `{ "manual": {} }`, [`use_ability`] and the `ability` cue action alone.
+/// pressed; `{ "held": "fire" }`, a slot held, a use each step its cooldown
+/// and charges allow; `{ "interval": 1.5 }`, seconds of game time between
+/// uses; or `{ "manual": {} }`, [`use_ability`] and the `ability` cue action
+/// alone.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Trigger {
@@ -86,6 +88,25 @@ pub enum Trigger {
     Action(String),
     /// Every this many seconds of game time, at most once a step.
     Interval(f32),
+    /// The intent slot of this name, each step it is held: its cooldown and
+    /// charges gate the uses, so a 0.1 s cooldown fires every 0.1 s.
+    Held(String),
+}
+
+/// Which direction a `self` or `aim` target's use takes. A match outside
+/// this crate needs a wildcard arm, since later forms are additions.
+///
+/// Data form: `"direction": "movement"`; `aim`, the default, is left out.
+/// A `nearest` or `random` target's use points at its target either way.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Direction {
+    /// The entity's [`Aim`], else its [`Intent`]'s aim.
+    #[default]
+    Aim,
+    /// The [`Intent`]'s movement, else the aim's: a dodge along the move
+    /// stick while the entity aims elsewhere.
+    Movement,
 }
 
 /// What an ability aims at. A match outside this crate needs a wildcard
@@ -188,8 +209,10 @@ struct Charges {
 /// }
 /// ```
 ///
-/// `trigger` `manual`, `cost` none, `cooldown` 0, `charges` none and
-/// `target` `self` by default; `payload` at least one, run in order. A
+/// `trigger` `manual`, `cost` none, `cooldown` 0, `charges` none,
+/// `target` `self` and `direction` `aim` by default (`"direction":
+/// "movement"` points a `self` or `aim` target's use along the intent's
+/// movement, else the aim); `payload` at least one, run in order. A
 /// cost's optional `scale` names a stat whose value for the user multiplies
 /// the amount ([`cost_for`](Self::cost_for)). The load checks each prefab (with a `linear_motion` when it spawns with a
 /// speed), each effect and each target's tags.
@@ -228,6 +251,8 @@ pub struct Ability {
     cooldown: f32,
     charges: Option<Charges>,
     target: AbilityTarget,
+    /// The direction a `self` or `aim` target's use takes.
+    direction: Direction,
     payload: Vec<Payload>,
     /// Its context, `skill.*` by convention; sorted.
     tags: Vec<String>,
@@ -254,6 +279,7 @@ impl Ability {
             cooldown: 0.0,
             charges: None,
             target: AbilityTarget::Itself,
+            direction: Direction::Aim,
             payload: Vec::new(),
             tags: Vec::new(),
             skill: None,
@@ -316,7 +342,7 @@ impl Ability {
                 seconds.is_finite() && *seconds > 0.0,
                 "Ability::with_trigger: the interval must be finite and > 0 (got {seconds})"
             ),
-            Trigger::Action(slot) => assert!(
+            Trigger::Action(slot) | Trigger::Held(slot) => assert!(
                 valid_stat(slot),
                 "Ability::with_trigger: `{slot}` is not a slot name (`[a-z][a-z0-9_]*`)"
             ),
@@ -433,6 +459,14 @@ impl Ability {
         self
     }
 
+    /// The ability, its `self` or `aim` target's use taking `direction`:
+    /// the aim's by default, or the intent's movement, else the aim's.
+    #[must_use]
+    pub fn with_direction(mut self, direction: Direction) -> Self {
+        self.direction = direction;
+        self
+    }
+
     /// The ability, doing `payload` after its earlier payloads.
     ///
     /// # Panics
@@ -515,6 +549,12 @@ impl Ability {
     #[must_use]
     pub fn target(&self) -> &AbilityTarget {
         &self.target
+    }
+
+    /// The direction a `self` or `aim` target's use takes.
+    #[must_use]
+    pub fn direction(&self) -> Direction {
+        self.direction
     }
 
     /// What a use does, in order.
@@ -620,6 +660,8 @@ struct AbilityDef {
     charges: Option<ChargesDef>,
     #[serde(default)]
     target: TargetDef,
+    #[serde(default, skip_serializing_if = "DirectionDef::is_aim")]
+    direction: DirectionDef,
     payload: Vec<PayloadDef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<String>,
@@ -643,6 +685,7 @@ enum TriggerDef {
     Manual(Empty),
     Action(String),
     Interval(f32),
+    Held(String),
 }
 
 /// A trigger's form, before its value is checked.
@@ -652,6 +695,7 @@ enum TriggerForm {
     Manual(Empty),
     Action(String),
     Interval(#[serde(deserialize_with = "positive")] f32),
+    Held(String),
 }
 
 impl TryFrom<TriggerForm> for TriggerDef {
@@ -669,6 +713,14 @@ impl TryFrom<TriggerForm> for TriggerDef {
                 TriggerDef::Action(slot)
             }
             TriggerForm::Interval(seconds) => TriggerDef::Interval(seconds),
+            TriggerForm::Held(slot) => {
+                if !valid_stat(&slot) {
+                    return Err(format!(
+                        "held: `{slot}` is not a slot name (`[a-z][a-z0-9_]*`)"
+                    ));
+                }
+                TriggerDef::Held(slot)
+            }
         })
     }
 }
@@ -676,6 +728,22 @@ impl TryFrom<TriggerForm> for TriggerDef {
 impl Default for TriggerDef {
     fn default() -> Self {
         TriggerDef::Manual(Empty {})
+    }
+}
+
+/// A direction as data writes it, `aim` left out.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DirectionDef {
+    #[default]
+    Aim,
+    Movement,
+}
+
+impl DirectionDef {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_aim(&self) -> bool {
+        *self == DirectionDef::Aim
     }
 }
 
@@ -890,6 +958,11 @@ impl TryFrom<AbilityDef> for Ability {
                 TriggerDef::Manual(_) => Trigger::Manual,
                 TriggerDef::Action(slot) => Trigger::Action(slot),
                 TriggerDef::Interval(seconds) => Trigger::Interval(seconds),
+                TriggerDef::Held(slot) => Trigger::Held(slot),
+            },
+            direction: match def.direction {
+                DirectionDef::Aim => Direction::Aim,
+                DirectionDef::Movement => Direction::Movement,
             },
             cost_scale: def.cost.as_ref().and_then(|cost| cost.scale.clone()),
             cost: def.cost.map(|cost| (cost.stat, cost.amount)),
@@ -936,6 +1009,11 @@ impl From<Ability> for AbilityDef {
                 Trigger::Manual => TriggerDef::Manual(Empty {}),
                 Trigger::Action(slot) => TriggerDef::Action(slot),
                 Trigger::Interval(seconds) => TriggerDef::Interval(seconds),
+                Trigger::Held(slot) => TriggerDef::Held(slot),
+            },
+            direction: match ability.direction {
+                Direction::Aim => DirectionDef::Aim,
+                Direction::Movement => DirectionDef::Movement,
             },
             cost: ability.cost.map(|(stat, amount)| CostDef {
                 stat,
@@ -1234,6 +1312,17 @@ impl Abilities {
         self.find(name).and_then(|entry| entry.charges)
     }
 
+    /// Game seconds until `name`'s next charge comes back, while a refill
+    /// runs: a HUD's reload sweep reads it against the refill time. `None`
+    /// when not owned, without charges, with every charge, or for an `all`
+    /// magazine with charges left, whose refill waits for its last.
+    #[must_use]
+    pub fn refill_left(&self, name: &str) -> Option<f32> {
+        self.find(name)
+            .filter(|entry| entry.charges.is_some() && entry.refill_left > 0.0)
+            .map(|entry| entry.refill_left)
+    }
+
     /// Makes `name` ready now: every charge back and its cooldown cleared;
     /// whether it is owned.
     pub fn refill(&mut self, name: &str) -> bool {
@@ -1494,7 +1583,8 @@ pub enum Used {
 /// `random` over the live, undespawned entities whose tags pass the filter
 /// within range, not dead by a [`Health`]; `aim` and a `spawn` with a speed
 /// or an `impulse` need a direction, from the entity's [`Aim`], else its
-/// [`Intent`]'s aim), and nothing is spent without one. Then the cost, as
+/// [`Intent`]'s aim, or with [`Direction::Movement`] the intent's movement
+/// first), and nothing is spent without one. Then the cost, as
 /// [`Ability::cost_for`] scales it, comes off the stat's base, a charge and the cooldown are spent, the
 /// payloads run in order, [`AbilityUsed`] goes out and the trace records
 /// `ability_used`. A payload that cannot run (no `CommandBuffer` for a
@@ -1667,18 +1757,38 @@ fn aimed(world: &World, entity: Entity) -> Option<Vec2> {
         })
 }
 
+/// The direction `entity` moves in: its [`Intent`]'s movement, normalized;
+/// `None` at rest.
+fn moving(world: &World, entity: Entity) -> Option<Vec2> {
+    world
+        .get::<Intent>(entity)
+        .map(Intent::movement)
+        .and_then(Vec2::try_normalize)
+}
+
+/// The direction a `self` or `aim` target's use takes: the aim's, or with
+/// [`Direction::Movement`] the movement's, else the aim's.
+fn pointed(world: &World, entity: Entity, direction: Direction) -> Option<Vec2> {
+    match direction {
+        Direction::Aim => aimed(world, entity),
+        Direction::Movement => moving(world, entity).or_else(|| aimed(world, entity)),
+    }
+}
+
 /// What a use aims at: the target entity (the entity itself for `self` and
 /// `aim`) and the direction, when there is one.
 fn resolve_target(
     world: &mut World,
     entity: Entity,
     at: Vec2,
-    target: &AbilityTarget,
+    ability: &Ability,
     scratch: &mut Scratch,
 ) -> Option<(Entity, Option<Vec2>)> {
-    match target {
-        AbilityTarget::Itself => Some((entity, aimed(world, entity))),
-        AbilityTarget::Aim => aimed(world, entity).map(|direction| (entity, Some(direction))),
+    match &ability.target {
+        AbilityTarget::Itself => Some((entity, pointed(world, entity, ability.direction))),
+        AbilityTarget::Aim => {
+            pointed(world, entity, ability.direction).map(|direction| (entity, Some(direction)))
+        }
         AbilityTarget::Nearest { filter, range } => {
             let limit = range.map_or(f32::INFINITY, |range| range * range);
             let mut nearest: Option<(Entity, Vec2, f32)> = None;
@@ -1766,8 +1876,7 @@ fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch
         }
     }
     let at = point_of(world, entity).unwrap_or(Vec2::ZERO);
-    let Some((target, direction)) = resolve_target(world, entity, at, &ability.target, scratch)
-    else {
+    let Some((target, direction)) = resolve_target(world, entity, at, &ability, scratch) else {
         return Used::NoTarget;
     };
     if direction.is_none() && ability.needs_direction() {
@@ -1931,6 +2040,11 @@ impl Ticker {
                 .get::<Intent>(entity)
                 .is_some_and(|intent| intent.pressed(slot))
         };
+        let held = |slot: &str| {
+            world
+                .get::<Intent>(entity)
+                .is_some_and(|intent| intent.held(slot))
+        };
         for entry in &mut abilities.entries {
             let Some(ability) = definition(world, &entry.ability) else {
                 continue;
@@ -1958,6 +2072,13 @@ impl Ticker {
             match &ability.trigger {
                 Trigger::Action(slot) => {
                     if pressed(slot) {
+                        self.scratch.uses.push(entry.name.clone());
+                    }
+                }
+                // A try each step held; the cooldown and charges refuse the
+                // rest, sending nothing.
+                Trigger::Held(slot) => {
+                    if held(slot) {
                         self.scratch.uses.push(entry.name.clone());
                     }
                 }
@@ -2116,6 +2237,14 @@ fn describe_abilities(world: &mut World) {
             )
             .default(r#"{ "self": {} }"#),
         )
+        .field(
+            FieldDescription::new(
+                "direction",
+                FieldType::Enum(&["aim", "movement"]),
+                "the direction a `self` or `aim` target's use takes: `aim`, the default, left out, its aim's, else its intent's aim; `movement` its intent's movement, else the aim's; a `nearest` or `random` target's use points at its target",
+            )
+            .default("null"),
+        )
         .field(FieldDescription::new(
             "payload",
             FieldType::List(Box::new(FieldType::Shape(ABILITY_PAYLOAD))),
@@ -2145,6 +2274,11 @@ fn describe_abilities(world: &mut World) {
                 "action",
                 FieldType::Text,
                 "an intent slot, used when pressed",
+            ))
+            .field(FieldDescription::new(
+                "held",
+                FieldType::Text,
+                "an intent slot, tried each step it is held: its cooldown and charges gate the uses",
             ))
             .field(FieldDescription::new(
                 "interval",

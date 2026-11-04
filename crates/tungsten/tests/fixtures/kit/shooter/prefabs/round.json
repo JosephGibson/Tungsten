@@ -1,0 +1,14 @@
+{
+  "tag": "round",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        0,
+        0
+      ]
+    },
+    "lifetime": {
+      "seconds": 1
+    }
+  }
+}

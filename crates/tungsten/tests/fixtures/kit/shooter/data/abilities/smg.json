@@ -1,0 +1,23 @@
+{
+  "trigger": {
+    "held": "fire"
+  },
+  "cooldown": 0.1,
+  "charges": {
+    "max": 24,
+    "refill": 1.6,
+    "all": true
+  },
+  "target": {
+    "aim": {}
+  },
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "round",
+        "speed": 900,
+        "offset": 12
+      }
+    }
+  ]
+}

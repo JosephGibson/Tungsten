@@ -307,6 +307,7 @@ shape ability: What an entity can do: fired by a trigger, at a cost, with a cool
   field cooldown: f32 (>= 0) = 0.0 — seconds between uses, counted at the entity's `cooldown_rate`
   field charges: shape ability_charges = null — uses in hand, refilled by time
   field target: shape ability_target = { "self": {} } — what it aims at; the load checks a filter's tags
+  field direction: one of aim | movement = null — the direction a `self` or `aim` target's use takes: `aim`, the default, left out, its aim's, else its intent's aim; `movement` its intent's movement, else the aim's; a `nearest` or `random` target's use points at its target
   field payload: list of shape ability_payload — what a use does, in order; at least one
   field tags: list of tag = null — its context, `skill.*` by convention, which its sheet's lines and its hits read; the load checks each
   field skill: shape skill = null — a skill sheet, resolved at a use before the cost: its cost and cooldown replace the ability's, and each payload carries its snapshot to the hits
@@ -343,6 +344,7 @@ shape ability_target: What an ability aims at.
 shape ability_trigger: What fires an ability.
   exactly one of its fields
   field action: text — an intent slot, used when pressed
+  field held: text — an intent slot, tried each step it is held: its cooldown and charges gate the uses
   field interval: f32 (> 0) — seconds of game time between uses, at most once a step
   field manual: {} — `use_ability` and the `ability` cue action alone
   sample: { "manual": {} }

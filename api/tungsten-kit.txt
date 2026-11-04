@@ -236,6 +236,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TraceKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TraceKind
 #[non_exhaustive] pub enum tungsten_kit::prelude::Trigger
 pub tungsten_kit::prelude::Trigger::Action(alloc::string::String)
+pub tungsten_kit::prelude::Trigger::Held(alloc::string::String)
 pub tungsten_kit::prelude::Trigger::Interval(f32)
 pub tungsten_kit::prelude::Trigger::Manual
 impl core::clone::Clone for tungsten_kit::Trigger
@@ -287,6 +288,7 @@ pub fn tungsten_kit::Abilities::names(&self) -> impl core::iter::traits::iterato
 pub fn tungsten_kit::Abilities::new() -> Self
 pub fn tungsten_kit::Abilities::ready(&self, &str) -> bool
 pub fn tungsten_kit::Abilities::refill(&mut self, &str) -> bool
+pub fn tungsten_kit::Abilities::refill_left(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Abilities::remove_lines(&mut self, &str) -> usize
 pub fn tungsten_kit::Abilities::remove_skill_lines(&mut self, &str, &str) -> usize
 pub fn tungsten_kit::Abilities::set_level(&mut self, &str, u32)
@@ -338,6 +340,7 @@ pub fn tungsten_kit::Ability::cooldown(&self) -> f32
 pub fn tungsten_kit::Ability::cost(&self) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Ability::cost_for(&self, core::option::Option<&tungsten_kit::Stats>) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Ability::cost_scale(&self) -> core::option::Option<&str>
+pub fn tungsten_kit::Ability::direction(&self) -> tungsten_kit::intent::ability::Direction
 pub fn tungsten_kit::Ability::new() -> Self
 pub fn tungsten_kit::Ability::payload(&self) -> &[tungsten_kit::Payload]
 pub fn tungsten_kit::Ability::skill(&self) -> core::option::Option<&tungsten_kit::Skill>
@@ -348,6 +351,7 @@ pub fn tungsten_kit::Ability::with_charges(self, u32, f32, bool) -> Self
 pub fn tungsten_kit::Ability::with_cooldown(self, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost(self, &str, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost_scale(self, &str) -> Self
+pub fn tungsten_kit::Ability::with_direction(self, tungsten_kit::intent::ability::Direction) -> Self
 pub fn tungsten_kit::Ability::with_payload(self, tungsten_kit::Payload) -> Self
 pub fn tungsten_kit::Ability::with_skill(self, tungsten_kit::Skill) -> Self
 pub fn tungsten_kit::Ability::with_tags(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
@@ -4353,6 +4357,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TraceKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TraceKind
 #[non_exhaustive] pub enum tungsten_kit::Trigger
 pub tungsten_kit::Trigger::Action(alloc::string::String)
+pub tungsten_kit::Trigger::Held(alloc::string::String)
 pub tungsten_kit::Trigger::Interval(f32)
 pub tungsten_kit::Trigger::Manual
 impl core::clone::Clone for tungsten_kit::Trigger
@@ -4404,6 +4409,7 @@ pub fn tungsten_kit::Abilities::names(&self) -> impl core::iter::traits::iterato
 pub fn tungsten_kit::Abilities::new() -> Self
 pub fn tungsten_kit::Abilities::ready(&self, &str) -> bool
 pub fn tungsten_kit::Abilities::refill(&mut self, &str) -> bool
+pub fn tungsten_kit::Abilities::refill_left(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Abilities::remove_lines(&mut self, &str) -> usize
 pub fn tungsten_kit::Abilities::remove_skill_lines(&mut self, &str, &str) -> usize
 pub fn tungsten_kit::Abilities::set_level(&mut self, &str, u32)
@@ -4455,6 +4461,7 @@ pub fn tungsten_kit::Ability::cooldown(&self) -> f32
 pub fn tungsten_kit::Ability::cost(&self) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Ability::cost_for(&self, core::option::Option<&tungsten_kit::Stats>) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Ability::cost_scale(&self) -> core::option::Option<&str>
+pub fn tungsten_kit::Ability::direction(&self) -> tungsten_kit::intent::ability::Direction
 pub fn tungsten_kit::Ability::new() -> Self
 pub fn tungsten_kit::Ability::payload(&self) -> &[tungsten_kit::Payload]
 pub fn tungsten_kit::Ability::skill(&self) -> core::option::Option<&tungsten_kit::Skill>
@@ -4465,6 +4472,7 @@ pub fn tungsten_kit::Ability::with_charges(self, u32, f32, bool) -> Self
 pub fn tungsten_kit::Ability::with_cooldown(self, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost(self, &str, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost_scale(self, &str) -> Self
+pub fn tungsten_kit::Ability::with_direction(self, tungsten_kit::intent::ability::Direction) -> Self
 pub fn tungsten_kit::Ability::with_payload(self, tungsten_kit::Payload) -> Self
 pub fn tungsten_kit::Ability::with_skill(self, tungsten_kit::Skill) -> Self
 pub fn tungsten_kit::Ability::with_tags(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
