@@ -213,6 +213,9 @@
       }
     },
     "effects": {
+      "kindled": {
+        "path": "data/effects/kindled.json"
+      },
       "burning": {
         "path": "data/effects/burning.json"
       },

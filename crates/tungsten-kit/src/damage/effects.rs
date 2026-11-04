@@ -41,6 +41,9 @@ use crate::foundation::{non_negative, optional_non_negative, optional_positive};
 use crate::lifecycle::cooldown::Cooldown;
 use crate::lifecycle::ended::Despawning;
 use crate::overlap::hit::DamageDef;
+use crate::present::looks::{
+    EFFECT_LOOK, EFFECT_LOOK_LATE, Look, LookEntry, LookHolders, LookState, describe_looks,
+};
 use crate::{TIME_EPSILON, count_down};
 
 /// [`EffectsPlugin`]'s system that counts effects down and lands their
@@ -354,6 +357,8 @@ pub struct Effect {
     /// Run on the holder when an instance ends.
     on_end: Vec<Output>,
     emit: Option<Emit>,
+    /// What an instance shows on its holder; a band's replaces it.
+    look: Option<Look>,
 }
 
 /// A status's intensity: the most an instance holds, and what a second
@@ -373,6 +378,9 @@ struct Band {
     grant: Vec<String>,
     /// Run on the holder each time the intensity reaches it from below.
     enter: Vec<Output>,
+    /// The look that replaces the effect's while this band is the highest
+    /// its intensity holds.
+    look: Option<Look>,
 }
 
 /// A fuel: the holder's stat an instance burns, and how much a second.
@@ -458,6 +466,7 @@ impl Effect {
             fuel: None,
             on_end: Vec::new(),
             emit: None,
+            look: None,
         }
     }
 
@@ -863,8 +872,60 @@ impl Effect {
             at,
             grant: tag_list("Effect::with_band", tags),
             enter: Vec::new(),
+            look: None,
         });
         self
+    }
+
+    /// The effect, showing `look` on its holder while an instance runs
+    /// (redo 7.10p): a tint, an overlay and a glow by the instance's share,
+    /// a status's intensity over its max or another effect's stacks over
+    /// its limit. Data form `"look"`.
+    #[must_use]
+    pub fn with_look(mut self, look: Look) -> Self {
+        self.look = Some(look);
+        self
+    }
+
+    /// The effect, its band at `at` showing `look` in place of the
+    /// effect's while that band is the highest its intensity holds. Data
+    /// form, a band's `"look"`.
+    ///
+    /// # Panics
+    ///
+    /// When the effect has no band at `at`.
+    #[must_use]
+    #[track_caller]
+    pub fn with_band_look(mut self, at: f32, look: Look) -> Self {
+        let Some(band) = self.bands.iter_mut().find(|band| band.at == at) else {
+            panic!("Effect::with_band_look: no band at {at}");
+        };
+        band.look = Some(look);
+        self
+    }
+
+    /// Its look, if any.
+    #[must_use]
+    pub fn look(&self) -> Option<&Look> {
+        self.look.as_ref()
+    }
+
+    /// The look `instance` shows, the band it is from (`None` for the
+    /// effect's own) and its share.
+    pub(crate) fn look_of(&self, instance: &EffectInstance) -> Option<(&Look, Option<usize>, f32)> {
+        let share = match (self.intensity, instance.intensity) {
+            (Some(intensity), Some(at)) => at / intensity.max,
+            _ => instance.stacks as f32 / self.limit.max(1) as f32,
+        }
+        .clamp(0.0, 1.0);
+        let reached = self.bands_reached(instance.intensity);
+        if let Some(look) = reached
+            .checked_sub(1)
+            .and_then(|band| self.bands[band].look.as_ref())
+        {
+            return Some((look, Some(reached - 1), share));
+        }
+        self.look.as_ref().map(|look| (look, None, share))
     }
 
     /// The effect, burning its holder's stat `stat` by `rate` a second
@@ -1270,6 +1331,12 @@ impl Effect {
                 check_declared(world, &format!("bands.{i}.grant.{j}"), tag)?;
             }
             check_outputs(world, &format!("bands.{i}.enter"), &band.enter)?;
+            if let Some(look) = &band.look {
+                look.check(world, &format!("bands.{i}.look"))?;
+            }
+        }
+        if let Some(look) = &self.look {
+            look.check(world, "look")?;
         }
         check_outputs(world, "on_end", &self.on_end)?;
         if let Some(emit) = &self.emit {
@@ -1321,6 +1388,8 @@ struct EffectDef {
     on_end: Vec<Output>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     emit: Option<EmitDef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    look: Option<Look>,
 }
 
 /// An emission as data writes it, every field required.
@@ -1415,6 +1484,8 @@ struct BandDef {
     grant: TagList,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     enter: Vec<Output>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    look: Option<Look>,
 }
 
 #[derive(Deserialize)]
@@ -1425,6 +1496,8 @@ struct BandFields {
     grant: TagList,
     #[serde(default)]
     enter: Vec<Output>,
+    #[serde(default)]
+    look: Option<Look>,
 }
 
 impl TryFrom<BandFields> for BandDef {
@@ -1438,6 +1511,7 @@ impl TryFrom<BandFields> for BandDef {
             at: fields.at,
             grant: fields.grant,
             enter: fields.enter,
+            look: fields.look,
         })
     }
 }
@@ -1828,6 +1902,7 @@ impl TryFrom<EffectDef> for Effect {
                     at: band.at,
                     grant: band.grant.0,
                     enter: band.enter,
+                    look: band.look,
                 })
                 .collect(),
             fuel: def.fuel.map(|fuel| Fuel {
@@ -1841,6 +1916,7 @@ impl TryFrom<EffectDef> for Effect {
                 radius: emit.radius,
                 period: emit.period,
             }),
+            look: def.look,
         })
     }
 }
@@ -1891,6 +1967,7 @@ impl From<Effect> for EffectDef {
                     at: band.at,
                     grant: TagList(band.grant),
                     enter: band.enter,
+                    look: band.look,
                 })
                 .collect(),
             fuel: effect.fuel.map(|fuel| FuelDef {
@@ -1904,6 +1981,7 @@ impl From<Effect> for EffectDef {
                 radius: emit.radius,
                 period: emit.period,
             }),
+            look: effect.look,
         }
     }
 }
@@ -3694,6 +3772,8 @@ struct Ticker {
     suppressed_now: Vec<(Entity, u64)>,
     /// The stat a fuel burns, copied out of its definition.
     fuel: String,
+    /// An entity's running looks, before they join the World's list.
+    looks: Vec<LookEntry>,
 }
 
 impl Ticker {
@@ -3704,6 +3784,9 @@ impl Ticker {
             .get_resource::<Time>()
             .map_or(0.0, Time::delta)
             .max(0.0);
+        if let Some(holders) = world.get_resource_mut::<LookHolders>() {
+            holders.0.clear();
+        }
         self.entities.clear();
         self.entities.extend(
             world
@@ -3722,6 +3805,34 @@ impl Ticker {
                 .sort_by_key(|&(entity, serial)| (entity.id(), serial));
             std::mem::swap(&mut self.suppressed, &mut self.suppressed_now);
             self.suppressed_now.clear();
+        }
+    }
+
+    /// Lists `entity`'s instances whose look runs on the World's
+    /// [`LookHolders`], in instance order, for the look passes.
+    fn list_looks(&mut self, world: &mut World, entity: Entity) {
+        if !world.has_resource::<LookHolders>() {
+            return;
+        }
+        if let Some(effects) = world.get::<Effects>(entity) {
+            for instance in &effects.instances {
+                if let Some((_, band, share)) =
+                    definition(world, &instance.effect).and_then(|effect| effect.look_of(instance))
+                {
+                    self.looks.push(LookEntry {
+                        holder: entity,
+                        serial: instance.serial,
+                        band,
+                        share,
+                    });
+                }
+            }
+        }
+        if !self.looks.is_empty() {
+            world
+                .resource_mut::<LookHolders>()
+                .0
+                .append(&mut self.looks);
         }
     }
 
@@ -3800,6 +3911,7 @@ impl Ticker {
             }
         }
         put_back(world, entity, effects);
+        self.list_looks(world, entity);
         for payload in self.payloads.drain(..) {
             match payload {
                 Payload::Damage(request) => {
@@ -4117,11 +4229,68 @@ impl Plugin for EffectsPlugin {
                 .after_if_present(CHEMISTRY),
         );
         register_ailments(schedule, world);
+        register_looks(schedule, world);
     }
+}
+
+/// Registers the look passes and the step's [`LookHolders`]: [`EFFECT_LOOK`]
+/// in `post_update` after the transform propagation and before the
+/// particle count, [`EFFECT_LOOK_LATE`] in the present phase after the
+/// facing, the character animator and the depth sort.
+fn register_looks(schedule: &mut Schedule, world: &mut World) {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use tungsten_core::Stage;
+    use tungsten_core::schedule::names::PARTICLE_COUNT_REFRESH;
+
+    use crate::present::character::CHARACTER_ANIMATOR;
+    use crate::present::depth::DEPTH_SORT;
+    use crate::present::facing::FACING;
+    use crate::transform::hierarchy::TRANSFORM_PROPAGATE;
+
+    if !world.has_resource::<LookHolders>() {
+        world.insert_resource(LookHolders::default());
+    }
+    let state = Rc::new(RefCell::new(LookState::default()));
+    let early = Rc::clone(&state);
+    schedule.add(
+        Stage::PostUpdate,
+        system(EFFECT_LOOK, move |world: &mut World| {
+            early.borrow_mut().early(world);
+        })
+        .after_if_present(TRANSFORM_PROPAGATE)
+        .before_if_present(PARTICLE_COUNT_REFRESH),
+    );
+    schedule.add(
+        Phase::Present.stage(),
+        Phase::Present
+            .join(system(EFFECT_LOOK_LATE, move |world: &mut World| {
+                state.borrow_mut().late(world);
+            }))
+            .after_if_present(FACING)
+            .after_if_present(CHARACTER_ANIMATOR)
+            .after_if_present(DEPTH_SORT),
+    );
+}
+
+/// The look `holder`'s instance `serial` shows, the band it is from and its
+/// share, for the look passes.
+pub(crate) fn running_look(
+    world: &World,
+    holder: Entity,
+    serial: u64,
+) -> Option<(&Look, Option<usize>, f32)> {
+    let instance = world
+        .get::<Effects>(holder)?
+        .instances
+        .iter()
+        .find(|instance| instance.serial == serial)?;
+    definition(world, &instance.effect)?.look_of(instance)
 }
 
 /// The descriptions of `effects`, its shapes and the `effects` kind.
 fn describe_effects(world: &mut World) {
+    describe_looks(world);
     describe(
         world,
         ComponentDescription::new(
@@ -4264,6 +4433,14 @@ fn describe_effects(world: &mut World) {
         )
         .field(
             FieldDescription::new(
+                "look",
+                FieldType::Shape("look"),
+                "what an instance shows on its holder by its share: a tint, an overlay clip and a glow",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
                 "intensity",
                 FieldType::Shape(EFFECT_INTENSITY),
                 "makes it a status: an intensity each application builds by its amount times its status effect, up to `max`, one stack, worn by `decay` a second until it runs out at 0; its `scale` curve reads the intensity",
@@ -4351,6 +4528,14 @@ fn describe_effects(world: &mut World) {
                     "enter",
                     FieldType::List(Box::new(FieldType::Shape("interaction_output"))),
                     "chemistry outputs run on the holder each time the intensity reaches `at` from below",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "look",
+                    FieldType::Shape("look"),
+                    "what the holder shows in place of the status's look while this band is the highest its intensity holds",
                 )
                 .default("null"),
             )

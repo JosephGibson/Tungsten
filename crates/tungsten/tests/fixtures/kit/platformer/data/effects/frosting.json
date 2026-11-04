@@ -1,0 +1,26 @@
+{
+  "intensity": {
+    "max": 4,
+    "decay": 1
+  },
+  "bands": [
+    {
+      "at": 1,
+      "look": {
+        "overlay": {
+          "animation": "frost_light",
+          "z": 2
+        }
+      }
+    },
+    {
+      "at": 3,
+      "look": {
+        "overlay": {
+          "animation": "frost_heavy",
+          "z": 2
+        }
+      }
+    }
+  ]
+}

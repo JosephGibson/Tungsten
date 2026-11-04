@@ -223,3 +223,29 @@ pub(crate) fn point_of(harness: &Harness, entity: Entity) -> Vec2 {
         |position| position.0,
     )
 }
+
+/// Registers sprite `id`, `width` × `height`, on the harness's registry
+/// with no pixels, as a headless test draws it.
+pub(crate) fn register_sprite(
+    harness: &mut Harness,
+    id: &str,
+    width: u32,
+    height: u32,
+) -> tungsten_core::SpriteAssetId {
+    use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
+    harness
+        .world_mut()
+        .resource_mut::<tungsten_core::AssetRegistry>()
+        .register_sprite(
+            id.to_string(),
+            FilterMode::Nearest,
+            width,
+            height,
+            PathBuf::from(format!("{id}.png")),
+            TextureHandle(90),
+            UvRect::FULL,
+            None,
+            None,
+            None,
+        )
+}

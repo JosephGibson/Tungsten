@@ -16,8 +16,8 @@
 //! 7.10p's balls whose hard impacts spark under a rule's amount and
 //! interval, charges whose blasts shake by their distance from a listener
 //! following the hero, a crate whose break a recipe system plays as the
-//! `crate_break` world cue, and a turret under rapid fire whose flash
-//! waits its interval.
+//! `crate_break` world cue, a turret under rapid fire whose flash waits
+//! its interval, and a blob whose frosting shows its band's overlay.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1885,5 +1885,59 @@ fn a_turret_under_rapid_fire_flashes_once_an_interval() {
             "dt {dt}: {starts:?}"
         );
         assert!(off * 2 >= frames, "dt {dt}: off {off} of {frames} frames");
+    }
+}
+
+// 7.10p: status looks.
+
+#[test]
+fn a_blobs_frosting_shows_its_bands_overlay_as_it_wears() {
+    use tungsten_core::{Sprite, Visibility};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let blob = super::register_sprite(&mut harness, "blob", 16, 16);
+        for (id, size) in [
+            ("frost_light_0", 8),
+            ("frost_light_1", 8),
+            ("frost_heavy_0", 12),
+            ("frost_heavy_1", 12),
+        ] {
+            super::register_sprite(&mut harness, id, size, size);
+        }
+        let blob = harness.world_mut().spawn_with((
+            Transform::from_position(Vec2::new(100.0, 100.0)),
+            Sprite::new(blob),
+            Visibility::default(),
+        ));
+        EffectRequest::new(blob, DataRef::by_id("frosting"))
+            .with_amount(3.5)
+            .apply(harness.world_mut());
+        // The overlays drawn: each one's top-left and size.
+        let overlays = |harness: &super::Harness| -> Vec<([f32; 2], [f32; 2])> {
+            harness
+                .draw()
+                .unwrap()
+                .sprites
+                .iter()
+                .flat_map(|batch| &batch.instances)
+                .filter(|instance| instance.size != [16.0, 16.0])
+                .map(|instance| (instance.position, instance.size))
+                .collect()
+        };
+        harness.step(1);
+        assert_eq!(
+            overlays(&harness),
+            [([102.0, 102.0], [12.0, 12.0])],
+            "dt {dt}: band 2's heavy frost on its centre"
+        );
+        harness.step(frames_for(0.75, dt));
+        assert_eq!(
+            overlays(&harness),
+            [([104.0, 104.0], [8.0, 8.0])],
+            "dt {dt}: worn below 3, band 1's light frost"
+        );
+        harness.step(frames_for(3.0, dt));
+        assert!(overlays(&harness).is_empty(), "dt {dt}: worn out");
     }
 }

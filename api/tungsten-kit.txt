@@ -1430,6 +1430,7 @@ pub fn tungsten_kit::Effect::heal(&self) -> f32
 pub fn tungsten_kit::Effect::intensity(&self) -> core::option::Option<(f32, f32)>
 pub fn tungsten_kit::Effect::is_instant(&self) -> bool
 pub fn tungsten_kit::Effect::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
+pub fn tungsten_kit::Effect::look(&self) -> core::option::Option<&tungsten_kit::Look>
 pub fn tungsten_kit::Effect::modifiers(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
 pub fn tungsten_kit::Effect::new() -> Self
 pub fn tungsten_kit::Effect::on_end(&self) -> &[tungsten_kit::Output]
@@ -1444,6 +1445,7 @@ pub fn tungsten_kit::Effect::scale(&self) -> core::option::Option<(&tungsten_cor
 pub fn tungsten_kit::Effect::stack_limit(&self) -> u32
 pub fn tungsten_kit::Effect::suppressed_by(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Effect::with_band(self, f32, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn tungsten_kit::Effect::with_band_look(self, f32, tungsten_kit::Look) -> Self
 pub fn tungsten_kit::Effect::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_damage(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_duration(self, f32) -> Self
@@ -1453,6 +1455,7 @@ pub fn tungsten_kit::Effect::with_grant(self, impl core::iter::traits::collect::
 pub fn tungsten_kit::Effect::with_heal(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_intensity(self, f32, f32) -> Self
 pub fn tungsten_kit::Effect::with_line(self, &str, tungsten_kit::Line) -> Self
+pub fn tungsten_kit::Effect::with_look(self, tungsten_kit::Look) -> Self
 pub fn tungsten_kit::Effect::with_modifier(self, &str, tungsten_kit::Modifier) -> Self
 pub fn tungsten_kit::Effect::with_on_expire(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::Effect::with_period(self, f32) -> Self
@@ -5617,6 +5620,7 @@ pub fn tungsten_kit::Effect::heal(&self) -> f32
 pub fn tungsten_kit::Effect::intensity(&self) -> core::option::Option<(f32, f32)>
 pub fn tungsten_kit::Effect::is_instant(&self) -> bool
 pub fn tungsten_kit::Effect::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Line)>
+pub fn tungsten_kit::Effect::look(&self) -> core::option::Option<&tungsten_kit::Look>
 pub fn tungsten_kit::Effect::modifiers(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
 pub fn tungsten_kit::Effect::new() -> Self
 pub fn tungsten_kit::Effect::on_end(&self) -> &[tungsten_kit::Output]
@@ -5631,6 +5635,7 @@ pub fn tungsten_kit::Effect::scale(&self) -> core::option::Option<(&tungsten_cor
 pub fn tungsten_kit::Effect::stack_limit(&self) -> u32
 pub fn tungsten_kit::Effect::suppressed_by(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Effect::with_band(self, f32, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn tungsten_kit::Effect::with_band_look(self, f32, tungsten_kit::Look) -> Self
 pub fn tungsten_kit::Effect::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_damage(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_duration(self, f32) -> Self
@@ -5640,6 +5645,7 @@ pub fn tungsten_kit::Effect::with_grant(self, impl core::iter::traits::collect::
 pub fn tungsten_kit::Effect::with_heal(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_intensity(self, f32, f32) -> Self
 pub fn tungsten_kit::Effect::with_line(self, &str, tungsten_kit::Line) -> Self
+pub fn tungsten_kit::Effect::with_look(self, tungsten_kit::Look) -> Self
 pub fn tungsten_kit::Effect::with_modifier(self, &str, tungsten_kit::Modifier) -> Self
 pub fn tungsten_kit::Effect::with_on_expire(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::Effect::with_period(self, f32) -> Self
@@ -6806,6 +6812,33 @@ impl core::marker::Unpin for tungsten_kit::LocalOffset
 impl core::marker::UnsafeUnpin for tungsten_kit::LocalOffset
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::LocalOffset
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::LocalOffset
+pub struct tungsten_kit::Look
+impl tungsten_kit::Look
+pub fn tungsten_kit::Look::new() -> Self
+pub fn tungsten_kit::Look::tint(&self) -> core::option::Option<[f32; 4]>
+pub fn tungsten_kit::Look::with_glow(self, [f32; 4], f32) -> Self
+pub fn tungsten_kit::Look::with_overlay(self, tungsten_kit::Overlay) -> Self
+pub fn tungsten_kit::Look::with_tint(self, [f32; 4]) -> Self
+impl core::clone::Clone for tungsten_kit::Look
+pub fn tungsten_kit::Look::clone(&self) -> tungsten_kit::Look
+impl core::cmp::PartialEq for tungsten_kit::Look
+pub fn tungsten_kit::Look::eq(&self, &tungsten_kit::Look) -> bool
+impl core::default::Default for tungsten_kit::Look
+pub fn tungsten_kit::Look::default() -> tungsten_kit::Look
+impl core::fmt::Debug for tungsten_kit::Look
+pub fn tungsten_kit::Look::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Look
+impl serde_core::ser::Serialize for tungsten_kit::Look
+pub fn tungsten_kit::Look::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Look
+pub fn tungsten_kit::Look::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Look
+impl core::marker::Send for tungsten_kit::Look
+impl core::marker::Sync for tungsten_kit::Look
+impl core::marker::Unpin for tungsten_kit::Look
+impl core::marker::UnsafeUnpin for tungsten_kit::Look
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Look
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Look
 pub struct tungsten_kit::Offer
 impl tungsten_kit::Offer
 pub fn tungsten_kit::Offer::ability(&self) -> core::option::Option<&tungsten_core::assets::data::DataRef<tungsten_kit::Ability>>
@@ -6966,6 +6999,27 @@ impl core::marker::Unpin for tungsten_kit::Output
 impl core::marker::UnsafeUnpin for tungsten_kit::Output
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Output
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Output
+pub struct tungsten_kit::Overlay
+impl tungsten_kit::Overlay
+pub fn tungsten_kit::Overlay::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Overlay::with_material(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Overlay::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::Overlay::with_speed(self, f32) -> Self
+pub fn tungsten_kit::Overlay::with_z(self, i32) -> Self
+impl core::clone::Clone for tungsten_kit::Overlay
+pub fn tungsten_kit::Overlay::clone(&self) -> tungsten_kit::Overlay
+impl core::cmp::PartialEq for tungsten_kit::Overlay
+pub fn tungsten_kit::Overlay::eq(&self, &tungsten_kit::Overlay) -> bool
+impl core::fmt::Debug for tungsten_kit::Overlay
+pub fn tungsten_kit::Overlay::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Overlay
+impl core::marker::Freeze for tungsten_kit::Overlay
+impl core::marker::Send for tungsten_kit::Overlay
+impl core::marker::Sync for tungsten_kit::Overlay
+impl core::marker::Unpin for tungsten_kit::Overlay
+impl core::marker::UnsafeUnpin for tungsten_kit::Overlay
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Overlay
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Overlay
 pub struct tungsten_kit::Parent(_)
 impl tungsten_kit::Parent
 pub fn tungsten_kit::Parent::entity(self) -> tungsten_core::ecs::entity::Entity
@@ -8591,6 +8645,8 @@ pub const tungsten_kit::CUES: &str
 pub const tungsten_kit::DAMAGE_RESOLVE: &str
 pub const tungsten_kit::DEPTH_SORT: &str
 pub const tungsten_kit::DESPAWN_OUTSIDE: &str
+pub const tungsten_kit::EFFECT_LOOK: &str
+pub const tungsten_kit::EFFECT_LOOK_LATE: &str
 pub const tungsten_kit::EFFECT_RESOLVE: &str
 pub const tungsten_kit::EFFECT_TICK: &str
 pub const tungsten_kit::EXPLAIN_RECORDS: usize

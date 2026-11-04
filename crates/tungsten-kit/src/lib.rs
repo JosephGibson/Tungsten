@@ -320,6 +320,7 @@ pub use present::character::{
 pub use present::depth::{DEPTH_SORT, DepthSort, DepthSortPlugin};
 pub use present::facing::{FACING, Facing, FacingPlugin};
 pub use present::labels::{LABEL_TICK, LabelStyle, float_label};
+pub use present::looks::{EFFECT_LOOK, EFFECT_LOOK_LATE, Look, Overlay};
 pub use present::sound::SoundOnEvent;
 pub use react::counters::{Counters, CountersPlugin, Flags};
 pub use react::cues::{CUES, CueAction, CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin};

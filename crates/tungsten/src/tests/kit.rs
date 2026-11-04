@@ -39,7 +39,7 @@ use crate::testing::Harness;
 /// `post_update` with `DefaultPlugins`, then `KitPlugins::set()`, the sound
 /// plugin, the trigger zone and the state machine: the present phase after
 /// the late propagation and before the camera.
-const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, kit_debug_draw, hit_sound, camera_update";
+const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, effect_look, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, effect_look_late, kit_debug_draw, hit_sound, camera_update";
 
 /// `fixed_update` with the same plugins: the six fixed phases around
 /// `physics_step`, each member in its registration order but where an edge
@@ -2997,7 +2997,12 @@ fn build_owner(name: &str, schedule: &mut tungsten_core::Schedule, world: &mut W
         AIM => AimPlugin.build(schedule, world),
         STATS_APPLY => StatsPlugin::new().build(schedule, world),
         DAMAGE_RESOLVE => HealthPlugin.build(schedule, world),
-        EFFECT_TICK | EFFECT_RESOLVE | AILMENT_TICK | AILMENT_FEED => {
+        EFFECT_TICK
+        | EFFECT_RESOLVE
+        | AILMENT_TICK
+        | AILMENT_FEED
+        | crate::kit::EFFECT_LOOK
+        | crate::kit::EFFECT_LOOK_LATE => {
             EffectsPlugin.build(schedule, world);
         }
         CHEMISTRY | CHEMISTRY_TICK => ChemistryPlugin::new().build(schedule, world),
@@ -3017,6 +3022,8 @@ fn build_owner(name: &str, schedule: &mut tungsten_core::Schedule, world: &mut W
         FACING => FacingPlugin.build(schedule, world),
         ANIMATION_TICK => AnimationPlugin.build(schedule, world),
         CHARACTER_ANIMATOR => CharacterAnimatorPlugin.build(schedule, world),
+        crate::kit::TRANSFORM_PROPAGATE => crate::kit::HierarchyPlugin.build(schedule, world),
+        crate::kit::DEPTH_SORT => crate::kit::DepthSortPlugin.build(schedule, world),
         other => panic!("no plugin for {other}"),
     }
 }
@@ -4092,6 +4099,35 @@ const EFFECT_EDGES: [(&str, &str); 12] = [
     (EFFECT_TICK, CHEMISTRY_TICK),
     (AILMENT_TICK, CHEMISTRY_TICK),
 ];
+
+/// 7.10p's look passes' cross-plugin edges, each `(earlier, later)`.
+const LOOK_EDGES: [(&str, &str); 4] = [
+    (crate::kit::TRANSFORM_PROPAGATE, crate::kit::EFFECT_LOOK),
+    (FACING, crate::kit::EFFECT_LOOK_LATE),
+    (CHARACTER_ANIMATOR, crate::kit::EFFECT_LOOK_LATE),
+    (crate::kit::DEPTH_SORT, crate::kit::EFFECT_LOOK_LATE),
+];
+
+#[test]
+fn each_look_edge_holds_with_its_two_plugins_alone_in_either_order() {
+    for (earlier, later) in LOOK_EDGES {
+        for (first, second) in [(earlier, later), (later, earlier)] {
+            let mut world = World::new();
+            let mut schedule = tungsten_core::Schedule::new();
+            build_owner(first, &mut schedule, &mut world);
+            build_owner(second, &mut schedule, &mut world);
+            schedule.resolve().unwrap();
+            let stage = schedule.stage_of(earlier).unwrap();
+            assert_eq!(schedule.stage_of(later), Some(stage));
+            let names: Vec<&str> = schedule.names(stage).collect();
+            let at = |name: &str| names.iter().position(|n| *n == name).unwrap();
+            assert!(
+                at(earlier) < at(later),
+                "{earlier} before {later}, built {first} first: {names:?}"
+            );
+        }
+    }
+}
 
 #[test]
 fn each_effect_edge_holds_with_its_two_plugins_alone_in_either_order_and_reversed_in_the_set() {

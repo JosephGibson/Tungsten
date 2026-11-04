@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "frost_light_0"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "frost_light_1"
+    }
+  ],
+  "looping": true
+}

@@ -147,6 +147,9 @@
       }
     },
     "effects": {
+      "frosting": {
+        "path": "data/effects/frosting.json"
+      },
       "regen": {
         "path": "data/effects/regen.json"
       },
@@ -223,6 +226,12 @@
     }
   },
   "animations": {
+    "frost_heavy": {
+      "path": "animations/frost_heavy.json"
+    },
+    "frost_light": {
+      "path": "animations/frost_light.json"
+    },
     "hero_run": {
       "path": "animations/hero_run.json"
     },

@@ -20,7 +20,8 @@
 //! ticks and a blow pass a rule's `periodic` apart, and a campfire whose
 //! crackle loops by a listener following the hero past it, a storm whose
 //! recipe system plays the `thunder` world cue each second, and a
-//! shield-bearer whose whole blocks flash the shield's colour.
+//! shield-bearer whose whole blocks flash the shield's colour, and a
+//! kindled lantern whose look tints it over a colour tween and glows.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -1140,6 +1141,88 @@ fn a_shieldbearers_whole_blocks_flash_its_shield_colour_until_it_breaks() {
             seen,
             [(BLUE, 1, 100.0), (BLUE, 2, 100.0), ([1.0; 4], 2, 90.0)],
             "dt {dt}: two whole blocks, then the shield breaks under the third"
+        );
+    }
+}
+
+#[test]
+fn a_kindled_lanterns_tint_rides_its_colour_tween_and_glows_under_it() {
+    use tungsten_core::{Easing, MaterialRegistry, Tween, TweenChannel, Visibility};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let sprite = super::register_sprite(&mut harness, "lantern", 16, 16);
+        if harness
+            .world()
+            .resource::<tungsten_core::AssetRegistry>()
+            .get_sprite("engine_white")
+            .is_none()
+        {
+            super::register_sprite(&mut harness, "engine_white", 1, 1);
+        }
+        let tween = || {
+            Tween::new(2.0, Easing::Linear).with_channel(TweenChannel::ColorG { from: 255, to: 0 })
+        };
+        // The lantern and a control on the same tween, without the look.
+        let spawn = |harness: &mut Harness, x: f32| {
+            harness.world_mut().spawn_with((
+                Transform::from_position(Vec2::new(x, 100.0)),
+                Sprite::new(sprite),
+                Visibility::default(),
+                tween(),
+            ))
+        };
+        let lantern = spawn(&mut harness, 100.0);
+        spawn(&mut harness, 300.0);
+        EffectRequest::new(lantern, DataRef::by_id("kindled")).apply(harness.world_mut());
+        let glow = harness
+            .world()
+            .resource::<MaterialRegistry>()
+            .get("engine_glow");
+        let (mut lit_frames, mut after) = (0, 0);
+        for _ in 0..frames_for(2.0, dt) {
+            harness.step(1);
+            let draw = harness.draw().unwrap();
+            let at = |x: f32| {
+                draw.sprites
+                    .iter()
+                    .filter(|batch| batch.material_id.is_none())
+                    .flat_map(|batch| &batch.instances)
+                    .find(|instance| instance.position == [x, 100.0])
+                    .map(|instance| instance.color)
+                    .unwrap()
+            };
+            let (lit, base) = (at(100.0), at(300.0));
+            let glows: Vec<_> = draw
+                .sprites
+                .iter()
+                .filter(|batch| batch.material_id == glow)
+                .flat_map(|batch| &batch.instances)
+                .collect();
+            if has_effect(&harness, lantern, "kindled") {
+                let tinted = [
+                    base[0],
+                    (f32::from(base[1]) * 0.5).round() as u8,
+                    (f32::from(base[2]) * 0.25).round() as u8,
+                    base[3],
+                ];
+                assert_eq!(lit, tinted, "dt {dt}: the tween's colour taken to the tint");
+                assert_eq!(glows.len(), 1, "dt {dt}");
+                assert_eq!(
+                    glows[0].position,
+                    [96.0, 96.0],
+                    "dt {dt}: 12 px about its centre"
+                );
+                lit_frames += 1;
+            } else {
+                assert_eq!(lit, base, "dt {dt}: the tween's colour stands");
+                assert!(glows.is_empty(), "dt {dt}");
+                after += 1;
+            }
+        }
+        assert!(
+            lit_frames > 0 && after > 0,
+            "dt {dt}: {lit_frames} and {after}"
         );
     }
 }

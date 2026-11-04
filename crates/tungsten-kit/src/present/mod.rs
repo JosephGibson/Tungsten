@@ -8,4 +8,5 @@ pub(crate) mod character;
 pub(crate) mod depth;
 pub(crate) mod facing;
 pub(crate) mod labels;
+pub(crate) mod looks;
 pub(crate) mod sound;

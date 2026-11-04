@@ -454,6 +454,7 @@ shape effect: A change an entity carries: timed, infinite or instant, with a pay
   field suppressed_by: list of tag = [] — tags that hold a running instance: its time and period wait, no payload lands; the load checks each
   field scale: shape effect_scale = null — a curve at the request's scale, multiplying what `into` names; the load refuses a `y` below 0
   field on_expire: effects ID or entry = null — applied to the target from the same source at a timed end; the load checks it
+  field look: shape look = null — what an instance shows on its holder by its share: a tint, an overlay clip and a glow
   field intensity: shape effect_intensity = null — makes it a status: an intensity each application builds by its amount times its status effect, up to `max`, one stack, worn by `decay` a second until it runs out at 0; its `scale` curve reads the intensity
   field bands: list of shape effect_band = null — a status's thresholds, `at` strictly ascending up to its `max`: each band's tags granted while the intensity is at least its `at`
   field fuel: shape effect_fuel = null — a stat of its holder's an instance burns while it runs; at 0, or on a holder without it, it has run out
@@ -468,6 +469,7 @@ shape effect_band: A status's band: tags granted while its intensity reaches it.
   field at: f32 (> 0) — the intensity it starts at, above the band before and at most the status's `max`
   field grant: list of tag = [] — tags the holder carries while the intensity is at least `at`; the load checks each
   field enter: list of shape interaction_output = null — chemistry outputs run on the holder each time the intensity reaches `at` from below
+  field look: shape look = null — what the holder shows in place of the status's look while this band is the highest its intensity holds
   sample: { "at": 1 }
 shape effect_emit: A chemistry stimulus an instance's holder sends every period of its life to each receiver within the radius but itself.
   field stimulus: text — a damage type or a declared tag; the load checks it
@@ -556,6 +558,22 @@ shape label_ticks: A type label's periodic parts: summed on their own over its w
   field size: f32 (> 0) — UI units tall
   field kind: tag filter = {} — the periodic parts it takes by their damage kinds, each a declared damage type or an ancestor of one
   sample: { "size": 10 }
+shape look: What a status shows on its holder while it runs, by its share: a tint, an overlay clip and a glow, each optional; unsaved.
+  field tint: [r, g, b, a] = null — linear: the holder's sprite colour taken toward it by the share times its alpha; several multiply
+  field overlay: shape look_overlay = null — a clip played on an entity riding the holder
+  field glow: shape look_glow = null — `engine_white` through `engine_glow` under the holder, its alpha by the share
+  sample: {}
+shape look_glow: A soft glow under the holder.
+  field color: [r, g, b, a] — linear; its alpha by the share
+  field radius: f32 (> 0) — world pixels about the holder's drawn centre
+  sample: { "color": [1.0, 0.5, 0.0, 1.0], "radius": 16 }
+shape look_overlay: A clip looped on an entity at the holder's drawn centre plus its offset, mirrored and turned with it.
+  field animation: text — the manifest animation; the load checks it
+  field speed: f32 (>= 0) = 1.0 — its playback rate
+  field offset: [x, y] = [0.0, 0.0] — world pixels from the holder's drawn centre, mirrored and turned with it
+  field z: i64 (>= -2147483648, <= 2147483647) = 1 — its depth above the holder's
+  field material: text = null — a manifest material it draws through; the load checks it
+  sample: { "animation": "frost" }
 shape loop_action: A manifest sound the subject wants looping: one voice per sound ID, at the loudest of its wants, each its volume times the cue listener's gain at its wanter, panned toward that one; unsaved.
   field id: text — the manifest sound; the load checks the ID
   field volume: f32 (>= 0) = 1.0 — the want's share of the sound's volume
