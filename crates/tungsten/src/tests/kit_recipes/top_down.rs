@@ -18,7 +18,8 @@
 //! lamp a bucket's water douses for 3 s, and a bomb whose fuse ends in a
 //! blast among crates and a target; 7.10p's practice dummy, whose burn's
 //! ticks and a blow pass a rule's `periodic` apart, and a campfire whose
-//! crackle loops by a listener following the hero past it.
+//! crackle loops by a listener following the hero past it, and a storm
+//! whose recipe system plays the `thunder` world cue each second.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -1049,6 +1050,67 @@ fn a_campfires_crackle_rises_and_pans_as_the_hero_walks_past() {
             "dt {dt}: panning across as it passes: {pans:?}"
         );
         assert_eq!(stops, [0.5], "dt {dt}: the burn's end stops it");
+    }
+}
+
+/// A recipe's storm: the `thunder` world cue played at (200, 0) by name
+/// each game second.
+struct Storm;
+
+impl Plugin for Storm {
+    fn build(&self, schedule: &mut Schedule, _world: &mut World) {
+        let mut clock = 0.0_f32;
+        let storm = system("recipe_storm", move |world: &mut World| {
+            clock += world.resource::<tungsten_core::Time>().delta();
+            if clock >= 1.0 - 1e-4 {
+                clock -= 1.0;
+                crate::kit::WorldCue::new("thunder", Vec2::new(200.0, 0.0)).play(world);
+            }
+        });
+        schedule.add(
+            tungsten_core::Stage::FixedUpdate,
+            Phase::React.join(storm.before(crate::kit::CUES)),
+        );
+    }
+}
+
+#[test]
+fn a_storms_thunder_world_cue_strikes_each_second_by_its_falloff() {
+    use crate::kit::{CueListener, KitTrace};
+    use tungsten_core::ShakeEvent;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set().with(Storm), dt);
+        let hero = spawn(&mut harness, "hero", [0.0, 0.0]);
+        harness
+            .world_mut()
+            .insert_resource(CueListener::new(100.0, 600.0).following(hero));
+        let mut shakes = Vec::new();
+        for _ in 0..frames_for(2.5, dt) {
+            harness.step(1);
+            shakes.extend(
+                harness
+                    .world()
+                    .resource::<EventQueue<ShakeEvent>>()
+                    .iter()
+                    .map(|shake| shake.trauma_add),
+            );
+        }
+        let world = harness.world();
+        assert_eq!(world.resource::<Counters>().get("strikes"), 2, "dt {dt}");
+        let blasts = world
+            .resource::<KitTrace>()
+            .about(Entity::PLACEHOLDER)
+            .filter(
+                |entry| matches!(&entry.kind, TraceKind::Spawn { prefab, .. } if prefab == "blast"),
+            )
+            .count();
+        assert_eq!(blasts, 2, "dt {dt}: a blast each, with no source");
+        assert_eq!(shakes.len(), 2, "dt {dt}");
+        assert!(
+            shakes.iter().all(|&trauma| (trauma - 0.48).abs() < 1e-5),
+            "dt {dt}: 200 px off, near 100, far 600: {shakes:?}"
+        );
     }
 }
 

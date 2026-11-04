@@ -3761,6 +3761,28 @@ impl core::marker::Unpin for tungsten_kit::WeightedTable
 impl core::marker::UnsafeUnpin for tungsten_kit::WeightedTable
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WeightedTable
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WeightedTable
+#[non_exhaustive] pub struct tungsten_kit::prelude::WorldCue
+pub tungsten_kit::prelude::WorldCue::amount: core::option::Option<f32>
+pub tungsten_kit::prelude::WorldCue::at: glam::f32::vec2::Vec2
+pub tungsten_kit::prelude::WorldCue::name: alloc::string::String
+impl tungsten_kit::WorldCue
+pub fn tungsten_kit::WorldCue::new(impl core::convert::Into<alloc::string::String>, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::WorldCue::play(self, &mut tungsten_core::ecs::world::World)
+pub fn tungsten_kit::WorldCue::with_amount(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::WorldCue
+pub fn tungsten_kit::WorldCue::clone(&self) -> tungsten_kit::WorldCue
+impl core::cmp::PartialEq for tungsten_kit::WorldCue
+pub fn tungsten_kit::WorldCue::eq(&self, &tungsten_kit::WorldCue) -> bool
+impl core::fmt::Debug for tungsten_kit::WorldCue
+pub fn tungsten_kit::WorldCue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::WorldCue
+impl core::marker::Freeze for tungsten_kit::WorldCue
+impl core::marker::Send for tungsten_kit::WorldCue
+impl core::marker::Sync for tungsten_kit::WorldCue
+impl core::marker::Unpin for tungsten_kit::WorldCue
+impl core::marker::UnsafeUnpin for tungsten_kit::WorldCue
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WorldCue
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WorldCue
 pub struct tungsten_kit::prelude::Wrap
 impl tungsten_kit::Wrap
 pub fn tungsten_kit::Wrap::only_x(self) -> Self
@@ -8367,6 +8389,28 @@ impl core::marker::Unpin for tungsten_kit::WeightedTable
 impl core::marker::UnsafeUnpin for tungsten_kit::WeightedTable
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WeightedTable
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WeightedTable
+#[non_exhaustive] pub struct tungsten_kit::WorldCue
+pub tungsten_kit::WorldCue::amount: core::option::Option<f32>
+pub tungsten_kit::WorldCue::at: glam::f32::vec2::Vec2
+pub tungsten_kit::WorldCue::name: alloc::string::String
+impl tungsten_kit::WorldCue
+pub fn tungsten_kit::WorldCue::new(impl core::convert::Into<alloc::string::String>, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::WorldCue::play(self, &mut tungsten_core::ecs::world::World)
+pub fn tungsten_kit::WorldCue::with_amount(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::WorldCue
+pub fn tungsten_kit::WorldCue::clone(&self) -> tungsten_kit::WorldCue
+impl core::cmp::PartialEq for tungsten_kit::WorldCue
+pub fn tungsten_kit::WorldCue::eq(&self, &tungsten_kit::WorldCue) -> bool
+impl core::fmt::Debug for tungsten_kit::WorldCue
+pub fn tungsten_kit::WorldCue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::WorldCue
+impl core::marker::Freeze for tungsten_kit::WorldCue
+impl core::marker::Send for tungsten_kit::WorldCue
+impl core::marker::Sync for tungsten_kit::WorldCue
+impl core::marker::Unpin for tungsten_kit::WorldCue
+impl core::marker::UnsafeUnpin for tungsten_kit::WorldCue
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WorldCue
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WorldCue
 pub struct tungsten_kit::WorldSource
 impl tungsten_kit::WorldSource
 pub fn tungsten_kit::WorldSource::filter(&self) -> &tungsten_kit::TagFilter

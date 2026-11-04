@@ -167,6 +167,11 @@
     }
   },
   "data": {
+    "world_cues": {
+      "thunder": {
+        "path": "data/world_cues/thunder.json"
+      }
+    },
     "tags": {
       "game": {
         "path": "data/tags.json"

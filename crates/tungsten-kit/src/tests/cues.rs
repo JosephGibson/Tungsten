@@ -2304,3 +2304,36 @@ mod listening {
         );
     }
 }
+
+#[test]
+fn an_unknown_world_cue_warns_once() {
+    use crate::foundation::trace::KitTrace;
+    use crate::react::world_cues::WorldCue;
+
+    let (mut world, _) = rig();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(KitTrace::default());
+    let mut reactor = Reactor::default();
+    for _ in 0..3 {
+        WorldCue::new("nope", Vec2::ZERO).play(&mut world);
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        reactor.run(&mut world);
+        world.flush_events();
+    }
+    assert_eq!(reactor.unknown_cues.len(), 1, "warned once");
+    let skipped = world
+        .resource::<KitTrace>()
+        .about(Entity::PLACEHOLDER)
+        .filter(|entry| {
+            matches!(
+                entry.kind,
+                TraceKind::Skipped {
+                    why: NO_WORLD_CUE,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(skipped, 3, "each play traced, nothing played");
+}

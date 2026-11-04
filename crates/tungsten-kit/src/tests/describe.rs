@@ -124,7 +124,7 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
     assert_eq!(described.len(), 45);
-    assert_eq!(kinds.len(), 10);
+    assert_eq!(kinds.len(), 11);
     assert_eq!(descriptions.shapes().count(), 64);
 }
 
@@ -399,7 +399,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 45);
     assert_eq!(count("shape "), 64);
-    assert_eq!(count("kind "), 10);
+    assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));
     assert!(text.contains("  field invulnerability: f32 (>= 0) = 0.0 "));

@@ -14,8 +14,9 @@
 //! glass a pot cracks and planks a flare scorches for a while, a crate
 //! fire chars, and a powder keg whose blast chars the crate beside it;
 //! 7.10p's balls whose hard impacts spark under a rule's amount and
-//! interval, and charges whose blasts shake by their distance from a
-//! listener following the hero.
+//! interval, charges whose blasts shake by their distance from a listener
+//! following the hero, and a crate whose break a recipe system plays as
+//! the `crate_break` world cue.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -1780,6 +1781,64 @@ fn a_blasts_shake_falls_off_with_its_distance_from_the_hero() {
             shakes,
             [vec![0.8], vec![0.4], vec![]],
             "dt {dt}: whole, half, none"
+        );
+    }
+}
+
+// 7.10p: named world cues.
+
+/// A recipe's crates: each dead `material.crate` plays the `crate_break`
+/// world cue at its point, its max health the amount, and goes.
+struct CrateBreaks;
+
+impl tungsten_core::Plugin for CrateBreaks {
+    fn build(&self, schedule: &mut tungsten_core::Schedule, _world: &mut World) {
+        use crate::kit::{Phase, WorldCue};
+        use tungsten_core::{CommandBuffer, Entity, system};
+
+        let breaks = system("recipe_crate_breaks", |world: &mut World| {
+            let broken: Vec<(Entity, Vec2, f32)> = world
+                .query::<(Entity, &Health, &Tags, &Transform)>()
+                .filter(|(_, health, tags, _)| health.is_dead() && tags.has("material.crate"))
+                .map(|(entity, health, _, transform)| (entity, transform.position, health.max()))
+                .collect();
+            for (entity, at, max) in broken {
+                WorldCue::new("crate_break", at)
+                    .with_amount(max)
+                    .play(world);
+                // Broken once: a frame's second step finds it no more.
+                world.remove_component::<Health>(entity);
+                world.resource_mut::<CommandBuffer>().despawn(entity);
+            }
+        });
+        schedule.add(
+            tungsten_core::Stage::FixedUpdate,
+            Phase::React.join(breaks.before(crate::kit::CUES)),
+        );
+    }
+}
+
+#[test]
+fn a_crates_break_plays_its_world_cue_at_its_point() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set().with(CrateBreaks), dt);
+        let wood = spawn(&mut harness, "wood_crate", [120.0, 80.0]);
+        harness.step(1);
+        damage(harness.world_mut(), wood, 100.0);
+        harness.step(1);
+        assert!(!harness.world().is_alive(wood), "dt {dt}");
+        let sparks: Vec<Vec2> = tagged(&harness, "spark")
+            .into_iter()
+            .map(|spark| drawn_at(&harness, spark))
+            .collect();
+        assert_eq!(sparks, [Vec2::new(120.0, 80.0)], "dt {dt}: at its point");
+        let counters = harness.world().resource::<Counters>();
+        assert_eq!(counters.get("crates_broken"), 1, "dt {dt}");
+        harness.step(frames_for(1.0, dt));
+        assert_eq!(
+            harness.world().resource::<Counters>().get("crates_broken"),
+            1,
+            "dt {dt}: once"
         );
     }
 }

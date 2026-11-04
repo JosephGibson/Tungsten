@@ -175,7 +175,8 @@
 //!   `cues` and the shared `cue_rules` kind, whose `effect` action applies
 //!   an effect to the subject or the other entity; [`CueListener`], an
 //!   opt-in resource that quiets the cues' sounds by their distance from
-//!   it. [`WeightedTable`]: the `loot_tables` kind that a cue's `roll`
+//!   it. [`WorldCue`]: a `world_cues` entry played by name at a point.
+//!   [`WeightedTable`]: the `loot_tables` kind that a cue's `roll`
 //!   draws drops from. [`Counters`],
 //!   [`Flags`] and [`CountersPlugin`]: named counts and switches, an
 //!   entity's or the game's, that cues write. [`Level`], [`Offers`],
@@ -324,6 +325,7 @@ pub use react::counters::{Counters, CountersPlugin, Flags};
 pub use react::cues::{CUES, CueAction, CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin};
 pub use react::level::{LEVEL_TICK, Level, LevelPlugin, LevelUp, Offer, Offers};
 pub use react::loot::WeightedTable;
+pub use react::world_cues::WorldCue;
 pub use transform::hierarchy::{
     Children, HierarchyPlugin, LocalOffset, Parent, TRANSFORM_PROPAGATE, TRANSFORM_PROPAGATE_LATE,
     despawn_recursive, spawn_child,
@@ -356,7 +358,7 @@ pub mod prelude {
         StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin, Steering,
         SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
         TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered, TriggerZone, Used,
-        WallContact, WeightedTable, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin,
+        WallContact, WeightedTable, WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin,
         cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, float_label, heal,
         knock_back, spawn_child, use_ability,
     };

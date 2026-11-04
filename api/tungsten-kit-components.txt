@@ -678,3 +678,4 @@ kind loot_tables: A `weighted_table`: what a `roll` cue action draws and spawns.
 kind offers: An `offers`: what a `level` draws at each level up.
 kind stats: An object of `stat_bounds` by stat name: each declares a game stat and its clamp.
 kind tags: A JSON array of tag names; each declares itself and its dotted ancestors.
+kind world_cues: A list of `cue_action` a game plays by name at a point, with no subject: `prefab`, `roll`, `sound`, `shake`, a `label` with a font, and a `counter` or `flag` with `target: game`.

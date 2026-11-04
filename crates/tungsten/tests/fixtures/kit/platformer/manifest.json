@@ -128,6 +128,11 @@
     }
   },
   "data": {
+    "world_cues": {
+      "crate_break": {
+        "path": "data/world_cues/crate_break.json"
+      }
+    },
     "tags": {
       "game": {
         "path": "data/tags.json"

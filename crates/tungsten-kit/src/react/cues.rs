@@ -44,6 +44,7 @@ use crate::present::labels::{
 use crate::react::counters::{Counters, Flags};
 use crate::react::level::LevelUp;
 use crate::react::loot::{LOOT_TABLES, WeightedTable, register_loot_tables};
+use crate::react::world_cues::{WORLD_CUES, WorldCue, WorldCueActions};
 use crate::transform::hierarchy::despawn_recursive;
 
 /// [`CuesPlugin`]'s system, in the react phase, last of the kit's items.
@@ -66,6 +67,8 @@ pub(crate) const EFFECT_APPLIED: &str = "effect_applied";
 pub(crate) const EFFECT_EXPIRED: &str = "effect_expired";
 pub(crate) const ABILITY_USED: &str = "ability_used";
 pub(crate) const LEVEL_UP: &str = "level_up";
+/// A [`WorldCue`]'s occurrence: no subject, so no entity or rule names it.
+const WORLD_CUE: &str = "world_cue";
 const KIT_EVENTS: [&str; 13] = [
     DAMAGED_PART,
     DAMAGED,
@@ -2226,6 +2229,49 @@ fn check_rule_list(rules: &CueRules, world: &World) -> Result<(), MissingAsset> 
     Ok(())
 }
 
+/// The `world_cues` kind's check: each action one a cue with no subject
+/// runs, `prefab`, `roll`, `sound`, `shake`, a `label` with a font, and a
+/// `counter` or `flag` with `target: game`, and its IDs.
+pub(crate) fn check_world_cue(cue: &WorldCueActions, world: &World) -> Result<(), MissingAsset> {
+    for (i, action) in cue.0.iter().enumerate() {
+        let at = format!("{i}.{}", action.name());
+        let refused = match &action.kind {
+            ActionKind::Prefab(_)
+            | ActionKind::Roll(_)
+            | ActionKind::Sound { .. }
+            | ActionKind::Shake { .. }
+            | ActionKind::Label(Some(_))
+            | ActionKind::Counter {
+                target: Target::Game,
+                ..
+            }
+            | ActionKind::Flag {
+                target: Target::Game,
+                ..
+            } => None,
+            ActionKind::Counter { .. } | ActionKind::Flag { .. } => Some(format!("{at}.target")),
+            _ => Some(at),
+        };
+        if let Some(field) = refused {
+            return Err(MissingAsset::new(
+                field,
+                "world cue action (prefab, roll, sound, shake, a styled label, a game counter or flag)",
+                action.name(),
+            ));
+        }
+    }
+    let event = EventInfo {
+        name: WORLD_CUE,
+        amount: true,
+        other: false,
+        kinds: false,
+    };
+    check_actions(world, "", event, &cue.0).map_err(|mut missing| {
+        missing.field = missing.field.trim_start_matches('.').to_owned();
+        missing
+    })
+}
+
 /// Checks `actions`, run for `event`, against the World: each prefab,
 /// sound, loot table and effect ID and an inline table's prefabs or
 /// effect's fields, a `label` on an event with an amount and a style-less
@@ -2315,8 +2361,8 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
         .ok_or_else(|| MissingAsset::new(field, "cue event", name))
 }
 
-/// Registers the `cues` scene component, the `cue_rules` and `loot_tables`
-/// data kinds, the kit's cue events, a [`KitRng`](crate::KitRng) when the
+/// Registers the `cues` scene component, the `cue_rules`, `world_cues` and
+/// `loot_tables` data kinds, the kit's cue events, a [`KitRng`](crate::KitRng) when the
 /// World has none, [`CUES`] in the react phase, last of the kit's items,
 /// and [`LABEL_TICK`] in the present phase.
 ///
@@ -2331,7 +2377,8 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// [`EffectExpired`](crate::EffectExpired) (`effect_expired`),
 /// [`AbilityUsed`](crate::AbilityUsed) (`ability_used`),
 /// [`LevelUp`](crate::LevelUp) (`level_up`), then each [`CuesOnEvent`] in
-/// build order, each queue in send order. It runs every
+/// build order, each queue in send order, and last the step's
+/// [`WorldCue`]s. It runs every
 /// occurrence's entity cues, then every occurrence's matching rules (rules
 /// in entry-ID order, then file order); each list in its written order, so
 /// in each pass every `damaged_part` runs before the step's `damaged` and
@@ -2417,6 +2464,7 @@ impl Plugin for CuesPlugin {
         world.register_saved_resource::<KitRng>(KIT_RNG);
         register_loot_tables(world);
         world.register_data_kind_with_assets(CUE_RULES, check_rule_list);
+        world.register_data_kind_with_assets(WORLD_CUES, check_world_cue);
         world.register_component_with_assets(
             CUES,
             |cues: &Cues, world: &World| {
@@ -2553,6 +2601,7 @@ const TOO_SOON: &str = "the sound played within its min_interval";
 const UNHEARD: &str = "the cue's position is past the listener's hearing";
 const FAR: &str = "the cue's position is past the shake's far";
 const NO_TABLE: &str = "the World has no such loot table";
+const NO_WORLD_CUE: &str = "the World has no such world cue";
 const NO_STYLE: &str = "the part's types set no label style";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
 const NO_ABILITY: &str = "the entity owns no such ability";
@@ -2618,6 +2667,10 @@ struct Reactor {
     /// The loops' pass's plans, one a sound, kept so a step allocates
     /// nothing once warm.
     plans: Vec<LoopPlan>,
+    /// Its place in the world cues' queue, and the unknown names it warned
+    /// of.
+    world_cues: EventCursor<WorldCue>,
+    unknown_cues: HashSet<String>,
 }
 
 /// A part label's sum while it is open: its label and target, the sum and
@@ -2642,7 +2695,44 @@ impl Reactor {
     fn run(&mut self, world: &mut World) {
         follow_listener(world);
         self.react(world);
+        self.play_world_cues(world);
         self.loops(world);
+    }
+
+    /// Plays the step's [`WorldCue`]s, after every other source, in send
+    /// order: each named entry's actions at its point with no subject.
+    fn play_world_cues(&mut self, world: &mut World) {
+        let Some(queue) = world.get_resource::<EventQueue<WorldCue>>() else {
+            return;
+        };
+        let cues: Vec<WorldCue> = self.world_cues.read(queue).cloned().collect();
+        for cue in cues {
+            let actions = world
+                .get_resource::<DataRegistry>()
+                .and_then(|data| data.get::<WorldCueActions>(&cue.name))
+                .map(|actions| Arc::clone(&actions.0));
+            let Some(actions) = actions else {
+                if self.unknown_cues.insert(cue.name.clone()) {
+                    log::warn!(
+                        "world cue `{}`: no `world_cues` entry; it plays nothing",
+                        cue.name
+                    );
+                }
+                trace(world, Entity::PLACEHOLDER, || TraceKind::Skipped {
+                    event: WORLD_CUE,
+                    action: "all",
+                    why: NO_WORLD_CUE,
+                });
+                continue;
+            };
+            let occurrence = Occurrence {
+                amount: cue.amount,
+                ..Occurrence::new(WORLD_CUE, Entity::PLACEHOLDER, cue.at)
+            };
+            for action in actions.iter() {
+                self.apply(world, &occurrence, action, Some(&cue.name));
+            }
+        }
     }
 
     /// Reads the step's occurrences and runs their cues and rules.
@@ -3055,9 +3145,13 @@ impl Reactor {
     fn spawn(&mut self, world: &mut World, subject: Entity, id: &str, position: Vec2) -> bool {
         match world.prepare_prefab(id, position) {
             Ok(prepared) => {
-                world
-                    .resource_mut::<CommandBuffer>()
-                    .spawn_prefab_from(subject, prepared);
+                let commands = world.resource_mut::<CommandBuffer>();
+                // A world cue's spawns have no source.
+                if subject == Entity::PLACEHOLDER {
+                    commands.spawn_prefab(prepared);
+                } else {
+                    commands.spawn_prefab_from(subject, prepared);
+                }
                 trace(world, subject, || TraceKind::Spawn {
                     prefab: id.to_owned(),
                     by: CUES,
@@ -4103,6 +4197,11 @@ fn describe_cues(world: &mut World) {
         world,
         CUE_RULES,
         "A list of `cue_rule`: shared reactions to an event, run after the entity's own cues.",
+    );
+    describe_kind(
+        world,
+        WORLD_CUES,
+        "A list of `cue_action` a game plays by name at a point, with no subject: `prefab`, `roll`, `sound`, `shake`, a `label` with a font, and a `counter` or `flag` with `target: game`.",
     );
 }
 
