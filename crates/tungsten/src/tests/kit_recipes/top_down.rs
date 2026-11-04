@@ -22,7 +22,9 @@
 //! recipe system plays the `thunder` world cue each second, and a
 //! shield-bearer whose whole blocks flash the shield's colour, and a
 //! kindled lantern whose look tints it over a colour tween and glows, and
-//! a blazing crate whose look lights a lurker and crackles.
+//! a blazing crate whose look lights a lurker and crackles, and a coffer
+//! whose one game event registration brings `opened` and `emptied` in by
+//! name.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -1257,6 +1259,61 @@ fn a_blazing_crates_light_reaches_a_lurker_alike_at_any_frame_rate_and_crackles(
     assert!(!taken[0].is_empty(), "the light reached it: {:?}", taken[0]);
     assert_eq!(taken[0], taken[1], "dt 1/30, two fixed steps a frame");
     assert_eq!(taken[0], taken[2], "dt 1/144");
+}
+
+/// The game's chest event: a coffer opened, or emptied by its last take.
+struct ChestEvent {
+    chest: Entity,
+    emptied: bool,
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn chest_event(event: &ChestEvent) -> Option<crate::kit::CueEvent> {
+    let name = if event.emptied { "emptied" } else { "opened" };
+    Some(crate::kit::CueEvent::of(event.chest).named(name))
+}
+
+#[test]
+fn a_coffers_one_registration_brings_opened_and_emptied_in_by_name() {
+    use crate::kit::{CueAction, Cues, CuesOnEvent};
+
+    for dt in DTS {
+        let plugins = KitPlugins::set().with(CuesOnEvent::<ChestEvent>::with_names(
+            &["opened", "emptied"],
+            chest_event,
+        ));
+        let mut harness = recipe(GENRE, plugins, dt);
+        let coffer = harness.world_mut().spawn_with((
+            Transform::from_position(Vec2::new(40.0, 60.0)),
+            Cues::new()
+                .on("opened", [CueAction::counter_add("opened", 1).for_game()])
+                .on(
+                    "emptied",
+                    [
+                        CueAction::counter_add("emptied", 1).for_game(),
+                        CueAction::despawn(),
+                    ],
+                ),
+        ));
+        harness.step(1);
+        for emptied in [false, false, true] {
+            harness
+                .world_mut()
+                .resource_mut::<EventQueue<ChestEvent>>()
+                .send(ChestEvent {
+                    chest: coffer,
+                    emptied,
+                });
+        }
+        harness.step(1);
+        let counters = harness.world().resource::<Counters>();
+        assert_eq!(
+            (counters.get("opened"), counters.get("emptied")),
+            (2, 1),
+            "dt {dt}"
+        );
+        assert!(!harness.world().is_alive(coffer), "dt {dt}: emptied");
+    }
 }
 
 #[test]

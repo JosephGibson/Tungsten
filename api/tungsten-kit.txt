@@ -1026,9 +1026,11 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueAction
 #[non_exhaustive] pub struct tungsten_kit::prelude::CueEvent
 pub tungsten_kit::prelude::CueEvent::amount: core::option::Option<f32>
 pub tungsten_kit::prelude::CueEvent::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::prelude::CueEvent::name: core::option::Option<&'static str>
 pub tungsten_kit::prelude::CueEvent::other: core::option::Option<tungsten_core::ecs::entity::Entity>
 pub tungsten_kit::prelude::CueEvent::position: glam::f32::vec2::Vec2
 impl tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::named(self, &'static str) -> Self
 pub fn tungsten_kit::CueEvent::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::CueEvent::of(tungsten_core::ecs::entity::Entity) -> Self
 pub fn tungsten_kit::CueEvent::with_amount(self, f32) -> Self
@@ -1113,6 +1115,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cues
 pub struct tungsten_kit::prelude::CuesOnEvent<E>
 impl<E: 'static> tungsten_kit::CuesOnEvent<E>
 pub fn tungsten_kit::CuesOnEvent<E>::new(&'static str, fn(&E) -> core::option::Option<tungsten_kit::CueEvent>) -> Self
+pub fn tungsten_kit::CuesOnEvent<E>::with_names(&[&'static str], fn(&E) -> core::option::Option<tungsten_kit::CueEvent>) -> Self
 impl<E: 'static> tungsten_core::schedule::Plugin for tungsten_kit::CuesOnEvent<E>
 pub fn tungsten_kit::CuesOnEvent<E>::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
 impl<E> core::clone::Clone for tungsten_kit::CuesOnEvent<E>
@@ -2787,6 +2790,7 @@ pub fn tungsten_kit::PlatformerController::floor_normal(&self) -> core::option::
 pub fn tungsten_kit::PlatformerController::ground(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::PlatformerController::grounded(&self) -> bool
 pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
+pub fn tungsten_kit::PlatformerController::landed(&self) -> bool
 pub fn tungsten_kit::PlatformerController::launch(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::PlatformerController::lock_input(&mut self, f32)
 pub fn tungsten_kit::PlatformerController::new(f32, f32) -> Self
@@ -5188,9 +5192,11 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueAction
 #[non_exhaustive] pub struct tungsten_kit::CueEvent
 pub tungsten_kit::CueEvent::amount: core::option::Option<f32>
 pub tungsten_kit::CueEvent::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::CueEvent::name: core::option::Option<&'static str>
 pub tungsten_kit::CueEvent::other: core::option::Option<tungsten_core::ecs::entity::Entity>
 pub tungsten_kit::CueEvent::position: glam::f32::vec2::Vec2
 impl tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::named(self, &'static str) -> Self
 pub fn tungsten_kit::CueEvent::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::CueEvent::of(tungsten_core::ecs::entity::Entity) -> Self
 pub fn tungsten_kit::CueEvent::with_amount(self, f32) -> Self
@@ -5275,6 +5281,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cues
 pub struct tungsten_kit::CuesOnEvent<E>
 impl<E: 'static> tungsten_kit::CuesOnEvent<E>
 pub fn tungsten_kit::CuesOnEvent<E>::new(&'static str, fn(&E) -> core::option::Option<tungsten_kit::CueEvent>) -> Self
+pub fn tungsten_kit::CuesOnEvent<E>::with_names(&[&'static str], fn(&E) -> core::option::Option<tungsten_kit::CueEvent>) -> Self
 impl<E: 'static> tungsten_core::schedule::Plugin for tungsten_kit::CuesOnEvent<E>
 pub fn tungsten_kit::CuesOnEvent<E>::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
 impl<E> core::clone::Clone for tungsten_kit::CuesOnEvent<E>
@@ -7239,6 +7246,7 @@ pub fn tungsten_kit::PlatformerController::floor_normal(&self) -> core::option::
 pub fn tungsten_kit::PlatformerController::ground(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::PlatformerController::grounded(&self) -> bool
 pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
+pub fn tungsten_kit::PlatformerController::landed(&self) -> bool
 pub fn tungsten_kit::PlatformerController::launch(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::PlatformerController::lock_input(&mut self, f32)
 pub fn tungsten_kit::PlatformerController::new(f32, f32) -> Self

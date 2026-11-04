@@ -78,6 +78,10 @@ component cues: The entity's reactions: for each event about it, actions run in 
   field effect_expired: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field ability_used: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field level_up: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field jumped: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field air_jumped: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field jump_refused: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field landed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   events: ShakeEvent, SquashEvent
   genres: platformer, top_down, shmup, grid
   sample: {}

@@ -35,6 +35,9 @@ use crate::motion::slide::{
     probe_ground_on, step_dt,
 };
 use crate::motion::top_down::TopDownMover;
+use crate::react::cues::{
+    AIR_JUMPED, ControllerCue, ControllerCues, JUMP_REFUSED, JUMPED, LANDED, cue_named,
+};
 
 /// [`PlatformerControllerPlugin`]'s system, in the move phase.
 pub const PLATFORMER_CONTROLLER: &str = "platformer_controller";
@@ -304,6 +307,10 @@ pub struct PlatformerController {
     paid_air_jumped: bool,
     /// Its last step's fresh press was refused by the air-jump cost.
     air_jump_refused: bool,
+    /// Its last step ended grounded after one that ended in the air, its
+    /// ground-finding stopping a fall. Not saved: a loaded controller's
+    /// first step clears it without moving.
+    landed: bool,
     /// The jump cut may still act on the current jump.
     cut_armed: bool,
     air_jumps_left: u32,
@@ -368,6 +375,7 @@ impl PlatformerController {
             air_jumped: false,
             paid_air_jumped: false,
             air_jump_refused: false,
+            landed: false,
             cut_armed: false,
             air_jumps_left: 0,
             started: false,
@@ -791,6 +799,19 @@ impl PlatformerController {
         self.air_jump_refused
     }
 
+    /// Its last step was a landing: it ended grounded after a step that
+    /// ended in the air, and the floor it found stopped a fall, one that
+    /// began within the step included. A controller spawned standing does
+    /// not land. With [`CuesPlugin`](crate::CuesPlugin), the controller's
+    /// system sends it as the cue event `landed` when the entity's `cues`
+    /// or a `cue_rules` rule names it, the speed the floor stopped (px/s)
+    /// its amount. Not saved, like the first-step flag: a loaded
+    /// controller's first step clears it without moving.
+    #[must_use]
+    pub fn landed(&self) -> bool {
+        self.landed
+    }
+
     /// One step of `dt` for the body at `position` with `collider`: how its
     /// body moves in this step, and the body it shoves.
     #[allow(clippy::too_many_arguments)]
@@ -804,10 +825,14 @@ impl PlatformerController {
         dt: f32,
         found: &mut Vec<Option<Entity>>,
     ) -> Moved {
+        let was_grounded = self.grounded;
+        // The downward speed the step's ground-finding stopped, px/s.
+        let mut stopped = 0.0_f32;
         self.jumped = false;
         self.air_jumped = false;
         self.paid_air_jumped = false;
         self.air_jump_refused = false;
+        self.landed = false;
         if !self.started {
             self.started = true;
             return Moved {
@@ -815,6 +840,7 @@ impl PlatformerController {
                 position: None,
                 shove: None,
                 plough: None,
+                fell: 0.0,
             };
         }
         let base = self.filter.excluding(entity);
@@ -861,6 +887,7 @@ impl PlatformerController {
                     self.buffer_left = 0.0;
                     self.coyote_left = 0.0;
                 } else {
+                    stopped = self.velocity.y;
                     self.grounded = true;
                     self.air_jumps_left = self.air_jumps;
                     at.y += (hit.distance - SKIN).max(0.0);
@@ -973,6 +1000,9 @@ impl PlatformerController {
         let slide = move_and_slide_on(world, collider.shape, at, delta, &filter, floor_y, true);
         at += slide.moved;
         if slide.floor && self.velocity.y >= 0.0 {
+            if !self.grounded {
+                stopped = self.velocity.y;
+            }
             self.grounded = true;
             self.air_jumps_left = self.air_jumps;
             self.velocity.y = 0.0;
@@ -1028,6 +1058,8 @@ impl PlatformerController {
         }
 
         // The timers, last, so the getters read the step's end.
+        self.landed = self.grounded && !was_grounded && stopped > 0.0;
+        let fell = if self.landed { stopped } else { 0.0 };
         self.ground = if self.grounded { ground } else { None };
         if !self.grounded {
             self.floor = None;
@@ -1045,6 +1077,7 @@ impl PlatformerController {
                 position: Some(at - collider.offset),
                 shove: None,
                 plough: None,
+                fell,
             }
         } else {
             Moved {
@@ -1052,6 +1085,7 @@ impl PlatformerController {
                 position: None,
                 shove: shoved,
                 plough: plough.map(|(body, impulse, _)| (body, impulse)),
+                fell,
             }
         }
     }
@@ -1243,6 +1277,8 @@ struct Moved {
     shove: Option<(Entity, f32)>,
     /// The body it ploughed and the impulse it gives it.
     plough: Option<(Entity, Vec2)>,
+    /// A landing's speed, the fall the floor stopped (px/s); 0 for none.
+    fell: f32,
 }
 
 /// Gives `body` a shove's horizontal `speed`, unless it already moves that
@@ -1727,6 +1763,7 @@ impl TryFrom<ControllerSave> for PlatformerController {
             air_jumped: save.air_jumped,
             paid_air_jumped: save.paid_air_jumped,
             air_jump_refused: save.air_jump_refused,
+            landed: false,
             cut_armed: save.cut_armed,
             air_jumps_left: save.air_jumps_left,
             started: false,
@@ -1870,6 +1907,7 @@ impl Runner {
         let gravity = world
             .get_resource::<PhysicsConfig>()
             .map_or(0.0, |config| config.gravity.y);
+        let cueing = world.has_resource::<ControllerCues>();
         self.entities.clear();
         self.entities.extend(
             world
@@ -1918,6 +1956,9 @@ impl Runner {
                 dt,
                 &mut self.found,
             );
+            if cueing {
+                cue_jumps(world, entity, &controller, &moved, position, collider, dt);
+            }
             if controller.paid_air_jumped
                 && let Some((stat, amount)) = &controller.air_jump_cost
                 && let Some(stats) = world.get_mut::<Stats>(entity)
@@ -1937,6 +1978,64 @@ impl Runner {
                 apply_impulse(world, body, impulse);
             }
         }
+    }
+}
+
+/// Pushes `controller`'s cue events of its step that something names
+/// ([`cue_named`]) to the cue system's list: `jumped`, `air_jumped` (the
+/// stat amount it paid, 0 for a free one) and `jump_refused` at its feet
+/// where the step began from `position`, and `landed` (`moved.fell`, the
+/// speed the floor stopped) where the step ended by `moved`.
+fn cue_jumps(
+    world: &mut World,
+    entity: Entity,
+    controller: &PlatformerController,
+    moved: &Moved,
+    position: Vec2,
+    collider: Collider,
+    dt: f32,
+) {
+    if !(controller.jumped || controller.air_jump_refused || controller.landed) {
+        return;
+    }
+    let jump = if controller.air_jumped {
+        Some(AIR_JUMPED)
+    } else if controller.jumped {
+        Some(JUMPED)
+    } else {
+        None
+    };
+    let events = [
+        jump,
+        controller.air_jump_refused.then_some(JUMP_REFUSED),
+        controller.landed.then_some(LANDED),
+    ]
+    .map(|event| event.filter(|event| cue_named(world, entity, event)));
+    if events.iter().all(Option::is_none) {
+        return;
+    }
+    let feet = Vec2::new(0.0, collider.shape.half_extents().y) + collider.offset;
+    let start = position + feet;
+    let end = moved.position.unwrap_or(position + moved.velocity * dt) + feet;
+    let paid = controller
+        .air_jump_cost
+        .as_ref()
+        .filter(|_| controller.paid_air_jumped)
+        .map_or(0.0, |(_, amount)| *amount);
+    // Straight into the list's reserved room: a jump allocates nothing.
+    let list = &mut world.resource_mut::<ControllerCues>().0;
+    for event in events.into_iter().flatten() {
+        let (at, amount) = match event {
+            AIR_JUMPED => (start, Some(paid)),
+            LANDED => (end, Some(moved.fell)),
+            _ => (start, None),
+        };
+        list.push(ControllerCue {
+            event,
+            entity,
+            at,
+            amount,
+        });
     }
 }
 

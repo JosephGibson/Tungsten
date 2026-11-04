@@ -1,5 +1,11 @@
 {
   "prefabs": {
+    "dust": {
+      "path": "prefabs/dust.json"
+    },
+    "leaper": {
+      "path": "prefabs/leaper.json"
+    },
     "turret": {
       "path": "prefabs/turret.json"
     },

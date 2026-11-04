@@ -2378,3 +2378,163 @@ fn an_unknown_world_cue_warns_once() {
         .count();
     assert_eq!(skipped, 3, "each play traced, nothing played");
 }
+
+/// 7.10p's named game events.
+mod named {
+    use super::*;
+
+    /// The game's chest event: opened, emptied or named another way.
+    struct Chest(Entity, Option<&'static str>);
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn chest(event: &Chest) -> Option<CueEvent> {
+        let at = CueEvent::of(event.0);
+        Some(match event.1 {
+            Some(name) => at.named(name),
+            None => at,
+        })
+    }
+
+    /// A rig with `opened` and `emptied` from one registration, and
+    /// `knocked` from `new`, whose map names what the event says.
+    fn rig() -> (World, Schedule) {
+        let (mut world, _) = super::rig();
+        world.insert_resource(Time::new());
+        world.insert_resource(CommandBuffer::new());
+        let mut schedule = Schedule::new();
+        CuesPlugin.build(&mut schedule, &mut world);
+        CuesOnEvent::<Chest>::with_names(&["opened", "emptied"], chest)
+            .build(&mut schedule, &mut world);
+        CuesOnEvent::<Knock>::new("knocked", knock).build(&mut schedule, &mut world);
+        schedule.resolve().unwrap();
+        (world, schedule)
+    }
+
+    /// A knock that may name another event.
+    struct Knock(Entity, Option<&'static str>);
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn knock(event: &Knock) -> Option<CueEvent> {
+        let at = CueEvent::of(event.0);
+        Some(match event.1 {
+            Some(name) => at.named(name),
+            None => at,
+        })
+    }
+
+    fn step(world: &mut World, schedule: &mut Schedule) {
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        schedule.run_stage(tungsten_core::Stage::FixedUpdate, world, |_, _| {});
+        world.flush_events();
+    }
+
+    fn count(world: &World, entity: Entity, name: &str) -> i64 {
+        world
+            .get::<Counters>(entity)
+            .map_or(0, |counters| counters.get(name))
+    }
+
+    #[test]
+    fn one_registration_brings_many_names() {
+        let (mut world, mut schedule) = rig();
+        let names = world.resource::<CueEventNames>();
+        assert!(names.get("opened").is_some() && names.get("emptied").is_some());
+        let coffer = world.spawn_with((Cues::new()
+            .on("opened", [CueAction::counter_add("opened", 1)])
+            .on("emptied", [CueAction::counter_add("emptied", 1)])
+            .on("knocked", [CueAction::counter_add("knocked", 1)]),));
+        let send = |world: &mut World, name: Option<&'static str>| {
+            world
+                .resource_mut::<EventQueue<Chest>>()
+                .send(Chest(coffer, name));
+        };
+        send(&mut world, Some("opened"));
+        send(&mut world, Some("opened"));
+        send(&mut world, Some("emptied"));
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            (
+                count(&world, coffer, "opened"),
+                count(&world, coffer, "emptied")
+            ),
+            (2, 1),
+            "each name's cues for its own occurrences"
+        );
+        // A name not its own, twice, and none: each skipped, logged once.
+        send(&mut world, Some("closed"));
+        send(&mut world, Some("closed"));
+        send(&mut world, None);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            (
+                count(&world, coffer, "opened"),
+                count(&world, coffer, "emptied")
+            ),
+            (2, 1),
+            "runs nothing"
+        );
+        // Under `new`, no name is its one; its own name runs; another is
+        // skipped.
+        for name in [None, Some("knocked"), Some("opened")] {
+            world
+                .resource_mut::<EventQueue<Knock>>()
+                .send(Knock(coffer, name));
+        }
+        step(&mut world, &mut schedule);
+        assert_eq!(count(&world, coffer, "knocked"), 2);
+        assert_eq!(count(&world, coffer, "opened"), 2, "not another's");
+    }
+
+    #[test]
+    #[should_panic(expected = "the cue event `opened` is already registered")]
+    fn a_name_given_twice_panics() {
+        let (mut world, mut schedule) = super::rig();
+        CuesOnEvent::<Chest>::with_names(&["opened", "opened"], chest)
+            .build(&mut schedule, &mut world);
+    }
+
+    #[test]
+    #[should_panic(expected = "is one of the kit's cue events")]
+    fn a_controller_event_name_is_the_kits() {
+        let (mut world, mut schedule) = super::rig();
+        CuesOnEvent::<Chest>::with_names(&["opened", "landed"], chest)
+            .build(&mut schedule, &mut world);
+    }
+
+    #[test]
+    fn a_controller_event_is_named_by_its_cues_or_a_rule() {
+        let (mut world, _) = super::rig();
+        let hero =
+            world.spawn_with((Cues::new().on(LANDED, [CueAction::counter_add("landings", 1)]),));
+        let other = world.spawn();
+        assert!(!cue_named(&world, hero, JUMPED), "nothing names it yet");
+        let rules: CueRules = serde_json::from_value(json!([
+            { "on": "jumped", "do": [{ "counter": { "name": "jumps", "add": 1 } }] }
+        ]))
+        .unwrap();
+        world.resource_mut::<DataRegistry>().insert("hops", rules);
+        for entity in [hero, other] {
+            assert!(cue_named(&world, entity, JUMPED), "a rule names it");
+            assert!(!cue_named(&world, entity, JUMP_REFUSED), "nothing names it");
+        }
+        assert!(cue_named(&world, hero, LANDED), "its own cues");
+        assert!(!cue_named(&world, other, LANDED), "another's cues");
+        for (event, carries) in [
+            (AIR_JUMPED, true),
+            (LANDED, true),
+            (JUMPED, false),
+            (JUMP_REFUSED, false),
+        ] {
+            let checked = check_rules(
+                &mut world,
+                json!([{ "on": event, "amount": { "min": 100 }, "do": [] }]),
+            );
+            if carries {
+                assert!(checked.is_ok(), "{event}: {checked:?}");
+            } else {
+                let error = checked.unwrap_err();
+                assert!(error.ends_with("at 0.amount"), "{event}: {error}");
+            }
+        }
+    }
+}

@@ -67,9 +67,13 @@ pub(crate) const EFFECT_APPLIED: &str = "effect_applied";
 pub(crate) const EFFECT_EXPIRED: &str = "effect_expired";
 pub(crate) const ABILITY_USED: &str = "ability_used";
 pub(crate) const LEVEL_UP: &str = "level_up";
+pub(crate) const JUMPED: &str = "jumped";
+pub(crate) const AIR_JUMPED: &str = "air_jumped";
+pub(crate) const JUMP_REFUSED: &str = "jump_refused";
+pub(crate) const LANDED: &str = "landed";
 /// A [`WorldCue`]'s occurrence: no subject, so no entity or rule names it.
 const WORLD_CUE: &str = "world_cue";
-const KIT_EVENTS: [&str; 13] = [
+const KIT_EVENTS: [&str; 17] = [
     DAMAGED_PART,
     DAMAGED,
     KILLED,
@@ -83,6 +87,10 @@ const KIT_EVENTS: [&str; 13] = [
     EFFECT_EXPIRED,
     ABILITY_USED,
     LEVEL_UP,
+    JUMPED,
+    AIR_JUMPED,
+    JUMP_REFUSED,
+    LANDED,
 ];
 
 /// The squash triggers' data names, as a scene's `squash_stretch` writes
@@ -106,9 +114,13 @@ fn valid_event(name: &str) -> bool {
 /// `healed` (the heal's source the other), `picked_up` (the pickup is the
 /// subject, the collector the other), `expired` (a projectile's end),
 /// `effect_applied` (the effect's source the other, the stacks the amount),
-/// `effect_expired`, `ability_used` (the ability's target the other) and
-/// `level_up` (the level the amount), and each name a game's
-/// [`CuesOnEvent`] registers.
+/// `effect_expired`, `ability_used` (the ability's target the other),
+/// `level_up` (the level the amount), a
+/// [`PlatformerController`](crate::PlatformerController)'s `jumped` (a
+/// ground or coyote jump), `air_jumped` (the stat amount it paid the
+/// amount, 0 for a free one), `jump_refused` (a press in the air refused
+/// for its cost) and `landed` (the speed it fell at the amount, px/s), each
+/// at its feet, and each name a game's [`CuesOnEvent`] registers.
 ///
 /// Scene name `cues`:
 /// `{ "damaged": [{ "flash": {} }], "killed": [{ "prefab": "puff" }, { "despawn": {} }] }`;
@@ -1393,6 +1405,9 @@ pub struct CueEvent {
     pub amount: Option<f32>,
     /// Whom a `target: other` action acts on.
     pub other: Option<Entity>,
+    /// The cue event it is, one of its [`CuesOnEvent`]'s names; `None`
+    /// for its only one.
+    pub name: Option<&'static str>,
 }
 
 impl CueEvent {
@@ -1405,6 +1420,7 @@ impl CueEvent {
             position,
             amount: None,
             other: None,
+            name: None,
         }
     }
 
@@ -1428,6 +1444,14 @@ impl CueEvent {
     #[must_use]
     pub fn with_other(mut self, other: Entity) -> Self {
         self.other = Some(other);
+        self
+    }
+
+    /// The occurrence, as the cue event `name`: one of the names its
+    /// [`CuesOnEvent::with_names`] brings in, whose cues it runs.
+    #[must_use]
+    pub fn named(mut self, name: &'static str) -> Self {
+        self.name = Some(name);
         self
     }
 }
@@ -1710,6 +1734,10 @@ impl Default for CueEventNames {
                 (EFFECT_EXPIRED, false, false, false),
                 (ABILITY_USED, false, true, false),
                 (LEVEL_UP, true, false, false),
+                (JUMPED, false, false, false),
+                (AIR_JUMPED, true, false, false),
+                (JUMP_REFUSED, false, false, false),
+                (LANDED, true, false, false),
             ]
             .into_iter()
             .map(|(name, amount, other, kinds)| EventInfo {
@@ -1729,6 +1757,43 @@ impl CueEventNames {
     }
 }
 
+/// One of a platformer controller's cue events, as its system pushes it:
+/// the event, the controller's entity, its feet and the amount.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ControllerCue {
+    pub(crate) event: &'static str,
+    pub(crate) entity: Entity,
+    pub(crate) at: Vec2,
+    pub(crate) amount: Option<f32>,
+}
+
+/// The step's controller cue events, a World resource [`CuesPlugin`]
+/// inserts with its capacity reserved, which the cue system drains each
+/// step: no event queue, so a controller's jumps send no event.
+#[derive(Debug)]
+pub(crate) struct ControllerCues(pub(crate) Vec<ControllerCue>);
+
+/// The controller cue events a step holds before the list grows.
+const CONTROLLER_CUES: usize = 32;
+
+/// Whether the cue event `event` about `entity` has anything to run: the
+/// entity's own [`Cues`] list an action for it, or a loaded `cue_rules`
+/// rule is on it, whatever its filters, which the cue system reads later as
+/// for any occurrence. A platformer controller asks before it pushes one of
+/// its events, so a World that names none does no cue work for its
+/// controllers. It allocates nothing.
+pub(crate) fn cue_named(world: &World, entity: Entity, event: &str) -> bool {
+    world
+        .get::<Cues>(entity)
+        .is_some_and(|cues| !cues.actions(event).is_empty())
+        || world.get_resource::<DataRegistry>().is_some_and(|data| {
+            data.ids(CUE_RULES).any(|id| {
+                data.get::<CueRules>(id)
+                    .is_some_and(|rules| rules.0.iter().any(|rule| rule.on == event))
+            })
+        })
+}
+
 /// A game event's reader, kept in [`CueSources`].
 trait CueSource {
     /// Appends the occurrences sent since the last read.
@@ -1743,7 +1808,12 @@ struct CueSources(Vec<Box<dyn CueSource>>);
 /// queue once per event, after the kit's, and runs the cues registered
 /// under `name` for each occurrence its `map` gives; `None` skips the
 /// event. The plugin registers `EventQueue<E>` (again is a no-op) and the
-/// name, so `cues` and `cue_rules` may use it. A game event may carry an
+/// name, so `cues` and `cue_rules` may use it.
+/// [`with_names`](Self::with_names) brings `E` in under several names,
+/// each occurrence running the cues of the name it carries
+/// ([`CueEvent::named`]); one that names none of them, or no name, is
+/// skipped and logged once per name. Under [`new`](Self::new), an
+/// occurrence's own name, when set, must be `name`. A game event may carry an
 /// amount and another entity, so the load lets a `label` or a
 /// `target: other` action name it; an occurrence without them skips those
 /// actions, and the trace says so.
@@ -1754,8 +1824,8 @@ struct CueSources(Vec<Box<dyn CueSource>>);
 ///
 /// # Panics
 ///
-/// At build, when `name` is not `[a-z][a-z0-9_]*`, is one of the kit's
-/// events or was registered before.
+/// At build, when a name is not `[a-z][a-z0-9_]*`, is one of the kit's
+/// events or was registered before, or `with_names` names none.
 ///
 /// # Examples
 ///
@@ -1782,7 +1852,9 @@ struct CueSources(Vec<Box<dyn CueSource>>);
 /// assert!(world.has_event::<Opened>());
 /// ```
 pub struct CuesOnEvent<E> {
-    name: &'static str,
+    names: Vec<&'static str>,
+    /// Registered by `new`: an occurrence without a name is its one.
+    single: bool,
     map: fn(&E) -> Option<CueEvent>,
 }
 
@@ -1790,14 +1862,52 @@ impl<E: 'static> CuesOnEvent<E> {
     /// Event `E` as the cue event `name`, each occurrence given by `map`.
     #[must_use]
     pub fn new(name: &'static str, map: fn(&E) -> Option<CueEvent>) -> Self {
-        Self { name, map }
+        Self {
+            names: vec![name],
+            single: true,
+            map,
+        }
+    }
+
+    /// Event `E` as each of the cue events `names`, each occurrence given
+    /// by `map` under the name it carries.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_core::{Entity, Plugin, Schedule, World};
+    /// use tungsten_kit::{CueEvent, CuesOnEvent, CuesPlugin};
+    ///
+    /// /// The game's chest event: opened, or emptied by its last take.
+    /// struct Chest {
+    ///     chest: Entity,
+    ///     emptied: bool,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let mut schedule = Schedule::new();
+    /// CuesPlugin.build(&mut schedule, &mut world);
+    /// CuesOnEvent::<Chest>::with_names(&["opened", "emptied"], |e| {
+    ///     Some(CueEvent::of(e.chest).named(if e.emptied { "emptied" } else { "opened" }))
+    /// })
+    /// .build(&mut schedule, &mut world);
+    /// assert!(world.has_event::<Chest>());
+    /// ```
+    #[must_use]
+    pub fn with_names(names: &[&'static str], map: fn(&E) -> Option<CueEvent>) -> Self {
+        Self {
+            names: names.to_vec(),
+            single: false,
+            map,
+        }
     }
 }
 
 impl<E> Clone for CuesOnEvent<E> {
     fn clone(&self) -> Self {
         Self {
-            name: self.name,
+            names: self.names.clone(),
+            single: self.single,
             map: self.map,
         }
     }
@@ -1805,17 +1915,26 @@ impl<E> Clone for CuesOnEvent<E> {
 
 impl<E> fmt::Debug for CuesOnEvent<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CuesOnEvent")
-            .field("name", &self.name)
-            .finish_non_exhaustive()
+        let mut out = f.debug_struct("CuesOnEvent");
+        if self.single {
+            out.field("name", &self.names[0]);
+        } else {
+            out.field("names", &self.names);
+        }
+        out.finish_non_exhaustive()
     }
 }
 
-/// A game event's reader: its name, its map and its place in the queue.
+/// A game event's reader: its names, its map, its place in the queue and
+/// the names it warned of.
 struct GameSource<E> {
-    name: &'static str,
+    names: Vec<&'static str>,
+    single: bool,
     map: fn(&E) -> Option<CueEvent>,
     cursor: EventCursor<E>,
+    /// The names an occurrence carried that are not the source's, logged
+    /// once each; "" for none.
+    warned: HashSet<&'static str>,
 }
 
 impl<E: 'static> CueSource for GameSource<E> {
@@ -1823,46 +1942,69 @@ impl<E: 'static> CueSource for GameSource<E> {
         let Some(queue) = world.get_resource::<EventQueue<E>>() else {
             return;
         };
-        out.extend(self.cursor.read(queue).filter_map(self.map).map(|event| {
+        let Self {
+            names,
+            single,
+            map,
+            cursor,
+            warned,
+        } = self;
+        for event in cursor.read(queue).filter_map(*map) {
+            let name = match event.name {
+                None if *single => Some(names[0]),
+                Some(name) => names.iter().copied().find(|&known| known == name),
+                None => None,
+            };
+            let Some(name) = name else {
+                let carried = event.name.unwrap_or("");
+                if warned.insert(carried) {
+                    log::warn!(
+                        "CuesOnEvent {names:?}: an occurrence named `{carried}`, none of its names; skipped"
+                    );
+                }
+                continue;
+            };
             let position = if event.position.is_finite() {
                 event.position
             } else {
                 point_of(world, event.entity)
             };
-            Occurrence {
+            out.push(Occurrence {
                 amount: event.amount,
                 other: event.other,
-                ..Occurrence::new(self.name, event.entity, position)
-            }
-        }));
+                ..Occurrence::new(name, event.entity, position)
+            });
+        }
     }
 }
 
 impl<E: 'static> Plugin for CuesOnEvent<E> {
     fn build(&self, _schedule: &mut Schedule, world: &mut World) {
-        let name = self.name;
-        assert!(
-            valid_event(name),
-            "CuesOnEvent: `{name}` is not an event name (`[a-z][a-z0-9_]*`)"
-        );
-        assert!(
-            !KIT_EVENTS.contains(&name),
-            "CuesOnEvent: `{name}` is one of the kit's cue events"
-        );
+        assert!(!self.names.is_empty(), "CuesOnEvent::with_names: no names");
         if !world.has_resource::<CueEventNames>() {
             world.insert_resource(CueEventNames::default());
         }
-        let names = world.resource_mut::<CueEventNames>();
-        assert!(
-            names.get(name).is_none(),
-            "CuesOnEvent: the cue event `{name}` is already registered"
-        );
-        names.0.push(EventInfo {
-            name,
-            amount: true,
-            other: true,
-            kinds: false,
-        });
+        for &name in &self.names {
+            assert!(
+                valid_event(name),
+                "CuesOnEvent: `{name}` is not an event name (`[a-z][a-z0-9_]*`)"
+            );
+            assert!(
+                !KIT_EVENTS.contains(&name),
+                "CuesOnEvent: `{name}` is one of the kit's cue events"
+            );
+            let names = world.resource_mut::<CueEventNames>();
+            assert!(
+                names.get(name).is_none(),
+                "CuesOnEvent: the cue event `{name}` is already registered"
+            );
+            names.0.push(EventInfo {
+                name,
+                amount: true,
+                other: true,
+                kinds: false,
+            });
+        }
         world.register_event::<E>();
         if !world.has_resource::<CueSources>() {
             world.insert_resource(CueSources::default());
@@ -1871,9 +2013,11 @@ impl<E: 'static> Plugin for CuesOnEvent<E> {
             .resource_mut::<CueSources>()
             .0
             .push(Box::new(GameSource {
-                name,
+                names: self.names.clone(),
+                single: self.single,
                 map: self.map,
                 cursor: EventCursor::new(),
+                warned: HashSet::new(),
             }));
     }
 }
@@ -2387,9 +2531,12 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// [`EffectApplied`](crate::EffectApplied) (`effect_applied`),
 /// [`EffectExpired`](crate::EffectExpired) (`effect_expired`),
 /// [`AbilityUsed`](crate::AbilityUsed) (`ability_used`),
-/// [`LevelUp`](crate::LevelUp) (`level_up`), then each [`CuesOnEvent`] in
-/// build order, each queue in send order, and last the step's
-/// [`WorldCue`]s. It runs every
+/// [`LevelUp`](crate::LevelUp) (`level_up`), then the
+/// [`PlatformerController`](crate::PlatformerController)s' `jumped`,
+/// `air_jumped`, `jump_refused` and `landed` from a list the controller's
+/// system fills, no event queue, then each [`CuesOnEvent`] in build order,
+/// each queue in send order, and last the step's [`WorldCue`]s. It runs
+/// every
 /// occurrence's entity cues, then every occurrence's matching rules (rules
 /// in entry-ID order, then file order); each list in its written order, so
 /// in each pass every `damaged_part` runs before the step's `damaged` and
@@ -2469,6 +2616,9 @@ impl Plugin for CuesPlugin {
         }
         if !world.has_resource::<LiveLabels>() {
             world.insert_resource(LiveLabels::default());
+        }
+        if !world.has_resource::<ControllerCues>() {
+            world.insert_resource(ControllerCues(Vec::with_capacity(CONTROLLER_CUES)));
         }
         if !world.has_resource::<KitRng>() {
             world.insert_resource(KitRng::default());
@@ -3556,6 +3706,12 @@ impl Reactor {
             occurrences.extend(level_ups.read(queue).map(|event| Occurrence {
                 amount: Some(event.level as f32),
                 ..Occurrence::new(LEVEL_UP, event.entity, point_of(world, event.entity))
+            }));
+        }
+        if let Some(cues) = world.get_resource_mut::<ControllerCues>() {
+            occurrences.extend(cues.0.drain(..).map(|cue| Occurrence {
+                amount: cue.amount,
+                ..Occurrence::new(cue.event, cue.entity, cue.at)
             }));
         }
         if let Some(mut sources) = world.remove_resource::<CueSources>() {

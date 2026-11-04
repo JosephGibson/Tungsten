@@ -2311,3 +2311,323 @@ fn a_kinematic_body_pushes_the_controller_out() {
         position(&world, entity)
     );
 }
+
+// 7.10p: the controller's cue events.
+
+/// One step of `dt`, then the controller cue events it pushed, drained.
+fn cue_step(
+    world: &mut World,
+    schedule: &mut Schedule,
+    dt: f32,
+) -> Vec<(&'static str, Vec2, Option<f32>)> {
+    world.resource_mut::<Time>().advance_frame(dt);
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+    world
+        .resource_mut::<ControllerCues>()
+        .0
+        .drain(..)
+        .map(|cue| (cue.event, cue.at, cue.amount))
+        .collect()
+}
+
+/// The feet of `entity`'s body: its collider's bottom centre.
+fn feet(world: &World, entity: Entity) -> Vec2 {
+    position(world, entity) + Vec2::new(0.0, HALF.y)
+}
+
+#[test]
+fn the_controller_cues_its_jumps_and_landing() {
+    let mut runs = Vec::new();
+    for dt in [DT, 2.0 * DT] {
+        let (mut world, mut schedule, entity) = bounder();
+        world.insert_resource(ControllerCues(Vec::new()));
+        world.insert(entity, naming(&[JUMPED, AIR_JUMPED, JUMP_REFUSED, LANDED]));
+        let mut events = Vec::new();
+        fn note(
+            events: &mut Vec<(&'static str, Option<f32>)>,
+            cues: &[(&'static str, Vec2, Option<f32>)],
+        ) {
+            events.extend(cues.iter().map(|&(event, _, amount)| (event, amount)));
+        }
+        for _ in 0..10 {
+            let cues = cue_step(&mut world, &mut schedule, dt);
+            assert!(cues.is_empty(), "dt {dt}: standing sends none: {cues:?}");
+        }
+        // A ground jump, at the feet where its step began.
+        let start = feet(&world, entity);
+        controller(&mut world, entity).press_jump();
+        let cues = cue_step(&mut world, &mut schedule, dt);
+        assert_eq!(cues, [(JUMPED, start, None)], "dt {dt}");
+        note(&mut events, &cues);
+        // A free air jump, a paid one, then a press its cost refuses.
+        for _ in 0..3 {
+            for _ in 0..3 {
+                note(&mut events, &cue_step(&mut world, &mut schedule, dt));
+            }
+            if events.len() == 3 {
+                world
+                    .get_mut::<Stats>(entity)
+                    .unwrap()
+                    .set_base("mana", 0.0);
+            }
+            let start = feet(&world, entity);
+            controller(&mut world, entity).press_jump();
+            let cues = cue_step(&mut world, &mut schedule, dt);
+            assert!(cues.iter().all(|&(_, at, _)| at == start), "dt {dt}");
+            note(&mut events, &cues);
+        }
+        // The fall onto the floor: one landing, its amount the speed the
+        // floor stopped, between the landing step's starting fall speed and
+        // that plus its gravity.
+        let mut falling = 0.0;
+        let mut landings = Vec::new();
+        for _ in 0..(2.0 / dt) as usize {
+            let before = state(&world, entity).velocity.y;
+            let cues = cue_step(&mut world, &mut schedule, dt);
+            if cues.iter().any(|&(event, _, _)| event == LANDED) {
+                falling = before;
+                landings.push((cues.clone(), feet(&world, entity)));
+            }
+            note(&mut events, &cues);
+        }
+        assert_eq!(landings.len(), 1, "dt {dt}: once");
+        let (cues, at) = &landings[0];
+        let (_, landed_at, amount) = cues[0];
+        assert!(falling > 500.0, "dt {dt}: {falling}");
+        let amount = amount.unwrap();
+        assert!(
+            amount >= falling - 1e-3 && amount <= falling + GRAVITY * dt + 1e-3,
+            "dt {dt}: {amount} against {falling}"
+        );
+        assert!(landed_at.distance(*at) < 1e-3, "dt {dt}: where it ended");
+        // Walked off the floor's end, a press within coyote time jumps.
+        controller(&mut world, entity).set_run(1.0);
+        while state(&world, entity).grounded() {
+            note(&mut events, &cue_step(&mut world, &mut schedule, dt));
+        }
+        controller(&mut world, entity).press_jump();
+        note(&mut events, &cue_step(&mut world, &mut schedule, dt));
+        runs.push(events);
+    }
+    let names: Vec<Vec<&str>> = runs
+        .iter()
+        .map(|events| events.iter().map(|&(event, _)| event).collect())
+        .collect();
+    assert_eq!(
+        names[0],
+        [JUMPED, AIR_JUMPED, AIR_JUMPED, JUMP_REFUSED, LANDED, JUMPED],
+        "the coyote jump is a ground jump"
+    );
+    assert_eq!(names[0], names[1], "equal at dt 1/60 and 1/30");
+    let amounts: Vec<Option<f32>> = runs[0][1..4].iter().map(|&(_, amount)| amount).collect();
+    assert_eq!(
+        amounts,
+        [Some(0.0), Some(25.0), None],
+        "free, then the cost"
+    );
+}
+
+/// The rig with the cue plugin and a hero whose `jumped` cue counts.
+fn cueing_rig() -> (World, Schedule, Entity) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, GRAVITY),
+        ..PhysicsConfig::default()
+    });
+    world.insert_resource(TilemapRegistry::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    PlatformerControllerPlugin.build(&mut schedule, &mut world);
+    crate::CuesPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    tile_floor(&mut world, 64);
+    let entity = hero(
+        &mut world,
+        Vec2::new(200.0, 0.0),
+        PlatformerController::new(RUN, JUMP),
+    );
+    world.insert(
+        entity,
+        crate::Cues::new().on("jumped", [crate::CueAction::counter_add("jumps", 1)]),
+    );
+    (world, schedule, entity)
+}
+
+#[test]
+fn controller_cues_send_no_event() {
+    let mut sent = Vec::new();
+    for jumping in [false, true] {
+        let (mut world, mut schedule, entity) = cueing_rig();
+        let before = world.counters().events_sent;
+        for i in 0..120 {
+            if jumping && i % 50 == 10 {
+                controller(&mut world, entity).press_jump();
+            }
+            step(&mut world, &mut schedule);
+            world.flush_events();
+        }
+        sent.push(world.counters().events_sent - before);
+        let jumps = world
+            .get::<crate::Counters>(entity)
+            .map_or(0, |counters| counters.get("jumps"));
+        assert_eq!(jumps, if jumping { 3 } else { 0 }, "the cues ran");
+        assert!(world.resource::<ControllerCues>().0.is_empty(), "drained");
+    }
+    assert_eq!(sent[0], sent[1], "jumps send no event");
+    let (mut world, mut schedule, entity) = standing(PlatformerController::new(RUN, JUMP));
+    controller(&mut world, entity).press_jump();
+    step(&mut world, &mut schedule);
+    assert!(state(&world, entity).jumped());
+    assert!(
+        !world.has_resource::<ControllerCues>(),
+        "no cue plugin, no list"
+    );
+}
+
+#[test]
+fn a_controller_saves_the_bytes_it_saved() {
+    // The saved forms at cda6987a, before the landing flag, which is not
+    // saved: mid-jump, then standing again.
+    const MID_JUMP: &str = r#"{"run_speed":560.0,"jump_speed":1280.0,"gravity":null,"coyote_time":0.1,"jump_buffer":0.1,"jump_cut":0.5,"air_jumps":1,"run":0.0,"jump_held":true,"pressed":false,"launch":null,"push":[0.0,0.0],"buffer_left":0.0,"coyote_left":0.0,"lock_left":0.0,"velocity":[0.0,-1100.0],"grounded":false,"jumped":false,"air_jumped":false,"cut_armed":true,"air_jumps_left":1}"#;
+    const STANDING: &str = r#"{"run_speed":560.0,"jump_speed":1280.0,"gravity":null,"coyote_time":0.1,"jump_buffer":0.1,"jump_cut":0.5,"air_jumps":1,"run":0.0,"jump_held":true,"pressed":false,"launch":null,"push":[0.0,0.0],"buffer_left":0.0,"coyote_left":0.1,"lock_left":0.0,"velocity":[0.0,0.0],"grounded":true,"jumped":false,"air_jumped":false,"cut_armed":false,"air_jumps_left":1}"#;
+    let (mut world, mut schedule, entity) =
+        standing(PlatformerController::new(RUN, JUMP).with_air_jumps(1));
+    controller(&mut world, entity).press_jump();
+    steps(&mut world, &mut schedule, 3);
+    assert_eq!(
+        serde_json::to_string(state(&world, entity)).unwrap(),
+        MID_JUMP
+    );
+    let mut landed = false;
+    for _ in 0..60 {
+        step(&mut world, &mut schedule);
+        if state(&world, entity).landed() {
+            assert!(!landed, "one landing");
+            landed = true;
+            let saved = serde_json::to_value(state(&world, entity)).unwrap();
+            assert!(saved.get("landed").is_none(), "not saved: {saved}");
+            let loaded: PlatformerController = serde_json::from_value(saved).unwrap();
+            assert!(!loaded.landed());
+        }
+    }
+    assert!(landed);
+    assert_eq!(
+        serde_json::to_string(state(&world, entity)).unwrap(),
+        STANDING
+    );
+}
+
+/// `Cues` with a counting action on each of `events`, so a controller's
+/// events by those names are pushed.
+fn naming(events: &[&str]) -> crate::Cues {
+    events.iter().fold(crate::Cues::new(), |cues, &event| {
+        cues.on(event, [crate::CueAction::counter_add(event, 1)])
+    })
+}
+
+/// The rig with the controller cue list and a tile floor, without the cue
+/// system, so a test drains the list itself.
+fn listing_rig() -> (World, Schedule) {
+    let (mut world, schedule) = rig();
+    world.insert_resource(ControllerCues(Vec::with_capacity(32)));
+    tile_floor(&mut world, 64);
+    (world, schedule)
+}
+
+#[test]
+fn a_landing_stops_a_fall_at_any_dt_and_no_spawn() {
+    for dt in [DT, 2.0 * DT] {
+        // At rest 1.5 px above the floor, past the start check's reach: the
+        // fall starts and may end within one step.
+        let (mut world, mut schedule) = listing_rig();
+        let entity = hero(
+            &mut world,
+            Vec2::new(200.0, -1.5),
+            PlatformerController::new(RUN, JUMP),
+        );
+        world.insert(entity, naming(&[LANDED]));
+        let mut landings = Vec::new();
+        for i in 0..30 {
+            for (event, _, amount) in cue_step(&mut world, &mut schedule, dt) {
+                assert_eq!(event, LANDED);
+                landings.push((i, amount));
+            }
+        }
+        assert_eq!(landings.len(), 1, "dt {dt}: {landings:?}");
+        let (_, amount) = landings[0];
+        assert!(amount.unwrap() > 0.0, "dt {dt}: {amount:?}");
+        assert!(state(&world, entity).grounded());
+        // Spawned standing: its check finds the floor at rest.
+        let (mut world, mut schedule) = listing_rig();
+        let entity = hero(
+            &mut world,
+            Vec2::new(200.0, 0.0),
+            PlatformerController::new(RUN, JUMP),
+        );
+        world.insert(entity, naming(&[JUMPED, AIR_JUMPED, JUMP_REFUSED, LANDED]));
+        for _ in 0..30 {
+            let cues = cue_step(&mut world, &mut schedule, dt);
+            assert!(cues.is_empty(), "dt {dt}: standing sends none: {cues:?}");
+            assert!(!state(&world, entity).landed());
+        }
+        assert!(state(&world, entity).grounded());
+    }
+}
+
+#[test]
+fn controller_cues_push_only_what_is_named() {
+    // Its `cues` name `landed` alone.
+    let (mut world, mut schedule, entity) = bounder();
+    world.insert_resource(ControllerCues(Vec::with_capacity(32)));
+    world.insert(entity, naming(&[LANDED]));
+    controller(&mut world, entity).press_jump();
+    let cues = cue_step(&mut world, &mut schedule, DT);
+    assert!(state(&world, entity).jumped());
+    assert!(cues.is_empty(), "a ground jump: {cues:?}");
+    for i in 0..3 {
+        steps(&mut world, &mut schedule, 3);
+        if i == 2 {
+            world
+                .get_mut::<Stats>(entity)
+                .unwrap()
+                .set_base("mana", 0.0);
+        }
+        controller(&mut world, entity).press_jump();
+        let cues = cue_step(&mut world, &mut schedule, DT);
+        let hero = state(&world, entity);
+        let flags = (
+            hero.air_jumped(),
+            hero.paid_air_jumped(),
+            hero.air_jump_refused(),
+        );
+        assert_eq!(
+            flags,
+            [
+                (true, false, false),
+                (true, true, false),
+                (false, false, true)
+            ][i],
+            "press {i}"
+        );
+        assert!(cues.is_empty(), "press {i}: {cues:?}");
+    }
+    let mut landed = Vec::new();
+    for _ in 0..120 {
+        landed.extend(cue_step(&mut world, &mut schedule, DT));
+    }
+    assert_eq!(landed.len(), 1, "{landed:?}");
+    assert_eq!(landed[0].0, LANDED);
+    // No `cues`: nothing pushed, the flags still set.
+    let (mut world, mut schedule, entity) = bounder();
+    world.insert_resource(ControllerCues(Vec::with_capacity(32)));
+    controller(&mut world, entity).press_jump();
+    assert!(cue_step(&mut world, &mut schedule, DT).is_empty());
+    assert!(state(&world, entity).jumped());
+    let mut landings = 0;
+    for _ in 0..120 {
+        assert!(cue_step(&mut world, &mut schedule, DT).is_empty());
+        landings += usize::from(state(&world, entity).landed());
+    }
+    assert_eq!(landings, 1, "the flag still set");
+}

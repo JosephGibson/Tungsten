@@ -18,7 +18,8 @@
 //! following the hero, a crate whose break a recipe system plays as the
 //! `crate_break` world cue, a turret under rapid fire whose flash waits
 //! its interval, a blob whose frosting shows its band's overlay, and a keg
-//! whose sparking look emits at its sheet's `fuse` point frame by frame.
+//! whose sparking look emits at its sheet's `fuse` point frame by frame,
+//! and a leaper whose jumps and landing cue dust at its feet.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2004,5 +2005,73 @@ fn a_kegs_sparks_start_at_its_fuse_point_frame_by_frame() {
         }
         assert!(checked >= 20, "dt {dt}: {checked} sparks");
         assert!(changes >= 5, "dt {dt}: {changes} frame changes");
+    }
+}
+
+// 7.10p: the controller's cue events.
+
+/// Where each live `dust` is.
+fn dust(harness: &super::Harness) -> Vec<Vec2> {
+    tagged(harness, "dust")
+        .into_iter()
+        .map(|entity| drawn_at(harness, entity))
+        .collect()
+}
+
+#[test]
+fn a_leapers_jumps_and_landing_cue_dust_at_its_feet() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let leaper = spawn(&mut harness, "leaper", [0.0, 270.0]);
+        harness.step(2);
+        assert!(dust(&harness).is_empty(), "dt {dt}: standing cues none");
+        // A ground jump: dust where its feet stood, on the ground's top.
+        harness.press_action("jump");
+        harness.step(1);
+        harness.release_action("jump");
+        let puffs = dust(&harness);
+        assert_eq!(puffs.len(), 1, "dt {dt}");
+        assert!(
+            puffs[0].distance(Vec2::new(0.0, 290.0)) < 0.5,
+            "dt {dt}: {puffs:?}"
+        );
+        // An air jump, then the landing's dust once the first has gone.
+        harness.step(frames_for(0.1, dt));
+        harness.press_action("jump");
+        harness.step(1);
+        harness.release_action("jump");
+        let landings = |harness: &super::Harness| {
+            harness
+                .world()
+                .get::<Counters>(leaper)
+                .unwrap()
+                .get("landings")
+        };
+        let mut frames = 0;
+        while landings(&harness) == 0 && frames < frames_for(1.5, dt) {
+            harness.step(1);
+            frames += 1;
+        }
+        let counters = harness.world().get::<Counters>(leaper).unwrap();
+        assert_eq!(
+            ["jumps", "air_jumps", "landings"].map(|name| counters.get(name)),
+            [1, 1, 1],
+            "dt {dt}"
+        );
+        assert!(grounded(&harness, leaper), "dt {dt}");
+        let landed_at = body_at(&harness, leaper) + Vec2::new(0.0, 20.0);
+        let puffs = dust(&harness);
+        assert_eq!(
+            puffs.len(),
+            1,
+            "dt {dt}: the jump's gone, the landing's new"
+        );
+        assert!(
+            puffs[0].distance(landed_at) < 1.0,
+            "dt {dt}: {puffs:?} at {landed_at}"
+        );
+        harness.step(frames_for(1.0, dt));
+        assert_eq!(landings(&harness), 1, "dt {dt}: once");
     }
 }
