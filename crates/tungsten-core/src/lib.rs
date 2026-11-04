@@ -50,7 +50,7 @@ pub use component_registry::{
 pub use components::{
     Light, LightKind, MeshParticle, ParallaxLayer, Particle, ParticleEmitter, ParticleEmitterState,
     Sprite, SpriteSquashStretch, SquashStretchState, SquashTrigger, Tag, Transform, Visibility,
-    parallax_world_position, sync_position_to_transform,
+    parallax_world_position, sprite_point, sync_position_to_transform,
 };
 pub use config::{
     AudioConfig, Config, ConfigError, DepthSortMode, GameConfig, PostAaMode, RenderConfig,

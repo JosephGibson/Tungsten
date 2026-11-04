@@ -359,8 +359,8 @@ fn check_sprites(manifest: &ResolvedManifest, world: &mut World, errors: &mut Er
 
 /// Registers sprite `id`'s metadata with no pixels behind it, as `tungsten
 /// check` and the headless harness do (redo 7.9): its size (its frame's, or
-/// `file`'s for a whole file), filter, siblings, nine-slice, frame and
-/// anchor, on `atlas` with full UVs, and lit on it when `lit`.
+/// `file`'s for a whole file), filter, siblings, nine-slice, frame, anchor
+/// and named points, on `atlas` with full UVs, and lit on it when `lit`.
 pub(crate) fn register_metadata(
     registry: &mut AssetRegistry,
     id: &str,
@@ -389,6 +389,9 @@ pub(crate) fn register_metadata(
     }
     if sprite.rect.is_some() || sprite.anchor.is_some() {
         registry.set_sprite_frame(id, sprite.rect, sprite.anchor);
+    }
+    if !sprite.points.is_empty() {
+        registry.set_sprite_points(id, sprite.points.clone());
     }
 }
 

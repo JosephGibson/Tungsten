@@ -3,7 +3,7 @@
 //! decodes once however many sprites it backs: a sheet's frames are cut from
 //! it as their own images would be (redo 7.9).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use tungsten_core::assets::manifest::ResolvedSprite;
@@ -65,6 +65,17 @@ pub(super) struct Decoded {
     /// registered with the sprite; `None` on a repack, as `nine_slice`.
     rect: Option<[u32; 4]>,
     anchor: Option<[f32; 2]>,
+    /// Redo 7.10p: the named points from the manifest entry; empty on a
+    /// repack, which keeps the registered ones.
+    points: BTreeMap<String, [f32; 2]>,
+}
+
+impl Decoded {
+    /// Its named points, as the packed sprite registers them.
+    #[cfg(test)]
+    pub(super) fn points(&self) -> &BTreeMap<String, [f32; 2]> {
+        &self.points
+    }
 }
 
 /// One image file decoded with its siblings; every sprite on it cuts its
@@ -206,6 +217,7 @@ pub(super) fn decode_file_sprites(
         nine_slice: sprite.nine_slice,
         rect: sprite.rect,
         anchor: sprite.anchor,
+        points: sprite.points.clone(),
     };
     if let [(id, sprite)] = sprites
         && sprite.rect.is_none()
@@ -529,6 +541,10 @@ fn build_atlas_for_filter(
         // Redo 7.9: a sheet frame's place and the anchor.
         if src.rect.is_some() || src.anchor.is_some() {
             registry.set_sprite_frame(&src.id, src.rect, src.anchor);
+        }
+        // Redo 7.10p: its named points.
+        if !src.points.is_empty() {
+            registry.set_sprite_points(&src.id, src.points.clone());
         }
         atlas_registry.packed.insert(src.id.clone(), packed.clone());
     }
@@ -937,6 +953,7 @@ pub fn rebuild_atlas_for_filter(
             nine_slice: None,
             rect: None,
             anchor: None,
+            points: BTreeMap::new(),
         });
     }
     drop(files);

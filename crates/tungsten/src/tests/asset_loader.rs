@@ -14,7 +14,7 @@ use tungsten_core::ecs::{Entity, World};
 use tungsten_core::ui::{Theme, UiScreenRegistry, UiThemeRegistry, UiTree, screen_build};
 use tungsten_core::{AssetRegistry, TextureHandle};
 
-use super::reload::apply_nine_slice;
+use super::reload::{apply_nine_slice, apply_points};
 use super::*;
 use tungsten_render::sprite::TextureHandles;
 
@@ -2106,4 +2106,50 @@ fn a_manifest_reload_loads_a_new_screen() {
     let mut bare = World::new();
     reload_ui_screens_from_manifest(&ResolvedManifest::default(), &mut bare);
     assert!(!bare.has_resource::<UiScreenRegistry>() && !bare.has_resource::<UiScreenPaths>());
+}
+
+#[test]
+fn points_reach_the_registry_on_every_path() {
+    let dir = tempdir();
+    write_walk_frames(&dir, 200);
+    let manifest = dir.join("sheet.json");
+    write(
+        &manifest,
+        r#"{"sheets": {"walk": {"path": "walk.png", "frame": [16, 16], "points": {"hand": [[3, 9], [4, 9]]}}}}"#,
+    );
+    let resolved = ResolvedManifest::load(&manifest).unwrap();
+    // Packed: the decode carries each frame's points to its registration.
+    let [nearest, _] = super::atlas::decode_sprites(&resolved).unwrap();
+    let hands: Vec<Option<[f32; 2]>> = nearest
+        .iter()
+        .map(|decoded| decoded.points().get("hand").copied())
+        .collect();
+    assert_eq!(
+        hands,
+        [Some([3.0, 9.0]), Some([4.0, 9.0]), None, None],
+        "frame by frame"
+    );
+    // Checked headless: the metadata path registers them.
+    let mut registry = AssetRegistry::new();
+    for (id, sprite) in &resolved.sprites {
+        super::check::register_metadata(
+            &mut registry,
+            id,
+            sprite,
+            (32, 32),
+            TextureHandle(0),
+            false,
+        );
+    }
+    let point = |registry: &AssetRegistry, id: &str| registry.get_sprite(id).unwrap().point("hand");
+    assert_eq!(point(&registry, "walk_1"), Some([4.0, 9.0]));
+    assert_eq!(point(&registry, "walk_2"), None);
+    // A reload that moves a point sets it once, the epoch moving with it.
+    let moved = [("hand".to_string(), [6.0, 10.0])].into();
+    let epoch = registry.sprite_epoch();
+    assert!(apply_points(&mut registry, "walk_1", &moved));
+    assert_eq!(point(&registry, "walk_1"), Some([6.0, 10.0]));
+    assert!(registry.sprite_epoch() > epoch);
+    assert!(!apply_points(&mut registry, "walk_1", &moved), "unchanged");
+    assert!(!apply_points(&mut registry, "missing", &moved));
 }

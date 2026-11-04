@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use super::atlas::UvRect;
@@ -36,6 +36,19 @@ pub struct SpriteAsset {
     /// The point drawn at the entity's position and turned about, `[x, y]`
     /// in source pixels; `None` draws from the top-left.
     pub anchor: Option<[f32; 2]>,
+    /// Named points, `[x, y]` in source pixels (redo 7.10p), from the
+    /// manifest's `points`.
+    pub points: BTreeMap<String, [f32; 2]>,
+}
+
+impl SpriteAsset {
+    /// The named point `name`, `[x, y]` in source pixels, if the sprite
+    /// has it; [`sprite_point`](crate::sprite_point) reads where it is
+    /// drawn.
+    #[must_use]
+    pub fn point(&self, name: &str) -> Option<[f32; 2]> {
+        self.points.get(name).copied()
+    }
 }
 
 /// Dense sprite handle, minted by [`AssetRegistry`]; stable for the registry's life.
@@ -167,6 +180,7 @@ impl AssetRegistry {
             nine_slice: None,
             rect: None,
             anchor: None,
+            points: BTreeMap::new(),
         });
         self.sprite_epoch += 1;
         sprite_id
@@ -251,10 +265,19 @@ impl AssetRegistry {
         }
     }
 
+    /// Sets a registered sprite's named points (redo 7.10p), as the loader
+    /// carries them from the manifest; an unregistered ID does nothing.
+    pub fn set_sprite_points(&mut self, id: &str, points: BTreeMap<String, [f32; 2]>) {
+        if let Some(asset) = self.get_sprite_mut(id) {
+            asset.points = points;
+            self.sprite_epoch += 1;
+        }
+    }
+
     /// A count that rises whenever a registered sprite changes: on
     /// [`Self::register_sprite`], [`Self::update_sprite_entry`],
-    /// [`Self::update_sprite_lit_atlas`], [`Self::set_sprite_nine_slice`] and
-    /// [`Self::set_sprite_frame`],
+    /// [`Self::update_sprite_lit_atlas`], [`Self::set_sprite_nine_slice`],
+    /// [`Self::set_sprite_frame`] and [`Self::set_sprite_points`],
     /// never on interning. A retained UI paint list repaints when it moved,
     /// since a repack may have moved a UV.
     #[must_use]
