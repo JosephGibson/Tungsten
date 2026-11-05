@@ -97,6 +97,8 @@ pub struct ContactDamage {
     knockback: f32,
     /// Its push lands on a target inside its invulnerability window too.
     push_always: bool,
+    /// It hurts: off, it is skipped whole, its clock and touches kept.
+    on: bool,
     /// Typed contact damage's parts, penetration and conversion.
     typed: Option<Box<HitPayload>>,
     /// Game seconds the item has stepped: its targets' clock.
@@ -206,6 +208,8 @@ struct ContactDamageFields {
     knockback: f32,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     push_always: bool,
+    #[serde(default = "switched_on", skip_serializing_if = "is_on")]
+    on: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     parts: Vec<SavedPart>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -216,6 +220,17 @@ struct ContactDamageFields {
 
 fn default_interval() -> f32 {
     DEFAULT_INTERVAL
+}
+
+/// A switch's default: on.
+pub(crate) fn switched_on() -> bool {
+    true
+}
+
+// The reference is serde's `skip_serializing_if` signature.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+pub(crate) fn is_on(on: &bool) -> bool {
+    *on
 }
 
 /// The pairing rule: an offset comes only with a shape.
@@ -253,6 +268,7 @@ impl TryFrom<ContactDamageFields> for ContactDamage {
             filter: fields.filter,
             knockback: fields.knockback,
             push_always: fields.push_always,
+            on: fields.on,
             typed: payload_from_save(fields.parts, fields.pen, fields.convert)?,
             clock: 0.0,
             timed: Vec::new(),
@@ -348,6 +364,7 @@ impl From<ContactDamage> for ContactDamageFields {
             filter: contact.filter,
             knockback: contact.knockback,
             push_always: contact.push_always,
+            on: contact.on,
             parts,
             pen,
             convert,
@@ -378,6 +395,7 @@ impl ContactDamage {
             filter: TagFilter::new(),
             knockback: 0.0,
             push_always: false,
+            on: true,
             typed: None,
             clock: 0.0,
             timed: Vec::new(),
@@ -581,6 +599,20 @@ impl ContactDamage {
         self.push_always
     }
 
+    /// Whether it hurts: on unless switched off.
+    #[must_use]
+    pub fn is_on(&self) -> bool {
+        self.on
+    }
+
+    /// Switches it on or off: an off contact damage is skipped whole, its
+    /// clock and touches kept, so switched back on it hurts each target as
+    /// its interval would have had it never paused. A death policy's
+    /// `disarm` switches it off.
+    pub fn set_on(&mut self, on: bool) {
+        self.on = on;
+    }
+
     /// The targets it touches, in entity order, each with its seconds since
     /// its last hit and since they last met: what a game's save holds by
     /// its own IDs.
@@ -657,6 +689,8 @@ struct ContactDamageScene {
     knockback: f32,
     #[serde(default)]
     push_always: bool,
+    #[serde(default = "switched_on")]
+    on: bool,
 }
 
 /// `components.contact_damage`, checked.
@@ -675,6 +709,7 @@ struct ContactDamageDef {
     filter: TagFilterDef,
     knockback: f32,
     push_always: bool,
+    on: bool,
 }
 
 impl TryFrom<ContactDamageScene> for ContactDamageDef {
@@ -694,6 +729,7 @@ impl TryFrom<ContactDamageScene> for ContactDamageDef {
             filter: scene.filter,
             knockback: scene.knockback,
             push_always: scene.push_always,
+            on: scene.on,
         })
     }
 }
@@ -706,6 +742,7 @@ impl From<ContactDamageDef> for ContactDamage {
             .with_filter(def.filter.into())
             .with_knockback(def.knockback)
             .with_push_always(def.push_always);
+        contact.set_on(def.on);
         if let Some(shape) = def.shape {
             contact = contact.with_shape(shape, def.offset.unwrap_or(Vec2::ZERO));
         }
@@ -792,6 +829,14 @@ impl Plugin for ContactDamagePlugin {
                 )
                 .default("false"),
             )
+            .field(
+                FieldDescription::new(
+                    "on",
+                    FieldType::Bool,
+                    "it hurts; off, it is skipped whole, its clock and touches kept, as a death policy's `disarm` leaves it",
+                )
+                .default("true"),
+            )
             .event("Struck")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
@@ -851,7 +896,11 @@ impl ContactRunner {
             if world.has::<Despawning>(hitter) {
                 continue;
             }
-            world.get_mut::<ContactDamage>(hitter).unwrap().clock += dt;
+            let contact = world.get_mut::<ContactDamage>(hitter).unwrap();
+            if !contact.on {
+                continue;
+            }
+            contact.clock += dt;
             self.touch(world, &grid, hitter);
         }
         world.insert_resource(grid);

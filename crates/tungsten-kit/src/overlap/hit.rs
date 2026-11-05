@@ -33,6 +33,7 @@ use crate::lifecycle::despawn::DESPAWN_OUTSIDE;
 use crate::lifecycle::ended::Despawning;
 use crate::motion::stay_in_view::STAY_IN_VIEW;
 use crate::motion::wrap::WRAP;
+use crate::overlap::contact::{is_on, switched_on};
 use crate::overlap::grid::{
     Blow, HitGrid, Sweep, ensure_emitter, first_contact, hit_grid, spares, strike, sweep_of,
 };
@@ -418,6 +419,9 @@ pub struct Hitbox {
     armed_left: f32,
     /// How its offset follows its entity's facing, if it does.
     facing: Option<HitFacing>,
+    /// It hits: off, it hits nothing, armed or not, its activation and
+    /// window kept.
+    on: bool,
 }
 
 /// How a hitbox's offset, written for an entity facing right, follows its
@@ -631,6 +635,8 @@ struct HitboxFields {
     armed_left: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     facing: Option<HitFacing>,
+    #[serde(default = "switched_on", skip_serializing_if = "is_on")]
+    on: bool,
 }
 
 // The reference is serde's `skip_serializing_if` signature.
@@ -674,6 +680,7 @@ impl TryFrom<HitboxFields> for Hitbox {
                 0.0
             },
             facing: fields.facing,
+            on: fields.on,
         })
     }
 }
@@ -692,6 +699,7 @@ impl PartialEq for Hitbox {
             && self.window == other.window
             && self.armed_left == other.armed_left
             && self.facing == other.facing
+            && self.on == other.on
     }
 }
 
@@ -760,6 +768,7 @@ impl From<Hitbox> for HitboxFields {
             window: hitbox.window,
             armed_left: hitbox.armed_left,
             facing: hitbox.facing,
+            on: hitbox.on,
         }
     }
 }
@@ -791,7 +800,21 @@ impl Hitbox {
             window: None,
             armed_left: 0.0,
             facing: None,
+            on: true,
         }
+    }
+
+    /// Whether it hits: on unless switched off.
+    #[must_use]
+    pub fn is_on(&self) -> bool {
+        self.on
+    }
+
+    /// Switches it on or off: an off hitbox hits nothing, armed or not, its
+    /// activation and its window kept for when it is on again. A death
+    /// policy's `disarm` switches it off.
+    pub fn set_on(&mut self, on: bool) {
+        self.on = on;
     }
 
     /// The hitbox, its offset written for an entity facing right and
@@ -1363,6 +1386,8 @@ struct HitboxScene {
     window: Option<f32>,
     #[serde(default)]
     facing: Option<HitFacing>,
+    #[serde(default = "switched_on")]
+    on: bool,
 }
 
 /// `components.hitbox`, checked.
@@ -1380,6 +1405,7 @@ struct HitboxDef {
     knockback: f32,
     window: Option<f32>,
     facing: Option<HitFacing>,
+    on: bool,
 }
 
 impl TryFrom<HitboxScene> for HitboxDef {
@@ -1398,6 +1424,7 @@ impl TryFrom<HitboxScene> for HitboxDef {
             knockback: scene.knockback,
             window: scene.window,
             facing: scene.facing,
+            on: scene.on,
         })
     }
 }
@@ -1422,6 +1449,7 @@ impl From<HitboxDef> for Hitbox {
             hitbox = hitbox.with_conversion(def.convert.into());
         }
         hitbox.facing = def.facing;
+        hitbox.on = def.on;
         hitbox
     }
 }
@@ -1599,6 +1627,14 @@ impl Plugin for HitPlugin {
                 )
                 .default("null"),
             )
+            .field(
+                FieldDescription::new(
+                    "on",
+                    FieldType::Bool,
+                    "it hits; off, it hits nothing, armed or not, its activation and window kept, as a death policy's `disarm` leaves it",
+                )
+                .default("true"),
+            )
             .event("Struck")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
@@ -1687,7 +1723,9 @@ impl HitboxRunner {
             .max(0.0);
         if dt > 0.0 {
             for &hitter in &self.hitters {
-                if let Some(hitbox) = world.get_mut::<Hitbox>(hitter) {
+                if let Some(hitbox) = world.get_mut::<Hitbox>(hitter)
+                    && hitbox.on
+                {
                     hitbox.count_window(dt);
                 }
             }
@@ -1703,7 +1741,7 @@ impl HitboxRunner {
             return None;
         }
         let hitbox = world.get::<Hitbox>(hitter)?;
-        if !hitbox.is_armed() {
+        if !hitbox.is_armed() || !hitbox.on {
             return None;
         }
         let (shape, offset) = placed(world, hitter, hitbox);

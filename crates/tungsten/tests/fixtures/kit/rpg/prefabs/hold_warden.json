@@ -1,0 +1,19 @@
+{
+  "tag": "hold_warden",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "health": {
+      "max": 10
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          7,
+          7
+        ]
+      }
+    }
+  }
+}

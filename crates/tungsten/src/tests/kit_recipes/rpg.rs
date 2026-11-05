@@ -7,7 +7,8 @@
 //! its toll's wave; its wisps, held to two by their cap, the first culled
 //! with a poof; its salt, set down on a mark and refused inside a wall;
 //! 7.10g's thrower, whose throw's cue plays its clip over its walk, and its
-//! pole warden, whose swing turns with its four facings.
+//! pole warden, whose swing turns with its four facings; a spike trap
+//! switched off and on, and gold that blinks faster as it goes.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -709,5 +710,75 @@ fn the_wardens_pole_swings_ahead_in_four_facings() {
             }
             assert_eq!(struck, [ahead], "dt {dt}: {action}");
         }
+    }
+}
+
+/// 7.10g: the spike trap hurts the warden standing in it once a second;
+/// switched off, it hurts nothing, its clock held; switched on again, it
+/// hurts once its interval allows, the rest of it.
+#[test]
+fn spikes_switch_off_and_on() {
+    use crate::kit::ContactDamage;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let trap = spawn(&mut harness, "spike_trap", [300.0, 3000.0]);
+        let warden = spawn(&mut harness, "hold_warden", [300.0, 3000.0]);
+        let health = |harness: &Harness| harness.world().get::<Health>(warden).unwrap().current();
+        let switch = |harness: &mut Harness, on: bool| {
+            harness
+                .world_mut()
+                .get_mut::<ContactDamage>(trap)
+                .unwrap()
+                .set_on(on);
+        };
+        harness.step(1);
+        assert_eq!(health(&harness), 9.0, "dt {dt}: at once");
+        harness.step(frames_for(0.5, dt));
+        switch(&mut harness, false);
+        harness.step(frames_for(2.0, dt));
+        assert_eq!(health(&harness), 9.0, "dt {dt}: off, nothing");
+        switch(&mut harness, true);
+        harness.step(frames_for(0.4, dt));
+        assert_eq!(health(&harness), 9.0, "dt {dt}: its interval not yet");
+        harness.step(frames_for(0.2, dt));
+        assert_eq!(health(&harness), 8.0, "dt {dt}: the interval's rest");
+    }
+}
+
+/// 7.10g: gold that lives 4 s shows its first 2 s, then blinks over its
+/// last 2, hidden half of each period, faster in the last second.
+#[test]
+fn gold_blinks_faster_as_it_goes() {
+    use tungsten_core::Visibility;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let gold = spawn(&mut harness, "fading_gold", [400.0, 3000.0]);
+        let shows = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Visibility>(gold)
+                .is_none_or(|visibility| visibility.visible)
+        };
+        for frame in 0..frames_for(2.0, dt) - 1 {
+            harness.step(1);
+            assert!(shows(&harness), "dt {dt}, frame {frame}: whole");
+        }
+        let mut hides = [0, 0];
+        let mut was = shows(&harness);
+        let half = frames_for(1.0, dt);
+        for frame in 0..2 * half - 1 {
+            harness.step(1);
+            let now = shows(&harness);
+            if was && !now {
+                hides[(frame / half) as usize] += 1;
+            }
+            was = now;
+        }
+        assert!(
+            hides[0] >= 2 && hides[1] > hides[0],
+            "dt {dt}: hides by second {hides:?}"
+        );
+        harness.step(4);
+        assert!(!harness.world().is_alive(gold), "dt {dt}: gone at its 4 s");
     }
 }

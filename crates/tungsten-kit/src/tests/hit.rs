@@ -854,3 +854,41 @@ fn a_hitbox_without_facing_keeps_its_offset() {
     assert!(check(&world, HITBOX, &scene("turn")).is_ok());
     assert!(check(&world, HITBOX, &scene("flip")).is_err());
 }
+
+#[test]
+fn an_off_hitbox_hits_nothing() {
+    use tungsten_core::{EventQueue, Transform};
+    let (mut world, mut schedule) = hit_rig(&["fire"]);
+    target(&mut world);
+    let mut swing = Hitbox::new(HitShape::circle(4.0), 2.0).with_window(0.1);
+    swing.set_on(false);
+    let blade = world.spawn_with((Transform::from_position(Vec2::ZERO), swing));
+    world.get_mut::<Hitbox>(blade).unwrap().arm();
+    let struck = |world: &World| world.resource::<EventQueue<Struck>>().iter().count();
+    for _ in 0..12 {
+        fixed_step(&mut world, &mut schedule);
+    }
+    assert_eq!(struck(&world), 0, "off: armed, it hits nothing");
+    let hitbox = world.get::<Hitbox>(blade).unwrap();
+    assert!(!hitbox.is_on() && hitbox.is_armed(), "its window kept");
+    world.get_mut::<Hitbox>(blade).unwrap().set_on(true);
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(struck(&world), 1, "on again, its kept window hits");
+    // An always-armed one off hits nothing either.
+    let mut aura = Hitbox::new(HitShape::circle(4.0), 2.0);
+    aura.set_on(false);
+    world.spawn_with((Transform::from_position(Vec2::ZERO), aura.clone()));
+    world.flush_events();
+    world.flush_events();
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(struck(&world), 0);
+    // A save writes `on` only when off; the scene names it.
+    let saved = serde_json::to_value(&aura).unwrap();
+    assert_eq!(saved["on"], false);
+    assert_eq!(serde_json::from_value::<Hitbox>(saved).unwrap(), aura);
+    let plain = serde_json::to_value(Hitbox::new(HitShape::circle(4.0), 2.0)).unwrap();
+    assert!(plain.get("on").is_none(), "an on hitbox keeps its bytes");
+    let (world, _) = rig();
+    let scene = json!({ "shape": { "circle": 4 }, "damage": 1, "on": false });
+    assert!(check(&world, HITBOX, &scene).is_ok());
+}

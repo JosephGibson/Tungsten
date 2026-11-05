@@ -249,7 +249,7 @@ pub use damage::effects::{
 };
 pub use damage::health::{
     Damaged, DamagedPart, HEALTH_TICK, HIT_FLASH_MATERIAL, HIT_FLASH_TICK, Health, HealthPlugin,
-    Hit, HitFlash, ImmunePart, damage,
+    Hit, HitFlash, ImmunePart, damage, kill,
 };
 pub use damage::kinds::{Conversion, DamageKinds, Penetration};
 pub use damage::pipeline::{
@@ -369,7 +369,7 @@ pub mod prelude {
         TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered, TriggerZone, Used,
         WallContact, WeightedTable, WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin,
         cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, face_toward,
-        float_label, heal, knock_back, spawn_child, use_ability,
+        float_label, heal, kill, knock_back, spawn_child, use_ability,
     };
 }
 

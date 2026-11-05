@@ -10,7 +10,9 @@ use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{Entity, EventQueue, World};
 
 use crate::damage::defense::{Resist, Shield};
-use crate::damage::health::{Damaged, DamagedPart, Health, Hit, ImmunePart, start_flash_as};
+use crate::damage::health::{
+    Damaged, DamagedPart, Health, Hit, ImmunePart, disarm, start_flash_as,
+};
 use crate::damage::kinds::{
     Conversion, ConversionRule, DamageKinds, DamageTypeTable, Penetration, merge_types,
 };
@@ -268,8 +270,9 @@ pub struct DamageRequest {
 
 /// A request's flags, a bit each: periodic (an effect's payload), pushing
 /// always (its knockback lands where the hit is ignored for the target's
-/// window too: contact damage's `push_always`) and typed (at a status's
-/// application, so the source's conversion leaves it as it is).
+/// window too: contact damage's `push_always`), typed (at a status's
+/// application, so the source's conversion leaves it as it is) and lethal
+/// ([`kill`](crate::kill)'s: all the health, past every defence).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct HitFlags(u8);
 
@@ -277,6 +280,7 @@ impl HitFlags {
     const PERIODIC: u8 = 1;
     const PUSH_ALWAYS: u8 = 1 << 1;
     const TYPED: u8 = 1 << 2;
+    const LETHAL: u8 = 1 << 3;
 
     fn has(self, flag: u8) -> bool {
         self.0 & flag != 0
@@ -782,6 +786,19 @@ impl DamageRequest {
     #[must_use]
     pub fn is_periodic(&self) -> bool {
         self.flags.has(HitFlags::PERIODIC)
+    }
+
+    /// The request, lethal: it passes the conversion, the penetration, the
+    /// resistances, the immunities and the window, empties the shield and
+    /// takes all the health as one untyped part.
+    pub(crate) fn lethal(mut self) -> Self {
+        self.flags.set(HitFlags::LETHAL, true);
+        self
+    }
+
+    /// Whether it is lethal ([`kill`](crate::kill)'s).
+    pub(crate) fn is_lethal(&self) -> bool {
+        self.flags.has(HitFlags::LETHAL)
     }
 
     /// Whether its knockback lands where the hit is ignored.
@@ -1797,22 +1814,40 @@ fn resolve(
     {
         notes.crit = CritRecord::Decided(crit);
     }
+    let lethal = request.is_lethal();
     if request.parts().iter().all(|part| part.amount == 0.0)
-        || !takes_hits(world, target, request.is_periodic())
+        || !takes_hits(world, target, request.is_periodic() || lethal)
     {
         push_ignored(world, request);
         return Hit::Ignored;
     }
     let status_effect = hit_status_effect(world, request);
-    land_parts(
-        world,
-        request,
-        factor,
-        &drawn,
-        landed,
-        immune,
-        notes.as_mut(),
-    );
+    if lethal {
+        // All the shield and the health as one untyped part, past every
+        // defence.
+        landed.clear();
+        immune.clear();
+        let amount = world.get::<Shield>(target).map_or(0.0, Shield::current)
+            + world.get::<Health>(target).map_or(0.0, Health::current);
+        landed.push(Landed {
+            amount,
+            kinds: DamageKinds::NONE,
+            dot_base: amount,
+        });
+        if let Some(notes) = &mut notes {
+            notes.lethal = true;
+        }
+    } else {
+        land_parts(
+            world,
+            request,
+            factor,
+            &drawn,
+            landed,
+            immune,
+            notes.as_mut(),
+        );
+    }
     if !immune.is_empty() {
         send_immune(world, request, immune, crit);
     }
@@ -1833,6 +1868,9 @@ fn resolve(
         .get_mut::<Health>(target)
         .unwrap()
         .hurt(rest, request.is_periodic());
+    if killed && world.get::<Health>(target).is_some_and(Health::disarms) {
+        disarm(world, target);
+    }
     if let Some(mut notes) = notes {
         notes.amount = amount;
         notes.killed = killed;

@@ -554,3 +554,100 @@ fn a_whole_shield_hit_flashes_its_shield_colour() {
         assert_eq!(shown(&world), WHITE, "a hit that hurt");
     }
 }
+
+#[test]
+fn a_disarming_death_switches_off_the_touch_and_the_hitbox() {
+    use crate::{ContactDamage, HitShape, Hitbox};
+    let (mut world, _) = rig();
+    let armed = || {
+        (
+            ContactDamage::new(1.0),
+            Hitbox::new(HitShape::circle(4.0), 1.0),
+        )
+    };
+    let ghoul = world.spawn_with((Health::new(2.0).disarming(), armed().0, armed().1));
+    let plain = world.spawn_with((Health::new(2.0), armed().0, armed().1));
+    assert!(world.get::<Health>(ghoul).unwrap().disarms());
+    for target in [ghoul, plain] {
+        assert_eq!(damage(&mut world, target, 2.0), Hit::Killed);
+    }
+    let on = |world: &World, entity: Entity| {
+        (
+            world.get::<ContactDamage>(entity).unwrap().is_on(),
+            world.get::<Hitbox>(entity).unwrap().is_on(),
+        )
+    };
+    assert_eq!(on(&world, ghoul), (false, false), "disarmed at its kill");
+    assert_eq!(on(&world, plain), (true, true), "a plain death keeps them");
+    // A heal brings no one back, so nothing switches on again.
+    crate::heal(&mut world, ghoul, 2.0);
+    assert_eq!(on(&world, ghoul), (false, false));
+    // The scene names it; a save writes it only when set.
+    let components = world.resource::<tungsten_core::ComponentRegistry>();
+    let scene = serde_json::json!({ "max": 2, "disarm": true });
+    assert!(components.check_in("health", &scene, &world).is_ok());
+    let saved = serde_json::to_value(world.get::<Health>(ghoul).unwrap()).unwrap();
+    assert_eq!(saved["disarm"], true);
+    assert!(serde_json::from_value::<Health>(saved).unwrap().disarms());
+    let plain = serde_json::to_value(world.get::<Health>(plain).unwrap()).unwrap();
+    assert!(
+        plain.get("disarm").is_none(),
+        "a plain health keeps its bytes"
+    );
+}
+
+#[test]
+fn a_disarming_death_stops_and_locks_the_controller() {
+    use glam::Vec2;
+    use tungsten_core::physics::{
+        Collider, PhysicsConfig, PhysicsPlugin, Position, RigidBodyBundle, Velocity,
+    };
+    use tungsten_core::{Bundle, TilemapRegistry};
+
+    use crate::{PlatformerController, PlatformerControllerPlugin};
+
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, 2000.0),
+        ..PhysicsConfig::default()
+    });
+    world.insert_resource(TilemapRegistry::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    PlatformerControllerPlugin.build(&mut schedule, &mut world);
+    HealthPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let hero = world.spawn_with(
+        RigidBodyBundle::kinematic(Position(Vec2::ZERO), Collider::aabb(Vec2::new(8.0, 16.0)))
+            .with((
+                PlatformerController::new(200.0, 600.0),
+                Health::new(1.0).disarming(),
+            )),
+    );
+    world
+        .get_mut::<PlatformerController>(hero)
+        .unwrap()
+        .set_run(1.0);
+    fixed_steps(&mut world, &mut schedule, 10);
+    let running = world.get::<Velocity>(hero).unwrap().0;
+    assert!(
+        running.x > 0.0 && running.y > 0.0,
+        "running and falling: {running}"
+    );
+    assert_eq!(damage(&mut world, hero, 1.0), Hit::Killed);
+    world
+        .get_mut::<PlatformerController>(hero)
+        .unwrap()
+        .set_run(-1.0);
+    world
+        .get_mut::<PlatformerController>(hero)
+        .unwrap()
+        .press_jump();
+    let x = world.get::<Position>(hero).unwrap().0.x;
+    fixed_steps(&mut world, &mut schedule, 10);
+    let velocity = world.get::<Velocity>(hero).unwrap().0;
+    assert_eq!(velocity.x, 0.0, "its run stopped, the input locked");
+    assert!(velocity.y > running.y, "its fall kept and growing");
+    assert_eq!(world.get::<Position>(hero).unwrap().0.x, x, "straight down");
+}

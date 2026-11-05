@@ -107,6 +107,9 @@ pub struct Health {
     /// The delay left since the kill, while it runs or once it has passed.
     #[serde(skip_serializing_if = "Option::is_none")]
     death_left: Option<f32>,
+    /// The death policy disarms the entity at its kill.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    disarm: bool,
 }
 
 /// A health as data writes it, before its values are checked.
@@ -123,6 +126,8 @@ struct HealthFields {
     despawn_on_death: Option<f32>,
     #[serde(default)]
     death_left: Option<f32>,
+    #[serde(default)]
+    disarm: bool,
 }
 
 impl TryFrom<HealthFields> for Health {
@@ -136,6 +141,7 @@ impl TryFrom<HealthFields> for Health {
             window_left,
             despawn_on_death,
             death_left,
+            disarm,
         } = fields;
         if !(max.is_finite() && max > 0.0) {
             return Err(format!("max: must be finite and > 0 (got {max})"));
@@ -162,6 +168,7 @@ impl TryFrom<HealthFields> for Health {
             window_left,
             despawn_on_death,
             death_left,
+            disarm,
         })
     }
 }
@@ -186,6 +193,7 @@ impl Health {
             window_left: 0.0,
             despawn_on_death: None,
             death_left: None,
+            disarm: false,
         }
     }
 
@@ -230,6 +238,25 @@ impl Health {
     #[must_use]
     pub fn despawn_on_death(&self) -> Option<f32> {
         self.despawn_on_death
+    }
+
+    /// The health, whose death policy disarms its entity at the kill: its
+    /// [`ContactDamage`](crate::ContactDamage) and
+    /// [`Hitbox`](crate::Hitbox) switched off, and its
+    /// [`PlatformerController`](crate::PlatformerController) stopped, its
+    /// vertical speed kept and its input locked for good. A heal never
+    /// brings the dead back, so nothing switches on again; a game that
+    /// revives one turns them on itself.
+    #[must_use]
+    pub fn disarming(mut self) -> Self {
+        self.disarm = true;
+        self
+    }
+
+    /// Whether its death policy disarms its entity at the kill.
+    #[must_use]
+    pub fn disarms(&self) -> bool {
+        self.disarm
     }
 
     /// The health left, from 0 to [`max`](Self::max).
@@ -684,6 +711,60 @@ pub fn damage(world: &mut World, target: Entity, amount: f32) -> Hit {
     DamageRequest::new(target, amount).apply(world)
 }
 
+/// Kills `target` outright (redo 7.10g): a lethal request that passes the
+/// conversion, the penetration, the resistances, the immunities and the
+/// window, empties the shield and takes all the health as one untyped
+/// part, so a kill always lands on the living. The dead and the despawning
+/// take no request, so a kill never runs twice. Its [`Damaged`] and its
+/// `killed` cues follow as any kill's, its death policy acts, and its
+/// explain record names it lethal. A world's bounds or a game's own rule
+/// deals it.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_core::{Plugin, Schedule, World};
+/// use tungsten_kit::{Health, HealthPlugin, Hit, Resist, kill};
+///
+/// let mut world = World::new();
+/// let mut schedule = Schedule::new();
+/// HealthPlugin.build(&mut schedule, &mut world);
+/// let golem = world.spawn_with((Health::new(50.0), Resist::new().with_factor("physical", 0.0)));
+/// assert_eq!(kill(&mut world, golem), Hit::Killed);
+/// assert!(world.get::<Health>(golem).unwrap().is_dead());
+/// assert_eq!(kill(&mut world, golem), Hit::Ignored, "once");
+/// ```
+pub fn kill(world: &mut World, target: Entity) -> Hit {
+    DamageRequest::new(target, 1.0).lethal().apply(world)
+}
+
+/// The death policy's disarm: `entity`'s contact damage and hitbox
+/// switched off, and its platformer controller stopped, its vertical speed
+/// kept and its input locked for good, as a dead player's.
+pub(crate) fn disarm(world: &mut World, entity: Entity) {
+    use glam::Vec2;
+    use tungsten_core::physics::Velocity;
+
+    use crate::motion::platformer::PlatformerController;
+    use crate::overlap::contact::ContactDamage;
+    use crate::overlap::hit::Hitbox;
+
+    if let Some(contact) = world.get_mut::<ContactDamage>(entity) {
+        contact.set_on(false);
+    }
+    if let Some(hitbox) = world.get_mut::<Hitbox>(entity) {
+        hitbox.set_on(false);
+    }
+    let fall = world
+        .get::<Velocity>(entity)
+        .map_or(0.0, |velocity| velocity.0.y);
+    if let Some(controller) = world.get_mut::<PlatformerController>(entity) {
+        controller.set_run(0.0);
+        controller.launch(Vec2::new(0.0, fall));
+        controller.lock_input(f32::MAX);
+    }
+}
+
 /// A sprite that flashes a colour when [`damage`] hits its entity, drawn
 /// through the [`HIT_FLASH_MATERIAL`] material, which fades it out over its
 /// seconds of game time.
@@ -993,6 +1074,14 @@ impl Plugin for HealthPlugin {
                 )
                 .default("null"),
             )
+            .field(
+                FieldDescription::new(
+                    "disarm",
+                    FieldType::Bool,
+                    "at the kill, its contact damage and hitbox switch off and its platformer controller stops, keeps its fall and locks its input for good",
+                )
+                .default("false"),
+            )
             .event("Damaged")
             .event("DamagedPart")
             .event("ImmunePart")
@@ -1066,7 +1155,8 @@ impl Plugin for HealthPlugin {
             world.insert_resource(Requests::default());
         }
         world.register_component_with(HEALTH, |def: HealthDef, _: &SpawnContext<'_>| {
-            let health = Health::new(def.max).with_invulnerability(def.invulnerability);
+            let mut health = Health::new(def.max).with_invulnerability(def.invulnerability);
+            health.disarm = def.disarm;
             match def.despawn_on_death {
                 Some(seconds) => (health.with_despawn_on_death(seconds),),
                 None => (health,),
@@ -1135,6 +1225,8 @@ struct HealthDef {
         skip_serializing_if = "Option::is_none"
     )]
     despawn_on_death: Option<f32>,
+    #[serde(default)]
+    disarm: bool,
 }
 
 /// `components.hit_flash` as a scene writes it.

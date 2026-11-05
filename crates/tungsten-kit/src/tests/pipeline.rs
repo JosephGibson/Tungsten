@@ -1580,3 +1580,45 @@ fn a_crit_the_resolve_decides_saves_as_it_always_has() {
         assert_eq!(back.crit, crit);
     }
 }
+
+#[test]
+fn a_lethal_kill_passes_resist_immunity_and_the_shield() {
+    use crate::foundation::explain::KitExplain;
+    let (mut world, mut schedule) = rig();
+    world.insert_resource(KitExplain::new());
+    let golem = world.spawn_with((
+        Health::new(50.0).with_invulnerability(1.0),
+        crate::Shield::new(10.0),
+        crate::Resist::new().with_factor("physical", 0.0),
+    ));
+    // A hit opens its window: a plain one is ignored inside it.
+    crate::damage(&mut world, golem, 1.0);
+    assert_eq!(
+        crate::damage(&mut world, golem, 5.0),
+        Hit::Ignored,
+        "inside its window"
+    );
+    frame(&mut world, &mut schedule);
+    assert_eq!(crate::kill(&mut world, golem), Hit::Killed);
+    let health = world.get::<Health>(golem).unwrap();
+    assert!(health.is_dead() && health.current() == 0.0);
+    assert_eq!(world.get::<crate::Shield>(golem).unwrap().current(), 0.0);
+    let killed: Vec<(f32, bool, f32)> = sent(&world)
+        .iter()
+        .filter(|hit| hit.killed)
+        .map(|hit| (hit.amount, hit.killed, hit.absorbed))
+        .collect();
+    assert_eq!(
+        killed,
+        [(59.0, true, 9.0)],
+        "the shield's 9 and the health's 50"
+    );
+    let record = world.resource::<KitExplain>().last_hit().unwrap();
+    assert!(record.lethal && record.killed);
+    assert!(record.to_string().contains("killed, lethal"), "{record}");
+    // The dead take no request: a kill never runs twice.
+    assert_eq!(crate::kill(&mut world, golem), Hit::Ignored);
+    let gone = world.spawn_with((Health::new(5.0),));
+    world.despawn(gone);
+    assert_eq!(crate::kill(&mut world, gone), Hit::Ignored);
+}

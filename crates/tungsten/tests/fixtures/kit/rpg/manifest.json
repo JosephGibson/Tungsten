@@ -80,6 +80,15 @@
     },
     "straw_dummy": {
       "path": "prefabs/straw_dummy.json"
+    },
+    "spike_trap": {
+      "path": "prefabs/spike_trap.json"
+    },
+    "hold_warden": {
+      "path": "prefabs/hold_warden.json"
+    },
+    "fading_gold": {
+      "path": "prefabs/fading_gold.json"
     }
   },
   "data": {

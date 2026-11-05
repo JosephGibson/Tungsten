@@ -26,7 +26,8 @@
 //! whose one game event registration brings `opened` and `emptied` in by
 //! name; 7.10g's ghoul scout, whose alert clip shows by its animator's rule
 //! while a game's `state.alerted` tag is on, a watchman facing the point it
-//! heard, and hit shapes drawn on a key.
+//! heard, hit shapes drawn on a key, and a ghoul guard its death policy
+//! disarms.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3152,4 +3153,43 @@ fn hit_shapes_draw_on_a_key_without_the_trace() {
     harness.step(1);
     harness.release_action("dash");
     assert_eq!(lines(&harness), 0, "the next press hides them");
+}
+
+/// 7.10g: the ghoul guard's touch and swing hurt the bystander in it; an
+/// arrow kills the guard, and its death policy disarms it: its body stays
+/// its second, harming nothing more.
+#[test]
+fn a_dead_ghoul_harms_nothing() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let guard = spawn(&mut harness, "ghoul_guard", [0.0, 6000.0]);
+        let bystander = spawn(&mut harness, "bystander", [0.0, 6000.0]);
+        harness.world_mut().get_mut::<Hitbox>(guard).unwrap().arm();
+        let health =
+            |harness: &Harness| harness.world().get::<Health>(bystander).unwrap().current();
+        harness.step(frames_for(0.2, dt));
+        assert_eq!(health(&harness), 98.0, "dt {dt}: its touch and its swing");
+        spawn(&mut harness, "arrow", [-60.0, 6000.0]);
+        harness.step(frames_for(0.2, dt));
+        assert!(
+            harness.world().get::<Health>(guard).unwrap().is_dead(),
+            "dt {dt}: the arrow kills it"
+        );
+        let after = health(&harness);
+        harness.world_mut().get_mut::<Hitbox>(guard).unwrap().arm();
+        harness.step(frames_for(0.6, dt));
+        assert_eq!(
+            health(&harness),
+            after,
+            "dt {dt}: disarmed, it harms nothing"
+        );
+        assert!(harness.world().is_alive(guard), "dt {dt}: its body kept");
+        let guard_parts = harness.world().get::<ContactDamage>(guard).unwrap();
+        assert!(!guard_parts.is_on(), "dt {dt}");
+        harness.step(frames_for(0.5, dt));
+        assert!(
+            !harness.world().is_alive(guard),
+            "dt {dt}: gone after its second"
+        );
+    }
 }

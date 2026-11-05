@@ -191,6 +191,12 @@
     },
     "watchman": {
       "path": "prefabs/watchman.json"
+    },
+    "ghoul_guard": {
+      "path": "prefabs/ghoul_guard.json"
+    },
+    "bystander": {
+      "path": "prefabs/bystander.json"
     }
   },
   "data": {

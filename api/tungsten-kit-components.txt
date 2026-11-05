@@ -53,6 +53,7 @@ component contact_damage: Hurts the hurtboxes its shape touches, at once and aga
   field filter: tag filter = {} — the hurtboxes it hits, by their entity's tags; the load checks its tags
   field knockback: f32 (>= 0) = 0.0 — world pixels per second, pushing a target it hurts away from it
   field push_always: bool = false — its push lands on a target inside its invulnerability window too, which it does not hurt there
+  field on: bool = true — it hurts; off, it is skipped whole, its clock and touches kept, as a death policy's `disarm` leaves it
   events: Struck
   genres: platformer, top_down, rpg
   sample: { "damage": 1 }
@@ -137,6 +138,7 @@ component health: Health with an invulnerability window after each hit, which `d
   field max: f32 (> 0) — the full health, which it starts at
   field invulnerability: f32 (>= 0) = 0.0 — seconds of game time a hit is ignored after one lands
   field despawn_on_death: f32 (>= 0) = null — game seconds from a kill, counted from the step after it, until the kit despawns the entity after its `killed` cues; kept when left out
+  field disarm: bool = false — at the kill, its contact damage and hitbox switch off and its platformer controller stops, keeps its fall and locks its input for good
   events: Damaged, DamagedPart, ImmunePart, Healed
   genres: platformer, top_down, rpg, shooter, arpg
   sample: { "max": 5 }
@@ -158,6 +160,7 @@ component hitbox: Hits the hurtboxes its shape meets over each step, each target
   field knockback: f32 (>= 0) = 0.0 — world pixels per second, pushing a target it hurts away from it
   field window: f32 (> 0) = null — seconds it hits for once armed, by `arm` or an ability's `hitbox` payload; always armed when left out
   field facing: one of mirror | turn = null — its offset, written for an entity facing right, follows the entity's facing: `mirror` negates its x while it faces left, `turn` rotates it by the facing's angle, a box's half extents swapped while it faces nearer vertical; as written without a facing
+  field on: bool = true — it hits; off, it hits nothing, armed or not, its activation and window kept, as a death policy's `disarm` leaves it
   events: Struck
   genres: platformer, top_down, rpg, shooter, arpg
   sample: { "shape": { "circle": 4 }, "damage": 1 }
@@ -182,6 +185,7 @@ component level: A level climbed along a curve by a counter, each level up sendi
   sample: { "counter": "xp", "curve": "hero_xp" }
 component lifetime: Despawns the entity, with its children, once its time on the game clock has passed.
   field seconds: f32 (>= 0) — how long it lives; 0 despawns it at its first step
+  field blink: shape blink = null — over its last seconds its visibility off for the second half of each period, the rate rising; saved with it
   genres: platformer, top_down, rpg, shooter
   sample: { "seconds": 0.5 }
 component linear_motion: Moves the entity by a velocity that an acceleration changes, bodiless or as a kinematic body's driver.
@@ -396,6 +400,10 @@ shape blast_output: A blast at the receiver's point or a cell's centre, each eff
   field push: f32 (>= 0) = 0.0 — a knockback at its centre, in px/s, away from it
   field impulse: f32 (>= 0) = 0.0 — a physics impulse at its centre on dynamic bodies and kinematic ones with a mass
   sample: { "radius": 60 }
+shape blink: A lifetime's blink: hidden for the second half of each period over its last seconds.
+  field last: f32 (> 0) — the seconds before the end it blinks over
+  field rate: [x, y] = [5.0, 5.0] — periods a second at the blink's start and at the end, each above 0, rising linearly between
+  sample: { "last": 2 }
 shape build_output: A status built by a fixed amount or by the entry's hits.
   field status: effects ID or entry — the status; the load checks it
   field amount: f32 (>= 0) = null — a fixed build, at the entry's largest status effect

@@ -405,6 +405,9 @@ pub struct HitRecord {
     pub amount: f32,
     /// It killed the target.
     pub killed: bool,
+    /// A lethal request's hit ([`kill`](crate::kill)'s): all the shield
+    /// and the health, past every defence.
+    pub lethal: bool,
     /// The sheet its delivery carried, recorded at the use.
     pub sheet: Option<Box<SheetRecord>>,
 }
@@ -420,6 +423,7 @@ impl HitRecord {
             parts: Vec::new(),
             amount: 0.0,
             killed: false,
+            lethal: false,
             sheet: None,
         }
     }
@@ -665,7 +669,8 @@ impl fmt::Display for HitRecord {
             write!(f, " from {source}")?;
         }
         let killed = if self.killed { ", killed" } else { "" };
-        writeln!(f, ": {:.2}{killed}", self.amount)?;
+        let lethal = if self.lethal { ", lethal" } else { "" };
+        writeln!(f, ": {:.2}{killed}{lethal}", self.amount)?;
         let crit = match self.crit {
             CritRecord::None => "no crit".to_string(),
             CritRecord::Decided(true) => "crit (decided)".to_string(),

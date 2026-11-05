@@ -1,0 +1,16 @@
+{
+  "tag": "bystander",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "health": {
+      "max": 100
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 8
+      }
+    }
+  }
+}

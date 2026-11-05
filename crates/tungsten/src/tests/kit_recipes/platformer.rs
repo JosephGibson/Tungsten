@@ -21,7 +21,8 @@
 //! whose sparking look emits at its sheet's `fuse` point frame by frame,
 //! and a leaper whose jumps and landing cue dust at its feet; 7.10g's
 //! lander, whose landing plays its land clip once over its run, and its
-//! swordsman, whose swing mirrors to the side it turns to.
+//! swordsman, whose swing mirrors to the side it turns to; a doomed runner
+//! its death policy stops and locks, and a warded knight a kill passes.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2154,5 +2155,90 @@ fn a_knights_swing_mirrors_when_it_turns() {
         let facing = harness.world().get::<Facing>(swordsman).unwrap();
         assert_eq!(facing.direction(), Vec2::NEG_X, "dt {dt}: turned");
         assert_eq!(swing(&mut harness), [left], "dt {dt}: mirrored");
+    }
+}
+
+/// 7.10g: a runner killed mid-jump, its death policy disarming it, falls
+/// straight down from where it died: its run stops, its rise carries on
+/// into its fall, and its move actions do nothing more.
+#[test]
+fn a_dead_hero_falls_straight_and_locked() {
+    use crate::kit::kill;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let runner = spawn(&mut harness, "doomed_runner", [0.0, 270.0]);
+        harness.press_action("move_right");
+        harness.step(frames_for(0.2, dt));
+        harness.press_action("jump");
+        harness.step(2);
+        harness.release_action("jump");
+        let velocity = harness.world().get::<Velocity>(runner).unwrap().0;
+        assert!(
+            velocity.x > 0.0 && velocity.y < 0.0,
+            "dt {dt}: running up: {velocity}"
+        );
+        kill(harness.world_mut(), runner);
+        harness.release_action("move_right");
+        harness.press_action("move_left");
+        harness.step(1);
+        let x = body_at(&harness, runner).x;
+        let rise = harness.world().get::<Velocity>(runner).unwrap().0;
+        assert_eq!(rise.x, 0.0, "dt {dt}: its run stopped");
+        assert!(rise.y < 0.0, "dt {dt}: its rise kept");
+        harness.step(frames_for(0.5, dt));
+        let fall = harness.world().get::<Velocity>(runner).unwrap().0;
+        assert_eq!(body_at(&harness, runner).x, x, "dt {dt}: straight down");
+        assert!(
+            fall.x == 0.0 && fall.y > rise.y,
+            "dt {dt}: falling, locked: {fall}"
+        );
+        harness.release_action("move_left");
+    }
+}
+
+/// 7.10g: the warded knight is immune to cold and wears a shield; `kill`
+/// passes both and takes all its health and the shield at once.
+#[test]
+fn a_kill_passes_a_shield_and_immunity() {
+    use crate::kit::{Damaged, Hit, Shield, kill};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let knight = spawn(&mut harness, "warded_knight", [0.0, 5000.0]);
+        harness.world_mut().insert(knight, Shield::new(10.0));
+        let cold = DamageRequest::from_parts(
+            knight,
+            [DamagePart::new(30.0).with_tags(Tags::new(["damage.cold"]))],
+        );
+        assert_eq!(
+            cold.apply(harness.world_mut()),
+            Hit::Ignored,
+            "dt {dt}: immune"
+        );
+        harness.step(1);
+        assert_eq!(kill(harness.world_mut(), knight), Hit::Killed, "dt {dt}");
+        let world = harness.world();
+        assert!(world.get::<Health>(knight).unwrap().is_dead(), "dt {dt}");
+        assert_eq!(
+            world.get::<Shield>(knight).unwrap().current(),
+            0.0,
+            "dt {dt}"
+        );
+        let killed: Vec<(f32, f32)> = world
+            .resource::<tungsten_core::EventQueue<Damaged>>()
+            .iter_current()
+            .filter(|hit| hit.entity == knight && hit.killed)
+            .map(|hit| (hit.amount, hit.absorbed))
+            .collect();
+        assert_eq!(
+            killed,
+            [(50.0, 10.0)],
+            "dt {dt}: its 40 and its shield's 10"
+        );
+        assert_eq!(
+            kill(harness.world_mut(), knight),
+            Hit::Ignored,
+            "dt {dt}: once"
+        );
     }
 }

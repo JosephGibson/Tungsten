@@ -143,6 +143,12 @@
     },
     "straw_post": {
       "path": "prefabs/straw_post.json"
+    },
+    "doomed_runner": {
+      "path": "prefabs/doomed_runner.json"
+    },
+    "warded_knight": {
+      "path": "prefabs/warded_knight.json"
     }
   },
   "data": {
