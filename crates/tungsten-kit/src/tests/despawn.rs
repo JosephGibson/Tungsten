@@ -166,3 +166,71 @@ fn the_trace_records_one_despawn_a_frame() {
     );
     assert!(!world.is_alive(stray));
 }
+
+#[test]
+fn past_the_world_bounds_the_living_die_and_the_rest_go() {
+    use tungsten_core::{Bundle, ComponentRegistry, EventQueue};
+
+    use crate::{Damaged, Health, HealthPlugin};
+
+    let mut world = World::new();
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(Time::new());
+    let mut schedule = Schedule::new();
+    HealthPlugin.build(&mut schedule, &mut world);
+    DespawnOutsidePlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    world.insert_resource(WorldBounds::new(Vec2::ZERO, Vec2::new(100.0, 100.0)));
+    let rule = DespawnOutside::world(10.0).killing();
+    let fallen = world.spawn_with(at(50.0, 115.0, rule).with((Health::new(3.0),)));
+    let crate_ = world.spawn_with(at(50.0, 115.0, rule));
+    let edge = world.spawn_with(at(50.0, 105.0, rule).with((Health::new(3.0),)));
+    let plain =
+        world.spawn_with(at(50.0, 115.0, DespawnOutside::world(10.0)).with((Health::new(3.0),)));
+    frame(&mut world, &mut schedule);
+    let health = |world: &World, entity| world.get::<Health>(entity).unwrap().current();
+    assert!(
+        world.is_alive(fallen) && health(&world, fallen) == 0.0,
+        "killed, kept"
+    );
+    assert!(!world.is_alive(crate_), "without health, despawned");
+    assert!(
+        world.is_alive(edge) && health(&world, edge) == 3.0,
+        "within the margin"
+    );
+    assert!(!world.is_alive(plain), "a rule without kill despawns");
+    frame(&mut world, &mut schedule);
+    let kills = world
+        .resource::<EventQueue<Damaged>>()
+        .iter()
+        .filter(|hit| hit.entity == fallen && hit.killed)
+        .count();
+    assert_eq!(kills, 1, "once");
+    assert!(world.is_alive(fallen), "its death policy's to end");
+    // The scene form: exactly one of the three, `kill` beside it.
+    let components = world.resource::<ComponentRegistry>();
+    let check = |value: serde_json::Value| components.check_in(DESPAWN_OUTSIDE, &value, &world);
+    assert!(check(serde_json::json!({ "world": 8, "kill": true })).is_ok());
+    for refused in [
+        serde_json::json!({ "world": 8, "view": 4 }),
+        serde_json::json!({ "world": -1 }),
+        serde_json::json!({ "kill": true }),
+    ] {
+        assert!(check(refused.clone()).is_err(), "{refused}");
+    }
+}
+
+#[test]
+fn world_bounds_do_nothing_without_the_resource() {
+    let (mut world, mut schedule) = setup();
+    let far = world.spawn_with(at(1e6, 1e6, DespawnOutside::world(0.0).killing()));
+    frame(&mut world, &mut schedule);
+    assert!(world.is_alive(far), "no WorldBounds, no rule");
+    world.insert_resource(WorldBounds::new(Vec2::ZERO, Vec2::ONE));
+    frame(&mut world, &mut schedule);
+    assert!(!world.is_alive(far), "with them, gone");
+    assert!(
+        std::panic::catch_unwind(|| WorldBounds::new(Vec2::ONE, Vec2::ZERO)).is_err(),
+        "a box above itself"
+    );
+}

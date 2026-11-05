@@ -22,7 +22,8 @@
 //! and a leaper whose jumps and landing cue dust at its feet; 7.10g's
 //! lander, whose landing plays its land clip once over its run, and its
 //! swordsman, whose swing mirrors to the side it turns to; a doomed runner
-//! its death policy stops and locks, and a warded knight a kill passes.
+//! its death policy stops and locks, a warded knight a kill passes, and a
+//! hero and a crate past the world's bottom.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2240,5 +2241,45 @@ fn a_kill_passes_a_shield_and_immunity() {
             Hit::Ignored,
             "dt {dt}: once"
         );
+    }
+}
+
+/// 7.10g: past the level's `WorldBounds`, 32 px under its bottom, the
+/// falling hero is killed, its body kept for its death policy, and the
+/// crate, without health, is despawned.
+#[test]
+fn the_worlds_bottom_kills_the_hero_and_takes_a_crate() {
+    use crate::kit::{Damaged, WorldBounds};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness
+            .world_mut()
+            .insert_resource(WorldBounds::new(Vec2::ZERO, Vec2::new(800.0, 400.0)));
+        let hero = spawn(&mut harness, "falling_hero", [100.0, 300.0]);
+        let crate_ = spawn(&mut harness, "falling_crate", [200.0, 300.0]);
+        let mut kills = 0;
+        let mut frames = 0;
+        while harness.world().is_alive(crate_)
+            || !harness.world().get::<Health>(hero).unwrap().is_dead()
+        {
+            assert!(frames < frames_for(2.0, dt), "dt {dt}: both fall past");
+            harness.step(1);
+            frames += 1;
+            kills += harness
+                .events::<Damaged>()
+                .filter(|hit| hit.entity == hero && hit.killed)
+                .count();
+        }
+        assert!(
+            body_at(&harness, hero).y > 432.0,
+            "dt {dt}: under the margin"
+        );
+        harness.step(frames_for(0.5, dt));
+        kills += harness
+            .events::<Damaged>()
+            .filter(|hit| hit.entity == hero && hit.killed)
+            .count();
+        assert_eq!(kills, 1, "dt {dt}: killed once");
+        assert!(harness.world().is_alive(hero), "dt {dt}: its body kept");
     }
 }

@@ -26,8 +26,8 @@
 //! whose one game event registration brings `opened` and `emptied` in by
 //! name; 7.10g's ghoul scout, whose alert clip shows by its animator's rule
 //! while a game's `state.alerted` tag is on, a watchman facing the point it
-//! heard, hit shapes drawn on a key, and a ghoul guard its death policy
-//! disarms.
+//! heard, hit shapes drawn on a key, a ghoul guard its death policy
+//! disarms, and a nest that keeps one slime, across a save and a load.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3191,5 +3191,55 @@ fn a_dead_ghoul_harms_nothing() {
             !harness.world().is_alive(guard),
             "dt {dt}: gone after its second"
         );
+    }
+}
+
+/// 7.10g: the slime nest keeps one slime: its first at once, none more
+/// while it lives, the next 3 s after it dies; and the same after the
+/// World is saved and loaded with the slime alive.
+#[test]
+fn a_nest_keeps_one_slime() {
+    use tungsten_core::save::{self, capture_world, restore_world};
+
+    #[derive(Debug, Clone, Copy)]
+    struct Restored;
+
+    let level = |dt: f32| {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let nest = spawn(&mut harness, "slime_nest", [0.0, 7000.0]);
+        save::name(harness.world_mut(), nest, None, "nest").unwrap();
+        harness
+    };
+    let live = |harness: &Harness| -> Vec<Entity> {
+        tagged(harness, "slime")
+            .into_iter()
+            .filter(|&slime| {
+                !harness
+                    .world()
+                    .get::<Health>(slime)
+                    .is_some_and(Health::is_dead)
+            })
+            .collect()
+    };
+    for dt in DTS {
+        let mut kept = level(dt);
+        kept.step(1);
+        assert_eq!(live(&kept).len(), 1, "dt {dt}: its first at once");
+        kept.step(frames_for(4.0, dt));
+        assert_eq!(live(&kept).len(), 1, "dt {dt}: one while it lives");
+        let saved = capture_world(kept.world()).unwrap();
+        let mut loaded = level(dt);
+        restore_world(loaded.world_mut(), &saved, &(Restored,)).unwrap();
+        assert_eq!(live(&loaded).len(), 1, "dt {dt}: its slime came back");
+        for harness in [&mut kept, &mut loaded] {
+            let slime = live(harness)[0];
+            damage(harness.world_mut(), slime, 2.0);
+            harness.step(frames_for(2.9, dt));
+            assert!(live(harness).is_empty(), "dt {dt}: not before 3 s");
+            harness.step(frames_for(0.2, dt));
+            assert_eq!(live(harness).len(), 1, "dt {dt}: 3 s after it died");
+            harness.step(frames_for(4.0, dt));
+            assert_eq!(live(harness).len(), 1, "dt {dt}: and held at one");
+        }
     }
 }

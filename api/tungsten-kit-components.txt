@@ -103,10 +103,12 @@ component depth_sort: Sorts the entity's sprite by how low it stands: z_order = 
   field base: i64 (>= -2147483648, <= 2147483647) = 0 — added to the sort, lifting a layer over another
   genres: top_down, rpg
   sample: {}
-component despawn_outside: Despawns the entity, with its children, once it leaves a world-space box or the camera's view; exactly one of `region` and `view`.
+component despawn_outside: Despawns the entity, with its children, once it leaves a world-space box, the camera's view or the world's bounds, or kills it there; exactly one of `region`, `view` and `world`.
   field region: [[min_x, min_y], [max_x, max_y]] — the closed box, in world pixels
   field view: f32 (>= 0) — the margin outside the last frame's camera view
-  genres: top_down, shooter
+  field world: f32 (>= 0) — the margin outside the `WorldBounds` resource's box, which a game or a level sets; nothing without it
+  field kill: bool = false — past its bounds an entity with health is killed instead, once, its death policy taking it from there; one without health is despawned
+  genres: platformer, top_down, shooter
   sample: { "view": 16 }
 component effects: The effects the entity carries: entries applied at its first step, and the active instances.
   field list: list of effects ID or entry — the value itself: each an `effects` entry's ID or an effect in place, applied with no source; the load checks each
@@ -272,6 +274,8 @@ component spawner: Spawns a prefab at the entity's position once per interval of
   field prefab: prefab ID — what it spawns; the load checks the ID
   field interval: f32 (> 0) — seconds between spawns; the first after one interval
   field count: u32 = null — how many it spawns in all; without end when left out
+  field alive: u32 (>= 1) = null — the most of its spawns it keeps live; while full its countdown holds at 0, so it spawns again an interval after one goes
+  field first: f32 (>= 0) = null — seconds to its first spawn, up to its interval, which the load checks; one interval when left out
   genres: top_down, rpg, shooter
   sample: { "prefab": "slime", "interval": 0.5 }
 component speed_limit: Caps the entity's speed, the length first, then each axis; at least one of `speed`, `x` and `y`.

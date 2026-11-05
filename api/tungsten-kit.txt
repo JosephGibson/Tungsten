@@ -1546,8 +1546,11 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DepthSortPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DepthSortPlugin
 pub struct tungsten_kit::prelude::DespawnOutside
 impl tungsten_kit::DespawnOutside
+pub fn tungsten_kit::DespawnOutside::killing(self) -> Self
+pub fn tungsten_kit::DespawnOutside::kills(&self) -> bool
 pub fn tungsten_kit::DespawnOutside::region(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DespawnOutside::view(f32) -> Self
+pub fn tungsten_kit::DespawnOutside::world(f32) -> Self
 impl core::clone::Clone for tungsten_kit::DespawnOutside
 pub fn tungsten_kit::DespawnOutside::clone(&self) -> tungsten_kit::DespawnOutside
 impl core::cmp::PartialEq for tungsten_kit::DespawnOutside
@@ -3440,11 +3443,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SpawnWith
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SpawnWith
 pub struct tungsten_kit::prelude::Spawner
 impl tungsten_kit::Spawner
+pub fn tungsten_kit::Spawner::alive(&self) -> core::option::Option<u32>
 pub fn tungsten_kit::Spawner::new(impl core::convert::Into<alloc::string::String>, f32) -> Self
 pub fn tungsten_kit::Spawner::prefab(&self) -> &str
 pub fn tungsten_kit::Spawner::remaining(&self) -> core::option::Option<u32>
 pub fn tungsten_kit::Spawner::timer(&self) -> &tungsten_core::time::Timer
+pub fn tungsten_kit::Spawner::with_alive(self, u32) -> Self
 pub fn tungsten_kit::Spawner::with_count(self, u32) -> Self
+pub fn tungsten_kit::Spawner::with_first(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Spawner
 pub fn tungsten_kit::Spawner::clone(&self) -> tungsten_kit::Spawner
 impl core::fmt::Debug for tungsten_kit::Spawner
@@ -4018,6 +4024,26 @@ impl core::marker::Unpin for tungsten_kit::WeightedTable
 impl core::marker::UnsafeUnpin for tungsten_kit::WeightedTable
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WeightedTable
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WeightedTable
+pub struct tungsten_kit::prelude::WorldBounds
+impl tungsten_kit::WorldBounds
+pub fn tungsten_kit::WorldBounds::max(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::WorldBounds::min(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::WorldBounds::new(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_kit::WorldBounds
+pub fn tungsten_kit::WorldBounds::clone(&self) -> tungsten_kit::WorldBounds
+impl core::cmp::PartialEq for tungsten_kit::WorldBounds
+pub fn tungsten_kit::WorldBounds::eq(&self, &tungsten_kit::WorldBounds) -> bool
+impl core::fmt::Debug for tungsten_kit::WorldBounds
+pub fn tungsten_kit::WorldBounds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::WorldBounds
+impl core::marker::StructuralPartialEq for tungsten_kit::WorldBounds
+impl core::marker::Freeze for tungsten_kit::WorldBounds
+impl core::marker::Send for tungsten_kit::WorldBounds
+impl core::marker::Sync for tungsten_kit::WorldBounds
+impl core::marker::Unpin for tungsten_kit::WorldBounds
+impl core::marker::UnsafeUnpin for tungsten_kit::WorldBounds
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WorldBounds
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WorldBounds
 #[non_exhaustive] pub struct tungsten_kit::prelude::WorldCue
 pub tungsten_kit::prelude::WorldCue::amount: core::option::Option<f32>
 pub tungsten_kit::prelude::WorldCue::at: glam::f32::vec2::Vec2
@@ -5985,8 +6011,11 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DepthSortPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DepthSortPlugin
 pub struct tungsten_kit::DespawnOutside
 impl tungsten_kit::DespawnOutside
+pub fn tungsten_kit::DespawnOutside::killing(self) -> Self
+pub fn tungsten_kit::DespawnOutside::kills(&self) -> bool
 pub fn tungsten_kit::DespawnOutside::region(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DespawnOutside::view(f32) -> Self
+pub fn tungsten_kit::DespawnOutside::world(f32) -> Self
 impl core::clone::Clone for tungsten_kit::DespawnOutside
 pub fn tungsten_kit::DespawnOutside::clone(&self) -> tungsten_kit::DespawnOutside
 impl core::cmp::PartialEq for tungsten_kit::DespawnOutside
@@ -8299,11 +8328,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SpawnWith
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SpawnWith
 pub struct tungsten_kit::Spawner
 impl tungsten_kit::Spawner
+pub fn tungsten_kit::Spawner::alive(&self) -> core::option::Option<u32>
 pub fn tungsten_kit::Spawner::new(impl core::convert::Into<alloc::string::String>, f32) -> Self
 pub fn tungsten_kit::Spawner::prefab(&self) -> &str
 pub fn tungsten_kit::Spawner::remaining(&self) -> core::option::Option<u32>
 pub fn tungsten_kit::Spawner::timer(&self) -> &tungsten_core::time::Timer
+pub fn tungsten_kit::Spawner::with_alive(self, u32) -> Self
 pub fn tungsten_kit::Spawner::with_count(self, u32) -> Self
+pub fn tungsten_kit::Spawner::with_first(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Spawner
 pub fn tungsten_kit::Spawner::clone(&self) -> tungsten_kit::Spawner
 impl core::fmt::Debug for tungsten_kit::Spawner
@@ -8958,6 +8990,26 @@ impl core::marker::Unpin for tungsten_kit::WeightedTable
 impl core::marker::UnsafeUnpin for tungsten_kit::WeightedTable
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WeightedTable
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WeightedTable
+pub struct tungsten_kit::WorldBounds
+impl tungsten_kit::WorldBounds
+pub fn tungsten_kit::WorldBounds::max(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::WorldBounds::min(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::WorldBounds::new(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_kit::WorldBounds
+pub fn tungsten_kit::WorldBounds::clone(&self) -> tungsten_kit::WorldBounds
+impl core::cmp::PartialEq for tungsten_kit::WorldBounds
+pub fn tungsten_kit::WorldBounds::eq(&self, &tungsten_kit::WorldBounds) -> bool
+impl core::fmt::Debug for tungsten_kit::WorldBounds
+pub fn tungsten_kit::WorldBounds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::WorldBounds
+impl core::marker::StructuralPartialEq for tungsten_kit::WorldBounds
+impl core::marker::Freeze for tungsten_kit::WorldBounds
+impl core::marker::Send for tungsten_kit::WorldBounds
+impl core::marker::Sync for tungsten_kit::WorldBounds
+impl core::marker::Unpin for tungsten_kit::WorldBounds
+impl core::marker::UnsafeUnpin for tungsten_kit::WorldBounds
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WorldBounds
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WorldBounds
 #[non_exhaustive] pub struct tungsten_kit::WorldCue
 pub tungsten_kit::WorldCue::amount: core::option::Option<f32>
 pub tungsten_kit::WorldCue::at: glam::f32::vec2::Vec2

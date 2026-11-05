@@ -8,7 +8,8 @@
 //! with a poof; its salt, set down on a mark and refused inside a wall;
 //! 7.10g's thrower, whose throw's cue plays its clip over its walk, and its
 //! pole warden, whose swing turns with its four facings; a spike trap
-//! switched off and on, and gold that blinks faster as it goes.
+//! switched off and on, gold that blinks faster as it goes, and a rat den
+//! whose first rat comes at once.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -780,5 +781,21 @@ fn gold_blinks_faster_as_it_goes() {
         );
         harness.step(4);
         assert!(!harness.world().is_alive(gold), "dt {dt}: gone at its 4 s");
+    }
+}
+
+/// 7.10g: the rat den's `first: 0` spawns its first rat at once, the next
+/// an interval later.
+#[test]
+fn a_rat_hole_spawns_at_once() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "rat_den", [600.0, 3000.0]);
+        harness.step(1);
+        assert_eq!(tagged(&harness, "rat").len(), 1, "dt {dt}: at once");
+        harness.step(frames_for(1.9, dt));
+        assert_eq!(tagged(&harness, "rat").len(), 1, "dt {dt}");
+        harness.step(frames_for(0.2, dt));
+        assert_eq!(tagged(&harness, "rat").len(), 2, "dt {dt}: an interval on");
     }
 }

@@ -10,7 +10,8 @@
 //! dodge along the move stick and its reload's sweep; a lobber's grenade
 //! and its blast where it lands; a cryo trooper's cone; an escort carrier's
 //! escorts, held to three by their cap; a sapper's mines, a fourth refused
-//! at their cap with a blip; 7.10g's missile, turning back right side up.
+//! at their cap with a blip; 7.10g's missile, turning back right side up,
+//! and a stray drone killed past the world's bounds.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1671,6 +1672,42 @@ fn a_missile_turns_back_right_side_up() {
         assert!(
             (Vec2::new(nose.x, -nose.y) - mirrored).length() < 1e-3,
             "dt {dt}: the flipped nose along the heading"
+        );
+    }
+}
+
+/// 7.10g: the stray drone flies off the arena's right edge; past the
+/// `WorldBounds` it is killed, and its death policy takes it at once.
+#[test]
+fn a_drone_past_the_world_dies() {
+    use crate::kit::WorldBounds;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness
+            .world_mut()
+            .insert_resource(WorldBounds::new(Vec2::ZERO, Vec2::new(640.0, 360.0)));
+        let drone = spawn(&mut harness, "stray_drone", [600.0, 100.0]);
+        let mut killed_at = None;
+        let mut last = Vec2::ZERO;
+        for frame in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            if let Some(position) = harness.world().get::<Position>(drone) {
+                last = position.0;
+            }
+            if harness
+                .events::<Damaged>()
+                .any(|hit| hit.entity == drone && hit.killed)
+            {
+                killed_at = Some(frame);
+                break;
+            }
+        }
+        assert!(killed_at.is_some(), "dt {dt}: killed past the edge");
+        assert!(last.x > 630.0, "dt {dt}: at the edge: {last}");
+        harness.step(2);
+        assert!(
+            !harness.world().is_alive(drone),
+            "dt {dt}: its policy took it"
         );
     }
 }

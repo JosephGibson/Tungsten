@@ -289,7 +289,7 @@ pub use intent::state_machine::{StateMachine, StateMachinePlugin};
 pub use lifecycle::cap::{Cap, CapPlugin, Past};
 pub use lifecycle::children::{SPAWN_CHILDREN, SpawnChildren, SpawnChildrenPlugin};
 pub use lifecycle::cooldown::{COOLDOWN_TICK, Cooldown, CooldownElapsed, CooldownPlugin};
-pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlugin};
+pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlugin, WorldBounds};
 pub use lifecycle::ended::KIT_DESPAWN;
 pub use lifecycle::lifetime::{LIFETIME_TICK, Lifetime, LifetimePlugin};
 pub use lifecycle::spawner::{SPAWNER_TICK, Spawner, SpawnerPlugin};
@@ -367,9 +367,9 @@ pub mod prelude {
         StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin,
         Steering, SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
         TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered, TriggerZone, Used,
-        WallContact, WeightedTable, WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin,
-        cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, face_toward,
-        float_label, heal, kill, knock_back, spawn_child, use_ability,
+        WallContact, WeightedTable, WorldBounds, WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered,
+        ZonePlugin, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases,
+        face_toward, float_label, heal, kill, knock_back, spawn_child, use_ability,
     };
 }
 

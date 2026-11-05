@@ -149,6 +149,12 @@
     },
     "warded_knight": {
       "path": "prefabs/warded_knight.json"
+    },
+    "falling_hero": {
+      "path": "prefabs/falling_hero.json"
+    },
+    "falling_crate": {
+      "path": "prefabs/falling_crate.json"
     }
   },
   "data": {

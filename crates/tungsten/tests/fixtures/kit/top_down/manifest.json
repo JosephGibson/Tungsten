@@ -197,6 +197,9 @@
     },
     "bystander": {
       "path": "prefabs/bystander.json"
+    },
+    "slime_nest": {
+      "path": "prefabs/slime_nest.json"
     }
   },
   "data": {

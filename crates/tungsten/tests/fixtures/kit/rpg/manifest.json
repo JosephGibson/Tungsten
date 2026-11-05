@@ -89,6 +89,9 @@
     },
     "fading_gold": {
       "path": "prefabs/fading_gold.json"
+    },
+    "rat_den": {
+      "path": "prefabs/rat_den.json"
     }
   },
   "data": {

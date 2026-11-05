@@ -107,6 +107,9 @@
     },
     "missile": {
       "path": "prefabs/missile.json"
+    },
+    "stray_drone": {
+      "path": "prefabs/stray_drone.json"
     }
   },
   "data": {

@@ -847,3 +847,49 @@ fn two_cooldowns_whose_cues_spawn_give_the_same_ids_after_a_churned_load() {
     assert_eq!(spawned_by(&a).len(), 2);
     assert_eq!(spawned_by(&b), spawned_by(&a));
 }
+
+#[test]
+fn a_spawn_captured_before_its_spawners_next_tick_keeps_its_owner() {
+    use crate::lifecycle::spawner::Spawned;
+    let level = |world: &mut World| -> Entity {
+        let nest = world.spawn_with((
+            Position(Vec2::ZERO),
+            Spawner::new("slime", 0.25).with_alive(1).with_first(0.0),
+        ));
+        named(world, nest, None, "nest")
+    };
+    let (mut a, mut schedule_a) = rig();
+    let nest_a = level(&mut a);
+    // The first step queues the slime and its flush spawns it: a capture
+    // now comes before the spawner's next tick.
+    step(&mut a, &mut schedule_a);
+    assert_eq!(tagged(&a, "slime"), 1);
+    let saved = capture_world(&a).unwrap();
+    assert!(text(&saved).contains("spawned"), "its owner saved");
+
+    let (mut b, mut schedule_b) = rig();
+    churn(&mut b, 30);
+    let nest_b = level(&mut b);
+    restore(&mut b, &saved);
+    let owner = |world: &World| {
+        world
+            .query::<(&Tag, &Spawned)>()
+            .find(|(tag, _)| tag.name == "slime")
+            .and_then(|(_, spawned)| spawned.by())
+    };
+    assert_eq!(owner(&a), Some(nest_a));
+    assert_eq!(
+        owner(&b),
+        Some(nest_b),
+        "the restored spawn names its spawner"
+    );
+    for frame in 0..60 {
+        step(&mut a, &mut schedule_a);
+        step(&mut b, &mut schedule_b);
+        assert_eq!(
+            (tagged(&a, "slime"), tagged(&b, "slime")),
+            (1, 1),
+            "frame {frame}: held at one either way"
+        );
+    }
+}
