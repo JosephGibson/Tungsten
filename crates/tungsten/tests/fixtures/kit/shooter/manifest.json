@@ -110,6 +110,12 @@
     },
     "stray_drone": {
       "path": "prefabs/stray_drone.json"
+    },
+    "patrol_sentry": {
+      "path": "prefabs/patrol_sentry.json"
+    },
+    "cycle_turret": {
+      "path": "prefabs/cycle_turret.json"
     }
   },
   "data": {

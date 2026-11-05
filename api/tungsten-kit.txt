@@ -2844,6 +2844,8 @@ pub fn tungsten_kit::PathFollower::looping(self) -> Self
 pub fn tungsten_kit::PathFollower::new(impl core::iter::traits::collect::IntoIterator<Item = glam::f32::vec2::Vec2>, f32) -> Self
 pub fn tungsten_kit::PathFollower::ping_pong(self) -> Self
 pub fn tungsten_kit::PathFollower::with_easing(self, tungsten_core::tween::Easing) -> Self
+pub fn tungsten_kit::PathFollower::with_rider(self, f32, f32) -> Self
+pub fn tungsten_kit::PathFollower::with_wait(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::clone(&self) -> tungsten_kit::PathFollower
 impl core::cmp::PartialEq for tungsten_kit::PathFollower
@@ -3536,6 +3538,7 @@ pub fn tungsten_kit::StateMachine<S>::new(S) -> Self
 pub fn tungsten_kit::StateMachine<S>::pending(&self) -> core::option::Option<S>
 pub fn tungsten_kit::StateMachine<S>::previous(&self) -> core::option::Option<S>
 pub fn tungsten_kit::StateMachine<S>::set_held(&mut self, bool)
+pub fn tungsten_kit::StateMachine<S>::starting_at(self, f32) -> Self
 pub fn tungsten_kit::StateMachine<S>::state(&self) -> S
 impl<'de, S> serde_core::de::Deserialize<'de> for tungsten_kit::StateMachine<S> where S: serde_core::de::Deserialize<'de> + core::marker::Copy
 pub fn tungsten_kit::StateMachine<S>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
@@ -3557,6 +3560,7 @@ impl<S> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::StateMachine<S
 impl<S> core::panic::unwind_safe::UnwindSafe for tungsten_kit::StateMachine<S> where S: core::panic::unwind_safe::UnwindSafe
 pub struct tungsten_kit::prelude::StateMachinePlugin<S>
 impl<S: core::marker::Copy + core::cmp::Eq + 'static> tungsten_kit::StateMachinePlugin<S>
+pub fn tungsten_kit::StateMachinePlugin<S>::after(self, S, f32, S) -> Self
 pub fn tungsten_kit::StateMachinePlugin<S>::new(&'static str) -> Self
 pub fn tungsten_kit::StateMachinePlugin<S>::on_enter(self, S, fn(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity)) -> Self
 pub fn tungsten_kit::StateMachinePlugin<S>::on_exit(self, S, fn(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity)) -> Self
@@ -7572,6 +7576,8 @@ pub fn tungsten_kit::PathFollower::looping(self) -> Self
 pub fn tungsten_kit::PathFollower::new(impl core::iter::traits::collect::IntoIterator<Item = glam::f32::vec2::Vec2>, f32) -> Self
 pub fn tungsten_kit::PathFollower::ping_pong(self) -> Self
 pub fn tungsten_kit::PathFollower::with_easing(self, tungsten_core::tween::Easing) -> Self
+pub fn tungsten_kit::PathFollower::with_rider(self, f32, f32) -> Self
+pub fn tungsten_kit::PathFollower::with_wait(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::clone(&self) -> tungsten_kit::PathFollower
 impl core::cmp::PartialEq for tungsten_kit::PathFollower
@@ -8442,6 +8448,7 @@ pub fn tungsten_kit::StateMachine<S>::new(S) -> Self
 pub fn tungsten_kit::StateMachine<S>::pending(&self) -> core::option::Option<S>
 pub fn tungsten_kit::StateMachine<S>::previous(&self) -> core::option::Option<S>
 pub fn tungsten_kit::StateMachine<S>::set_held(&mut self, bool)
+pub fn tungsten_kit::StateMachine<S>::starting_at(self, f32) -> Self
 pub fn tungsten_kit::StateMachine<S>::state(&self) -> S
 impl<'de, S> serde_core::de::Deserialize<'de> for tungsten_kit::StateMachine<S> where S: serde_core::de::Deserialize<'de> + core::marker::Copy
 pub fn tungsten_kit::StateMachine<S>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
@@ -8463,6 +8470,7 @@ impl<S> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::StateMachine<S
 impl<S> core::panic::unwind_safe::UnwindSafe for tungsten_kit::StateMachine<S> where S: core::panic::unwind_safe::UnwindSafe
 pub struct tungsten_kit::StateMachinePlugin<S>
 impl<S: core::marker::Copy + core::cmp::Eq + 'static> tungsten_kit::StateMachinePlugin<S>
+pub fn tungsten_kit::StateMachinePlugin<S>::after(self, S, f32, S) -> Self
 pub fn tungsten_kit::StateMachinePlugin<S>::new(&'static str) -> Self
 pub fn tungsten_kit::StateMachinePlugin<S>::on_enter(self, S, fn(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity)) -> Self
 pub fn tungsten_kit::StateMachinePlugin<S>::on_exit(self, S, fn(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity)) -> Self

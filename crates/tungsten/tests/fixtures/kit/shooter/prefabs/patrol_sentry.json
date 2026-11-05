@@ -1,0 +1,27 @@
+{
+  "tag": "patrol_sentry",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 8
+      }
+    },
+    "path_follower": {
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          120,
+          0
+        ]
+      ],
+      "speed": 120,
+      "mode": "ping_pong",
+      "wait": 1
+    }
+  }
+}

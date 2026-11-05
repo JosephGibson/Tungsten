@@ -79,6 +79,8 @@ pub(crate) const ABILITY_READY: &str = "ability_ready";
 pub(crate) const ABILITY_HELD: &str = "ability_held";
 pub(crate) const ABILITY_RELEASED: &str = "ability_released";
 pub(crate) const CULLED: &str = "culled";
+pub(crate) const ARRIVED: &str = "arrived";
+pub(crate) const DEPARTED: &str = "departed";
 /// A [`WorldCue`]'s occurrence: no subject, so no entity or rule names it.
 const WORLD_CUE: &str = "world_cue";
 /// The cue events about an ability, whose occurrences carry its name.
@@ -89,7 +91,7 @@ const ABILITY_EVENTS: [&str; 5] = [
     ABILITY_HELD,
     ABILITY_RELEASED,
 ];
-const KIT_EVENTS: [&str; 22] = [
+const KIT_EVENTS: [&str; 24] = [
     DAMAGED_PART,
     DAMAGED,
     KILLED,
@@ -112,6 +114,8 @@ const KIT_EVENTS: [&str; 22] = [
     ABILITY_HELD,
     ABILITY_RELEASED,
     CULLED,
+    ARRIVED,
+    DEPARTED,
 ];
 
 /// The squash triggers' data names, as a scene's `squash_stretch` writes
@@ -1957,6 +1961,8 @@ impl Default for CueEventNames {
                 (ABILITY_HELD, false, false, false),
                 (ABILITY_RELEASED, false, false, false),
                 (CULLED, false, false, false),
+                (ARRIVED, false, false, false),
+                (DEPARTED, false, false, false),
             ]
             .into_iter()
             .map(|(name, amount, other, kinds)| EventInfo {

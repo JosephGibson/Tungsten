@@ -200,6 +200,9 @@
     },
     "slime_nest": {
       "path": "prefabs/slime_nest.json"
+    },
+    "brazier": {
+      "path": "prefabs/brazier.json"
     }
   },
   "data": {

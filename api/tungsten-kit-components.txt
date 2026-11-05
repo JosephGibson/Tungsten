@@ -95,6 +95,8 @@ component cues: The entity's reactions: for each event about it, actions run in 
   field ability_held: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field ability_released: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field culled: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field arrived: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field departed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   events: ShakeEvent, SquashEvent
   genres: platformer, top_down, rpg, shooter
   sample: {}
@@ -215,8 +217,10 @@ component path_follower: Moves a kinematic body along points at a speed: a movin
   field speed: f32 (> 0) — world pixels per second along the path
   field mode: one of stop | loop | ping_pong = "stop" — what it does after the last point
   field easing: one of linear | quad_in | quad_out | quad_in_out | cubic_in | cubic_out | cubic_in_out | quart_in | quart_out | quart_in_out | sine_in | sine_out | sine_in_out | expo_in | expo_out | expo_in_out | back_in | back_out | back_in_out | bounce_in | bounce_out | bounce_in_out = "linear" — each segment's progress, one of core's easings
+  field wait: f32 (>= 0) = 0.0 — seconds it holds at each end, a loop's first point or a ping-pong's two, the time left over at an arrival dropped; refused on a stop path
+  field rider: shape path_rider = null — a ping-pong lift: it boards after a rider has stood on it, and comes back after its last rider left; refused beside a `wait`
   genres: platformer, top_down, shooter
-  sample: { "points": [[0, 0], [0, -100]], "speed": 100 }
+  sample: { "points": [[0, 0], [0, -100]], "speed": 100, "mode": "ping_pong" }
 component penetration: Points off a hit part's resistances by damage type, which every hit from the entity takes after the hit's own.
   field points: damage type → points in [0, 1] — the value itself: each a declared damage type or an ancestor of one, off each matching factor in (0, 1), capped at 1
   genres: top_down, shooter
@@ -692,6 +696,10 @@ shape offers: What a level up offers: distinct entries drawn by weight without r
   field count: u32 (>= 1) — how many entries a level up draws; every one when there are no more
   field entries: list of shape offer = [] — what a draw may give, each by its weight over the rest
   sample: { "count": 1 }
+shape path_rider: A lift's rule: it boards once a rider has stood on it, and comes back once its last rider has gone.
+  field board: f32 (>= 0) = 0.3 — seconds a rider stands on it at its first point before it goes
+  field back: f32 (>= 0) = 4.0 — seconds after its last rider left its last point before it comes back
+  sample: {}
 shape place_payload: A prefab set down by its centre at the aim's point, a `nearest` or `random` target's centre or the entity's `aim` point, from the entity; refused before anything is spent with no point or one past the range (`no_target`), its body there meeting a solid tile or a body that is not dynamic, the entity's own aside (`no_room`), or its cap refusing it, the use's earlier spawns and places counted (`capped`).
   field prefab: prefab ID — the manifest prefab; the load checks the ID
   field range: f32 (> 0) = null — world pixels from the entity's centre; any distance when left out

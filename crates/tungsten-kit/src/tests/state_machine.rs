@@ -354,3 +354,114 @@ fn a_held_machine_keeps_its_pending_go_its_hooks_and_its_elapsed_until_released(
         ["0 enter idle", "0 update idle"]
     );
 }
+
+/// A rig whose plugin times `Idle` at 0.5 s to `Walk` and `Walk` at 0.25 s
+/// back, with `Idle`'s enter hook and `update` as its update hook.
+fn timed_rig(update: fn(&mut World, Entity)) -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(Log::default());
+    let mut schedule = Schedule::new();
+    StateMachinePlugin::<Mode>::new("timed")
+        .on_enter(Mode::Idle, enter_idle)
+        .on_update(Mode::Idle, update)
+        .after(Mode::Idle, 0.5, Mode::Walk)
+        .after(Mode::Walk, 0.25, Mode::Idle)
+        .build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+fn timed_step(world: &mut World, schedule: &mut Schedule, dt: f32) -> Mode {
+    world.resource_mut::<Time>().advance_frame(dt);
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+    world
+        .query::<&StateMachine<Mode>>()
+        .next()
+        .map(StateMachine::state)
+        .unwrap()
+}
+
+fn idle_update(_: &mut World, _: Entity) {}
+
+#[test]
+fn a_timed_state_runs_its_seconds_at_both_rates() {
+    for (dt, visits) in [(1.0 / 60.0, 30), (1.0 / 30.0, 15)] {
+        let (mut world, mut schedule) = timed_rig(idle_update);
+        world.spawn_with((StateMachine::new(Mode::Idle),));
+        let mut idle = 0;
+        while timed_step(&mut world, &mut schedule, dt) == Mode::Idle {
+            idle += 1;
+            assert!(idle < 100, "dt {dt}: it leaves");
+        }
+        assert_eq!(idle, visits, "dt {dt}: 0.5 s of visits in idle");
+        let mut walk = 1;
+        while timed_step(&mut world, &mut schedule, dt) == Mode::Walk {
+            walk += 1;
+        }
+        let expected = (0.25_f32 / dt).ceil() as u32;
+        assert_eq!(walk, expected, "dt {dt}: 0.25 s in walk, then idle again");
+    }
+    assert!(
+        std::panic::catch_unwind(|| StateMachinePlugin::<Mode>::new("bad").after(
+            Mode::Idle,
+            0.0,
+            Mode::Walk
+        ))
+        .is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(|| StateMachinePlugin::<Mode>::new("twice")
+            .after(Mode::Idle, 1.0, Mode::Walk)
+            .after(Mode::Idle, 2.0, Mode::Jump))
+        .is_err()
+    );
+}
+
+/// An update hook that asks for `Jump` on the visit `Idle`'s time runs out.
+fn jump_late(world: &mut World, e: Entity) {
+    let machine = world.get_mut::<StateMachine<Mode>>(e).unwrap();
+    if machine.elapsed() >= 0.48 {
+        machine.go(Mode::Jump);
+    }
+}
+
+#[test]
+fn a_go_wins_over_a_timed_transition() {
+    let (mut world, mut schedule) = timed_rig(jump_late);
+    world.spawn_with((StateMachine::new(Mode::Idle),));
+    let mut states = Vec::new();
+    for _ in 0..32 {
+        states.push(timed_step(&mut world, &mut schedule, 1.0 / 60.0));
+    }
+    assert_eq!(states[29], Mode::Idle);
+    assert_eq!(
+        states[30],
+        Mode::Jump,
+        "the go its last visit made, not the timed walk"
+    );
+    assert_eq!(states[31], Mode::Jump);
+}
+
+#[test]
+fn starting_at_skips_into_the_state() {
+    let (mut world, mut schedule) = timed_rig(idle_update);
+    world.spawn_with((StateMachine::new(Mode::Idle).starting_at(0.25),));
+    let mut idle = 0;
+    while timed_step(&mut world, &mut schedule, 1.0 / 60.0) == Mode::Idle {
+        idle += 1;
+    }
+    assert_eq!(idle, 15, "a quarter second in already");
+    let log = std::mem::take(&mut world.resource_mut::<Log>().0);
+    assert_eq!(
+        log.iter()
+            .filter(|line| line.ends_with("enter idle"))
+            .count(),
+        1
+    );
+    let machine = StateMachine::new(Mode::Idle).starting_at(0.25);
+    assert_eq!(machine.elapsed(), 0.25);
+    let saved = serde_json::to_value(&machine).unwrap();
+    assert_eq!(saved["elapsed"], 0.25, "its saved form unchanged");
+    assert!(std::panic::catch_unwind(|| StateMachine::new(Mode::Idle).starting_at(-1.0)).is_err());
+}

@@ -296,6 +296,71 @@ fn a_clip_action_plays_on_the_subject() {
 }
 
 #[test]
+fn a_path_sends_arrived_and_departed_only_when_named() {
+    use tungsten_core::physics::{Position, Velocity};
+    use tungsten_core::{CommandBuffer, Stage, system};
+
+    use crate::foundation::phases::Phase;
+    use crate::{Counters, PathFollower, PathFollowerPlugin};
+
+    /// The kit cue list as the cue system finds it each step.
+    #[derive(Default)]
+    struct Seen(Vec<(Entity, &'static str)>);
+
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(Seen::default());
+    let mut schedule = Schedule::new();
+    PathFollowerPlugin.build(&mut schedule, &mut world);
+    CuesPlugin.build(&mut schedule, &mut world);
+    schedule.add(
+        Phase::React.stage(),
+        Phase::React
+            .join(system("seen", |world: &mut World| {
+                let cues: Vec<(Entity, &'static str)> = world
+                    .resource::<KitCues>()
+                    .0
+                    .iter()
+                    .map(|cue| (cue.entity, cue.event))
+                    .collect();
+                world.resource_mut::<Seen>().0.extend(cues);
+            }))
+            .before(CUES),
+    );
+    schedule.resolve().unwrap();
+    // Two ping-pongs of 10 px at 60 px/s: a turn every 10 steps.
+    let path = || PathFollower::new([Vec2::ZERO, Vec2::new(10.0, 0.0)], 60.0).ping_pong();
+    let counted = Cues::new()
+        .on(
+            "arrived",
+            [CueAction::counter_add("arrivals", 1).for_game()],
+        )
+        .on(
+            "departed",
+            [CueAction::counter_add("departures", 1).for_game()],
+        );
+    let named = world.spawn_with((Position(Vec2::ZERO), Velocity(Vec2::ZERO), path(), counted));
+    let plain = world.spawn_with((Position(Vec2::ZERO), Velocity(Vec2::ZERO), path()));
+    for _ in 0..40 {
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        world.resource_mut::<Time>().enter_fixed_step();
+        schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+        world.resource_mut::<Time>().leave_fixed_steps();
+    }
+    let seen = &world.resource::<Seen>().0;
+    assert!(seen.iter().all(|&(entity, _)| entity == named), "{seen:?}");
+    assert!(!seen.iter().any(|&(entity, _)| entity == plain));
+    let count = |event: &str| seen.iter().filter(|(_, name)| *name == event).count();
+    // Out of its first point at once, then a turn at each end.
+    assert!(count(DEPARTED) >= 4 && count(ARRIVED) >= 3, "{seen:?}");
+    let counters = world.resource::<Counters>();
+    assert_eq!(counters.get("arrivals"), count(ARRIVED) as i64);
+    assert_eq!(counters.get("departures"), count(DEPARTED) as i64);
+    assert!(KIT_EVENTS.contains(&ARRIVED) && KIT_EVENTS.contains(&DEPARTED));
+}
+
+#[test]
 fn the_data_form_refuses_what_the_constructors_refuse() {
     for bad in [
         json!({ "flash": {}, "shake": 1 }),

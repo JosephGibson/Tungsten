@@ -23,7 +23,8 @@
 //! lander, whose landing plays its land clip once over its run, and its
 //! swordsman, whose swing mirrors to the side it turns to; a doomed runner
 //! its death policy stops and locks, a warded knight a kill passes, and a
-//! hero and a crate past the world's bottom.
+//! hero and a crate past the world's bottom; a lift that waits for its
+//! rider, sounding as it leaves and reaches each end.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2281,5 +2282,81 @@ fn the_worlds_bottom_kills_the_hero_and_takes_a_crate() {
             .count();
         assert_eq!(kills, 1, "dt {dt}: killed once");
         assert!(harness.world().is_alive(hero), "dt {dt}: its body kept");
+    }
+}
+
+/// 7.10g: the rider lift waits at its foot; the hero standing on it 0.3 s
+/// boards it, and it carries the hero up; the hero gone, it waits 4 s at
+/// the top and comes back down to wait for the next. Each leaving sounds
+/// `lift_go` (`departed`) and each reaching `lift_stop` (`arrived`).
+#[test]
+fn the_lift_takes_its_rider_up_and_comes_back() {
+    use tungsten_core::{AudioCommand, SoundRegistry};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let lift = spawn(&mut harness, "rider_lift", [0.0, 300.0]);
+        let hero = spawn(&mut harness, "hero", [0.0, 275.0]);
+        spawn(&mut harness, "ground", [2000.0, 300.0]);
+        let sounds = harness.world().resource::<SoundRegistry>();
+        let (go, stop) = (
+            sounds.get_by_id("lift_go").unwrap(),
+            sounds.get_by_id("lift_stop").unwrap(),
+        );
+        let mut heard = Vec::new();
+        let mut frame = 0;
+        let mut run =
+            |harness: &mut super::Harness, until: &dyn Fn(f32, u32) -> bool, limit: f32| {
+                let start = frame;
+                loop {
+                    harness.step(1);
+                    frame += 1;
+                    for command in harness.audio() {
+                        if let AudioCommand::Play { handle, .. } = command {
+                            heard.push(*handle == go);
+                            assert!(*handle == go || *handle == stop);
+                        }
+                    }
+                    if until(body_at(harness, lift).y, frame - start) {
+                        return frame - start;
+                    }
+                    assert!(
+                        frame - start < frames_for(limit, dt),
+                        "dt {dt}: within {limit} s"
+                    );
+                }
+            };
+        let boarding = run(&mut harness, &|y, _| y < 300.0 - 1e-3, 1.0);
+        assert!(
+            (frames_for(0.3, dt)..=frames_for(0.4, dt) + 1).contains(&boarding),
+            "dt {dt}: 0.3 s aboard: {boarding}"
+        );
+        let up = run(&mut harness, &|y, _| y <= 180.0 + 1e-3, 1.5);
+        assert!(
+            (frames_for(0.9, dt)..=frames_for(1.1, dt)).contains(&up),
+            "dt {dt}: a second up: {up}"
+        );
+        assert!(
+            (body_at(&harness, hero).y - 155.0).abs() < 1.0,
+            "dt {dt}: the hero rode it"
+        );
+        super::teleport(&mut harness, hero, Vec2::new(2000.0, 270.0));
+        let alone = run(&mut harness, &|y, _| y > 180.0 + 1e-3, 5.0);
+        assert!(
+            (frames_for(4.0, dt)..=frames_for(4.1, dt) + 1).contains(&alone),
+            "dt {dt}: 4 s after its rider left: {alone}"
+        );
+        run(&mut harness, &|y, _| y >= 300.0 - 1e-3, 1.5);
+        // Two more seconds, heard, at its foot.
+        let two = frames_for(2.0, dt);
+        run(&mut harness, &|_, taken| taken >= two, 2.5);
+        assert!(
+            (body_at(&harness, lift).y - 300.0).abs() < 1e-3,
+            "dt {dt}: back, waiting"
+        );
+        assert_eq!(
+            heard,
+            [true, false, true, false],
+            "dt {dt}: go, stop, go, stop"
+        );
     }
 }

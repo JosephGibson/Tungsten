@@ -1,0 +1,8 @@
+{
+  "tag": "cycle_turret",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ]
+  }
+}

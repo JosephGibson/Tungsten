@@ -182,6 +182,26 @@ impl<S: Copy + Eq + 'static> StateMachine<S> {
         self.next = Some(next);
     }
 
+    /// The machine, its first state already `seconds` in (redo 7.10g): a
+    /// second turret's cycle half a second behind the first. The first
+    /// visit still runs the state's enter hook, and its
+    /// [`elapsed`](Self::elapsed) counts on from `seconds`, so a timed
+    /// transition ([`StateMachinePlugin::after`]) comes that much sooner.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn starting_at(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds >= 0.0,
+            "StateMachine::starting_at: seconds must be finite and >= 0 (got {seconds})"
+        );
+        self.elapsed = seconds;
+        self
+    }
+
     /// The state a [`go`](Self::go) asked for, which the next visit
     /// enters; `None` when none waits.
     #[must_use]
@@ -216,7 +236,10 @@ impl<S: Copy + Eq + 'static> StateMachine<S> {
 /// old state's exit hook, then the new state's enter hook, and resets
 /// `elapsed`. Every visit then runs the current state's update hook and
 /// adds the step to `elapsed`. A hook that despawns its entity or removes
-/// its machine ends that visit.
+/// its machine ends that visit. A timed transition
+/// ([`after`](Self::after)) then asks for its next state once the state's
+/// `elapsed` reaches its seconds, unless a `go` waits, so the next visit
+/// enters it: a charge and fire cycle in data's place.
 ///
 /// Hooks are plain `fn` pointers. See [`StateMachine`] for an example.
 pub struct StateMachinePlugin<S> {
@@ -229,6 +252,8 @@ struct Hooks<S> {
     enter: Vec<(S, Hook)>,
     exit: Vec<(S, Hook)>,
     update: Vec<(S, Hook)>,
+    /// Timed transitions: a state, its seconds and the next state.
+    after: Vec<(S, f32, S)>,
 }
 
 impl<S: Copy> Clone for Hooks<S> {
@@ -237,9 +262,14 @@ impl<S: Copy> Clone for Hooks<S> {
             enter: self.enter.clone(),
             exit: self.exit.clone(),
             update: self.update.clone(),
+            after: self.after.clone(),
         }
     }
 }
+
+/// Seconds a timed state treats as already passed, so a state of whole
+/// steps ends on its last step whatever the sum's rounding.
+const AFTER_EPSILON: f32 = 1e-4;
 
 impl<S: Copy + Eq + 'static> StateMachinePlugin<S> {
     /// A plugin with no hooks, its system named `name`.
@@ -251,6 +281,7 @@ impl<S: Copy + Eq + 'static> StateMachinePlugin<S> {
                 enter: Vec::new(),
                 exit: Vec::new(),
                 update: Vec::new(),
+                after: Vec::new(),
             },
         }
     }
@@ -288,6 +319,32 @@ impl<S: Copy + Eq + 'static> StateMachinePlugin<S> {
     #[track_caller]
     pub fn on_update(mut self, state: S, hook: fn(&mut World, Entity)) -> Self {
         add_hook(&mut self.hooks.update, state, hook, "on_update");
+        self
+    }
+
+    /// The plugin, asking for `next` once a machine has spent `seconds` of
+    /// game time in `state` (redo 7.10g): after a visit's update hook adds
+    /// its step to `elapsed`, a machine in `state` with no `go` waiting
+    /// whose `elapsed` reaches `seconds` (less 10⁻⁴) asks for `next`, which
+    /// the next visit enters, so at steps of 1/60 s a 0.5 s state runs 30
+    /// visits. A `go` the game makes first wins.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and above 0, or `state` has one
+    /// already.
+    #[must_use]
+    #[track_caller]
+    pub fn after(mut self, state: S, seconds: f32, next: S) -> Self {
+        assert!(
+            seconds.is_finite() && seconds > 0.0,
+            "StateMachinePlugin::after: seconds must be finite and > 0 (got {seconds})"
+        );
+        assert!(
+            self.hooks.after.iter().all(|(other, ..)| *other != state),
+            "StateMachinePlugin::after: the state already has a timed transition"
+        );
+        self.hooks.after.push((state, seconds, next));
         self
     }
 }
@@ -408,6 +465,15 @@ fn visit<S: Copy + Eq + 'static>(world: &mut World, hooks: &Hooks<S>, entity: En
     }
     if let Some(machine) = world.get_mut::<StateMachine<S>>(entity) {
         machine.elapsed += dt;
+        if machine.next.is_none()
+            && let Some(&(_, seconds, next)) = hooks
+                .after
+                .iter()
+                .find(|(timed, ..)| *timed == machine.state)
+            && machine.elapsed >= seconds - AFTER_EPSILON
+        {
+            machine.next = Some(next);
+        }
     }
 }
 

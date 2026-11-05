@@ -11,7 +11,8 @@
 //! and its blast where it lands; a cryo trooper's cone; an escort carrier's
 //! escorts, held to three by their cap; a sapper's mines, a fourth refused
 //! at their cap with a blip; 7.10g's missile, turning back right side up,
-//! and a stray drone killed past the world's bounds.
+//! a stray drone killed past the world's bounds, a sentry whose patrol
+//! waits at each end, and two turrets cycling half a second apart.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1708,6 +1709,90 @@ fn a_drone_past_the_world_dies() {
         assert!(
             !harness.world().is_alive(drone),
             "dt {dt}: its policy took it"
+        );
+    }
+}
+
+/// 7.10g: the patrol sentry holds 1 s at each end of its beat: still for
+/// its first second, out over the next, held at the far end its third,
+/// and back.
+#[test]
+fn a_sentry_waits_at_each_end() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let sentry = spawn(&mut harness, "patrol_sentry", [0.0, 6000.0]);
+        let x = |harness: &Harness| body_at(harness, sentry).x;
+        harness.step(frames_for(0.9, dt));
+        assert_eq!(x(&harness), 0.0, "dt {dt}: waiting at its start");
+        harness.step(frames_for(0.6, dt));
+        assert!(
+            (x(&harness) - 60.0).abs() < 4.0,
+            "dt {dt}: half way out: {}",
+            x(&harness)
+        );
+        harness.step(frames_for(1.0, dt));
+        assert!((x(&harness) - 120.0).abs() < 1e-3, "dt {dt}: arrived");
+        harness.step(frames_for(0.4, dt));
+        assert!((x(&harness) - 120.0).abs() < 1e-3, "dt {dt}: still waiting");
+        harness.step(frames_for(0.4, dt));
+        assert!(x(&harness) < 119.0, "dt {dt}: and back: {}", x(&harness));
+    }
+}
+
+/// A turret's phases, which `two_turrets_cycle_half_a_second_apart` times.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Cycle {
+    Charge,
+    Fire,
+}
+
+/// 7.10g: the turrets charge 1 s and fire 0.5 s on timed transitions; the
+/// second starts half a second into its charge, so it fires half a second
+/// before the first, every cycle.
+#[test]
+fn two_turrets_cycle_half_a_second_apart() {
+    use crate::kit::StateMachinePlugin;
+    for dt in DTS {
+        let cycle = StateMachinePlugin::<Cycle>::new("turret_cycle")
+            .after(Cycle::Charge, 1.0, Cycle::Fire)
+            .after(Cycle::Fire, 0.5, Cycle::Charge);
+        let mut harness = recipe(GENRE, KitPlugins::set().with(cycle), dt);
+        let first = spawn(&mut harness, "cycle_turret", [0.0, 7000.0]);
+        let second = spawn(&mut harness, "cycle_turret", [100.0, 7000.0]);
+        harness
+            .world_mut()
+            .insert(first, StateMachine::new(Cycle::Charge));
+        harness
+            .world_mut()
+            .insert(second, StateMachine::new(Cycle::Charge).starting_at(0.5));
+        let state = |harness: &Harness, turret| {
+            harness
+                .world()
+                .get::<StateMachine<Cycle>>(turret)
+                .unwrap()
+                .state()
+        };
+        let mut fired = [Vec::new(), Vec::new()];
+        let mut was = [Cycle::Charge; 2];
+        for frame in 0..frames_for(4.0, dt) {
+            harness.step(1);
+            for (i, turret) in [first, second].into_iter().enumerate() {
+                let now = state(&harness, turret);
+                if now == Cycle::Fire && was[i] == Cycle::Charge {
+                    fired[i].push(frame);
+                }
+                was[i] = now;
+            }
+        }
+        let apart = frames_for(0.5, dt);
+        assert_eq!(fired[0].len(), 2, "dt {dt}: {fired:?}");
+        for (first_fired, second_fired) in fired[0].iter().zip(&fired[1]) {
+            assert_eq!(first_fired - second_fired, apart, "dt {dt}: {fired:?}");
+        }
+        assert_eq!(
+            fired[1][1] - fired[1][0],
+            frames_for(1.5, dt),
+            "dt {dt}: a 1.5 s cycle"
         );
     }
 }

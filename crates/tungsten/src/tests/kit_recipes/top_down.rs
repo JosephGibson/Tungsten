@@ -27,7 +27,8 @@
 //! name; 7.10g's ghoul scout, whose alert clip shows by its animator's rule
 //! while a game's `state.alerted` tag is on, a watchman facing the point it
 //! heard, hit shapes drawn on a key, a ghoul guard its death policy
-//! disarms, and a nest that keeps one slime, across a save and a load.
+//! disarms, a nest that keeps one slime, across a save and a load, and a
+//! brazier whose phases a timed state machine cycles.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3241,5 +3242,57 @@ fn a_nest_keeps_one_slime() {
             harness.step(frames_for(4.0, dt));
             assert_eq!(live(harness).len(), 1, "dt {dt}: and held at one");
         }
+    }
+}
+
+/// A brazier's phases, which `a_brazier_cycles_its_phases` times.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Brazier {
+    Cold,
+    Kindling,
+    Burning,
+    Embers,
+}
+
+/// 7.10g: the brazier's phases run on timed transitions alone: cold 1 s,
+/// kindling 0.5 s, burning 2 s, embers 1 s, and cold again.
+#[test]
+fn a_brazier_cycles_its_phases() {
+    let phases = StateMachinePlugin::<Brazier>::new("brazier_phases")
+        .after(Brazier::Cold, 1.0, Brazier::Kindling)
+        .after(Brazier::Kindling, 0.5, Brazier::Burning)
+        .after(Brazier::Burning, 2.0, Brazier::Embers)
+        .after(Brazier::Embers, 1.0, Brazier::Cold);
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set().with(phases.clone()), dt);
+        let brazier = spawn(&mut harness, "brazier", [0.0, 8000.0]);
+        harness
+            .world_mut()
+            .insert(brazier, StateMachine::new(Brazier::Cold));
+        let mut entered = Vec::new();
+        let mut was = Brazier::Cold;
+        for frame in 0..frames_for(5.0, dt) {
+            harness.step(1);
+            let now = harness
+                .world()
+                .get::<StateMachine<Brazier>>(brazier)
+                .unwrap()
+                .state();
+            if now != was {
+                entered.push((now, frame + 1));
+                was = now;
+            }
+        }
+        let at = |seconds: f32| frames_for(seconds, dt) + 1;
+        assert_eq!(
+            entered,
+            [
+                (Brazier::Kindling, at(1.0)),
+                (Brazier::Burning, at(1.5)),
+                (Brazier::Embers, at(3.5)),
+                (Brazier::Cold, at(4.5)),
+            ],
+            "dt {dt}"
+        );
     }
 }

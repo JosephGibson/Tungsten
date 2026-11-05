@@ -29,7 +29,7 @@ use crate::foundation::{
     fraction, non_negative, optional_non_negative, optional_positive, optional_vec2, positive, vec2,
 };
 use crate::intent::action_input::Intent;
-use crate::motion::path::PATH_FOLLOW;
+use crate::motion::path::{PATH_FOLLOW, PathFollower};
 use crate::motion::slide::{
     FLOOR_NORMAL_Y, GROUND_PROBE, SKIN, Slide, carry, climb, is_kinematic, move_and_slide_on,
     probe_ground_on, step_dt,
@@ -1966,8 +1966,14 @@ impl Runner {
             {
                 stats.set_base(stat, base - amount);
             }
+            let ground = controller.ground();
             *world.get_mut::<PlatformerController>(entity).unwrap() = controller;
             world.get_mut::<Velocity>(entity).unwrap().0 = moved.velocity;
+            // A lift reads its rider at its next step.
+            if let Some(follower) = ground.and_then(|ground| world.get_mut::<PathFollower>(ground))
+            {
+                follower.mark_ridden();
+            }
             if let Some(at) = moved.position {
                 world.get_mut::<Position>(entity).unwrap().0 = at;
             }
