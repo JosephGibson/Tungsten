@@ -74,6 +74,12 @@
     },
     "thrower": {
       "path": "prefabs/thrower.json"
+    },
+    "pole_warden": {
+      "path": "prefabs/pole_warden.json"
+    },
+    "straw_dummy": {
+      "path": "prefabs/straw_dummy.json"
     }
   },
   "data": {

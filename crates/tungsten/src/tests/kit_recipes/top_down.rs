@@ -25,7 +25,8 @@
 //! a blazing crate whose look lights a lurker and crackles, and a coffer
 //! whose one game event registration brings `opened` and `emptied` in by
 //! name; 7.10g's ghoul scout, whose alert clip shows by its animator's rule
-//! while a game's `state.alerted` tag is on.
+//! while a game's `state.alerted` tag is on, a watchman facing the point it
+//! heard, and hit shapes drawn on a key.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3077,4 +3078,78 @@ fn an_alerted_ghoul_shows_its_alert_clip() {
         harness.step(1);
         assert_eq!(shown(&harness), ("ghoul_walk".into(), "move"), "dt {dt}");
     }
+}
+
+/// 7.10g: the game hears a noise and faces the watchman toward it; standing
+/// still, it holds that way, turned eight ways, until its motion turns it.
+#[test]
+fn a_sentry_faces_what_it_heard() {
+    use crate::kit::face_toward;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let watchman = spawn(&mut harness, "watchman", [0.0, 5000.0]);
+        harness.step(1);
+        let faced = |harness: &Harness| {
+            let world = harness.world();
+            let direction = world.get::<Facing>(watchman).unwrap().direction();
+            let rotation = world.get::<Transform>(watchman).unwrap().rotation;
+            (direction, Vec2::from_angle(rotation))
+        };
+        assert_eq!(faced(&harness).0, Vec2::X, "dt {dt}");
+        // A noise up and to its left, heard.
+        assert!(face_toward(
+            harness.world_mut(),
+            watchman,
+            Vec2::new(-40.0, 4960.0)
+        ));
+        harness.step(1);
+        let up_left = Vec2::new(-1.0, -1.0).normalize();
+        let (direction, nose) = faced(&harness);
+        assert!(
+            (direction - up_left).length() < 1e-5,
+            "dt {dt}: {direction}"
+        );
+        assert!((nose - up_left).length() < 1e-5, "dt {dt}: turned to it");
+        harness.step(frames_for(1.0, dt));
+        assert!(
+            (faced(&harness).0 - up_left).length() < 1e-5,
+            "dt {dt}: held"
+        );
+        // Moving, its motion turns it.
+        harness.world_mut().get_mut::<Velocity>(watchman).unwrap().0 = Vec2::new(0.0, 40.0);
+        harness.step(1);
+        let way = faced(&harness).0;
+        assert!(
+            (way - Vec2::Y).length() < 1e-5,
+            "dt {dt}: its motion's way {way}"
+        );
+    }
+}
+
+/// 7.10g: with `KitDebug`'s key on `dash`, a press draws the hit shapes, the
+/// trace's log left off; the next press hides them.
+#[test]
+fn hit_shapes_draw_on_a_key_without_the_trace() {
+    use crate::kit::KitDebug;
+    let mut harness = recipe(GENRE, KitPlugins::set(), DTS[0]);
+    spawn(&mut harness, "watchman", [0.0, 5000.0]);
+    harness
+        .world_mut()
+        .resource_mut::<KitDebug>()
+        .set_key(Some("dash"));
+    let lines = |harness: &Harness| harness.draw().unwrap().debug_lines.len();
+    harness.step(1);
+    assert_eq!(lines(&harness), 0, "off until the key");
+    harness.press_action("dash");
+    harness.step(1);
+    harness.release_action("dash");
+    assert!(lines(&harness) > 0, "the watchman's hurtbox drawn");
+    let debug = harness.world().resource::<KitDebug>();
+    assert!(debug.shapes() && !debug.trace(), "the shapes alone");
+    harness.step(1);
+    assert!(lines(&harness) > 0, "held on");
+    harness.press_action("dash");
+    harness.step(1);
+    harness.release_action("dash");
+    assert_eq!(lines(&harness), 0, "the next press hides them");
 }

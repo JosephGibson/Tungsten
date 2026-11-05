@@ -6,7 +6,8 @@
 //! Ward's: its bell, flask and run as cue events, its flask from its centre,
 //! its toll's wave; its wisps, held to two by their cap, the first culled
 //! with a poof; its salt, set down on a mark and refused inside a wall;
-//! 7.10g's thrower, whose throw's cue plays its clip over its walk.
+//! 7.10g's thrower, whose throw's cue plays its clip over its walk, and its
+//! pole warden, whose swing turns with its four facings.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -660,5 +661,53 @@ fn the_warden_throws_over_its_walk() {
         }
         harness.step(1);
         assert_eq!(shown(&harness), ("warden_walk".into(), "move"), "dt {dt}");
+    }
+}
+
+/// 7.10g: the pole warden turns by its move actions, four ways, and its
+/// swing's hitbox, written facing right, turns with it: each swing strikes
+/// the straw dummy ahead and no other.
+#[test]
+fn the_wardens_pole_swings_ahead_in_four_facings() {
+    use crate::kit::Struck;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "pole_warden", [100.0, 100.0]);
+        let dummies = [
+            (
+                "move_right",
+                spawn(&mut harness, "straw_dummy", [126.0, 100.0]),
+            ),
+            (
+                "move_down",
+                spawn(&mut harness, "straw_dummy", [100.0, 126.0]),
+            ),
+            (
+                "move_left",
+                spawn(&mut harness, "straw_dummy", [74.0, 100.0]),
+            ),
+            ("move_up", spawn(&mut harness, "straw_dummy", [100.0, 74.0])),
+        ];
+        harness.step(1);
+        for (action, ahead) in dummies {
+            harness.press_action(action);
+            harness.step(1);
+            harness.release_action(action);
+            harness.press_action("attack");
+            let mut struck = Vec::new();
+            for frame in 0..frames_for(0.25, dt) {
+                harness.step(1);
+                if frame == 0 {
+                    harness.release_action("attack");
+                }
+                struck.extend(
+                    harness
+                        .events::<Struck>()
+                        .filter(|hit| hit.entity == warden)
+                        .map(|hit| hit.target),
+                );
+            }
+            assert_eq!(struck, [ahead], "dt {dt}: {action}");
+        }
     }
 }

@@ -18,7 +18,7 @@ use crate::motion::path::PathFollower;
 use crate::motion::stay_in_view::StayInView;
 use crate::motion::wrap::Wrap;
 use crate::overlap::contact::ContactDamage;
-use crate::overlap::hit::{Hitbox, Hurtbox};
+use crate::overlap::hit::{Hitbox, Hurtbox, placed};
 use crate::overlap::pickup::Pickup;
 use crate::overlap::zone::Zone;
 use crate::present::camera::CameraTarget;
@@ -48,8 +48,13 @@ const HITBOX_COLOR: [f32; 4] = [0.8, 0.02, 0.06, 1.0];
 const CONTACT_COLOR: [f32; 4] = [1.0, 0.55, 0.0, 1.0];
 const PICKUP_COLOR: [f32; 4] = [1.0, 0.85, 0.2, 1.0];
 
-/// Whether the kit draws its debug shapes, a World resource, off by
-/// default; a game's hotkey or console command flips it.
+/// What the kit's debug overlay shows, a World resource, both off by
+/// default: `shapes`, each item's shape drawn through core's `DebugDraw`,
+/// and `trace`, each new [`KitTrace`] entry logged. A game's hotkey or
+/// console command sets both with [`set_enabled`](Self::set_enabled), or
+/// each alone; a key ([`set_key`](Self::set_key)), none by default, names
+/// an action whose press flips the shapes alone, read each frame before the
+/// draw.
 ///
 /// # Examples
 ///
@@ -76,21 +81,60 @@ const PICKUP_COLOR: [f32; 4] = [1.0, 0.85, 0.2, 1.0];
 /// schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
 /// assert!(!world.resource::<DebugDraw>().is_empty(), "the path and its target");
 /// ```
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 pub struct KitDebug {
-    enabled: bool,
+    shapes: bool,
+    trace: bool,
+    /// The action whose press flips `shapes`.
+    key: Option<String>,
 }
 
 impl KitDebug {
-    /// Whether the shapes draw.
+    /// Whether either switch is on: the shapes draw or the trace logs.
     #[must_use]
     pub fn enabled(&self) -> bool {
-        self.enabled
+        self.shapes || self.trace
     }
 
-    /// Turns the shapes on or off.
+    /// Turns the shapes and the trace on or off together.
     pub fn set_enabled(&mut self, on: bool) {
-        self.enabled = on;
+        self.shapes = on;
+        self.trace = on;
+    }
+
+    /// Whether the shapes draw.
+    #[must_use]
+    pub fn shapes(&self) -> bool {
+        self.shapes
+    }
+
+    /// Turns the shapes on or off, the trace as it is.
+    pub fn set_shapes(&mut self, on: bool) {
+        self.shapes = on;
+    }
+
+    /// Whether the trace logs.
+    #[must_use]
+    pub fn trace(&self) -> bool {
+        self.trace
+    }
+
+    /// Turns the trace's log on or off, the shapes as they are.
+    pub fn set_trace(&mut self, on: bool) {
+        self.trace = on;
+    }
+
+    /// The action whose press flips the shapes, if one is named.
+    #[must_use]
+    pub fn key(&self) -> Option<&str> {
+        self.key.as_deref()
+    }
+
+    /// Names `action`, a declared action, whose press flips the shapes
+    /// alone, read each frame before the draw; `None` names none. A game
+    /// that sets the switches itself each frame leaves it unnamed.
+    pub fn set_key(&mut self, action: Option<&str>) {
+        self.key = action.map(str::to_owned);
     }
 }
 
@@ -104,11 +148,12 @@ impl KitDebug {
 /// target's cross, an orbit's circle and centre, a follower's goal, a
 /// `Wrap`'s and a `StayInView`'s region, an aim's ray (32 px, or to its
 /// target), and each hurtbox's, armed hitbox's (only while it can hit, in a
-/// deep red and a wider line), contact damage's own and pickup's shape at
-/// its entity's point, once a frame before the camera.
-/// While the
-/// resource is on it also logs each new [`KitTrace`] entry once, at `info`
-/// under target `tungsten_kit::trace`, which the log console shows.
+/// deep red and a wider line, placed by its entity's facing as it hits),
+/// contact damage's own and pickup's shape at its entity's point, once a
+/// frame before the camera. A press of the resource's key flips its shapes
+/// first. While its trace is on it also logs each new [`KitTrace`] entry
+/// once, at `info` under target `tungsten_kit::trace`, which the log
+/// console shows.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct KitDebugPlugin;
 
@@ -145,16 +190,16 @@ impl Plugin for KitDebugPlugin {
 /// The trace's log target.
 pub(crate) const TRACE_TARGET: &str = "tungsten_kit::trace";
 
-/// Logs the trace entries pushed since `logged`, while [`KitDebug`] is on,
-/// and moves `logged` past them; while it is off, `logged` follows the
-/// trace, so turning it on logs from then on.
+/// Logs the trace entries pushed since `logged`, while [`KitDebug`]'s trace
+/// is on, and moves `logged` past them; while it is off, `logged` follows
+/// the trace, so turning it on logs from then on.
 pub(crate) fn log_trace(world: &World, logged: &mut u64) {
     let Some(trace) = world.get_resource::<KitTrace>() else {
         return;
     };
     let on = world
         .get_resource::<KitDebug>()
-        .is_some_and(KitDebug::enabled);
+        .is_some_and(KitDebug::trace);
     if on {
         for entry in trace.since(*logged) {
             log::info!(target: TRACE_TARGET, "{entry}");
@@ -204,10 +249,24 @@ fn cross(draw: &mut DebugDraw, at: Vec2, half: f32, color: [f32; 4]) {
     );
 }
 
+/// Flips [`KitDebug`]'s shapes when its key's action was pressed this
+/// frame.
+fn flip_on_key(world: &mut World) {
+    let pressed = world
+        .get_resource::<KitDebug>()
+        .and_then(KitDebug::key)
+        .is_some_and(|action| tungsten_core::input::just_pressed(world, action));
+    if pressed {
+        let debug = world.resource_mut::<KitDebug>();
+        debug.shapes = !debug.shapes;
+    }
+}
+
 fn kit_debug_draw(world: &mut World) {
+    flip_on_key(world);
     if !world
         .get_resource::<KitDebug>()
-        .is_some_and(KitDebug::enabled)
+        .is_some_and(KitDebug::shapes)
     {
         return;
     }
@@ -320,13 +379,8 @@ fn draw_hit_shapes(world: &World, draw: &mut DebugDraw) {
             continue;
         }
         if let Some(at) = point_of(world, entity) {
-            draw_shape_at(
-                draw,
-                hitbox.shape().shape(),
-                at + hitbox.offset(),
-                HITBOX_COLOR,
-                HIT_THICKNESS,
-            );
+            let (shape, offset) = placed(world, entity, hitbox);
+            draw_shape_at(draw, shape, at + offset, HITBOX_COLOR, HIT_THICKNESS);
         }
     }
     for (entity, contact) in world.query::<(Entity, &ContactDamage)>() {

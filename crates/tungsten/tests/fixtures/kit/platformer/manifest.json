@@ -137,6 +137,12 @@
     },
     "lander": {
       "path": "prefabs/lander.json"
+    },
+    "swordsman": {
+      "path": "prefabs/swordsman.json"
+    },
+    "straw_post": {
+      "path": "prefabs/straw_post.json"
     }
   },
   "data": {

@@ -297,12 +297,13 @@ fn each_described_enum_variant_deserializes() {
             + 2
             + 6
             + 2
-            + 4,
+            + 4
+            + 2,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
          axes, the effect action's targets, the stack's refresh and expire policies, and the \
          ability action's ops and targets, the level's counter targets, the ability's \
-         directions, a cue rule's reasons, a cap's past and a clip rule's motions"
+         directions, a cue rule's reasons, a cap's past, a clip rule's motions and a hitbox's facings"
     );
 }
 

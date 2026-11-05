@@ -325,7 +325,7 @@ pub use present::character::{
     CHARACTER_ANIMATOR, CharacterAnimator, CharacterAnimatorPlugin, ClipRule, Clips,
 };
 pub use present::depth::{DEPTH_SORT, DepthSort, DepthSortPlugin};
-pub use present::facing::{FACING, Facing, FacingPlugin};
+pub use present::facing::{FACING, Facing, FacingPlugin, face_toward};
 pub use present::labels::{LABEL_TICK, LabelStyle, float_label};
 pub use present::looks::{EFFECT_LOOK, EFFECT_LOOK_LATE, Look, Overlay};
 pub use present::sound::SoundOnEvent;
@@ -368,8 +368,8 @@ pub mod prelude {
         Steering, SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
         TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered, TriggerZone, Used,
         WallContact, WeightedTable, WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin,
-        cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, float_label, heal,
-        knock_back, spawn_child, use_ability,
+        cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, face_toward,
+        float_label, heal, knock_back, spawn_child, use_ability,
     };
 }
 

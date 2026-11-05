@@ -10,7 +10,7 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
     describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
@@ -69,6 +69,11 @@ enum Snap {
 /// With `turn`, it writes `Transform.rotation` as the direction's angle
 /// plus its offset, so art drawn facing up turns with an offset of `π/2`; a
 /// rotation tween or an oscillator on the same entity is hidden. With
+/// `mirror` beside `turn`, art drawn facing right stays right side up:
+/// while the direction points left of the vertical the entity's
+/// `SpriteFlip` is set and the rotation is the angle less `π` and the
+/// offset, else unflipped at the angle plus the offset; a direction
+/// straight up or down keeps the last side. With
 /// `flip`, it writes the entity's `SpriteFlip` for art drawn facing right:
 /// flipped while it faces left, unflipped while it faces right, kept while
 /// it faces straight up or down, so one set of frames serves both sides
@@ -76,12 +81,16 @@ enum Snap {
 /// may show mirrored art instead. It reads no gameplay's state and gameplay
 /// reads none of its, and it works on children.
 ///
+/// A game turns it with [`face`](Self::face) or [`face_toward`]: the
+/// direction holds while its source gives nothing, so a face lasts until
+/// the entity moves, aims or steers another way.
+///
 /// Scene name `facing`:
-/// `{ "from": "motion", "snap": "free", "turn": false, "offset": 0, "min_speed": 1, "flip": false }`,
+/// `{ "from": "motion", "snap": "free", "turn": false, "offset": 0, "min_speed": 1, "flip": false, "mirror": false }`,
 /// `from` one of `motion` (default), `intent` and `aim`, `snap` one of
 /// `free` (default), `horizontal`, `four` and `eight`, `offset` in radians
-/// and `min_speed` in world pixels per second, each with those defaults.
-/// It is data: a game's save can hold it.
+/// and `min_speed` in world pixels per second, each with those defaults;
+/// `mirror` needs `turn`. It is data: a game's save can hold it.
 ///
 /// # Examples
 ///
@@ -125,6 +134,8 @@ pub struct Facing {
     min_speed: f32,
     /// It writes the entity's `SpriteFlip`.
     flip: bool,
+    /// It turns art drawn facing right, mirrored past the vertical.
+    mirror: bool,
     /// The unit direction at its last frame.
     direction: Vec2,
 }
@@ -147,6 +158,8 @@ struct FacingFields {
     direction: Vec2,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     flip: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    mirror: bool,
 }
 
 fn default_min_speed() -> f32 {
@@ -176,6 +189,7 @@ impl TryFrom<FacingFields> for Facing {
                 fields.direction
             ));
         }
+        mirror_needs_turn(fields.mirror, fields.turn)?;
         Ok(Self {
             from: fields.from,
             snap: fields.snap,
@@ -183,6 +197,7 @@ impl TryFrom<FacingFields> for Facing {
             offset: fields.offset,
             min_speed: fields.min_speed,
             flip: fields.flip,
+            mirror: fields.mirror,
             direction: fields.direction,
         })
     }
@@ -198,7 +213,17 @@ impl From<Facing> for FacingFields {
             min_speed: facing.min_speed,
             direction: facing.direction,
             flip: facing.flip,
+            mirror: facing.mirror,
         }
+    }
+}
+
+/// The check both forms share: `mirror` only beside `turn`.
+fn mirror_needs_turn(mirror: bool, turn: bool) -> Result<(), String> {
+    if mirror && !turn {
+        Err("mirror: needs `turn`".to_string())
+    } else {
+        Ok(())
     }
 }
 
@@ -220,6 +245,7 @@ impl Facing {
             offset: 0.0,
             min_speed: DEFAULT_MIN_SPEED,
             flip: false,
+            mirror: false,
             direction: Vec2::X,
         }
     }
@@ -286,6 +312,22 @@ impl Facing {
         self
     }
 
+    /// The turning facing, mirrored past the vertical so art drawn facing
+    /// right stays right side up: while it points left it sets the
+    /// entity's `SpriteFlip` and turns to the angle less `π` and its
+    /// offset; straight up or down keeps the last side.
+    ///
+    /// # Panics
+    ///
+    /// When it does not turn: [`turning`](Self::turning) first.
+    #[must_use]
+    #[track_caller]
+    pub fn mirroring(mut self) -> Self {
+        assert!(self.turn, "Facing::mirroring: a mirror needs turning first");
+        self.mirror = true;
+        self
+    }
+
     /// The facing, held while the entity moves slower than `speed` world
     /// pixels per second.
     ///
@@ -310,6 +352,17 @@ impl Facing {
         self.direction
     }
 
+    /// Faces `direction`, snapped as the facing snaps, whatever its minimum
+    /// speed; a zero or non-finite direction is ignored. The next present
+    /// pass turns the entity to it, and the facing holds it while its
+    /// source gives nothing, until the entity moves, aims or steers
+    /// another way.
+    pub fn face(&mut self, direction: Vec2) {
+        if let Some(direction) = self.snap_from(direction, f32::EPSILON) {
+            self.direction = direction;
+        }
+    }
+
     /// `input` snapped as the facing snaps, or `None` to hold: no input, or
     /// a motion under the minimum speed.
     fn snapped(&self, input: Vec2) -> Option<Vec2> {
@@ -317,6 +370,12 @@ impl Facing {
             FacingFrom::Motion => self.min_speed.max(f32::EPSILON),
             FacingFrom::Intent | FacingFrom::Aim => f32::EPSILON,
         };
+        self.snap_from(input, floor)
+    }
+
+    /// `input` snapped as the facing snaps, or `None` under `floor` or not
+    /// finite.
+    fn snap_from(&self, input: Vec2, floor: f32) -> Option<Vec2> {
         if !input.is_finite() || input.length() < floor {
             return None;
         }
@@ -405,8 +464,17 @@ impl Plugin for FacingPlugin {
                 )
                 .default("false"),
             )
+            .field(
+                FieldDescription::new(
+                    "mirror",
+                    FieldType::Bool,
+                    "with `turn`: art drawn facing right stays right side up, flipped and turned the other way while it faces left of the vertical",
+                )
+                .default("false"),
+            )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
+            .genre(RPG)
             .genre(SHOOTER)
             .sample("{}")
             .roundtrip(round_trip::<FacingDef>),
@@ -421,6 +489,7 @@ impl Plugin for FacingPlugin {
                 facing.offset = def.offset;
             }
             facing.flip = def.flip;
+            facing.mirror = def.mirror;
             (facing,)
         });
         let mut entities = Vec::new();
@@ -435,8 +504,21 @@ impl Plugin for FacingPlugin {
 
 /// `components.facing` as a scene writes it.
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "FacingScene")]
 struct FacingDef {
+    from: FacingFrom,
+    snap: Snap,
+    turn: bool,
+    offset: f32,
+    min_speed: f32,
+    flip: bool,
+    mirror: bool,
+}
+
+/// `components.facing` before its `mirror` is checked.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FacingScene {
     #[serde(default)]
     from: FacingFrom,
     #[serde(default)]
@@ -449,6 +531,49 @@ struct FacingDef {
     min_speed: f32,
     #[serde(default)]
     flip: bool,
+    #[serde(default)]
+    mirror: bool,
+}
+
+impl TryFrom<FacingScene> for FacingDef {
+    type Error = String;
+
+    fn try_from(scene: FacingScene) -> Result<Self, Self::Error> {
+        mirror_needs_turn(scene.mirror, scene.turn)?;
+        Ok(Self {
+            from: scene.from,
+            snap: scene.snap,
+            turn: scene.turn,
+            offset: scene.offset,
+            min_speed: scene.min_speed,
+            flip: scene.flip,
+            mirror: scene.mirror,
+        })
+    }
+}
+
+/// Faces `entity`'s [`Facing`] toward `point` from the entity's point (its
+/// `Position`, else its `Transform`), as [`Facing::face`] does, so it holds
+/// until the entity's source turns it; false when the entity has no
+/// facing or no point, or stands on `point`.
+pub fn face_toward(world: &mut World, entity: Entity, point: Vec2) -> bool {
+    let at = world
+        .get::<Position>(entity)
+        .map(|position| position.0)
+        .or_else(|| {
+            world
+                .get::<Transform>(entity)
+                .map(|transform| transform.position)
+        });
+    let (Some(at), Some(facing)) = (at, world.get_mut::<Facing>(entity)) else {
+        return false;
+    };
+    let toward = point - at;
+    let faces = toward.is_finite() && toward.length() >= f32::EPSILON;
+    if faces {
+        facing.face(toward);
+    }
+    faces
 }
 
 /// Sets every facing's direction from its source, its entity's rotation
@@ -469,12 +594,25 @@ fn facing(world: &mut World, entities: &mut Vec<Entity>) {
             .and_then(|input| facing.snapped(input))
             .unwrap_or(facing.direction);
         world.get_mut::<Facing>(entity).unwrap().direction = direction;
+        // A mirror keeps its last side while the direction is vertical.
+        let left = if direction.x == 0.0 {
+            world.get::<SpriteFlip>(entity).is_some_and(|flip| flip.0)
+        } else {
+            direction.x < 0.0
+        };
+        let mirrored = facing.mirror && left;
         if facing.turn
             && let Some(transform) = world.get_mut::<Transform>(entity)
         {
-            transform.rotation = direction.to_angle() + facing.offset;
+            transform.rotation = if mirrored {
+                direction.to_angle() - std::f32::consts::PI - facing.offset
+            } else {
+                direction.to_angle() + facing.offset
+            };
         }
-        if facing.flip && direction.x != 0.0 {
+        if facing.mirror {
+            write_flip(world, entity, left);
+        } else if facing.flip && direction.x != 0.0 {
             write_flip(world, entity, direction.x < 0.0);
         }
     }
@@ -518,7 +656,11 @@ impl Inspectable for Facing {
         } else {
             String::new()
         };
-        let flip = if self.flip { ", flipping" } else { "" };
+        let flip = match (self.flip, self.mirror) {
+            (_, true) => ", mirroring",
+            (true, false) => ", flipping",
+            (false, false) => "",
+        };
         vec![
             ("source", format!("{from}, snap {snap}{turn}{flip}")),
             ("direction", point(self.direction)),

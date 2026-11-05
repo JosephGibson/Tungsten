@@ -104,6 +104,9 @@
     },
     "claymore": {
       "path": "prefabs/claymore.json"
+    },
+    "missile": {
+      "path": "prefabs/missile.json"
     }
   },
   "data": {

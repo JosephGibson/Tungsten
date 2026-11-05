@@ -215,3 +215,101 @@ fn the_view_logs_only_the_entries_pushed_while_it_is_on() {
         "a clear logs nothing"
     );
 }
+
+/// The rig with the action `shapes` bound to F3 and an input to press it.
+fn keyed_rig() -> (World, Schedule) {
+    use tungsten_core::{ActionMap, Binding, InputState, KeyCode};
+    let (mut world, schedule) = rig();
+    let mut actions = ActionMap::new();
+    actions.replace_bindings("shapes", vec![Binding::Key { code: KeyCode::F3 }]);
+    world.insert_resource(actions);
+    world.insert_resource(InputState::new());
+    (world, schedule)
+}
+
+fn press_f3(world: &mut World) {
+    use tungsten_core::{InputState, KeyCode};
+    let input = world.resource_mut::<InputState>();
+    input.begin_frame();
+    input.key_down(KeyCode::F3);
+}
+
+fn release_f3(world: &mut World) {
+    use tungsten_core::{InputState, KeyCode};
+    let input = world.resource_mut::<InputState>();
+    input.begin_frame();
+    input.key_up(KeyCode::F3);
+}
+
+#[test]
+fn a_key_flips_the_shapes_alone() {
+    let (mut world, mut schedule) = keyed_rig();
+    world.spawn_with((
+        Transform::from_position(Vec2::ZERO),
+        Hurtbox::new(crate::HitShape::circle(8.0)),
+    ));
+    press_f3(&mut world);
+    assert_eq!(frame(&mut world, &mut schedule), 0, "no key named");
+    world.resource_mut::<KitDebug>().set_key(Some("shapes"));
+    assert_eq!(world.resource::<KitDebug>().key(), Some("shapes"));
+    release_f3(&mut world);
+    frame(&mut world, &mut schedule);
+    press_f3(&mut world);
+    assert_eq!(
+        frame(&mut world, &mut schedule),
+        1,
+        "the press shows the hurtbox"
+    );
+    let debug = world.resource::<KitDebug>();
+    assert!(debug.shapes() && !debug.trace(), "the shapes alone");
+    // Held, it flips nothing more; the next press hides them.
+    world
+        .resource_mut::<tungsten_core::InputState>()
+        .begin_frame();
+    assert_eq!(frame(&mut world, &mut schedule), 1);
+    release_f3(&mut world);
+    assert_eq!(frame(&mut world, &mut schedule), 1);
+    press_f3(&mut world);
+    assert_eq!(frame(&mut world, &mut schedule), 0);
+    assert!(!world.resource::<KitDebug>().enabled());
+    // The trace alone draws nothing.
+    world.resource_mut::<KitDebug>().set_trace(true);
+    release_f3(&mut world);
+    assert_eq!(frame(&mut world, &mut schedule), 0);
+    assert!(world.resource::<KitDebug>().enabled(), "a switch is on");
+    world.resource_mut::<KitDebug>().set_key(None);
+    press_f3(&mut world);
+    assert_eq!(
+        frame(&mut world, &mut schedule),
+        0,
+        "unnamed, the key does nothing"
+    );
+}
+
+#[test]
+fn set_enabled_sets_both() {
+    let mut debug = KitDebug::default();
+    assert!(!debug.shapes() && !debug.trace() && !debug.enabled());
+    debug.set_enabled(true);
+    assert!(debug.shapes() && debug.trace() && debug.enabled());
+    debug.set_shapes(false);
+    assert!(!debug.shapes() && debug.trace() && debug.enabled());
+    debug.set_enabled(false);
+    assert!(!debug.shapes() && !debug.trace() && !debug.enabled());
+    debug.set_shapes(true);
+    assert!(debug.shapes() && !debug.trace());
+    // The log follows the trace alone.
+    let mut world = World::new();
+    world.insert_resource(KitTrace::default());
+    world.insert_resource(debug);
+    let mut logged = 0;
+    let someone = world.spawn_with((Transform::default(),));
+    crate::foundation::trace::trace(&mut world, someone, || crate::TraceKind::Despawn {
+        by: "test",
+    });
+    log_trace(&world, &mut logged);
+    assert_eq!(
+        logged, 1,
+        "past the entry, with nothing logged while the trace is off"
+    );
+}

@@ -119,7 +119,8 @@ component facing: The direction the entity faces, from its motion, intent or aim
   field offset: f32 = 0.0 — radians added to the angle it turns to: π/2 for art drawn facing up
   field min_speed: f32 (>= 0) = 1.0 — world pixels per second under which it keeps facing
   field flip: bool = false — writes the entity's sprite flip from the side it faces, for art drawn facing right
-  genres: platformer, top_down, shooter
+  field mirror: bool = false — with `turn`: art drawn facing right stays right side up, flipped and turned the other way while it faces left of the vertical
+  genres: platformer, top_down, rpg, shooter
   sample: {}
 component flags: Named switches on the entity, which cues set or clear.
   field names: list of text — the value itself: the flags set at the start; names are dotted, undeclared
@@ -156,6 +157,7 @@ component hitbox: Hits the hurtboxes its shape meets over each step, each target
   field filter: tag filter = {} — the hurtboxes it hits, by their entity's tags; the load checks its tags
   field knockback: f32 (>= 0) = 0.0 — world pixels per second, pushing a target it hurts away from it
   field window: f32 (> 0) = null — seconds it hits for once armed, by `arm` or an ability's `hitbox` payload; always armed when left out
+  field facing: one of mirror | turn = null — its offset, written for an entity facing right, follows the entity's facing: `mirror` negates its x while it faces left, `turn` rotates it by the facing's angle, a box's half extents swapped while it faces nearer vertical; as written without a facing
   events: Struck
   genres: platformer, top_down, rpg, shooter, arpg
   sample: { "shape": { "circle": 4 }, "damage": 1 }

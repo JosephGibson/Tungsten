@@ -1,0 +1,24 @@
+{
+  "tag": "watchman",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 8
+      }
+    },
+    "facing": {
+      "snap": "eight",
+      "turn": true
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 8
+      }
+    }
+  }
+}

@@ -10,7 +10,7 @@
 //! dodge along the move stick and its reload's sweep; a lobber's grenade
 //! and its blast where it lands; a cryo trooper's cone; an escort carrier's
 //! escorts, held to three by their cap; a sapper's mines, a fourth refused
-//! at their cap with a blip.
+//! at their cap with a blip; 7.10g's missile, turning back right side up.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1637,5 +1637,40 @@ fn a_fourth_mine_is_refused_at_its_cap() {
         harness.step(1);
         assert_eq!(blips(&harness), 1, "dt {dt}: its blip");
         assert_eq!(tagged(&harness, "claymore").len(), 3, "dt {dt}");
+    }
+}
+
+/// 7.10g: a missile drawn facing right turns back under its acceleration:
+/// its facing turns it with the heading, and past the vertical its mirror
+/// flips it so the art stays right side up.
+#[test]
+fn a_missile_turns_back_right_side_up() {
+    use tungsten_core::components::SpriteFlip;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let missile = spawn(&mut harness, "missile", [0.0, 4000.0]);
+        let seen = |harness: &Harness| {
+            let world = harness.world();
+            let heading = world.get::<Velocity>(missile).unwrap().0;
+            let rotation = world.get::<Transform>(missile).unwrap().rotation;
+            let flipped = world.get::<SpriteFlip>(missile).is_some_and(|flip| flip.0);
+            (heading, Vec2::from_angle(rotation), flipped)
+        };
+        harness.step(frames_for(0.1, dt));
+        let (heading, nose, flipped) = seen(&harness);
+        assert!(heading.x > 0.0 && !flipped, "dt {dt}: outbound, unflipped");
+        assert!(
+            (nose - heading.normalize()).length() < 1e-3,
+            "dt {dt}: turned to its heading"
+        );
+        harness.step(frames_for(0.9, dt));
+        let (heading, nose, flipped) = seen(&harness);
+        assert!(heading.x < 0.0 && flipped, "dt {dt}: back, flipped");
+        assert!(nose.x > 0.0, "dt {dt}: right side up, not upside down");
+        let mirrored = Vec2::new(-heading.x, heading.y).normalize();
+        assert!(
+            (Vec2::new(nose.x, -nose.y) - mirrored).length() < 1e-3,
+            "dt {dt}: the flipped nose along the heading"
+        );
     }
 }

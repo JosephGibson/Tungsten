@@ -20,7 +20,8 @@
 //! its interval, a blob whose frosting shows its band's overlay, and a keg
 //! whose sparking look emits at its sheet's `fuse` point frame by frame,
 //! and a leaper whose jumps and landing cue dust at its feet; 7.10g's
-//! lander, whose landing plays its land clip once over its run.
+//! lander, whose landing plays its land clip once over its run, and its
+//! swordsman, whose swing mirrors to the side it turns to.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2113,5 +2114,45 @@ fn the_hero_lands_on_its_land_clip_and_runs_again() {
         );
         let animator = harness.world().get::<CharacterAnimator>(lander).unwrap();
         assert_eq!((animator.state(), animator.playing()), ("move", None));
+    }
+}
+
+/// 7.10g: the swordsman's swing, written facing right, strikes the post on
+/// its right; turned left by a step of its run, the same swing mirrors onto
+/// the post on its left.
+#[test]
+fn a_knights_swing_mirrors_when_it_turns() {
+    use crate::kit::Struck;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let swordsman = spawn(&mut harness, "swordsman", [0.0, 270.0]);
+        let right = spawn(&mut harness, "straw_post", [24.0, 270.0]);
+        let left = spawn(&mut harness, "straw_post", [-24.0, 270.0]);
+        let swing = |harness: &mut super::Harness| {
+            harness.press_action("attack");
+            let mut struck = Vec::new();
+            for frame in 0..frames_for(0.25, dt) {
+                harness.step(1);
+                if frame == 0 {
+                    harness.release_action("attack");
+                }
+                struck.extend(
+                    harness
+                        .events::<Struck>()
+                        .filter(|hit| hit.entity == swordsman)
+                        .map(|hit| hit.target),
+                );
+            }
+            struck
+        };
+        harness.step(2);
+        assert_eq!(swing(&mut harness), [right], "dt {dt}: facing right");
+        harness.press_action("move_left");
+        harness.step(1);
+        harness.release_action("move_left");
+        let facing = harness.world().get::<Facing>(swordsman).unwrap();
+        assert_eq!(facing.direction(), Vec2::NEG_X, "dt {dt}: turned");
+        assert_eq!(swing(&mut harness), [left], "dt {dt}: mirrored");
     }
 }

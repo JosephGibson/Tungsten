@@ -740,3 +740,117 @@ fn a_hitbox_a_skill_arms_strikes_from_its_delivery_for_that_activation_alone() {
         "a later activation the skill did not arm: its own 1"
     );
 }
+
+/// `entity`'s hitbox's shape and offset as the runner places them.
+fn placed_on(world: &World, entity: Entity) -> (tungsten_core::physics::Shape, Vec2) {
+    placed(world, entity, world.get::<Hitbox>(entity).unwrap())
+}
+
+fn facing_to(direction: Vec2) -> crate::Facing {
+    let mut facing = crate::Facing::new();
+    facing.face(direction);
+    facing
+}
+
+fn near(a: Vec2, b: Vec2) -> bool {
+    (a - b).length() < 1e-4
+}
+
+#[test]
+fn a_hitbox_mirrors_and_turns_with_its_facing() {
+    use tungsten_core::physics::Shape;
+    use tungsten_core::{EventQueue, Transform};
+    let (mut world, mut schedule) = hit_rig(&["fire"]);
+    let swing =
+        Hitbox::new(HitShape::aabb(Vec2::new(10.0, 4.0)), 1.0).with_offset(Vec2::new(16.0, -2.0));
+    let wide = Shape::Aabb {
+        half_extents: Vec2::new(10.0, 4.0),
+    };
+    let tall = Shape::Aabb {
+        half_extents: Vec2::new(4.0, 10.0),
+    };
+    let knight = world.spawn_with((
+        Transform::from_position(Vec2::new(100.0, 0.0)),
+        swing.clone().mirrored(),
+        facing_to(Vec2::X),
+    ));
+    assert_eq!(placed_on(&world, knight), (wide, Vec2::new(16.0, -2.0)));
+    world
+        .get_mut::<crate::Facing>(knight)
+        .unwrap()
+        .face(Vec2::NEG_X);
+    assert_eq!(placed_on(&world, knight), (wide, Vec2::new(-16.0, -2.0)));
+    let warden = world.spawn_with((
+        Transform::from_position(Vec2::new(500.0, 0.0)),
+        swing.turned(),
+        facing_to(Vec2::X),
+    ));
+    for (direction, shape, offset) in [
+        (Vec2::X, wide, Vec2::new(16.0, -2.0)),
+        (Vec2::Y, tall, Vec2::new(2.0, 16.0)),
+        (Vec2::NEG_X, wide, Vec2::new(-16.0, 2.0)),
+        (Vec2::NEG_Y, tall, Vec2::new(-2.0, -16.0)),
+    ] {
+        world
+            .get_mut::<crate::Facing>(warden)
+            .unwrap()
+            .face(direction);
+        let (got_shape, got_offset) = placed_on(&world, warden);
+        assert_eq!(got_shape, shape, "{direction}");
+        assert!(near(got_offset, offset), "{direction}: {got_offset}");
+    }
+    // The runner swings by the side faced: a target on the knight's left is
+    // missed facing right and hit facing left.
+    let target = world.spawn_with((
+        Transform::from_position(Vec2::new(84.0, 0.0)),
+        Hurtbox::new(HitShape::circle(4.0)),
+        crate::Health::new(10.0),
+    ));
+    world
+        .get_mut::<crate::Facing>(knight)
+        .unwrap()
+        .face(Vec2::X);
+    fixed_step(&mut world, &mut schedule);
+    let struck = |world: &World| {
+        world
+            .resource::<EventQueue<Struck>>()
+            .iter()
+            .filter(|hit| hit.entity == knight && hit.target == target)
+            .count()
+    };
+    assert_eq!(struck(&world), 0, "facing right, its swing is on the right");
+    world
+        .get_mut::<crate::Facing>(knight)
+        .unwrap()
+        .face(Vec2::NEG_X);
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(struck(&world), 1, "facing left, mirrored onto the target");
+}
+
+#[test]
+fn a_hitbox_without_facing_keeps_its_offset() {
+    use tungsten_core::Transform;
+    let (mut world, _) = rig();
+    let swing = Hitbox::new(HitShape::circle(4.0), 1.0).with_offset(Vec2::new(16.0, -2.0));
+    // A mirrored hitbox on an entity without a Facing, and a plain one on an
+    // entity facing left: each as written.
+    let bare = world.spawn_with((Transform::default(), swing.clone().mirrored()));
+    let plain = world.spawn_with((Transform::default(), swing.clone(), facing_to(Vec2::NEG_X)));
+    for entity in [bare, plain] {
+        assert_eq!(placed_on(&world, entity).1, Vec2::new(16.0, -2.0));
+    }
+    // A save writes `facing` only when set; the scene names it or refuses.
+    let saved = serde_json::to_value(&swing).unwrap();
+    assert!(
+        saved.get("facing").is_none(),
+        "a plain hitbox keeps its bytes"
+    );
+    let turned = swing.turned();
+    let saved = serde_json::to_value(&turned).unwrap();
+    assert_eq!(saved["facing"], "turn");
+    assert_eq!(serde_json::from_value::<Hitbox>(saved).unwrap(), turned);
+    let scene = |facing: &str| json!({ "shape": { "circle": 4 }, "damage": 1, "facing": facing });
+    assert!(check(&world, HITBOX, &scene("mirror")).is_ok());
+    assert!(check(&world, HITBOX, &scene("turn")).is_ok());
+    assert!(check(&world, HITBOX, &scene("flip")).is_err());
+}

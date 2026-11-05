@@ -188,6 +188,9 @@
     },
     "ghoul_scout": {
       "path": "prefabs/ghoul_scout.json"
+    },
+    "watchman": {
+      "path": "prefabs/watchman.json"
     }
   },
   "data": {
