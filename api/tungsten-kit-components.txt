@@ -33,13 +33,14 @@ component cap: Holds its group's live instances to a number: a kit spawn past it
   field past: one of oldest | refuse = "oldest" — past the max: the oldest end, restored ones first, then by admission, each sending `culled` when named, or the spawn is refused
   genres: rpg, shooter
   sample: { "group": "salt", "max": 2 }
-component character_animator: Picks the entity's animation clip each frame: idle, move, rise or fall, by its facing when a clip is a set.
-  field idle: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out — what it shows standing; the load checks each ID
-  field move: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out = null — what it shows moving; `idle` when left out
-  field rise: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out = null — what a platformer shows rising; `idle` when left out
-  field fall: an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out = null — what a platformer shows falling; `idle` when left out
+component character_animator: Picks the entity's animation clip each frame: idle, move, rise or fall, by its facing when a clip is a set, its rules over that, a one-shot over both.
+  field idle: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up — what it shows standing; the load checks each ID
+  field move: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up = null — what it shows moving; `idle` when left out
+  field rise: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up = null — what a platformer shows rising; `idle` when left out
+  field fall: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up = null — what a platformer shows falling; `idle` when left out
   field min_speed: f32 (>= 0) = 10.0 — world pixels per second from which it moves
-  genres: platformer, top_down
+  field rules: list of shape clip_rule = [] — clips over the motion state's by the entity's tags and motion, the first that passes; the load checks each tag and ID
+  genres: platformer, top_down, rpg, arpg
   sample: { "idle": "hero_idle" }
 component contact_damage: Hurts the hurtboxes its shape touches, at once and again each interval while they touch: a hazard, an aura.
   field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 — each hit's damage, which a `damage` stat writes; a map of declared damage types to amounts gives its typed parts, in name order, which the stat scales; 0 is a trigger whose `hit` cues run
@@ -323,6 +324,8 @@ shape ability: What an entity can do: fired by a trigger, at a cost, with a cool
   field payload: list of shape ability_payload — what a use does, in order; at least one
   field tags: list of tag = null — its context, `skill.*` by convention, which its sheet's lines and its hits read; the load checks each
   field skill: shape skill = null — a skill sheet, resolved at a use before the cost: its cost and cooldown replace the ability's, and each payload carries its snapshot to the hits
+  field icon: text = null — a manifest sprite ID a bar shows (`Abilities::icon`); the load checks it
+  field clip: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up = null — a clip played once on the user's character animator after a use's payloads; the load checks each ID
   sample: { "payload": [{ "effect": "swift" }] }
 shape ability_action: An ability of the subject or the other entity used now, as `use_ability` uses it, or made ready with every charge.
   field name: text — the ability's name in the entity's `abilities`: an entry's ID or `#<index>`
@@ -400,6 +403,11 @@ shape child: One child: its prefab and its offset from the parent.
   field prefab: prefab ID — what it spawns; the load checks the ID and refuses a prefab with a `rigid_body`
   field offset: [x, y] = [0.0, 0.0] — world pixels from the parent's position
   sample: { "prefab": "glow" }
+shape clip_rule: A clip shown over the motion state's while the entity's tags pass `when`, its motion is `motion`, or both.
+  field when: tag filter = null — the entity's tags, `state.*` by convention for a state the game sets; the load checks each
+  field motion: one of idle | move | rise | fall = null — the motion state it needs
+  field clip: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up — what it shows; the load checks each ID
+  sample: { "motion": "move", "clip": "hero_run" }
 shape conduct_payload: A strike on the use's target that jumps on, one receiver a step, from its last receiver to the nearest live receiver within reach, not yet struck, weaker each jump; an immune or stopping receiver ends it unstruck.
   field damage: f32 (>= 0) — the first strike's damage, a request from the user at the receiver
   field tags: list of tag = [] — the damage's types; a receiver whose `resist` factor for them is 0 ends it; the load checks each
@@ -452,6 +460,7 @@ shape cue_action: One reaction to an event.
   field ability: shape ability_action — the subject's or the other's ability used now, or made ready; a name alone reads as `{ "name": .. }`
   field loop: shape loop_action — the subject wants a manifest sound looping: one voice per sound at its loudest want by the cue listener
   field stop: shape stop_action — the subject's want of a looping sound ends; the last one's voice fades out
+  field clip: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up — a clip played once on the subject's character animator over its state's and its rules', from its first frame; the load checks each ID
   sample: { "despawn": {} }
 shape cue_amount: A rule's range over an occurrence's amount, each end inclusive and optional.
   field min: f32 = null — the least amount that passes

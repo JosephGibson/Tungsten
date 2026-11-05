@@ -24,7 +24,8 @@
 //! kindled lantern whose look tints it over a colour tween and glows, and
 //! a blazing crate whose look lights a lurker and crackles, and a coffer
 //! whose one game event registration brings `opened` and `emptied` in by
-//! name.
+//! name; 7.10g's ghoul scout, whose alert clip shows by its animator's rule
+//! while a game's `state.alerted` tag is on.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3040,5 +3041,40 @@ fn a_chain_bolt_jumps_three_conductors_and_ends_at_the_frozen_one() {
             100.0,
             "dt {dt}: the frozen one ends it unstruck"
         );
+    }
+}
+
+/// 7.10g: the ghoul scout walks its beat in its walk clip; a game's
+/// `state.alerted` tag shows its alert clip by its animator's rule while it
+/// walks, and the walk once the tag goes.
+#[test]
+fn an_alerted_ghoul_shows_its_alert_clip() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let scout = spawn(&mut harness, "ghoul_scout", [0.0, 3000.0]);
+        let shown = |harness: &Harness| {
+            let world = harness.world();
+            let state = world.get::<AnimationState>(scout).unwrap();
+            let animator = world.get::<CharacterAnimator>(scout).unwrap();
+            (state.animation_id.clone(), animator.state())
+        };
+        harness.step(2);
+        assert_eq!(shown(&harness), ("ghoul_walk".into(), "move"), "dt {dt}");
+        let alert = |harness: &mut Harness, on: bool| {
+            let tags = harness.world_mut().get_mut::<Tags>(scout).unwrap();
+            if on {
+                tags.insert("state.alerted");
+            } else {
+                tags.remove("state.alerted");
+            }
+        };
+        alert(&mut harness, true);
+        harness.step(1);
+        assert_eq!(shown(&harness), ("ghoul_alert".into(), "move"), "dt {dt}");
+        harness.step(frames_for(0.5, dt));
+        assert_eq!(shown(&harness).0, "ghoul_alert", "dt {dt}: while alerted");
+        alert(&mut harness, false);
+        harness.step(1);
+        assert_eq!(shown(&harness), ("ghoul_walk".into(), "move"), "dt {dt}");
     }
 }

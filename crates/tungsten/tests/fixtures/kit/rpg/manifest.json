@@ -71,6 +71,9 @@
     },
     "ward_wall": {
       "path": "prefabs/ward_wall.json"
+    },
+    "thrower": {
+      "path": "prefabs/thrower.json"
     }
   },
   "data": {
@@ -129,6 +132,17 @@
       "ward": {
         "path": "data/cue_rules/ward.json"
       }
+    }
+  },
+  "animations": {
+    "warden_idle": {
+      "path": "animations/warden_idle.json"
+    },
+    "warden_walk": {
+      "path": "animations/warden_walk.json"
+    },
+    "warden_throw": {
+      "path": "animations/warden_throw.json"
     }
   }
 }

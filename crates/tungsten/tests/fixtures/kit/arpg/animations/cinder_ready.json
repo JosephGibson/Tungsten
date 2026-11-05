@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "cinder_icon"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "cinder_icon"
+    }
+  ],
+  "looping": true
+}

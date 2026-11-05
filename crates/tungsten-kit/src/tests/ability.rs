@@ -2514,6 +2514,173 @@ fn a_place_is_refused_with_no_point_no_room_or_at_its_cap() {
     assert_eq!(counts, [1, 1, 0, 0, 0, 2], "nothing more spawned");
 }
 
+/// The clips `caster_idle` and `caster_cast` and the sprite `cinder_icon`
+/// in `world`, for a look's load check.
+fn look_assets(world: &mut World) {
+    use tungsten_core::assets::AnimationFrame;
+    use tungsten_core::{AnimationData, AnimationRegistry, SpriteAssetId};
+    let mut clips = AnimationRegistry::new();
+    for (id, first) in [("caster_idle", 0), ("caster_cast", 4)] {
+        let frames = vec![AnimationFrame {
+            sprite: SpriteAssetId::new(first),
+            duration_ms: 100,
+            sound: None,
+        }];
+        clips.insert(
+            id.to_string(),
+            AnimationData {
+                looping: false,
+                frames,
+            },
+        );
+    }
+    world.insert_resource(clips);
+    let mut assets = AssetRegistry::new();
+    assets.intern_sprite("cinder_icon");
+    world.insert_resource(assets);
+}
+
+fn puff() -> Payload {
+    Payload::Spawn {
+        prefab: "puff".to_string(),
+        speed: 0.0,
+        offset: 0.0,
+    }
+}
+
+#[test]
+fn a_use_plays_its_clip_and_names_its_icon() {
+    use crate::present::character::{CharacterAnimator, Clips};
+    let (mut world, _) = rig();
+    look_assets(&mut world);
+    let cast = insert(
+        &mut world,
+        "cast",
+        Ability::new()
+            .with_payload(puff())
+            .with_icon("cinder_icon")
+            .with_clip("caster_cast"),
+    );
+    let caster = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(cast.clone()),
+            CharacterAnimator::new("caster_idle"),
+        ),
+    );
+    let post = at(&mut world, 50.0, 0.0, (Abilities::new().with(cast),));
+    assert_eq!(use_ability(&mut world, caster, "cast"), Used::Used);
+    assert_eq!(
+        world.get::<CharacterAnimator>(caster).unwrap().playing(),
+        Some(&Clips::one("caster_cast"))
+    );
+    assert!(skipped(&world, caster).is_empty());
+    assert_eq!(use_ability(&mut world, post, "cast"), Used::Used);
+    assert_eq!(skipped(&world, post), [("clip", NO_ANIMATOR)]);
+    let data = world.resource::<DataRegistry>();
+    let abilities = world.get::<Abilities>(caster).unwrap();
+    assert_eq!(abilities.icon(data, "cast"), Some("cinder_icon"));
+    assert_eq!(
+        abilities.clip(data, "cast"),
+        Some(&Clips::one("caster_cast"))
+    );
+    assert_eq!(abilities.icon(data, "wand"), None, "not owned");
+
+    // The data form, the load's check, and a plain ability's bytes.
+    let shown: Ability = serde_json::from_value(json!({
+        "payload": [{ "impulse": 0 }],
+        "icon": "cinder_icon",
+        "clip": { "aim": ["caster_idle", "caster_cast"] }
+    }))
+    .unwrap();
+    assert_eq!(serde_json::to_value(&shown).unwrap()["icon"], "cinder_icon");
+    shown.check(&world).unwrap();
+    for (ability, field, id) in [
+        (shown.clone().with_icon("cinder_icn"), "icon", "cinder_icn"),
+        (shown.clone().with_clip("caster_cst"), "clip", "caster_cst"),
+    ] {
+        let error = ability.check(&world).unwrap_err();
+        assert_eq!((error.field.as_str(), error.id.as_str()), (field, id));
+    }
+    let plain = serde_json::to_value(Ability::new().with_payload(puff())).unwrap();
+    assert!(plain.get("icon").is_none() && plain.get("clip").is_none());
+}
+
+#[test]
+fn an_inline_abilitys_look_is_shared_across_the_tick() {
+    let (mut world, mut schedule) = rig();
+    let cast = Ability::new()
+        .with_payload(puff())
+        .with_icon("cinder_icon")
+        .with_clip("caster_cast");
+    let caster = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(DataRef::inline(cast)),),
+    );
+    let look = |world: &World| {
+        world.get::<Abilities>(caster).unwrap().entries[0]
+            .ability
+            .as_inline()
+            .unwrap()
+            .look
+            .clone()
+            .unwrap()
+    };
+    let before = look(&world);
+    steps(&mut world, &mut schedule, 2);
+    assert!(
+        Arc::ptr_eq(&before, &look(&world)),
+        "the ticker's clone copies the pointer"
+    );
+    assert_eq!(std::mem::size_of::<Option<Arc<AbilityLook>>>(), 8);
+}
+
+#[test]
+fn an_id_backed_look_reads_before_a_tick_and_after_a_reload() {
+    use crate::present::character::Clips;
+    let (mut world, mut schedule) = rig();
+    insert(
+        &mut world,
+        "cinder",
+        Ability::new()
+            .with_payload(puff())
+            .with_icon("cinder_icon")
+            .with_clip("caster_cast"),
+    );
+    let caster = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(DataRef::by_id("cinder")),),
+    );
+    let read = |world: &World| {
+        let data = world.resource::<DataRegistry>();
+        let abilities = world.get::<Abilities>(caster).unwrap();
+        (
+            abilities.icon(data, "cinder").map(str::to_owned),
+            abilities.clip(data, "cinder").cloned(),
+        )
+    };
+    assert_eq!(
+        read(&world),
+        (Some("cinder_icon".into()), Some(Clips::one("caster_cast"))),
+        "before its first tick"
+    );
+    // A reload replaces the entry: the next read shows it.
+    insert(
+        &mut world,
+        "cinder",
+        Ability::new().with_payload(puff()).with_icon("ember_icon"),
+    );
+    assert_eq!(read(&world), (Some("ember_icon".into()), None));
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(read(&world), (Some("ember_icon".into()), None));
+}
+
 #[test]
 fn the_payload_keeps_its_size() {
     assert_eq!(std::mem::size_of::<Payload>(), 32);

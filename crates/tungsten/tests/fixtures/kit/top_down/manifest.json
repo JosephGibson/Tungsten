@@ -185,6 +185,9 @@
     },
     "frozen_pylon": {
       "path": "prefabs/frozen_pylon.json"
+    },
+    "ghoul_scout": {
+      "path": "prefabs/ghoul_scout.json"
     }
   },
   "data": {
@@ -199,6 +202,9 @@
       },
       "storm": {
         "path": "data/storm_tags.json"
+      },
+      "state": {
+        "path": "data/state_tags.json"
       }
     },
     "stats": {
@@ -361,6 +367,15 @@
     },
     "seeker_walk_down": {
       "path": "animations/seeker_walk_down.json"
+    },
+    "ghoul_idle": {
+      "path": "animations/ghoul_idle.json"
+    },
+    "ghoul_walk": {
+      "path": "animations/ghoul_walk.json"
+    },
+    "ghoul_alert": {
+      "path": "animations/ghoul_alert.json"
     }
   },
   "shaders": {

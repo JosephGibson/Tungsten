@@ -39,6 +39,7 @@ use crate::overlap::hit::Struck;
 use crate::overlap::pickup::PickedUp;
 use crate::overlap::projectile::ProjectileExpired;
 use crate::overlap::zone::ZoneEntered;
+use crate::present::character::{CLIPS_FORM, CharacterAnimator, Clips, check_clips};
 use crate::present::labels::{
     CritLabel, LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, PartLabel, TickLabel,
     float_label, label_tick,
@@ -265,7 +266,7 @@ impl Cues {
 
 /// One reaction to an event: spawn a prefab, roll a loot table, change a
 /// counter or a flag, despawn, apply an effect, use or refill an ability,
-/// or present (a sound, a shake, a squash, a flash, a label).
+/// or present (a sound, a shake, a squash, a flash, a label, a clip).
 /// `counter`, `flag`, `despawn`, `effect` and `ability` act on the event's
 /// subject by default; [`for_other`](Self::for_other) points them at the event's
 /// other entity and [`for_game`](Self::for_game) the first two at the
@@ -291,6 +292,7 @@ impl Cues {
 /// | ability | `{ "ability": "wand" }`, or `{ "ability": { "name": "wand", "op": "refill", "target": "other" } }`, the named ability of the subject or the other used now (`op` `use`), or made ready with every charge (`refill`) |
 /// | loop | `{ "loop": { "id": "crackle", "volume": 1.0, "fade": 0.1 } }`, the subject wants the sound looping: one voice per sound ID at its loudest want by the [`CueListener`] |
 /// | stop | `{ "stop": { "id": "crackle", "fade": 0.1 } }`, the subject's want of the loop ends; the last one's voice fades out |
+/// | clip | `{ "clip": "hero_land" }`, a [`Clips`] played once on the subject's [`CharacterAnimator`] over its state's ([`play`](CharacterAnimator::play)) |
 ///
 /// # Examples
 ///
@@ -376,6 +378,9 @@ pub(crate) enum ActionKind {
         id: String,
         fade: f32,
     },
+    /// A one-shot on the subject's animator, boxed so the action keeps its
+    /// size.
+    Clip(Box<Clips>),
 }
 
 /// A counter action's change.
@@ -713,6 +718,14 @@ impl CueAction {
         Self::of(ActionKind::Flash)
     }
 
+    /// Plays `clips` once on the subject's [`CharacterAnimator`] over its
+    /// state's clip and rules ([`play`](CharacterAnimator::play)); a subject
+    /// without one skips it, traced. Data form `{ "clip": "hero_land" }`.
+    #[must_use]
+    pub fn clip(clips: impl Into<Clips>) -> Self {
+        Self::of(ActionKind::Clip(Box::new(clips.into())))
+    }
+
     /// Floats the event's amount at its position in `style`.
     #[must_use]
     pub fn label(style: LabelStyle) -> Self {
@@ -864,7 +877,7 @@ impl CueAction {
 
     /// The action's data name: `prefab`, `counter`, `flag`, `despawn`,
     /// `sound`, `shake`, `squash`, `flash`, `label`, `roll`, `effect`,
-    /// `ability`, `loop` or `stop`.
+    /// `ability`, `loop`, `stop` or `clip`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self.kind {
@@ -882,6 +895,7 @@ impl CueAction {
             ActionKind::Ability { .. } => "ability",
             ActionKind::Loop { .. } => "loop",
             ActionKind::Stop { .. } => "stop",
+            ActionKind::Clip(_) => "clip",
         }
     }
 }
@@ -920,6 +934,7 @@ pub(crate) enum CueActionDef {
     Ability(AbilityActionDef),
     Loop(LoopDef),
     Stop(StopDef),
+    Clip(Clips),
 }
 
 /// A `shake` action as data writes it: the trauma alone, or an object of
@@ -1467,6 +1482,7 @@ impl TryFrom<CueActionDef> for CueAction {
                 id: def.id,
                 fade: def.fade,
             },
+            CueActionDef::Clip(clips) => ActionKind::Clip(Box::new(clips)),
         };
         Ok(Self { kind })
     }
@@ -1541,6 +1557,7 @@ impl From<CueAction> for CueActionDef {
                 CueActionDef::Loop(LoopDef { id, volume, fade })
             }
             ActionKind::Stop { id, fade } => CueActionDef::Stop(StopDef { id, fade }),
+            ActionKind::Clip(clips) => CueActionDef::Clip(*clips),
         }
     }
 }
@@ -2789,6 +2806,7 @@ fn check_actions(
                     event.name,
                 ));
             }
+            ActionKind::Clip(clips) => check_clips(world, &at, clips)?,
             ActionKind::PartLabel(part) => {
                 if let Some(ticks) = &part.ticks {
                     for (field, name) in ticks.kind.names() {
@@ -3090,6 +3108,7 @@ const NO_WORLD_CUE: &str = "the World has no such world cue";
 const NO_STYLE: &str = "the part's types set no label style";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
 const NO_ABILITY: &str = "the entity owns no such ability";
+const NO_ANIMATOR: &str = "the subject has no CharacterAnimator";
 const NOT_USED: &str = "the ability was not ready, had no charge, no cost or no target";
 const WAITING: &str = "a rule ran for the subject within its min_interval";
 const CAPPED: &str = "a rule ran its cap this step";
@@ -3598,6 +3617,12 @@ impl Reactor {
                 });
             }
             ActionKind::Flash => start_flash(world, subject),
+            ActionKind::Clip(clips) => {
+                let Some(animator) = world.get_mut::<CharacterAnimator>(subject) else {
+                    return skip(world, NO_ANIMATOR);
+                };
+                animator.play((**clips).clone());
+            }
             ActionKind::Label(Some(style)) => {
                 let Some(amount) = occurrence.amount else {
                     return skip(world, NO_AMOUNT);
@@ -4326,6 +4351,11 @@ fn describe_cues(world: &mut World) {
                 "stop",
                 FieldType::Shape("stop_action"),
                 "the subject's want of a looping sound ends; the last one's voice fades out",
+            ))
+            .field(FieldDescription::new(
+                "clip",
+                FieldType::Object(CLIPS_FORM),
+                "a clip played once on the subject's character animator over its state's and its rules', from its first frame; the load checks each ID",
             ))
             .sample(r#"{ "despawn": {} }"#)
             .roundtrip(round_trip::<CueActionDef>),

@@ -228,6 +228,74 @@ fn each_action_reads_and_writes_its_data_form() {
 }
 
 #[test]
+fn a_clip_action_plays_on_the_subject() {
+    use tungsten_core::assets::AnimationFrame;
+    use tungsten_core::{AnimationData, AnimationRegistry, SpriteAssetId, Transform};
+
+    use crate::foundation::trace::KitTrace;
+    use crate::{CharacterAnimator, Health, damage};
+
+    let (mut world, mut schedule) = running::rig();
+    let mut clips = AnimationRegistry::new();
+    for (id, first) in [("hero_idle", 0), ("hero_hurt", 5)] {
+        let frames = vec![AnimationFrame {
+            sprite: SpriteAssetId::new(first),
+            duration_ms: 100,
+            sound: None,
+        }];
+        clips.insert(
+            id.to_string(),
+            AnimationData {
+                looping: true,
+                frames,
+            },
+        );
+    }
+    world.insert_resource(clips);
+    let hurt = Cues::new().on("damaged", [CueAction::clip("hero_hurt")]);
+    let hero = world.spawn_with((
+        Health::new(5.0),
+        CharacterAnimator::new("hero_idle"),
+        hurt.clone(),
+        Transform::default(),
+    ));
+    let post = world.spawn_with((Health::new(5.0), hurt, Transform::default()));
+    damage(&mut world, hero, 1.0);
+    damage(&mut world, post, 1.0);
+    running::step(&mut world, &mut schedule);
+    assert_eq!(
+        world.get::<CharacterAnimator>(hero).unwrap().playing(),
+        Some(&Clips::one("hero_hurt"))
+    );
+    assert!(
+        world.resource::<KitTrace>().iter().any(|entry| {
+            entry.entity == post
+                && matches!(
+                    entry.kind,
+                    TraceKind::Skipped {
+                        action: "clip",
+                        why: NO_ANIMATOR,
+                        ..
+                    }
+                )
+        }),
+        "a subject without an animator skips it, traced"
+    );
+    let action = CueAction::clip(Clips::aim(["hero_idle", "hero_hurt"]));
+    let data = json!({ "clip": { "aim": ["hero_idle", "hero_hurt"] } });
+    assert_eq!(serde_json::to_value(&action).unwrap(), data);
+    assert_eq!(serde_json::from_value::<CueAction>(data).unwrap(), action);
+    assert_eq!(action.name(), "clip");
+    check(&world, &json!({ "damaged": [{ "clip": "hero_hurt" }] })).unwrap();
+    let error = check(
+        &world,
+        &json!({ "damaged": [{ "clip": { "aim": ["hero_idle", "hero_hrt"] } }] }),
+    )
+    .unwrap_err();
+    assert!(error.contains("clip.aim.1"), "{error}");
+}
+
+#[test]
 fn the_data_form_refuses_what_the_constructors_refuse() {
     for bad in [
         json!({ "flash": {}, "shake": 1 }),
@@ -516,7 +584,7 @@ mod running {
     /// A World running the cues with health, counters, a command buffer, a
     /// trace, the shake and squash queues, audio, the prefab `puff`, the
     /// sound `blip` and the flash material.
-    fn rig() -> (World, Schedule) {
+    pub(super) fn rig() -> (World, Schedule) {
         let (mut world, _) = super::rig();
         world.insert_resource(Time::new());
         world.insert_resource(CommandBuffer::new());
@@ -545,7 +613,7 @@ mod running {
     }
 
     /// One fixed step of 1/60 s, without the command flush.
-    fn step(world: &mut World, schedule: &mut Schedule) {
+    pub(super) fn step(world: &mut World, schedule: &mut Schedule) {
         world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
         world.resource_mut::<Time>().enter_fixed_step();
         schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});

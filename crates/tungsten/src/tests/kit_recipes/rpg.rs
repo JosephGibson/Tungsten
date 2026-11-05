@@ -5,7 +5,8 @@
 //! blessing and level on the adventurer; 7.10c's lantern warden, Lantern
 //! Ward's: its bell, flask and run as cue events, its flask from its centre,
 //! its toll's wave; its wisps, held to two by their cap, the first culled
-//! with a poof; its salt, set down on a mark and refused inside a wall.
+//! with a poof; its salt, set down on a mark and refused inside a wall;
+//! 7.10g's thrower, whose throw's cue plays its clip over its walk.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -621,5 +622,43 @@ fn salt_is_set_down_on_its_mark_and_refused_on_a_wall() {
         );
         harness.step(1);
         assert_eq!(tagged(&harness, "salt").len(), 1, "dt {dt}");
+    }
+}
+
+/// 7.10g: the thrower walks; a throw's `ability_used` cue plays its throw
+/// clip once over the walk, the walk showing again after its 300 ms.
+#[test]
+fn the_warden_throws_over_its_walk() {
+    use tungsten_core::AnimationState;
+
+    use crate::kit::CharacterAnimator;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let thrower = spawn(&mut harness, "thrower", [100.0, 100.0]);
+        let shown = |harness: &Harness| {
+            let world = harness.world();
+            let state = world.get::<AnimationState>(thrower).unwrap();
+            let animator = world.get::<CharacterAnimator>(thrower).unwrap();
+            (state.animation_id.clone(), animator.state())
+        };
+        harness.press_action("move_right");
+        harness.step(2);
+        assert_eq!(shown(&harness), ("warden_walk".into(), "move"), "dt {dt}");
+        harness.press_action("attack");
+        harness.step(1);
+        harness.release_action("attack");
+        assert_eq!(
+            shown(&harness),
+            ("warden_throw".into(), "move"),
+            "dt {dt}: the throw over the walk"
+        );
+        assert_eq!(tagged(&harness, "poof").len(), 1, "dt {dt}: its payload");
+        for _ in 1..frames_for(0.3, dt) {
+            harness.step(1);
+            assert_eq!(shown(&harness).0, "warden_throw", "dt {dt}");
+        }
+        harness.step(1);
+        assert_eq!(shown(&harness), ("warden_walk".into(), "move"), "dt {dt}");
     }
 }

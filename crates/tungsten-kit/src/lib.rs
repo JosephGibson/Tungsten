@@ -189,8 +189,9 @@
 //!   scene component.
 //! - **Present.** [`AnimationPlugin`]: an animated sprite, whose
 //!   `AnimationState` writes its current frame into `Sprite.asset_id`.
-//!   [`CharacterAnimator`], [`Clips`] and [`CharacterAnimatorPlugin`]: the
-//!   clip a character's motion and facing pick. [`Facing`] and
+//!   [`CharacterAnimator`], [`Clips`], [`ClipRule`] and
+//!   [`CharacterAnimatorPlugin`]: the clip a character's motion and facing
+//!   pick, rules over tags and motion, and one-shots over both. [`Facing`] and
 //!   [`FacingPlugin`]: the way an entity faces, turning it when asked.
 //!   [`DepthSort`] and [`DepthSortPlugin`]: a sprite sorted by how low it
 //!   stands. [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the
@@ -321,7 +322,7 @@ pub use overlap::zone::{ZONE_TICK, Zone, ZoneEntered, ZonePlugin};
 pub use present::animation::{ANIMATION_TICK, AnimationPlugin};
 pub use present::camera::{CAMERA_TARGET, CameraTarget, CameraTargetPlugin};
 pub use present::character::{
-    CHARACTER_ANIMATOR, CharacterAnimator, CharacterAnimatorPlugin, Clips,
+    CHARACTER_ANIMATOR, CharacterAnimator, CharacterAnimatorPlugin, ClipRule, Clips,
 };
 pub use present::depth::{DEPTH_SORT, DepthSort, DepthSortPlugin};
 pub use present::facing::{FACING, Facing, FacingPlugin};
@@ -346,8 +347,8 @@ pub mod prelude {
         Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, ActionInput,
         ActionInputPlugin, AilmentBuckets, AilmentRung, AilmentThreshold, Aim, AimPlugin,
         AnimationPlugin, Applied, CameraTarget, CameraTargetPlugin, Cap, CapPlugin,
-        CharacterAnimator, CharacterAnimatorPlugin, Chemistry, ChemistryPlugin, Children, Clips,
-        Cone, ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed,
+        CharacterAnimator, CharacterAnimatorPlugin, Chemistry, ChemistryPlugin, Children, ClipRule,
+        Clips, Cone, ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed,
         CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent, CueListener, Cues,
         CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest, Damaged,
         DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Direction,

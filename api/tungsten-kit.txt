@@ -342,6 +342,9 @@ pub fn tungsten_kit::Abilities::remove_skill_lines(&mut self, &str, &str) -> usi
 pub fn tungsten_kit::Abilities::set_level(&mut self, &str, u32)
 pub fn tungsten_kit::Abilities::with(self, tungsten_core::assets::data::DataRef<tungsten_kit::Ability>) -> Self
 pub fn tungsten_kit::Abilities::with_level(self, &str, u32) -> Self
+impl<'a> tungsten_kit::Abilities
+pub fn tungsten_kit::Abilities::clip(&'a self, &'a tungsten_core::assets::data::DataRegistry, &str) -> core::option::Option<&'a tungsten_kit::Clips>
+pub fn tungsten_kit::Abilities::icon(&'a self, &'a tungsten_core::assets::data::DataRegistry, &str) -> core::option::Option<&'a str>
 impl core::clone::Clone for tungsten_kit::Abilities
 pub fn tungsten_kit::Abilities::clone(&self) -> tungsten_kit::Abilities
 impl core::cmp::PartialEq for tungsten_kit::Abilities
@@ -384,11 +387,13 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AbilitiesPlugin
 pub struct tungsten_kit::prelude::Ability
 impl tungsten_kit::Ability
 pub fn tungsten_kit::Ability::charges(&self) -> core::option::Option<(u32, f32, bool)>
+pub fn tungsten_kit::Ability::clip(&self) -> core::option::Option<&tungsten_kit::Clips>
 pub fn tungsten_kit::Ability::cooldown(&self) -> f32
 pub fn tungsten_kit::Ability::cost(&self) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Ability::cost_for(&self, core::option::Option<&tungsten_kit::Stats>) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Ability::cost_scale(&self) -> core::option::Option<&str>
 pub fn tungsten_kit::Ability::direction(&self) -> tungsten_kit::Direction
+pub fn tungsten_kit::Ability::icon(&self) -> core::option::Option<&str>
 pub fn tungsten_kit::Ability::new() -> Self
 pub fn tungsten_kit::Ability::payload(&self) -> &[tungsten_kit::Payload]
 pub fn tungsten_kit::Ability::skill(&self) -> core::option::Option<&tungsten_kit::Skill>
@@ -396,10 +401,12 @@ pub fn tungsten_kit::Ability::tags(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Ability::target(&self) -> &tungsten_kit::AbilityTarget
 pub fn tungsten_kit::Ability::trigger(&self) -> &tungsten_kit::Trigger
 pub fn tungsten_kit::Ability::with_charges(self, u32, f32, bool) -> Self
+pub fn tungsten_kit::Ability::with_clip(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::Ability::with_cooldown(self, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost(self, &str, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost_scale(self, &str) -> Self
 pub fn tungsten_kit::Ability::with_direction(self, tungsten_kit::Direction) -> Self
+pub fn tungsten_kit::Ability::with_icon(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Ability::with_payload(self, tungsten_kit::Payload) -> Self
 pub fn tungsten_kit::Ability::with_skill(self, tungsten_kit::Skill) -> Self
 pub fn tungsten_kit::Ability::with_tags(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
@@ -730,11 +737,15 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CapPlugin
 pub struct tungsten_kit::prelude::CharacterAnimator
 impl tungsten_kit::CharacterAnimator
 pub fn tungsten_kit::CharacterAnimator::new(impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::CharacterAnimator::play(&mut self, impl core::convert::Into<tungsten_kit::Clips>)
+pub fn tungsten_kit::CharacterAnimator::playing(&self) -> core::option::Option<&tungsten_kit::Clips>
 pub fn tungsten_kit::CharacterAnimator::state(&self) -> &'static str
+pub fn tungsten_kit::CharacterAnimator::stop(&mut self)
 pub fn tungsten_kit::CharacterAnimator::with_fall(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_min_speed(self, f32) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_move(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_rise(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::CharacterAnimator::with_rule(self, tungsten_kit::ClipRule) -> Self
 impl core::clone::Clone for tungsten_kit::CharacterAnimator
 pub fn tungsten_kit::CharacterAnimator::clone(&self) -> tungsten_kit::CharacterAnimator
 impl core::cmp::PartialEq for tungsten_kit::CharacterAnimator
@@ -834,8 +845,32 @@ impl core::marker::Unpin for tungsten_kit::Children
 impl core::marker::UnsafeUnpin for tungsten_kit::Children
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Children
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Children
+pub struct tungsten_kit::prelude::ClipRule
+impl tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::motion(&str, impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::ClipRule::when(tungsten_kit::TagFilter, impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::ClipRule::with_motion(self, &str) -> Self
+impl core::clone::Clone for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::clone(&self) -> tungsten_kit::ClipRule
+impl core::cmp::PartialEq for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::eq(&self, &tungsten_kit::ClipRule) -> bool
+impl core::fmt::Debug for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::ClipRule
+impl serde_core::ser::Serialize for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::ClipRule
+impl core::marker::Send for tungsten_kit::ClipRule
+impl core::marker::Sync for tungsten_kit::ClipRule
+impl core::marker::Unpin for tungsten_kit::ClipRule
+impl core::marker::UnsafeUnpin for tungsten_kit::ClipRule
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ClipRule
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ClipRule
 pub struct tungsten_kit::prelude::Clips
 impl tungsten_kit::Clips
+pub fn tungsten_kit::Clips::aim(impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Clips::four(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::mirrored(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::one(impl core::convert::Into<alloc::string::String>) -> Self
@@ -1106,6 +1141,7 @@ pub struct tungsten_kit::prelude::CueAction
 impl tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::ability(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::centred(self) -> Self
+pub fn tungsten_kit::CueAction::clip(impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CueAction::counter_add(&str, i64) -> Self
 pub fn tungsten_kit::CueAction::counter_set(&str, i64) -> Self
 pub fn tungsten_kit::CueAction::despawn() -> Self
@@ -4649,6 +4685,9 @@ pub fn tungsten_kit::Abilities::remove_skill_lines(&mut self, &str, &str) -> usi
 pub fn tungsten_kit::Abilities::set_level(&mut self, &str, u32)
 pub fn tungsten_kit::Abilities::with(self, tungsten_core::assets::data::DataRef<tungsten_kit::Ability>) -> Self
 pub fn tungsten_kit::Abilities::with_level(self, &str, u32) -> Self
+impl<'a> tungsten_kit::Abilities
+pub fn tungsten_kit::Abilities::clip(&'a self, &'a tungsten_core::assets::data::DataRegistry, &str) -> core::option::Option<&'a tungsten_kit::Clips>
+pub fn tungsten_kit::Abilities::icon(&'a self, &'a tungsten_core::assets::data::DataRegistry, &str) -> core::option::Option<&'a str>
 impl core::clone::Clone for tungsten_kit::Abilities
 pub fn tungsten_kit::Abilities::clone(&self) -> tungsten_kit::Abilities
 impl core::cmp::PartialEq for tungsten_kit::Abilities
@@ -4691,11 +4730,13 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AbilitiesPlugin
 pub struct tungsten_kit::Ability
 impl tungsten_kit::Ability
 pub fn tungsten_kit::Ability::charges(&self) -> core::option::Option<(u32, f32, bool)>
+pub fn tungsten_kit::Ability::clip(&self) -> core::option::Option<&tungsten_kit::Clips>
 pub fn tungsten_kit::Ability::cooldown(&self) -> f32
 pub fn tungsten_kit::Ability::cost(&self) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Ability::cost_for(&self, core::option::Option<&tungsten_kit::Stats>) -> core::option::Option<(&str, f32)>
 pub fn tungsten_kit::Ability::cost_scale(&self) -> core::option::Option<&str>
 pub fn tungsten_kit::Ability::direction(&self) -> tungsten_kit::Direction
+pub fn tungsten_kit::Ability::icon(&self) -> core::option::Option<&str>
 pub fn tungsten_kit::Ability::new() -> Self
 pub fn tungsten_kit::Ability::payload(&self) -> &[tungsten_kit::Payload]
 pub fn tungsten_kit::Ability::skill(&self) -> core::option::Option<&tungsten_kit::Skill>
@@ -4703,10 +4744,12 @@ pub fn tungsten_kit::Ability::tags(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Ability::target(&self) -> &tungsten_kit::AbilityTarget
 pub fn tungsten_kit::Ability::trigger(&self) -> &tungsten_kit::Trigger
 pub fn tungsten_kit::Ability::with_charges(self, u32, f32, bool) -> Self
+pub fn tungsten_kit::Ability::with_clip(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::Ability::with_cooldown(self, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost(self, &str, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost_scale(self, &str) -> Self
 pub fn tungsten_kit::Ability::with_direction(self, tungsten_kit::Direction) -> Self
+pub fn tungsten_kit::Ability::with_icon(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Ability::with_payload(self, tungsten_kit::Payload) -> Self
 pub fn tungsten_kit::Ability::with_skill(self, tungsten_kit::Skill) -> Self
 pub fn tungsten_kit::Ability::with_tags(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
@@ -5037,11 +5080,15 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CapPlugin
 pub struct tungsten_kit::CharacterAnimator
 impl tungsten_kit::CharacterAnimator
 pub fn tungsten_kit::CharacterAnimator::new(impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::CharacterAnimator::play(&mut self, impl core::convert::Into<tungsten_kit::Clips>)
+pub fn tungsten_kit::CharacterAnimator::playing(&self) -> core::option::Option<&tungsten_kit::Clips>
 pub fn tungsten_kit::CharacterAnimator::state(&self) -> &'static str
+pub fn tungsten_kit::CharacterAnimator::stop(&mut self)
 pub fn tungsten_kit::CharacterAnimator::with_fall(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_min_speed(self, f32) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_move(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_rise(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::CharacterAnimator::with_rule(self, tungsten_kit::ClipRule) -> Self
 impl core::clone::Clone for tungsten_kit::CharacterAnimator
 pub fn tungsten_kit::CharacterAnimator::clone(&self) -> tungsten_kit::CharacterAnimator
 impl core::cmp::PartialEq for tungsten_kit::CharacterAnimator
@@ -5141,8 +5188,32 @@ impl core::marker::Unpin for tungsten_kit::Children
 impl core::marker::UnsafeUnpin for tungsten_kit::Children
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Children
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Children
+pub struct tungsten_kit::ClipRule
+impl tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::motion(&str, impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::ClipRule::when(tungsten_kit::TagFilter, impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::ClipRule::with_motion(self, &str) -> Self
+impl core::clone::Clone for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::clone(&self) -> tungsten_kit::ClipRule
+impl core::cmp::PartialEq for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::eq(&self, &tungsten_kit::ClipRule) -> bool
+impl core::fmt::Debug for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::ClipRule
+impl serde_core::ser::Serialize for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::ClipRule
+pub fn tungsten_kit::ClipRule::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::ClipRule
+impl core::marker::Send for tungsten_kit::ClipRule
+impl core::marker::Sync for tungsten_kit::ClipRule
+impl core::marker::Unpin for tungsten_kit::ClipRule
+impl core::marker::UnsafeUnpin for tungsten_kit::ClipRule
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ClipRule
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ClipRule
 pub struct tungsten_kit::Clips
 impl tungsten_kit::Clips
+pub fn tungsten_kit::Clips::aim(impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Clips::four(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::mirrored(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::one(impl core::convert::Into<alloc::string::String>) -> Self
@@ -5462,6 +5533,7 @@ pub struct tungsten_kit::CueAction
 impl tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::ability(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::centred(self) -> Self
+pub fn tungsten_kit::CueAction::clip(impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CueAction::counter_add(&str, i64) -> Self
 pub fn tungsten_kit::CueAction::counter_set(&str, i64) -> Self
 pub fn tungsten_kit::CueAction::despawn() -> Self

@@ -76,5 +76,15 @@
     {
       "hitbox": 0.1
     }
-  ]
+  ],
+  "icon": "cinder_icon",
+  "clip": {
+    "aim": [
+      "adept_cast_down",
+      "adept_cast_down_fwd",
+      "adept_cast_fwd",
+      "adept_cast_up_fwd",
+      "adept_cast_up"
+    ]
+  }
 }

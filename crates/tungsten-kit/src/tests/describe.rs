@@ -102,7 +102,11 @@ fn valid_value(descriptions: &KitDescriptions, ty: &FieldType) -> Value {
             json!("puff")
         }
         FieldType::Vec2 => json!([1.0, 2.0]),
-        // A target's `source` takes the empty object.
+        // A clip takes an animation ID; a target's `source` the empty
+        // object.
+        FieldType::Object(form) if *form == crate::present::character::CLIPS_FORM => {
+            json!("puff")
+        }
         FieldType::Object(_) => json!({}),
         FieldType::Shape(name) => sample_of(descriptions.get_shape(name).unwrap()),
         FieldType::Damage => json!(1.0),
@@ -127,9 +131,9 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     assert_eq!(kinds.len(), 11);
     assert_eq!(
         descriptions.shapes().count(),
-        77,
+        78,
         "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction, \
-         the projectile's end and the place"
+         the projectile's end and the place; 7.10g's clip rule"
     );
 }
 
@@ -245,8 +249,8 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 52,
-        "the cue action's fourteen forms, the target's three, the hit shape's two, the modifier's \
+        probed, 53,
+        "the cue action's fifteen forms, the target's three, the hit shape's two, the modifier's \
          four, the ability trigger's four, its target's four, its payload's seven, the offer's two, \
          a chemistry output's eleven and a projectile end's one"
     );
@@ -292,12 +296,13 @@ fn each_described_enum_variant_deserializes() {
             + 2
             + 2
             + 6
-            + 2,
+            + 2
+            + 4,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
          axes, the effect action's targets, the stack's refresh and expire policies, and the \
          ability action's ops and targets, the level's counter targets, the ability's \
-         directions, a cue rule's reasons and a cap's past"
+         directions, a cue rule's reasons, a cap's past and a clip rule's motions"
     );
 }
 
@@ -426,7 +431,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 46);
-    assert_eq!(count("shape "), 77);
+    assert_eq!(count("shape "), 78);
     assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

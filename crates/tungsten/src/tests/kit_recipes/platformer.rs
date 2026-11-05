@@ -19,7 +19,8 @@
 //! `crate_break` world cue, a turret under rapid fire whose flash waits
 //! its interval, a blob whose frosting shows its band's overlay, and a keg
 //! whose sparking look emits at its sheet's `fuse` point frame by frame,
-//! and a leaper whose jumps and landing cue dust at its feet.
+//! and a leaper whose jumps and landing cue dust at its feet; 7.10g's
+//! lander, whose landing plays its land clip once over its run.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2073,5 +2074,44 @@ fn a_leapers_jumps_and_landing_cue_dust_at_its_feet() {
         );
         harness.step(frames_for(1.0, dt));
         assert_eq!(landings(&harness), 1, "dt {dt}: once");
+    }
+}
+
+/// 7.10g: the lander falls onto the ground, its `landed` cue plays the land
+/// clip once over its state, and it runs on in its run clip after the
+/// clip's 300 ms.
+#[test]
+fn the_hero_lands_on_its_land_clip_and_runs_again() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let lander = spawn(&mut harness, "lander", [0.0, 150.0]);
+        let shown = |harness: &super::Harness| {
+            harness
+                .world()
+                .get::<AnimationState>(lander)
+                .map(|state| state.animation_id.clone())
+        };
+        let mut frames = 0;
+        while shown(&harness).as_deref() != Some("acrobat_land") {
+            assert!(frames < frames_for(1.0, dt), "dt {dt}: lands within 1 s");
+            harness.step(1);
+            frames += 1;
+        }
+        let controller = harness.world().get::<PlatformerController>(lander);
+        assert!(controller.unwrap().grounded(), "dt {dt}: on the ground");
+        harness.press_action("move_right");
+        for _ in 1..frames_for(0.3, dt) {
+            harness.step(1);
+            assert_eq!(shown(&harness).as_deref(), Some("acrobat_land"), "dt {dt}");
+        }
+        harness.step(1);
+        assert_eq!(
+            shown(&harness).as_deref(),
+            Some("acrobat_run_right"),
+            "dt {dt}: running again"
+        );
+        let animator = harness.world().get::<CharacterAnimator>(lander).unwrap();
+        assert_eq!((animator.state(), animator.playing()), ("move", None));
     }
 }

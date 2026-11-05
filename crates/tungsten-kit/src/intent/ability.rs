@@ -4,6 +4,7 @@
 //! component and [`use_ability`].
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -11,8 +12,8 @@ use tungsten_core::physics::{
     BodyKind, Collider, PhysicsConfig, Position, RigidBody, Shape, SpatialFilter, Velocity, overlap,
 };
 use tungsten_core::{
-    CommandBuffer, DataRef, DataRegistry, Entity, EventQueue, Inspectable, MissingAsset, Plugin,
-    PrefabRegistry, Schedule, SpawnContext, Time, Transform, World, system,
+    AssetRegistry, CommandBuffer, DataRef, DataRegistry, Entity, EventQueue, Inspectable,
+    MissingAsset, Plugin, PrefabRegistry, Schedule, SpawnContext, Time, Transform, World, system,
 };
 
 use crate::count_down;
@@ -45,6 +46,7 @@ use crate::motion::linear::LinearMotion;
 use crate::motion::target::describe_target;
 use crate::overlap::cone::{CONE_PAYLOAD, Cone, ConeDef, describe_cone, fire as fire_cone, widen};
 use crate::overlap::hit::Hitbox;
+use crate::present::character::{CLIPS_FORM, CharacterAnimator, Clips, check_clips};
 use crate::react::cues::{
     ABILITY_HELD, ABILITY_READY, ABILITY_REFUSED, ABILITY_RELEASED, KitCue, cue_named,
     push_kit_cue, reason_of,
@@ -673,6 +675,16 @@ pub struct Ability {
     tags: Vec<String>,
     /// Its skill sheet, when it has one.
     skill: Option<Box<Skill>>,
+    /// Its icon and its use's clip, shared: the ticker's clone of an inline
+    /// ability copies the pointer.
+    look: Option<Arc<AbilityLook>>,
+}
+
+/// An ability's look: the sprite a bar shows and the clip a use plays.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct AbilityLook {
+    icon: Option<String>,
+    clip: Option<Clips>,
 }
 
 impl Default for Ability {
@@ -698,7 +710,37 @@ impl Ability {
             payload: Vec::new(),
             tags: Vec::new(),
             skill: None,
+            look: None,
         }
+    }
+
+    /// The ability, with `icon`, a manifest sprite ID, for a bar to show
+    /// ([`Abilities::icon`]); the load checks it.
+    #[must_use]
+    pub fn with_icon(mut self, icon: impl Into<String>) -> Self {
+        Arc::make_mut(self.look.get_or_insert_with(Arc::default)).icon = Some(icon.into());
+        self
+    }
+
+    /// The ability, playing `clips` once on its user's
+    /// [`CharacterAnimator`] after a use's payloads
+    /// ([`play`](CharacterAnimator::play)).
+    #[must_use]
+    pub fn with_clip(mut self, clips: impl Into<Clips>) -> Self {
+        Arc::make_mut(self.look.get_or_insert_with(Arc::default)).clip = Some(clips.into());
+        self
+    }
+
+    /// Its icon, a manifest sprite ID, when it has one.
+    #[must_use]
+    pub fn icon(&self) -> Option<&str> {
+        self.look.as_ref()?.icon.as_deref()
+    }
+
+    /// The clip a use plays on its user, when it has one.
+    #[must_use]
+    pub fn clip(&self) -> Option<&Clips> {
+        self.look.as_ref()?.clip.as_ref()
     }
 
     /// The ability, in the context `tags` (`skill.spell`), which a skill's
@@ -1048,6 +1090,17 @@ impl Ability {
         if let Some(skill) = &self.skill {
             skill.check(world, "skill")?;
         }
+        if let Some(icon) = self.icon() {
+            let interned = world
+                .get_resource::<AssetRegistry>()
+                .is_none_or(|assets| assets.sprite_id(icon).is_some());
+            if !interned {
+                return Err(MissingAsset::new("icon", "sprite", icon));
+            }
+        }
+        if let Some(clips) = self.clip() {
+            check_clips(world, "clip", clips)?;
+        }
         Ok(())
     }
 }
@@ -1105,6 +1158,10 @@ struct AbilityDef {
     tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     skill: Option<Skill>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    clip: Option<Clips>,
 }
 
 /// `{}`: a form that takes no value.
@@ -1473,8 +1530,15 @@ impl TryFrom<AbilityDef> for Ability {
         let mut tags = def.tags;
         tags.sort();
         tags.dedup();
+        let look = (def.icon.is_some() || def.clip.is_some()).then(|| {
+            Arc::new(AbilityLook {
+                icon: def.icon,
+                clip: def.clip,
+            })
+        });
         Ok(Self {
             tags,
+            look,
             skill: def.skill.map(Box::new),
             trigger: match def.trigger {
                 TriggerDef::Manual(_) => Trigger::Manual,
@@ -1616,6 +1680,8 @@ impl From<Ability> for AbilityDef {
                 .collect(),
             tags: ability.tags,
             skill: ability.skill.map(|skill| *skill),
+            icon: ability.look.as_ref().and_then(|look| look.icon.clone()),
+            clip: ability.look.as_ref().and_then(|look| look.clip.clone()),
         }
     }
 }
@@ -1753,6 +1819,26 @@ struct SkillState {
 impl SkillState {
     fn is_empty(&self) -> bool {
         self.levels.is_empty() && self.lines.is_empty() && self.holder.is_empty()
+    }
+}
+
+/// An ability's look, read for a bar.
+impl<'a> Abilities {
+    /// The icon of ability `name`, a manifest sprite ID for a bar to show:
+    /// read through its entry and `data` at each call, nothing cached, so an
+    /// entry's ID reads before its first tick and a reload shows on the
+    /// next read. `None` when `name` is not owned, its entry is missing or
+    /// it has no icon.
+    #[must_use]
+    pub fn icon(&'a self, data: &'a DataRegistry, name: &str) -> Option<&'a str> {
+        self.find(name)?.ability.resolve(data)?.icon()
+    }
+
+    /// The clip a use of ability `name` plays on its user, read as
+    /// [`icon`](Self::icon) is.
+    #[must_use]
+    pub fn clip(&'a self, data: &'a DataRegistry, name: &str) -> Option<&'a Clips> {
+        self.find(name)?.ability.resolve(data)?.clip()
     }
 }
 
@@ -2547,6 +2633,7 @@ fn jump_chains(world: &mut World) {
 const NO_COMMANDS: &str = "the World has no CommandBuffer";
 const NO_KNOCKBACK: &str = "the entity has no Knockback, or is dead";
 const NO_HITBOX: &str = "the entity has no Hitbox";
+const NO_ANIMATOR: &str = "the entity has no CharacterAnimator";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
 const NO_PREFAB: &str = "the prefab does not prepare";
 const NO_RECEIVER: &str = "a conduction needs a target other than its user";
@@ -3117,6 +3204,12 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
             },
         }
     }
+    if let Some(clips) = ability.clip() {
+        match world.get_mut::<CharacterAnimator>(entity) {
+            Some(animator) => animator.play(clips.clone()),
+            None => skip(world, entity, "clip", NO_ANIMATOR),
+        }
+    }
     let other = (target != entity).then_some(target);
     if let Some(queue) = world.get_resource_mut::<EventQueue<AbilityUsed>>() {
         queue.send(AbilityUsed {
@@ -3442,6 +3535,22 @@ fn describe_abilities(world: &mut World) {
                 "skill",
                 FieldType::Shape(SKILL),
                 "a skill sheet, resolved at a use before the cost: its cost and cooldown replace the ability's, and each payload carries its snapshot to the hits",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "icon",
+                FieldType::Text,
+                "a manifest sprite ID a bar shows (`Abilities::icon`); the load checks it",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "clip",
+                FieldType::Object(CLIPS_FORM),
+                "a clip played once on the user's character animator after a use's payloads; the load checks each ID",
             )
             .default("null"),
         )
