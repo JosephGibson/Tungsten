@@ -24,7 +24,9 @@
 //! swordsman, whose swing mirrors to the side it turns to; a doomed runner
 //! its death policy stops and locks, a warded knight a kill passes, and a
 //! hero and a crate past the world's bottom; a lift that waits for its
-//! rider, sounding as it leaves and reaches each end.
+//! rider, sounding as it leaves and reaches each end; and two porters
+//! carrying crates over their heads, which drop them at rest when killed
+//! or frozen.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2358,5 +2360,89 @@ fn the_lift_takes_its_rider_up_and_comes_back() {
             [true, false, true, false],
             "dt {dt}: go, stop, go, stop"
         );
+    }
+}
+
+/// 7.10g: two porters walk with a crate held over their heads; the first,
+/// killed, lets its crate go where it is, at rest and its own body again,
+/// and the second lets go once frozen, by its hold's drop filter.
+#[test]
+fn a_porter_drops_its_crate_when_it_dies_or_freezes() {
+    use tungsten_core::RigidBody;
+    use tungsten_core::physics::BodyKind;
+
+    use crate::kit::{Hit, Hold, carried_by, carry, kill};
+
+    let over = Vec2::new(0.0, -30.0);
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let porters = [
+            spawn(&mut harness, "crate_porter", [100.0, 200.0]),
+            spawn(&mut harness, "crate_porter", [300.0, 200.0]),
+        ];
+        let crates = [
+            spawn(&mut harness, "porter_crate", [100.0, 100.0]),
+            spawn(&mut harness, "porter_crate", [300.0, 100.0]),
+        ];
+        harness.step(1);
+        for (porter, load) in porters.into_iter().zip(crates) {
+            let hold = Hold::new(over).with_drop(TagFilter::new().any(["status.frozen"]));
+            assert!(carry(harness.world_mut(), porter, load, hold), "dt {dt}");
+        }
+        harness.step(frames_for(0.5, dt));
+        for (porter, load) in porters.into_iter().zip(crates) {
+            let held = body_at(&harness, load) - body_at(&harness, porter);
+            assert!(
+                (held - over).length() < 1e-3,
+                "dt {dt}: over its head: {held}"
+            );
+        }
+        assert!(
+            body_at(&harness, porters[0]).x > 125.0,
+            "dt {dt}: they walk"
+        );
+        let kind =
+            |harness: &super::Harness, body| harness.world().get::<RigidBody>(body).unwrap().kind;
+        let speed =
+            |harness: &super::Harness, body| harness.world().get::<Velocity>(body).unwrap().0;
+        assert_eq!(kind(&harness, crates[0]), BodyKind::Sensor, "dt {dt}");
+
+        // Killed, the first lets go where it is.
+        assert_eq!(kill(harness.world_mut(), porters[0]), Hit::Killed);
+        harness.step(1);
+        let dropped = body_at(&harness, crates[0]);
+        harness.step(frames_for(0.5, dt));
+        assert_eq!(carried_by(harness.world(), porters[0]), None, "dt {dt}");
+        assert_eq!(kind(&harness, crates[0]), BodyKind::Dynamic, "dt {dt}");
+        assert_eq!(speed(&harness, crates[0]), Vec2::ZERO, "dt {dt}: at rest");
+        assert_eq!(
+            body_at(&harness, crates[0]),
+            dropped,
+            "dt {dt}: where it was let go"
+        );
+        assert_eq!(
+            carried_by(harness.world(), porters[1]),
+            Some(crates[1]),
+            "dt {dt}"
+        );
+
+        // Frozen, the second lets go by its hold's filter.
+        EffectRequest::new(porters[1], DataRef::by_id("frozen")).apply(harness.world_mut());
+        assert!(
+            harness
+                .world()
+                .get::<Tags>(porters[1])
+                .unwrap()
+                .has("status.frozen"),
+            "dt {dt}"
+        );
+        harness.step(1);
+        assert_eq!(
+            carried_by(harness.world(), porters[1]),
+            None,
+            "dt {dt}: frozen"
+        );
+        assert_eq!(kind(&harness, crates[1]), BodyKind::Dynamic, "dt {dt}");
+        assert_eq!(speed(&harness, crates[1]), Vec2::ZERO, "dt {dt}: at rest");
     }
 }

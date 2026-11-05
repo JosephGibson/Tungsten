@@ -20,5 +20,6 @@
   "material.crate",
   "material.char",
   "explosive",
-  "bouncy"
+  "bouncy",
+  "status.frozen"
 ]

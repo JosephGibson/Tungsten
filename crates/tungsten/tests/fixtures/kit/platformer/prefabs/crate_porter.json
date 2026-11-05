@@ -1,0 +1,27 @@
+{
+  "tag": "crate_porter",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          10,
+          20
+        ]
+      }
+    },
+    "linear_motion": {
+      "velocity": [
+        60,
+        0
+      ]
+    },
+    "health": {
+      "max": 3
+    },
+    "tags": [
+      "team.enemy"
+    ]
+  }
+}

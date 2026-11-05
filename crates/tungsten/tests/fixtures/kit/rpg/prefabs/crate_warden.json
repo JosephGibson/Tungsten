@@ -1,0 +1,19 @@
+{
+  "tag": "crate_warden",
+  "components": {
+    "top_down_mover": {
+      "speed": 64
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ]
+    },
+    "facing": {
+      "from": "intent"
+    }
+  }
+}

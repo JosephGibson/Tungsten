@@ -893,3 +893,114 @@ fn a_spawn_captured_before_its_spawners_next_tick_keeps_its_owner() {
         );
     }
 }
+
+/// [`rig`]'s plugins with the physics, so a body saves its point.
+fn physics_rig() -> (World, Schedule) {
+    use tungsten_core::Plugin;
+    use tungsten_core::physics::PhysicsPlugin;
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(PrefabRegistry::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    KitPlugins::set().build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+#[test]
+fn a_carried_body_survives_a_load_and_drops_without_its_carrier() {
+    use tungsten_core::physics::{BodyKind, Collider, RigidBody, RigidBodyBundle, Velocity};
+
+    use crate::motion::carry::Carried;
+    use crate::{Hold, LinearMotion, TagFilter, Tags, carried_by, carry, release};
+
+    let offset = Vec2::new(8.0, -30.0);
+    let crate_at = |world: &mut World| {
+        let body = world.spawn_with(RigidBodyBundle::dynamic(
+            Position(Vec2::ZERO),
+            Collider::aabb(Vec2::splat(6.0)),
+        ));
+        named(world, body, None, "crate")
+    };
+    // A bodiless carrier walking right, and its crate, both named.
+    let level = |world: &mut World| -> [Entity; 2] {
+        let carrier = world.spawn_with((
+            Position(Vec2::new(100.0, 100.0)),
+            LinearMotion::new(Vec2::new(60.0, 0.0)),
+            Tags::new(Vec::<String>::new()),
+        ));
+        [named(world, carrier, None, "carrier"), crate_at(world)]
+    };
+    let at = |world: &World, entity: Entity| world.get::<Position>(entity).unwrap().0;
+    let kind = |world: &World, entity: Entity| world.get::<RigidBody>(entity).unwrap().kind;
+    let hold = Hold::new(offset).with_drop(TagFilter::new().any(["door.locked"]));
+
+    let (mut a, mut schedule_a) = physics_rig();
+    let [carrier_a, crate_a] = level(&mut a);
+    assert!(carry(&mut a, carrier_a, crate_a, hold));
+    for _ in 0..10 {
+        step(&mut a, &mut schedule_a);
+    }
+    let saved = capture_world(&a).unwrap();
+    assert!(text(&saved).contains("carried"), "the hold saved");
+
+    let (mut b, mut schedule_b) = physics_rig();
+    churn(&mut b, 30);
+    let [carrier_b, crate_b] = level(&mut b);
+    restore(&mut b, &saved);
+    assert_eq!(
+        kind(&b, crate_b),
+        BodyKind::Dynamic,
+        "a save holds no body: the fresh spawn's until its first step"
+    );
+    for frame in 0..20 {
+        step(&mut a, &mut schedule_a);
+        step(&mut b, &mut schedule_b);
+        assert_eq!(
+            at(&b, crate_b),
+            at(&a, crate_a),
+            "frame {frame}: as the uninterrupted run"
+        );
+        assert_eq!(at(&b, crate_b), at(&b, carrier_b) + offset, "frame {frame}");
+    }
+    assert_eq!(carried_by(&b, carrier_b), Some(crate_b));
+    assert_eq!(kind(&b, crate_b), BodyKind::Sensor);
+    // The drop filter came back: the locked carrier lets go in both runs.
+    for (world, carrier) in [(&mut a, carrier_a), (&mut b, carrier_b)] {
+        world
+            .get_mut::<Tags>(carrier)
+            .unwrap()
+            .insert("door.locked");
+    }
+    step(&mut a, &mut schedule_a);
+    step(&mut b, &mut schedule_b);
+    for (world, carrier, body) in [(&a, carrier_a, crate_a), (&b, carrier_b, crate_b)] {
+        assert_eq!(carried_by(world, carrier), None);
+        assert_eq!(kind(world, body), BodyKind::Dynamic, "its own body back");
+    }
+    assert_eq!(at(&b, crate_b), at(&a, crate_a));
+
+    // A carrier with no save ID: its reference drops, and the load's first
+    // step drops the crate at rest where the save held it.
+    let (mut c, mut schedule_c) = physics_rig();
+    let porter = c.spawn_with((Position(Vec2::new(40.0, 40.0)),));
+    let crate_c = crate_at(&mut c);
+    assert!(carry(&mut c, porter, crate_c, Hold::new(offset)));
+    step(&mut c, &mut schedule_c);
+    let orphan = capture_world(&c).unwrap();
+    assert_eq!(orphan.dropped_refs(), 1, "the carrier is not saved");
+    let held = at(&c, crate_c);
+
+    let (mut d, mut schedule_d) = physics_rig();
+    let crate_d = crate_at(&mut d);
+    restore(&mut d, &orphan);
+    assert!(d.has::<Carried>(crate_d), "the hold came back");
+    step(&mut d, &mut schedule_d);
+    assert!(!d.has::<Carried>(crate_d), "dropped at its first step");
+    assert_eq!(kind(&d, crate_d), BodyKind::Dynamic);
+    assert_eq!(d.get::<Velocity>(crate_d).unwrap().0, Vec2::ZERO, "at rest");
+    assert_eq!(at(&d, crate_d), held, "where the save held it");
+    assert_eq!(release(&mut d, porter, Vec2::ZERO), None);
+}

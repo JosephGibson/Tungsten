@@ -8,8 +8,9 @@
 //! with a poof; its salt, set down on a mark and refused inside a wall;
 //! 7.10g's thrower, whose throw's cue plays its clip over its walk, and its
 //! pole warden, whose swing turns with its four facings; a spike trap
-//! switched off and on, gold that blinks faster as it goes, and a rat den
-//! whose first rat comes at once.
+//! switched off and on, gold that blinks faster as it goes, a rat den
+//! whose first rat comes at once, and a crate warden, who carries a ward
+//! crate at its side as it turns and lobs it onto a mark.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -797,5 +798,71 @@ fn a_rat_hole_spawns_at_once() {
         assert_eq!(tagged(&harness, "rat").len(), 1, "dt {dt}");
         harness.step(frames_for(0.2, dt));
         assert_eq!(tagged(&harness, "rat").len(), 2, "dt {dt}: an interval on");
+    }
+}
+
+/// 7.10g: a warden carries a ward crate at its side, held on its left
+/// while it faces left, and lobs it onto a mark: the crate's own body
+/// back, its centre on the mark once the lob's half second is out.
+#[test]
+fn the_warden_lobs_a_crate_onto_its_mark() {
+    use tungsten_core::physics::{BodyKind, PhysicsConfig};
+
+    use crate::kit::{Hold, carried_by, carry, lob_velocity, release};
+
+    let side = Vec2::new(12.0, -6.0);
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "crate_warden", [100.0, 100.0]);
+        let crate_ = spawn(&mut harness, "ward_crate", [60.0, 160.0]);
+        let mark = spawn(&mut harness, "salt_mark", [220.0, 80.0]);
+        harness.step(1);
+        assert!(
+            carry(harness.world_mut(), warden, crate_, Hold::new(side)),
+            "dt {dt}"
+        );
+        let held = |harness: &Harness| point_of(harness, crate_) - point_of(harness, warden);
+        harness.step(1);
+        assert!(
+            (held(&harness) - side).length() < 1e-3,
+            "dt {dt}: at its side"
+        );
+
+        // Facing left, it holds the crate on its left.
+        harness.press_action("move_left");
+        harness.step(frames_for(0.25, dt));
+        harness.release_action("move_left");
+        harness.step(1);
+        assert!(
+            (held(&harness) - Vec2::new(-12.0, -6.0)).length() < 1e-3,
+            "dt {dt}: mirrored: {}",
+            held(&harness)
+        );
+        assert!(point_of(&harness, warden).x < 90.0, "dt {dt}: it walked");
+
+        // Facing right again, it lobs the crate onto the mark.
+        harness.press_action("move_right");
+        harness.step(1);
+        harness.release_action("move_right");
+        harness.step(1);
+        assert!((held(&harness) - side).length() < 1e-3, "dt {dt}");
+        let from = point_of(&harness, crate_);
+        let to = point_of(&harness, mark);
+        let gravity = harness.world().resource::<PhysicsConfig>().gravity;
+        let launch = lob_velocity(from, to, 0.5, gravity);
+        assert_eq!(release(harness.world_mut(), warden, launch), Some(crate_));
+        harness.step(frames_for(0.5, dt));
+        let world = harness.world();
+        assert_eq!(carried_by(world, warden), None, "dt {dt}");
+        assert_eq!(
+            world.get::<RigidBody>(crate_).unwrap().kind,
+            BodyKind::Dynamic,
+            "dt {dt}: its own body"
+        );
+        let landed = point_of(&harness, crate_);
+        assert!(
+            (landed - to).length() < 0.5,
+            "dt {dt}: on the mark: {landed}"
+        );
     }
 }

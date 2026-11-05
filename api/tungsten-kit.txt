@@ -2169,6 +2169,27 @@ impl core::marker::Unpin for tungsten_kit::Hitbox
 impl core::marker::UnsafeUnpin for tungsten_kit::Hitbox
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hitbox
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hitbox
+pub struct tungsten_kit::prelude::Hold
+impl tungsten_kit::Hold
+pub fn tungsten_kit::Hold::new(glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::Hold::offset(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::Hold::with_drop(self, tungsten_kit::TagFilter) -> Self
+impl core::clone::Clone for tungsten_kit::Hold
+pub fn tungsten_kit::Hold::clone(&self) -> tungsten_kit::Hold
+impl core::cmp::PartialEq for tungsten_kit::Hold
+pub fn tungsten_kit::Hold::eq(&self, &tungsten_kit::Hold) -> bool
+impl core::default::Default for tungsten_kit::Hold
+pub fn tungsten_kit::Hold::default() -> tungsten_kit::Hold
+impl core::fmt::Debug for tungsten_kit::Hold
+pub fn tungsten_kit::Hold::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Hold
+impl core::marker::Freeze for tungsten_kit::Hold
+impl core::marker::Send for tungsten_kit::Hold
+impl core::marker::Sync for tungsten_kit::Hold
+impl core::marker::Unpin for tungsten_kit::Hold
+impl core::marker::UnsafeUnpin for tungsten_kit::Hold
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hold
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hold
 pub struct tungsten_kit::prelude::Hurtbox
 impl tungsten_kit::Hurtbox
 pub fn tungsten_kit::Hurtbox::new(tungsten_kit::HitShape) -> Self
@@ -4179,6 +4200,8 @@ impl core::marker::Unpin for tungsten_kit::ZonePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ZonePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ZonePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ZonePlugin
+pub fn tungsten_kit::prelude::carried_by(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::prelude::carry(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, tungsten_kit::Hold) -> bool
 pub fn tungsten_kit::prelude::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::prelude::damage(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> tungsten_kit::Hit
 pub fn tungsten_kit::prelude::despawn_recursive(&mut tungsten_core::ecs::command_buffer::CommandBuffer, tungsten_core::ecs::entity::Entity)
@@ -4189,6 +4212,7 @@ pub fn tungsten_kit::prelude::float_label(&mut tungsten_core::ecs::world::World,
 pub fn tungsten_kit::prelude::heal(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> f32
 pub fn tungsten_kit::prelude::kill(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> tungsten_kit::Hit
 pub fn tungsten_kit::prelude::knock_back(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_kit::prelude::release(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::prelude::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity
 pub fn tungsten_kit::prelude::use_ability(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str) -> tungsten_kit::Used
 #[non_exhaustive] pub enum tungsten_kit::AbilityTarget
@@ -6713,6 +6737,27 @@ impl core::marker::Unpin for tungsten_kit::Hitbox
 impl core::marker::UnsafeUnpin for tungsten_kit::Hitbox
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hitbox
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hitbox
+pub struct tungsten_kit::Hold
+impl tungsten_kit::Hold
+pub fn tungsten_kit::Hold::new(glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::Hold::offset(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::Hold::with_drop(self, tungsten_kit::TagFilter) -> Self
+impl core::clone::Clone for tungsten_kit::Hold
+pub fn tungsten_kit::Hold::clone(&self) -> tungsten_kit::Hold
+impl core::cmp::PartialEq for tungsten_kit::Hold
+pub fn tungsten_kit::Hold::eq(&self, &tungsten_kit::Hold) -> bool
+impl core::default::Default for tungsten_kit::Hold
+pub fn tungsten_kit::Hold::default() -> tungsten_kit::Hold
+impl core::fmt::Debug for tungsten_kit::Hold
+pub fn tungsten_kit::Hold::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Hold
+impl core::marker::Freeze for tungsten_kit::Hold
+impl core::marker::Send for tungsten_kit::Hold
+impl core::marker::Sync for tungsten_kit::Hold
+impl core::marker::Unpin for tungsten_kit::Hold
+impl core::marker::UnsafeUnpin for tungsten_kit::Hold
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hold
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hold
 pub struct tungsten_kit::Hurtbox
 impl tungsten_kit::Hurtbox
 pub fn tungsten_kit::Hurtbox::new(tungsten_kit::HitShape) -> Self
@@ -9255,6 +9300,8 @@ pub const tungsten_kit::TRANSFORM_PROPAGATE_LATE: &str
 pub const tungsten_kit::UNSAVED_COMPONENTS: &[(&str, &str)]
 pub const tungsten_kit::WRAP: &str
 pub const tungsten_kit::ZONE_TICK: &str
+pub fn tungsten_kit::carried_by(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::carry(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, tungsten_kit::Hold) -> bool
 pub fn tungsten_kit::centre_of(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::damage(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> tungsten_kit::Hit
@@ -9267,5 +9314,6 @@ pub fn tungsten_kit::heal(&mut tungsten_core::ecs::world::World, tungsten_core::
 pub fn tungsten_kit::kill(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> tungsten_kit::Hit
 pub fn tungsten_kit::knock_back(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_kit::lob_velocity(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::release(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity
 pub fn tungsten_kit::use_ability(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str) -> tungsten_kit::Used

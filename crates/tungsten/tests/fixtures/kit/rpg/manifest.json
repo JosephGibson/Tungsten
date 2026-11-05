@@ -92,6 +92,9 @@
     },
     "rat_den": {
       "path": "prefabs/rat_den.json"
+    },
+    "crate_warden": {
+      "path": "prefabs/crate_warden.json"
     }
   },
   "data": {

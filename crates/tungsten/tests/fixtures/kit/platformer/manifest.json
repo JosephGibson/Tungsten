@@ -158,6 +158,12 @@
     },
     "rider_lift": {
       "path": "prefabs/rider_lift.json"
+    },
+    "crate_porter": {
+      "path": "prefabs/crate_porter.json"
+    },
+    "porter_crate": {
+      "path": "prefabs/porter_crate.json"
     }
   },
   "data": {
@@ -215,6 +221,9 @@
       },
       "flare": {
         "path": "data/effects/flare.json"
+      },
+      "frozen": {
+        "path": "data/effects/frozen.json"
       }
     },
     "curves": {

@@ -13,6 +13,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::{finite_vec2, non_negative, optional_positive, vec2};
+use crate::motion::carry::{CARRIED, carried_saved, hold_bodies};
 use crate::motion::drive::{Body, Skip, Warned, Write, body_of, step_position, write_velocity};
 use crate::motion::linear::LINEAR_MOTION;
 use crate::motion::oscillator::{OSCILLATOR, Oscillator};
@@ -236,7 +237,9 @@ impl Follow {
 /// its target where those movers leave it. Its system moves every
 /// [`Follow`] by the step, `Time::delta` bounded by
 /// `PhysicsConfig::max_step_dt` as the physics step takes it; a step of 0
-/// moves nothing.
+/// moves nothing. After its follows it places each body a
+/// [`carry`](crate::carry) holds, or lets it go, and it saves those holds
+/// as `carried`.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FollowPlugin;
 
@@ -245,6 +248,7 @@ impl Plugin for FollowPlugin {
         ensure_phases(schedule);
         register_rows::<Follow>(world, "Follow");
         world.register_saved::<Follow>(FOLLOW_COMPONENT);
+        world.register_saved_with(CARRIED, carried_saved());
         describe_target(world);
         describe(
             world,
@@ -339,12 +343,15 @@ struct FollowDef {
 struct Runner {
     /// The step's followers, kept so a step allocates nothing once warm.
     entities: Vec<Entity>,
+    /// The step's held bodies, kept the same way.
+    held: Vec<Entity>,
     resolver: Resolver,
     warned: Warned,
 }
 
 impl Runner {
-    /// Moves every follower toward its goal by the step.
+    /// Moves every follower toward its goal by the step, then places the
+    /// held bodies.
     fn run(&mut self, world: &mut World) {
         let dt = step_dt(world);
         if dt <= 0.0 {
@@ -395,6 +402,7 @@ impl Runner {
             follow.followed = resolved.and_then(|(followed, _)| followed);
             follow.goal = goal;
         }
+        hold_bodies(world, &mut self.held);
     }
 }
 
