@@ -2,7 +2,7 @@
 # Regression tests for scripts/smoke-examples.sh with a stubbed `cargo` on
 # PATH: example discovery failures, child failure, timeout, the exact fixture
 # matrix, the template row's folder and font check, and the frame-cap row's
-# minimum run time. Needs no GPU; real jq/timeout are used.
+# minimum run time, timed without date. Needs no GPU; real jq/timeout are used.
 
 set -euo pipefail
 
@@ -52,6 +52,16 @@ esac
 EOF
 chmod +x "$work/bin/cargo"
 
+# The script times its rows with bash's EPOCHREALTIME alone: uutils' date
+# (Ubuntu 26.04) misreads `+%s%3N`, which failed CI's rows at random. A
+# stub date that refuses fails every case if the script calls date again.
+cat >"$work/bin/date" <<'EOF'
+#!/usr/bin/env bash
+echo "stub date: smoke-examples.sh must not call date (uutils misreads %3N)" >&2
+exit 99
+EOF
+chmod +x "$work/bin/date"
+
 failures=0
 out="$work/out.txt"
 
@@ -63,6 +73,11 @@ run_case() {
   local code=0
   env PATH="$work/bin:$PATH" TMPDIR="$work/tmp" STUB_RUNS="$work/runs.txt" \
     TUNGSTEN_SMOKE_TIMEOUT=2 "$@" bash "$SMOKE" >"$out" 2>&1 || code=$?
+  if grep -qF "stub date:" "$out"; then
+    echo "FAIL $name: the script called date"
+    failures=$((failures + 1))
+    return 1
+  fi
   if { [ "$expect" = 0 ] && [ "$code" -ne 0 ]; } || { [ "$expect" = nonzero ] && [ "$code" -eq 0 ]; }; then
     echo "FAIL $name: exit $code, expected $expect"
     sed 's/^/    /' "$out"
