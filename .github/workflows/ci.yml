@@ -31,9 +31,12 @@ env:
   ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
 
 jobs:
+  # Pinned to the image release.yml builds on, as the Windows job is (D-248):
+  # ubuntu-latest moved to 26.04 on 2026-11-03, whose uutils coreutils broke
+  # the script tests with no commit here. An image move is a commit.
   cpu-checks:
     name: CPU checks (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
