@@ -24,9 +24,10 @@
 //! swordsman, whose swing mirrors to the side it turns to; a doomed runner
 //! its death policy stops and locks, a warded knight a kill passes, and a
 //! hero and a crate past the world's bottom; a lift that waits for its
-//! rider, sounding as it leaves and reaches each end; and two porters
+//! rider, sounding as it leaves and reaches each end; two porters
 //! carrying crates over their heads, which drop them at rest when killed
-//! or frozen.
+//! or frozen; and a brute with a health bar, and a mark while alerted, as
+//! 01's troll.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2444,5 +2445,52 @@ fn a_porter_drops_its_crate_when_it_dies_or_freezes() {
         );
         assert_eq!(kind(&harness, crates[1]), BodyKind::Dynamic, "dt {dt}");
         assert_eq!(speed(&harness, crates[1]), Vec2::ZERO, "dt {dt}: at rest");
+    }
+}
+
+/// 7.10g: the brute shows its health bar from the start and, while a
+/// game's `state.alerted` tag is on, its mark and its tint, growing in over
+/// 0.2 s, as 01's troll shows its own.
+#[test]
+fn a_brute_wears_its_mark_and_its_bar() {
+    use tungsten_core::{Sprite, Visibility};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let white = super::register_sprite(&mut harness, "engine_white", 1, 1);
+        let brute = spawn(&mut harness, "brute", [600.0, 3000.0]);
+        // The bar's shown parts, the marks and the brute's green channel.
+        let shown = |harness: &super::Harness| {
+            let world = harness.world();
+            let bars = world
+                .query::<(&Sprite, &Visibility)>()
+                .filter(|(sprite, visibility)| sprite.asset_id == white && visibility.visible)
+                .count();
+            let marks = world
+                .query::<&AnimationState>()
+                .filter(|state| state.animation_id == "brute_mark")
+                .count();
+            (bars, marks, world.get::<Sprite>(brute).unwrap().color[1])
+        };
+        let alerted = |harness: &mut super::Harness, on: bool| {
+            let tags = harness.world_mut().get_mut::<Tags>(brute).unwrap();
+            if on {
+                tags.insert("state.alerted");
+            } else {
+                tags.remove("state.alerted");
+            }
+        };
+        harness.step(1);
+        assert_eq!(shown(&harness), (2, 0, 255), "dt {dt}: the bar alone");
+        alerted(&mut harness, true);
+        harness.step(1);
+        assert_eq!(shown(&harness), (2, 1, 255), "dt {dt}: from nothing");
+        harness.step(frames_for(0.1, dt));
+        let (_, _, green) = shown(&harness);
+        assert!((225..=234).contains(&green), "dt {dt}: half grown: {green}");
+        harness.step(frames_for(0.1, dt));
+        assert_eq!(shown(&harness), (2, 1, 204), "dt {dt}: whole after 0.2 s");
+        alerted(&mut harness, false);
+        harness.step(1);
+        assert_eq!(shown(&harness), (2, 0, 255), "dt {dt}: gone with the tag");
     }
 }

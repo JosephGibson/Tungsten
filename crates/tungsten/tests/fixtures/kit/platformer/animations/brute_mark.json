@@ -1,0 +1,9 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "acrobat_idle_right_0"
+    }
+  ],
+  "looping": true
+}

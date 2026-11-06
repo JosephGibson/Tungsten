@@ -195,6 +195,10 @@
 //!   [`CharacterAnimatorPlugin`]: the clip a character's motion and facing
 //!   pick, rules over tags and motion, and one-shots over both. [`Facing`] and
 //!   [`FacingPlugin`]: the way an entity faces, turning it when asked.
+//!   [`Looks`], [`TagLook`] and [`LooksPlugin`]: looks an entity shows
+//!   while its tags pass a filter, growing in over their time and mirrored
+//!   by its facing. [`HealthBar`] and [`HealthBarPlugin`]: a bar over an
+//!   entity showing its health's share.
 //!   [`DepthSort`] and [`DepthSortPlugin`]: a sprite sorted by how low it
 //!   stands. [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the
 //!   camera follows. [`SoundOnEvent`]: a manifest sound played once per
@@ -329,8 +333,11 @@ pub use present::character::{
 };
 pub use present::depth::{DEPTH_SORT, DepthSort, DepthSortPlugin};
 pub use present::facing::{FACING, Facing, FacingPlugin, face_toward};
+pub use present::health_bar::{HealthBar, HealthBarPlugin};
 pub use present::labels::{LABEL_TICK, LabelStyle, float_label};
-pub use present::looks::{EFFECT_LOOK, EFFECT_LOOK_LATE, Look, Overlay};
+pub use present::looks::{
+    EFFECT_LOOK, EFFECT_LOOK_LATE, Look, Looks, LooksPlugin, Overlay, TagLook,
+};
 pub use present::sound::SoundOnEvent;
 pub use react::counters::{Counters, CountersPlugin, Flags};
 pub use react::cues::{CUES, CueAction, CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin};
@@ -357,23 +364,23 @@ pub mod prelude {
         DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Direction,
         Effect, EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects,
         EffectsPlugin, Expire, Facing, FacingPlugin, Flags, Follow, FollowPlugin, HealRequest,
-        Healed, Health, HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox,
-        Hold, Hurtbox, ImmunePart, Intent, Interaction, KitDebug, KitDebugPlugin, KitPlugins,
-        KitRng, KitTrace, Knockback, KnockbackPlugin, LabelStyle, Level, LevelPlugin, LevelUp,
-        Lifetime, LifetimePlugin, LinearMotion, LinearMotionPlugin, Lob, LocalOffset, Modifier,
-        Offer, Offers, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Output, Parent, Past,
-        PathFollower, PathFollowerPlugin, Payload, Penetration, Phase, PickedUp, Pickup,
-        PickupPlugin, Place, PlatformerController, PlatformerControllerPlugin, Projectile,
-        ProjectileBounced, ProjectileExpired, ProjectilePassed, ProjectilePlugin, Reaction,
-        Refresh, Resist, Scaled, Shield, SoundOnEvent, Source, SourcePlugin, SpawnChildren,
-        SpawnChildrenPlugin, SpawnWith, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin,
-        StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin,
-        Steering, SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
-        TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered, TriggerZone, Used,
-        WallContact, WeightedTable, WorldBounds, WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered,
-        ZonePlugin, carried_by, carry, cursor_to_world, damage, despawn_recursive, end_effect,
-        ensure_phases, face_toward, float_label, heal, kill, knock_back, release, spawn_child,
-        use_ability,
+        Healed, Health, HealthBar, HealthBarPlugin, HealthPlugin, HierarchyPlugin, Hit, HitFlash,
+        HitPlugin, HitShape, Hitbox, Hold, Hurtbox, ImmunePart, Intent, Interaction, KitDebug,
+        KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback, KnockbackPlugin, LabelStyle,
+        Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin, LinearMotion, LinearMotionPlugin,
+        Lob, LocalOffset, Looks, LooksPlugin, Modifier, Offer, Offers, Orbit, OrbitPlugin,
+        Oscillator, OscillatorPlugin, Output, Parent, Past, PathFollower, PathFollowerPlugin,
+        Payload, Penetration, Phase, PickedUp, Pickup, PickupPlugin, Place, PlatformerController,
+        PlatformerControllerPlugin, Projectile, ProjectileBounced, ProjectileExpired,
+        ProjectilePassed, ProjectilePlugin, Reaction, Refresh, Resist, Scaled, Shield,
+        SoundOnEvent, Source, SourcePlugin, SpawnChildren, SpawnChildrenPlugin, SpawnWith, Spawner,
+        SpawnerPlugin, SpeedLimit, SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats,
+        StatsPlugin, StayInView, StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter,
+        TagLook, Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind,
+        Trigger, TriggerEntered, TriggerZone, Used, WallContact, WeightedTable, WorldBounds,
+        WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin, carried_by, carry,
+        cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, face_toward,
+        float_label, heal, kill, knock_back, release, spawn_child, use_ability,
     };
 }
 

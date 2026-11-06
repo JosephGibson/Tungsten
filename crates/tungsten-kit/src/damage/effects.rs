@@ -4338,15 +4338,18 @@ impl Plugin for EffectsPlugin {
                 .after_if_present(CHEMISTRY),
         );
         register_ailments(schedule, world);
-        register_looks(schedule, world);
+        ensure_looks(schedule, world);
     }
 }
 
-/// Registers the look passes and the step's [`LookHolders`]: [`EFFECT_LOOK`]
-/// in `post_update` after the transform propagation and before the
-/// particle count, [`EFFECT_LOOK_LATE`] in the present phase after the
-/// facing, the character animator and the depth sort.
-fn register_looks(schedule: &mut Schedule, world: &mut World) {
+/// Registers the look passes and the step's [`LookHolders`], once:
+/// [`EFFECT_LOOK`] in `post_update` after the transform propagation and
+/// before the particle count, [`EFFECT_LOOK_LATE`] in the present phase
+/// after the facing, the character animator and the depth sort. The status
+/// looks, the tag looks and the health bars share the passes, so each of
+/// their plugins calls it, and a schedule that has them already gains
+/// nothing.
+pub(crate) fn ensure_looks(schedule: &mut Schedule, world: &mut World) {
     use std::cell::RefCell;
     use std::rc::Rc;
     use tungsten_core::Stage;
@@ -4357,6 +4360,9 @@ fn register_looks(schedule: &mut Schedule, world: &mut World) {
     use crate::present::facing::FACING;
     use crate::transform::hierarchy::TRANSFORM_PROPAGATE;
 
+    if schedule.contains(EFFECT_LOOK) {
+        return;
+    }
     if !world.has_resource::<LookHolders>() {
         world.insert_resource(LookHolders::default());
     }

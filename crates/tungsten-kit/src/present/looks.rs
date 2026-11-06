@@ -1,22 +1,31 @@
 //! Status looks (redo 7.10p): what an effect's instance shows on its holder
 //! while it runs, drawn as plain entities the default extract draws: a
 //! tint on the holder's sprite, an overlay clip riding it and a glow under
-//! it. The kit adds no render type of its own (`D-007`, `D-016`).
+//! it. The kit adds no render type of its own (`D-007`, `D-016`). Tag looks
+//! (redo 7.10g): the same parts while the holder's tags pass a filter.
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::components::SpriteFlip;
 use tungsten_core::{
-    AnimationRegistry, AnimationState, AssetRegistry, Entity, MaterialRegistry, MissingAsset,
-    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, SoundRegistry, Sprite,
-    SpriteAsset, Transform, Visibility, World, sprite_point,
+    AnimationRegistry, AnimationState, AssetRegistry, Entity, Inspectable, MaterialRegistry,
+    MissingAsset, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Plugin, Schedule,
+    SoundRegistry, SpawnContext, Sprite, SpriteAsset, Time, Transform, Visibility, World,
+    sprite_point,
 };
 
+use crate::damage::effects::ensure_looks;
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, describe_shape, round_trip,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
+    describe, describe_shape, round_trip,
 };
+use crate::foundation::inspect::register_rows;
+use crate::foundation::phases::ensure_phases;
+use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared};
 use crate::foundation::{finite_color, non_negative, positive};
 use crate::lifecycle::ended::Despawning;
+use crate::present::facing::Facing;
+use crate::present::health_bar::Bars;
 
 /// [`EffectsPlugin`](crate::EffectsPlugin)'s early look pass, in
 /// `post_update` after the transform propagation and before the particle
@@ -42,11 +51,13 @@ const ENGINE_GLOW: &str = "engine_glow";
 ///   the frame's writers left it, taken toward `tint` by the share times
 ///   `a`; several multiply in instance order. The colour comes back as the
 ///   frame's writers leave it when the look ends.
-/// - `overlay`, `{ "animation", "speed", "offset", "z", "material" }`: an
-///   entity playing the clip, looped, at the holder's drawn centre plus
-///   `offset`, mirrored and turned with it, `z` above the holder's, at
+/// - `overlay`, `{ "animation", "speed", "offset", "z", "material", "scale" }`:
+///   an entity playing the clip, looped, its frame's drawn centre at the
+///   holder's drawn centre plus `offset` whatever the frame's anchor,
+///   mirrored and turned with it, `z` above the holder's, at
 ///   `speed`, from a phase drawn from the holder's index, through
-///   `material` when set.
+///   `material` when set, scaled from `scale`'s first to its second by the
+///   share, `[1, 1]` by default.
 /// - `glow`, `{ "color", "radius" }`: `engine_white` through `engine_glow`,
 ///   `radius` px about the drawn centre, one below the holder, its alpha by
 ///   the share.
@@ -122,6 +133,8 @@ pub struct Overlay {
     offset: Vec2,
     z: i32,
     material: Option<String>,
+    /// Its scale at a share of 0 and of 1.
+    scale: [f32; 2],
 }
 
 /// A look's glow: its colour and radius.
@@ -326,7 +339,31 @@ impl Overlay {
             offset: Vec2::ZERO,
             z: 1,
             material: None,
+            scale: [1.0, 1.0],
         }
+    }
+
+    /// The overlay, scaled from `from` at a share of 0 to `to` at 1: a
+    /// ring that grows over a tell, a status that swells with its
+    /// intensity.
+    ///
+    /// # Panics
+    ///
+    /// When either is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_scale(mut self, from: f32, to: f32) -> Self {
+        assert!(
+            valid_scale([from, to]),
+            "Overlay::with_scale: each must be finite and >= 0 (got {from}, {to})"
+        );
+        self.scale = [from, to];
+        self
+    }
+
+    /// Its scale at `share`.
+    fn scale_at(&self, share: f32) -> f32 {
+        self.scale[0] + (self.scale[1] - self.scale[0]) * share.clamp(0.0, 1.0)
     }
 
     /// The overlay, playing at `speed`.
@@ -455,6 +492,13 @@ pub(crate) struct OverlayDef {
     z: i32,
     #[serde(default)]
     material: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scale: Option<[f32; 2]>,
+}
+
+/// Whether an overlay's scale is two finite values of at least 0.
+fn valid_scale(scale: [f32; 2]) -> bool {
+    scale.iter().all(|value| value.is_finite() && *value >= 0.0)
 }
 
 /// A glow as data writes it.
@@ -492,6 +536,13 @@ impl TryFrom<LookDef> for Look {
     type Error = String;
 
     fn try_from(def: LookDef) -> Result<Self, Self::Error> {
+        if let Some(scale) = def.overlay.as_ref().and_then(|overlay| overlay.scale)
+            && !valid_scale(scale)
+        {
+            return Err(format!(
+                "overlay.scale: each must be finite and >= 0 (got {scale:?})"
+            ));
+        }
         Ok(Self {
             tint: def.tint,
             overlay: def.overlay.map(|overlay| Overlay {
@@ -500,6 +551,7 @@ impl TryFrom<LookDef> for Look {
                 offset: Vec2::from(overlay.offset),
                 z: overlay.z,
                 material: overlay.material,
+                scale: overlay.scale.unwrap_or([1.0, 1.0]),
             }),
             glow: def.glow.map(|glow| Glow {
                 color: glow.color,
@@ -532,6 +584,7 @@ impl From<Look> for LookDef {
                 offset: overlay.offset.into(),
                 z: overlay.z,
                 material: overlay.material,
+                scale: (overlay.scale != [1.0, 1.0]).then_some(overlay.scale),
             }),
             glow: look.glow.map(|glow| GlowDef {
                 color: glow.color,
@@ -613,7 +666,7 @@ pub(crate) fn describe_looks(world: &mut World) {
         .roundtrip(round_trip::<LookDef>),
         ComponentDescription::new(
             "look_overlay",
-            "A clip looped on an entity at the holder's drawn centre plus its offset, mirrored and turned with it.",
+            "A clip looped on an entity, its frame's drawn centre at the holder's drawn centre plus its offset whatever the frame's anchor, mirrored and turned with it.",
         )
         .field(FieldDescription::new(
             "animation",
@@ -655,6 +708,14 @@ pub(crate) fn describe_looks(world: &mut World) {
                 "material",
                 FieldType::Text,
                 "a manifest material it draws through; the load checks it",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "scale",
+                FieldType::Vec2,
+                "`[from, to]`, each at least 0: its scale from `from` at a share of 0 to `to` at 1, a ring growing over a tell; `[1, 1]` when left out",
             )
             .default("null"),
         )
@@ -744,6 +805,275 @@ pub(crate) fn describe_looks(world: &mut World) {
     }
 }
 
+/// The scene component [`LooksPlugin`] registers.
+const LOOKS: &str = "looks";
+
+/// The shape of a `looks` entry.
+const TAG_LOOK: &str = "tag_look";
+
+/// A look shown while its holder's tags pass a filter (redo 7.10g): its
+/// tint, overlay, glow and particles as a status look's, at a share of 1,
+/// or rising linearly from 0 over `grow` seconds of game time shown. A
+/// state a game sets is a tag it inserts, `state.alerted` by convention, so
+/// the looks, the animator's rules and the hit filters read one
+/// vocabulary. Build one with [`TagLook::new`].
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_kit::{Look, Overlay, TagFilter, TagLook};
+///
+/// let ring = TagLook::new(
+///     TagFilter::new().all(["state.charging"]),
+///     Look::new().with_overlay(Overlay::new("charge_ring").with_scale(0.25, 1.0)),
+/// )
+/// .with_grow(0.5);
+/// assert_eq!(ring.grow(), 0.5);
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagLook {
+    when: TagFilter,
+    look: Look,
+    grow: f32,
+}
+
+impl TagLook {
+    /// `look` shown whole while the holder's tags pass `when`.
+    ///
+    /// # Panics
+    ///
+    /// When `look` has a light or a sound, which only a status look keeps.
+    #[must_use]
+    #[track_caller]
+    pub fn new(when: TagFilter, look: Look) -> Self {
+        if let Err(error) = tag_look_parts(&look) {
+            panic!("TagLook::new: {error}");
+        }
+        Self {
+            when,
+            look,
+            grow: 0.0,
+        }
+    }
+
+    /// The look, rising linearly from 0 over `seconds` of game time shown.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_grow(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds >= 0.0,
+            "TagLook::with_grow: seconds must be finite and >= 0 (got {seconds})"
+        );
+        self.grow = seconds;
+        self
+    }
+
+    /// The seconds it grows over; 0 for one shown whole at once.
+    #[must_use]
+    pub fn grow(&self) -> f32 {
+        self.grow
+    }
+
+    /// Its share after `shown` game seconds.
+    fn share(&self, shown: f32) -> f32 {
+        if self.grow > 0.0 {
+            (shown / self.grow).clamp(0.0, 1.0)
+        } else {
+            1.0
+        }
+    }
+}
+
+/// The parts a tag look shows: a light or a sound is a status look's alone,
+/// kept on the fixed step with its instance.
+fn tag_look_parts(look: &Look) -> Result<(), String> {
+    for (part, has) in [
+        ("light", look.light.is_some()),
+        ("sound", look.sound.is_some()),
+    ] {
+        if has {
+            return Err(format!(
+                "look.{part}: a tag look shows a tint, an overlay, a glow and particles"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The looks an entity shows by its tags (redo 7.10g): each
+/// [`TagLook`]'s parts while its filter passes, spawned by the early look
+/// pass when it starts passing and taken when it stops, its time starting
+/// again. The overlays mirror and turn as the holder is drawn, as a status
+/// overlay's do, whatever wrote its flip; a holder drawn unflipped whose
+/// [`Facing`](crate::Facing) neither turns nor flips it mirrors them by
+/// that facing's side, left of the vertical, its last side kept while it
+/// points straight up or down. The parts are plain entities the default
+/// extract draws, kept by holder and entry index, and the passes that run
+/// them are the status looks'; a game changes what shows by tags.
+///
+/// Scene name `looks`: a list of
+/// `{ "when": { "all": ["state.alerted"] }, "look": { "overlay": { "animation": "mark_alert", "offset": [6, -18] } }, "grow": 0.4 }`,
+/// `grow` 0 by default; the load checks each filter's tags and each look's
+/// IDs, and refuses a light or a sound. Unsaved presentation: a load shows
+/// the parts again from the restored tags.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Looks {
+    entries: Vec<TagLook>,
+}
+
+impl Looks {
+    /// No looks.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The looks, with `look` after the others.
+    #[must_use]
+    pub fn with(mut self, look: TagLook) -> Self {
+        self.entries.push(look);
+        self
+    }
+
+    /// The entries, in order.
+    #[must_use]
+    pub fn entries(&self) -> &[TagLook] {
+        &self.entries
+    }
+}
+
+impl Inspectable for Looks {
+    fn inspect_rows(&self) -> Vec<(&'static str, String)> {
+        vec![("looks", format!("{} by tags", self.entries.len()))]
+    }
+}
+
+/// `components.looks` as a scene writes it.
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct LooksDef(Vec<TagLookDef>);
+
+/// A `looks` entry, its filter's names kept as written.
+#[derive(Serialize, Deserialize)]
+#[serde(try_from = "TagLookFields")]
+struct TagLookDef {
+    when: TagFilterDef,
+    look: Look,
+    grow: f32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TagLookFields {
+    when: TagFilterDef,
+    look: Look,
+    #[serde(default, deserialize_with = "non_negative")]
+    grow: f32,
+}
+
+impl TryFrom<TagLookFields> for TagLookDef {
+    type Error = String;
+
+    fn try_from(fields: TagLookFields) -> Result<Self, Self::Error> {
+        tag_look_parts(&fields.look)?;
+        Ok(Self {
+            when: fields.when,
+            look: fields.look,
+            grow: fields.grow,
+        })
+    }
+}
+
+/// Registers the `looks` scene component with its description, and the
+/// look passes ([`EFFECT_LOOK`], [`EFFECT_LOOK_LATE`]) when the schedule
+/// lacks them: [`EffectsPlugin`](crate::EffectsPlugin) registers the same.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LooksPlugin;
+
+impl Plugin for LooksPlugin {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        ensure_phases(schedule);
+        register_rows::<Looks>(world, "Looks");
+        describe_looks(world);
+        describe(
+            world,
+            ComponentDescription::new(
+                LOOKS,
+                "Looks the entity shows while its tags pass their filters: a tint, an overlay, a glow and particles, as a status shows them.",
+            )
+            .field(FieldDescription::new(
+                "list",
+                FieldType::List(Box::new(FieldType::Shape(TAG_LOOK))),
+                "the value itself: each a look and the tag filter it shows while; the load checks each",
+            ))
+            .genre(PLATFORMER)
+            .genre(TOP_DOWN)
+            .genre(SHOOTER)
+            .sample("[]")
+            .roundtrip(round_trip::<LooksDef>),
+        );
+        describe_shape(
+            world,
+            ComponentDescription::new(
+                TAG_LOOK,
+                "A look shown while the holder's tags pass `when`, whole or growing from nothing.",
+            )
+            .field(FieldDescription::new(
+                "when",
+                FieldType::Filter,
+                "the holder's tags, `state.*` by convention for a state the game sets; the load checks each",
+            ))
+            .field(FieldDescription::new(
+                "look",
+                FieldType::Shape("look"),
+                "its tint, overlay, glow and particles, at the look's share; a light or a sound is refused",
+            ))
+            .field(
+                FieldDescription::new(
+                    "grow",
+                    FieldType::F32 {
+                        min: Bound::Inclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "seconds of game time shown over which its share rises from 0 to 1; whole at once at 0",
+                )
+                .default("0.0"),
+            )
+            .sample(r#"{ "when": { "all": ["status.burning"] }, "look": {} }"#)
+            .roundtrip(round_trip::<TagLookDef>),
+        );
+        world.register_component_with_assets(
+            LOOKS,
+            |def: &LooksDef, world: &World| {
+                for (i, entry) in def.0.iter().enumerate() {
+                    for (field, name) in entry.when.names() {
+                        check_declared(world, &format!("{i}.when.{field}"), name)?;
+                    }
+                    entry.look.check(world, &format!("{i}.look"))?;
+                }
+                Ok(())
+            },
+            |def: LooksDef, _: &SpawnContext<'_>| {
+                let entries = def
+                    .0
+                    .into_iter()
+                    .map(|entry| TagLook {
+                        when: entry.when.into(),
+                        look: entry.look,
+                        grow: entry.grow,
+                    })
+                    .collect();
+                (Looks { entries },)
+            },
+        );
+        ensure_looks(schedule, world);
+    }
+}
+
 /// One running look on a holder, as `effect_tick` lists it each step: the
 /// holder, the instance's serial, the band whose look it is (`None` for the
 /// effect's own) and its share. The passes read the look itself from the
@@ -780,6 +1110,20 @@ struct Parts {
     emitter: Option<Entity>,
 }
 
+/// One tag look's parts, by its holder and its entry's index, with the
+/// game seconds it has shown and the side its holder's facing last
+/// pointed, for a facing that neither turns nor flips its holder.
+#[derive(Debug)]
+struct TagParts {
+    holder: Entity,
+    index: usize,
+    overlay: Option<Entity>,
+    glow: Option<Entity>,
+    emitter: Option<Entity>,
+    shown: f32,
+    left: bool,
+}
+
 /// The look passes' state between frames, shared by the two.
 #[derive(Default)]
 pub(crate) struct LookState {
@@ -790,6 +1134,14 @@ pub(crate) struct LookState {
     /// The step's entries, taken from the World for a pass.
     entries: Vec<LookEntry>,
     warned: bool,
+    /// The tag looks' parts, one per passing entry.
+    tag_parts: Vec<TagParts>,
+    /// The frame's passing tag looks, by holder and entry.
+    tag_live: Vec<(Entity, usize)>,
+    /// The frame's tag tints, a factor per holder.
+    tag_tints: Vec<(Entity, [f32; 3])>,
+    /// The health bars' parts.
+    bars: Bars,
 }
 
 /// The look `entry` names, from its holder's instance.
@@ -815,9 +1167,11 @@ impl LookState {
         true
     }
 
-    /// The early pass: put tinted colours back, then keep each running
-    /// look's parts.
+    /// The early pass: keep each tag look's parts and each health bar's,
+    /// put tinted colours back, then keep each running look's parts.
     pub(crate) fn early(&mut self, world: &mut World) {
+        self.early_tags(world);
+        self.bars.early(world);
         if !self.take_entries(world) {
             return;
         }
@@ -892,13 +1246,133 @@ impl LookState {
 
     /// Spawns `look`'s overlay and glow for `entry` at its holder's point.
     fn spawn_parts(&mut self, world: &mut World, entry: &LookEntry, look: &Look) -> Parts {
+        let (overlay, glow, emitter) = self.spawn_entities(world, entry.holder, look, entry.share);
+        Parts {
+            holder: entry.holder,
+            serial: entry.serial,
+            band: entry.band,
+            overlay,
+            glow,
+            emitter,
+        }
+    }
+
+    /// Keeps each passing tag look's parts: a holder's entry whose filter
+    /// stops passing, or whose holder is gone or despawning, loses its
+    /// parts and its time; one that starts passing spawns them at 0 s;
+    /// the rest age by the frame's game time, their emitters at the
+    /// holder's point by their share.
+    ///
+    /// The holders are found by a query only while one lives: a query
+    /// shape regrows its kept matches whenever an archetype is added
+    /// (`D-206`), so a World with no holder reads the presence alone, and
+    /// with parts still kept, lets them all go.
+    fn early_tags(&mut self, world: &mut World) {
+        self.tag_live.clear();
+        if world.has_any::<Looks>() {
+            for (holder, looks) in world.query::<(Entity, &Looks)>() {
+                if world.has::<Despawning>(holder) {
+                    continue;
+                }
+                let tags = world.get::<Tags>(holder);
+                for (index, entry) in looks.entries.iter().enumerate() {
+                    if entry.when.matches(tags) {
+                        self.tag_live.push((holder, index));
+                    }
+                }
+            }
+        }
+        if self.tag_live.is_empty() && self.tag_parts.is_empty() {
+            return;
+        }
+        let dt = world
+            .get_resource::<Time>()
+            .map_or(0.0, Time::delta)
+            .max(0.0);
+        let mut i = 0;
+        while i < self.tag_parts.len() {
+            let parts = &mut self.tag_parts[i];
+            if self.tag_live.contains(&(parts.holder, parts.index)) {
+                parts.shown += dt;
+                i += 1;
+                continue;
+            }
+            let parts = self.tag_parts.swap_remove(i);
+            for part in [parts.overlay, parts.glow, parts.emitter]
+                .into_iter()
+                .flatten()
+            {
+                if world.is_alive(part) {
+                    world.despawn(part);
+                }
+            }
+        }
+        for k in 0..self.tag_live.len() {
+            let (holder, index) = self.tag_live[k];
+            if self
+                .tag_parts
+                .iter()
+                .any(|parts| (parts.holder, parts.index) == (holder, index))
+            {
+                continue;
+            }
+            let Some(entry) = tag_entry(world, holder, index).cloned() else {
+                continue;
+            };
+            let (overlay, glow, emitter) =
+                self.spawn_entities(world, holder, &entry.look, entry.share(0.0));
+            self.tag_parts.push(TagParts {
+                holder,
+                index,
+                overlay,
+                glow,
+                emitter,
+                shown: 0.0,
+                left: false,
+            });
+        }
+        for parts in &self.tag_parts {
+            let Some(emitter) = parts.emitter else {
+                continue;
+            };
+            let Some(entry) = tag_entry(world, parts.holder, parts.index) else {
+                continue;
+            };
+            let share = entry.share(parts.shown);
+            let at = entry
+                .look
+                .particles
+                .as_ref()
+                .and_then(|particles| particles.at.as_deref())
+                .and_then(|point| sprite_point(world, parts.holder, point))
+                .or_else(|| drawn(world, parts.holder).map(|drawn| drawn.centre));
+            if let Some(at) = at
+                && let Some(transform) = world.get_mut::<Transform>(emitter)
+            {
+                transform.position = at;
+            }
+            if let Some(particles) = world.get_mut::<ParticleEmitter>(emitter) {
+                particles.rate_scale = share;
+            }
+        }
+    }
+
+    /// Spawns `look`'s overlay, glow and emitter for `holder` at its point,
+    /// the emitter at `share`.
+    fn spawn_entities(
+        &mut self,
+        world: &mut World,
+        holder: Entity,
+        look: &Look,
+        share: f32,
+    ) -> (Option<Entity>, Option<Entity>, Option<Entity>) {
         let at = world
-            .get::<Transform>(entry.holder)
+            .get::<Transform>(holder)
             .map_or(Vec2::ZERO, |transform| transform.position);
         let overlay = look
             .overlay
             .as_ref()
-            .and_then(|overlay| spawn_overlay(world, entry.holder, overlay, at));
+            .and_then(|overlay| spawn_overlay(world, holder, overlay, at));
         let glow = look.glow.and_then(|_| {
             let white = world
                 .get_resource::<AssetRegistry>()
@@ -926,29 +1400,30 @@ impl LookState {
                 .get_resource::<ParticleConfigRegistry>()?
                 .id_for_name(&particles.config)?;
             let mut emitter = ParticleEmitter::new(config);
-            emitter.rate_scale = entry.share;
+            emitter.rate_scale = share;
             Some(world.spawn_with((
                 Transform::from_position(at),
                 emitter,
                 ParticleEmitterState::default(),
             )))
         });
-        Parts {
-            holder: entry.holder,
-            serial: entry.serial,
-            band: entry.band,
-            overlay,
-            glow,
-            emitter,
-        }
+        (overlay, glow, emitter)
     }
 
     /// The late pass: tint each holder and place each look's parts at its
-    /// current frame, flip, turn and depth.
+    /// current frame, flip, turn and depth, the tag looks' and the health
+    /// bars' after the running looks'.
     pub(crate) fn late(&mut self, world: &mut World) {
-        if !self.take_entries(world) {
-            return;
+        self.gather_tag_tints(world);
+        if self.take_entries(world) {
+            self.late_running(world);
         }
+        self.late_tags(world);
+        self.bars.late(world);
+    }
+
+    /// The running looks' tints and parts.
+    fn late_running(&mut self, world: &mut World) {
         let entries = std::mem::take(&mut self.entries);
         // Tints, in instance order, over the colour the frame's writers left.
         let mut holder = None;
@@ -983,41 +1458,112 @@ impl LookState {
             let overlay = look
                 .overlay
                 .as_ref()
-                .map(|overlay| (overlay.offset, overlay.z));
+                .map(|overlay| (overlay.offset, overlay.z, overlay.scale_at(entry.share)));
             let glow = look.glow;
             let Some(drawn) = drawn(world, parts.holder) else {
                 continue;
             };
-            if let (Some(part), Some((offset, z))) = (parts.overlay, overlay) {
-                place_overlay(world, part, offset, z, &drawn);
+            if let (Some(part), Some((offset, z, scale))) = (parts.overlay, overlay) {
+                place_overlay(world, part, offset, z, scale, &drawn);
             }
             if let (Some(part), Some(glow)) = (parts.glow, glow) {
-                let size = Vec2::splat(glow.radius * 2.0);
-                if let Some(transform) = world.get_mut::<Transform>(part) {
-                    *transform = Transform {
-                        position: drawn.centre - size * 0.5,
-                        rotation: 0.0,
-                        scale: size,
-                    };
-                }
-                if let Some(sprite) = world.get_mut::<Sprite>(part) {
-                    let alpha = glow.color[3] * entry.share;
-                    let color = [glow.color[0], glow.color[1], glow.color[2], alpha];
-                    sprite.color =
-                        color.map(|channel| (channel.clamp(0.0, 1.0) * 255.0).round() as u8);
-                    sprite.z_order = drawn.z.saturating_sub(1);
-                }
+                place_glow(world, part, glow, entry.share, &drawn);
             }
         }
         self.entries = entries;
     }
 
-    /// Writes `holder`'s sprite colour times `factor`, keeping what it read
-    /// and wrote for the next frame's early pass.
-    fn tint(&mut self, world: &mut World, holder: Option<Entity>, factor: [f32; 3]) {
+    /// Each tag-tinted holder's factor this frame, its tag looks' tints by
+    /// their shares multiplied in entry order.
+    fn gather_tag_tints(&mut self, world: &World) {
+        self.tag_tints.clear();
+        for parts in &self.tag_parts {
+            let Some(entry) = tag_entry(world, parts.holder, parts.index) else {
+                continue;
+            };
+            let Some(tint) = entry.look.tint else {
+                continue;
+            };
+            let weight = (entry.share(parts.shown) * tint[3]).clamp(0.0, 1.0);
+            let found = self
+                .tag_tints
+                .iter()
+                .position(|(holder, _)| *holder == parts.holder);
+            let at = found.unwrap_or_else(|| {
+                self.tag_tints.push((parts.holder, [1.0; 3]));
+                self.tag_tints.len() - 1
+            });
+            for (f, t) in self.tag_tints[at].1.iter_mut().zip(tint) {
+                *f *= 1.0 + (t - 1.0) * weight;
+            }
+        }
+    }
+
+    /// The tag tints no running look's holder took, then each tag look's
+    /// overlay and glow, mirrored and turned as its holder is drawn, as a
+    /// status overlay is. A holder drawn unflipped whose [`Facing`] neither
+    /// turns nor flips it mirrors them by that facing's side instead, left
+    /// of the vertical, the entry keeping its last side while the facing
+    /// points straight up or down.
+    fn late_tags(&mut self, world: &mut World) {
+        let tints = std::mem::take(&mut self.tag_tints);
+        for &(holder, factor) in &tints {
+            self.tint(world, Some(holder), factor);
+        }
+        self.tag_tints = tints;
+        self.tag_tints.clear();
+        for parts in &mut self.tag_parts {
+            let Some((overlay, glow, share)) =
+                tag_entry(world, parts.holder, parts.index).map(|entry| {
+                    let share = entry.share(parts.shown);
+                    let overlay = entry
+                        .look
+                        .overlay
+                        .as_ref()
+                        .map(|overlay| (overlay.offset, overlay.z, overlay.scale_at(share)));
+                    (overlay, entry.look.glow, share)
+                })
+            else {
+                continue;
+            };
+            let Some(mut drawn) = drawn(world, parts.holder) else {
+                continue;
+            };
+            if let Some(facing) = world.get::<Facing>(parts.holder)
+                && !facing.turns_or_flips()
+            {
+                let side = facing.direction().x;
+                if side != 0.0 {
+                    parts.left = side < 0.0;
+                }
+                drawn.flip |= parts.left;
+            }
+            if let (Some(part), Some((offset, z, scale))) = (parts.overlay, overlay) {
+                place_overlay(world, part, offset, z, scale, &drawn);
+            }
+            if let (Some(part), Some(glow)) = (parts.glow, glow) {
+                place_glow(world, part, glow, share, &drawn);
+            }
+        }
+    }
+
+    /// Writes `holder`'s sprite colour times `factor` and its tag looks'
+    /// tints, keeping what it read and wrote for the next frame's early
+    /// pass.
+    fn tint(&mut self, world: &mut World, holder: Option<Entity>, mut factor: [f32; 3]) {
         let Some(holder) = holder else {
             return;
         };
+        if let Some(at) = self
+            .tag_tints
+            .iter()
+            .position(|(tinted, _)| *tinted == holder)
+        {
+            let (_, tags) = self.tag_tints.swap_remove(at);
+            for (f, t) in factor.iter_mut().zip(tags) {
+                *f *= t;
+            }
+        }
         let Some(sprite) = world.get_mut::<Sprite>(holder) else {
             return;
         };
@@ -1032,17 +1578,19 @@ impl LookState {
 }
 
 /// Where and how a holder is drawn this frame.
-struct Drawn {
-    centre: Vec2,
+pub(crate) struct Drawn {
+    pub(crate) centre: Vec2,
     rotation: f32,
     scale: Vec2,
     flip: bool,
-    z: i32,
+    pub(crate) z: i32,
+    /// Half its drawn height, unturned: 0 without a sprite.
+    pub(crate) half_height: f32,
 }
 
 /// `holder`'s drawn centre, turn, scale, flip and depth, as the default
 /// extract places its quad; its `Transform`'s point without a sprite.
-fn drawn(world: &World, holder: Entity) -> Option<Drawn> {
+pub(crate) fn drawn(world: &World, holder: Entity) -> Option<Drawn> {
     let transform = *world.get::<Transform>(holder)?;
     let flip = world.get::<SpriteFlip>(holder).is_some_and(|flip| flip.0);
     let sprite = world.get::<Sprite>(holder);
@@ -1060,6 +1608,9 @@ fn drawn(world: &World, holder: Entity) -> Option<Drawn> {
         scale: transform.scale,
         flip,
         z,
+        half_height: asset.map_or(0.0, |asset| {
+            asset.height as f32 * transform.scale.y.abs() * 0.5
+        }),
     })
 }
 
@@ -1123,15 +1674,24 @@ fn spawn_overlay(world: &mut World, holder: Entity, overlay: &Overlay, at: Vec2)
 }
 
 /// Places `part`, an overlay's entity `offset` from the holder's centre and
-/// `z` above it, on the holder as `drawn` shows it.
-fn place_overlay(world: &mut World, part: Entity, offset: Vec2, z: i32, drawn: &Drawn) {
+/// `z` above it, `scale` times the holder's, on the holder as `drawn` shows
+/// it: its frame's drawn centre on that point, whatever the frame's anchor,
+/// so it holds there as its scale grows.
+fn place_overlay(world: &mut World, part: Entity, offset: Vec2, z: i32, scale: f32, drawn: &Drawn) {
     let offset = if drawn.flip {
         Vec2::new(-offset.x, offset.y)
     } else {
         offset
     };
     let centre = drawn.centre + turn(offset * drawn.scale, drawn.rotation);
-    let size = world
+    let mut placed = Transform {
+        position: Vec2::ZERO,
+        rotation: drawn.rotation,
+        scale: drawn.scale * scale,
+    };
+    // The frame's drawn centre from its point: half its scaled size for an
+    // unanchored frame.
+    let from_point = world
         .get::<Sprite>(part)
         .and_then(|sprite| {
             world
@@ -1139,14 +1699,11 @@ fn place_overlay(world: &mut World, part: Entity, offset: Vec2, z: i32, drawn: &
                 .and_then(|assets| assets.sprite(sprite.asset_id))
         })
         .map_or(Vec2::ZERO, |asset| {
-            Vec2::new(asset.width as f32, asset.height as f32) * drawn.scale
+            sprite_centre(asset, &placed, drawn.flip)
         });
+    placed.position = centre - from_point;
     if let Some(transform) = world.get_mut::<Transform>(part) {
-        *transform = Transform {
-            position: centre - size * 0.5,
-            rotation: drawn.rotation,
-            scale: drawn.scale,
-        };
+        *transform = placed;
     }
     if let Some(sprite) = world.get_mut::<Sprite>(part) {
         sprite.z_order = drawn.z.saturating_add(z);
@@ -1154,6 +1711,36 @@ fn place_overlay(world: &mut World, part: Entity, offset: Vec2, z: i32, drawn: &
     if let Some(flip) = world.get_mut::<SpriteFlip>(part) {
         flip.0 = drawn.flip;
     }
+}
+
+/// Places `part`, a glow, about the holder's drawn centre, one below it, its
+/// alpha by `share`.
+fn place_glow(world: &mut World, part: Entity, glow: Glow, share: f32, drawn: &Drawn) {
+    let size = Vec2::splat(glow.radius * 2.0);
+    if let Some(transform) = world.get_mut::<Transform>(part) {
+        *transform = Transform {
+            position: drawn.centre - size * 0.5,
+            rotation: 0.0,
+            scale: size,
+        };
+    }
+    if let Some(sprite) = world.get_mut::<Sprite>(part) {
+        let alpha = glow.color[3] * share;
+        let color = [glow.color[0], glow.color[1], glow.color[2], alpha];
+        sprite.color = linear_bytes(color);
+        sprite.z_order = drawn.z.saturating_sub(1);
+    }
+}
+
+/// A linear colour's channels as a sprite's bytes, each clamped to
+/// `[0, 1]`.
+pub(crate) fn linear_bytes(color: [f32; 4]) -> [u8; 4] {
+    color.map(|channel| (channel.clamp(0.0, 1.0) * 255.0).round() as u8)
+}
+
+/// The tag look `index` of `holder`'s [`Looks`].
+fn tag_entry(world: &World, holder: Entity, index: usize) -> Option<&TagLook> {
+    world.get::<Looks>(holder)?.entries.get(index)
 }
 
 #[cfg(test)]

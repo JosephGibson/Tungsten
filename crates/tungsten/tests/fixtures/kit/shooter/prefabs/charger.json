@@ -1,0 +1,27 @@
+{
+  "tag": "charger",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "looks": [
+      {
+        "when": {
+          "all": [
+            "state.charging"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "animation": "charge_ring",
+            "scale": [
+              0.25,
+              1.0
+            ]
+          }
+        },
+        "grow": 0.5
+      }
+    ]
+  }
+}

@@ -391,6 +391,9 @@
     },
     "ghoul_alert": {
       "path": "animations/ghoul_alert.json"
+    },
+    "ghoul_mark": {
+      "path": "animations/ghoul_mark.json"
     }
   },
   "shaders": {

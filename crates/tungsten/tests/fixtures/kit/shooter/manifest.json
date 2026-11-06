@@ -116,12 +116,21 @@
     },
     "cycle_turret": {
       "path": "prefabs/cycle_turret.json"
+    },
+    "charger": {
+      "path": "prefabs/charger.json"
+    },
+    "frigate": {
+      "path": "prefabs/frigate.json"
     }
   },
   "data": {
     "tags": {
       "game": {
         "path": "data/tags.json"
+      },
+      "state": {
+        "path": "data/state_tags.json"
       }
     },
     "cue_rules": {
@@ -236,6 +245,11 @@
   "sounds": {
     "blip": {
       "path": "sounds/blip.ogg"
+    }
+  },
+  "animations": {
+    "charge_ring": {
+      "path": "animations/charge_ring.json"
     }
   }
 }

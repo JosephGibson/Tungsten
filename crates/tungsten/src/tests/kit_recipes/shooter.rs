@@ -12,7 +12,8 @@
 //! escorts, held to three by their cap; a sapper's mines, a fourth refused
 //! at their cap with a blip; 7.10g's missile, turning back right side up,
 //! a stray drone killed past the world's bounds, a sentry whose patrol
-//! waits at each end, and two turrets cycling half a second apart.
+//! waits at each end, two turrets cycling half a second apart, a charger
+//! whose ring grows over its tell, and a frigate's health bar.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1794,5 +1795,103 @@ fn two_turrets_cycle_half_a_second_apart() {
             frames_for(1.5, dt),
             "dt {dt}: a 1.5 s cycle"
         );
+    }
+}
+
+/// 7.10g: the charger's tell is a game's `state.charging` tag; its looks
+/// show a ring that grows from a quarter of its size to its whole over the
+/// tell's 0.5 s, and goes when the tag does.
+#[test]
+fn a_chargers_ring_grows_over_its_tell() {
+    use tungsten_core::AnimationState;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let charger = spawn(&mut harness, "charger", [800.0, 3000.0]);
+        let ring = |harness: &Harness| {
+            harness
+                .world()
+                .query::<(&AnimationState, &Transform)>()
+                .find(|(state, _)| state.animation_id == "charge_ring")
+                .map(|(_, transform)| transform.scale.x)
+        };
+        let charging = |harness: &mut Harness, on: bool| {
+            let tags = harness.world_mut().get_mut::<Tags>(charger).unwrap();
+            if on {
+                tags.insert("state.charging");
+            } else {
+                tags.remove("state.charging");
+            }
+        };
+        harness.step(1);
+        assert_eq!(ring(&harness), None, "dt {dt}: no tell, no ring");
+        charging(&mut harness, true);
+        harness.step(1);
+        assert_eq!(ring(&harness), Some(0.25), "dt {dt}: from a quarter");
+        harness.step(frames_for(0.2, dt));
+        let grown = ring(&harness).unwrap();
+        assert!(
+            (grown - 0.55).abs() < 1e-3,
+            "dt {dt}: 0.2 s of 0.5: {grown}"
+        );
+        harness.step(frames_for(0.3, dt));
+        assert!(
+            (ring(&harness).unwrap() - 1.0).abs() < 1e-4,
+            "dt {dt}: whole"
+        );
+        harness.step(frames_for(0.5, dt));
+        assert!(
+            (ring(&harness).unwrap() - 1.0).abs() < 1e-4,
+            "dt {dt}: held"
+        );
+        charging(&mut harness, false);
+        harness.step(1);
+        assert_eq!(ring(&harness), None, "dt {dt}: gone with the tag");
+    }
+}
+
+/// 7.10g: the frigate's health bar sits over its point, its fill falling
+/// with each hit, and goes with the frigate at its death.
+#[test]
+fn a_frigates_bar_falls_and_goes() {
+    use tungsten_core::{Sprite, Visibility};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let white = super::register_sprite(&mut harness, "engine_white", 1, 1);
+        let frigate = spawn(&mut harness, "frigate", [400.0, 3000.0]);
+        let bar = |harness: &Harness| {
+            let mut parts: Vec<(i32, Vec2, Vec2, bool)> = harness
+                .world()
+                .query::<(&Transform, &Sprite, &Visibility)>()
+                .filter(|(_, sprite, _)| sprite.asset_id == white)
+                .map(|(transform, sprite, visibility)| {
+                    (
+                        sprite.z_order,
+                        transform.position,
+                        transform.scale,
+                        visibility.visible,
+                    )
+                })
+                .collect();
+            parts.sort_by_key(|part| part.0);
+            parts
+        };
+        harness.step(1);
+        let parts = bar(&harness);
+        assert_eq!(parts.len(), 2, "dt {dt}: a back and a fill");
+        assert!(parts.iter().all(|part| part.3), "dt {dt}: shown");
+        // No sprite: centred over its point, 6 px over it, 6 tall.
+        assert_eq!(parts[0].1, Vec2::new(368.0, 2988.0), "dt {dt}");
+        assert_eq!(parts[1].2, Vec2::new(62.0, 4.0), "dt {dt}: full");
+        damage(harness.world_mut(), frigate, 10.0);
+        harness.step(1);
+        assert_eq!(bar(&harness)[1].2, Vec2::new(31.0, 4.0), "dt {dt}: half");
+        damage(harness.world_mut(), frigate, 10.0);
+        let mut frames = 0;
+        while !bar(&harness).is_empty() {
+            assert!(frames < 4, "dt {dt}: the bar goes with its frigate");
+            harness.step(1);
+            frames += 1;
+        }
+        assert!(!harness.world().is_alive(frigate), "dt {dt}");
     }
 }

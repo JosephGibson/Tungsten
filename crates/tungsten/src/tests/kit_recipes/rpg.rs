@@ -9,8 +9,9 @@
 //! 7.10g's thrower, whose throw's cue plays its clip over its walk, and its
 //! pole warden, whose swing turns with its four facings; a spike trap
 //! switched off and on, gold that blinks faster as it goes, a rat den
-//! whose first rat comes at once, and a crate warden, who carries a ward
-//! crate at its side as it turns and lobs it onto a mark.
+//! whose first rat comes at once, a crate warden, who carries a ward crate
+//! at its side as it turns and lobs it onto a mark, and a fogling whose
+//! health bar waits for a hurt.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -864,5 +865,39 @@ fn the_warden_lobs_a_crate_onto_its_mark() {
             (landed - to).length() < 0.5,
             "dt {dt}: on the mark: {landed}"
         );
+    }
+}
+
+/// 7.10g: the fogling's bar, `full: false`, stays hidden at full health and
+/// shows its share from the first hurt.
+#[test]
+fn a_foglings_bar_waits_for_a_hurt() {
+    use glam::Vec2 as V;
+    use tungsten_core::{Transform, Visibility};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let white = register_sprite(&mut harness, "engine_white", 1, 1);
+        let fogling = spawn(&mut harness, "fogling", [500.0, 3000.0]);
+        let bar = |harness: &Harness| {
+            let mut parts: Vec<(i32, V, bool)> = harness
+                .world()
+                .query::<(&Transform, &Sprite, &Visibility)>()
+                .filter(|(_, sprite, _)| sprite.asset_id == white)
+                .map(|(transform, sprite, visibility)| {
+                    (sprite.z_order, transform.scale, visibility.visible)
+                })
+                .collect();
+            parts.sort_by_key(|part| part.0);
+            parts
+        };
+        harness.step(1);
+        let parts = bar(&harness);
+        assert_eq!(parts.len(), 2, "dt {dt}");
+        assert!(parts.iter().all(|part| !part.2), "dt {dt}: hidden at full");
+        damage(harness.world_mut(), fogling, 2.5);
+        harness.step(1);
+        let parts = bar(&harness);
+        assert!(parts.iter().all(|part| part.2), "dt {dt}: shown once hurt");
+        assert_eq!(parts[1].1, V::new(22.5, 2.0), "dt {dt}: 30 px at 0.75");
     }
 }

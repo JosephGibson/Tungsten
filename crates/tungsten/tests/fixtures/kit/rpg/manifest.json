@@ -95,6 +95,9 @@
     },
     "crate_warden": {
       "path": "prefabs/crate_warden.json"
+    },
+    "fogling": {
+      "path": "prefabs/fogling.json"
     }
   },
   "data": {

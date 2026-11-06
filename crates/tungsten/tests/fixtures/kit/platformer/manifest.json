@@ -164,6 +164,9 @@
     },
     "porter_crate": {
       "path": "prefabs/porter_crate.json"
+    },
+    "brute": {
+      "path": "prefabs/brute.json"
     }
   },
   "data": {
@@ -175,6 +178,9 @@
     "tags": {
       "game": {
         "path": "data/tags.json"
+      },
+      "state": {
+        "path": "data/state_tags.json"
       }
     },
     "stats": {
@@ -300,6 +306,9 @@
     },
     "acrobat_land": {
       "path": "animations/acrobat_land.json"
+    },
+    "brute_mark": {
+      "path": "animations/brute_mark.json"
     }
   },
   "materials": {

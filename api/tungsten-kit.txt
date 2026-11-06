@@ -2022,6 +2022,52 @@ impl core::marker::Unpin for tungsten_kit::Health
 impl core::marker::UnsafeUnpin for tungsten_kit::Health
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Health
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Health
+pub struct tungsten_kit::prelude::HealthBar
+impl tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::full(&self) -> bool
+pub fn tungsten_kit::HealthBar::hidden_at_full(self) -> Self
+pub fn tungsten_kit::HealthBar::new() -> Self
+pub fn tungsten_kit::HealthBar::size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::HealthBar::with_colors(self, [f32; 4], [f32; 4]) -> Self
+pub fn tungsten_kit::HealthBar::with_inset(self, f32) -> Self
+pub fn tungsten_kit::HealthBar::with_rise(self, f32) -> Self
+pub fn tungsten_kit::HealthBar::with_size(self, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::clone(&self) -> tungsten_kit::HealthBar
+impl core::cmp::PartialEq for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::eq(&self, &tungsten_kit::HealthBar) -> bool
+impl core::default::Default for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::default() -> Self
+impl core::fmt::Debug for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::HealthBar
+impl core::marker::StructuralPartialEq for tungsten_kit::HealthBar
+impl tungsten_core::inspect::Inspectable for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl core::marker::Freeze for tungsten_kit::HealthBar
+impl core::marker::Send for tungsten_kit::HealthBar
+impl core::marker::Sync for tungsten_kit::HealthBar
+impl core::marker::Unpin for tungsten_kit::HealthBar
+impl core::marker::UnsafeUnpin for tungsten_kit::HealthBar
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::HealthBar
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HealthBar
+pub struct tungsten_kit::prelude::HealthBarPlugin
+impl core::clone::Clone for tungsten_kit::HealthBarPlugin
+pub fn tungsten_kit::HealthBarPlugin::clone(&self) -> tungsten_kit::HealthBarPlugin
+impl core::default::Default for tungsten_kit::HealthBarPlugin
+pub fn tungsten_kit::HealthBarPlugin::default() -> tungsten_kit::HealthBarPlugin
+impl core::fmt::Debug for tungsten_kit::HealthBarPlugin
+pub fn tungsten_kit::HealthBarPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::HealthBarPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::HealthBarPlugin
+pub fn tungsten_kit::HealthBarPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::HealthBarPlugin
+impl core::marker::Send for tungsten_kit::HealthBarPlugin
+impl core::marker::Sync for tungsten_kit::HealthBarPlugin
+impl core::marker::Unpin for tungsten_kit::HealthBarPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::HealthBarPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::HealthBarPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HealthBarPlugin
 pub struct tungsten_kit::prelude::HealthPlugin
 impl core::clone::Clone for tungsten_kit::HealthPlugin
 pub fn tungsten_kit::HealthPlugin::clone(&self) -> tungsten_kit::HealthPlugin
@@ -2675,6 +2721,46 @@ impl core::marker::Unpin for tungsten_kit::LocalOffset
 impl core::marker::UnsafeUnpin for tungsten_kit::LocalOffset
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::LocalOffset
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::LocalOffset
+pub struct tungsten_kit::prelude::Looks
+impl tungsten_kit::Looks
+pub fn tungsten_kit::Looks::entries(&self) -> &[tungsten_kit::TagLook]
+pub fn tungsten_kit::Looks::new() -> Self
+pub fn tungsten_kit::Looks::with(self, tungsten_kit::TagLook) -> Self
+impl core::clone::Clone for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::clone(&self) -> tungsten_kit::Looks
+impl core::cmp::PartialEq for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::eq(&self, &tungsten_kit::Looks) -> bool
+impl core::default::Default for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::default() -> tungsten_kit::Looks
+impl core::fmt::Debug for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Looks
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl core::marker::Freeze for tungsten_kit::Looks
+impl core::marker::Send for tungsten_kit::Looks
+impl core::marker::Sync for tungsten_kit::Looks
+impl core::marker::Unpin for tungsten_kit::Looks
+impl core::marker::UnsafeUnpin for tungsten_kit::Looks
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Looks
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Looks
+pub struct tungsten_kit::prelude::LooksPlugin
+impl core::clone::Clone for tungsten_kit::LooksPlugin
+pub fn tungsten_kit::LooksPlugin::clone(&self) -> tungsten_kit::LooksPlugin
+impl core::default::Default for tungsten_kit::LooksPlugin
+pub fn tungsten_kit::LooksPlugin::default() -> tungsten_kit::LooksPlugin
+impl core::fmt::Debug for tungsten_kit::LooksPlugin
+pub fn tungsten_kit::LooksPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::LooksPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::LooksPlugin
+pub fn tungsten_kit::LooksPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::LooksPlugin
+impl core::marker::Send for tungsten_kit::LooksPlugin
+impl core::marker::Sync for tungsten_kit::LooksPlugin
+impl core::marker::Unpin for tungsten_kit::LooksPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::LooksPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::LooksPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::LooksPlugin
 pub struct tungsten_kit::prelude::Offer
 impl tungsten_kit::Offer
 pub fn tungsten_kit::Offer::ability(&self) -> core::option::Option<&tungsten_core::assets::data::DataRef<tungsten_kit::Ability>>
@@ -3815,6 +3901,25 @@ impl core::marker::Unpin for tungsten_kit::TagFilter
 impl core::marker::UnsafeUnpin for tungsten_kit::TagFilter
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TagFilter
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TagFilter
+pub struct tungsten_kit::prelude::TagLook
+impl tungsten_kit::TagLook
+pub fn tungsten_kit::TagLook::grow(&self) -> f32
+pub fn tungsten_kit::TagLook::new(tungsten_kit::TagFilter, tungsten_kit::Look) -> Self
+pub fn tungsten_kit::TagLook::with_grow(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::TagLook
+pub fn tungsten_kit::TagLook::clone(&self) -> tungsten_kit::TagLook
+impl core::cmp::PartialEq for tungsten_kit::TagLook
+pub fn tungsten_kit::TagLook::eq(&self, &tungsten_kit::TagLook) -> bool
+impl core::fmt::Debug for tungsten_kit::TagLook
+pub fn tungsten_kit::TagLook::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::TagLook
+impl core::marker::Freeze for tungsten_kit::TagLook
+impl core::marker::Send for tungsten_kit::TagLook
+impl core::marker::Sync for tungsten_kit::TagLook
+impl core::marker::Unpin for tungsten_kit::TagLook
+impl core::marker::UnsafeUnpin for tungsten_kit::TagLook
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TagLook
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TagLook
 pub struct tungsten_kit::prelude::Tags
 impl tungsten_kit::Tags
 pub fn tungsten_kit::Tags::has(&self, &str) -> bool
@@ -6534,6 +6639,52 @@ impl core::marker::Unpin for tungsten_kit::Health
 impl core::marker::UnsafeUnpin for tungsten_kit::Health
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Health
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Health
+pub struct tungsten_kit::HealthBar
+impl tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::full(&self) -> bool
+pub fn tungsten_kit::HealthBar::hidden_at_full(self) -> Self
+pub fn tungsten_kit::HealthBar::new() -> Self
+pub fn tungsten_kit::HealthBar::size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::HealthBar::with_colors(self, [f32; 4], [f32; 4]) -> Self
+pub fn tungsten_kit::HealthBar::with_inset(self, f32) -> Self
+pub fn tungsten_kit::HealthBar::with_rise(self, f32) -> Self
+pub fn tungsten_kit::HealthBar::with_size(self, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::clone(&self) -> tungsten_kit::HealthBar
+impl core::cmp::PartialEq for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::eq(&self, &tungsten_kit::HealthBar) -> bool
+impl core::default::Default for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::default() -> Self
+impl core::fmt::Debug for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::HealthBar
+impl core::marker::StructuralPartialEq for tungsten_kit::HealthBar
+impl tungsten_core::inspect::Inspectable for tungsten_kit::HealthBar
+pub fn tungsten_kit::HealthBar::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl core::marker::Freeze for tungsten_kit::HealthBar
+impl core::marker::Send for tungsten_kit::HealthBar
+impl core::marker::Sync for tungsten_kit::HealthBar
+impl core::marker::Unpin for tungsten_kit::HealthBar
+impl core::marker::UnsafeUnpin for tungsten_kit::HealthBar
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::HealthBar
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HealthBar
+pub struct tungsten_kit::HealthBarPlugin
+impl core::clone::Clone for tungsten_kit::HealthBarPlugin
+pub fn tungsten_kit::HealthBarPlugin::clone(&self) -> tungsten_kit::HealthBarPlugin
+impl core::default::Default for tungsten_kit::HealthBarPlugin
+pub fn tungsten_kit::HealthBarPlugin::default() -> tungsten_kit::HealthBarPlugin
+impl core::fmt::Debug for tungsten_kit::HealthBarPlugin
+pub fn tungsten_kit::HealthBarPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::HealthBarPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::HealthBarPlugin
+pub fn tungsten_kit::HealthBarPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::HealthBarPlugin
+impl core::marker::Send for tungsten_kit::HealthBarPlugin
+impl core::marker::Sync for tungsten_kit::HealthBarPlugin
+impl core::marker::Unpin for tungsten_kit::HealthBarPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::HealthBarPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::HealthBarPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HealthBarPlugin
 pub struct tungsten_kit::HealthPlugin
 impl core::clone::Clone for tungsten_kit::HealthPlugin
 pub fn tungsten_kit::HealthPlugin::clone(&self) -> tungsten_kit::HealthPlugin
@@ -7371,6 +7522,46 @@ impl core::marker::Unpin for tungsten_kit::Look
 impl core::marker::UnsafeUnpin for tungsten_kit::Look
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Look
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Look
+pub struct tungsten_kit::Looks
+impl tungsten_kit::Looks
+pub fn tungsten_kit::Looks::entries(&self) -> &[tungsten_kit::TagLook]
+pub fn tungsten_kit::Looks::new() -> Self
+pub fn tungsten_kit::Looks::with(self, tungsten_kit::TagLook) -> Self
+impl core::clone::Clone for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::clone(&self) -> tungsten_kit::Looks
+impl core::cmp::PartialEq for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::eq(&self, &tungsten_kit::Looks) -> bool
+impl core::default::Default for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::default() -> tungsten_kit::Looks
+impl core::fmt::Debug for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Looks
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Looks
+pub fn tungsten_kit::Looks::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl core::marker::Freeze for tungsten_kit::Looks
+impl core::marker::Send for tungsten_kit::Looks
+impl core::marker::Sync for tungsten_kit::Looks
+impl core::marker::Unpin for tungsten_kit::Looks
+impl core::marker::UnsafeUnpin for tungsten_kit::Looks
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Looks
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Looks
+pub struct tungsten_kit::LooksPlugin
+impl core::clone::Clone for tungsten_kit::LooksPlugin
+pub fn tungsten_kit::LooksPlugin::clone(&self) -> tungsten_kit::LooksPlugin
+impl core::default::Default for tungsten_kit::LooksPlugin
+pub fn tungsten_kit::LooksPlugin::default() -> tungsten_kit::LooksPlugin
+impl core::fmt::Debug for tungsten_kit::LooksPlugin
+pub fn tungsten_kit::LooksPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::LooksPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::LooksPlugin
+pub fn tungsten_kit::LooksPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::LooksPlugin
+impl core::marker::Send for tungsten_kit::LooksPlugin
+impl core::marker::Sync for tungsten_kit::LooksPlugin
+impl core::marker::Unpin for tungsten_kit::LooksPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::LooksPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::LooksPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::LooksPlugin
 pub struct tungsten_kit::Offer
 impl tungsten_kit::Offer
 pub fn tungsten_kit::Offer::ability(&self) -> core::option::Option<&tungsten_core::assets::data::DataRef<tungsten_kit::Ability>>
@@ -7536,6 +7727,7 @@ impl tungsten_kit::Overlay
 pub fn tungsten_kit::Overlay::new(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Overlay::with_material(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Overlay::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::Overlay::with_scale(self, f32, f32) -> Self
 pub fn tungsten_kit::Overlay::with_speed(self, f32) -> Self
 pub fn tungsten_kit::Overlay::with_z(self, i32) -> Self
 impl core::clone::Clone for tungsten_kit::Overlay
@@ -8773,6 +8965,25 @@ impl core::marker::Unpin for tungsten_kit::TagFilter
 impl core::marker::UnsafeUnpin for tungsten_kit::TagFilter
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TagFilter
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TagFilter
+pub struct tungsten_kit::TagLook
+impl tungsten_kit::TagLook
+pub fn tungsten_kit::TagLook::grow(&self) -> f32
+pub fn tungsten_kit::TagLook::new(tungsten_kit::TagFilter, tungsten_kit::Look) -> Self
+pub fn tungsten_kit::TagLook::with_grow(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::TagLook
+pub fn tungsten_kit::TagLook::clone(&self) -> tungsten_kit::TagLook
+impl core::cmp::PartialEq for tungsten_kit::TagLook
+pub fn tungsten_kit::TagLook::eq(&self, &tungsten_kit::TagLook) -> bool
+impl core::fmt::Debug for tungsten_kit::TagLook
+pub fn tungsten_kit::TagLook::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::TagLook
+impl core::marker::Freeze for tungsten_kit::TagLook
+impl core::marker::Send for tungsten_kit::TagLook
+impl core::marker::Sync for tungsten_kit::TagLook
+impl core::marker::Unpin for tungsten_kit::TagLook
+impl core::marker::UnsafeUnpin for tungsten_kit::TagLook
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TagLook
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TagLook
 pub struct tungsten_kit::Tags
 impl tungsten_kit::Tags
 pub fn tungsten_kit::Tags::has(&self, &str) -> bool

@@ -25,10 +25,11 @@
 //! a blazing crate whose look lights a lurker and crackles, and a coffer
 //! whose one game event registration brings `opened` and `emptied` in by
 //! name; 7.10g's ghoul scout, whose alert clip shows by its animator's rule
-//! while a game's `state.alerted` tag is on, a watchman facing the point it
-//! heard, hit shapes drawn on a key, a ghoul guard its death policy
-//! disarms, a nest that keeps one slime, across a save and a load, and a
-//! brazier whose phases a timed state machine cycles.
+//! while a game's `state.alerted` tag is on, and its mark by its looks,
+//! mirrored as it turns; a watchman facing the point it heard, hit shapes
+//! drawn on a key, a ghoul guard its death policy disarms, a nest that
+//! keeps one slime, across a save and a load, and a brazier whose phases a
+//! timed state machine cycles.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3294,5 +3295,73 @@ fn a_brazier_cycles_its_phases() {
             ],
             "dt {dt}"
         );
+    }
+}
+
+/// 7.10g: the alerted ghoul scout wears its mark, an overlay its `looks`
+/// show while `state.alerted` is on, beside its head on the side it faces,
+/// mirrored as its beat turns it back; the mark goes with the tag.
+#[test]
+fn an_alerted_ghoul_wears_its_mark() {
+    use tungsten_core::components::SpriteFlip;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let scout = spawn(&mut harness, "ghoul_scout", [0.0, 3000.0]);
+        let marks = |harness: &Harness| -> Vec<(Vec2, bool)> {
+            let world = harness.world();
+            world
+                .query::<(Entity, &AnimationState, &Transform)>()
+                .filter(|(_, state, _)| state.animation_id == "ghoul_mark")
+                .map(|(mark, _, transform)| {
+                    let flipped = world.get::<SpriteFlip>(mark).is_some_and(|flip| flip.0);
+                    (transform.position, flipped)
+                })
+                .collect()
+        };
+        let side = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Facing>(scout)
+                .unwrap()
+                .direction()
+                .x
+                .signum()
+        };
+        harness.step(2);
+        assert!(marks(&harness).is_empty(), "dt {dt}: unalerted, no mark");
+        harness
+            .world_mut()
+            .get_mut::<Tags>(scout)
+            .unwrap()
+            .insert("state.alerted");
+        harness.step(1);
+        let worn = |harness: &Harness| {
+            let found = marks(harness);
+            assert_eq!(found.len(), 1, "dt {dt}: one mark");
+            let point = drawn_at(harness, scout);
+            let (at, flipped) = found[0];
+            (at - point, flipped)
+        };
+        let first = side(&harness);
+        let (offset, flipped) = worn(&harness);
+        assert_eq!(offset, Vec2::new(6.0 * first, -14.0), "dt {dt}");
+        assert_eq!(flipped, first < 0.0, "dt {dt}");
+        // Its beat turns it back within a few seconds: the mark mirrors.
+        let mut frames = 0;
+        while side(&harness) == first {
+            assert!(frames < frames_for(6.0, dt), "dt {dt}: the beat turns");
+            harness.step(1);
+            frames += 1;
+        }
+        let (offset, flipped) = worn(&harness);
+        assert_eq!(offset, Vec2::new(-6.0 * first, -14.0), "dt {dt}: mirrored");
+        assert_eq!(flipped, first > 0.0, "dt {dt}");
+        harness
+            .world_mut()
+            .get_mut::<Tags>(scout)
+            .unwrap()
+            .remove("state.alerted");
+        harness.step(1);
+        assert!(marks(&harness).is_empty(), "dt {dt}: gone with the tag");
     }
 }

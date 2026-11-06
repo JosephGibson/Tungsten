@@ -352,6 +352,12 @@ impl Facing {
         self.direction
     }
 
+    /// Whether the present pass turns or flips its entity (`turn`, `flip`
+    /// or `mirror`): a facing with none leaves its entity drawn as it is.
+    pub(crate) fn turns_or_flips(&self) -> bool {
+        self.turn || self.flip || self.mirror
+    }
+
     /// Faces `direction`, snapped as the facing snaps, whatever its minimum
     /// speed; a zero or non-finite direction is ignored. The next present
     /// pass turns the entity to it, and the facing holds it while its

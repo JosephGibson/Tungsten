@@ -146,6 +146,15 @@ component health: Health with an invulnerability window after each hit, which `d
   events: Damaged, DamagedPart, ImmunePart, Healed
   genres: platformer, top_down, rpg, shooter, arpg
   sample: { "max": 5 }
+component health_bar: A bar over the entity showing its health's share: a back and a fill drawn from `engine_white`, hidden while it is dead.
+  field size: [x, y] = [64.0, 6.0] — the back's width and height in world pixels, each above 0
+  field rise: f32 (>= 0) = 6.0 — world pixels from the back's bottom up to the holder's drawn top
+  field back: [r, g, b, a] = [0.05, 0.04, 0.05, 0.86] — linear
+  field fill: [r, g, b, a] = [0.77, 0.19, 0.16, 1.0] — linear; its width the health's share
+  field inset: f32 (>= 0) = 1.0 — world pixels the fill sits inside the back
+  field full: bool = true — shown at full health; when false it waits for a first hurt
+  genres: platformer, rpg, shooter
+  sample: {}
 component hit_flash: A flash of colour on the sprite when `damage` hits the entity, through the `damage_flash` material.
   field color: [r, g, b, a] = [1.0, 1.0, 1.0, 1.0] — the flash's colour; its alpha weighs the mix
   field seconds: f32 (> 0) = 0.1 — how long the flash fades over
@@ -197,6 +206,10 @@ component linear_motion: Moves the entity by a velocity that an acceleration cha
   field acceleration: [x, y] = [0.0, 0.0] — world pixels per second squared, changing the velocity
   genres: platformer, top_down, shooter
   sample: { "velocity": [0, 120] }
+component looks: Looks the entity shows while its tags pass their filters: a tint, an overlay, a glow and particles, as a status shows them.
+  field list: list of shape tag_look — the value itself: each a look and the tag filter it shows while; the load checks each
+  genres: platformer, top_down, shooter
+  sample: []
 component orbit: Places the entity on a circle about a centre, turning at a speed: blades about a wielder, a firebar's ball.
   field center: shape target = null — the circle's centre; the point it is at on its first step when left out
   field radius: f32 (>= 0) — world pixels from the centre
@@ -650,12 +663,13 @@ shape look_light: A point light at the holder, kept on the fixed step.
   field radius: f32 (> 0) — world pixels it reaches
   field intensity: f32 (>= 0) = 1.0 — at a share of 1
   sample: { "color": [1.0, 0.6, 0.2, 1.0], "radius": 64 }
-shape look_overlay: A clip looped on an entity at the holder's drawn centre plus its offset, mirrored and turned with it.
+shape look_overlay: A clip looped on an entity, its frame's drawn centre at the holder's drawn centre plus its offset whatever the frame's anchor, mirrored and turned with it.
   field animation: text — the manifest animation; the load checks it
   field speed: f32 (>= 0) = 1.0 — its playback rate
   field offset: [x, y] = [0.0, 0.0] — world pixels from the holder's drawn centre, mirrored and turned with it
   field z: i64 (>= -2147483648, <= 2147483647) = 1 — its depth above the holder's
   field material: text = null — a manifest material it draws through; the load checks it
+  field scale: [x, y] = null — `[from, to]`, each at least 0: its scale from `from` at a share of 0 to `to` at 1, a ring growing over a tell; `[1, 1]` when left out
   sample: { "animation": "frost" }
 shape look_particles: An emitter riding the holder.
   field config: text — the manifest particle config; the load checks it
@@ -784,6 +798,11 @@ shape stop_action: The subject's want of a looping sound ended; the sound's last
   field id: text — the manifest sound; the load checks the ID
   field fade: f32 (>= 0) = 0.1 — seconds the voice fades out over when this was its last want
   sample: { "id": "crackle" }
+shape tag_look: A look shown while the holder's tags pass `when`, whole or growing from nothing.
+  field when: tag filter — the holder's tags, `state.*` by convention for a state the game sets; the load checks each
+  field look: shape look — its tint, overlay, glow and particles, at the look's share; a light or a sound is refused
+  field grow: f32 (>= 0) = 0.0 — seconds of game time shown over which its share rises from 0 to 1; whole at once at 0
+  sample: { "when": { "all": ["status.burning"] }, "look": {} }
 shape target: What an item follows, circles, steers toward or aims at, resolved again each step.
   exactly one of its fields
   field source: {} — the entity's `Source`: the origin of the spawn chain it came from
