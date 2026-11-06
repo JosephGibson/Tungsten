@@ -6875,6 +6875,7 @@ pub fn tungsten_core::World::get_mut<T: 'static>(&mut self, tungsten_core::Entit
 pub fn tungsten_core::World::get_resource<T: 'static>(&self) -> core::option::Option<&T>
 pub fn tungsten_core::World::get_resource_mut<T: 'static>(&mut self) -> core::option::Option<&mut T>
 pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bool
+pub fn tungsten_core::World::has_any<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::hold_events_for_fixed_step(&mut self)
@@ -22442,6 +22443,7 @@ pub fn tungsten_core::World::get_mut<T: 'static>(&mut self, tungsten_core::Entit
 pub fn tungsten_core::World::get_resource<T: 'static>(&self) -> core::option::Option<&T>
 pub fn tungsten_core::World::get_resource_mut<T: 'static>(&mut self) -> core::option::Option<&mut T>
 pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bool
+pub fn tungsten_core::World::has_any<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::hold_events_for_fixed_step(&mut self)

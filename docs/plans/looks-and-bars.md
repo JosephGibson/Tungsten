@@ -1,6 +1,6 @@
-# Looks by tag and the health bar (looks-and-bars) — draft
+# Looks by tag and the health bar (looks-and-bars) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Land 7.10g's stopped Step 3 as `D-246`'s Open line asks, with its discovery running no new query in a World that has no holder: looks an entity shows while its tags pass a filter, growing over their time shown and mirrored by its facing, and an overlay's scale by its share (S-10); a health bar over its holder (S-52). The work is the stopped patch in `perf-runs/20261105-clips-facing-and-lifecycle/`, ported to today's tree, its two discovery queries gated by a new core presence read, `World::has_any`. Then phase 7's Step 9 (7.10) closes, every 7.10 row landed or moved.
 - **non-goals:**
   - 01's sites onto the looks and the bar (7.13: its marks, streak, ring and embers, the troll's bar) and the template's; 01 and the template unchanged but the template's `AGENTS.md`.
@@ -189,5 +189,6 @@ Round 2: the same, at xhigh, 2026-11-06, reading the plan without §7 and the ev
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-06 | landed | `rtk proxy cargo test -p tungsten-core --lib --locked -- ecs::storage::tests::a_presence_read_keeps_no_query_shape ecs::world::tests::has_any_follows_the_live_rows` exit 0, `2 passed`; `cargo test -p tungsten-core --locked` exit 0 (lib 1,466 passed, integration 34 passed and 8 ignored, doctests 23 passed); `rg -c '^pub fn tungsten_core::World::has_any<T: .static>\(&self\) -> bool$' api/tungsten-core.txt` `2`, the snapshot's only change (2 added, 0 removed); `just api-check` exit 0; `cargo fmt --all -- --check`, `just lint` and `just docs-ratchet` exit 0 (core 873, under its 875 baseline as before); `git diff --quiet HEAD -- crates/tungsten-kit crates/tungsten examples templates` exit 0. The world test also reads a pending spawn as absent until its flush. | `crates/tungsten-core/src/ecs/{storage,world}.rs`, `src/tests/ecs/{storage,world}.rs`; `api/tungsten-core.txt` |
 
 ## Follow-ups

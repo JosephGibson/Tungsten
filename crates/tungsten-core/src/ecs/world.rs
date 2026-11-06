@@ -345,6 +345,19 @@ impl World {
         self.archetypes.has::<T>(entity)
     }
 
+    /// Whether any live entity holds a `T`. It walks the archetypes as a
+    /// query does but keeps no query shape and allocates nothing.
+    ///
+    /// A gate before a query whose holders are rare: each query shape keeps
+    /// its matching archetypes and regrows them whenever an archetype is
+    /// added (`D-206`), so a pass that queries every frame for a type no
+    /// entity holds still pays that regrowth. Commands still pending count
+    /// after their flush, as for a query.
+    #[must_use]
+    pub fn has_any<T: 'static>(&self) -> bool {
+        self.archetypes.holds(TypeId::of::<T>())
+    }
+
     /// The type and [`type_name`] of each component `entity` holds, sorted
     /// by name; empty for a dead entity.
     ///

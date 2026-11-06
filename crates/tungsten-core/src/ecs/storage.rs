@@ -108,6 +108,17 @@ impl Archetypes {
         Arc::clone(bits)
     }
 
+    /// Whether an archetype with rows has `type_id` in its key: the walk a
+    /// query makes over the archetypes, reading each key itself, so no shape
+    /// joins [`matching`](Self::matching)'s bits and nothing allocates. An
+    /// archetype outlives its last row, so one emptied by despawns or removes
+    /// holds nothing.
+    pub fn holds(&self, type_id: TypeId) -> bool {
+        self.archetypes
+            .iter()
+            .any(|arch| !arch.entities.is_empty() && arch.has(type_id))
+    }
+
     /// Find the archetype for sorted `types`, or create it with `columns`:
     /// one empty column per type, in the same order.
     fn find_or_create(
