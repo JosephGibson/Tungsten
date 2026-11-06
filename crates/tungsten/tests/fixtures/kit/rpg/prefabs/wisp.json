@@ -1,0 +1,22 @@
+{
+  "sprite": {
+    "asset_id": "wisp"
+  },
+  "tag": "wisp",
+  "components": {
+    "cap": {
+      "group": "wisps",
+      "max": 2
+    },
+    "cues": {
+      "culled": [
+        {
+          "prefab": {
+            "id": "poof",
+            "centred": true
+          }
+        }
+      ]
+    }
+  }
+}

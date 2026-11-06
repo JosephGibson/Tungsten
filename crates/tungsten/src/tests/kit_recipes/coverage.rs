@@ -1,9 +1,10 @@
 //! The coverage test: every scene name and data kind the kit registers
 //! appears in at least two genres' fixtures, and no fixture names one the
 //! registries lack. The fixtures are read through the engine's loader on a
-//! recipe harness, so each one loads with every check first. The
-//! genericity check: no kit source names a damage type the fixtures
-//! declare.
+//! recipe harness, so each one loads with every check first. The claims
+//! test: each described component names exactly the genres whose fixtures
+//! name it. The genericity check: no kit source names a damage type the
+//! fixtures declare.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -11,7 +12,7 @@ use std::path::Path;
 use tungsten_core::{ComponentRegistry, DataRegistry, PrefabRegistry, Schedule, World};
 
 use super::{DTS, GENRES, fixture_dir, recipe};
-use crate::kit::KitPlugins;
+use crate::kit::{KitDescriptions, KitPlugins};
 
 /// The scene names a fixture may use that the kit does not register.
 const ENGINE_NAMES: [&str; 1] = ["rigid_body"];
@@ -81,8 +82,35 @@ fn every_registered_scene_name_and_kind_appears_in_two_genres() {
         }
     }
     assert!(short.is_empty(), "under two genres: {}", short.join(", "));
-    assert_eq!(registered.len(), 45);
-    assert_eq!(kinds.len(), 9);
+    assert_eq!(registered.len(), 48);
+    assert_eq!(kinds.len(), 11);
+}
+
+#[test]
+fn every_component_claims_the_genres_whose_fixtures_name_it() {
+    let mut world = World::new();
+    let mut schedule = Schedule::new();
+    KitPlugins::set().build(&mut schedule, &mut world);
+    let mut named: BTreeMap<String, Vec<&str>> = BTreeMap::new();
+    for genre in GENRES {
+        for name in genre_names(genre).0 {
+            named.entry(name).or_default().push(genre);
+        }
+    }
+    let descriptions = world.resource::<KitDescriptions>();
+    let mut wrong = Vec::new();
+    for description in descriptions.iter() {
+        let used = named.get(description.name()).cloned().unwrap_or_default();
+        if description.genres() != used.as_slice() {
+            wrong.push(format!(
+                "`{}` claims {:?}, its fixtures {used:?}",
+                description.name(),
+                description.genres()
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "claims: {}", wrong.join("; "));
+    assert_eq!(descriptions.iter().count(), 48);
 }
 
 /// The damage types every fixture's `damage_types` entries declare.

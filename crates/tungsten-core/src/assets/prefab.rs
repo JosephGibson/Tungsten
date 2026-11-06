@@ -782,6 +782,51 @@ impl CommandBuffer {
         }
         pending
     }
+
+    /// Queues `prefab` to take `entity`'s place: at the flush, with `entity`
+    /// alive, the spawn takes the spawn inheritance from it as
+    /// [`spawn_prefab_from`](Self::spawn_prefab_from)'s does (where its own
+    /// fields and `with` bundles leave a type), then `entity`'s save
+    /// identity in place of a new one: its [`Saved`](crate::save::Saved) ID
+    /// and area, the prefab's ID as its prefab, unless the prefab was
+    /// prepared [`unsaved`](PreparedPrefab::unsaved); then `entity`
+    /// despawns. A capture writes a named entity replaced as gone by its
+    /// name and the replacement as a spawn of the new prefab under the
+    /// entity's ID, which a save's references to that ID resolve to after a
+    /// load; a reference by `Entity` ends, as one to any despawned entity.
+    /// A dead `entity` drops the spawn whole.
+    ///
+    /// ```
+    /// use serde_json::json;
+    /// use tungsten_core::{CommandBuffer, PrefabData, PrefabRegistry, Tag, World};
+    ///
+    /// let mut world = World::new();
+    /// let mut prefabs = PrefabRegistry::new();
+    /// for tag in ["lamp", "lamp_doused"] {
+    ///     let data: PrefabData = serde_json::from_value(json!({ "tag": tag })).unwrap();
+    ///     prefabs.insert(tag.to_string(), data);
+    /// }
+    /// world.insert_resource(prefabs);
+    /// let lamp = world.spawn_prefab("lamp", [8.0, 8.0]).unwrap();
+    /// let id = tungsten_core::save::name(&mut world, lamp, None, "hall_lamp").unwrap();
+    ///
+    /// let prepared = world.prepare_prefab("lamp_doused", [8.0, 8.0]).unwrap();
+    /// let mut commands = CommandBuffer::new();
+    /// commands.replace_prefab(lamp, prepared);
+    /// world.flush(commands);
+    /// assert!(!world.is_alive(lamp));
+    /// let (tag, saved) = world
+    ///     .query::<(&Tag, &tungsten_core::save::Saved)>()
+    ///     .next()
+    ///     .unwrap();
+    /// assert_eq!((tag.name.as_str(), saved.id(), saved.prefab()), ("lamp_doused", id, Some("lamp_doused")));
+    /// ```
+    pub fn replace_prefab(&mut self, entity: Entity, prefab: PreparedPrefab) -> PendingEntity {
+        let saved = prefab.saved.then(|| prefab.id.clone());
+        let pending = self.spawn_prefab(prefab);
+        self.replace_pending(entity, pending, saved);
+        pending
+    }
 }
 
 /// Visits every object of `data` with a class, in layer and file order:

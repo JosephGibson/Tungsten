@@ -1,0 +1,38 @@
+[
+  {
+    "on": "damaged",
+    "filter": {
+      "all": [
+        "tallied"
+      ]
+    },
+    "periodic": true,
+    "do": [
+      {
+        "counter": {
+          "name": "ticks",
+          "add": 1,
+          "target": "game"
+        }
+      }
+    ]
+  },
+  {
+    "on": "damaged",
+    "filter": {
+      "all": [
+        "tallied"
+      ]
+    },
+    "periodic": false,
+    "do": [
+      {
+        "counter": {
+          "name": "blows",
+          "add": 1,
+          "target": "game"
+        }
+      }
+    ]
+  }
+]

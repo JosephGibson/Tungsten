@@ -457,3 +457,23 @@ fn get_agrees_with_has_for_every_entity_and_type() {
         parts!(check);
     }
 }
+
+#[test]
+fn a_presence_read_keeps_no_query_shape() {
+    let mut store = Archetypes::new();
+    let e = store.spawn();
+    store.insert(e, Position { x: 0.0, y: 0.0 });
+    store.insert(e, Velocity { dx: 1.0, dy: 0.0 });
+    let other = store.spawn();
+    store.insert(other, Name("other".into()));
+
+    assert!(store.holds(TypeId::of::<Position>()));
+    assert!(store.holds(TypeId::of::<Name>()));
+    assert!(!store.holds(TypeId::of::<u32>()), "an unheld type");
+    assert!(store.matches.borrow().is_empty(), "no shape kept");
+
+    // A query's read: {P} and {P, V} have `Position` in their keys.
+    let bits = store.matching(|types| types.contains(&TypeId::of::<Position>()), |_| true);
+    assert_eq!(bits[0], 0b110);
+    assert_eq!(store.matches.borrow().len(), 1, "a query keeps its shape");
+}

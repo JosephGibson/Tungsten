@@ -31,6 +31,12 @@ fn registry() -> AnimationRegistry {
         ("walk_down", 40),
         ("rise", 50),
         ("fall", 60),
+        ("land", 70),
+        ("alert", 80),
+        ("charge", 90),
+        ("aim_down", 110),
+        ("aim_fwd", 120),
+        ("aim_up", 130),
     ] {
         clips.insert(id.to_string(), clip(first, 3, 100));
     }
@@ -386,4 +392,287 @@ fn a_clip_set_without_left_shows_the_right_flipped() {
         serde_json::to_value(Clips::mirrored("walk_right")).unwrap(),
         json!({ "right": "walk_right" })
     );
+}
+
+/// The one-shot `land` (three frames of 100 ms) over a runner's move: shown
+/// from its first frame for its 300 ms, 18 frames at 1/60 s and 9 at 1/30,
+/// then the move clip from its first frame.
+#[test]
+fn a_one_shot_plays_once_over_the_state_and_hands_back() {
+    for (dt, frames) in [(1.0 / 60.0, 18), (1.0 / 30.0, 9)] {
+        let (mut world, mut schedule) = rig();
+        let runner = world.spawn_with((
+            walker(),
+            Velocity(Vec2::new(40.0, 0.0)),
+            Sprite::new(SpriteAssetId::new(99)),
+        ));
+        frame(&mut world, &mut schedule, dt);
+        assert_eq!(shown(&world, runner).1, "walk_right");
+        world
+            .get_mut::<CharacterAnimator>(runner)
+            .unwrap()
+            .play("land");
+        assert_eq!(
+            world.get::<CharacterAnimator>(runner).unwrap().playing(),
+            Some(&Clips::one("land"))
+        );
+        for i in 0..frames {
+            frame(&mut world, &mut schedule, dt);
+            let (state, clip, sprite) = shown(&world, runner);
+            assert_eq!(
+                (state, clip.as_str()),
+                ("move", "land"),
+                "dt {dt}, frame {i}: the state runs on beneath it"
+            );
+            if i == 0 {
+                assert_eq!(sprite, SpriteAssetId::new(70), "from its first frame");
+            }
+        }
+        frame(&mut world, &mut schedule, dt);
+        assert_eq!(
+            shown(&world, runner),
+            ("move", "walk_right".into(), SpriteAssetId::new(20)),
+            "dt {dt}: the move clip again, from its first frame"
+        );
+        assert_eq!(world.get::<AnimationState>(runner).unwrap().frame_index, 0);
+        assert!(
+            world
+                .get::<CharacterAnimator>(runner)
+                .unwrap()
+                .playing()
+                .is_none()
+        );
+    }
+}
+
+#[test]
+fn a_one_shot_restarts_and_holds_through_a_pause() {
+    let dt = 1.0 / 60.0;
+    let (mut world, mut schedule) = rig();
+    let idler = world.spawn_with((walker(), Sprite::new(SpriteAssetId::new(99))));
+    frame(&mut world, &mut schedule, dt);
+    let play = |world: &mut World, id: &str| {
+        world.get_mut::<CharacterAnimator>(idler).unwrap().play(id);
+    };
+    play(&mut world, "land");
+    for _ in 0..8 {
+        frame(&mut world, &mut schedule, dt);
+    }
+    assert_eq!(
+        shown(&world, idler).2,
+        SpriteAssetId::new(71),
+        "past its first 100 ms frame"
+    );
+    // The same clip again: from its first frame, its time from 0.
+    play(&mut world, "land");
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(shown(&world, idler).2, SpriteAssetId::new(70));
+    assert_eq!(world.get::<AnimationState>(idler).unwrap().frame_index, 0);
+    for _ in 0..9 {
+        frame(&mut world, &mut schedule, dt);
+    }
+    // Paused, the game clock stands: the one-shot holds its frame.
+    world.resource_mut::<Time>().pause();
+    let held = shown(&world, idler);
+    for _ in 0..120 {
+        frame(&mut world, &mut schedule, dt);
+    }
+    assert_eq!(shown(&world, idler), held, "held through the pause");
+    world.resource_mut::<Time>().resume();
+    // 150 ms shown before the pause: 150 more, at 1/60 s, is 9 frames.
+    for i in 0..8 {
+        frame(&mut world, &mut schedule, dt);
+        assert_eq!(shown(&world, idler).1, "land", "frame {i}");
+    }
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(
+        shown(&world, idler),
+        ("idle", "idle".into(), SpriteAssetId::new(0))
+    );
+    // A new clip mid-way replaces it; `stop` hands back at once.
+    play(&mut world, "land");
+    frame(&mut world, &mut schedule, dt);
+    play(&mut world, "alert");
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(shown(&world, idler).1, "alert");
+    world.get_mut::<CharacterAnimator>(idler).unwrap().stop();
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(
+        shown(&world, idler),
+        ("idle", "idle".into(), SpriteAssetId::new(0))
+    );
+}
+
+#[test]
+fn the_first_passing_rule_picks_by_tag_and_motion() {
+    use crate::{ClipRule, TagFilter, Tags, TagsPlugin};
+    let dt = 1.0 / 60.0;
+    let (mut world, mut schedule) = rig();
+    let alerted = || TagFilter::new().all(["state.alerted"]);
+    let animator = walker()
+        .with_rule(ClipRule::when(
+            TagFilter::new().all(["state.charging"]),
+            "charge",
+        ))
+        .with_rule(ClipRule::when(alerted(), "alert").with_motion("move"))
+        .with_rule(ClipRule::motion("idle", "rise"));
+    let ghoul = world.spawn_with((
+        animator,
+        Tags::new(Vec::<String>::new()),
+        Velocity(Vec2::ZERO),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    let set = |world: &mut World, tags: &[&str], velocity: Vec2| {
+        *world.get_mut::<Tags>(ghoul).unwrap() = Tags::new(tags.iter().copied());
+        world.get_mut::<Velocity>(ghoul).unwrap().0 = velocity;
+    };
+    let run = Vec2::new(40.0, 0.0);
+    for (tags, velocity, want) in [
+        (&[][..], Vec2::ZERO, "rise"),
+        (&[], run, "walk_right"),
+        (&["state.alerted"], run, "alert"),
+        (&["state.alerted", "state.charging"], run, "charge"),
+        (&["state.alerted"], Vec2::ZERO, "rise"),
+    ] {
+        set(&mut world, tags, velocity);
+        frame(&mut world, &mut schedule, dt);
+        assert_eq!(shown(&world, ghoul).1, want, "{tags:?} at {velocity}");
+    }
+    // A one-shot wins over every rule.
+    set(&mut world, &["state.charging"], run);
+    world
+        .get_mut::<CharacterAnimator>(ghoul)
+        .unwrap()
+        .play("land");
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(shown(&world, ghoul).1, "land");
+
+    // The load checks each rule's tags and IDs, and needs `when` or
+    // `motion`.
+    TagsPlugin::new()
+        .with_tags(["state.alerted"])
+        .build(&mut schedule, &mut world);
+    let components = world.resource::<ComponentRegistry>();
+    let rules = |rule: serde_json::Value| json!({ "idle": "idle", "rules": [rule] });
+    let good =
+        rules(json!({ "when": { "all": ["state.alerted"] }, "motion": "move", "clip": "alert" }));
+    components
+        .check_in("character_animator", &good, &world)
+        .unwrap();
+    for (bad, field) in [
+        (
+            rules(json!({ "when": { "all": ["state.dazed"] }, "clip": "alert" })),
+            "rules.0.when.all.0",
+        ),
+        (
+            rules(json!({ "motion": "move", "clip": "alret" })),
+            "rules.0.clip",
+        ),
+        (
+            rules(json!({ "motion": "move", "clip": { "aim": ["aim_down", "aim_upp"] } })),
+            "rules.0.clip.aim.1",
+        ),
+    ] {
+        let error = components
+            .check_in("character_animator", &bad, &world)
+            .unwrap_err();
+        assert!(error.to_string().contains(field), "{error}");
+    }
+    for refused in [
+        rules(json!({ "clip": "alert" })),
+        rules(json!({ "motion": "dash", "clip": "alert" })),
+        rules(json!({ "motion": "move", "clip": "alert", "then": "idle" })),
+    ] {
+        assert!(
+            components
+                .check_in("character_animator", &refused, &world)
+                .is_err(),
+            "{refused}"
+        );
+    }
+    // A save keeps the rules.
+    let saved = serde_json::to_value(world.get::<CharacterAnimator>(ghoul).unwrap()).unwrap();
+    let loaded: CharacterAnimator = serde_json::from_value(saved).unwrap();
+    assert_eq!(loaded.rules.len(), 3);
+    assert!(loaded.playing().is_none(), "a one-shot is unsaved");
+}
+
+#[test]
+fn an_aim_set_picks_by_elevation_and_flips_left() {
+    use tungsten_core::components::SpriteFlip;
+    let dt = 1.0 / 60.0;
+    let (mut world, mut schedule) = rig();
+    let poses = Clips::aim(["aim_down", "aim_fwd", "aim_up"]);
+    // Below its minimum speed the caster idles, its velocity its
+    // direction: no Aim, no Facing.
+    let caster = world.spawn_with((
+        CharacterAnimator::new(poses.clone()),
+        Velocity(Vec2::new(1.0, 0.0)),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    let turn = |world: &mut World, velocity: Vec2| {
+        world.get_mut::<Velocity>(caster).unwrap().0 = velocity;
+    };
+    for (velocity, want, flipped) in [
+        (Vec2::new(1.0, 0.0), "aim_fwd", false),
+        (Vec2::new(1.0, -2.0), "aim_up", false),
+        (Vec2::new(-1.0, -2.0), "aim_up", true),
+        (Vec2::new(-2.0, 1.0), "aim_fwd", true),
+        (Vec2::new(-1.0, 2.0), "aim_down", true),
+        // Straight down keeps the last side.
+        (Vec2::new(0.0, 1.0), "aim_down", true),
+        (Vec2::new(2.0, 1.0), "aim_fwd", false),
+        (Vec2::new(0.0, -1.0), "aim_up", false),
+    ] {
+        turn(&mut world, velocity);
+        frame(&mut world, &mut schedule, dt);
+        assert_eq!(shown(&world, caster).1, want, "{velocity}");
+        assert_eq!(
+            world.get::<SpriteFlip>(caster).is_some_and(|flip| flip.0),
+            flipped,
+            "{velocity}"
+        );
+    }
+    // An Aim's direction wins over the velocity's, as a one-shot's pose.
+    let aim: crate::Aim =
+        serde_json::from_value(json!({ "from": "intent", "direction": [-1.0, 0.0] })).unwrap();
+    world.insert(caster, aim);
+    turn(&mut world, Vec2::new(0.0, 1.0));
+    world
+        .get_mut::<CharacterAnimator>(caster)
+        .unwrap()
+        .play(poses);
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(shown(&world, caster).1, "aim_fwd");
+    assert_eq!(world.get::<SpriteFlip>(caster), Some(&SpriteFlip(true)));
+    // Five poses: down, down-forward, forward, up-forward, up.
+    let five = Clips::aim(["aim_down", "land", "aim_fwd", "alert", "aim_up"]);
+    let mut left = false;
+    for (direction, want) in [
+        (Vec2::new(1.0, 0.0), "aim_fwd"),
+        (Vec2::new(1.0, -1.0), "alert"),
+        (Vec2::new(1.0, 1.0), "land"),
+        (Vec2::new(0.2, -1.0), "aim_up"),
+    ] {
+        assert_eq!(
+            five.pick(Vec2::X, direction, &mut left).0,
+            want,
+            "{direction}"
+        );
+    }
+    // The data form and its load check.
+    assert_eq!(
+        serde_json::to_value(&five).unwrap(),
+        json!({ "aim": ["aim_down", "land", "aim_fwd", "alert", "aim_up"] })
+    );
+    for refused in [
+        json!({ "aim": ["aim_fwd"] }),
+        json!({ "aim": ["aim_down", "aim_up"], "right": "aim_fwd" }),
+        json!({ "aim": [] }),
+    ] {
+        assert!(
+            serde_json::from_value::<Clips>(refused.clone()).is_err(),
+            "{refused}"
+        );
+    }
 }

@@ -321,6 +321,9 @@ struct RigidBodyFields {
     shape: SceneShape,
     #[serde(default)]
     offset: [f32; 2],
+    /// A dynamic body's mass, 1 when missing; a kinematic body's reaction
+    /// mass, which keeps its push ([`take_push`](super::take_push)), none
+    /// when missing.
     mass: Option<f32>,
     /// The entry's own coefficients, over its material's; each 0 without
     /// either.
@@ -420,8 +423,19 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
             }
             velocity => velocity.map(|[x, y]| Velocity::new(x, y)),
         };
-        if fields.mass.is_some() && !matches!(fields.kind, SceneBodyKind::Dynamic) {
-            return Err("`mass` is for dynamic bodies only".to_owned());
+        if fields.mass.is_some()
+            && !matches!(
+                fields.kind,
+                SceneBodyKind::Dynamic | SceneBodyKind::Kinematic
+            )
+        {
+            return Err("`mass` is for dynamic and kinematic bodies only".to_owned());
+        }
+        let mass = fields.mass.unwrap_or(1.0);
+        if !(mass.is_finite() && mass > 0.0 && (1.0 / mass).is_finite()) {
+            return Err(format!(
+                "`mass` must be finite and > 0 with a finite inverse (got {mass})"
+            ));
         }
         let gravity_scale = match fields.gravity_scale {
             Some(_) if !matches!(fields.kind, SceneBodyKind::Dynamic) => {
@@ -444,21 +458,21 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
         // `restitution`, `friction`, `rolling` and `material` are accepted on
         // every kind and do nothing on a sensor, which has no contacts.
         let (body, velocity) = match fields.kind {
-            SceneBodyKind::Dynamic => {
-                let mass = fields.mass.unwrap_or(1.0);
-                if !(mass.is_finite() && mass > 0.0 && (1.0 / mass).is_finite()) {
-                    return Err(format!(
-                        "`mass` must be finite and > 0 with a finite inverse (got {mass})"
-                    ));
-                }
-                (
-                    RigidBody::dynamic().with_mass(mass),
-                    Some(velocity.unwrap_or_default()),
-                )
-            }
+            SceneBodyKind::Dynamic => (
+                RigidBody::dynamic().with_mass(mass),
+                Some(velocity.unwrap_or_default()),
+            ),
             SceneBodyKind::Static => (RigidBody::r#static(), velocity),
+            // A kinematic body's mass is its reaction mass alone; without
+            // one it keeps no push.
             SceneBodyKind::Kinematic => {
-                (RigidBody::kinematic(), Some(velocity.unwrap_or_default()))
+                let body = RigidBody::kinematic();
+                let body = if fields.mass.is_some() {
+                    body.with_mass(mass)
+                } else {
+                    body
+                };
+                (body, Some(velocity.unwrap_or_default()))
             }
             SceneBodyKind::Sensor => {
                 let sensor = RigidBody::sensor();

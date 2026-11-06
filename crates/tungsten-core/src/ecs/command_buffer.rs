@@ -164,10 +164,21 @@ pub(super) enum Command {
         source: Entity,
         target: CommandTarget,
     },
+    /// A spawn that takes `source`'s place: the spawn inheritance from it,
+    /// then its save identity, then its despawn; the prefab's ID, when the
+    /// prefab is saved, is the oldest [`ReplacedPrefab`] queued.
+    Replace {
+        source: Entity,
+        target: CommandTarget,
+    },
 }
 
 /// The prefab ID a [`Command::DeriveSaved`] reads at the flush.
 pub(super) struct SavedPrefab(pub(super) String);
+
+/// The prefab ID a [`Command::Replace`] reads at the flush: `None` for a
+/// prefab prepared unsaved.
+pub(super) struct ReplacedPrefab(pub(super) Option<String>);
 
 impl Command {
     /// Whether this is an insert on `target`.
@@ -324,6 +335,20 @@ impl CommandBuffer {
         let target = self.pending_target(pending);
         self.values.push(SavedPrefab(prefab));
         self.commands.push(Command::DeriveSaved { source, target });
+    }
+
+    /// Queue `pending`'s taking of `source`'s place, after the spawn's own
+    /// inserts: what [`CommandBuffer::replace_prefab`] records; `prefab`, a
+    /// saved prefab's ID, waits in its own values' queue.
+    pub(crate) fn replace_pending(
+        &mut self,
+        source: Entity,
+        pending: PendingEntity,
+        prefab: Option<String>,
+    ) {
+        let target = self.pending_target(pending);
+        self.values.push(ReplacedPrefab(prefab));
+        self.commands.push(Command::Replace { source, target });
     }
 }
 

@@ -1,0 +1,14 @@
+[
+  {
+    "on": "ability_refused",
+    "ability": "lay_mine",
+    "reason": "capped",
+    "do": [
+      {
+        "sound": {
+          "id": "blip"
+        }
+      }
+    ]
+  }
+]

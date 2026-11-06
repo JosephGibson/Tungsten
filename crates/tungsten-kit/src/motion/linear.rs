@@ -7,7 +7,8 @@ use tungsten_core::physics::{Position, PrevPosition};
 use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, World, system};
 
 use crate::foundation::describe::{
-    ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHMUP, describe, round_trip,
+    ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN, describe,
+    round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -207,7 +208,8 @@ impl Plugin for LinearMotionPlugin {
                 .default("[0.0, 0.0]"),
             )
             .genre(PLATFORMER)
-            .genre(SHMUP)
+            .genre(TOP_DOWN)
+            .genre(SHOOTER)
             .sample(r#"{ "velocity": [0, 120] }"#)
             .roundtrip(round_trip::<LinearMotionDef>),
         );

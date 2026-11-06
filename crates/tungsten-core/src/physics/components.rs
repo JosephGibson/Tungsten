@@ -265,7 +265,8 @@ impl RigidBody {
     /// Kinematic body ([`BodyKind::Kinematic`]): inverse mass 0, restitution
     /// 0. It moves by its `Velocity`, which the step never changes, and
     /// pushes the dynamic bodies in its way; their `CollisionEvent` names
-    /// the dynamic body as `a`.
+    /// the dynamic body as `a`. With a mass ([`with_mass`](Self::with_mass))
+    /// it keeps what hits it as a push its driver reads.
     #[must_use]
     pub fn kinematic() -> Self {
         Self {
@@ -302,6 +303,10 @@ impl RigidBody {
     }
 
     /// The body of mass `mass`, its [`inv_mass`](Self::inv_mass) the inverse.
+    /// A kinematic body's is its reaction mass: the solver still holds it
+    /// immovable, and the step keeps the push hits and impulses give it,
+    /// which [`take_push`](crate::physics::take_push) reads. A static body
+    /// and a sensor take none.
     ///
     /// # Panics
     ///

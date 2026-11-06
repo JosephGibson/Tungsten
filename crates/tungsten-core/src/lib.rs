@@ -50,7 +50,7 @@ pub use component_registry::{
 pub use components::{
     Light, LightKind, MeshParticle, ParallaxLayer, Particle, ParticleEmitter, ParticleEmitterState,
     Sprite, SpriteSquashStretch, SquashStretchState, SquashTrigger, Tag, Transform, Visibility,
-    parallax_world_position, sync_position_to_transform,
+    parallax_world_position, sprite_point, sync_position_to_transform,
 };
 pub use config::{
     AudioConfig, Config, ConfigError, DepthSortMode, GameConfig, PostAaMode, RenderConfig,
@@ -71,7 +71,7 @@ pub use input::{
     STICK_RELEASE, ScrollDirection, StickResponse, WheelDelta,
 };
 pub use inspect::{InspectRegistry, Inspectable};
-pub use lighting::{AmbientLight, LIGHT_CAP};
+pub use lighting::{AmbientLight, LIGHT_CAP, light_at, light_level};
 pub use physics::{
     Aabb, BodyKind, Collider, CollisionEvent, Contact, ContactBegan, ContactEnded, PhysicsBuffers,
     PhysicsConfig, PhysicsLayers, PhysicsMaterial, PhysicsMaterials, PhysicsPlugin, Position,

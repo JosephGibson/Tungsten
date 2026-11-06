@@ -673,7 +673,7 @@ fn view_bounds(world: &World) -> Option<(Vec2, Vec2)> {
 /// `c` the quad's centre. The anchor lands on the position, and the shader's
 /// turn about the centre turns the quad about the anchor.
 #[inline]
-fn anchor_offset(anchor: [f32; 2], scale: Vec2, size: Vec2, rotation: f32) -> Vec2 {
+pub(crate) fn anchor_offset(anchor: [f32; 2], scale: Vec2, size: Vec2, rotation: f32) -> Vec2 {
     let anchor = Vec2::from(anchor) * scale;
     let arm = size * 0.5 - anchor;
     let turned = if rotation == 0.0 {

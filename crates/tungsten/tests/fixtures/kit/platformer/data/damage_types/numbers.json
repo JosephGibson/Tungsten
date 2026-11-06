@@ -1,0 +1,35 @@
+{
+  "elemental": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        1,
+        1,
+        0,
+        1
+      ]
+    }
+  },
+  "elemental.fire": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        1,
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "elemental.cold": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        0,
+        0,
+        1,
+        1
+      ]
+    }
+  }
+}

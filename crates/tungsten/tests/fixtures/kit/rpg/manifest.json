@@ -1,0 +1,172 @@
+{
+  "prefabs": {
+    "rogue": {
+      "path": "prefabs/rogue.json"
+    },
+    "hole": {
+      "path": "prefabs/hole.json"
+    },
+    "rat": {
+      "path": "prefabs/rat.json"
+    },
+    "potion": {
+      "path": "prefabs/potion.json"
+    },
+    "delver": {
+      "path": "prefabs/delver.json"
+    },
+    "trapdoor": {
+      "path": "prefabs/trapdoor.json"
+    },
+    "slug": {
+      "path": "prefabs/slug.json"
+    },
+    "crawler": {
+      "path": "prefabs/crawler.json"
+    },
+    "warden": {
+      "path": "prefabs/warden.json"
+    },
+    "adventurer": {
+      "path": "prefabs/adventurer.json"
+    },
+    "swing": {
+      "path": "prefabs/swing.json"
+    },
+    "chest": {
+      "path": "prefabs/chest.json"
+    },
+    "gold": {
+      "path": "prefabs/gold.json"
+    },
+    "spikes": {
+      "path": "prefabs/spikes.json"
+    },
+    "lantern_warden": {
+      "path": "prefabs/lantern_warden.json"
+    },
+    "noise": {
+      "path": "prefabs/noise.json"
+    },
+    "oil_flask": {
+      "path": "prefabs/oil_flask.json"
+    },
+    "ward_crate": {
+      "path": "prefabs/ward_crate.json"
+    },
+    "fogborn": {
+      "path": "prefabs/fogborn.json"
+    },
+    "wisp": {
+      "path": "prefabs/wisp.json"
+    },
+    "poof": {
+      "path": "prefabs/poof.json"
+    },
+    "salt": {
+      "path": "prefabs/salt.json"
+    },
+    "salt_mark": {
+      "path": "prefabs/salt_mark.json"
+    },
+    "ward_wall": {
+      "path": "prefabs/ward_wall.json"
+    },
+    "thrower": {
+      "path": "prefabs/thrower.json"
+    },
+    "pole_warden": {
+      "path": "prefabs/pole_warden.json"
+    },
+    "straw_dummy": {
+      "path": "prefabs/straw_dummy.json"
+    },
+    "spike_trap": {
+      "path": "prefabs/spike_trap.json"
+    },
+    "hold_warden": {
+      "path": "prefabs/hold_warden.json"
+    },
+    "fading_gold": {
+      "path": "prefabs/fading_gold.json"
+    },
+    "rat_den": {
+      "path": "prefabs/rat_den.json"
+    },
+    "crate_warden": {
+      "path": "prefabs/crate_warden.json"
+    },
+    "fogling": {
+      "path": "prefabs/fogling.json"
+    }
+  },
+  "data": {
+    "tags": {
+      "game": {
+        "path": "data/tags.json"
+      },
+      "ward": {
+        "path": "data/ward_tags.json"
+      },
+      "marks": {
+        "path": "data/mark_tags.json"
+      }
+    },
+    "loot_tables": {
+      "chest_loot": {
+        "path": "data/loot_tables/chest_loot.json"
+      }
+    },
+    "curves": {
+      "delver_xp": {
+        "path": "data/curves/delver_xp.json"
+      }
+    },
+    "offers": {
+      "delver_offers": {
+        "path": "data/offers/delver_offers.json"
+      }
+    },
+    "abilities": {
+      "bell": {
+        "path": "data/abilities/bell.json"
+      },
+      "flask": {
+        "path": "data/abilities/flask.json"
+      },
+      "run": {
+        "path": "data/abilities/run.json"
+      },
+      "toll": {
+        "path": "data/abilities/toll.json"
+      },
+      "wisp": {
+        "path": "data/abilities/wisp.json"
+      },
+      "salt": {
+        "path": "data/abilities/salt.json"
+      }
+    },
+    "effects": {
+      "running": {
+        "path": "data/effects/running.json"
+      }
+    },
+    "cue_rules": {
+      "ward": {
+        "path": "data/cue_rules/ward.json"
+      }
+    }
+  },
+  "animations": {
+    "warden_idle": {
+      "path": "animations/warden_idle.json"
+    },
+    "warden_walk": {
+      "path": "animations/warden_walk.json"
+    },
+    "warden_throw": {
+      "path": "animations/warden_throw.json"
+    }
+  }
+}

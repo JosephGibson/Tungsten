@@ -1,0 +1,11 @@
+{
+  "tag": "rat_den",
+  "components": {
+    "spawner": {
+      "prefab": "rat",
+      "interval": 2,
+      "first": 0,
+      "count": 3
+    }
+  }
+}

@@ -122,7 +122,7 @@ fn rows_sort_by_average_under_the_column_headers() {
     );
     assert_eq!(
         column_texts(&world, 1),
-        ["avg ms", "4.75", "3.00", "1.25", "0.50"]
+        ["avg", "4.75", "3.00", "1.25", "0.50"]
     );
     let window = world
         .resource::<SystemTimingOverlay>()
@@ -183,9 +183,36 @@ fn the_title_carries_the_total_and_the_headers_name_the_columns() {
     let title: String = tree.text(caption).unwrap().spans[0].text.clone();
     assert_eq!(title, "Systems \u{b7} 3.75 ms");
     let headers: Vec<String> = (0..4).map(|c| column_texts(&world, c)[0].clone()).collect();
-    assert_eq!(headers, ["system", "avg ms", "max ms", "% frame"]);
+    assert_eq!(headers, ["system", "avg", "max", "%"]);
     for c in 0..4 {
         assert_eq!(column_inks(&world, c)[0], (LABEL, STRONG), "column {c}");
+    }
+}
+
+#[test]
+fn each_numeric_column_is_as_wide_as_its_widest_value() {
+    // The harness's glyphs advance half the font size, 7.5 units, and a
+    // cell pads 6 a side: a column of five-glyph values is 49.5 wide.
+    let mut world = world_with_timings(&[("a", 12.5), ("b", 0.25)]);
+    world.resource_mut::<FrameTimings>().total_ms = 50.0;
+    frame(&mut world);
+    frame(&mut world);
+    let tree = world.resource::<UiTree>();
+    for c in 1..=3 {
+        let texts = column_texts(&world, c);
+        let widest = texts[1..]
+            .iter()
+            .map(|text| text.chars().count())
+            .max()
+            .unwrap();
+        let width = tree
+            .rect(overlay_window(&world).columns[c])
+            .unwrap()
+            .width();
+        assert!(
+            (width - (widest as f32 * 7.5 + 12.0)).abs() < 1e-3,
+            "column {c} ({texts:?}): {width}"
+        );
     }
 }
 
@@ -218,7 +245,7 @@ fn systems_group_by_stage_slowest_first_each_stage_in_its_hue_with_its_total() {
     assert_eq!(
         column_texts(&world, 1),
         [
-            "avg ms", "2.00", "2.00", "4.00", "3.00", "1.00", "0.50", "0.50"
+            "avg", "2.00", "2.00", "4.00", "3.00", "1.00", "0.50", "0.50"
         ]
     );
     let inks = column_inks(&world, 0);
@@ -325,4 +352,185 @@ fn the_share_divides_by_the_frames_average_and_the_bar_shows_it_on_the_ramp() {
         "a header row has no bar"
     );
     assert_eq!(tree.rect(bars[2]).unwrap().height(), 20.0, "one line");
+}
+
+// ---- debug-pass: the flat view and the pause ----
+
+/// A harness with the overlay shown and refreshing every frame.
+fn overlay_harness() -> crate::testing::UiHarness {
+    let mut harness =
+        crate::testing::UiHarness::new(crate::App::new(tungsten_core::Config::default()).unwrap());
+    let overlay = harness.world_mut().resource_mut::<SystemTimingOverlay>();
+    overlay.enabled = true;
+    overlay.refresh_interval_ms = 0.0;
+    harness
+}
+
+/// One frame whose views read `timings` as the frame before's, set by hand
+/// so its rows are known.
+fn step_with(harness: &mut crate::testing::UiHarness, timings: &[(&str, f32)]) {
+    let ft = harness.world_mut().resource_mut::<FrameTimings>();
+    ft.system_timings = timings.iter().map(|(n, v)| (n.to_string(), *v)).collect();
+    ft.total_ms = 10.0;
+    ft.interval_ms = Some(16.0);
+    harness.step(1);
+}
+
+/// A click on `widget`, and the frame that takes it.
+fn press(harness: &mut crate::testing::UiHarness, widget: WidgetId, timings: &[(&str, f32)]) {
+    harness.click(widget);
+    step_with(harness, timings);
+}
+
+/// The title bar button `i`'s label.
+fn button_text(world: &World, i: usize) -> String {
+    let tree = world.resource::<UiTree>();
+    tree.text(overlay_window(world).buttons[i])
+        .map(|text| text.spans.iter().map(|span| span.text.as_str()).collect())
+        .unwrap_or_default()
+}
+
+/// The overlay's title.
+fn title(world: &World) -> String {
+    let tree = world.resource::<UiTree>();
+    tree.text(overlay_window(world).caption).unwrap().spans[0]
+        .text
+        .clone()
+}
+
+#[test]
+fn the_flat_view_sorts_every_system_by_its_frame_total() {
+    // `FrameTimings` sums a fixed system's runs: `step` ran twice at 1.25.
+    let mut world = world_with_timings(&[
+        ("a", 1.0),
+        ("step", 2.5),
+        ("b", 3.0),
+        ("c", 0.5),
+        ("d", 0.5),
+    ]);
+    let stages = [
+        ("a", Stage::PreUpdate),
+        ("step", Stage::FixedUpdate),
+        ("b", Stage::Update),
+        ("c", Stage::Update),
+        ("d", Stage::PostUpdate),
+    ]
+    .into_iter()
+    .map(|(name, stage)| (name.to_string(), stage))
+    .collect();
+    world.insert_resource(SystemStages(stages));
+    world.resource_mut::<SystemTimingOverlay>().flat = true;
+    frame(&mut world);
+    assert_eq!(
+        column_texts(&world, 0),
+        ["system", "b", "step", "a", "c", "d"],
+        "one header row, then slowest first across stages, ties by name"
+    );
+    assert_eq!(
+        column_texts(&world, 1),
+        ["avg", "3.00", "2.50", "1.00", "0.50", "0.50"]
+    );
+    let inks = column_inks(&world, 0);
+    let hues: Vec<[u8; 4]> = inks[1..].iter().map(|(color, _)| *color).collect();
+    assert_eq!(
+        hues,
+        [CYAN, VIOLET, BLUE, CYAN, MAGENTA],
+        "each stage's hue"
+    );
+    assert!(
+        inks[1..].iter().all(|(_, weight)| *weight == 400),
+        "no group rows"
+    );
+    let tree = world.resource::<UiTree>();
+    let names = tree.children(overlay_window(&world).columns[0]);
+    assert!(
+        names[1..]
+            .iter()
+            .all(|name| tree.layout_style(*name).unwrap().padding.start == 6.0),
+        "not indented"
+    );
+    assert_eq!(
+        title(&world),
+        "Systems \u{b7} 7.50 ms",
+        "the title keeps the total"
+    );
+}
+
+#[test]
+fn the_view_button_switches_and_names_the_other_view() {
+    let mut harness = overlay_harness();
+    let a = [("a", 1.0)];
+    step_with(&mut harness, &a);
+    step_with(&mut harness, &a);
+    // Only a switch refreshes from here on.
+    harness
+        .world_mut()
+        .resource_mut::<SystemTimingOverlay>()
+        .refresh_interval_ms = f32::INFINITY;
+    let world = harness.world();
+    let view = overlay_window(world).buttons[VIEW];
+    assert_eq!(world.resource::<UiTree>().key_name(view), Some("view"));
+    assert_eq!(button_text(world, VIEW), "flat");
+    assert_eq!(column_texts(world, 0), ["system", "other", "a"], "grouped");
+    press(&mut harness, view, &a);
+    assert_eq!(button_text(harness.world(), VIEW), "stages");
+    assert_eq!(
+        column_texts(harness.world(), 0),
+        ["system", "a"],
+        "flat at once"
+    );
+    press(&mut harness, view, &a);
+    assert_eq!(button_text(harness.world(), VIEW), "flat");
+    assert_eq!(
+        column_texts(harness.world(), 0),
+        ["system", "other", "a"],
+        "grouped again"
+    );
+}
+
+#[test]
+fn pause_holds_the_rows_and_resume_refreshes_at_once() {
+    let mut harness = overlay_harness();
+    step_with(&mut harness, &[("a", 1.0)]);
+    step_with(&mut harness, &[("a", 1.0)]);
+    let pause = overlay_window(harness.world()).buttons[PAUSE];
+    assert_eq!(
+        harness.world().resource::<UiTree>().key_name(pause),
+        Some("pause")
+    );
+    assert_eq!(button_text(harness.world(), PAUSE), "pause");
+    press(&mut harness, pause, &[("a", 1.0)]);
+    assert_eq!(button_text(harness.world(), PAUSE), "resume");
+    let held = (column_texts(harness.world(), 1), title(harness.world()));
+    for _ in 0..5 {
+        step_with(&mut harness, &[("a", 9.0)]);
+    }
+    assert_eq!(
+        (column_texts(harness.world(), 1), title(harness.world())),
+        held,
+        "held"
+    );
+    let average = harness
+        .world()
+        .resource::<SystemTimingOverlay>()
+        .ewma_for("a")
+        .unwrap();
+    assert!(average > 1.0, "the averages ran on: {average}");
+
+    harness
+        .world_mut()
+        .resource_mut::<SystemTimingOverlay>()
+        .refresh_interval_ms = f32::INFINITY;
+    press(&mut harness, pause, &[("a", 9.0)]);
+    assert_eq!(button_text(harness.world(), PAUSE), "pause");
+    let average = harness
+        .world()
+        .resource::<SystemTimingOverlay>()
+        .ewma_for("a")
+        .unwrap();
+    assert_eq!(
+        column_texts(harness.world(), 1)[2],
+        format!("{average:.2}"),
+        "resume refreshes at once"
+    );
 }

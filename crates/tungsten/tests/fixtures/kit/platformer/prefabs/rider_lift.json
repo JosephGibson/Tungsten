@@ -1,0 +1,49 @@
+{
+  "tag": "rider_lift",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          30,
+          5
+        ]
+      }
+    },
+    "path_follower": {
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -120
+        ]
+      ],
+      "speed": 120,
+      "mode": "ping_pong",
+      "rider": {
+        "board": 0.3,
+        "back": 4
+      }
+    },
+    "cues": {
+      "departed": [
+        {
+          "sound": {
+            "id": "lift_go"
+          }
+        }
+      ],
+      "arrived": [
+        {
+          "sound": {
+            "id": "lift_stop"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -283,11 +283,12 @@ impl UiHarness {
     }
 
     /// Lays the tree out and panics, naming `what`, when the shown UI does
-    /// not fit (redo 7.17): a shown root outside the viewport; a shown box
-    /// outside its parent across, or down unless a scroll panel above it
-    /// scrolls it; a focusable control outside the viewport unless a scroll
-    /// panel above it scrolls it. Measured at the harness's fixed advance,
-    /// so glyph widths are approximate.
+    /// not fit (redo 7.17): a shown root outside its layer's viewport
+    /// (`UiTree::layer_viewport`), a debug root's at the debug scale
+    /// (debug-pass); a shown box outside its parent across, or down unless a
+    /// scroll panel above it scrolls it; a focusable control outside that
+    /// viewport unless a scroll panel above it scrolls it. Measured at the
+    /// harness's fixed advance, so glyph widths are approximate.
     pub fn assert_fits(&mut self, what: &str) {
         self.assert_fits_one_line(what, &[]);
     }
@@ -305,12 +306,6 @@ impl UiHarness {
             });
         let tree = self.tree();
         let inside = |inner: f32, outer: f32| inner >= outer - 0.01;
-        let in_view = |rect: Rect| {
-            inside(rect.min.x, 0.0)
-                && inside(rect.min.y, 0.0)
-                && inside(viewport.x, rect.max.x)
-                && inside(viewport.y, rect.max.y)
-        };
         let mut checked = 0;
         for &root in tree.roots() {
             if tree.visibility(root) != Some(Visibility::Visible) {
@@ -318,6 +313,16 @@ impl UiHarness {
             }
             let Some(rect) = tree.rect(root) else {
                 continue;
+            };
+            let viewport = tree
+                .layer(root)
+                .and_then(|layer| tree.layer_viewport(layer))
+                .unwrap_or(viewport);
+            let in_view = |rect: Rect| {
+                inside(rect.min.x, 0.0)
+                    && inside(rect.min.y, 0.0)
+                    && inside(viewport.x, rect.max.x)
+                    && inside(viewport.y, rect.max.y)
             };
             assert!(
                 in_view(rect),

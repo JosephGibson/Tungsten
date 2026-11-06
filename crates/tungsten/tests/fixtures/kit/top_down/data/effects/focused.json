@@ -1,0 +1,16 @@
+{
+  "duration": 2,
+  "modifiers": [
+    {
+      "stat": "damage",
+      "modifier": {
+        "mul": 2
+      },
+      "with": {
+        "all": [
+          "elemental.cold"
+        ]
+      }
+    }
+  ]
+}

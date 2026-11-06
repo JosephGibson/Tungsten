@@ -481,6 +481,21 @@ impl PhysicsMaterialEntry {
     }
 }
 
+/// A sheet frame `n`'s named points: each every-frame point, and each
+/// listed point the list reaches.
+fn frame_points(points: &BTreeMap<String, SheetPoint>, n: usize) -> BTreeMap<String, [f32; 2]> {
+    points
+        .iter()
+        .filter_map(|(name, point)| {
+            let at = match point {
+                SheetPoint::Every(at) => *at,
+                SheetPoint::Frames(frames) => *frames.get(n)?,
+            };
+            Some((name.clone(), at))
+        })
+        .collect()
+}
+
 /// Whether `name` is `[a-z][a-z0-9_]*`.
 fn valid_layer_name(name: &str) -> bool {
     let mut bytes = name.bytes();
@@ -509,6 +524,37 @@ pub struct SpriteEntry {
     /// top-left and turns about its centre.
     #[serde(default)]
     pub anchor: Option<[f32; 2]>,
+    /// Named points, `{ "<name>": [x, y] }` in source pixels (redo 7.10p):
+    /// a fuse's tip, a muzzle; [`sprite_point`](crate::sprite_point) reads
+    /// where one is drawn. Names are `[a-z][a-z0-9_]*`.
+    #[serde(default, deserialize_with = "sprite_points")]
+    pub points: BTreeMap<String, [f32; 2]>,
+}
+
+/// A sheet's named point: `[x, y]` on every frame, or `[[x, y], …]` one a
+/// frame, a frame past the list without it.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum SheetPoint {
+    /// The same point on every frame.
+    Every([f32; 2]),
+    /// One point a frame, from the first.
+    Frames(Vec<[f32; 2]>),
+}
+
+/// A `points` map, each name `[a-z][a-z0-9_]*`.
+fn sprite_points<'de, D, T>(deserializer: D) -> Result<BTreeMap<String, T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let points = BTreeMap::<String, T>::deserialize(deserializer)?;
+    if let Some(name) = points.keys().find(|name| !valid_layer_name(name)) {
+        return Err(serde::de::Error::custom(format!(
+            "points: `{name}` is not a point name (`[a-z][a-z0-9_]*`)"
+        )));
+    }
+    Ok(points)
 }
 
 /// A `sheets` entry (redo 7.9): one PNG cut into `frame`-sized cells, left
@@ -538,6 +584,11 @@ pub struct SheetEntry {
     /// Each frame's anchor, `[x, y]` in a frame's pixels.
     #[serde(default)]
     pub anchor: Option<[f32; 2]>,
+    /// Named points in a frame's pixels (redo 7.10p): `[x, y]` on every
+    /// frame, or `[[x, y], …]` one a frame, a frame past the list without
+    /// the point.
+    #[serde(default, deserialize_with = "sprite_points")]
+    pub points: BTreeMap<String, SheetPoint>,
 }
 
 /// The cells a sheet of `frame`-sized cells over the PNG at `path` takes
@@ -919,6 +970,9 @@ pub struct ResolvedSprite {
     pub rect: Option<[u32; 4]>,
     /// The point drawn at the entity's position, in source pixels.
     pub anchor: Option<[f32; 2]>,
+    /// Named points in source pixels, a sheet frame's its own (redo
+    /// 7.10p).
+    pub points: BTreeMap<String, [f32; 2]>,
 }
 
 /// A UI theme: the theme file's resolved path.
@@ -1104,6 +1158,7 @@ impl ResolvedManifest {
                     nine_slice: entry.nine_slice,
                     rect: None,
                     anchor: entry.anchor,
+                    points: entry.points,
                 },
             );
         }
@@ -1147,6 +1202,7 @@ impl ResolvedManifest {
                         nine_slice: None,
                         rect: Some(rect),
                         anchor: entry.anchor,
+                        points: frame_points(&entry.points, n),
                     },
                 );
             }

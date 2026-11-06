@@ -1,0 +1,15 @@
+{
+  "stimulus": "heat",
+  "on": {
+    "all": [
+      "planks"
+    ]
+  },
+  "outputs": [
+    {
+      "apply": {
+        "status": "scorched"
+      }
+    }
+  ]
+}

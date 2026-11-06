@@ -39,9 +39,9 @@ pub mod wisp;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Position, Schedule, Shape, Stage, World, system};
 use tungsten::kit::{
-    ANIMATION_TICK, Health, KIT_DEBUG_DRAW, KNOCKBACK, Modifier, PICKUP_MAGNET, PICKUP_TICK,
-    PLATFORMER_CONTROLLER, Phase, PickedUp, PlatformerController, Stats, TOP_DOWN_MOVER,
-    ensure_phases,
+    ANIMATION_TICK, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line, Modifier, PICKUP_MAGNET, PICKUP_TICK,
+    PLATFORMER_CONTROLLER, Phase, PickedUp, PlatformerController, Stats, TOP_DOWN_MOVER, TagFilter,
+    WorldSource, WorldSources, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -76,8 +76,11 @@ pub const SEARCH_MARK_AFTER: f32 = 0.4;
 /// The most summoned enemies live at once (Q12, Q45), beside the dummies'
 /// eight.
 pub const SUMMON_CAP: usize = 10;
-/// The source of the difficulty's modifiers on an enemy's stats.
+/// The world source of the difficulty's lines on the enemies' stats, and
+/// the key they sit under.
 pub const DIFFICULTY: &str = "difficulty";
+/// The tag every enemy carries, which [`DIFFICULTY`]'s filter names.
+const TEAM_ENEMY: &str = "team.enemy";
 /// The physics layers of the level's static walls besides its tiles
 /// (`tools/level.py`): stone slabs, the mine's iron and wooden decks.
 pub const SLAB_LAYER: u32 = 1 << 1;
@@ -344,17 +347,35 @@ pub const fn factor(difficulty: Difficulty) -> f32 {
     }
 }
 
-/// Gives `enemy` the difficulty's factor on its health and damage, from the
-/// source [`DIFFICULTY`]: at its spawn, never at a load, whose stats carry
-/// it already.
+/// Gives `enemy` the difficulty's factor on its health and damage: sets the
+/// world source [`DIFFICULTY`] (`team.enemy`, `mul` [`factor`] on
+/// `max_health` and `damage`), which an equal one leaves alone, and brings
+/// `enemy` to it at once; the rest of the living take it at the next step.
+/// A saved enemy's lines from it come back with its stats and stay where
+/// they are.
 pub fn scale(world: &mut World, enemy: Entity, difficulty: Difficulty) {
     let factor = factor(difficulty);
-    if let Some(stats) = world.get_mut::<Stats>(enemy) {
-        stats.remove_modifiers(DIFFICULTY);
-        for stat in [Stats::MAX_HEALTH, Stats::DAMAGE] {
-            stats.add_modifier(stat, DIFFICULTY, Modifier::Mul(factor));
-        }
+    let lines = [
+        (Stats::DAMAGE, Modifier::Mul(factor)),
+        (Stats::MAX_HEALTH, Modifier::Mul(factor)),
+    ];
+    let set = world
+        .get_resource::<WorldSources>()
+        .and_then(|sources| sources.get(DIFFICULTY))
+        .is_some_and(|source| {
+            source
+                .lines()
+                .map(|(stat, line)| (stat, line.modifier()))
+                .eq(lines)
+        });
+    if !set {
+        let source = lines.into_iter().fold(
+            WorldSource::new(TagFilter::new().all([TEAM_ENEMY])),
+            |source, (stat, modifier)| source.with_line(stat, Line::new(modifier)),
+        );
+        WorldSources::set(world, DIFFICULTY, source);
     }
+    WorldSources::apply_to(world, enemy);
 }
 
 /// The prefab of `kind`'s `variant`: the kind's own, or the armoured

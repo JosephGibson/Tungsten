@@ -1,0 +1,11 @@
+{
+  "tag": "caster",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "abilities": [
+      "cinder"
+    ]
+  }
+}

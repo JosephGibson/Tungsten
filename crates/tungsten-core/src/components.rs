@@ -95,6 +95,64 @@ impl Default for Visibility {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SpriteFlip(pub bool);
 
+/// Where the default extract draws the named point `name` of `entity`'s
+/// current sprite (redo 7.10p), in world pixels: the manifest's `points`
+/// entry, mirrored by its [`SpriteFlip`] as the image is, scaled by its
+/// [`Transform`]'s scale and turned with its rotation about the sprite's
+/// anchor, or about the quad's centre without one. `None` without a
+/// `Transform`, a [`Sprite`], its registered sprite or the point. A sprite
+/// on a parallax layer is drawn shifted by the camera; this point is not.
+///
+/// ```
+/// use glam::Vec2;
+/// use std::path::PathBuf;
+/// use tungsten_core::assets::{FilterMode, UvRect};
+/// use tungsten_core::{AssetRegistry, Sprite, TextureHandle, Transform, World, sprite_point};
+///
+/// let mut world = World::new();
+/// let mut assets = AssetRegistry::new();
+/// let keg = assets.register_sprite(
+///     "keg".into(), FilterMode::Nearest, 16, 32, PathBuf::from("keg.png"),
+///     TextureHandle(0), UvRect::FULL, None, None, None,
+/// );
+/// assets.set_sprite_points("keg", [("fuse".to_string(), [8.0, 0.0])].into());
+/// world.insert_resource(assets);
+/// let entity = world.spawn_with((Transform::from_position(Vec2::new(100.0, 50.0)), Sprite::new(keg)));
+/// // Drawn from its top-left at the entity's point: the fuse 8 px right.
+/// assert_eq!(sprite_point(&world, entity, "fuse"), Some(Vec2::new(108.0, 50.0)));
+/// assert_eq!(sprite_point(&world, entity, "spout"), None);
+/// ```
+#[must_use]
+pub fn sprite_point(world: &World, entity: Entity, name: &str) -> Option<Vec2> {
+    let transform = world.get::<Transform>(entity)?;
+    let sprite = world.get::<Sprite>(entity)?;
+    let asset = world
+        .get_resource::<crate::assets::AssetRegistry>()?
+        .sprite(sprite.asset_id)?;
+    let point = asset.point(name)?;
+    let flip = world.get::<SpriteFlip>(entity).is_some_and(|flip| flip.0);
+    let width = asset.width as f32;
+    let mirror = |at: [f32; 2]| if flip { [width - at[0], at[1]] } else { at };
+    let size = Vec2::new(width, asset.height as f32) * transform.scale;
+    let turn = |arm: Vec2| {
+        if transform.rotation == 0.0 {
+            arm
+        } else {
+            Vec2::from_angle(transform.rotation).rotate(arm)
+        }
+    };
+    // The quad's top-left, as the extract places it: an anchor lands on
+    // the entity's point and the quad turns about it.
+    let mut top_left = transform.position;
+    if let Some(anchor) = asset.anchor {
+        let anchor = Vec2::from(mirror(anchor)) * transform.scale;
+        let arm = size * 0.5 - anchor;
+        top_left += turn(arm) - arm - anchor;
+    }
+    let local = Vec2::from(mirror(point)) * transform.scale;
+    Some(top_left + size * 0.5 + turn(local - size * 0.5))
+}
+
 /// Draws its entity's sprite on the stock sprite pipeline though the sprite
 /// has normal or emissive maps, so no light reaches it (redo 7.9): a far
 /// prop behind a lit scene.

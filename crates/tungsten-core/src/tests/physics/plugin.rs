@@ -321,9 +321,28 @@ fn a_sensor_rigid_body_spawns_with_a_zero_velocity_and_accepts_restitution() {
 }
 
 #[test]
-fn mass_on_a_kinematic_or_sensor_rigid_body_fails_naming_mass() {
-    let world = physics_world();
-    for kind in ["kinematic", "sensor"] {
+fn a_kinematic_body_takes_a_mass() {
+    // A kinematic body's `mass` is its reaction mass, which keeps its push;
+    // without one it has none. A static body and a sensor refuse one.
+    let mut world = physics_world();
+    let shape = serde_json::json!({ "kind": "aabb", "half_extents": [8.0, 4.0] });
+    let heavy = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "kinematic", "shape": shape, "mass": 4.0 }),
+    );
+    assert_eq!(
+        world.get::<RigidBody>(heavy),
+        Some(&RigidBody::kinematic().with_mass(4.0))
+    );
+    assert_eq!(world.get::<RigidBody>(heavy).unwrap().inv_mass, 0.25);
+    let bare = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "kinematic", "shape": shape }),
+    );
+    assert_eq!(world.get::<RigidBody>(bare).unwrap().inv_mass, 0.0);
+    for kind in ["static", "sensor"] {
         let message = check_error(
             &world,
             &serde_json::json!({
@@ -332,7 +351,10 @@ fn mass_on_a_kinematic_or_sensor_rigid_body_fails_naming_mass() {
                 "mass": 1.0
             }),
         );
-        assert!(message.contains("`mass`"), "{kind}: {message}");
+        assert!(
+            message.contains("`mass` is for dynamic and kinematic bodies only"),
+            "{kind}: {message}"
+        );
     }
 }
 
@@ -369,7 +391,7 @@ fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
     let cases = [
         (
             serde_json::json!({ "kind": "static", "shape": circle, "mass": 2.0 }),
-            "`mass` is for dynamic bodies only",
+            "`mass` is for dynamic and kinematic bodies only",
         ),
         (
             serde_json::json!({ "kind": "dynamic", "shape": circle, "mass": 0.0 }),
@@ -430,12 +452,12 @@ fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
             "unknown field `sides`",
         ),
         (
-            serde_json::json!({ "kind": "kinematic", "shape": circle, "mass": 2.0 }),
-            "`mass` is for dynamic bodies only",
+            serde_json::json!({ "kind": "kinematic", "shape": circle, "mass": 0.0 }),
+            "`mass` must be finite and > 0 with a finite inverse (got 0)",
         ),
         (
             serde_json::json!({ "kind": "sensor", "shape": circle, "mass": 2.0 }),
-            "`mass` is for dynamic bodies only",
+            "`mass` is for dynamic and kinematic bodies only",
         ),
         (
             serde_json::json!({ "kind": "ghost", "shape": circle }),

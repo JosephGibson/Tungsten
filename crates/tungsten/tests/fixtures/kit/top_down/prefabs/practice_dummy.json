@@ -1,0 +1,11 @@
+{
+  "tag": "practice_dummy",
+  "components": {
+    "health": {
+      "max": 100
+    },
+    "tags": [
+      "tallied"
+    ]
+  }
+}

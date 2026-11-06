@@ -137,6 +137,28 @@ fn the_load_checks_tags_against_the_build_declarations() {
 }
 
 #[test]
+fn the_kit_declares_its_tracks_states_and_sides() {
+    let world = rig(&[]);
+    for name in [
+        "delivery.hit",
+        "delivery.dot",
+        "delivery.pierced",
+        "delivery.forked",
+        "delivery.chained",
+        "delivery.repeated",
+        "side.front",
+        "side.rear",
+        "delivery",
+        "side",
+    ] {
+        assert_eq!(check(&world, &json!([name])), Ok(()), "{name}");
+    }
+    assert!(check(&world, &json!(["side.left"])).is_err());
+    assert!(check(&world, &json!(["delivery.hit.crit"])).is_err());
+    assert_eq!(KIT_TAGS.len(), 8);
+}
+
+#[test]
 fn the_tags_data_kind_declares_the_rest() {
     let mut world = rig(&[]);
     assert!(check(&world, &json!(["team.enemy"])).is_err());

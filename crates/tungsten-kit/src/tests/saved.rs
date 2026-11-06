@@ -394,6 +394,95 @@ fn queued_damage_heal_and_effect_requests_resolve_once_after_a_load() {
 }
 
 #[test]
+fn a_queued_requests_context_and_direction_come_back_with_it() {
+    let level = |world: &mut World| -> Entity {
+        let mut stats = Stats::new().with(Stats::DAMAGE_TAKEN, 1.0);
+        let blasts = crate::TagFilter::new().all(["hit.blast"]);
+        let rear = crate::TagFilter::new().all(["side.rear"]);
+        stats.add_line(
+            "damage_taken",
+            "base",
+            crate::Line::new(Modifier::Mul(0.5)).with(blasts),
+        );
+        stats.add_line(
+            "damage_taken",
+            "base",
+            crate::Line::new(Modifier::Mul(3.0)).with(rear),
+        );
+        let aim: crate::Aim = serde_json::from_value(json!({ "direction": [1.0, 0.0] })).unwrap();
+        let knight = world.spawn_with((Health::new(100.0), stats, aim));
+        named(world, knight, None, "knight")
+    };
+    let (mut a, mut schedule_a) = rig();
+    let knight = level(&mut a);
+    step(&mut a, &mut schedule_a);
+    assert!(
+        DamageRequest::new(knight, 8.0)
+            .with_context(crate::Tags::new(["hit.blast"]))
+            .with_direction(Vec2::X)
+            .queue(&mut a)
+    );
+    let saved = capture_world(&a).unwrap();
+
+    let (mut b, mut schedule_b) = rig();
+    churn(&mut b, 25);
+    let knight_b = level(&mut b);
+    restore(&mut b, &saved);
+    for (world, schedule, knight) in [
+        (&mut a, &mut schedule_a, knight),
+        (&mut b, &mut schedule_b, knight_b),
+    ] {
+        step(world, schedule);
+        assert_eq!(
+            world.get::<Health>(knight).unwrap().current(),
+            88.0,
+            "a blast from behind: 8 × 0.5 × 3"
+        );
+    }
+}
+
+#[test]
+fn a_queued_hits_crit_waits_for_the_resolve_after_a_load_and_a_decided_one_holds() {
+    let level = |world: &mut World| -> (Entity, Entity) {
+        let ace = world.spawn_with((Stats::new()
+            .with(Stats::CRIT_CHANCE, 1.0)
+            .with(Stats::CRIT_MULTIPLIER, 3.0),));
+        let golem = world.spawn_with((Health::new(100.0),));
+        (
+            named(world, ace, None, "ace"),
+            named(world, golem, None, "golem"),
+        )
+    };
+    let (mut a, mut schedule_a) = rig();
+    let (ace, golem) = level(&mut a);
+    step(&mut a, &mut schedule_a);
+    let hit = || DamageRequest::new(golem, 2.0).with_source(ace);
+    assert!(hit().queue(&mut a));
+    assert!(hit().with_crit(false).queue(&mut a));
+    let saved = capture_world(&a).unwrap();
+    let draws = |world: &World| world.resource::<KitRng>().draws();
+    let before = draws(&a);
+
+    let (mut b, mut schedule_b) = rig();
+    churn(&mut b, 25);
+    let (_, golem_b) = level(&mut b);
+    restore(&mut b, &saved);
+    assert_eq!(draws(&b), before, "the stream came back where it was");
+    for (world, schedule, golem) in [
+        (&mut a, &mut schedule_a, golem),
+        (&mut b, &mut schedule_b, golem_b),
+    ] {
+        step(world, schedule);
+        assert_eq!(
+            world.get::<Health>(golem).unwrap().current(),
+            92.0,
+            "the open one crit at the resolve (6), the decided one did not (2)"
+        );
+        assert_eq!(draws(world), before + 1, "one draw, the open one's");
+    }
+}
+
+#[test]
 fn a_saved_parents_children_come_back_once() {
     let level = |world: &mut World| -> Entity {
         let children: SpawnChildren =
@@ -450,6 +539,49 @@ fn a_stat_modifier_added_in_play_keeps_a_retuned_base() {
         stats.get("move_speed"),
         Some(230.0),
         "with the run's modifier"
+    );
+}
+
+#[test]
+fn kept_stat_lines_come_back_through_a_capture() {
+    let hero = |world: &mut World| -> Entity {
+        prefab(
+            world,
+            "hero",
+            json!({ "components": { "stats": { "damage_taken": { "base": 1, "lines": [
+                { "modifier": { "mul": 0.5 }, "with": { "all": ["damage.fire"] } }
+            ] } } } }),
+        );
+        let hero = world.spawn_prefab("hero", [0.0, 0.0]).unwrap();
+        named(world, hero, None, "hero")
+    };
+    let (mut a, _) = rig();
+    let entity = hero(&mut a);
+    let casting = crate::TagFilter::new().all(["casting"]);
+    a.get_mut::<Stats>(entity).unwrap().add_line(
+        "cost",
+        "passive:frugal",
+        crate::Line::new(Modifier::Mul(0.5)).while_holder(casting),
+    );
+    let saved = capture_world(&a).unwrap();
+
+    let (mut b, _) = rig();
+    let entity = hero(&mut b);
+    restore(&mut b, &saved);
+    assert_eq!(text(&capture_world(&b).unwrap()), text(&saved));
+    let stats = b.get::<Stats>(entity).unwrap();
+    let fire = [crate::TagSet::Name("damage.fire")];
+    assert_eq!(
+        stats.read("damage_taken", &crate::Read::new(&fire)),
+        Some(0.5)
+    );
+    let sources: Vec<(&str, &str)> = stats
+        .lines()
+        .map(|(stat, source, _)| (stat, source))
+        .collect();
+    assert_eq!(
+        sources,
+        [("cost", "passive:frugal"), ("damage_taken", "base")]
     );
 }
 
@@ -714,4 +846,161 @@ fn two_cooldowns_whose_cues_spawn_give_the_same_ids_after_a_churned_load() {
     assert_eq!(tagged(&a, "glow"), 2, "both elapsed in one step");
     assert_eq!(spawned_by(&a).len(), 2);
     assert_eq!(spawned_by(&b), spawned_by(&a));
+}
+
+#[test]
+fn a_spawn_captured_before_its_spawners_next_tick_keeps_its_owner() {
+    use crate::lifecycle::spawner::Spawned;
+    let level = |world: &mut World| -> Entity {
+        let nest = world.spawn_with((
+            Position(Vec2::ZERO),
+            Spawner::new("slime", 0.25).with_alive(1).with_first(0.0),
+        ));
+        named(world, nest, None, "nest")
+    };
+    let (mut a, mut schedule_a) = rig();
+    let nest_a = level(&mut a);
+    // The first step queues the slime and its flush spawns it: a capture
+    // now comes before the spawner's next tick.
+    step(&mut a, &mut schedule_a);
+    assert_eq!(tagged(&a, "slime"), 1);
+    let saved = capture_world(&a).unwrap();
+    assert!(text(&saved).contains("spawned"), "its owner saved");
+
+    let (mut b, mut schedule_b) = rig();
+    churn(&mut b, 30);
+    let nest_b = level(&mut b);
+    restore(&mut b, &saved);
+    let owner = |world: &World| {
+        world
+            .query::<(&Tag, &Spawned)>()
+            .find(|(tag, _)| tag.name == "slime")
+            .and_then(|(_, spawned)| spawned.by())
+    };
+    assert_eq!(owner(&a), Some(nest_a));
+    assert_eq!(
+        owner(&b),
+        Some(nest_b),
+        "the restored spawn names its spawner"
+    );
+    for frame in 0..60 {
+        step(&mut a, &mut schedule_a);
+        step(&mut b, &mut schedule_b);
+        assert_eq!(
+            (tagged(&a, "slime"), tagged(&b, "slime")),
+            (1, 1),
+            "frame {frame}: held at one either way"
+        );
+    }
+}
+
+/// [`rig`]'s plugins with the physics, so a body saves its point.
+fn physics_rig() -> (World, Schedule) {
+    use tungsten_core::Plugin;
+    use tungsten_core::physics::PhysicsPlugin;
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(PrefabRegistry::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    KitPlugins::set().build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+#[test]
+fn a_carried_body_survives_a_load_and_drops_without_its_carrier() {
+    use tungsten_core::physics::{BodyKind, Collider, RigidBody, RigidBodyBundle, Velocity};
+
+    use crate::motion::carry::Carried;
+    use crate::{Hold, LinearMotion, TagFilter, Tags, carried_by, carry, release};
+
+    let offset = Vec2::new(8.0, -30.0);
+    let crate_at = |world: &mut World| {
+        let body = world.spawn_with(RigidBodyBundle::dynamic(
+            Position(Vec2::ZERO),
+            Collider::aabb(Vec2::splat(6.0)),
+        ));
+        named(world, body, None, "crate")
+    };
+    // A bodiless carrier walking right, and its crate, both named.
+    let level = |world: &mut World| -> [Entity; 2] {
+        let carrier = world.spawn_with((
+            Position(Vec2::new(100.0, 100.0)),
+            LinearMotion::new(Vec2::new(60.0, 0.0)),
+            Tags::new(Vec::<String>::new()),
+        ));
+        [named(world, carrier, None, "carrier"), crate_at(world)]
+    };
+    let at = |world: &World, entity: Entity| world.get::<Position>(entity).unwrap().0;
+    let kind = |world: &World, entity: Entity| world.get::<RigidBody>(entity).unwrap().kind;
+    let hold = Hold::new(offset).with_drop(TagFilter::new().any(["door.locked"]));
+
+    let (mut a, mut schedule_a) = physics_rig();
+    let [carrier_a, crate_a] = level(&mut a);
+    assert!(carry(&mut a, carrier_a, crate_a, hold));
+    for _ in 0..10 {
+        step(&mut a, &mut schedule_a);
+    }
+    let saved = capture_world(&a).unwrap();
+    assert!(text(&saved).contains("carried"), "the hold saved");
+
+    let (mut b, mut schedule_b) = physics_rig();
+    churn(&mut b, 30);
+    let [carrier_b, crate_b] = level(&mut b);
+    restore(&mut b, &saved);
+    assert_eq!(
+        kind(&b, crate_b),
+        BodyKind::Dynamic,
+        "a save holds no body: the fresh spawn's until its first step"
+    );
+    for frame in 0..20 {
+        step(&mut a, &mut schedule_a);
+        step(&mut b, &mut schedule_b);
+        assert_eq!(
+            at(&b, crate_b),
+            at(&a, crate_a),
+            "frame {frame}: as the uninterrupted run"
+        );
+        assert_eq!(at(&b, crate_b), at(&b, carrier_b) + offset, "frame {frame}");
+    }
+    assert_eq!(carried_by(&b, carrier_b), Some(crate_b));
+    assert_eq!(kind(&b, crate_b), BodyKind::Sensor);
+    // The drop filter came back: the locked carrier lets go in both runs.
+    for (world, carrier) in [(&mut a, carrier_a), (&mut b, carrier_b)] {
+        world
+            .get_mut::<Tags>(carrier)
+            .unwrap()
+            .insert("door.locked");
+    }
+    step(&mut a, &mut schedule_a);
+    step(&mut b, &mut schedule_b);
+    for (world, carrier, body) in [(&a, carrier_a, crate_a), (&b, carrier_b, crate_b)] {
+        assert_eq!(carried_by(world, carrier), None);
+        assert_eq!(kind(world, body), BodyKind::Dynamic, "its own body back");
+    }
+    assert_eq!(at(&b, crate_b), at(&a, crate_a));
+
+    // A carrier with no save ID: its reference drops, and the load's first
+    // step drops the crate at rest where the save held it.
+    let (mut c, mut schedule_c) = physics_rig();
+    let porter = c.spawn_with((Position(Vec2::new(40.0, 40.0)),));
+    let crate_c = crate_at(&mut c);
+    assert!(carry(&mut c, porter, crate_c, Hold::new(offset)));
+    step(&mut c, &mut schedule_c);
+    let orphan = capture_world(&c).unwrap();
+    assert_eq!(orphan.dropped_refs(), 1, "the carrier is not saved");
+    let held = at(&c, crate_c);
+
+    let (mut d, mut schedule_d) = physics_rig();
+    let crate_d = crate_at(&mut d);
+    restore(&mut d, &orphan);
+    assert!(d.has::<Carried>(crate_d), "the hold came back");
+    step(&mut d, &mut schedule_d);
+    assert!(!d.has::<Carried>(crate_d), "dropped at its first step");
+    assert_eq!(kind(&d, crate_d), BodyKind::Dynamic);
+    assert_eq!(d.get::<Velocity>(crate_d).unwrap().0, Vec2::ZERO, "at rest");
+    assert_eq!(at(&d, crate_d), held, "where the save held it");
+    assert_eq!(release(&mut d, porter, Vec2::ZERO), None);
 }

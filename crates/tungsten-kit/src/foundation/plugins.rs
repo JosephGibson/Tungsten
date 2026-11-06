@@ -2,6 +2,7 @@
 
 use tungsten_core::PluginSet;
 
+use crate::chemistry::ChemistryPlugin;
 use crate::damage::effects::EffectsPlugin;
 use crate::damage::health::HealthPlugin;
 use crate::foundation::debug::KitDebugPlugin;
@@ -11,6 +12,7 @@ use crate::foundation::tags::TagsPlugin;
 use crate::intent::ability::AbilitiesPlugin;
 use crate::intent::action_input::ActionInputPlugin;
 use crate::intent::aim::AimPlugin;
+use crate::lifecycle::cap::CapPlugin;
 use crate::lifecycle::children::SpawnChildrenPlugin;
 use crate::lifecycle::cooldown::CooldownPlugin;
 use crate::lifecycle::despawn::DespawnOutsidePlugin;
@@ -38,6 +40,8 @@ use crate::present::camera::CameraTargetPlugin;
 use crate::present::character::CharacterAnimatorPlugin;
 use crate::present::depth::DepthSortPlugin;
 use crate::present::facing::FacingPlugin;
+use crate::present::health_bar::HealthBarPlugin;
+use crate::present::looks::LooksPlugin;
 use crate::react::counters::CountersPlugin;
 use crate::react::cues::CuesPlugin;
 use crate::react::level::LevelPlugin;
@@ -80,8 +84,9 @@ impl KitPlugins {
     /// counters, cooldown, spawn children, cues, linear motion, the
     /// oscillator, steering, follow, orbit, knockback, the speed limit,
     /// wrap, stay in view, aim, facing, the character animator, depth sort,
-    /// the hit shapes, contact damage, projectiles, pickups, effects,
-    /// abilities, levels and the debug drawing, in that order.
+    /// the hit shapes, contact damage, projectiles, pickups, effects, looks
+    /// by tags, health bars, chemistry, abilities, levels, caps and the
+    /// debug drawing, in that order.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
@@ -122,8 +127,12 @@ impl KitPlugins {
             .with(ProjectilePlugin)
             .with(PickupPlugin)
             .with(EffectsPlugin)
+            .with(LooksPlugin)
+            .with(HealthBarPlugin)
+            .with(ChemistryPlugin::new())
             .with(AbilitiesPlugin)
             .with(LevelPlugin)
+            .with(CapPlugin)
             .with(KitDebugPlugin)
     }
 }

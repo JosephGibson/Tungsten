@@ -2,7 +2,7 @@
 # Regression tests for scripts/smoke-examples.sh with a stubbed `cargo` on
 # PATH: example discovery failures, child failure, timeout, the exact fixture
 # matrix, the template row's folder and font check, and the frame-cap row's
-# minimum run time. Needs no GPU; real jq/timeout are used.
+# minimum run time, timed without date. Needs no GPU; real jq/timeout are used.
 
 set -euo pipefail
 
@@ -52,6 +52,16 @@ esac
 EOF
 chmod +x "$work/bin/cargo"
 
+# The script times its rows with bash's EPOCHREALTIME alone: uutils' date
+# (Ubuntu 26.04) misreads `+%s%3N`, which failed CI's rows at random. A
+# stub date that refuses fails every case if the script calls date again.
+cat >"$work/bin/date" <<'EOF'
+#!/usr/bin/env bash
+echo "stub date: smoke-examples.sh must not call date (uutils misreads %3N)" >&2
+exit 99
+EOF
+chmod +x "$work/bin/date"
+
 failures=0
 out="$work/out.txt"
 
@@ -63,6 +73,11 @@ run_case() {
   local code=0
   env PATH="$work/bin:$PATH" TMPDIR="$work/tmp" STUB_RUNS="$work/runs.txt" \
     TUNGSTEN_SMOKE_TIMEOUT=2 "$@" bash "$SMOKE" >"$out" 2>&1 || code=$?
+  if grep -qF "stub date:" "$out"; then
+    echo "FAIL $name: the script called date"
+    failures=$((failures + 1))
+    return 1
+  fi
   if { [ "$expect" = 0 ] && [ "$code" -ne 0 ]; } || { [ "$expect" = nonzero ] && [ "$code" -eq 0 ]; }; then
     echo "FAIL $name: exit $code, expected $expect"
     sed 's/^/    /' "$out"
@@ -84,7 +99,7 @@ if run_case "all pass" 0; then
   for line in "Passed: 3/3" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" "Seams passed: 1/1" \
     "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "UI screens passed: 1/1" \
-    "Debug views passed: 1/1" "Benchmarks passed: 21/21" \
+    "Debug views passed: 1/1" "Benchmarks passed: 23/23" \
     "Frame cap passed: 1/1"; do
     expect_output "all pass" "$line"
   done
@@ -133,6 +148,8 @@ example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=saves
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=saves preset=default
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=boot preset=min
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=boot preset=default
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=spread preset=min
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=spread preset=default
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=20 timing= bench= preset= scene=transition cap=20
 EOF
   if ! diff -u "$expected_runs" "$work/runs.txt"; then
@@ -168,7 +185,7 @@ fi
 
 if run_case "frame cap ignored" nonzero STUB_UNCAPPED=1; then
   expect_output "frame cap ignored" "expected at least 900 ms"
-  expect_output "frame cap ignored" "Benchmarks passed: 21/21"
+  expect_output "frame cap ignored" "Benchmarks passed: 23/23"
   expect_output "frame cap ignored" "Frame cap passed: 0/1"
 fi
 

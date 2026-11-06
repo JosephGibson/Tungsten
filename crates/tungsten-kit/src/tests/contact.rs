@@ -542,3 +542,63 @@ fn contact_damage_with_push_always_throws_a_target_inside_its_window() {
     fixed_step(&mut world, &mut schedule);
     assert_eq!(pushed(&world, dead), Vec2::ZERO, "the dead");
 }
+
+#[test]
+fn an_off_contact_keeps_its_touches() {
+    let (mut world, mut schedule) = contact_rig(&["fire"]);
+    let target = target(&mut world);
+    let spikes = world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        ContactDamage::new(1.0)
+            .with_interval(0.5)
+            .with_shape(HitShape::circle(4.0), Vec2::ZERO),
+    ));
+    let health = |world: &World| world.get::<crate::Health>(target).unwrap().current();
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(health(&world), 999.0, "at once");
+    for _ in 0..10 {
+        fixed_step(&mut world, &mut schedule);
+    }
+    world
+        .get_mut::<ContactDamage>(spikes)
+        .unwrap()
+        .set_on(false);
+    assert!(!world.get::<ContactDamage>(spikes).unwrap().is_on());
+    for _ in 0..120 {
+        fixed_step(&mut world, &mut schedule);
+    }
+    assert_eq!(health(&world), 999.0, "off, it hurts nothing");
+    let contact = world.get::<ContactDamage>(spikes).unwrap();
+    let touches: Vec<_> = contact.touches().collect();
+    assert_eq!(touches.len(), 1, "its touch kept");
+    assert!(
+        (touches[0].since_hit() - 10.0 / 60.0).abs() < 1e-4,
+        "its clock held"
+    );
+    // On again: due the rest of its interval after, as if it never paused.
+    world.get_mut::<ContactDamage>(spikes).unwrap().set_on(true);
+    let mut steps = 0;
+    while health(&world) == 999.0 {
+        assert!(steps < 60, "it hurts again");
+        fixed_step(&mut world, &mut schedule);
+        steps += 1;
+    }
+    assert_eq!(steps, 20, "0.5 s less the 11 steps it had run");
+    // A save writes `on` only when off.
+    let saved = serde_json::to_value(world.get::<ContactDamage>(spikes).unwrap()).unwrap();
+    assert!(saved.get("on").is_none(), "an on contact keeps its bytes");
+    world
+        .get_mut::<ContactDamage>(spikes)
+        .unwrap()
+        .set_on(false);
+    let saved = serde_json::to_value(world.get::<ContactDamage>(spikes).unwrap()).unwrap();
+    assert_eq!(saved["on"], false);
+    assert!(
+        !serde_json::from_value::<ContactDamage>(saved)
+            .unwrap()
+            .is_on()
+    );
+    let (world, _) = rig();
+    let scene = json!({ "damage": 1, "on": false });
+    assert!(check(&world, &scene).is_ok());
+}

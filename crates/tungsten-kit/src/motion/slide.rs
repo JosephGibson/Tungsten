@@ -3,14 +3,16 @@
 //! along what it meets, and the climb over a step.
 
 use glam::Vec2;
-use tungsten_core::physics::{BodyKind, RigidBody, Shape, SpatialFilter, SpatialHit, cast_shape};
+use tungsten_core::physics::{
+    BodyKind, RigidBody, Shape, SpatialFilter, SpatialHit, cast_shape, cast_shape_where,
+};
 use tungsten_core::{Entity, PhysicsConfig, Time, World};
 
 /// The gap a move leaves before the surface it meets, in px.
 pub(crate) const SKIN: f32 = 0.01;
 
 /// How far below its feet a body looks for the ground, in px.
-const GROUND_PROBE: f32 = 1.0;
+pub(crate) const GROUND_PROBE: f32 = 1.0;
 
 /// The most casts one move takes.
 const MAX_SLIDES: usize = 4;
@@ -19,7 +21,7 @@ const MAX_SLIDES: usize = 4;
 const MIN_MOVE: f32 = 1e-4;
 
 /// A surface whose normal's y is at most this is a floor; y points down.
-const FLOOR_NORMAL_Y: f32 = -0.7;
+pub(crate) const FLOOR_NORMAL_Y: f32 = -0.7;
 
 /// The step a fixed system moves a body by: [`Time::delta`] bounded by
 /// `PhysicsConfig::max_step_dt`, as `physics_step` takes it.
@@ -35,6 +37,8 @@ pub(crate) fn step_dt(world: &World) -> f32 {
 
 /// What a move met.
 #[derive(Debug, Default, Clone, Copy)]
+// What each cast met, a floor, a ceiling and a wall at once among them.
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct Slide {
     /// How far the shape moved.
     pub(crate) moved: Vec2,
@@ -42,6 +46,10 @@ pub(crate) struct Slide {
     pub(crate) floor: bool,
     /// The floor's body; `None` for a tile.
     pub(crate) floor_body: Option<Entity>,
+    /// The floor's outward normal; zero with no floor.
+    pub(crate) floor_normal: Vec2,
+    /// The floor is a slope tile's sloped face.
+    pub(crate) floor_slope: bool,
     /// It met a ceiling.
     pub(crate) ceiling: bool,
     /// It met a wall.
@@ -62,6 +70,59 @@ pub(crate) fn move_and_slide(
     delta: Vec2,
     filter: &SpatialFilter,
 ) -> Slide {
+    move_and_slide_on(world, shape, origin, delta, filter, FLOOR_NORMAL_Y, false)
+}
+
+/// [`move_and_slide`] with a surface whose normal's y is at most `floor_y` a
+/// floor; with `no_climb`, a slope tile's face met as a wall drops the rest
+/// of the move along x where sliding along it would climb, so a slope too
+/// steep to walk stops a walker as an upright wall does, and one falling
+/// onto it still slides down.
+pub(crate) fn move_and_slide_on(
+    world: &World,
+    shape: Shape,
+    origin: Vec2,
+    delta: Vec2,
+    filter: &SpatialFilter,
+    floor_y: f32,
+    no_climb: bool,
+) -> Slide {
+    slide_by(origin, delta, floor_y, no_climb, |at, direction, length| {
+        cast_shape(world, shape, at, direction, length, filter)
+    })
+}
+
+/// Where a carry of `delta` takes `shape` from `origin`, its ground's move
+/// under it: a slide against what `filter` sees but `ground`, so a wall or
+/// a ceiling stops it; `origin + delta` exactly when nothing is met.
+pub(crate) fn carry(
+    world: &World,
+    shape: Shape,
+    origin: Vec2,
+    delta: Vec2,
+    filter: &SpatialFilter,
+    ground: Entity,
+) -> Vec2 {
+    let cast = |at: Vec2, direction: Vec2, length: f32| {
+        cast_shape_where(world, shape, at, direction, length, filter, |hit| {
+            hit.entity != Some(ground)
+        })
+    };
+    let length = delta.length();
+    if length.is_nan() || length <= MIN_MOVE || cast(origin, delta / length, length).is_none() {
+        return origin + delta;
+    }
+    origin + slide_by(origin, delta, FLOOR_NORMAL_Y, false, cast).moved
+}
+
+/// The slide loop of [`move_and_slide_on`], each cast by `cast`.
+fn slide_by(
+    origin: Vec2,
+    delta: Vec2,
+    floor_y: f32,
+    no_climb: bool,
+    mut cast: impl FnMut(Vec2, Vec2, f32) -> Option<SpatialHit>,
+) -> Slide {
     let mut slide = Slide::default();
     let mut at = origin;
     let mut rest = delta;
@@ -71,15 +132,18 @@ pub(crate) fn move_and_slide(
             break;
         }
         let direction = rest / length;
-        let Some(hit) = cast_shape(world, shape, at, direction, length, filter) else {
+        let Some(hit) = cast(at, direction, length) else {
             at += rest;
             break;
         };
         let travel = (hit.distance - SKIN).max(0.0);
         at += direction * travel;
-        if hit.normal.y <= FLOOR_NORMAL_Y {
+        let mut wall = false;
+        if hit.normal.y <= floor_y {
             slide.floor = true;
             slide.floor_body = hit.entity;
+            slide.floor_normal = hit.normal;
+            slide.floor_slope = hit.slope;
         } else if hit.normal.y >= -FLOOR_NORMAL_Y {
             slide.ceiling = true;
         } else {
@@ -88,24 +152,32 @@ pub(crate) fn move_and_slide(
                 slide.wall_normal = hit.normal;
             }
             slide.wall = true;
+            wall = true;
         }
         rest = direction * (length - travel);
-        rest -= hit.normal * rest.dot(hit.normal);
+        let along = rest - hit.normal * rest.dot(hit.normal);
+        rest = if no_climb && wall && hit.slope && along.y < 0.0 {
+            Vec2::new(0.0, rest.y)
+        } else {
+            along
+        };
     }
     slide.moved = at - origin;
     slide
 }
 
-/// The floor within [`GROUND_PROBE`] below `shape` at `origin`, when the
-/// surface met faces up.
-pub(crate) fn probe_ground(
+/// The floor within `reach` below `shape` at `origin`, when the surface met
+/// is a floor by `floor_y`, as [`move_and_slide_on`] takes it: within
+/// [`GROUND_PROBE`] and by [`FLOOR_NORMAL_Y`] before slopes.
+pub(crate) fn probe_ground_on(
     world: &World,
     shape: Shape,
     origin: Vec2,
     filter: &SpatialFilter,
+    reach: f32,
+    floor_y: f32,
 ) -> Option<SpatialHit> {
-    cast_shape(world, shape, origin, Vec2::Y, GROUND_PROBE, filter)
-        .filter(|hit| hit.normal.y <= FLOOR_NORMAL_Y)
+    cast_shape(world, shape, origin, Vec2::Y, reach, filter).filter(|hit| hit.normal.y <= floor_y)
 }
 
 /// Where `shape` at `origin` lands climbing a step: up by at most `height`,

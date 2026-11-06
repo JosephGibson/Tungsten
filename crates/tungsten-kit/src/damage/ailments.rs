@@ -16,7 +16,7 @@ use crate::damage::health::{DamagedPart, Health};
 use crate::damage::kinds::{ladder, ladder_of};
 use crate::damage::pipeline::DAMAGE_RESOLVE;
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, describe,
+    Bound, ComponentDescription, FieldDescription, FieldType, SHOOTER, TOP_DOWN, describe,
     describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
@@ -707,7 +707,7 @@ pub(crate) fn register_ailments(schedule: &mut Schedule, world: &mut World) {
             .default("0.0"),
         )
         .genre(TOP_DOWN)
-        .genre(SHMUP)
+        .genre(SHOOTER)
         .sample("{}")
         .roundtrip(round_trip::<ThresholdDef>),
     );

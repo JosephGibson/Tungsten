@@ -1,0 +1,18 @@
+{
+  "tag": "skiff",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          10,
+          10
+        ]
+      }
+    },
+    "top_down_mover": {
+      "speed": 100
+    }
+  }
+}

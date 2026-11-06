@@ -205,3 +205,108 @@ fn spawns_and_failures_go_in_the_trace() {
         "{failed:?}"
     );
 }
+
+#[test]
+fn an_alive_spawner_waits_an_interval_after_its_spawn_dies() {
+    let (mut world, mut schedule) = setup();
+    nest(&mut world, Spawner::new("slime", 0.5).with_alive(1));
+    let slime = |world: &World| {
+        world
+            .query::<(Entity, &Tag)>()
+            .find(|(_, tag)| tag.name == "slime")
+            .map(|(entity, _)| entity)
+    };
+    // Its first after one interval: four steps of 1/8 s.
+    for _ in 0..3 {
+        frame(&mut world, &mut schedule, 0.125);
+    }
+    assert!(slime(&world).is_none());
+    frame(&mut world, &mut schedule, 0.125);
+    let first = slime(&world).expect("the first after one interval");
+    // Full, it holds however long.
+    for _ in 0..40 {
+        frame(&mut world, &mut schedule, 0.125);
+    }
+    assert_eq!(slimes(&world).len(), 1, "one live at most");
+    // Its spawn gone, the next comes an interval later.
+    world.despawn(first);
+    for _ in 0..3 {
+        frame(&mut world, &mut schedule, 0.125);
+        assert!(slime(&world).is_none(), "an interval after it died");
+    }
+    frame(&mut world, &mut schedule, 0.125);
+    assert!(slime(&world).is_some());
+    assert_eq!(slimes(&world).len(), 1);
+}
+
+#[test]
+fn two_steps_a_frame_queue_one_spawn() {
+    let (mut world, mut schedule) = setup();
+    nest(
+        &mut world,
+        Spawner::new("slime", 1.0 / 60.0)
+            .with_alive(1)
+            .with_first(0.0),
+    );
+    // Two fixed steps before the flush: the second counts the first's queued
+    // spawn by the frame.
+    world.resource_mut::<Time>().advance_frame(1.0 / 30.0);
+    world.resource_mut::<Time>().enter_fixed_step();
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    world.resource_mut::<Time>().leave_fixed_steps();
+    let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+    world.flush_reusing(&mut commands);
+    world.insert_resource(commands);
+    assert_eq!(slimes(&world).len(), 1);
+    // A plain spawner at that interval queues one a step.
+    let (mut world, mut schedule) = setup();
+    nest(
+        &mut world,
+        Spawner::new("slime", 1.0 / 60.0).with_first(0.0),
+    );
+    world.resource_mut::<Time>().advance_frame(1.0 / 30.0);
+    world.resource_mut::<Time>().enter_fixed_step();
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    world.resource_mut::<Time>().leave_fixed_steps();
+    let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+    world.flush_reusing(&mut commands);
+    world.insert_resource(commands);
+    assert_eq!(slimes(&world).len(), 2, "unheld, one a step");
+}
+
+#[test]
+fn a_first_delay_spawns_at_once() {
+    let (mut world, mut schedule) = setup();
+    nest(&mut world, Spawner::new("slime", 0.5).with_first(0.0));
+    frame(&mut world, &mut schedule, 0.125);
+    assert_eq!(slimes(&world).len(), 1, "at its first tick");
+    for _ in 0..3 {
+        frame(&mut world, &mut schedule, 0.125);
+    }
+    assert_eq!(slimes(&world).len(), 1);
+    frame(&mut world, &mut schedule, 0.125);
+    assert_eq!(slimes(&world).len(), 2, "then one an interval");
+    let (mut world, mut schedule) = setup();
+    nest(&mut world, Spawner::new("slime", 0.5).with_first(0.25));
+    frame(&mut world, &mut schedule, 0.125);
+    assert!(slimes(&world).is_empty());
+    frame(&mut world, &mut schedule, 0.125);
+    assert_eq!(slimes(&world).len(), 1, "after its quarter second");
+    // The load refuses a first past the interval and an alive of 0.
+    let components = world.resource::<tungsten_core::ComponentRegistry>();
+    let check = |value: serde_json::Value| components.check_in("spawner", &value, &world);
+    assert!(check(json!({ "prefab": "slime", "interval": 0.5, "alive": 1, "first": 0 })).is_ok());
+    for refused in [
+        json!({ "prefab": "slime", "interval": 0.5, "first": 0.75 }),
+        json!({ "prefab": "slime", "interval": 0.5, "first": -1 }),
+        json!({ "prefab": "slime", "interval": 0.5, "alive": 0 }),
+    ] {
+        assert!(check(refused.clone()).is_err(), "{refused}");
+    }
+    assert!(std::panic::catch_unwind(|| Spawner::new("slime", 0.5).with_first(1.0)).is_err());
+    // A plain spawner's save keeps its bytes.
+    let saved = serde_json::to_value(SpawnerSave::from(&Spawner::new("slime", 0.5))).unwrap();
+    assert!(saved.get("alive").is_none() && saved.get("first_left").is_none());
+}

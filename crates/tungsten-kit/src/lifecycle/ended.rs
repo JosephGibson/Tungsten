@@ -5,6 +5,7 @@
 
 use tungsten_core::{CommandBuffer, Entity, Schedule, World, system};
 
+use crate::chemistry;
 use crate::foundation::phases::Phase;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::children::SPAWN_CHILDREN;
@@ -45,6 +46,14 @@ pub(crate) fn end(world: &mut World, entity: Entity, by: &'static str) {
     }
 }
 
+/// Whether `entity` is listed for this step's [`KIT_DESPAWN`]: a cap counts
+/// no holder an item already ended.
+pub(crate) fn ending(world: &World, entity: Entity) -> bool {
+    world
+        .get_resource::<Ended>()
+        .is_some_and(|ended| ended.0.iter().any(|&(listed, _)| listed == entity))
+}
+
 /// Inserts the ended list when the World has none and adds [`KIT_DESPAWN`]
 /// when the schedule lacks it: every plugin whose item ends an entity calls
 /// it in `build`.
@@ -68,18 +77,22 @@ pub(crate) fn ensure_kit_despawn(schedule: &mut Schedule, world: &mut World) {
     );
 }
 
-/// The despawn's state between steps: the drained list and the walk's
-/// stack, kept so a step allocates nothing once warm.
+/// The despawn's state between steps: the drained list, the walk's stack
+/// and the entities chemistry holds, kept so a step allocates nothing once
+/// warm.
 #[derive(Default)]
 struct Runner {
     ended: Vec<(Entity, &'static str)>,
     stack: Vec<Entity>,
+    held: Vec<(Entity, &'static str)>,
 }
 
 impl Runner {
     /// Marks and queues each listed entity that is alive and unmarked, in
-    /// list order, and traces it once. Without a `CommandBuffer` it queues
-    /// nothing, and the items list their ends again on the next step.
+    /// list order, and traces it once; one with a chemistry entry waiting
+    /// is held, listed again for the next step, so its reaction runs first.
+    /// Without a `CommandBuffer` it queues nothing, and the items list
+    /// their ends again on the next step.
     fn run(&mut self, world: &mut World) {
         let Some(ended) = world.get_resource_mut::<Ended>() else {
             return;
@@ -93,12 +106,22 @@ impl Runner {
                 if !world.is_alive(entity) || world.has::<Despawning>(entity) {
                     continue;
                 }
+                if chemistry::holds(world, entity) {
+                    if !self.held.iter().any(|&(held, _)| held == entity) {
+                        self.held.push((entity, by));
+                    }
+                    continue;
+                }
                 mark_despawning(world, entity, &mut self.stack);
                 despawn_recursive(world.resource_mut::<CommandBuffer>(), entity);
                 trace(world, entity, || TraceKind::Despawn { by });
             }
         }
         self.ended.clear();
+        if !self.held.is_empty() {
+            let ended = world.resource_mut::<Ended>();
+            ended.0.append(&mut self.held);
+        }
     }
 }
 

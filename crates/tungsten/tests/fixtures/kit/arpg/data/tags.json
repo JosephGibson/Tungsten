@@ -1,0 +1,11 @@
+[
+  "team.player",
+  "team.enemy",
+  "skill.spell",
+  "skill.projectile",
+  "skill.fire",
+  "skill.melee",
+  "status.chilled",
+  "elemental.fire",
+  "elemental.cold"
+]

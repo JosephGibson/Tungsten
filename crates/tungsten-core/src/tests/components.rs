@@ -199,3 +199,83 @@ fn squash_envelope_zero_duration_is_inert() {
     assert_eq!(squash(0.0).scale_at(base, 0.5), base);
     assert_eq!(squash(-1.0).scale_at(base, 0.5), base);
 }
+
+// Redo 7.10p: named sprite points.
+
+#[test]
+fn sprite_point_follows_flip_scale_and_turn() {
+    use crate::assets::{AssetRegistry, FilterMode, TextureHandle, UvRect};
+    use std::path::PathBuf;
+
+    let mut world = World::new();
+    let mut assets = AssetRegistry::new();
+    for id in ["keg", "plain"] {
+        assets.register_sprite(
+            id.into(),
+            FilterMode::Nearest,
+            16,
+            32,
+            PathBuf::from(format!("{id}.png")),
+            TextureHandle(0),
+            UvRect::FULL,
+            None,
+            None,
+            None,
+        );
+        assets.set_sprite_points(id, [("fuse".to_string(), [4.0, 0.0])].into());
+    }
+    assets.set_sprite_frame("keg", None, Some([8.0, 32.0]));
+    let keg = assets.sprite_id("keg").unwrap();
+    let plain = assets.sprite_id("plain").unwrap();
+    world.insert_resource(assets);
+    let at = Vec2::new(100.0, 50.0);
+    let spawn = |world: &mut World, sprite, rotation, scale, flip| {
+        world.spawn_with((
+            Transform {
+                position: at,
+                rotation,
+                scale: Vec2::splat(scale),
+            },
+            Sprite::new(sprite),
+            SpriteFlip(flip),
+        ))
+    };
+    let close = |got: Option<Vec2>, want: Vec2| got.is_some_and(|got| got.distance(want) < 1e-4);
+    // Anchored at its bottom centre and doubled: the fuse 8 px right of the
+    // anchor's column, 64 px up.
+    let upright = spawn(&mut world, keg, 0.0, 2.0, false);
+    assert!(close(
+        sprite_point(&world, upright, "fuse"),
+        Vec2::new(92.0, -14.0)
+    ));
+    // Flipped, it mirrors about the anchor.
+    let flipped = spawn(&mut world, keg, 0.0, 2.0, true);
+    assert!(close(
+        sprite_point(&world, flipped, "fuse"),
+        Vec2::new(108.0, -14.0)
+    ));
+    // Turned a quarter, about the anchor on the entity.
+    let turned = spawn(&mut world, keg, std::f32::consts::FRAC_PI_2, 2.0, false);
+    assert!(close(
+        sprite_point(&world, turned, "fuse"),
+        Vec2::new(164.0, 42.0)
+    ));
+    // Without an anchor it turns about the quad's centre.
+    let centred = spawn(&mut world, plain, std::f32::consts::FRAC_PI_2, 1.0, false);
+    assert!(close(
+        sprite_point(&world, centred, "fuse"),
+        Vec2::new(124.0, 62.0)
+    ));
+    assert_eq!(
+        sprite_point(&world, upright, "spout"),
+        None,
+        "no such point"
+    );
+    let bare = world.spawn_with((Sprite::new(keg),));
+    assert_eq!(sprite_point(&world, bare, "fuse"), None, "no Transform");
+    let unregistered = world.spawn_with((
+        Transform::from_position(at),
+        Sprite::new(SpriteAssetId::new(9)),
+    ));
+    assert_eq!(sprite_point(&world, unregistered, "fuse"), None);
+}

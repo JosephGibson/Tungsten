@@ -1,0 +1,15 @@
+{
+  "tag": "fading_gold",
+  "components": {
+    "lifetime": {
+      "seconds": 4,
+      "blink": {
+        "last": 2,
+        "rate": [
+          5,
+          10
+        ]
+      }
+    }
+  }
+}

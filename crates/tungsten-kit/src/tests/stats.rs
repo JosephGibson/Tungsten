@@ -2,6 +2,8 @@ use super::*;
 use serde_json::json;
 use tungsten_core::{ComponentRegistry, PrefabData, PrefabRegistry, Stage, Time};
 
+use crate::{TagFilter, TagSet};
+
 /// A World with the stats plugin built, declaring `armor` in `[0, 10]`.
 fn rig() -> (World, Schedule) {
     let mut world = World::new();
@@ -74,9 +76,168 @@ fn the_well_known_stats_clamp_to_their_floors() {
     stats.add_modifier(Stats::MAX_HEALTH, "curse", Modifier::Mul(0.0));
     assert_eq!(stats.get(Stats::MOVE_SPEED), Some(0.0));
     assert_eq!(stats.get(Stats::MAX_HEALTH), Some(1.0), "no modifier kills");
-    assert_eq!(Stats::WELL_KNOWN.len(), 7);
+    assert_eq!(Stats::WELL_KNOWN.len(), 11);
     let names: Vec<&str> = stats.iter().map(|(name, _)| name).collect();
     assert_eq!(names, ["max_health", "move_speed"]);
+}
+
+#[test]
+fn the_crit_and_damage_taken_stats_take_their_bounds() {
+    let mut stats = Stats::new()
+        .with(Stats::CRIT_CHANCE, 0.5)
+        .with(Stats::CRIT_MULTIPLIER, 2.0)
+        .with(Stats::DAMAGE_TAKEN, 1.0);
+    stats.add_modifier(Stats::CRIT_CHANCE, "luck", Modifier::Add(2.0));
+    stats.add_modifier(Stats::CRIT_MULTIPLIER, "dull", Modifier::Mul(0.1));
+    stats.add_modifier(Stats::DAMAGE_TAKEN, "stone", Modifier::Add(-5.0));
+    assert_eq!(stats.get(Stats::CRIT_CHANCE), Some(1.0));
+    assert_eq!(stats.get(Stats::CRIT_MULTIPLIER), Some(1.0));
+    assert_eq!(stats.get(Stats::DAMAGE_TAKEN), Some(0.0));
+    let saved = serde_json::to_value(&stats).unwrap();
+    assert_eq!(saved["crit_chance"]["max"], json!(1.0));
+    assert_eq!(saved["crit_multiplier"]["min"], json!(1.0));
+    let (world, _) = rig();
+    let components = world.resource::<ComponentRegistry>();
+    assert!(
+        components
+            .check_in("stats", &json!({ "crit_chance": 1.5 }), &world)
+            .is_err()
+    );
+    assert!(
+        components
+            .check_in("stats", &json!({ "crit_multiplier": 0.5 }), &world)
+            .is_err()
+    );
+    assert!(
+        components
+            .check_in(
+                "stats",
+                &json!({ "crit_chance": 0.05, "crit_multiplier": 2, "damage_taken": 1 }),
+                &world
+            )
+            .is_ok()
+    );
+}
+
+#[test]
+fn an_older_save_loads_unchanged_and_kept_lines_round_trip() {
+    // A save from before lines: every value as it was, the same bytes back.
+    let older = json!({
+        "armor": { "base": 2.0, "min": 0.0, "max": 10.0 },
+        "move_speed": { "base": 80.0, "min": 0.0, "max": null, "modifiers": [["haste", { "pct": 0.25 }], ["difficulty", { "mul": 1.5 }]] }
+    });
+    let stats: Stats = serde_json::from_value(older.clone()).unwrap();
+    assert_eq!(stats.get(Stats::MOVE_SPEED), Some(150.0));
+    assert_eq!(stats.get("armor"), Some(2.0));
+    assert_eq!(stats.lines().count(), 0);
+    assert_eq!(serde_json::to_value(&stats).unwrap(), older);
+
+    // A scoped line on a stat it has, and a line on a stat it lacks.
+    let mut stats = stats;
+    let blasts = TagFilter::new().all(["hit.blast"]);
+    stats.add_line(
+        Stats::MOVE_SPEED,
+        "base",
+        Line::new(Modifier::Mul(0.5)).with(blasts),
+    );
+    stats.add_line("cost", "passive:frugal", Line::new(Modifier::Pct(-0.25)));
+    let saved = serde_json::to_value(&stats).unwrap();
+    assert_eq!(
+        saved["move_speed"]["lines"],
+        json!([["base", { "modifier": { "mul": 0.5 }, "with": { "all": ["hit.blast"] } }]])
+    );
+    assert_eq!(
+        saved["cost"],
+        json!({ "min": null, "max": null, "lines": [["passive:frugal", { "modifier": { "pct": -0.25 } }]] })
+    );
+    let back: Stats = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(back, stats);
+    assert_eq!(serde_json::to_value(&back).unwrap(), saved);
+    assert_eq!(back.get("cost"), None, "a stat it lacks");
+    for bad in [
+        json!({ "cost": { "min": null, "max": null } }),
+        json!({ "cost": { "min": 0, "lines": [["a", { "modifier": { "add": 1 } }]] } }),
+        json!({ "cost": { "modifiers": [["a", { "add": 1 }]], "lines": [["a", { "modifier": { "add": 1 } }]] } }),
+    ] {
+        assert!(
+            serde_json::from_value::<Stats>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn a_line_on_a_stat_it_lacks_becomes_a_modifier_when_the_stat_comes() {
+    let mut stats = Stats::new();
+    stats.add_line("luck", "charm", Line::new(Modifier::Add(1.0)));
+    let sevens = TagFilter::new().all(["dice.seven"]);
+    stats.add_line(
+        "luck",
+        "lucky_seven",
+        Line::new(Modifier::Mul(2.0)).with(sevens),
+    );
+    assert_eq!(stats.get("luck"), None);
+    stats.set_base("luck", 2.0);
+    assert_eq!(
+        stats.get("luck"),
+        Some(3.0),
+        "the unscoped line is a modifier now"
+    );
+    let lines: Vec<&str> = stats.lines().map(|(_, source, _)| source).collect();
+    assert_eq!(lines, ["lucky_seven"], "the scoped one stays kept");
+    let seven = [TagSet::Name("dice.seven")];
+    assert_eq!(stats.read("luck", &Read::new(&seven)), Some(6.0));
+    assert_eq!(stats.remove_modifiers("lucky_seven"), 1);
+    assert_eq!(stats.remove_modifiers("charm"), 1);
+    assert_eq!(stats.lines().count(), 0);
+    assert_eq!(stats.get("luck"), Some(2.0));
+}
+
+#[test]
+fn the_scene_form_takes_a_base_or_a_base_with_lines() {
+    let (mut world, mut schedule) = rig();
+    let components = world.resource::<ComponentRegistry>();
+    let form = json!({
+        "armor": 2,
+        "damage_taken": { "base": 1, "lines": [{ "modifier": { "mul": 0.5 }, "with": { "all": ["hit.blast"] } }] }
+    });
+    let error = components.check_in("stats", &form, &world).unwrap_err();
+    assert!(
+        error.to_string().contains("hit.blast"),
+        "the tag is checked: {error}"
+    );
+    crate::foundation::tags::TagsPlugin::new()
+        .with_tags(["hit.blast"])
+        .build(&mut schedule, &mut world);
+    let components = world.resource::<ComponentRegistry>();
+    components.check_in("stats", &form, &world).unwrap();
+    for bad in [
+        json!({ "damage_taken": { "base": 1, "lines": [{ "modifier": { "override": 0 }, "with": { "all": ["hit.blast"] } }] } }),
+        json!({ "damage_taken": { "lines": [] } }),
+        json!({ "damage_taken": { "base": 1, "spare": 0 } }),
+        json!({ "damage_taken": { "base": -1 } }),
+    ] {
+        assert!(components.check_in("stats", &bad, &world).is_err(), "{bad}");
+    }
+    let mut prefabs = PrefabRegistry::new();
+    prefabs.insert(
+        "knight".to_string(),
+        serde_json::from_value::<PrefabData>(json!({ "components": { "stats": form } })).unwrap(),
+    );
+    world.insert_resource(prefabs);
+    let knight = world.spawn_prefab("knight", [0.0, 0.0]).unwrap();
+    let stats = world.get::<Stats>(knight).unwrap();
+    assert_eq!(stats.get(Stats::DAMAGE_TAKEN), Some(1.0));
+    let blast = [TagSet::Name("hit.blast")];
+    assert_eq!(
+        stats.read(Stats::DAMAGE_TAKEN, &Read::new(&blast)),
+        Some(0.5)
+    );
+    let lines: Vec<(&str, &str)> = stats
+        .lines()
+        .map(|(stat, source, _)| (stat, source))
+        .collect();
+    assert_eq!(lines, [("damage_taken", "base")]);
 }
 
 #[test]

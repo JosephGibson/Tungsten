@@ -1,0 +1,23 @@
+{
+  "trigger": {
+    "action": "spray"
+  },
+  "target": {
+    "aim": {}
+  },
+  "payload": [
+    {
+      "cone": {
+        "reach": 380,
+        "half_angle": 14,
+        "rays": 7,
+        "damage": 3,
+        "filter": {
+          "all": [
+            "team.enemy"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -8,7 +8,9 @@ use glam::Vec2;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use tungsten_core::physics::{
-    BodyKind, Collider, Position, RigidBody, Shape, SpatialFilter, Velocity, wake,
+    Aabb, BodyKind, Collider, Contact, Position, RigidBody, Shape, SpatialFilter, Velocity,
+    aabb_vs_aabb, aabb_vs_circle, apply_impulse, cast_shape_where, circle_vs_circle, overlap,
+    take_push, wake,
 };
 use tungsten_core::{
     Entity, Inspectable, PhysicsConfig, Plugin, Schedule, SpawnContext, World, system,
@@ -16,19 +18,25 @@ use tungsten_core::{
 
 use crate::count_down;
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHMUP, describe,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, describe,
     round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
+use crate::foundation::layers::{LayerRef, check_layers, layer_bits, layer_list};
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::stats::Stats;
 use crate::foundation::{
     fraction, non_negative, optional_non_negative, optional_positive, optional_vec2, positive, vec2,
 };
 use crate::intent::action_input::Intent;
-use crate::motion::path::PATH_FOLLOW;
+use crate::motion::path::{PATH_FOLLOW, PathFollower};
 use crate::motion::slide::{
-    SKIN, Slide, climb, is_kinematic, move_and_slide, probe_ground, step_dt,
+    FLOOR_NORMAL_Y, GROUND_PROBE, SKIN, Slide, carry, climb, is_kinematic, move_and_slide_on,
+    probe_ground_on, step_dt,
+};
+use crate::motion::top_down::TopDownMover;
+use crate::react::cues::{
+    AIR_JUMPED, ControllerCue, ControllerCues, JUMP_REFUSED, JUMPED, LANDED, cue_named,
 };
 
 /// [`PlatformerControllerPlugin`]'s system, in the move phase.
@@ -76,10 +84,23 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 /// 1. Moves nothing on the controller's first step, so the physics step
 ///    after it indexes the floor and walls it was spawned among: queries
 ///    find nothing spawned since the last step.
-/// 2. Checks the ground unless it is rising: a floor within a pixel below
-///    it grounds it and snaps it down onto the surface.
-/// 3. Applies a pending [`launch`](Self::launch), which ungrounds it.
-/// 4. Unless the input is locked, runs at `run · run_speed` and jumps on a
+/// 2. Is pushed out of each kinematic body its filter sees overlapping it
+///    at the last step's positions, but its ground and a body a kit mover
+///    drives (a platformer controller or a [`TopDownMover`]): along their
+///    contact's normal by the overlap and the skin, cast against the rest
+///    of the world, so a wall or a floor that cuts the push short leaves it
+///    overlapped and [`crushed`](Self::crushed) for the step. It sees a
+///    moving platform a step late, as every cast it makes does.
+/// 3. Checks the ground unless it is rising: a floor within a pixel below
+///    it grounds it and snaps it down onto the surface, and so does one
+///    within `run_speed · dt · tan(slope limit)` when the controller ended
+///    its last step grounded and the floor is a slope tile's face or it
+///    stood on one, so it keeps to a slope and over its crest. A drop asked
+///    for while it stands on a one-way edge starts there instead.
+/// 4. Applies a pending [`launch`](Self::launch), which ungrounds it.
+/// 5. Unless the input is locked, runs at `run · run_speed`, along a slope
+///    tile's face when it stands on one, so it climbs and descends at that
+///    speed, plus its slide down a face past its slide limit, and jumps on a
 ///    buffered press while grounded or within coyote time; past them, a
 ///    press with [air jumps](Self::with_air_jumps) left jumps again, one a
 ///    press, and being grounded refills them. With none left, a press jumps
@@ -88,48 +109,68 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 ///    [`Stats`] base of its stat holds the amount, with no cap; below it
 ///    the jump buffer keeps the press. While locked, presses are dropped
 ///    and the horizontal speed holds.
-/// 5. Adds the [`push`](Self::push)es made since its last step, velocity
+/// 6. Adds the [`push`](Self::push)es made since its last step, velocity
 ///    given to it, where a [shove](Self::with_shove) moves what it walks
-///    into.
-/// 6. Cuts a rising jump by the jump cut once, when the jump is released.
-/// 7. Applies gravity, `with_gravity`'s or the world's
+///    into; with a mass on its body (`RigidBody::with_mass`), the push the
+///    bodies that hit it and the impulses it took gave since its last step,
+///    which [`pushed`](Self::pushed) reads.
+/// 7. Cuts a rising jump by the jump cut once, when the jump is released.
+/// 8. Applies gravity, `with_gravity`'s or the world's
 ///    `PhysicsConfig::gravity.y`, over the step's mean velocity, so a jump
 ///    follows the exact parabola at each step and peaks at
 ///    `jump_speed² / 2g`. A zero-gravity world needs `with_gravity`.
-/// 8. Moves and slides against the last step's positions: a floor lands
-///    it, a ceiling stops its rise and a wall its horizontal speed. A wall
+/// 9. Moves and slides against the last step's positions: a floor lands
+///    it, a ceiling stops its rise and a wall its horizontal speed; a slope
+///    steeper than its slope limit is a wall it does not climb. A wall
 ///    met on the ground that its [step height](Self::with_step_height)
 ///    climbs is climbed instead, and a light dynamic body met as a wall
-///    takes a [shove](Self::with_shove).
-/// 9. On a kinematic ground, adds the ground's `Velocity` times the step,
-///    uncast, unless it jumped, was launched or was pushed up.
-/// 10. Writes `Velocity`, which its body moves by in the step, or after a
+///    takes a [shove](Self::with_shove). Under locked input, with a mass
+///    `M` on its body, a dynamic body of mass `m` it cannot shove takes the
+///    inelastic impulse `M m / (M + m)` times the speed it closes at along
+///    x, and the controller keeps the speed they share.
+/// 10. On a kinematic ground, moves by the ground's `Velocity` times the
+///     step, by a slide from where its own move ended that passes the
+///     ground, so a wall or a ceiling stops the carry, unless it jumped, was
+///     launched or was pushed up.
+/// 11. Writes `Velocity`, which its body moves by in the step, or after a
 ///     climb its `Position` at the landing and a zero `Velocity`; writes a
-///     shoved body's `Velocity.x` and wakes it; takes a paid air jump's
+///     shoved body's `Velocity.x` and wakes it; gives a ploughed body its
+///     impulse; takes a paid air jump's
 ///     amount off its stat's base; and ticks the input lock, the jump
 ///     buffer and coyote time on the game clock.
 ///
 /// Its [`SpatialFilter`] says what blocks it, by default bodies and tiles,
-/// its own body excluded. Dynamic bodies block it and hold it up as walls
+/// its own body excluded. [`drop_through`](Self::drop_through), or a jump
+/// press with an [`Intent`]'s movement down, on a one-way edge drops it
+/// through: its casts skip one-way tiles until its bottom is below the
+/// edge's top face, or it lands on another floor or rises. Dynamic bodies block it and hold it up as walls
 /// and floors do, unless it shoves or climbs them: a shoved body moves by
 /// its own physics, a step behind, and one that cannot move holds it. Two
 /// controllers do not see each other's motion within a step, a body spawned
-/// since the last step is not seen until the next, and nothing pushes a
-/// kinematic body out of an overlap, though a move may leave one.
+/// since the last step is not seen until the next, and a moving platform
+/// pushes it out of an overlap as step 2 says, while another controller, a
+/// top-down mover and its ground do not, though a move may leave one.
 ///
 /// It is data: a save holds its settings and its runtime state, the air
-/// jumps left and the air-jump cost among them, but not its filter, which loads as
-/// [`SpatialFilter::new`], or its first-step flag. A loaded controller
-/// therefore takes its still first step, as a fresh one does, while the
-/// physics index fills, and a game that set its own filter sets it again.
+/// jumps left, the air-jump cost and a drop's edge among them, and of its
+/// filter the layers it sees and skips, which load into
+/// [`SpatialFilter::new`]'s, but not its first-step flag. A loaded
+/// controller therefore takes its still first step, as a fresh one does,
+/// while the physics index fills, and a game that set the rest of its filter
+/// sets it again.
 ///
 /// Scene name `platformer_controller`, on a prefab with a kinematic
 /// `rigid_body`:
-/// `{ "run_speed": 200, "jump_speed": 600, "gravity": 2000, "coyote_time": 0.1, "jump_buffer": 0.1, "jump_cut": 0.5, "air_jumps": 1, "shove_mass": 60, "shove_share": 0.5, "step_height": 16 }`,
-/// `gravity` and `shove_mass` optional (the world's gravity and no shove by
-/// default), and `coyote_time`, `jump_buffer`, `jump_cut`, `air_jumps`,
-/// `shove_share` and `step_height` with the defaults 0.1, 0.1, 0.5, 0, 0.5
-/// and 0; `shove_share` is read only with `shove_mass`.
+/// `{ "run_speed": 200, "jump_speed": 600, "gravity": 2000, "coyote_time": 0.1, "jump_buffer": 0.1, "jump_cut": 0.5, "air_jumps": 1, "shove_mass": 60, "shove_share": 0.5, "step_height": 16, "slope_limit": 50, "slide_limit": 40, "mask": [0, "ground"], "without": ["ghosts"] }`,
+/// `gravity`, `shove_mass`, `slope_limit`, `slide_limit`, `mask` and
+/// `without` optional (the world's gravity, no shove, the floor rule before
+/// slopes, no slide, every layer and none skipped by default), and
+/// `coyote_time`, `jump_buffer`, `jump_cut`, `air_jumps`, `shove_share` and
+/// `step_height` with the defaults 0.1, 0.1, 0.5, 0, 0.5 and 0;
+/// `shove_share` is read only with `shove_mass`. `mask` and `without` list
+/// physics layers by number or by their manifest `physics_layers` name,
+/// checked at load, and build its filter as
+/// [`SpatialFilter::with_mask`] and [`SpatialFilter::without_layers`] do.
 ///
 /// # Examples
 ///
@@ -223,7 +264,13 @@ pub struct PlatformerController {
     shove: Option<Shove>,
     /// 0, the default, climbs nothing.
     step_height: f32,
-    /// Not saved: a load takes `new`'s.
+    /// The steepest floor, in degrees; `None`, the default, keeps the floor
+    /// rule before slopes, a normal's y at most −0.7.
+    slope_limit: Option<f32>,
+    /// The steepest slope face it stands on without sliding, in degrees;
+    /// `None`, the default, is the slope limit.
+    slide_limit: Option<f32>,
+    /// Saved as the layers it sees and skips alone.
     filter: SpatialFilter,
     /// The run input, in `[-1, 1]`.
     run: f32,
@@ -232,6 +279,21 @@ pub struct PlatformerController {
     pressed: bool,
     launch: Option<Vec2>,
     push: Vec2,
+    /// The push its body's mass took at its last step.
+    pushed: Vec2,
+    /// Its last step's push out of a kinematic body was cut short.
+    crushed: bool,
+    /// A drop through a one-way edge asked for since its last step.
+    drop_asked: bool,
+    /// While a drop through a one-way edge lasts, that edge's top face's y.
+    drop_edge: Option<f32>,
+    /// Its speed along a slope face's tangent from sliding down it.
+    slide_speed: f32,
+    /// The normal of the floor it ended its last step on, and whether that
+    /// is a slope tile's face; `None` off the ground. Saved on a slope face
+    /// alone: a loaded controller on other ground reports none until a step
+    /// after its still first one, as its ground.
+    floor: Option<(Vec2, bool)>,
     buffer_left: f32,
     coyote_left: f32,
     lock_left: f32,
@@ -245,6 +307,10 @@ pub struct PlatformerController {
     paid_air_jumped: bool,
     /// Its last step's fresh press was refused by the air-jump cost.
     air_jump_refused: bool,
+    /// Its last step ended grounded after one that ended in the air, its
+    /// ground-finding stopping a fall. Not saved: a loaded controller's
+    /// first step clears it without moving.
+    landed: bool,
     /// The jump cut may still act on the current jump.
     cut_armed: bool,
     air_jumps_left: u32,
@@ -286,12 +352,20 @@ impl PlatformerController {
             air_jump_cost: None,
             shove: None,
             step_height: 0.0,
+            slope_limit: None,
+            slide_limit: None,
             filter: SpatialFilter::new(),
             run: 0.0,
             jump_held: false,
             pressed: false,
             launch: None,
             push: Vec2::ZERO,
+            pushed: Vec2::ZERO,
+            crushed: false,
+            drop_asked: false,
+            drop_edge: None,
+            slide_speed: 0.0,
+            floor: None,
             buffer_left: 0.0,
             coyote_left: 0.0,
             lock_left: 0.0,
@@ -301,6 +375,7 @@ impl PlatformerController {
             air_jumped: false,
             paid_air_jumped: false,
             air_jump_refused: false,
+            landed: false,
             cut_armed: false,
             air_jumps_left: 0,
             started: false,
@@ -494,6 +569,93 @@ impl PlatformerController {
         self
     }
 
+    /// The controller with a slope limit: a surface sloping at most
+    /// `degrees` is a floor it stands on and walks, a steeper one a wall it
+    /// does not climb. The default keeps the floor rule before slopes, a
+    /// normal's y at most −0.7, about 45.6°.
+    ///
+    /// # Panics
+    ///
+    /// When `degrees` is not in (0, 90).
+    #[must_use]
+    #[track_caller]
+    pub fn with_slope_limit(mut self, degrees: f32) -> Self {
+        assert!(
+            degrees > 0.0 && degrees < 90.0,
+            "PlatformerController::with_slope_limit: degrees must be in (0, 90) (got {degrees})"
+        );
+        self.slope_limit = Some(degrees);
+        self
+    }
+
+    /// The controller with a slide limit: standing on a slope tile's face
+    /// steeper than `degrees` and within its slope limit, it slides down
+    /// along the face at the speed gravity's share along it gives, its run
+    /// added, until the floor is gentler. The default, the slope limit,
+    /// never slides.
+    ///
+    /// # Panics
+    ///
+    /// When `degrees` is not in (0, 90).
+    #[must_use]
+    #[track_caller]
+    pub fn with_slide_limit(mut self, degrees: f32) -> Self {
+        assert!(
+            degrees > 0.0 && degrees < 90.0,
+            "PlatformerController::with_slide_limit: degrees must be in (0, 90) (got {degrees})"
+        );
+        self.slide_limit = Some(degrees);
+        self
+    }
+
+    /// Drops through the one-way edge it stands on at its next step: its
+    /// casts skip one-way tiles until its bottom is below the edge's top
+    /// face, or it lands on another floor or rises, and a jump press made
+    /// with it does not jump. Standing on anything else, it does nothing.
+    pub fn drop_through(&mut self) {
+        self.drop_asked = true;
+    }
+
+    /// The outward normal of the floor its last step ended on, `(0, -1)` on
+    /// flat ground; `None` off the ground, and after a load off a slope face
+    /// until a step past its still first one.
+    #[must_use]
+    pub fn floor_normal(&self) -> Option<Vec2> {
+        self.floor.map(|(normal, _)| normal)
+    }
+
+    /// The push its last step took from the hits and impulses its body's
+    /// mass kept ([`take_push`]), velocity it joined as a
+    /// [`push`](Self::push) does; zero without a mass. A game turns a hard
+    /// hit into a [`knock_back`](crate::knock_back) by it.
+    #[must_use]
+    pub fn pushed(&self) -> Vec2 {
+        self.pushed
+    }
+
+    /// Its last step's push out of a kinematic body that overlapped it was
+    /// cut short by a wall or a floor, so it stays overlapped: a deck coming
+    /// down on it where it stands, a door closing on it against a wall.
+    #[must_use]
+    pub fn crushed(&self) -> bool {
+        self.crushed
+    }
+
+    /// The floor rule: a surface whose normal's y is at most this is a
+    /// floor.
+    fn floor_y(&self) -> f32 {
+        self.slope_limit
+            .map_or(FLOOR_NORMAL_Y, |degrees| -degrees.to_radians().cos())
+    }
+
+    /// How far down its ground check snaps it onto a slope, past a pixel:
+    /// a step's run at the slope limit's grade.
+    fn snap_reach(&self, dt: f32) -> f32 {
+        let cos = -self.floor_y();
+        let grade = (1.0 - cos * cos).sqrt() / cos;
+        GROUND_PROBE.max(self.run_speed * dt * grade)
+    }
+
     /// Sets the run speed, 0 standing it still: what a `move_speed` stat
     /// writes. One that is not finite and at least 0 is ignored.
     pub(crate) fn set_run_speed(&mut self, speed: f32) {
@@ -637,8 +799,22 @@ impl PlatformerController {
         self.air_jump_refused
     }
 
+    /// Its last step was a landing: it ended grounded after a step that
+    /// ended in the air, and the floor it found stopped a fall, one that
+    /// began within the step included. A controller spawned standing does
+    /// not land. With [`CuesPlugin`](crate::CuesPlugin), the controller's
+    /// system sends it as the cue event `landed` when the entity's `cues`
+    /// or a `cue_rules` rule names it, the speed the floor stopped (px/s)
+    /// its amount. Not saved, like the first-step flag: a loaded
+    /// controller's first step clears it without moving.
+    #[must_use]
+    pub fn landed(&self) -> bool {
+        self.landed
+    }
+
     /// One step of `dt` for the body at `position` with `collider`: how its
     /// body moves in this step, and the body it shoves.
+    #[allow(clippy::too_many_arguments)]
     fn step(
         &mut self,
         world: &World,
@@ -647,33 +823,78 @@ impl PlatformerController {
         collider: Collider,
         world_gravity: f32,
         dt: f32,
+        found: &mut Vec<Option<Entity>>,
     ) -> Moved {
+        let was_grounded = self.grounded;
+        // The downward speed the step's ground-finding stopped, px/s.
+        let mut stopped = 0.0_f32;
         self.jumped = false;
         self.air_jumped = false;
         self.paid_air_jumped = false;
         self.air_jump_refused = false;
+        self.landed = false;
         if !self.started {
             self.started = true;
             return Moved {
                 velocity: Vec2::ZERO,
                 position: None,
                 shove: None,
+                plough: None,
+                fell: 0.0,
             };
         }
-        let filter = self.filter.excluding(entity);
+        let base = self.filter.excluding(entity);
+        let floor_y = self.floor_y();
         let origin = position + collider.offset;
-        let mut at = origin;
+        let mut at = self.push_out(world, collider.shape, origin, &base, found);
 
-        // The ground check.
+        // The ground check: a floor within a pixel, or within the snap reach
+        // on a slope face or after one, grounded and not launched; a drop
+        // asked for on a one-way edge starts there instead, and one that
+        // lasts skips one-way tiles.
+        let snaps = self.grounded && self.launch.is_none();
+        let on_slope = self.floor.is_some_and(|(_, slope)| slope);
+        let drop_asked = std::mem::take(&mut self.drop_asked);
+        let mut filter = if self.drop_edge.is_some() {
+            base.with_one_way(false)
+        } else {
+            base
+        };
         self.grounded = false;
+        self.floor = None;
         let mut ground = None;
-        if self.velocity.y >= 0.0
-            && let Some(hit) = probe_ground(world, collider.shape, origin, &filter)
-        {
-            self.grounded = true;
-            self.air_jumps_left = self.air_jumps;
-            at.y += (hit.distance - SKIN).max(0.0);
-            ground = hit.entity;
+        if self.velocity.y >= 0.0 {
+            let reach = if snaps {
+                self.snap_reach(dt)
+            } else {
+                GROUND_PROBE
+            };
+            let probe = |filter: &SpatialFilter| {
+                probe_ground_on(world, collider.shape, at, filter, reach, floor_y)
+            };
+            let hit =
+                probe(&filter).filter(|hit| hit.distance <= GROUND_PROBE || hit.slope || on_slope);
+            if let Some(hit) = hit {
+                let skipping = filter.with_one_way(false);
+                let one_way = drop_asked
+                    && self.drop_edge.is_none()
+                    && probe(&skipping).is_none_or(|solid| solid.distance > hit.distance);
+                if one_way {
+                    // A drop takes no jump, nor coyote time after it.
+                    self.drop_edge = Some(hit.point.y);
+                    filter = skipping;
+                    self.pressed = false;
+                    self.buffer_left = 0.0;
+                    self.coyote_left = 0.0;
+                } else {
+                    stopped = self.velocity.y;
+                    self.grounded = true;
+                    self.air_jumps_left = self.air_jumps;
+                    at.y += (hit.distance - SKIN).max(0.0);
+                    ground = hit.entity;
+                    self.floor = Some((hit.normal, hit.slope));
+                }
+            }
         }
 
         // A launch, then the input.
@@ -754,23 +975,52 @@ impl PlatformerController {
             mean
         };
 
-        // Move and slide, a climb or a shove at a wall, then the ground's
-        // carry.
+        // Move and slide, along a slope face it stands on, a climb or a shove
+        // at a wall, then the ground's carry.
         let walking = self.grounded;
-        let delta = Vec2::new(self.velocity.x, mean_vy) * dt;
-        let slide = move_and_slide(world, collider.shape, at, delta, &filter);
+        let face = self
+            .floor
+            .filter(|&(_, slope)| slope && self.grounded)
+            .map(|(normal, _)| normal);
+        let delta = if let Some(normal) = face {
+            let tangent = Vec2::new(-normal.y, normal.x);
+            let steep = self
+                .slide_limit
+                .is_some_and(|degrees| normal.y > -degrees.to_radians().cos());
+            self.slide_speed = if steep {
+                self.slide_speed + gravity * tangent.y * dt
+            } else {
+                0.0
+            };
+            tangent * (self.velocity.x + self.slide_speed) * dt
+        } else {
+            self.slide_speed = 0.0;
+            Vec2::new(self.velocity.x, mean_vy) * dt
+        };
+        let slide = move_and_slide_on(world, collider.shape, at, delta, &filter, floor_y, true);
         at += slide.moved;
         if slide.floor && self.velocity.y >= 0.0 {
+            if !self.grounded {
+                stopped = self.velocity.y;
+            }
             self.grounded = true;
             self.air_jumps_left = self.air_jumps;
             self.velocity.y = 0.0;
             ground = slide.floor_body;
+            self.floor = Some((slide.floor_normal, slide.floor_slope));
+        }
+        if let Some(edge) = self.drop_edge {
+            let bottom = at.y + collider.shape.half_extents().y;
+            if bottom > edge || self.grounded || self.velocity.y < 0.0 {
+                self.drop_edge = None;
+            }
         }
         if slide.ceiling && self.velocity.y < 0.0 {
             self.velocity.y = 0.0;
         }
         let mut climbed = false;
         let mut shoved = None;
+        let mut plough = None;
         if slide.wall {
             let landing = if walking {
                 self.climb(
@@ -790,20 +1040,30 @@ impl PlatformerController {
                 climbed = true;
             } else {
                 shoved = self.shove_of(world, &slide);
-                self.velocity.x = 0.0;
+                plough = if shoved.is_none() {
+                    self.plough_of(world, entity, &slide)
+                } else {
+                    None
+                };
+                self.velocity.x = plough.map_or(0.0, |(_, _, kept)| kept);
             }
         }
         if self.grounded
             && !lifted
             && let Some(ground) = ground
             && is_kinematic(world, ground)
-            && let Some(carry) = world.get::<Velocity>(ground)
+            && let Some(moving) = world.get::<Velocity>(ground)
         {
-            at += carry.0 * dt;
+            at = carry(world, collider.shape, at, moving.0 * dt, &filter, ground);
         }
 
         // The timers, last, so the getters read the step's end.
+        self.landed = self.grounded && !was_grounded && stopped > 0.0;
+        let fell = if self.landed { stopped } else { 0.0 };
         self.ground = if self.grounded { ground } else { None };
+        if !self.grounded {
+            self.floor = None;
+        }
         self.lock_left = count_down(self.lock_left, dt);
         self.buffer_left = count_down(self.buffer_left, dt);
         self.coyote_left = if self.grounded {
@@ -816,12 +1076,16 @@ impl PlatformerController {
                 velocity: Vec2::ZERO,
                 position: Some(at - collider.offset),
                 shove: None,
+                plough: None,
+                fell,
             }
         } else {
             Moved {
                 velocity: (at - origin) / dt,
                 position: None,
                 shove: shoved,
+                plough: plough.map(|(body, impulse, _)| (body, impulse)),
+                fell,
             }
         }
     }
@@ -879,6 +1143,119 @@ impl PlatformerController {
         let speed = self.velocity.x * (1.0 - mass / shove.mass);
         (mass <= shove.share * shove.mass && speed != 0.0).then_some((body, speed))
     }
+
+    /// The plough of the first wall `slide` met under locked input, when it
+    /// is a dynamic body and the controller's body `entity` has a mass: the
+    /// body, its impulse along x and the controller's horizontal speed
+    /// after, the inelastic share `M m / (M + m)` of their closing speed
+    /// taken from the controller's `u` and given to the body's `w`.
+    fn plough_of(
+        &self,
+        world: &World,
+        entity: Entity,
+        slide: &Slide,
+    ) -> Option<(Entity, Vec2, f32)> {
+        if self.lock_left <= 0.0 {
+            return None;
+        }
+        let own = world.get::<RigidBody>(entity)?.inv_mass;
+        let body = slide.wall_body?;
+        let rigid = world.get::<RigidBody>(body)?;
+        let other = world.get::<Velocity>(body)?.0;
+        if rigid.kind != BodyKind::Dynamic
+            || !(own.is_finite() && own > 0.0 && rigid.inv_mass.is_finite() && rigid.inv_mass > 0.0)
+        {
+            return None;
+        }
+        // Into the wall along x, the axis a wall stops.
+        let into = -slide.wall_normal.x.signum();
+        let (u, w) = (self.velocity.x * into, other.x * into);
+        if u <= 0.0 {
+            return None;
+        }
+        let impulse = (u - w).max(0.0) / (own + rigid.inv_mass);
+        Some((
+            body,
+            Vec2::new(into * impulse, 0.0),
+            into * (u - impulse * own),
+        ))
+    }
+
+    /// `shape` at `at` pushed out of each kinematic body `filter` sees
+    /// overlapping it at the last step's positions, in the query's order,
+    /// but its ground and a body a kit mover drives: along their contact's
+    /// normal by the overlap and the skin, cast with that body refused; a
+    /// cast cut short stops the skin before what it met and crushes it.
+    fn push_out(
+        &mut self,
+        world: &World,
+        shape: Shape,
+        mut at: Vec2,
+        filter: &SpatialFilter,
+        found: &mut Vec<Option<Entity>>,
+    ) -> Vec2 {
+        self.crushed = false;
+        overlap(world, shape, at, filter, found);
+        for &other in found.iter().flatten() {
+            if Some(other) == self.ground
+                || !is_kinematic(world, other)
+                || world.has::<PlatformerController>(other)
+                || world.has::<TopDownMover>(other)
+            {
+                continue;
+            }
+            let (Some(position), Some(collider)) =
+                (world.get::<Position>(other), world.get::<Collider>(other))
+            else {
+                continue;
+            };
+            let Some(contact) =
+                overlap_contact(shape, at, collider.shape, collider.center(position.0))
+            else {
+                continue;
+            };
+            if contact.penetration <= 0.0 {
+                continue;
+            }
+            let reach = contact.penetration + SKIN;
+            match cast_shape_where(world, shape, at, contact.normal, reach, filter, |hit| {
+                hit.entity != Some(other)
+            }) {
+                Some(hit) => {
+                    at += contact.normal * (hit.distance - SKIN).max(0.0);
+                    self.crushed = true;
+                }
+                None => at += contact.normal * reach,
+            }
+        }
+        at
+    }
+}
+
+/// The contact that moves `shape` at `at` out of `other` at `center`, as
+/// the physics' narrow phase finds it.
+fn overlap_contact(shape: Shape, at: Vec2, other: Shape, center: Vec2) -> Option<Contact> {
+    match (shape, other) {
+        (
+            Shape::Aabb { half_extents },
+            Shape::Aabb {
+                half_extents: theirs,
+            },
+        ) => aabb_vs_aabb(&Aabb::new(at, half_extents), &Aabb::new(center, theirs)),
+        (Shape::Aabb { half_extents }, Shape::Circle { radius }) => {
+            aabb_vs_circle(&Aabb::new(at, half_extents), center, radius)
+        }
+        (Shape::Circle { radius }, Shape::Aabb { half_extents }) => {
+            aabb_vs_circle(&Aabb::new(center, half_extents), at, radius).map(|contact| Contact {
+                normal: -contact.normal,
+                penetration: contact.penetration,
+            })
+        }
+        (Shape::Circle { radius }, Shape::Circle { radius: theirs }) => {
+            circle_vs_circle(at, radius, center, theirs)
+        }
+        _ => None,
+    }
 }
 
 /// A controller's shove: the mass it shoves as, and the share of it a body
@@ -898,6 +1275,10 @@ struct Moved {
     position: Option<Vec2>,
     /// The body it shoved and the horizontal speed the shove gives it.
     shove: Option<(Entity, f32)>,
+    /// The body it ploughed and the impulse it gives it.
+    plough: Option<(Entity, Vec2)>,
+    /// A landing's speed, the fall the floor stopped (px/s); 0 for none.
+    fell: f32,
 }
 
 /// Gives `body` a shove's horizontal `speed`, unless it already moves that
@@ -1035,14 +1416,56 @@ impl Plugin for PlatformerControllerPlugin {
                 )
                 .default("0.0"),
             )
+            .field(
+                FieldDescription::new(
+                    "slope_limit",
+                    FieldType::F32 {
+                        min: Bound::Exclusive(0.0),
+                        max: Bound::Exclusive(90.0),
+                    },
+                    "degrees: the steepest floor it walks, a steeper slope a wall; the floor rule before slopes, about 45.6, when left out",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "slide_limit",
+                    FieldType::F32 {
+                        min: Bound::Exclusive(0.0),
+                        max: Bound::Exclusive(90.0),
+                    },
+                    "degrees: on a slope face steeper than this it slides down; the slope limit, no slide, when left out",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "mask",
+                    layer_list(),
+                    "the layers whose bodies and tiles block it; every layer when left out",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "without",
+                    layer_list(),
+                    "the layers whose bodies and tiles it passes, beside mask",
+                )
+                .default("[]"),
+            )
             .genre(PLATFORMER)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"{ "run_speed": 200, "jump_speed": 600 }"#)
             .roundtrip(round_trip::<PlatformerControllerDef>),
         );
-        world.register_component_with(
+        world.register_component_with_assets(
             PLATFORMER_CONTROLLER_COMPONENT,
-            |def: PlatformerControllerDef, _: &SpawnContext<'_>| {
+            |def: &PlatformerControllerDef, world: &World| {
+                check_layers("mask", def.mask.as_deref().unwrap_or_default(), world)?;
+                check_layers("without", &def.without, world)
+            },
+            |def: PlatformerControllerDef, at: &SpawnContext<'_>| {
                 let mut controller = PlatformerController::new(def.run_speed, def.jump_speed)
                     .with_coyote_time(def.coyote_time)
                     .with_jump_buffer(def.jump_buffer)
@@ -1055,7 +1478,20 @@ impl Plugin for PlatformerControllerPlugin {
                 if let Some(mass) = def.shove_mass {
                     controller = controller.with_shove(mass, def.shove_share);
                 }
-                (controller,)
+                if let Some(degrees) = def.slope_limit {
+                    controller = controller.with_slope_limit(degrees);
+                }
+                if let Some(degrees) = def.slide_limit {
+                    controller = controller.with_slide_limit(degrees);
+                }
+                let mut filter = SpatialFilter::new();
+                if let Some(mask) = &def.mask {
+                    filter = filter.with_mask(layer_bits(mask, at.world()));
+                }
+                if !def.without.is_empty() {
+                    filter = filter.without_layers(layer_bits(&def.without, at.world()));
+                }
+                (controller.with_filter(filter),)
             },
         );
         let mut runner = Runner::default();
@@ -1094,12 +1530,22 @@ struct PlatformerControllerDef {
     shove_share: f32,
     #[serde(default, deserialize_with = "non_negative")]
     step_height: f32,
+    #[serde(default, deserialize_with = "optional_angle")]
+    slope_limit: Option<f32>,
+    #[serde(default, deserialize_with = "optional_angle")]
+    slide_limit: Option<f32>,
+    #[serde(default)]
+    mask: Option<Vec<LayerRef>>,
+    #[serde(default)]
+    without: Vec<LayerRef>,
 }
 
 /// A controller as a save writes it: its settings and its runtime state,
-/// without the filter or the first-step flag. The air-jump cost, the shove,
-/// the step height and the paid-jump flags are left out when off, so a save
-/// from before them loads with each off.
+/// of its filter the layers it sees and skips, and not the first-step flag.
+/// The air-jump cost, the shove, the step height, the slope and slide
+/// limits, the filter's layers, the paid-jump flags and the slope and drop
+/// state are left out when off or at their defaults, so a save from before
+/// them loads with each off and today's filter.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)] // The controller's own flags, saved as they are.
@@ -1117,6 +1563,14 @@ struct ControllerSave {
     shove: Option<Shove>,
     #[serde(default, skip_serializing_if = "is_zero")]
     step_height: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    slope_limit: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    slide_limit: Option<f32>,
+    #[serde(default = "all_layers", skip_serializing_if = "is_all_layers")]
+    mask: u32,
+    #[serde(default, skip_serializing_if = "is_no_layer")]
+    without: u32,
     run: f32,
     jump_held: bool,
     pressed: bool,
@@ -1124,6 +1578,22 @@ struct ControllerSave {
     launch: Option<Vec2>,
     #[serde(with = "vec2")]
     push: Vec2,
+    #[serde(default, with = "vec2", skip_serializing_if = "is_zero_vec")]
+    pushed: Vec2,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    crushed: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    drop_asked: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    drop_edge: Option<f32>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    slide_speed: f32,
+    #[serde(
+        default,
+        with = "optional_vec2",
+        skip_serializing_if = "Option::is_none"
+    )]
+    slope_normal: Option<Vec2>,
     buffer_left: f32,
     coyote_left: f32,
     lock_left: f32,
@@ -1187,6 +1657,7 @@ impl TryFrom<ControllerSave> for PlatformerController {
         for (field, value) in [
             ("launch", save.launch.unwrap_or(Vec2::ZERO)),
             ("push", save.push),
+            ("pushed", save.pushed),
             ("velocity", save.velocity),
         ] {
             if !value.is_finite() {
@@ -1227,6 +1698,29 @@ impl TryFrom<ControllerSave> for PlatformerController {
                 ));
             }
         }
+        for (field, limit) in [
+            ("slope_limit", save.slope_limit),
+            ("slide_limit", save.slide_limit),
+        ] {
+            if let Some(degrees) = limit
+                && !(degrees > 0.0 && degrees < 90.0)
+            {
+                return Err(format!("{field}: must be in (0, 90) (got {degrees})"));
+            }
+        }
+        for (field, value) in [
+            ("drop_edge", save.drop_edge.unwrap_or(0.0)),
+            ("slide_speed", save.slide_speed),
+        ] {
+            if !value.is_finite() {
+                return Err(format!("{field}: must be finite (got {value})"));
+            }
+        }
+        if let Some(normal) = save.slope_normal
+            && !normal.is_finite()
+        {
+            return Err(format!("slope_normal: must be finite (got {normal})"));
+        }
         if save.air_jumps_left > save.air_jumps {
             return Err(format!(
                 "air_jumps_left: must be at most air_jumps, {} (got {})",
@@ -1244,12 +1738,22 @@ impl TryFrom<ControllerSave> for PlatformerController {
             air_jump_cost: save.air_jump_cost.map(|cost| (cost.stat, cost.amount)),
             shove: save.shove,
             step_height: save.step_height,
-            filter: SpatialFilter::new(),
+            slope_limit: save.slope_limit,
+            slide_limit: save.slide_limit,
+            filter: SpatialFilter::new()
+                .with_mask(save.mask)
+                .without_layers(save.without),
             run: save.run,
             jump_held: save.jump_held,
             pressed: save.pressed,
             launch: save.launch,
             push: save.push,
+            pushed: save.pushed,
+            crushed: save.crushed,
+            drop_asked: save.drop_asked,
+            drop_edge: save.drop_edge,
+            slide_speed: save.slide_speed,
+            floor: save.slope_normal.map(|normal| (normal, true)),
             buffer_left: save.buffer_left,
             coyote_left: save.coyote_left,
             lock_left: save.lock_left,
@@ -1259,6 +1763,7 @@ impl TryFrom<ControllerSave> for PlatformerController {
             air_jumped: save.air_jumped,
             paid_air_jumped: save.paid_air_jumped,
             air_jump_refused: save.air_jump_refused,
+            landed: false,
             cut_armed: save.cut_armed,
             air_jumps_left: save.air_jumps_left,
             started: false,
@@ -1282,11 +1787,24 @@ impl From<PlatformerController> for ControllerSave {
                 .map(|(stat, amount)| AirJumpCost { stat, amount }),
             shove: controller.shove,
             step_height: controller.step_height,
+            slope_limit: controller.slope_limit,
+            slide_limit: controller.slide_limit,
+            mask: controller.filter.mask(),
+            without: controller.filter.without(),
             run: controller.run,
             jump_held: controller.jump_held,
             pressed: controller.pressed,
             launch: controller.launch,
             push: controller.push,
+            pushed: controller.pushed,
+            crushed: controller.crushed,
+            drop_asked: controller.drop_asked,
+            drop_edge: controller.drop_edge,
+            slide_speed: controller.slide_speed,
+            slope_normal: controller
+                .floor
+                .filter(|&(_, slope)| slope)
+                .map(|(normal, _)| normal),
             buffer_left: controller.buffer_left,
             coyote_left: controller.coyote_left,
             lock_left: controller.lock_left,
@@ -1337,11 +1855,45 @@ fn is_zero(value: &f32) -> bool {
     *value == 0.0
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_vec(value: &Vec2) -> bool {
+    *value == Vec2::ZERO
+}
+
+/// An optional angle in degrees in `(0, 90)`, for a scene field's
+/// `deserialize_with`.
+fn optional_angle<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f32>, D::Error> {
+    let value = Option::<f32>::deserialize(deserializer)?;
+    match value {
+        Some(degrees) if !(degrees > 0.0 && degrees < 90.0) => Err(D::Error::custom(format!(
+            "must be in (0, 90) (got {degrees})"
+        ))),
+        value => Ok(value),
+    }
+}
+
+fn all_layers() -> u32 {
+    RigidBody::ALL_LAYERS
+}
+
+// The references are serde's `skip_serializing_if` signature.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_all_layers(mask: &u32) -> bool {
+    *mask == RigidBody::ALL_LAYERS
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_no_layer(layers: &u32) -> bool {
+    *layers == 0
+}
+
 /// The system's state between steps.
 #[derive(Default)]
 struct Runner {
     /// The step's controllers, kept so a step allocates nothing once warm.
     entities: Vec<Entity>,
+    /// The bodies a controller overlaps, kept likewise.
+    found: Vec<Option<Entity>>,
     /// The entities whose body was warned about.
     warned: HashSet<Entity>,
 }
@@ -1355,6 +1907,7 @@ impl Runner {
         let gravity = world
             .get_resource::<PhysicsConfig>()
             .map_or(0.0, |config| config.gravity.y);
+        let cueing = world.has_resource::<ControllerCues>();
         self.entities.clear();
         self.entities.extend(
             world
@@ -1377,14 +1930,35 @@ impl Runner {
             let cost = stored.air_jump_cost.take();
             let mut controller = stored.clone();
             controller.air_jump_cost = cost;
+            // What hits and impulses gave its body's mass joins it as a push.
+            let taken = take_push(world, entity);
+            if taken != Vec2::ZERO {
+                controller.push(taken);
+            }
+            controller.pushed = taken;
             if let Some(intent) = world.get::<Intent>(entity) {
                 controller.set_run(intent.movement().x);
                 controller.set_jump_held(intent.held(JUMP_SLOT));
                 if intent.pressed(JUMP_SLOT) {
                     controller.press_jump();
+                    // Down with a jump drops through a one-way edge.
+                    if intent.movement().y > 0.5 {
+                        controller.drop_through();
+                    }
                 }
             }
-            let moved = controller.step(world, entity, position, collider, gravity, dt);
+            let moved = controller.step(
+                world,
+                entity,
+                position,
+                collider,
+                gravity,
+                dt,
+                &mut self.found,
+            );
+            if cueing {
+                cue_jumps(world, entity, &controller, &moved, position, collider, dt);
+            }
             if controller.paid_air_jumped
                 && let Some((stat, amount)) = &controller.air_jump_cost
                 && let Some(stats) = world.get_mut::<Stats>(entity)
@@ -1392,15 +1966,82 @@ impl Runner {
             {
                 stats.set_base(stat, base - amount);
             }
+            let ground = controller.ground();
             *world.get_mut::<PlatformerController>(entity).unwrap() = controller;
             world.get_mut::<Velocity>(entity).unwrap().0 = moved.velocity;
+            // A lift reads its rider at its next step.
+            if let Some(follower) = ground.and_then(|ground| world.get_mut::<PathFollower>(ground))
+            {
+                follower.mark_ridden();
+            }
             if let Some(at) = moved.position {
                 world.get_mut::<Position>(entity).unwrap().0 = at;
             }
             if let Some((body, speed)) = moved.shove {
                 shove(world, body, speed);
             }
+            if let Some((body, impulse)) = moved.plough {
+                apply_impulse(world, body, impulse);
+            }
         }
+    }
+}
+
+/// Pushes `controller`'s cue events of its step that something names
+/// ([`cue_named`]) to the cue system's list: `jumped`, `air_jumped` (the
+/// stat amount it paid, 0 for a free one) and `jump_refused` at its feet
+/// where the step began from `position`, and `landed` (`moved.fell`, the
+/// speed the floor stopped) where the step ended by `moved`.
+fn cue_jumps(
+    world: &mut World,
+    entity: Entity,
+    controller: &PlatformerController,
+    moved: &Moved,
+    position: Vec2,
+    collider: Collider,
+    dt: f32,
+) {
+    if !(controller.jumped || controller.air_jump_refused || controller.landed) {
+        return;
+    }
+    let jump = if controller.air_jumped {
+        Some(AIR_JUMPED)
+    } else if controller.jumped {
+        Some(JUMPED)
+    } else {
+        None
+    };
+    let events = [
+        jump,
+        controller.air_jump_refused.then_some(JUMP_REFUSED),
+        controller.landed.then_some(LANDED),
+    ]
+    .map(|event| event.filter(|event| cue_named(world, entity, event)));
+    if events.iter().all(Option::is_none) {
+        return;
+    }
+    let feet = Vec2::new(0.0, collider.shape.half_extents().y) + collider.offset;
+    let start = position + feet;
+    let end = moved.position.unwrap_or(position + moved.velocity * dt) + feet;
+    let paid = controller
+        .air_jump_cost
+        .as_ref()
+        .filter(|_| controller.paid_air_jumped)
+        .map_or(0.0, |(_, amount)| *amount);
+    // Straight into the list's reserved room: a jump allocates nothing.
+    let list = &mut world.resource_mut::<ControllerCues>().0;
+    for event in events.into_iter().flatten() {
+        let (at, amount) = match event {
+            AIR_JUMPED => (start, Some(paid)),
+            LANDED => (end, Some(moved.fell)),
+            _ => (start, None),
+        };
+        list.push(ControllerCue {
+            event,
+            entity,
+            at,
+            amount,
+        });
     }
 }
 

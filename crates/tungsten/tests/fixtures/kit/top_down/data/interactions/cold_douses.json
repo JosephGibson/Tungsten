@@ -1,0 +1,14 @@
+{
+  "stimulus": "elemental.cold",
+  "on": {
+    "all": [
+      "material.wood",
+      "status.burning"
+    ]
+  },
+  "outputs": [
+    {
+      "remove": "ablaze"
+    }
+  ]
+}

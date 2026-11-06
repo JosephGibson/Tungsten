@@ -774,7 +774,7 @@
     ]
   },
   {
-    "on": "air_jumped",
+    "on": "double_jumped",
     "filter": {
       "all": [
         "team.player"

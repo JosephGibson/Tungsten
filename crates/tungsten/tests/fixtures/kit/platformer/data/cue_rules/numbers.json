@@ -1,0 +1,29 @@
+[
+  {
+    "on": "damaged_part",
+    "filter": {
+      "all": [
+        "numbered"
+      ]
+    },
+    "do": [
+      {
+        "label": {
+          "merge": 0.25,
+          "ticks": {
+            "size": 10
+          },
+          "crit": {
+            "size": 24,
+            "color": [
+              1,
+              0.7,
+              0,
+              1
+            ]
+          }
+        }
+      }
+    ]
+  }
+]

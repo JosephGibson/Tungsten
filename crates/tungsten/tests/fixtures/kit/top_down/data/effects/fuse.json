@@ -1,0 +1,12 @@
+{
+  "duration": 0.5,
+  "on_end": [
+    {
+      "blast": {
+        "radius": 64,
+        "damage": 12,
+        "push": 300
+      }
+    }
+  ]
+}

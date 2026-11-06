@@ -1,0 +1,24 @@
+[
+  {
+    "prefab": "blast"
+  },
+  {
+    "sound": {
+      "id": "blip"
+    }
+  },
+  {
+    "shake": {
+      "trauma": 0.6,
+      "near": 100,
+      "far": 600
+    }
+  },
+  {
+    "counter": {
+      "name": "strikes",
+      "add": 1,
+      "target": "game"
+    }
+  }
+]

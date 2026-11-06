@@ -1,0 +1,11 @@
+{
+  "tag": "blast_dummy",
+  "components": {
+    "health": {
+      "max": 50
+    },
+    "knockback": {
+      "seconds": 0.3
+    }
+  }
+}

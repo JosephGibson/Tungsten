@@ -1,0 +1,26 @@
+{
+  "tag": "trooper",
+  "components": {
+    "rigid_body": {
+      "kind": "sensor",
+      "shape": {
+        "kind": "circle",
+        "radius": 24
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "shot"
+        ]
+      }
+    },
+    "cues": {
+      "zone_entered": [
+        {
+          "effect": "suppressed"
+        }
+      ]
+    }
+  }
+}

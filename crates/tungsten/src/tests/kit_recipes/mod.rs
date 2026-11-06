@@ -11,23 +11,24 @@ use tungsten_core::{ActionMap, Binding, Config, Entity, KeyCode, PluginSet, Tran
 
 use crate::App;
 use crate::kit::{
-    AbilitiesPlugin, ActionInputPlugin, AimPlugin, CharacterAnimatorPlugin, ContactDamagePlugin,
-    CuesPlugin, DepthSortPlugin, EffectsPlugin, FacingPlugin, FollowPlugin, HealthPlugin,
-    HitPlugin, KitPlugins, KnockbackPlugin, LevelPlugin, LinearMotionPlugin, OrbitPlugin,
-    OscillatorPlugin, PickupPlugin, ProjectilePlugin, SpeedLimitPlugin, StatsPlugin,
+    AbilitiesPlugin, ActionInputPlugin, AimPlugin, CharacterAnimatorPlugin, ChemistryPlugin,
+    ContactDamagePlugin, CuesPlugin, DepthSortPlugin, EffectsPlugin, FacingPlugin, FollowPlugin,
+    HealthPlugin, HitPlugin, KitPlugins, KnockbackPlugin, LevelPlugin, LinearMotionPlugin,
+    OrbitPlugin, OscillatorPlugin, PickupPlugin, ProjectilePlugin, SpeedLimitPlugin, StatsPlugin,
     StayInViewPlugin, SteeringPlugin, WrapPlugin,
 };
 use crate::testing::Harness;
 
+mod arpg;
 mod coverage;
 mod determinism;
-mod grid;
 mod platformer;
-mod shmup;
+mod rpg;
+mod shooter;
 mod top_down;
 
-/// The four reference genres, each a fixture folder.
-pub(crate) const GENRES: [&str; 4] = ["platformer", "top_down", "shmup", "grid"];
+/// The five reference genres, each a fixture folder.
+pub(crate) const GENRES: [&str; 5] = ["platformer", "top_down", "rpg", "shooter", "arpg"];
 
 /// The two frame lengths every recipe runs at: one step a frame, and two.
 pub(crate) const DTS: [f32; 2] = [1.0 / 60.0, 1.0 / 30.0];
@@ -123,10 +124,10 @@ pub(crate) fn overlap_reversed() -> PluginSet {
         .with(HealthPlugin)
 }
 
-/// `KitPlugins::set()` with the health, stats, cue, hit, input, aim and
-/// M67 effect, ability and level plugins built last, in the reverse of
-/// their order in the set: the effect edges, not registration order, must
-/// order them.
+/// `KitPlugins::set()` with the health, stats, cue, hit, input, aim, M67
+/// effect, ability and level and 7.10b chemistry plugins built last, in the
+/// reverse of their order in the set: the effect edges, not registration
+/// order, must order them.
 pub(crate) fn effects_reversed() -> PluginSet {
     KitPlugins::set()
         .without::<HealthPlugin>()
@@ -136,10 +137,12 @@ pub(crate) fn effects_reversed() -> PluginSet {
         .without::<ActionInputPlugin>()
         .without::<AimPlugin>()
         .without::<EffectsPlugin>()
+        .without::<ChemistryPlugin>()
         .without::<AbilitiesPlugin>()
         .without::<LevelPlugin>()
         .with(LevelPlugin)
         .with(AbilitiesPlugin)
+        .with(ChemistryPlugin::new())
         .with(EffectsPlugin)
         .with(AimPlugin)
         .with(ActionInputPlugin)
@@ -220,4 +223,30 @@ pub(crate) fn point_of(harness: &Harness, entity: Entity) -> Vec2 {
         || world.get::<Transform>(entity).unwrap().position,
         |position| position.0,
     )
+}
+
+/// Registers sprite `id`, `width` × `height`, on the harness's registry
+/// with no pixels, as a headless test draws it.
+pub(crate) fn register_sprite(
+    harness: &mut Harness,
+    id: &str,
+    width: u32,
+    height: u32,
+) -> tungsten_core::SpriteAssetId {
+    use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
+    harness
+        .world_mut()
+        .resource_mut::<tungsten_core::AssetRegistry>()
+        .register_sprite(
+            id.to_string(),
+            FilterMode::Nearest,
+            width,
+            height,
+            PathBuf::from(format!("{id}.png")),
+            TextureHandle(90),
+            UvRect::FULL,
+            None,
+            None,
+            None,
+        )
 }

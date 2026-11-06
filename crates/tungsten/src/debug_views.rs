@@ -41,6 +41,7 @@ use std::sync::atomic::Ordering;
 use glam::Vec2;
 use tungsten_core::input::{ActionMap, InputState, KeyCode, MouseButton, RawInput};
 use tungsten_core::text::{EllipsisAt, StyledText, TextAlign, TextOverflow, TextWrap};
+use tungsten_core::ui::widgets::{self, Meter};
 use tungsten_core::ui::{
     Align, Anchor, Direction, Edges, LayoutStyle, PaintCommand, PaintList, Placement, Rect, Role,
     Sizing, StyleOverrides, TextOverrides, UiLayer, UiShadow, UiTree, UiVertex, Visibility,
@@ -72,8 +73,10 @@ pub(crate) const PANEL: [u8; 4] = [17, 17, 20, 252];
 /// The title bar, over the panel.
 const TITLE_VEIL: [u8; 4] = [255, 255, 255, 5];
 
-/// Every other data row, and the graph's backdrop.
-pub(crate) const STRIPE_VEIL: [u8; 4] = [255, 255, 255, 2];
+/// Every other data row, and the graph's backdrop: alpha 4, the most at
+/// which `RED` keeps 4.5:1 on a level badge over a white scene
+/// (debug-pass).
+pub(crate) const STRIPE_VEIL: [u8; 4] = [255, 255, 255, 4];
 
 /// The 1 px border; each view's `outline_color` default.
 pub(crate) const BORDER: [u8; 4] = [70, 70, 80, 255];
@@ -422,9 +425,13 @@ pub(crate) enum Header {
     Line,
     /// The HUD's frame-time graph.
     Graph,
-    /// A line of this many buttons, then a status line: the log console's
-    /// controls (M58).
-    Controls(usize),
+    /// A line of `filters` buttons, three insets apart from `actions`
+    /// more, then the status at the line's end, the line as wide as the
+    /// window: the log console's controls (M58; debug-pass).
+    Controls {
+        filters: usize,
+        actions: usize,
+    },
 }
 
 /// What a view's window holds besides its title.
@@ -433,6 +440,10 @@ pub(crate) struct Shape {
     /// The table's columns.
     pub(crate) columns: &'static [Column],
     pub(crate) header: Header,
+    /// Word buttons in the title bar between the key and collapse, which
+    /// the view labels and reads (debug-pass): the systems overlay's view
+    /// and pause.
+    pub(crate) buttons: usize,
 }
 
 /// What one view asks of its window this frame.
@@ -474,12 +485,17 @@ pub(crate) struct ViewWindow {
     /// and the key, which keeps the key and the buttons at the right.
     pub(crate) caption: WidgetId,
     spacer: WidgetId,
-    /// The title bar's toggle key, and its collapse and close buttons.
+    /// The title bar's toggle key, its word buttons (debug-pass), and its
+    /// collapse and close buttons.
     pub(crate) key: WidgetId,
+    pub(crate) buttons: Vec<WidgetId>,
     pub(crate) collapse: WidgetId,
     pub(crate) close: WidgetId,
     /// The fixed header's panel, when the shape has one.
     pub(crate) fixed: Option<WidgetId>,
+    /// The rules under the title bar and under the fixed header, when there
+    /// is one: lines as tall as the border is wide (debug-pass).
+    pub(crate) rules: Vec<WidgetId>,
     /// The header line, when the shape's header is one, or the controls'
     /// status line.
     pub(crate) header: Option<WidgetId>,
@@ -636,6 +652,10 @@ impl ViewFrame<'_> {
         tree.set_overrides(root, look.root(look.border, 0.0));
         tree.set_clip_children(root, true);
         tree.set_role(root, Role::Window);
+        // The UI pass's surface (debug-pass): the root keyed by its place
+        // name, its boxes on whole pixels.
+        tree.set_key(root, spec.name);
+        tree.set_pixel_snap(root, true);
         tree.set_accessible_name(root, Some(spec.title.to_string()));
         tree.set_shadow(
             root,
@@ -675,8 +695,14 @@ impl ViewFrame<'_> {
         tree.set_overrides(spacer, look.plain(Ink::body(look.color)));
         let key = tree.label(title, "");
         tree.set_overrides(key, look.plain(Ink::body(LABEL)));
+        let buttons = (0..spec.shape.buttons)
+            .map(|_| word_button(tree, look, title))
+            .collect();
         let collapse = title_button(tree, look, title, COLLAPSE);
+        tree.set_key(collapse, "collapse");
         let close = title_button(tree, look, title, CLOSE);
+        tree.set_key(close, "close");
+        let mut rules = vec![rule(tree, look, root)];
 
         let mut stats = Vec::new();
         let mut controls = Vec::new();
@@ -754,7 +780,7 @@ impl ViewFrame<'_> {
                 }
                 (Some(fixed), None, Some(graph), Some(block))
             }
-            Header::Controls(buttons) => {
+            Header::Controls { filters, actions } => {
                 let fixed = tree.panel(
                     root,
                     LayoutStyle {
@@ -774,13 +800,17 @@ impl ViewFrame<'_> {
                         direction: Direction::Row,
                         gap: INSET,
                         align_items: Align::Center,
-                        align_self: Some(Align::Start),
                         ..LayoutStyle::default()
                     },
                 );
                 tree.set_overrides(line, look.plain(Ink::body(look.color)));
-                for _ in 0..buttons {
+                for i in 0..filters + actions {
                     let button = tree.button(line, "");
+                    if i == filters && filters > 0 {
+                        // Three insets from the filters: the line's gap and
+                        // two more.
+                        tree.edit_layout(button, |style| style.margin.start = 2.0 * INSET);
+                    }
                     tree.set_focusable(button, false);
                     tree.set_overrides(button, look.plain(Ink::body(LABEL)));
                     if let Some(&label) = tree.children(button).first() {
@@ -788,11 +818,24 @@ impl ViewFrame<'_> {
                     }
                     controls.push(button);
                 }
+                // The status at the line's end.
+                let spacer = tree.panel(
+                    line,
+                    LayoutStyle {
+                        width: Sizing::Fill,
+                        ..LayoutStyle::default()
+                    },
+                );
+                tree.set_overrides(spacer, look.plain(Ink::body(look.color)));
                 let status = tree.label(line, "");
                 tree.set_overrides(status, look.plain(Ink::body(LABEL)));
-                (Some(fixed), Some(status), None, Some(line))
+                // The line spans the window: it keeps no width of its own.
+                (Some(fixed), Some(status), None, None)
             }
         };
+        if fixed.is_some() {
+            rules.push(rule(tree, look, root));
+        }
 
         let body = tree.scroll_panel(
             root,
@@ -835,9 +878,11 @@ impl ViewFrame<'_> {
             caption,
             spacer,
             key,
+            buttons,
             collapse,
             close,
             fixed,
+            rules,
             header,
             controls,
             graph,
@@ -870,7 +915,8 @@ impl ViewFrame<'_> {
             } else {
                 Visibility::Visible
             };
-            for part in window.fixed.into_iter().chain([window.body]) {
+            let parts = window.rules.iter().copied().chain(window.fixed);
+            for part in parts.chain([window.body]) {
                 tree.set_visibility(part, shown);
             }
             tree.set_text(
@@ -886,6 +932,11 @@ impl ViewFrame<'_> {
         }
         let hot = self.hot == Some(window.root) || window.held;
         let width = window.look.border_width(self.scale * tree.debug_scale());
+        if window.border.map(|(_, was)| was) != Some(width) {
+            for rule in &window.rules {
+                tree.edit_layout(*rule, |style| style.height = Sizing::Px(width));
+            }
+        }
         if window.border != Some((hot, width)) {
             window.border = Some((hot, width));
             let border = if hot { BORDER_HOT } else { window.look.border };
@@ -898,19 +949,26 @@ impl ViewFrame<'_> {
             }
             None => tree.set_visibility(window.key, Visibility::Collapsed),
         }
-        let hovered = tree
-            .hovered()
-            .filter(|hovered| [window.collapse, window.close].contains(hovered));
+        let hovered = tree.hovered().filter(|hovered| {
+            [window.collapse, window.close].contains(hovered) || window.buttons.contains(hovered)
+        });
         if window.glyph_hovered != hovered {
             window.glyph_hovered = hovered;
-            for button in [window.collapse, window.close] {
-                let color = if hovered == Some(button) {
+            let color = |button: WidgetId| {
+                if hovered == Some(button) {
                     window.look.color
                 } else {
                     LABEL
-                };
+                }
+            };
+            for button in [window.collapse, window.close] {
                 if let Some(&glyph) = tree.children(button).first() {
-                    tree.set_overrides(glyph, glyph_look(&window.look, color));
+                    tree.set_overrides(glyph, glyph_look(&window.look, color(button)));
+                }
+            }
+            for &button in &window.buttons {
+                if let Some(&label) = tree.children(button).first() {
+                    tree.set_overrides(label, window.look.plain(Ink::body(color(button))));
                 }
             }
         }
@@ -950,7 +1008,7 @@ impl ViewFrame<'_> {
             (Sizing::Auto, width, viewport.y * HEIGHT_SHARE)
         };
         let saved = window.saved;
-        restyle(self.tree, window.root, |style| {
+        self.tree.edit_layout(window.root, |style| {
             style.width = width;
             style.max_width = Some(max_width);
             if saved {
@@ -1103,7 +1161,7 @@ impl ViewFrame<'_> {
                 (dock.corner, offset)
             };
             let placement = corner_placement(corner, offset);
-            restyle(self.tree, dock.root, |style| {
+            self.tree.edit_layout(dock.root, |style| {
                 style.placement = placement;
                 style.height = Sizing::Px(given);
             });
@@ -1128,7 +1186,7 @@ impl ViewFrame<'_> {
             .zip(width(tree, window.caption))
             .zip(width(tree, window.spacer))
             .map(|((title, caption), spacer)| (title - spacer, title - caption - spacer));
-        restyle(tree, window.caption, |style| {
+        tree.edit_layout(window.caption, |style| {
             style.max_width = title.map(|(_, rest)| (inner - rest).max(0.0));
         });
         // The header's content, and the fixed panel's padding around it.
@@ -1157,7 +1215,7 @@ impl ViewFrame<'_> {
             .iter()
             .all(|panel| tree.rect(*panel).is_some());
         for (panel, column) in window.columns.iter().zip(window.shape.columns) {
-            restyle(tree, *panel, |style| {
+            tree.edit_layout(*panel, |style| {
                 (style.min_width, style.max_width) = match column.width {
                     Width::Capped(percent) => (None, Some(max_width * f32::from(percent) / 100.0)),
                     Width::Fill if measured => {
@@ -1210,22 +1268,48 @@ fn title_button(tree: &mut UiTree, look: &Look, title: WidgetId, glyph: &str) ->
     button
 }
 
+/// A word button in the title bar (debug-pass): interactive, not
+/// focusable, as wide as the label its view gives it in body-size text with
+/// [`CELL_PAD`] a side, which `title_button`'s square in title-size text
+/// would cut; its label in the glyphs' grey, brighter while hovered.
+fn word_button(tree: &mut UiTree, look: &Look, title: WidgetId) -> WidgetId {
+    let button = tree.button(title, "");
+    tree.set_focusable(button, false);
+    tree.set_layout_style(
+        button,
+        LayoutStyle {
+            padding: Edges::symmetric(CELL_PAD, 0.0),
+            ..LayoutStyle::default()
+        },
+    );
+    tree.set_overrides(button, look.plain(Ink::body(LABEL)));
+    if let Some(&label) = tree.children(button).first() {
+        tree.set_overrides(label, look.plain(Ink::body(LABEL)));
+    }
+    button
+}
+
+/// A rule across `parent` (debug-pass): a line of the view's border colour,
+/// which [`ViewFrame::chrome`] keeps as tall as the border is wide, a
+/// physical pixel at the default 1 px.
+fn rule(tree: &mut UiTree, look: &Look, parent: WidgetId) -> WidgetId {
+    let rule = tree.panel(
+        parent,
+        LayoutStyle {
+            height: Sizing::Px(0.0),
+            ..LayoutStyle::default()
+        },
+    );
+    tree.set_overrides(rule, look.cell(look.border, Ink::body(look.color)));
+    rule
+}
+
 /// A button glyph's look: title-sized, centred, in `color`.
 fn glyph_look(look: &Look, color: [u8; 4]) -> StyleOverrides {
     look.plain(Ink {
         title: true,
         ..Ink::body(color).aligned(TextAlign::Center)
     })
-}
-
-/// Changes `id`'s layout style through `change`; an equal style marks
-/// nothing.
-fn restyle(tree: &mut UiTree, id: WidgetId, change: impl FnOnce(&mut LayoutStyle)) {
-    let Some(mut style) = tree.layout_style(id).cloned() else {
-        return;
-    };
-    change(&mut style);
-    tree.set_layout_style(id, style);
 }
 
 /// A root's anchored offset as its layout style holds it now.
@@ -1452,8 +1536,8 @@ pub(crate) fn write_table(tree: &mut UiTree, window: &ViewWindow, rows: &[Row]) 
 
 impl ViewWindow {
     /// Writes column `c`'s bars (M58): each row's cell a panel one line
-    /// tall, striped as its row, holding a track that holds the fill; a row
-    /// with no bar hides its track.
+    /// tall, striped as its row, holding a meter (debug-pass) of its share;
+    /// a row with no bar hides its track.
     fn write_bars(&self, tree: &mut UiTree, c: usize, rows: &[Row], looks: &[RowLook]) {
         let column = self.columns[c];
         let cells = tree.children(column).to_vec();
@@ -1472,13 +1556,11 @@ impl ViewWindow {
                         ..LayoutStyle::default()
                     },
                 );
-                let track = tree.panel(
-                    cell,
-                    LayoutStyle::row().with_size(Sizing::Px(BAR_WIDTH), Sizing::Px(BAR_HEIGHT)),
-                );
-                tree.set_overrides(track, self.look.cell(BORDER, ink));
-                let part = tree.panel(track, LayoutStyle::default());
-                tree.set_overrides(part, self.look.cell(TRANSPARENT, ink));
+                // The UI pass's meter (debug-pass), every override the view's
+                // own: `meter` fills in the theme's accent.
+                let meter = widgets::meter(tree, cell, BAR_WIDTH, BAR_HEIGHT);
+                tree.set_overrides(meter.track, self.look.cell(BORDER, ink));
+                tree.set_overrides(meter.fill, self.look.cell(TRANSPARENT, ink));
                 cell
             };
             let fill = if look.striped {
@@ -1490,6 +1572,9 @@ impl ViewWindow {
             let Some(&track) = tree.children(cell).first() else {
                 continue;
             };
+            let Some(&fill) = tree.children(track).first() else {
+                continue;
+            };
             let bar = row.cells.get(c).and_then(|cell| cell.bar);
             tree.set_visibility(
                 track,
@@ -1499,13 +1584,8 @@ impl ViewWindow {
                     Visibility::Hidden
                 },
             );
-            if let (Some((fraction, color)), Some(&part)) = (bar, tree.children(track).first()) {
-                let width = BAR_WIDTH * fraction.clamp(0.0, 1.0);
-                tree.set_layout_style(
-                    part,
-                    LayoutStyle::default().with_size(Sizing::Px(width), Sizing::Fill),
-                );
-                tree.set_overrides(part, self.look.cell(color, ink));
+            if let Some((fraction, color)) = bar {
+                Meter { track, fill }.set(tree, fraction, color);
             }
         }
         for cell in cells.iter().skip(rows.len()) {
@@ -1980,6 +2060,10 @@ const LEVELS: [log::Level; 5] = [
 const PAUSE: usize = LEVELS.len();
 const CLEAR: usize = LEVELS.len() + 1;
 
+/// Each control's key, in the controls' order (debug-pass).
+const CONTROL_KEYS: [&str; LEVELS.len() + 2] =
+    ["error", "warn", "info", "debug", "trace", "pause", "clear"];
+
 /// A level's hue (M58): `ERROR` red, `WARN` amber, `INFO` cyan, `DEBUG`
 /// violet, `TRACE` grey.
 pub(crate) fn level_hue(level: log::Level) -> [u8; 4] {
@@ -2114,7 +2198,9 @@ impl LogConsole {
 
     /// The console's frame: its controls' presses, then on its interval
     /// the new records into the window and the controls line; while it is
-    /// shown.
+    /// shown. While paused its rows hold as the ring turns over, and a
+    /// filter marks its button at once but reaches the rows at the resume,
+    /// which rebuilds them from the ring (debug-pass).
     fn update_window(&mut self, world: &World, frame: &mut ViewFrame<'_>) {
         if frame.closes(self.window.as_ref()) {
             self.enabled = false;
@@ -2130,7 +2216,11 @@ impl LogConsole {
             look: look_of!(self),
             shape: Shape {
                 columns: CONSOLE_COLUMNS,
-                header: Header::Controls(LEVELS.len() + 2),
+                header: Header::Controls {
+                    filters: LEVELS.len(),
+                    actions: 2,
+                },
+                buttons: 0,
             },
         };
         if !frame.sync(&mut self.window, &spec) {
@@ -2151,21 +2241,33 @@ impl LogConsole {
             match i {
                 PAUSE => {
                     self.paused = match self.paused {
-                        Some(_) => None,
+                        Some(_) => {
+                            self.rebuild = true;
+                            None
+                        }
                         None => Some(self.taken),
                     };
                 }
                 CLEAR => self.clear(),
                 level => {
                     self.levels[level] = !self.levels[level];
-                    self.rebuild = true;
+                    // Past the pause point a rebuild would find no record
+                    // to show: the rows take the filter at the resume.
+                    self.rebuild |= self.paused.is_none();
                 }
             }
             self.time_since_refresh_ms = f32::INFINITY;
         }
         if self.rows_in != Some(root) {
             // A new window: every kept record is new to it, and its body
-            // follows the end.
+            // follows the end; its controls take their keys (debug-pass).
+            let controls = self
+                .window
+                .as_ref()
+                .map_or(&[][..], |window| &window.controls);
+            for (button, key) in controls.iter().zip(CONTROL_KEYS) {
+                frame.tree.set_key(*button, key);
+            }
             self.rows.clear();
             self.rows_in = Some(root);
             self.rebuild = true;
@@ -2189,7 +2291,7 @@ impl LogConsole {
             self.appended = 0;
             self.taken = first;
         }
-        while self.rows.front().is_some_and(|seq| *seq < first) {
+        while self.paused.is_none() && self.rows.front().is_some_and(|seq| *seq < first) {
             self.rows.pop_front();
             for column in &window.columns {
                 if let Some(&cell) = frame.tree.children(*column).first() {
@@ -2420,6 +2522,7 @@ impl UiInspector {
             shape: Shape {
                 columns: UI_INSPECTOR_COLUMNS,
                 header: Header::Line,
+                buttons: 0,
             },
         };
         if !frame.sync(&mut self.window, &spec) {
@@ -2445,7 +2548,7 @@ impl UiInspector {
         self.shown_laid_out = laid_out;
         let (header, rows) = match self.picked {
             Some(widget) => (
-                format!("widget {}:{}", widget.index(), widget.generation()),
+                pick_name(frame.tree, widget),
                 widget_rows(frame.tree, widget, paint),
             ),
             None => ("middle-click a widget to pick".to_string(), Vec::new()),
@@ -2522,7 +2625,22 @@ fn hex(color: [u8; 4]) -> String {
     )
 }
 
-/// The UI inspector's rows for `widget`.
+/// The UI inspector's header for `widget` (debug-pass): its kind, ID and
+/// layer, `Label 2:0 · Game`.
+fn pick_name(tree: &UiTree, widget: WidgetId) -> String {
+    let debug = |value: Option<String>| value.unwrap_or_else(|| "-".to_string());
+    format!(
+        "{} {}:{} \u{b7} {}",
+        debug(tree.kind(widget).map(|kind| format!("{kind:?}"))),
+        widget.index(),
+        widget.generation(),
+        debug(tree.layer(widget).map(|layer| format!("{layer:?}"))),
+    )
+}
+
+/// The UI inspector's rows for `widget`: its role and root, key, text
+/// style, rects, look, a label's or button's text, state, flags, pending
+/// work and text batch.
 fn widget_rows(tree: &UiTree, widget: WidgetId, paint: Option<&PaintList>) -> Vec<Vec<String>> {
     let row = |name: &str, value: String| vec![name.to_string(), value];
     let mut rows = Vec::new();
@@ -2532,14 +2650,16 @@ fn widget_rows(tree: &UiTree, widget: WidgetId, paint: Option<&PaintList>) -> Ve
     rows.push(row(
         "widget",
         format!(
-            "{}:{} {} {} {} root {}",
-            widget.index(),
-            widget.generation(),
-            debug(kind.map(|kind| format!("{kind:?}"))),
+            "{} root {}",
             debug(tree.role(widget).map(|role| format!("{role:?}"))),
-            debug(tree.layer(widget).map(|layer| format!("{layer:?}"))),
             debug(root.map(|root| format!("{}:{}", root.index(), root.generation()))),
         ),
+    ));
+    // The UI pass's names (debug-pass), `-` when unset.
+    rows.push(row("key", tree.key_name(widget).unwrap_or("-").to_string()));
+    rows.push(row(
+        "style",
+        tree.text_style(widget).unwrap_or("-").to_string(),
     ));
     rows.push(row("layout", rect_text(tree.rect(widget))));
     rows.push(row("visual", rect_text(tree.visual_rect(widget))));

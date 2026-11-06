@@ -1,0 +1,46 @@
+{
+  "sprite": {
+    "asset_id": "brute"
+  },
+  "tag": "brute",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 30
+    },
+    "health_bar": {
+      "size": [
+        48,
+        5
+      ],
+      "rise": 4
+    },
+    "looks": [
+      {
+        "when": {
+          "all": [
+            "state.alerted"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "animation": "brute_mark",
+            "offset": [
+              0,
+              -30
+            ]
+          },
+          "tint": [
+            1.0,
+            0.8,
+            0.8,
+            1.0
+          ]
+        },
+        "grow": 0.2
+      }
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "tag": "stray_drone",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 5,
+      "despawn_on_death": 0
+    },
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 6
+      }
+    },
+    "linear_motion": {
+      "velocity": [
+        300,
+        0
+      ]
+    },
+    "despawn_outside": {
+      "world": 0,
+      "kill": true
+    }
+  }
+}

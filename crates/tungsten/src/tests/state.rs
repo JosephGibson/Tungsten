@@ -281,6 +281,41 @@ fn hud_active_state_mirrors_top_state_id() {
     );
 }
 
+/// The dispatcher rewrites `HudActiveState` only when the top state
+/// changes (debug-pass): frames that keep their state keep its buffer.
+#[test]
+fn hud_active_state_keeps_its_buffer_while_the_top_state_stays() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = make_world();
+    world
+        .get_resource_mut::<StateStack>()
+        .unwrap()
+        .request_push(TestState::new("menu", hooks.clone(), false));
+    let mut buffers = Vec::new();
+    for _ in 0..3 {
+        state_dispatcher_system(&mut world);
+        flush(&mut world);
+        let slot = &world.get_resource::<HudActiveState>().unwrap().0;
+        assert_eq!(slot, "menu");
+        buffers.push(slot.as_ptr());
+    }
+    assert!(
+        buffers.windows(2).all(|pair| pair[0] == pair[1]),
+        "one buffer: {buffers:?}"
+    );
+
+    world
+        .get_resource_mut::<StateStack>()
+        .unwrap()
+        .request_replace(TestState::new("gameplay", hooks.clone(), false));
+    state_dispatcher_system(&mut world);
+    flush(&mut world);
+    assert_eq!(
+        world.get_resource::<HudActiveState>().unwrap().0,
+        "gameplay"
+    );
+}
+
 #[test]
 fn hud_active_state_cleared_when_stack_empty() {
     let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));

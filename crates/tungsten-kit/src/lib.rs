@@ -14,10 +14,10 @@
 //!
 //! An item joins the kit when it is generic, names no game type and passes
 //! a recipe (a fixture of prefabs and data plus a harness test, with no
-//! game Rust) in two of the four reference genres: platformer, top-down,
-//! shmup and grid (`D-155`, as the kit foundations amend it). Each item has
-//! a scene component under its bare name, rustdoc with an example, a unit
-//! test and a harness test.
+//! game Rust) in two of the five reference genres: platformer, top-down,
+//! RPG, shooter and action RPG (`D-155`, as the kit foundations amend it;
+//! `D-218`). Each item has a scene component under its bare name, rustdoc
+//! with an example, a unit test and a harness test.
 //!
 //! # Composing a game
 //!
@@ -84,9 +84,12 @@
 //!   an entity aims in, from its intent, the cursor, its movement or a
 //!   target. [`Ability`], [`Abilities`], [`use_ability`], [`AbilityUsed`]
 //!   and [`AbilitiesPlugin`]: what an entity can do on a trigger (an
-//!   action, an interval, or the `ability` cue action), at a cost, with a
-//!   cooldown and charges, at a target: a spawn, an effect, an impulse or a
-//!   hitbox window; the `abilities` data kind and scene component.
+//!   action pressed or held, an interval, or the `ability` cue action), at
+//!   a cost, with a cooldown and charges, at a target, along the aim or the
+//!   movement ([`Direction`]): a spawn (from its centre with
+//!   [`centre_of`], its motion kept, or a [`Lob`] onto the aim's point by
+//!   [`lob_velocity`]), an effect, an impulse or a hitbox window; the
+//!   `abilities` data kind and scene component.
 //! - **Motion.** [`PlatformerController`] and
 //!   [`PlatformerControllerPlugin`]: a platformer character on a kinematic
 //!   body, with a ground check, coyote time, a jump buffer and variable
@@ -98,6 +101,8 @@
 //!   acceleration changes. [`Oscillator`] and [`OscillatorPlugin`]: a sine
 //!   wave on the position, rotation or scale. [`Follow`] and
 //!   [`FollowPlugin`]: a target's point plus an offset, with a lag.
+//!   [`carry`], [`Hold`], [`carried_by`] and [`release`]: a body held at a
+//!   carrier's point plus an offset, a sensor until it is let go.
 //!   [`Orbit`] and [`OrbitPlugin`]: a circle about a centre. [`Steering`]
 //!   and [`SteeringPlugin`]: seek, flee or arrive. [`Target`]: what those
 //!   items aim at. [`Knockback`], [`knock_back`] and [`KnockbackPlugin`]: a
@@ -155,16 +160,28 @@
 //!   carries, the `effects` data kind and scene component: a periodic
 //!   payload that passes the window, stacks, modifiers on its stats and
 //!   resistances, granted and blocking tags, a scale curve and a
-//!   transition at the end, which the cue action `effect` applies.
+//!   transition at the end, which the cue action `effect` applies; with an
+//!   intensity, a status, built by its requests' amounts and status
+//!   effect, worn by its decay, granting bands and burning a fuel stat.
 //!   [`AilmentRung`], [`AilmentThreshold`] and [`AilmentBuckets`]: the
 //!   ladder on a `damage_types` definition that a target's bucket of that
 //!   type climbs against its threshold, each rung an effect.
+//! - **Chemistry.** [`Interaction`], [`Output`], [`Reaction`], [`Chemistry`]
+//!   and [`ChemistryPlugin`]: the `interactions` kind's rules from a
+//!   stimulus (a landed hit's damage type, a status's or an output's
+//!   emission in a radius, a body's impact, the light at a point, or a
+//!   game's tag) on a receiver's tags to a fixed list of outputs (build,
+//!   apply, remove or consume a status, damage, spawn, emit, a game's
+//!   handler), through a saved, bounded and capped queue; a status's
+//!   `on_end` and a band's `enter` run their own, and a hit's
+//!   damage-over-time base fixes a status's rate.
 //! - **React.** [`Cues`], [`CueAction`], [`CueEvent`], [`CuesOnEvent`] and
 //!   [`CuesPlugin`]: the one way to react to events in data, an entity's
 //!   `cues` and the shared `cue_rules` kind, whose `effect` action applies
 //!   an effect to the subject or the other entity; [`CueListener`], an
 //!   opt-in resource that quiets the cues' sounds by their distance from
-//!   it. [`WeightedTable`]: the `loot_tables` kind that a cue's `roll`
+//!   it. [`WorldCue`]: a `world_cues` entry played by name at a point.
+//!   [`WeightedTable`]: the `loot_tables` kind that a cue's `roll`
 //!   draws drops from. [`Counters`],
 //!   [`Flags`] and [`CountersPlugin`]: named counts and switches, an
 //!   entity's or the game's, that cues write. [`Level`], [`Offers`],
@@ -174,9 +191,14 @@
 //!   scene component.
 //! - **Present.** [`AnimationPlugin`]: an animated sprite, whose
 //!   `AnimationState` writes its current frame into `Sprite.asset_id`.
-//!   [`CharacterAnimator`], [`Clips`] and [`CharacterAnimatorPlugin`]: the
-//!   clip a character's motion and facing pick. [`Facing`] and
+//!   [`CharacterAnimator`], [`Clips`], [`ClipRule`] and
+//!   [`CharacterAnimatorPlugin`]: the clip a character's motion and facing
+//!   pick, rules over tags and motion, and one-shots over both. [`Facing`] and
 //!   [`FacingPlugin`]: the way an entity faces, turning it when asked.
+//!   [`Looks`], [`TagLook`] and [`LooksPlugin`]: looks an entity shows
+//!   while its tags pass a filter, growing in over their time and mirrored
+//!   by its facing. [`HealthBar`] and [`HealthBarPlugin`]: a bar over an
+//!   entity showing its health's share.
 //!   [`DepthSort`] and [`DepthSortPlugin`]: a sprite sorted by how low it
 //!   stands. [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the
 //!   camera follows. [`SoundOnEvent`]: a manifest sound played once per
@@ -208,6 +230,7 @@
 
 #![deny(missing_docs)]
 
+mod chemistry;
 mod damage;
 mod foundation;
 mod intent;
@@ -218,6 +241,10 @@ mod present;
 mod react;
 mod transform;
 
+pub use chemistry::{
+    CHEMISTRY, CHEMISTRY_TICK, Chemistry, ChemistryPlugin, Interaction, Output, Reaction, TileCell,
+    TileStatuses,
+};
 pub use damage::ailments::{
     AILMENT_FEED, AILMENT_TICK, AilmentBuckets, AilmentRung, AilmentThreshold,
 };
@@ -228,15 +255,22 @@ pub use damage::effects::{
 };
 pub use damage::health::{
     Damaged, DamagedPart, HEALTH_TICK, HIT_FLASH_MATERIAL, HIT_FLASH_TICK, Health, HealthPlugin,
-    Hit, HitFlash, ImmunePart, damage,
+    Hit, HitFlash, ImmunePart, damage, kill,
 };
 pub use damage::kinds::{Conversion, DamageKinds, Penetration};
-pub use damage::pipeline::{DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest, Healed, heal};
+pub use damage::pipeline::{
+    DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest, Healed, Side, heal,
+};
 pub use foundation::curve::Curve;
 pub use foundation::debug::{KIT_DEBUG_DRAW, KitDebug, KitDebugPlugin};
 pub use foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, KitDescriptions,
 };
+pub use foundation::explain::{
+    CritRecord, EXPLAIN_RECORDS, ExplainRecord, HitPartRecord, HitRecord, KitExplain, LineOutcome,
+    LineRecord, OriginStep, PartOrigin, PartRecord, ReadAt, ResistRecord, SheetRecord, StatRecord,
+};
+pub use foundation::lines::{Line, Read, Scope, Sums, TagSet};
 pub use foundation::phases::{
     KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_PRESENT, KIT_REACT, KIT_RESOLVE, KIT_TICK, Phase,
     ensure_phases,
@@ -248,20 +282,25 @@ pub use foundation::source::{Source, SourcePlugin};
 pub use foundation::stats::{Modifier, STATS_APPLY, Stats, StatsPlugin};
 pub use foundation::tags::{TagFilter, Tags, TagsPlugin};
 pub use foundation::trace::{KIT_TRACE_STEP, KitTrace, TraceEntry, TraceKind};
+pub use foundation::world_sources::{WorldSource, WorldSources};
 pub use intent::ability::{
-    ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Payload,
-    Trigger, Used, use_ability,
+    ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Direction, Lob,
+    Payload, Place, SpawnWith, Trigger, Used, lob_velocity, use_ability,
 };
 pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
 pub use intent::aim::{AIM, Aim, AimPlugin};
 pub use intent::cursor::cursor_to_world;
+pub use intent::sheet::{Delivery, Skill, SkillLine};
 pub use intent::state_machine::{StateMachine, StateMachinePlugin};
+pub use lifecycle::cap::{Cap, CapPlugin, Past};
 pub use lifecycle::children::{SPAWN_CHILDREN, SpawnChildren, SpawnChildrenPlugin};
 pub use lifecycle::cooldown::{COOLDOWN_TICK, Cooldown, CooldownElapsed, CooldownPlugin};
-pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlugin};
+pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlugin, WorldBounds};
 pub use lifecycle::ended::KIT_DESPAWN;
 pub use lifecycle::lifetime::{LIFETIME_TICK, Lifetime, LifetimePlugin};
 pub use lifecycle::spawner::{SPAWNER_TICK, Spawner, SpawnerPlugin};
+pub use motion::carry::{Hold, carried_by, carry, release};
+pub use motion::drive::centre_of;
 pub use motion::follow::{FOLLOW, Follow, FollowPlugin};
 pub use motion::knockback::{KNOCKBACK, Knockback, KnockbackPlugin, knock_back};
 pub use motion::linear::{LINEAR_MOTION, LinearMotion, LinearMotionPlugin};
@@ -277,6 +316,7 @@ pub use motion::steering::{STEERING, Steering, SteeringPlugin};
 pub use motion::target::Target;
 pub use motion::top_down::{TOP_DOWN_MOVER, TopDownMover, TopDownMoverPlugin};
 pub use motion::wrap::{WRAP, Wrap, WrapPlugin};
+pub use overlap::cone::Cone;
 pub use overlap::contact::{CONTACT_DAMAGE, ContactDamage, ContactDamagePlugin, ContactTouch};
 pub use overlap::hit::{HIT_GRID, HITBOX_TICK, HitPlugin, HitShape, Hitbox, Hurtbox, Struck};
 pub use overlap::pickup::{PICKUP_MAGNET, PICKUP_TICK, PickedUp, Pickup, PickupPlugin};
@@ -289,16 +329,21 @@ pub use overlap::zone::{ZONE_TICK, Zone, ZoneEntered, ZonePlugin};
 pub use present::animation::{ANIMATION_TICK, AnimationPlugin};
 pub use present::camera::{CAMERA_TARGET, CameraTarget, CameraTargetPlugin};
 pub use present::character::{
-    CHARACTER_ANIMATOR, CharacterAnimator, CharacterAnimatorPlugin, Clips,
+    CHARACTER_ANIMATOR, CharacterAnimator, CharacterAnimatorPlugin, ClipRule, Clips,
 };
 pub use present::depth::{DEPTH_SORT, DepthSort, DepthSortPlugin};
-pub use present::facing::{FACING, Facing, FacingPlugin};
+pub use present::facing::{FACING, Facing, FacingPlugin, face_toward};
+pub use present::health_bar::{HealthBar, HealthBarPlugin};
 pub use present::labels::{LABEL_TICK, LabelStyle, float_label};
+pub use present::looks::{
+    EFFECT_LOOK, EFFECT_LOOK_LATE, Look, Looks, LooksPlugin, Overlay, TagLook,
+};
 pub use present::sound::SoundOnEvent;
 pub use react::counters::{Counters, CountersPlugin, Flags};
 pub use react::cues::{CUES, CueAction, CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin};
 pub use react::level::{LEVEL_TICK, Level, LevelPlugin, LevelUp, Offer, Offers};
 pub use react::loot::WeightedTable;
+pub use react::world_cues::WorldCue;
 pub use transform::hierarchy::{
     Children, HierarchyPlugin, LocalOffset, Parent, TRANSFORM_PROPAGATE, TRANSFORM_PROPAGATE_LATE,
     despawn_recursive, spawn_child,
@@ -311,28 +356,31 @@ pub mod prelude {
     pub use crate::{
         Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, ActionInput,
         ActionInputPlugin, AilmentBuckets, AilmentRung, AilmentThreshold, Aim, AimPlugin,
-        AnimationPlugin, Applied, CameraTarget, CameraTargetPlugin, CharacterAnimator,
-        CharacterAnimatorPlugin, Children, Clips, ContactDamage, ContactDamagePlugin, Conversion,
-        Cooldown, CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent,
-        CueListener, Cues, CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest,
-        Damaged, DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin,
+        AnimationPlugin, Applied, CameraTarget, CameraTargetPlugin, Cap, CapPlugin,
+        CharacterAnimator, CharacterAnimatorPlugin, Chemistry, ChemistryPlugin, Children, ClipRule,
+        Clips, Cone, ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed,
+        CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent, CueListener, Cues,
+        CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest, Damaged,
+        DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Direction,
         Effect, EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects,
         EffectsPlugin, Expire, Facing, FacingPlugin, Flags, Follow, FollowPlugin, HealRequest,
-        Healed, Health, HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox,
-        Hurtbox, ImmunePart, Intent, KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace,
-        Knockback, KnockbackPlugin, LabelStyle, Level, LevelPlugin, LevelUp, Lifetime,
-        LifetimePlugin, LinearMotion, LinearMotionPlugin, LocalOffset, Modifier, Offer, Offers,
-        Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin,
-        Payload, Penetration, Phase, PickedUp, Pickup, PickupPlugin, PlatformerController,
+        Healed, Health, HealthBar, HealthBarPlugin, HealthPlugin, HierarchyPlugin, Hit, HitFlash,
+        HitPlugin, HitShape, Hitbox, Hold, Hurtbox, ImmunePart, Intent, Interaction, KitDebug,
+        KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback, KnockbackPlugin, LabelStyle,
+        Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin, LinearMotion, LinearMotionPlugin,
+        Lob, LocalOffset, Looks, LooksPlugin, Modifier, Offer, Offers, Orbit, OrbitPlugin,
+        Oscillator, OscillatorPlugin, Output, Parent, Past, PathFollower, PathFollowerPlugin,
+        Payload, Penetration, Phase, PickedUp, Pickup, PickupPlugin, Place, PlatformerController,
         PlatformerControllerPlugin, Projectile, ProjectileBounced, ProjectileExpired,
-        ProjectilePassed, ProjectilePlugin, Refresh, Resist, Scaled, Shield, SoundOnEvent, Source,
-        SourcePlugin, SpawnChildren, SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit,
-        SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView,
-        StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target,
-        TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered,
-        TriggerZone, Used, WallContact, WeightedTable, Wrap, WrapPlugin, Zone, ZoneEntered,
-        ZonePlugin, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases,
-        float_label, heal, knock_back, spawn_child, use_ability,
+        ProjectilePassed, ProjectilePlugin, Reaction, Refresh, Resist, Scaled, Shield,
+        SoundOnEvent, Source, SourcePlugin, SpawnChildren, SpawnChildrenPlugin, SpawnWith, Spawner,
+        SpawnerPlugin, SpeedLimit, SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats,
+        StatsPlugin, StayInView, StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter,
+        TagLook, Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind,
+        Trigger, TriggerEntered, TriggerZone, Used, WallContact, WeightedTable, WorldBounds,
+        WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin, carried_by, carry,
+        cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, face_toward,
+        float_label, heal, kill, knock_back, release, spawn_child, use_ability,
     };
 }
 

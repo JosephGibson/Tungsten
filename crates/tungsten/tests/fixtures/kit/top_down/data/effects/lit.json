@@ -1,0 +1,9 @@
+{
+  "intensity": {
+    "max": 2,
+    "decay": 1
+  },
+  "grant": [
+    "status.lit"
+  ]
+}

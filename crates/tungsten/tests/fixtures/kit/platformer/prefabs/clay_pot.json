@@ -1,0 +1,18 @@
+{
+  "tag": "clay_pot",
+  "components": {
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 8
+      }
+    },
+    "health": {
+      "max": 10
+    },
+    "tags": [
+      "material.clay"
+    ]
+  }
+}

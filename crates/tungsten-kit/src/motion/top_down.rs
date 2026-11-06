@@ -9,8 +9,8 @@ use tungsten_core::physics::{Position, PrevPosition, RigidBody, SpatialFilter, V
 use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, World, system};
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, SHMUP, TOP_DOWN, describe,
-    round_trip,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
+    describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -19,6 +19,8 @@ use crate::intent::action_input::Intent;
 use crate::motion::path::PATH_FOLLOW;
 use crate::motion::platformer::kinematic_body;
 use crate::motion::slide::{move_and_slide, step_dt};
+use crate::motion::steering::Steering;
+use crate::motion::target::{Measure, Resolver};
 
 /// [`TopDownMoverPlugin`]'s system, in the move phase.
 pub const TOP_DOWN_MOVER: &str = "top_down_mover";
@@ -58,14 +60,26 @@ const TOP_DOWN_MOVER_COMPONENT: &str = "top_down_mover";
 /// and a rate left unset jumps, as without either. On a kinematic body the
 /// kept velocity is the one the slide moved by, so a wall absorbs it.
 ///
+/// A [`push`](Self::push), velocity from outside it (a pull, a current, a
+/// blast), joins the velocity it moves by at its next step and is cast
+/// with it, so walls stop it; with the rate that applies it joins the kept
+/// velocity, which the rate moves back toward the target, and without one
+/// it lasts that step, so a steady pull is a push each step. A
+/// [`Steering`] on the same entity drives it: at its own step the mover
+/// steers with the steering, its last velocity the steering's own, takes
+/// the steering's velocity as its direction over its speed, held to length
+/// 1, and moves by it at once, its own rates and an [`Intent`] set aside,
+/// so its casts stop a steered entity at walls. The two systems need no
+/// order: steering's own system leaves a mover's entity to the mover.
+///
 /// Scene name `top_down_mover`: `{ "speed": 240 }`, with optional
 /// `"acceleration"` and `"deceleration"` in px/s², each above 0, which
 /// spawns the mover with a `Position`, a `PrevPosition` and a `Velocity` at
 /// the spawn position, so a prefab without a `rigid_body` moves bodiless
 /// and one with a kinematic `rigid_body` keeps the body's.
 ///
-/// It is data: a save holds its speed, direction, rates and kept velocity,
-/// without its filter or its first-step flag, so a loaded mover has `new`'s
+/// It is data: a save holds its speed, direction, rates, kept velocity and
+/// a pending push, without its filter or its first-step flag, so a loaded mover has `new`'s
 /// filter until the game sets its own again and, on a kinematic body,
 /// takes its still first step, as a loaded
 /// [`PlatformerController`](crate::PlatformerController) does. That step
@@ -139,6 +153,8 @@ pub struct TopDownMover {
     deceleration: Option<f32>,
     /// The velocity it moved by at its last step, which the rates move.
     velocity: Vec2,
+    /// Pushes made since its last step, which its next step adds.
+    push: Vec2,
 }
 
 impl TopDownMover {
@@ -162,6 +178,7 @@ impl TopDownMover {
             acceleration: None,
             deceleration: None,
             velocity: Vec2::ZERO,
+            push: Vec2::ZERO,
         }
     }
 
@@ -212,13 +229,7 @@ impl TopDownMover {
     /// the fraction of its speed, so a direction longer than 1 is
     /// normalized, and one that is not finite stops it.
     pub fn set_direction(&mut self, direction: Vec2) {
-        self.direction = if !direction.is_finite() {
-            Vec2::ZERO
-        } else if direction.length_squared() > 1.0 {
-            direction.normalize()
-        } else {
-            direction
-        };
+        self.direction = held(direction);
     }
 
     /// The direction it moves in: what the game set, or, on an entity with
@@ -226,6 +237,31 @@ impl TopDownMover {
     #[must_use]
     pub fn direction(&self) -> Vec2 {
         self.direction
+    }
+
+    /// Adds `velocity` to the velocity it moves by at its next step, cast
+    /// with it, so walls stop it: a pull, a current or a blast. With the
+    /// rate that applies it joins the kept velocity, which the rate moves
+    /// back; without one it lasts that step. The pushes made before a step
+    /// sum.
+    ///
+    /// # Panics
+    ///
+    /// When `velocity` is not finite.
+    #[track_caller]
+    pub fn push(&mut self, velocity: Vec2) {
+        assert!(
+            velocity.is_finite(),
+            "TopDownMover::push: velocity must be finite (got {velocity})"
+        );
+        self.push += velocity;
+    }
+
+    /// The velocity it moved by at its last step: what its rates move, and
+    /// what a [`Steering`] driving it reads as its own.
+    #[must_use]
+    pub fn velocity(&self) -> Vec2 {
+        self.velocity
     }
 
     /// Sets the speed, 0 standing it still: what a `move_speed` stat
@@ -286,9 +322,10 @@ impl Plugin for TopDownMoverPlugin {
                 )
                 .default("null"),
             )
+            .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
             .sample(r#"{ "speed": 240 }"#)
             .roundtrip(round_trip::<TopDownMoverDef>),
         );
@@ -351,6 +388,14 @@ struct MoverSave {
     deceleration: Option<f32>,
     #[serde(with = "vec2")]
     velocity: Vec2,
+    #[serde(default, with = "vec2", skip_serializing_if = "is_zero")]
+    push: Vec2,
+}
+
+// The reference is serde's `skip_serializing_if` signature.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &Vec2) -> bool {
+    *value == Vec2::ZERO
 }
 
 impl TryFrom<MoverSave> for TopDownMover {
@@ -374,7 +419,11 @@ impl TryFrom<MoverSave> for TopDownMover {
                 return Err(format!("{field}: must be finite and > 0 (got {rate})"));
             }
         }
-        for (field, value) in [("direction", save.direction), ("velocity", save.velocity)] {
+        for (field, value) in [
+            ("direction", save.direction),
+            ("velocity", save.velocity),
+            ("push", save.push),
+        ] {
             if !value.is_finite() {
                 return Err(format!("{field}: must be finite (got {value})"));
             }
@@ -387,6 +436,7 @@ impl TryFrom<MoverSave> for TopDownMover {
             acceleration: save.acceleration,
             deceleration: save.deceleration,
             velocity: save.velocity,
+            push: save.push,
         };
         mover.set_direction(save.direction);
         Ok(mover)
@@ -401,6 +451,7 @@ impl From<TopDownMover> for MoverSave {
             acceleration: mover.acceleration,
             deceleration: mover.deceleration,
             velocity: mover.velocity,
+            push: mover.push,
         }
     }
 }
@@ -410,6 +461,8 @@ impl From<TopDownMover> for MoverSave {
 struct Runner {
     /// The step's movers, kept so a step allocates nothing once warm.
     entities: Vec<Entity>,
+    /// Resolves a steering's target.
+    resolver: Resolver,
     /// The entities whose body was warned about.
     warned: HashSet<Entity>,
 }
@@ -426,9 +479,14 @@ impl Runner {
                 .query::<(Entity, &TopDownMover)>()
                 .map(|(entity, _)| entity),
         );
-        let Self { entities, warned } = self;
+        self.resolver.begin();
+        let Self {
+            entities,
+            resolver,
+            warned,
+        } = self;
         for &entity in entities.iter() {
-            let (own_direction, started, filter, mover) = {
+            let (own_direction, started, filter, mover, push) = {
                 let mover = world.get::<TopDownMover>(entity).unwrap();
                 (
                     mover.direction,
@@ -440,12 +498,27 @@ impl Runner {
                         mover.deceleration,
                         mover.velocity,
                     ),
+                    mover.push,
                 )
             };
-            let direction = world
-                .get::<Intent>(entity)
-                .map_or(own_direction, Intent::movement);
-            let wanted = step_velocity(mover, direction, dt);
+            // A steering's velocity is its direction, taken at once; the
+            // input's direction moves by the rates.
+            let steered = steer(world, entity, mover.3, dt, resolver);
+            let (direction, wanted) = if let Some(velocity) = steered {
+                let direction = if mover.0 > 0.0 {
+                    held(velocity / mover.0)
+                } else {
+                    Vec2::ZERO
+                };
+                (direction, direction * mover.0)
+            } else {
+                let direction = world
+                    .get::<Intent>(entity)
+                    .map_or(own_direction, Intent::movement);
+                (direction, step_velocity(mover, direction, dt))
+            };
+            let steered = steered.is_some();
+            let wanted = if started { wanted + push } else { wanted };
             let velocity = if world.has::<RigidBody>(entity) {
                 let Some((position, collider)) = kinematic_body(world, entity) else {
                     warn(warned, entity);
@@ -459,7 +532,15 @@ impl Runner {
                         wanted * dt,
                         &filter,
                     );
-                    slide.moved / dt
+                    // A steered move too short to cast that met nothing is
+                    // taken as it is, so an arrive's last creep lands.
+                    let crept =
+                        slide.moved == Vec2::ZERO && !(slide.wall || slide.floor || slide.ceiling);
+                    if steered && crept {
+                        wanted
+                    } else {
+                        slide.moved / dt
+                    }
                 } else {
                     Vec2::ZERO
                 };
@@ -482,9 +563,45 @@ impl Runner {
             let mover = world.get_mut::<TopDownMover>(entity).unwrap();
             mover.direction = direction;
             mover.velocity = velocity;
+            if started {
+                mover.push = Vec2::ZERO;
+            }
             mover.started = true;
         }
     }
+}
+
+/// A direction as a mover holds it: longer than 1 normalized, not finite
+/// stopped.
+fn held(direction: Vec2) -> Vec2 {
+    if !direction.is_finite() {
+        Vec2::ZERO
+    } else if direction.length_squared() > 1.0 {
+        direction.normalize()
+    } else {
+        direction
+    }
+}
+
+/// The velocity a [`Steering`] on `entity` wants at this step, from the
+/// mover's last velocity `current`, when it has one; the steering keeps it
+/// as its own, with the entity it steered at.
+fn steer(
+    world: &mut World,
+    entity: Entity,
+    current: Vec2,
+    dt: f32,
+    resolver: &mut Resolver,
+) -> Option<Vec2> {
+    let steering = world.get::<Steering>(entity)?;
+    let from = world.get::<Position>(entity)?.0;
+    let resolved = resolver.resolve(world, steering.target(), entity, from, Measure::Now);
+    let velocity = steering.steer(current, resolved.map(|(_, at)| at - from), dt);
+    world
+        .get_mut::<Steering>(entity)
+        .unwrap()
+        .drove(velocity, resolved.and_then(|(target, _)| target));
+    Some(velocity)
 }
 
 /// The velocity a mover of (speed, acceleration, deceleration, kept

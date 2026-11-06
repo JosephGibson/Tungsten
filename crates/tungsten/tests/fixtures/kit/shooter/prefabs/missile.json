@@ -1,0 +1,26 @@
+{
+  "tag": "missile",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 3
+      }
+    },
+    "linear_motion": {
+      "velocity": [
+        240,
+        -60
+      ],
+      "acceleration": [
+        -480,
+        0
+      ]
+    },
+    "facing": {
+      "turn": true,
+      "mirror": true
+    }
+  }
+}

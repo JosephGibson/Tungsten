@@ -1,0 +1,9 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "seeker_idle_0"
+    }
+  ],
+  "looping": true
+}

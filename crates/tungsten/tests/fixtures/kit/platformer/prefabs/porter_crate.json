@@ -1,0 +1,15 @@
+{
+  "tag": "porter_crate",
+  "components": {
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          8
+        ]
+      }
+    }
+  }
+}

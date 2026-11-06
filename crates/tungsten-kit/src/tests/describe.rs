@@ -55,7 +55,8 @@ fn round_trip_of(description: &ComponentDescription, value: Value) -> Result<Val
 /// a shape that holds exactly one field, that field alone. `None` when the
 /// sample is not an object.
 fn with_field(description: &ComponentDescription, field: &str, value: Value) -> Option<Value> {
-    let mut object = if description.is_one_of() {
+    // `despawn_outside` takes exactly one of its bounds, so each alone.
+    let mut object = if description.is_one_of() || description.name() == "despawn_outside" {
         serde_json::Map::new()
     } else {
         sample_of(description).as_object()?.clone()
@@ -102,9 +103,14 @@ fn valid_value(descriptions: &KitDescriptions, ty: &FieldType) -> Value {
             json!("puff")
         }
         FieldType::Vec2 => json!([1.0, 2.0]),
-        // A target's `source` takes the empty object.
+        // A clip takes an animation ID; a target's `source` the empty
+        // object.
+        FieldType::Object(form) if *form == crate::present::character::CLIPS_FORM => {
+            json!("puff")
+        }
         FieldType::Object(_) => json!({}),
         FieldType::Shape(name) => sample_of(descriptions.get_shape(name).unwrap()),
+        FieldType::Damage => json!(1.0),
         other => panic!("no probe value for {other:?}"),
     }
 }
@@ -122,9 +128,14 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let kinds: BTreeSet<&str> = descriptions.kinds().map(|(kind, _)| kind).collect();
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
-    assert_eq!(described.len(), 45);
-    assert_eq!(kinds.len(), 9);
-    assert_eq!(descriptions.shapes().count(), 40);
+    assert_eq!(described.len(), 48);
+    assert_eq!(kinds.len(), 11);
+    assert_eq!(
+        descriptions.shapes().count(),
+        81,
+        "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction, \
+         the projectile's end and the place; 7.10g's clip rule, blink, path rider and tag look"
+    );
 }
 
 #[test]
@@ -154,6 +165,7 @@ fn every_shape_a_field_names_is_described() {
                     "curve",
                     "damage_type",
                     "effect",
+                    "interaction",
                     "offers",
                     "stat_bounds",
                     "weighted_table",
@@ -238,9 +250,10 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 34,
-        "the cue action's twelve forms, the target's three, the hit shape's two, the modifier's \
-         four, the ability trigger's three, its target's four, its payload's four and the offer's two"
+        probed, 53,
+        "the cue action's fifteen forms, the target's three, the hit shape's two, the modifier's \
+         four, the ability trigger's four, its target's four, its payload's seven, the offer's two, \
+         a chemistry output's eleven and a projectile end's one"
     );
 }
 
@@ -266,11 +279,32 @@ fn each_described_enum_variant_deserializes() {
     }
     assert_eq!(
         variants,
-        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2 + 3 + 4 + 3 + 4 + 3 + 2 + 3 + 2 + 2 + 2 + 2,
+        3 + EASING_NAMES.len()
+            + 4
+            + 3
+            + 3
+            + 2
+            + 3
+            + 4
+            + 3
+            + 4
+            + 3
+            + 2
+            + 3
+            + 2
+            + 2
+            + 2
+            + 2
+            + 2
+            + 6
+            + 2
+            + 4
+            + 2,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
          axes, the effect action's targets, the stack's refresh and expire policies, and the \
-         ability action's ops and targets, and the level's counter targets"
+         ability action's ops and targets, the level's counter targets, the ability's \
+         directions, a cue rule's reasons, a cap's past, a clip rule's motions and a hitbox's facings"
     );
 }
 
@@ -383,8 +417,13 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 103,
-        "the kit's numeric fields, three of them a number-or-map damage"
+        checked, 173,
+        "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
+         four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
+         hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
+         radius and intensity and sound's volume, a lob's speed, a cone's reach, half angle, \
+         rays, damage, knockback, sweep, push and far share, a conduction's damage, \
+         reach, keep and jumps, a cap's max and a place's range, a blink's last seconds, a spawner's alive and first, a world rule's margin, a path's wait, a lift's board and back, a tag look's growth and a health bar's rise and inset"
     );
 }
 
@@ -393,9 +432,9 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let world = world();
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
-    assert_eq!(count("component "), 45);
-    assert_eq!(count("shape "), 40);
-    assert_eq!(count("kind "), 9);
+    assert_eq!(count("component "), 48);
+    assert_eq!(count("shape "), 81);
+    assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));
     assert!(text.contains("  field invulnerability: f32 (>= 0) = 0.0 "));
@@ -406,7 +445,8 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
         text.contains("shape cue_action: One reaction to an event.\n  exactly one of its fields\n")
     );
     assert!(text.contains("kind tags: "));
-    assert!(text.contains("  field roll: loot_tables ID or entry "));
+    assert!(text.contains("  field roll: shape roll_action "));
+    assert!(text.contains("  field table: loot_tables ID or entry "));
     assert!(text.contains("shape hit_shape: "));
     let first_shape = text.find("\nshape ").unwrap();
     assert!(text.rfind("\ncomponent ").unwrap() < first_shape);

@@ -1,0 +1,14 @@
+{
+  "tag": "warded_knight",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 40
+    },
+    "resist": {
+      "damage.cold": 0
+    }
+  }
+}

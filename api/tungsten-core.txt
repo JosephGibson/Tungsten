@@ -570,6 +570,25 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ManifestError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ManifestError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ManifestError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ManifestError
+pub enum tungsten_core::assets::manifest::SheetPoint
+pub tungsten_core::assets::manifest::SheetPoint::Every([f32; 2])
+pub tungsten_core::assets::manifest::SheetPoint::Frames(alloc::vec::Vec<[f32; 2]>)
+impl core::clone::Clone for tungsten_core::assets::manifest::SheetPoint
+pub fn tungsten_core::assets::manifest::SheetPoint::clone(&self) -> tungsten_core::assets::manifest::SheetPoint
+impl core::cmp::PartialEq for tungsten_core::assets::manifest::SheetPoint
+pub fn tungsten_core::assets::manifest::SheetPoint::eq(&self, &tungsten_core::assets::manifest::SheetPoint) -> bool
+impl core::fmt::Debug for tungsten_core::assets::manifest::SheetPoint
+pub fn tungsten_core::assets::manifest::SheetPoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::manifest::SheetPoint
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::SheetPoint
+pub fn tungsten_core::assets::manifest::SheetPoint::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::SheetPoint
+impl core::marker::Send for tungsten_core::assets::manifest::SheetPoint
+impl core::marker::Sync for tungsten_core::assets::manifest::SheetPoint
+impl core::marker::Unpin for tungsten_core::assets::manifest::SheetPoint
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::SheetPoint
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::SheetPoint
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::SheetPoint
 pub struct tungsten_core::assets::manifest::AnimationEntry
 pub tungsten_core::assets::manifest::AnimationEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::AnimationEntry
@@ -976,6 +995,7 @@ pub tungsten_core::assets::manifest::ResolvedSprite::filter: tungsten_core::asse
 pub tungsten_core::assets::manifest::ResolvedSprite::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::manifest::ResolvedSprite::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::manifest::ResolvedSprite::path: std::path::PathBuf
+pub tungsten_core::assets::manifest::ResolvedSprite::points: alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>
 pub tungsten_core::assets::manifest::ResolvedSprite::rect: core::option::Option<[u32; 4]>
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedSprite
 pub fn tungsten_core::assets::manifest::ResolvedSprite::clone(&self) -> tungsten_core::assets::manifest::ResolvedSprite
@@ -1058,6 +1078,7 @@ pub tungsten_core::assets::manifest::SheetEntry::filter: tungsten_core::assets::
 pub tungsten_core::assets::manifest::SheetEntry::frame: [u32; 2]
 pub tungsten_core::assets::manifest::SheetEntry::normal_map: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::manifest::SheetEntry::path: alloc::string::String
+pub tungsten_core::assets::manifest::SheetEntry::points: alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::manifest::SheetPoint>
 impl core::clone::Clone for tungsten_core::assets::manifest::SheetEntry
 pub fn tungsten_core::assets::manifest::SheetEntry::clone(&self) -> tungsten_core::assets::manifest::SheetEntry
 impl core::fmt::Debug for tungsten_core::assets::manifest::SheetEntry
@@ -1097,6 +1118,7 @@ pub tungsten_core::assets::manifest::SpriteEntry::filter: tungsten_core::assets:
 pub tungsten_core::assets::manifest::SpriteEntry::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::manifest::SpriteEntry::normal_map: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::manifest::SpriteEntry::path: alloc::string::String
+pub tungsten_core::assets::manifest::SpriteEntry::points: alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::manifest::SpriteEntry
 pub fn tungsten_core::assets::manifest::SpriteEntry::clone(&self) -> tungsten_core::assets::manifest::SpriteEntry
 impl core::fmt::Debug for tungsten_core::assets::manifest::SpriteEntry
@@ -1749,6 +1771,7 @@ pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
@@ -1796,9 +1819,12 @@ pub tungsten_core::assets::registry::SpriteAsset::lit_atlas: core::option::Optio
 pub tungsten_core::assets::registry::SpriteAsset::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::registry::SpriteAsset::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::registry::SpriteAsset::path: std::path::PathBuf
+pub tungsten_core::assets::registry::SpriteAsset::points: alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>
 pub tungsten_core::assets::registry::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::registry::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::assets::registry::SpriteAsset::width: u32
+impl tungsten_core::assets::registry::SpriteAsset
+pub fn tungsten_core::assets::registry::SpriteAsset::point(&self, &str) -> core::option::Option<[f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
 pub fn tungsten_core::assets::registry::SpriteAsset::clone(&self) -> tungsten_core::assets::registry::SpriteAsset
 impl core::fmt::Debug for tungsten_core::assets::registry::SpriteAsset
@@ -3284,6 +3310,7 @@ pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
@@ -4459,9 +4486,12 @@ pub tungsten_core::assets::SpriteAsset::lit_atlas: core::option::Option<tungsten
 pub tungsten_core::assets::SpriteAsset::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::SpriteAsset::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::SpriteAsset::path: std::path::PathBuf
+pub tungsten_core::assets::SpriteAsset::points: alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>
 pub tungsten_core::assets::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::assets::SpriteAsset::width: u32
+impl tungsten_core::assets::registry::SpriteAsset
+pub fn tungsten_core::assets::registry::SpriteAsset::point(&self, &str) -> core::option::Option<[f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
 pub fn tungsten_core::assets::registry::SpriteAsset::clone(&self) -> tungsten_core::assets::registry::SpriteAsset
 impl core::fmt::Debug for tungsten_core::assets::registry::SpriteAsset
@@ -5450,6 +5480,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::components::Visibility
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Visibility
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Visibility
 pub fn tungsten_core::components::parallax_world_position(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::components::sprite_point(&tungsten_core::World, tungsten_core::Entity, &str) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::components::sync_position_to_transform(&mut tungsten_core::World)
 pub mod tungsten_core::config
 pub enum tungsten_core::config::ConfigError
@@ -6613,6 +6644,7 @@ pub fn tungsten_core::CommandBuffer::remove_component<T: 'static>(&mut self, tun
 pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
 impl tungsten_core::CommandBuffer
+pub fn tungsten_core::CommandBuffer::replace_prefab(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_prefab(&mut self, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_prefab_from(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer
@@ -6843,6 +6875,7 @@ pub fn tungsten_core::World::get_mut<T: 'static>(&mut self, tungsten_core::Entit
 pub fn tungsten_core::World::get_resource<T: 'static>(&self) -> core::option::Option<&T>
 pub fn tungsten_core::World::get_resource_mut<T: 'static>(&mut self) -> core::option::Option<&mut T>
 pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bool
+pub fn tungsten_core::World::has_any<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::hold_events_for_fixed_step(&mut self)
@@ -7743,6 +7776,11 @@ impl core::marker::UnsafeUnpin for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::lighting::AmbientLight
 pub const tungsten_core::lighting::LIGHT_CAP: usize
+pub const tungsten_core::lighting::MIN_LIGHT_RADIUS: f32
+pub fn tungsten_core::lighting::light_at(&tungsten_core::World, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
+pub fn tungsten_core::lighting::light_from(&tungsten_core::components::Light, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
+pub fn tungsten_core::lighting::light_level(&tungsten_core::World, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_core::lighting::luma(glam::f32::vec3::Vec3) -> f32
 pub mod tungsten_core::persist
 #[non_exhaustive] pub enum tungsten_core::persist::WriteError
 pub tungsten_core::persist::WriteError::Busy
@@ -8238,7 +8276,10 @@ impl core::marker::Unpin for tungsten_core::physics::step::TerrainFace
 impl core::marker::UnsafeUnpin for tungsten_core::physics::step::TerrainFace
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::step::TerrainFace
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::apply_impulse(&mut tungsten_core::World, tungsten_core::Entity, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_core::physics::step::apply_radial_impulse(&mut tungsten_core::World, glam::f32::vec2::Vec2, f32, f32, &tungsten_core::SpatialFilter) -> usize
 pub fn tungsten_core::physics::step::physics_step(&mut tungsten_core::World)
+pub fn tungsten_core::physics::step::take_push(&mut tungsten_core::World, tungsten_core::Entity) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::physics::step::teleport(&mut tungsten_core::World, tungsten_core::Entity, glam::f32::vec2::Vec2)
 pub fn tungsten_core::physics::step::wake(&mut tungsten_core::World, tungsten_core::Entity)
 #[non_exhaustive] pub enum tungsten_core::physics::BodyKind
@@ -8719,11 +8760,14 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::Se
 pub struct tungsten_core::physics::SpatialFilter
 impl tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::excluding(self, tungsten_core::Entity) -> Self
+pub fn tungsten_core::SpatialFilter::mask(&self) -> u32
 pub fn tungsten_core::SpatialFilter::new() -> Self
 pub fn tungsten_core::SpatialFilter::with_bodies(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_mask(self, u32) -> Self
+pub fn tungsten_core::SpatialFilter::with_one_way(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_sensors(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_tiles(self, bool) -> Self
+pub fn tungsten_core::SpatialFilter::without(&self) -> u32
 pub fn tungsten_core::SpatialFilter::without_layers(self, u32) -> Self
 impl core::clone::Clone for tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::clone(&self) -> tungsten_core::SpatialFilter
@@ -8771,6 +8815,7 @@ pub tungsten_core::physics::SpatialHit::entity: core::option::Option<tungsten_co
 pub tungsten_core::physics::SpatialHit::layers: u32
 pub tungsten_core::physics::SpatialHit::normal: glam::f32::vec2::Vec2
 pub tungsten_core::physics::SpatialHit::point: glam::f32::vec2::Vec2
+pub tungsten_core::physics::SpatialHit::slope: bool
 pub tungsten_core::physics::SpatialHit::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl core::clone::Clone for tungsten_core::SpatialHit
 pub fn tungsten_core::SpatialHit::clone(&self) -> tungsten_core::SpatialHit
@@ -8906,6 +8951,8 @@ pub fn tungsten_core::physics::aabb_vs_aabb_speculative(&tungsten_core::physics:
 pub fn tungsten_core::physics::aabb_vs_circle(&tungsten_core::physics::collision::Aabb, glam::f32::vec2::Vec2, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::physics::aabb_vs_circle_masked(&tungsten_core::physics::collision::Aabb, glam::f32::vec2::Vec2, f32, u8) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::physics::aabb_vs_circle_speculative(&tungsten_core::physics::collision::Aabb, glam::f32::vec2::Vec2, f32, u8, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
+pub fn tungsten_core::physics::apply_impulse(&mut tungsten_core::World, tungsten_core::Entity, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_core::physics::apply_radial_impulse(&mut tungsten_core::World, glam::f32::vec2::Vec2, f32, f32, &tungsten_core::SpatialFilter) -> usize
 pub fn tungsten_core::physics::cast_ray(&tungsten_core::World, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, &tungsten_core::SpatialFilter) -> core::option::Option<tungsten_core::SpatialHit>
 pub fn tungsten_core::physics::cast_ray_where(&tungsten_core::World, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, &tungsten_core::SpatialFilter, impl core::ops::function::FnMut(&tungsten_core::SpatialHit) -> bool) -> core::option::Option<tungsten_core::SpatialHit>
 pub fn tungsten_core::physics::cast_shape(&tungsten_core::World, tungsten_core::physics::components::Shape, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, &tungsten_core::SpatialFilter) -> core::option::Option<tungsten_core::SpatialHit>
@@ -8918,6 +8965,7 @@ pub fn tungsten_core::physics::overlap(&tungsten_core::World, tungsten_core::phy
 pub fn tungsten_core::physics::physics_prev_snapshot(&mut tungsten_core::World)
 pub fn tungsten_core::physics::physics_step(&mut tungsten_core::World)
 pub fn tungsten_core::physics::physics_sync(&mut tungsten_core::World)
+pub fn tungsten_core::physics::take_push(&mut tungsten_core::World, tungsten_core::Entity) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::physics::teleport(&mut tungsten_core::World, tungsten_core::Entity, glam::f32::vec2::Vec2)
 pub fn tungsten_core::physics::wake(&mut tungsten_core::World, tungsten_core::Entity)
 pub type tungsten_core::physics::ProxyId = u32
@@ -18044,6 +18092,7 @@ pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
@@ -18362,6 +18411,7 @@ pub fn tungsten_core::CommandBuffer::remove_component<T: 'static>(&mut self, tun
 pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
 impl tungsten_core::CommandBuffer
+pub fn tungsten_core::CommandBuffer::replace_prefab(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_prefab(&mut self, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_prefab_from(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer
@@ -21028,11 +21078,14 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::Soun
 pub struct tungsten_core::SpatialFilter
 impl tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::excluding(self, tungsten_core::Entity) -> Self
+pub fn tungsten_core::SpatialFilter::mask(&self) -> u32
 pub fn tungsten_core::SpatialFilter::new() -> Self
 pub fn tungsten_core::SpatialFilter::with_bodies(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_mask(self, u32) -> Self
+pub fn tungsten_core::SpatialFilter::with_one_way(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_sensors(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_tiles(self, bool) -> Self
+pub fn tungsten_core::SpatialFilter::without(&self) -> u32
 pub fn tungsten_core::SpatialFilter::without_layers(self, u32) -> Self
 impl core::clone::Clone for tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::clone(&self) -> tungsten_core::SpatialFilter
@@ -21080,6 +21133,7 @@ pub tungsten_core::SpatialHit::entity: core::option::Option<tungsten_core::Entit
 pub tungsten_core::SpatialHit::layers: u32
 pub tungsten_core::SpatialHit::normal: glam::f32::vec2::Vec2
 pub tungsten_core::SpatialHit::point: glam::f32::vec2::Vec2
+pub tungsten_core::SpatialHit::slope: bool
 pub tungsten_core::SpatialHit::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl core::clone::Clone for tungsten_core::SpatialHit
 pub fn tungsten_core::SpatialHit::clone(&self) -> tungsten_core::SpatialHit
@@ -21161,9 +21215,12 @@ pub tungsten_core::SpriteAsset::lit_atlas: core::option::Option<tungsten_core::a
 pub tungsten_core::SpriteAsset::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::SpriteAsset::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::SpriteAsset::path: std::path::PathBuf
+pub tungsten_core::SpriteAsset::points: alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>
 pub tungsten_core::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::SpriteAsset::width: u32
+impl tungsten_core::assets::registry::SpriteAsset
+pub fn tungsten_core::assets::registry::SpriteAsset::point(&self, &str) -> core::option::Option<[f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
 pub fn tungsten_core::assets::registry::SpriteAsset::clone(&self) -> tungsten_core::assets::registry::SpriteAsset
 impl core::fmt::Debug for tungsten_core::assets::registry::SpriteAsset
@@ -22386,6 +22443,7 @@ pub fn tungsten_core::World::get_mut<T: 'static>(&mut self, tungsten_core::Entit
 pub fn tungsten_core::World::get_resource<T: 'static>(&self) -> core::option::Option<&T>
 pub fn tungsten_core::World::get_resource_mut<T: 'static>(&mut self) -> core::option::Option<&mut T>
 pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bool
+pub fn tungsten_core::World::has_any<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::hold_events_for_fixed_step(&mut self)
@@ -22647,11 +22705,14 @@ pub fn tungsten_core::aabb_vs_circle(&tungsten_core::physics::collision::Aabb, g
 pub fn tungsten_core::circle_vs_circle(glam::f32::vec2::Vec2, f32, glam::f32::vec2::Vec2, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::lerp_f32(f32, f32, f32) -> f32
 pub fn tungsten_core::lerp_u8(u8, u8, f32) -> u8
+pub fn tungsten_core::light_at(&tungsten_core::World, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
+pub fn tungsten_core::light_level(&tungsten_core::World, glam::f32::vec2::Vec2) -> f32
 pub fn tungsten_core::parallax_world_position(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::physics_prev_snapshot(&mut tungsten_core::World)
 pub fn tungsten_core::physics_step(&mut tungsten_core::World)
 pub fn tungsten_core::physics_sync(&mut tungsten_core::World)
 pub fn tungsten_core::splitmix64(u64) -> u64
+pub fn tungsten_core::sprite_point(&tungsten_core::World, tungsten_core::Entity, &str) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::sync_position_to_transform(&mut tungsten_core::World)
 pub fn tungsten_core::system(impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::World) + 'static) -> tungsten_core::schedule::SystemDesc
 pub type tungsten_core::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>

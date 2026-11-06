@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::{Inspectable, Plugin, Schedule, SpawnContext, World};
 
 use crate::foundation::describe::{
-    ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, TOP_DOWN, describe,
+    ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, TOP_DOWN, describe,
     round_trip,
 };
 use crate::foundation::inspect::register_rows;
@@ -290,8 +290,9 @@ impl Plugin for CountersPlugin {
                 FieldType::Object("counter name → i64"),
                 "the value itself: the starting counts; names are dotted, undeclared",
             ))
+            .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(GRID)
+            .genre(RPG)
             .sample(r#"{ "coins": 0 }"#)
             .roundtrip(round_trip::<Counters>),
         );
@@ -307,7 +308,7 @@ impl Plugin for CountersPlugin {
                 "the value itself: the flags set at the start; names are dotted, undeclared",
             ))
             .genre(PLATFORMER)
-            .genre(GRID)
+            .genre(RPG)
             .sample(r#"["door.locked"]"#)
             .roundtrip(round_trip::<Flags>),
         );

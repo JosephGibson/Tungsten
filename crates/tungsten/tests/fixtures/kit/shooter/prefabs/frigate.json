@@ -1,0 +1,13 @@
+{
+  "tag": "frigate",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 20,
+      "despawn_on_death": 0
+    },
+    "health_bar": {}
+  }
+}

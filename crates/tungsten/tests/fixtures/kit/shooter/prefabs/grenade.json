@@ -1,0 +1,38 @@
+{
+  "tag": "grenade",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        0,
+        0
+      ],
+      "acceleration": [
+        0,
+        600
+      ]
+    },
+    "lifetime": {
+      "seconds": 2
+    },
+    "projectile": {
+      "end": {
+        "blast": {
+          "radius": 64,
+          "damage": 20
+        }
+      }
+    },
+    "cues": {
+      "expired": [
+        {
+          "prefab": "burst"
+        },
+        {
+          "sound": {
+            "id": "blip"
+          }
+        }
+      ]
+    }
+  }
+}

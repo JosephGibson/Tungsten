@@ -616,7 +616,9 @@ pub struct UiDebug {
     /// Paint no `Game` or `GamePopup` root; the debug layers stay.
     pub hide_game_layers: bool,
     /// Append a one-pixel magenta outline of every painted node's box, after
-    /// every other command.
+    /// every other command, each in the clip its node paints in; a box wholly
+    /// outside that clip, a scroll panel's hidden row, outlines nothing
+    /// (debug-pass). Off, the paint keeps no box.
     pub show_bounds: bool,
 }
 
@@ -837,7 +839,8 @@ impl UiTree {
     /// viewport of the last [`Self::layout`]. `Hidden` and `Collapsed`
     /// subtrees paint nothing; with `debug.hide_game_layers` neither do the
     /// `Game` and `GamePopup` layers, and `debug.show_bounds` appends an
-    /// outline per painted node. Clears the paint-dirty flag.
+    /// outline per painted node in its node's clip, none for a box wholly
+    /// outside it. Clears the paint-dirty flag.
     pub fn paint(
         &mut self,
         scale: f32,
@@ -856,7 +859,7 @@ impl UiTree {
         out.clips.push(to_physical(viewport, scale));
 
         let mut warned = std::mem::take(&mut self.warned);
-        let mut bounds = Vec::new();
+        let mut bounds: Vec<(Rect, u32)> = Vec::new();
         let mut stack: Vec<PaintStep> = Vec::new();
         for i in 0..self.roots.len() {
             let root = self.roots[i];
@@ -883,7 +886,7 @@ impl UiTree {
                         scale,
                         sprites,
                         out,
-                        &mut bounds,
+                        debug.show_bounds.then_some(&mut bounds),
                         &mut warned,
                         &mut stack,
                     ),
@@ -891,15 +894,22 @@ impl UiTree {
                 }
             }
         }
-        if debug.show_bounds {
-            for rect in bounds {
+        for (rect, clip) in bounds {
+            let shown = out.clips.get(clip as usize).is_some_and(|area| {
+                let (x, y) = (area.x as f32, area.y as f32);
+                rect.min.x < x + area.width as f32
+                    && rect.max.x > x
+                    && rect.min.y < y + area.height as f32
+                    && rect.max.y > y
+            });
+            if shown {
                 out.commands.push(PaintCommand::Rect {
                     rect,
                     fill: [0, 0, 0, 0],
                     border: BOUNDS_OUTLINE,
                     border_width: 1.0,
                     corner_radius: 0.0,
-                    clip: 0,
+                    clip,
                 });
             }
         }
@@ -923,7 +933,7 @@ impl UiTree {
         scale: f32,
         sprites: &AssetRegistry,
         out: &mut PaintList,
-        bounds: &mut Vec<Rect>,
+        bounds: Option<&mut Vec<(Rect, u32)>>,
         warned: &mut HashSet<Warned>,
         stack: &mut Vec<PaintStep>,
     ) {
@@ -960,7 +970,9 @@ impl UiTree {
         let physical = scaled(transform.rect(rect), unit);
         let physical = if snap { snapped(physical) } else { physical };
         let paint_rect = |part: Rect| scaled(transform.rect(part), unit);
-        bounds.push(physical);
+        if let Some(bounds) = bounds {
+            bounds.push((physical, clip));
+        }
         if let Some(shadow) = node.shadow {
             push_shadow(out, rect, shadow, transform, unit, alpha, clip);
         }

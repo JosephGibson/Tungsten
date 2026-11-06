@@ -664,3 +664,314 @@ fn shots_meet_tiles_by_their_layers() {
         assert!(same_meetings(&got, &want), "two layers, dt {dt}: {got:?}");
     }
 }
+
+#[test]
+fn a_bolt_carrying_a_delivery_strikes_from_it_whatever_its_hitboxs_damage() {
+    let (mut world, mut schedule) = projectile_rig(&["fire"]);
+    target(&mut world);
+    let holder = world.spawn_with((Tags::new(["fire"]),));
+    let zap = crate::Ability::new()
+        .with_payload(crate::Payload::Hitbox(0.1))
+        .with_skill(crate::Skill::new().with_damage("fire", 5.0, 5.0));
+    let delivery =
+        crate::intent::sheet::resolve(&world, holder, "zap", &zap, zap.skill().unwrap()).delivery;
+    world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        Hitbox::new(HitShape::circle(2.0), 0.0),
+        Projectile::new(),
+        delivery,
+    ));
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(
+        parts_sent(&world),
+        [(5.0, vec!["fire"])],
+        "the snapshot's part"
+    );
+    let hit = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .next()
+        .copied()
+        .unwrap();
+    assert_eq!(hit.source, Some(holder), "its holder's credit");
+}
+
+// 7.10c, Step 8: a projectile's end blast (S-73).
+
+/// A World with physics, tags, stats, health, linear motion, lifetimes and
+/// projectiles, chemistry with no rule when `chemistry`, a trace and room
+/// for a tile map.
+fn blast_rig(chemistry: bool) -> (World, Schedule) {
+    use tungsten_core::physics::PhysicsPlugin;
+
+    let mut world = World::new();
+    world.insert_resource(tungsten_core::Time::new());
+    world.insert_resource(tungsten_core::CommandBuffer::new());
+    world.insert_resource(tungsten_core::TilemapRegistry::new());
+    world.insert_resource(crate::foundation::trace::KitTrace::default());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    crate::TagsPlugin::new().build(&mut schedule, &mut world);
+    crate::StatsPlugin::new().build(&mut schedule, &mut world);
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    crate::LinearMotionPlugin.build(&mut schedule, &mut world);
+    crate::LifetimePlugin.build(&mut schedule, &mut world);
+    if chemistry {
+        crate::ChemistryPlugin::new().build(&mut schedule, &mut world);
+    }
+    ProjectilePlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// One 1/60 s step and the flushes that end its frame: the step's
+/// expiries and the damage parts its resolve landed.
+fn blast_step(
+    world: &mut World,
+    schedule: &mut Schedule,
+) -> (Vec<ProjectileExpired>, Vec<crate::DamagedPart>) {
+    world
+        .resource_mut::<tungsten_core::Time>()
+        .advance_frame(1.0 / 60.0);
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+    world
+        .resource_mut::<tungsten_core::Time>()
+        .leave_fixed_steps();
+    let mut commands = world
+        .remove_resource::<tungsten_core::CommandBuffer>()
+        .unwrap();
+    world.flush_reusing(&mut commands);
+    world.insert_resource(commands);
+    world.flush_events();
+    let expired = world
+        .resource::<EventQueue<ProjectileExpired>>()
+        .iter()
+        .copied()
+        .collect();
+    let parts = world
+        .resource::<EventQueue<crate::DamagedPart>>()
+        .iter()
+        .copied()
+        .collect();
+    (expired, parts)
+}
+
+/// `projectile` ending in `{ "blast": { "radius": 50, "damage": 10 } }`.
+fn blasting(mut projectile: Projectile) -> Projectile {
+    let end: ProjectileEnd =
+        serde_json::from_value(json!({ "blast": { "radius": 50, "damage": 10 } })).unwrap();
+    projectile.end = Some(end);
+    projectile
+}
+
+/// A bolt of radius 2 at the origin, flying along +x at 600 px/s: 10 px a
+/// step.
+fn bolt(world: &mut World, projectile: Projectile) -> Entity {
+    world.spawn_with((
+        Position(Vec2::ZERO),
+        tungsten_core::physics::PrevPosition(Vec2::ZERO),
+        crate::LinearMotion::new(Vec2::new(600.0, 0.0)),
+        Hitbox::new(HitShape::circle(2.0), 0.0),
+        projectile,
+    ))
+}
+
+/// Something with 100 health at `at`, which nothing but a blast meets.
+fn bystander(world: &mut World, at: Vec2) -> Entity {
+    world.spawn_with((
+        tungsten_core::Transform::from_position(at),
+        crate::Health::new(100.0),
+    ))
+}
+
+/// The parts in `parts` on `entity`: amount, credit and depth.
+fn parts_on(parts: &[crate::DamagedPart], entity: Entity) -> Vec<(f32, Option<Entity>, u8)> {
+    parts
+        .iter()
+        .filter(|part| part.entity == entity)
+        .map(|part| (part.amount, part.source, part.depth))
+        .collect()
+}
+
+#[test]
+fn an_end_blast_goes_off_at_each_of_its_ends_and_not_at_a_lifetimes() {
+    use tungsten_core::physics::RigidBodyBundle;
+
+    // Each end, 10 px a step: its name, the projectile, the x its centre
+    // ends at, and the x it met something at on the way without ending.
+    let lanes = [
+        // Past its pierce: it passes a hurtbox of radius 8 at x 100 and
+        // ends at the next, at x 200.
+        ("hit", Projectile::new().with_pierce(1), 190.0, Some(90.0)),
+        // A wall it turns at, its face at x 195, then one it does not, its
+        // face at x -95.
+        (
+            "wall",
+            Projectile::new().with_bounces(1),
+            -93.0,
+            Some(193.0),
+        ),
+        // Its range.
+        ("range", Projectile::new().with_range(150.0), 150.0, None),
+    ];
+    for (end, projectile, x, met) in lanes {
+        let (mut world, mut schedule) = blast_rig(true);
+        match end {
+            "hit" => {
+                for at in [100.0, 200.0] {
+                    world.spawn_with((
+                        tungsten_core::Transform::from_position(Vec2::new(at, 0.0)),
+                        Hurtbox::new(HitShape::circle(8.0)),
+                        crate::Health::new(100.0),
+                    ));
+                }
+            }
+            "wall" => {
+                for at in [200.0, -100.0] {
+                    world.spawn_with(RigidBodyBundle::r#static(
+                        Position::new(at, 0.0),
+                        Collider::aabb(Vec2::new(5.0, 50.0)),
+                    ));
+                }
+            }
+            _ => {}
+        }
+        // 30 px off where it ends, and where it met the first.
+        let near = bystander(&mut world, Vec2::new(x, 30.0));
+        let passed = met.map(|met| bystander(&mut world, Vec2::new(met, 30.0)));
+        let shooter = world.spawn();
+        let shot = bolt(&mut world, blasting(projectile));
+        world.insert(shot, Source::new(shooter));
+        let mut ended = None;
+        for _ in 0..60 {
+            let (expired, parts) = blast_step(&mut world, &mut schedule);
+            assert!(
+                parts_on(&parts, near).is_empty(),
+                "{end}: nothing before it ends"
+            );
+            if let Some(expired) = expired.iter().find(|expired| expired.entity == shot) {
+                ended = Some(expired.position);
+                break;
+            }
+        }
+        let at = ended.unwrap_or_else(|| panic!("{end}: it ends"));
+        assert!(
+            (at - Vec2::new(x, 0.0)).length() < 1e-3,
+            "{end}: it ends at {at}"
+        );
+        assert!(
+            world.resource::<Blasts>().0.is_empty(),
+            "{end}: set off by its step's run"
+        );
+        // At the next step's resolve: 10 at 1 - 30 / 50, from its source, at
+        // depth 0; nothing where it passed, turned or met the first.
+        let (_, parts) = blast_step(&mut world, &mut schedule);
+        let hurt = parts_on(&parts, near);
+        assert_eq!(hurt.len(), 1, "{end}: {hurt:?}");
+        assert!((hurt[0].0 - 4.0).abs() < 1e-4, "{end}: {hurt:?}");
+        assert_eq!((hurt[0].1, hurt[0].2), (Some(shooter), 0), "{end}");
+        if let Some(passed) = passed {
+            assert_eq!(
+                world.get::<crate::Health>(passed).unwrap().current(),
+                100.0,
+                "{end}: no blast on the way"
+            );
+        }
+        // The kit despawned it at its step's end; its end went off once.
+        assert!(!world.is_alive(shot), "{end}");
+        assert!(world.resource::<Blasts>().0.is_empty(), "{end}");
+    }
+    // A lifetime's end is none of the projectile's: no blast.
+    let (mut world, mut schedule) = blast_rig(true);
+    let near = bystander(&mut world, Vec2::new(60.0, 30.0));
+    let shot = bolt(&mut world, blasting(Projectile::new()));
+    world.insert(shot, crate::Lifetime::new(0.1));
+    for _ in 0..20 {
+        let (expired, parts) = blast_step(&mut world, &mut schedule);
+        assert!(expired.is_empty() && parts_on(&parts, near).is_empty());
+        assert!(world.resource::<Blasts>().0.is_empty());
+    }
+    assert!(!world.is_alive(shot), "its lifetime took it");
+    assert_eq!(world.get::<crate::Health>(near).unwrap().current(), 100.0);
+}
+
+#[test]
+fn an_end_blast_goes_off_with_no_rule_and_an_empty_queue() {
+    // Chemistry with no `interactions` entry and nothing queued: its run
+    // takes the blast the step it is queued.
+    let (mut world, mut schedule) = blast_rig(true);
+    assert!(!crate::chemistry::rules::any_rule(&world));
+    let near = bystander(&mut world, Vec2::new(30.0, 20.0));
+    let shot = bolt(&mut world, blasting(Projectile::new().with_range(30.0)));
+    for _ in 0..2 {
+        let (expired, _) = blast_step(&mut world, &mut schedule);
+        assert!(expired.is_empty());
+    }
+    assert_eq!(world.resource::<crate::Chemistry>().pending(), 0);
+    let (expired, _) = blast_step(&mut world, &mut schedule);
+    assert_eq!(
+        expired
+            .iter()
+            .map(|expired| expired.entity)
+            .collect::<Vec<_>>(),
+        [shot]
+    );
+    assert!(
+        world.resource::<Blasts>().0.is_empty(),
+        "set off by the step's run"
+    );
+    // 10 at 1 - 20 / 50, credited to the bolt itself, which has no source.
+    let (_, parts) = blast_step(&mut world, &mut schedule);
+    let hurt = parts_on(&parts, near);
+    assert_eq!(hurt.len(), 1, "{hurt:?}");
+    assert!((hurt[0].0 - 6.0).abs() < 1e-4, "{hurt:?}");
+    assert_eq!((hurt[0].1, hurt[0].2), (Some(shot), 0));
+    assert!((world.get::<crate::Health>(near).unwrap().current() - 94.0).abs() < 1e-4);
+    // A World without chemistry: the end's blast traced as skipped.
+    let (mut world, mut schedule) = blast_rig(false);
+    let near = bystander(&mut world, Vec2::new(30.0, 20.0));
+    let shot = bolt(&mut world, blasting(Projectile::new().with_range(30.0)));
+    for _ in 0..6 {
+        let (_, parts) = blast_step(&mut world, &mut schedule);
+        assert!(parts_on(&parts, near).is_empty());
+    }
+    let skipped: Vec<_> = world
+        .resource::<crate::foundation::trace::KitTrace>()
+        .about(shot)
+        .filter_map(|entry| match entry.kind {
+            TraceKind::Skipped { event, action, why } => Some((event, action, why)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        skipped,
+        [("expired", "blast", "the World has no ChemistryPlugin")]
+    );
+    assert_eq!(world.get::<crate::Health>(near).unwrap().current(), 100.0);
+    // The load checks the blast's damage types and context tags; a save
+    // keeps an end and leaves out none.
+    let components = world.resource::<ComponentRegistry>();
+    let good = json!({ "end": { "blast": { "radius": 64, "damage": 20 } } });
+    assert!(components.check_in(PROJECTILE, &good, &world).is_ok());
+    for bad in [
+        json!({ "end": { "blast": { "radius": 64, "damage": { "damage.fire": 20 } } } }),
+        json!({ "end": { "blast": { "radius": 64, "context": ["hit.blast"] } } }),
+        json!({ "end": { "blast": { "radius": 0 } } }),
+        json!({ "end": { "spawn": "smoke" } }),
+        json!({ "end": {} }),
+    ] {
+        assert!(
+            components.check_in(PROJECTILE, &bad, &world).is_err(),
+            "{bad}"
+        );
+    }
+    let grenade = blasting(Projectile::new());
+    let saved = serde_json::to_value(&grenade).unwrap();
+    assert!(saved.get("end").is_some());
+    assert_eq!(
+        serde_json::from_value::<Projectile>(saved).unwrap(),
+        grenade
+    );
+    let plain = serde_json::to_value(Projectile::new()).unwrap();
+    assert!(plain.get("end").is_none());
+}

@@ -1931,3 +1931,39 @@ fn a_beam_tiles_its_sprite_and_cuts_the_last() {
     );
     assert!(nothing.into_batches().is_empty(), "a point lays nothing");
 }
+
+#[test]
+fn sprite_point_lands_where_the_extract_draws_it() {
+    let tip = [12.0, 3.0];
+    for (anchor, rotation, flip) in [
+        (Some([8.0, 15.0]), 0.0, false),
+        (None, 0.0, false),
+        (Some([4.0, 15.0]), 0.0, true),
+        (Some([8.0, 15.0]), 0.7, false),
+        (None, 0.7, true),
+    ] {
+        let mut world = world_with_registry();
+        register_sprite(&mut world, "keg", FilterMode::Nearest);
+        let registry = world.resource_mut::<AssetRegistry>();
+        registry.set_sprite_frame("keg", None, anchor);
+        registry.set_sprite_points("keg", [("tip".to_string(), tip)].into());
+        let transform = Transform {
+            position: Vec2::new(100.0, 50.0),
+            rotation,
+            scale: Vec2::splat(2.0),
+        };
+        let e = spawn_visible(&mut world, "keg", transform.position, 0);
+        world.insert(e, transform);
+        world.insert(e, tungsten_core::components::SpriteFlip(flip));
+        let batches = extract_sprites_default(&world);
+        let instance = batches[0].instances[0];
+        // The tip in the quad's pixels: the image is mirrored when flipped.
+        let local = Vec2::new(if flip { 16.0 - tip[0] } else { tip[0] }, tip[1]) * 2.0;
+        let drawn = drawn_at(&instance, local);
+        let point = tungsten_core::sprite_point(&world, e, "tip").unwrap();
+        assert!(
+            point.distance(drawn) < 1e-4,
+            "{anchor:?} {rotation} {flip}: {point} against the quad's {drawn}"
+        );
+    }
+}

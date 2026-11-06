@@ -8,7 +8,28 @@
 //! offers, the golem's cold ladder and the ghouls' poison; M74's burn named
 //! after a load, the golem's frost stream and a game's own damage numbers;
 //! M75's guard saved mid-swing; M76's arrow through hedges, saved
-//! mid-flight.
+//! mid-flight; 7.10a's veteran with its scoped lines, a focused effect and
+//! a difficulty world source, a bulwark braced on its front, and a
+//! marksman whose embers crit from its stats; 7.10m's skiff pulled along a
+//! wall, an ox that stacks its knockback and a wisp steering its mover;
+//! 7.10b's trooper, suppressed by the rounds that pass it; its chemistry's
+//! wooden crates, lit by fire, doused by cold and setting each other
+//! alight, a lurker a lamp lights, a grass strip a crate sets burning, a
+//! lamp a bucket's water douses for 3 s, and a bomb whose fuse ends in a
+//! blast among crates and a target; 7.10p's practice dummy, whose burn's
+//! ticks and a blow pass a rule's `periodic` apart, and a campfire whose
+//! crackle loops by a listener following the hero past it, a storm whose
+//! recipe system plays the `thunder` world cue each second, and a
+//! shield-bearer whose whole blocks flash the shield's colour, and a
+//! kindled lantern whose look tints it over a colour tween and glows, and
+//! a blazing crate whose look lights a lurker and crackles, and a coffer
+//! whose one game event registration brings `opened` and `emptied` in by
+//! name; 7.10g's ghoul scout, whose alert clip shows by its animator's rule
+//! while a game's `state.alerted` tag is on, and its mark by its looks,
+//! mirrored as it turns; a watchman facing the point it heard, hit shapes
+//! drawn on a key, a ghoul guard its death policy disarms, a nest that
+//! keeps one slime, across a save and a load, and a brazier whose phases a
+//! timed state machine cycles.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -26,9 +47,10 @@ use crate::kit::{
     Abilities, Aim, CharacterAnimator, ContactDamage, ContactTouch, Conversion, CooldownElapsed,
     Counters, DamagePart, DamageRequest, Damaged, DamagedPart, EffectInstance, EffectRequest,
     Effects, Facing, Health, Hit, HitFlash, HitShape, Hitbox, Hurtbox, KitPlugins, KitRng,
-    Knockback, LabelStyle, Level, LinearMotion, Modifier, Penetration, Phase, ProjectileExpired,
-    Shield, Source, StateMachine, StateMachinePlugin, Stats, Steering, Struck, TagFilter, Tags,
-    TopDownMover, TraceKind, ZoneEntered, damage, float_label, knock_back,
+    Knockback, LabelStyle, Level, Line, LinearMotion, Modifier, Penetration, Phase,
+    ProjectileExpired, Read, Shield, Source, StateMachine, StateMachinePlugin, Stats, Steering,
+    Struck, TagFilter, TagSet, Tags, TopDownMover, TraceKind, WorldSource, WorldSources,
+    ZoneEntered, damage, float_label, knock_back,
 };
 use crate::testing::Harness;
 use tungsten_core::PluginSet;
@@ -962,6 +984,344 @@ fn a_burning_hit_slows_the_slime_and_its_fire_ticks_kill_it() {
 }
 
 #[test]
+fn a_practice_dummys_burn_ticks_and_a_blow_pass_their_rules_apart() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let dummy = spawn(&mut harness, "practice_dummy", [50.0, 50.0]);
+        let torch = harness.world_mut().spawn();
+        harness.step(1);
+        // One blow, then a burn: the `ticks` rules count each apart.
+        damage(harness.world_mut(), dummy, 1.0);
+        EffectRequest::new(dummy, DataRef::by_id("burning"))
+            .with_source(torch)
+            .apply(harness.world_mut());
+        harness.step(frames_for(4.0, dt));
+        let counters = harness.world().resource::<Counters>();
+        assert_eq!(
+            (counters.get("blows"), counters.get("ticks")),
+            (1, 6),
+            "dt {dt}: the blow, then a tick each 0.5 s over the burn's 3 s"
+        );
+    }
+}
+
+#[test]
+fn a_campfires_crackle_rises_and_pans_as_the_hero_walks_past() {
+    use crate::kit::CueListener;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let hero = spawn(&mut harness, "hero", [0.0, 0.0]);
+        let fire = spawn(&mut harness, "campfire", [300.0, 0.0]);
+        harness.world_mut().insert_resource(
+            CueListener::new(50.0, 400.0)
+                .with_pan(200.0)
+                .following(hero),
+        );
+        harness.step(1);
+        // The fire's burn starts its loop; the hero walks right, past it.
+        EffectRequest::new(fire, DataRef::by_id("burning")).apply(harness.world_mut());
+        harness.press_action("move_right");
+        let (mut plays, mut volumes, mut pans, mut stops) = (0, Vec::new(), Vec::new(), Vec::new());
+        for _ in 0..frames_for(3.4, dt) {
+            harness.step(1);
+            for command in harness.audio() {
+                match command {
+                    AudioCommand::Play {
+                        looping: true,
+                        volume,
+                        ..
+                    } => {
+                        plays += 1;
+                        volumes.push(*volume);
+                    }
+                    AudioCommand::SetVoiceVolume { volume, .. } => volumes.push(*volume),
+                    AudioCommand::SetVoicePan { pan, .. } => pans.push(pan.get()),
+                    AudioCommand::StopVoice { fade, .. } => stops.push(*fade),
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(plays, 1, "dt {dt}: one voice");
+        assert!(volumes[0] < 0.2, "dt {dt}: far at first: {volumes:?}");
+        let loudest = volumes.iter().copied().fold(0.0, f32::max);
+        assert!(
+            loudest > 1.0 - 1.0 / 64.0,
+            "dt {dt}: whole beside it, within a command's step: {loudest}"
+        );
+        let peak = volumes.iter().position(|&v| v == loudest).unwrap();
+        assert!(
+            volumes[..=peak].windows(2).all(|w| w[1] >= w[0]),
+            "dt {dt}: rising as it nears: {volumes:?}"
+        );
+        assert!(pans[0] > 0.5, "dt {dt}: the fire to its right: {pans:?}");
+        assert!(
+            pans.windows(2).all(|w| w[1] <= w[0]) && *pans.last().unwrap() < 0.0,
+            "dt {dt}: panning across as it passes: {pans:?}"
+        );
+        assert_eq!(stops, [0.5], "dt {dt}: the burn's end stops it");
+    }
+}
+
+/// A recipe's storm: the `thunder` world cue played at (200, 0) by name
+/// each game second.
+struct Storm;
+
+impl Plugin for Storm {
+    fn build(&self, schedule: &mut Schedule, _world: &mut World) {
+        let mut clock = 0.0_f32;
+        let storm = system("recipe_storm", move |world: &mut World| {
+            clock += world.resource::<tungsten_core::Time>().delta();
+            if clock >= 1.0 - 1e-4 {
+                clock -= 1.0;
+                crate::kit::WorldCue::new("thunder", Vec2::new(200.0, 0.0)).play(world);
+            }
+        });
+        schedule.add(
+            tungsten_core::Stage::FixedUpdate,
+            Phase::React.join(storm.before(crate::kit::CUES)),
+        );
+    }
+}
+
+#[test]
+fn a_storms_thunder_world_cue_strikes_each_second_by_its_falloff() {
+    use crate::kit::{CueListener, KitTrace};
+    use tungsten_core::ShakeEvent;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set().with(Storm), dt);
+        let hero = spawn(&mut harness, "hero", [0.0, 0.0]);
+        harness
+            .world_mut()
+            .insert_resource(CueListener::new(100.0, 600.0).following(hero));
+        let mut shakes = Vec::new();
+        for _ in 0..frames_for(2.5, dt) {
+            harness.step(1);
+            shakes.extend(
+                harness
+                    .world()
+                    .resource::<EventQueue<ShakeEvent>>()
+                    .iter()
+                    .map(|shake| shake.trauma_add),
+            );
+        }
+        let world = harness.world();
+        assert_eq!(world.resource::<Counters>().get("strikes"), 2, "dt {dt}");
+        let blasts = world
+            .resource::<KitTrace>()
+            .about(Entity::PLACEHOLDER)
+            .filter(
+                |entry| matches!(&entry.kind, TraceKind::Spawn { prefab, .. } if prefab == "blast"),
+            )
+            .count();
+        assert_eq!(blasts, 2, "dt {dt}: a blast each, with no source");
+        assert_eq!(shakes.len(), 2, "dt {dt}");
+        assert!(
+            shakes.iter().all(|&trauma| (trauma - 0.48).abs() < 1e-5),
+            "dt {dt}: 200 px off, near 100, far 600: {shakes:?}"
+        );
+    }
+}
+
+#[test]
+fn a_shieldbearers_whole_blocks_flash_its_shield_colour_until_it_breaks() {
+    use tungsten_core::UniformOverrideBlock;
+
+    const BLUE: [f32; 4] = [0.25, 0.5, 1.0, 1.0];
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let bearer = spawn(&mut harness, "shieldbearer", [100.0, 100.0]);
+        harness.step(1);
+        let mut seen = Vec::new();
+        for _ in 0..3 {
+            damage(harness.world_mut(), bearer, 20.0);
+            harness.step(1);
+            let world = harness.world();
+            seen.push((
+                world.get::<UniformOverrideBlock>(bearer).unwrap().vec4[0],
+                world.resource::<Counters>().get("blocked"),
+                world.get::<Health>(bearer).unwrap().current(),
+            ));
+            harness.step(frames_for(0.3, dt));
+        }
+        assert_eq!(
+            seen,
+            [(BLUE, 1, 100.0), (BLUE, 2, 100.0), ([1.0; 4], 2, 90.0)],
+            "dt {dt}: two whole blocks, then the shield breaks under the third"
+        );
+    }
+}
+
+#[test]
+fn a_kindled_lanterns_tint_rides_its_colour_tween_and_glows_under_it() {
+    use tungsten_core::{Easing, MaterialRegistry, Tween, TweenChannel, Visibility};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let sprite = super::register_sprite(&mut harness, "lantern", 16, 16);
+        if harness
+            .world()
+            .resource::<tungsten_core::AssetRegistry>()
+            .get_sprite("engine_white")
+            .is_none()
+        {
+            super::register_sprite(&mut harness, "engine_white", 1, 1);
+        }
+        let tween = || {
+            Tween::new(2.0, Easing::Linear).with_channel(TweenChannel::ColorG { from: 255, to: 0 })
+        };
+        // The lantern and a control on the same tween, without the look.
+        let spawn = |harness: &mut Harness, x: f32| {
+            harness.world_mut().spawn_with((
+                Transform::from_position(Vec2::new(x, 100.0)),
+                Sprite::new(sprite),
+                Visibility::default(),
+                tween(),
+            ))
+        };
+        let lantern = spawn(&mut harness, 100.0);
+        spawn(&mut harness, 300.0);
+        EffectRequest::new(lantern, DataRef::by_id("kindled")).apply(harness.world_mut());
+        let glow = harness
+            .world()
+            .resource::<MaterialRegistry>()
+            .get("engine_glow");
+        let (mut lit_frames, mut after) = (0, 0);
+        for _ in 0..frames_for(2.0, dt) {
+            harness.step(1);
+            let draw = harness.draw().unwrap();
+            let at = |x: f32| {
+                draw.sprites
+                    .iter()
+                    .filter(|batch| batch.material_id.is_none())
+                    .flat_map(|batch| &batch.instances)
+                    .find(|instance| instance.position == [x, 100.0])
+                    .map(|instance| instance.color)
+                    .unwrap()
+            };
+            let (lit, base) = (at(100.0), at(300.0));
+            let glows: Vec<_> = draw
+                .sprites
+                .iter()
+                .filter(|batch| batch.material_id == glow)
+                .flat_map(|batch| &batch.instances)
+                .collect();
+            if has_effect(&harness, lantern, "kindled") {
+                let tinted = [
+                    base[0],
+                    (f32::from(base[1]) * 0.5).round() as u8,
+                    (f32::from(base[2]) * 0.25).round() as u8,
+                    base[3],
+                ];
+                assert_eq!(lit, tinted, "dt {dt}: the tween's colour taken to the tint");
+                assert_eq!(glows.len(), 1, "dt {dt}");
+                assert_eq!(
+                    glows[0].position,
+                    [96.0, 96.0],
+                    "dt {dt}: 12 px about its centre"
+                );
+                lit_frames += 1;
+            } else {
+                assert_eq!(lit, base, "dt {dt}: the tween's colour stands");
+                assert!(glows.is_empty(), "dt {dt}");
+                after += 1;
+            }
+        }
+        assert!(
+            lit_frames > 0 && after > 0,
+            "dt {dt}: {lit_frames} and {after}"
+        );
+    }
+}
+
+#[test]
+fn a_blazing_crates_light_reaches_a_lurker_alike_at_any_frame_rate_and_crackles() {
+    let mut taken = Vec::new();
+    for dt in [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0] {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let crate_ = spawn(&mut harness, "crate", [100.0, 100.0]);
+        let lurker = spawn(&mut harness, "lurker", [150.0, 100.0]);
+        EffectRequest::new(crate_, DataRef::by_id("blazing")).apply(harness.world_mut());
+        let (mut plays, mut stops) = (0, 0);
+        for _ in 0..frames_for(3.5, dt) {
+            harness.step(1);
+            for command in harness.audio() {
+                match command {
+                    AudioCommand::Play { looping: true, .. } => plays += 1,
+                    AudioCommand::StopVoice { .. } => stops += 1,
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(
+            (plays, stops),
+            (1, 1),
+            "dt {dt}: one crackle, ended with the blaze"
+        );
+        taken.push(traced_steps(&harness, lurker, "effect_applied"));
+    }
+    assert!(!taken[0].is_empty(), "the light reached it: {:?}", taken[0]);
+    assert_eq!(taken[0], taken[1], "dt 1/30, two fixed steps a frame");
+    assert_eq!(taken[0], taken[2], "dt 1/144");
+}
+
+/// The game's chest event: a coffer opened, or emptied by its last take.
+struct ChestEvent {
+    chest: Entity,
+    emptied: bool,
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn chest_event(event: &ChestEvent) -> Option<crate::kit::CueEvent> {
+    let name = if event.emptied { "emptied" } else { "opened" };
+    Some(crate::kit::CueEvent::of(event.chest).named(name))
+}
+
+#[test]
+fn a_coffers_one_registration_brings_opened_and_emptied_in_by_name() {
+    use crate::kit::{CueAction, Cues, CuesOnEvent};
+
+    for dt in DTS {
+        let plugins = KitPlugins::set().with(CuesOnEvent::<ChestEvent>::with_names(
+            &["opened", "emptied"],
+            chest_event,
+        ));
+        let mut harness = recipe(GENRE, plugins, dt);
+        let coffer = harness.world_mut().spawn_with((
+            Transform::from_position(Vec2::new(40.0, 60.0)),
+            Cues::new()
+                .on("opened", [CueAction::counter_add("opened", 1).for_game()])
+                .on(
+                    "emptied",
+                    [
+                        CueAction::counter_add("emptied", 1).for_game(),
+                        CueAction::despawn(),
+                    ],
+                ),
+        ));
+        harness.step(1);
+        for emptied in [false, false, true] {
+            harness
+                .world_mut()
+                .resource_mut::<EventQueue<ChestEvent>>()
+                .send(ChestEvent {
+                    chest: coffer,
+                    emptied,
+                });
+        }
+        harness.step(1);
+        let counters = harness.world().resource::<Counters>();
+        assert_eq!(
+            (counters.get("opened"), counters.get("emptied")),
+            (2, 1),
+            "dt {dt}"
+        );
+        assert!(!harness.world().is_alive(coffer), "dt {dt}: emptied");
+    }
+}
+
+#[test]
 fn the_heros_wand_bolts_the_nearest_slime_on_its_interval_and_its_dash_pushes_it() {
     for dt in DTS {
         let mut harness = recipe(GENRE, KitPlugins::set(), dt);
@@ -1457,6 +1817,68 @@ fn a_crit_floats_gold_and_larger_from_the_games_code() {
     }
 }
 
+/// Each label a frame drew that no earlier frame drew, appended to `seen`
+/// as text, size and opaque colour: the floats in their order.
+fn note_labels(harness: &Harness, seen: &mut Vec<(String, f32, [u8; 4])>) {
+    for run in &harness.draw().unwrap().world_labels {
+        // Its colour as floated: the fade leaves the RGB.
+        let [r, g, b, _] = run.color;
+        let label = (run.content.clone(), run.font_size, [r, g, b, 255]);
+        if !seen.contains(&label) {
+            seen.push(label);
+        }
+    }
+}
+
+#[test]
+fn a_numbered_targets_numbers_merge_tick_and_crit_by_its_cue_rule() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // `numbers.json`: merge over 0.25 s, ticks at 10, crits gold at 24.
+        let target = harness
+            .world_mut()
+            .spawn_with((Health::new(100.0), Tags::new(["numbered"])));
+        harness.step(1);
+        let mut seen = Vec::new();
+        let frames: [&[(f32, bool, bool)]; 3] = [
+            &[(4.0, false, false), (1.0, true, false)],
+            &[(2.0, false, false), (1.0, true, false), (3.0, false, true)],
+            &[(1.5, false, false), (1.0, true, false)],
+        ];
+        for frame in frames {
+            let world = harness.world_mut();
+            for &(amount, periodic, crit) in frame {
+                let mut parts = vec![typed_part(amount, "elemental.fire")];
+                if crit {
+                    parts.push(typed_part(2.0, "elemental.cold"));
+                }
+                DamageRequest::from_parts(target, parts)
+                    .with_position(Vec2::new(40.0, 20.0))
+                    .with_periodic(periodic)
+                    .with_crit(crit)
+                    .queue(world);
+            }
+            harness.step(1);
+            note_labels(&harness, &mut seen);
+        }
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            note_labels(&harness, &mut seen);
+        }
+        let label = |text: &str, size: f32, color: [u8; 4]| (text.to_string(), size, color);
+        assert_eq!(
+            seen,
+            [
+                label("4", 16.0, RED),
+                label("5", 24.0, GOLD),
+                label("3.5", 16.0, RED),
+                label("3", 10.0, RED),
+            ],
+            "dt {dt}: fire's first at once, the crit's fire and cold as one, then the window's plain parts and its ticks"
+        );
+    }
+}
+
 // M75: a guard saved mid-swing: its state machine, its sword's activation,
 // its spiked shield's touches and its mover's turn, the targets named again
 // after the load by the game's own IDs.
@@ -1864,5 +2286,1082 @@ fn an_arrow_passes_hedges_and_ends_at_a_stone_wall_and_resumes_after_a_load() {
                 "dt {dt}: {loaded:?} against {kept:?}"
             );
         }
+    }
+}
+
+// 7.10a: scoped stat lines, context reads and world sources.
+
+/// `entity`'s `damage` read in the context of one damage type.
+fn damage_in(harness: &Harness, entity: Entity, kind: &str) -> Option<f32> {
+    let context = [TagSet::Name(kind)];
+    harness
+        .world()
+        .get::<Stats>(entity)
+        .unwrap()
+        .read(Stats::DAMAGE, &Read::new(&context))
+}
+
+#[test]
+fn a_veterans_own_line_and_a_focused_effect_read_in_and_out_of_context() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let veteran = spawn(&mut harness, "veteran", [2000.0, 2000.0]);
+        harness.step(1);
+        let get = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Stats>(veteran)
+                .unwrap()
+                .get(Stats::DAMAGE)
+        };
+        assert_eq!(get(&harness), Some(4.0), "dt {dt}: its own line is scoped");
+        assert_eq!(damage_in(&harness, veteran, "elemental.fire"), Some(6.0));
+        assert_eq!(damage_in(&harness, veteran, "elemental.cold"), Some(4.0));
+
+        let focused = DataRef::by_id("focused");
+        assert!(EffectRequest::new(veteran, focused).queue(harness.world_mut()));
+        harness.step(1);
+        assert_eq!(
+            damage_in(&harness, veteran, "elemental.cold"),
+            Some(8.0),
+            "dt {dt}"
+        );
+        assert_eq!(damage_in(&harness, veteran, "elemental.fire"), Some(6.0));
+        assert_eq!(
+            get(&harness),
+            Some(4.0),
+            "dt {dt}: the effect's line is scoped too"
+        );
+        harness.step(frames_for(2.1, dt));
+        assert_eq!(
+            damage_in(&harness, veteran, "elemental.cold"),
+            Some(4.0),
+            "dt {dt}: it left"
+        );
+    }
+}
+
+/// The `difficulty` world source: `mul 1.5` on the enemies' health and
+/// damage.
+fn hard() -> WorldSource {
+    WorldSource::new(TagFilter::new().all(["team.enemy"]))
+        .with_line(Stats::MAX_HEALTH, Line::new(Modifier::Mul(1.5)))
+        .with_line(Stats::DAMAGE, Line::new(Modifier::Mul(1.5)))
+}
+
+#[test]
+fn a_difficulty_source_reaches_the_living_a_spawn_and_leaves_when_removed() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let veteran = spawn(&mut harness, "veteran", [2000.0, 2000.0]);
+        let brute = spawn(&mut harness, "brute", [2400.0, 2000.0]);
+        harness.step(1);
+        let max = |harness: &Harness, entity| harness.world().get::<Health>(entity).unwrap().max();
+        WorldSources::set(harness.world_mut(), "difficulty", hard());
+        harness.step(1);
+        assert_eq!(
+            max(&harness, veteran),
+            12.0,
+            "dt {dt}: the living, at the next step"
+        );
+        assert_eq!(damage_in(&harness, veteran, "elemental.fire"), Some(9.0));
+        assert_eq!(
+            harness.world().get::<Stats>(brute).unwrap().get("armor"),
+            Some(2.0),
+            "dt {dt}: a stat no line names"
+        );
+
+        let late = spawn(&mut harness, "veteran", [2800.0, 2000.0]);
+        harness.step(1);
+        let health = harness.world().get::<Health>(late).unwrap();
+        assert_eq!(
+            (health.current(), health.max()),
+            (12.0, 12.0),
+            "dt {dt}: in its first step"
+        );
+
+        assert!(WorldSources::remove(harness.world_mut(), "difficulty"));
+        harness.step(1);
+        assert_eq!(max(&harness, veteran), 8.0, "dt {dt}: it left");
+        assert_eq!(max(&harness, late), 8.0);
+        assert_eq!(damage_in(&harness, late, "elemental.fire"), Some(6.0));
+    }
+}
+
+#[test]
+fn a_bulwark_takes_front_hits_at_a_quarter_and_rear_hits_whole() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let bulwark = spawn(&mut harness, "bulwark", [3000.0, 3000.0]);
+        spawn(&mut harness, "post", [3200.0, 3000.0]);
+        harness.step(2);
+        let aim = harness.world().get::<Aim>(bulwark).unwrap().direction();
+        assert_eq!(
+            aim,
+            Some(Vec2::X),
+            "dt {dt}: it aims at the post on its right"
+        );
+        let slash = |direction: Vec2| {
+            DamageRequest::from_parts(bulwark, [typed_part(8.0, "physical.slash")])
+                .with_direction(direction)
+        };
+        let health = |harness: &Harness| harness.world().get::<Health>(bulwark).unwrap().current();
+        slash(Vec2::NEG_X).apply(harness.world_mut());
+        assert_eq!(health(&harness), 38.0, "dt {dt}: from the front, a quarter");
+        slash(Vec2::X).apply(harness.world_mut());
+        assert_eq!(health(&harness), 30.0, "dt {dt}: from behind, whole");
+        DamageRequest::from_parts(bulwark, [typed_part(8.0, "elemental.fire")])
+            .with_direction(Vec2::NEG_X)
+            .apply(harness.world_mut());
+        assert_eq!(
+            health(&harness),
+            22.0,
+            "dt {dt}: its brace is physical only"
+        );
+    }
+}
+
+/// The first seed whose first draws are `rolls`, each under 0.5 or not.
+fn seed_for(rolls: &[bool]) -> u64 {
+    (0..10_000)
+        .find(|&seed| {
+            let mut rng = KitRng::seeded(seed);
+            rolls.iter().all(|&crit| (rng.unit() < 0.5) == crit)
+        })
+        .unwrap()
+}
+
+#[test]
+fn a_marksmans_embers_crit_from_its_stats_at_a_pinned_seed() {
+    let seed = seed_for(&[true, false]);
+    assert_eq!(seed, 2, "pinned: crit, then none");
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness.world_mut().insert_resource(KitRng::seeded(seed));
+        let marksman = spawn(&mut harness, "marksman", [5000.0, 5000.0]);
+        let veteran = spawn(&mut harness, "veteran", [5100.0, 5000.0]);
+        let mut hits = Vec::new();
+        for _ in 0..frames_for(1.3, dt) {
+            harness.step(1);
+            hits.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|hit| hit.entity == veteran)
+                    .map(|hit| (hit.amount, hit.crit, hit.source)),
+            );
+        }
+        assert_eq!(
+            hits,
+            [(6.0, true, Some(marksman)), (2.0, false, Some(marksman))],
+            "dt {dt}: its first ember crits for 2 × 3, its second lands whole"
+        );
+        assert_eq!(
+            harness.world().resource::<KitRng>().draws(),
+            2,
+            "dt {dt}: a draw a hit"
+        );
+    }
+}
+
+#[test]
+fn a_casters_bolt_carries_its_skills_snapshot_converted_and_hits_after_the_caster_is_gone() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness
+            .world_mut()
+            .insert_resource(crate::kit::KitExplain::new());
+        let caster = spawn(&mut harness, "caster", [6000.0, 6000.0]);
+        let veteran = spawn(&mut harness, "veteran", [6100.0, 6000.0]);
+        harness.step(1);
+        assert_eq!(
+            crate::kit::use_ability(harness.world_mut(), caster, "cinder"),
+            crate::kit::Used::Used,
+            "dt {dt}"
+        );
+        harness.step(1);
+        let bolts: Vec<Option<Entity>> = harness
+            .world()
+            .query::<&crate::kit::Delivery>()
+            .map(crate::kit::Delivery::holder)
+            .collect();
+        assert_eq!(
+            bolts,
+            [Some(caster)],
+            "dt {dt}: the bolt carries the snapshot"
+        );
+        harness.world_mut().despawn(caster);
+        let (mut hits, mut parts) = (Vec::new(), Vec::new());
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            hits.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|hit| hit.entity == veteran)
+                    .map(|hit| (hit.amount, hit.source)),
+            );
+            parts.extend(parts_on(&harness, veteran));
+        }
+        assert_eq!(
+            hits,
+            [(3.0, None)],
+            "dt {dt}: the snapshot's damage, with no source"
+        );
+        assert_eq!(
+            parts,
+            [
+                (
+                    1.5,
+                    vec!["elemental".to_string(), "elemental.fire".to_string()]
+                ),
+                (
+                    1.5,
+                    vec!["elemental".to_string(), "elemental.cold".to_string()]
+                ),
+            ],
+            "dt {dt}: half its fire converted to cold at the use"
+        );
+        // Its why-record: each part with where it came from, and the sheet
+        // its bolt carried.
+        let hit = harness
+            .world()
+            .resource::<crate::kit::KitExplain>()
+            .last_hit()
+            .unwrap();
+        let parts: Vec<(&str, f32)> = hit
+            .parts
+            .iter()
+            .map(|part| (part.tags[0].as_str(), part.after))
+            .collect();
+        assert_eq!(
+            parts,
+            [("elemental.fire", 1.5), ("elemental.cold", 1.5)],
+            "dt {dt}"
+        );
+        assert_eq!(
+            hit.parts[1].origins[0].steps,
+            [crate::kit::OriginStep::Converted {
+                share: 0.5,
+                to: "elemental.cold".to_string(),
+                source: "skill:cinder".to_string(),
+            }],
+            "dt {dt}"
+        );
+        let sheet = hit.sheet.as_deref().unwrap();
+        assert_eq!((sheet.holder, sheet.ability.as_str()), (caster, "cinder"));
+        assert!(
+            hit.to_string()
+                .contains("cold part  1.50   from fire 3–3 at u "),
+            "dt {dt}: {hit}"
+        );
+    }
+}
+
+#[test]
+fn a_skiff_slides_along_a_wall_under_a_steady_pull_and_an_ox_stacks_its_pushes() {
+    for dt in DTS {
+        // A pull of (120, 80) px/s pushed each frame into a wall whose left
+        // face is at x 290: the skiff stays out of the wall and slides down.
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "wall", [300.0, 0.0]);
+        let skiff = spawn(&mut harness, "skiff", [270.0, 0.0]);
+        harness.step(2);
+        let mut y = body_at(&harness, skiff).y;
+        for frame in 0..frames_for(0.5, dt) {
+            harness
+                .world_mut()
+                .get_mut::<TopDownMover>(skiff)
+                .unwrap()
+                .push(Vec2::new(120.0, 80.0));
+            harness.step(1);
+            let at = body_at(&harness, skiff);
+            assert!(
+                at.x <= 280.0 + 1e-3,
+                "dt {dt}, frame {frame}: into the wall: {at}"
+            );
+            assert!(at.y > y, "dt {dt}, frame {frame}: down along it: {at}");
+            y = at.y;
+        }
+        // Each push lasts one fixed step: the frame's first, so a frame of
+        // two steps moves by half its pull.
+        let fixed = harness
+            .world()
+            .resource::<tungsten_core::Time>()
+            .fixed_step();
+        let pulled = 80.0 * fixed * frames_for(0.5, dt) as f32;
+        assert!((y - pulled).abs() < 1e-2, "dt {dt}: {y}, pulled {pulled}");
+
+        // The ox stacks: a second push 0.05 s after the first starts from
+        // the first's value then.
+        let ox = spawn(&mut harness, "ox", [100.0, 100.0]);
+        harness.step(1);
+        assert!(knock_back(harness.world_mut(), ox, Vec2::new(-400.0, 0.0)));
+        harness.step(frames_for(0.05, dt));
+        let first = harness.world().get::<Knockback>(ox).unwrap().push();
+        assert!(knock_back(harness.world_mut(), ox, Vec2::new(0.0, -200.0)));
+        let second = harness.world().get::<Knockback>(ox).unwrap().push();
+        assert!(
+            second.abs_diff_eq(first + Vec2::new(0.0, -200.0), 1e-3),
+            "dt {dt}: {first} then {second}"
+        );
+    }
+}
+
+#[test]
+fn a_wisp_steers_its_mover_along_a_wall_and_lands_on_a_point() {
+    for dt in DTS {
+        // Arriving at a point behind a wall whose left face is at x 290:
+        // the mover's casts stop the wisp at the wall and it slides along
+        // it to the point's height.
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "wall", [300.0, 0.0]);
+        let wisp = spawn(&mut harness, "wisp", [200.0, 0.0]);
+        harness.step(frames_for(3.0, dt));
+        let at = body_at(&harness, wisp);
+        assert!(
+            at.x <= 282.0 + 1e-3 && at.x > 281.9,
+            "dt {dt}: at the wall: {at}"
+        );
+        assert!(at.y > 40.0 && at.y <= 60.0, "dt {dt}: slid along it: {at}");
+        let world = harness.world();
+        assert_eq!(
+            world.get::<Velocity>(wisp).unwrap().0,
+            world.get::<TopDownMover>(wisp).unwrap().velocity(),
+            "dt {dt}: the body moves by the mover"
+        );
+
+        // A point the game sets in the open: it lands on it.
+        let point = Vec2::new(150.0, -40.0);
+        harness
+            .world_mut()
+            .get_mut::<Steering>(wisp)
+            .unwrap()
+            .set_target(crate::kit::Target::point(point));
+        harness.step(frames_for(6.0, dt));
+        let at = body_at(&harness, wisp);
+        assert!(at.distance(point) < 1e-3, "dt {dt}: on the point: {at}");
+    }
+}
+
+/// The trooper's `suppressed` intensity, and whether it carries `tag`.
+fn suppression(harness: &Harness, trooper: Entity) -> Option<f32> {
+    harness
+        .world()
+        .get::<Effects>(trooper)
+        .and_then(|effects| effects.intensity("suppressed"))
+}
+
+#[test]
+fn suppression_builds_bands_and_decays() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let trooper = spawn(&mut harness, "trooper", [300.0, 200.0]);
+        harness.step(1);
+        assert_eq!(suppression(&harness, trooper), None, "dt {dt}");
+        // A round every quarter second through the trooper's near-miss
+        // zone: each entry builds `suppressed` by 1, which wears 0.5 a
+        // second, its bands granting cover at 3 and pinned at its max of 5.
+        let carries = |harness: &Harness, tag: &str| {
+            harness
+                .world()
+                .get::<Tags>(trooper)
+                .is_some_and(|tags| tags.has(tag))
+        };
+        // The highest intensity, the frame of the last build and the last
+        // reading.
+        let mut watch = (0.0_f32, 0_u32, 0.0_f32);
+        let check = |harness: &Harness, frame: u32, watch: &mut (f32, u32, f32)| {
+            let now = suppression(harness, trooper).unwrap_or(0.0);
+            assert_eq!(
+                carries(harness, "status.cover"),
+                now >= 3.0,
+                "dt {dt}: {now}"
+            );
+            assert_eq!(
+                carries(harness, "status.pinned"),
+                now >= 5.0,
+                "dt {dt}: {now}"
+            );
+            watch.0 = watch.0.max(now);
+            if now > watch.2 {
+                watch.1 = frame;
+            }
+            watch.2 = now;
+        };
+        let mut frame = 0;
+        for _ in 0..8 {
+            spawn(&mut harness, "round", [240.0, 200.0]);
+            for _ in 0..frames_for(0.25, dt) {
+                harness.step(1);
+                frame += 1;
+                check(&harness, frame, &mut watch);
+            }
+        }
+        // At its max of 5; at two steps a frame, a build in the first step
+        // is worn by the second before the frame ends.
+        assert!(watch.0 >= 5.0 - 0.5 * dt, "dt {dt}: peak {}", watch.0);
+        if dt == DTS[0] {
+            assert_eq!(watch.0, 5.0, "pinned at one step a frame");
+        }
+        // The fire stops: pinned leaves at once, cover 4 s on, and the
+        // status runs out at 0, 10 s after its last build at 5.
+        while suppression(&harness, trooper).is_some() {
+            harness.step(1);
+            frame += 1;
+            check(&harness, frame, &mut watch);
+            assert!(frame < frames_for(20.0, dt), "dt {dt}: still suppressed");
+        }
+        let lasted = (frame - watch.1) as f32 * dt;
+        assert!((lasted - 10.0).abs() <= dt + 1e-3, "dt {dt}: {lasted} s");
+        assert!(!carries(&harness, "status.cover") && !carries(&harness, "status.pinned"));
+    }
+}
+
+#[test]
+fn fire_lights_a_crate_and_cold_puts_it_out() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let crate_ = spawn(&mut harness, "wooden_crate", [300.0, 100.0]);
+        let torch = harness.world_mut().spawn();
+        harness.step(1);
+        let ablaze = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Effects>(crate_)
+                .and_then(|effects| effects.intensity("ablaze"))
+        };
+        let burning = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Tags>(crate_)
+                .is_some_and(|tags| tags.has("status.burning"))
+        };
+        // A fire part of 3 on the wooden crate: the wood rule builds
+        // `ablaze` by it, which wears 0.5 a second.
+        DamageRequest::from_parts(
+            crate_,
+            [DamagePart::new(3.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .with_source(torch)
+        .apply(harness.world_mut());
+        harness.step(1);
+        let lit = ablaze(&harness).unwrap();
+        assert!((lit - 3.0).abs() <= 0.5 * dt + 1e-4, "dt {dt}: {lit}");
+        assert!(burning(&harness), "dt {dt}");
+        let instance = harness
+            .world()
+            .get::<Effects>(crate_)
+            .unwrap()
+            .instances()
+            .next()
+            .unwrap()
+            .clone();
+        assert_eq!(instance.source(), Some(torch), "dt {dt}: credited");
+        // Cold on the burning crate: the douse rule removes it.
+        DamageRequest::from_parts(
+            crate_,
+            [DamagePart::new(1.0).with_tags(Tags::new(["elemental.cold"]))],
+        )
+        .apply(harness.world_mut());
+        harness.step(1);
+        assert_eq!(ablaze(&harness), None, "dt {dt}: out");
+        assert!(!burning(&harness), "dt {dt}");
+    }
+}
+
+#[test]
+fn burning_crates_set_each_other_alight() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let lit = spawn(&mut harness, "wooden_crate", [300.0, 100.0]);
+        let near = spawn(&mut harness, "wooden_crate", [340.0, 100.0]);
+        let far = spawn(&mut harness, "wooden_crate", [500.0, 100.0]);
+        harness.step(1);
+        let burning = |harness: &Harness, entity: Entity| {
+            harness
+                .world()
+                .get::<Tags>(entity)
+                .is_some_and(|tags| tags.has("status.burning"))
+        };
+        DamageRequest::from_parts(
+            lit,
+            [DamagePart::new(3.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .apply(harness.world_mut());
+        harness.step(1);
+        assert!(
+            burning(&harness, lit) && !burning(&harness, near),
+            "dt {dt}"
+        );
+        // `ablaze` sends `heat` within 48 px every 0.5 s: the crate 40 px
+        // off catches, the one 200 px off does not.
+        harness.step(frames_for(0.5, dt));
+        assert!(burning(&harness, near), "dt {dt}: caught");
+        assert!(!burning(&harness, far), "dt {dt}: out of reach");
+        // Each keeps the other alight past the first's own 6 s.
+        harness.step(frames_for(8.0, dt));
+        assert!(burning(&harness, lit) && burning(&harness, near), "dt {dt}");
+        assert!(!burning(&harness, far), "dt {dt}");
+    }
+}
+
+#[test]
+fn a_lamp_lights_a_lurker() {
+    use glam::Vec3;
+    use tungsten_core::Light;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let lurker = spawn(&mut harness, "lurker", [100.0, 100.0]);
+        let hidden = spawn(&mut harness, "lurker", [600.0, 100.0]);
+        // A lamp 40 px from the first: chemistry samples the light every
+        // 0.25 s, building `lit` by its luma.
+        harness.world_mut().spawn_with((
+            Transform::from_position(Vec2::new(140.0, 100.0)),
+            Light::point(Vec3::ONE, 120.0),
+        ));
+        let lit = |harness: &Harness, entity: Entity| {
+            harness
+                .world()
+                .get::<Tags>(entity)
+                .is_some_and(|tags| tags.has("status.lit"))
+        };
+        harness.step(1);
+        assert!(lit(&harness, lurker), "dt {dt}: sampled at once");
+        assert!(!lit(&harness, hidden), "dt {dt}: in the dark");
+        harness.step(frames_for(2.0, dt));
+        assert!(lit(&harness, lurker) && !lit(&harness, hidden), "dt {dt}");
+    }
+}
+
+#[test]
+fn a_grass_strip_burns_across_from_a_crate() {
+    use crate::kit::{TileCell, TileStatuses};
+    use tungsten_core::{LayerKind, TileProps, TilemapData, TilemapInstance, TilemapRegistry};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // Six 32 px grass cells from x 332, their centres 348 to 508 at
+        // y 100, built in code with their material.
+        let mut map = TilemapData::new(32, 32, 6, 1);
+        let grass = map.add_tile("grass");
+        let mut props = TileProps::default();
+        props.material = Some("grass".into());
+        map.set_tile_props(grass, props);
+        let layer = map.add_layer("meadow", LayerKind::Render);
+        map.fill(layer, grass);
+        let origin = Vec2::new(332.0, 84.0);
+        let world = harness.world_mut();
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("meadow".into(), map);
+        world.spawn_with((TilemapInstance::new("meadow", origin),));
+        // A crate 48 px from the first cell, lit by fire: `ablaze` sends
+        // `heat` within 48 px every 0.5 s, which builds it on grass too.
+        let crate_ = spawn(&mut harness, "wooden_crate", [300.0, 100.0]);
+        harness.step(1);
+        DamageRequest::from_parts(
+            crate_,
+            [DamagePart::new(3.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .apply(harness.world_mut());
+        let burning = |harness: &Harness, col: u32| {
+            let cell = TileCell {
+                map: "meadow",
+                origin,
+                layer: 0,
+                col,
+                row: 0,
+            };
+            harness
+                .world()
+                .resource::<TileStatuses>()
+                .carries(cell, "ablaze")
+        };
+        let mut lit = [None; 6];
+        for frame in 0..frames_for(4.0, dt) {
+            harness.step(1);
+            for (col, at) in lit.iter_mut().enumerate() {
+                if at.is_none() && burning(&harness, col as u32) {
+                    *at = Some(frame);
+                }
+            }
+        }
+        let lit: Vec<u32> = lit
+            .iter()
+            .map(|at| at.unwrap_or_else(|| panic!("dt {dt}: every cell burns")))
+            .collect();
+        assert!(
+            lit.windows(2).all(|pair| pair[0] < pair[1]),
+            "dt {dt}: in turn {lit:?}"
+        );
+    }
+}
+
+#[test]
+fn a_lamp_doused_by_water_relights() {
+    let tagged_one = |harness: &Harness, tag: &str| -> Option<Entity> {
+        let found: Vec<Entity> = harness
+            .world()
+            .query::<(Entity, &tungsten_core::Tag)>()
+            .filter(|(_, found)| found.name == tag)
+            .map(|(entity, _)| entity)
+            .collect();
+        (found.len() == 1).then(|| found[0])
+    };
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let lamp = spawn(&mut harness, "lamp", [200.0, 100.0]);
+        // A bucket 30 px off sends `stimulus.wet` within 40 px every 0.5 s
+        // for 0.6 s: `douses_lamps` makes the lamp `lamp_doused` for 3 s.
+        let bucket = harness
+            .world_mut()
+            .spawn_with((Transform::from_position(Vec2::new(230.0, 100.0)),));
+        crate::kit::EffectRequest::new(bucket, DataRef::by_id("drenched"))
+            .apply(harness.world_mut());
+        harness.step(frames_for(0.6, dt));
+        assert!(!harness.world().is_alive(lamp), "dt {dt}: replaced");
+        let doused = tagged_one(&harness, "lamp_doused").expect("doused");
+        assert_eq!(
+            drawn_at(&harness, doused),
+            Vec2::new(200.0, 100.0),
+            "dt {dt}"
+        );
+        assert!(tagged_one(&harness, "lamp").is_none(), "dt {dt}");
+        harness.step(frames_for(3.0, dt));
+        assert!(tagged_one(&harness, "lamp").is_some(), "dt {dt}: relit");
+        assert!(tagged_one(&harness, "lamp_doused").is_none(), "dt {dt}");
+    }
+}
+
+#[test]
+fn a_bombs_blast_hurts_crates_and_a_target() {
+    use crate::kit::Knockback;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // The bomb's `fuse` runs 0.5 s; its end blasts 12 within 64 px,
+        // pushing 300, both falling off to 0 at the radius.
+        spawn(&mut harness, "powder_bomb", [300.0, 300.0]);
+        let near = spawn(&mut harness, "wooden_crate", [332.0, 300.0]);
+        let far = spawn(&mut harness, "wooden_crate", [300.0, 400.0]);
+        let target = spawn(&mut harness, "blast_dummy", [300.0, 252.0]);
+        harness.step(frames_for(0.5, dt) + 3);
+        let world = harness.world();
+        let health = |entity| world.get::<Health>(entity).unwrap().current();
+        assert!(
+            (health(near) - (100.0 - 6.0)).abs() < 1e-3,
+            "dt {dt}: {}",
+            health(near)
+        );
+        assert_eq!(health(far), 100.0, "dt {dt}: out of reach");
+        assert!(
+            (health(target) - (50.0 - 3.0)).abs() < 1e-3,
+            "dt {dt}: {}",
+            health(target)
+        );
+        let push = world.get::<Knockback>(target).unwrap().push();
+        assert!(
+            push.y < 0.0 && push.x.abs() < 1e-3,
+            "dt {dt}: away from the bomb, {push}"
+        );
+    }
+}
+
+// 7.10c, Step 4: a drop rolled onto the dead brute's centre (S-88).
+
+#[test]
+fn a_drop_rolls_onto_the_dead_brutes_centre() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ogre", [7000.0, 7000.0]);
+        harness.step(1);
+        // Its hurtbox, and so its hit, 16 px right of and below its point.
+        let centre = Vec2::new(7016.0, 7016.0);
+        spawn(&mut harness, "cleaver", [centre.x, centre.y]);
+        let mut dropped = None;
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            if let Some(&tooth) = tagged(&harness, "tooth").first() {
+                dropped = Some(tooth);
+                break;
+            }
+        }
+        let tooth = dropped.unwrap_or_else(|| panic!("dt {dt}: a drop"));
+        assert_eq!(
+            crate::kit::centre_of(harness.world(), tooth),
+            Some(centre),
+            "dt {dt}: its collider's centre on the brute's"
+        );
+        assert_eq!(
+            body_at(&harness, tooth),
+            centre - Vec2::splat(4.0),
+            "dt {dt}: its point 4 px up and left"
+        );
+    }
+}
+
+// 7.10c, Step 7: a chain bolt conducting along pylons (S-5).
+
+#[test]
+fn a_chain_bolt_jumps_three_conductors_and_ends_at_the_frozen_one() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let caller = spawn(&mut harness, "stormcaller", [8000.0, 8000.0]);
+        let pylons: Vec<Entity> = [100.0, 200.0, 300.0]
+            .map(|x| spawn(&mut harness, "pylon", [8000.0 + x, 8000.0]))
+            .into();
+        let frozen = spawn(&mut harness, "frozen_pylon", [8400.0, 8000.0]);
+        harness.step(1);
+        assert_eq!(
+            crate::kit::use_ability(harness.world_mut(), caller, "chain_bolt"),
+            crate::kit::Used::Used
+        );
+        // One strike a fixed step, each 0.7 of the last; read per step.
+        let mut struck = Vec::new();
+        let steps = (dt * 60.0).round() as u32;
+        for _ in 0..frames_for(0.25, dt) {
+            harness.step(1);
+            let mut this: Vec<(Entity, f32)> = harness
+                .events::<Damaged>()
+                .map(|hit| (hit.entity, hit.amount))
+                .collect();
+            this.sort_by_key(|&(entity, _)| entity.id());
+            struck.extend(this);
+        }
+        let amounts: Vec<f32> = struck.iter().map(|&(_, amount)| amount).collect();
+        assert_eq!(
+            struck.iter().map(|&(entity, _)| entity).collect::<Vec<_>>(),
+            pylons,
+            "dt {dt}: the three in order, one a step ({steps} a frame), none on the frozen"
+        );
+        for (got, want) in amounts.iter().zip([30.0, 21.0, 14.7]) {
+            assert!(
+                (got - want).abs() < 1e-3,
+                "dt {dt}: weaker each: {amounts:?}"
+            );
+        }
+        assert_eq!(
+            harness.world().get::<Health>(frozen).unwrap().current(),
+            100.0,
+            "dt {dt}: the frozen one ends it unstruck"
+        );
+    }
+}
+
+/// 7.10g: the ghoul scout walks its beat in its walk clip; a game's
+/// `state.alerted` tag shows its alert clip by its animator's rule while it
+/// walks, and the walk once the tag goes.
+#[test]
+fn an_alerted_ghoul_shows_its_alert_clip() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let scout = spawn(&mut harness, "ghoul_scout", [0.0, 3000.0]);
+        let shown = |harness: &Harness| {
+            let world = harness.world();
+            let state = world.get::<AnimationState>(scout).unwrap();
+            let animator = world.get::<CharacterAnimator>(scout).unwrap();
+            (state.animation_id.clone(), animator.state())
+        };
+        harness.step(2);
+        assert_eq!(shown(&harness), ("ghoul_walk".into(), "move"), "dt {dt}");
+        let alert = |harness: &mut Harness, on: bool| {
+            let tags = harness.world_mut().get_mut::<Tags>(scout).unwrap();
+            if on {
+                tags.insert("state.alerted");
+            } else {
+                tags.remove("state.alerted");
+            }
+        };
+        alert(&mut harness, true);
+        harness.step(1);
+        assert_eq!(shown(&harness), ("ghoul_alert".into(), "move"), "dt {dt}");
+        harness.step(frames_for(0.5, dt));
+        assert_eq!(shown(&harness).0, "ghoul_alert", "dt {dt}: while alerted");
+        alert(&mut harness, false);
+        harness.step(1);
+        assert_eq!(shown(&harness), ("ghoul_walk".into(), "move"), "dt {dt}");
+    }
+}
+
+/// 7.10g: the game hears a noise and faces the watchman toward it; standing
+/// still, it holds that way, turned eight ways, until its motion turns it.
+#[test]
+fn a_sentry_faces_what_it_heard() {
+    use crate::kit::face_toward;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let watchman = spawn(&mut harness, "watchman", [0.0, 5000.0]);
+        harness.step(1);
+        let faced = |harness: &Harness| {
+            let world = harness.world();
+            let direction = world.get::<Facing>(watchman).unwrap().direction();
+            let rotation = world.get::<Transform>(watchman).unwrap().rotation;
+            (direction, Vec2::from_angle(rotation))
+        };
+        assert_eq!(faced(&harness).0, Vec2::X, "dt {dt}");
+        // A noise up and to its left, heard.
+        assert!(face_toward(
+            harness.world_mut(),
+            watchman,
+            Vec2::new(-40.0, 4960.0)
+        ));
+        harness.step(1);
+        let up_left = Vec2::new(-1.0, -1.0).normalize();
+        let (direction, nose) = faced(&harness);
+        assert!(
+            (direction - up_left).length() < 1e-5,
+            "dt {dt}: {direction}"
+        );
+        assert!((nose - up_left).length() < 1e-5, "dt {dt}: turned to it");
+        harness.step(frames_for(1.0, dt));
+        assert!(
+            (faced(&harness).0 - up_left).length() < 1e-5,
+            "dt {dt}: held"
+        );
+        // Moving, its motion turns it.
+        harness.world_mut().get_mut::<Velocity>(watchman).unwrap().0 = Vec2::new(0.0, 40.0);
+        harness.step(1);
+        let way = faced(&harness).0;
+        assert!(
+            (way - Vec2::Y).length() < 1e-5,
+            "dt {dt}: its motion's way {way}"
+        );
+    }
+}
+
+/// 7.10g: with `KitDebug`'s key on `dash`, a press draws the hit shapes, the
+/// trace's log left off; the next press hides them.
+#[test]
+fn hit_shapes_draw_on_a_key_without_the_trace() {
+    use crate::kit::KitDebug;
+    let mut harness = recipe(GENRE, KitPlugins::set(), DTS[0]);
+    spawn(&mut harness, "watchman", [0.0, 5000.0]);
+    harness
+        .world_mut()
+        .resource_mut::<KitDebug>()
+        .set_key(Some("dash"));
+    let lines = |harness: &Harness| harness.draw().unwrap().debug_lines.len();
+    harness.step(1);
+    assert_eq!(lines(&harness), 0, "off until the key");
+    harness.press_action("dash");
+    harness.step(1);
+    harness.release_action("dash");
+    assert!(lines(&harness) > 0, "the watchman's hurtbox drawn");
+    let debug = harness.world().resource::<KitDebug>();
+    assert!(debug.shapes() && !debug.trace(), "the shapes alone");
+    harness.step(1);
+    assert!(lines(&harness) > 0, "held on");
+    harness.press_action("dash");
+    harness.step(1);
+    harness.release_action("dash");
+    assert_eq!(lines(&harness), 0, "the next press hides them");
+}
+
+/// 7.10g: the ghoul guard's touch and swing hurt the bystander in it; an
+/// arrow kills the guard, and its death policy disarms it: its body stays
+/// its second, harming nothing more.
+#[test]
+fn a_dead_ghoul_harms_nothing() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let guard = spawn(&mut harness, "ghoul_guard", [0.0, 6000.0]);
+        let bystander = spawn(&mut harness, "bystander", [0.0, 6000.0]);
+        harness.world_mut().get_mut::<Hitbox>(guard).unwrap().arm();
+        let health =
+            |harness: &Harness| harness.world().get::<Health>(bystander).unwrap().current();
+        harness.step(frames_for(0.2, dt));
+        assert_eq!(health(&harness), 98.0, "dt {dt}: its touch and its swing");
+        spawn(&mut harness, "arrow", [-60.0, 6000.0]);
+        harness.step(frames_for(0.2, dt));
+        assert!(
+            harness.world().get::<Health>(guard).unwrap().is_dead(),
+            "dt {dt}: the arrow kills it"
+        );
+        let after = health(&harness);
+        harness.world_mut().get_mut::<Hitbox>(guard).unwrap().arm();
+        harness.step(frames_for(0.6, dt));
+        assert_eq!(
+            health(&harness),
+            after,
+            "dt {dt}: disarmed, it harms nothing"
+        );
+        assert!(harness.world().is_alive(guard), "dt {dt}: its body kept");
+        let guard_parts = harness.world().get::<ContactDamage>(guard).unwrap();
+        assert!(!guard_parts.is_on(), "dt {dt}");
+        harness.step(frames_for(0.5, dt));
+        assert!(
+            !harness.world().is_alive(guard),
+            "dt {dt}: gone after its second"
+        );
+    }
+}
+
+/// 7.10g: the slime nest keeps one slime: its first at once, none more
+/// while it lives, the next 3 s after it dies; and the same after the
+/// World is saved and loaded with the slime alive.
+#[test]
+fn a_nest_keeps_one_slime() {
+    use tungsten_core::save::{self, capture_world, restore_world};
+
+    #[derive(Debug, Clone, Copy)]
+    struct Restored;
+
+    let level = |dt: f32| {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let nest = spawn(&mut harness, "slime_nest", [0.0, 7000.0]);
+        save::name(harness.world_mut(), nest, None, "nest").unwrap();
+        harness
+    };
+    let live = |harness: &Harness| -> Vec<Entity> {
+        tagged(harness, "slime")
+            .into_iter()
+            .filter(|&slime| {
+                !harness
+                    .world()
+                    .get::<Health>(slime)
+                    .is_some_and(Health::is_dead)
+            })
+            .collect()
+    };
+    for dt in DTS {
+        let mut kept = level(dt);
+        kept.step(1);
+        assert_eq!(live(&kept).len(), 1, "dt {dt}: its first at once");
+        kept.step(frames_for(4.0, dt));
+        assert_eq!(live(&kept).len(), 1, "dt {dt}: one while it lives");
+        let saved = capture_world(kept.world()).unwrap();
+        let mut loaded = level(dt);
+        restore_world(loaded.world_mut(), &saved, &(Restored,)).unwrap();
+        assert_eq!(live(&loaded).len(), 1, "dt {dt}: its slime came back");
+        for harness in [&mut kept, &mut loaded] {
+            let slime = live(harness)[0];
+            damage(harness.world_mut(), slime, 2.0);
+            harness.step(frames_for(2.9, dt));
+            assert!(live(harness).is_empty(), "dt {dt}: not before 3 s");
+            harness.step(frames_for(0.2, dt));
+            assert_eq!(live(harness).len(), 1, "dt {dt}: 3 s after it died");
+            harness.step(frames_for(4.0, dt));
+            assert_eq!(live(harness).len(), 1, "dt {dt}: and held at one");
+        }
+    }
+}
+
+/// A brazier's phases, which `a_brazier_cycles_its_phases` times.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Brazier {
+    Cold,
+    Kindling,
+    Burning,
+    Embers,
+}
+
+/// 7.10g: the brazier's phases run on timed transitions alone: cold 1 s,
+/// kindling 0.5 s, burning 2 s, embers 1 s, and cold again.
+#[test]
+fn a_brazier_cycles_its_phases() {
+    let phases = StateMachinePlugin::<Brazier>::new("brazier_phases")
+        .after(Brazier::Cold, 1.0, Brazier::Kindling)
+        .after(Brazier::Kindling, 0.5, Brazier::Burning)
+        .after(Brazier::Burning, 2.0, Brazier::Embers)
+        .after(Brazier::Embers, 1.0, Brazier::Cold);
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set().with(phases.clone()), dt);
+        let brazier = spawn(&mut harness, "brazier", [0.0, 8000.0]);
+        harness
+            .world_mut()
+            .insert(brazier, StateMachine::new(Brazier::Cold));
+        let mut entered = Vec::new();
+        let mut was = Brazier::Cold;
+        for frame in 0..frames_for(5.0, dt) {
+            harness.step(1);
+            let now = harness
+                .world()
+                .get::<StateMachine<Brazier>>(brazier)
+                .unwrap()
+                .state();
+            if now != was {
+                entered.push((now, frame + 1));
+                was = now;
+            }
+        }
+        let at = |seconds: f32| frames_for(seconds, dt) + 1;
+        assert_eq!(
+            entered,
+            [
+                (Brazier::Kindling, at(1.0)),
+                (Brazier::Burning, at(1.5)),
+                (Brazier::Embers, at(3.5)),
+                (Brazier::Cold, at(4.5)),
+            ],
+            "dt {dt}"
+        );
+    }
+}
+
+/// 7.10g: the alerted ghoul scout wears its mark, an overlay its `looks`
+/// show while `state.alerted` is on, beside its head on the side it faces,
+/// mirrored as its beat turns it back; the mark goes with the tag.
+#[test]
+fn an_alerted_ghoul_wears_its_mark() {
+    use tungsten_core::components::SpriteFlip;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let scout = spawn(&mut harness, "ghoul_scout", [0.0, 3000.0]);
+        let marks = |harness: &Harness| -> Vec<(Vec2, bool)> {
+            let world = harness.world();
+            world
+                .query::<(Entity, &AnimationState, &Transform)>()
+                .filter(|(_, state, _)| state.animation_id == "ghoul_mark")
+                .map(|(mark, _, transform)| {
+                    let flipped = world.get::<SpriteFlip>(mark).is_some_and(|flip| flip.0);
+                    (transform.position, flipped)
+                })
+                .collect()
+        };
+        let side = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Facing>(scout)
+                .unwrap()
+                .direction()
+                .x
+                .signum()
+        };
+        harness.step(2);
+        assert!(marks(&harness).is_empty(), "dt {dt}: unalerted, no mark");
+        harness
+            .world_mut()
+            .get_mut::<Tags>(scout)
+            .unwrap()
+            .insert("state.alerted");
+        harness.step(1);
+        let worn = |harness: &Harness| {
+            let found = marks(harness);
+            assert_eq!(found.len(), 1, "dt {dt}: one mark");
+            let point = drawn_at(harness, scout);
+            let (at, flipped) = found[0];
+            (at - point, flipped)
+        };
+        let first = side(&harness);
+        let (offset, flipped) = worn(&harness);
+        assert_eq!(offset, Vec2::new(6.0 * first, -14.0), "dt {dt}");
+        assert_eq!(flipped, first < 0.0, "dt {dt}");
+        // Its beat turns it back within a few seconds: the mark mirrors.
+        let mut frames = 0;
+        while side(&harness) == first {
+            assert!(frames < frames_for(6.0, dt), "dt {dt}: the beat turns");
+            harness.step(1);
+            frames += 1;
+        }
+        let (offset, flipped) = worn(&harness);
+        assert_eq!(offset, Vec2::new(-6.0 * first, -14.0), "dt {dt}: mirrored");
+        assert_eq!(flipped, first > 0.0, "dt {dt}");
+        harness
+            .world_mut()
+            .get_mut::<Tags>(scout)
+            .unwrap()
+            .remove("state.alerted");
+        harness.step(1);
+        assert!(marks(&harness).is_empty(), "dt {dt}: gone with the tag");
     }
 }

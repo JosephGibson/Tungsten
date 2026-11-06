@@ -99,7 +99,8 @@ fn run_key(map: Entity, layer: usize, run: &Run) -> u64 {
 /// scale once a dynamic body's differs from 1, 1 for every proxy that is
 /// not dynamic, and each proxy's friction, the tiles' included, once one is
 /// above 0; and each dynamic circle that rolls and has a [`Spin`] its turn,
-/// with every proxy's rolling resistance once one is above 0. Returns how many
+/// with every proxy's rolling resistance once one is above 0, and every
+/// proxy's reaction inverse mass once a kinematic body has a mass. Returns how many
 /// kinematic proxies it staged, which sets the frame's substep count.
 pub(super) fn gather_proxies(
     world: &World,
@@ -120,6 +121,7 @@ pub(super) fn gather_proxies(
     extra.spins.clear();
     extra.rollings.clear();
     extra.swept.clear();
+    extra.push.reaction.clear();
     let mut kinematics = 0;
     let mut layered = false;
 
@@ -182,6 +184,17 @@ pub(super) fn gather_proxies(
             frictions.resize(proxies.len(), 0.0);
             frictions.push(friction);
         }
+        // A kinematic body with a mass keeps a push record; once one does,
+        // every proxy has a reaction.
+        let reaction = match body {
+            Some(b) if kinematic && b.inv_mass.is_finite() && b.inv_mass > 0.0 => b.inv_mass,
+            _ => 0.0,
+        };
+        let reactions = &mut extra.push.reaction;
+        if reaction > 0.0 || !reactions.is_empty() {
+            reactions.resize(proxies.len(), 0.0);
+            reactions.push(reaction);
+        }
         let rolling = body.map_or(0.0, |b| b.rolling);
         let rollings = &mut extra.rollings;
         if rolling != 0.0 || !rollings.is_empty() {
@@ -239,6 +252,9 @@ pub(super) fn gather_proxies(
         }
     };
     fill(&mut extra.frictions, tiles.frictions());
+    if !extra.push.reaction.is_empty() {
+        extra.push.reaction.resize(bodies + tiles.len(), 0.0);
+    }
     // Each roller's turn, those with a `Spin`; then every proxy's slot.
     extra.spins.retain_mut(|turn| {
         let Some(spin) = world.get::<Spin>(turn.entity) else {

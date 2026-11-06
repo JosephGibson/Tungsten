@@ -7,7 +7,7 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    ComponentDescription, GRID, PLATFORMER, SHMUP, TOP_DOWN, describe, round_trip,
+    ComponentDescription, PLATFORMER, RPG, SHOOTER, TOP_DOWN, describe, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -74,8 +74,8 @@ impl Plugin for CameraTargetPlugin {
             )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
             .sample("null")
             .roundtrip(round_trip::<CameraTargetDef>),
         );

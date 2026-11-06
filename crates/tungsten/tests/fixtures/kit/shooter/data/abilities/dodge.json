@@ -1,0 +1,15 @@
+{
+  "trigger": {
+    "action": "dodge"
+  },
+  "cooldown": 0.9,
+  "direction": "movement",
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "dodge_dust",
+        "speed": 400
+      }
+    }
+  ]
+}

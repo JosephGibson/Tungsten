@@ -1074,3 +1074,47 @@ fn world_counters_sum_events_over_two_flushes() {
         "a rotated event counts once"
     );
 }
+
+#[test]
+fn has_any_follows_the_live_rows() {
+    let mut world = World::new();
+    assert!(!world.has_any::<Position>(), "a new World");
+
+    let a = world.spawn_with((Position { x: 0.0, y: 0.0 },));
+    assert!(world.has_any::<Position>());
+    let b = world.spawn_with((Position { x: 1.0, y: 0.0 }, Velocity { dx: 1.0, dy: 0.0 }));
+    assert!(world.has_any::<Position>(), "a second archetype holds it");
+    assert!(world.has_any::<Velocity>());
+    assert!(!world.has_any::<Name>(), "another type unaffected");
+
+    world.despawn(a);
+    assert!(world.has_any::<Position>(), "b still holds it");
+    let archetypes = world.archetypes.archetypes.len();
+    world.despawn(b);
+    assert!(!world.has_any::<Position>(), "every holder despawned");
+    assert!(!world.has_any::<Velocity>());
+    assert_eq!(world.archetypes.archetypes.len(), archetypes);
+    assert!(
+        world
+            .archetypes
+            .archetypes
+            .iter()
+            .any(|arch| arch.has(TypeId::of::<Position>())),
+        "the archetypes stay"
+    );
+
+    let c = world.spawn_with((Name("c".into()),));
+    assert!(!world.has_any::<Position>());
+    world.insert(c, Position { x: 2.0, y: 0.0 });
+    assert!(world.has_any::<Position>(), "after an insert");
+    world.remove_component::<Position>(c);
+    assert!(!world.has_any::<Position>(), "after its remove");
+    assert!(world.has_any::<Name>(), "another type unaffected");
+
+    let mut buffer = CommandBuffer::new();
+    let pending = buffer.spawn();
+    buffer.insert_pending(pending, Velocity { dx: 0.0, dy: 1.0 });
+    assert!(!world.has_any::<Velocity>(), "pending until the flush");
+    world.flush(buffer);
+    assert!(world.has_any::<Velocity>());
+}

@@ -1,0 +1,7 @@
+{
+  "duration": 2,
+  "period": 0.5,
+  "damage": {
+    "elemental.fire": 1
+  }
+}

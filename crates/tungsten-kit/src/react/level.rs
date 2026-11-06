@@ -14,7 +14,7 @@ use tungsten_core::{
 use crate::damage::effects::{EFFECTS, Effect, EffectRequest};
 use crate::foundation::curve::{CURVES, Curve, register_curves};
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, TOP_DOWN, describe,
+    Bound, ComponentDescription, FieldDescription, FieldType, RPG, TOP_DOWN, describe,
     describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
@@ -836,7 +836,7 @@ fn describe_level(world: &mut World) {
         )
         .event("LevelUp")
         .genre(TOP_DOWN)
-        .genre(GRID)
+        .genre(RPG)
         .sample(r#"{ "counter": "xp", "curve": "hero_xp" }"#)
         .roundtrip(round_trip::<LevelDef>),
     );

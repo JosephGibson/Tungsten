@@ -1,0 +1,9 @@
+{
+  "fuel": {
+    "stat": "oil",
+    "rate": 1
+  },
+  "grant": [
+    "status.lit"
+  ]
+}

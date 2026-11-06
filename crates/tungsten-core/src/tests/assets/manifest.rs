@@ -84,6 +84,7 @@ fn merge_success() {
             nine_slice: None,
             rect: None,
             anchor: None,
+            points: BTreeMap::default(),
         },
     );
 
@@ -98,6 +99,7 @@ fn merge_success() {
             nine_slice: None,
             rect: None,
             anchor: None,
+            points: BTreeMap::default(),
         },
     );
 
@@ -119,6 +121,7 @@ fn merge_duplicate_sprite_is_error() {
             nine_slice: None,
             rect: None,
             anchor: None,
+            points: BTreeMap::default(),
         },
     );
 
@@ -133,6 +136,7 @@ fn merge_duplicate_sprite_is_error() {
             nine_slice: None,
             rect: None,
             anchor: None,
+            points: BTreeMap::default(),
         },
     );
 
@@ -1513,4 +1517,52 @@ fn two_roots_setting_a_boot_group_fail_the_merge() {
     );
     let err = ResolvedManifest::load_and_merge_many(&[&root_a, &root_b]).unwrap_err();
     assert!(matches!(err, ManifestError::BootGroupTwice), "{err}");
+}
+
+#[test]
+fn sprite_points_parse_and_resolve() {
+    let tmp = tempdir();
+    write_png_header(&tmp, "keg.png", 48, 16);
+    write_png_header(&tmp, "lamp.png", 16, 16);
+    let path = write_manifest(
+        &tmp,
+        r#"{
+            "sprites": {"lamp": {"path": "lamp.png", "points": {"wick": [8, 2]}}},
+            "sheets": {"keg": {"path": "keg.png", "frame": [16, 16], "points": {"base": [8, 16], "fuse": [[4, 0], [5, 1]]}}}
+        }"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    let points = |id: &str| -> Vec<(String, [f32; 2])> {
+        m.sprites[id]
+            .points
+            .iter()
+            .map(|(name, at)| (name.clone(), *at))
+            .collect()
+    };
+    assert_eq!(points("lamp"), [("wick".to_string(), [8.0, 2.0])]);
+    // One point on every frame; a list one a frame, a frame past it
+    // without.
+    assert_eq!(
+        points("keg_0"),
+        [("base".into(), [8.0, 16.0]), ("fuse".into(), [4.0, 0.0])]
+    );
+    assert_eq!(
+        points("keg_1"),
+        [("base".into(), [8.0, 16.0]), ("fuse".into(), [5.0, 1.0])]
+    );
+    assert_eq!(points("keg_2"), [("base".to_string(), [8.0, 16.0])]);
+    for bad in [
+        r#"{"sprites": {"lamp": {"path": "lamp.png", "points": {"Wick": [8, 2]}}}}"#,
+        r#"{"sheets": {"keg": {"path": "keg.png", "frame": [16, 16], "points": {"9fuse": [1, 1]}}}}"#,
+        r#"{"sheets": {"keg": {"path": "keg.png", "frame": [16, 16], "pointz": {"fuse": [1, 1]}}}}"#,
+    ] {
+        let path = write_manifest(&tmp, bad);
+        assert!(
+            matches!(
+                ResolvedManifest::load(&path),
+                Err(ManifestError::Parse { .. })
+            ),
+            "{bad}"
+        );
+    }
 }

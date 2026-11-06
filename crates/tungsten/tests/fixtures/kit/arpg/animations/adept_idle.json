@@ -1,0 +1,9 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "adept_0"
+    }
+  ],
+  "looping": true
+}

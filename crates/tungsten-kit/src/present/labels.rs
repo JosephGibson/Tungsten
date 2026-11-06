@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::{Time, World, WorldLabel, WorldLabels};
 
 use crate::foundation::{finite_color, optional_positive, positive};
+use crate::react::cues::KindFilterDef;
 
 /// [`CuesPlugin`](crate::CuesPlugin)'s system that ages and draws the
 /// labels, in the present phase.
@@ -28,7 +29,8 @@ pub const LABEL_TICK: &str = "label_tick";
 /// all but `font` optional with those defaults; a label that names any
 /// field names `font`. A `damaged_part` cue's `{ "label": {} }` names none
 /// and takes its part's type's style, a `damage_types` entry's
-/// `label_style` ([`CueAction::type_label`](crate::CueAction::type_label)).
+/// `label_style` ([`CueAction::type_label`](crate::CueAction::type_label)),
+/// which `merge`, `ticks` and `crit` group.
 ///
 /// # Examples
 ///
@@ -136,11 +138,54 @@ impl From<LabelStyle> for LabelStyleDef {
 }
 
 /// A `label` action as data writes it: `{}`, which floats a `damaged_part`
-/// occurrence's amount in its type's style, or a style that names its
-/// font, every other field defaulted.
+/// occurrence's amount in its type's style, grouped when it names `merge`,
+/// `ticks` or `crit`, or a style that names its font, every other field
+/// defaulted.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(try_from = "LabelFields", into = "LabelFields")]
-pub(crate) struct LabelDef(pub(crate) Option<LabelStyle>);
+pub(crate) struct LabelDef(
+    pub(crate) Option<LabelStyle>,
+    pub(crate) Option<Box<PartLabel>>,
+);
+
+/// How a `damaged_part` type label groups a target's numbers: a merge
+/// window, a tick size and a crit style. Its open sums are presentation,
+/// unsaved, aged on the fixed step.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PartLabel {
+    /// Seconds a target's parts of a type sum over: the first plain part
+    /// floats at once, the rest within the window as one sum when it
+    /// closes; without it, each part floats alone.
+    pub(crate) merge: Option<f32>,
+    /// Periodic parts whose kinds pass its filter sum on their own at its
+    /// size.
+    pub(crate) ticks: Option<TickLabel>,
+    /// A step's crit parts on a target float at once as one sum, in the
+    /// first part's type's style at its size and colour.
+    pub(crate) crit: Option<CritLabel>,
+}
+
+/// A part label's ticks as data writes them: `{ "size": 10, "kind": { "any": ["elemental"] } }`,
+/// `kind` every periodic part by default.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TickLabel {
+    #[serde(deserialize_with = "positive")]
+    pub(crate) size: f32,
+    #[serde(default)]
+    pub(crate) kind: KindFilterDef,
+}
+
+/// A part label's crit style as data writes it:
+/// `{ "size": 24, "color": [1, 0.7, 0, 1] }`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CritLabel {
+    #[serde(deserialize_with = "positive")]
+    pub(crate) size: f32,
+    #[serde(deserialize_with = "finite_color")]
+    pub(crate) color: [f32; 4],
+}
 
 /// A `label` action's fields before the font rule, each optional and
 /// checked.
@@ -179,6 +224,16 @@ struct LabelFields {
         skip_serializing_if = "Option::is_none"
     )]
     pop: Option<f32>,
+    #[serde(
+        default,
+        deserialize_with = "optional_positive",
+        skip_serializing_if = "Option::is_none"
+    )]
+    merge: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ticks: Option<TickLabel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    crit: Option<CritLabel>,
 }
 
 /// An optional finite number, for a field's `deserialize_with`.
@@ -212,7 +267,12 @@ impl TryFrom<LabelFields> for LabelDef {
             seconds,
             rise,
             pop,
+            merge,
+            ticks,
+            crit,
         } = fields;
+        let grouped = (merge.is_some() || ticks.is_some() || crit.is_some())
+            .then(|| Box::new(PartLabel { merge, ticks, crit }));
         let Some(font) = font else {
             let named = size.is_some()
                 || color.is_some()
@@ -222,9 +282,12 @@ impl TryFrom<LabelFields> for LabelDef {
             return if named {
                 Err("font: a label that names any field names its font".to_string())
             } else {
-                Ok(Self(None))
+                Ok(Self(None, grouped))
             };
         };
+        if grouped.is_some() {
+            return Err("merge, ticks, crit: a type label's, which names no font".to_string());
+        }
         let style = LabelStyle::try_from(LabelStyleDef {
             font,
             size: size.unwrap_or_else(default_size),
@@ -233,14 +296,23 @@ impl TryFrom<LabelFields> for LabelDef {
             rise: rise.unwrap_or_else(default_rise),
             pop: pop.unwrap_or_else(default_pop),
         })?;
-        Ok(Self(Some(style)))
+        Ok(Self(Some(style), None))
     }
 }
 
 impl From<LabelDef> for LabelFields {
     fn from(def: LabelDef) -> Self {
-        match def.0 {
-            None => Self::default(),
+        let LabelDef(style, part) = def;
+        let (merge, ticks, crit) = part.map_or((None, None, None), |part| {
+            (part.merge, part.ticks, part.crit)
+        });
+        match style {
+            None => Self {
+                merge,
+                ticks,
+                crit,
+                ..Self::default()
+            },
             Some(style) => Self {
                 font: Some(style.font),
                 size: Some(style.size),
@@ -248,6 +320,9 @@ impl From<LabelDef> for LabelFields {
                 seconds: Some(style.seconds),
                 rise: Some(style.rise),
                 pop: Some(style.pop),
+                merge,
+                ticks,
+                crit,
             },
         }
     }

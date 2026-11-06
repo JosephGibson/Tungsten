@@ -1,0 +1,22 @@
+{
+  "tag": "marksman",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "stats": {
+      "crit_chance": 0.5,
+      "crit_multiplier": 3
+    },
+    "cooldown": {
+      "seconds": 0.5
+    },
+    "cues": {
+      "cooldown_elapsed": [
+        {
+          "prefab": "ember"
+        }
+      ]
+    }
+  }
+}

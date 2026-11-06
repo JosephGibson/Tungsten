@@ -1,0 +1,11 @@
+{
+  "tag": "pylon",
+  "components": {
+    "tags": [
+      "conductive"
+    ],
+    "health": {
+      "max": 100
+    }
+  }
+}

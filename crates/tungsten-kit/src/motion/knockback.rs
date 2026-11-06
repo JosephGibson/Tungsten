@@ -41,7 +41,8 @@ const DEFAULT_SECONDS: f32 = 0.2;
 
 /// How its entity takes a push from [`knock_back`]: a hero thrown back from
 /// a hazard, an enemy staggered by a blow. A push of `velocity × (1 −
-/// resist)` replaces one that runs:
+/// resist)` replaces one that runs, or, [stacking](Self::with_stacking),
+/// adds to its value now where the system below runs it:
 ///
 /// - on a [`PlatformerController`] it launches the controller and locks
 ///   its input for the seconds, so the controller's gravity and walls
@@ -57,8 +58,8 @@ const DEFAULT_SECONDS: f32 = 0.2;
 ///
 /// A static body and a child take no push, with one warning.
 ///
-/// Scene name `knockback`: `{ "seconds": 0.2, "resist": 0 }`, both with
-/// those defaults, `resist` in `[0, 1]`, which spawns a `Position` and a
+/// Scene name `knockback`: `{ "seconds": 0.2, "resist": 0, "stacks": false }`,
+/// each with that default, `resist` in `[0, 1]`, which spawns a `Position` and a
 /// `PrevPosition` at the spawn point, so a prefab without a `rigid_body`
 /// is pushed bodiless. It is data: a game's save can hold it, a push that
 /// runs included.
@@ -102,6 +103,8 @@ const DEFAULT_SECONDS: f32 = 0.2;
 pub struct Knockback {
     seconds: f32,
     resist: f32,
+    /// A push adds to the one that runs instead of replacing it.
+    stacks: bool,
     /// The push's velocity as it started.
     push: Vec2,
     /// Seconds of the push left.
@@ -116,6 +119,8 @@ struct KnockbackFields {
     seconds: f32,
     #[serde(default)]
     resist: f32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    stacks: bool,
     #[serde(default, with = "vec2")]
     push: Vec2,
     #[serde(default)]
@@ -151,6 +156,7 @@ impl TryFrom<KnockbackFields> for Knockback {
         Ok(Self {
             seconds: fields.seconds,
             resist: fields.resist,
+            stacks: fields.stacks,
             push: fields.push,
             left: fields.left,
         })
@@ -162,6 +168,7 @@ impl From<Knockback> for KnockbackFields {
         Self {
             seconds: knockback.seconds,
             resist: knockback.resist,
+            stacks: knockback.stacks,
             push: knockback.push,
             left: knockback.left,
         }
@@ -185,6 +192,7 @@ impl Knockback {
         Self {
             seconds,
             resist: 0.0,
+            stacks: false,
             push: Vec2::ZERO,
             left: 0.0,
         }
@@ -206,6 +214,35 @@ impl Knockback {
         self
     }
 
+    /// The knockback, a push it runs adding to one still running when
+    /// `stacks`: the running push's value now plus the new, its seconds
+    /// restarting. A [`PlatformerController`]'s launch and a dynamic body's
+    /// kick, which its system does not run, take each push as they do
+    /// without it. Off, the default, a push replaces the running one.
+    #[must_use]
+    pub fn with_stacking(mut self, stacks: bool) -> Self {
+        self.stacks = stacks;
+        self
+    }
+
+    /// The seconds a push lasts.
+    #[must_use]
+    pub fn seconds(&self) -> f32 {
+        self.seconds
+    }
+
+    /// The part of each push it ignores, 0 to 1.
+    #[must_use]
+    pub fn resist(&self) -> f32 {
+        self.resist
+    }
+
+    /// Whether a push adds to a running one ([`with_stacking`](Self::with_stacking)).
+    #[must_use]
+    pub fn stacks(&self) -> bool {
+        self.stacks
+    }
+
     /// The push's velocity now: its start, falling linearly to 0 over the
     /// seconds; zero when no push runs.
     #[must_use]
@@ -222,7 +259,9 @@ impl Knockback {
 
 /// Pushes `entity` back by `velocity` world pixels per second, as its
 /// [`Knockback`] takes a push: `velocity × (1 − resist)`, replacing a push
-/// that runs. On a [`PlatformerController`] it launches the controller and
+/// that runs, or, [stacking](Knockback::with_stacking) where the
+/// knockback's system runs the push, added to its value now, its seconds
+/// restarting. On a [`PlatformerController`] it launches the controller and
 /// locks its input for the knockback's seconds; on a dynamic body it adds
 /// the push to the body's `Velocity` at once; otherwise the knockback's
 /// system adds the push to the entity's motion over its seconds. A whole
@@ -241,8 +280,17 @@ pub fn knock_back(world: &mut World, entity: Entity, velocity: Vec2) -> bool {
     }
     let push = velocity * (1.0 - knockback.resist);
     let seconds = knockback.seconds;
+    let running = knockback.push();
+    let stacks = knockback.stacks && knockback.is_active();
     knockback.push = push;
     knockback.left = seconds;
+    let runs_here = !world.has::<PlatformerController>(entity)
+        && !world
+            .get::<RigidBody>(entity)
+            .is_some_and(|body| body.kind == BodyKind::Dynamic);
+    if stacks && runs_here {
+        world.get_mut::<Knockback>(entity).unwrap().push = running + push;
+    }
     if let Some(controller) = world.get_mut::<PlatformerController>(entity) {
         controller.launch(push);
         controller.lock_input(seconds);
@@ -299,6 +347,14 @@ impl Plugin for KnockbackPlugin {
                 )
                 .default("0.0"),
             )
+            .field(
+                FieldDescription::new(
+                    "stacks",
+                    FieldType::Bool,
+                    "a push adds to the one still running, where the knockback runs it, instead of replacing it",
+                )
+                .default("false"),
+            )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
             .sample("{}")
@@ -309,7 +365,9 @@ impl Plugin for KnockbackPlugin {
             |def: KnockbackDef, at: &SpawnContext<'_>| {
                 let spawn = at.transform().position;
                 (
-                    Knockback::new(def.seconds).with_resist(def.resist),
+                    Knockback::new(def.seconds)
+                        .with_resist(def.resist)
+                        .with_stacking(def.stacks),
                     Position(spawn),
                     PrevPosition(spawn),
                 )
@@ -341,6 +399,8 @@ struct KnockbackDef {
     seconds: f32,
     #[serde(default, deserialize_with = "fraction")]
     resist: f32,
+    #[serde(default)]
+    stacks: bool,
 }
 
 /// The system's state between steps.

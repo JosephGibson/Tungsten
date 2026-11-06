@@ -1,0 +1,10 @@
+{
+  "trigger": {
+    "held": "run"
+  },
+  "payload": [
+    {
+      "effect": "running"
+    }
+  ]
+}

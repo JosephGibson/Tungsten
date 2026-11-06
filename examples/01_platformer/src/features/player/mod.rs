@@ -14,10 +14,12 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
-    ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Phase, PlatformerController, ensure_phases,
+    ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Modifier, Phase, PlatformerController, Stats,
+    TagFilter, ensure_phases,
 };
 use tungsten::{Plugin, SceneEntity};
 
+use crate::features::combat::{BLAST, CRIT_CHANCE, CRIT_FACTOR, PLAYER_BLAST_SHARE};
 use crate::features::level::GLOWS;
 use crate::features::level::components::Glow;
 use crate::game::GAMEPLAY;
@@ -157,7 +159,8 @@ pub enum Gesture {
 /// at its prefab's health, with the save ID of [`SAVE_NAME`], its body
 /// from its data ([`shared::fit_body`]), its staff light off, and its
 /// prefab's glow at its staff's orb ([`systems::anchor`]), kept for the
-/// staff's flare.
+/// staff's flare. Its prefab's crit and blast share are the values 01's
+/// code names, which a debug build checks ([`holds_combat_values`]).
 pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
     let at = centre - body(world).centre;
     let id = SaveId::authored(SAVE_NAME);
@@ -172,6 +175,10 @@ pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
         ))
         .spawn(world);
     shared::fit_body(world, player, PLAYER_PREFAB);
+    debug_assert!(
+        holds_combat_values(world, player),
+        "player.json's crit_chance, crit_multiplier and hit.blast damage_taken line are CRIT_CHANCE, CRIT_FACTOR and PLAYER_BLAST_SHARE"
+    );
     let anchor = systems::anchor(world, player);
     if let Some(glow) = world.get_mut::<Glow>(player) {
         glow.offset = anchor.unwrap_or(glow.offset);
@@ -181,6 +188,24 @@ pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
     shove_bodies(world, player);
     world.insert_resource(Bursts::default());
     player
+}
+
+/// Whether `player`'s stats hold [`CRIT_CHANCE`], [`CRIT_FACTOR`] as its
+/// `crit_multiplier`, and its `damage_taken` line for [`BLAST`] at
+/// [`PLAYER_BLAST_SHARE`]: the values its prefab gives the kit's rules.
+#[must_use]
+pub fn holds_combat_values(world: &World, player: Entity) -> bool {
+    let Some(stats) = world.get::<Stats>(player) else {
+        return false;
+    };
+    let blasts = TagFilter::new().all([BLAST]);
+    stats.get(Stats::CRIT_CHANCE) == Some(CRIT_CHANCE)
+        && stats.get(Stats::CRIT_MULTIPLIER) == Some(CRIT_FACTOR)
+        && stats.lines().any(|(stat, _, line)| {
+            stat == Stats::DAMAGE_TAKEN
+                && line.modifier() == Modifier::Mul(PLAYER_BLAST_SHARE)
+                && line.context_filter() == &blasts
+        })
 }
 
 /// Gives `player`'s controller its shove ([`PLAYER_SHOVE_MASS`]): at a

@@ -1,0 +1,15 @@
+{
+  "intensity": {
+    "max": 5,
+    "decay": 0.5
+  },
+  "grant": [
+    "status.burning"
+  ],
+  "emit": {
+    "stimulus": "heat",
+    "amount": 1,
+    "radius": 48,
+    "period": 0.5
+  }
+}

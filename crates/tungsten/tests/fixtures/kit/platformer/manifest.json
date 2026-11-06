@@ -1,5 +1,20 @@
 {
   "prefabs": {
+    "dust": {
+      "path": "prefabs/dust.json"
+    },
+    "leaper": {
+      "path": "prefabs/leaper.json"
+    },
+    "turret": {
+      "path": "prefabs/turret.json"
+    },
+    "charge": {
+      "path": "prefabs/charge.json"
+    },
+    "bouncer": {
+      "path": "prefabs/bouncer.json"
+    },
     "hero": {
       "path": "prefabs/hero.json"
     },
@@ -74,12 +89,98 @@
     },
     "armour": {
       "path": "prefabs/armour.json"
+    },
+    "squire": {
+      "path": "prefabs/squire.json"
+    },
+    "knight": {
+      "path": "prefabs/knight.json"
+    },
+    "rambler": {
+      "path": "prefabs/rambler.json"
+    },
+    "porter": {
+      "path": "prefabs/porter.json"
+    },
+    "roller": {
+      "path": "prefabs/roller.json"
+    },
+    "riser": {
+      "path": "prefabs/riser.json"
+    },
+    "slider": {
+      "path": "prefabs/slider.json"
+    },
+    "crusher": {
+      "path": "prefabs/crusher.json"
+    },
+    "wisp": {
+      "path": "prefabs/wisp.json"
+    },
+    "lamp": {
+      "path": "prefabs/lamp.json"
+    },
+    "kindling": {
+      "path": "prefabs/kindling.json"
+    },
+    "clay_pot": {
+      "path": "prefabs/clay_pot.json"
+    },
+    "wood_crate": {
+      "path": "prefabs/wood_crate.json"
+    },
+    "crate_charred": {
+      "path": "prefabs/crate_charred.json"
+    },
+    "powder_keg": {
+      "path": "prefabs/powder_keg.json"
+    },
+    "lander": {
+      "path": "prefabs/lander.json"
+    },
+    "swordsman": {
+      "path": "prefabs/swordsman.json"
+    },
+    "straw_post": {
+      "path": "prefabs/straw_post.json"
+    },
+    "doomed_runner": {
+      "path": "prefabs/doomed_runner.json"
+    },
+    "warded_knight": {
+      "path": "prefabs/warded_knight.json"
+    },
+    "falling_hero": {
+      "path": "prefabs/falling_hero.json"
+    },
+    "falling_crate": {
+      "path": "prefabs/falling_crate.json"
+    },
+    "rider_lift": {
+      "path": "prefabs/rider_lift.json"
+    },
+    "crate_porter": {
+      "path": "prefabs/crate_porter.json"
+    },
+    "porter_crate": {
+      "path": "prefabs/porter_crate.json"
+    },
+    "brute": {
+      "path": "prefabs/brute.json"
     }
   },
   "data": {
+    "world_cues": {
+      "crate_break": {
+        "path": "data/world_cues/crate_break.json"
+      }
+    },
     "tags": {
       "game": {
         "path": "data/tags.json"
+      },
+      "state": {
+        "path": "data/state_tags.json"
       }
     },
     "stats": {
@@ -88,6 +189,12 @@
       }
     },
     "effects": {
+      "sparking": {
+        "path": "data/effects/sparking.json"
+      },
+      "frosting": {
+        "path": "data/effects/frosting.json"
+      },
       "regen": {
         "path": "data/effects/regen.json"
       },
@@ -99,6 +206,30 @@
       },
       "casting": {
         "path": "data/effects/casting.json"
+      },
+      "inspired": {
+        "path": "data/effects/inspired.json"
+      },
+      "frostbite": {
+        "path": "data/effects/frostbite.json"
+      },
+      "lit": {
+        "path": "data/effects/lit.json"
+      },
+      "smoulder": {
+        "path": "data/effects/smoulder.json"
+      },
+      "cracked": {
+        "path": "data/effects/cracked.json"
+      },
+      "scorched": {
+        "path": "data/effects/scorched.json"
+      },
+      "flare": {
+        "path": "data/effects/flare.json"
+      },
+      "frozen": {
+        "path": "data/effects/frozen.json"
       }
     },
     "curves": {
@@ -110,9 +241,48 @@
       "spell": {
         "path": "data/abilities/spell.json"
       }
+    },
+    "damage_types": {
+      "numbers": {
+        "path": "data/damage_types/numbers.json"
+      }
+    },
+    "cue_rules": {
+      "numbers": {
+        "path": "data/cue_rules/numbers.json"
+      }
+    },
+    "interactions": {
+      "kindles": {
+        "path": "data/interactions/kindles.json"
+      },
+      "cracks": {
+        "path": "data/interactions/cracks.json"
+      },
+      "glass_cracks": {
+        "path": "data/interactions/glass_cracks.json"
+      },
+      "planks_scorch": {
+        "path": "data/interactions/planks_scorch.json"
+      },
+      "chars_crates": {
+        "path": "data/interactions/chars_crates.json"
+      },
+      "kegs_blow": {
+        "path": "data/interactions/kegs_blow.json"
+      }
     }
   },
   "animations": {
+    "keg_burn": {
+      "path": "animations/keg_burn.json"
+    },
+    "frost_heavy": {
+      "path": "animations/frost_heavy.json"
+    },
+    "frost_light": {
+      "path": "animations/frost_light.json"
+    },
     "hero_run": {
       "path": "animations/hero_run.json"
     },
@@ -133,6 +303,96 @@
     },
     "acrobat_fall": {
       "path": "animations/acrobat_fall.json"
+    },
+    "acrobat_land": {
+      "path": "animations/acrobat_land.json"
+    },
+    "brute_mark": {
+      "path": "animations/brute_mark.json"
+    }
+  },
+  "materials": {
+    "damage_flash": {
+      "shader": "damage_flash",
+      "uniform_defaults": {
+        "vec4": [
+          [
+            1.0,
+            0.2,
+            0.1,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "f32s": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "i32s": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  "shaders": {
+    "damage_flash": {
+      "path": "shaders/damage_flash.wgsl"
+    }
+  },
+  "sheets": {
+    "keg": {
+      "path": "sprites/keg.png",
+      "frame": [
+        16,
+        16
+      ],
+      "points": {
+        "fuse": [
+          [
+            4,
+            0
+          ],
+          [
+            12,
+            1
+          ]
+        ]
+      }
+    }
+  },
+  "particles": {
+    "fuse_sparks": {
+      "path": "particles/fuse_sparks.json"
+    }
+  },
+  "sounds": {
+    "lift_go": {
+      "path": "sounds/lift_go.ogg"
+    },
+    "lift_stop": {
+      "path": "sounds/lift_stop.ogg"
     }
   }
 }

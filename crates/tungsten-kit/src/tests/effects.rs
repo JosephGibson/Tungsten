@@ -12,7 +12,7 @@ use crate::foundation::trace::KitTrace;
 use crate::motion::top_down::{TopDownMover, TopDownMoverPlugin};
 use crate::react::counters::{Counters, CountersPlugin};
 use crate::react::cues::{CueAction, Cues, CuesPlugin};
-use crate::{KIT_INTENT, KIT_REACT, KIT_RESOLVE, KIT_TICK};
+use crate::{KIT_INTENT, KIT_REACT, KIT_RESOLVE, KIT_TICK, Line, Read, TagFilter, TagSet};
 
 const STEP: f32 = 1.0 / 60.0;
 
@@ -372,6 +372,134 @@ fn modifiers_leave_with_their_source_and_a_games_own_stay() {
     assert_eq!(
         skipped(&world, bare),
         [("modifiers", NO_STATS), ("resist", NO_RESIST)]
+    );
+}
+
+#[test]
+fn a_with_line_is_kept_for_reads_in_context_and_leaves_with_its_instance() {
+    let (mut world, _) = rig();
+    let knight = world.spawn_with((Stats::new().with("armor", 2.0),));
+    let focused = Effect::new()
+        .with_modifier("armor", Modifier::Add(1.0))
+        .with_line(
+            "armor",
+            Line::new(Modifier::Mul(2.0)).with(TagFilter::new().all(["status.burning"])),
+        );
+    let lines: Vec<(&str, bool)> = focused
+        .lines()
+        .map(|(stat, line)| (stat, line.is_scoped()))
+        .collect();
+    assert_eq!(lines, [("armor", false), ("armor", true)]);
+    let focused = DataRef::inline(focused);
+    EffectRequest::new(knight, focused.clone()).apply(&mut world);
+    let stats = world.get::<Stats>(knight).unwrap();
+    assert_eq!(
+        stats.get("armor"),
+        Some(3.0),
+        "an unscoped line is a modifier"
+    );
+    let burning = [TagSet::Name("status.burning")];
+    assert_eq!(stats.read("armor", &Read::new(&burning)), Some(6.0));
+    assert_eq!(stats.read("armor", &Read::default()), Some(3.0));
+    let kept: Vec<&str> = stats.lines().map(|(_, source, _)| source).collect();
+    assert_eq!(kept.len(), 1);
+    assert!(kept[0].starts_with("effect#"), "{kept:?}");
+    assert!(end_effect(&mut world, knight, &focused));
+    let stats = world.get::<Stats>(knight).unwrap();
+    assert_eq!(stats.lines().count(), 0);
+    assert_eq!(stats.read("armor", &Read::new(&burning)), Some(2.0));
+
+    // The data form, its tags checked at the load.
+    let data = json!({ "modifiers": [{ "stat": "armor", "modifier": { "mul": 2 }, "with": { "all": ["status.burning"] }, "against": { "none": ["status.frozen"] } }] });
+    let effect: Effect = serde_json::from_value(data.clone()).unwrap();
+    let back = serde_json::to_value(&effect).unwrap();
+    assert_eq!(
+        back["modifiers"],
+        json!([{ "stat": "armor", "modifier": { "mul": 2.0 }, "with": { "all": ["status.burning"] }, "against": { "none": ["status.frozen"] } }])
+    );
+    assert!(effect.check(&world).is_ok());
+    let unknown: Effect = serde_json::from_value(json!({ "modifiers": [{ "stat": "armor", "modifier": { "mul": 2 }, "while": { "all": ["status.unknown"] } }] })).unwrap();
+    let error = unknown.check(&world).unwrap_err();
+    assert_eq!(
+        (error.field.as_str(), error.id.as_str()),
+        ("modifiers.0.while.all.0", "status.unknown")
+    );
+    let scoped_override = json!({ "modifiers": [{ "stat": "armor", "modifier": { "override": 0 }, "with": { "all": ["status.burning"] } }] });
+    assert!(serde_json::from_value::<Effect>(scoped_override).is_err());
+}
+
+#[test]
+fn a_resist_modifier_scopes_its_factor_and_moves_its_floor() {
+    let (mut world, _) = rig();
+    let knight = world.spawn_with((Resist::new()
+        .with_factor("status", 0.5)
+        .with_floor("status", 0.25),));
+    let braced = Effect::new()
+        .with_resist_line(
+            "status.burning",
+            Line::new(Modifier::Mul(0.5)).with(TagFilter::new().all(["side.front"])),
+        )
+        .with_resist("status", Modifier::Mul(0.25))
+        .with_resist_floor("status", Modifier::Add(0.25));
+    assert_eq!(braced.resist().count(), 2);
+    assert_eq!(
+        braced.resist_floors().collect::<Vec<_>>(),
+        [("status", Modifier::Add(0.25))]
+    );
+    let braced = DataRef::inline(braced);
+    EffectRequest::new(knight, braced.clone()).apply(&mut world);
+    let resist = world.get::<Resist>(knight).unwrap();
+    let burning = Tags::new(["status.burning"]);
+    assert_eq!(resist.floor("status"), Some(0.5));
+    assert_eq!(
+        resist.factor(&burning),
+        0.5,
+        "0.125 rises to the moved floor"
+    );
+    let front = [TagSet::Name("side.front")];
+    assert_eq!(
+        resist.factor_in(&burning, &Read::new(&front)),
+        0.25,
+        "and the front's half"
+    );
+    assert!(end_effect(&mut world, knight, &braced));
+    let resist = world.get::<Resist>(knight).unwrap();
+    assert_eq!(
+        (resist.floor("status"), resist.factor(&burning)),
+        (Some(0.25), 0.5)
+    );
+    assert_eq!(resist.factor_in(&burning, &Read::new(&front)), 0.5);
+
+    // The data form: each of `modifier` and `floor`, the filters on the
+    // modifier, the tags checked at the load.
+    let data = json!({ "resist": [
+        { "tag": "status", "modifier": { "mul": 2 }, "with": { "all": ["side.rear"] }, "against": { "all": ["status.marked"] } },
+        { "tag": "status", "floor": { "add": 0.5 } }
+    ] });
+    let effect: Effect = serde_json::from_value(data.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&effect).unwrap()["resist"],
+        json!([
+            { "tag": "status", "modifier": { "mul": 2.0 }, "with": { "all": ["side.rear"] }, "against": { "all": ["status.marked"] } },
+            { "tag": "status", "floor": { "add": 0.5 } }
+        ])
+    );
+    assert!(effect.check(&world).is_ok());
+    for bad in [
+        json!({ "resist": [{ "tag": "status" }] }),
+        json!({ "resist": [{ "tag": "status", "with": { "all": ["side.rear"] }, "floor": { "add": 1 } }] }),
+        json!({ "resist": [{ "tag": "status", "modifier": { "override": 1 }, "against": { "all": ["status.marked"] } }] }),
+    ] {
+        assert!(
+            serde_json::from_value::<Effect>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+    let unknown: Effect = serde_json::from_value(json!({ "resist": [{ "tag": "status", "modifier": { "mul": 2 }, "against": { "all": ["status.unknown"] } }] })).unwrap();
+    let error = unknown.check(&world).unwrap_err();
+    assert_eq!(
+        (error.field.as_str(), error.id.as_str()),
+        ("resist.0.against.all.0", "status.unknown")
     );
 }
 
@@ -1433,4 +1561,460 @@ fn the_effect_cue_action_queues_on_the_subject_or_the_other() {
         serde_json::from_value::<CueAction>(json!({ "effect": { "id": "x", "target": "game" } }))
             .is_err()
     );
+}
+
+/// The three frame lengths the status tests run at.
+const STATUS_DTS: [f32; 3] = [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0];
+
+/// Steps at `dt` until `entity` carries no `id`: the steps taken, and
+/// whether an expiry's `EffectExpired` went out for it.
+fn steps_until_gone(
+    world: &mut World,
+    schedule: &mut Schedule,
+    dt: f32,
+    entity: Entity,
+    id: &str,
+) -> (usize, bool) {
+    let mut sent = false;
+    for n in 1..=(20.0 / dt) as usize {
+        step(world, schedule, dt);
+        sent |= expired(world)
+            .iter()
+            .any(|(e, which, ended)| *e == entity && which.as_deref() == Some(id) && !*ended);
+        if !world
+            .get::<Effects>(entity)
+            .is_some_and(|effects| effects.has(id))
+        {
+            return (n, sent);
+        }
+    }
+    panic!("{id} still on {entity:?} after 20 s at dt {dt}");
+}
+
+/// Whether `steps` at `dt` end `seconds` in, within a step.
+fn within_a_step(steps: usize, dt: f32, seconds: f32) -> bool {
+    (steps as f32 * dt - seconds).abs() <= dt + 1e-4
+}
+
+fn intensity(world: &World, entity: Entity, id: &str) -> Option<f32> {
+    world
+        .get::<Effects>(entity)
+        .and_then(|effects| effects.intensity(id))
+}
+
+#[test]
+fn an_intensity_status_builds_to_its_max_and_decays() {
+    for dt in STATUS_DTS {
+        let (mut world, mut schedule) = rig();
+        let burning = insert(
+            &mut world,
+            "burning",
+            Effect::new().with_intensity(4.0, 1.0),
+        );
+        let crate_ = world.spawn();
+        let mut built = Vec::new();
+        for _ in 0..3 {
+            let outcome = EffectRequest::new(crate_, burning.clone())
+                .with_amount(1.5)
+                .apply(&mut world);
+            assert_ne!(outcome, Applied::Ignored);
+            built.push(intensity(&world, crate_, "burning").unwrap());
+        }
+        assert_eq!(built, [1.5, 3.0, 4.0], "dt {dt}: capped at the max");
+        let effects = world.get::<Effects>(crate_).unwrap();
+        assert_eq!(effects.stacks("burning"), 1, "one stack");
+        assert_eq!(last_applied(&world), Some(1));
+        let (steps, sent) = steps_until_gone(&mut world, &mut schedule, dt, crate_, "burning");
+        assert!(within_a_step(steps, dt, 4.0), "dt {dt}: {steps} steps");
+        assert!(sent, "dt {dt}: run out is an expiry");
+
+        // A shorter duration ends it first.
+        let short = insert(
+            &mut world,
+            "short",
+            Effect::new().with_intensity(4.0, 1.0).with_duration(2.0),
+        );
+        let other = world.spawn();
+        EffectRequest::new(other, short)
+            .with_amount(4.0)
+            .apply(&mut world);
+        let (steps, sent) = steps_until_gone(&mut world, &mut schedule, dt, other, "short");
+        assert!(within_a_step(steps, dt, 2.0), "dt {dt}: {steps} steps");
+        assert!(sent);
+    }
+    // A first build of 0 makes nothing.
+    let (mut world, _) = rig();
+    let burning = insert(
+        &mut world,
+        "burning",
+        Effect::new().with_intensity(4.0, 1.0),
+    );
+    let crate_ = world.spawn();
+    let outcome = EffectRequest::new(crate_, burning)
+        .with_amount(0.0)
+        .apply(&mut world);
+    assert_eq!(outcome, Applied::Ignored);
+    assert_eq!(skipped(&world, crate_), [("apply", NO_BUILD)]);
+}
+
+#[test]
+fn bands_grant_their_tags_while_reached() {
+    for dt in STATUS_DTS {
+        let (mut world, mut schedule) = rig();
+        let smoulder = insert(
+            &mut world,
+            "smoulder",
+            Effect::new()
+                .with_intensity(4.0, 1.0)
+                .with_band(1.0, ["status.marked"])
+                .with_band(3.0, ["status.other"]),
+        );
+        // A crate with no tags, and one that carried `status.marked` before
+        // and whose `status.other` a second effect also grants.
+        let bare = world.spawn();
+        let owned = world.spawn_with((Tags::new(["status.marked"]),));
+        let other = insert(
+            &mut world,
+            "other",
+            Effect::new().with_grant(["status.other"]),
+        );
+        EffectRequest::new(owned, other).apply(&mut world);
+        for (entity, kept) in [(bare, false), (owned, true)] {
+            let build = |world: &mut World, amount: f32| {
+                EffectRequest::new(entity, smoulder.clone())
+                    .with_amount(amount)
+                    .apply(world);
+            };
+            build(&mut world, 0.5);
+            assert_eq!(has_tag(&world, entity, "status.other"), kept);
+            assert_eq!(has_tag(&world, entity, "status.marked"), kept);
+            build(&mut world, 1.0);
+            assert!(has_tag(&world, entity, "status.marked"), "dt {dt}: 1.5");
+            assert_eq!(has_tag(&world, entity, "status.other"), kept);
+            build(&mut world, 2.0);
+            assert!(has_tag(&world, entity, "status.other"), "dt {dt}: 3.5");
+            // Each tag stays from the step it reaches its band to the step
+            // the intensity falls below it.
+            loop {
+                step(&mut world, &mut schedule, dt);
+                let Some(now) = intensity(&world, entity, "smoulder") else {
+                    break;
+                };
+                assert_eq!(
+                    has_tag(&world, entity, "status.marked"),
+                    kept || now >= 1.0,
+                    "dt {dt}: at {now}"
+                );
+                assert_eq!(
+                    has_tag(&world, entity, "status.other"),
+                    kept || now >= 3.0,
+                    "dt {dt}: at {now}"
+                );
+            }
+            assert_eq!(has_tag(&world, entity, "status.marked"), kept, "dt {dt}");
+            assert_eq!(has_tag(&world, entity, "status.other"), kept, "dt {dt}");
+        }
+        let table: Vec<(String, u32)> = world
+            .get::<Effects>(owned)
+            .unwrap()
+            .granted()
+            .map(|(tag, owners)| (tag.to_owned(), owners))
+            .collect();
+        assert_eq!(table, [("status.other".to_string(), 1)], "dt {dt}");
+    }
+}
+
+#[test]
+fn a_status_scales_by_its_intensity() {
+    for dt in STATUS_DTS {
+        let (mut world, mut schedule) = rig();
+        world
+            .resource_mut::<DataRegistry>()
+            .insert("level", Curve::new([(0.0, 0.0), (10.0, 10.0)]));
+        let shaken = insert(
+            &mut world,
+            "shaken",
+            Effect::new()
+                .with_intensity(5.0, 1.0)
+                .with_modifier("move_speed", Modifier::Pct(-0.1))
+                .with_scale(DataRef::by_id("level"), Scaled::NONE.modifiers()),
+        );
+        let runner = world.spawn_with((Stats::new().with(Stats::MOVE_SPEED, 100.0),));
+        EffectRequest::new(runner, shaken)
+            .with_amount(3.0)
+            .apply(&mut world);
+        assert!(
+            close(stat(&world, runner, "move_speed").unwrap(), 70.0),
+            "dt {dt}"
+        );
+        let mut followed = 0;
+        loop {
+            step(&mut world, &mut schedule, dt);
+            let speed = stat(&world, runner, "move_speed").unwrap();
+            let Some(now) = intensity(&world, runner, "shaken") else {
+                assert_eq!(speed, 100.0, "dt {dt}: gone with its instance");
+                break;
+            };
+            let expected = 100.0 * (1.0 - 0.1 * now);
+            assert!((speed - expected).abs() < 1e-3, "dt {dt}: {speed} at {now}");
+            followed += 1;
+        }
+        assert!(within_a_step(followed + 1, dt, 3.0), "dt {dt}: {followed}");
+    }
+}
+
+#[test]
+fn fuel_drains_its_stat_and_ends_the_status() {
+    for dt in STATUS_DTS {
+        let (mut world, mut schedule) = rig();
+        let lit = insert(&mut world, "lit", Effect::new().with_fuel("oil", 1.0));
+        let lamp = world.spawn_with((Stats::new().with("oil", 2.0),));
+        EffectRequest::new(lamp, lit.clone()).apply(&mut world);
+        step(&mut world, &mut schedule, dt);
+        let oil = world.get::<Stats>(lamp).unwrap().base("oil").unwrap();
+        assert!(close(oil, 2.0 - dt), "dt {dt}: {oil}");
+        let (steps, sent) = steps_until_gone(&mut world, &mut schedule, dt, lamp, "lit");
+        assert!(within_a_step(steps + 1, dt, 2.0), "dt {dt}: {steps} steps");
+        assert!(sent, "dt {dt}");
+        assert_eq!(world.get::<Stats>(lamp).unwrap().base("oil"), Some(0.0));
+
+        // A holder without the stat runs it out at its first step.
+        let dry = world.spawn_with((Stats::new().with("water", 2.0),));
+        EffectRequest::new(dry, lit.clone()).apply(&mut world);
+        assert_eq!(
+            steps_until_gone(&mut world, &mut schedule, dt, dry, "lit"),
+            (1, true)
+        );
+        assert!(skipped(&world, dry).contains(&("fuel", NO_FUEL)));
+        let bare = world.spawn();
+        EffectRequest::new(bare, lit).apply(&mut world);
+        assert_eq!(
+            steps_until_gone(&mut world, &mut schedule, dt, bare, "lit"),
+            (1, true)
+        );
+    }
+}
+
+#[test]
+fn the_status_effect_scales_an_application() {
+    let (mut world, _) = rig();
+    let burning = insert(
+        &mut world,
+        "burning",
+        Effect::new().with_intensity(10.0, 0.0),
+    );
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("double", Curve::new([(0.0, 0.0), (10.0, 20.0)]));
+    let mark = insert(
+        &mut world,
+        "mark",
+        Effect::new()
+            .with_duration(1.0)
+            .with_scale(DataRef::by_id("double"), Scaled::NONE.duration()),
+    );
+    let strong = world.spawn_with((Stats::new().with(Stats::STATUS_EFFECT, 2.0),));
+    let plain = world.spawn_with((Stats::new().with("armor", 1.0),));
+    let read = |world: &mut World, source: Entity, named: Option<f32>| {
+        let target = world.spawn();
+        let mut build = EffectRequest::new(target, burning.clone())
+            .with_source(source)
+            .with_amount(1.5);
+        let mut scaled = EffectRequest::new(target, mark.clone())
+            .with_source(source)
+            .with_scale(1.5);
+        if let Some(named) = named {
+            build = build.with_status_effect(named);
+            scaled = scaled.with_status_effect(named);
+        }
+        build.apply(world);
+        scaled.apply(world);
+        let effects = world.get::<Effects>(target).unwrap();
+        let left = effects
+            .instances()
+            .find(|instance| instance.effect().id() == Some("mark"))
+            .and_then(EffectInstance::left)
+            .unwrap();
+        (effects.intensity("burning").unwrap(), left)
+    };
+    assert_eq!(read(&mut world, strong, None), (3.0, 6.0), "doubled");
+    assert_eq!(read(&mut world, plain, None), (1.5, 3.0), "absent: 1");
+    assert_eq!(
+        read(&mut world, strong, Some(0.5)),
+        (0.75, 1.5),
+        "named wins"
+    );
+    let none = EffectRequest::new(plain, burning.clone());
+    assert_eq!((none.amount(), none.status_effect()), (1.0, None));
+}
+
+#[test]
+fn instance_lines_live_and_save_with_their_instance() {
+    let (mut world, mut schedule) = rig();
+    let guarded = insert(&mut world, "guarded", Effect::new().with_duration(0.5));
+    let knight = world.spawn_with((Stats::new().with("armor", 1.0),));
+    let request = EffectRequest::new(knight, guarded.clone())
+        .with_lines([("armor", Line::new(Modifier::Add(2.0)))]);
+    assert_eq!(request.lines().count(), 1);
+    request.apply(&mut world);
+    assert_eq!(
+        stat(&world, knight, "armor"),
+        Some(3.0),
+        "on while it lives"
+    );
+    // Kept through a save: the instance and the stats both hold it.
+    let saved = serde_json::to_value(world.get::<Effects>(knight).unwrap()).unwrap();
+    assert_eq!(
+        saved["instances"][0]["lines"],
+        json!([{ "stat": "armor", "modifier": { "add": 2.0 } }])
+    );
+    let loaded: Effects = serde_json::from_value(saved).unwrap();
+    let lines: Vec<(&str, Modifier)> = loaded
+        .instances()
+        .next()
+        .unwrap()
+        .lines()
+        .map(|(stat, line)| (stat, line.modifier()))
+        .collect();
+    assert_eq!(lines, [("armor", Modifier::Add(2.0))]);
+    let stats = serde_json::to_value(world.get::<Stats>(knight).unwrap()).unwrap();
+    let restored: Stats = serde_json::from_value(stats).unwrap();
+    world.insert(knight, loaded);
+    world.insert(knight, restored);
+    assert_eq!(stat(&world, knight, "armor"), Some(3.0), "after the load");
+    // A re-application replaces them.
+    EffectRequest::new(knight, guarded.clone())
+        .with_lines([("armor", Line::new(Modifier::Add(5.0)))])
+        .apply(&mut world);
+    assert_eq!(stat(&world, knight, "armor"), Some(6.0));
+    steps(&mut world, &mut schedule, 31);
+    assert!(!world.get::<Effects>(knight).unwrap().has("guarded"));
+    assert_eq!(stat(&world, knight, "armor"), Some(1.0), "gone at its end");
+}
+
+#[test]
+fn statuses_round_trip_their_data_and_save() {
+    let data = json!({
+        "intensity": { "max": 4.0, "decay": 0.5 },
+        "bands": [
+            { "at": 1.0, "grant": ["status.marked"] },
+            { "at": 4.0, "grant": ["status.other"] }
+        ],
+        "fuel": { "stat": "oil", "rate": 1.0 }
+    });
+    let effect: Effect = serde_json::from_value(data.clone()).unwrap();
+    assert_eq!(effect.intensity(), Some((4.0, 0.5)));
+    let bands: Vec<(f32, Vec<String>)> = effect
+        .bands()
+        .map(|(at, tags)| (at, tags.to_vec()))
+        .collect();
+    assert_eq!(
+        bands,
+        [
+            (1.0, vec!["status.marked".to_string()]),
+            (4.0, vec!["status.other".to_string()])
+        ]
+    );
+    assert_eq!(effect.fuel(), Some(("oil", 1.0)));
+    let out = serde_json::to_value(&effect).unwrap();
+    for field in ["intensity", "bands", "fuel"] {
+        assert_eq!(out[field], data[field], "{field}");
+    }
+    let built = Effect::new()
+        .with_intensity(4.0, 0.5)
+        .with_band(1.0, ["status.marked"])
+        .with_band(4.0, ["status.other"])
+        .with_fuel("oil", 1.0);
+    assert_eq!(built, effect);
+    // An effect without them writes none of them.
+    let plain = serde_json::to_value(Effect::new()).unwrap();
+    for field in ["intensity", "bands", "fuel"] {
+        assert!(plain.get(field).is_none(), "{field}");
+    }
+    for bad in [
+        json!({ "bands": [{ "at": 1 }] }),
+        json!({ "intensity": { "max": 2 }, "bands": [{ "at": 3 }] }),
+        json!({ "intensity": { "max": 4 }, "bands": [{ "at": 2 }, { "at": 2 }] }),
+        json!({ "intensity": { "max": 4 }, "bands": [{ "at": 0 }] }),
+        json!({ "intensity": { "max": 0 } }),
+        json!({ "intensity": { "max": 1, "decay": -1 } }),
+        json!({ "intensity": { "max": 1, "rate": 1 } }),
+        json!({ "fuel": { "stat": "oil", "rate": 0 } }),
+        json!({ "fuel": { "stat": "Oil", "rate": 1 } }),
+        json!({ "fuel": { "stat": "oil" } }),
+    ] {
+        assert!(
+            serde_json::from_value::<Effect>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+
+    // An instance with no status state writes the bytes it wrote before
+    // statuses, and a save from then loads with no intensity.
+    let (mut world, _) = rig();
+    let mark = insert(&mut world, "mark", Effect::new().with_duration(2.0));
+    let golem = world.spawn();
+    EffectRequest::new(golem, mark).apply(&mut world);
+    let instance = world
+        .get::<Effects>(golem)
+        .unwrap()
+        .instances()
+        .next()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        serde_json::to_string(&instance).unwrap(),
+        r#"{"effect":"mark","stacks":1,"left":2.0,"period_left":null,"factor":1.0,"serial":0,"granted":[]}"#
+    );
+    let old: EffectInstance = serde_json::from_value(json!({
+        "effect": "mark", "stacks": 1, "left": 1.5, "period_left": null,
+        "factor": 1.0, "serial": 3, "granted": []
+    }))
+    .unwrap();
+    assert_eq!((old.intensity(), old.lines().count()), (None, 0));
+    // A status's instance saves its intensity and bands.
+    let smoulder = insert(
+        &mut world,
+        "smoulder",
+        Effect::new()
+            .with_intensity(4.0, 0.5)
+            .with_band(1.0, ["status.marked"]),
+    );
+    EffectRequest::new(golem, smoulder)
+        .with_amount(2.5)
+        .apply(&mut world);
+    let saved = serde_json::to_value(world.get::<Effects>(golem).unwrap()).unwrap();
+    assert_eq!(saved["instances"][1]["intensity"], json!(2.5));
+    assert_eq!(saved["instances"][1]["bands"], json!([1]));
+    assert_eq!(saved["instances"][1]["granted"], json!(["status.marked"]));
+    let loaded: Effects = serde_json::from_value(saved).unwrap();
+    assert_eq!(loaded.intensity("smoulder"), Some(2.5));
+    for bad in [
+        json!({ "instances": [{ "effect": "x", "intensity": 0.0 }] }),
+        json!({ "instances": [{ "effect": "x", "bands": [1] }] }),
+    ] {
+        assert!(
+            serde_json::from_value::<Effects>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+    // A queued request saves its amount, status effect and lines.
+    let request = EffectRequest::new(golem, DataRef::by_id("smoulder"))
+        .with_amount(2.0)
+        .with_status_effect(1.5)
+        .with_lines([("armor", Line::new(Modifier::Add(1.0)))]);
+    let form = serde_json::to_value(EffectRequestSave::from(&request)).unwrap();
+    assert_eq!(form["amount"], json!(2.0));
+    assert_eq!(form["status_effect"], json!(1.5));
+    let back = EffectRequest::from(serde_json::from_value::<EffectRequestSave>(form).unwrap());
+    assert_eq!(
+        (back.amount(), back.status_effect(), back.lines().count()),
+        (2.0, Some(1.5), 1)
+    );
+    let plain = serde_json::to_value(EffectRequestSave::from(&EffectRequest::new(
+        golem,
+        DataRef::by_id("smoulder"),
+    )))
+    .unwrap();
+    assert_eq!(plain, json!({ "effect": "smoulder", "scale": 1.0 }));
 }

@@ -1,0 +1,9 @@
+{
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "wisp"
+      }
+    }
+  ]
+}

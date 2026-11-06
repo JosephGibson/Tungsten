@@ -9,7 +9,9 @@
 
 use glam::Vec2;
 
-use tungsten_core::components::{Sprite, Tag, Transform, Visibility};
+use tungsten_core::components::{
+    ParallaxLayer, Sprite, SpriteFlip, Tag, Transform, Visibility, parallax_world_position,
+};
 use tungsten_core::input::{ActionMap, InputState, RawInput, RoutedInput};
 use tungsten_core::physics::{Collider, Position, Velocity};
 use tungsten_core::text::TextAlign;
@@ -21,6 +23,7 @@ use crate::debug_views::{
     AMBER, BORDER, CYAN, Cell, Column, GREEN, Header, PANEL, Row, Shape, Tone, VALUE, VIOLET,
     ViewFrame, ViewSpec, ViewWindow, Width, look_of, toggle_key, write_table,
 };
+use crate::sprite_extract::anchor_offset;
 
 /// The inspector's columns (M58): the field, then its value.
 const COLUMNS: &[Column] = &[
@@ -158,6 +161,7 @@ impl InspectorState {
             shape: Shape {
                 columns: COLUMNS,
                 header: Header::Line,
+                buttons: 0,
             },
         };
         if !frame.sync(&mut self.window, &spec) {
@@ -256,7 +260,7 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
         return;
     };
     let world_cursor = camera.screen_to_world(Vec2::new(at.0, at.1));
-    let picked = pick_entity_under_cursor(world, world_cursor);
+    let picked = pick_entity_under_cursor(world, world_cursor, camera.position);
     if let Some(state) = world.get_resource_mut::<InspectorState>() {
         state.selected = picked;
     }
@@ -298,9 +302,13 @@ fn sprite_rows(world: &World, entity: Entity) -> Vec<(&'static str, String)> {
     rows
 }
 
-/// Pick smallest sprite/collider AABB containing `world_cursor`; a collider
-/// sits at its body's `Transform` when it has one, else at `Position`.
-fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity> {
+/// Pick smallest sprite/collider AABB containing `world_cursor`. A sprite's
+/// box is its quad where the extract draws it, before the shader's turn
+/// (debug-pass): remapped under a `ParallaxLayer` against the camera at
+/// `camera`, its frame's anchor on its position, mirrored under
+/// `SpriteFlip`. A collider sits at its body's `Transform` when it has one,
+/// else at `Position`.
+fn pick_entity_under_cursor(world: &World, world_cursor: Vec2, camera: Vec2) -> Option<Entity> {
     let mut best: Option<(Entity, f32)> = None;
 
     if let Some(registry) = world.get_resource::<AssetRegistry>() {
@@ -315,7 +323,21 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
             // A negative scale spans the quad back from the point, as the
             // sprite shader draws it.
             let span = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale;
-            let min = transform.position + span.min(Vec2::ZERO);
+            let mut at = world
+                .get::<ParallaxLayer>(entity)
+                .map_or(transform.position, |layer| {
+                    parallax_world_position(transform.position, layer.scroll_factor, camera)
+                });
+            if let Some(anchor) = asset.anchor {
+                let flip = world.get::<SpriteFlip>(entity).is_some_and(|flip| flip.0);
+                let anchor = if flip {
+                    [asset.width as f32 - anchor[0], anchor[1]]
+                } else {
+                    anchor
+                };
+                at += anchor_offset(anchor, transform.scale, span, transform.rotation);
+            }
+            let min = at + span.min(Vec2::ZERO);
             try_hit_aabb(&mut best, entity, world_cursor, min, span.abs());
         }
     }

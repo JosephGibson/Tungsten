@@ -11,8 +11,8 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHMUP, describe, describe_shape,
-    round_trip,
+    ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, describe,
+    describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -201,7 +201,7 @@ impl Plugin for SpawnChildrenPlugin {
                 "the value itself: each child's prefab and offset, in order",
             ))
             .genre(PLATFORMER)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"[{ "prefab": "glow" }]"#)
             .roundtrip(round_trip::<Vec<ChildDef>>),
         );

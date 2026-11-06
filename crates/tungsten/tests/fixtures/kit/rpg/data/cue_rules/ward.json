@@ -1,0 +1,26 @@
+[
+  {
+    "on": "ability_used",
+    "ability": "bell",
+    "do": [
+      {
+        "counter": {
+          "name": "rings",
+          "add": 1
+        }
+      }
+    ]
+  },
+  {
+    "on": "ability_ready",
+    "ability": "flask",
+    "do": [
+      {
+        "counter": {
+          "name": "chimes",
+          "add": 1
+        }
+      }
+    ]
+  }
+]

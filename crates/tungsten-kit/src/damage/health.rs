@@ -19,8 +19,8 @@ use crate::damage::pipeline::{
     DAMAGE_REQUESTS, DAMAGE_RESOLVE, DamageRequest, Healed, Requests, Resolver, requests_saved,
 };
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
-    describe, round_trip,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER,
+    TOP_DOWN, describe, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -107,6 +107,9 @@ pub struct Health {
     /// The delay left since the kill, while it runs or once it has passed.
     #[serde(skip_serializing_if = "Option::is_none")]
     death_left: Option<f32>,
+    /// The death policy disarms the entity at its kill.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    disarm: bool,
 }
 
 /// A health as data writes it, before its values are checked.
@@ -123,6 +126,8 @@ struct HealthFields {
     despawn_on_death: Option<f32>,
     #[serde(default)]
     death_left: Option<f32>,
+    #[serde(default)]
+    disarm: bool,
 }
 
 impl TryFrom<HealthFields> for Health {
@@ -136,6 +141,7 @@ impl TryFrom<HealthFields> for Health {
             window_left,
             despawn_on_death,
             death_left,
+            disarm,
         } = fields;
         if !(max.is_finite() && max > 0.0) {
             return Err(format!("max: must be finite and > 0 (got {max})"));
@@ -162,6 +168,7 @@ impl TryFrom<HealthFields> for Health {
             window_left,
             despawn_on_death,
             death_left,
+            disarm,
         })
     }
 }
@@ -186,6 +193,7 @@ impl Health {
             window_left: 0.0,
             despawn_on_death: None,
             death_left: None,
+            disarm: false,
         }
     }
 
@@ -230,6 +238,25 @@ impl Health {
     #[must_use]
     pub fn despawn_on_death(&self) -> Option<f32> {
         self.despawn_on_death
+    }
+
+    /// The health, whose death policy disarms its entity at the kill: its
+    /// [`ContactDamage`](crate::ContactDamage) and
+    /// [`Hitbox`](crate::Hitbox) switched off, and its
+    /// [`PlatformerController`](crate::PlatformerController) stopped, its
+    /// vertical speed kept and its input locked for good. A heal never
+    /// brings the dead back, so nothing switches on again; a game that
+    /// revives one turns them on itself.
+    #[must_use]
+    pub fn disarming(mut self) -> Self {
+        self.disarm = true;
+        self
+    }
+
+    /// Whether its death policy disarms its entity at the kill.
+    #[must_use]
+    pub fn disarms(&self) -> bool {
+        self.disarm
     }
 
     /// The health left, from 0 to [`max`](Self::max).
@@ -359,6 +386,9 @@ pub struct Damaged {
     /// The damage types of every part that landed, together; none for an
     /// untyped hit.
     pub kinds: DamageKinds,
+    /// What the target's [`Shield`](crate::Shield) took of `amount`; 0
+    /// without one. A hit it took whole has `absorbed` equal to `amount`.
+    pub absorbed: f32,
 }
 
 impl Damaged {
@@ -375,7 +405,21 @@ impl Damaged {
             crit: false,
             periodic: false,
             kinds: DamageKinds::NONE,
+            absorbed: 0.0,
         }
+    }
+
+    /// The event, the shield having taken `absorbed` of its amount.
+    #[must_use]
+    pub fn with_absorbed(mut self, absorbed: f32) -> Self {
+        self.absorbed = absorbed;
+        self
+    }
+
+    /// Its shield took it whole: health did not fall.
+    #[must_use]
+    pub fn is_absorbed(&self) -> bool {
+        self.absorbed > 0.0 && self.absorbed >= self.amount
     }
 
     /// The event, periodic when `periodic`.
@@ -453,11 +497,23 @@ pub struct DamagedPart {
     /// The part's hit was a critical one
     /// ([`DamageRequest::with_crit`](crate::DamageRequest::with_crit)).
     pub crit: bool,
+    /// Its damage-over-time base (the ARPG design's §6.4, step 7): a
+    /// sheet's part's drawn amount before the factors and the crit, times
+    /// its `delivery.dot` sums and the hit's status effect; a plain part's
+    /// amount before the factors times its source's status effect. A
+    /// chemistry `apply` with `dot` fixes a status's rate from it.
+    pub dot_base: f32,
+    /// The hit's status effect: its sheet's at the use, else its source's
+    /// [`Stats::STATUS_EFFECT`](crate::Stats::STATUS_EFFECT), else 1.
+    pub status_effect: f32,
+    /// How many chemistry reactions led to the hit, from 0.
+    pub depth: u8,
 }
 
 impl DamagedPart {
     /// An event with these fields, no kind, no source, no position, not
-    /// periodic and no crit.
+    /// periodic, no crit, its damage-over-time base its amount, at status
+    /// effect 1 and depth 0.
     #[must_use]
     pub fn new(entity: Entity, amount: f32) -> Self {
         Self {
@@ -468,7 +524,31 @@ impl DamagedPart {
             position: None,
             periodic: false,
             crit: false,
+            dot_base: amount,
+            status_effect: 1.0,
+            depth: 0,
         }
+    }
+
+    /// The event, its damage-over-time base `dot_base`.
+    #[must_use]
+    pub fn with_dot_base(mut self, dot_base: f32) -> Self {
+        self.dot_base = dot_base;
+        self
+    }
+
+    /// The event, at the status effect `status_effect`.
+    #[must_use]
+    pub fn with_status_effect(mut self, status_effect: f32) -> Self {
+        self.status_effect = status_effect;
+        self
+    }
+
+    /// The event, `depth` chemistry reactions deep.
+    #[must_use]
+    pub fn with_depth(mut self, depth: u8) -> Self {
+        self.depth = depth;
+        self
     }
 
     /// The event, periodic when `periodic`.
@@ -631,6 +711,60 @@ pub fn damage(world: &mut World, target: Entity, amount: f32) -> Hit {
     DamageRequest::new(target, amount).apply(world)
 }
 
+/// Kills `target` outright (redo 7.10g): a lethal request that passes the
+/// conversion, the penetration, the resistances, the immunities and the
+/// window, empties the shield and takes all the health as one untyped
+/// part, so a kill always lands on the living. The dead and the despawning
+/// take no request, so a kill never runs twice. Its [`Damaged`] and its
+/// `killed` cues follow as any kill's, its death policy acts, and its
+/// explain record names it lethal. A world's bounds or a game's own rule
+/// deals it.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_core::{Plugin, Schedule, World};
+/// use tungsten_kit::{Health, HealthPlugin, Hit, Resist, kill};
+///
+/// let mut world = World::new();
+/// let mut schedule = Schedule::new();
+/// HealthPlugin.build(&mut schedule, &mut world);
+/// let golem = world.spawn_with((Health::new(50.0), Resist::new().with_factor("physical", 0.0)));
+/// assert_eq!(kill(&mut world, golem), Hit::Killed);
+/// assert!(world.get::<Health>(golem).unwrap().is_dead());
+/// assert_eq!(kill(&mut world, golem), Hit::Ignored, "once");
+/// ```
+pub fn kill(world: &mut World, target: Entity) -> Hit {
+    DamageRequest::new(target, 1.0).lethal().apply(world)
+}
+
+/// The death policy's disarm: `entity`'s contact damage and hitbox
+/// switched off, and its platformer controller stopped, its vertical speed
+/// kept and its input locked for good, as a dead player's.
+pub(crate) fn disarm(world: &mut World, entity: Entity) {
+    use glam::Vec2;
+    use tungsten_core::physics::Velocity;
+
+    use crate::motion::platformer::PlatformerController;
+    use crate::overlap::contact::ContactDamage;
+    use crate::overlap::hit::Hitbox;
+
+    if let Some(contact) = world.get_mut::<ContactDamage>(entity) {
+        contact.set_on(false);
+    }
+    if let Some(hitbox) = world.get_mut::<Hitbox>(entity) {
+        hitbox.set_on(false);
+    }
+    let fall = world
+        .get::<Velocity>(entity)
+        .map_or(0.0, |velocity| velocity.0.y);
+    if let Some(controller) = world.get_mut::<PlatformerController>(entity) {
+        controller.set_run(0.0);
+        controller.launch(Vec2::new(0.0, fall));
+        controller.lock_input(f32::MAX);
+    }
+}
+
 /// A sprite that flashes a colour when [`damage`] hits its entity, drawn
 /// through the [`HIT_FLASH_MATERIAL`] material, which fades it out over its
 /// seconds of game time.
@@ -653,8 +787,16 @@ pub fn damage(world: &mut World, target: Entity, amount: f32) -> Hit {
 /// but the lit shader mixes in the block's same colour and amount, so it
 /// flashes too (redo 7.9); a flashing sprite is a batch of its own.
 ///
+/// With [`with_min_interval`](HitFlash::with_min_interval), a start within
+/// that many seconds of game time of the last one, a hit's or a `flash`
+/// cue's, leaves the flash as it runs, the time counted by the tick, so a
+/// beam's rapid pulses flash once an interval and the sprite shows between;
+/// with [`with_shield`](HitFlash::with_shield), a hit the
+/// [`Shield`](crate::Shield) takes whole flashes the shield's colour.
+///
 /// Scene name `hit_flash`: `{ "color": [1, 1, 1, 1], "seconds": 0.1 }`,
-/// both optional with those defaults.
+/// both optional with those defaults, and `min_interval` (0) and `shield`
+/// (none).
 ///
 /// # Examples
 ///
@@ -703,6 +845,15 @@ pub fn damage(world: &mut World, target: Entity, amount: f32) -> Hit {
 pub struct HitFlash {
     color: [f32; 4],
     seconds: f32,
+    /// Game seconds a start waits after the last one; 0 for none.
+    min_interval: f32,
+    /// The colour of a hit the shield takes whole; `None` flashes `color`.
+    shield: Option<[f32; 4]>,
+    /// The colour the running flash shows.
+    showing: [f32; 4],
+    /// Game seconds since the last start, as the tick counts them, up to
+    /// the interval.
+    since: f32,
     left: f32,
     /// The first tick leaves the flash at full strength.
     fresh: bool,
@@ -743,11 +894,63 @@ impl HitFlash {
         Self {
             color,
             seconds,
+            min_interval: 0.0,
+            shield: None,
+            showing: color,
+            since: 0.0,
             left: 0.0,
             fresh: false,
             kept: None,
             missing: false,
         }
+    }
+
+    /// The flash, starting at most once per `seconds` of game time: a hit
+    /// or a `flash` cue within them of the last start leaves the flash as
+    /// it runs.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_min_interval(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds >= 0.0,
+            "HitFlash::with_min_interval: seconds must be finite and >= 0 (got {seconds})"
+        );
+        self.min_interval = seconds;
+        self.since = seconds;
+        self
+    }
+
+    /// The flash, showing `color` for a hit the entity's
+    /// [`Shield`](crate::Shield) takes whole.
+    ///
+    /// # Panics
+    ///
+    /// When a colour channel is not finite.
+    #[must_use]
+    #[track_caller]
+    pub fn with_shield(mut self, color: [f32; 4]) -> Self {
+        assert!(
+            color.iter().all(|channel| channel.is_finite()),
+            "HitFlash::with_shield: color must be finite (got {color:?})"
+        );
+        self.shield = Some(color);
+        self
+    }
+
+    /// The seconds a start waits after the last one; 0 for none.
+    #[must_use]
+    pub fn min_interval(&self) -> f32 {
+        self.min_interval
+    }
+
+    /// The colour a hit the shield takes whole flashes, if set.
+    #[must_use]
+    pub fn shield(&self) -> Option<[f32; 4]> {
+        self.shield
     }
 
     /// It is flashing.
@@ -760,6 +963,17 @@ impl HitFlash {
 /// Starts the flash on `target` when it has a [`HitFlash`] and a `Sprite`:
 /// a hit's, or a cue's `flash` action.
 pub(crate) fn start_flash(world: &mut World, target: Entity) {
+    start_flash_as(world, target, false);
+}
+
+/// Seconds a flash's interval may end early by and still pass, against the
+/// frames' sum.
+const INTERVAL_SLACK: f32 = 1e-4;
+
+/// Starts the flash on `target`, in its shield colour when `shielded`, a
+/// hit its [`Shield`](crate::Shield) took whole, unless its interval holds
+/// it.
+pub(crate) fn start_flash_as(world: &mut World, target: Entity, shielded: bool) {
     let Some(material_id) = world.get::<Sprite>(target).map(|sprite| sprite.material_id) else {
         return;
     };
@@ -775,6 +989,14 @@ pub(crate) fn start_flash(world: &mut World, target: Entity) {
     };
     let block = world.get::<UniformOverrideBlock>(target).copied();
     let flash = world.get_mut::<HitFlash>(target).unwrap();
+    if flash.min_interval > 0.0 && flash.since + INTERVAL_SLACK < flash.min_interval {
+        return;
+    }
+    flash.since = 0.0;
+    flash.showing = match flash.shield {
+        Some(shield) if shielded => shield,
+        _ => flash.color,
+    };
     if flash.kept.is_none() {
         flash.kept = Some(Kept {
             flash: flash_material,
@@ -784,7 +1006,7 @@ pub(crate) fn start_flash(world: &mut World, target: Entity) {
     }
     flash.left = flash.seconds;
     flash.fresh = true;
-    let color = flash.color;
+    let color = flash.showing;
     world.get_mut::<Sprite>(target).unwrap().material_id = Some(flash_material);
     let mut block = block.unwrap_or_default();
     block.vec4[0] = color;
@@ -852,14 +1074,23 @@ impl Plugin for HealthPlugin {
                 )
                 .default("null"),
             )
+            .field(
+                FieldDescription::new(
+                    "disarm",
+                    FieldType::Bool,
+                    "at the kill, its contact damage and hitbox switch off and its platformer controller stops, keeps its fall and locks its input for good",
+                )
+                .default("false"),
+            )
             .event("Damaged")
             .event("DamagedPart")
             .event("ImmunePart")
             .event("Healed")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
+            .genre(ARPG)
             .sample(r#"{ "max": 5 }"#)
             .roundtrip(round_trip::<HealthDef>),
         );
@@ -888,8 +1119,28 @@ impl Plugin for HealthPlugin {
                 )
                 .default("0.1"),
             )
+            .field(
+                FieldDescription::new(
+                    "min_interval",
+                    FieldType::F32 {
+                        min: Bound::Inclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "game seconds a start waits after the last one: a hit or a `flash` cue within them leaves the flash as it runs",
+                )
+                .default("0.0"),
+            )
+            .field(
+                FieldDescription::new(
+                    "shield",
+                    FieldType::Color,
+                    "the colour of a hit the entity's `shield` takes whole; `color` when left out",
+                )
+                .default("null"),
+            )
+            .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample("{}")
             .roundtrip(round_trip::<HitFlashDef>),
         );
@@ -904,14 +1155,19 @@ impl Plugin for HealthPlugin {
             world.insert_resource(Requests::default());
         }
         world.register_component_with(HEALTH, |def: HealthDef, _: &SpawnContext<'_>| {
-            let health = Health::new(def.max).with_invulnerability(def.invulnerability);
+            let mut health = Health::new(def.max).with_invulnerability(def.invulnerability);
+            health.disarm = def.disarm;
             match def.despawn_on_death {
                 Some(seconds) => (health.with_despawn_on_death(seconds),),
                 None => (health,),
             }
         });
         world.register_component_with(HIT_FLASH, |def: HitFlashDef, _: &SpawnContext<'_>| {
-            (HitFlash::new(def.color, def.seconds),)
+            let flash = HitFlash::new(def.color, def.seconds).with_min_interval(def.min_interval);
+            match def.shield {
+                Some(shield) => (flash.with_shield(shield),),
+                None => (flash,),
+            }
         });
         world.register_component_with_assets(
             RESIST,
@@ -969,6 +1225,8 @@ struct HealthDef {
         skip_serializing_if = "Option::is_none"
     )]
     despawn_on_death: Option<f32>,
+    #[serde(default)]
+    disarm: bool,
 }
 
 /// `components.hit_flash` as a scene writes it.
@@ -979,6 +1237,23 @@ struct HitFlashDef {
     color: [f32; 4],
     #[serde(default = "default_flash_seconds", deserialize_with = "positive")]
     seconds: f32,
+    #[serde(default, deserialize_with = "non_negative")]
+    min_interval: f32,
+    #[serde(default, deserialize_with = "optional_finite_color")]
+    shield: Option<[f32; 4]>,
+}
+
+/// An optional colour, each channel finite.
+fn optional_finite_color<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<[f32; 4]>, D::Error> {
+    let color = Option::<[f32; 4]>::deserialize(deserializer)?;
+    if color.is_some_and(|color| color.iter().any(|channel| !channel.is_finite())) {
+        return Err(serde::de::Error::custom(
+            "a colour's channels must be finite",
+        ));
+    }
+    Ok(color)
 }
 
 fn default_flash_color() -> [f32; 4] {
@@ -1039,6 +1314,9 @@ impl Flashes {
             Option<&mut UniformOverrideBlock>,
         )>() {
             missing |= std::mem::take(&mut flash.missing);
+            if flash.since < flash.min_interval {
+                flash.since = (flash.since + dt).min(flash.min_interval);
+            }
             let Some(kept) = flash.kept else {
                 continue;
             };
@@ -1052,7 +1330,7 @@ impl Flashes {
                     sprite.material_id = Some(kept.flash);
                 }
                 if let Some(block) = block {
-                    block.vec4[0] = flash.color;
+                    block.vec4[0] = flash.showing;
                     block.f32s[0] = flash.left / flash.seconds;
                 }
                 continue;

@@ -1,0 +1,16 @@
+{
+  "stimulus": "elemental.fire",
+  "on": {
+    "all": [
+      "material.kindling"
+    ]
+  },
+  "outputs": [
+    {
+      "apply": {
+        "status": "smoulder",
+        "dot": 0.5
+      }
+    }
+  ]
+}

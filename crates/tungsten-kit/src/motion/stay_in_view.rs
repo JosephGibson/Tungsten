@@ -9,7 +9,7 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, SHMUP, describe, round_trip,
+    Bound, ComponentDescription, FieldDescription, FieldType, RPG, SHOOTER, describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -211,8 +211,8 @@ impl Plugin for StayInViewPlugin {
                 )
                 .default("[0.0, 0.0]"),
             )
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
             .sample(r#"{ "view": 0 }"#)
             .roundtrip(round_trip::<StayInViewDef>),
         );

@@ -1,0 +1,90 @@
+{
+  "trigger": {
+    "action": "attack"
+  },
+  "cost": {
+    "stat": "mana",
+    "amount": 1
+  },
+  "tags": [
+    "skill.spell",
+    "skill.projectile",
+    "skill.fire"
+  ],
+  "skill": {
+    "bases": {
+      "damage": {
+        "elemental.fire": [
+          16,
+          24
+        ]
+      },
+      "crit_chance": 0.06,
+      "cost": 12
+    },
+    "lines": [
+      {
+        "stat": "damage",
+        "modifier": {
+          "mul": 0.8
+        }
+      },
+      {
+        "stat": "cost",
+        "modifier": {
+          "mul": 1.3
+        }
+      },
+      {
+        "stat": "damage",
+        "modifier": {
+          "mul": 0.85
+        },
+        "with": {
+          "all": [
+            "delivery.chained"
+          ]
+        }
+      },
+      {
+        "stat": "cost",
+        "modifier": {
+          "mul": 1.2
+        }
+      },
+      {
+        "convert": {
+          "from": "elemental.fire",
+          "to": "elemental.cold",
+          "pct": 0.5
+        }
+      },
+      {
+        "stat": "cost",
+        "modifier": {
+          "mul": 1.1
+        }
+      },
+      {
+        "pen": {
+          "elemental.fire": 0.1
+        }
+      }
+    ]
+  },
+  "payload": [
+    {
+      "hitbox": 0.1
+    }
+  ],
+  "icon": "cinder_icon",
+  "clip": {
+    "aim": [
+      "adept_cast_down",
+      "adept_cast_down_fwd",
+      "adept_cast_fwd",
+      "adept_cast_up_fwd",
+      "adept_cast_up"
+    ]
+  }
+}

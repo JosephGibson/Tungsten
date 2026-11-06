@@ -1,0 +1,23 @@
+{
+  "tag": "fogling",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 10
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 8
+      }
+    },
+    "health_bar": {
+      "size": [
+        32,
+        4
+      ],
+      "full": false
+    }
+  }
+}

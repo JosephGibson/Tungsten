@@ -397,15 +397,18 @@ pub(in crate::physics) fn circle_contact(
     (contact.penetration > -margin).then_some(contact)
 }
 
-/// A box of `half` moving from `from` to `to` against the slope polygon:
-/// the `t` in `[0, 1]` it first touches it and the side's outward normal, as
-/// a ray of its centre meets their Minkowski sum; `None` when it misses or
-/// starts overlapping.
+/// A box of `half` moving from `from` to `to` against the slope polygon
+/// whose exposed sides are `mask`: the `t` in `[0, 1]` it first touches it
+/// and the side's outward normal, as a ray of its centre meets their
+/// Minkowski sum; `None` when it misses, starts overlapping or enters
+/// through a masked side, but one a rounding behind an exposed side's
+/// entry, which enters through that side at the later `t` (`masked_tie`).
 pub(in crate::physics) fn box_sweep(
     from: Vec2,
     to: Vec2,
     half: Vec2,
     poly: &SlopePolygon,
+    mask: u8,
 ) -> Option<(f32, Vec2)> {
     let delta = to - from;
     if delta == Vec2::ZERO {
@@ -413,7 +416,7 @@ pub(in crate::physics) fn box_sweep(
     }
     let (vertices, normals) = poly.minkowski(half);
     let (mut enter, mut leave) = (f32::NEG_INFINITY, f32::INFINITY);
-    let mut entered = None;
+    let (mut entered, mut open) = (None, None);
     for k in 0..5 {
         let normal = normals[k];
         let start = (from - vertices[k]).dot(normal);
@@ -428,14 +431,49 @@ pub(in crate::physics) fn box_sweep(
         if rate < 0.0 {
             if t > enter {
                 enter = t;
-                entered = Some(normal);
+                entered = Some(k);
+            }
+            if exposed(normal, mask) && open.is_none_or(|(kept, _)| t > kept) {
+                open = Some((t, k));
             }
         } else {
             leave = leave.min(t);
         }
     }
-    let normal = entered?;
-    (enter < leave && (0.0..=1.0).contains(&enter)).then_some((enter, normal))
+    let k = entered?;
+    if !(enter < leave && (0.0..=1.0).contains(&enter)) {
+        return None;
+    }
+    if exposed(normals[k], mask) {
+        return Some((enter, normals[k]));
+    }
+    let sides: [(Vec2, Vec2); 5] = std::array::from_fn(|k| (vertices[k], normals[k]));
+    let tie = masked_tie(from, delta, &sides, enter, open)?;
+    Some((enter, normals[tie]))
+}
+
+/// The exposed side a path `origin + t·dir` enters through when its last
+/// entry, at `enter`, is through a masked side and the latest exposed
+/// side's, `open`, lies within a rounding before it along the path: 1e-3 px
+/// plus four f32 epsilons of the largest coordinate in play, since rounding
+/// grows with the coordinates. Where a masked side meets the face their
+/// entries tie, and rounding can split them either way; past the
+/// tolerance the path starts in the solid neighbour that masks the side.
+fn masked_tie(
+    origin: Vec2,
+    dir: Vec2,
+    sides: &[(Vec2, Vec2)],
+    enter: f32,
+    open: Option<(f32, usize)>,
+) -> Option<usize> {
+    let (t, k) = open?;
+    let scale = sides
+        .iter()
+        .fold(origin.abs().max_element(), |most, &(point, _)| {
+            most.max(point.abs().max_element())
+        });
+    let tolerance = 1e-3 + 4.0 * f32::EPSILON * scale;
+    ((enter - t) * dir.length() <= tolerance).then_some(k)
 }
 
 /// Whether a shape at `center` overlaps the polygon with penetration above
@@ -459,15 +497,18 @@ pub(in crate::physics) fn overlaps(shape: Shape, center: Vec2, poly: &SlopePolyg
 /// it enters at, which may be negative from inside, the side it enters
 /// through and one it enters through at once; `None` when it misses or the
 /// sides lie behind. A path under `f32::EPSILON` along a side's normal runs
-/// parallel to it.
+/// parallel to it. Every side bounds the path; one masked by `mask` that it
+/// enters last, a rounding behind an exposed side's entry, ties with that
+/// side (`masked_tie`).
 fn clip(
     origin: Vec2,
     dir: Vec2,
     sides: &[(Vec2, Vec2)],
     closed: bool,
+    mask: u8,
 ) -> Option<(f32, usize, Option<usize>)> {
     let (mut enter, mut leave) = (f32::NEG_INFINITY, f32::INFINITY);
-    let (mut first, mut tie) = (None, None);
+    let (mut first, mut tie, mut open) = (None, None, None);
     for (k, &(point, normal)) in sides.iter().enumerate() {
         let start = (origin - point).dot(normal);
         let rate = dir.dot(normal);
@@ -484,6 +525,9 @@ fn clip(
             } else if t == enter {
                 tie = Some(k);
             }
+            if exposed(normal, mask) && open.is_none_or(|(kept, _)| t > kept) {
+                open = Some((t, k));
+            }
         } else {
             leave = leave.min(t);
         }
@@ -496,7 +540,12 @@ fn clip(
     if !crosses || leave < 0.0 || (!closed && leave == 0.0) {
         return None;
     }
-    Some((enter, first?, tie))
+    let first = first?;
+    let masked = |k: usize| !exposed(sides[k].1, mask);
+    if masked(first) && tie.is_none_or(masked) {
+        tie = masked_tie(origin, dir, sides, enter, open).or(tie);
+    }
+    Some((enter, first, tie))
 }
 
 /// The outward normal a path enters through, side `first` or, at a corner,
@@ -530,7 +579,7 @@ pub(in crate::physics) fn ray(
         return None;
     }
     let sides: [(Vec2, Vec2); 4] = std::array::from_fn(|i| (poly.points[i], poly.normals[i]));
-    let (t, first, tie) = clip(origin, dir, &sides[..poly.len], true)?;
+    let (t, first, tie) = clip(origin, dir, &sides[..poly.len], true, mask)?;
     Some((t, entered_normal(&poly.normals, first, tie, mask)?))
 }
 
@@ -553,7 +602,7 @@ pub(in crate::physics) fn cast(
         Shape::Aabb { half_extents } => {
             let (vertices, normals) = poly.minkowski(half_extents);
             let sides: [(Vec2, Vec2); 5] = std::array::from_fn(|k| (vertices[k], normals[k]));
-            let (t, first, tie) = clip(origin, dir, &sides, false)?;
+            let (t, first, tie) = clip(origin, dir, &sides, false, mask)?;
             if t < 0.0 {
                 return None;
             }
@@ -564,7 +613,7 @@ pub(in crate::physics) fn cast(
             let sides: [(Vec2, Vec2); 4] = std::array::from_fn(|i| {
                 (poly.points[i] + poly.normals[i] * radius, poly.normals[i])
             });
-            let (t, first, tie) = clip(origin, dir, &sides[..n], false)?;
+            let (t, first, tie) = clip(origin, dir, &sides[..n], false, mask)?;
             // Past an end of the side it enters, a vertex's corner: rounded
             // when both its sides are exposed.
             let at = origin + dir * t.max(0.0);

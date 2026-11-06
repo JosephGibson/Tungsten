@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use crate::app::WindowSize;
 use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
+use tungsten_core::components::{ParallaxLayer, SpriteFlip};
 use tungsten_core::input::{KeyCode, MouseButton};
 use tungsten_core::ui::UiTree;
 
@@ -98,6 +99,62 @@ fn pick_finds_a_flipped_sprite_where_it_draws() {
         let selected = world.get_resource::<InspectorState>().unwrap().selected;
         assert_eq!(selected, picked, "x {x}");
     }
+}
+
+/// The entity a middle press at screen (`x`, `y`) picks.
+fn picked_at(world: &mut World, x: f32, y: f32) -> Option<Entity> {
+    press_mouse3_at(world, x, y);
+    inspector_pick_system(world);
+    world.get_resource::<InspectorState>().unwrap().selected
+}
+
+#[test]
+fn pick_finds_a_parallax_sprite_where_it_draws() {
+    // At scroll factor (0.5, 0.5) under a camera at (200, 0), the extract
+    // draws a sprite whose Transform sits at (300, 100) at (400, 100): on
+    // screen at (200, 100), its Transform's box at (100, 100).
+    let mut world = make_world();
+    world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
+    world.get_resource_mut::<CameraState>().unwrap().position = Vec2::new(200.0, 0.0);
+    let far = spawn_sprite(&mut world, "far", Vec2::new(300.0, 100.0), 16);
+    world.insert(far, ParallaxLayer::uniform(0.5));
+    assert_eq!(
+        picked_at(&mut world, 208.0, 108.0),
+        Some(far),
+        "where it draws"
+    );
+    assert_eq!(
+        picked_at(&mut world, 108.0, 108.0),
+        None,
+        "inside its Transform's box only"
+    );
+}
+
+#[test]
+fn pick_finds_an_anchored_sprite_where_it_draws() {
+    // A 32 × 32 frame anchored at (8, 16) draws its anchor on the position
+    // (100, 100): over x 92..124 and y 84..116, and flipped, mirrored about
+    // the anchor, over x 76..108.
+    let mut world = make_world();
+    world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
+    let anchored = spawn_sprite(&mut world, "anchored", Vec2::new(100.0, 100.0), 32);
+    world
+        .get_resource_mut::<AssetRegistry>()
+        .unwrap()
+        .set_sprite_frame("anchored", None, Some([8.0, 16.0]));
+    assert_eq!(picked_at(&mut world, 94.0, 86.0), Some(anchored), "drawn");
+    assert_eq!(
+        picked_at(&mut world, 128.0, 128.0),
+        None,
+        "inside its unanchored box only"
+    );
+    world.insert(anchored, SpriteFlip(true));
+    assert_eq!(picked_at(&mut world, 80.0, 86.0), Some(anchored), "flipped");
+    assert_eq!(
+        picked_at(&mut world, 118.0, 90.0),
+        None,
+        "where it draws unflipped only"
+    );
 }
 
 #[test]

@@ -2841,6 +2841,7 @@ fn without_new(save: &mut Value, added: &[u64]) {
         if let Some(fields) = controller.and_then(Value::as_object_mut) {
             fields.remove("shove");
             fields.remove("step_height");
+            fields.remove("mask");
         }
     };
     unset(save["player"].get_mut("controller"));

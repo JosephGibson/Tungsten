@@ -1,0 +1,30 @@
+{
+  "tag": "wisp",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          8
+        ]
+      }
+    },
+    "top_down_mover": {
+      "speed": 90
+    },
+    "steering": {
+      "target": {
+        "point": [
+          400,
+          60
+        ]
+      },
+      "mode": "arrive",
+      "max_speed": 90,
+      "acceleration": 300,
+      "radius": 24
+    }
+  }
+}

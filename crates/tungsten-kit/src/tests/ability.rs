@@ -1,13 +1,14 @@
 use super::*;
 use serde_json::json;
 use tungsten_core::physics::PrevPosition;
-use tungsten_core::{Bundle, ComponentRegistry, PrefabData, Schedule, Stage};
+use tungsten_core::{AssetRegistry, Bundle, ComponentRegistry, PrefabData, Schedule, Stage};
 
 use crate::damage::effects::{Effect, Effects, EffectsPlugin};
 use crate::damage::health::HealthPlugin;
 use crate::foundation::stats::StatsPlugin;
 use crate::foundation::tags::TagsPlugin;
 use crate::foundation::trace::KitTrace;
+use crate::intent::sheet::SkillLine;
 use crate::motion::knockback::Knockback;
 use crate::motion::linear::LinearMotionPlugin;
 use crate::overlap::hit::HitShape;
@@ -1026,4 +1027,1661 @@ fn the_ability_cue_action_uses_or_refills_the_subject_or_the_other() {
         .unwrap(),
         CueAction::refill_ability("volley")
     );
+}
+
+// 7.10a: skills, their levels and lines, and the delivery a spawn carries.
+
+#[test]
+fn an_entry_takes_a_level_in_data_and_a_skilled_ability_round_trips() {
+    let (mut world, _) = rig();
+    let skilled = json!({
+        "tags": ["status.swift"],
+        "skill": { "bases": { "cost": 3 }, "lines": [{ "stat": "cost", "modifier": { "mul": 2 } }] },
+        "payload": [{ "spawn": { "prefab": "puff" } }]
+    });
+    let ability: Ability = serde_json::from_value(skilled.clone()).unwrap();
+    assert_eq!(ability.tags(), ["status.swift"]);
+    assert_eq!(ability.skill().unwrap().cost(), Some(3.0));
+    let back = serde_json::to_value(&ability).unwrap();
+    assert_eq!(serde_json::from_value::<Ability>(back).unwrap(), ability);
+    let plain = serde_json::to_value(Ability::new().with_payload(Payload::Impulse(1.0))).unwrap();
+    assert!(
+        plain.get("tags").is_none() && plain.get("skill").is_none(),
+        "as before 7.10a"
+    );
+    world.resource_mut::<DataRegistry>().insert("zap", ability);
+    let components = world.resource::<ComponentRegistry>();
+    let check = |value: serde_json::Value| components.check_in(ABILITIES, &value, &world);
+    assert!(check(json!([{ "id": "zap", "level": 10 }])).is_ok());
+    for bad in [
+        json!([{ "id": "zap", "level": 41 }]),
+        json!([{ "id": "zap", "level": 0 }]),
+        json!([{ "id": "zap", "level": 2, "spare": 1 }]),
+        json!([{ "id": "zap", "level": 2 }, "zap"]),
+    ] {
+        assert!(check(bad.clone()).is_err(), "{bad}");
+    }
+    let prefab: PrefabData = serde_json::from_value(
+        json!({ "components": { "abilities": [{ "id": "zap", "level": 10 }, "zap_b"] } }),
+    )
+    .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("zap_b", Ability::new().with_payload(Payload::Impulse(1.0)));
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("mage".to_string(), prefab);
+    let mage = world.spawn_prefab("mage", [0.0, 0.0]).unwrap();
+    let abilities = world.get::<Abilities>(mage).unwrap();
+    assert_eq!(
+        (
+            abilities.level("zap"),
+            abilities.level("zap_b"),
+            abilities.level("nope")
+        ),
+        (Some(10), Some(1), None)
+    );
+}
+
+#[test]
+fn levels_and_placed_lines_save_with_the_abilities_and_leave_with_their_source() {
+    let mut abilities = Abilities::new()
+        .with(DataRef::by_id("zap"))
+        .with_level("zap", 7);
+    abilities.add_skill_lines(
+        "zap",
+        "support:twin",
+        [SkillLine::added("damage.fire", 1.0, 2.0)],
+    );
+    abilities.add_lines("item:9", [SkillLine::pen("damage.fire", 0.1)]);
+    let saved = serde_json::to_value(&abilities).unwrap();
+    assert_eq!(saved["levels"], json!([["zap", 7]]));
+    assert_eq!(saved["skill_lines"][0][1], json!("support:twin"));
+    assert_eq!(saved["lines"][0][0], json!("item:9"));
+    assert_eq!(
+        serde_json::from_value::<Abilities>(saved).unwrap(),
+        abilities
+    );
+    assert_eq!(abilities.remove_skill_lines("zap", "support:twin"), 1);
+    assert_eq!(abilities.remove_lines("item:9"), 1);
+    abilities.set_level("zap", 1);
+    assert_eq!(
+        serde_json::to_value(&abilities)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .len(),
+        1,
+        "only the entries again"
+    );
+}
+
+#[test]
+fn a_skills_spawn_carries_its_delivery_and_a_plain_one_none() {
+    let (mut world, mut schedule) = rig();
+    let skilled = Ability::new()
+        .with_payload(Payload::Spawn {
+            prefab: "puff".to_string(),
+            speed: 0.0,
+            offset: 0.0,
+        })
+        .with_skill(crate::Skill::new().with_damage("damage.fire", 3.0, 5.0));
+    let plain = Ability::new().with_payload(Payload::Spawn {
+        prefab: "bolt".to_string(),
+        speed: 0.0,
+        offset: 0.0,
+    });
+    let caster = world.spawn_with((
+        Transform::from_position(Vec2::ZERO),
+        Abilities::new()
+            .with(DataRef::inline(skilled))
+            .with(DataRef::inline(plain)),
+    ));
+    assert_eq!(use_ability(&mut world, caster, "#0"), Used::Used);
+    assert_eq!(use_ability(&mut world, caster, "#1"), Used::Used);
+    step(&mut world, &mut schedule, STEP);
+    let carried: Vec<(String, Option<Entity>)> = world
+        .query::<(&tungsten_core::Tag, Option<&crate::Delivery>)>()
+        .map(|(tag, delivery)| (tag.name.clone(), delivery.and_then(crate::Delivery::holder)))
+        .collect();
+    assert!(
+        carried.contains(&("puff".to_string(), Some(caster))),
+        "{carried:?}"
+    );
+    assert!(carried.contains(&("bolt".to_string(), None)), "{carried:?}");
+}
+
+// 7.10c, Step 2: a held trigger, a direction and the refill.
+
+#[test]
+fn a_held_trigger_uses_each_cooldown_while_its_slot_is_held() {
+    let (mut world, mut schedule) = rig();
+    let smg = insert(
+        &mut world,
+        "smg",
+        Ability::new()
+            .with_trigger(Trigger::Held("fire".to_string()))
+            .with_cooldown(6.0 * STEP)
+            .with_payload(Payload::Hitbox(0.05)),
+    );
+    let burst = insert(
+        &mut world,
+        "burst",
+        Ability::new()
+            .with_trigger(Trigger::Held("burst".to_string()))
+            .with_charges(2, 100.0, false)
+            .with_payload(Payload::Hitbox(0.05)),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(smg).with(burst), Intent::default()),
+    );
+    let mut used = Vec::new();
+    for i in 1..=40 {
+        // Held from step 1 through step 30, pressed at the first.
+        let intent = world.get_mut::<Intent>(hero).unwrap();
+        intent.set_slot("fire", i <= 30, i == 1);
+        intent.set_slot("burst", i <= 30, i == 1);
+        steps(&mut world, &mut schedule, 1);
+        used.extend(uses(&world).into_iter().map(|(_, name, _)| (i, name)));
+    }
+    let at_steps = |name: &str| -> Vec<usize> {
+        used.iter()
+            .filter(|(_, used)| used == name)
+            .map(|&(i, _)| i)
+            .collect()
+    };
+    assert_eq!(
+        at_steps("smg"),
+        [1, 7, 13, 19, 25],
+        "a use each 0.1 s while held, none after the release"
+    );
+    assert_eq!(
+        at_steps("burst"),
+        [1, 2],
+        "a use each step held until the charges run out"
+    );
+    // The data form.
+    let held: Ability = serde_json::from_value(json!({
+        "trigger": { "held": "fire" },
+        "payload": [{ "hitbox": 0.1 }]
+    }))
+    .unwrap();
+    assert_eq!(held.trigger(), &Trigger::Held("fire".to_string()));
+    assert_eq!(
+        serde_json::to_value(&held).unwrap()["trigger"],
+        json!({ "held": "fire" })
+    );
+    assert!(
+        serde_json::from_value::<Ability>(json!({
+            "trigger": { "held": "Fire" },
+            "payload": [{ "hitbox": 0.1 }]
+        }))
+        .is_err()
+    );
+}
+
+#[test]
+fn a_movement_direction_follows_the_intent_else_the_aim() {
+    let (mut world, mut schedule) = rig();
+    let bolt = || Payload::Spawn {
+        prefab: "bolt".to_string(),
+        speed: 100.0,
+        offset: 0.0,
+    };
+    let dodge = insert(
+        &mut world,
+        "dodge",
+        Ability::new()
+            .with_direction(Direction::Movement)
+            .with_payload(bolt())
+            .with_payload(Payload::Impulse(50.0)),
+    );
+    let shot = insert(&mut world, "shot", Ability::new().with_payload(bolt()));
+    let seek = insert(
+        &mut world,
+        "seek",
+        Ability::new()
+            .with_direction(Direction::Movement)
+            .with_target(AbilityTarget::Nearest {
+                filter: TagFilter::new().all(["team.enemy"]),
+                range: None,
+            })
+            .with_payload(bolt()),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(dodge).with(shot).with(seek),
+            Intent::default(),
+            Knockback::new(0.2),
+        ),
+    );
+    at(&mut world, 0.0, 50.0, (Tags::new(["team.enemy"]),));
+    // Each use's new bolt's velocity.
+    let fired = |world: &mut World, schedule: &mut Schedule, name: &str| -> Vec2 {
+        let before: Vec<Entity> = bolts(world).iter().map(|&(bolt, _)| bolt).collect();
+        assert_eq!(use_ability(world, hero, name), Used::Used, "{name}");
+        steps(world, schedule, 1);
+        bolts(world)
+            .into_iter()
+            .find(|(bolt, _)| !before.contains(bolt))
+            .map(|(_, velocity)| velocity)
+            .unwrap()
+    };
+    let near = |a: Vec2, b: Vec2| (a - b).length() < 1e-4;
+    // Moving right while aiming up: the dodge goes right, the shot up.
+    {
+        let intent = world.get_mut::<Intent>(hero).unwrap();
+        intent.set_movement(Vec2::X);
+        intent.set_aim(Some(Vec2::NEG_Y));
+    }
+    let dodged = fired(&mut world, &mut schedule, "dodge");
+    assert!(near(dodged, Vec2::new(100.0, 0.0)), "{dodged}");
+    assert_eq!(
+        world.get::<Knockback>(hero).unwrap().push(),
+        Vec2::new(50.0, 0.0),
+        "the impulse along the move stick"
+    );
+    let shot = fired(&mut world, &mut schedule, "shot");
+    assert!(near(shot, Vec2::new(0.0, -100.0)), "{shot}");
+    // A nearest target keeps the direction to its target.
+    let sought = fired(&mut world, &mut schedule, "seek");
+    assert!(near(sought, Vec2::new(0.0, 100.0)), "{sought}");
+    // At rest the dodge takes the aim's direction.
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_movement(Vec2::ZERO);
+    let still = fired(&mut world, &mut schedule, "dodge");
+    assert!(near(still, Vec2::new(0.0, -100.0)), "{still}");
+    // With neither, no direction: no use.
+    world.get_mut::<Intent>(hero).unwrap().set_aim(None);
+    assert_eq!(use_ability(&mut world, hero, "dodge"), Used::NoTarget);
+    // The data form: `movement` written, `aim` left out.
+    let dodge: Ability = serde_json::from_value(json!({
+        "direction": "movement",
+        "payload": [{ "impulse": 600 }]
+    }))
+    .unwrap();
+    assert_eq!(dodge.direction(), Direction::Movement);
+    assert_eq!(
+        serde_json::to_value(&dodge).unwrap()["direction"],
+        json!("movement")
+    );
+    let aimed = Ability::new().with_payload(Payload::Impulse(600.0));
+    assert_eq!(aimed.direction(), Direction::Aim);
+    assert!(
+        serde_json::to_value(&aimed)
+            .unwrap()
+            .get("direction")
+            .is_none()
+    );
+    assert!(
+        serde_json::from_value::<Ability>(json!({
+            "direction": "behind",
+            "payload": [{ "impulse": 600 }]
+        }))
+        .is_err()
+    );
+}
+
+#[test]
+fn refill_left_reads_a_running_refill_alone() {
+    let (mut world, mut schedule) = rig();
+    let each = insert(
+        &mut world,
+        "each",
+        Ability::new()
+            .with_charges(3, 2.0 * STEP, false)
+            .with_payload(Payload::Hitbox(0.1)),
+    );
+    let all = insert(
+        &mut world,
+        "all",
+        Ability::new()
+            .with_charges(3, 2.0 * STEP, true)
+            .with_payload(Payload::Hitbox(0.1)),
+    );
+    let plain = insert(
+        &mut world,
+        "plain",
+        Ability::new()
+            .with_cooldown(1.0)
+            .with_payload(Payload::Hitbox(0.1)),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(each).with(all).with(plain),),
+    );
+    let refill =
+        |world: &World, name: &str| world.get::<Abilities>(hero).unwrap().refill_left(name);
+    assert_eq!(
+        (refill(&world, "each"), refill(&world, "all")),
+        (None, None),
+        "full, not yet counted"
+    );
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(
+        (refill(&world, "each"), refill(&world, "all")),
+        (None, None),
+        "every charge"
+    );
+    // One spent: the one-at-a-time refill runs, a partial `all` magazine's
+    // waits for its last charge.
+    assert_eq!(use_ability(&mut world, hero, "each"), Used::Used);
+    assert_eq!(use_ability(&mut world, hero, "all"), Used::Used);
+    assert!(refill(&world, "each").is_some_and(|left| close(left, 2.0 * STEP)));
+    assert_eq!(refill(&world, "all"), None, "charges left");
+    steps(&mut world, &mut schedule, 1);
+    assert!(refill(&world, "each").is_some_and(|left| close(left, STEP)));
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(refill(&world, "each"), None, "its charge back, full");
+    // The magazine emptied: its refill runs from the last charge.
+    assert_eq!(use_ability(&mut world, hero, "all"), Used::Used);
+    assert_eq!(refill(&world, "all"), None, "one left");
+    assert_eq!(use_ability(&mut world, hero, "all"), Used::Used);
+    assert!(refill(&world, "all").is_some_and(|left| close(left, 2.0 * STEP)));
+    steps(&mut world, &mut schedule, 1);
+    assert!(refill(&world, "all").is_some_and(|left| close(left, STEP)));
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(refill(&world, "all"), None);
+    assert_eq!(
+        world.get::<Abilities>(hero).unwrap().charges("all"),
+        Some(3)
+    );
+    // Without charges, or not owned: none.
+    assert_eq!(use_ability(&mut world, hero, "plain"), Used::Used);
+    assert_eq!(refill(&world, "plain"), None);
+    assert_eq!(refill(&world, "sword"), None);
+}
+
+// 7.10c, Step 3: the ability cue events.
+
+#[test]
+fn a_refusal_carries_its_reason() {
+    use crate::react::cues::KitCues;
+    let (mut world, mut schedule) = rig();
+    let hitbox = || Payload::Hitbox(0.1);
+    let cool = insert(
+        &mut world,
+        "cool",
+        Ability::new().with_cooldown(1.0).with_payload(hitbox()),
+    );
+    let spent = insert(
+        &mut world,
+        "spent",
+        Ability::new()
+            .with_charges(1, 100.0, false)
+            .with_payload(hitbox()),
+    );
+    let dear = insert(
+        &mut world,
+        "dear",
+        Ability::new()
+            .with_cost("mana", 50.0)
+            .with_payload(hitbox()),
+    );
+    let aimed = insert(
+        &mut world,
+        "aimed",
+        Ability::new()
+            .with_target(AbilityTarget::Aim)
+            .with_payload(hitbox()),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new()
+                .with(cool)
+                .with(spent)
+                .with(dear)
+                .with(aimed),
+            Stats::new().with("mana", 5.0),
+            Cues::new().on(ABILITY_REFUSED, [CueAction::counter_add("refused", 1)]),
+            Counters::new(),
+        ),
+    );
+    for name in ["cool", "spent"] {
+        assert_eq!(use_ability(&mut world, hero, name), Used::Used);
+    }
+    for (name, used) in [
+        ("cool", Used::NotReady),
+        ("spent", Used::NoCharge),
+        ("dear", Used::NoCost),
+        ("aimed", Used::NoTarget),
+        ("sword", Used::NoAbility),
+    ] {
+        assert_eq!(use_ability(&mut world, hero, name), used, "{name}");
+    }
+    let abilities = world.get::<Abilities>(hero).unwrap();
+    let pushed: Vec<(&str, Option<&str>, u8)> = world
+        .resource::<KitCues>()
+        .0
+        .iter()
+        .map(|cue| {
+            (
+                cue.event,
+                abilities.name_at(usize::from(cue.entry)),
+                cue.reason,
+            )
+        })
+        .collect();
+    assert_eq!(
+        pushed,
+        [
+            (ABILITY_REFUSED, Some("cool"), 1),
+            (ABILITY_REFUSED, Some("spent"), 2),
+            (ABILITY_REFUSED, Some("dear"), 3),
+            (ABILITY_REFUSED, Some("aimed"), 4),
+        ],
+        "each owned ability's refusal with its reason; none for a name it does not own"
+    );
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(world.get::<Counters>(hero).unwrap().get("refused"), 4);
+    assert!(
+        world.resource::<KitCues>().0.is_empty(),
+        "the cue system drained them"
+    );
+}
+
+#[test]
+fn an_entry_turns_ready_once_a_cooldown() {
+    let (mut world, mut schedule) = rig();
+    let hitbox = || Payload::Hitbox(0.1);
+    let cool = insert(
+        &mut world,
+        "cool",
+        Ability::new()
+            .with_cooldown(3.0 * STEP)
+            .with_payload(hitbox()),
+    );
+    let shot = insert(
+        &mut world,
+        "shot",
+        Ability::new()
+            .with_charges(1, 2.0 * STEP, false)
+            .with_payload(hitbox()),
+    );
+    let free = insert(&mut world, "free", Ability::new().with_payload(hitbox()));
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(cool).with(shot).with(free),
+            Cues::new().on(ABILITY_READY, [CueAction::counter_add("ready", 1)]),
+            Counters::new(),
+        ),
+    );
+    let ready = |world: &World| world.get::<Counters>(hero).unwrap().get("ready");
+    steps(&mut world, &mut schedule, 5);
+    assert_eq!(
+        ready(&world),
+        0,
+        "an entry starts ready: a spawn sends none"
+    );
+    for name in ["cool", "shot", "free"] {
+        assert_eq!(use_ability(&mut world, hero, name), Used::Used);
+    }
+    let mut seen = Vec::new();
+    for _ in 0..6 {
+        steps(&mut world, &mut schedule, 1);
+        seen.push(ready(&world));
+    }
+    assert_eq!(
+        seen,
+        [0, 1, 2, 2, 2, 2],
+        "the shot's charge back at step 2, the cooldown out at step 3; the free one never waits"
+    );
+    // A refill makes it ready at once, which no counting sees.
+    assert_eq!(use_ability(&mut world, hero, "cool"), Used::Used);
+    assert!(world.get_mut::<Abilities>(hero).unwrap().refill("cool"));
+    steps(&mut world, &mut schedule, 4);
+    assert_eq!(ready(&world), 2);
+}
+
+#[test]
+fn a_held_trigger_cues_its_hold_and_release() {
+    let (mut world, mut schedule) = rig();
+    let run = insert(
+        &mut world,
+        "run",
+        Ability::new()
+            .with_trigger(Trigger::Held("run".to_string()))
+            .with_payload(Payload::Hitbox(0.05)),
+    );
+    let dash = insert(
+        &mut world,
+        "dash",
+        Ability::new()
+            .with_trigger(Trigger::Action("run".to_string()))
+            .with_payload(Payload::Hitbox(0.05)),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(run).with(dash),
+            Intent::default(),
+            Cues::new()
+                .on(ABILITY_HELD, [CueAction::counter_add("held", 1)])
+                .on(ABILITY_RELEASED, [CueAction::counter_add("released", 1)]),
+            Counters::new(),
+        ),
+    );
+    let counts = |world: &World| {
+        let counters = world.get::<Counters>(hero).unwrap();
+        (counters.get("held"), counters.get("released"))
+    };
+    let mut seen = Vec::new();
+    for i in 1..=7 {
+        world
+            .get_mut::<Intent>(hero)
+            .unwrap()
+            .set_slot("run", (2..=4).contains(&i), i == 2);
+        steps(&mut world, &mut schedule, 1);
+        seen.push(counts(&world));
+    }
+    assert_eq!(
+        seen,
+        [(0, 0), (1, 0), (1, 0), (1, 0), (1, 1), (1, 1), (1, 1)],
+        "down at step 2 and up at step 5, once each; the action trigger on the slot cues no hold"
+    );
+    // The flag is unsaved, so a load sees a held slot's hold begin again.
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_slot("run", true, true);
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(counts(&world), (2, 1));
+    let saved = serde_json::to_value(world.get::<Abilities>(hero).unwrap()).unwrap();
+    assert!(!saved.to_string().contains("held"), "{saved}");
+    *world.get_mut::<Abilities>(hero).unwrap() = serde_json::from_value(saved).unwrap();
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_slot("run", true, false);
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(counts(&world), (3, 1));
+}
+
+// 7.10c, Step 4: spawns by their centre, their motion kept, a lob.
+
+/// Registers sprite `id`, `size` source pixels, anchored at `anchor` when
+/// given, on the World's asset registry.
+fn sprite(world: &mut World, id: &str, size: [u32; 2], anchor: Option<[f32; 2]>) {
+    use std::path::PathBuf;
+    use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
+    if !world.has_resource::<AssetRegistry>() {
+        world.insert_resource(AssetRegistry::new());
+    }
+    let assets = world.resource_mut::<AssetRegistry>();
+    assets.register_sprite(
+        id.to_string(),
+        FilterMode::Nearest,
+        size[0],
+        size[1],
+        PathBuf::from(format!("{id}.png")),
+        TextureHandle(0),
+        UvRect::FULL,
+        None,
+        None,
+        None,
+    );
+    assets.set_sprite_frame(id, None, anchor);
+}
+
+/// Adds prefab `id` as `data` to the World's registry.
+fn prefab(world: &mut World, id: &str, data: serde_json::Value) {
+    let data: PrefabData = serde_json::from_value(data).unwrap();
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert(id.to_string(), data);
+}
+
+/// The entities tagged `name`, by index.
+fn tagged(world: &World, name: &str) -> Vec<Entity> {
+    let mut found: Vec<Entity> = world
+        .query::<(Entity, &tungsten_core::Tag)>()
+        .filter(|(_, tag)| tag.name == name)
+        .map(|(entity, _)| entity)
+        .collect();
+    found.sort_by_key(|entity| entity.id());
+    found
+}
+
+/// The command flush that lands queued spawns.
+fn flush(world: &mut World) {
+    let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+    world.flush_reusing(&mut commands);
+    world.insert_resource(commands);
+}
+
+/// A spawn of `prefab` with no speed or offset, centred or not.
+fn spawn_of(prefab: &str, centred: bool, offset: f32) -> Payload {
+    if centred {
+        Payload::SpawnWith(Box::new(
+            SpawnWith::new(prefab).with_offset(offset).centred(),
+        ))
+    } else {
+        Payload::Spawn {
+            prefab: prefab.to_string(),
+            speed: 0.0,
+            offset,
+        }
+    }
+}
+
+#[test]
+fn a_centred_spawn_puts_the_prefabs_centre_on_the_users() {
+    use tungsten_core::physics::Collider;
+    let (mut world, mut schedule) = rig();
+    sprite(&mut world, "mote", [8, 6], None);
+    prefab(
+        &mut world,
+        "mote",
+        json!({ "tag": "mote", "sprite": { "asset_id": "mote" } }),
+    );
+    let centred = insert(
+        &mut world,
+        "centred",
+        Ability::new().with_payload(spawn_of("mote", true, 0.0)),
+    );
+    let ahead = insert(
+        &mut world,
+        "ahead",
+        Ability::new().with_payload(spawn_of("mote", true, 10.0)),
+    );
+    let plain = insert(
+        &mut world,
+        "plain",
+        Ability::new().with_payload(spawn_of("mote", false, 0.0)),
+    );
+    // A body whose collider sits 8 px above its point.
+    let hero = world.spawn_with((
+        Position(Vec2::new(10.0, 20.0)),
+        Collider::aabb(Vec2::splat(4.0)).with_offset(Vec2::new(0.0, -8.0)),
+        Abilities::new().with(centred).with(ahead).with(plain),
+        Intent::default(),
+    ));
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_aim(Some(Vec2::X));
+    let mut placed = Vec::new();
+    for name in ["centred", "ahead", "plain"] {
+        let before = tagged(&world, "mote");
+        assert_eq!(use_ability(&mut world, hero, name), Used::Used);
+        steps(&mut world, &mut schedule, 1);
+        let mote = tagged(&world, "mote")
+            .into_iter()
+            .find(|mote| !before.contains(mote))
+            .unwrap();
+        placed.push((
+            world.get::<Transform>(mote).unwrap().position,
+            centre_of(&world, mote).unwrap(),
+        ));
+    }
+    assert_eq!(
+        placed,
+        [
+            (Vec2::new(6.0, 9.0), Vec2::new(10.0, 12.0)),
+            (Vec2::new(16.0, 9.0), Vec2::new(20.0, 12.0)),
+            (Vec2::new(10.0, 20.0), Vec2::new(14.0, 23.0)),
+        ],
+        "its sprite's centre on the user's collider centre, then 10 px on along the aim; \
+         uncentred, its point on the user's point"
+    );
+}
+
+#[test]
+fn a_drawn_centre_reads_the_anchor_scale_flip_and_turn() {
+    use tungsten_core::Sprite;
+    use tungsten_core::components::SpriteFlip;
+    let (mut world, mut schedule) = rig();
+    sprite(&mut world, "banner", [16, 8], Some([4.0, 8.0]));
+    let banner = world
+        .resource::<AssetRegistry>()
+        .sprite_id("banner")
+        .unwrap();
+    // Scaled 2, turned a quarter and flipped: the flipped anchor (12, 8),
+    // scaled to (24, 16), sits on the point; the centre (16, 8) lies
+    // (−8, −8) from it, turned a quarter to (8, −8).
+    let mut transform = Transform::from_position(Vec2::new(100.0, 50.0));
+    transform.scale = Vec2::splat(2.0);
+    transform.rotation = std::f32::consts::FRAC_PI_2;
+    let flag = world.spawn_with((transform, Sprite::new(banner), SpriteFlip(true)));
+    let centre = centre_of(&world, flag).unwrap();
+    assert!(
+        (centre - Vec2::new(108.0, 42.0)).length() < 1e-4,
+        "{centre}"
+    );
+    // Unscaled, unturned, unflipped: the anchor (4, 8) on the point, the
+    // centre (8, 4) at (4, −4) from it.
+    let plain = world.spawn_with((
+        Transform::from_position(Vec2::new(100.0, 50.0)),
+        Sprite::new(banner),
+    ));
+    assert_eq!(centre_of(&world, plain), Some(Vec2::new(104.0, 46.0)));
+    // A bodiless prefab anchored so: a centred spawn puts its point 4 px
+    // left of and below the user's centre.
+    prefab(
+        &mut world,
+        "banner",
+        json!({ "tag": "banner", "sprite": { "asset_id": "banner" } }),
+    );
+    let raise = insert(
+        &mut world,
+        "raise",
+        Ability::new().with_payload(spawn_of("banner", true, 0.0)),
+    );
+    let bearer = at(&mut world, 30.0, 30.0, (Abilities::new().with(raise),));
+    assert_eq!(use_ability(&mut world, bearer, "raise"), Used::Used);
+    steps(&mut world, &mut schedule, 1);
+    let [raised] = tagged(&world, "banner")[..] else {
+        panic!("one banner");
+    };
+    assert_eq!(
+        world.get::<Transform>(raised).unwrap().position,
+        Vec2::new(26.0, 34.0)
+    );
+    assert_eq!(centre_of(&world, raised), Some(Vec2::new(30.0, 30.0)));
+}
+
+#[test]
+fn a_spawn_keeps_its_prefabs_acceleration() {
+    let (mut world, mut schedule) = rig();
+    prefab(
+        &mut world,
+        "shell",
+        json!({ "tag": "shell", "components": { "linear_motion": { "velocity": [0, 0], "acceleration": [0, 300] } } }),
+    );
+    let fired = |prefab: &str| Payload::Spawn {
+        prefab: prefab.to_string(),
+        speed: 200.0,
+        offset: 0.0,
+    };
+    let shell = insert(
+        &mut world,
+        "shell",
+        Ability::new()
+            .with_target(AbilityTarget::Aim)
+            .with_payload(fired("shell")),
+    );
+    let bolt = insert(
+        &mut world,
+        "bolt",
+        Ability::new()
+            .with_target(AbilityTarget::Aim)
+            .with_payload(fired("bolt")),
+    );
+    let hero = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(shell).with(bolt), Intent::default()),
+    );
+    world
+        .get_mut::<Intent>(hero)
+        .unwrap()
+        .set_aim(Some(Vec2::X));
+    for name in ["shell", "bolt"] {
+        assert_eq!(use_ability(&mut world, hero, name), Used::Used);
+    }
+    steps(&mut world, &mut schedule, 1);
+    let [thrown] = tagged(&world, "shell")[..] else {
+        panic!("one shell");
+    };
+    let motion = world.get::<LinearMotion>(thrown).unwrap();
+    assert_eq!(
+        (motion.velocity(), motion.acceleration()),
+        (Vec2::new(200.0, 0.0), Vec2::new(0.0, 300.0)),
+        "its speed along the aim, its prefab's acceleration kept"
+    );
+    let [(_, velocity)] = bolts(&world)[..] else {
+        panic!("one bolt");
+    };
+    assert_eq!(velocity, Vec2::new(200.0, 0.0));
+    let [bolt] = tagged(&world, "bolt")[..] else {
+        panic!("one bolt");
+    };
+    assert_eq!(
+        world.get::<LinearMotion>(bolt).unwrap().acceleration(),
+        Vec2::ZERO,
+        "a prefab without one gets none"
+    );
+}
+
+/// A World with a clock at fixed step `dt`, a command buffer, a trace,
+/// gravity 600 px/s² down, the physics and the tags (`team.enemy`), linear
+/// motion and ability plugins.
+fn physics_rig(dt: f32) -> (World, Schedule) {
+    use tungsten_core::physics::{PhysicsConfig, PhysicsPlugin};
+    let mut world = World::new();
+    let mut time = Time::new();
+    time.set_fixed_step(dt);
+    world.insert_resource(time);
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(KitTrace::default());
+    world.insert_resource(PrefabRegistry::new());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, 600.0),
+        ..PhysicsConfig::default()
+    });
+    let mut schedule = Schedule::new();
+    TagsPlugin::new()
+        .with_tags(["team.enemy"])
+        .build(&mut schedule, &mut world);
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    LinearMotionPlugin.build(&mut schedule, &mut world);
+    AbilitiesPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+#[test]
+fn a_lob_lands_on_the_aims_point_by_its_body_kind() {
+    let target = Vec2::new(300.0, -40.0);
+    let dynamic = |scale: Option<f32>| {
+        let mut body = json!({ "kind": "dynamic", "shape": { "kind": "circle", "radius": 2 } });
+        if let Some(scale) = scale {
+            body["gravity_scale"] = json!(scale);
+        }
+        body
+    };
+    let linear = json!({ "velocity": [0, 0], "acceleration": [0, 300] });
+    let kinds = [
+        ("stone", json!({ "rigid_body": dynamic(Some(2.0)) })),
+        ("shell", json!({ "linear_motion": linear })),
+        (
+            "both",
+            json!({ "rigid_body": dynamic(None), "linear_motion": linear }),
+        ),
+    ];
+    for dt in [STEP, 2.0 * STEP] {
+        for (id, components) in &kinds {
+            let (mut world, mut schedule) = physics_rig(dt);
+            prefab(
+                &mut world,
+                id,
+                json!({ "tag": id, "components": components }),
+            );
+            let lob = insert(
+                &mut world,
+                "lob",
+                Ability::new()
+                    .with_target(AbilityTarget::Nearest {
+                        filter: TagFilter::new().all(["team.enemy"]),
+                        range: None,
+                    })
+                    .with_payload(Payload::SpawnWith(Box::new(
+                        SpawnWith::new(*id).with_lob(Lob::new(400.0, [0.2, 2.0])),
+                    ))),
+            );
+            let thrower = at(&mut world, 0.0, 0.0, (Abilities::new().with(lob),));
+            at(&mut world, target.x, target.y, (Tags::new(["team.enemy"]),));
+            assert_eq!(use_ability(&mut world, thrower, "lob"), Used::Used);
+            flush(&mut world);
+            let [thrown] = tagged(&world, id)[..] else {
+                panic!("{id}: one");
+            };
+            // 302.6 px at 400 px/s: 45 steps at 1/60 s, 23 at 1/30 s.
+            let flight = ((target.length() / 400.0).clamp(0.2, 2.0) / dt).round() as usize;
+            for _ in 0..flight {
+                step(&mut world, &mut schedule, dt);
+            }
+            let landed = point_of(&world, thrown).unwrap();
+            assert!(
+                (landed - target).length() < 0.5,
+                "{id} at dt {dt}: {landed} after {flight} steps"
+            );
+        }
+    }
+    // The load refuses a lob beside a speed, and on a prefab that holds
+    // neither a dynamic body nor a `linear_motion`.
+    assert!(
+        serde_json::from_value::<Ability>(json!({
+            "payload": [{ "spawn": { "prefab": "shell", "speed": 100, "lob": { "speed": 400, "time": [0.2, 2] } } }]
+        }))
+        .is_err()
+    );
+    let (mut world, _) = physics_rig(STEP);
+    prefab(&mut world, "puff", json!({ "tag": "puff" }));
+    let still = Ability::new().with_payload(Payload::SpawnWith(Box::new(
+        SpawnWith::new("puff").with_lob(Lob::new(400.0, [0.2, 2.0])),
+    )));
+    let error = still.check(&world).unwrap_err();
+    assert_eq!(error.field, "payload.0.spawn.prefab", "{error:?}");
+}
+
+// 7.10c, Step 7: conduction.
+
+/// The filter of conductors.
+fn conductive() -> TagFilter {
+    TagFilter::new().all(["conductive"])
+}
+
+/// A conductor at `x, y` with 100 health and `more` tags.
+fn conductor(world: &mut World, x: f32, y: f32, more: &[&str]) -> Entity {
+    let mut tags = vec!["conductive"];
+    tags.extend_from_slice(more);
+    at(world, x, y, (Tags::new(tags), Health::new(100.0)))
+}
+
+/// A caster at the origin whose `zap` fires on the slot `zap`, conducting
+/// `conduct` from the nearest conductor.
+fn zapper(world: &mut World, conduct: Conduct) -> Entity {
+    let zap = insert(
+        world,
+        "zap",
+        Ability::new()
+            .with_trigger(Trigger::Action("zap".to_string()))
+            .with_target(AbilityTarget::Nearest {
+                filter: conductive(),
+                range: None,
+            })
+            .with_payload(Payload::Conduct(Box::new(conduct))),
+    );
+    at(
+        world,
+        0.0,
+        0.0,
+        (Abilities::new().with(zap), Intent::default()),
+    )
+}
+
+/// `count` steps, `zap` pressed on `caster` at the first when `press`:
+/// each step's damage, by target.
+fn zap_steps(
+    world: &mut World,
+    schedule: &mut Schedule,
+    caster: Entity,
+    count: usize,
+    press: bool,
+) -> Vec<Vec<(Entity, f32)>> {
+    (1..=count)
+        .map(|i| {
+            if world.is_alive(caster) {
+                world.get_mut::<Intent>(caster).unwrap().set_slot(
+                    "zap",
+                    press && i == 1,
+                    press && i == 1,
+                );
+            }
+            steps(world, schedule, 1);
+            world
+                .resource::<EventQueue<crate::Damaged>>()
+                .iter()
+                .map(|hit| (hit.entity, hit.amount))
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn a_conduction_jumps_to_the_nearest_unchained_receiver_one_a_step() {
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(
+        &mut world,
+        Conduct::new(32.0, 120.0, conductive()).with_keep(0.5),
+    );
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let near = conductor(&mut world, 150.0, 80.0, &[]);
+    let last = conductor(&mut world, 200.0, 0.0, &[]);
+    let away = conductor(&mut world, 900.0, 0.0, &[]);
+    assert_eq!(
+        zap_steps(&mut world, &mut schedule, caster, 5, true),
+        [
+            vec![(first, 32.0)],
+            vec![(near, 16.0)],
+            vec![(last, 8.0)],
+            vec![],
+            vec![],
+        ],
+        "the target, then 94 px on to the nearer, then the last, halving; none in reach after"
+    );
+    assert_eq!(world.get::<Health>(away).unwrap().current(), 100.0);
+    // Equally near, the lower in save order goes first.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(
+        &mut world,
+        Conduct::new(10.0, 120.0, conductive()).with_jumps(1),
+    );
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let lower = conductor(&mut world, 100.0, 90.0, &[]);
+    let higher = conductor(&mut world, 100.0, -90.0, &[]);
+    let struck = zap_steps(&mut world, &mut schedule, caster, 3, true);
+    assert_eq!(struck[1].len(), 1);
+    assert_eq!(struck[1][0].0, lower, "{struck:?}");
+    assert_eq!(world.get::<Health>(higher).unwrap().current(), 100.0);
+    let _ = first;
+}
+
+#[test]
+fn a_conduction_ends_at_an_immune_or_stopping_receiver_and_at_its_jumps() {
+    use crate::damage::defense::Resist;
+    let bolt = || {
+        Conduct::new(20.0, 120.0, conductive())
+            .with_tags(["damage.lightning"])
+            .with_stop(TagFilter::new().any(["status.frozen"]))
+    };
+    for case in ["immune", "frozen", "jumps"] {
+        let (mut world, mut schedule) = rig();
+        let conduct = if case == "jumps" {
+            bolt().with_jumps(1)
+        } else {
+            bolt()
+        };
+        let caster = zapper(&mut world, conduct);
+        let first = conductor(&mut world, 100.0, 0.0, &[]);
+        let second = match case {
+            "frozen" => conductor(&mut world, 200.0, 0.0, &["status.frozen"]),
+            _ => conductor(&mut world, 200.0, 0.0, &[]),
+        };
+        if case == "immune" {
+            world.insert(second, Resist::new().with_factor("damage.lightning", 0.0));
+        }
+        let third = conductor(&mut world, 300.0, 0.0, &[]);
+        let struck: Vec<Entity> = zap_steps(&mut world, &mut schedule, caster, 5, true)
+            .into_iter()
+            .flatten()
+            .map(|(entity, _)| entity)
+            .collect();
+        let expected = if case == "jumps" {
+            vec![first, second]
+        } else {
+            vec![first]
+        };
+        assert_eq!(struck, expected, "{case}");
+        assert_eq!(
+            world.get::<Health>(third).unwrap().current(),
+            100.0,
+            "{case}"
+        );
+    }
+    // A frozen target takes no strike at all.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(&mut world, bolt());
+    conductor(&mut world, 100.0, 0.0, &["status.frozen"]);
+    assert!(
+        zap_steps(&mut world, &mut schedule, caster, 3, true)
+            .iter()
+            .all(Vec::is_empty)
+    );
+    // The load refuses a conduction on a `self` or `aim` target.
+    for target in [json!({ "self": {} }), json!({ "aim": {} })] {
+        assert!(
+            serde_json::from_value::<Ability>(json!({
+                "target": target,
+                "payload": [{ "conduct": { "damage": 5, "reach": 100, "receivers": { "all": ["conductive"] } } }]
+            }))
+            .is_err()
+        );
+    }
+}
+
+/// What a restored entity takes, as a state's marker.
+#[derive(Debug, Clone, Copy)]
+struct Restored;
+
+#[test]
+fn a_chain_ends_when_its_user_or_last_receiver_goes() {
+    use tungsten_core::save::{capture_world, name, restore_world};
+    let bolt = || Conduct::new(20.0, 120.0, conductive());
+    for gone in ["user", "receiver"] {
+        let (mut world, mut schedule) = rig();
+        let caster = zapper(&mut world, bolt());
+        let first = conductor(&mut world, 100.0, 0.0, &[]);
+        let next = conductor(&mut world, 200.0, 0.0, &[]);
+        assert_eq!(
+            zap_steps(&mut world, &mut schedule, caster, 1, true),
+            [vec![(first, 20.0)]]
+        );
+        world.despawn(if gone == "user" { caster } else { first });
+        assert!(
+            zap_steps(&mut world, &mut schedule, caster, 4, false)
+                .iter()
+                .all(Vec::is_empty),
+            "{gone} gone: no strike after"
+        );
+        assert_eq!(world.get::<Health>(next).unwrap().current(), 100.0);
+    }
+    // A capture restored into the same World, as a load's new run.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(&mut world, bolt());
+    name(&mut world, caster, None, "caster").unwrap();
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let next = conductor(&mut world, 200.0, 0.0, &[]);
+    zap_steps(&mut world, &mut schedule, caster, 1, true);
+    let saved = capture_world(&world).unwrap();
+    world.despawn(caster);
+    let caster = zapper(&mut world, bolt());
+    name(&mut world, caster, None, "caster").unwrap();
+    restore_world(&mut world, &saved, &(Restored,)).unwrap();
+    for _ in 0..4 {
+        steps(&mut world, &mut schedule, 1);
+        assert!(
+            world
+                .resource::<EventQueue<crate::Damaged>>()
+                .iter()
+                .all(|hit| hit.entity != next),
+            "the chain ended with its run"
+        );
+    }
+    let _ = first;
+}
+
+// place-and-caps, Step 2: the place payload (S-17).
+
+/// A World with a clock at the fixed step, a command buffer, a trace,
+/// physics without gravity, and the tags (`spot`), stats (`mana`), aim,
+/// cue, ability and cap plugins.
+fn place_rig() -> (World, Schedule) {
+    use crate::intent::aim::AimPlugin;
+    use crate::lifecycle::cap::CapPlugin;
+    use tungsten_core::physics::{PhysicsConfig, PhysicsPlugin};
+    let mut world = World::new();
+    let mut time = Time::new();
+    time.set_fixed_step(STEP);
+    world.insert_resource(time);
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(KitTrace::default());
+    world.insert_resource(PrefabRegistry::new());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::ZERO,
+        ..PhysicsConfig::default()
+    });
+    let mut schedule = Schedule::new();
+    TagsPlugin::new()
+        .with_tags(["spot"])
+        .build(&mut schedule, &mut world);
+    StatsPlugin::new()
+        .with_stat("mana", 0.0, 100.0)
+        .build(&mut schedule, &mut world);
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    AimPlugin.build(&mut schedule, &mut world);
+    CuesPlugin.build(&mut schedule, &mut world);
+    AbilitiesPlugin.build(&mut schedule, &mut world);
+    CapPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// A place of `prefab` at any distance.
+fn place_of(prefab: &str) -> Payload {
+    Payload::Place(Box::new(Place::new(prefab)))
+}
+
+/// The nearest `spot`.
+fn at_spot() -> AbilityTarget {
+    AbilityTarget::Nearest {
+        filter: TagFilter::new().all(["spot"]),
+        range: None,
+    }
+}
+
+#[test]
+fn a_place_sets_the_prefab_down_at_the_aims_point() {
+    use tungsten_core::physics::{Collider, RigidBodyBundle};
+    use tungsten_core::{CameraState, InputState};
+    let (mut world, mut schedule) = place_rig();
+    // A body's centre is its offset; a bodiless sprite's its drawn centre.
+    prefab(
+        &mut world,
+        "salt",
+        json!({ "tag": "salt", "components": { "rigid_body": {
+            "kind": "static", "shape": { "kind": "aabb", "half_extents": [4, 4] }, "offset": [0, -4]
+        } } }),
+    );
+    sprite(&mut world, "glyph", [8, 6], None);
+    prefab(
+        &mut world,
+        "glyph",
+        json!({ "tag": "glyph", "sprite": { "asset_id": "glyph" } }),
+    );
+    let salt = insert(
+        &mut world,
+        "salt",
+        Ability::new()
+            .with_target(at_spot())
+            .with_payload(Payload::Place(Box::new(Place::new("salt").within(300.0)))),
+    );
+    let glyph = insert(
+        &mut world,
+        "glyph",
+        Ability::new().with_payload(place_of("glyph")),
+    );
+    // The cursor at (60, 30) in the world.
+    world.insert_resource(CameraState::new());
+    let mut input = InputState::new();
+    input.update_cursor_position(60.0, 30.0);
+    world.insert_resource(input);
+    let user = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(salt).with(glyph), Aim::cursor()),
+    );
+    // A spot on a dynamic body whose centre sits 8 px above its point.
+    let spot = world.spawn_with(RigidBodyBundle::dynamic(
+        Position(Vec2::new(100.0, 50.0)),
+        Collider::circle(4.0).with_offset(Vec2::new(0.0, -8.0)),
+    ));
+    world.insert(spot, Tags::new(["spot"]));
+    steps(&mut world, &mut schedule, 1);
+    let mark = centre_of(&world, spot).unwrap();
+    assert_eq!(mark, Vec2::new(100.0, 42.0));
+    assert_eq!(use_ability(&mut world, user, "salt"), Used::Used);
+    assert_eq!(use_ability(&mut world, user, "glyph"), Used::Used);
+    flush(&mut world);
+    let [salt] = tagged(&world, "salt")[..] else {
+        panic!("one salt");
+    };
+    assert_eq!(
+        point_of(&world, salt),
+        Some(Vec2::new(100.0, 46.0)),
+        "its point the target's centre less its offset"
+    );
+    assert_eq!(centre_of(&world, salt), Some(mark), "within its range");
+    assert_eq!(
+        world
+            .get::<crate::Source>(salt)
+            .map(|source| source.entity()),
+        Some(user),
+        "from the user"
+    );
+    let [glyph] = tagged(&world, "glyph")[..] else {
+        panic!("one glyph");
+    };
+    assert_eq!(
+        centre_of(&world, glyph),
+        Some(Vec2::new(60.0, 30.0)),
+        "a bodiless sprite's drawn centre on the cursor's point"
+    );
+}
+
+#[test]
+fn a_place_is_refused_with_no_point_no_room_or_at_its_cap() {
+    use crate::react::cues::KitCues;
+    use tungsten_core::physics::{Collider, RigidBodyBundle};
+    use tungsten_core::{LayerKind, TileProps, TilemapData, TilemapInstance, TilemapRegistry};
+    let (mut world, mut schedule) = place_rig();
+    let capped =
+        |group: &str, max: u32, past: &str| json!({ "group": group, "max": max, "past": past });
+    for (id, components) in [
+        (
+            "block",
+            json!({ "rigid_body": { "kind": "static", "shape": { "kind": "aabb", "half_extents": [4, 4] } } }),
+        ),
+        ("claim", json!({ "cap": capped("claims", 1, "refuse") })),
+        ("seal", json!({ "cap": capped("seals", 1, "oldest") })),
+        ("pair", json!({ "cap": capped("pairs", 1, "refuse") })),
+        ("trio", json!({ "cap": capped("trios", 1, "refuse") })),
+        ("keep", json!({ "cap": capped("mixed", 1, "oldest") })),
+        (
+            "broken_keep",
+            json!({ "cap": capped("mixed", 1, "oldest"), "nonesuch": {} }),
+        ),
+        ("ward", json!({ "cap": capped("mixed", 2, "refuse") })),
+    ] {
+        prefab(
+            &mut world,
+            id,
+            json!({ "tag": id, "components": components }),
+        );
+    }
+    // The refused abilities have a cooldown, two charges and a cost, so a
+    // refusal shows nothing spent; the free ones set the scene.
+    let dear = |payload: &[Payload]| {
+        payload.iter().cloned().fold(
+            Ability::new()
+                .with_target(at_spot())
+                .with_cooldown(1.0)
+                .with_charges(2, 10.0, false)
+                .with_cost("mana", 1.0),
+            Ability::with_payload,
+        )
+    };
+    let free = |payload: Payload| Ability::new().with_target(at_spot()).with_payload(payload);
+    let spawn = |id: &str| Payload::Spawn {
+        prefab: id.to_string(),
+        speed: 0.0,
+        offset: 0.0,
+    };
+    let mut abilities = Abilities::new();
+    for (name, ability) in [
+        // Its own aim, which it lacks: no point.
+        (
+            "aimless",
+            Ability::new()
+                .with_cooldown(1.0)
+                .with_charges(2, 10.0, false)
+                .with_cost("mana", 1.0)
+                .with_payload(place_of("block")),
+        ),
+        (
+            "near",
+            dear(&[Payload::Place(Box::new(Place::new("block").within(50.0)))]),
+        ),
+        ("block", dear(&[place_of("block")])),
+        ("claim", dear(&[place_of("claim")])),
+        ("seal", dear(&[place_of("seal")])),
+        ("pairs", dear(&[place_of("pair"), place_of("pair")])),
+        ("spawn_then_place", dear(&[spawn("trio"), place_of("trio")])),
+        ("mixed", dear(&[spawn("keep"), place_of("ward")])),
+        (
+            "mixed_broken",
+            dear(&[spawn("broken_keep"), place_of("ward")]),
+        ),
+        ("free_block", free(place_of("block"))),
+        ("free_claim", free(place_of("claim"))),
+        ("free_seal", free(place_of("seal"))),
+        ("free_ward", free(place_of("ward"))),
+    ] {
+        abilities = abilities.with(insert(&mut world, name, ability));
+    }
+    // A kinematic user with mana that names its refusals.
+    let user = world.spawn_with(RigidBodyBundle::kinematic(
+        Position(Vec2::ZERO),
+        Collider::aabb(Vec2::new(6.0, 6.0)),
+    ));
+    world.insert(user, Transform::default());
+    world.insert(user, abilities);
+    world.insert(user, Stats::new().with("mana", 10.0));
+    world.insert(
+        user,
+        Cues::new().on("ability_refused", [CueAction::counter_add("refused", 1)]),
+    );
+    let spot = at(&mut world, 0.0, 0.0, (Tags::new(["spot"]),));
+    let aim = |world: &mut World, x: f32, y: f32| {
+        world.insert(spot, Position(Vec2::new(x, y)));
+        world.insert(spot, Transform::from_position(Vec2::new(x, y)));
+    };
+    // The blockers and what passes, each 100 px on along x.
+    let body = |kind: fn(Position, Collider) -> RigidBodyBundle, x: f32| {
+        kind(
+            Position(Vec2::new(x, 0.0)),
+            Collider::aabb(Vec2::new(6.0, 6.0)),
+        )
+    };
+    world.spawn_with(body(RigidBodyBundle::r#static, 200.0));
+    world.spawn_with(body(RigidBodyBundle::kinematic, 300.0));
+    world.spawn_with(body(RigidBodyBundle::dynamic, 500.0));
+    world.spawn_with(body(RigidBodyBundle::sensor, 600.0));
+    // A solid tile's cell centred at (400, 0), a one-way one's at (700, 0).
+    let mut tiles = TilemapRegistry::new();
+    for (id, one_way) in [("solid", false), ("ledge", true)] {
+        let mut map = TilemapData::new(16, 16, 1, 1);
+        let tile = map.add_tile("stone");
+        map.set_tile_props(tile, {
+            let mut props = TileProps::default();
+            props.one_way = one_way;
+            props
+        });
+        let layer = map.add_layer("ground", LayerKind::Collision);
+        map.fill(layer, tile);
+        tiles.insert(id.to_owned(), map);
+    }
+    world.insert_resource(tiles);
+    world.spawn_with((TilemapInstance::new("solid", Vec2::new(392.0, -8.0)),));
+    world.spawn_with((TilemapInstance::new("ledge", Vec2::new(692.0, -8.0)),));
+    steps(&mut world, &mut schedule, 1);
+
+    let spent = |world: &World, name: &str| {
+        let abilities = world.get::<Abilities>(user).unwrap();
+        (
+            abilities.ready(name),
+            abilities.charges(name),
+            mana(world, user),
+        )
+    };
+    let reasons = |world: &mut World| -> Vec<u8> {
+        world
+            .resource_mut::<KitCues>()
+            .0
+            .drain(..)
+            .map(|cue| cue.reason)
+            .collect()
+    };
+    let refuse = |world: &mut World, name: &str, at: [f32; 2], expected: Used, reason: u8| {
+        aim(world, at[0], at[1]);
+        assert_eq!(use_ability(world, user, name), expected, "{name} at {at:?}");
+        assert_eq!(
+            spent(world, name),
+            (true, Some(2), Some(10.0)),
+            "{name}: nothing spent"
+        );
+        assert_eq!(reasons(world), [reason], "{name}: its reason pushed");
+    };
+    // No point, or one past the range.
+    refuse(&mut world, "aimless", [0.0, 0.0], Used::NoTarget, 4);
+    refuse(&mut world, "near", [100.0, 0.0], Used::NoTarget, 4);
+    // No room on a static body, a kinematic one and a solid tile.
+    for x in [200.0, 300.0, 400.0] {
+        refuse(&mut world, "block", [x, 0.0], Used::NoRoom, 5);
+    }
+    // Room over a dynamic body, a sensor, a one-way tile and its user.
+    for x in [500.0, 600.0, 700.0, 0.0] {
+        aim(&mut world, x, 0.0);
+        assert_eq!(
+            use_ability(&mut world, user, "free_block"),
+            Used::Used,
+            "at {x}"
+        );
+    }
+    flush(&mut world);
+    assert_eq!(tagged(&world, "block").len(), 4);
+    // At a full `refuse` cap.
+    aim(&mut world, 0.0, 100.0);
+    assert_eq!(use_ability(&mut world, user, "free_claim"), Used::Used);
+    flush(&mut world);
+    refuse(&mut world, "claim", [0.0, 100.0], Used::Capped, 6);
+    // At an `oldest` cap full of this frame's admissions.
+    assert_eq!(use_ability(&mut world, user, "free_seal"), Used::Used);
+    refuse(&mut world, "seal", [0.0, 100.0], Used::Capped, 6);
+    // Two places into one `max: 1` group, and a spawn then a place.
+    refuse(&mut world, "pairs", [0.0, 100.0], Used::Capped, 6);
+    refuse(
+        &mut world,
+        "spawn_then_place",
+        [0.0, 100.0],
+        Used::Capped,
+        6,
+    );
+    // An `oldest` `max: 1` spawn, then a `refuse` `max: 2` place, into a
+    // group of two, whether or not the spawn's prefab prepares.
+    for _ in 0..2 {
+        assert_eq!(use_ability(&mut world, user, "free_ward"), Used::Used);
+    }
+    flush(&mut world);
+    refuse(&mut world, "mixed", [0.0, 100.0], Used::Capped, 6);
+    refuse(&mut world, "mixed_broken", [0.0, 100.0], Used::Capped, 6);
+    flush(&mut world);
+    let counts: Vec<usize> = ["claim", "seal", "pair", "trio", "keep", "ward"]
+        .iter()
+        .map(|id| tagged(&world, id).len())
+        .collect();
+    assert_eq!(counts, [1, 1, 0, 0, 0, 2], "nothing more spawned");
+}
+
+/// The clips `caster_idle` and `caster_cast` and the sprite `cinder_icon`
+/// in `world`, for a look's load check.
+fn look_assets(world: &mut World) {
+    use tungsten_core::assets::AnimationFrame;
+    use tungsten_core::{AnimationData, AnimationRegistry, SpriteAssetId};
+    let mut clips = AnimationRegistry::new();
+    for (id, first) in [("caster_idle", 0), ("caster_cast", 4)] {
+        let frames = vec![AnimationFrame {
+            sprite: SpriteAssetId::new(first),
+            duration_ms: 100,
+            sound: None,
+        }];
+        clips.insert(
+            id.to_string(),
+            AnimationData {
+                looping: false,
+                frames,
+            },
+        );
+    }
+    world.insert_resource(clips);
+    let mut assets = AssetRegistry::new();
+    assets.intern_sprite("cinder_icon");
+    world.insert_resource(assets);
+}
+
+fn puff() -> Payload {
+    Payload::Spawn {
+        prefab: "puff".to_string(),
+        speed: 0.0,
+        offset: 0.0,
+    }
+}
+
+#[test]
+fn a_use_plays_its_clip_and_names_its_icon() {
+    use crate::present::character::{CharacterAnimator, Clips};
+    let (mut world, _) = rig();
+    look_assets(&mut world);
+    let cast = insert(
+        &mut world,
+        "cast",
+        Ability::new()
+            .with_payload(puff())
+            .with_icon("cinder_icon")
+            .with_clip("caster_cast"),
+    );
+    let caster = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(cast.clone()),
+            CharacterAnimator::new("caster_idle"),
+        ),
+    );
+    let post = at(&mut world, 50.0, 0.0, (Abilities::new().with(cast),));
+    assert_eq!(use_ability(&mut world, caster, "cast"), Used::Used);
+    assert_eq!(
+        world.get::<CharacterAnimator>(caster).unwrap().playing(),
+        Some(&Clips::one("caster_cast"))
+    );
+    assert!(skipped(&world, caster).is_empty());
+    assert_eq!(use_ability(&mut world, post, "cast"), Used::Used);
+    assert_eq!(skipped(&world, post), [("clip", NO_ANIMATOR)]);
+    let data = world.resource::<DataRegistry>();
+    let abilities = world.get::<Abilities>(caster).unwrap();
+    assert_eq!(abilities.icon(data, "cast"), Some("cinder_icon"));
+    assert_eq!(
+        abilities.clip(data, "cast"),
+        Some(&Clips::one("caster_cast"))
+    );
+    assert_eq!(abilities.icon(data, "wand"), None, "not owned");
+
+    // The data form, the load's check, and a plain ability's bytes.
+    let shown: Ability = serde_json::from_value(json!({
+        "payload": [{ "impulse": 0 }],
+        "icon": "cinder_icon",
+        "clip": { "aim": ["caster_idle", "caster_cast"] }
+    }))
+    .unwrap();
+    assert_eq!(serde_json::to_value(&shown).unwrap()["icon"], "cinder_icon");
+    shown.check(&world).unwrap();
+    for (ability, field, id) in [
+        (shown.clone().with_icon("cinder_icn"), "icon", "cinder_icn"),
+        (shown.clone().with_clip("caster_cst"), "clip", "caster_cst"),
+    ] {
+        let error = ability.check(&world).unwrap_err();
+        assert_eq!((error.field.as_str(), error.id.as_str()), (field, id));
+    }
+    let plain = serde_json::to_value(Ability::new().with_payload(puff())).unwrap();
+    assert!(plain.get("icon").is_none() && plain.get("clip").is_none());
+}
+
+#[test]
+fn an_inline_abilitys_look_is_shared_across_the_tick() {
+    let (mut world, mut schedule) = rig();
+    let cast = Ability::new()
+        .with_payload(puff())
+        .with_icon("cinder_icon")
+        .with_clip("caster_cast");
+    let caster = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(DataRef::inline(cast)),),
+    );
+    let look = |world: &World| {
+        world.get::<Abilities>(caster).unwrap().entries[0]
+            .ability
+            .as_inline()
+            .unwrap()
+            .look
+            .clone()
+            .unwrap()
+    };
+    let before = look(&world);
+    steps(&mut world, &mut schedule, 2);
+    assert!(
+        Arc::ptr_eq(&before, &look(&world)),
+        "the ticker's clone copies the pointer"
+    );
+    assert_eq!(std::mem::size_of::<Option<Arc<AbilityLook>>>(), 8);
+}
+
+#[test]
+fn an_id_backed_look_reads_before_a_tick_and_after_a_reload() {
+    use crate::present::character::Clips;
+    let (mut world, mut schedule) = rig();
+    insert(
+        &mut world,
+        "cinder",
+        Ability::new()
+            .with_payload(puff())
+            .with_icon("cinder_icon")
+            .with_clip("caster_cast"),
+    );
+    let caster = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(DataRef::by_id("cinder")),),
+    );
+    let read = |world: &World| {
+        let data = world.resource::<DataRegistry>();
+        let abilities = world.get::<Abilities>(caster).unwrap();
+        (
+            abilities.icon(data, "cinder").map(str::to_owned),
+            abilities.clip(data, "cinder").cloned(),
+        )
+    };
+    assert_eq!(
+        read(&world),
+        (Some("cinder_icon".into()), Some(Clips::one("caster_cast"))),
+        "before its first tick"
+    );
+    // A reload replaces the entry: the next read shows it.
+    insert(
+        &mut world,
+        "cinder",
+        Ability::new().with_payload(puff()).with_icon("ember_icon"),
+    );
+    assert_eq!(read(&world), (Some("ember_icon".into()), None));
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(read(&world), (Some("ember_icon".into()), None));
+}
+
+#[test]
+fn the_payload_keeps_its_size() {
+    assert_eq!(std::mem::size_of::<Payload>(), 32);
 }

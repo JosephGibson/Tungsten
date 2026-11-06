@@ -7,14 +7,52 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN, describe,
-    describe_kind, round_trip,
+    ARPG, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
+    describe, describe_kind, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::ensure_phases;
 
 /// The scene component [`TagsPlugin`] registers, and the data kind.
 pub(crate) const TAGS: &str = "tags";
+
+/// A hit's track: a direct hit's.
+pub(crate) const TRACK_HIT: &str = "delivery.hit";
+/// A hit's track: a periodic request's, damage over time.
+pub(crate) const TRACK_DOT: &str = "delivery.dot";
+/// The state tags a hit carries, known only at the hit, which a family of
+/// deliveries sets.
+pub(crate) const STATE_TAGS: [&str; 4] = [
+    "delivery.pierced",
+    "delivery.forked",
+    "delivery.chained",
+    "delivery.repeated",
+];
+/// The sides a hit lands on.
+pub(crate) const SIDE_FRONT: &str = "side.front";
+pub(crate) const SIDE_REAR: &str = "side.rear";
+
+/// The tags the kit names itself, declared in every game so data names
+/// them: a hit's tracks, its state tags and its sides, with their dotted
+/// ancestors (`delivery`, `side`).
+pub(crate) const KIT_TAGS: [&str; 8] = [
+    TRACK_HIT,
+    TRACK_DOT,
+    STATE_TAGS[0],
+    STATE_TAGS[1],
+    STATE_TAGS[2],
+    STATE_TAGS[3],
+    SIDE_FRONT,
+    SIDE_REAR,
+];
+
+/// The stimuli the kit names itself (redo 7.10b), declared in every game so
+/// a chemistry rule names them: a body's impact, the light at a point and a
+/// blast, with their ancestor `stimulus`.
+pub(crate) const STIMULUS_IMPACT: &str = "stimulus.impact";
+pub(crate) const STIMULUS_LIGHT: &str = "stimulus.light";
+pub(crate) const STIMULUS_BLAST: &str = "stimulus.blast";
+pub(crate) const STIMULI: [&str; 3] = [STIMULUS_IMPACT, STIMULUS_LIGHT, STIMULUS_BLAST];
 
 /// Whether `name` is a tag name: `[a-z][a-z0-9_]*` segments joined by dots,
 /// the rule counter and flag names follow too.
@@ -31,7 +69,7 @@ pub(crate) fn valid_tag(name: &str) -> bool {
 /// `team.player` declares `team` too; and whether a `name` an entity
 /// carries is `tag` or a descendant, so an entity tagged `team.enemy` has
 /// `team`.
-fn covers(declared: &str, name: &str) -> bool {
+pub(crate) fn covers(declared: &str, name: &str) -> bool {
     declared == name
         || (declared.starts_with(name) && declared.as_bytes().get(name.len()) == Some(&b'.'))
 }
@@ -102,6 +140,9 @@ impl From<Tags> for Vec<String> {
 }
 
 impl Tags {
+    /// No tags.
+    pub(crate) const EMPTY: Tags = Tags { names: Vec::new() };
+
     /// Tags of `names`, sorted and deduplicated.
     ///
     /// # Panics
@@ -295,10 +336,43 @@ impl TagFilter {
     /// Whether an entity with `tags` passes.
     #[must_use]
     pub fn matches(&self, tags: Option<&Tags>) -> bool {
-        let has = |tag: &String| tags.is_some_and(|tags| tags.has(tag));
-        self.all.iter().all(has)
-            && (self.any.is_empty() || self.any.iter().any(has))
-            && !self.none.iter().any(has)
+        self.matches_by(|tag| tags.is_some_and(|tags| tags.has(tag)))
+    }
+
+    /// Whether a holder of the names `has` reports passes: [`matches`]
+    /// over any source of names, such as several tag sets read together.
+    ///
+    /// [`matches`]: Self::matches
+    pub(crate) fn matches_by(&self, has: impl Fn(&str) -> bool) -> bool {
+        self.all.iter().all(|tag| has(tag))
+            && (self.any.is_empty() || self.any.iter().any(|tag| has(tag)))
+            && !self.none.iter().any(|tag| has(tag))
+    }
+
+    /// Every name the filter uses.
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        self.all
+            .iter()
+            .chain(&self.any)
+            .chain(&self.none)
+            .map(String::as_str)
+    }
+
+    /// The load's check: each name the filter uses declared, an error
+    /// naming `field` and the list (`with.all`).
+    pub(crate) fn check(&self, world: &World, field: &str) -> Result<(), MissingAsset> {
+        for (list, names) in [("all", &self.all), ("any", &self.any), ("none", &self.none)] {
+            for (i, name) in names.iter().enumerate() {
+                check_declared(world, &format!("{field}.{list}.{i}"), name)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The dotted segments its `all` names, summed: how specific a chemistry
+    /// rule's filter is.
+    pub(crate) fn all_segments(&self) -> usize {
+        self.all.iter().map(|name| name.split('.').count()).sum()
     }
 
     /// Whether the filter names no tag, so everything passes.
@@ -383,11 +457,15 @@ impl TryFrom<Vec<String>> for TagsDef {
     }
 }
 
-/// Whether `name` is declared: by a [`TagsPlugin`]'s build-time names or by
-/// an entry of the `tags` data kind, either of which declares its dotted
-/// ancestors too; else the [`MissingAsset`] a load reports, of kind `tag`,
-/// at `field`. A kit item's filter check calls it.
+/// Whether `name` is declared: by the kit itself ([`KIT_TAGS`], [`STIMULI`]), by a
+/// [`TagsPlugin`]'s build-time names or by an entry of the `tags` data kind,
+/// any of which declares its dotted ancestors too; else the
+/// [`MissingAsset`] a load reports, of kind `tag`, at `field`. A kit item's
+/// filter check calls it.
 pub(crate) fn check_declared(world: &World, field: &str, name: &str) -> Result<(), MissingAsset> {
+    if KIT_TAGS.iter().chain(&STIMULI).any(|kit| covers(kit, name)) {
+        return Ok(());
+    }
     let by_build = world
         .get_resource::<TagDeclarations>()
         .is_some_and(|declared| declared.0.iter().any(|declared| covers(declared, name)));
@@ -411,7 +489,10 @@ pub(crate) fn check_declared(world: &World, field: &str, name: &str) -> Result<(
 /// declares the tags a load may name. A tag is declared by
 /// [`with_tags`](Self::with_tags) at build or by an entry of the `tags`
 /// kind, a JSON array of names under the manifest's `data.tags`; a declared
-/// name declares its dotted ancestors. A scene component or a filter that
+/// name declares its dotted ancestors. The kit declares its own: a hit's
+/// tracks (`delivery.hit`, `delivery.dot`), its state tags
+/// (`delivery.pierced`, `delivery.forked`, `delivery.chained`,
+/// `delivery.repeated`) and its sides (`side.front`, `side.rear`). A scene component or a filter that
 /// names an undeclared tag fails the load, naming the field and the tag, so
 /// a misspelt tag never matches nothing in silence.
 ///
@@ -479,8 +560,9 @@ impl Plugin for TagsPlugin {
                 ))
                 .genre(PLATFORMER)
                 .genre(TOP_DOWN)
-                .genre(SHMUP)
-                .genre(GRID)
+                .genre(RPG)
+                .genre(SHOOTER)
+                .genre(ARPG)
                 .sample(r#"["team.player"]"#)
                 .roundtrip(round_trip::<TagsDef>),
         );

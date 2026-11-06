@@ -1,0 +1,11 @@
+{
+  "tag": "lamp",
+  "components": {
+    "stats": {
+      "oil": 3
+    },
+    "effects": [
+      "lit"
+    ]
+  }
+}

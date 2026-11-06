@@ -1,0 +1,25 @@
+{
+  "tag": "falling_crate",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          8
+        ]
+      }
+    },
+    "linear_motion": {
+      "velocity": [
+        0,
+        400
+      ]
+    },
+    "despawn_outside": {
+      "world": 32,
+      "kill": true
+    }
+  }
+}

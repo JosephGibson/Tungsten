@@ -354,3 +354,195 @@ fn a_save_outside_its_path_is_refused() {
         "a loop's time is below one cycle"
     );
 }
+
+/// Steps until `done` holds, at most `limit` steps; the steps taken.
+fn steps_until(
+    world: &mut World,
+    schedule: &mut Schedule,
+    limit: u32,
+    done: impl Fn(&World) -> bool,
+) -> u32 {
+    for taken in 1..=limit {
+        step(world, schedule);
+        if done(world) {
+            return taken;
+        }
+    }
+    panic!("not within {limit} steps");
+}
+
+#[test]
+fn a_waiting_ping_pong_holds_at_each_end() {
+    let (mut world, mut schedule) = rig();
+    let points = [Vec2::ZERO, Vec2::new(60.0, 0.0)];
+    let guard = platform(
+        &mut world,
+        PathFollower::new(points, 60.0).ping_pong().with_wait(0.5),
+    );
+    // Its first 0.5 s at its first point, then a second along its leg.
+    for _ in 0..30 {
+        step(&mut world, &mut schedule);
+        assert_eq!(position(&world, guard), Vec2::ZERO, "holding at the start");
+    }
+    let out = steps_until(&mut world, &mut schedule, 120, |world| {
+        position(world, guard).x >= 60.0 - 1e-3
+    });
+    assert!((59..=61).contains(&out), "a second out: {out}");
+    // Held 0.5 s at its last point, the leftover of the arrival dropped,
+    // then back.
+    let mut held = 0;
+    loop {
+        step(&mut world, &mut schedule);
+        if (position(&world, guard).x - 60.0).abs() >= 1e-3 {
+            break;
+        }
+        held += 1;
+        assert!(held < 60, "it comes back");
+    }
+    assert!(
+        (30..=31).contains(&held),
+        "half a second at the end: {held}"
+    );
+    // Refused: a wait on a stop path, a rider beside a wait.
+    assert!(std::panic::catch_unwind(|| PathFollower::new(points, 60.0).with_wait(1.0)).is_err());
+    assert!(
+        std::panic::catch_unwind(|| PathFollower::new(points, 60.0)
+            .ping_pong()
+            .with_wait(1.0)
+            .with_rider(0.3, 4.0))
+        .is_err()
+    );
+}
+
+/// The lift up from (0, 0) to (0, -60) at 60 px/s, boarding after 0.3 s and
+/// coming back 1 s after its last rider.
+fn lift() -> PathFollower {
+    PathFollower::new([Vec2::ZERO, Vec2::new(0.0, -60.0)], 60.0)
+        .ping_pong()
+        .with_rider(0.3, 1.0)
+}
+
+/// One step, its rider standing on the lift after its move when `riding`,
+/// as a controller marks its ground.
+fn ride(world: &mut World, schedule: &mut Schedule, lift: Entity, riding: bool) {
+    step(world, schedule);
+    if riding {
+        world.get_mut::<PathFollower>(lift).unwrap().mark_ridden();
+    }
+}
+
+#[test]
+fn a_rider_boards_rides_and_the_lift_comes_back() {
+    let (mut world, mut schedule) = rig();
+    let lift = platform(&mut world, lift());
+    let y = |world: &World| position(world, lift).y;
+    for _ in 0..120 {
+        ride(&mut world, &mut schedule, lift, false);
+    }
+    assert_eq!(y(&world), 0.0, "no rider, it waits");
+    // A rider: 0.3 s aboard, read a step late, then up.
+    let mut boarding = 0;
+    while y(&world) == 0.0 {
+        ride(&mut world, &mut schedule, lift, true);
+        boarding += 1;
+        assert!(boarding < 40, "it boards");
+    }
+    assert_eq!(
+        boarding, 20,
+        "18 steps aboard after the mark's step, then it goes"
+    );
+    for _ in 0..70 {
+        ride(&mut world, &mut schedule, lift, true);
+    }
+    assert!((y(&world) + 60.0).abs() < 1e-3, "up, and held while ridden");
+    // The rider steps off: 1 s later it comes back.
+    for _ in 0..60 {
+        ride(&mut world, &mut schedule, lift, false);
+        assert!(
+            (y(&world) + 60.0).abs() < 1e-3,
+            "held a second after its rider"
+        );
+    }
+    let back = steps_until(&mut world, &mut schedule, 120, |world| {
+        position(world, lift).y >= -1e-3
+    });
+    assert!((60..=63).contains(&back), "a second down: {back}");
+    for _ in 0..60 {
+        ride(&mut world, &mut schedule, lift, false);
+        assert!(y(&world).abs() < 1e-3, "waiting for the next");
+    }
+    // A plain follower ignores the mark.
+    let mut plain = PathFollower::new([Vec2::ZERO, Vec2::X], 1.0).ping_pong();
+    plain.mark_ridden();
+    assert!(plain.hold.is_none(), "a plain follower holds nothing");
+    assert_eq!(
+        std::mem::size_of::<PathFollower>(),
+        40,
+        "the size a game's capture of its platforms copies"
+    );
+}
+
+#[test]
+fn a_hold_round_trips_and_a_plain_follower_keeps_its_bytes() {
+    let plain = PathFollower::new([Vec2::ZERO, Vec2::new(60.0, 0.0)], 60.0).ping_pong();
+    let saved = serde_json::to_value(&plain).unwrap();
+    for key in ["wait", "rider", "hold", "ridden"] {
+        assert!(saved.get(key).is_none(), "a plain follower writes no {key}");
+    }
+    let (mut world, mut schedule) = rig();
+    let lift = platform(&mut world, lift());
+    for _ in 0..10 {
+        ride(&mut world, &mut schedule, lift, true);
+    }
+    let boarding = world.get::<PathFollower>(lift).unwrap().clone();
+    let hold = boarding.hold.as_ref().unwrap();
+    assert!(hold.held > 0.0 && hold.ridden);
+    let saved = serde_json::to_value(&boarding).unwrap();
+    let board = saved["rider"]["board"].as_f64().unwrap();
+    assert!((board - 0.3).abs() < 1e-6 && saved["rider"]["back"] == 1.0);
+    assert!(saved["hold"].as_f64().unwrap() > 0.0 && saved["ridden"] == true);
+    let loaded: PathFollower = serde_json::from_value(saved).unwrap();
+    assert_eq!(loaded, boarding);
+    let refused = serde_json::json!({
+        "points": [[0, 0], [60, 0]], "speed": 60, "mode": "stop", "easing": "linear",
+        "time": 0, "wait": 1
+    });
+    assert!(serde_json::from_value::<PathFollower>(refused).is_err());
+}
+
+#[test]
+fn a_loaded_lift_boards_and_returns_as_the_uninterrupted_one() {
+    // The rider stands on from step 5 to step 200; a save at each step
+    // between 5 and 40, restored into a fresh World, runs on as the
+    // uninterrupted lift does.
+    let riding = |at: u32| (5..200).contains(&at);
+    let (mut kept, mut kept_schedule) = rig();
+    let kept_lift = platform(&mut kept, lift());
+    let mut heights = Vec::new();
+    for at in 0..300 {
+        ride(&mut kept, &mut kept_schedule, kept_lift, riding(at));
+        heights.push(position(&kept, kept_lift).y);
+    }
+    for save_at in [6, 12, 20, 24] {
+        let (mut world, mut schedule) = rig();
+        let lift = platform(&mut world, lift());
+        for at in 0..save_at {
+            ride(&mut world, &mut schedule, lift, riding(at));
+        }
+        let saved = serde_json::to_value(world.get::<PathFollower>(lift).unwrap()).unwrap();
+        let at_save = position(&world, lift);
+        let (mut loaded, mut loaded_schedule) = rig();
+        let follower: PathFollower = serde_json::from_value(saved).unwrap();
+        let restored = platform(&mut loaded, follower);
+        loaded.get_mut::<Position>(restored).unwrap().0 = at_save;
+        for at in save_at..300 {
+            ride(&mut loaded, &mut loaded_schedule, restored, riding(at));
+            let height = position(&loaded, restored).y;
+            assert!(
+                (height - heights[at as usize]).abs() < 1e-3,
+                "saved at {save_at}, step {at}: {height} against {}",
+                heights[at as usize]
+            );
+        }
+    }
+}

@@ -1,6 +1,8 @@
 //! The character animator: an animated sprite's clip picked each frame by
-//! the entity's motion and facing.
+//! the entity's motion and facing, its rules over tags and motion, and the
+//! one-shots played over them.
 
+use std::f32::consts::{FRAC_PI_2, PI};
 use std::fmt;
 
 use glam::Vec2;
@@ -13,12 +15,14 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, TOP_DOWN, describe,
-    round_trip,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, TOP_DOWN,
+    describe, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared};
+use crate::intent::aim::Aim;
 use crate::motion::platformer::PlatformerController;
 use crate::present::animation::ANIMATION_TICK;
 use crate::present::facing::{FACING, Facing, write_flip};
@@ -29,21 +33,35 @@ pub const CHARACTER_ANIMATOR: &str = "character_animator";
 /// The scene component the plugin registers.
 const CHARACTER_ANIMATOR_COMPONENT: &str = "character_animator";
 
+/// The shape of a `character_animator`'s `rules` entry.
+const CLIP_RULE: &str = "clip_rule";
+
+/// The data form of a [`Clips`], as every description of one writes it.
+pub(crate) const CLIPS_FORM: &str = "an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up";
+
 /// The default speed from which a character moves, in world pixels per
 /// second.
 const DEFAULT_MIN_SPEED: f32 = 10.0;
 
-/// The clip a [`CharacterAnimator`] state shows: one animation, or a set
-/// by the way the entity faces, which names `right` and may name `left`,
-/// `up` and `down`; a set without `up` and `down` shows the last side faced
-/// while the entity faces up or down. A set without `left` shows `right`
-/// flipped while the entity faces left: the animator writes its
-/// `SpriteFlip` while such a set shows, for art drawn facing right (redo
-/// 7.9).
+/// Game milliseconds a one-shot treats as already shown, so a clip of whole
+/// frames ends on its last frame whatever the sum's rounding.
+const ONE_SHOT_EPSILON_MS: f32 = 1e-3;
+
+/// The clip a [`CharacterAnimator`] state, rule or one-shot shows: one
+/// animation, a set by the way the entity faces, or aim poses. A set names
+/// `right` and may name `left`, `up` and `down`; a set without `up` and
+/// `down` shows the last side faced while the entity faces up or down. A
+/// set without `left` shows `right` flipped while the entity faces left:
+/// the animator writes its `SpriteFlip` while such a set shows, for art
+/// drawn facing right (redo 7.9). Aim poses ([`aim`](Self::aim)) are drawn
+/// facing right from straight down to straight up, and show the one nearest
+/// the elevation of the entity's [`Aim`](crate::Aim) direction, else its
+/// facing's, flipped on the left as a `right`-only set is.
 ///
 /// Data form: a manifest animation ID, `"hero_run"`, or
 /// `{ "left": "seeker_walk_left", "right": "seeker_walk_right", "up": "seeker_walk_up", "down": "seeker_walk_down" }`,
-/// or `{ "right": "hero_run" }` for one set of frames on both sides.
+/// or `{ "right": "hero_run" }` for one set of frames on both sides, or
+/// `{ "aim": ["cast_down", "cast_fwd", "cast_up"] }`, two or more.
 ///
 /// # Examples
 ///
@@ -55,6 +73,9 @@ const DEFAULT_MIN_SPEED: f32 = 10.0;
 /// assert_eq!(data, serde_json::json!({ "left": "hero_run_left", "right": "hero_run_right" }));
 /// assert_eq!(serde_json::from_value::<Clips>(data).unwrap(), run);
 /// assert_eq!(Clips::from("hero_idle"), Clips::one("hero_idle"));
+/// let cast: Clips = serde_json::from_str(r#"{ "aim": ["cast_down", "cast_fwd", "cast_up"] }"#).unwrap();
+/// assert_eq!(cast, Clips::aim(["cast_down", "cast_fwd", "cast_up"]));
+/// assert!(serde_json::from_str::<Clips>(r#"{ "aim": ["cast_fwd"] }"#).is_err(), "two or more");
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Clips {
@@ -65,11 +86,12 @@ pub struct Clips {
 enum ClipsKind {
     One(String),
     Set(ClipSet),
+    /// Poses drawn facing right, from straight down to straight up.
+    Aim(Vec<String>),
 }
 
 /// A clip set by facing, as data writes it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 struct ClipSet {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     left: Option<String>,
@@ -138,11 +160,40 @@ impl Clips {
         }
     }
 
+    /// Aim poses: `ids` drawn facing right, from straight down to straight
+    /// up, evenly spread over the half turn. The one nearest the elevation
+    /// of the entity's [`Aim`](crate::Aim) direction, else its facing's,
+    /// shows on the side it points to, flipped on the left as a
+    /// [`mirrored`](Self::mirrored) set is; a straight-up or straight-down
+    /// direction keeps the last side. Any state, rule or one-shot takes it.
+    ///
+    /// # Panics
+    ///
+    /// With fewer than two IDs.
+    #[must_use]
+    #[track_caller]
+    pub fn aim(ids: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        let ids: Vec<String> = ids.into_iter().map(Into::into).collect();
+        assert!(
+            ids.len() >= 2,
+            "Clips::aim: two or more animation IDs (got {})",
+            ids.len()
+        );
+        Self {
+            kind: ClipsKind::Aim(ids),
+        }
+    }
+
     /// Every animation ID it names, with its field under `field` (`move`,
-    /// `move.left`), for a load's check.
-    fn ids<'a>(&'a self, field: &'a str) -> Vec<(String, &'a str)> {
+    /// `move.left`, `clip.aim.1`), for a load's check.
+    pub(crate) fn ids<'a>(&'a self, field: &'a str) -> Vec<(String, &'a str)> {
         match &self.kind {
             ClipsKind::One(id) => vec![(field.to_string(), id.as_str())],
+            ClipsKind::Aim(ids) => ids
+                .iter()
+                .enumerate()
+                .map(|(i, id)| (format!("{field}.aim.{i}"), id.as_str()))
+                .collect(),
             ClipsKind::Set(set) => {
                 let mut ids = vec![(format!("{field}.right"), set.right.as_str())];
                 if let Some(left) = &set.left {
@@ -161,13 +212,15 @@ impl Clips {
 
     /// The animation for `direction`, the way the entity faces or moves:
     /// a set's side by the dominant axis, `up` and `down` when it names them
-    /// and the last side faced otherwise. `left` is the last side, updated
-    /// as the entity faces left or right. With it comes the `SpriteFlip` to
-    /// write, for a set without `left` alone: flipped while it shows
-    /// `right` for the left side.
-    fn pick(&self, direction: Vec2, left: &mut bool) -> (&str, Option<bool>) {
+    /// and the last side faced otherwise; aim poses by `aim`'s elevation, on
+    /// its side. `left` is the last side, updated as the entity faces or
+    /// aims left or right. With it comes the `SpriteFlip` to write, for a
+    /// set without `left` and aim poses alone: flipped while it shows
+    /// frames drawn facing right for the left side.
+    fn pick(&self, direction: Vec2, aim: Vec2, left: &mut bool) -> (&str, Option<bool>) {
         let set = match &self.kind {
             ClipsKind::One(id) => return (id, None),
+            ClipsKind::Aim(ids) => return (pose(ids, aim, left), Some(*left)),
             ClipsKind::Set(set) => set,
         };
         let vertical = if direction.x.abs() >= direction.y.abs() {
@@ -193,6 +246,7 @@ impl Clips {
     fn summary(&self) -> String {
         match &self.kind {
             ClipsKind::One(id) => id.clone(),
+            ClipsKind::Aim(ids) => format!("aim {}", ids.join(" | ")),
             ClipsKind::Set(set) => {
                 let left = set
                     .left
@@ -209,6 +263,20 @@ impl Clips {
     }
 }
 
+/// The pose of `ids`, drawn facing right from straight down to straight up,
+/// nearest `aim`'s elevation; `left` follows `aim`'s side, kept while it
+/// points straight up or down.
+fn pose<'a>(ids: &'a [String], aim: Vec2, left: &mut bool) -> &'a str {
+    if aim.x != 0.0 {
+        *left = aim.x < 0.0;
+    }
+    // y points down: up is a negative y.
+    let elevation = (-aim.y).atan2(aim.x.abs());
+    let last = ids.len() - 1;
+    let at = ((elevation + FRAC_PI_2) / PI * last as f32).round();
+    &ids[(at.max(0.0) as usize).min(last)]
+}
+
 impl From<&str> for Clips {
     fn from(id: &str) -> Self {
         Self::one(id)
@@ -221,11 +289,65 @@ impl From<String> for Clips {
     }
 }
 
+/// Aim poses as data writes them.
+#[derive(Serialize)]
+struct AimForm<'a> {
+    aim: &'a [String],
+}
+
+/// A clip's object form, before its fields are checked: a set's sides, or
+/// aim poses alone.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClipsForm {
+    #[serde(default)]
+    left: Option<String>,
+    #[serde(default)]
+    right: Option<String>,
+    #[serde(default)]
+    up: Option<String>,
+    #[serde(default)]
+    down: Option<String>,
+    #[serde(default)]
+    aim: Option<Vec<String>>,
+}
+
+impl ClipsForm {
+    fn into_clips<E: de::Error>(self) -> Result<Clips, E> {
+        let Some(aim) = self.aim else {
+            let Some(right) = self.right else {
+                return Err(E::missing_field("right"));
+            };
+            return Ok(Clips {
+                kind: ClipsKind::Set(ClipSet {
+                    left: self.left,
+                    right,
+                    up: self.up,
+                    down: self.down,
+                }),
+            });
+        };
+        if self.left.is_some() || self.right.is_some() || self.up.is_some() || self.down.is_some() {
+            return Err(E::custom("aim: alone, without left, right, up or down"));
+        }
+        if aim.len() < 2 {
+            return Err(E::custom(format!(
+                "aim: two or more animation IDs (got {})",
+                aim.len()
+            )));
+        }
+        Ok(Clips {
+            kind: ClipsKind::Aim(aim),
+        })
+    }
+}
+
 impl Serialize for Clips {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match &self.kind {
             ClipsKind::One(id) => serializer.serialize_str(id),
             ClipsKind::Set(set) => set.serialize(serializer),
+            ClipsKind::Aim(ids) => AimForm { aim: ids }.serialize(serializer),
         }
     }
 }
@@ -238,7 +360,9 @@ impl<'de> Deserialize<'de> for Clips {
             type Value = Clips;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("an animation ID, or { left, right, up, down } of animation IDs")
+                f.write_str(
+                    "an animation ID, { left, right, up, down } of animation IDs, or { aim: [..] }",
+                )
             }
 
             fn visit_str<E: de::Error>(self, id: &str) -> Result<Clips, E> {
@@ -246,10 +370,7 @@ impl<'de> Deserialize<'de> for Clips {
             }
 
             fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Clips, A::Error> {
-                let set = ClipSet::deserialize(de::value::MapAccessDeserializer::new(map))?;
-                Ok(Clips {
-                    kind: ClipsKind::Set(set),
-                })
+                ClipsForm::deserialize(de::value::MapAccessDeserializer::new(map))?.into_clips()
             }
         }
 
@@ -269,6 +390,9 @@ enum State {
 }
 
 impl State {
+    /// The motion names, as data writes them.
+    const NAMES: &'static [&'static str] = &["idle", "move", "rise", "fall"];
+
     fn name(self) -> &'static str {
         match self {
             State::Idle => "idle",
@@ -277,6 +401,195 @@ impl State {
             State::Fall => "fall",
         }
     }
+
+    fn named(name: &str) -> Option<Self> {
+        match name {
+            "idle" => Some(State::Idle),
+            "move" => Some(State::Move),
+            "rise" => Some(State::Rise),
+            "fall" => Some(State::Fall),
+            _ => None,
+        }
+    }
+}
+
+/// A [`CharacterAnimator`]'s rule: while the entity's tags pass its
+/// filter, while its motion is its own, or while both hold, its clip shows
+/// over the motion state's. The first rule that passes picks; a one-shot
+/// ([`CharacterAnimator::play`]) wins over every rule. A state a game sets
+/// is a tag it inserts, `state.charging` by convention, so the rules, the
+/// looks and the hit filters read one vocabulary.
+///
+/// Data form, an entry of a `character_animator`'s `rules`:
+/// `{ "when": { "all": ["state.charging"] }, "motion": "idle", "clip": "brute_charge" }`,
+/// each with `when` or `motion` or both, `motion` one of `idle`, `move`,
+/// `rise` and `fall`, `clip` a [`Clips`]; the load checks the tags and IDs.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_kit::{ClipRule, TagFilter};
+///
+/// let charge = ClipRule::when(TagFilter::new().all(["state.charging"]), "brute_charge").with_motion("idle");
+/// let data = serde_json::to_value(&charge).unwrap();
+/// assert_eq!(data["motion"], "idle");
+/// assert_eq!(serde_json::from_value::<ClipRule>(data).unwrap(), charge);
+/// assert!(serde_json::from_str::<ClipRule>(r#"{ "clip": "brute_charge" }"#).is_err(), "when or motion");
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ClipRuleFields", into = "ClipRuleFields")]
+pub struct ClipRule {
+    when: Option<TagFilter>,
+    motion: Option<State>,
+    clips: Clips,
+}
+
+impl ClipRule {
+    /// A rule showing `clips` while the entity's tags pass `when`.
+    #[must_use]
+    pub fn when(when: TagFilter, clips: impl Into<Clips>) -> Self {
+        Self {
+            when: Some(when),
+            motion: None,
+            clips: clips.into(),
+        }
+    }
+
+    /// A rule showing `clips` while the entity's motion is `motion`:
+    /// `"idle"`, `"move"`, `"rise"` or `"fall"`.
+    ///
+    /// # Panics
+    ///
+    /// When `motion` names none of the four.
+    #[must_use]
+    #[track_caller]
+    pub fn motion(motion: &str, clips: impl Into<Clips>) -> Self {
+        Self {
+            when: None,
+            motion: Some(motion_named("ClipRule::motion", motion)),
+            clips: clips.into(),
+        }
+    }
+
+    /// The rule, also needing the entity's motion to be `motion`.
+    ///
+    /// # Panics
+    ///
+    /// When `motion` names none of `idle`, `move`, `rise` and `fall`.
+    #[must_use]
+    #[track_caller]
+    pub fn with_motion(mut self, motion: &str) -> Self {
+        self.motion = Some(motion_named("ClipRule::with_motion", motion));
+        self
+    }
+
+    /// Whether the rule passes an entity with `tags` in `state`.
+    fn passes(&self, tags: Option<&Tags>, state: State) -> bool {
+        self.motion.is_none_or(|motion| motion == state)
+            && self.when.as_ref().is_none_or(|when| when.matches(tags))
+    }
+}
+
+#[track_caller]
+fn motion_named(method: &str, name: &str) -> State {
+    State::named(name).unwrap_or_else(|| {
+        panic!("{method}: `{name}` is not a motion (`idle`, `move`, `rise` or `fall`)")
+    })
+}
+
+/// A rule as its own data writes it, before its fields are checked.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClipRuleFields {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    when: Option<TagFilter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    motion: Option<State>,
+    clip: Clips,
+}
+
+/// The check every rule's form shares: `when`, `motion` or both.
+fn rule_needs(when: bool, motion: bool) -> Result<(), String> {
+    if when || motion {
+        Ok(())
+    } else {
+        Err("a rule needs `when`, `motion` or both".to_string())
+    }
+}
+
+impl TryFrom<ClipRuleFields> for ClipRule {
+    type Error = String;
+
+    fn try_from(fields: ClipRuleFields) -> Result<Self, Self::Error> {
+        rule_needs(fields.when.is_some(), fields.motion.is_some())?;
+        Ok(Self {
+            when: fields.when,
+            motion: fields.motion,
+            clips: fields.clip,
+        })
+    }
+}
+
+impl From<ClipRule> for ClipRuleFields {
+    fn from(rule: ClipRule) -> Self {
+        Self {
+            when: rule.when,
+            motion: rule.motion,
+            clip: rule.clips,
+        }
+    }
+}
+
+/// A rule as a scene writes it: its filter's names kept in the written
+/// order, so a load's error names them as written.
+#[derive(Serialize, Deserialize)]
+#[serde(try_from = "ClipRuleDefFields")]
+struct ClipRuleDef {
+    when: Option<TagFilterDef>,
+    motion: Option<State>,
+    clip: Clips,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClipRuleDefFields {
+    #[serde(default)]
+    when: Option<TagFilterDef>,
+    #[serde(default)]
+    motion: Option<State>,
+    clip: Clips,
+}
+
+impl TryFrom<ClipRuleDefFields> for ClipRuleDef {
+    type Error = String;
+
+    fn try_from(fields: ClipRuleDefFields) -> Result<Self, Self::Error> {
+        rule_needs(fields.when.is_some(), fields.motion.is_some())?;
+        Ok(Self {
+            when: fields.when,
+            motion: fields.motion,
+            clip: fields.clip,
+        })
+    }
+}
+
+impl From<ClipRuleDef> for ClipRule {
+    fn from(def: ClipRuleDef) -> Self {
+        Self {
+            when: def.when.map(TagFilter::from),
+            motion: def.motion,
+            clips: def.clip,
+        }
+    }
+}
+
+/// A clip shown once over the state's: its clips, the game milliseconds it
+/// has shown at the entity's animation speed, and whether a pass started it.
+#[derive(Debug, Clone, PartialEq)]
+struct OneShot {
+    clips: Clips,
+    shown_ms: f32,
+    started: bool,
 }
 
 /// Picks its entity's animation clip each frame by what the entity is
@@ -290,8 +603,10 @@ impl State {
 /// or a set ([`Clips`]) whose entry is picked by the entity's
 /// [`Facing`](crate::Facing) by its dominant axis, else by its velocity's
 /// side. `move`, `rise` and `fall` fall back to `idle` when not given.
-/// Landing, hurt and attack clips need events, so they are a game's,
-/// through a [`StateMachine`](crate::StateMachine) or Rust.
+/// Its [`ClipRule`]s pick over the motion state's clip by the entity's tags
+/// and motion, the first that passes. A one-shot
+/// ([`play`](Self::play)), such as a landing, a hurt or an attack a cue's
+/// `clip` action or an ability's `clip` plays, shows once over both.
 ///
 /// [`CharacterAnimatorPlugin`]'s system runs after the animation tick: on a
 /// change of clip it replaces the entity's `AnimationState` and writes the
@@ -301,11 +616,12 @@ impl State {
 /// on children.
 ///
 /// Scene name `character_animator`:
-/// `{ "idle": "hero_idle", "move": "hero_run", "rise": "hero_jump", "fall": "hero_fall", "min_speed": 10 }`,
-/// each clip an animation ID or a set by facing, `idle` needed and
-/// `min_speed` in world pixels per second, 10 by default; the load checks
-/// every ID against the manifest's animations, naming the field
-/// (`move.left`). It is data: a game's save can hold it.
+/// `{ "idle": "hero_idle", "move": "hero_run", "rise": "hero_jump", "fall": "hero_fall", "min_speed": 10, "rules": [{ "when": { "all": ["state.charging"] }, "clip": "hero_charge" }] }`,
+/// each clip an animation ID, a set by facing or aim poses, `idle` needed,
+/// `min_speed` in world pixels per second, 10 by default, and `rules`
+/// none by default; the load checks every ID against the manifest's
+/// animations, naming the field (`move.left`), and each rule's tags. It is
+/// data: a game's save can hold it, but a one-shot.
 ///
 /// # Examples
 ///
@@ -356,13 +672,18 @@ pub struct CharacterAnimator {
     rise: Option<Clips>,
     fall: Option<Clips>,
     min_speed: f32,
+    /// In order: the first that passes picks over the motion state's clip.
+    rules: Vec<ClipRule>,
     /// The state at its last frame.
     state: State,
-    /// The animation it showed at its last frame.
+    /// The animation it showed at its last frame; `None` when the next pass
+    /// shows its pick from its first frame.
     clip: Option<String>,
     /// Whether the entity last faced left, for a set without `up` and
     /// `down`.
     left: bool,
+    /// The clip shown once over the rest; unsaved presentation.
+    one_shot: Option<OneShot>,
 }
 
 /// An animator as a save writes it, before its values are checked.
@@ -378,6 +699,8 @@ struct CharacterAnimatorFields {
     fall: Option<Clips>,
     #[serde(default = "default_min_speed")]
     min_speed: f32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    rules: Vec<ClipRule>,
     #[serde(default)]
     state: State,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -406,9 +729,11 @@ impl TryFrom<CharacterAnimatorFields> for CharacterAnimator {
             rise: fields.rise,
             fall: fields.fall,
             min_speed: fields.min_speed,
+            rules: fields.rules,
             state: fields.state,
             clip: fields.clip,
             left: fields.left,
+            one_shot: None,
         })
     }
 }
@@ -421,6 +746,7 @@ impl From<CharacterAnimator> for CharacterAnimatorFields {
             rise: animator.rise,
             fall: animator.fall,
             min_speed: animator.min_speed,
+            rules: animator.rules,
             state: animator.state,
             clip: animator.clip,
             left: animator.left,
@@ -439,10 +765,48 @@ impl CharacterAnimator {
             rise: None,
             fall: None,
             min_speed: DEFAULT_MIN_SPEED,
+            rules: Vec::new(),
             state: State::Idle,
             clip: None,
             left: false,
+            one_shot: None,
         }
+    }
+
+    /// The animator, with `rule` after its others.
+    #[must_use]
+    pub fn with_rule(mut self, rule: ClipRule) -> Self {
+        self.rules.push(rule);
+        self
+    }
+
+    /// Shows `clips` once over the state's clip and every rule, from its
+    /// first frame, for its length: its frames' durations at the entity's
+    /// animation speed, counted by the game clock, so a pause holds it.
+    /// Then the state's clip shows from its first frame. A play during one
+    /// restarts with the new clip, the same one included. Unsaved: a load
+    /// shows the state's clip.
+    pub fn play(&mut self, clips: impl Into<Clips>) {
+        self.one_shot = Some(OneShot {
+            clips: clips.into(),
+            shown_ms: 0.0,
+            started: false,
+        });
+        self.clip = None;
+    }
+
+    /// Ends the one-shot, if one plays: the state's clip shows from its
+    /// first frame at the next pass.
+    pub fn stop(&mut self) {
+        if self.one_shot.take().is_some() {
+            self.clip = None;
+        }
+    }
+
+    /// The one-shot playing, if any.
+    #[must_use]
+    pub fn playing(&self) -> Option<&Clips> {
+        self.one_shot.as_ref().map(|shot| &shot.clips)
     }
 
     /// The animator, showing `clips` while the entity moves.
@@ -515,19 +879,13 @@ impl Plugin for CharacterAnimatorPlugin {
         ensure_phases(schedule);
         register_rows::<CharacterAnimator>(world, "CharacterAnimator");
         let clip = |name: &'static str, doc: &'static str| {
-            FieldDescription::new(
-                name,
-                FieldType::Object(
-                    "an animation ID, or { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out",
-                ),
-                doc,
-            )
+            FieldDescription::new(name, FieldType::Object(CLIPS_FORM), doc)
         };
         describe(
             world,
             ComponentDescription::new(
                 CHARACTER_ANIMATOR_COMPONENT,
-                "Picks the entity's animation clip each frame: idle, move, rise or fall, by its facing when a clip is a set.",
+                "Picks the entity's animation clip each frame: idle, move, rise or fall, by its facing when a clip is a set, its rules over that, a one-shot over both.",
             )
             .field(clip(
                 "idle",
@@ -561,32 +919,73 @@ impl Plugin for CharacterAnimatorPlugin {
                 )
                 .default("10.0"),
             )
+            .field(
+                FieldDescription::new(
+                    "rules",
+                    FieldType::List(Box::new(FieldType::Shape(CLIP_RULE))),
+                    "clips over the motion state's by the entity's tags and motion, the first that passes; the load checks each tag and ID",
+                )
+                .default("[]"),
+            )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
+            .genre(RPG)
+            .genre(ARPG)
             .sample(r#"{ "idle": "hero_idle" }"#)
             .roundtrip(round_trip::<CharacterAnimatorDef>),
+        );
+        describe_shape(
+            world,
+            ComponentDescription::new(
+                CLIP_RULE,
+                "A clip shown over the motion state's while the entity's tags pass `when`, its motion is `motion`, or both.",
+            )
+            .field(
+                FieldDescription::new(
+                    "when",
+                    FieldType::Filter,
+                    "the entity's tags, `state.*` by convention for a state the game sets; the load checks each",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "motion",
+                    FieldType::Enum(State::NAMES),
+                    "the motion state it needs",
+                )
+                .default("null"),
+            )
+            .field(clip("clip", "what it shows; the load checks each ID"))
+            .sample(r#"{ "motion": "move", "clip": "hero_run" }"#)
+            .roundtrip(round_trip::<ClipRuleDef>),
         );
         world.register_component_with_assets(
             CHARACTER_ANIMATOR_COMPONENT,
             |def: &CharacterAnimatorDef, world: &World| {
-                let Some(registry) = world.get_resource::<AnimationRegistry>() else {
-                    return Ok(());
-                };
+                for (i, rule) in def.rules.iter().enumerate() {
+                    for (field, name) in rule.when.iter().flat_map(TagFilterDef::names) {
+                        check_declared(world, &format!("rules.{i}.when.{field}"), name)?;
+                    }
+                }
                 let clips = [
-                    ("idle", Some(&def.idle)),
-                    ("move", def.moving.as_ref()),
-                    ("rise", def.rise.as_ref()),
-                    ("fall", def.fall.as_ref()),
-                ];
+                    ("idle".to_string(), Some(&def.idle)),
+                    ("move".to_string(), def.moving.as_ref()),
+                    ("rise".to_string(), def.rise.as_ref()),
+                    ("fall".to_string(), def.fall.as_ref()),
+                ]
+                .into_iter()
+                .chain(
+                    def.rules
+                        .iter()
+                        .enumerate()
+                        .map(|(i, rule)| (format!("rules.{i}.clip"), Some(&rule.clip))),
+                );
                 for (field, clips) in clips {
                     let Some(clips) = clips else {
                         continue;
                     };
-                    for (field, id) in clips.ids(field) {
-                        if registry.get(id).is_none() {
-                            return Err(MissingAsset::new(field, "animation", id));
-                        }
-                    }
+                    check_clips(world, &field, clips)?;
                 }
                 Ok(())
             },
@@ -595,6 +994,7 @@ impl Plugin for CharacterAnimatorPlugin {
                 animator.moving = def.moving;
                 animator.rise = def.rise;
                 animator.fall = def.fall;
+                animator.rules = def.rules.into_iter().map(ClipRule::from).collect();
                 (animator,)
             },
         );
@@ -624,17 +1024,46 @@ struct CharacterAnimatorDef {
     fall: Option<Clips>,
     #[serde(default = "default_min_speed", deserialize_with = "non_negative")]
     min_speed: f32,
+    #[serde(default)]
+    rules: Vec<ClipRuleDef>,
 }
 
-/// Picks every animator's clip for its entity's state and facing; on a
-/// change, replaces its `AnimationState` and shows the new clip's first
-/// frame. `entities` is the frame's scratch list. Without an
-/// `AnimationRegistry` it does nothing.
+/// The load's check of `clips` at `field`: each animation ID against the
+/// manifest's animations, when the World has them.
+pub(crate) fn check_clips(world: &World, field: &str, clips: &Clips) -> Result<(), MissingAsset> {
+    let Some(registry) = world.get_resource::<AnimationRegistry>() else {
+        return Ok(());
+    };
+    for (field, id) in clips.ids(field) {
+        if registry.get(id).is_none() {
+            return Err(MissingAsset::new(field, "animation", id));
+        }
+    }
+    Ok(())
+}
+
+/// The game milliseconds clip `id` lasts at speed 1: its frames' durations
+/// summed, 0 for an ID the registry lacks.
+fn clip_ms(registry: &AnimationRegistry, id: &str) -> f32 {
+    registry.get(id).map_or(0.0, |clip| {
+        clip.frames
+            .iter()
+            .map(|frame| frame.duration_ms as f32)
+            .sum()
+    })
+}
+
+/// Picks every animator's clip for its entity's state and facing, a rule's
+/// over it and a one-shot's over both; on a change, replaces its
+/// `AnimationState` and shows the new clip's first frame. `entities` is the
+/// frame's scratch list. Without an `AnimationRegistry` it does nothing.
 fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
     let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
         return;
     };
-    let step = world.get_resource::<Time>().map_or(0.0, Time::fixed_step);
+    let (step, delta) = world
+        .get_resource::<Time>()
+        .map_or((0.0, 0.0), |time| (time.fixed_step(), time.delta()));
     entities.clear();
     entities.extend(
         world
@@ -652,23 +1081,67 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
         let direction = world
             .get::<Facing>(entity)
             .map_or(velocity, Facing::direction);
-        let animator = world.get_mut::<CharacterAnimator>(entity).unwrap();
-        let state = if airborne {
-            // y points down: a rise is a negative velocity.
-            if velocity.y < 0.0 {
-                State::Rise
+        let aim = world
+            .get::<Aim>(entity)
+            .and_then(Aim::direction)
+            .unwrap_or(direction);
+        let speed = world
+            .get::<AnimationState>(entity)
+            .map_or(1.0, AnimationState::speed);
+        let (state, rule) = {
+            let animator = world.get::<CharacterAnimator>(entity).unwrap();
+            let state = if airborne {
+                // y points down: a rise is a negative velocity.
+                if velocity.y < 0.0 {
+                    State::Rise
+                } else {
+                    State::Fall
+                }
+            } else if velocity.length() >= animator.min_speed && velocity != Vec2::ZERO {
+                State::Move
             } else {
-                State::Fall
-            }
-        } else if velocity.length() >= animator.min_speed && velocity != Vec2::ZERO {
-            State::Move
-        } else {
-            State::Idle
+                State::Idle
+            };
+            let rule = if animator.rules.is_empty() {
+                None
+            } else {
+                let tags = world.get::<Tags>(entity);
+                animator
+                    .rules
+                    .iter()
+                    .position(|rule| rule.passes(tags, state))
+            };
+            (state, rule)
         };
+        let animator = world.get_mut::<CharacterAnimator>(entity).unwrap();
         animator.state = state;
         let mut left = animator.left;
-        let (id, flip) = animator.clips(state).pick(direction, &mut left);
-        let id = id.to_owned();
+        // A one-shot first: once its length has shown, the state's clip,
+        // or a rule's, shows from its first frame.
+        let mut shot_pick = None;
+        let mut ended = false;
+        if let Some(shot) = animator.one_shot.as_mut() {
+            let (id, flip) = shot.clips.pick(direction, aim, &mut left);
+            let length = clip_ms(&registry, id);
+            let id = id.to_owned();
+            if shot.started {
+                shot.shown_ms += delta.max(0.0) * 1000.0 * speed;
+                ended = shot.shown_ms + ONE_SHOT_EPSILON_MS >= length;
+            }
+            shot.started = true;
+            if !ended {
+                shot_pick = Some((id, flip));
+            }
+        }
+        if ended {
+            animator.one_shot = None;
+            animator.clip = None;
+        }
+        let (id, flip) = shot_pick.unwrap_or_else(|| {
+            let clips = rule.map_or_else(|| animator.clips(state), |i| &animator.rules[i].clips);
+            let (id, flip) = clips.pick(direction, aim, &mut left);
+            (id.to_owned(), flip)
+        });
         animator.left = left;
         let unchanged = animator.clip.as_deref() == Some(id.as_str());
         if !unchanged {
@@ -687,9 +1160,6 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
             .and_then(|clip| clip.frames.first())
             .map(|frame| frame.sprite);
         // Redo 7.9: the entity's speed carries across its clip changes.
-        let speed = world
-            .get::<AnimationState>(entity)
-            .map_or(1.0, AnimationState::speed);
         world.insert(entity, AnimationState::new(id).with_speed(speed));
         if let (Some(first), Some(sprite)) = (first, world.get_mut::<Sprite>(entity)) {
             sprite.asset_id = first;

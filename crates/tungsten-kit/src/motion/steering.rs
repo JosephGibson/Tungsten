@@ -7,7 +7,8 @@ use tungsten_core::physics::{Position, PrevPosition, Velocity};
 use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, World, system};
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, describe, round_trip,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
+    describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -15,6 +16,7 @@ use crate::foundation::{optional_positive, positive, vec2};
 use crate::motion::drive::{Body, Skip, Warned, Write, body_of, write_velocity};
 use crate::motion::slide::step_dt;
 use crate::motion::target::{Measure, Resolver, TARGET_SHAPE, Target, TargetDef, describe_target};
+use crate::motion::top_down::TopDownMover;
 
 /// [`SteeringPlugin`]'s system, in the move phase.
 pub const STEERING: &str = "steering";
@@ -63,7 +65,11 @@ enum Mode {
 /// cast, and writes a `Velocity` when it has one; on a kinematic body it
 /// drives the body's `Velocity`, and on a dynamic body it steers the
 /// body's `Velocity`, which the solver then moves and stops at walls. A
-/// static body and a child are skipped, with one warning.
+/// static body and a child are skipped, with one warning. On an entity
+/// with a [`TopDownMover`] it drives the mover: the mover's step steers with
+/// it, its last velocity the steering's own, and moves by the steering's
+/// velocity at once, held to its own speed, casting it so walls stop it;
+/// steering's own system leaves that entity to the mover.
 ///
 /// Scene name `steering`:
 /// `{ "target": { "nearest": { "all": ["team.player"] } }, "mode": "seek", "max_speed": 90, "acceleration": 600, "radius": 64 }`,
@@ -286,6 +292,12 @@ impl Steering {
         self.velocity
     }
 
+    /// Sets what it steers at from its next step: a point the game sets,
+    /// [`Target::point`], or any other target.
+    pub fn set_target(&mut self, target: Target) {
+        self.target = target;
+    }
+
     /// The entity it steered at at its last step: `None` before its first
     /// step, while a point is its target, or while no target resolves.
     #[must_use]
@@ -304,6 +316,18 @@ impl Steering {
     /// Its own velocity, which a speed limit caps.
     pub(crate) fn velocity_mut(&mut self) -> &mut Vec2 {
         &mut self.velocity
+    }
+
+    /// What it steers at.
+    pub(crate) fn target(&self) -> &Target {
+        &self.target
+    }
+
+    /// Keeps `velocity` and the entity it steered at as its own, as its
+    /// system does: what a top-down mover it drives steered with.
+    pub(crate) fn drove(&mut self, velocity: Vec2, target: Option<Entity>) {
+        self.velocity = velocity;
+        self.target_entity = target;
     }
 
     /// The velocity it wants toward a target `to` away, or with none.
@@ -330,7 +354,7 @@ impl Steering {
     /// Its velocity after a step of `dt` from `current`, toward a target
     /// `to` away: turned by at most its acceleration, capped at its top
     /// speed, and, arriving, never further than the distance left.
-    fn steer(&self, current: Vec2, to: Option<Vec2>, dt: f32) -> Vec2 {
+    pub(crate) fn steer(&self, current: Vec2, to: Option<Vec2>, dt: f32) -> Vec2 {
         let desired = self.desired(to);
         let turned = match self.acceleration {
             Some(acceleration) => current + (desired - current).clamp_length_max(acceleration * dt),
@@ -410,8 +434,9 @@ impl Plugin for SteeringPlugin {
                 )
                 .default("64.0"),
             )
+            .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"{ "target": { "nearest": { "all": ["team.player"] } }, "max_speed": 90 }"#)
             .roundtrip(round_trip::<SteeringDef>),
         );
@@ -485,6 +510,10 @@ impl Runner {
             };
             if let Some(skip) = skip {
                 self.warned.skip("Steering", entity, skip);
+                continue;
+            }
+            // A top-down mover's step steers its entity.
+            if world.has::<TopDownMover>(entity) {
                 continue;
             }
             let from = world.get::<Position>(entity).unwrap().0;

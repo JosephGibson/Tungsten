@@ -11,8 +11,8 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN, describe,
-    round_trip,
+    ARPG, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
+    describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -391,8 +391,9 @@ impl Plugin for ActionInputPlugin {
             )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
+            .genre(ARPG)
             .sample(r#"{ "move": ["move_left", "move_right"] }"#)
             .roundtrip(round_trip::<ActionInput>),
         );

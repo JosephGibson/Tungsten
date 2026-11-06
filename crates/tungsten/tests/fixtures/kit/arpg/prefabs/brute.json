@@ -1,0 +1,21 @@
+{
+  "tag": "brute",
+  "components": {
+    "tags": [
+      "team.enemy",
+      "status.chilled"
+    ],
+    "health": {
+      "max": 100000
+    },
+    "resist": {
+      "elemental.fire": 0.6,
+      "elemental.cold": 0.75
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 16
+      }
+    }
+  }
+}

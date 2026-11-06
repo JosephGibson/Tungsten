@@ -468,7 +468,186 @@ fn a_hit_on_a_shield_still_starts_the_window_and_sends_damaged() {
     ));
     assert_eq!(damage(&mut world, target, 2.0), Hit::Absorbed);
     assert!(world.get::<Health>(target).unwrap().is_invulnerable());
-    assert_eq!(sent(&world), [Damaged::new(target, 2.0, false)]);
+    assert_eq!(
+        sent(&world),
+        [Damaged::new(target, 2.0, false).with_absorbed(2.0)],
+        "the shield took it whole"
+    );
     let queue = world.resource::<EventQueue<Damaged>>();
     assert_eq!(queue.iter().count(), 1);
+}
+
+// 7.10p: the flash's interval and the shield's take.
+
+#[test]
+fn a_flash_waits_its_interval() {
+    for (interval, starts_every) in [(0.5, 30), (0.0, 6)] {
+        let (mut world, mut schedule, flash_material, _) = flash_rig();
+        let flash = HitFlash::new([1.0; 4], 0.12).with_min_interval(interval);
+        let target = world.spawn_with((
+            Health::new(1000.0),
+            flash,
+            Sprite::new(SpriteAssetId::new(0)),
+        ));
+        // A blow every 0.1 s for 2 s, at frames of 1/60 s.
+        let (mut starts, mut off) = (Vec::new(), 0);
+        for frame in 0..120 {
+            if frame % 6 == 0 {
+                damage(&mut world, target, 1.0);
+                if world.get::<HitFlash>(target).unwrap().fresh {
+                    starts.push(frame);
+                }
+            }
+            post_update(&mut world, &mut schedule, STEP);
+            if world.get::<Sprite>(target).unwrap().material_id != Some(flash_material) {
+                off += 1;
+            }
+        }
+        let expected: Vec<i32> = (0..120).step_by(starts_every).collect();
+        assert_eq!(starts, expected, "interval {interval}");
+        if interval > 0.0 {
+            assert!(
+                off >= 60,
+                "off {off} of 120 frames: the sprite shows between"
+            );
+        } else {
+            assert_eq!(off, 0, "every blow restarts it, as before");
+        }
+    }
+}
+
+#[test]
+fn a_whole_shield_hit_flashes_its_shield_colour() {
+    const WHITE: [f32; 4] = [1.0; 4];
+    const BLUE: [f32; 4] = [0.25, 0.5, 1.0, 1.0];
+    for shield_colour in [Some(BLUE), None] {
+        let (mut world, mut schedule, _, _) = flash_rig();
+        let mut flash = HitFlash::new(WHITE, 0.1);
+        if let Some(colour) = shield_colour {
+            flash = flash.with_shield(colour);
+        }
+        let knight = world.spawn_with((
+            Health::new(100.0),
+            Shield::new(50.0),
+            flash,
+            Sprite::new(SpriteAssetId::new(0)),
+        ));
+        let shown = |world: &World| world.get::<UniformOverrideBlock>(knight).unwrap().vec4[0];
+        assert_eq!(damage(&mut world, knight, 30.0), Hit::Absorbed);
+        assert_eq!(
+            world.get::<Health>(knight).unwrap().current(),
+            100.0,
+            "whole"
+        );
+        assert_eq!(shown(&world), shield_colour.unwrap_or(WHITE));
+        post_update(&mut world, &mut schedule, STEP);
+        assert_eq!(
+            shown(&world),
+            shield_colour.unwrap_or(WHITE),
+            "the tick keeps it"
+        );
+        for _ in 0..12 {
+            post_update(&mut world, &mut schedule, STEP);
+        }
+        damage(&mut world, knight, 80.0);
+        assert_eq!(world.get::<Health>(knight).unwrap().current(), 40.0);
+        assert_eq!(shown(&world), WHITE, "a hit that hurt");
+    }
+}
+
+#[test]
+fn a_disarming_death_switches_off_the_touch_and_the_hitbox() {
+    use crate::{ContactDamage, HitShape, Hitbox};
+    let (mut world, _) = rig();
+    let armed = || {
+        (
+            ContactDamage::new(1.0),
+            Hitbox::new(HitShape::circle(4.0), 1.0),
+        )
+    };
+    let ghoul = world.spawn_with((Health::new(2.0).disarming(), armed().0, armed().1));
+    let plain = world.spawn_with((Health::new(2.0), armed().0, armed().1));
+    assert!(world.get::<Health>(ghoul).unwrap().disarms());
+    for target in [ghoul, plain] {
+        assert_eq!(damage(&mut world, target, 2.0), Hit::Killed);
+    }
+    let on = |world: &World, entity: Entity| {
+        (
+            world.get::<ContactDamage>(entity).unwrap().is_on(),
+            world.get::<Hitbox>(entity).unwrap().is_on(),
+        )
+    };
+    assert_eq!(on(&world, ghoul), (false, false), "disarmed at its kill");
+    assert_eq!(on(&world, plain), (true, true), "a plain death keeps them");
+    // A heal brings no one back, so nothing switches on again.
+    crate::heal(&mut world, ghoul, 2.0);
+    assert_eq!(on(&world, ghoul), (false, false));
+    // The scene names it; a save writes it only when set.
+    let components = world.resource::<tungsten_core::ComponentRegistry>();
+    let scene = serde_json::json!({ "max": 2, "disarm": true });
+    assert!(components.check_in("health", &scene, &world).is_ok());
+    let saved = serde_json::to_value(world.get::<Health>(ghoul).unwrap()).unwrap();
+    assert_eq!(saved["disarm"], true);
+    assert!(serde_json::from_value::<Health>(saved).unwrap().disarms());
+    let plain = serde_json::to_value(world.get::<Health>(plain).unwrap()).unwrap();
+    assert!(
+        plain.get("disarm").is_none(),
+        "a plain health keeps its bytes"
+    );
+}
+
+#[test]
+fn a_disarming_death_stops_and_locks_the_controller() {
+    use glam::Vec2;
+    use tungsten_core::physics::{
+        Collider, PhysicsConfig, PhysicsPlugin, Position, RigidBodyBundle, Velocity,
+    };
+    use tungsten_core::{Bundle, TilemapRegistry};
+
+    use crate::{PlatformerController, PlatformerControllerPlugin};
+
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, 2000.0),
+        ..PhysicsConfig::default()
+    });
+    world.insert_resource(TilemapRegistry::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    PlatformerControllerPlugin.build(&mut schedule, &mut world);
+    HealthPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let hero = world.spawn_with(
+        RigidBodyBundle::kinematic(Position(Vec2::ZERO), Collider::aabb(Vec2::new(8.0, 16.0)))
+            .with((
+                PlatformerController::new(200.0, 600.0),
+                Health::new(1.0).disarming(),
+            )),
+    );
+    world
+        .get_mut::<PlatformerController>(hero)
+        .unwrap()
+        .set_run(1.0);
+    fixed_steps(&mut world, &mut schedule, 10);
+    let running = world.get::<Velocity>(hero).unwrap().0;
+    assert!(
+        running.x > 0.0 && running.y > 0.0,
+        "running and falling: {running}"
+    );
+    assert_eq!(damage(&mut world, hero, 1.0), Hit::Killed);
+    world
+        .get_mut::<PlatformerController>(hero)
+        .unwrap()
+        .set_run(-1.0);
+    world
+        .get_mut::<PlatformerController>(hero)
+        .unwrap()
+        .press_jump();
+    let x = world.get::<Position>(hero).unwrap().0.x;
+    fixed_steps(&mut world, &mut schedule, 10);
+    let velocity = world.get::<Velocity>(hero).unwrap().0;
+    assert_eq!(velocity.x, 0.0, "its run stopped, the input locked");
+    assert!(velocity.y > running.y, "its fall kept and growing");
+    assert_eq!(world.get::<Position>(hero).unwrap().0.x, x, "straight down");
 }

@@ -6,7 +6,7 @@ use tungsten_core::physics::{BodyKind, Position, PrevPosition, RigidBody, Veloci
 use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, World, system};
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHMUP, describe,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, describe,
     round_trip,
 };
 use crate::foundation::inspect::register_rows;
@@ -247,7 +247,7 @@ impl Plugin for SpeedLimitPlugin {
                 "world pixels per second the vertical speed stays at or under",
             ))
             .genre(PLATFORMER)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"{ "speed": 600 }"#)
             .roundtrip(round_trip::<SpeedLimitDef>),
         );

@@ -1,0 +1,14 @@
+{
+  "tag": "dodge_dust",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        0,
+        0
+      ]
+    },
+    "lifetime": {
+      "seconds": 0.25
+    }
+  }
+}

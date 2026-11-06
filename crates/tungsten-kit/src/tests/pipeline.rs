@@ -14,7 +14,7 @@ use crate::foundation::trace::KitTrace;
 use crate::motion::knockback::Knockback;
 use crate::react::counters::{Counters, CountersPlugin};
 use crate::react::cues::{CUES, CueAction, Cues, CuesPlugin};
-use crate::{Conversion, Penetration, Resist, Shield};
+use crate::{Conversion, KitRng, Penetration, Resist, Shield};
 
 const STEP: f32 = 1.0 / 60.0;
 
@@ -1080,4 +1080,545 @@ fn a_nan_heal_request_panics() {
     let mut world = World::new();
     let target = world.spawn();
     let _ = HealRequest::new(target, f32::NAN);
+}
+
+// 7.10a: a hit's context and side, floors and damage taken.
+
+/// The size every queue of requests is sized by, pinned at its `d2aaa4eb`
+/// size: a request's rarer parts ride one box in its conversion's slot and
+/// its side in the byte beside its flags.
+#[test]
+fn a_request_keeps_its_size() {
+    assert_eq!(std::mem::size_of::<DamageRequest>(), 152);
+}
+
+/// An aim fixed along `direction`, as a step of `from: intent` leaves it.
+fn aiming(direction: [f32; 2]) -> crate::Aim {
+    serde_json::from_value(serde_json::json!({ "direction": direction })).unwrap()
+}
+
+fn fire(amount: f32, target: Entity) -> DamageRequest {
+    DamageRequest::from_parts(target, [typed(amount, &["fire"])])
+}
+
+fn last_amount(world: &World) -> f32 {
+    parts_sent(world).last().unwrap().0
+}
+
+#[test]
+fn a_floor_raises_a_factor_before_penetration_and_a_zero_stays_immune() {
+    let (mut world, _) = rig();
+    let target = world.spawn_with((
+        Health::new(1000.0),
+        Resist::new()
+            .with_factor("fire", 0.25)
+            .with_floor("fire", 0.5)
+            .with_factor("ice", 0.0)
+            .with_floor("ice", 0.5)
+            .with_factor("acid", 0.8)
+            .with_floor("acid", 0.5),
+    ));
+    let pen = Penetration::new().with_points("fire", 0.25);
+    fire(8.0, target).with_penetration(pen).apply(&mut world);
+    assert_eq!(
+        last_amount(&world),
+        6.0,
+        "0.25 rises to 0.5, then 0.25 points"
+    );
+    DamageRequest::from_parts(target, [typed(8.0, &["ice"]), typed(5.0, &["acid"])])
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 4.0, "a factor above its floor stays");
+    assert_eq!(
+        immune_sent(&world).len(),
+        1,
+        "0 stays immunity whatever the floor"
+    );
+    // A curse below the floor meets it; a removed curse leaves the factor.
+    world
+        .get_mut::<Resist>(target)
+        .unwrap()
+        .add_modifier("fire", "curse", Modifier::Mul(0.1));
+    fire(8.0, target).apply(&mut world);
+    assert_eq!(last_amount(&world), 4.0);
+    world.get_mut::<Resist>(target).unwrap().add_floor_modifier(
+        "fire",
+        "ward",
+        Modifier::Add(0.25),
+    );
+    fire(8.0, target).apply(&mut world);
+    assert_eq!(last_amount(&world), 6.0, "the floor's own modifier");
+}
+
+#[test]
+fn a_periodic_request_takes_no_penetration() {
+    let (mut world, _) = rig();
+    let mage = world.spawn_with((Penetration::new().with_points("fire", 0.25),));
+    let target = world.spawn_with((Health::new(1000.0), Resist::new().with_factor("fire", 0.5)));
+    fire(8.0, target).with_source(mage).apply(&mut world);
+    assert_eq!(last_amount(&world), 6.0, "a hit takes its source's points");
+    fire(8.0, target)
+        .with_source(mage)
+        .with_periodic(true)
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 4.0, "a tick takes none");
+    let own = Penetration::new().with_points("fire", 0.5);
+    fire(8.0, target)
+        .with_penetration(own)
+        .with_periodic(true)
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 4.0, "nor its own");
+}
+
+/// `damage_taken` lines that read each part of a hit's context.
+fn taken_lines() -> crate::Stats {
+    use crate::{Line, Stats, TagFilter};
+    let all = |tag: &str| TagFilter::new().all([tag]);
+    let mut stats = Stats::new().with(Stats::DAMAGE_TAKEN, 1.0);
+    for (tag, factor) in [
+        ("hit.blast", 0.5),
+        ("delivery.dot", 0.25),
+        ("delivery.chained", 2.0),
+        ("side.rear", 3.0),
+        ("fire", 5.0),
+    ] {
+        stats.add_line(
+            Stats::DAMAGE_TAKEN,
+            "base",
+            Line::new(Modifier::Mul(factor)).with(all(tag)),
+        );
+    }
+    stats.add_line(
+        Stats::DAMAGE_TAKEN,
+        "base",
+        Line::new(Modifier::Mul(7.0)).against(all("boss")),
+    );
+    stats.add_line(
+        Stats::DAMAGE_TAKEN,
+        "base",
+        Line::new(Modifier::Mul(11.0)).while_holder(all("exposed")),
+    );
+    stats
+}
+
+/// A target aiming right whose `damage_taken` lines read each part of a
+/// hit's context.
+fn reader(world: &mut World) -> Entity {
+    world.spawn_with((
+        Health::new(100_000.0),
+        taken_lines(),
+        Tags::new(["armoured"]),
+        aiming([1.0, 0.0]),
+    ))
+}
+
+#[test]
+fn damage_taken_reads_the_hits_context_track_states_side_and_the_attackers_tags() {
+    let (mut world, _) = rig();
+    let target = reader(&mut world);
+    let boss = world.spawn_with((Tags::new(["boss"]),));
+    let grunt = world.spawn_with((Tags::new(["grunt"]),));
+    let hit = || DamageRequest::new(target, 8.0);
+    hit().apply(&mut world);
+    assert_eq!(last_amount(&world), 8.0, "no line passes a plain hit");
+    hit()
+        .with_context(Tags::new(["hit.blast"]))
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 4.0, "the request's context");
+    hit().with_periodic(true).apply(&mut world);
+    assert_eq!(last_amount(&world), 2.0, "the periodic track");
+    hit()
+        .with_state(Tags::new(["delivery.chained"]))
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 16.0, "a state tag");
+    hit().with_direction(Vec2::X).apply(&mut world);
+    assert_eq!(last_amount(&world), 24.0, "from behind: its side");
+    hit().with_direction(Vec2::NEG_X).apply(&mut world);
+    assert_eq!(last_amount(&world), 8.0, "from the front");
+    DamageRequest::from_parts(target, [typed(8.0, &["fire"])]).apply(&mut world);
+    assert_eq!(last_amount(&world), 40.0, "the part's type");
+    hit().with_source(boss).apply(&mut world);
+    assert_eq!(last_amount(&world), 56.0, "against the attacker's tags");
+    hit().with_source(grunt).apply(&mut world);
+    assert_eq!(last_amount(&world), 8.0);
+    world.get_mut::<Tags>(target).unwrap().insert("exposed");
+    hit().apply(&mut world);
+    assert_eq!(
+        last_amount(&world),
+        88.0,
+        "while the target's own tags pass"
+    );
+}
+
+#[test]
+fn a_target_with_an_aim_reads_its_side_and_one_without_reads_none() {
+    let (mut world, mut schedule) = rig();
+    let target = reader(&mut world);
+    let unaimed = world.spawn_with((Health::new(1000.0), taken_lines()));
+    let behind = DamageRequest::new(unaimed, 8.0).with_direction(Vec2::X);
+    assert_eq!(
+        behind.side(),
+        None,
+        "a game's direction is judged at the resolve"
+    );
+    behind.apply(&mut world);
+    assert_eq!(last_amount(&world), 8.0, "no aim, no side");
+    // Judged at the resolve: the target turned between the queue and it.
+    assert!(
+        DamageRequest::new(target, 8.0)
+            .with_direction(Vec2::X)
+            .queue(&mut world)
+    );
+    world.insert(target, aiming([-1.0, 0.0]));
+    frame(&mut world, &mut schedule);
+    assert_eq!(last_amount(&world), 8.0, "it turned to face the blow");
+    DamageRequest::new(target, 8.0)
+        .with_direction(Vec2::X)
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 8.0);
+    DamageRequest::new(target, 8.0)
+        .with_direction(Vec2::NEG_X)
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 24.0, "now this one is from behind");
+    assert_eq!(
+        Side::of(Vec2::Y, Vec2::X),
+        Some(Side::Rear),
+        "beside is the rear"
+    );
+    assert_eq!(Side::of(Vec2::X, Vec2::ZERO), None);
+}
+
+#[test]
+fn a_scoped_resist_line_reaches_only_its_side() {
+    use crate::{Line, TagFilter};
+    let (mut world, _) = rig();
+    let mut resist = Resist::new();
+    resist.add_line(
+        "physical",
+        "brace",
+        Line::new(Modifier::Mul(0.25)).with(TagFilter::new().all(["side.front"])),
+    );
+    let bulwark = world.spawn_with((Health::new(1000.0), resist, aiming([1.0, 0.0])));
+    let slash = |direction: Vec2| {
+        DamageRequest::from_parts(bulwark, [typed(8.0, &["physical.slash"])])
+            .with_direction(direction)
+    };
+    slash(Vec2::NEG_X).apply(&mut world);
+    assert_eq!(last_amount(&world), 2.0, "a quarter from the front");
+    slash(Vec2::X).apply(&mut world);
+    assert_eq!(last_amount(&world), 8.0, "whole from behind");
+    DamageRequest::from_parts(bulwark, [typed(8.0, &["physical.slash"])]).apply(&mut world);
+    assert_eq!(last_amount(&world), 8.0, "no side, no line");
+    let resist = world.get::<Resist>(bulwark).unwrap();
+    assert_eq!(resist.factor(&Tags::new(["physical"])), 1.0);
+    let front = [crate::TagSet::Name("side.front")];
+    assert_eq!(
+        resist.factor_in(&Tags::new(["physical"]), &crate::Read::new(&front)),
+        0.25
+    );
+}
+
+#[test]
+fn a_kit_hit_takes_its_side_at_the_strike_and_a_games_hit_boxes_only_what_it_carries() {
+    let (mut world, _) = rig();
+    let target = world.spawn();
+    let plain = DamageRequest::new(target, 1.0)
+        .with_conversion(Conversion::new().with_rule("fire", "ice", 0.5));
+    assert!(!plain.has_extras(), "a conversion alone stays in its slot");
+    let boxed = plain.clone().with_context(Tags::new(["hit.blast"]));
+    assert!(boxed.has_extras());
+    assert_eq!(
+        boxed.conversion(),
+        plain.conversion(),
+        "the box holds the conversion"
+    );
+    assert_eq!(boxed.context(), &Tags::new(["hit.blast"]));
+    let again = boxed
+        .clone()
+        .with_conversion(Conversion::new().with_rule("fire", "acid", 1.0));
+    assert_eq!(
+        again.context(),
+        &Tags::new(["hit.blast"]),
+        "a conversion keeps the box"
+    );
+    assert!(
+        !DamageRequest::new(target, 1.0)
+            .with_context(Tags::default())
+            .has_extras()
+    );
+    let sided = DamageRequest::new(target, 1.0).with_side(Some(Side::Front));
+    assert!(!sided.has_extras(), "a strike's side rides inline");
+    assert_eq!((sided.side(), sided.direction()), (Some(Side::Front), None));
+}
+
+#[test]
+fn a_queued_requests_extension_survives_a_save() {
+    let (mut world, _) = rig();
+    let target = world.spawn();
+    let request = DamageRequest::from_parts(target, [typed(3.0, &["fire"])])
+        .with_conversion(Conversion::new().with_rule("fire", "ice", 0.5))
+        .with_context(Tags::new(["hit.blast"]))
+        .with_state(Tags::new(["delivery.chained"]))
+        .with_direction(Vec2::new(0.0, -1.0))
+        .with_side(Some(Side::Rear));
+    let saved = serde_json::to_value(DamageSave::from(&request)).unwrap();
+    assert_eq!(saved["context"], serde_json::json!(["hit.blast"]));
+    assert_eq!(saved["state"], serde_json::json!(["delivery.chained"]));
+    assert_eq!(saved["direction"], serde_json::json!([0.0, -1.0]));
+    assert_eq!(saved["side"], serde_json::json!("rear"));
+    let back = DamageRequest::from(serde_json::from_value::<DamageSave>(saved).unwrap());
+    assert_eq!(back.context(), request.context());
+    assert_eq!(back.state(), request.state());
+    assert_eq!(
+        (back.direction(), back.side()),
+        (request.direction(), request.side())
+    );
+    assert_eq!(back.conversion(), request.conversion());
+    // A request without them saves as it always has.
+    let plain = serde_json::to_value(DamageSave::from(&DamageRequest::new(target, 2.0))).unwrap();
+    assert_eq!(
+        plain,
+        serde_json::json!({ "parts": [{ "amount": 2.0 }], "crit": false, "periodic": false, "push_always": false })
+    );
+}
+
+// 7.10a: crits from the source's stats.
+
+/// A source with a crit chance and, when given, a multiplier.
+fn critter(world: &mut World, chance: f32, multiplier: Option<f32>) -> Entity {
+    let mut stats = crate::Stats::new().with(crate::Stats::CRIT_CHANCE, chance);
+    if let Some(multiplier) = multiplier {
+        stats = stats.with(crate::Stats::CRIT_MULTIPLIER, multiplier);
+    }
+    world.spawn_with((stats,))
+}
+
+fn draws(world: &World) -> u64 {
+    world.get_resource::<KitRng>().map_or(0, KitRng::draws)
+}
+
+/// The first seed whose first draws are `rolls`, each under 0.5 or not.
+fn seed_for(rolls: &[bool]) -> u64 {
+    (0..10_000)
+        .find(|&seed| {
+            let mut rng = KitRng::seeded(seed);
+            rolls.iter().all(|&crit| (rng.unit() < 0.5) == crit)
+        })
+        .unwrap()
+}
+
+#[test]
+fn a_source_with_a_chance_draws_once_a_hit_first_in_the_resolves_order_ignored_hits_included() {
+    let (mut world, mut schedule) = rig();
+    let source = critter(&mut world, 0.5, Some(3.0));
+    let alive = world.spawn_with((Health::new(1000.0),));
+    let dead = world.spawn_with((Health::new(1.0),));
+    DamageRequest::new(dead, 1.0).apply(&mut world);
+    assert!(alive.id() < dead.id());
+    let seed = seed_for(&[true, false, true]);
+    world.insert_resource(KitRng::seeded(seed));
+    // Queued out of order; the resolve sorts by target: alive's two, then
+    // the dead one's, which is ignored after its draw.
+    for target in [dead, alive, alive] {
+        assert!(
+            DamageRequest::new(target, 2.0)
+                .with_source(source)
+                .queue(&mut world)
+        );
+    }
+    frame(&mut world, &mut schedule);
+    assert_eq!(draws(&world), 3, "a draw a hit, the ignored one's included");
+    let hits: Vec<(Entity, f32, bool)> = sent(&world)
+        .iter()
+        .filter(|hit| hit.entity == alive)
+        .map(|hit| (hit.entity, hit.amount, hit.crit))
+        .collect();
+    assert_eq!(
+        hits,
+        [(alive, 6.0, true), (alive, 2.0, false)],
+        "the stream in sorted order"
+    );
+}
+
+#[test]
+fn a_crit_multiplies_every_part_before_the_defences_and_marks_the_hit_and_its_parts() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "ice"]);
+    let source = critter(&mut world, 0.5, Some(3.0));
+    let target = world.spawn_with((Health::new(1000.0), Resist::new().with_factor("fire", 0.5)));
+    world.insert_resource(KitRng::seeded(seed_for(&[true])));
+    DamageRequest::from_parts(target, [typed(2.0, &["fire"]), typed(4.0, &["ice"])])
+        .with_source(source)
+        .apply(&mut world);
+    assert_eq!(
+        parts_sent(&world),
+        [(3.0, vec!["fire"]), (12.0, vec!["ice"])]
+    );
+    let parts = world.resource::<tungsten_core::EventQueue<DamagedPart>>();
+    assert!(parts.iter().all(|part| part.crit));
+    assert!(sent(&world)[0].crit);
+    assert_eq!(sent(&world)[0].amount, 15.0);
+}
+
+#[test]
+fn a_periodic_request_never_draws_and_a_game_decided_crit_draws_nothing() {
+    let (mut world, _) = rig();
+    let source = critter(&mut world, 1.0, Some(3.0));
+    let target = world.spawn_with((Health::new(1000.0),));
+    world.insert_resource(KitRng::seeded(1));
+    DamageRequest::new(target, 2.0)
+        .with_source(source)
+        .with_periodic(true)
+        .apply(&mut world);
+    assert_eq!(
+        (draws(&world), sent(&world)[0].amount, sent(&world)[0].crit),
+        (0, 2.0, false)
+    );
+    DamageRequest::new(target, 2.0)
+        .with_source(source)
+        .with_crit(false)
+        .apply(&mut world);
+    DamageRequest::new(target, 2.0)
+        .with_source(source)
+        .with_crit(true)
+        .apply(&mut world);
+    let hits: Vec<(f32, bool)> = sent(&world)
+        .iter()
+        .map(|hit| (hit.amount, hit.crit))
+        .collect();
+    assert_eq!(
+        hits[1..],
+        [(2.0, false), (2.0, true)],
+        "carried: no draw and no factor"
+    );
+    assert_eq!(draws(&world), 0);
+}
+
+#[test]
+fn roll_crit_decides_at_build_with_one_draw_and_the_resolve_draws_no_more() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "ice"]);
+    let source = critter(&mut world, 0.5, Some(2.0));
+    let target = world.spawn_with((Health::new(1000.0),));
+    world.insert_resource(KitRng::seeded(seed_for(&[true, false])));
+    let built = |world: &mut World| {
+        DamageRequest::from_parts(target, [typed(2.0, &["fire"]), typed(3.0, &["ice"])])
+            .with_source(source)
+            .roll_crit(world)
+    };
+    let crit = built(&mut world);
+    assert_eq!(draws(&world), 1);
+    assert!(crit.is_crit());
+    let amounts: Vec<f32> = crit.parts().iter().map(DamagePart::amount).collect();
+    assert_eq!(amounts, [4.0, 6.0], "both parts doubled at build");
+    crit.apply(&mut world);
+    assert_eq!(draws(&world), 1, "the resolve draws no more");
+    assert_eq!((sent(&world)[0].amount, sent(&world)[0].crit), (10.0, true));
+    let plain = built(&mut world);
+    assert_eq!(draws(&world), 2);
+    assert!(!plain.is_crit());
+    assert_eq!(plain.amount(), 5.0);
+    plain.apply(&mut world);
+    assert_eq!((draws(&world), sent(&world)[1].crit), (2, false));
+    // No source, or a periodic one: decided with no draw.
+    let lone = DamageRequest::new(target, 1.0).roll_crit(&mut world);
+    let tick = DamageRequest::new(target, 1.0)
+        .with_source(source)
+        .with_periodic(true)
+        .roll_crit(&mut world);
+    assert!(!lone.is_crit() && !tick.is_crit());
+    assert_eq!(draws(&world), 2);
+}
+
+#[test]
+fn a_source_without_a_chance_leaves_the_stream_where_it_was() {
+    let (mut world, _) = rig();
+    world.insert_resource(KitRng::seeded(9));
+    let plain = world.spawn_with((crate::Stats::new().with(crate::Stats::DAMAGE, 1.0),));
+    let zero = critter(&mut world, 0.0, Some(3.0));
+    let bare = world.spawn();
+    let target = world.spawn_with((Health::new(1000.0),));
+    for source in [plain, zero, bare] {
+        DamageRequest::new(target, 2.0)
+            .with_source(source)
+            .apply(&mut world);
+        let _ = DamageRequest::new(target, 2.0)
+            .with_source(source)
+            .roll_crit(&mut world);
+    }
+    DamageRequest::new(target, 2.0).apply(&mut world);
+    assert_eq!(draws(&world), 0);
+    assert!(
+        sent(&world)
+            .iter()
+            .all(|hit| hit.amount == 2.0 && !hit.crit)
+    );
+    // A sure chance without a multiplier crits at 1.5.
+    let sure = critter(&mut world, 1.0, None);
+    DamageRequest::new(target, 2.0)
+        .with_source(sure)
+        .apply(&mut world);
+    assert_eq!(
+        (sent(&world)[4].amount, sent(&world)[4].crit, draws(&world)),
+        (3.0, true, 1)
+    );
+}
+
+#[test]
+fn a_crit_the_resolve_decides_saves_as_it_always_has() {
+    let (mut world, _) = rig();
+    let target = world.spawn();
+    let save = |request: DamageRequest| serde_json::to_value(DamageSave::from(&request)).unwrap();
+    let open = save(DamageRequest::new(target, 2.0));
+    assert_eq!(open["crit"], serde_json::json!(false));
+    assert!(open.get("crit_decided").is_none(), "as before 7.10a");
+    let no = save(DamageRequest::new(target, 2.0).with_crit(false));
+    assert_eq!(no["crit_decided"], serde_json::json!(true));
+    let yes = save(DamageRequest::new(target, 2.0).with_crit(true));
+    assert_eq!(yes["crit"], serde_json::json!(true));
+    for (saved, crit) in [(open, Crit::Open), (no, Crit::No), (yes, Crit::Yes)] {
+        let back = DamageRequest::from(serde_json::from_value::<DamageSave>(saved).unwrap());
+        assert_eq!(back.crit, crit);
+    }
+}
+
+#[test]
+fn a_lethal_kill_passes_resist_immunity_and_the_shield() {
+    use crate::foundation::explain::KitExplain;
+    let (mut world, mut schedule) = rig();
+    world.insert_resource(KitExplain::new());
+    let golem = world.spawn_with((
+        Health::new(50.0).with_invulnerability(1.0),
+        crate::Shield::new(10.0),
+        crate::Resist::new().with_factor("physical", 0.0),
+    ));
+    // A hit opens its window: a plain one is ignored inside it.
+    crate::damage(&mut world, golem, 1.0);
+    assert_eq!(
+        crate::damage(&mut world, golem, 5.0),
+        Hit::Ignored,
+        "inside its window"
+    );
+    frame(&mut world, &mut schedule);
+    assert_eq!(crate::kill(&mut world, golem), Hit::Killed);
+    let health = world.get::<Health>(golem).unwrap();
+    assert!(health.is_dead() && health.current() == 0.0);
+    assert_eq!(world.get::<crate::Shield>(golem).unwrap().current(), 0.0);
+    let killed: Vec<(f32, bool, f32)> = sent(&world)
+        .iter()
+        .filter(|hit| hit.killed)
+        .map(|hit| (hit.amount, hit.killed, hit.absorbed))
+        .collect();
+    assert_eq!(
+        killed,
+        [(59.0, true, 9.0)],
+        "the shield's 9 and the health's 50"
+    );
+    let record = world.resource::<KitExplain>().last_hit().unwrap();
+    assert!(record.lethal && record.killed);
+    assert!(record.to_string().contains("killed, lethal"), "{record}");
+    // The dead take no request: a kill never runs twice.
+    assert_eq!(crate::kill(&mut world, golem), Hit::Ignored);
+    let gone = world.spawn_with((Health::new(5.0),));
+    world.despawn(gone);
+    assert_eq!(crate::kill(&mut world, gone), Hit::Ignored);
 }

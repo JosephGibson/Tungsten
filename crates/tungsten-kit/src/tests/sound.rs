@@ -272,3 +272,55 @@ fn a_min_interval_plays_each_sound_once_per_interval_of_real_time() {
 fn a_negative_min_interval_panics() {
     let _ = SoundOnEvent::<Hit>::new("hit_sound", "thud").with_min_interval(-1.0);
 }
+
+#[test]
+fn sound_on_event_plays_by_the_listener() {
+    use crate::react::cues::CueListener;
+    use glam::Vec2;
+
+    /// A thud, at a point or none.
+    struct Thud(Option<Vec2>);
+
+    let mut world = World::new();
+    let mut sounds = SoundRegistry::new();
+    let data = SoundData {
+        samples: vec![0.0; 4],
+        sample_rate: 44_100,
+        channels: 1,
+    };
+    sounds.register("thud".to_string(), data, 0.8, false);
+    world.insert_resource(sounds);
+    world.insert_resource(AudioCommands::new());
+    world.insert_resource(
+        CueListener::new(100.0, 300.0)
+            .with_pan(400.0)
+            .at(Vec2::new(0.0, 0.0)),
+    );
+    let mut schedule = Schedule::new();
+    SoundOnEvent::<Thud>::new("thud_sound", "thud")
+        .with_point(|thud| thud.0)
+        .build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    for point in [
+        Some(Vec2::new(200.0, 0.0)),
+        None,
+        Some(Vec2::new(-900.0, 0.0)),
+    ] {
+        world.resource_mut::<EventQueue<Thud>>().send(Thud(point));
+    }
+    schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
+    let played: Vec<(f32, f32)> = world
+        .resource_mut::<AudioCommands>()
+        .drain()
+        .into_iter()
+        .map(|command| match command {
+            AudioCommand::Play { volume, pan, .. } => (volume, pan.get()),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        played,
+        [(0.8 * 0.25, 0.5), (0.8, 0.0)],
+        "200 px off at its gain and pan; no point as before; past hearing none"
+    );
+}

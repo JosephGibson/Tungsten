@@ -1,0 +1,19 @@
+{
+  "tag": "riser",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          60,
+          8
+        ]
+      },
+      "velocity": [
+        0,
+        -60
+      ]
+    }
+  }
+}

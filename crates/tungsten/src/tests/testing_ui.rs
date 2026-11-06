@@ -726,3 +726,31 @@ fn tree_json_names_key_text_rect_focus_and_shown() {
         "a panel holds neither"
     );
 }
+
+#[test]
+fn assert_fits_holds_a_debug_root_to_its_layers_viewport() {
+    // At a debug scale of 3/4 the debug layer's viewport is 4/3 of the
+    // tree's in its own units (debug-pass): a debug root in its far corner
+    // lies past the tree's viewport and still fits.
+    use tungsten_core::ui::Anchor;
+    let mut harness = UiHarness::new(app());
+    let tree = harness.tree_mut();
+    tree.set_debug_scale(0.75);
+    let root = tree.add_root(
+        UiLayer::Debug,
+        LayoutStyle::default()
+            .with_size(Sizing::Px(200.0), Sizing::Px(100.0))
+            .anchored(Anchor::BottomEnd, Vec2::ZERO),
+    );
+    tree.panel(
+        root,
+        LayoutStyle::default().with_size(Sizing::Px(50.0), Sizing::Px(20.0)),
+    );
+    harness.assert_fits("a debug root in its layer's corner");
+    let rect = harness.rect(root).unwrap();
+    let tree_viewport = viewport(&harness);
+    assert!(
+        rect.max.x > tree_viewport.x && rect.max.y > tree_viewport.y,
+        "past the tree's viewport: {rect:?}"
+    );
+}

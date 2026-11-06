@@ -1,0 +1,255 @@
+{
+  "prefabs": {
+    "ship": {
+      "path": "prefabs/ship.json"
+    },
+    "bullet": {
+      "path": "prefabs/bullet.json"
+    },
+    "wave": {
+      "path": "prefabs/wave.json"
+    },
+    "raider": {
+      "path": "prefabs/raider.json"
+    },
+    "walker": {
+      "path": "prefabs/walker.json"
+    },
+    "floor": {
+      "path": "prefabs/floor.json"
+    },
+    "turret": {
+      "path": "prefabs/turret.json"
+    },
+    "gunship": {
+      "path": "prefabs/gunship.json"
+    },
+    "wing": {
+      "path": "prefabs/wing.json"
+    },
+    "fighter": {
+      "path": "prefabs/fighter.json"
+    },
+    "drifter": {
+      "path": "prefabs/drifter.json"
+    },
+    "asteroid": {
+      "path": "prefabs/asteroid.json"
+    },
+    "mine": {
+      "path": "prefabs/mine.json"
+    },
+    "gun": {
+      "path": "prefabs/gun.json"
+    },
+    "interceptor": {
+      "path": "prefabs/interceptor.json"
+    },
+    "laser": {
+      "path": "prefabs/laser.json"
+    },
+    "carrier": {
+      "path": "prefabs/carrier.json"
+    },
+    "bulwark": {
+      "path": "prefabs/bulwark.json"
+    },
+    "hacker": {
+      "path": "prefabs/hacker.json"
+    },
+    "payload": {
+      "path": "prefabs/payload.json"
+    },
+    "mainframe": {
+      "path": "prefabs/mainframe.json"
+    },
+    "breacher": {
+      "path": "prefabs/breacher.json"
+    },
+    "round": {
+      "path": "prefabs/round.json"
+    },
+    "dodge_dust": {
+      "path": "prefabs/dodge_dust.json"
+    },
+    "lobber": {
+      "path": "prefabs/lobber.json"
+    },
+    "grenade": {
+      "path": "prefabs/grenade.json"
+    },
+    "cryo_trooper": {
+      "path": "prefabs/cryo_trooper.json"
+    },
+    "drone": {
+      "path": "prefabs/drone.json"
+    },
+    "bulkhead": {
+      "path": "prefabs/bulkhead.json"
+    },
+    "burst": {
+      "path": "prefabs/burst.json"
+    },
+    "sandbag": {
+      "path": "prefabs/sandbag.json"
+    },
+    "escort_carrier": {
+      "path": "prefabs/escort_carrier.json"
+    },
+    "escort": {
+      "path": "prefabs/escort.json"
+    },
+    "sapper": {
+      "path": "prefabs/sapper.json"
+    },
+    "claymore": {
+      "path": "prefabs/claymore.json"
+    },
+    "missile": {
+      "path": "prefabs/missile.json"
+    },
+    "stray_drone": {
+      "path": "prefabs/stray_drone.json"
+    },
+    "patrol_sentry": {
+      "path": "prefabs/patrol_sentry.json"
+    },
+    "cycle_turret": {
+      "path": "prefabs/cycle_turret.json"
+    },
+    "charger": {
+      "path": "prefabs/charger.json"
+    },
+    "frigate": {
+      "path": "prefabs/frigate.json"
+    }
+  },
+  "data": {
+    "tags": {
+      "game": {
+        "path": "data/tags.json"
+      },
+      "state": {
+        "path": "data/state_tags.json"
+      }
+    },
+    "cue_rules": {
+      "score": {
+        "path": "data/cue_rules/score.json"
+      },
+      "typed": {
+        "path": "data/cue_rules/typed.json"
+      },
+      "dry_fire": {
+        "path": "data/cue_rules/dry_fire.json"
+      },
+      "mines": {
+        "path": "data/cue_rules/mines.json"
+      }
+    },
+    "damage_types": {
+      "scifi": {
+        "path": "data/damage_types/scifi.json"
+      }
+    },
+    "effects": {
+      "corrupted": {
+        "path": "data/effects/corrupted.json"
+      },
+      "overclocked": {
+        "path": "data/effects/overclocked.json"
+      },
+      "eaten": {
+        "path": "data/effects/eaten.json"
+      }
+    },
+    "abilities": {
+      "cannon": {
+        "path": "data/abilities/cannon.json"
+      },
+      "pulse": {
+        "path": "data/abilities/pulse.json"
+      },
+      "smg": {
+        "path": "data/abilities/smg.json"
+      },
+      "dodge": {
+        "path": "data/abilities/dodge.json"
+      },
+      "lob_grenade": {
+        "path": "data/abilities/lob_grenade.json"
+      },
+      "cryo": {
+        "path": "data/abilities/cryo.json"
+      },
+      "lay_mine": {
+        "path": "data/abilities/lay_mine.json"
+      }
+    },
+    "stats": {
+      "game": {
+        "path": "data/stats.json"
+      }
+    }
+  },
+  "shaders": {
+    "damage_flash": {
+      "path": "shaders/damage_flash.wgsl"
+    }
+  },
+  "materials": {
+    "damage_flash": {
+      "shader": "damage_flash",
+      "uniform_defaults": {
+        "vec4": [
+          [
+            1.0,
+            0.2,
+            0.1,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "f32s": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "i32s": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  "sounds": {
+    "blip": {
+      "path": "sounds/blip.ogg"
+    }
+  },
+  "animations": {
+    "charge_ring": {
+      "path": "animations/charge_ring.json"
+    }
+  }
+}

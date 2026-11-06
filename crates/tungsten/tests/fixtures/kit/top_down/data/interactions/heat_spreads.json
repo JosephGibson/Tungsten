@@ -1,0 +1,16 @@
+{
+  "stimulus": "heat",
+  "on": {
+    "all": [
+      "material.wood"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "ablaze",
+        "amount": 2
+      }
+    }
+  ]
+}

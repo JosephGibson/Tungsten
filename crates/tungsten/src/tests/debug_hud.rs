@@ -8,7 +8,8 @@ use tungsten_core::ui::{FixedAdvanceMeasure, UiTree};
 
 use super::*;
 use crate::app::WindowSize;
-use crate::debug_views::{GRAPH_WIDTH, GREEN, ORANGE, RED, YELLOW};
+use crate::debug_views::{GRAPH_WIDTH, GREEN, LABEL, ORANGE, RED, YELLOW};
+use tungsten_render::timing::GpuFrameSample;
 
 /// A world with what the views' frame reads, the HUD on.
 fn views_world() -> World {
@@ -45,6 +46,24 @@ fn text(tree: &UiTree, id: WidgetId) -> String {
     tree.text(id)
         .map(|text| text.spans.iter().map(|span| span.text.as_str()).collect())
         .unwrap_or_default()
+}
+
+/// A built-in value's fields: its text split at the column gaps, each two
+/// spaces or more (debug-pass).
+fn fields(value: &str) -> Vec<&str> {
+    value
+        .split("  ")
+        .map(str::trim)
+        .filter(|field| !field.is_empty())
+        .collect()
+}
+
+/// Where each field after a value's first starts, in glyphs.
+fn starts(value: &str) -> Vec<usize> {
+    let chars: Vec<char> = value.chars().collect();
+    (2..chars.len())
+        .filter(|&i| chars[i] != ' ' && chars[i - 1] == ' ' && chars[i - 2] == ' ')
+        .collect()
 }
 
 /// The HUD's rows: (label, value).
@@ -138,14 +157,38 @@ fn the_rows_list_fps_then_the_built_in_rows_then_a_providers_in_columns() {
     let labels: Vec<&str> = rows.iter().map(|(label, _)| label.as_str()).collect();
     assert_eq!(
         labels,
-        ["fps", "draw", "cpu", "ui", "text", "labels", "extra"],
-        "M58 splits the ui row in three"
+        [
+            "fps", "draw", "render", "ui", "layout", "text", "labels", "extra"
+        ],
+        "M58 split the ui row in three; debug-pass the ui row in two"
     );
-    assert_eq!(rows[1].1, "42 ents  128 spr");
-    assert_eq!(rows[3].1, "17 cmds layout 42us 1r/9n");
-    assert_eq!(rows[4].1, "2b 1prep full 3 atlas_full 0 lay 12");
-    assert_eq!(rows[5].1, "5/1c/2d lg 37");
-    assert_eq!(rows[6].1, "value");
+    // Fields in columns (debug-pass).
+    assert_eq!(fields(&rows[1].1), ["42 ents", "128 sprites"]);
+    assert_eq!(rows[2].1, MISSING, "the render times wait for an interval");
+    assert_eq!(fields(&rows[3].1), ["17 cmds", "2 batches"]);
+    assert_eq!(fields(&rows[4].1), ["42 \u{b5}s", "1 root", "9 nodes"]);
+    assert_eq!(
+        fields(&rows[5].1),
+        ["1 prep", "12 layouts", "3 trims"],
+        "no atlas full while it has not been"
+    );
+    assert_eq!(
+        fields(&rows[6].1),
+        ["5 drawn", "1 culled", "2 dropped"],
+        "no glyph count"
+    );
+    assert_eq!(rows[7].1, "value");
+    for k in 0..3 {
+        let columns: Vec<usize> = rows[..7]
+            .iter()
+            .filter_map(|(_, value)| starts(value).get(k).copied())
+            .collect();
+        assert!(
+            columns.windows(2).all(|pair| pair[0] == pair[1]),
+            "field {} starts at one column: {columns:?} in {rows:?}",
+            k + 2
+        );
+    }
     let all = rows
         .iter()
         .map(|(label, value)| format!("{label} {value}"))
@@ -154,6 +197,26 @@ fn the_rows_list_fps_then_the_built_in_rows_then_a_providers_in_columns() {
     for absent in ["player", "state", "gameplay", "sys_a"] {
         assert!(!all.contains(absent), "{absent} in\n{all}");
     }
+
+    world.resource_mut::<RenderCounts>().text_atlas_full = 1;
+    world.resource_mut::<DebugHud>().refresh_interval_ms = 0.0;
+    frame(&mut world, None, 0.0);
+    assert_eq!(
+        fields(&self::rows(&world)[5].1),
+        ["1 prep", "12 layouts", "3 trims", "1 atlas full"]
+    );
+
+    // Each render time's number before its name, once the frame has run.
+    {
+        let ft = world.resource_mut::<FrameTimings>();
+        ft.render_acquire_ms = 0.06;
+        ft.render_encode_ms = 0.85;
+        ft.render_submit_present_ms = 0.58;
+    }
+    frame(&mut world, Some(16.0), 2.0);
+    let rows = self::rows(&world);
+    assert_eq!(rows[2].0, "render");
+    assert_eq!(fields(&rows[2].1), ["0.06 acq", "0.85 enc", "0.58 sub"]);
 }
 
 #[test]
@@ -197,7 +260,11 @@ fn fps_comes_from_the_interval_and_the_ms_from_the_frame_total() {
         hud.interval_ewma
     );
     assert!((hud.total_ewma - 5.0).abs() < 1e-3, "{}", hud.total_ewma);
-    assert_eq!(rows(&world)[0], ("fps".into(), " 50.0   5.00ms".into()));
+    let (label, value) = rows(&world)[0].clone();
+    assert_eq!(
+        (label.as_str(), fields(&value)),
+        ("fps", vec!["50.0", "5.00 cpu", "\u{2013} gpu"])
+    );
 }
 
 #[test]
@@ -413,7 +480,10 @@ fn both_averages_start_from_the_first_interval() {
         (40.0, 8.0),
         "not from 0"
     );
-    assert_eq!(rows(&world)[0].1, " 25.0   8.00ms");
+    assert_eq!(
+        fields(&rows(&world)[0].1),
+        ["25.0", "8.00 cpu", "\u{2013} gpu"]
+    );
 }
 
 #[test]
@@ -431,9 +501,93 @@ fn the_fps_rows_time_takes_the_ramps_colour() {
             .unwrap()
             .spans
             .clone();
-        assert_eq!(spans.len(), 2);
-        assert_eq!(spans[1].color, Some(color), "{total} ms");
-        assert_eq!(spans[1].weight, Some(600));
+        assert_eq!(
+            spans.len(),
+            7,
+            "the fps, a gap, the CPU time, ` cpu`, a gap, the GPU's, ` gpu`"
+        );
+        assert_eq!(spans[2].color, Some(color), "{total} ms");
+        assert_eq!(spans[2].weight, Some(600));
         assert_eq!(spans[0].color, None, "the fps in the value colour");
+        assert!(spans[1].text.trim().is_empty(), "{:?}", spans[1].text);
+        assert_eq!(spans[3].color, Some(LABEL), "the name in the label grey");
     }
+}
+
+/// A reopened HUD starts as a new one (debug-pass): no bar, statistic or
+/// average from before it closed.
+#[test]
+fn a_reopened_hud_starts_its_graph_and_averages_afresh() {
+    let mut world = views_world();
+    for _ in 0..30 {
+        frame(&mut world, Some(50.0), 5.0);
+    }
+    world.resource_mut::<DebugHud>().enabled = false;
+    frame(&mut world, Some(50.0), 5.0);
+    assert!(world.resource::<DebugHud>().window().is_none(), "closed");
+    world.resource_mut::<DebugHud>().enabled = true;
+    for _ in 0..3 {
+        frame(&mut world, Some(10.0), 1.0);
+    }
+    let tree = world.resource::<UiTree>();
+    assert_eq!(text(tree, window(&world).stats[2]), "10.00ms", "the most");
+    let graph = window(&world).graph.unwrap();
+    assert_eq!(
+        tree.mesh_vertices(graph).len(),
+        3 * 6 + 12,
+        "the three new bars and the two guide lines"
+    );
+    let (label, value) = rows(&world)[0].clone();
+    assert_eq!(
+        (label.as_str(), fields(&value)),
+        ("fps", vec!["100.0", "1.00 cpu", "\u{2013} gpu"])
+    );
+}
+
+/// The fps row's GPU render time (debug-pass): the average of each timed
+/// frame read back, its first scene timestamp to the end of its last pass,
+/// forgotten when the HUD closes; the gpu row names the backend and the
+/// newest scene pass.
+#[test]
+fn the_fps_row_carries_the_gpu_render_time_and_the_gpu_row_its_scene_pass() {
+    let mut world = views_world();
+    world.insert_resource(GpuFrameTimings {
+        frame_gpu_ms: Some(0.9),
+        render_gpu_ms: Some(1.25),
+        samples: vec![GpuFrameSample {
+            frame: 1,
+            scene_ms: Some(0.9),
+            render_ms: 1.25,
+            passes: Vec::new(),
+        }],
+        backend: Some("Vulkan".into()),
+        ..GpuFrameTimings::default()
+    });
+    for _ in 0..3 {
+        frame(&mut world, Some(16.0), 4.0);
+    }
+    let rows = rows(&world);
+    assert_eq!(fields(&rows[0].1), ["62.5", "4.00 cpu", "1.25 gpu"]);
+    assert_eq!(rows[1].0, "gpu");
+    assert_eq!(fields(&rows[1].1), ["Vulkan", "0.90 scene"]);
+    let fps = world
+        .resource::<UiTree>()
+        .children(window(&world).columns[1])[0];
+    let spans = world.resource::<UiTree>().text(fps).unwrap().spans.clone();
+    assert_eq!(
+        (spans[5].color, spans[5].weight),
+        (Some(GREEN), Some(600)),
+        "on the budget ramp, as the CPU's"
+    );
+
+    world.resource_mut::<DebugHud>().enabled = false;
+    frame(&mut world, Some(16.0), 4.0);
+    world.resource_mut::<GpuFrameTimings>().samples.clear();
+    world.resource_mut::<DebugHud>().enabled = true;
+    frame(&mut world, Some(16.0), 4.0);
+    assert_eq!(
+        fields(&self::rows(&world)[0].1)[2],
+        "\u{2013} gpu",
+        "a reopened HUD waits for a timed frame"
+    );
 }

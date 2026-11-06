@@ -4,16 +4,16 @@
 use serde::{Deserialize, Serialize};
 use tungsten_core::save::SaveOptions;
 use tungsten_core::{
-    Entity, Inspectable, Plugin, Schedule, SpawnContext, Time, Timer, World, system,
+    Entity, Inspectable, Plugin, Schedule, SpawnContext, Time, Timer, Visibility, World, system,
 };
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
-    describe, round_trip,
+    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
+    describe, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
-use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::{non_negative, positive};
 use crate::lifecycle::ended::{end, ensure_kit_despawn};
 
 /// [`LifetimePlugin`]'s system, in the tick phase.
@@ -33,7 +33,17 @@ const LIFETIME: &str = "lifetime";
 /// the extract, and a cue spawn from it in its last step survives. Its
 /// [`Timer`] reads how far the entity has come, for a fade.
 ///
-/// Scene name `lifetime`: `{ "seconds": 0.5 }`.
+/// With a blink ([`with_blink`](Self::with_blink)), over its last seconds
+/// the entity's `Visibility` is off for the second half of each period,
+/// the rate rising from its first to its second, as a dropped coin warns
+/// that it is going: the tick writes it after its pass, inserting one at
+/// the first hide, as a function of the elapsed time, so a load blinks on
+/// in step.
+///
+/// Scene name `lifetime`: `{ "seconds": 0.5 }`, or
+/// `{ "seconds": 6, "blink": { "last": 2, "rate": [5, 10] } }`, `last`
+/// above 0 and each rate above 0, `[5, 5]` by default; saved with its
+/// seconds and elapsed time, the blink skipped when none.
 ///
 /// # Examples
 ///
@@ -62,6 +72,36 @@ const LIFETIME: &str = "lifetime";
 #[derive(Debug, Clone)]
 pub struct Lifetime {
     timer: Timer,
+    blink: Option<Blink>,
+}
+
+/// A lifetime's blink: over its last `last` seconds, hidden for the second
+/// half of each period, the periods a second rising linearly from
+/// `rate[0]` to `rate[1]`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Blink {
+    last: f32,
+    rate: [f32; 2],
+}
+
+impl Blink {
+    /// Whether its entity shows at `elapsed` of a lifetime of `seconds`:
+    /// before the blink, or in the first half of a period by the phase
+    /// `r0·τ + (r1 − r0)·τ²/(2·last)`, `τ` seconds into the blink.
+    fn shows(self, seconds: f32, elapsed: f32) -> bool {
+        let tau = elapsed - (seconds - self.last);
+        if tau < 0.0 {
+            return true;
+        }
+        let [r0, r1] = self.rate;
+        let phase = r0 * tau + (r1 - r0) * tau * tau / (2.0 * self.last);
+        phase.fract() < 0.5
+    }
+}
+
+/// Whether a blink's values are finite and above 0.
+fn valid_blink(last: f32, rate: [f32; 2]) -> bool {
+    last.is_finite() && last > 0.0 && rate.iter().all(|r| r.is_finite() && *r > 0.0)
 }
 
 impl Lifetime {
@@ -75,7 +115,36 @@ impl Lifetime {
     pub fn new(seconds: f32) -> Self {
         Self {
             timer: Timer::once(seconds),
+            blink: None,
         }
+    }
+
+    /// The lifetime, blinking over its last `last` seconds: hidden for the
+    /// second half of each period, `from` periods a second at the blink's
+    /// start rising linearly to `to` at the end.
+    ///
+    /// # Panics
+    ///
+    /// When `last`, `from` or `to` is not finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_blink(mut self, last: f32, from: f32, to: f32) -> Self {
+        assert!(
+            valid_blink(last, [from, to]),
+            "Lifetime::with_blink: each must be finite and > 0 (got {last}, {from}, {to})"
+        );
+        self.blink = Some(Blink {
+            last,
+            rate: [from, to],
+        });
+        self
+    }
+
+    /// Whether its entity shows now: always without a blink.
+    #[must_use]
+    pub fn shows(&self) -> bool {
+        self.blink
+            .is_none_or(|blink| blink.shows(self.timer.duration(), self.timer.elapsed()))
     }
 
     /// The countdown: its `remaining` and `fraction` read how far the
@@ -114,15 +183,50 @@ impl Plugin for LifetimePlugin {
                 },
                 "how long it lives; 0 despawns it at its first step",
             ))
+            .field(
+                FieldDescription::new(
+                    "blink",
+                    FieldType::Shape(BLINK),
+                    "over its last seconds its visibility off for the second half of each period, the rate rising; saved with it",
+                )
+                .default("null"),
+            )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
-            .genre(SHMUP)
-            .genre(GRID)
+            .genre(RPG)
+            .genre(SHOOTER)
             .sample(r#"{ "seconds": 0.5 }"#)
             .roundtrip(round_trip::<LifetimeDef>),
         );
+        describe_shape(
+            world,
+            ComponentDescription::new(
+                BLINK,
+                "A lifetime's blink: hidden for the second half of each period over its last seconds.",
+            )
+            .field(FieldDescription::new(
+                "last",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Open,
+                },
+                "the seconds before the end it blinks over",
+            ))
+            .field(
+                FieldDescription::new(
+                    "rate",
+                    FieldType::Vec2,
+                    "periods a second at the blink's start and at the end, each above 0, rising linearly between",
+                )
+                .default("[5.0, 5.0]"),
+            )
+            .sample(r#"{ "last": 2 }"#)
+            .roundtrip(round_trip::<BlinkDef>),
+        );
         world.register_component_with(LIFETIME, |def: LifetimeDef, _: &SpawnContext<'_>| {
-            (Lifetime::new(def.seconds),)
+            let mut lifetime = Lifetime::new(def.seconds);
+            lifetime.blink = def.blink.map(Blink::from);
+            (lifetime,)
         });
         schedule.add(
             Phase::Tick.stage(),
@@ -132,12 +236,18 @@ impl Plugin for LifetimePlugin {
     }
 }
 
-/// A [`Lifetime`] in a save: its seconds and how far it has come.
+/// The shape of a lifetime's `blink`.
+const BLINK: &str = "blink";
+
+/// A [`Lifetime`] in a save: its seconds, how far it has come and its
+/// blink, when it has one.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LifetimeSave {
     seconds: f32,
     elapsed: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blink: Option<BlinkDef>,
 }
 
 impl From<&Lifetime> for LifetimeSave {
@@ -145,6 +255,10 @@ impl From<&Lifetime> for LifetimeSave {
         Self {
             seconds: lifetime.timer.duration(),
             elapsed: lifetime.timer.elapsed(),
+            blink: lifetime.blink.map(|blink| BlinkDef {
+                last: blink.last,
+                rate: blink.rate,
+            }),
         }
     }
 }
@@ -155,7 +269,56 @@ impl From<LifetimeSave> for Lifetime {
         let seconds = finite_at_least_zero(saved.seconds);
         let mut lifetime = Self::new(seconds);
         lifetime.timer.tick(finite_at_least_zero(saved.elapsed));
+        lifetime.blink = saved.blink.map(Blink::from);
         lifetime
+    }
+}
+
+/// A blink as data writes it, checked.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(try_from = "BlinkFields")]
+struct BlinkDef {
+    last: f32,
+    rate: [f32; 2],
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BlinkFields {
+    #[serde(deserialize_with = "positive")]
+    last: f32,
+    #[serde(default = "steady_rate")]
+    rate: [f32; 2],
+}
+
+/// A blink's rate by default: five periods a second throughout.
+fn steady_rate() -> [f32; 2] {
+    [5.0, 5.0]
+}
+
+impl TryFrom<BlinkFields> for BlinkDef {
+    type Error = String;
+
+    fn try_from(fields: BlinkFields) -> Result<Self, Self::Error> {
+        if !valid_blink(fields.last, fields.rate) {
+            return Err(format!(
+                "rate: each must be finite and > 0 (got {:?})",
+                fields.rate
+            ));
+        }
+        Ok(Self {
+            last: fields.last,
+            rate: fields.rate,
+        })
+    }
+}
+
+impl From<BlinkDef> for Blink {
+    fn from(def: BlinkDef) -> Self {
+        Self {
+            last: def.last,
+            rate: def.rate,
+        }
     }
 }
 
@@ -173,15 +336,30 @@ fn finite_at_least_zero(value: f32) -> f32 {
 struct LifetimeDef {
     #[serde(deserialize_with = "non_negative")]
     seconds: f32,
+    #[serde(default)]
+    blink: Option<BlinkDef>,
 }
 
 fn lifetime_tick(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let mut finished: Vec<Entity> = Vec::new();
+    // Blinkers listed beside the finished, so the pass's query stays the
+    // two columns it reads.
+    let mut blinking: Vec<(Entity, bool)> = Vec::new();
     for (entity, lifetime) in world.query_mut::<(Entity, &mut Lifetime)>() {
         lifetime.timer.tick(dt);
         if lifetime.timer.finished() {
             finished.push(entity);
+        }
+        if lifetime.blink.is_some() {
+            blinking.push((entity, lifetime.shows()));
+        }
+    }
+    for (entity, shows) in blinking {
+        match world.get_mut::<Visibility>(entity) {
+            Some(visibility) => visibility.visible = shows,
+            None if !shows => world.insert(entity, Visibility { visible: false }),
+            None => {}
         }
     }
     // Listed each step until the flush; the despawn marks it the first
@@ -193,10 +371,20 @@ fn lifetime_tick(world: &mut World) {
 
 impl Inspectable for Lifetime {
     fn inspect_rows(&self) -> Vec<(&'static str, String)> {
-        vec![
+        let mut rows = vec![
             ("left", format!("{:.2} s", self.timer.remaining())),
             ("fraction", format!("{:.2}", self.timer.fraction())),
-        ]
+        ];
+        if let Some(blink) = self.blink {
+            rows.push((
+                "blink",
+                format!(
+                    "last {:.2} s at {}..{} a second",
+                    blink.last, blink.rate[0], blink.rate[1]
+                ),
+            ));
+        }
+        rows
     }
 }
 

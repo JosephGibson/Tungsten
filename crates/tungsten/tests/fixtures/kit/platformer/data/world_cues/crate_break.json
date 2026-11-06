@@ -1,0 +1,17 @@
+[
+  {
+    "prefab": "spark"
+  },
+  {
+    "counter": {
+      "name": "crates_broken",
+      "add": 1,
+      "target": "game"
+    }
+  },
+  {
+    "label": {
+      "font": "sans"
+    }
+  }
+]

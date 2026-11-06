@@ -1,0 +1,67 @@
+{
+  "sprite": {
+    "asset_id": "hero"
+  },
+  "tag": "swordsman",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          10,
+          20
+        ]
+      }
+    },
+    "platformer_controller": {
+      "run_speed": 200,
+      "jump_speed": 600,
+      "gravity": 2000
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right"
+      ],
+      "slots": {
+        "swing": "attack"
+      }
+    },
+    "facing": {
+      "snap": "horizontal"
+    },
+    "hitbox": {
+      "shape": {
+        "aabb": [
+          10,
+          6
+        ]
+      },
+      "offset": [
+        20,
+        0
+      ],
+      "damage": 1,
+      "window": 0.1,
+      "facing": "mirror",
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    },
+    "abilities": [
+      {
+        "trigger": {
+          "action": "swing"
+        },
+        "payload": [
+          {
+            "hitbox": 0.1
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -6,7 +6,7 @@ The rows `just perf` measures (`D-078` as redo 7.3 amends it), each owning one c
 just perf list                                   # every row, its kind and repeats
 just perf run ecs                                # one capture
 just perf sitting --quick                        # the working tree against the last tag, CPU rows, informational
-cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the nine benchmarks
+cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the ten benchmarks
 TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 ```
 
@@ -14,7 +14,7 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 
 ## Harness
 
-- **Two kinds of row.** The nine benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
+- **Two kinds of row.** The ten benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
 - **The bench binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and builds the app through `bench_app`, which the counter guards build alike. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's knobs and presets as JSON and `=config` the resolved configuration, before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays. In an interactive run Tab relaunches the binary on the next benchmark, keeping the preset when it has it.
 - **Determinism.** Every random choice comes from `Pcg32::seeded(seed)` and dt is pinned, so one build replays one workload. No rendered text depends on wall-clock time. A capture's runs share a digest over the window's `physics:` and `bench:` lines.
 - **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest; `boot` writes its own, seeded, under `target/bench-boot/`.
@@ -198,6 +198,21 @@ Owns a boot on a game's assets (redo 7.9): the load plan's units in slices behin
 - **Owned:** `startup.first_frame`, `startup.loaded` and `startup.slice_max`, p50.
 - **Guards:** `bench.units constant`. No budget (9.1).
 
+## `spread`
+
+Owns chemistry's spread over a saturated field (redo 7.10b): `chemistry`'s run (the emissions through its grid, the queue's merge, its take of 256 and the builds it applies), `chemistry_tick` and `effect_tick`, whose instances count the emission clocks. Warm-up 60 frames. Module: `spread.rs`.
+
+- **Field.** `entities` bodiless receivers tagged `flammable` on a square grid 24 px apart, every one lit at the start with `burning` (an intensity of max 4 and decay 0.5, sending `heat` 1 within 50 px every 0.25 s), and the rule `heat` on `flammable` building `burning` by 1, all inserted in code. Each receiver emits every 0.25 s, so the queue holds one `heat` entry per receiver and drains its cap of 256 a run, and no receiver goes out. The kit's tags, health, effects and chemistry plugins run in the app's schedule with their phases (no `KitPlugins::set()`); the lean view draws the dots.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `entities` | 12,000 | 1–100,000 | yes | Receivers on a square grid 24 px apart; 12,000 is the redo's spread row |
+
+- **Presets:** `min` (200 receivers) and `default`.
+- **Counters:** `bench:` `entities`, `burning` (receivers carrying it), `pending`, `dropped`, `cut` and `ran` (chemistry's queue and counts), read from the frame's final state.
+- **Owned:** `system.chemistry`, `system.chemistry_tick` and `system.effect_tick` p50/p95, and `stage.update` p95.
+- **Guards:** `bench.pending <= 16,384` (the queue's bound), `bench.dropped <= 0` and `bench.burning >= 12,000`, its first valid reading rounded down to a thousand: the whole field stays lit.
+
 ## `friction` and `slopes`
 
 `friction` owns `physics_step`'s friction and rolling rows; `slopes` its slope tiles' contacts (phase 7's piles). One benchmark, `piles`, whose `mode` knob names its row as `physics`' names `physics-sparse`. Warm-up 120 frames. Module: `piles.rs`.
@@ -259,9 +274,12 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `friction` | `guards_friction` | `piles` at `friction-min` | `Body` count = `bodies`, one paddle, one map; each window frame no body asleep or out of the bin and a circle spinning; instances = bodies and paddles in view plus visible art tiles |
 | `slopes` | `guards_slopes` | `piles` at `slopes-min` | `Body` count = `bodies`, no paddle, one map; each window frame no centre inside a slope cell's polygon and at least 60 returns over the last 60 frames; instances as `friction` |
 | `saves` | `guards_saves` | `saves` at `min` | records = `objects` + 1 + `spawns`; view instances |
+| `spread` | `guards_spread` | `spread` at `min` | the receivers tagged and every one lit; each window frame every one burning, chemistry's queue at most one entry a receiver, nothing dropped; view instances |
 | `boot` | `guards_boot` | `boot` at `min`, its assets' load run by `LoadPlan::run_headless`, no frame stepped | the plan's units = `bench.units`; every sound the manifests name loaded, no sprite packed (the reading is the load's: its sprite batches read 0, and its bytes, which carry the checkout's canonical path, are not pinned) |
 | `pit` | `example-01-platformer` `guards::the_full_pit_holds_its_counts` | `start_run`, 2,000 balls, 120 settle frames, `wake_foes`, a 60-frame window | the `pit` counts (headless 01 loads no sprite assets, so its batches read 0) |
 | `idle-screen` | `tungsten` `screens::tests::an_idle_screen_lays_out_no_root` | a `Menu` screen pushed and past its entrance, then 60 frames without input | `UiHarness::layout_totals` unchanged over the 60, with no pin file: the zero is the assertion; a focus move then lays out no root and one label's new text exactly one, so the guard sees work (redo 7.17) |
+| `views-closed` | `tungsten` `debug_views::tests::views_guard_closed` | a default app, every debug view off, a 30-frame `UiHarness` warm-up, a 60-frame window | nothing: the reading is what every game's frame pays for the views and the system timings they read (debug-pass) |
+| `views-open` | `debug_views::tests::views_guard_open_idle` | the five views open at 1280×720 on 1.75, each refresh interval infinite, the console on 40 records of its own feed, a 300-frame `UiHarness` warm-up past the HUD graph's 240 samples, a 60-frame window | the five laid out; 60 more laid-out frames then print the roots and nodes they lay out (debug-pass) |
 
 Each bench guard runs its row's warm-up and a 60-frame window at the configuration named, and asserts the row its configuration measures before any pin. A rise in a cost counter needs a fix or its cause in the change's plan. The template has none: `tungsten new` copies the template's tests into every game.
 

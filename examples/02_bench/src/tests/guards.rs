@@ -25,6 +25,7 @@ use crate::knobs::{self, BenchConfig};
 use crate::physics::Ball;
 use crate::piles::{self, PileCounts};
 use crate::saves::SaveCounts;
+use crate::spread::{self, SpreadCounts};
 use crate::terrain::{self, TerrainCounts};
 use crate::view::{self, ViewSprite};
 use crate::{BENCHES, bench_app, gpu, particles};
@@ -75,7 +76,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
         .collect();
     let mut textures = HeadlessTextures(handles.into_iter());
     match cfg.bench.name {
-        "physics" | "ecs" | "churn" | "saves" => {
+        "physics" | "ecs" | "churn" | "saves" | "spread" => {
             r#gen::register_view_textures(harness.world_mut(), &mut textures);
         }
         "particles" => {
@@ -440,6 +441,56 @@ fn guards_saves() {
         },
         view_drawable,
     );
+}
+
+/// `spread` at `min` (redo 7.10b): every receiver tagged and lit, then, each
+/// window frame, every one still burning and chemistry's queue under one
+/// entry a receiver with nothing dropped.
+#[test]
+fn guards_spread() {
+    let bench = knobs::select(BENCHES, Some("spread")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(cfg.row(), "spread");
+    let mut harness = harness(&cfg);
+    let entities = knob(&cfg, "entities");
+    let burning = |world: &World| {
+        world
+            .query::<&tungsten::kit::Effects>()
+            .filter(|effects| effects.has(spread::BURNING))
+            .count() as u64
+    };
+    {
+        let world = harness.world();
+        assert_eq!(count::<tungsten::kit::Tags>(world), entities, "receivers");
+        assert_eq!(burning(world), entities, "every one lit");
+        assert!(
+            world.has_resource::<BenchCounters<SpreadCounts>>(),
+            "the counters"
+        );
+    }
+    let reading = measure_checking(
+        &mut harness,
+        cfg.bench.warmup,
+        view_drawable,
+        |world, frame| {
+            assert_eq!(
+                burning(world),
+                entities,
+                "window frame {frame}: the field stays lit"
+            );
+            let chemistry = world.resource::<tungsten::kit::Chemistry>();
+            assert!(
+                chemistry.pending() as u64 <= entities,
+                "window frame {frame}"
+            );
+            assert_eq!(chemistry.dropped(), 0, "window frame {frame}");
+        },
+    );
+    assert!(
+        reading.max_sprite_instances > 0,
+        "spread: the guard drew nothing"
+    );
+    reading.check(manifest_path("src/tests/guards/spread.json"));
 }
 
 /// `boot` at `min` (redo 7.9): the row's assets written as it writes them,

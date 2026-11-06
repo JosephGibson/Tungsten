@@ -1,0 +1,19 @@
+{
+  "tag": "slider",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          10,
+          10
+        ]
+      },
+      "velocity": [
+        -120,
+        0
+      ]
+    }
+  }
+}

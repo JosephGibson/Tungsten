@@ -1,5 +1,14 @@
 {
   "prefabs": {
+    "shieldbearer": {
+      "path": "prefabs/shieldbearer.json"
+    },
+    "campfire": {
+      "path": "prefabs/campfire.json"
+    },
+    "practice_dummy": {
+      "path": "prefabs/practice_dummy.json"
+    },
     "hero": {
       "path": "prefabs/hero.json"
     },
@@ -107,12 +116,110 @@
     },
     "hedge": {
       "path": "prefabs/hedge.json"
+    },
+    "veteran": {
+      "path": "prefabs/veteran.json"
+    },
+    "bulwark": {
+      "path": "prefabs/bulwark.json"
+    },
+    "post": {
+      "path": "prefabs/post.json"
+    },
+    "marksman": {
+      "path": "prefabs/marksman.json"
+    },
+    "cinder_bolt": {
+      "path": "prefabs/cinder_bolt.json"
+    },
+    "caster": {
+      "path": "prefabs/caster.json"
+    },
+    "skiff": {
+      "path": "prefabs/skiff.json"
+    },
+    "ox": {
+      "path": "prefabs/ox.json"
+    },
+    "wisp": {
+      "path": "prefabs/wisp.json"
+    },
+    "trooper": {
+      "path": "prefabs/trooper.json"
+    },
+    "round": {
+      "path": "prefabs/round.json"
+    },
+    "wooden_crate": {
+      "path": "prefabs/wooden_crate.json"
+    },
+    "lurker": {
+      "path": "prefabs/lurker.json"
+    },
+    "lamp": {
+      "path": "prefabs/lamp.json"
+    },
+    "lamp_doused": {
+      "path": "prefabs/lamp_doused.json"
+    },
+    "powder_bomb": {
+      "path": "prefabs/powder_bomb.json"
+    },
+    "blast_dummy": {
+      "path": "prefabs/blast_dummy.json"
+    },
+    "ogre": {
+      "path": "prefabs/ogre.json"
+    },
+    "tooth": {
+      "path": "prefabs/tooth.json"
+    },
+    "cleaver": {
+      "path": "prefabs/cleaver.json"
+    },
+    "stormcaller": {
+      "path": "prefabs/stormcaller.json"
+    },
+    "pylon": {
+      "path": "prefabs/pylon.json"
+    },
+    "frozen_pylon": {
+      "path": "prefabs/frozen_pylon.json"
+    },
+    "ghoul_scout": {
+      "path": "prefabs/ghoul_scout.json"
+    },
+    "watchman": {
+      "path": "prefabs/watchman.json"
+    },
+    "ghoul_guard": {
+      "path": "prefabs/ghoul_guard.json"
+    },
+    "bystander": {
+      "path": "prefabs/bystander.json"
+    },
+    "slime_nest": {
+      "path": "prefabs/slime_nest.json"
+    },
+    "brazier": {
+      "path": "prefabs/brazier.json"
     }
   },
   "data": {
+    "world_cues": {
+      "thunder": {
+        "path": "data/world_cues/thunder.json"
+      }
+    },
     "tags": {
       "game": {
         "path": "data/tags.json"
+      },
+      "storm": {
+        "path": "data/storm_tags.json"
+      },
+      "state": {
+        "path": "data/state_tags.json"
       }
     },
     "stats": {
@@ -121,16 +228,28 @@
       }
     },
     "cue_rules": {
+      "wards": {
+        "path": "data/cue_rules/wards.json"
+      },
+      "ticks": {
+        "path": "data/cue_rules/ticks.json"
+      },
       "combat": {
         "path": "data/cue_rules/combat.json"
       },
       "elements": {
         "path": "data/cue_rules/elements.json"
+      },
+      "numbers": {
+        "path": "data/cue_rules/numbers.json"
       }
     },
     "loot_tables": {
       "ghoul_drops": {
         "path": "data/loot_tables/ghoul_drops.json"
+      },
+      "ogre_drops": {
+        "path": "data/loot_tables/ogre_drops.json"
       }
     },
     "damage_types": {
@@ -139,6 +258,12 @@
       }
     },
     "effects": {
+      "blazing": {
+        "path": "data/effects/blazing.json"
+      },
+      "kindled": {
+        "path": "data/effects/kindled.json"
+      },
       "burning": {
         "path": "data/effects/burning.json"
       },
@@ -162,6 +287,27 @@
       },
       "sprinting": {
         "path": "data/effects/sprinting.json"
+      },
+      "focused": {
+        "path": "data/effects/focused.json"
+      },
+      "braced": {
+        "path": "data/effects/braced.json"
+      },
+      "suppressed": {
+        "path": "data/effects/suppressed.json"
+      },
+      "ablaze": {
+        "path": "data/effects/ablaze.json"
+      },
+      "lit": {
+        "path": "data/effects/lit.json"
+      },
+      "drenched": {
+        "path": "data/effects/drenched.json"
+      },
+      "fuse": {
+        "path": "data/effects/fuse.json"
       }
     },
     "curves": {
@@ -184,11 +330,37 @@
       },
       "sprint": {
         "path": "data/abilities/sprint.json"
+      },
+      "cinder": {
+        "path": "data/abilities/cinder.json"
+      },
+      "chain_bolt": {
+        "path": "data/abilities/chain_bolt.json"
       }
     },
     "offers": {
       "hero_offers": {
         "path": "data/offers/hero_offers.json"
+      }
+    },
+    "interactions": {
+      "wood_burns": {
+        "path": "data/interactions/wood_burns.json"
+      },
+      "cold_douses": {
+        "path": "data/interactions/cold_douses.json"
+      },
+      "heat_spreads": {
+        "path": "data/interactions/heat_spreads.json"
+      },
+      "light_reveals": {
+        "path": "data/interactions/light_reveals.json"
+      },
+      "grass_burns": {
+        "path": "data/interactions/grass_burns.json"
+      },
+      "douses_lamps": {
+        "path": "data/interactions/douses_lamps.json"
       }
     }
   },
@@ -210,6 +382,18 @@
     },
     "seeker_walk_down": {
       "path": "animations/seeker_walk_down.json"
+    },
+    "ghoul_idle": {
+      "path": "animations/ghoul_idle.json"
+    },
+    "ghoul_walk": {
+      "path": "animations/ghoul_walk.json"
+    },
+    "ghoul_alert": {
+      "path": "animations/ghoul_alert.json"
+    },
+    "ghoul_mark": {
+      "path": "animations/ghoul_mark.json"
     }
   },
   "shaders": {
@@ -263,6 +447,9 @@
     }
   },
   "sounds": {
+    "crackle": {
+      "path": "sounds/crackle.ogg"
+    },
     "blip": {
       "path": "sounds/blip.ogg"
     }

@@ -1,0 +1,20 @@
+[
+  {
+    "on": "damaged",
+    "filter": {
+      "all": [
+        "warded"
+      ]
+    },
+    "absorbed": true,
+    "do": [
+      {
+        "counter": {
+          "name": "blocked",
+          "add": 1,
+          "target": "game"
+        }
+      }
+    ]
+  }
+]

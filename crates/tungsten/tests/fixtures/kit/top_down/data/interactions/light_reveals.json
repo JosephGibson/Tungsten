@@ -1,0 +1,17 @@
+{
+  "stimulus": "stimulus.light",
+  "on": {
+    "all": [
+      "creature.lurker"
+    ]
+  },
+  "min": 0.05,
+  "outputs": [
+    {
+      "build": {
+        "status": "lit",
+        "scale": 1
+      }
+    }
+  ]
+}

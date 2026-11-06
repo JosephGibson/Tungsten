@@ -1,0 +1,18 @@
+{
+  "target": {
+    "nearest": {
+      "all": [
+        "mark"
+      ]
+    }
+  },
+  "cooldown": 2,
+  "payload": [
+    {
+      "place": {
+        "prefab": "salt",
+        "range": 300
+      }
+    }
+  ]
+}

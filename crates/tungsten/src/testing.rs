@@ -160,8 +160,8 @@ impl Harness {
 
     /// Registers the metadata of each sprite and sheet frame the manifest
     /// at `path` names, with no pixels (redo 7.9): its size from its
-    /// image's header, lit when it names a normal map, its anchor, frame
-    /// and nine-slice, on one spare texture handle per filter with full UVs,
+    /// image's header, lit when it names a normal map, its anchor, named
+    /// points, frame and nine-slice, on one spare texture handle per filter with full UVs,
     /// as `tungsten check` registers them, then the reserved 1 × 1
     /// `engine_white` once, as a load does. [`load_manifest`](Self::load_manifest)
     /// registers no sprite, so a test that draws a manifest's sprites

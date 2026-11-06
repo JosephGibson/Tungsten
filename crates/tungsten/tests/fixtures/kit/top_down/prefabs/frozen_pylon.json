@@ -1,0 +1,12 @@
+{
+  "tag": "frozen_pylon",
+  "components": {
+    "tags": [
+      "conductive",
+      "status.frozen"
+    ],
+    "health": {
+      "max": 100
+    }
+  }
+}

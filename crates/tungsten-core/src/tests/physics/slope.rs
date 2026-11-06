@@ -563,7 +563,7 @@ fn a_box_sweep_meets_a_slope_as_its_ray_on_the_sum_does() {
                 .iter()
                 .any(|t| t.abs() * length < TOL);
             let at = format!("kind {code}, probe {probe}: half {half} from {from} to {to}");
-            match box_sweep(from, to, half, &poly) {
+            match box_sweep(from, to, half, &poly, FACE_ALL) {
                 Some((t, normal)) if hit => {
                     let &(p, _) = sides
                         .iter()
@@ -587,4 +587,327 @@ fn a_box_sweep_meets_a_slope_as_its_ray_on_the_sum_does() {
         }
     }
     assert!(met > 2_000, "{met} sweeps met their slope");
+}
+
+/// The box sweep as it was before a masked side's tie: each side its own,
+/// the mask left to the safety net.
+fn untied_box_sweep(from: Vec2, to: Vec2, half: Vec2, poly: &SlopePolygon) -> Option<(f32, Vec2)> {
+    let delta = to - from;
+    if delta == Vec2::ZERO {
+        return None;
+    }
+    let (vertices, normals) = poly.minkowski(half);
+    let (mut enter, mut leave) = (f32::NEG_INFINITY, f32::INFINITY);
+    let mut entered = None;
+    for k in 0..5 {
+        let normal = normals[k];
+        let start = (from - vertices[k]).dot(normal);
+        let rate = delta.dot(normal);
+        if rate.abs() < f32::EPSILON {
+            if start > 0.0 {
+                return None;
+            }
+            continue;
+        }
+        let t = -start / rate;
+        if rate < 0.0 {
+            if t > enter {
+                enter = t;
+                entered = Some(normal);
+            }
+        } else {
+            leave = leave.min(t);
+        }
+    }
+    let normal = entered?;
+    (enter < leave && (0.0..=1.0).contains(&enter)).then_some((enter, normal))
+}
+
+/// The clip as it was before a masked side's tie.
+fn untied_clip(
+    origin: Vec2,
+    dir: Vec2,
+    sides: &[(Vec2, Vec2)],
+    closed: bool,
+) -> Option<(f32, usize, Option<usize>)> {
+    let (mut enter, mut leave) = (f32::NEG_INFINITY, f32::INFINITY);
+    let (mut first, mut tie) = (None, None);
+    for (k, &(point, normal)) in sides.iter().enumerate() {
+        let start = (origin - point).dot(normal);
+        let rate = dir.dot(normal);
+        if rate.abs() < f32::EPSILON {
+            if start > 0.0 || (!closed && start == 0.0) {
+                return None;
+            }
+            continue;
+        }
+        let t = -start / rate;
+        if rate < 0.0 {
+            if t > enter {
+                (enter, first, tie) = (t, Some(k), None);
+            } else if t == enter {
+                tie = Some(k);
+            }
+        } else {
+            leave = leave.min(t);
+        }
+    }
+    let crosses = if closed {
+        enter <= leave
+    } else {
+        enter < leave
+    };
+    if !crosses || leave < 0.0 || (!closed && leave == 0.0) {
+        return None;
+    }
+    Some((enter, first?, tie))
+}
+
+/// A hit's bits, so a comparison tells -0.0 from 0.0.
+fn bits(hit: Option<(f32, Vec2)>) -> Option<(u32, u32, u32)> {
+    hit.map(|(t, normal)| (t.to_bits(), normal.x.to_bits(), normal.y.to_bits()))
+}
+
+#[test]
+fn the_existing_slope_oracles_hold() {
+    // The masked side's tie turns a masked entry into a hit through an
+    // exposed side within a rounding, and nothing else: with every side
+    // exposed a sweep returns its bits from before, and under any mask a
+    // box cast or a ray that hit before hits alike. The sweep's oracle
+    // above runs at `FACE_ALL`; the queries' march and graze oracles
+    // (`casts_meet_slopes_as_a_refined_march_does`,
+    // `casts_graze_slopes_exactly`) are unchanged.
+    let (mut swept, mut cast_hits, mut ray_hits, mut tied) = (0, 0, 0, 0);
+    for code in 1..=12u8 {
+        let poly = polygon(code, Vec2::ZERO, HALF);
+        let mut rng = Pcg32::seeded(0x5EE9_2000 + u64::from(code));
+        for probe in 0..2_000 {
+            let half = Vec2::new(rng.next_range(0.5, 6.0), rng.next_range(0.5, 6.0));
+            let from = Vec2::new(rng.next_range(-30.0, 30.0), rng.next_range(-30.0, 30.0));
+            let to = Vec2::new(rng.next_range(-30.0, 30.0), rng.next_range(-30.0, 30.0));
+            let mask = (rng.next_u32() & u32::from(FACE_ALL)) as u8;
+            let at =
+                format!("kind {code}, probe {probe}: half {half} from {from} to {to}, mask {mask}");
+            let sweep = box_sweep(from, to, half, &poly, FACE_ALL);
+            assert_eq!(
+                bits(sweep),
+                bits(untied_box_sweep(from, to, half, &poly)),
+                "{at}"
+            );
+            swept += usize::from(sweep.is_some());
+            let Some(dir) = (to - from).try_normalize() else {
+                continue;
+            };
+            let (vertices, normals) = poly.minkowski(half);
+            let sides: [(Vec2, Vec2); 5] = std::array::from_fn(|k| (vertices[k], normals[k]));
+            let before = untied_clip(from, dir, &sides, false)
+                .filter(|&(t, ..)| t >= 0.0)
+                .and_then(|(t, first, tie)| Some((t, entered_normal(&normals, first, tie, mask)?)));
+            let now = cast(Shape::Aabb { half_extents: half }, from, dir, &poly, mask);
+            match (before, now) {
+                (Some(_), _) => {
+                    assert_eq!(bits(now), bits(before), "{at}: cast");
+                    cast_hits += 1;
+                }
+                (None, Some((_, normal))) => {
+                    assert!(exposed(normal, mask), "{at}: cast tied through {normal}");
+                    tied += 1;
+                }
+                (None, None) => {}
+            }
+            let points: [(Vec2, Vec2); 4] =
+                std::array::from_fn(|i| (poly.points[i], poly.normals[i]));
+            let inside = (0..poly.len).all(|i| (from - poly.points[i]).dot(poly.normals[i]) <= 0.0);
+            let before = untied_clip(from, dir, &points[..poly.len], true)
+                .filter(|_| !inside)
+                .and_then(|(t, first, tie)| {
+                    Some((t, entered_normal(&poly.normals, first, tie, mask)?))
+                });
+            let now = ray(from, dir, &poly, mask);
+            match (before, now) {
+                (Some(_), _) => {
+                    assert_eq!(bits(now), bits(before), "{at}: ray");
+                    ray_hits += 1;
+                }
+                (None, Some((_, normal))) => {
+                    assert!(exposed(normal, mask), "{at}: ray tied through {normal}");
+                    tied += 1;
+                }
+                (None, None) => {}
+            }
+        }
+    }
+    assert!(
+        swept > 2_000 && cast_hits > 2_000 && ray_hits > 2_000,
+        "{swept} sweeps, {cast_hits} casts and {ray_hits} rays met their slope"
+    );
+    assert!(tied < 24, "{tied} random paths tied at a masked vertex");
+}
+
+#[test]
+fn a_box_cast_enters_a_slope_face_at_a_masked_vertex() {
+    // Where a side the shadow rule masks (`D-229`: one the polygon touches
+    // at a vertex alone) meets the face, a path through their sum's vertex
+    // ties the two entries, and rounding gave the masked side the entry, so
+    // a box on a floor walked 2.357 px into a ramp's foot. Paths into that
+    // side through the vertex, and with the face's entry 5e-4 px before or
+    // after the side's along the path, meet the face within the tie's
+    // tolerance of the vertex's `t`, cast and swept, at the origin's cell
+    // and at 01's far corner; at the origin a path whose face entry leads
+    // by 2e-3 px, 2e-3 px into the masked side's span, starts in the solid
+    // neighbour and meets nothing, as before.
+    let halves = [Vec2::new(4.0, 6.0), Vec2::new(5.5, 2.25), Vec2::splat(0.75)];
+    let reach = 24.0;
+    let mut met = 0;
+    for center in [Vec2::ZERO, Vec2::new(27_500.0, 4_500.0)] {
+        for code in 1..=12u8 {
+            let poly = polygon(code, center, HALF);
+            let legs = legs(code);
+            for half in halves {
+                let shape = Shape::Aabb { half_extents: half };
+                let (vertices, normals) = poly.minkowski(half);
+                let face = (0..5).find(|&k| normals[k] == poly.normal).unwrap();
+                // The side before the face meets it at the face's first
+                // vertex, the side after at the next; each runs away from
+                // the face along `away`.
+                let (before, after) = ((face + 4) % 5, (face + 1) % 5);
+                for (side, vertex, away) in [
+                    (before, vertices[face], vertices[before] - vertices[face]),
+                    (
+                        after,
+                        vertices[after],
+                        vertices[(after + 1) % 5] - vertices[after],
+                    ),
+                ] {
+                    let bit = face_of(normals[side]);
+                    if legs.iter().any(|&(leg, ..)| leg == bit) {
+                        continue;
+                    }
+                    let mask = FACE_ALL & !bit;
+                    let dir = -normals[side];
+                    let away = away.normalize();
+                    // An offset `s` into the side's span puts the face's
+                    // entry `s · lead` before the side's.
+                    let lead = away.dot(poly.normal) / dir.dot(poly.normal);
+                    let scale = (vertex.abs() + Vec2::splat(reach)).max_element();
+                    let tolerance = 1e-3 + 4.0 * f32::EPSILON * scale;
+                    for gap in [-5e-4, 0.0, 5e-4, 2e-3] {
+                        if gap > 1e-3 && center != Vec2::ZERO {
+                            continue;
+                        }
+                        let origin = vertex + away * (gap / lead) - dir * reach;
+                        let at = format!(
+                            "kind {code}, half {half}, cell at {center}, side {side}, gap {gap}"
+                        );
+                        let cast = cast(shape, origin, dir, &poly, mask);
+                        let sweep =
+                            box_sweep(origin, origin + dir * reach * 2.0, half, &poly, mask)
+                                .map(|(t, normal)| (t * reach * 2.0, normal));
+                        if gap > 1e-3 {
+                            assert_eq!(cast, None, "{at}: cast");
+                            assert_eq!(sweep, None, "{at}: sweep");
+                            continue;
+                        }
+                        for (name, hit) in [("cast", cast), ("sweep", sweep)] {
+                            let (t, normal) = hit.unwrap_or_else(|| panic!("{at}: {name} missed"));
+                            assert_eq!(normal, poly.normal, "{at}: {name}");
+                            assert!((t - reach).abs() <= tolerance, "{at}: {name} at {t}");
+                        }
+                        met += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(met >= 100, "{met} paths met a masked vertex's face");
+}
+
+#[test]
+fn paths_past_an_exposed_sides_line_miss() {
+    // Every side of the sum bounds a path, a masked one too: a path that
+    // crosses an exposed side's line outside the sum and then misses it, or
+    // enters it through a masked side farther than a rounding past every
+    // exposed entry, meets nothing. Round 1's path, a box of half 0.1 from
+    // (-10, 10) to (0.5, 0.5), crosses a unit `45 br`'s face line at
+    // (-1.6, 2.4), where clipping by the exposed sides alone would meet it.
+    let poly = polygon(1, Vec2::splat(0.5), Vec2::splat(0.5));
+    let mask = FACE_TOP | FACE_RIGHT;
+    let shape = |half: Vec2| Shape::Aabb { half_extents: half };
+    let (from, to, half) = (
+        Vec2::new(-10.0, 10.0),
+        Vec2::new(0.5, 0.5),
+        Vec2::splat(0.1),
+    );
+    let dir = (to - from).normalize();
+    assert_eq!(cast(shape(half), from, dir, &poly, mask), None);
+    assert_eq!(box_sweep(from, to, half, &poly, mask), None);
+    let mut rng = Pcg32::seeded(0x5EE9_3000);
+    let (mut paths, mut masked_entries) = (0, 0);
+    while paths < 2_000 {
+        let half = Vec2::new(rng.next_range(0.05, 0.5), rng.next_range(0.05, 0.5));
+        let from = Vec2::new(rng.next_range(-10.0, 0.0), rng.next_range(0.5, 10.0));
+        let to = Vec2::new(rng.next_range(-0.5, 1.5), rng.next_range(-0.5, 1.5));
+        // The path on the f32 sum, in f64: each side's entry or leave along
+        // the ray, its exposed sides' crossings outside the sum.
+        let (vertices, normals) = poly.minkowski(half);
+        let wide = |v: Vec2| (f64::from(v.x), f64::from(v.y));
+        let dot = |a: (f64, f64), b: (f64, f64)| a.0 * b.0 + a.1 * b.1;
+        let (o, d) = (wide(from), wide(to - from));
+        let length = dot(d, d).sqrt();
+        let side = |k: usize, at: (f64, f64)| {
+            let (v, n) = (wide(vertices[k]), wide(normals[k]));
+            dot((at.0 - v.0, at.1 - v.1), n)
+        };
+        let (mut enter, mut leave, mut last, mut open) =
+            (f64::NEG_INFINITY, f64::INFINITY, 0, f64::NEG_INFINITY);
+        let mut outside = false;
+        let mut parallel = false;
+        for (k, &normal) in normals.iter().enumerate() {
+            let rate = dot(d, wide(normal));
+            if rate.abs() < 1e-6 {
+                parallel = true;
+                continue;
+            }
+            let t = -side(k, o) / rate;
+            let crossing = (o.0 + d.0 * t, o.1 + d.1 * t);
+            let shown = exposed(normal, mask);
+            if shown && (0.0..=1.0).contains(&t) {
+                outside |= (0..5).any(|j| side(j, crossing) > 1e-3);
+            }
+            if rate < 0.0 {
+                if t > enter {
+                    (enter, last) = (t, k);
+                }
+                if shown {
+                    open = open.max(t);
+                }
+            } else {
+                leave = leave.min(t);
+            }
+        }
+        let hit = enter < leave && leave > 0.0;
+        let through_masked = hit && !exposed(normals[last], mask) && enter >= 0.0;
+        if parallel
+            || !outside
+            || (hit && !through_masked)
+            || (through_masked && (enter - open) * length <= 2e-3)
+            || (hit && enter < 0.0)
+        {
+            continue;
+        }
+        paths += 1;
+        masked_entries += usize::from(through_masked);
+        let at = format!("half {half} from {from} to {to}");
+        let dir = (to - from).normalize();
+        assert_eq!(
+            cast(shape(half), from, dir, &poly, mask),
+            None,
+            "{at}: cast"
+        );
+        assert_eq!(box_sweep(from, to, half, &poly, mask), None, "{at}: sweep");
+    }
+    assert!(
+        masked_entries > 500,
+        "{masked_entries} of the paths entered by a masked side"
+    );
 }

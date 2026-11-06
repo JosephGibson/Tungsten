@@ -214,3 +214,117 @@ fn facing_with_flip_writes_the_sprite_flip() {
             .is_none()
     );
 }
+
+#[test]
+fn face_holds_until_the_source_turns_it() {
+    let (mut world, mut schedule) = rig();
+    let sentry = world.spawn_with((
+        Facing::new().four_way(),
+        Velocity(Vec2::ZERO),
+        Transform::from_position(Vec2::new(10.0, 10.0)),
+    ));
+    present(&mut world, &mut schedule);
+    assert_eq!(direction(&world, sentry), Vec2::X);
+    // A game faces it: snapped as it snaps, held while it stands still.
+    world
+        .get_mut::<Facing>(sentry)
+        .unwrap()
+        .face(Vec2::new(-1.0, -3.0));
+    assert_eq!(direction(&world, sentry), Vec2::NEG_Y);
+    for _ in 0..3 {
+        present(&mut world, &mut schedule);
+        assert_eq!(direction(&world, sentry), Vec2::NEG_Y, "held");
+    }
+    // Toward a point, from its Transform without a Position.
+    assert!(face_toward(&mut world, sentry, Vec2::new(-50.0, 12.0)));
+    present(&mut world, &mut schedule);
+    assert_eq!(direction(&world, sentry), Vec2::NEG_X);
+    // A zero or non-finite direction, or its own point, faces nothing.
+    for ignored in [Vec2::ZERO, Vec2::NAN, Vec2::new(f32::INFINITY, 1.0)] {
+        world.get_mut::<Facing>(sentry).unwrap().face(ignored);
+        assert_eq!(direction(&world, sentry), Vec2::NEG_X, "{ignored}");
+    }
+    assert!(!face_toward(&mut world, sentry, Vec2::new(10.0, 10.0)));
+    // Its Position wins over its Transform.
+    world.insert(sentry, Position(Vec2::new(-100.0, 10.0)));
+    assert!(face_toward(&mut world, sentry, Vec2::new(-100.0, 90.0)));
+    assert_eq!(direction(&world, sentry), Vec2::Y);
+    // Moving, its source turns it again.
+    world.get_mut::<Velocity>(sentry).unwrap().0 = Vec2::new(40.0, 0.0);
+    present(&mut world, &mut schedule);
+    assert_eq!(direction(&world, sentry), Vec2::X);
+    // A face ignores the minimum speed; an entity without a facing or a
+    // point faces nothing.
+    let mut slow = Facing::new().with_min_speed(30.0);
+    slow.face(Vec2::new(0.0, 0.01));
+    assert!(close(slow.direction(), Vec2::Y));
+    let bare = world.spawn_with((Transform::default(),));
+    let pointless = world.spawn_with((Facing::new(),));
+    assert!(!face_toward(&mut world, bare, Vec2::ONE));
+    assert!(!face_toward(&mut world, pointless, Vec2::ONE));
+}
+
+#[test]
+fn a_turned_mirror_keeps_the_art_upright() {
+    use tungsten_core::ComponentRegistry;
+    use tungsten_core::components::SpriteFlip;
+    let (mut world, mut schedule) = rig();
+    let missile = world.spawn_with((
+        Facing::new().turning(0.0).mirroring(),
+        Transform::default(),
+        Velocity(Vec2::new(10.0, 0.0)),
+    ));
+    let seen = |world: &World| {
+        let rotation = world.get::<Transform>(missile).unwrap().rotation;
+        let flipped = world.get::<SpriteFlip>(missile).is_some_and(|flip| flip.0);
+        (Vec2::from_angle(rotation), flipped)
+    };
+    let turned = |angle: f32| Vec2::from_angle(angle);
+    for (velocity, rotation, flipped) in [
+        (Vec2::new(10.0, 0.0), turned(0.0), false),
+        // Up and to the left: flipped, turned a quarter of the way up.
+        (Vec2::new(-10.0, -10.0), turned(FRAC_PI_4), true),
+        (Vec2::new(-10.0, 0.0), turned(0.0), true),
+        // Straight up keeps the left side: nose up, flipped.
+        (Vec2::new(0.0, -10.0), turned(FRAC_PI_2), true),
+        (Vec2::new(10.0, -10.0), turned(-FRAC_PI_4), false),
+        // Straight down keeps the right side.
+        (Vec2::new(0.0, 10.0), turned(FRAC_PI_2), false),
+    ] {
+        world.get_mut::<Velocity>(missile).unwrap().0 = velocity;
+        present(&mut world, &mut schedule);
+        let (got, side) = seen(&world);
+        assert!(close(got, rotation), "{velocity}: {got} for {rotation}");
+        assert_eq!(side, flipped, "{velocity}");
+    }
+    // Art drawn facing up: its offset turns the other way while mirrored.
+    let rocket = world.spawn_with((
+        Facing::new().turning(FRAC_PI_2).mirroring(),
+        Transform::default(),
+        Velocity(Vec2::new(-10.0, 0.0)),
+    ));
+    present(&mut world, &mut schedule);
+    let rotation = world.get::<Transform>(rocket).unwrap().rotation;
+    assert!(close(Vec2::from_angle(rotation), turned(-FRAC_PI_2)));
+    // The load refuses `mirror` without `turn`, and the builder panics.
+    let components = world.resource::<ComponentRegistry>();
+    assert!(
+        components
+            .check_in("facing", &json!({ "turn": true, "mirror": true }), &world)
+            .is_ok()
+    );
+    assert!(
+        components
+            .check_in("facing", &json!({ "mirror": true }), &world)
+            .is_err()
+    );
+    assert!(serde_json::from_value::<Facing>(json!({ "mirror": true })).is_err());
+    let saved = serde_json::to_value(world.get::<Facing>(missile).unwrap()).unwrap();
+    assert_eq!(saved["mirror"], true);
+    let plain = serde_json::to_value(Facing::new().turning(0.0)).unwrap();
+    assert!(
+        plain.get("mirror").is_none(),
+        "a plain facing keeps its bytes"
+    );
+    assert!(std::panic::catch_unwind(|| Facing::new().mirroring()).is_err());
+}

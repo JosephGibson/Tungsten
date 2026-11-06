@@ -1,0 +1,17 @@
+{
+  "tag": "claymore",
+  "components": {
+    "rigid_body": {
+      "kind": "sensor",
+      "shape": {
+        "kind": "circle",
+        "radius": 8
+      }
+    },
+    "cap": {
+      "group": "claymores",
+      "max": 3,
+      "past": "refuse"
+    }
+  }
+}

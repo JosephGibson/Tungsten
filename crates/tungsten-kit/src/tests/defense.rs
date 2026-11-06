@@ -226,6 +226,103 @@ fn the_scene_form_checks_each_tag_is_declared() {
 }
 
 #[test]
+fn floors_and_scoped_lines_are_data_and_leave_with_their_source() {
+    use crate::{Line, Read, TagFilter, TagSet};
+    let mut resist = Resist::new()
+        .with_factor("damage.cold", 0.5)
+        .with_floor("damage.cold", 0.375);
+    assert_eq!(resist.floor("damage.cold"), Some(0.375));
+    assert_eq!(resist.floor("damage.fire"), None);
+    resist.add_modifier("damage.cold", "frostbite", Modifier::Mul(0.25));
+    let cold = Tags::new(["damage.cold"]);
+    assert_eq!(resist.factor(&cold), 0.375, "0.125 rises to its floor");
+    resist.add_floor_modifier("damage.cold", "frostbite", Modifier::Add(-0.25));
+    assert_eq!(resist.factor(&cold), 0.125, "the floor fell too");
+    let front = TagFilter::new().all(["side.front"]);
+    resist.add_line(
+        "damage.fire",
+        "brace",
+        Line::new(Modifier::Mul(0.25)).with(front),
+    );
+    resist.add_line("damage.fire", "plain", Line::new(Modifier::Mul(2.0)));
+    let fire = Tags::new(["damage.fire"]);
+    assert_eq!(resist.factor(&fire), 2.0, "the unscoped line is a modifier");
+    let sets = [TagSet::Name("side.front")];
+    assert_eq!(resist.factor_in(&fire, &Read::new(&sets)), 0.5);
+    let saved = serde_json::to_value(&resist).unwrap();
+    assert_eq!(
+        saved,
+        json!({
+            "damage.cold": {
+                "base": 0.5, "modifiers": [["frostbite", { "mul": 0.25 }]],
+                "floor": 0.375, "floor_modifiers": [["frostbite", { "add": -0.25 }]]
+            },
+            "damage.fire": {
+                "modifiers": [["plain", { "mul": 2.0 }]],
+                "lines": [["brace", { "modifier": { "mul": 0.25 }, "with": { "all": ["side.front"] } }]]
+            }
+        })
+    );
+    let back: Resist = serde_json::from_value(saved).unwrap();
+    assert_eq!(back, resist);
+    let rows = back.inspect_rows();
+    assert_eq!(rows.len(), 3, "factors, floors and scoped lines: {rows:?}");
+    assert_eq!(resist.remove_modifiers("frostbite"), 2);
+    assert_eq!(resist.remove_modifiers("brace"), 1);
+    assert_eq!(resist.factor(&cold), 0.5);
+    assert_eq!(resist.factor_in(&fire, &Read::new(&sets)), 2.0);
+    assert_eq!(resist.inspect_rows().len(), 2, "the floor stays");
+    let only_floor: Resist = serde_json::from_value(json!({ "damage": { "floor": 0.5 } })).unwrap();
+    assert_eq!(
+        only_floor.factor(&cold),
+        1.0,
+        "a floor alone makes no factor"
+    );
+    for bad in [
+        json!({ "damage": { "floor": -1 } }),
+        json!({ "damage": { "lines": [["x", { "modifier": { "mul": 2 } }]] } }),
+        json!({ "damage": { "lines": [["x", { "modifier": { "override": 0 }, "with": { "all": ["a"] } }]] } }),
+    ] {
+        assert!(
+            serde_json::from_value::<Resist>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn the_scene_form_takes_a_factor_with_its_floor() {
+    let (mut world, _) = rig();
+    let components = world.resource::<ComponentRegistry>();
+    let form = json!({ "damage.cold": { "factor": 0.5, "floor": 0.25 }, "damage.fire": 2 });
+    components.check_in(RESIST, &form, &world).unwrap();
+    for bad in [
+        json!({ "damage.cold": { "factor": 0.5 } }),
+        json!({ "damage.cold": { "factor": 0.5, "floor": 1001 } }),
+        json!({ "damage.cold": { "factor": 0.5, "floor": 0.25, "spare": 1 } }),
+        json!({ "damage.acid": { "factor": 0.5, "floor": 0.25 } }),
+    ] {
+        assert!(components.check_in(RESIST, &bad, &world).is_err(), "{bad}");
+    }
+    let mut prefabs = tungsten_core::PrefabRegistry::new();
+    prefabs.insert(
+        "knight".to_string(),
+        serde_json::from_value(json!({ "components": { "resist": form } })).unwrap(),
+    );
+    world.insert_resource(prefabs);
+    let knight = world.spawn_prefab("knight", [0.0, 0.0]).unwrap();
+    let resist = world.get::<Resist>(knight).unwrap();
+    assert_eq!(resist.floor("damage.cold"), Some(0.25));
+    assert_eq!(resist.factor(&Tags::new(["damage.fire"])), 2.0);
+}
+
+#[test]
+#[should_panic(expected = "Resist::with_floor")]
+fn a_floor_past_1000_panics() {
+    let _ = Resist::new().with_floor("damage", 1000.5);
+}
+
+#[test]
 fn a_shield_absorbs_then_recharges_after_its_delay_at_any_frame_rate() {
     for dt in [1.0 / 60.0, 1.0 / 30.0] {
         let (mut world, mut schedule) = rig();

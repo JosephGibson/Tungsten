@@ -1,0 +1,19 @@
+{
+  "tag": "straw_dummy",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 100
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          4,
+          4
+        ]
+      }
+    }
+  }
+}

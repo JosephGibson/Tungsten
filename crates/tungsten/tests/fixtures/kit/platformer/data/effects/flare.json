@@ -1,0 +1,9 @@
+{
+  "duration": 1,
+  "emit": {
+    "stimulus": "heat",
+    "amount": 1,
+    "radius": 24,
+    "period": 0.25
+  }
+}

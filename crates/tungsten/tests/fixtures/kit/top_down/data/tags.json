@@ -16,5 +16,20 @@
   "status.thawed",
   "status.poisoned",
   "flammable",
-  "sprinting"
+  "sprinting",
+  "skill.spell",
+  "numbered",
+  "shot",
+  "status.cover",
+  "status.pinned",
+  "material.wood",
+  "heat",
+  "status.lit",
+  "creature.lurker",
+  "grass",
+  "stimulus.wet",
+  "light.lamp",
+  "light.doused",
+  "tallied",
+  "warded"
 ]

@@ -67,13 +67,18 @@ use glam::Vec2;
 const QUERY_PAD: f32 = 0.01;
 
 /// Which bodies, sensors and tiles a query sees. The default sees bodies and
-/// tiles in every layer, no sensors, and excludes nothing.
+/// tiles in every layer, one-way tiles among them, no sensors, and excludes
+/// nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Independent switches, each with its own builder; no two are a state.
+#[allow(clippy::struct_excessive_bools)]
 pub struct SpatialFilter {
     exclude: Option<Entity>,
     bodies: bool,
     sensors: bool,
     tiles: bool,
+    /// Casts meet one-way tiles.
+    one_way: bool,
     mask: u32,
     /// The layers whose bodies, sensors and tiles it skips.
     without: u32,
@@ -86,6 +91,7 @@ impl Default for SpatialFilter {
             bodies: true,
             sensors: false,
             tiles: true,
+            one_way: true,
             mask: RigidBody::ALL_LAYERS,
             without: 0,
         }
@@ -130,6 +136,28 @@ impl SpatialFilter {
         self
     }
 
+    /// The filter, its casts meeting one-way tiles only when `on`, as a body
+    /// dropping through a one-way edge skips them; overlaps, nearest
+    /// surfaces and sensors leave one-way tiles out either way.
+    #[must_use]
+    pub fn with_one_way(mut self, on: bool) -> Self {
+        self.one_way = on;
+        self
+    }
+
+    /// The layers it sees, one bit per layer ([`with_mask`](Self::with_mask)).
+    #[must_use]
+    pub fn mask(&self) -> u32 {
+        self.mask
+    }
+
+    /// The layers it skips, one bit per layer
+    /// ([`without_layers`](Self::without_layers)).
+    #[must_use]
+    pub fn without(&self) -> u32 {
+        self.without
+    }
+
     /// The filter, seeing only the bodies, sensors and tiles in a layer
     /// `mask` holds, one bit per layer ([`RigidBody::layers`]); a tile is in
     /// its collision layer's layers. It replaces an earlier mask; the
@@ -155,6 +183,9 @@ impl SpatialFilter {
     /// The entry passes the filter and its entity is still alive.
     fn admits(&self, entry: &IndexEntry, world: &World) -> bool {
         if entry.layers & self.mask == 0 || entry.layers & self.without != 0 {
+            return false;
+        }
+        if !self.one_way && entry.face_mask & FACE_ONE_WAY != 0 && entry.entity.is_none() {
             return false;
         }
         match entry.entity {
@@ -192,6 +223,9 @@ pub struct SpatialHit {
     pub layers: u32,
     /// The tile cell met; `None` for a body.
     pub tile: Option<TileHit>,
+    /// It met a slope tile's sloped face, `normal` its normal: what a
+    /// platformer controller walks along.
+    pub slope: bool,
 }
 
 /// The tile cell a query met: its map's entity, its collision layer and
@@ -643,6 +677,7 @@ pub fn cast_ray_where(
                 distance,
                 layers: entry.layers,
                 tile,
+                slope: on_slope_face(entry, normal),
             })
         };
         let mut best = None;
@@ -966,6 +1001,7 @@ fn cast_against(shape: Shape, origin: Vec2, dir: Vec2, entry: &IndexEntry) -> Op
             distance: 0.0,
             layers: entry.layers,
             tile: None,
+            slope: on_slope_face(entry, contact.normal),
         });
     }
     if let Some(poly) = entry.polygon() {
@@ -982,6 +1018,7 @@ fn cast_against(shape: Shape, origin: Vec2, dir: Vec2, entry: &IndexEntry) -> Op
             distance,
             layers: entry.layers,
             tile: None,
+            slope: normal == poly.normal,
         });
     }
     let (distance, normal, point) = match (shape, entry.shape) {
@@ -1025,7 +1062,15 @@ fn cast_against(shape: Shape, origin: Vec2, dir: Vec2, entry: &IndexEntry) -> Op
         distance,
         layers: entry.layers,
         tile: None,
+        slope: false,
     })
+}
+
+/// Whether `normal` is the sloped face's of the slope tile `entry` is.
+fn on_slope_face(entry: &IndexEntry, normal: Vec2) -> bool {
+    entry
+        .polygon()
+        .is_some_and(|poly| normal.abs_diff_eq(poly.normal, 1.0e-4))
 }
 
 /// The narrow phase's contact for `shape` at `origin` against the entry
@@ -1216,6 +1261,7 @@ fn surface_hit(point: Vec2, entry: &IndexEntry) -> SpatialHit {
         distance,
         layers: entry.layers,
         tile: None,
+        slope: on_slope_face(entry, normal),
     }
 }
 

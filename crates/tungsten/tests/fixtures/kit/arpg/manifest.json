@@ -1,0 +1,63 @@
+{
+  "prefabs": {
+    "caster": {
+      "path": "prefabs/caster.json"
+    },
+    "brute": {
+      "path": "prefabs/brute.json"
+    },
+    "adept": {
+      "path": "prefabs/adept.json"
+    }
+  },
+  "data": {
+    "tags": {
+      "game": {
+        "path": "data/tags.json"
+      }
+    },
+    "stats": {
+      "game": {
+        "path": "data/stats.json"
+      }
+    },
+    "damage_types": {
+      "elements": {
+        "path": "data/damage_types/elements.json"
+      }
+    },
+    "abilities": {
+      "cinder": {
+        "path": "data/abilities/cinder.json"
+      }
+    }
+  },
+  "animations": {
+    "adept_idle": {
+      "path": "animations/adept_idle.json"
+    },
+    "adept_cast_down": {
+      "path": "animations/adept_cast_down.json"
+    },
+    "adept_cast_down_fwd": {
+      "path": "animations/adept_cast_down_fwd.json"
+    },
+    "adept_cast_fwd": {
+      "path": "animations/adept_cast_fwd.json"
+    },
+    "adept_cast_up_fwd": {
+      "path": "animations/adept_cast_up_fwd.json"
+    },
+    "adept_cast_up": {
+      "path": "animations/adept_cast_up.json"
+    },
+    "cinder_ready": {
+      "path": "animations/cinder_ready.json"
+    }
+  },
+  "sprites": {
+    "cinder_icon": {
+      "path": "sprites/cinder_icon.png"
+    }
+  }
+}

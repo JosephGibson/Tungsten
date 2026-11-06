@@ -1,8 +1,9 @@
 //! Motion: the controllers, the path follower, the movers, placers and
-//! constraints of the kit's motion write rule, the targets they share and
-//! the cast-and-slide the controllers share.
+//! constraints of the kit's motion write rule, the carry, the targets they
+//! share and the cast-and-slide the controllers share.
 
 pub(crate) mod area;
+pub(crate) mod carry;
 pub(crate) mod drive;
 pub(crate) mod follow;
 pub(crate) mod knockback;

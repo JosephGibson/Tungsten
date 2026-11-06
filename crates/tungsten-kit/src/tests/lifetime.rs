@@ -161,3 +161,82 @@ fn the_trace_records_one_despawn_at_the_step_its_time_ends() {
     frame(&mut world, &mut schedule, 0.1);
     assert!(!world.is_alive(spark));
 }
+
+#[test]
+fn a_blink_hides_half_of_each_period_faster_at_the_end() {
+    use tungsten_core::Visibility;
+    let (mut world, mut schedule) = setup();
+    let gold = world.spawn_with((Lifetime::new(4.0).with_blink(2.0, 5.0, 10.0),));
+    let shows = |world: &World| world.get::<Visibility>(gold).is_none_or(|v| v.visible);
+    // Every step of its first 2 s shows it, and no Visibility is inserted.
+    for _ in 0..119 {
+        frame(&mut world, &mut schedule, 1.0 / 60.0);
+        assert!(shows(&world));
+    }
+    assert!(
+        world.get::<Visibility>(gold).is_none(),
+        "none until the first hide"
+    );
+    // Over its last 2 s: hidden the second half of each period, the
+    // periods quickening from 5 to 10 a second.
+    let mut flips = [0, 0];
+    let mut was = shows(&world);
+    for step in 0..119 {
+        frame(&mut world, &mut schedule, 1.0 / 60.0);
+        let now = shows(&world);
+        if now != was && !now {
+            flips[step / 60] += 1;
+        }
+        was = now;
+    }
+    assert!(
+        world.get::<Visibility>(gold).is_some(),
+        "inserted at the first hide"
+    );
+    assert!(
+        flips[0] >= 5 && flips[1] > flips[0],
+        "hides by second: {flips:?}"
+    );
+    // The phase 5τ + 1.25τ²: shown at τ 0.05, hidden at τ 0.15.
+    let blink = Lifetime::new(4.0).with_blink(2.0, 5.0, 10.0);
+    let at = |elapsed: f32| {
+        let mut lifetime = blink.clone();
+        lifetime.timer.tick(elapsed);
+        lifetime.shows()
+    };
+    assert!(at(1.9) && at(2.05) && !at(2.15));
+    assert!(std::panic::catch_unwind(|| Lifetime::new(1.0).with_blink(0.0, 5.0, 5.0)).is_err());
+}
+
+#[test]
+fn a_blink_round_trips_and_a_plain_lifetime_keeps_its_bytes() {
+    let mut plain = Lifetime::new(3.0);
+    plain.timer.tick(1.0);
+    let saved = serde_json::to_value(LifetimeSave::from(&plain)).unwrap();
+    assert_eq!(saved, serde_json::json!({ "seconds": 3.0, "elapsed": 1.0 }));
+    let mut blinking = Lifetime::new(4.0).with_blink(2.0, 5.0, 10.0);
+    blinking.timer.tick(2.5);
+    let saved = serde_json::to_value(LifetimeSave::from(&blinking)).unwrap();
+    assert_eq!(
+        saved["blink"],
+        serde_json::json!({ "last": 2.0, "rate": [5.0, 10.0] })
+    );
+    let loaded = Lifetime::from(serde_json::from_value::<LifetimeSave>(saved).unwrap());
+    assert_eq!(loaded.blink, blinking.blink);
+    assert_eq!(loaded.shows(), blinking.shows(), "in step after the load");
+    // The scene form: a rate of [5, 5] by default; the checks.
+    let def: LifetimeDef =
+        serde_json::from_value(serde_json::json!({ "seconds": 6, "blink": { "last": 2 } }))
+            .unwrap();
+    assert_eq!(def.blink.map(|blink| blink.rate), Some([5.0, 5.0]));
+    for refused in [
+        serde_json::json!({ "seconds": 6, "blink": { "last": 0 } }),
+        serde_json::json!({ "seconds": 6, "blink": { "last": 2, "rate": [0, 5] } }),
+        serde_json::json!({ "seconds": 6, "blink": { "last": 2, "speed": 5 } }),
+    ] {
+        assert!(
+            serde_json::from_value::<LifetimeDef>(refused.clone()).is_err(),
+            "{refused}"
+        );
+    }
+}

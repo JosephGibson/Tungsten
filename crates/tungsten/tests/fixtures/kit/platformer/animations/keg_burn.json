@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "keg_0"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "keg_1"
+    }
+  ],
+  "looping": true
+}

@@ -505,3 +505,73 @@ fn a_top_down_mover_save_refuses_a_bad_speed_or_rate() {
     missing.as_object_mut().unwrap().remove("velocity");
     assert!(serde_json::from_value::<TopDownMover>(missing).is_err());
 }
+
+#[test]
+fn a_push_moves_a_mover_by_its_walls() {
+    // A wall whose left face is at x 100 and a still mover beside it: a push
+    // into the wall stops; along it, it slides; without a rate it lasts one
+    // step.
+    let (mut world, mut schedule) = rig();
+    world.spawn_with(RigidBodyBundle::r#static(
+        Position::new(110.0, 0.0),
+        Collider::aabb(Vec2::new(10.0, 500.0)),
+    ));
+    let entity = mover_at(&mut world, Vec2::new(90.0, 0.0), Vec2::ZERO);
+    steps(&mut world, &mut schedule, 2);
+    world
+        .get_mut::<TopDownMover>(entity)
+        .unwrap()
+        .push(Vec2::new(300.0, 0.0));
+    steps(&mut world, &mut schedule, 1);
+    let held = position(&world, entity);
+    assert!(held.x <= 90.0 && held.y == 0.0, "into the wall: {held}");
+    world
+        .get_mut::<TopDownMover>(entity)
+        .unwrap()
+        .push(Vec2::new(300.0, 300.0));
+    steps(&mut world, &mut schedule, 1);
+    let slid = position(&world, entity);
+    assert!(
+        slid.x <= 90.0 && (slid.y - held.y - 300.0 * DT).abs() < 1e-3,
+        "along the wall: {held} to {slid}"
+    );
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(position(&world, entity), slid, "one step without a rate");
+
+    // With a deceleration the push joins the kept velocity, which the rate
+    // moves back to rest: 600 px/s² takes 10 px/s a step.
+    let (mut world, mut schedule) = rig();
+    let mover = TopDownMover::new(120.0).with_deceleration(600.0);
+    let entity = world.spawn_with(
+        RigidBodyBundle::kinematic(Position::new(0.0, 0.0), Collider::aabb(Vec2::splat(10.0)))
+            .with((mover,)),
+    );
+    steps(&mut world, &mut schedule, 2);
+    world
+        .get_mut::<TopDownMover>(entity)
+        .unwrap()
+        .push(Vec2::new(300.0, 0.0));
+    for k in 0..5 {
+        steps(&mut world, &mut schedule, 1);
+        let velocity = world.get::<TopDownMover>(entity).unwrap().velocity();
+        let expected = 300.0 - 10.0 * k as f32;
+        assert!(
+            (velocity.x - expected).abs() < 1e-3 && velocity.y == 0.0,
+            "step {k}: {velocity}"
+        );
+    }
+
+    // A pending push survives a save; an older save loads without one.
+    let mut mover = TopDownMover::new(120.0).with_acceleration(400.0);
+    mover.push(Vec2::new(-50.0, 25.0));
+    let saved = serde_json::to_value(&mover).unwrap();
+    assert_eq!(saved["push"], json!([-50.0, 25.0]));
+    let loaded: TopDownMover = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(loaded, mover);
+    let mut old = saved;
+    old.as_object_mut().unwrap().remove("push");
+    let loaded: TopDownMover = serde_json::from_value(old).unwrap();
+    assert_eq!(loaded.push, Vec2::ZERO);
+    let plain = serde_json::to_value(TopDownMover::new(120.0)).unwrap();
+    assert!(plain.get("push").is_none(), "no push written at rest");
+}

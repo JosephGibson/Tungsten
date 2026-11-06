@@ -21,8 +21,8 @@ use crate::damage::kinds::{
 };
 use crate::damage::pipeline::{DamagePart, DamageRequest};
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
-    describe, describe_shape, round_trip,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER,
+    TOP_DOWN, describe, describe_shape, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -33,10 +33,12 @@ use crate::lifecycle::despawn::DESPAWN_OUTSIDE;
 use crate::lifecycle::ended::Despawning;
 use crate::motion::stay_in_view::STAY_IN_VIEW;
 use crate::motion::wrap::WRAP;
+use crate::overlap::contact::{is_on, switched_on};
 use crate::overlap::grid::{
     Blow, HitGrid, Sweep, ensure_emitter, first_contact, hit_grid, spares, strike, sweep_of,
 };
 use crate::overlap::projectile::Projectile;
+use crate::present::facing::Facing;
 
 /// The overlap systems' grid of hurtboxes, rebuilt first in the overlap
 /// phase each step; each of [`HitPlugin`],
@@ -363,7 +365,10 @@ pub(crate) fn ensure_grid(schedule: &mut Schedule) {
 /// `pen`, points by damage type in `[0, 1]`, and `convert`, a list of
 /// `{ "from", "to", "pct" }` rules, are its own penetration and conversion,
 /// none by default; `window`, seconds above 0, makes it a windowed hitbox,
-/// none by default. It is data, without the targets it has hit, which are
+/// none by default; `facing`, `"mirror"` or `"turn"`, places its offset,
+/// written for an entity facing right, by its entity's [`Facing`]
+/// ([`mirrored`](Self::mirrored), [`turned`](Self::turned)), none by
+/// default. It is data, without the targets it has hit, which are
 /// entities: a loaded one starts a fresh activation unless the game names
 /// them again by its own IDs through
 /// [`set_hit_targets`](Self::set_hit_targets), from the
@@ -412,6 +417,54 @@ pub struct Hitbox {
     window: Option<f32>,
     /// Seconds left of the open window.
     armed_left: f32,
+    /// How its offset follows its entity's facing, if it does.
+    facing: Option<HitFacing>,
+    /// It hits: off, it hits nothing, armed or not, its activation and
+    /// window kept.
+    on: bool,
+}
+
+/// How a hitbox's offset, written for an entity facing right, follows its
+/// entity's [`Facing`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum HitFacing {
+    /// Its x negated while the facing points left.
+    Mirror,
+    /// Rotated by the facing's angle, a box's half extents swapped while
+    /// the facing is nearer vertical.
+    Turn,
+}
+
+/// The shape and offset `hitbox` hits with on `entity`: as written, or by
+/// the entity's [`Facing`] as its `facing` asks; the hit runner and the
+/// debug draw place it alike.
+pub(crate) fn placed(world: &World, entity: Entity, hitbox: &Hitbox) -> (Shape, Vec2) {
+    let shape = hitbox.shape.shape();
+    let (Some(mode), Some(facing)) = (hitbox.facing, world.get::<Facing>(entity)) else {
+        return (shape, hitbox.offset);
+    };
+    let direction = facing.direction();
+    match mode {
+        HitFacing::Mirror if direction.x < 0.0 => {
+            (shape, Vec2::new(-hitbox.offset.x, hitbox.offset.y))
+        }
+        HitFacing::Mirror => (shape, hitbox.offset),
+        HitFacing::Turn => {
+            let shape = match shape {
+                Shape::Aabb { half_extents } if direction.y.abs() > direction.x.abs() => {
+                    Shape::Aabb {
+                        half_extents: Vec2::new(half_extents.y, half_extents.x),
+                    }
+                }
+                other => other,
+            };
+            (
+                shape,
+                Vec2::from_angle(direction.to_angle()).rotate(hitbox.offset),
+            )
+        }
+    }
 }
 
 /// A typed hit item's base parts, penetration and conversion, which an
@@ -580,6 +633,10 @@ struct HitboxFields {
     window: Option<f32>,
     #[serde(default, skip_serializing_if = "is_zero")]
     armed_left: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    facing: Option<HitFacing>,
+    #[serde(default = "switched_on", skip_serializing_if = "is_on")]
+    on: bool,
 }
 
 // The reference is serde's `skip_serializing_if` signature.
@@ -622,6 +679,8 @@ impl TryFrom<HitboxFields> for Hitbox {
             } else {
                 0.0
             },
+            facing: fields.facing,
+            on: fields.on,
         })
     }
 }
@@ -639,6 +698,8 @@ impl PartialEq for Hitbox {
             && self.hit == other.hit
             && self.window == other.window
             && self.armed_left == other.armed_left
+            && self.facing == other.facing
+            && self.on == other.on
     }
 }
 
@@ -706,6 +767,8 @@ impl From<Hitbox> for HitboxFields {
             convert,
             window: hitbox.window,
             armed_left: hitbox.armed_left,
+            facing: hitbox.facing,
+            on: hitbox.on,
         }
     }
 }
@@ -736,7 +799,41 @@ impl Hitbox {
             activation: 0,
             window: None,
             armed_left: 0.0,
+            facing: None,
+            on: true,
         }
+    }
+
+    /// Whether it hits: on unless switched off.
+    #[must_use]
+    pub fn is_on(&self) -> bool {
+        self.on
+    }
+
+    /// Switches it on or off: an off hitbox hits nothing, armed or not, its
+    /// activation and its window kept for when it is on again. A death
+    /// policy's `disarm` switches it off.
+    pub fn set_on(&mut self, on: bool) {
+        self.on = on;
+    }
+
+    /// The hitbox, its offset written for an entity facing right and
+    /// mirrored, its x negated, while its entity's [`Facing`] points left: a
+    /// side-view swing. Without a facing the offset stands.
+    #[must_use]
+    pub fn mirrored(mut self) -> Self {
+        self.facing = Some(HitFacing::Mirror);
+        self
+    }
+
+    /// The hitbox, its offset written for an entity facing right and turned
+    /// by its entity's [`Facing`]'s angle, a box's half extents swapped
+    /// while the facing is nearer vertical: a top-down swing. Without a
+    /// facing the offset stands.
+    #[must_use]
+    pub fn turned(mut self) -> Self {
+        self.facing = Some(HitFacing::Turn);
+        self
     }
 
     /// The hitbox, windowed: disarmed until [`arm`](Self::arm) opens its
@@ -1287,6 +1384,10 @@ struct HitboxScene {
     knockback: f32,
     #[serde(default, deserialize_with = "optional_positive")]
     window: Option<f32>,
+    #[serde(default)]
+    facing: Option<HitFacing>,
+    #[serde(default = "switched_on")]
+    on: bool,
 }
 
 /// `components.hitbox`, checked.
@@ -1303,6 +1404,8 @@ struct HitboxDef {
     filter: TagFilterDef,
     knockback: f32,
     window: Option<f32>,
+    facing: Option<HitFacing>,
+    on: bool,
 }
 
 impl TryFrom<HitboxScene> for HitboxDef {
@@ -1320,6 +1423,8 @@ impl TryFrom<HitboxScene> for HitboxDef {
             filter: scene.filter,
             knockback: scene.knockback,
             window: scene.window,
+            facing: scene.facing,
+            on: scene.on,
         })
     }
 }
@@ -1343,6 +1448,8 @@ impl From<HitboxDef> for Hitbox {
         if !def.convert.is_empty() {
             hitbox = hitbox.with_conversion(def.convert.into());
         }
+        hitbox.facing = def.facing;
+        hitbox.on = def.on;
         hitbox
     }
 }
@@ -1512,11 +1619,28 @@ impl Plugin for HitPlugin {
                 )
                 .default("null"),
             )
+            .field(
+                FieldDescription::new(
+                    "facing",
+                    FieldType::Enum(&["mirror", "turn"]),
+                    "its offset, written for an entity facing right, follows the entity's facing: `mirror` negates its x while it faces left, `turn` rotates it by the facing's angle, a box's half extents swapped while it faces nearer vertical; as written without a facing",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "on",
+                    FieldType::Bool,
+                    "it hits; off, it hits nothing, armed or not, its activation and window kept, as a death policy's `disarm` leaves it",
+                )
+                .default("true"),
+            )
             .event("Struck")
-            .genre(TOP_DOWN)
-            .genre(SHMUP)
             .genre(PLATFORMER)
-            .genre(GRID)
+            .genre(TOP_DOWN)
+            .genre(RPG)
+            .genre(SHOOTER)
+            .genre(ARPG)
             .sample(r#"{ "shape": { "circle": 4 }, "damage": 1 }"#)
             .roundtrip(round_trip::<HitboxDef>),
         );
@@ -1529,10 +1653,11 @@ impl Plugin for HitPlugin {
                 ),
                 "its circle or box",
             )
-            .genre(TOP_DOWN)
-            .genre(SHMUP)
             .genre(PLATFORMER)
-            .genre(GRID)
+            .genre(TOP_DOWN)
+            .genre(RPG)
+            .genre(SHOOTER)
+            .genre(ARPG)
             .sample(r#"{ "shape": { "circle": 8 } }"#)
             .roundtrip(round_trip::<HurtboxDef>),
         );
@@ -1598,7 +1723,9 @@ impl HitboxRunner {
             .max(0.0);
         if dt > 0.0 {
             for &hitter in &self.hitters {
-                if let Some(hitbox) = world.get_mut::<Hitbox>(hitter) {
+                if let Some(hitbox) = world.get_mut::<Hitbox>(hitter)
+                    && hitbox.on
+                {
                     hitbox.count_window(dt);
                 }
             }
@@ -1614,10 +1741,11 @@ impl HitboxRunner {
             return None;
         }
         let hitbox = world.get::<Hitbox>(hitter)?;
-        if !hitbox.is_armed() {
+        if !hitbox.is_armed() || !hitbox.on {
             return None;
         }
-        let sweep = sweep_of(world, hitter, hitbox.shape.shape(), hitbox.offset)?;
+        let (shape, offset) = placed(world, hitter, hitbox);
+        let sweep = sweep_of(world, hitter, shape, offset)?;
         let (min, max) = sweep.bounds();
         grid.candidates(min, max, &mut self.candidates);
         for &index in &self.candidates {

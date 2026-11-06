@@ -9,7 +9,7 @@ use tungsten_core::{DataRegistry, Inspectable, MissingAsset, SpawnContext, World
 
 use crate::damage::ailments::{AILMENT_RUNG, AilmentRung};
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, describe,
+    Bound, ComponentDescription, FieldDescription, FieldType, SHOOTER, TOP_DOWN, describe,
     describe_kind, describe_shape, round_trip,
 };
 use crate::foundation::fraction;
@@ -680,7 +680,7 @@ impl ConversionRule {
 }
 
 /// `from` and `to` tag names that differ, `pct` in `[0, 1]`.
-fn check_rule(from: &str, to: &str, pct: f32) -> Result<(), String> {
+pub(crate) fn check_rule(from: &str, to: &str, pct: f32) -> Result<(), String> {
     tag_name("from: ", from)?;
     tag_name("to: ", to)?;
     if from == to {
@@ -742,6 +742,23 @@ struct ConversionRuleFields {
     to: String,
     #[serde(deserialize_with = "fraction")]
     pct: f32,
+}
+
+impl ConversionRuleDef {
+    /// A rule's data form, checked as the data is.
+    pub(crate) fn new(from: &str, to: &str, pct: f32) -> Result<Self, String> {
+        check_rule(from, to, pct)?;
+        Ok(Self {
+            from: from.to_owned(),
+            to: to.to_owned(),
+            pct,
+        })
+    }
+
+    /// Its source type, target type and share.
+    pub(crate) fn into_parts(self) -> (String, String, f32) {
+        (self.from, self.to, self.pct)
+    }
 }
 
 impl TryFrom<ConversionRuleFields> for ConversionRuleDef {
@@ -851,7 +868,7 @@ fn describe_types(world: &mut World) {
             "the value itself: each a declared damage type or an ancestor of one, off each matching factor in (0, 1), capped at 1",
         ))
         .genre(TOP_DOWN)
-        .genre(SHMUP)
+        .genre(SHOOTER)
         .sample(r#"{ "damage.fire": 0.5 }"#)
         .roundtrip(round_trip::<PenetrationDef>),
     );
@@ -867,7 +884,7 @@ fn describe_types(world: &mut World) {
             "the value itself: the rules in order, in one pass with the hit's own, a share never converted again",
         ))
         .genre(TOP_DOWN)
-        .genre(SHMUP)
+        .genre(SHOOTER)
         .sample(r#"[{ "from": "damage", "to": "damage.fire", "pct": 0.5 }]"#)
         .roundtrip(round_trip::<ConversionDef>),
     );

@@ -1,0 +1,8 @@
+{
+  "look": {
+    "particles": {
+      "config": "fuse_sparks",
+      "at": "fuse"
+    }
+  }
+}

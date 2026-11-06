@@ -5,7 +5,8 @@
 //! hue over its total, with each system's average, its most over the last
 //! four refreshes, its share of the frame and a bar of that share, the
 //! times and bars on the budget ramp against a tenth of a 60 Hz frame; the
-//! title carries the total.
+//! title carries the total. From debug-pass two title bar buttons switch to
+//! a flat view of every system slowest first and pause the rows.
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -37,6 +38,12 @@ const SYSTEM_BUDGET_MS: f32 = 1000.0 / 600.0;
 
 /// Refreshes a system's most spans: 2 s at 500 ms (M58).
 const MAX_REFRESHES: usize = 4;
+
+/// The title bar's buttons (debug-pass): the view's, then the pause's, and
+/// their keys.
+const VIEW: usize = 0;
+const PAUSE: usize = 1;
+const BUTTON_KEYS: [&str; 2] = ["view", "pause"];
 
 /// Each system's stage, which `App::resolve_schedule` records from the
 /// schedule (M58); without it every system is `other`.
@@ -116,6 +123,12 @@ pub struct SystemTimingOverlay {
     stats: BTreeMap<String, SystemStat>,
     /// The average frame total, which each share divides by (M58).
     frame_average: Option<f32>,
+    /// Whether the rows list every system slowest first, not by stage
+    /// (debug-pass); not saved.
+    flat: bool,
+    /// Whether the rows and the title hold while the averages run on
+    /// (debug-pass).
+    paused: bool,
     time_since_refresh_ms: f32,
     pub(crate) window: Option<ViewWindow>,
 }
@@ -137,6 +150,8 @@ impl Default for SystemTimingOverlay {
             outline_px: 1.0,
             stats: BTreeMap::new(),
             frame_average: None,
+            flat: false,
+            paused: false,
             time_since_refresh_ms: f32::INFINITY,
             window: None,
         }
@@ -162,7 +177,10 @@ impl SystemTimingOverlay {
     /// The overlay's frame (M57): every system's average from the previous
     /// frame's `FrameTimings`, and on its interval the rows sorted by it;
     /// while it is shown. From M58 also each system's most and the frame
-    /// total's average, and the rows grouped by stage (M58).
+    /// total's average, and the rows grouped by stage (M58). Its title bar's
+    /// buttons switch the view and pause the rows (debug-pass): a switch
+    /// refreshes at once, or at the resume while paused, and a resume
+    /// refreshes at once.
     pub(crate) fn update_window(&mut self, world: &World, frame: &mut ViewFrame<'_>) {
         if frame.closes(self.window.as_ref()) {
             self.enabled = false;
@@ -179,14 +197,18 @@ impl SystemTimingOverlay {
             shape: Shape {
                 columns: COLUMNS,
                 header: Header::None,
+                buttons: BUTTON_KEYS.len(),
             },
         };
         if !frame.sync(&mut self.window, &spec) {
             self.stats.clear();
             self.frame_average = None;
+            self.flat = false;
+            self.paused = false;
             self.time_since_refresh_ms = f32::INFINITY;
             return;
         }
+        self.press_buttons(frame);
         let Some(window) = self.window.as_ref() else {
             return;
         };
@@ -222,7 +244,7 @@ impl SystemTimingOverlay {
             return;
         }
         self.time_since_refresh_ms += ft.interval_ms.filter(|ms| ms.is_finite()).unwrap_or(0.0);
-        if self.time_since_refresh_ms < self.refresh_interval_ms {
+        if self.paused || self.time_since_refresh_ms < self.refresh_interval_ms {
             return;
         }
         self.time_since_refresh_ms = 0.0;
@@ -241,14 +263,84 @@ impl SystemTimingOverlay {
         write_table(frame.tree, window, &rows);
     }
 
+    /// The title bar's buttons this frame (debug-pass): a new window's
+    /// keyed and labelled, and a press of either acted on and relabelled.
+    fn press_buttons(&mut self, frame: &mut ViewFrame<'_>) {
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let (Some(&view), Some(&pause)) = (window.buttons.get(VIEW), window.buttons.get(PAUSE))
+        else {
+            return;
+        };
+        let fresh = frame.tree.key(view).is_none();
+        if fresh {
+            for (button, key) in [view, pause].into_iter().zip(BUTTON_KEYS) {
+                frame.tree.set_key(button, key);
+            }
+        }
+        let switched = frame.activated(view);
+        let paused = frame.activated(pause);
+        if switched {
+            self.flat = !self.flat;
+        }
+        if paused {
+            self.paused = !self.paused;
+        }
+        if (switched || paused) && !self.paused {
+            self.time_since_refresh_ms = f32::INFINITY;
+        }
+        if fresh || switched || paused {
+            let other = if self.flat { "stages" } else { "flat" };
+            let hold = if self.paused { "resume" } else { "pause" };
+            frame.tree.set_plain_text(view, other);
+            frame.tree.set_plain_text(pause, hold);
+        }
+    }
+
+    /// A system's row: its name, in `hue` when given, its average, most,
+    /// share of the frame `frame` and a bar of that share.
+    fn system_row(
+        name: &str,
+        stat: &SystemStat,
+        frame: Option<f32>,
+        hue: Option<[u8; 4]>,
+        indent: bool,
+    ) -> Row {
+        let color = ramp(stat.average, SYSTEM_BUDGET_MS);
+        let most = stat.most();
+        let share = frame.map(|frame| (stat.average / frame).clamp(0.0, 1.0));
+        let label = Cell::new(name);
+        Row {
+            cells: vec![
+                match hue {
+                    Some(hue) => label.colored(hue),
+                    None => label,
+                },
+                Cell::new(format!("{:.2}", stat.average)).colored(color),
+                Cell::new(format!("{most:.2}")).colored(ramp(most, SYSTEM_BUDGET_MS)),
+                Cell::new(share.map_or_else(
+                    || crate::debug_views::MISSING.to_string(),
+                    |share| format!("{:.1}%", share * 100.0),
+                )),
+                Cell::bar(share.unwrap_or(0.0), color),
+            ],
+            header: false,
+            indent,
+        }
+    }
+
     /// The table's rows and the sum of the averages (M58): the column
     /// headers, then one group per stage in frame order and `other` last,
     /// each a header row with the stage's name in its hue and its total,
-    /// then its systems slowest first, indented.
+    /// then its systems slowest first, indented. In the flat view
+    /// (debug-pass) every system slowest first, ties by name, each name in
+    /// its stage's hue, with no group rows.
     fn rows(&self, stages: Option<&SystemStages>) -> (Vec<Row>, f32) {
         let stage_of = |name: &str| stages.and_then(|stages| stages.0.get(name).copied());
-        let headers = ["system", "avg ms", "max ms", "% frame", ""]
-            .map(|text| Cell::new(text).colored(LABEL));
+        // The title carries the unit, so each numeric column is as wide as
+        // its widest value (debug-pass).
+        let headers = ["system", "avg", "max", "%", ""].map(|text| Cell::new(text).colored(LABEL));
         let mut rows = vec![Row {
             cells: headers.to_vec(),
             header: true,
@@ -256,6 +348,19 @@ impl SystemTimingOverlay {
         }];
         let total: f32 = self.stats.values().map(|stat| stat.average).sum();
         let frame = self.frame_average.filter(|ms| *ms > 0.0);
+        if self.flat {
+            let mut members: Vec<(&String, &SystemStat)> = self.stats.iter().collect();
+            members.sort_by(|a, b| {
+                b.1.average
+                    .total_cmp(&a.1.average)
+                    .then_with(|| a.0.cmp(b.0))
+            });
+            for (name, stat) in members {
+                let hue = stage_hue(stage_of(name));
+                rows.push(Self::system_row(name, stat, frame, Some(hue), false));
+            }
+            return (rows, total);
+        }
         let groups = Stage::ALL.map(Some).into_iter().chain([None]);
         for stage in groups {
             let mut members: Vec<(&String, &SystemStat)> = self
@@ -278,23 +383,7 @@ impl SystemTimingOverlay {
                 indent: false,
             });
             for (name, stat) in members {
-                let color = ramp(stat.average, SYSTEM_BUDGET_MS);
-                let most = stat.most();
-                let share = frame.map(|frame| (stat.average / frame).clamp(0.0, 1.0));
-                rows.push(Row {
-                    cells: vec![
-                        Cell::new(name.as_str()),
-                        Cell::new(format!("{:.2}", stat.average)).colored(color),
-                        Cell::new(format!("{most:.2}")).colored(ramp(most, SYSTEM_BUDGET_MS)),
-                        Cell::new(share.map_or_else(
-                            || crate::debug_views::MISSING.to_string(),
-                            |share| format!("{:.1}%", share * 100.0),
-                        )),
-                        Cell::bar(share.unwrap_or(0.0), color),
-                    ],
-                    header: false,
-                    indent: true,
-                });
+                rows.push(Self::system_row(name, stat, frame, None, true));
             }
         }
         (rows, total)

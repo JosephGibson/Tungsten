@@ -1,0 +1,21 @@
+{
+  "tag": "sapper",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "aim": {
+      "from": "target",
+      "target": {
+        "nearest": {
+          "all": [
+            "team.enemy"
+          ]
+        }
+      }
+    },
+    "abilities": [
+      "lay_mine"
+    ]
+  }
+}

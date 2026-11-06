@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "adept_3"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "adept_3"
+    }
+  ],
+  "looping": false
+}

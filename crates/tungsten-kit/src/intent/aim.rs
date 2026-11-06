@@ -7,7 +7,7 @@ use tungsten_core::physics::Velocity;
 use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, World, system};
 
 use crate::foundation::describe::{
-    ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, describe, round_trip,
+    ComponentDescription, FieldDescription, FieldType, SHOOTER, TOP_DOWN, describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -106,6 +106,9 @@ pub struct Aim {
     offset: Vec2,
     /// The unit direction at its last step that gave one.
     direction: Option<Vec2>,
+    /// The world point it aimed at at its last step that gave one: the
+    /// cursor's or its target's; unsaved.
+    point: Option<Vec2>,
     /// The entity it aimed at at its last step.
     target_entity: Option<Entity>,
     /// Its origin and its target's point at its last step, for the debug
@@ -156,6 +159,7 @@ impl TryFrom<AimFields> for Aim {
             from,
             offset: fields.offset,
             direction: fields.direction,
+            point: None,
             target_entity: None,
             drawn: None,
         })
@@ -185,6 +189,7 @@ impl Aim {
             from,
             offset: Vec2::ZERO,
             direction: None,
+            point: None,
             target_entity: None,
             drawn: None,
         }
@@ -237,6 +242,17 @@ impl Aim {
     #[must_use]
     pub fn direction(&self) -> Option<Vec2> {
         self.direction
+    }
+
+    /// The world point it aims at: the cursor's world point with `from:
+    /// cursor`, its target's point with `from: target`, the last one its
+    /// source gave, kept as its direction is; `None` with `from: intent`
+    /// and `from: movement`, and until the first. Set each aim step and not
+    /// saved, so a load reads none until its next step. A spawn's `lob`
+    /// lands on it.
+    #[must_use]
+    pub fn point(&self) -> Option<Vec2> {
+        self.point
     }
 
     /// The entity it aimed at at its last step, with `from: target`:
@@ -300,7 +316,7 @@ impl Plugin for AimPlugin {
                 .default("[0.0, 0.0]"),
             )
             .genre(TOP_DOWN)
-            .genre(SHMUP)
+            .genre(SHOOTER)
             .sample(r#"{ "from": "target", "target": { "nearest": { "all": ["team.player"] } } }"#)
             .roundtrip(round_trip::<AimDef>),
         );
@@ -394,12 +410,16 @@ impl Runner {
             let aim = world.get::<Aim>(entity).unwrap();
             let origin = point + aim.offset;
             let mut target = None;
+            let mut at = None;
             let direction = match &aim.from {
                 AimFrom::Intent => world
                     .get::<Intent>(entity)
                     .and_then(Intent::aim)
                     .and_then(Vec2::try_normalize),
-                AimFrom::Cursor => cursor.and_then(|at| (at - origin).try_normalize()),
+                AimFrom::Cursor => {
+                    at = cursor;
+                    cursor.and_then(|at| (at - origin).try_normalize())
+                }
                 AimFrom::Movement => world
                     .get::<Intent>(entity)
                     .and_then(|intent| intent.movement().try_normalize())
@@ -412,12 +432,16 @@ impl Runner {
                     target = self
                         .resolver
                         .resolve(world, goal, entity, origin, Measure::Now);
+                    at = target.map(|(_, at)| at);
                     target.and_then(|(_, at)| (at - origin).try_normalize())
                 }
             };
             let aim = world.get_mut::<Aim>(entity).unwrap();
             if direction.is_some() {
                 aim.direction = direction;
+            }
+            if at.is_some() {
+                aim.point = at;
             }
             aim.target_entity = target.and_then(|(entity, _)| entity);
             aim.drawn = Some((origin, target.map(|(_, at)| at)));

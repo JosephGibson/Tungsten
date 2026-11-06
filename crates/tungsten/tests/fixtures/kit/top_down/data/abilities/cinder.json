@@ -1,0 +1,40 @@
+{
+  "target": {
+    "nearest": {
+      "all": [
+        "team.enemy"
+      ],
+      "range": 400
+    }
+  },
+  "tags": [
+    "skill.spell"
+  ],
+  "skill": {
+    "bases": {
+      "damage": {
+        "elemental.fire": [
+          3,
+          3
+        ]
+      }
+    },
+    "lines": [
+      {
+        "convert": {
+          "from": "elemental.fire",
+          "to": "elemental.cold",
+          "pct": 0.5
+        }
+      }
+    ]
+  },
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "cinder_bolt",
+        "speed": 600
+      }
+    }
+  ]
+}

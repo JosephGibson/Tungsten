@@ -1,0 +1,64 @@
+{
+  "tag": "ghoul_scout",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 8
+      }
+    },
+    "path_follower": {
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          160,
+          0
+        ]
+      ],
+      "speed": 60,
+      "mode": "ping_pong"
+    },
+    "character_animator": {
+      "idle": "ghoul_idle",
+      "move": "ghoul_walk",
+      "rules": [
+        {
+          "when": {
+            "all": [
+              "state.alerted"
+            ]
+          },
+          "motion": "move",
+          "clip": "ghoul_alert"
+        }
+      ]
+    },
+    "facing": {},
+    "looks": [
+      {
+        "when": {
+          "all": [
+            "state.alerted"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "animation": "ghoul_mark",
+            "offset": [
+              6,
+              -14
+            ],
+            "z": 2
+          }
+        }
+      }
+    ]
+  }
+}

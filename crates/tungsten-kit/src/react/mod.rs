@@ -6,3 +6,4 @@ pub(crate) mod counters;
 pub(crate) mod cues;
 pub(crate) mod level;
 pub(crate) mod loot;
+pub(crate) mod world_cues;

@@ -850,3 +850,113 @@ fn a_restored_body_inside_a_new_wall_comes_back_beside_it() {
         "a body already free stays"
     );
 }
+
+#[test]
+fn a_replaced_entity_keeps_its_save_identity() {
+    /// A marker the spawn inheritance copies.
+    #[derive(Debug, Clone, PartialEq)]
+    struct Team(u8);
+
+    let charred = || {
+        prefab(json!({ "tag": "charred", "components": {
+            "health": { "current": 2.0, "max": 2.0 } } }))
+    };
+    let setup = |world: &mut World| {
+        world
+            .resource_mut::<PrefabRegistry>()
+            .insert("charred".into(), charred());
+        world.inherit_from_source::<Team>();
+    };
+    let charred_of = |world: &World| -> Vec<Entity> {
+        world
+            .query::<(Entity, &Tag)>()
+            .filter(|(_, tag)| tag.name == "charred")
+            .map(|(entity, _)| entity)
+            .collect()
+    };
+    let mut a = world();
+    setup(&mut a);
+    let la = level(&mut a);
+    a.insert(la.bat_1, Team(3));
+    let id = a.get::<Saved>(la.bat_1).unwrap().id();
+    let prepared = a.prepare_prefab("charred", [100.0, 40.0]).unwrap();
+    a.resource_mut::<CommandBuffer>()
+        .replace_prefab(la.bat_1, prepared);
+    flush(&mut a);
+    // One entity with the new prefab's components, under the named bat's
+    // ID with the new prefab, and what a spawn from it inherits.
+    assert!(!a.is_alive(la.bat_1));
+    let [charred_a] = charred_of(&a)[..] else {
+        panic!("one charred bat");
+    };
+    let saved = a.get::<Saved>(charred_a).unwrap();
+    assert_eq!(
+        (saved.id(), saved.area(), saved.prefab()),
+        (id, Some("cave"), Some("charred"))
+    );
+    assert_eq!(a.get::<Team>(charred_a), Some(&Team(3)));
+    assert_eq!(a.get::<Health>(charred_a).unwrap().max, 2.0);
+    a.get_mut::<Health>(charred_a).unwrap().current = 1.5;
+    // The other bat chases the charred one: a reference by save ID.
+    a.get_mut::<Chase>(la.bat_2).unwrap().target = charred_a;
+    let save = capture_world(&a).unwrap();
+    let cave = &value(&save)["areas"]["cave"];
+    assert!(
+        cave["gone"].as_array().unwrap().contains(&json!("bat_1")),
+        "{cave}"
+    );
+    let spawned: Vec<(u64, &str)> = cave["spawns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|spawn| {
+            (
+                spawn["id"].as_u64().unwrap(),
+                spawn["prefab"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(spawned, [(id.0, "charred")]);
+
+    // A restore into a World whose allocations differ: the named bat goes,
+    // the charred one comes once under its ID with its saved components,
+    // and the chase resolves to it.
+    let mut b = world();
+    setup(&mut b);
+    churn(&mut b, 7);
+    let lb = level(&mut b);
+    restore_world(&mut b, &save, &(Scene,)).unwrap();
+    assert!(!b.is_alive(lb.bat_1));
+    let [charred_b] = charred_of(&b)[..] else {
+        panic!("one charred bat after the restore");
+    };
+    assert_eq!(b.get::<Saved>(charred_b).unwrap().id(), id);
+    assert_eq!(b.get::<Health>(charred_b).unwrap().current, 1.5);
+    let bat_2 = b.get::<Saved>(lb.bat_2).unwrap().id();
+    assert_eq!(chases(&b).get(&bat_2), Some(&Some(id)));
+    assert_eq!(b.get::<Chase>(lb.bat_2).unwrap().target, charred_b);
+
+    // A run's spawn replaced keeps its ID; a dead entity's replace spawns
+    // nothing.
+    let mut c = world();
+    setup(&mut c);
+    let lc = level(&mut c);
+    fire(&mut c, lc.turret, 210.0);
+    flush(&mut c);
+    let (bolt_id, bolt) = spawns(&c)[0];
+    let prepared = c.prepare_prefab("charred", [210.0, 40.0]).unwrap();
+    c.resource_mut::<CommandBuffer>()
+        .replace_prefab(bolt, prepared);
+    flush(&mut c);
+    let (kept, _) = spawns(&c)[0];
+    assert_eq!(kept, bolt_id);
+    assert_eq!(charred_of(&c).len(), 1);
+    let count = c.entity_count();
+    let gone = c.spawn();
+    c.despawn(gone);
+    let prepared = c.prepare_prefab("charred", [0.0, 0.0]).unwrap();
+    c.resource_mut::<CommandBuffer>()
+        .replace_prefab(gone, prepared);
+    flush(&mut c);
+    assert_eq!((c.entity_count(), charred_of(&c).len()), (count, 1));
+}

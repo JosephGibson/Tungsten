@@ -329,8 +329,9 @@ impl SaveData for SaveGame {
     /// past the map's seven new enemies and each wisp's health to its new
     /// maximum (`to_22`). Schema 23 gives the map's objects and the player
     /// the save IDs their names derive and marks the map's crates and kegs
-    /// (`to_23`).
-    const SCHEMA: u32 = 23;
+    /// (`to_23`). Schema 24 gives the player the stats its crit and blast
+    /// share are now (`to_24`).
+    const SCHEMA: u32 = 24;
 
     fn migrate_step(
         from: u32,
@@ -364,6 +365,7 @@ impl SaveData for SaveGame {
             20 => to_21(&mut data),
             21 => to_22(&mut data),
             22 => to_23(&mut data),
+            23 => to_24(&mut data)?,
             _ => {
                 return Err(
                     format!("schema {from} has no migration to schema {}", Self::SCHEMA).into(),
@@ -611,6 +613,35 @@ fn to_23(data: &mut Value) {
                 .is_some_and(|id| S22_MAP_PROPS.contains(&id));
         prop["map"] = Value::from(map);
     }
+}
+
+/// The stats schema 24 gives a player that lacks them, as a fresh run's
+/// `player.json` gives them (7.10a): its crit chance and multiplier and its
+/// `damage_taken`, halving a hit in the `hit.blast` context. Frozen for the
+/// migration.
+const S24_PLAYER_STATS: &str = r#"{
+    "crit_chance": { "base": 0.05, "min": 0.0, "max": 1.0 },
+    "crit_multiplier": { "base": 2.0, "min": 1.0, "max": null },
+    "damage_taken": {
+        "base": 1.0, "min": 0.0, "max": null,
+        "lines": [["base", { "modifier": { "mul": 0.5 }, "with": { "all": ["hit.blast"] } }]]
+    }
+}"#;
+
+/// Schema 23 to 24 (7.10a): the player's crit and the share of a blast it
+/// takes became its stats', read by the kit's rules, so a player whose
+/// saved stats lack one takes a fresh run's ([`S24_PLAYER_STATS`]); a stat
+/// it holds stays as saved.
+fn to_24(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let fresh: Value = S24_PLAYER_STATS.parse()?;
+    let stats = data
+        .pointer_mut("/player/stats")
+        .and_then(Value::as_object_mut)
+        .ok_or("schema 23: the player has no stats")?;
+    for (name, stat) in fresh.as_object().into_iter().flatten() {
+        stats.entry(name.clone()).or_insert_with(|| stat.clone());
+    }
+    Ok(())
 }
 
 /// Maps `id` through `to`, when it is a save ID.

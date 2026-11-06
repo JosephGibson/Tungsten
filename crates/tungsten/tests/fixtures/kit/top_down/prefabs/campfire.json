@@ -1,0 +1,26 @@
+{
+  "tag": "campfire",
+  "components": {
+    "health": {
+      "max": 100
+    },
+    "cues": {
+      "effect_applied": [
+        {
+          "loop": {
+            "id": "crackle",
+            "fade": 0.25
+          }
+        }
+      ],
+      "effect_expired": [
+        {
+          "stop": {
+            "id": "crackle",
+            "fade": 0.5
+          }
+        }
+      ]
+    }
+  }
+}

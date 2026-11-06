@@ -57,6 +57,15 @@ min_run_ms=0
 run_in=.
 log_forbids=""
 
+# Wall time in milliseconds, from bash's EPOCHREALTIME (bash 5.0+), seconds
+# and six digits of microseconds whatever the locale's decimal separator.
+# Never `date +%s%3N`: uutils' date (Ubuntu 26.04's coreutils) misreads the
+# width on %N, so a 10 ms run read as up to a second negative.
+now_ms() {
+  local t="${EPOCHREALTIME/[^0-9]/}"
+  echo $((t / 1000))
+}
+
 # run_row <label> <log file> <package> [VAR=value ...]
 # Runs one example under the timeout, from run_in, prints OK / TIMEOUT / FAIL
 # and returns the run's exit status. Without --preserve-status, `timeout`
@@ -68,12 +77,12 @@ run_row() {
   shift 3
   printf "  %-28s ... " "$label"
   local code=0 start_ms elapsed_ms
-  start_ms="$(date +%s%3N)"
+  start_ms="$(now_ms)"
   (cd "$run_in" && env TUNGSTEN_SMOKE_FRAMES="$SMOKE_FRAMES" "$@" \
     timeout --kill-after="$KILL_AFTER_SECS" "$TIMEOUT_SECS" \
     cargo run -p "$pkg" --quiet) >"$log_file" 2>&1 || code=$?
-  elapsed_ms=$(($(date +%s%3N) - start_ms))
-  if [ "$code" -eq 0 ] && [ "$elapsed_ms" -lt "$min_run_ms" ]; then
+  elapsed_ms=$(($(now_ms) - start_ms))
+  if [ "$code" -eq 0 ] && [ "$min_run_ms" -gt 0 ] && [ "$elapsed_ms" -lt "$min_run_ms" ]; then
     echo "FAIL (${elapsed_ms} ms, expected at least ${min_run_ms} ms)"
     return 1
   fi
@@ -276,7 +285,7 @@ begin_section "Benchmarks (pkg: $bench_pkg)"
 for bench_row in physics:min physics:default physics:sparse-min physics:sparse \
   ecs:min ecs:default churn:min churn:default gpu:min gpu:default gpu:throughput \
   particles:min particles:default piles:friction-min piles:friction piles:slopes-min \
-  piles:slopes saves:min saves:default boot:min boot:default; do
+  piles:slopes saves:min saves:default boot:min boot:default spread:min spread:default; do
   bench="${bench_row%%:*}"
   preset="${bench_row#*:}"
   timing=()
@@ -286,7 +295,7 @@ for bench_row in physics:min physics:default physics:sparse-min physics:sparse \
   row "${bench} preset=${preset}${timing:+ timing=on}" "$log_dir/${bench_pkg}-${bench}-${preset}.log" "$bench_pkg" \
     TUNGSTEN_BENCH="$bench" TUNGSTEN_BENCH_PRESET="$preset" "${timing[@]}"
 done
-end_section "Benchmarks passed" "Benchmark failures" 21
+end_section "Benchmarks passed" "Benchmark failures" 23
 
 # Frame cap: 20 frames at display.frame_rate_cap = 20 must take at least 90%
 # of frames / cap (0.9 s). Uncapped, the `transition` scene's plain run takes

@@ -161,6 +161,23 @@ pub fn reload_ui_screens_from_manifest(new_manifest: &ResolvedManifest, world: &
     world.insert_resource(paths);
 }
 
+/// Sets a registered sprite's named points when they differ from the
+/// registered ones (redo 7.10p), so an unchanged manifest moves no sprite
+/// epoch. Returns whether they changed; an unregistered ID changes nothing.
+pub(crate) fn apply_points(
+    registry: &mut AssetRegistry,
+    id: &str,
+    points: &std::collections::BTreeMap<String, [f32; 2]>,
+) -> bool {
+    match registry.get_sprite(id) {
+        Some(asset) if asset.points != *points => {
+            registry.set_sprite_points(id, points.clone());
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Sets a registered sprite's nine-slice insets when they differ from the
 /// registered ones, so an unchanged manifest moves no sprite epoch. Returns
 /// whether they changed.
@@ -745,8 +762,15 @@ pub fn reload_manifest(
                 }
             }
             // Redo 7.9: so do sheet frames and anchors; a frame that moved
-            // or changed size repacks its filter class.
+            // or changed size repacks its filter class. Redo 7.10p: and the
+            // named points.
             for (id, entry) in &new_manifest.sprites {
+                if apply_points(registry, id, &entry.points) {
+                    log::info!(
+                        "Manifest reload: sprite '{id}' points are now {:?}",
+                        entry.points
+                    );
+                }
                 let Some(asset) = registry.get_sprite(id) else {
                     continue;
                 };
