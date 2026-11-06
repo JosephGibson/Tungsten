@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-11-06
+
 Summary: the roadmap redo's Phase 7 step 7.10, the kit pass: stats and hits (`D-238`), pushes and riders (`D-239`), statuses, the light at a point and chemistry (`D-240`, `D-241`), looks and cues with named game cue events (`D-242`, `D-243`), abilities, their payloads, caps and the five genre tags (`D-244`, `D-245`), and clips, facing, the lifecycle, looks by tag and a health bar (`D-246`, `D-247`); a pass over the debug views; session tiers past art and sound (`D-237`). 7.18 is next. 01's save moves to schema 24 and the template's stays at 4.
 
 ### Added
