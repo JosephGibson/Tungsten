@@ -548,3 +548,86 @@ fn the_configured_scale_is_what_an_unset_setting_applies() {
     assert_eq!(ui_scale(&app), 1.25, "the player's own wins");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_mute_holds_while_unfocused() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let world = app.world_mut();
+    volumes(world);
+    let settings = world.resource_mut::<Settings>();
+    settings.set_master_volume(Some(0.8));
+    settings.set_mute_unfocused(Some(true));
+    apply_settings(world);
+    assert_eq!(volumes(world), [0.8], "focused: the set volume");
+    world.resource_mut::<InputState>().set_focused(false);
+    apply_settings(world);
+    assert_eq!(volumes(world), [0.0], "unfocused: muted");
+    assert_eq!(
+        world.resource::<Settings>().master_volume(),
+        Some(0.8),
+        "the settings stay as set"
+    );
+    for off in [Some(false), None] {
+        world.resource_mut::<Settings>().set_mute_unfocused(off);
+        apply_settings(world);
+        assert_eq!(volumes(world), [0.8], "{off:?}: no mute");
+    }
+}
+
+#[test]
+fn requested_display_merges_settings_over_the_live_display() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let world = app.world_mut();
+    let live = *world.resource::<DisplayState>();
+    assert_eq!(requested_display(world), live, "nothing set: as it runs");
+
+    world
+        .resource_mut::<Settings>()
+        .set_vsync(Some(!live.vsync));
+    let requested = requested_display(world);
+    assert_eq!(
+        requested,
+        DisplayState {
+            vsync: !live.vsync,
+            present_mode: None,
+            ..live
+        }
+    );
+    apply_settings(world);
+    assert_eq!(pending(world), Some(requested), "what apply_settings sends");
+    apply_request(world);
+
+    // A window resized by hand shows its size (`D-169`); a set one wins.
+    crate::display::sync_window_resolution(world, 1600, 900, None);
+    let hand = Resolution {
+        width: 1600,
+        height: 900,
+    };
+    assert_eq!(requested_display(world).resolution, hand);
+    world.resource_mut::<Settings>().set_resolution(Some(HD));
+    assert_eq!(requested_display(world).resolution, HD);
+    world
+        .resource_mut::<Settings>()
+        .set_display_mode(Some(DisplayMode::BorderlessFullscreen));
+    assert_eq!(
+        requested_display(world).display_mode,
+        DisplayMode::BorderlessFullscreen
+    );
+
+    // Without the shipped config, an unset value is the live one.
+    let mut bare = World::new();
+    bare.insert_resource(live);
+    assert_eq!(requested_display(&bare), live, "no Settings: as it runs");
+    let mut settings = Settings::default();
+    settings.set_resolution(Some(HD));
+    bare.insert_resource(settings);
+    assert_eq!(
+        requested_display(&bare),
+        DisplayState {
+            resolution: HD,
+            ..live
+        }
+    );
+}

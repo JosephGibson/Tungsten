@@ -1,9 +1,10 @@
 //! The runtime apply of the player's [`Settings`] (`D-159`): what a settings
-//! screen calls after changing them, before `Settings::save`.
+//! screen calls after changing them, before `Settings::save`, and the
+//! display they request.
 
 use tungsten_core::{
-    AudioBus, AudioCommands, Config, DisplayMode, DisplayState, FrameRateCap, InputState,
-    Resolution, ScaleFactor, Settings, UiTree, World,
+    AudioBus, AudioCommands, Config, ConfigError, DisplayMode, DisplayState, FrameRateCap,
+    InputState, Resolution, ScaleFactor, Settings, UiTree, World,
 };
 
 use crate::app::resolve_startup_display;
@@ -25,7 +26,10 @@ pub(crate) struct WindowedTarget(pub(crate) Resolution);
 /// [`UiTree`] (M56), the master volume and every bus's volume through
 /// [`AudioCommands`], and the sticks' dead zone and sensitivity to
 /// [`InputState`]'s `StickResponse` (P7-12), which the UI routing passes to
-/// `RoutedInput`. A value the player unset returns to the shipped one: the
+/// `RoutedInput`. While `Settings::mute_unfocused` is on and the window has
+/// no focus, the master volume sent is 0 and the `Settings` stay as set
+/// (S-145); a focus change sends the master volume again. Bloom is read at
+/// each frame's draw (S-50). A value the player unset returns to the shipped one: the
 /// UI scale and the text scale to 1.0, the master volume and a bus's volume
 /// to [`shipped_volume`] (`D-184`), the stick's to `StickResponse::DEFAULT`.
 /// A display request queued earlier this frame, such as a hotkey's, takes
@@ -57,9 +61,7 @@ pub fn apply_settings(world: &mut World) {
         input.set_stick_response(settings.stick_response());
     }
     if world.has_resource::<AudioCommands>() {
-        let master = settings
-            .master_volume()
-            .unwrap_or_else(|| shipped_volume(world, None));
+        let master = master_volume(world, &settings);
         let buses: Vec<(AudioBus, f32)> = AudioBus::ALL
             .iter()
             .map(|&bus| {
@@ -73,21 +75,76 @@ pub fn apply_settings(world: &mut World) {
             audio.set_bus_volume(bus, volume);
         }
     }
+    request_settings_display(world);
+}
 
+/// The master volume [`apply_settings`] sends: 0 while the mute holds (the
+/// window unfocused and `Settings::mute_unfocused` on), else the set or
+/// [`shipped_volume`].
+fn master_volume(world: &World, settings: &Settings) -> f32 {
+    let unfocused = world
+        .get_resource::<InputState>()
+        .is_some_and(|input| !input.focused());
+    if unfocused && settings.mute_unfocused() == Some(true) {
+        return 0.0;
+    }
+    settings
+        .master_volume()
+        .unwrap_or_else(|| shipped_volume(world, None))
+}
+
+/// A focus change (S-145): sends the master volume [`apply_settings`] would
+/// while `Settings::mute_unfocused` is on; nothing while it is off, when the
+/// master volume does not follow the focus.
+pub(crate) fn apply_focus_mute(world: &mut World) {
+    let Some(settings) = world.get_resource::<Settings>() else {
+        return;
+    };
+    if settings.mute_unfocused() != Some(true) {
+        return;
+    }
+    let volume = master_volume(world, settings);
+    if let Some(audio) = world.get_resource_mut::<AudioCommands>() {
+        audio.set_master_volume(volume);
+    }
+}
+
+/// The display [`apply_settings`] requests (S-147): the world's [`Settings`]
+/// over the live display, a request queued this frame, else
+/// [`DisplayState`]. With `App`'s shipped config, a value the player unset is
+/// the shipped one, and a windowed size the same as the last one sent keeps
+/// the live size, so a window resized by hand or maximized shows as it runs
+/// (`D-169`); without it (a `World` built by hand), an unset value is the
+/// live one. Without `Settings`, or when the shipped config cannot take them,
+/// it is the live display.
+#[must_use]
+pub fn requested_display(world: &World) -> DisplayState {
+    merge_display(world).map_or_else(|_| live_display(world), |(next, _)| next)
+}
+
+/// A display request queued this frame, else [`DisplayState`].
+fn live_display(world: &World) -> DisplayState {
     let current = world
         .get_resource::<DisplayState>()
         .copied()
         .unwrap_or_default();
-    let pending = world
+    world
         .get_resource::<PendingDisplay>()
-        .and_then(|pending| pending.0);
-    let mut next = pending.unwrap_or(current);
+        .and_then(|pending| pending.0)
+        .unwrap_or(current)
+}
+
+/// [`requested_display`], with the windowed size to record as sent when it
+/// differs from the last one.
+fn merge_display(world: &World) -> Result<(DisplayState, Option<Resolution>), ConfigError> {
+    let mut next = live_display(world);
+    let Some(settings) = world.get_resource::<Settings>() else {
+        return Ok((next, None));
+    };
+    let mut windowed = None;
     if let Some(ShippedConfig(shipped)) = world.get_resource::<ShippedConfig>() {
         let mut config = shipped.clone();
-        if let Err(err) = config.apply_settings(&settings) {
-            log::error!("Settings not applied: {err}");
-            return;
-        }
+        config.apply_settings(settings)?;
         let target = resolve_startup_display(&config);
         next.display_mode = target.display_mode;
         next.vsync = target.vsync;
@@ -101,7 +158,7 @@ pub fn apply_settings(world: &mut World) {
             next.resolution = target.resolution;
         } else if sent != Some(target.resolution) {
             next.resolution = target.resolution;
-            world.insert_resource(WindowedTarget(target.resolution));
+            windowed = Some(target.resolution);
         }
     } else {
         if let Some(mode) = settings.display_mode() {
@@ -121,7 +178,27 @@ pub fn apply_settings(world: &mut World) {
             };
         }
     }
+    Ok((next, windowed))
+}
 
+/// Requests [`requested_display`], [`apply_settings`]' display part: a
+/// request equal to the live display drops one queued earlier this frame,
+/// so the last apply wins.
+pub(crate) fn request_settings_display(world: &mut World) {
+    let current = world
+        .get_resource::<DisplayState>()
+        .copied()
+        .unwrap_or_default();
+    let (next, windowed) = match merge_display(world) {
+        Ok(merged) => merged,
+        Err(err) => {
+            log::error!("Settings not applied: {err}");
+            return;
+        }
+    };
+    if let Some(resolution) = windowed {
+        world.insert_resource(WindowedTarget(resolution));
+    }
     if next == current {
         if let Some(pending) = world.get_resource_mut::<PendingDisplay>() {
             pending.0 = None;

@@ -1,6 +1,8 @@
 use super::*;
 use crate::telemetry::DisplayTelemetry;
-use tungsten_core::{ActionMap, DisplayMode, InputState, KeyCode};
+use tungsten_core::{
+    ActionMap, AudioCommand, AudioCommands, Config, DisplayMode, InputState, KeyCode, UserFolder,
+};
 
 fn seed_world() -> World {
     let mut world = World::new();
@@ -172,4 +174,99 @@ fn set_monitor_inserts_replaces_and_removes_it() {
     assert!(!world.has_resource::<MonitorInfo>());
     set_monitor(&mut world, None);
     assert!(!world.has_resource::<MonitorInfo>());
+}
+
+/// An app whose user folder is `folder`, on the default bindings.
+fn app_with(folder: UserFolder) -> crate::App {
+    let mut config = Config::default();
+    config.game.user_folder = folder;
+    let mut app = crate::App::new(config).unwrap();
+    let world = app.world_mut();
+    world.insert_resource(ActionMap::default_map());
+    world.resource_mut::<InputState>().begin_frame();
+    app
+}
+
+/// The master volumes queued since the last call.
+fn master_volumes(world: &mut World) -> Vec<f32> {
+    world
+        .resource_mut::<AudioCommands>()
+        .drain()
+        .into_iter()
+        .filter_map(|command| match command {
+            AudioCommand::SetMasterVolume(volume) => Some(volume),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_focus_change_reapplies_the_master_volume() {
+    let mut app = app_with(UserFolder::Off);
+    let world = app.world_mut();
+    let settings = world.resource_mut::<Settings>();
+    settings.set_master_volume(Some(0.6));
+    settings.set_mute_unfocused(Some(true));
+    master_volumes(world);
+    engine_display_input_system(world);
+    assert!(
+        master_volumes(world).is_empty(),
+        "no focus change, no volume"
+    );
+    let focus = |world: &mut World, focused: bool| {
+        let input = world.resource_mut::<InputState>();
+        input.begin_frame();
+        input.set_focused(focused);
+        engine_display_input_system(world);
+        master_volumes(world)
+    };
+    assert_eq!(focus(world, false), [0.0], "lost: muted");
+    assert_eq!(focus(world, true), [0.6], "back: the set volume");
+    world.resource_mut::<Settings>().set_mute_unfocused(None);
+    assert!(
+        focus(world, false).is_empty(),
+        "the mute off: the volume does not follow the focus"
+    );
+}
+
+#[test]
+fn the_display_keys_write_and_save_settings() {
+    let dir = std::env::temp_dir().join(format!("tungsten_display_keys_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut app = app_with(UserFolder::At(dir.clone()));
+    let world = app.world_mut();
+    let live = *world.resource::<DisplayState>();
+    assert_eq!(live.display_mode, DisplayMode::Windowed);
+    let press = |world: &mut World, keys: &[KeyCode]| {
+        let input = world.resource_mut::<InputState>();
+        input.begin_frame();
+        for &key in keys {
+            input.key_down(key);
+        }
+        engine_display_input_system(world);
+        for &key in keys {
+            world.resource_mut::<InputState>().key_up(key);
+        }
+    };
+
+    press(world, &[KeyCode::F11]);
+    let settings = world.resource::<Settings>().clone();
+    let fullscreen = Some(DisplayMode::BorderlessFullscreen);
+    assert_eq!(settings.display_mode(), fullscreen, "F11 kept");
+    assert_eq!(settings.vsync(), None);
+    let path = settings.path().unwrap();
+    assert_eq!(Settings::load(path), settings, "saved at the press");
+    let requested = take_pending_display(world).unwrap();
+    assert_eq!(requested.display_mode, DisplayMode::BorderlessFullscreen);
+
+    // Each key toggles what the settings give, not the live display.
+    press(world, &[KeyCode::F11, KeyCode::F9]);
+    let settings = world.resource::<Settings>().clone();
+    assert_eq!(settings.display_mode(), Some(DisplayMode::Windowed));
+    assert_eq!(settings.vsync(), Some(!live.vsync), "F9 kept");
+    assert_eq!(Settings::load(settings.path().unwrap()), settings);
+    let requested = take_pending_display(world).unwrap();
+    assert_eq!(requested.display_mode, DisplayMode::Windowed);
+    assert_eq!(requested.vsync, !live.vsync);
+    let _ = std::fs::remove_dir_all(&dir);
 }

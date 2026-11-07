@@ -30,6 +30,8 @@ fn is_default(settings: &Settings) -> bool {
         && settings.master_volume().is_none()
         && settings.stick_dead_zone().is_none()
         && settings.stick_sensitivity().is_none()
+        && settings.bloom().is_none()
+        && settings.mute_unfocused().is_none()
         && AudioBus::ALL
             .iter()
             .all(|&bus| settings.bus_volume(bus).is_none())
@@ -426,4 +428,155 @@ fn the_stick_response_saves_loads_clamps_and_falls_back() {
         assert_eq!(std::fs::read_to_string(&backup).unwrap(), text);
         assert_eq!(fallen.take_load_warnings().len(), 1);
     }
+}
+
+/// The warnings logged on the calling thread, for the tests that read them:
+/// tests run on threads of their own, so each reads its own.
+mod warnings {
+    use std::sync::Mutex;
+    use std::thread::ThreadId;
+
+    static LINES: Mutex<Vec<(ThreadId, String)>> = Mutex::new(Vec::new());
+
+    struct Capture;
+
+    impl log::Log for Capture {
+        fn enabled(&self, metadata: &log::Metadata) -> bool {
+            metadata.level() <= log::Level::Warn
+        }
+
+        fn log(&self, record: &log::Record) {
+            if self.enabled(record.metadata()) {
+                let line = (std::thread::current().id(), record.args().to_string());
+                LINES.lock().unwrap().push(line);
+            }
+        }
+
+        fn flush(&self) {}
+    }
+
+    static LOGGER: Capture = Capture;
+
+    /// Captures from here on; a second call keeps the first logger.
+    pub(super) fn install() {
+        if log::set_logger(&LOGGER).is_ok() {
+            log::set_max_level(log::LevelFilter::Warn);
+        }
+    }
+
+    /// The calling thread's warnings since its last call.
+    pub(super) fn take() -> Vec<String> {
+        let me = std::thread::current().id();
+        let mut lines = LINES.lock().unwrap();
+        let (mine, others) = std::mem::take(&mut *lines)
+            .into_iter()
+            .partition(|(thread, _)| *thread == me);
+        *lines = others;
+        mine.into_iter().map(|(_, line)| line).collect()
+    }
+}
+
+/// A game's options, as a game section holds them.
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+struct Options {
+    autosave: bool,
+    shake: f32,
+}
+
+fn written(path: &Path) -> serde_json::Value {
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+#[test]
+fn a_game_section_round_trips() {
+    let path = tempdir().join(Settings::FILE);
+    let mut settings = Settings::load(&path);
+    assert_eq!(settings.game::<Options>(), Options::default(), "absent");
+    let options = Options {
+        autosave: true,
+        shake: 0.5,
+    };
+    settings.set_game(&options);
+    settings.set_ui_scale(Some(1.25));
+    settings.save().unwrap();
+    assert_eq!(
+        written(&path),
+        serde_json::json!({ "ui_scale": 1.25, "game": { "autosave": true, "shake": 0.5 } })
+    );
+    let mut reloaded = Settings::load(&path);
+    assert!(reloaded.take_load_warnings().is_empty());
+    assert_eq!(reloaded.game::<Options>(), options);
+    assert_eq!(reloaded, settings);
+
+    let (_, null) = load_text(r#"{ "game": null }"#);
+    assert_eq!(null.game::<Options>(), Options::default(), "null is absent");
+}
+
+#[test]
+fn an_invalid_game_section_warns_and_defaults() {
+    let text = r#"{ "ui_scale": 1.5, "game": { "autosave": "yes" } }"#;
+    let (path, mut settings) = load_text(text);
+    assert!(
+        settings.take_load_warnings().is_empty(),
+        "the engine reads no game section"
+    );
+    assert_eq!(settings.ui_scale(), Some(1.5));
+    warnings::install();
+    warnings::take();
+    assert_eq!(settings.game::<Options>(), Options::default());
+    let warned = warnings::take();
+    assert_eq!(warned.len(), 1, "{warned:?}");
+    assert!(warned[0].contains("game section"), "{warned:?}");
+    assert!(path.exists(), "the file is kept");
+    assert!(!path.with_file_name("settings.json.bad").exists());
+    settings.save().unwrap();
+    assert_eq!(
+        written(&path)["game"],
+        serde_json::json!({ "autosave": "yes" }),
+        "a save writes the value back as read"
+    );
+}
+
+#[test]
+fn bloom_and_the_mute_round_trip() {
+    let path = tempdir().join(Settings::FILE);
+    let mut settings = Settings::load(&path);
+    assert_eq!((settings.bloom(), settings.mute_unfocused()), (None, None));
+    settings.set_bloom(Some(false));
+    settings.set_mute_unfocused(Some(true));
+    settings.save().unwrap();
+    assert_eq!(
+        written(&path),
+        serde_json::json!({ "bloom": false, "mute_unfocused": true })
+    );
+    let mut reloaded = Settings::load(&path);
+    assert!(reloaded.take_load_warnings().is_empty());
+    assert_eq!(reloaded, settings);
+
+    settings.set_bloom(None);
+    settings.set_mute_unfocused(None);
+    settings.save().unwrap();
+    assert_eq!(
+        written(&path),
+        serde_json::json!({}),
+        "unset, out of the file"
+    );
+
+    for text in [r#"{ "bloom": "off" }"#, r#"{ "mute_unfocused": 1 }"#] {
+        let (path, mut fallen) = load_text(text);
+        assert!(is_default(&fallen), "{text}");
+        assert!(path.with_file_name("settings.json.bad").exists(), "{text}");
+        assert_eq!(fallen.take_load_warnings().len(), 1);
+    }
+}
+
+#[test]
+fn an_older_file_without_them_loads() {
+    let (path, mut settings) = load_text(r#"{ "ui_scale": 1.25, "master_volume": 0.5 }"#);
+    assert!(settings.take_load_warnings().is_empty());
+    assert_eq!(settings.ui_scale(), Some(1.25));
+    assert_eq!(settings.master_volume(), Some(0.5));
+    assert_eq!((settings.bloom(), settings.mute_unfocused()), (None, None));
+    assert_eq!(settings.game::<Options>(), Options::default());
+    assert!(!path.with_file_name("settings.json.bad").exists());
 }

@@ -9612,6 +9612,20 @@ impl core::marker::Unpin for tungsten_core::post::PostStack
 impl core::marker::UnsafeUnpin for tungsten_core::post::PostStack
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::PostStack
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PostStack
+pub struct tungsten_core::post::PostTail(pub alloc::vec::Vec<tungsten_core::post::PostPass>)
+impl core::clone::Clone for tungsten_core::post::PostTail
+pub fn tungsten_core::post::PostTail::clone(&self) -> tungsten_core::post::PostTail
+impl core::default::Default for tungsten_core::post::PostTail
+pub fn tungsten_core::post::PostTail::default() -> tungsten_core::post::PostTail
+impl core::fmt::Debug for tungsten_core::post::PostTail
+pub fn tungsten_core::post::PostTail::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::post::PostTail
+impl core::marker::Send for tungsten_core::post::PostTail
+impl core::marker::Sync for tungsten_core::post::PostTail
+impl core::marker::Unpin for tungsten_core::post::PostTail
+impl core::marker::UnsafeUnpin for tungsten_core::post::PostTail
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::PostTail
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PostTail
 pub struct tungsten_core::post::ToneMonoParams
 pub tungsten_core::post::ToneMonoParams::amount: f32
 pub tungsten_core::post::ToneMonoParams::mode: tungsten_core::post::ToneMonoMode
@@ -11065,18 +11079,24 @@ impl tungsten_core::settings::Settings
 pub const tungsten_core::settings::Settings::FILE: &'static str
 pub const tungsten_core::settings::Settings::TEXT_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
 pub const tungsten_core::settings::Settings::UI_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
+pub fn tungsten_core::settings::Settings::bloom(&self) -> core::option::Option<bool>
 pub fn tungsten_core::settings::Settings::bus_volume(&self, tungsten_core::audio::AudioBus) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::display_mode(&self) -> core::option::Option<tungsten_core::display::DisplayMode>
 pub fn tungsten_core::settings::Settings::frame_rate_cap(&self) -> core::option::Option<tungsten_core::settings::FrameRateCap>
+pub fn tungsten_core::settings::Settings::game<T: serde_core::de::DeserializeOwned + core::default::Default>(&self) -> T
 pub fn tungsten_core::settings::Settings::load(impl core::convert::Into<std::path::PathBuf>) -> Self
 pub fn tungsten_core::settings::Settings::master_volume(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::mute_unfocused(&self) -> core::option::Option<bool>
 pub fn tungsten_core::settings::Settings::path(&self) -> core::option::Option<&std::path::Path>
 pub fn tungsten_core::settings::Settings::resolution(&self) -> core::option::Option<tungsten_core::display::Resolution>
 pub fn tungsten_core::settings::Settings::save(&self) -> core::result::Result<(), tungsten_core::settings::SettingsError>
+pub fn tungsten_core::settings::Settings::set_bloom(&mut self, core::option::Option<bool>)
 pub fn tungsten_core::settings::Settings::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::option::Option<tungsten_core::display::DisplayMode>)
 pub fn tungsten_core::settings::Settings::set_frame_rate_cap(&mut self, core::option::Option<tungsten_core::settings::FrameRateCap>)
+pub fn tungsten_core::settings::Settings::set_game<T: serde_core::ser::Serialize>(&mut self, &T)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_mute_unfocused(&mut self, core::option::Option<bool>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
 pub fn tungsten_core::settings::Settings::set_stick_dead_zone(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_stick_sensitivity(&mut self, core::option::Option<f32>)
@@ -21331,18 +21351,24 @@ impl tungsten_core::settings::Settings
 pub const tungsten_core::settings::Settings::FILE: &'static str
 pub const tungsten_core::settings::Settings::TEXT_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
 pub const tungsten_core::settings::Settings::UI_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
+pub fn tungsten_core::settings::Settings::bloom(&self) -> core::option::Option<bool>
 pub fn tungsten_core::settings::Settings::bus_volume(&self, tungsten_core::audio::AudioBus) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::display_mode(&self) -> core::option::Option<tungsten_core::display::DisplayMode>
 pub fn tungsten_core::settings::Settings::frame_rate_cap(&self) -> core::option::Option<tungsten_core::settings::FrameRateCap>
+pub fn tungsten_core::settings::Settings::game<T: serde_core::de::DeserializeOwned + core::default::Default>(&self) -> T
 pub fn tungsten_core::settings::Settings::load(impl core::convert::Into<std::path::PathBuf>) -> Self
 pub fn tungsten_core::settings::Settings::master_volume(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::mute_unfocused(&self) -> core::option::Option<bool>
 pub fn tungsten_core::settings::Settings::path(&self) -> core::option::Option<&std::path::Path>
 pub fn tungsten_core::settings::Settings::resolution(&self) -> core::option::Option<tungsten_core::display::Resolution>
 pub fn tungsten_core::settings::Settings::save(&self) -> core::result::Result<(), tungsten_core::settings::SettingsError>
+pub fn tungsten_core::settings::Settings::set_bloom(&mut self, core::option::Option<bool>)
 pub fn tungsten_core::settings::Settings::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::option::Option<tungsten_core::display::DisplayMode>)
 pub fn tungsten_core::settings::Settings::set_frame_rate_cap(&mut self, core::option::Option<tungsten_core::settings::FrameRateCap>)
+pub fn tungsten_core::settings::Settings::set_game<T: serde_core::ser::Serialize>(&mut self, &T)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_mute_unfocused(&mut self, core::option::Option<bool>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
 pub fn tungsten_core::settings::Settings::set_stick_dead_zone(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_stick_sensitivity(&mut self, core::option::Option<f32>)

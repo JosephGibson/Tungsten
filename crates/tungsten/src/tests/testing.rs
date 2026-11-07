@@ -847,3 +847,39 @@ fn load_manifest_still_registers_no_sprite() {
     assert_eq!(sprites.sprite_names().count(), 0);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn frame_draw_holds_the_composed_post_stack() {
+    use tungsten_core::post::{BloomParams, PostPass, PostStack, PostTail};
+    let bloom = PostPass::Bloom(BloomParams::default());
+    let mut harness = Harness::new(app());
+    let world = harness.world_mut();
+    world.resource_mut::<PostStack>().push(bloom);
+    world
+        .resource_mut::<PostStack>()
+        .push(PostPass::Pixelate(4.0));
+    world
+        .resource_mut::<PostTail>()
+        .0
+        .push(PostPass::Pixelate(2.0));
+    world
+        .resource_mut::<tungsten_core::Settings>()
+        .set_bloom(Some(false));
+    harness.step(1);
+    assert_eq!(
+        harness.draw().unwrap().post,
+        [PostPass::Pixelate(4.0), PostPass::Pixelate(2.0)],
+        "the stack, then the tail, without Bloom"
+    );
+    let world = harness.world_mut();
+    world
+        .resource_mut::<tungsten_core::Settings>()
+        .set_bloom(None);
+    world.resource_mut::<PostTail>().0.clear();
+    harness.step(1);
+    assert_eq!(
+        harness.draw().unwrap().post,
+        [bloom, PostPass::Pixelate(4.0)],
+        "Bloom unset draws"
+    );
+}

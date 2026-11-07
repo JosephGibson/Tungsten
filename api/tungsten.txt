@@ -1245,6 +1245,7 @@ pub tungsten::testing::FrameDraw::debug_lines: alloc::vec::Vec<tungsten_render::
 pub tungsten::testing::FrameDraw::debug_quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
 pub tungsten::testing::FrameDraw::light_ubo: tungsten_render::lighting::LightUbo
 pub tungsten::testing::FrameDraw::mesh_particles: alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleBatch>
+pub tungsten::testing::FrameDraw::post: alloc::vec::Vec<tungsten_core::post::PostPass>
 pub tungsten::testing::FrameDraw::quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
 pub tungsten::testing::FrameDraw::sprites: alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
 pub tungsten::testing::FrameDraw::text: alloc::vec::Vec<tungsten_render::text::TextSection>
@@ -2320,6 +2321,7 @@ pub fn tungsten::particle_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::request_display_settings(&mut tungsten_core::ecs::world::World, tungsten_core::display::DisplayState) -> core::result::Result<(), tungsten_core::display::DisplayValidationError>
 pub fn tungsten::request_exit(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten_core::config::PostAaMode)
+pub fn tungsten::requested_display(&tungsten_core::ecs::world::World) -> tungsten_core::display::DisplayState
 pub fn tungsten::shake_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::shipped_volume(&tungsten_core::ecs::world::World, core::option::Option<tungsten_core::audio::AudioBus>) -> f32
 pub fn tungsten::spawn_mesh_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, tungsten_core::assets::particle::ParticleMeshAssetId, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)

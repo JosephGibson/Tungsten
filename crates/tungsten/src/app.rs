@@ -39,7 +39,7 @@ use tungsten_core::assets::{
     ShaderRegistry, SoundRegistry, TilemapRegistry,
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
-use tungsten_core::post::{PostPass, PostStack};
+use tungsten_core::post::{PostPass, PostStack, PostTail};
 use tungsten_core::save::SaveOptions;
 use tungsten_core::ui::{
     CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
@@ -740,6 +740,7 @@ impl App {
         );
         // M26: empty post stack by default — byte-identical to M25 baseline.
         world.insert_resource(tungsten_core::post::PostStack::new());
+        world.insert_resource(PostTail::default());
         // M27: track post-AA state from startup config; pending request seam.
         world.insert_resource(PostAaState {
             mode: config.render.post_aa,
@@ -1746,20 +1747,51 @@ impl App {
     }
 }
 
-/// The post stack a frame draws with: the user's stack, or `scratch` holding
-/// its passes with the screen transition's pass last (M31, `D-093`).
+/// The post stack a frame draws with (M31, `D-093`, S-50): the user's
+/// stack itself while `tail` is empty, no transition runs and no Bloom pass
+/// is to be dropped, so such a frame copies nothing; else `scratch` holding
+/// the user's passes, then `tail`'s, then the screen transition's pass, with
+/// every `PostPass::Bloom` left out while `bloom` is off.
 fn compose_post_stack<'a>(
     user: &'a PostStack,
+    tail: &[PostPass],
+    bloom: bool,
     transition_pass: Option<PostPass>,
     scratch: &'a mut PostStack,
 ) -> &'a PostStack {
-    let Some(pass) = transition_pass else {
+    let is_bloom = |pass: &PostPass| matches!(pass, PostPass::Bloom(_));
+    let drops_bloom = !bloom && user.0.iter().any(is_bloom);
+    if tail.is_empty() && transition_pass.is_none() && !drops_bloom {
         return user;
-    };
+    }
     scratch.0.clear();
-    scratch.0.extend_from_slice(&user.0);
-    scratch.0.push(pass);
+    let kept = user
+        .0
+        .iter()
+        .chain(tail)
+        .filter(|pass| bloom || !is_bloom(pass));
+    scratch.0.extend(kept.copied());
+    scratch.0.extend(transition_pass);
     scratch
+}
+
+/// The post stack `world`'s frame draws with: [`compose_post_stack`] over
+/// its `PostStack` (`empty` without one), `PostTail`, `Settings::bloom`
+/// (unset draws Bloom) and the state stack's transition pass.
+fn frame_post_stack<'a>(
+    world: &'a World,
+    empty: &'a PostStack,
+    scratch: &'a mut PostStack,
+) -> &'a PostStack {
+    let user = world.get_resource::<PostStack>().unwrap_or(empty);
+    let tail = world
+        .get_resource::<PostTail>()
+        .map_or(&[][..], |tail| tail.0.as_slice());
+    let bloom = world.get_resource::<Settings>().and_then(Settings::bloom) != Some(false);
+    let transition_pass = world
+        .get_resource::<StateStack>()
+        .and_then(StateStack::transition_pass);
+    compose_post_stack(user, tail, bloom, transition_pass, scratch)
 }
 
 /// Where a frame's real dt comes from: the dt [`Time`]'s real clock advances
@@ -2374,21 +2406,14 @@ impl App {
                 }
             }
 
-            // M26: PostStack is a world resource; default is empty.
+            // M26: PostStack is a world resource; default is empty. M31: a
+            // screen transition draws as the last post-stack slot, after
+            // `PostTail` (S-50), on a copy of the user's stack, so a state's
+            // `on_enter` may clear or rebuild `PostStack` without losing or
+            // leaking the pass.
             let empty_stack = PostStack::default();
-            let post_stack = self
-                .world
-                .get_resource::<PostStack>()
-                .unwrap_or(&empty_stack);
-            // M31: a screen transition draws as the last post-stack slot, on
-            // a copy of the user's stack, so a state's `on_enter` may clear
-            // or rebuild `PostStack` without losing or leaking the pass.
-            let transition_pass = self
-                .world
-                .get_resource::<StateStack>()
-                .and_then(StateStack::transition_pass);
             let post_stack =
-                compose_post_stack(post_stack, transition_pass, &mut self.transition_post_stack);
+                frame_post_stack(&self.world, &empty_stack, &mut self.transition_post_stack);
 
             // M29: upload the per-frame light UBO before any draw records it.
             renderer.update_lights(&extract.light_ubo);
@@ -2561,6 +2586,16 @@ impl App {
             ft.fixed_steps = t.fixed_steps;
             std::mem::swap(&mut ft.system_timings, &mut self.system_timings);
         }
+    }
+
+    /// The post stack the world's frame draws with ([`frame_post_stack`]),
+    /// copied for the harness's `FrameDraw`.
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) fn drawn_post_stack(&mut self) -> Vec<PostPass> {
+        let empty = PostStack::default();
+        frame_post_stack(&self.world, &empty, &mut self.transition_post_stack)
+            .0
+            .clone()
     }
 
     /// One frame, from the interval measurement through the perf log, in the

@@ -6,7 +6,7 @@ use super::{
 };
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use tungsten_core::post::{FadeParams, PostPass, PostStack};
+use tungsten_core::post::{BloomParams, FadeParams, PostPass, PostStack, VignetteParams};
 use tungsten_core::{
     AudioCommand, AudioCommands, CollisionEvent, CommandBuffer, Config, DisplayMode, DisplayState,
     Entity, EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent, Stage, Time, World, system,
@@ -294,7 +294,7 @@ fn transition_pass_is_appended_after_user_stack() {
     let mut scratch = PostStack::new();
     scratch.push(PostPass::Pixelate(99.0));
 
-    let composed = compose_post_stack(&user, Some(half_fade()), &mut scratch);
+    let composed = compose_post_stack(&user, &[], true, Some(half_fade()), &mut scratch);
     assert_eq!(
         composed.0,
         [
@@ -307,7 +307,7 @@ fn transition_pass_is_appended_after_user_stack() {
 
     // An empty user stack draws the transition pass alone.
     let empty = PostStack::new();
-    let composed = compose_post_stack(&empty, Some(half_fade()), &mut scratch);
+    let composed = compose_post_stack(&empty, &[], true, Some(half_fade()), &mut scratch);
     assert_eq!(composed.0, [half_fade()]);
 }
 
@@ -317,12 +317,72 @@ fn no_transition_leaves_user_stack_untouched() {
     user.push(PostPass::Pixelate(4.0));
     let mut scratch = PostStack::new();
 
-    let composed = compose_post_stack(&user, None, &mut scratch);
+    let composed = compose_post_stack(&user, &[], true, None, &mut scratch);
     assert!(
         std::ptr::eq(composed, &raw const user),
         "the user's stack is drawn as is"
     );
     assert_eq!(composed.0, [PostPass::Pixelate(4.0)]);
+    assert!(scratch.is_empty());
+}
+
+fn bloom() -> PostPass {
+    PostPass::Bloom(BloomParams::default())
+}
+
+fn vignette() -> PostPass {
+    PostPass::Vignette(VignetteParams::default())
+}
+
+#[test]
+fn bloom_off_drops_bloom_from_the_drawn_stack() {
+    let mut user = PostStack::new();
+    user.push(bloom());
+    user.push(PostPass::Pixelate(4.0));
+    let tail = [bloom(), vignette()];
+    let mut scratch = PostStack::new();
+    let composed = compose_post_stack(&user, &tail, false, Some(half_fade()), &mut scratch);
+    assert_eq!(
+        composed.0,
+        [PostPass::Pixelate(4.0), vignette(), half_fade()],
+        "no Bloom from the stack or the tail"
+    );
+    let composed = compose_post_stack(&user, &[], false, None, &mut scratch);
+    assert_eq!(composed.0, [PostPass::Pixelate(4.0)]);
+    assert_eq!(user.len(), 2, "the user's stack keeps its Bloom");
+    let composed = compose_post_stack(&user, &[], true, None, &mut scratch);
+    assert_eq!(composed.0, [bloom(), PostPass::Pixelate(4.0)], "Bloom on");
+}
+
+#[test]
+fn the_tail_draws_after_the_game_stack_and_before_the_transition() {
+    let mut user = PostStack::new();
+    user.push(PostPass::Pixelate(4.0));
+    let mut scratch = PostStack::new();
+    scratch.push(PostPass::Pixelate(99.0));
+    let composed = compose_post_stack(&user, &[vignette()], true, Some(half_fade()), &mut scratch);
+    assert_eq!(
+        composed.0,
+        [PostPass::Pixelate(4.0), vignette(), half_fade()]
+    );
+    let composed = compose_post_stack(&user, &[vignette()], true, None, &mut scratch);
+    assert_eq!(composed.0, [PostPass::Pixelate(4.0), vignette()]);
+}
+
+#[test]
+fn an_empty_tail_with_bloom_on_draws_the_game_stack_itself() {
+    let mut user = PostStack::new();
+    user.push(bloom());
+    let mut scratch = PostStack::new();
+    let composed = compose_post_stack(&user, &[], true, None, &mut scratch);
+    assert!(std::ptr::eq(composed, &raw const user), "Bloom on");
+    let mut plain = PostStack::new();
+    plain.push(vignette());
+    let composed = compose_post_stack(&plain, &[], false, None, &mut scratch);
+    assert!(
+        std::ptr::eq(composed, &raw const plain),
+        "Bloom off over a stack without Bloom copies nothing either"
+    );
     assert!(scratch.is_empty());
 }
 

@@ -455,6 +455,13 @@ impl PostStack {
     }
 }
 
+/// Passes drawn after [`PostStack`] and before a screen transition's pass
+/// (S-50): a screen's own look over the game's, such as a game-over tint,
+/// which a run's rebuild of its stack leaves alone. A `World` resource the
+/// app inserts empty; the frame copies nothing for it while it is empty.
+#[derive(Debug, Clone, Default)]
+pub struct PostTail(pub Vec<PostPass>);
+
 #[cfg(test)]
 #[path = "tests/post.rs"]
 mod tests;

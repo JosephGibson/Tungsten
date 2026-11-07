@@ -2,13 +2,16 @@
 //! display mode, resolution, vsync and frame-rate limit (`D-180`), the UI
 //! scale, the text scale (M56), the master volume, each bus's volume and
 //! the sticks' dead zone and sensitivity (P7-12), layered between
-//! `tungsten.json` and the environment.
+//! `tungsten.json` and the environment; Bloom, the mute while the window
+//! has no focus, and a section the game keeps for itself (S-50, S-145,
+//! S-118).
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -96,7 +99,10 @@ pub enum UserFolder {
 ///   "master_volume": 0.8,
 ///   "bus_volumes": { "music": 0.5 },
 ///   "stick_dead_zone": 0.2,
-///   "stick_sensitivity": 1.25
+///   "stick_sensitivity": 1.25,
+///   "bloom": false,
+///   "mute_unfocused": true,
+///   "game": { "autosave": false }
 /// }
 /// ```
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -112,6 +118,11 @@ pub struct Settings {
     bus_volumes: [Option<f32>; BUSES],
     stick_dead_zone: Option<f32>,
     stick_sensitivity: Option<f32>,
+    bloom: Option<bool>,
+    mute_unfocused: Option<bool>,
+    /// The file's `game` value as it was read or set; the engine never
+    /// reads it.
+    game: Option<serde_json::Value>,
     path: Option<PathBuf>,
     load_warnings: Vec<String>,
 }
@@ -376,6 +387,60 @@ impl Settings {
         }
     }
 
+    /// Whether Bloom draws (S-50): while it is `Some(false)`, the frame
+    /// draws its post stack without `PostPass::Bloom`; unset draws it.
+    #[must_use]
+    pub fn bloom(&self) -> Option<bool> {
+        self.bloom
+    }
+
+    /// Sets or unsets the Bloom switch.
+    pub fn set_bloom(&mut self, bloom: Option<bool>) {
+        self.bloom = bloom;
+    }
+
+    /// Whether `tungsten::apply_settings` sends a master volume of 0 while
+    /// the window has no focus (S-145); unset is off. A focus change applies
+    /// the master volume again.
+    #[must_use]
+    pub fn mute_unfocused(&self) -> Option<bool> {
+        self.mute_unfocused
+    }
+
+    /// Sets or unsets the mute while the window has no focus.
+    pub fn set_mute_unfocused(&mut self, mute: Option<bool>) {
+        self.mute_unfocused = mute;
+    }
+
+    /// The game's own section (S-118), the file's `game` value as `T`:
+    /// `T::default()` when it is absent, and when it does not deserialize
+    /// as `T`, with a warning logged and the value kept as read, so the
+    /// file is not set aside and a save writes it back. Read it once and
+    /// keep the result: each call deserializes the value.
+    #[must_use]
+    pub fn game<T: DeserializeOwned + Default>(&self) -> T {
+        let Some(value) = &self.game else {
+            return T::default();
+        };
+        T::deserialize(value).unwrap_or_else(|error| {
+            log::warn!(
+                "settings' game section does not read as {}: {error}; using its defaults",
+                std::any::type_name::<T>()
+            );
+            T::default()
+        })
+    }
+
+    /// Replaces the game's section with `value`, which [`save`](Self::save)
+    /// writes with the rest. A value that does not serialize to JSON (a map
+    /// with keys that are not strings) logs an error and keeps the old one.
+    pub fn set_game<T: Serialize>(&mut self, value: &T) {
+        match serde_json::to_value(value) {
+            Ok(value) => self.game = Some(value),
+            Err(error) => log::error!("settings' game section not set: {error}"),
+        }
+    }
+
     /// Writes the set values through [`write_atomic`].
     ///
     /// # Errors
@@ -405,6 +470,9 @@ impl Settings {
             bus_volumes: (!buses.is_empty()).then_some(buses),
             stick_dead_zone: self.stick_dead_zone,
             stick_sensitivity: self.stick_sensitivity,
+            bloom: self.bloom,
+            mute_unfocused: self.mute_unfocused,
+            game: self.game.clone(),
         };
         let mut json = serde_json::to_string_pretty(&file)
             .expect("settings serialize: plain fields with string keys");
@@ -439,6 +507,9 @@ impl Settings {
         }
         self.stick_dead_zone = file.stick_dead_zone;
         self.stick_sensitivity = file.stick_sensitivity;
+        self.bloom = file.bloom;
+        self.mute_unfocused = file.mute_unfocused;
+        self.game = file.game;
     }
 }
 
@@ -463,6 +534,13 @@ struct SettingsFile {
     stick_dead_zone: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     stick_sensitivity: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bloom: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mute_unfocused: Option<bool>,
+    /// The game's own section, any JSON value; `null` reads as absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    game: Option<serde_json::Value>,
 }
 
 /// `bus_volumes`: an object whose known buses each hold a number in 0..=1;

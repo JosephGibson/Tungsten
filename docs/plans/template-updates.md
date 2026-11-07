@@ -1,6 +1,6 @@
-# Template updates (template-updates) — draft
+# Template updates (template-updates) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Land redo 7.11, phase 7's Step 11: the template's boot splash and loading, with a logo drawn through the redo's §6 (this plan's brief, then an asset session at max, `D-237`); the template's shell on the engine's screens, settings, input and state stack; and the register's 32 template rows (§2.1), each with the engine part its fix names, within `D-181`'s budget (`D-199`'s 2,900 and 3,400 lines). One-call saves landed at 7.9 (A1).
 - **non-goals:**
   - 01's own sites of these rows, which 7.13 takes (01's run resources, `place_player`, its test helpers' taps and audio scans, its music beyond the pause loop): 01 changes here only where its shell copy (`D-197`) or a name the shell drops forces it, each site listed in its step.
@@ -531,5 +531,6 @@ No third round: every round-2 finding is fixed here, none left open.
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-07 | passed | `cargo test -p tungsten-core --locked settings` → 20 passed, `a_game_section_round_trips`, `an_invalid_game_section_warns_and_defaults`, `bloom_and_the_mute_round_trip`, `an_older_file_without_them_loads` ok; `cargo test -p tungsten --locked -- settings display app::` → 92 passed, `the_mute_holds_while_unfocused`, `a_focus_change_reapplies_the_master_volume`, `the_display_keys_write_and_save_settings`, `requested_display_merges_settings_over_the_live_display`, `bloom_off_drops_bloom_from_the_drawn_stack`, `the_tail_draws_after_the_game_stack_and_before_the_transition`, `an_empty_tail_with_bloom_on_draws_the_game_stack_itself` ok; `cargo test -p tungsten --locked testing::` → 82 passed, `frame_draw_holds_the_composed_post_stack` ok; `just api` → added `post::PostTail`, `Settings::{bloom, set_bloom, mute_unfocused, set_mute_unfocused, game, set_game}`, `tungsten::requested_display`, `FrameDraw::post`, nothing removed; `just api-check`, `cargo fmt --all -- --check`, `just lint`, `just repo-check`, `just ctx`, `git diff --check` → exit 0; `cargo test -p example-02-bench --locked guards` → 13 passed; 01's `guards::the_full_pit_holds_its_counts` ok, the pin unchanged. Run beyond the list: the template's tests (173) and 01's (444) passed on the engine change, the umbrella's whole suite 1,055. Three choices within §2.2: `compose_post_stack` also draws the game's stack itself with Bloom off over a stack holding no Bloom; the focus edge sends the master volume only while the mute is on, so a focus change with it off queues nothing; the game section keeps any JSON value, which `game::<T>` reads or warns over | — |
 
 ## Follow-ups

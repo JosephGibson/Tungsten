@@ -35,6 +35,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use tungsten_core::assets::{FilterMode, ResolvedManifest, TextureHandle};
+use tungsten_core::post::PostPass;
 use tungsten_core::script::{Ending, Report, Script};
 use tungsten_core::ui::PaintList;
 use tungsten_core::{
@@ -276,6 +277,9 @@ impl Harness {
                 self.exit_requested = true;
                 return completed;
             }
+            if let Some(draw) = draw.as_mut() {
+                draw.post = self.app.drawn_post_stack();
+            }
             self.draw = draw;
             self.audio = audio;
             self.sprite_counts = sprite_counts;
@@ -472,6 +476,10 @@ pub struct FrameDraw {
     /// (M56): the text runs of the roots `UiTree::prewarm` asked for, on the
     /// frame they were first laid out; `None` on every other frame.
     pub ui_prewarm: Option<PaintList>,
+    /// The post stack the frame drew (S-50): the game's `PostStack`, then
+    /// `PostTail`, then a screen transition's pass, every `PostPass::Bloom`
+    /// left out while `Settings::bloom` is off.
+    pub post: Vec<PostPass>,
 }
 
 impl FrameDraw {
@@ -498,6 +506,7 @@ impl FrameDraw {
             ui: extract.ui.clone(),
             world_labels: extract.world_labels.clone(),
             ui_prewarm: extract.ui_prewarm.clone(),
+            post: Vec::new(),
         }
     }
 }
