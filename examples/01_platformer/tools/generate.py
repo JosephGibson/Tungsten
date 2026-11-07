@@ -19,12 +19,13 @@ from placement import floating
 from sfx import HAND_AUTHORED_SOUNDS, LOOPS, MUSIC, SOUNDS, build_sounds, seam_problem
 
 ROOT=TOOLS.parent
-# The template whose shell 01 copies: its fonts and damage-flash material
-# come with it, copied byte for byte so `--check` catches drift, and its
-# theme in 01's own colours.
+# The template whose shell 01 copies: its fonts come with it, copied byte
+# for byte so `--check` catches drift, and its theme in 01's own colours. The
+# kit's hit flash is the engine's material (redo 7.11), so neither game ships
+# one.
 TEMPLATE=ROOT.parent.parent/'templates'/'basic'
 SHELL_ASSETS=('fonts/Inter/Inter-Regular.ttf','fonts/Inter/LICENSE.txt',
-    'fonts/SourceSerif4/SourceSerif4-Regular.ttf','fonts/SourceSerif4/LICENSE.txt','shaders/damage_flash.wgsl')
+    'fonts/SourceSerif4/SourceSerif4-Regular.ttf','fonts/SourceSerif4/LICENSE.txt')
 # 01's theme (01 (h); its background and surface darker in 01 (i)): the
 # template's text, every colour of the template's mapped to 01's, darker
 # backgrounds and a vivid purple, so new template keys still arrive and
@@ -885,16 +886,14 @@ def strings(*data):
 
 
 def content_family(made,sprites,lit):
-    """The shell's fonts, theme, screen files and damage-flash material,
-    copied from the template, 01's serif face, the content's prefabs and data, the glow
-    shader and materials, the ambient emitter's prefab and the particle
-    configs: sources copied or written from this file."""
+    """The shell's fonts, theme and screen files, copied from the template,
+    01's serif face, the content's prefabs and data, the glow shader and
+    materials, the ambient emitter's prefab and the particle configs:
+    sources copied or written from this file."""
     template=json.loads((TEMPLATE/'assets/manifest.json').read_text())
     shell={section:json.loads(json.dumps(template[section])) for section in SHELL_SECTIONS}
     shell['fonts']['serif_bold']=dict(path='fonts/SourceSerif4/SourceSerif4-Bold.ttf')
     shell['font_families']['serif']['faces'].append('serif_bold')
-    shell['shaders']=dict(damage_flash=template['shaders']['damage_flash'])
-    shell['materials']=dict(damage_flash=template['materials']['damage_flash'])
     made.entries.update(entries_of(shell))
     for path in SHELL_ASSETS:
         made.files['assets/'+path]=(TEMPLATE/'assets'/path).read_bytes()

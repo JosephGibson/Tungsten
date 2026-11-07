@@ -76,6 +76,38 @@ pub(crate) fn allocate_engine_glow(materials: &mut MaterialRegistry) -> Material
     )
 }
 
+/// The kit's hit-flash material (redo 7.11, S-149), `HIT_FLASH_MATERIAL`
+/// in `tungsten::kit`, and its shader, compiled in: a load allocates it
+/// after the stock glow unless the manifest declares it.
+const HIT_FLASH: &str = "damage_flash";
+
+/// The engine's `damage_flash` defaults: the overlay colour `vec4[0]` a
+/// red-orange, `[1.0, 0.2, 0.1, 1.0]`, and no amount, which the flash
+/// raises.
+#[must_use]
+pub(crate) fn hit_flash_defaults() -> MaterialUniformDefaults {
+    MaterialUniformDefaults {
+        vec4: [[1.0, 0.2, 0.1, 1.0], [0.0; 4], [0.0; 4], [0.0; 4]],
+        ..MaterialUniformDefaults::default()
+    }
+}
+
+/// Allocates the engine's `damage_flash` in `materials`, after the stock
+/// glow, when `manifest` declares no material of that name; its ID then.
+pub(crate) fn allocate_hit_flash(
+    manifest: &ResolvedManifest,
+    materials: &mut MaterialRegistry,
+) -> Option<MaterialAssetId> {
+    (!manifest.materials.contains_key(HIT_FLASH)).then(|| {
+        materials.allocate(
+            HIT_FLASH,
+            PathBuf::new(),
+            HIT_FLASH.to_string(),
+            hit_flash_defaults(),
+        )
+    })
+}
+
 /// A manifest that names a reserved sprite or material.
 fn check_reserved(manifest: &ResolvedManifest) -> anyhow::Result<()> {
     if manifest.sprites.contains_key(ENGINE_WHITE) {
@@ -504,6 +536,12 @@ fn load_materials_into(
     if let Err(e) = renderer.upload_material(glow, ENGINE_GLOW, GLOW_SHADER, engine_glow_defaults())
     {
         log::error!("load_materials '{ENGINE_GLOW}': {e}");
+    }
+    // The kit's hit flash, after it, unless the manifest has its own.
+    if let Some(flash) = allocate_hit_flash(manifest, &mut registry)
+        && let Err(e) = renderer.upload_material(flash, HIT_FLASH, HIT_FLASH, hit_flash_defaults())
+    {
+        log::error!("load_materials '{HIT_FLASH}': {e}");
     }
 
     world.insert_resource(registry);

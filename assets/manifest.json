@@ -87,7 +87,7 @@
       "path": "shaders/sprite.wgsl"
     },
     "damage_flash": {
-      "path": "shaders/damage_flash.wgsl"
+      "path": "shaders/stock/damage_flash.wgsl"
     },
     "tonemap": {
       "path": "shaders/stock/tonemap.wgsl"

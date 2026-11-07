@@ -142,7 +142,7 @@
 //! - **Damage.** [`Health`], [`damage`], [`heal`], [`Hit`], [`Damaged`],
 //!   [`Healed`], [`HitFlash`] and [`HealthPlugin`]: health with an
 //!   invulnerability window, a death policy and a hit flash on the
-//!   `damage_flash` material ([`HIT_FLASH_MATERIAL`]). [`DamageRequest`]
+//!   engine's `damage_flash` material ([`HIT_FLASH_MATERIAL`]). [`DamageRequest`]
 //!   and [`HealRequest`]: the damage pipeline that hitboxes, contact damage,
 //!   projectiles and a game's Rust share, whose requests carry a source,
 //!   damage types, a position, a knockback and a crit flag and resolve at

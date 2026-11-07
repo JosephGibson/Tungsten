@@ -1955,6 +1955,75 @@ fn a_manifest_engine_glow_material_fails_the_load() {
     }
 }
 
+#[test]
+fn the_hit_flash_material_loads_without_a_manifest_entry() {
+    let manifest = ResolvedManifest::load(plan_game("")).unwrap();
+    assert!(!manifest.materials.contains_key("damage_flash"));
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest.clone(), &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    let materials = world.resource::<MaterialRegistry>();
+    let glow = materials.get(ENGINE_GLOW).expect("engine_glow");
+    let flash = materials.get("damage_flash").expect("the engine's flash");
+    assert_eq!(flash.0, glow.0 + 1, "after the stock glow");
+    assert_eq!(materials.shader_name_for_id(flash), Some("damage_flash"));
+    assert_eq!(
+        materials.defaults_for_id(flash).unwrap().vec4[0],
+        [1.0, 0.2, 0.1, 1.0]
+    );
+    // Allocated again, it keeps its ID.
+    let mut again = world.resource::<MaterialRegistry>().clone();
+    assert_eq!(allocate_hit_flash(&manifest, &mut again), Some(flash));
+    // The headless harness finds it too.
+    let mut harness =
+        crate::testing::Harness::new(crate::App::new(tungsten_core::Config::default()).unwrap());
+    harness.load_manifest(plan_game("")).unwrap();
+    let materials = harness.world().resource::<MaterialRegistry>();
+    assert!(materials.get("damage_flash").is_some(), "a headless load");
+}
+
+#[test]
+fn a_manifest_hit_flash_material_is_kept() {
+    let dir = tempdir();
+    write(
+        &dir.join("tint.wgsl"),
+        "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+    );
+    let manifest = dir.join("manifest.json");
+    write(
+        &manifest,
+        r#"{ "shaders": { "tint": { "path": "tint.wgsl" } },
+            "materials": { "damage_flash": { "shader": "tint",
+                "uniform_defaults": { "vec4": [[0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]] } } } }"#,
+    );
+    let manifest = ResolvedManifest::load(&manifest).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest.clone(), &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    let materials = world.resource::<MaterialRegistry>();
+    let flash = materials.get("damage_flash").expect("the manifest's");
+    assert_eq!(flash.0, 0, "the manifest's ID, before the glow");
+    assert_eq!(materials.shader_name_for_id(flash), Some("tint"));
+    assert_eq!(
+        materials.defaults_for_id(flash).unwrap().vec4[0],
+        [0.0, 0.0, 1.0, 1.0],
+        "its own colour"
+    );
+    let mut harness =
+        crate::testing::Harness::new(crate::App::new(tungsten_core::Config::default()).unwrap());
+    harness.load_manifest(dir.join("manifest.json")).unwrap();
+    let materials = harness.world().resource::<MaterialRegistry>();
+    let flash = materials.get("damage_flash").unwrap();
+    assert_eq!(
+        materials.shader_name_for_id(flash),
+        Some("tint"),
+        "headless too"
+    );
+}
+
 // ---- redo 7.20: screen files ----
 
 /// Writes `screens` (ID, file text) under `dir` and lists them in

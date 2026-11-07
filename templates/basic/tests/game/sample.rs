@@ -136,8 +136,10 @@ fn data_files_load() {
     assert!(manifest.data["tags"]["game"].path.is_file());
     assert!(manifest.data["cue_rules"]["labels"].path.is_file());
     assert!(manifest.ui_themes[theme::THEME_ID].path.is_file());
-    assert!(manifest.shaders["damage_flash"].path.is_file());
-    assert_eq!(manifest.materials["damage_flash"].shader, "damage_flash");
+    assert!(
+        manifest.materials.is_empty() && manifest.shaders.is_empty(),
+        "the hit flash's material is the engine's"
+    );
 }
 
 #[test]
@@ -242,7 +244,7 @@ fn damage_lowers_the_health_starts_the_flash_and_sends_damaged() {
     assert_eq!(current(&harness, entity), 4.0);
     assert!(
         harness.world().get::<HitFlash>(entity).unwrap().is_active(),
-        "the manifest's damage_flash material is in place"
+        "the engine's damage_flash material is in place"
     );
     assert_eq!(
         damage(harness.world_mut(), entity, 1.0),

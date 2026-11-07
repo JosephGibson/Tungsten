@@ -39,11 +39,12 @@ pub const HIT_FLASH_TICK: &str = "hit_flash_tick";
 const HEALTH: &str = "health";
 const HIT_FLASH: &str = "hit_flash";
 
-/// The manifest material a [`HitFlash`] draws through. Its shader mixes the
-/// sprite toward `vec4[0]`'s colour, weighted by its alpha, by the amount
-/// in `f32s[0]`, which the flash lowers from 1 to 0. This repository's root
-/// manifest holds it: a game copies `assets/shaders/damage_flash.wgsl` and
-/// the `damage_flash` shader and material entries of `assets/manifest.json`.
+/// The material a [`HitFlash`] draws through. Its shader mixes the sprite
+/// toward `vec4[0]`'s colour, weighted by its alpha, by the amount in
+/// `f32s[0]`, which the flash lowers from 1 to 0. The engine compiles the
+/// shader in and every load allocates the material with a red-orange
+/// colour (redo 7.11), so a game ships neither; a manifest that declares a
+/// `damage_flash` material keeps its own.
 pub const HIT_FLASH_MATERIAL: &str = "damage_flash";
 
 /// An entity's health, with an invulnerability window after each hit.

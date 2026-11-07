@@ -129,8 +129,9 @@ impl Harness {
     /// UI themes, sounds, tilemaps and particle configs, in the order a
     /// window's startup loads them; each `materials` entry's metadata (its
     /// ID, source manifest, shader ID and uniform defaults) in the
-    /// `MaterialRegistry`, with no upload, so a kit `HitFlash` finds
-    /// `damage_flash` headless; then the prefabs and data entries in two
+    /// `MaterialRegistry`, with no upload, then the stock glow's and, unless
+    /// the manifest declares it, the engine's `damage_flash`, so a kit
+    /// `HitFlash` finds it headless; then the prefabs and data entries in two
     /// phases, every ID checked ([`load_prefabs`](asset_loader::load_prefabs)).
     /// What needs the renderer is skipped: sprites, fonts, shaders and
     /// particle meshes; a prefab's sprite name is interned at its spawn. A
@@ -159,8 +160,10 @@ impl Harness {
                 material.uniform_defaults,
             );
         }
-        // The reserved stock glow after the manifest's, as a load gives it.
+        // The reserved stock glow after the manifest's, then the hit flash,
+        // as a load gives them.
         asset_loader::allocate_engine_glow(&mut materials);
+        asset_loader::allocate_hit_flash(&manifest, &mut materials);
         world.insert_resource(materials);
         asset_loader::load_sounds(&manifest, world)?;
         asset_loader::load_tilemaps(&manifest, world)?;
