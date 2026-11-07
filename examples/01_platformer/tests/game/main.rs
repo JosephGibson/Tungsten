@@ -61,11 +61,10 @@ use example_01_platformer::shell::{self as game_shell, Difficulty, GameInfo, Run
 use glam::Vec2;
 use tungsten::core::assets::UvRect;
 use tungsten::core::{
-    AssetRegistry, Bundle, CameraController, CameraState, Collider, CollisionEvent, Config, Entity,
+    AssetRegistry, Bundle, CameraRig, CameraState, Collider, CollisionEvent, Config, Entity,
     EventQueue, FilterMode, FixedRig, ParticleConfigRegistry, ParticleEmitter, Position,
     PrevPosition, RigKind, RigidBodyBundle, TextureHandle, Time, UserFolder, Velocity,
 };
-use tungsten::kit::CameraTarget;
 use tungsten::testing::UiHarness;
 use tungsten::{App, SceneEntity, StateId};
 
@@ -331,15 +330,16 @@ pub fn mock_sprite(assets: &mut AssetRegistry, name: &str, handle: u32, lit: boo
     );
 }
 
-/// Holds the camera with its view's corner at `corner`: the base rig a
-/// fixed corner there, keeping its bounds, view height and zoom, and the
-/// player no longer its target, so a cursor set on a world point stays on
-/// it. The view this frame's systems read moves at once.
+/// Holds the camera with its view's corner at `corner`: the player's rig a
+/// fixed corner there, keeping its bounds, view height and zoom, so a
+/// cursor set on a world point stays on it. The view this frame's systems
+/// read moves at once.
 pub fn pin_camera(harness: &mut UiHarness, corner: Vec2) {
     let player = player_entity(harness);
     let world = harness.world_mut();
-    world.remove_component::<CameraTarget>(player);
-    world.resource_mut::<CameraController>().rig.kind = RigKind::Fixed(FixedRig::Corner(corner));
+    if let Some(rig) = world.get_mut::<CameraRig>(player) {
+        rig.kind = RigKind::Fixed(FixedRig::Corner(corner));
+    }
     world.resource_mut::<CameraState>().position = corner;
 }
 

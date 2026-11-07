@@ -61,8 +61,8 @@ use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, Slo
 use glam::Vec2;
 use tungsten::core::save::Value;
 use tungsten::core::{
-    Entity, Position, SaveData, SaveSlots, TilemapRegistry, Time, Transform, UserFolder, Velocity,
-    World,
+    CameraRig, Entity, Position, SaveData, SaveSlots, TilemapRegistry, Time, Transform, UserFolder,
+    Velocity, World,
 };
 use tungsten::kit::{
     Abilities, ContactDamage, DamageRequest, Damaged, Effects, Health, Hitbox, Modifier,
@@ -407,6 +407,7 @@ fn lists(kind: &str) -> Lists {
                     name::<GlowParts>(),
                     name::<CharacterAnimator>(),
                     name::<Facing>(),
+                    name::<CameraRig>(),
                 ],
             ]
             .concat(),

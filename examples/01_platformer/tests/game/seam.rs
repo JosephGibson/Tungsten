@@ -8,13 +8,13 @@ use example_01_platformer::features::player::MAX_HEALTH;
 use example_01_platformer::game::{BINDABLE_ACTIONS, GAMEPLAY};
 use example_01_platformer::save;
 use example_01_platformer::shell::Difficulty;
-use tungsten::core::{CameraController, TilemapInstance};
-use tungsten::kit::{CameraTarget, Health, PlatformerController};
+use tungsten::core::{CameraController, CameraRig, TilemapInstance};
+use tungsten::kit::{Health, PlatformerController};
 
 use super::{harness, player_entity, press, start, top};
 
 #[test]
-fn a_new_game_at_normal_spawns_the_player_on_the_map_with_a_camera_target() {
+fn a_new_game_at_normal_spawns_the_player_on_the_map_with_a_camera_rig() {
     let mut harness = harness();
     press(&mut harness, "New Game");
     press(&mut harness, "Normal");
@@ -30,9 +30,11 @@ fn a_new_game_at_normal_spawns_the_player_on_the_map_with_a_camera_target() {
     let health = world.get::<Health>(player).expect("the player has health");
     assert_eq!((health.current(), health.max()), (MAX_HEALTH, MAX_HEALTH));
     assert!(world.get::<PlatformerController>(player).is_some());
-    assert!(world.get::<CameraTarget>(player).is_some());
+    let rig = world.get::<CameraRig>(player).expect("the player's rig");
+    assert!(rig.is_live());
+    assert_eq!(rig.target(), None, "a follow of its own entity");
     assert_eq!(
-        world.resource::<CameraController>().rig.target(),
+        world.resource::<CameraController>().winner(),
         Some(player),
         "the camera follows the player"
     );

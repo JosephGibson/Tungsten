@@ -2569,6 +2569,9 @@
     "stone_small": {
       "path": "prefabs/stone_small.json"
     },
+    "title_camera": {
+      "path": "prefabs/title_camera.json"
+    },
     "tome_arcane": {
       "path": "prefabs/tome_arcane.json"
     },

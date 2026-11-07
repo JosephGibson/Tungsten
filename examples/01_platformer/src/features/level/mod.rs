@@ -20,9 +20,9 @@ use std::collections::HashSet;
 use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
 use tungsten::core::{
-    AmbientLight, Bundle, CameraBounds, CameraController, Collider, DataRegistry, Entity,
-    FollowRig, Light, ParticleBudget, PhysicsConfig, Position, RigKind, RigidBodyBundle, Schedule,
-    Stage, TilemapInstance, TilemapRegistry, Transform, World, system,
+    AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, Light, ParticleBudget,
+    PhysicsConfig, Position, RigidBodyBundle, Schedule, Stage, TilemapInstance, TilemapRegistry,
+    Transform, World, system,
 };
 use tungsten::kit::{PathFollower, Phase, ensure_phases};
 use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
@@ -238,10 +238,6 @@ impl Plugin for LevelPlugin {
         );
         let zoom = system("level_zoom", systems::zoom).before(CAMERA_UPDATE);
         schedule.add(Stage::PostUpdate, zoom);
-        let title_view = system("title_view", title::view)
-            .after("level_zoom")
-            .before(CAMERA_UPDATE);
-        schedule.add(Stage::PostUpdate, title_view);
         schedule.add(Stage::Update, system("title_sky", title::sky));
         schedule.add(
             Stage::PostUpdate,
@@ -275,9 +271,9 @@ impl Plugin for CursorPlugin {
 /// ([`SaveId::authored`]), the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the geysers' cycles
 /// ([`geyser::start`]), the elevator at rest
 /// ([`elevator::start`]), the moon's light, the
-/// level's clock, the midnight ambient and the post stack, and sets the
-/// camera's base rig to a snapping follow, of the target `camera_target`
-/// names, bounded by the map. Returns the objects in layer and file order.
+/// level's clock, the midnight ambient and the post stack. The player's
+/// prefab carries the run's camera, a rig bounded by the map. Returns the
+/// objects in layer and file order.
 ///
 /// # Panics
 ///
@@ -336,14 +332,6 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
     }
     world.insert_resource(AmbientLight(AMBIENT));
     world.insert_resource(post_stack());
-    let size = Vec2::new(MAP_COLS as f32, MAP_ROWS as f32) * TILE;
-    let bounds = CameraBounds {
-        min: Vec2::ZERO,
-        max: size,
-    };
-    let camera = &mut world.resource_mut::<CameraController>().rig;
-    camera.kind = RigKind::Follow(FollowRig::default());
-    camera.bounds = Some(bounds);
     objects
 }
 
