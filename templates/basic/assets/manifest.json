@@ -172,6 +172,18 @@
     "enemy_patrol": {
       "path": "prefabs/enemy_patrol.json"
     },
+    "enemy_spawner_0": {
+      "path": "prefabs/enemy_spawner_0.json"
+    },
+    "enemy_spawner_1": {
+      "path": "prefabs/enemy_spawner_1.json"
+    },
+    "enemy_spawner_2": {
+      "path": "prefabs/enemy_spawner_2.json"
+    },
+    "enemy_spawner_3": {
+      "path": "prefabs/enemy_spawner_3.json"
+    },
     "gem": {
       "path": "prefabs/gem.json"
     },

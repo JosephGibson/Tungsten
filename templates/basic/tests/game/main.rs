@@ -17,11 +17,8 @@ mod visual;
 
 use std::path::{Path, PathBuf};
 
-use tungsten::core::{
-    AudioCommand, AudioHandle, Config, Entity, Position, SoundRegistry, Transform, UserFolder,
-    Velocity, Voice, With,
-};
-use tungsten::kit::Health;
+use tungsten::core::{Config, Entity, Position, Transform, UserFolder, Velocity, With};
+use tungsten::kit::{Health, Source};
 use tungsten::testing::UiHarness;
 use tungsten::{App, StateId};
 use tungsten_template_basic::game;
@@ -99,13 +96,9 @@ pub fn settle(harness: &mut UiHarness) {
     }
 }
 
-/// Presses `action` for a frame, releases it the next, then waits out the
-/// transition it started.
+/// Taps `action`, then waits out the transition it started.
 pub fn tap(harness: &mut UiHarness, action: &str) {
-    harness.harness_mut().press_action(action);
-    harness.step(1);
-    harness.harness_mut().release_action(action);
-    harness.step(1);
+    harness.tap_action(action);
     settle(harness);
 }
 
@@ -194,66 +187,13 @@ pub fn health(harness: &UiHarness, entity: Entity) -> (f32, f32) {
     (health.current(), health.max())
 }
 
-/// The audio commands of `frames` frames, stepped one at a time.
-pub fn heard(harness: &mut UiHarness, frames: u32) -> Vec<AudioCommand> {
-    let mut commands = Vec::new();
-    for _ in 0..frames {
-        harness.step(1);
-        commands.extend(harness.harness().audio().iter().cloned());
-    }
-    commands
-}
-
-/// Taps `action` and steps until no screen change runs, with every frame's
-/// audio.
-pub fn act(harness: &mut UiHarness, action: &str) -> Vec<AudioCommand> {
-    harness.harness_mut().press_action(action);
-    let mut commands = heard(harness, 1);
-    harness.harness_mut().release_action(action);
-    commands.extend(heard(harness, 1));
-    while tungsten_template_basic::shell::transitioning(harness.world()) {
-        commands.extend(heard(harness, 1));
-    }
-    commands.extend(heard(harness, 2));
-    commands
-}
-
-/// The manifest's sound `name`.
-pub fn sound(harness: &UiHarness, name: &str) -> AudioHandle {
-    let sounds = harness.world().resource::<SoundRegistry>();
-    sounds.get_by_id(name).expect("a manifest sound")
-}
-
-/// The voices started for `name` among `commands`, with their loop flag
-/// and fade.
-pub fn plays(
-    harness: &UiHarness,
-    commands: &[AudioCommand],
-    name: &str,
-) -> Vec<(Voice, bool, f32)> {
-    let handle = sound(harness, name);
-    commands
-        .iter()
-        .filter_map(|command| match command {
-            AudioCommand::Play {
-                handle: played,
-                voice,
-                looping,
-                fade,
-                ..
-            } if *played == handle => Some((*voice, *looping, *fade)),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The stops among `commands`, with their fades.
-pub fn stops(commands: &[AudioCommand]) -> Vec<(Voice, f32)> {
-    commands
-        .iter()
-        .filter_map(|command| match command {
-            AudioCommand::StopVoice { voice, fade, .. } => Some((*voice, *fade)),
-            _ => None,
-        })
-        .collect()
+/// The standing enemy the spawner at `slot` of the sample's `ENEMIES`
+/// keeps: the one whose kit `Source` is that spawner.
+pub fn enemy(harness: &UiHarness, slot: usize) -> Option<Entity> {
+    let world = harness.world();
+    let spawner = world.get_resource::<SampleRun>()?.spawners[slot].1;
+    world
+        .query::<(Entity, &Source, &Health)>()
+        .find(|(_, source, health)| source.entity() == spawner && !health.is_dead())
+        .map(|(entity, ..)| entity)
 }

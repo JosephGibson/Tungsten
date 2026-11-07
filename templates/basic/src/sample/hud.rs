@@ -57,7 +57,7 @@ pub fn build(tree: &mut UiTree) -> Hud {
     }
 }
 
-/// Writes the run's health and gems into the HUD: part of `sample_frame`.
+/// `sample_frame`: writes the run's health and gems into the HUD.
 pub fn update(world: &mut World) {
     let (Some(hud), Some(run)) = (
         world.get_resource::<Hud>().copied(),

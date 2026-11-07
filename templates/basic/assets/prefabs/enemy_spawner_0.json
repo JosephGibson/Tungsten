@@ -1,0 +1,5 @@
+{
+  "components": {
+    "spawner": { "prefab": "hazard", "interval": 4, "alive": 1, "first": 0 }
+  }
+}

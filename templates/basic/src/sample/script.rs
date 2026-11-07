@@ -1,49 +1,23 @@
-//! The sample's script hooks (redo 7.2): `place_player` and `reload_run`
-//! for a script to call, `player` for it to read, each with the line
-//! `tungsten describe` prints; the shell registers `start_run`. A game adds
-//! its own the same way, from its plugin.
+//! The sample's script hooks (redo 7.2): `reload_run` for a script to call
+//! and `player` for it to read, each with the line `tungsten describe`
+//! prints. The shell registers `start_run`, and the kit `place` and
+//! `tagged`, which a script calls with `{"tag": "team.player"}` to set or
+//! read the player. A game adds its own the same way, from its plugin.
 
 use serde::Deserialize;
-use tungsten::core::{Position, PrevPosition, Velocity, World};
+use tungsten::core::{Position, World};
 use tungsten::kit::Health;
 
 use super::SampleRun;
 use crate::shell;
-
-/// `place_player`'s arguments.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Place {
-    at: [f32; 2],
-}
 
 /// `reload_run`'s arguments: none.
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct NoArgs {}
 
-/// Adds the sample's actions and probe to the World's script hooks.
+/// Adds the sample's action and probe to the World's script hooks.
 pub fn register(world: &mut World) {
-    world.add_script_action(
-        "place_player",
-        "Sets the player's body at rest at `{\"at\": [x, y]}`; `until` holds it.",
-        |world, args| {
-            let at = Place::deserialize(args)
-                .map_err(|e| e.to_string())?
-                .at
-                .into();
-            let player = world.get_resource::<SampleRun>().ok_or("no run")?.player;
-            let body = world.get_mut::<Position>(player).ok_or("no player")?;
-            body.0 = at;
-            if let Some(prev) = world.get_mut::<PrevPosition>(player) {
-                prev.0 = at;
-            }
-            if let Some(velocity) = world.get_mut::<Velocity>(player) {
-                velocity.0 = Default::default();
-            }
-            Ok(())
-        },
-    );
     world.add_script_action_typed(
         "reload_run",
         "Saves the run in memory and continues it as Continue does, with no user folder.",
