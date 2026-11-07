@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de, ser};
 pub mod action_map;
 pub mod key_serde;
 
-pub use action_map::{ActionMap, ActionMapError, Binding};
+pub use action_map::{ActionMap, ActionMapError, Binding, BindingDevice};
 
 /// Winit-like key codes without core depending on winit.
 ///

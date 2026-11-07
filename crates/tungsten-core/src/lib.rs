@@ -69,9 +69,9 @@ pub use ecs::{
     PendingEntity, ShakeEvent, SquashEvent, With, Without, World, WorldCounters,
 };
 pub use input::{
-    ActionMap, ActionMapError, AxisDirection, Binding, GamepadAxis, GamepadButton, GamepadId,
-    InputState, KeyCode, Modifiers, MouseButton, RawEvent, RawInput, RoutedInput, STICK_PRESS,
-    STICK_RELEASE, ScrollDirection, StickResponse, WheelDelta,
+    ActionMap, ActionMapError, AxisDirection, Binding, BindingDevice, GamepadAxis, GamepadButton,
+    GamepadId, InputState, KeyCode, Modifiers, MouseButton, RawEvent, RawInput, RoutedInput,
+    STICK_PRESS, STICK_RELEASE, ScrollDirection, StickResponse, WheelDelta,
 };
 pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP, light_at, light_level};

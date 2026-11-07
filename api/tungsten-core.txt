@@ -7243,6 +7243,8 @@ pub tungsten_core::input::action_map::Binding::Mouse::button: tungsten_core::inp
 pub tungsten_core::input::action_map::Binding::Scroll
 pub tungsten_core::input::action_map::Binding::Scroll::direction: tungsten_core::input::ScrollDirection
 impl tungsten_core::input::action_map::Binding
+pub fn tungsten_core::input::action_map::Binding::device(self) -> tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::Binding::is_gamepad(self) -> bool
 pub fn tungsten_core::input::action_map::Binding::label(self) -> alloc::borrow::Cow<'static, str>
 pub fn tungsten_core::input::action_map::Binding::short_label(self) -> alloc::borrow::Cow<'static, str>
 impl core::clone::Clone for tungsten_core::input::action_map::Binding
@@ -7267,8 +7269,30 @@ impl core::marker::Unpin for tungsten_core::input::action_map::Binding
 impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::Binding
+pub enum tungsten_core::input::action_map::BindingDevice
+pub tungsten_core::input::action_map::BindingDevice::Gamepad
+pub tungsten_core::input::action_map::BindingDevice::Keyboard
+impl core::clone::Clone for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::clone(&self) -> tungsten_core::input::action_map::BindingDevice
+impl core::cmp::Eq for tungsten_core::input::action_map::BindingDevice
+impl core::cmp::PartialEq for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::eq(&self, &tungsten_core::input::action_map::BindingDevice) -> bool
+impl core::fmt::Debug for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::action_map::BindingDevice
+impl core::marker::StructuralPartialEq for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Freeze for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Send for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Sync for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Unpin for tungsten_core::input::action_map::BindingDevice
+impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::BindingDevice
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::BindingDevice
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::BindingDevice
 pub struct tungsten_core::input::action_map::ActionMap
 impl tungsten_core::input::action_map::ActionMap
+pub fn tungsten_core::input::action_map::ActionMap::binding_at(&self, &str, tungsten_core::input::action_map::BindingDevice, usize) -> core::option::Option<tungsten_core::input::action_map::Binding>
 pub fn tungsten_core::input::action_map::ActionMap::bindings(&self, &str) -> &[tungsten_core::input::action_map::Binding]
 pub fn tungsten_core::input::action_map::ActionMap::default_map() -> Self
 pub fn tungsten_core::input::action_map::ActionMap::from_json(&str, &std::path::Path) -> core::result::Result<Self, tungsten_core::input::action_map::ActionMapError>
@@ -7276,6 +7300,8 @@ pub fn tungsten_core::input::action_map::ActionMap::is_pressed(&self, &tungsten_
 pub fn tungsten_core::input::action_map::ActionMap::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &[tungsten_core::input::action_map::Binding])>
 pub fn tungsten_core::input::action_map::ActionMap::just_pressed(&self, &tungsten_core::input::InputState, &str) -> bool
 pub fn tungsten_core::input::action_map::ActionMap::just_released(&self, &tungsten_core::input::InputState, &str) -> bool
+pub fn tungsten_core::input::action_map::ActionMap::label(&self, &str) -> core::option::Option<&str>
+pub fn tungsten_core::input::action_map::ActionMap::labelled(&self) -> &[(alloc::string::String, alloc::string::String)]
 pub fn tungsten_core::input::action_map::ActionMap::load(&std::path::Path) -> core::result::Result<Self, tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten_core::input::action_map::ActionMap::merged_with_defaults(Self) -> Self
 pub fn tungsten_core::input::action_map::ActionMap::new() -> Self
@@ -7283,7 +7309,11 @@ pub fn tungsten_core::input::action_map::ActionMap::persist(&mut self) -> core::
 pub fn tungsten_core::input::action_map::ActionMap::persist_to(&mut self, &std::path::Path) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>)
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings_and_persist(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
+pub fn tungsten_core::input::action_map::ActionMap::reset(&mut self, &str)
+pub fn tungsten_core::input::action_map::ActionMap::reset_all(&mut self)
+pub fn tungsten_core::input::action_map::ActionMap::set_binding_at(&mut self, &str, tungsten_core::input::action_map::BindingDevice, usize, tungsten_core::input::action_map::Binding)
 pub fn tungsten_core::input::action_map::ActionMap::set_source_path(&mut self, impl core::convert::Into<std::path::PathBuf>)
+pub fn tungsten_core::input::action_map::ActionMap::shipped(&self, &str) -> &[tungsten_core::input::action_map::Binding]
 pub fn tungsten_core::input::action_map::ActionMap::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::input::action_map::ActionMap::user_layer_path(&self) -> core::option::Option<&std::path::Path>
 pub fn tungsten_core::input::action_map::ActionMap::value(&self, &tungsten_core::input::InputState, &str) -> f32
@@ -7390,6 +7420,8 @@ pub tungsten_core::input::Binding::Mouse::button: tungsten_core::input::MouseBut
 pub tungsten_core::input::Binding::Scroll
 pub tungsten_core::input::Binding::Scroll::direction: tungsten_core::input::ScrollDirection
 impl tungsten_core::input::action_map::Binding
+pub fn tungsten_core::input::action_map::Binding::device(self) -> tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::Binding::is_gamepad(self) -> bool
 pub fn tungsten_core::input::action_map::Binding::label(self) -> alloc::borrow::Cow<'static, str>
 pub fn tungsten_core::input::action_map::Binding::short_label(self) -> alloc::borrow::Cow<'static, str>
 impl core::clone::Clone for tungsten_core::input::action_map::Binding
@@ -7414,6 +7446,27 @@ impl core::marker::Unpin for tungsten_core::input::action_map::Binding
 impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::Binding
+pub enum tungsten_core::input::BindingDevice
+pub tungsten_core::input::BindingDevice::Gamepad
+pub tungsten_core::input::BindingDevice::Keyboard
+impl core::clone::Clone for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::clone(&self) -> tungsten_core::input::action_map::BindingDevice
+impl core::cmp::Eq for tungsten_core::input::action_map::BindingDevice
+impl core::cmp::PartialEq for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::eq(&self, &tungsten_core::input::action_map::BindingDevice) -> bool
+impl core::fmt::Debug for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::action_map::BindingDevice
+impl core::marker::StructuralPartialEq for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Freeze for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Send for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Sync for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Unpin for tungsten_core::input::action_map::BindingDevice
+impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::BindingDevice
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::BindingDevice
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::BindingDevice
 #[non_exhaustive] pub enum tungsten_core::input::GamepadAxis
 pub tungsten_core::input::GamepadAxis::LeftStickX
 pub tungsten_core::input::GamepadAxis::LeftStickY
@@ -7699,6 +7752,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::WheelDelt
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::WheelDelta
 pub struct tungsten_core::input::ActionMap
 impl tungsten_core::input::action_map::ActionMap
+pub fn tungsten_core::input::action_map::ActionMap::binding_at(&self, &str, tungsten_core::input::action_map::BindingDevice, usize) -> core::option::Option<tungsten_core::input::action_map::Binding>
 pub fn tungsten_core::input::action_map::ActionMap::bindings(&self, &str) -> &[tungsten_core::input::action_map::Binding]
 pub fn tungsten_core::input::action_map::ActionMap::default_map() -> Self
 pub fn tungsten_core::input::action_map::ActionMap::from_json(&str, &std::path::Path) -> core::result::Result<Self, tungsten_core::input::action_map::ActionMapError>
@@ -7706,6 +7760,8 @@ pub fn tungsten_core::input::action_map::ActionMap::is_pressed(&self, &tungsten_
 pub fn tungsten_core::input::action_map::ActionMap::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &[tungsten_core::input::action_map::Binding])>
 pub fn tungsten_core::input::action_map::ActionMap::just_pressed(&self, &tungsten_core::input::InputState, &str) -> bool
 pub fn tungsten_core::input::action_map::ActionMap::just_released(&self, &tungsten_core::input::InputState, &str) -> bool
+pub fn tungsten_core::input::action_map::ActionMap::label(&self, &str) -> core::option::Option<&str>
+pub fn tungsten_core::input::action_map::ActionMap::labelled(&self) -> &[(alloc::string::String, alloc::string::String)]
 pub fn tungsten_core::input::action_map::ActionMap::load(&std::path::Path) -> core::result::Result<Self, tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten_core::input::action_map::ActionMap::merged_with_defaults(Self) -> Self
 pub fn tungsten_core::input::action_map::ActionMap::new() -> Self
@@ -7713,7 +7769,11 @@ pub fn tungsten_core::input::action_map::ActionMap::persist(&mut self) -> core::
 pub fn tungsten_core::input::action_map::ActionMap::persist_to(&mut self, &std::path::Path) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>)
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings_and_persist(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
+pub fn tungsten_core::input::action_map::ActionMap::reset(&mut self, &str)
+pub fn tungsten_core::input::action_map::ActionMap::reset_all(&mut self)
+pub fn tungsten_core::input::action_map::ActionMap::set_binding_at(&mut self, &str, tungsten_core::input::action_map::BindingDevice, usize, tungsten_core::input::action_map::Binding)
 pub fn tungsten_core::input::action_map::ActionMap::set_source_path(&mut self, impl core::convert::Into<std::path::PathBuf>)
+pub fn tungsten_core::input::action_map::ActionMap::shipped(&self, &str) -> &[tungsten_core::input::action_map::Binding]
 pub fn tungsten_core::input::action_map::ActionMap::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::input::action_map::ActionMap::user_layer_path(&self) -> core::option::Option<&std::path::Path>
 pub fn tungsten_core::input::action_map::ActionMap::value(&self, &tungsten_core::input::InputState, &str) -> f32
@@ -16269,6 +16329,8 @@ pub tungsten_core::Binding::Mouse::button: tungsten_core::input::MouseButton
 pub tungsten_core::Binding::Scroll
 pub tungsten_core::Binding::Scroll::direction: tungsten_core::input::ScrollDirection
 impl tungsten_core::input::action_map::Binding
+pub fn tungsten_core::input::action_map::Binding::device(self) -> tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::Binding::is_gamepad(self) -> bool
 pub fn tungsten_core::input::action_map::Binding::label(self) -> alloc::borrow::Cow<'static, str>
 pub fn tungsten_core::input::action_map::Binding::short_label(self) -> alloc::borrow::Cow<'static, str>
 impl core::clone::Clone for tungsten_core::input::action_map::Binding
@@ -16293,6 +16355,27 @@ impl core::marker::Unpin for tungsten_core::input::action_map::Binding
 impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::Binding
+pub enum tungsten_core::BindingDevice
+pub tungsten_core::BindingDevice::Gamepad
+pub tungsten_core::BindingDevice::Keyboard
+impl core::clone::Clone for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::clone(&self) -> tungsten_core::input::action_map::BindingDevice
+impl core::cmp::Eq for tungsten_core::input::action_map::BindingDevice
+impl core::cmp::PartialEq for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::eq(&self, &tungsten_core::input::action_map::BindingDevice) -> bool
+impl core::fmt::Debug for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::action_map::BindingDevice
+pub fn tungsten_core::input::action_map::BindingDevice::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::action_map::BindingDevice
+impl core::marker::StructuralPartialEq for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Freeze for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Send for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Sync for tungsten_core::input::action_map::BindingDevice
+impl core::marker::Unpin for tungsten_core::input::action_map::BindingDevice
+impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::BindingDevice
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::BindingDevice
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::BindingDevice
 pub enum tungsten_core::BlendMode
 pub tungsten_core::BlendMode::Alpha
 impl core::clone::Clone for tungsten_core::assets::particle::BlendMode
@@ -18200,6 +18283,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::collisi
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::collision::Aabb
 pub struct tungsten_core::ActionMap
 impl tungsten_core::input::action_map::ActionMap
+pub fn tungsten_core::input::action_map::ActionMap::binding_at(&self, &str, tungsten_core::input::action_map::BindingDevice, usize) -> core::option::Option<tungsten_core::input::action_map::Binding>
 pub fn tungsten_core::input::action_map::ActionMap::bindings(&self, &str) -> &[tungsten_core::input::action_map::Binding]
 pub fn tungsten_core::input::action_map::ActionMap::default_map() -> Self
 pub fn tungsten_core::input::action_map::ActionMap::from_json(&str, &std::path::Path) -> core::result::Result<Self, tungsten_core::input::action_map::ActionMapError>
@@ -18207,6 +18291,8 @@ pub fn tungsten_core::input::action_map::ActionMap::is_pressed(&self, &tungsten_
 pub fn tungsten_core::input::action_map::ActionMap::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &[tungsten_core::input::action_map::Binding])>
 pub fn tungsten_core::input::action_map::ActionMap::just_pressed(&self, &tungsten_core::input::InputState, &str) -> bool
 pub fn tungsten_core::input::action_map::ActionMap::just_released(&self, &tungsten_core::input::InputState, &str) -> bool
+pub fn tungsten_core::input::action_map::ActionMap::label(&self, &str) -> core::option::Option<&str>
+pub fn tungsten_core::input::action_map::ActionMap::labelled(&self) -> &[(alloc::string::String, alloc::string::String)]
 pub fn tungsten_core::input::action_map::ActionMap::load(&std::path::Path) -> core::result::Result<Self, tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten_core::input::action_map::ActionMap::merged_with_defaults(Self) -> Self
 pub fn tungsten_core::input::action_map::ActionMap::new() -> Self
@@ -18214,7 +18300,11 @@ pub fn tungsten_core::input::action_map::ActionMap::persist(&mut self) -> core::
 pub fn tungsten_core::input::action_map::ActionMap::persist_to(&mut self, &std::path::Path) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>)
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings_and_persist(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
+pub fn tungsten_core::input::action_map::ActionMap::reset(&mut self, &str)
+pub fn tungsten_core::input::action_map::ActionMap::reset_all(&mut self)
+pub fn tungsten_core::input::action_map::ActionMap::set_binding_at(&mut self, &str, tungsten_core::input::action_map::BindingDevice, usize, tungsten_core::input::action_map::Binding)
 pub fn tungsten_core::input::action_map::ActionMap::set_source_path(&mut self, impl core::convert::Into<std::path::PathBuf>)
+pub fn tungsten_core::input::action_map::ActionMap::shipped(&self, &str) -> &[tungsten_core::input::action_map::Binding]
 pub fn tungsten_core::input::action_map::ActionMap::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::input::action_map::ActionMap::user_layer_path(&self) -> core::option::Option<&std::path::Path>
 pub fn tungsten_core::input::action_map::ActionMap::value(&self, &tungsten_core::input::InputState, &str) -> f32
