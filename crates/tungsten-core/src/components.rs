@@ -173,7 +173,8 @@ pub struct Unlit;
 pub struct Backdrop {
     /// The sprite it draws.
     pub sprite: SpriteAssetId,
-    /// Multiplied into the sprite, as sRGB bytes.
+    /// Multiplied into the sprite, RGBA from 0 to 255 a channel in linear
+    /// light, which the frame encodes to sRGB.
     pub tint: [u8; 4],
     /// The parallax scroll factor per axis: `1.0` moves with the world,
     /// `0.0` stays on screen.

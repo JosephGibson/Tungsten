@@ -328,7 +328,7 @@ component stay_in_view: Clamps the entity's box inside an area and stops its out
   field size: [x, y] = [0.0, 0.0] — the entity's box from its point, in world pixels
   genres: rpg, shooter
   sample: { "view": 0 }
-component steering: Seeks, flees or arrives at a target, its velocity turned toward the one it wants by a bounded acceleration.
+component steering: Seeks, flees or arrives at a target, its velocity turned toward the one it wants by a bounded acceleration; beside a `top_down_mover` it drives the mover, sliding along walls on a kinematic body.
   field target: shape target — what it steers at; the load checks its tags
   field mode: one of seek | flee | arrive = "seek" — full speed at it, away from it inside the radius, or onto it and stopping
   field max_speed: f32 (> 0) — world pixels per second at most; a `move_speed` stat sets it

@@ -264,6 +264,10 @@ pub struct SceneTransform {
 #[serde(deny_unknown_fields)]
 pub struct SceneSprite {
     pub asset_id: String,
+    /// The tint the sprite's texture is multiplied by, RGBA from 0 to 255 a
+    /// channel in linear light: the frame encodes it to sRGB, so
+    /// `[70, 120, 64]` on a white texel draws as `[143, 182, 137]`. White,
+    /// no tint, by default.
     #[serde(default = "white")]
     pub color: [u8; 4],
     #[serde(default)]

@@ -1538,6 +1538,10 @@ impl World {
     /// first when the World has none, so a plugin built on a bare World
     /// registers.
     ///
+    /// `run` takes the step's `args`, `null` when it gives none, as
+    /// `serde_json`'s `Value`, re-exported as `tungsten::core::save::Value`,
+    /// so a game needs no JSON crate of its own.
+    ///
     /// # Panics
     ///
     /// As [`ScriptHooks::add_action`].
@@ -1553,6 +1557,12 @@ impl World {
 
     /// [`ScriptHooks::add_probe`] on this World's hooks, which it inserts
     /// first when the World has none.
+    ///
+    /// `run` takes the step's `args`, `null` when it gives none, and returns
+    /// the value it reads, both `serde_json`'s `Value`, re-exported as
+    /// `tungsten::core::save::Value`, so a game needs no JSON crate of its
+    /// own: `Value::from`, `.into()` or `collect()` over `(name, value)`
+    /// pairs builds one.
     ///
     /// # Panics
     ///

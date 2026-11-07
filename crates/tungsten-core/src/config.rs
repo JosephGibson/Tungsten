@@ -267,6 +267,9 @@ impl FromStr for PostAaMode {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RenderConfig {
+    /// The colour the scene clears to, RGBA from 0 to 1 in linear light,
+    /// which the frame encodes to sRGB: the default,
+    /// `[0.05, 0.05, 0.08, 1.0]`, clears to `[63, 63, 80]`.
     #[serde(default = "default_clear_color")]
     pub clear_color: [f64; 4],
     pub max_frame_latency: Option<u32>,

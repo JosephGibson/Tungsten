@@ -389,7 +389,7 @@ impl Plugin for SteeringPlugin {
             world,
             ComponentDescription::new(
                 STEERING_COMPONENT,
-                "Seeks, flees or arrives at a target, its velocity turned toward the one it wants by a bounded acceleration.",
+                "Seeks, flees or arrives at a target, its velocity turned toward the one it wants by a bounded acceleration; beside a `top_down_mover` it drives the mover, sliding along walls on a kinematic body.",
             )
             .field(FieldDescription::new(
                 "target",
