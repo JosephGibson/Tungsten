@@ -77,7 +77,9 @@ fn a_description_lists_components_with_kit_fields_hooks_and_manifest_ids() {
 
     let probes = description["script"]["probes"].as_array().unwrap();
     let names: Vec<&str> = probes.iter().map(|p| p["name"].as_str().unwrap()).collect();
-    for name in ["camera", "count", "entities", "frame", "log", "states"] {
+    for name in [
+        "camera", "count", "entities", "frame", "log", "states", "tagged",
+    ] {
         assert!(names.contains(&name), "{names:?}");
     }
     assert!(
@@ -87,7 +89,13 @@ fn a_description_lists_components_with_kit_fields_hooks_and_manifest_ids() {
     );
     assert_eq!(
         description["script"]["actions"],
-        json!([{ "name": "start_run", "doc": "Starts a run." }])
+        json!([
+            {
+                "name": "place",
+                "doc": "Sets the first entity holding `{\"tag\": t}` at rest at `\"at\": [x, y]`; fails with none."
+            },
+            { "name": "start_run", "doc": "Starts a run." }
+        ])
     );
     assert_eq!(description["assets"]["sprites"], json!(["dot"]));
     assert_eq!(description["assets"]["prefabs"], json!(["goblin"]));

@@ -197,3 +197,97 @@ fn a_second_plugin_adds_its_declarations() {
         .build(&mut schedule, &mut world);
     assert_eq!(check(&world, &json!(["team.player", "boss"])), Ok(()));
 }
+
+/// A World with the tags plugin built, its hooks registered.
+fn hooked() -> World {
+    let mut world = World::new();
+    let mut schedule = Schedule::new();
+    TagsPlugin::new()
+        .with_tags(["team.player", "team.enemy"])
+        .build(&mut schedule, &mut world);
+    world
+}
+
+/// A body tagged `names` at `at`, moving.
+fn body(world: &mut World, names: &[&str], at: [f32; 2]) -> Entity {
+    use glam::Vec2;
+    use tungsten_core::{Position, PrevPosition, Velocity};
+    world.spawn_with((
+        Tags::new(names.iter().copied()),
+        Position(Vec2::from(at)),
+        PrevPosition(Vec2::from(at)),
+        Velocity(Vec2::new(30.0, -5.0)),
+    ))
+}
+
+#[test]
+fn place_sets_the_first_tagged_entity_at_rest() {
+    use glam::Vec2;
+    use tungsten_core::script::ScriptHooks;
+    use tungsten_core::{Position, PrevPosition, Velocity};
+    let mut world = hooked();
+    let enemy = body(&mut world, &["team.enemy"], [0.0, 0.0]);
+    let first = body(&mut world, &["team.player"], [10.0, 10.0]);
+    let second = body(&mut world, &["team.player"], [20.0, 20.0]);
+    let args = json!({ "tag": "team.player", "at": [900.0, 400.0] });
+    ScriptHooks::call_action(&mut world, PLACE_ACTION, &args).unwrap();
+    let at = Vec2::new(900.0, 400.0);
+    assert_eq!(world.get::<Position>(first).unwrap().0, at);
+    assert_eq!(world.get::<PrevPosition>(first).unwrap().0, at, "no slide");
+    assert_eq!(world.get::<Velocity>(first).unwrap().0, Vec2::ZERO);
+    assert_eq!(
+        world.get::<Position>(second).unwrap().0,
+        Vec2::new(20.0, 20.0)
+    );
+    assert_eq!(world.get::<Position>(enemy).unwrap().0, Vec2::ZERO);
+    // An ancestor names the team: the first entity holding any team.
+    let args = json!({ "tag": "team", "at": [1.0, 2.0] });
+    ScriptHooks::call_action(&mut world, PLACE_ACTION, &args).unwrap();
+    assert_eq!(world.get::<Position>(enemy).unwrap().0, Vec2::new(1.0, 2.0));
+    let doc = world
+        .resource::<ScriptHooks>()
+        .actions()
+        .find(|(name, _)| *name == PLACE_ACTION)
+        .map(|(_, doc)| doc);
+    assert!(doc.is_some_and(|doc| !doc.is_empty()), "described");
+}
+
+#[test]
+fn place_fails_with_no_tagged_entity() {
+    use tungsten_core::script::ScriptHooks;
+    let mut world = hooked();
+    let args = json!({ "tag": "team.player", "at": [1.0, 2.0] });
+    let error = ScriptHooks::call_action(&mut world, PLACE_ACTION, &args).unwrap_err();
+    assert!(error.contains("no entity holds `team.player`"), "{error}");
+    world.spawn_with((Tags::new(["team.player"]),));
+    let error = ScriptHooks::call_action(&mut world, PLACE_ACTION, &args).unwrap_err();
+    assert!(error.contains("no position"), "{error}");
+    let error =
+        ScriptHooks::call_action(&mut world, PLACE_ACTION, &json!({ "tag": "team" })).unwrap_err();
+    assert!(error.contains("`at`"), "{error}");
+    // A second plugin keeps the hooks it finds.
+    TagsPlugin::new().build(&mut Schedule::new(), &mut world);
+}
+
+#[test]
+fn tagged_reads_position_and_health() {
+    use tungsten_core::script::ScriptHooks;
+    let mut world = hooked();
+    let read = |world: &World, tag: &str| {
+        ScriptHooks::read_probe(world, TAGGED_PROBE, &json!({ "tag": tag })).unwrap()
+    };
+    assert_eq!(read(&world, "team.player"), serde_json::Value::Null, "none");
+    let player = body(&mut world, &["team.player"], [3.0, 4.0]);
+    assert_eq!(
+        read(&world, "team.player"),
+        json!({ "position": [3.0, 4.0], "health": null })
+    );
+    world.insert(player, crate::Health::new(100.0));
+    assert_eq!(
+        read(&world, "team.player"),
+        json!({ "position": [3.0, 4.0], "health": [100.0, 100.0] })
+    );
+    let error =
+        ScriptHooks::read_probe(&world, TAGGED_PROBE, &serde_json::Value::Null).unwrap_err();
+    assert!(error.contains("probe `tagged`"), "{error}");
+}

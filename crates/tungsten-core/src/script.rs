@@ -1393,6 +1393,31 @@ impl ScriptHooks {
         );
     }
 
+    /// [`add_action`](Self::add_action) with typed arguments (S-176): the
+    /// step's `args` deserialize into `A`, `null` (a step that gives none)
+    /// as `A::default()`, and a value that does not deserialize fails the
+    /// step with serde's message.
+    ///
+    /// # Panics
+    ///
+    /// As [`add_action`](Self::add_action).
+    #[track_caller]
+    pub fn add_action_typed<A: DeserializeOwned + Default + 'static>(
+        &mut self,
+        name: &str,
+        doc: &'static str,
+        run: impl Fn(&mut World, A) -> Result<(), String> + 'static,
+    ) {
+        self.add_action(name, doc, move |world, args| {
+            let args = if args.is_null() {
+                A::default()
+            } else {
+                hook_args(args)?
+            };
+            run(world, args)
+        });
+    }
+
     /// Registers the probe `name`, documented by `doc` (one line).
     ///
     /// # Panics
@@ -1553,6 +1578,24 @@ impl World {
         run: impl Fn(&mut World, &Value) -> Result<(), String> + 'static,
     ) {
         hooks_mut(self).add_action(name, doc, run);
+    }
+
+    /// [`ScriptHooks::add_action_typed`] on this World's hooks, which it
+    /// inserts first when the World has none (S-176): `run` takes the step's
+    /// `args` as `A`, `A::default()` when it gives none, so a game parses no
+    /// JSON by hand.
+    ///
+    /// # Panics
+    ///
+    /// As [`ScriptHooks::add_action`].
+    #[track_caller]
+    pub fn add_script_action_typed<A: DeserializeOwned + Default + 'static>(
+        &mut self,
+        name: &str,
+        doc: &'static str,
+        run: impl Fn(&mut World, A) -> Result<(), String> + 'static,
+    ) {
+        hooks_mut(self).add_action_typed(name, doc, run);
     }
 
     /// [`ScriptHooks::add_probe`] on this World's hooks, which it inserts

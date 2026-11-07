@@ -1263,12 +1263,16 @@ pub struct tungsten::testing::Harness
 impl tungsten::testing::Harness
 pub fn tungsten::testing::Harness::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
 pub fn tungsten::testing::Harness::audio(&self) -> &[tungsten_core::audio::AudioCommand]
+pub fn tungsten::testing::Harness::audio_log(&self) -> &[tungsten_core::audio::AudioCommand]
+pub fn tungsten::testing::Harness::clear_audio_log(&mut self)
 pub fn tungsten::testing::Harness::draw(&self) -> core::option::Option<&tungsten::testing::FrameDraw>
 pub fn tungsten::testing::Harness::events<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = &T>
 pub fn tungsten::testing::Harness::exit_requested(&self) -> bool
 pub fn tungsten::testing::Harness::frame(&self) -> u64
 pub fn tungsten::testing::Harness::load_manifest(&mut self, impl core::convert::AsRef<std::path::Path>) -> anyhow::Result<()>
+pub fn tungsten::testing::Harness::master_volumes(&self) -> alloc::vec::Vec<f32>
 pub fn tungsten::testing::Harness::new(tungsten::app::App) -> Self
+pub fn tungsten::testing::Harness::plays(&self, &str) -> alloc::vec::Vec<(tungsten_core::audio::Voice, bool, f32)>
 pub fn tungsten::testing::Harness::press_action(&mut self, &str)
 pub fn tungsten::testing::Harness::register_sprites(&mut self, impl core::convert::AsRef<std::path::Path>) -> anyhow::Result<()>
 pub fn tungsten::testing::Harness::release_action(&mut self, &str)
@@ -1277,6 +1281,9 @@ pub fn tungsten::testing::Harness::run_script(&mut self, &tungsten_core::script:
 pub fn tungsten::testing::Harness::set_cursor(&mut self, f32, f32)
 pub fn tungsten::testing::Harness::set_dt(&mut self, f32)
 pub fn tungsten::testing::Harness::step(&mut self, u32) -> u32
+pub fn tungsten::testing::Harness::stops(&self) -> alloc::vec::Vec<(tungsten_core::audio::Voice, f32)>
+pub fn tungsten::testing::Harness::tap_action(&mut self, &str) -> u32
+pub fn tungsten::testing::Harness::voice_volumes(&self, tungsten_core::audio::Voice) -> alloc::vec::Vec<(f32, f32)>
 pub fn tungsten::testing::Harness::world(&self) -> &tungsten_core::ecs::world::World
 pub fn tungsten::testing::Harness::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
 impl !core::marker::Freeze for tungsten::testing::Harness
@@ -1315,6 +1322,8 @@ pub fn tungsten::testing::UiHarness::pointer_up(&mut self)
 pub fn tungsten::testing::UiHarness::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten::testing::UiHarness::shows(&self, &str) -> bool
 pub fn tungsten::testing::UiHarness::step(&mut self, u32) -> u32
+pub fn tungsten::testing::UiHarness::tap_action(&mut self, &str) -> u32
+pub fn tungsten::testing::UiHarness::tap_key(&mut self, tungsten_core::input::KeyCode) -> u32
 pub fn tungsten::testing::UiHarness::text(&self) -> &tungsten_core::ui::measure::FixedAdvanceMeasure
 pub fn tungsten::testing::UiHarness::tree(&self) -> &tungsten_core::ui::tree::UiTree
 pub fn tungsten::testing::UiHarness::tree_json(&self) -> alloc::string::String

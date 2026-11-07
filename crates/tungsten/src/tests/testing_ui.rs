@@ -754,3 +754,27 @@ fn assert_fits_holds_a_debug_root_to_its_layers_viewport() {
         "past the tree's viewport: {rect:?}"
     );
 }
+
+#[test]
+fn tap_key_presses_for_one_frame() {
+    use tungsten_core::{InputState, KeyCode};
+    #[derive(Default)]
+    struct Frames(Vec<(bool, bool)>);
+    let mut app = app();
+    app.world_mut().insert_resource(Frames::default());
+    app.add_system(|world| {
+        let input = world.resource::<InputState>();
+        let reading = (
+            input.just_pressed(KeyCode::KeyK),
+            input.just_released(KeyCode::KeyK),
+        );
+        world.resource_mut::<Frames>().0.push(reading);
+    });
+    let mut harness = UiHarness::new(app);
+    assert_eq!(harness.tap_key(KeyCode::KeyK), 2);
+    harness.step(1);
+    assert_eq!(
+        harness.world().resource::<Frames>().0,
+        [(true, false), (false, true), (false, false)]
+    );
+}

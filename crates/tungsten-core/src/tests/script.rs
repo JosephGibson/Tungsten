@@ -634,3 +634,52 @@ fn a_screen_step_parses_and_names_its_field() {
     .unwrap_err();
     assert!(two.message.contains("one verb"), "{two}");
 }
+
+/// A typed action's arguments.
+#[derive(Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Points {
+    #[serde(default)]
+    points: u32,
+}
+
+/// The points the typed `add` action last took.
+struct Took(Option<u32>);
+
+fn typed_world() -> World {
+    let mut world = World::new();
+    world.insert_resource(Took(None));
+    world.add_script_action_typed("add", "Adds `{\"points\"?: n}`.", |world, args: Points| {
+        world.resource_mut::<Took>().0 = Some(args.points);
+        Ok(())
+    });
+    world
+}
+
+#[test]
+fn a_typed_action_takes_null_as_default() {
+    let mut world = typed_world();
+    ScriptHooks::call_action(&mut world, "add", &Value::Null).unwrap();
+    assert_eq!(world.resource::<Took>().0, Some(0), "null: the default");
+    ScriptHooks::call_action(&mut world, "add", &json!({ "points": 3 })).unwrap();
+    assert_eq!(world.resource::<Took>().0, Some(3));
+    let hooks = world.resource::<ScriptHooks>();
+    assert_eq!(
+        hooks.actions().collect::<Vec<_>>(),
+        [("add", "Adds `{\"points\"?: n}`.")]
+    );
+}
+
+#[test]
+fn a_typed_action_returns_the_deserialize_error() {
+    let mut world = typed_world();
+    let error =
+        ScriptHooks::call_action(&mut world, "add", &json!({ "points": "three" })).unwrap_err();
+    assert!(
+        error.starts_with("action `add`: args: invalid type"),
+        "{error}"
+    );
+    let error = ScriptHooks::call_action(&mut world, "add", &json!({ "point": 3 })).unwrap_err();
+    assert!(error.contains("unknown field `point`"), "{error}");
+    assert_eq!(world.resource::<Took>().0, None, "the action never ran");
+}

@@ -7049,6 +7049,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::With
 pub struct tungsten_core::ecs::World
 impl tungsten_core::World
 pub fn tungsten_core::World::add_script_action(&mut self, &str, &'static str, impl core::ops::function::Fn(&mut tungsten_core::World, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String> + 'static)
+pub fn tungsten_core::World::add_script_action_typed<A: serde_core::de::DeserializeOwned + core::default::Default + 'static>(&mut self, &str, &'static str, impl core::ops::function::Fn(&mut tungsten_core::World, A) -> core::result::Result<(), alloc::string::String> + 'static)
 pub fn tungsten_core::World::add_script_probe(&mut self, &str, &'static str, impl core::ops::function::Fn(&tungsten_core::World, &serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String> + 'static)
 impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
@@ -10892,6 +10893,7 @@ pub struct tungsten_core::script::ScriptHooks
 impl tungsten_core::script::ScriptHooks
 pub fn tungsten_core::script::ScriptHooks::actions(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &'static str)>
 pub fn tungsten_core::script::ScriptHooks::add_action(&mut self, &str, &'static str, impl core::ops::function::Fn(&mut tungsten_core::World, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String> + 'static)
+pub fn tungsten_core::script::ScriptHooks::add_action_typed<A: serde_core::de::DeserializeOwned + core::default::Default + 'static>(&mut self, &str, &'static str, impl core::ops::function::Fn(&mut tungsten_core::World, A) -> core::result::Result<(), alloc::string::String> + 'static)
 pub fn tungsten_core::script::ScriptHooks::add_probe(&mut self, &str, &'static str, impl core::ops::function::Fn(&tungsten_core::World, &serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String> + 'static)
 pub fn tungsten_core::script::ScriptHooks::call_action(&mut tungsten_core::World, &str, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String>
 pub fn tungsten_core::script::ScriptHooks::has_action(&self, &str) -> bool
@@ -22930,6 +22932,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::With
 pub struct tungsten_core::World
 impl tungsten_core::World
 pub fn tungsten_core::World::add_script_action(&mut self, &str, &'static str, impl core::ops::function::Fn(&mut tungsten_core::World, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String> + 'static)
+pub fn tungsten_core::World::add_script_action_typed<A: serde_core::de::DeserializeOwned + core::default::Default + 'static>(&mut self, &str, &'static str, impl core::ops::function::Fn(&mut tungsten_core::World, A) -> core::result::Result<(), alloc::string::String> + 'static)
 pub fn tungsten_core::World::add_script_probe(&mut self, &str, &'static str, impl core::ops::function::Fn(&tungsten_core::World, &serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String> + 'static)
 impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>

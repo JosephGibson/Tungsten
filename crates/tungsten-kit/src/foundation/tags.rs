@@ -2,9 +2,14 @@
 //! declarations a load checks tag names against.
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use tungsten_core::script::ScriptHooks;
 use tungsten_core::{
-    DataRegistry, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, World,
+    DataRegistry, Entity, Inspectable, MissingAsset, Plugin, Position, PrevPosition, Schedule,
+    SpawnContext, Velocity, World,
 };
+
+use crate::damage::health::Health;
 
 use crate::foundation::describe::{
     ARPG, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER, TOP_DOWN,
@@ -15,6 +20,12 @@ use crate::foundation::phases::ensure_phases;
 
 /// The scene component [`TagsPlugin`] registers, and the data kind.
 pub(crate) const TAGS: &str = "tags";
+
+/// The script action [`TagsPlugin`] registers (S-57): `place`.
+pub(crate) const PLACE_ACTION: &str = "place";
+
+/// The script probe [`TagsPlugin`] registers (S-57): `tagged`.
+pub(crate) const TAGGED_PROBE: &str = "tagged";
 
 /// A hit's track: a direct hit's.
 pub(crate) const TRACK_HIT: &str = "delivery.hit";
@@ -582,7 +593,81 @@ impl Plugin for TagsPlugin {
             },
             |def: TagsDef, _: &SpawnContext<'_>| (Tags::new(def.0),),
         );
+        let hooks = world.get_resource::<ScriptHooks>();
+        let (placed, probed) = hooks.map_or((false, false), |hooks| {
+            (
+                hooks.has_action(PLACE_ACTION),
+                hooks.has_probe(TAGGED_PROBE),
+            )
+        });
+        if !placed {
+            world.add_script_action(
+                PLACE_ACTION,
+                "Sets the first entity holding `{\"tag\": t}` at rest at `\"at\": [x, y]`; fails with none.",
+                place,
+            );
+        }
+        if !probed {
+            world.add_script_probe(
+                TAGGED_PROBE,
+                "The first entity holding `{\"tag\": t}`: `{position: [x, y], health: [now, max]}`, null for none.",
+                tagged,
+            );
+        }
     }
+}
+
+/// `place`'s and `tagged`'s arguments.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TaggedArgs {
+    tag: String,
+    #[serde(default)]
+    at: Option<[f32; 2]>,
+}
+
+/// The first entity, by its ID, whose tags hold `tag`, exactly or as an
+/// ancestor.
+fn first_tagged(world: &World, tag: &str) -> Option<Entity> {
+    world
+        .query::<(Entity, &Tags)>()
+        .filter(|(_, tags)| tags.has(tag))
+        .map(|(entity, _)| entity)
+        .min_by_key(|entity| entity.id())
+}
+
+/// The [`PLACE_ACTION`]: the first entity holding the tag at rest at
+/// `at`, its `Position` and `PrevPosition` set and its `Velocity` zeroed.
+fn place(world: &mut World, args: &Value) -> Result<(), String> {
+    let TaggedArgs { tag, at } = TaggedArgs::deserialize(args).map_err(|e| e.to_string())?;
+    let at = at.ok_or("`at` is required")?.into();
+    let entity = first_tagged(world, &tag).ok_or_else(|| format!("no entity holds `{tag}`"))?;
+    let position = world
+        .get_mut::<Position>(entity)
+        .ok_or_else(|| format!("the entity holding `{tag}` has no position"))?;
+    position.0 = at;
+    if let Some(prev) = world.get_mut::<PrevPosition>(entity) {
+        prev.0 = at;
+    }
+    if let Some(velocity) = world.get_mut::<Velocity>(entity) {
+        velocity.0 = glam::Vec2::ZERO;
+    }
+    Ok(())
+}
+
+/// The [`TAGGED_PROBE`]: the first entity holding the tag's position and
+/// health, each null without one; null with no such entity.
+fn tagged(world: &World, args: &Value) -> Result<Value, String> {
+    let TaggedArgs { tag, at } = TaggedArgs::deserialize(args).map_err(|e| e.to_string())?;
+    if at.is_some() {
+        return Err("`at` is `place`'s".to_owned());
+    }
+    let Some(entity) = first_tagged(world, &tag) else {
+        return Ok(Value::Null);
+    };
+    let position = world.get::<Position>(entity).map(|p| [p.0.x, p.0.y]);
+    let health = world.get::<Health>(entity).map(|h| [h.current(), h.max()]);
+    Ok(json!({ "position": position, "health": health }))
 }
 
 impl TagFilter {
