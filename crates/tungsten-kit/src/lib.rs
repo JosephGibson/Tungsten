@@ -201,7 +201,8 @@
 //!   entity showing its health's share.
 //!   [`DepthSort`] and [`DepthSortPlugin`]: a sprite sorted by how low it
 //!   stands. [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the
-//!   camera follows. [`SoundOnEvent`]: a manifest sound played once per
+//!   camera follows. [`CameraRigPlugin`] and [`CameraRigId`]: a camera rig
+//!   in data, `camera_rig`. [`SoundOnEvent`]: a manifest sound played once per
 //!   event. [`LabelStyle`] and [`float_label`]: how a cue's `label`, or a
 //!   game's own code, floats an amount.
 //! - **Transform.** [`spawn_child`], [`Parent`], [`Children`],
@@ -327,7 +328,9 @@ pub use overlap::projectile::{
 pub use overlap::trigger::{TriggerEntered, TriggerZone};
 pub use overlap::zone::{ZONE_TICK, Zone, ZoneEntered, ZonePlugin};
 pub use present::animation::{ANIMATION_TICK, AnimationPlugin};
-pub use present::camera::{CAMERA_TARGET, CameraTarget, CameraTargetPlugin};
+pub use present::camera::{
+    CAMERA_RIG, CAMERA_TARGET, CameraRigId, CameraRigPlugin, CameraTarget, CameraTargetPlugin,
+};
 pub use present::character::{
     CHARACTER_ANIMATOR, CharacterAnimator, CharacterAnimatorPlugin, ClipRule, Clips,
 };
@@ -356,13 +359,13 @@ pub mod prelude {
     pub use crate::{
         Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, ActionInput,
         ActionInputPlugin, AilmentBuckets, AilmentRung, AilmentThreshold, Aim, AimPlugin,
-        AnimationPlugin, Applied, CameraTarget, CameraTargetPlugin, Cap, CapPlugin,
-        CharacterAnimator, CharacterAnimatorPlugin, Chemistry, ChemistryPlugin, Children, ClipRule,
-        Clips, Cone, ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed,
-        CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent, CueListener, Cues,
-        CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest, Damaged,
-        DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Direction,
-        Effect, EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects,
+        AnimationPlugin, Applied, CameraRigId, CameraRigPlugin, CameraTarget, CameraTargetPlugin,
+        Cap, CapPlugin, CharacterAnimator, CharacterAnimatorPlugin, Chemistry, ChemistryPlugin,
+        Children, ClipRule, Clips, Cone, ContactDamage, ContactDamagePlugin, Conversion, Cooldown,
+        CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent,
+        CueListener, Cues, CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest,
+        Damaged, DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin,
+        Direction, Effect, EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects,
         EffectsPlugin, Expire, Facing, FacingPlugin, Flags, Follow, FollowPlugin, HealRequest,
         Healed, Health, HealthBar, HealthBarPlugin, HealthPlugin, HierarchyPlugin, Hit, HitFlash,
         HitPlugin, HitShape, Hitbox, Hold, Hurtbox, ImmunePart, Intent, Interaction, KitDebug,

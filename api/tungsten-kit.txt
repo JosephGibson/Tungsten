@@ -652,6 +652,44 @@ impl core::marker::Unpin for tungsten_kit::AnimationPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AnimationPlugin
+pub struct tungsten_kit::prelude::CameraRigId(_)
+impl tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::as_str(&self) -> &str
+pub fn tungsten_kit::CameraRigId::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::clone(&self) -> tungsten_kit::CameraRigId
+impl core::cmp::Eq for tungsten_kit::CameraRigId
+impl core::cmp::PartialEq for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::eq(&self, &tungsten_kit::CameraRigId) -> bool
+impl core::fmt::Debug for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for tungsten_kit::CameraRigId
+impl core::marker::Freeze for tungsten_kit::CameraRigId
+impl core::marker::Send for tungsten_kit::CameraRigId
+impl core::marker::Sync for tungsten_kit::CameraRigId
+impl core::marker::Unpin for tungsten_kit::CameraRigId
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraRigId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraRigId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraRigId
+pub struct tungsten_kit::prelude::CameraRigPlugin
+impl core::clone::Clone for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::clone(&self) -> tungsten_kit::CameraRigPlugin
+impl core::default::Default for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::default() -> tungsten_kit::CameraRigPlugin
+impl core::fmt::Debug for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CameraRigPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CameraRigPlugin
+impl core::marker::Send for tungsten_kit::CameraRigPlugin
+impl core::marker::Sync for tungsten_kit::CameraRigPlugin
+impl core::marker::Unpin for tungsten_kit::CameraRigPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraRigPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraRigPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraRigPlugin
 pub struct tungsten_kit::prelude::CameraTarget
 impl core::clone::Clone for tungsten_kit::CameraTarget
 pub fn tungsten_kit::CameraTarget::clone(&self) -> tungsten_kit::CameraTarget
@@ -5173,6 +5211,44 @@ impl core::marker::Unpin for tungsten_kit::AnimationPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AnimationPlugin
+pub struct tungsten_kit::CameraRigId(_)
+impl tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::as_str(&self) -> &str
+pub fn tungsten_kit::CameraRigId::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::clone(&self) -> tungsten_kit::CameraRigId
+impl core::cmp::Eq for tungsten_kit::CameraRigId
+impl core::cmp::PartialEq for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::eq(&self, &tungsten_kit::CameraRigId) -> bool
+impl core::fmt::Debug for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for tungsten_kit::CameraRigId
+impl core::marker::Freeze for tungsten_kit::CameraRigId
+impl core::marker::Send for tungsten_kit::CameraRigId
+impl core::marker::Sync for tungsten_kit::CameraRigId
+impl core::marker::Unpin for tungsten_kit::CameraRigId
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraRigId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraRigId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraRigId
+pub struct tungsten_kit::CameraRigPlugin
+impl core::clone::Clone for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::clone(&self) -> tungsten_kit::CameraRigPlugin
+impl core::default::Default for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::default() -> tungsten_kit::CameraRigPlugin
+impl core::fmt::Debug for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CameraRigPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CameraRigPlugin
+impl core::marker::Send for tungsten_kit::CameraRigPlugin
+impl core::marker::Sync for tungsten_kit::CameraRigPlugin
+impl core::marker::Unpin for tungsten_kit::CameraRigPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraRigPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraRigPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraRigPlugin
 pub struct tungsten_kit::CameraTarget
 impl core::clone::Clone for tungsten_kit::CameraTarget
 pub fn tungsten_kit::CameraTarget::clone(&self) -> tungsten_kit::CameraTarget
@@ -9452,6 +9528,7 @@ pub const tungsten_kit::AILMENT_FEED: &str
 pub const tungsten_kit::AILMENT_TICK: &str
 pub const tungsten_kit::AIM: &str
 pub const tungsten_kit::ANIMATION_TICK: &str
+pub const tungsten_kit::CAMERA_RIG: &str
 pub const tungsten_kit::CAMERA_TARGET: &str
 pub const tungsten_kit::CHARACTER_ANIMATOR: &str
 pub const tungsten_kit::CHEMISTRY: &str

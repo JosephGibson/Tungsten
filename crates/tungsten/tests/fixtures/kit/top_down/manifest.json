@@ -203,6 +203,9 @@
     },
     "brazier": {
       "path": "prefabs/brazier.json"
+    },
+    "roamer": {
+      "path": "prefabs/roamer.json"
     }
   },
   "data": {

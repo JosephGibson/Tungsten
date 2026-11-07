@@ -167,6 +167,9 @@
     },
     "brute": {
       "path": "prefabs/brute.json"
+    },
+    "scout": {
+      "path": "prefabs/scout.json"
     }
   },
   "data": {

@@ -1,0 +1,38 @@
+{
+  "tag": "pointman",
+  "components": {
+    "top_down_mover": {
+      "speed": 200
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ]
+    },
+    "aim": {
+      "from": "target",
+      "target": {
+        "nearest": {
+          "all": [
+            "team.enemy"
+          ]
+        }
+      }
+    },
+    "tags": [
+      "team.player"
+    ],
+    "camera_rig": {
+      "follow": {
+        "lead": {
+          "from": "aim",
+          "max": 96,
+          "smoothing": 0.2
+        }
+      }
+    }
+  }
+}

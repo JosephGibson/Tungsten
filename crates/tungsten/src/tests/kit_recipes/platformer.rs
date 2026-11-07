@@ -2494,3 +2494,58 @@ fn a_brute_wears_its_mark_and_its_bar() {
         assert_eq!(shown(&harness), (2, 0, 255), "dt {dt}: gone with the tag");
     }
 }
+
+// 7.18, Step 2: rigs as data.
+
+#[test]
+fn the_scouts_camera_looks_ahead_and_keeps_to_the_level() {
+    use tungsten_core::{CameraBounds, CameraController, CameraFrame};
+    let bounds = CameraBounds::new(Vec2::new(-400.0, -200.0), Vec2::new(600.0, 400.0));
+    let frame = |harness: &super::Harness| -> CameraFrame {
+        harness.world().resource::<CameraController>().frame()
+    };
+    let inside = |frame: CameraFrame| {
+        frame.corner.cmpge(bounds.min - 1e-3).all()
+            && (frame.corner + frame.size).cmple(bounds.max + 1e-3).all()
+    };
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let scout = spawn(&mut harness, "scout", [0.0, 270.0]);
+        harness.step(2);
+        assert_eq!(
+            harness.world().resource::<CameraController>().winner(),
+            Some(scout)
+        );
+        // 360 tall: a 640 by 360 view, its top held at the level's 40.
+        let start = frame(&harness);
+        assert!(
+            (start.size - Vec2::new(640.0, 360.0)).length() < 1e-3,
+            "dt {dt}"
+        );
+        assert!(inside(start), "dt {dt}: {start:?}");
+        assert!((start.corner.y - 40.0).abs() < 1e-3, "dt {dt}: {start:?}");
+        // Running right, the view looks ahead along its velocity and stays
+        // in the level, until it rests on its right side.
+        harness.press_action("move_right");
+        let mut pinned = false;
+        for _ in 0..frames_for(1.5, dt) {
+            harness.step(1);
+            let now = frame(&harness);
+            assert!(inside(now), "dt {dt}: {now:?}");
+            pinned |= (now.corner.x + now.size.x - bounds.max.x).abs() < 1e-3;
+        }
+        let now = frame(&harness);
+        let ahead = now.lead.unwrap() - now.anchor.unwrap();
+        assert!(
+            ahead.x > 60.0 && ahead.x <= 120.0 && ahead.y.abs() < 1.0,
+            "dt {dt}: 200 px/s for 0.4 s ahead: {ahead}"
+        );
+        assert!(pinned, "dt {dt}: the view rests on the level's right side");
+        // Stopped, the lead eases back.
+        harness.release_action("move_right");
+        harness.step(frames_for(1.0, dt));
+        let ahead = frame(&harness).lead.unwrap() - frame(&harness).anchor.unwrap();
+        assert!(ahead.length() < 10.0, "dt {dt}: {ahead}");
+    }
+}

@@ -24,7 +24,20 @@ component animation: An animated sprite: its current frame written into the enti
   field id: text — a manifest animation ID
   genres: platformer, top_down
   sample: { "id": "blink" }
-component camera_target: The marker the camera follows: the lowest-indexed live one.
+component camera_rig: A camera rig on its entity; exactly one of `follow`, `fixed` and `scripted`. The highest live rig wins, a tie going to the latest raised, and a switch blends over the incoming rig's `blend`.
+  field follow: shape camera_follow — follows the entity itself
+  field fixed: shape camera_fixed — holds a centre, a corner or a box
+  field scripted: [x, y] — centres the view on a point a game moves
+  field view_height: f32 (> 0) = null — the world units the view shows top to bottom; null shows the window's height at a zoom of 1
+  field zoom: f32 (> 0) = 1.0 — a scale over the view: 2 shows half its height
+  field bounds: shape camera_box = null — the box the rig's view stays inside, at its own height
+  field priority: i64 (>= -2147483648, <= 2147483647) = 0 — the highest live rig wins; the engine's base rig sits at 0
+  field blend: seconds, or { "time": seconds, "ease": easing } (sine_in_out), each time at least 0 = 0.0 — how the view moves to this rig when it starts winning, on the game clock; 0 cuts
+  field id: text = null — a dotted name, kept beside the rig as its `CameraRigId`
+  field live: bool = true — whether the rig starts as a candidate; a lowered one waits for a raise
+  genres: platformer, top_down, shooter
+  sample: { "follow": {} }
+component camera_target: The marker the camera's base rig follows: the lowest-indexed live one.
   genres: platformer, top_down, rpg, shooter
   sample: null
 component cap: Holds its group's live instances to a number: a kit spawn past it ends the group's oldest, or is refused.
@@ -430,6 +443,28 @@ shape build_output: A status built by a fixed amount or by the entry's hits.
   field amount: f32 (>= 0) = null — a fixed build, at the entry's largest status effect
   field scale: f32 (>= 0) = null — times the entry's hits, each at its own status effect; 1 when neither is given
   sample: { "status": "burning" }
+shape camera_box: A world-space box, `min` to `max`.
+  field min: [x, y] — its least corner, in world units
+  field max: [x, y] — its greatest corner, at least `min` on each axis
+  sample: { "min": [0, 0], "max": [1280, 720] }
+shape camera_fixed: Where a fixed rig holds the view.
+  exactly one of its fields
+  field at: [x, y] — the view's centre
+  field corner: [x, y] — the view's top-left
+  field rect: shape camera_box — a box the view centres on, at the rig's view height or else the least that shows it whole; wider and taller than 0
+  sample: { "at": [640, 360] }
+shape camera_follow: A follow of the rig's own entity: once its drawn point, offset and led, leaves the dead zone, the view follows at its smoothing.
+  field offset: [x, y] = [0.0, 0.0] — added to the drawn point (its sprite's top-left): the anchor the view keeps
+  field dead_zone: [x, y] = [0.0, 0.0] — the box, in world units centred in the view and clamped to it, the anchor roams before the view moves; each side at least 0
+  field smoothing: a number, or [x, y], each in [0, 1] = 1.0 — the share of the way the view covers per 1/60 s at any frame rate, on both axes or each: 0 never moves, 1 snaps
+  field lead: shape camera_lead = null — a lead ahead of the target, added to the anchor before the dead zone judges it
+  sample: {}
+shape camera_lead: A follow's lead: the view runs ahead of its target along its velocity or its aim, capped and eased.
+  field from: one of velocity | aim — `velocity`: the target's `Velocity` times `time`, else its drawn point's change; `aim`: the target's `aim` direction times `max`
+  field max: f32 (>= 0) — the longest lead, in world units
+  field time: f32 (>= 0) = 0.0 — seconds of velocity ahead
+  field smoothing: f32 (>= 0, <= 1) = 0.1 — the share of the way the lead covers per 1/60 s at any frame rate: 0 never moves, 1 snaps
+  sample: { "from": "velocity", "max": 96 }
 shape child: One child: its prefab and its offset from the parent.
   field prefab: prefab ID — what it spawns; the load checks the ID and refuses a prefab with a `rigid_body`
   field offset: [x, y] = [0.0, 0.0] — world pixels from the parent's position

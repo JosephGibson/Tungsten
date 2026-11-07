@@ -25,6 +25,7 @@ pub const UNSAVED_COMPONENTS: &[(&str, &str)] = &[
     ("action_input", RULE),
     ("ailment_threshold", RULE),
     ("animation", PRESENTATION),
+    ("camera_rig", PRESENTATION),
     ("camera_target", RULE),
     ("cap", RULE),
     ("character_animator", PRESENTATION),

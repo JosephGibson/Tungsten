@@ -1895,3 +1895,58 @@ fn a_frigates_bar_falls_and_goes() {
         assert!(!harness.world().is_alive(frigate), "dt {dt}");
     }
 }
+
+// 7.18, Step 2: rigs as data (SF29).
+
+#[test]
+fn the_pointmans_camera_leads_its_aim_by_96_px() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let pointman = spawn(&mut harness, "pointman", [640.0, 360.0]);
+        spawn(&mut harness, "turret", [1040.0, 360.0]);
+        harness.step(1);
+        let lead = |harness: &Harness| {
+            let frame = harness.world().resource::<CameraController>().frame();
+            frame.lead.unwrap() - frame.anchor.unwrap()
+        };
+        assert_eq!(
+            harness.world().resource::<CameraController>().winner(),
+            Some(pointman)
+        );
+        let first = lead(&harness);
+        assert!(
+            first.x > 0.0 && first.x < 48.0 && first.y.abs() < 1e-3,
+            "dt {dt}: eased in toward the turret: {first}"
+        );
+        harness.step(frames_for(1.0, dt));
+        let led = lead(&harness);
+        assert!(
+            (led - Vec2::new(96.0, 0.0)).length() < 0.5,
+            "dt {dt}: 96 px along its aim: {led}"
+        );
+        // The view keeps the led point centred, ahead of the pointman.
+        let frame = harness.world().resource::<CameraController>().frame();
+        let centre = frame.corner + frame.size * 0.5;
+        let ahead = centre - drawn_at(&harness, pointman);
+        assert!(
+            (ahead - Vec2::new(96.0, 0.0)).length() < 0.5,
+            "dt {dt}: {ahead}"
+        );
+        // The aim swings up; the lead follows, never past 96.
+        let turret = tagged(&harness, "turret")[0];
+        harness
+            .world_mut()
+            .get_mut::<Transform>(turret)
+            .unwrap()
+            .position = Vec2::new(640.0, -40.0);
+        for _ in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            assert!(lead(&harness).length() <= 96.0 + 1e-3, "dt {dt}");
+        }
+        let led = lead(&harness);
+        assert!(
+            (led - Vec2::new(0.0, -96.0)).length() < 1.0,
+            "dt {dt}: up at the turret: {led}"
+        );
+    }
+}
