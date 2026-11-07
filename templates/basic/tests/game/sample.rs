@@ -18,9 +18,9 @@ use tungsten::{App, SceneEntity, WindowSize};
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::components::Player;
 use tungsten_template_basic::sample::{
-    CAMERA_DEAD_ZONE, DUMMY_START, ENEMIES, ENEMY_RETURN_SECS, GEM_PREFAB, HAZARD_PREFAB,
-    HAZARD_START, MUSIC_FADE, MUSIC_PAUSE, MUSIC_RUN, PAUSE_FADE, PICKUPS, PLAY_CENTRE,
-    PLAYER_PREFAB, PLAYER_START, SampleRun,
+    DUMMY_START, ENEMIES, ENEMY_RETURN_SECS, GEM_PREFAB, HAZARD_PREFAB, HAZARD_START, MUSIC_FADE,
+    MUSIC_PAUSE, MUSIC_RUN, PAUSE_FADE, PICKUPS, PLAY_CENTRE, PLAYER_PREFAB, PLAYER_START,
+    SampleRun,
 };
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::{Difficulty, theme};
@@ -534,7 +534,7 @@ fn the_camera_follows_the_player() {
     let RigKind::Follow(follow) = rig.kind else {
         panic!("a follow, not {:?}", rig.kind);
     };
-    assert_eq!(follow.dead_zone.to_array(), CAMERA_DEAD_ZONE);
+    assert_eq!(follow.dead_zone.to_array(), [640.0, 360.0], "the prefab's");
     assert_eq!(follow.target, None, "its own point");
     assert_eq!(follow.offset.to_array(), [0.0, 0.0]);
     assert_eq!(rig.view_height, Some(720.0));

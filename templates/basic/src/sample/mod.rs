@@ -22,8 +22,8 @@ use tungsten::core::post::{BloomParams, PostPass, PostStack};
 use tungsten::core::save::{self, SaveState, Saved, restore_world};
 use tungsten::core::ui::UiTree;
 use tungsten::core::{
-    AudioCommands, CameraController, CameraRig, DataRef, Entity, FollowRig, PreparedPrefab,
-    Schedule, SoundRegistry, Stage, Time, Timer, Voice, With, World, system,
+    AudioCommands, CameraController, DataRef, Entity, PreparedPrefab, Schedule, SoundRegistry,
+    Stage, Time, Timer, Voice, With, World, system,
 };
 use tungsten::kit::{Counters, EffectRequest, Health, Stats, Tags};
 use tungsten::{GameState, Plugin, SceneEntity, StateContext, StateId};
@@ -90,9 +90,6 @@ pub const MUSIC_RUN: &str = "music_run";
 pub const MUSIC_PAUSE: &str = "music_pause";
 pub const MUSIC_FADE: f32 = 0.5;
 pub const PAUSE_FADE: f32 = 0.3;
-/// The camera's dead zone, in world pixels: the player roams the middle of
-/// a 1280 × 720 view before the camera follows.
-pub const CAMERA_DEAD_ZONE: [f32; 2] = [640.0, 360.0];
 /// The camera shake's peak offset, in world pixels, at full trauma: a hit's
 /// `shake` cue adds trauma, and the shell's Screen shake option scales it.
 pub const CAMERA_SHAKE: [f32; 2] = [24.0, 16.0];
@@ -223,14 +220,6 @@ impl Plugin for SamplePlugin {
     }
 }
 
-/// The player's camera: a follow of its point with the dead zone, 720
-/// world units tall at every window, so a taller window shows the same
-/// play space larger.
-fn player_camera() -> CameraRig {
-    CameraRig::follow(FollowRig::default().with_dead_zone(CAMERA_DEAD_ZONE.into()))
-        .with_view_height(720.0)
-}
-
 /// Pause's music: when pause comes on top, the run's voice falls to 0 and
 /// pause's loop fades in; when gameplay is back on top, the loop stops and
 /// the run's voice comes back. A screen over pause keeps the loop. Game
@@ -336,9 +325,7 @@ impl GameState for GameplayState {
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let world = &mut *ctx.world;
         let start = self.start.take().unwrap_or_default();
-        let player = prepare(world, PLAYER_PREFAB, PLAYER_START)
-            .with((player_camera(),))
-            .spawn(world);
+        let player = prepare(world, PLAYER_PREFAB, PLAYER_START).spawn(world);
         // Before any step, so the first one already runs at this max.
         if let Some(stats) = world.get_mut::<Stats>(player) {
             stats.set_base(Stats::MAX_HEALTH, max_health(start.difficulty));
