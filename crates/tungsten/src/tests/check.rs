@@ -433,6 +433,22 @@ fn a_games_asset_check_finds_the_manifest_sprites() {
 }
 
 #[test]
+fn check_reports_a_bad_boot_hold() {
+    let game = Folder::new();
+    let root = game.write("assets/manifest.json", r#"{"boot": {"hold": -1}}"#);
+    let mut app = game_world();
+    let errors = check_files(app.world_mut(), &[root], &game.0);
+    let report: Vec<String> = errors
+        .iter()
+        .map(|e| format!("{}: {}", e.file.display(), e.message))
+        .collect();
+    assert_eq!(
+        report,
+        ["assets/manifest.json: boot.hold must be finite and at least 0 (got -1)"]
+    );
+}
+
+#[test]
 fn check_reports_a_sheet_whose_frame_does_not_fit() {
     let game = Folder::new();
     game.png("assets/walk.png", 32);

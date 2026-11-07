@@ -476,6 +476,8 @@ pub tungsten_core::assets::manifest::ManifestError::DuplicateId::id: alloc::stri
 pub tungsten_core::assets::manifest::ManifestError::FontFamilyFaceMissing
 pub tungsten_core::assets::manifest::ManifestError::FontFamilyFaceMissing::face: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::FontFamilyFaceMissing::family: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::InvalidBootHold
+pub tungsten_core::assets::manifest::ManifestError::InvalidBootHold::hold: f32
 pub tungsten_core::assets::manifest::ManifestError::InvalidParticleMesh
 pub tungsten_core::assets::manifest::ManifestError::InvalidParticleMesh::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::InvalidParticleMesh::reason: alloc::string::String
@@ -607,12 +609,12 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::A
 pub struct tungsten_core::assets::manifest::BootGroup
 pub tungsten_core::assets::manifest::BootGroup::bar: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::manifest::BootGroup::font: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::manifest::BootGroup::hold: core::option::Option<f32>
 pub tungsten_core::assets::manifest::BootGroup::logo: core::option::Option<alloc::string::String>
 impl tungsten_core::assets::manifest::BootGroup
 pub fn tungsten_core::assets::manifest::BootGroup::is_empty(&self) -> bool
 impl core::clone::Clone for tungsten_core::assets::manifest::BootGroup
 pub fn tungsten_core::assets::manifest::BootGroup::clone(&self) -> tungsten_core::assets::manifest::BootGroup
-impl core::cmp::Eq for tungsten_core::assets::manifest::BootGroup
 impl core::cmp::PartialEq for tungsten_core::assets::manifest::BootGroup
 pub fn tungsten_core::assets::manifest::BootGroup::eq(&self, &tungsten_core::assets::manifest::BootGroup) -> bool
 impl core::default::Default for tungsten_core::assets::manifest::BootGroup
@@ -2764,6 +2766,8 @@ pub tungsten_core::assets::ManifestError::DuplicateId::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::FontFamilyFaceMissing
 pub tungsten_core::assets::ManifestError::FontFamilyFaceMissing::face: alloc::string::String
 pub tungsten_core::assets::ManifestError::FontFamilyFaceMissing::family: alloc::string::String
+pub tungsten_core::assets::ManifestError::InvalidBootHold
+pub tungsten_core::assets::ManifestError::InvalidBootHold::hold: f32
 pub tungsten_core::assets::ManifestError::InvalidParticleMesh
 pub tungsten_core::assets::ManifestError::InvalidParticleMesh::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::InvalidParticleMesh::reason: alloc::string::String
@@ -17079,6 +17083,8 @@ pub tungsten_core::ManifestError::DuplicateId::id: alloc::string::String
 pub tungsten_core::ManifestError::FontFamilyFaceMissing
 pub tungsten_core::ManifestError::FontFamilyFaceMissing::face: alloc::string::String
 pub tungsten_core::ManifestError::FontFamilyFaceMissing::family: alloc::string::String
+pub tungsten_core::ManifestError::InvalidBootHold
+pub tungsten_core::ManifestError::InvalidBootHold::hold: f32
 pub tungsten_core::ManifestError::InvalidParticleMesh
 pub tungsten_core::ManifestError::InvalidParticleMesh::id: alloc::string::String
 pub tungsten_core::ManifestError::InvalidParticleMesh::reason: alloc::string::String

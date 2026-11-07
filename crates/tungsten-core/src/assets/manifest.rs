@@ -87,6 +87,12 @@ pub enum ManifestError {
     /// A second root that sets a boot group (redo 7.9).
     #[error("two manifests set a `boot` group; one root sets it")]
     BootGroupTwice,
+    /// A `boot.hold` that is not finite or is below 0 (redo 7.11).
+    #[error("boot.hold must be finite and at least 0 (got {hold})")]
+    InvalidBootHold {
+        /// The hold it set, in seconds.
+        hold: f32,
+    },
     /// A `boot` field naming an ID its section lacks (redo 7.9).
     #[error("boot.{field} names unknown {section} '{id}'")]
     UnknownBootAsset {
@@ -417,12 +423,13 @@ pub struct RawManifest {
 
 /// The `boot` section (redo 7.9): the assets the window shows while the
 /// rest of the manifest loads, each optional and each an ID its section
-/// declares in the merged graph. Unknown keys fail the parse.
+/// declares in the merged graph, and the seconds the view shows at least
+/// (redo 7.11). Unknown keys fail the parse.
 ///
 /// ```json
-/// "boot": { "logo": "studio_logo", "bar": "load_bar", "font": "sans" }
+/// "boot": { "logo": "studio_logo", "bar": "load_bar", "font": "sans", "hold": 1.5 }
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BootGroup {
     /// A sprite drawn at the window's centre.
@@ -434,13 +441,18 @@ pub struct BootGroup {
     /// A font the progress prints in.
     #[serde(default)]
     pub font: Option<String>,
+    /// The seconds the boot view shows at least, from the first boot frame:
+    /// finite and at least 0, which the load checks; none is 0. A load that
+    /// runs longer ends the boot when it ends.
+    #[serde(default)]
+    pub hold: Option<f32>,
 }
 
 impl BootGroup {
-    /// Whether it names nothing.
+    /// Whether it sets nothing.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.logo.is_none() && self.bar.is_none() && self.font.is_none()
+        self.logo.is_none() && self.bar.is_none() && self.font.is_none() && self.hold.is_none()
     }
 }
 
@@ -1825,9 +1837,14 @@ impl ResolvedManifest {
     }
 
     /// The boot group's sprites and font must be declared in this graph
-    /// (redo 7.9, `D-089`).
+    /// (redo 7.9, `D-089`), and its hold finite and at least 0 (redo 7.11).
     fn validate_boot(&self, sink: &mut Sink<'_>) -> Result<(), ManifestError> {
         let boot = &self.boot;
+        if let Some(hold) = boot.hold
+            && !(hold.is_finite() && hold >= 0.0)
+        {
+            sink.report(ManifestError::InvalidBootHold { hold })?;
+        }
         for (field, id) in [("logo", &boot.logo), ("bar", &boot.bar)] {
             if let Some(id) = id
                 && !self.sprites.contains_key(id)

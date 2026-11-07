@@ -14,6 +14,7 @@
 //! none runs: a push acts at once, a pop after its screen fades out, and a
 //! change of run, through [`goto`] or [`start_run`], behind a curtain.
 
+pub mod boot;
 pub mod confirm;
 pub mod game_over;
 pub mod keybindings;

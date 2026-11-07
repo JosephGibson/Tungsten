@@ -1496,6 +1496,41 @@ fn a_boot_group_names_existing_ids() {
 }
 
 #[test]
+fn a_boot_hold_parses() {
+    let tmp = tempdir();
+    for (boot, hold) in [
+        (r#"{"hold": 1.5}"#, Some(1.5)),
+        (r#"{"hold": 0}"#, Some(0.0)),
+        ("{}", None),
+    ] {
+        let path = write_manifest(&tmp, &format!(r#"{{"boot": {boot}}}"#));
+        let m = ResolvedManifest::load(&path).unwrap();
+        assert_eq!(m.boot.hold, hold, "{boot}");
+        // A hold alone sets the group, so a second root's would clash.
+        assert_eq!(m.boot.is_empty(), hold.is_none(), "{boot}");
+    }
+}
+
+#[test]
+fn a_negative_or_infinite_boot_hold_fails() {
+    let tmp = tempdir();
+    // 1e39 is past f32's range, so it reads as infinite.
+    for hold in ["-0.5", "1e39"] {
+        let path = write_manifest(&tmp, &format!(r#"{{"boot": {{"hold": {hold}}}}}"#));
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(
+            matches!(err, ManifestError::InvalidBootHold { .. }),
+            "{hold}: {err}"
+        );
+    }
+    let path = write_manifest(&tmp, r#"{"boot": {"hold": "long"}}"#);
+    assert!(matches!(
+        ResolvedManifest::load(&path).unwrap_err(),
+        ManifestError::Parse { .. }
+    ));
+}
+
+#[test]
 fn two_roots_setting_a_boot_group_fail_the_merge() {
     let tmp = tempdir();
     let (a, b) = (tmp.join("a"), tmp.join("b"));

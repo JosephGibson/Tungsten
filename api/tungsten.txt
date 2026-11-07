@@ -88,7 +88,9 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
 #[non_exhaustive] pub struct tungsten::app::BootProgress<'a>
 pub tungsten::app::BootProgress::assets: &'a tungsten::asset_loader::BootAssets
 pub tungsten::app::BootProgress::done: usize
+pub tungsten::app::BootProgress::hold: f32
 pub tungsten::app::BootProgress::scale: f32
+pub tungsten::app::BootProgress::secs: f32
 pub tungsten::app::BootProgress::total: usize
 pub tungsten::app::BootProgress::window: [u32; 2]
 impl tungsten::app::BootProgress<'_>
@@ -1623,7 +1625,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten::sprite_extract::Batches
 #[non_exhaustive] pub struct tungsten::BootProgress<'a>
 pub tungsten::BootProgress::assets: &'a tungsten::asset_loader::BootAssets
 pub tungsten::BootProgress::done: usize
+pub tungsten::BootProgress::hold: f32
 pub tungsten::BootProgress::scale: f32
+pub tungsten::BootProgress::secs: f32
 pub tungsten::BootProgress::total: usize
 pub tungsten::BootProgress::window: [u32; 2]
 impl tungsten::app::BootProgress<'_>

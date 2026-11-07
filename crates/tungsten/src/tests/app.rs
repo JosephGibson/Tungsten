@@ -1136,6 +1136,102 @@ fn boot_frames_run_slices_until_the_plan_ends() {
     assert_eq!(pacer.slice_max(), Duration::from_millis(15));
 }
 
+/// A boot's redraws by a test's clock: `units` of 5 ms each, and `between`
+/// passing between two redraws; each step's units, view, end and idle
+/// milliseconds, and its milliseconds from the first.
+fn boot_steps(
+    pacer: &mut BootPacer,
+    units: u32,
+    between: Duration,
+) -> Vec<(usize, bool, bool, u128, u128)> {
+    use std::cell::Cell;
+    let start = Instant::now();
+    let now = Cell::new(start);
+    let mut clock = || now.get();
+    let mut left = units;
+    let mut run = || {
+        if left == 0 {
+            return None;
+        }
+        left -= 1;
+        now.set(now.get() + Duration::from_millis(5));
+        Some(Ok(()))
+    };
+    let mut steps = Vec::new();
+    loop {
+        let step = pacer.redraw(&mut clock, &mut run).unwrap();
+        let at = now.get().duration_since(start).as_millis();
+        steps.push((step.ran, step.view, step.done, step.idle.as_millis(), at));
+        if step.done {
+            return steps;
+        }
+        assert!(steps.len() < 100, "the boot never ended: {steps:?}");
+        now.set(now.get() + between);
+    }
+}
+
+#[test]
+fn the_boot_holds_until_its_hold_has_passed() {
+    // Four units of 5 ms, 10 ms between redraws, and a 100 ms hold.
+    let mut pacer = BootPacer::holding(Duration::from_millis(100));
+    let steps = boot_steps(&mut pacer, 4, Duration::from_millis(10));
+    assert_eq!(
+        steps,
+        [
+            (0, true, false, 0, 0),
+            (3, false, false, 0, 25),
+            // The plan ends at 40 ms; the boot holds, the view still drawing
+            // once 33 ms have passed since the last, and each redraw idle
+            // until the next view or the hold's end.
+            (1, true, false, 33, 40),
+            (0, false, false, 23, 50),
+            (0, false, false, 13, 60),
+            (0, false, false, 3, 70),
+            (0, true, false, 20, 80),
+            (0, false, false, 10, 90),
+            // The hold has passed: the boot ends.
+            (0, false, true, 0, 100),
+        ]
+    );
+    assert!((pacer.secs() - 0.1).abs() < 1e-6, "{}", pacer.secs());
+    assert!((pacer.hold() - 0.1).abs() < 1e-6);
+}
+
+#[test]
+fn a_load_past_the_hold_ends_the_boot_at_once() {
+    // Twenty units of 5 ms against a 30 ms hold: the redraw that ends the
+    // plan ends the boot, as with no hold.
+    let mut held = BootPacer::holding(Duration::from_millis(30));
+    let steps = boot_steps(&mut held, 20, Duration::ZERO);
+    let unheld = boot_steps(&mut BootPacer::default(), 20, Duration::ZERO);
+    assert_eq!(steps, unheld);
+    assert_eq!(steps.last(), Some(&(2, false, true, 0, 100)));
+    assert!(steps.iter().all(|step| step.3 == 0), "a load has no idle");
+}
+
+#[test]
+fn a_script_run_holds_nothing() {
+    let group = tungsten_core::assets::manifest::BootGroup {
+        hold: Some(1.5),
+        ..Default::default()
+    };
+    let mut app = App::new(Config::default()).unwrap();
+    assert_eq!(app.boot_hold(&group), Duration::from_millis(1500));
+    let script =
+        tungsten_core::script::Script::parse(r#"{"version": 1, "frames": 1, "steps": []}"#)
+            .unwrap();
+    app.script = Some(crate::script::ScriptRunner::new(script, "boot.json", true));
+    assert_eq!(
+        app.boot_hold(&group),
+        Duration::ZERO,
+        "a script run's boot is not watched"
+    );
+    // Its pacer ends the boot on the redraw that ends the plan.
+    let mut pacer = BootPacer::holding(app.boot_hold(&group));
+    let steps = boot_steps(&mut pacer, 4, Duration::from_millis(10));
+    assert_eq!(steps.last(), Some(&(1, false, true, 0, 40)));
+}
+
 #[test]
 fn a_boot_frame_counts_for_no_script_smoke_or_capture() {
     let env = |name: &str| (name == "TUNGSTEN_SMOKE_FRAMES").then(|| "3".into());

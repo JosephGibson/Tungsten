@@ -172,7 +172,8 @@ fn ms_since(since: Instant) -> f64 {
 }
 
 /// A boot frame's progress (redo 7.9), which a boot view draws: the load's
-/// units done and in all, the boot group's assets, and the window.
+/// units done and in all, the boot group's assets, the window, and the
+/// boot's time and hold.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct BootProgress<'a> {
@@ -186,6 +187,11 @@ pub struct BootProgress<'a> {
     pub window: [u32; 2],
     /// The window's scale factor.
     pub scale: f32,
+    /// Real seconds since the first boot frame (redo 7.11).
+    pub secs: f32,
+    /// The seconds the boot lasts at least, the boot group's `hold`; 0 in a
+    /// script run, whose boot is not watched (`D-225`).
+    pub hold: f32,
 }
 
 impl BootProgress<'_> {
@@ -221,10 +227,18 @@ const BOOT_VIEW_EVERY: Duration = Duration::from_millis(33);
 /// Boot frames' pacing (redo 7.9): the first redraw draws the view before
 /// any unit runs; each later one runs units until `BOOT_SLICE` has passed,
 /// then draws the view when `BOOT_VIEW_EVERY` has passed since the last.
+/// The boot ends once no unit is left and its hold has passed since the
+/// first redraw (redo 7.11); until then the view keeps drawing.
 #[derive(Debug, Default)]
 pub(crate) struct BootPacer {
     /// When the view last drew; `None` before the first redraw.
     viewed: Option<Instant>,
+    /// When the first redraw ran: the first boot frame.
+    first: Option<Instant>,
+    /// The least the boot lasts from its first frame.
+    hold: Duration,
+    /// From the first redraw to the last one's end.
+    elapsed: Duration,
     slice_max: Duration,
 }
 
@@ -235,11 +249,23 @@ pub(crate) struct BootStep {
     pub(crate) ran: usize,
     /// Whether it draws the view.
     pub(crate) view: bool,
-    /// Whether no unit is left: the boot ends.
+    /// Whether no unit is left and the hold has passed: the boot ends.
     pub(crate) done: bool,
+    /// While the plan has ended and the hold runs, the time to the next
+    /// view or the hold's end, which the redraw waits out rather than spin;
+    /// zero otherwise.
+    pub(crate) idle: Duration,
 }
 
 impl BootPacer {
+    /// A pacer whose boot lasts at least `hold` from its first frame.
+    pub(crate) fn holding(hold: Duration) -> Self {
+        Self {
+            hold,
+            ..Self::default()
+        }
+    }
+
     /// One boot redraw by `clock`: `run` runs the next unit, `None` when
     /// none is left.
     pub(crate) fn redraw(
@@ -250,15 +276,17 @@ impl BootPacer {
         let start = clock();
         let Some(viewed) = self.viewed else {
             self.viewed = Some(start);
+            self.first = Some(start);
             return Ok(BootStep {
                 ran: 0,
                 view: true,
                 done: false,
+                idle: Duration::ZERO,
             });
         };
         let mut ran = 0;
         let mut now = start;
-        let done = loop {
+        let loaded = loop {
             match run() {
                 None => break true,
                 Some(result) => result?,
@@ -270,16 +298,40 @@ impl BootPacer {
             }
         };
         self.slice_max = self.slice_max.max(now.duration_since(start));
+        self.elapsed = self
+            .first
+            .map_or(Duration::ZERO, |first| now.duration_since(first));
+        let done = loaded && self.elapsed >= self.hold;
         let view = !done && now.duration_since(viewed) >= BOOT_VIEW_EVERY;
-        if view {
-            self.viewed = Some(now);
-        }
-        Ok(BootStep { ran, view, done })
+        let viewed = if view { now } else { viewed };
+        self.viewed = Some(viewed);
+        let idle = match self.first {
+            Some(first) if loaded && !done => (viewed + BOOT_VIEW_EVERY)
+                .min(first + self.hold)
+                .saturating_duration_since(now),
+            _ => Duration::ZERO,
+        };
+        Ok(BootStep {
+            ran,
+            view,
+            done,
+            idle,
+        })
     }
 
     /// The longest stretch of units one redraw ran.
     pub(crate) fn slice_max(&self) -> Duration {
         self.slice_max
+    }
+
+    /// Real seconds from the first boot frame to the last redraw's end.
+    pub(crate) fn secs(&self) -> f32 {
+        self.elapsed.as_secs_f32()
+    }
+
+    /// The hold, in seconds.
+    pub(crate) fn hold(&self) -> f32 {
+        self.hold.as_secs_f32()
     }
 }
 
@@ -1215,11 +1267,23 @@ impl App {
         event_loop.exit();
     }
 
+    /// The boot's hold (redo 7.11): the boot group's, none in a script run,
+    /// whose boot is not watched (`D-225`).
+    pub(crate) fn boot_hold(&self, group: &tungsten_core::assets::manifest::BootGroup) -> Duration {
+        match group.hold {
+            Some(hold) if self.script.is_none() => {
+                Duration::try_from_secs_f32(hold).unwrap_or_default()
+            }
+            _ => Duration::ZERO,
+        }
+    }
+
     /// One boot redraw by `clock` (redo 7.9): the pacer's units and view;
-    /// the redraw that ends the plan finishes the boot, so the next is
-    /// frame 1. No stage runs, and nothing counts it as a frame: scripts,
-    /// smoke runs, captures and telemetry start at frame 1. A boot without
-    /// a renderer, which only a test makes, runs no unit.
+    /// the redraw that ends the plan, once the hold has passed, finishes
+    /// the boot, so the next is frame 1. No stage runs, and nothing counts
+    /// it as a frame: scripts, smoke runs, captures and telemetry start at
+    /// frame 1. A boot without a renderer, which only a test makes, runs no
+    /// unit.
     ///
     /// # Errors
     ///
@@ -1239,6 +1303,10 @@ impl App {
             self.finish_boot();
         } else if step.view {
             self.draw_boot_view()?;
+        }
+        // A held boot has nothing to run until its next view or its end.
+        if !step.idle.is_zero() {
+            std::thread::sleep(step.idle);
         }
         Ok(())
     }
@@ -1267,6 +1335,8 @@ impl App {
             assets: &boot.assets,
             window,
             scale,
+            secs: boot.pacer.secs(),
+            hold: boot.pacer.hold(),
         };
         let view = match &self.boot_view {
             Some(view) => view(&self.world, &progress),
@@ -3390,10 +3460,13 @@ impl ApplicationHandler for App {
             _ => BootAssets::default(),
         };
         self.startup_clock.timings.boot = ms_since(boot_start);
+        let hold = plan
+            .as_ref()
+            .map_or(Duration::ZERO, |plan| self.boot_hold(&plan.manifest().boot));
         self.boot = Some(Boot {
             plan,
             assets,
-            pacer: BootPacer::default(),
+            pacer: BootPacer::holding(hold),
             merge_ms,
         });
         if let Some(window) = &self.window {

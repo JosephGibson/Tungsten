@@ -43,6 +43,14 @@
     "spark": {
       "path": "sprites/spark.png",
       "filter": "linear"
+    },
+    "boot_logo": {
+      "path": "sprites/boot_logo.png",
+      "filter": "linear"
+    },
+    "boot_bar": {
+      "path": "sprites/boot_bar.png",
+      "filter": "linear"
     }
   },
   "animations": {
@@ -255,5 +263,6 @@
     "title": {
       "path": "ui/screens/title.json"
     }
-  }
+  },
+  "boot": { "logo": "boot_logo", "bar": "boot_bar", "hold": 1.5 }
 }

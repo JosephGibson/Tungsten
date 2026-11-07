@@ -137,6 +137,15 @@ fn data_files_load() {
     assert!(manifest.data["tags"]["game"].path.is_file());
     assert!(manifest.data["cue_rules"]["labels"].path.is_file());
     assert!(manifest.ui_themes[theme::THEME_ID].path.is_file());
+    // The boot splash: its logo and bar, held 1.5 s at least.
+    for sprite in ["boot_logo", "boot_bar"] {
+        assert!(manifest.sprites[sprite].path.is_file(), "{sprite}");
+    }
+    let boot = &manifest.boot;
+    assert_eq!(
+        (boot.logo.as_deref(), boot.bar.as_deref(), boot.hold),
+        (Some("boot_logo"), Some("boot_bar"), Some(1.5))
+    );
     assert!(
         manifest.materials.is_empty() && manifest.shaders.is_empty(),
         "the hit flash's material is the engine's"
