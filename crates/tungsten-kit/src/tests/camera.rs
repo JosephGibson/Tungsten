@@ -339,3 +339,59 @@ fn the_aim_source_reads_the_kits_aim() {
         Some(Vec2::X)
     );
 }
+
+#[test]
+fn a_camera_zone_refuses_a_live_rig() {
+    let (mut world, _) = rigs(false);
+    let check = |world: &World, value: Value| {
+        world
+            .resource::<ComponentRegistry>()
+            .check_in(CAMERA_ZONE, &value, world)
+            .is_ok()
+    };
+    assert!(check(
+        &world,
+        json!({ "rig": { "fixed": { "at": [0, 0] } } })
+    ));
+    let live = json!({ "rig": { "fixed": { "at": [0, 0] }, "live": true } });
+    assert!(!check(&world, live), "a live");
+    let lowered = json!({ "rig": { "fixed": { "at": [0, 0] }, "live": false } });
+    assert!(!check(&world, lowered), "any live");
+    let zoomless = json!({ "rig": { "follow": {}, "zoom": 0 } });
+    assert!(!check(&world, zoomless), "the rig's own checks");
+    assert!(!check(&world, json!({})), "no rig");
+    let filtered = json!({ "rig": { "follow": {} }, "filter": {} });
+    assert!(!check(&world, filtered), "the zone's own fields");
+    // Spawned lowered, with an empty list, its ID beside it.
+    let hall = json!({
+        "rig": {
+            "fixed": { "rect": { "min": [0, 0], "max": [640, 360] } },
+            "priority": 10,
+            "blend": 0.4,
+            "id": "room.hall"
+        }
+    });
+    let mut components = json!({});
+    components[CAMERA_ZONE] = hall;
+    let zone = spawn_prefab(&mut world, components);
+    let rig = world.get::<CameraRig>(zone).unwrap();
+    assert!(!rig.is_live(), "lowered");
+    assert_eq!((rig.priority, rig.blend.time), (10, 0.4));
+    assert!(world.get::<CameraZone>(zone).unwrap().inside().is_empty());
+    assert_eq!(
+        world.get::<CameraRigId>(zone).map(CameraRigId::as_str),
+        Some("room.hall")
+    );
+    let once = world
+        .resource::<KitDescriptions>()
+        .get(CAMERA_ZONE)
+        .unwrap()
+        .round_trip(json!({ "rig": { "follow": {} } }))
+        .unwrap()
+        .unwrap();
+    assert!(
+        once["rig"].get("live").is_none(),
+        "written back without a live: {once}"
+    );
+    assert!(check(&world, once));
+}

@@ -1,0 +1,17 @@
+{
+  "tag": "vista",
+  "components": {
+    "camera_rig": {
+      "fixed": {
+        "at": [
+          2000,
+          300
+        ]
+      },
+      "view_height": 1080,
+      "priority": 5,
+      "id": "vista.cliff",
+      "live": false
+    }
+  }
+}

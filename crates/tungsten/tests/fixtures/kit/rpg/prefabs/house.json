@@ -1,0 +1,40 @@
+{
+  "tag": "house",
+  "components": {
+    "rigid_body": {
+      "kind": "sensor",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          150,
+          100
+        ]
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "camera_zone": {
+      "rig": {
+        "fixed": {
+          "rect": {
+            "min": [
+              450,
+              200
+            ],
+            "max": [
+              750,
+              400
+            ]
+          }
+        },
+        "priority": 10,
+        "blend": 0.4
+      }
+    }
+  }
+}

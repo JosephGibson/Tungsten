@@ -901,3 +901,134 @@ fn a_foglings_bar_waits_for_a_hurt() {
         assert_eq!(parts[1].1, V::new(22.5, 2.0), "dt {dt}: 30 px at 0.75");
     }
 }
+
+// 7.18, Step 3: camera zones and the camera action.
+
+/// The wayfarer's walk right from (100, 300) through the house, `seconds`
+/// long at `dt`, the house's and the wayfarer's blends cut when `cut`:
+/// the switches seen and the most a frame's centre step passed its bound,
+/// `(D · π/2 / 0.4 + v · (1 + π/2)) · dt + 0.01`, D the distance from the
+/// blend's start to the incoming view at the switch and v the wayfarer's
+/// 120 px/s.
+fn walk_through_the_house(dt: f32, cut: bool, seconds: f32) -> (usize, f32, Harness) {
+    use std::f32::consts::FRAC_PI_2;
+    use tungsten_core::{CameraRig, RigBlend};
+    let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+    let house = spawn(&mut harness, "house", [600.0, 300.0]);
+    let wayfarer = spawn(&mut harness, "wayfarer", [100.0, 300.0]);
+    if cut {
+        for rig in [house, wayfarer] {
+            harness.world_mut().get_mut::<CameraRig>(rig).unwrap().blend = RigBlend::CUT;
+        }
+    }
+    let view = |harness: &Harness| {
+        let controller = harness.world().resource::<CameraController>();
+        let frame = controller.frame();
+        (controller.winner(), frame.corner + frame.size * 0.5)
+    };
+    harness.step(1);
+    let (mut winner, mut centre) = view(&harness);
+    assert_eq!(winner, Some(wayfarer), "dt {dt}");
+    harness.press_action("move_right");
+    let (mut switches, mut distance, mut worst) = (0, 0.0_f32, f32::NEG_INFINITY);
+    for _ in 0..frames_for(seconds, dt) {
+        harness.step(1);
+        let (now, at) = view(&harness);
+        if now != winner {
+            let incoming = if now == Some(house) {
+                Vec2::new(600.0, 300.0)
+            } else {
+                drawn_at(&harness, wayfarer)
+            };
+            distance = (incoming - centre).length();
+            switches += 1;
+            winner = now;
+        }
+        let bound = (distance * FRAC_PI_2 / 0.4 + 120.0 * (1.0 + FRAC_PI_2)) * dt + 0.01;
+        worst = worst.max((at - centre).length() - bound);
+        centre = at;
+    }
+    (switches, worst, harness)
+}
+
+#[test]
+fn an_interiors_zone_frames_the_room_and_hands_back_without_a_jump() {
+    use tungsten_core::CameraRig;
+    for dt in [1.0 / 30.0, 1.0 / 60.0, 1.0 / 144.0] {
+        // Into the room: its rect, 200 tall, framed after its 0.4 s.
+        let (switches, worst, harness) = walk_through_the_house(dt, false, 4.2);
+        assert_eq!(switches, 1, "dt {dt}: in");
+        assert!(
+            worst <= 0.0,
+            "dt {dt}: a step {worst} past the bound going in"
+        );
+        let house = tagged(&harness, "house")[0];
+        let frame = harness.world().resource::<CameraController>().frame();
+        let centre = frame.corner + frame.size * 0.5;
+        assert!(
+            (centre - Vec2::new(600.0, 300.0)).length() < 0.05,
+            "dt {dt}: {centre}"
+        );
+        assert!(
+            (frame.size.y - 200.0).abs() < 0.05,
+            "dt {dt}: the room's height"
+        );
+        assert!(harness.world().get::<CameraRig>(house).unwrap().is_live());
+        // In and out again: the wayfarer's view comes back over its 0.4 s.
+        let (switches, worst, harness) = walk_through_the_house(dt, false, 7.0);
+        assert_eq!(switches, 2, "dt {dt}: in and out");
+        assert!(worst <= 0.0, "dt {dt}: a step {worst} past the bound");
+        let wayfarer = tagged(&harness, "wayfarer")[0];
+        let frame = harness.world().resource::<CameraController>().frame();
+        let centre = frame.corner + frame.size * 0.5;
+        assert!(
+            (centre - drawn_at(&harness, wayfarer)).length() < 0.05,
+            "dt {dt}: back on the wayfarer"
+        );
+        // Its cut twin jumps.
+        let (switches, worst, _) = walk_through_the_house(dt, true, 7.0);
+        assert_eq!(switches, 2, "dt {dt}: the cut twin's");
+        assert!(worst > 0.0, "dt {dt}: a cut passes the bound: {worst}");
+    }
+}
+
+#[test]
+fn the_lookout_raises_the_vista_and_a_kill_releases_it() {
+    use crate::kit::{CueAction, Cues, kill};
+    use tungsten_core::CameraRig;
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let vista = spawn(&mut harness, "vista", [0.0, 0.0]);
+        spawn(&mut harness, "lookout", [300.0, 300.0]);
+        let wayfarer = spawn(&mut harness, "wayfarer", [200.0, 300.0]);
+        // The straw dummy's `killed` releases the vista.
+        let release = Cues::new().on("killed", [CueAction::release_camera("vista.cliff")]);
+        let dummy = harness
+            .world_mut()
+            .prepare_prefab("straw_dummy", [500.0, 500.0])
+            .unwrap()
+            .with((release,))
+            .spawn(harness.world_mut());
+        let winner = |harness: &Harness| harness.world().resource::<CameraController>().winner();
+        let live = |harness: &Harness| harness.world().get::<CameraRig>(vista).unwrap().is_live();
+        harness.step(1);
+        assert_eq!(winner(&harness), Some(wayfarer), "dt {dt}");
+        assert!(!live(&harness), "dt {dt}: the vista waits, lowered");
+        // Into the lookout: its `zone_entered` raises the vista.
+        harness.press_action("move_right");
+        harness.step(frames_for(1.0, dt));
+        assert!(live(&harness), "dt {dt}: raised");
+        assert_eq!(winner(&harness), Some(vista), "dt {dt}: priority 5 wins");
+        let frame = harness.world().resource::<CameraController>().frame();
+        let centre = frame.corner + frame.size * 0.5;
+        assert!(
+            (centre - Vec2::new(2000.0, 300.0)).length() < 0.05,
+            "dt {dt}: {centre}"
+        );
+        // The dummy dies: its `killed` releases it.
+        kill(harness.world_mut(), dummy);
+        harness.step(2);
+        assert!(!live(&harness), "dt {dt}: released");
+        assert_eq!(winner(&harness), Some(wayfarer), "dt {dt}: back");
+    }
+}

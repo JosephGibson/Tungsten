@@ -128,11 +128,56 @@ fn camera_target(world: &mut World, following: &mut Option<Entity>) {
     }
 }
 
-/// [`CameraRigPlugin`]'s scene component.
+/// [`CameraRigPlugin`]'s rig scene component.
 pub const CAMERA_RIG: &str = "camera_rig";
+/// [`CameraRigPlugin`]'s camera zone scene component.
+pub const CAMERA_ZONE: &str = "camera_zone";
 
-/// The name a rig takes in data, `camera_rig`'s `id`: a dotted name a game
-/// finds the rig by, kept beside the `CameraRig` so the rig stays `Copy`.
+/// A camera zone: beside a [`Zone`](crate::Zone) on a sensor, its entity's
+/// `CameraRig`, lowered at its spawn, raised through
+/// `tungsten_core::camera::raise` when an entity the zone's filter passes
+/// enters it empty, and lowered when the last inside leaves, the filter not
+/// read again, or is despawned. A follow rig follows the first entity
+/// inside. [`ZonePlugin`](crate::ZonePlugin)'s system keeps the list.
+///
+/// Scene name `camera_zone`: `{ "rig": { "fixed": { "rect": { "min": [0,
+/// 0], "max": [640, 360] } }, "priority": 10, "blend": 0.4 } }`, the rig in
+/// `camera_rig`'s form, its `live` refused.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CameraZone {
+    inside: Vec<Entity>,
+}
+
+impl CameraZone {
+    /// The entities inside, the first to enter first.
+    #[must_use]
+    pub fn inside(&self) -> &[Entity] {
+        &self.inside
+    }
+
+    /// `entity` entered: whether the zone was empty, `None` when it was
+    /// already inside.
+    pub(crate) fn enter(&mut self, entity: Entity) -> Option<bool> {
+        if self.inside.contains(&entity) {
+            return None;
+        }
+        self.inside.push(entity);
+        Some(self.inside.len() == 1)
+    }
+
+    /// `entity` left: whether the zone is now empty, `None` when it was not
+    /// inside.
+    pub(crate) fn leave(&mut self, entity: Entity) -> Option<bool> {
+        let at = self.inside.iter().position(|&inside| inside == entity)?;
+        self.inside.remove(at);
+        Some(self.inside.is_empty())
+    }
+}
+
+/// The name a rig takes in data, `camera_rig`'s `id`: a dotted name a
+/// `camera` cue action ([`CueAction::raise_camera`](crate::CueAction::raise_camera))
+/// raises and releases it by, kept beside the `CameraRig` so the rig stays
+/// `Copy`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CameraRigId(String);
 
@@ -163,11 +208,12 @@ impl CameraRigId {
 
 /// Registers the `camera_rig` scene component: a `CameraRig` on its
 /// entity, a follow of the entity itself, with its `CameraRigId` beside it
-/// when it names one; the inspector's rows; and the World's `CameraAim`
-/// from the kit's [`Aim`](crate::Aim), so a follow's `aim` lead reads the
-/// entity's aim. It adds no system: the engine's camera update reads the
-/// rigs. Rigs are presentation, not saved: a load starts them from their
-/// prefabs.
+/// when it names one; `camera_zone`, a [`CameraZone`] with its rig lowered;
+/// the inspector's rows; and the World's `CameraAim` from the kit's
+/// [`Aim`](crate::Aim), so a follow's `aim` lead reads the entity's aim. It
+/// adds no system: the engine's camera update reads the rigs, and the
+/// zone's system the zones. Rigs and zones are presentation, not saved: a
+/// load starts them from their prefabs.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CameraRigPlugin;
 
@@ -373,7 +419,7 @@ impl Plugin for CameraRigPlugin {
                 FieldDescription::new(
                     "id",
                     FieldType::Text,
-                    "a dotted name, kept beside the rig as its `CameraRigId`",
+                    "a dotted name, kept beside the rig as its `CameraRigId`, that a `camera` cue action raises and releases it by",
                 )
                 .default("null"),
             )
@@ -387,12 +433,40 @@ impl Plugin for CameraRigPlugin {
             )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
+            .genre(RPG)
             .genre(SHOOTER)
             .sample(r#"{ "follow": {} }"#)
             .roundtrip(round_trip::<CameraRigDef>),
         );
         world.register_component_with(CAMERA_RIG, |def: CameraRigDef, _: &SpawnContext<'_>| {
             def.into_bundle()
+        });
+        register_rows_with(world, "CameraZone", |world: &World, entity: Entity| {
+            world
+                .get::<CameraZone>(entity)
+                .map(|zone| vec![("inside", zone.inside.len().to_string())])
+                .unwrap_or_default()
+        });
+        describe(
+            world,
+            ComponentDescription::new(
+                CAMERA_ZONE,
+                "A zone's camera: beside a `zone` on a sensor, its rig, lowered at its spawn, is raised while something the zone's filter passes is inside; a follow rig follows the first inside.",
+            )
+            .field(FieldDescription::new(
+                "rig",
+                FieldType::Object("a `camera_rig` form, its `live` refused"),
+                "the rig the zone raises and lowers",
+            ))
+            .genre(PLATFORMER)
+            .genre(RPG)
+            .sample(r#"{ "rig": { "fixed": { "at": [640, 360] } } }"#)
+            .roundtrip(round_trip::<CameraZoneDef>),
+        );
+        world.register_component_with(CAMERA_ZONE, |def: CameraZoneDef, _: &SpawnContext<'_>| {
+            let mut rig = def.rig.into_bundle();
+            rig.0.lower();
+            (CameraZone::default(),).with(rig)
         });
         if !world.has_resource::<CameraAim>() {
             world.insert_resource(CameraAim(aim_of));
@@ -881,6 +955,45 @@ impl CameraRigDef {
 
     fn into_bundle(self) -> RigBundle {
         RigBundle(self.rig(), self.id.map(CameraRigId))
+    }
+}
+
+/// `components.camera_zone` as a scene writes it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CameraZoneFields {
+    rig: serde_json::Value,
+}
+
+/// `components.camera_zone`, checked: its rig's form, with no `live`.
+#[derive(Deserialize)]
+#[serde(try_from = "CameraZoneFields")]
+struct CameraZoneDef {
+    rig: CameraRigDef,
+}
+
+impl TryFrom<CameraZoneFields> for CameraZoneDef {
+    type Error = String;
+
+    fn try_from(fields: CameraZoneFields) -> Result<Self, Self::Error> {
+        if fields.rig.get("live").is_some() {
+            return Err("rig.live: a zone's rig is raised while something is inside".to_string());
+        }
+        let rig = serde_json::from_value(fields.rig).map_err(|e| format!("rig: {e}"))?;
+        Ok(Self { rig })
+    }
+}
+
+impl Serialize for CameraZoneDef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut rig = serde_json::to_value(&self.rig).map_err(serde::ser::Error::custom)?;
+        if let Some(fields) = rig.as_object_mut() {
+            fields.remove("live");
+        }
+        let mut map = serializer.serialize_map(Some(1))?;
+        map.serialize_entry("rig", &rig)?;
+        map.end()
     }
 }
 

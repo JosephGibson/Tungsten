@@ -2,19 +2,22 @@
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
-use tungsten_core::physics::{Position, SensorEntered};
+use tungsten_core::camera;
+use tungsten_core::physics::{Position, SensorEntered, SensorExited};
 use tungsten_core::{
-    Entity, EventCursor, EventQueue, Inspectable, Plugin, Schedule, SpawnContext, Transform, World,
-    system,
+    CameraRig, Entity, EventCursor, EventQueue, Inspectable, Plugin, RigKind, Schedule,
+    SpawnContext, Transform, World, system,
 };
 
 use crate::foundation::describe::{
-    ComponentDescription, FieldDescription, FieldType, PLATFORMER, TOP_DOWN, describe, round_trip,
+    ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, TOP_DOWN, describe,
+    round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared};
 use crate::foundation::trace::{TraceKind, trace};
+use crate::present::camera::CameraZone;
 
 /// [`ZonePlugin`]'s system, in the overlap phase.
 pub const ZONE_TICK: &str = "zone_tick";
@@ -130,7 +133,10 @@ struct ZoneDef {
 /// [`ZONE_TICK`] in the overlap phase: after `physics_step`, it reads the
 /// step's `SensorEntered` events, each once through an [`EventCursor`], and
 /// sends a [`ZoneEntered`] for each whose sensor carries a [`Zone`] and
-/// whose other body's [`Tags`] pass the zone's filter.
+/// whose other body's [`Tags`] pass the zone's filter. While the World
+/// holds a [`CameraZone`], it also reads the `SensorExited` events through
+/// a cursor of its own, keeps each camera zone's list of what is inside and
+/// raises or lowers its rig.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ZonePlugin;
 
@@ -155,6 +161,7 @@ impl Plugin for ZonePlugin {
             .event("ZoneEntered")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
+            .genre(RPG)
             .sample("{}")
             .roundtrip(round_trip::<ZoneDef>),
         );
@@ -170,27 +177,33 @@ impl Plugin for ZonePlugin {
             |def: ZoneDef, _: &SpawnContext<'_>| (Zone::new(def.filter.into()),),
         );
         let mut sensors = EventCursor::<SensorEntered>::new();
+        let mut exits = EventCursor::<SensorExited>::new();
         let mut entered: Vec<ZoneEntered> = Vec::new();
+        let mut left: Vec<(Entity, Entity)> = Vec::new();
         schedule.add(
             Phase::Overlap.stage(),
             Phase::Overlap.join(system(ZONE_TICK, move |world: &mut World| {
                 zone_tick(world, &mut sensors, &mut entered);
+                if world.has_any::<CameraZone>() {
+                    camera_zones(world, &mut exits, &entered, &mut left);
+                }
+                send_entries(world, &mut entered);
             })),
         );
     }
 }
 
-/// Sends the entries since the system last ran; `cursor` is its place in
-/// the sensor queue and `entered` its scratch list.
+/// Lists the entries since the system last ran in `entered`; `cursor` is
+/// its place in the sensor queue.
 fn zone_tick(
     world: &mut World,
     cursor: &mut EventCursor<SensorEntered>,
     entered: &mut Vec<ZoneEntered>,
 ) {
+    entered.clear();
     let Some(sensors) = world.get_resource::<EventQueue<SensorEntered>>() else {
         return;
     };
-    entered.clear();
     entered.extend(cursor.read(sensors).filter_map(|event| {
         let other = event.other?;
         let zone = world.get::<Zone>(event.sensor)?;
@@ -198,6 +211,67 @@ fn zone_tick(
             .matches(world.get::<Tags>(other))
             .then(|| ZoneEntered::new(event.sensor, other, point_of(world, other)))
     }));
+}
+
+/// The camera zones' lists: each entry joins its zone's, raising the rig
+/// when the zone was empty; then each exit since the last step, read
+/// through `exits` into the scratch list `left`, leaves it, lowering the
+/// rig when it empties. A follow rig follows the first inside.
+fn camera_zones(
+    world: &mut World,
+    exits: &mut EventCursor<SensorExited>,
+    entered: &[ZoneEntered],
+    left: &mut Vec<(Entity, Entity)>,
+) {
+    left.clear();
+    if let Some(queue) = world.get_resource::<EventQueue<SensorExited>>() {
+        left.extend(
+            exits
+                .read(queue)
+                .filter_map(|exit| Some((exit.sensor, exit.other?)))
+                .filter(|&(sensor, _)| world.has::<CameraZone>(sensor)),
+        );
+    }
+    for event in entered {
+        let Some(was_empty) = world
+            .get_mut::<CameraZone>(event.zone)
+            .and_then(|zone| zone.enter(event.entity))
+        else {
+            continue;
+        };
+        follow_first(world, event.zone);
+        if was_empty {
+            camera::raise(world, event.zone);
+        }
+    }
+    for &(sensor, other) in left.iter() {
+        let Some(empty) = world
+            .get_mut::<CameraZone>(sensor)
+            .and_then(|zone| zone.leave(other))
+        else {
+            continue;
+        };
+        follow_first(world, sensor);
+        if empty {
+            camera::lower(world, sensor);
+        }
+    }
+}
+
+/// Points a camera zone's follow rig at the first entity inside it.
+fn follow_first(world: &mut World, zone: Entity) {
+    let first = world
+        .get::<CameraZone>(zone)
+        .and_then(|camera| camera.inside().first().copied());
+    if let Some(rig) = world.get_mut::<CameraRig>(zone)
+        && let RigKind::Follow(follow) = &mut rig.kind
+    {
+        follow.target = first;
+    }
+}
+
+/// Traces and sends the step's entries, draining `entered`.
+fn send_entries(world: &mut World, entered: &mut Vec<ZoneEntered>) {
     if entered.is_empty() {
         return;
     }

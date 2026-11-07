@@ -1,0 +1,31 @@
+{
+  "tag": "lookout",
+  "components": {
+    "rigid_body": {
+      "kind": "sensor",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          20,
+          20
+        ]
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "cues": {
+      "zone_entered": [
+        {
+          "camera": {
+            "raise": "vista.cliff"
+          }
+        }
+      ]
+    }
+  }
+}

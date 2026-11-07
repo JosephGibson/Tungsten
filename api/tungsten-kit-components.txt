@@ -33,13 +33,17 @@ component camera_rig: A camera rig on its entity; exactly one of `follow`, `fixe
   field bounds: shape camera_box = null — the box the rig's view stays inside, at its own height
   field priority: i64 (>= -2147483648, <= 2147483647) = 0 — the highest live rig wins; the engine's base rig sits at 0
   field blend: seconds, or { "time": seconds, "ease": easing } (sine_in_out), each time at least 0 = 0.0 — how the view moves to this rig when it starts winning, on the game clock; 0 cuts
-  field id: text = null — a dotted name, kept beside the rig as its `CameraRigId`
+  field id: text = null — a dotted name, kept beside the rig as its `CameraRigId`, that a `camera` cue action raises and releases it by
   field live: bool = true — whether the rig starts as a candidate; a lowered one waits for a raise
-  genres: platformer, top_down, shooter
+  genres: platformer, top_down, rpg, shooter
   sample: { "follow": {} }
 component camera_target: The marker the camera's base rig follows: the lowest-indexed live one.
   genres: platformer, top_down, rpg, shooter
   sample: null
+component camera_zone: A zone's camera: beside a `zone` on a sensor, its rig, lowered at its spawn, is raised while something the zone's filter passes is inside; a follow rig follows the first inside.
+  field rig: a `camera_rig` form, its `live` refused — the rig the zone raises and lowers
+  genres: platformer, rpg
+  sample: { "rig": { "fixed": { "at": [640, 360] } } }
 component cap: Holds its group's live instances to a number: a kit spawn past it ends the group's oldest, or is refused.
   field group: text — the group's name, dotted: the live holders the kit spawned or that hold a `Source`, a map-placed one aside
   field max: u32 (>= 1) — the most live instances, counting the frame's admissions
@@ -352,7 +356,7 @@ component wrap: Brings the entity back in from the far side once its box leaves 
 component zone: A sensor entered by the entities whose tags pass its filter.
   field filter: tag filter = {} — what enters; the load checks its tags
   events: ZoneEntered
-  genres: platformer, top_down
+  genres: platformer, top_down, rpg
   sample: {}
 shape ability: What an entity can do: fired by a trigger, at a cost, with a cooldown and charges, at a target.
   field trigger: shape ability_trigger = { "manual": {} } — what fires it
@@ -443,6 +447,11 @@ shape build_output: A status built by a fixed amount or by the entry's hits.
   field amount: f32 (>= 0) = null — a fixed build, at the entry's largest status effect
   field scale: f32 (>= 0) = null — times the entry's hits, each at its own status effect; 1 when neither is given
   sample: { "status": "burning" }
+shape camera_action: A camera rig raised or released by its ID.
+  exactly one of its fields
+  field raise: text — the dotted ID of the rigs raised
+  field release: text — the dotted ID of the rigs lowered
+  sample: { "raise": "vista" }
 shape camera_box: A world-space box, `min` to `max`.
   field min: [x, y] — its least corner, in world units
   field max: [x, y] — its greatest corner, at least `min` on each axis
@@ -527,6 +536,7 @@ shape cue_action: One reaction to an event.
   field loop: shape loop_action — the subject wants a manifest sound looping: one voice per sound at its loudest want by the cue listener
   field stop: shape stop_action — the subject's want of a looping sound ends; the last one's voice fades out
   field clip: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up — a clip played once on the subject's character animator over its state's and its rules', from its first frame; the load checks each ID
+  field camera: shape camera_action — every camera rig whose `id` is the name raised, the latest raised winning a tie, or lowered; none holding it, a traced skip
   sample: { "despawn": {} }
 shape cue_amount: A rule's range over an occurrence's amount, each end inclusive and optional.
   field min: f32 = null — the least amount that passes

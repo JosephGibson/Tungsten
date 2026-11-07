@@ -202,7 +202,8 @@
 //!   [`DepthSort`] and [`DepthSortPlugin`]: a sprite sorted by how low it
 //!   stands. [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the
 //!   camera follows. [`CameraRigPlugin`] and [`CameraRigId`]: a camera rig
-//!   in data, `camera_rig`. [`SoundOnEvent`]: a manifest sound played once per
+//!   in data, `camera_rig`; [`CameraZone`], a zone that raises its rig while
+//!   something is inside, `camera_zone`. [`SoundOnEvent`]: a manifest sound played once per
 //!   event. [`LabelStyle`] and [`float_label`]: how a cue's `label`, or a
 //!   game's own code, floats an amount.
 //! - **Transform.** [`spawn_child`], [`Parent`], [`Children`],
@@ -329,7 +330,8 @@ pub use overlap::trigger::{TriggerEntered, TriggerZone};
 pub use overlap::zone::{ZONE_TICK, Zone, ZoneEntered, ZonePlugin};
 pub use present::animation::{ANIMATION_TICK, AnimationPlugin};
 pub use present::camera::{
-    CAMERA_RIG, CAMERA_TARGET, CameraRigId, CameraRigPlugin, CameraTarget, CameraTargetPlugin,
+    CAMERA_RIG, CAMERA_TARGET, CAMERA_ZONE, CameraRigId, CameraRigPlugin, CameraTarget,
+    CameraTargetPlugin, CameraZone,
 };
 pub use present::character::{
     CHARACTER_ANIMATOR, CharacterAnimator, CharacterAnimatorPlugin, ClipRule, Clips,
@@ -360,30 +362,31 @@ pub mod prelude {
         Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, ActionInput,
         ActionInputPlugin, AilmentBuckets, AilmentRung, AilmentThreshold, Aim, AimPlugin,
         AnimationPlugin, Applied, CameraRigId, CameraRigPlugin, CameraTarget, CameraTargetPlugin,
-        Cap, CapPlugin, CharacterAnimator, CharacterAnimatorPlugin, Chemistry, ChemistryPlugin,
-        Children, ClipRule, Clips, Cone, ContactDamage, ContactDamagePlugin, Conversion, Cooldown,
-        CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent,
-        CueListener, Cues, CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest,
-        Damaged, DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin,
-        Direction, Effect, EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects,
-        EffectsPlugin, Expire, Facing, FacingPlugin, Flags, Follow, FollowPlugin, HealRequest,
-        Healed, Health, HealthBar, HealthBarPlugin, HealthPlugin, HierarchyPlugin, Hit, HitFlash,
-        HitPlugin, HitShape, Hitbox, Hold, Hurtbox, ImmunePart, Intent, Interaction, KitDebug,
-        KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback, KnockbackPlugin, LabelStyle,
-        Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin, LinearMotion, LinearMotionPlugin,
-        Lob, LocalOffset, Looks, LooksPlugin, Modifier, Offer, Offers, Orbit, OrbitPlugin,
-        Oscillator, OscillatorPlugin, Output, Parent, Past, PathFollower, PathFollowerPlugin,
-        Payload, Penetration, Phase, PickedUp, Pickup, PickupPlugin, Place, PlatformerController,
-        PlatformerControllerPlugin, Projectile, ProjectileBounced, ProjectileExpired,
-        ProjectilePassed, ProjectilePlugin, Reaction, Refresh, Resist, Scaled, Shield,
-        SoundOnEvent, Source, SourcePlugin, SpawnChildren, SpawnChildrenPlugin, SpawnWith, Spawner,
-        SpawnerPlugin, SpeedLimit, SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats,
-        StatsPlugin, StayInView, StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter,
-        TagLook, Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind,
-        Trigger, TriggerEntered, TriggerZone, Used, WallContact, WeightedTable, WorldBounds,
-        WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin, carried_by, carry,
-        cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, face_toward,
-        float_label, heal, kill, knock_back, release, spawn_child, use_ability,
+        CameraZone, Cap, CapPlugin, CharacterAnimator, CharacterAnimatorPlugin, Chemistry,
+        ChemistryPlugin, Children, ClipRule, Clips, Cone, ContactDamage, ContactDamagePlugin,
+        Conversion, Cooldown, CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction,
+        CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart,
+        DamageRequest, Damaged, DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside,
+        DespawnOutsidePlugin, Direction, Effect, EffectApplied, EffectExpired, EffectInstance,
+        EffectRequest, Effects, EffectsPlugin, Expire, Facing, FacingPlugin, Flags, Follow,
+        FollowPlugin, HealRequest, Healed, Health, HealthBar, HealthBarPlugin, HealthPlugin,
+        HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox, Hold, Hurtbox, ImmunePart,
+        Intent, Interaction, KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback,
+        KnockbackPlugin, LabelStyle, Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin,
+        LinearMotion, LinearMotionPlugin, Lob, LocalOffset, Looks, LooksPlugin, Modifier, Offer,
+        Offers, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Output, Parent, Past,
+        PathFollower, PathFollowerPlugin, Payload, Penetration, Phase, PickedUp, Pickup,
+        PickupPlugin, Place, PlatformerController, PlatformerControllerPlugin, Projectile,
+        ProjectileBounced, ProjectileExpired, ProjectilePassed, ProjectilePlugin, Reaction,
+        Refresh, Resist, Scaled, Shield, SoundOnEvent, Source, SourcePlugin, SpawnChildren,
+        SpawnChildrenPlugin, SpawnWith, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin,
+        StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin,
+        Steering, SteeringPlugin, Struck, TagFilter, TagLook, Tags, TagsPlugin, Target,
+        TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered,
+        TriggerZone, Used, WallContact, WeightedTable, WorldBounds, WorldCue, Wrap, WrapPlugin,
+        Zone, ZoneEntered, ZonePlugin, carried_by, carry, cursor_to_world, damage,
+        despawn_recursive, end_effect, ensure_phases, face_toward, float_label, heal, kill,
+        knock_back, release, spawn_child, use_ability,
     };
 }
 

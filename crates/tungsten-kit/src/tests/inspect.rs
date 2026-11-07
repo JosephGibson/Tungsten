@@ -49,6 +49,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
         ("action_input", "ActionInput"),
         ("camera_target", "CameraTarget"),
         ("camera_rig", "CameraRig"),
+        ("camera_zone", "CameraZone"),
         ("lifetime", "Lifetime"),
         ("despawn_outside", "DespawnOutside"),
         ("spawner", "Spawner"),
@@ -97,7 +98,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
     for label in ["Intent", "Source", "Parent", "Children", "LocalOffset"] {
         assert!(labels.contains(&label), "{label}");
     }
-    assert_eq!(described.iter().count(), 49);
+    assert_eq!(described.iter().count(), 50);
 }
 
 #[test]

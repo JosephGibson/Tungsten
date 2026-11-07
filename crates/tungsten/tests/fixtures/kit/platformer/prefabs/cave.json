@@ -1,0 +1,40 @@
+{
+  "tag": "cave",
+  "components": {
+    "rigid_body": {
+      "kind": "sensor",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          150,
+          60
+        ]
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "camera_zone": {
+      "rig": {
+        "follow": {},
+        "view_height": 360,
+        "bounds": {
+          "min": [
+            0,
+            0
+          ],
+          "max": [
+            700,
+            400
+          ]
+        },
+        "priority": 5,
+        "blend": 0.3
+      }
+    }
+  }
+}
