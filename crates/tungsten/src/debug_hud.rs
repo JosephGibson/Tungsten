@@ -12,7 +12,7 @@
 use std::collections::VecDeque;
 
 use tungsten_core::World;
-use tungsten_core::camera::{CameraController, CameraMode, CameraState};
+use tungsten_core::camera::{CameraController, CameraRig, CameraState};
 use tungsten_core::input::{ActionMap, InputState};
 use tungsten_core::text::{StyledText, TextAlign, TextSpan};
 use tungsten_core::ui::{Sizing, UiVertex, WidgetId};
@@ -484,7 +484,8 @@ fn display_line(world: &World) -> Vec<Line> {
     )]
 }
 
-/// `camera`: its position, its zoom as a factor and its mode.
+/// `camera`: its position, its zoom as a factor and the winning rig's
+/// kind.
 fn camera_line(world: &World) -> Vec<Line> {
     let (Some(state), Some(controller)) = (
         world.get_resource::<CameraState>(),
@@ -492,11 +493,11 @@ fn camera_line(world: &World) -> Vec<Line> {
     ) else {
         return Vec::new();
     };
-    let mode = match controller.mode {
-        CameraMode::Free => "free",
-        CameraMode::Follow(_) => "follow",
-        CameraMode::Scripted => "scripted",
-    };
+    let winner = controller
+        .winner()
+        .and_then(|entity| world.get::<CameraRig>(entity))
+        .unwrap_or(&controller.rig);
+    let mode = winner.kind.name();
     vec![Line::new(
         "camera",
         vec![

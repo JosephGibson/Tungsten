@@ -3,7 +3,7 @@
 //! without its shake, changed by a margin.
 
 use glam::Vec2;
-use tungsten_core::{CameraController, CameraState, WindowSize, World};
+use tungsten_core::{CameraState, WindowSize, World};
 
 use crate::foundation::inspect::point;
 
@@ -136,14 +136,12 @@ impl Area {
 }
 
 /// The last frame's camera view without its shake, as a world-space box:
-/// the camera's visible box at the `WindowSize`, from its position less the
-/// shake offset the camera update last added. A shake never moves what a
-/// wrap or a clamp holds. `None` without a `CameraState` or a `WindowSize`.
+/// the camera's visible box at the `WindowSize`, from
+/// `CameraState::unshaken`. A shake never moves what a wrap, a clamp or a
+/// despawn outside the view judges. `None` without a `CameraState` or a
+/// `WindowSize`.
 pub(crate) fn unshaken_view(world: &World) -> Option<(Vec2, Vec2)> {
-    let mut camera = *world.get_resource::<CameraState>()?;
+    let camera = world.get_resource::<CameraState>()?.unshaken();
     let size = world.get_resource::<WindowSize>()?;
-    if let Some(controller) = world.get_resource::<CameraController>() {
-        camera.position = controller.resolve_base_position(camera.position);
-    }
     Some(camera.visible_world_aabb(size.width as f32, size.height as f32))
 }

@@ -6,9 +6,9 @@ use std::path::Path;
 use tungsten::core::assets::manifest::ResolvedManifest;
 use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::{
-    ActionMap, AssetRegistry, AudioCommand, Binding, BodyKind, CameraController, CameraMode,
-    CameraState, Entity, ParticleEmitter, Position, PrevPosition, RigidBody, SoundRegistry, Sprite,
-    Time, Transform, UserFolder, Velocity, Voice, With,
+    ActionMap, AssetRegistry, AudioCommand, Binding, BodyKind, CameraController, CameraRig,
+    CameraState, Entity, ParticleEmitter, Position, PrevPosition, RigKind, RigidBody,
+    SoundRegistry, Sprite, Time, Transform, UserFolder, Velocity, Voice, With,
 };
 use tungsten::kit::{
     Counters, Damaged, Effects, Hit, HitFlash, LinearMotion, Projectile, Stats, damage,
@@ -523,16 +523,21 @@ fn a_hit_in_motion_floats_its_label_and_settles_its_shake() {
 #[test]
 fn the_camera_follows_the_player() {
     let mut harness = harness();
-    assert_eq!(
-        harness.world().resource::<CameraController>().mode,
-        CameraMode::Free,
-        "no target on the title"
-    );
+    let camera = harness.world().resource::<CameraController>();
+    assert_eq!(camera.rig.target(), None, "no target on the title");
+    assert_eq!(camera.winner(), None, "the base rig");
     start(&mut harness);
     let entity = player_entity(&harness);
-    let camera = harness.world().resource::<CameraController>();
-    assert_eq!(camera.mode, CameraMode::Follow(entity));
-    assert_eq!(camera.dead_zone_size.to_array(), CAMERA_DEAD_ZONE);
+    let world = harness.world();
+    assert_eq!(world.resource::<CameraController>().winner(), Some(entity));
+    let rig = world.get::<CameraRig>(entity).expect("the player's rig");
+    let RigKind::Follow(follow) = rig.kind else {
+        panic!("a follow, not {:?}", rig.kind);
+    };
+    assert_eq!(follow.dead_zone.to_array(), CAMERA_DEAD_ZONE);
+    assert_eq!(follow.target, None, "its own point");
+    assert_eq!(follow.offset.to_array(), [0.0, 0.0]);
+    assert_eq!(rig.view_height, Some(720.0));
     let before = harness.world().resource::<CameraState>().position;
     harness.harness_mut().press_action("move_right");
     // 120 px: still inside the dead zone, so the player moves on screen.
@@ -779,6 +784,64 @@ fn the_camera_frames_the_play_space_at_every_window_size() {
             "{window:?}: the view centred on {centre:?}"
         );
     }
+}
+
+/// The drawn view's centre, without the shake.
+fn view_centre(harness: &UiHarness) -> [f32; 2] {
+    let camera = harness.world().resource::<CameraState>().unshaken();
+    let window = *harness.world().resource::<WindowSize>();
+    let half = [window.width, window.height].map(|side| side as f32 / camera.zoom / 2.0);
+    [camera.position.x + half[0], camera.position.y + half[1]]
+}
+
+fn on_the_play_space(centre: [f32; 2]) -> bool {
+    (centre[0] - PLAY_CENTRE[0]).abs() < 0.5 && (centre[1] - PLAY_CENTRE[1]).abs() < 0.5
+}
+
+/// Steps until a run other than `old`'s is live, and returns the view's
+/// centre on its first frame.
+fn first_frame_centre(harness: &mut UiHarness, old: Entity) -> [f32; 2] {
+    for _ in 0..120 {
+        harness.step(1);
+        let run = harness.world().get_resource::<SampleRun>();
+        if run.is_some_and(|run| run.player != old) {
+            return view_centre(harness);
+        }
+    }
+    panic!("no new run");
+}
+
+/// Walks the player 360 px right, past the dead zone's edge, so the view
+/// scrolls off the play space.
+fn scroll(harness: &mut UiHarness) {
+    harness.harness_mut().press_action("move_right");
+    harness.step(90);
+    release_and_settle(harness, "move_right");
+    let centre = view_centre(harness);
+    assert!(!on_the_play_space(centre), "scrolled: {centre:?}");
+}
+
+#[test]
+fn a_new_run_after_scrolling_starts_on_the_play_space() {
+    let mut harness = harness();
+    start(&mut harness);
+    assert!(on_the_play_space(view_centre(&harness)));
+    let save = tungsten_template_basic::save::capture(harness.world()).expect("a live run");
+    scroll(&mut harness);
+    // A retry with no autosave behind it: a fresh run in the old one's place,
+    // whose rig the old player's, still waiting on its despawn, loses to.
+    let old = player_entity(&harness);
+    let fresh = tungsten_template_basic::shell::RunStart::default();
+    tungsten_template_basic::shell::start_run(harness.world_mut(), fresh, None);
+    let centre = first_frame_centre(&mut harness, old);
+    assert!(on_the_play_space(centre), "a retry: {centre:?}");
+    super::settle(&mut harness);
+    scroll(&mut harness);
+    // A load: the save's player placed, then the view put on the play space.
+    let old = player_entity(&harness);
+    tungsten_template_basic::shell::start_run(harness.world_mut(), save.into(), None);
+    let centre = first_frame_centre(&mut harness, old);
+    assert!(on_the_play_space(centre), "a load: {centre:?}");
 }
 
 /// The volume changes among `commands`.

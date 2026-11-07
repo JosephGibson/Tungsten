@@ -329,11 +329,8 @@ fn cursor_to_world_maps_the_harness_cursor_through_the_camera() {
     let mut harness = Harness::new(kit_app());
     harness.step(1);
     assert_eq!(cursor_to_world(harness.world()), None, "no cursor yet");
-    {
-        let camera = harness.world_mut().resource_mut::<CameraState>();
-        camera.position = Vec2::new(100.0, 50.0);
-        camera.zoom = 2.0;
-    }
+    harness.world_mut().resource_mut::<CameraController>().rig =
+        CameraRig::fixed(FixedRig::Corner(Vec2::new(100.0, 50.0))).with_zoom(2.0);
     harness.set_cursor(60.0, 40.0);
     harness.step(1);
     assert_eq!(
@@ -2159,7 +2156,7 @@ fn the_trace_tells_why_an_entity_died() {
 use std::f32::consts::{FRAC_PI_2, TAU};
 
 use tungsten_core::physics::PrevPosition;
-use tungsten_core::{CameraController, Plugin};
+use tungsten_core::{CameraController, CameraRig, FixedRig, Plugin};
 
 use crate::kit::{
     ACTION_INPUT, AIM, ANIMATION_TICK, ActionInputPlugin, Aim, AimPlugin, AnimationPlugin,
@@ -2774,6 +2771,10 @@ fn a_camera_shake_does_not_move_a_clamped_entity() {
 #[test]
 fn an_aim_follows_the_cursor_under_a_moved_camera_and_a_loose_nearest_fails_the_load() {
     let mut harness = motion_harness(1.0 / 60.0);
+    // The rig the update draws from, and the view this step's aim reads
+    // before the update runs.
+    harness.world_mut().resource_mut::<CameraController>().rig =
+        CameraRig::fixed(FixedRig::Corner(Vec2::new(1000.0, 500.0))).with_zoom(2.0);
     {
         let camera = harness.world_mut().resource_mut::<CameraState>();
         camera.position = Vec2::new(1000.0, 500.0);

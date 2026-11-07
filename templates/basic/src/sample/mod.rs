@@ -22,8 +22,8 @@ use tungsten::core::post::{BloomParams, PostPass, PostStack};
 use tungsten::core::save::{self, SaveState, Saved, restore_world};
 use tungsten::core::ui::UiTree;
 use tungsten::core::{
-    AudioCommands, CameraController, CameraState, DataRef, Entity, PreparedPrefab, ScaleFactor,
-    Schedule, SoundRegistry, Stage, Time, Timer, Voice, WindowSize, With, World, system,
+    AudioCommands, CameraController, CameraRig, DataRef, Entity, FollowRig, PreparedPrefab,
+    Schedule, SoundRegistry, Stage, Time, Timer, Voice, With, World, system,
 };
 use tungsten::kit::{Counters, EffectRequest, Health, Stats, Tags};
 use tungsten::{GameState, Plugin, SceneEntity, StateContext, StateId};
@@ -206,7 +206,7 @@ fn continue_run(world: &mut World, save: &SaveGame, player: Entity) {
 }
 
 /// The sample as a plugin: the components its prefabs name, the camera's
-/// dead zone and shake, and `sample_frame` in `Update`.
+/// shake, and `sample_frame` in `Update`.
 pub struct SamplePlugin;
 
 impl Plugin for SamplePlugin {
@@ -215,7 +215,6 @@ impl Plugin for SamplePlugin {
         world.register_component::<Player>("player");
         script::register(world);
         if let Some(camera) = world.get_resource_mut::<CameraController>() {
-            camera.dead_zone_size = CAMERA_DEAD_ZONE.into();
             // The trauma rides an 18 Hz carrier and decays in under a second.
             camera.shake_frequency_hz = 18.0;
             camera.shake_max_offset = CAMERA_SHAKE.into();
@@ -224,17 +223,12 @@ impl Plugin for SamplePlugin {
     }
 }
 
-/// The camera's zoom for the window: its height over the UI's reference
-/// height (`D-184`), so a taller window shows the same play space larger.
-fn zoom(world: &World) -> f32 {
-    let height = world
-        .get_resource::<WindowSize>()
-        .map_or(720, |size| size.height);
-    let reference = world
-        .get_resource::<ScaleFactor>()
-        .and_then(ScaleFactor::reference_height)
-        .unwrap_or(720.0);
-    (height as f32 / reference).max(f32::EPSILON)
+/// The player's camera: a follow of its point with the dead zone, 720
+/// world units tall at every window, so a taller window shows the same
+/// play space larger.
+fn player_camera() -> CameraRig {
+    CameraRig::follow(FollowRig::default().with_dead_zone(CAMERA_DEAD_ZONE.into()))
+        .with_view_height(720.0)
 }
 
 /// Pause's music: when pause comes on top, the run's voice falls to 0 and
@@ -296,8 +290,7 @@ fn bring_back(world: &mut World) {
 
 /// `sample_frame`: fallen enemies come back, the damage numbers tag follows
 /// the option on whatever has health (the player, the dummy and the
-/// enemies), the camera's zoom the window, the music the stack and the HUD
-/// the run.
+/// enemies), the music the stack and the HUD the run.
 fn frame(world: &mut World) {
     bring_back(world);
     let shown = world.resource::<GameOptions>().damage_numbers;
@@ -308,8 +301,6 @@ fn frame(world: &mut World) {
             tags.remove(DAMAGE_NUMBERS_TAG);
         }
     }
-    let zoom = zoom(world);
-    world.resource_mut::<CameraController>().zoom_multiplier = zoom;
     duck(world);
     hud::update(world);
 }
@@ -345,7 +336,9 @@ impl GameState for GameplayState {
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let world = &mut *ctx.world;
         let start = self.start.take().unwrap_or_default();
-        let player = prepare(world, PLAYER_PREFAB, PLAYER_START).spawn(world);
+        let player = prepare(world, PLAYER_PREFAB, PLAYER_START)
+            .with((player_camera(),))
+            .spawn(world);
         // Before any step, so the first one already runs at this max.
         if let Some(stats) = world.get_mut::<Stats>(player) {
             stats.set_base(Stats::MAX_HEALTH, max_health(start.difficulty));
@@ -373,11 +366,10 @@ impl GameState for GameplayState {
         if let Some(save) = &start.save {
             continue_run(world, save, player);
         }
-        // The view starts centred on the play space, at this window's zoom.
-        let (window, zoom) = (*world.resource::<WindowSize>(), zoom(world));
-        let view = [window.width, window.height].map(|side| side as f32 / zoom / 2.0);
-        let centre = [PLAY_CENTRE[0] - view[0], PLAY_CENTRE[1] - view[1]];
-        world.resource_mut::<CameraState>().position = centre.into();
+        // Every run starts its view centred on the play space, a load's too.
+        world
+            .resource_mut::<CameraController>()
+            .cut_to(PLAY_CENTRE.into());
         let run = shell::play(world, MUSIC_RUN, MUSIC_FADE);
         world.insert_resource(Music {
             run,

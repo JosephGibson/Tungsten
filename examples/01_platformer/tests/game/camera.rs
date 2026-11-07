@@ -77,8 +77,11 @@ fn zoom_input_reaches_and_clamps_expanded_range() {
         assert!((world.resource::<Zoom>().0 - expected).abs() < 1e-3);
         let height = world.resource::<WindowSize>().height as f32;
         let base = height / (CAMERA_ROWS * TILE);
-        let multiplier = world.resource::<CameraController>().zoom_multiplier;
-        assert!((multiplier - base * expected).abs() < 1e-3, "{multiplier}");
+        let zoom = world.resource::<CameraState>().zoom;
+        assert!((zoom - base * expected).abs() < 1e-3, "{zoom}");
+        let rig = world.resource::<CameraController>().rig;
+        assert_eq!(rig.view_height, Some(CAMERA_ROWS * TILE));
+        assert!((rig.zoom - expected).abs() < 1e-3);
     }
 }
 

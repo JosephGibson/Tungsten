@@ -2,7 +2,8 @@ use glam::Vec2;
 use tungsten::WindowSize;
 use tungsten::camera_update_system;
 use tungsten::core::{
-    CameraBounds, CameraController, CameraMode, CameraState, Time, Transform, World,
+    CameraBounds, CameraController, CameraRig, CameraState, FixedRig, FollowRig, Time, Transform,
+    World,
 };
 
 fn seed_world() -> World {
@@ -33,12 +34,8 @@ fn follow_camera_tracks_target_across_fixed_dt_frames() {
     let player = world.spawn();
     world.insert(player, Transform::from_position(Vec2::new(300.0, 150.0)));
 
-    {
-        let controller = world.get_resource_mut::<CameraController>().unwrap();
-        controller.mode = CameraMode::Follow(player);
-        controller.dead_zone_size = Vec2::ZERO;
-        controller.smoothing_factor = 0.5;
-    }
+    world.resource_mut::<CameraController>().rig =
+        CameraRig::follow(FollowRig::of(player).with_smoothing(Vec2::splat(0.5)));
 
     camera_update_system(&mut world);
     let after_first = world.get_resource::<CameraState>().unwrap().position;
@@ -62,16 +59,8 @@ fn bounds_clamp_limits_follow_camera_to_world_rect() {
         Transform::from_position(Vec2::new(9_999.0, 9_999.0)),
     );
 
-    {
-        let controller = world.get_resource_mut::<CameraController>().unwrap();
-        controller.mode = CameraMode::Follow(player);
-        controller.dead_zone_size = Vec2::ZERO;
-        controller.smoothing_factor = 1.0;
-        controller.bounds = Some(CameraBounds {
-            min: Vec2::ZERO,
-            max: Vec2::new(768.0, 288.0),
-        });
-    }
+    world.resource_mut::<CameraController>().rig = CameraRig::follow(FollowRig::of(player))
+        .with_bounds(CameraBounds::new(Vec2::ZERO, Vec2::new(768.0, 288.0)));
 
     camera_update_system(&mut world);
     let camera = world.get_resource::<CameraState>().unwrap();
@@ -79,18 +68,10 @@ fn bounds_clamp_limits_follow_camera_to_world_rect() {
 }
 
 #[test]
-fn scripted_mode_preserves_pose_and_applies_zoom_multiplier() {
+fn a_fixed_rig_holds_its_corner_at_its_zoom() {
     let mut world = seed_world();
-    {
-        let camera = world.get_resource_mut::<CameraState>().unwrap();
-        camera.position = Vec2::new(32.0, 48.0);
-        camera.zoom = 2.0;
-    }
-    {
-        let controller = world.get_resource_mut::<CameraController>().unwrap();
-        controller.mode = CameraMode::Scripted;
-        controller.zoom_multiplier = 1.5;
-    }
+    world.resource_mut::<CameraController>().rig =
+        CameraRig::fixed(FixedRig::Corner(Vec2::new(32.0, 48.0))).with_zoom(3.0);
 
     camera_update_system(&mut world);
     let camera = world.get_resource::<CameraState>().unwrap();
@@ -111,35 +92,18 @@ fn zero_rotation_camera_remains_pre_m10_ortho_through_shared_path() {
 }
 
 #[test]
-fn zoom_multiplier_change_applies_when_gameplay_rewrites_base_each_frame() {
-    // Regression: gameplay base-zoom rewrite must not hide multiplier changes.
+fn a_rigs_zoom_applies_whatever_the_game_writes_each_frame() {
+    // A game that writes the state's zoom each frame draws at the rig's,
+    // never the product (A1's base-squared trap).
     let mut world = seed_world();
-    let base_zoom: f32 = 3.0;
-
-    for _ in 0..2 {
-        world.get_resource_mut::<CameraState>().unwrap().zoom = base_zoom;
-        camera_update_system(&mut world);
+    for zoom in [1.0, 1.25, 0.75] {
+        world.resource_mut::<CameraController>().rig.zoom = zoom;
+        for _ in 0..2 {
+            world.get_resource_mut::<CameraState>().unwrap().zoom = 3.0;
+            camera_update_system(&mut world);
+            assert_eq!(world.resource::<CameraState>().zoom, zoom);
+        }
     }
-    let steady = world.get_resource::<CameraState>().unwrap().zoom;
-    assert_eq!(steady, base_zoom);
-
-    world
-        .get_resource_mut::<CameraController>()
-        .unwrap()
-        .zoom_multiplier = 1.25;
-    world.get_resource_mut::<CameraState>().unwrap().zoom = base_zoom;
-    camera_update_system(&mut world);
-    let zoomed = world.get_resource::<CameraState>().unwrap().zoom;
-    assert_eq!(zoomed, base_zoom * 1.25);
-
-    world
-        .get_resource_mut::<CameraController>()
-        .unwrap()
-        .zoom_multiplier = 0.75;
-    world.get_resource_mut::<CameraState>().unwrap().zoom = base_zoom;
-    camera_update_system(&mut world);
-    let zoomed_out = world.get_resource::<CameraState>().unwrap().zoom;
-    assert_eq!(zoomed_out, base_zoom * 0.75);
 }
 
 #[test]
@@ -148,11 +112,8 @@ fn shake_is_deterministic_for_identical_worlds() {
     let mut world_b = seed_world();
 
     for world in [&mut world_a, &mut world_b] {
-        let camera = world.get_resource_mut::<CameraState>().unwrap();
-        camera.position = Vec2::new(120.0, 75.0);
-
         let controller = world.get_resource_mut::<CameraController>().unwrap();
-        controller.mode = CameraMode::Scripted;
+        controller.rig = CameraRig::fixed(FixedRig::Corner(Vec2::new(120.0, 75.0)));
         controller.shake_amplitude = Vec2::new(4.0, 2.0);
         controller.shake_frequency_hz = 3.0;
         controller.shake_phase = 0.25;
@@ -184,12 +145,8 @@ fn smoothing_converges_the_same_at_60_and_120_hz() {
         world.insert_resource(time);
         let target = world.spawn();
         world.insert(target, Transform::from_position(Vec2::new(300.0, 150.0)));
-        {
-            let controller = world.get_resource_mut::<CameraController>().unwrap();
-            controller.mode = CameraMode::Follow(target);
-            controller.dead_zone_size = Vec2::ZERO;
-            controller.smoothing_factor = 0.05;
-        }
+        world.resource_mut::<CameraController>().rig =
+            CameraRig::follow(FollowRig::of(target).with_smoothing(Vec2::splat(0.05)));
         for _ in 0..frames {
             camera_update_system(&mut world);
         }

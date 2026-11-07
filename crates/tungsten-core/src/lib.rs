@@ -43,7 +43,10 @@ pub use assets::{
     UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioBus, AudioCommand, AudioCommands, MAX_VOICES, Voice};
-pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
+pub use camera::{
+    CameraAim, CameraBounds, CameraController, CameraFrame, CameraRig, CameraState, FixedRig,
+    FollowRig, LeadFrom, RigBlend, RigKind, RigLead,
+};
 pub use component_registry::{
     ComponentError, ComponentRegistry, MissingAsset, PreparedComponent, SpawnContext,
 };

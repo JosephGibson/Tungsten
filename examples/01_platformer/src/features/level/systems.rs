@@ -5,7 +5,7 @@ use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::{
     AmbientLight, AssetRegistry, CameraController, Collider, Entity, Light, LightKind,
-    MaterialRegistry, Position, Shape, Sprite, Time, Transform, Visibility, WindowSize, World,
+    MaterialRegistry, Position, Shape, Sprite, Time, Transform, Visibility, World,
 };
 
 use super::components::{Area, AreaLight, Glow, GlowPart, GlowParts, SceneTime, Zoom};
@@ -27,15 +27,13 @@ pub const CORE_MATERIAL: &str = "ex10_soft_flame";
 pub const HALO_Z: i32 = -8;
 pub const CORE_Z: i32 = -7;
 
-/// `level_zoom`: the camera's zoom shows [`CAMERA_ROWS`] rows of tiles in
-/// the window's height, times the player's [`Zoom`].
+/// `level_zoom`: the base rig's view shows [`CAMERA_ROWS`] rows of tiles
+/// in the window's height, times the player's [`Zoom`].
 pub fn zoom(world: &mut World) {
-    let height = world
-        .get_resource::<WindowSize>()
-        .map_or(720, |size| size.height);
-    let base = (height as f32 / (CAMERA_ROWS * TILE)).max(f32::EPSILON);
     let zoom = world.get_resource::<Zoom>().map_or(1.0, |zoom| zoom.0);
-    world.resource_mut::<CameraController>().zoom_multiplier = base * zoom;
+    let rig = &mut world.resource_mut::<CameraController>().rig;
+    rig.view_height = Some(CAMERA_ROWS * TILE);
+    rig.zoom = zoom;
 }
 
 /// `level_clock`: the level's clock advances by each step.

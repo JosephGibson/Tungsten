@@ -20,9 +20,9 @@ use std::collections::HashSet;
 use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
 use tungsten::core::{
-    AmbientLight, Bundle, CameraBounds, CameraController, Collider, DataRegistry, Entity, Light,
-    ParticleBudget, PhysicsConfig, Position, RigidBodyBundle, Schedule, Stage, TilemapInstance,
-    TilemapRegistry, Transform, World, system,
+    AmbientLight, Bundle, CameraBounds, CameraController, Collider, DataRegistry, Entity,
+    FollowRig, Light, ParticleBudget, PhysicsConfig, Position, RigKind, RigidBodyBundle, Schedule,
+    Stage, TilemapInstance, TilemapRegistry, Transform, World, system,
 };
 use tungsten::kit::{PathFollower, Phase, ensure_phases};
 use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
@@ -174,7 +174,7 @@ pub const PARTICLE_CAP: u32 = 2048;
 
 /// The level as a plugin: the components its prefabs name, the world's
 /// gravity and its broadphase cells of one tile, which cap a dense pile's
-/// pair candidates, the particle budget, the camera's follow and shake, the
+/// pair candidates, the particle budget, the camera's shake, the
 /// level's clock and the geysers' cycles on the
 /// step, `level_zoom` before the camera's update, the glows in the present
 /// phase, the geysers' look before the frame's particles, the bursts' cleanup and the title's sky in `Update`, the title's
@@ -197,8 +197,6 @@ impl Plugin for LevelPlugin {
             physics.broadphase_cell_size = TILE;
         }
         if let Some(camera) = world.get_resource_mut::<CameraController>() {
-            camera.dead_zone_size = Vec2::ZERO;
-            camera.smoothing_factor = 1.0;
             camera.shake_amplitude = Vec2::ZERO;
             camera.shake_frequency_hz = SHAKE_HZ;
             camera.shake_decay = SHAKE_DECAY;
@@ -277,8 +275,9 @@ impl Plugin for CursorPlugin {
 /// ([`SaveId::authored`]), the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the geysers' cycles
 /// ([`geyser::start`]), the elevator at rest
 /// ([`elevator::start`]), the moon's light, the
-/// level's clock, the midnight ambient and the post stack, and bounds the
-/// camera to the map. Returns the objects in layer and file order.
+/// level's clock, the midnight ambient and the post stack, and sets the
+/// camera's base rig to a snapping follow, of the target `camera_target`
+/// names, bounded by the map. Returns the objects in layer and file order.
 ///
 /// # Panics
 ///
@@ -342,7 +341,9 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         min: Vec2::ZERO,
         max: size,
     };
-    world.resource_mut::<CameraController>().bounds = Some(bounds);
+    let camera = &mut world.resource_mut::<CameraController>().rig;
+    camera.kind = RigKind::Follow(FollowRig::default());
+    camera.bounds = Some(bounds);
     objects
 }
 

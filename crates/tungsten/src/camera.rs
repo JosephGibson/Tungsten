@@ -1,68 +1,22 @@
-//! Shared camera update system; gameplay owns resources and frame placement.
-
-use std::f32::consts::TAU;
+//! The engine's camera update (redo 7.18): the winning rig's view each
+//! frame, blended, clamped and shaken (`tungsten_core::camera::update`),
+//! then the UI's world-anchored roots placed for it.
 
 use glam::Vec2;
 use tungsten_core::ui::UiTree;
-use tungsten_core::{
-    CameraController, CameraMode, CameraState, ScaleFactor, Time, Transform, World,
-};
+use tungsten_core::{CameraState, ScaleFactor, Time, World};
 
 use crate::WindowSize;
 
-fn solve_follow_position(
-    current_position: Vec2,
-    target_position: Vec2,
-    viewport_size: Vec2,
-    dead_zone_size: Vec2,
-) -> Vec2 {
-    let mut next = current_position;
-    let dead_zone_offset = (viewport_size - dead_zone_size) * 0.5;
-    let dead_zone_min = current_position + dead_zone_offset;
-    let dead_zone_max = dead_zone_min + dead_zone_size;
-
-    if target_position.x < dead_zone_min.x {
-        next.x = target_position.x - dead_zone_offset.x;
-    } else if target_position.x > dead_zone_max.x {
-        next.x = target_position.x - dead_zone_offset.x - dead_zone_size.x;
-    }
-
-    if target_position.y < dead_zone_min.y {
-        next.y = target_position.y - dead_zone_offset.y;
-    } else if target_position.y > dead_zone_max.y {
-        next.y = target_position.y - dead_zone_offset.y - dead_zone_size.y;
-    }
-
-    next
-}
-
-/// This frame's blend toward the desired position for smoothing `s`, the
-/// fraction of the distance covered per 1/60 s: `1 - (1 - s)^(dt·60)`, so the
-/// camera converges at the same rate at any frame rate. 0 never moves and 1
-/// snaps, whatever `dt` (B5, `D-100`).
-fn smoothing_blend(s: f32, dt: f32) -> f32 {
-    if s >= 1.0 {
-        1.0
-    } else if s <= 0.0 {
-        0.0
-    } else {
-        1.0 - (1.0 - s).powf(dt * 60.0)
-    }
-}
-
-/// Moves the camera for the frame: from the position a game wrote into
-/// `CameraState` (`Free`, `Scripted`), or toward the followed entity
-/// (`Follow`), clamped to the controller's bounds; the zoom times
-/// `zoom_multiplier`; then the shake offset, which the next frame takes back
-/// off before it reads the position, so a game writes it without the shake;
-/// then the UI's world-anchored roots follow the view (redo 7.17).
+/// Draws the frame's view into `CameraState` from the camera's rigs: the
+/// highest live `CameraRig` wins (the controller's base rig under the
+/// entities' rigs), a switch blending over the incoming rig's time and
+/// ease, at the window's size and the game clock's dt; the shake is added
+/// after. A write to `CameraState` is never read back, so it lasts only
+/// until this runs. Then the UI's world-anchored roots follow the view
+/// (redo 7.17). Without a `CameraState` or a `CameraController` it does
+/// nothing.
 pub fn camera_update_system(world: &mut World) {
-    let Some(mut camera) = world.get_resource::<CameraState>().copied() else {
-        return;
-    };
-    let Some(mut controller) = world.get_resource::<CameraController>().copied() else {
-        return;
-    };
     let window = world
         .get_resource::<WindowSize>()
         .copied()
@@ -70,63 +24,11 @@ pub fn camera_update_system(world: &mut World) {
             width: 1280,
             height: 720,
         });
+    let window = Vec2::new(window.width as f32, window.height as f32);
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
-
-    let base_position = controller.resolve_base_position(camera.position);
-    let base_zoom = controller.resolve_base_zoom(camera.zoom);
-    let zoom_multiplier = controller.zoom_multiplier.max(f32::EPSILON);
-    let effective_zoom = (base_zoom * zoom_multiplier).max(f32::EPSILON);
-    let viewport_size = Vec2::new(
-        window.width as f32 / effective_zoom,
-        window.height as f32 / effective_zoom,
-    );
-    let dead_zone_size = controller.dead_zone_size.clamp(Vec2::ZERO, viewport_size);
-
-    let desired_position = match controller.mode {
-        CameraMode::Follow(entity) => {
-            world
-                .get::<Transform>(entity)
-                .map_or(base_position, |transform| {
-                    solve_follow_position(
-                        base_position,
-                        transform.position,
-                        viewport_size,
-                        dead_zone_size,
-                    )
-                })
-        }
-        CameraMode::Free | CameraMode::Scripted => base_position,
+    let Some(camera) = tungsten_core::camera::update(world, window, dt) else {
+        return;
     };
-
-    let blend = smoothing_blend(controller.smoothing_factor.clamp(0.0, 1.0), dt);
-    let mut next_position = base_position.lerp(desired_position, blend);
-
-    if let Some(bounds) = controller.bounds {
-        next_position = bounds.clamp_position(
-            next_position,
-            window.width as f32,
-            window.height as f32,
-            effective_zoom,
-            camera.rotation,
-        );
-    }
-
-    let shake = controller.shake_offset();
-    camera.position = next_position + shake;
-    camera.zoom = effective_zoom;
-
-    controller.shake_phase = (controller.shake_phase
-        + controller.shake_frequency_hz.max(0.0) * TAU * dt)
-        .rem_euclid(TAU);
-    controller.record_output_position(camera.position, shake);
-    controller.record_output_zoom(base_zoom, camera.zoom);
-
-    if let Some(camera_state) = world.get_resource_mut::<CameraState>() {
-        *camera_state = camera;
-    }
-    if let Some(camera_controller) = world.get_resource_mut::<CameraController>() {
-        *camera_controller = controller;
-    }
     place_world_anchors(world, camera);
 }
 

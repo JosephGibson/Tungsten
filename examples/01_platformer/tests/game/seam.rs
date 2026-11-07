@@ -8,7 +8,7 @@ use example_01_platformer::features::player::MAX_HEALTH;
 use example_01_platformer::game::{BINDABLE_ACTIONS, GAMEPLAY};
 use example_01_platformer::save;
 use example_01_platformer::shell::Difficulty;
-use tungsten::core::{CameraController, CameraMode, Entity, TilemapInstance};
+use tungsten::core::{CameraController, TilemapInstance};
 use tungsten::kit::{CameraTarget, Health, PlatformerController};
 
 use super::{harness, player_entity, press, start, top};
@@ -31,11 +31,11 @@ fn a_new_game_at_normal_spawns_the_player_on_the_map_with_a_camera_target() {
     assert_eq!((health.current(), health.max()), (MAX_HEALTH, MAX_HEALTH));
     assert!(world.get::<PlatformerController>(player).is_some());
     assert!(world.get::<CameraTarget>(player).is_some());
-    let followed = match world.resource::<CameraController>().mode {
-        CameraMode::Follow(entity) => Some(entity),
-        _ => None::<Entity>,
-    };
-    assert_eq!(followed, Some(player), "the camera follows the player");
+    assert_eq!(
+        world.resource::<CameraController>().rig.target(),
+        Some(player),
+        "the camera follows the player"
+    );
 }
 
 #[test]

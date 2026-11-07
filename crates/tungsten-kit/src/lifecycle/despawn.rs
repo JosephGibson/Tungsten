@@ -6,8 +6,7 @@ use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::physics::Position;
 use tungsten_core::{
-    CameraState, Entity, Inspectable, Plugin, Schedule, SpawnContext, Transform, WindowSize, World,
-    system,
+    Entity, Inspectable, Plugin, Schedule, SpawnContext, Transform, World, system,
 };
 
 use crate::damage::health::{Health, kill};
@@ -18,6 +17,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::lifecycle::ended::{end, ensure_kit_despawn};
+use crate::motion::area::unshaken_view;
 
 /// [`DespawnOutsidePlugin`]'s system, in the overlap phase.
 pub const DESPAWN_OUTSIDE: &str = "despawn_outside";
@@ -170,8 +170,9 @@ impl DespawnOutside {
     }
 
     /// Despawns the entity when its position lies more than `margin` world
-    /// units outside the camera's view: `CameraState::visible_world_aabb` at
-    /// the `WindowSize`. Without either resource the entity stays.
+    /// units outside the camera's view without its shake
+    /// (`CameraState::unshaken`'s visible box at the `WindowSize`), so a
+    /// shake despawns nothing. Without either resource the entity stays.
     ///
     /// # Panics
     ///
@@ -374,15 +375,7 @@ fn outside(point: Vec2, min: Vec2, max: Vec2) -> bool {
 /// Lists each entity outside its bounds for the kit's despawn, through the
 /// scratch list `gone`.
 fn despawn_outside(world: &mut World, gone: &mut Vec<Entity>) {
-    let view = match (
-        world.get_resource::<CameraState>(),
-        world.get_resource::<WindowSize>(),
-    ) {
-        (Some(camera), Some(size)) => {
-            Some(camera.visible_world_aabb(size.width as f32, size.height as f32))
-        }
-        _ => None,
-    };
+    let view = unshaken_view(world);
     let bounds = world.get_resource::<WorldBounds>().copied();
     gone.clear();
     for (entity, rule, position, transform) in

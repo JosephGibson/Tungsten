@@ -1,7 +1,9 @@
 use super::*;
 use glam::Vec2;
 use serde_json::json;
-use tungsten_core::{ComponentRegistry, PrefabData, PrefabRegistry, Stage, Transform};
+use tungsten_core::{
+    ComponentRegistry, FollowRig, PrefabData, PrefabRegistry, RigKind, Stage, Transform,
+};
 
 fn rig() -> (World, Schedule) {
     let mut world = World::new();
@@ -16,8 +18,8 @@ fn frame(world: &mut World, schedule: &mut Schedule) {
     schedule.run_stage(Stage::PostUpdate, world, |_, _| {});
 }
 
-fn mode(world: &World) -> CameraMode {
-    world.resource::<CameraController>().mode
+fn target(world: &World) -> Option<Entity> {
+    world.resource::<CameraController>().rig.target()
 }
 
 #[test]
@@ -32,53 +34,62 @@ fn the_plugin_registers_its_component_and_system() {
 }
 
 #[test]
-fn the_camera_follows_the_lowest_live_target_and_frees_when_none_is_left() {
+fn the_base_rig_follows_the_lowest_live_target_and_holds_when_none_is_left() {
     let (mut world, mut schedule) = rig();
-    assert_eq!(mode(&world), CameraMode::Free);
+    assert_eq!(target(&world), None);
     let hero = world.spawn_with((Transform::default(), CameraTarget));
     let decoy = world.spawn_with((Transform::default(), CameraTarget));
     frame(&mut world, &mut schedule);
-    assert_eq!(mode(&world), CameraMode::Follow(hero));
+    assert_eq!(target(&world), Some(hero));
 
     world.despawn(hero);
     frame(&mut world, &mut schedule);
-    assert_eq!(mode(&world), CameraMode::Follow(decoy), "the next live one");
+    assert_eq!(target(&world), Some(decoy), "the next live one");
 
     world.remove_component::<CameraTarget>(decoy);
     frame(&mut world, &mut schedule);
-    assert_eq!(mode(&world), CameraMode::Free);
+    assert_eq!(target(&world), None, "a follow with no target holds");
+    assert!(matches!(
+        world.resource::<CameraController>().rig.kind,
+        RigKind::Follow(_)
+    ));
 }
 
 #[test]
-fn a_mode_the_game_set_stays() {
+fn a_base_rig_the_game_set_stays() {
     let (mut world, mut schedule) = rig();
     let hero = world.spawn_with((Transform::default(), CameraTarget));
     frame(&mut world, &mut schedule);
-    assert_eq!(mode(&world), CameraMode::Follow(hero));
+    assert_eq!(target(&world), Some(hero));
 
-    // A cutscene: the game scripts the camera, with the target still alive.
-    world.resource_mut::<CameraController>().mode = CameraMode::Scripted;
+    // A cutscene: the game scripts the base rig, with the target alive.
+    let scripted = RigKind::Scripted(Vec2::new(10.0, 20.0));
+    world.resource_mut::<CameraController>().rig.kind = scripted;
     frame(&mut world, &mut schedule);
-    assert_eq!(mode(&world), CameraMode::Scripted);
+    assert_eq!(world.resource::<CameraController>().rig.kind, scripted);
     world.remove_component::<CameraTarget>(hero);
     frame(&mut world, &mut schedule);
     assert_eq!(
-        mode(&world),
-        CameraMode::Scripted,
-        "not the plugin's to free"
+        world.resource::<CameraController>().rig.kind,
+        scripted,
+        "not the plugin's to clear"
     );
 
-    // The game frees it: the next target is taken up again.
-    world.resource_mut::<CameraController>().mode = CameraMode::Free;
+    // The game sets a follow with no target again: the next target is
+    // taken up.
+    world.resource_mut::<CameraController>().rig.kind = RigKind::Follow(FollowRig::default());
     world.insert(hero, CameraTarget);
     frame(&mut world, &mut schedule);
-    assert_eq!(mode(&world), CameraMode::Follow(hero));
+    assert_eq!(target(&world), Some(hero));
 
     // A follow of the game's own choosing is left alone too.
     let other = world.spawn_with((Transform::default(),));
-    world.resource_mut::<CameraController>().mode = CameraMode::Follow(other);
+    world.resource_mut::<CameraController>().rig.kind = RigKind::Follow(FollowRig::of(other));
     frame(&mut world, &mut schedule);
-    assert_eq!(mode(&world), CameraMode::Follow(other));
+    assert_eq!(target(&world), Some(other));
+    world.remove_component::<CameraTarget>(hero);
+    frame(&mut world, &mut schedule);
+    assert_eq!(target(&world), Some(other), "nor cleared");
 }
 
 #[test]

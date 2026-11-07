@@ -8,8 +8,8 @@
 
 use glam::Vec2;
 use tungsten::core::{
-    CameraController, CameraState, Entity, Particle, ParticleConfigRegistry, ParticleEmitter,
-    ParticleEmitterState, Time, Transform, World,
+    CameraController, Entity, FixedRig, Particle, ParticleConfigRegistry, ParticleEmitter,
+    ParticleEmitterState, RigKind, Time, Transform, World,
 };
 use tungsten::{SceneEntity, WindowSize};
 
@@ -203,21 +203,18 @@ fn clear(world: &mut World) {
 }
 
 /// `title_view`, after the level's zoom and before the camera's update:
-/// while the title is on top, the camera holds the title's view
-/// ([`sky_view`]) at the base zoom, unbounded.
+/// while the title is on top, the base rig holds the title's view
+/// ([`sky_view`]) as a fixed corner at the base zoom, unbounded.
 pub fn view(world: &mut World) {
     if !world.has_resource::<TitleSky>() || shell::top(world) != Some(TITLE) {
         return;
     }
     let (corner, size) = sky_view(world);
-    let height = world
-        .get_resource::<WindowSize>()
-        .map_or(720.0, |window| window.height as f32);
     if let Some(controller) = world.get_resource_mut::<CameraController>() {
-        controller.bounds = None;
-        controller.zoom_multiplier = height / size.y;
-    }
-    if let Some(camera) = world.get_resource_mut::<CameraState>() {
-        camera.position = corner;
+        let rig = &mut controller.rig;
+        rig.kind = RigKind::Fixed(FixedRig::Corner(corner));
+        rig.bounds = None;
+        rig.view_height = Some(size.y);
+        rig.zoom = 1.0;
     }
 }

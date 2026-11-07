@@ -34,9 +34,9 @@
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
 use tungsten_core::{
-    AnimationState, AudioCommand, Bundle, CameraController, CameraMode, CameraState, DataRef,
-    Entity, EventCursor, EventQueue, Plugin, SaveData, SaveSlots, Schedule, Sprite, Transform,
-    World, system,
+    AnimationState, AudioCommand, Bundle, CameraController, CameraState, DataRef, Entity,
+    EventCursor, EventQueue, Plugin, SaveData, SaveSlots, Schedule, Sprite, Transform, World,
+    system,
 };
 
 use super::{
@@ -181,8 +181,8 @@ fn the_camera_follows_the_hero() {
         let hero = spawn(&mut harness, "hero", [100.0, 100.0]);
         harness.step(1);
         assert_eq!(
-            harness.world().resource::<CameraController>().mode,
-            CameraMode::Follow(hero)
+            harness.world().resource::<CameraController>().rig.target(),
+            Some(hero)
         );
         let before = harness.world().resource::<CameraState>().position;
         harness.press_action("move_right");

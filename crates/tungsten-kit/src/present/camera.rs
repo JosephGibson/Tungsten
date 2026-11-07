@@ -1,8 +1,8 @@
-//! The camera's target: a marker the camera follows.
+//! The camera's target: a marker the camera's base rig follows.
 
 use serde::{Deserialize, Serialize};
 use tungsten_core::{
-    CameraController, CameraMode, Entity, Inspectable, Plugin, Schedule, SpawnContext, With, World,
+    CameraController, Entity, Inspectable, Plugin, RigKind, Schedule, SpawnContext, With, World,
     system,
 };
 
@@ -15,13 +15,14 @@ use crate::foundation::phases::{Phase, ensure_phases};
 /// [`CameraTargetPlugin`]'s system, in the present phase.
 pub const CAMERA_TARGET: &str = "camera_target";
 
-/// A marker: while an entity carries it, the camera follows the
-/// lowest-indexed live one. [`CameraTargetPlugin`]'s system sets the
-/// `CameraController`'s mode to `Follow` of that entity when the mode is
-/// `Free` or its own earlier `Follow`, and a mode the game set itself
-/// (`Scripted`, or a `Follow` of the game's choosing) is left alone.
-/// Remove the marker, or despawn the entity, and a mode still equal to the
-/// plugin's `Follow` goes back to `Free`.
+/// A marker: while an entity carries it, the camera's base rig follows the
+/// lowest-indexed live one, the follow rig's shorthand. [`CameraTargetPlugin`]'s
+/// system writes that entity into the base rig's follow `target` while the
+/// base rig (`CameraController::rig`) is a follow whose target is none or
+/// the one it set; a base rig the game made fixed or scripted, or a follow
+/// of the game's own choosing, is left alone. Remove the marker, or despawn
+/// the entity, and a target still the plugin's is cleared, so the base rig
+/// holds where it stands.
 ///
 /// Scene name `camera_target`: `"camera_target": null`.
 ///
@@ -29,9 +30,7 @@ pub const CAMERA_TARGET: &str = "camera_target";
 ///
 /// ```
 /// use glam::Vec2;
-/// use tungsten_core::{
-///     CameraController, CameraMode, Plugin, Schedule, Stage, Transform, World,
-/// };
+/// use tungsten_core::{CameraController, Plugin, Schedule, Stage, Transform, World};
 /// use tungsten_kit::{CameraTarget, CameraTargetPlugin};
 ///
 /// let mut world = World::new();
@@ -42,11 +41,11 @@ pub const CAMERA_TARGET: &str = "camera_target";
 ///
 /// let hero = world.spawn_with((Transform::from_position(Vec2::ZERO), CameraTarget));
 /// schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
-/// assert_eq!(world.resource::<CameraController>().mode, CameraMode::Follow(hero));
+/// assert_eq!(world.resource::<CameraController>().rig.target(), Some(hero));
 ///
 /// world.remove_component::<CameraTarget>(hero);
 /// schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
-/// assert_eq!(world.resource::<CameraController>().mode, CameraMode::Free);
+/// assert_eq!(world.resource::<CameraController>().rig.target(), None);
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CameraTarget;
@@ -56,7 +55,7 @@ pub struct CameraTarget;
 struct CameraTargetDef;
 
 /// Registers the `camera_target` scene component and [`CAMERA_TARGET`] in
-/// the present phase, before `camera_update`, so the camera follows the
+/// the present phase, before `camera_update`, so the base rig follows the
 /// target the same frame. Without a `CameraController` resource it does
 /// nothing.
 #[derive(Debug, Default, Clone, Copy)]
@@ -92,24 +91,30 @@ impl Plugin for CameraTargetPlugin {
     }
 }
 
-/// One frame: `following` is the target the plugin set last.
+/// One frame: `following` is the target the plugin set last. With no
+/// target in the World it clears its own and runs no query.
 fn camera_target(world: &mut World, following: &mut Option<Entity>) {
-    let target = world
-        .query_filtered::<Entity, With<CameraTarget>>()
-        .min_by_key(|entity| entity.id());
+    let target = if world.has_any::<CameraTarget>() {
+        world
+            .query_filtered::<Entity, With<CameraTarget>>()
+            .min_by_key(|entity| entity.id())
+    } else {
+        None
+    };
     let Some(controller) = world.get_resource_mut::<CameraController>() else {
         return;
     };
-    let own = following.map(CameraMode::Follow);
+    let RigKind::Follow(follow) = &mut controller.rig.kind else {
+        return;
+    };
     if let Some(target) = target {
-        let takes_over = controller.mode == CameraMode::Free || Some(controller.mode) == own;
-        if takes_over {
-            controller.mode = CameraMode::Follow(target);
+        if follow.target.is_none() || follow.target == *following {
+            follow.target = Some(target);
             *following = Some(target);
         }
     } else {
-        if own.is_some() && Some(controller.mode) == own {
-            controller.mode = CameraMode::Free;
+        if following.is_some() && follow.target == *following {
+            follow.target = None;
         }
         *following = None;
     }

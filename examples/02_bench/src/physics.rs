@@ -242,6 +242,7 @@ fn centered(center: Vec2, zoom: f32) -> CameraState {
         position: center - VIEWPORT / zoom * 0.5,
         zoom,
         rotation: 0.0,
+        ..CameraState::new()
     }
 }
 

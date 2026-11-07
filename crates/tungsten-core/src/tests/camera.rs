@@ -63,6 +63,7 @@ fn screen_to_world_inverts_view_projection() {
             position: Vec2::new(100.0, 50.0),
             zoom: 2.0,
             rotation,
+            ..CameraState::new()
         };
         let view_projection = cam.view_projection(width, height);
         for screen in [
@@ -87,6 +88,7 @@ fn screen_to_world_inverts_view_projection() {
         position: Vec2::new(100.0, 50.0),
         zoom: 2.0,
         rotation: 0.5,
+        ..CameraState::new()
     };
     let world = cam.screen_to_world(Vec2::new(71.83, 6.34));
     assert!(
@@ -102,6 +104,7 @@ fn world_to_screen_inverts_screen_to_world() {
             position: Vec2::new(100.0, 50.0),
             zoom,
             rotation,
+            ..CameraState::new()
         };
         for screen in [
             Vec2::ZERO,
@@ -121,6 +124,7 @@ fn world_to_screen_inverts_screen_to_world() {
         position: Vec2::new(100.0, 50.0),
         zoom: 2.0,
         rotation: 0.0,
+        ..CameraState::new()
     };
     assert_vec2_close(
         cam.world_to_screen(Vec2::new(150.0, 80.0)),
@@ -265,4 +269,140 @@ fn nan_rotation_or_bounds_leave_the_position_unclamped() {
         open.clamp_position(Vec2::new(-1e9, 1e9), 800.0, 600.0, 1.0, 0.0),
         Vec2::new(-1e9, 1e9)
     );
+}
+
+#[test]
+fn the_unshaken_view_takes_the_shake_off() {
+    let shaken = CameraState {
+        position: Vec2::new(105.0, 47.0),
+        zoom: 2.0,
+        rotation: 0.25,
+        shake: Vec2::new(5.0, -3.0),
+    };
+    let view = shaken.unshaken();
+    assert_eq!(view.position, Vec2::new(100.0, 50.0));
+    assert_eq!(view.shake, Vec2::ZERO);
+    assert_eq!((view.zoom, view.rotation), (2.0, 0.25));
+    assert_eq!(view.unshaken(), view, "an unshaken view stays");
+    assert_eq!(
+        shaken.visible_world_aabb(800.0, 600.0).0 - view.visible_world_aabb(800.0, 600.0).0,
+        Vec2::new(5.0, -3.0)
+    );
+}
+
+/// Whether `build` panics.
+fn refuses(build: impl FnOnce() + std::panic::UnwindSafe) -> bool {
+    std::panic::catch_unwind(build).is_err()
+}
+
+#[test]
+fn a_rig_refuses_values_out_of_range() {
+    let rig = CameraRig::default();
+    for height in [0.0, -720.0, f32::NAN, f32::INFINITY] {
+        assert!(
+            refuses(move || {
+                let _ = rig.with_view_height(height);
+            }),
+            "{height}"
+        );
+    }
+    for zoom in [0.0, -1.0, f32::NAN] {
+        assert!(
+            refuses(move || {
+                let _ = rig.with_zoom(zoom);
+            }),
+            "{zoom}"
+        );
+    }
+    assert!(refuses(move || {
+        let _ = rig.with_blend(RigBlend {
+            time: -0.5,
+            ease: Easing::Linear,
+        });
+    }));
+    assert!(refuses(|| {
+        let _ = RigBlend::over(f32::NAN);
+    }));
+    assert!(refuses(move || {
+        let _ = rig.with_bounds(CameraBounds {
+            min: Vec2::new(10.0, 0.0),
+            max: Vec2::new(0.0, 10.0),
+        });
+    }));
+    assert!(refuses(move || {
+        let _ = rig.with_bounds(CameraBounds {
+            min: Vec2::new(f32::NAN, 0.0),
+            max: Vec2::splat(10.0),
+        });
+    }));
+    let follow = FollowRig::default();
+    for smoothing in [Vec2::new(1.5, 0.5), Vec2::new(0.5, -0.1), Vec2::NAN] {
+        assert!(
+            refuses(move || {
+                let _ = follow.with_smoothing(smoothing);
+            }),
+            "{smoothing}"
+        );
+    }
+    assert!(refuses(move || {
+        let _ = follow.with_dead_zone(Vec2::new(-1.0, 0.0));
+    }));
+    assert!(refuses(move || {
+        let _ = follow.with_offset(Vec2::new(0.0, f32::INFINITY));
+    }));
+    assert!(refuses(|| {
+        let _ = RigLead::velocity(-1.0, 0.5);
+    }));
+    assert!(refuses(|| {
+        let _ = RigLead::velocity(96.0, f32::NAN);
+    }));
+    assert!(refuses(|| {
+        let _ = RigLead::aim(96.0).with_smoothing(2.0);
+    }));
+    let lead = RigLead {
+        from: LeadFrom::Aim,
+        max: f32::NAN,
+        time: 0.0,
+        smoothing: 0.1,
+    };
+    assert!(refuses(move || {
+        let _ = follow.with_lead(lead);
+    }));
+    assert!(refuses(|| {
+        let _ = CameraRig::fixed(FixedRig::At(Vec2::NAN));
+    }));
+    assert!(refuses(|| {
+        let _ = CameraRig::fixed(FixedRig::Rect(CameraBounds {
+            min: Vec2::ZERO,
+            max: Vec2::new(100.0, 0.0),
+        }));
+    }));
+    assert!(refuses(|| {
+        let _ = CameraRig::scripted(Vec2::new(f32::INFINITY, 0.0));
+    }));
+    let mut scripted = CameraRig::scripted(Vec2::ZERO);
+    assert!(refuses(move || scripted.set_point(Vec2::NAN)));
+    let mut controller = CameraController::default();
+    assert!(refuses(move || controller.cut_to(Vec2::new(0.0, f32::NAN))));
+
+    // In range, each builder keeps its value; an infinite bound stays open.
+    let rig = rig
+        .with_view_height(720.0)
+        .with_zoom(2.0)
+        .with_priority(-3)
+        .with_blend(RigBlend::over(0.4).with_ease(Easing::BackIn))
+        .with_bounds(CameraBounds::new(
+            Vec2::new(f32::NEG_INFINITY, 0.0),
+            Vec2::new(100.0, f32::INFINITY),
+        ));
+    assert_eq!(rig.view_height, Some(720.0));
+    assert_eq!((rig.zoom, rig.priority, rig.blend.time), (2.0, -3, 0.4));
+    assert_eq!(rig.blend.ease, Easing::BackIn);
+    assert!(rig.is_live());
+    assert!(!rig.lowered().is_live());
+    let follow = follow
+        .with_smoothing(Vec2::new(0.0, 1.0))
+        .with_dead_zone(Vec2::new(640.0, 0.0))
+        .with_lead(RigLead::aim(96.0).with_smoothing(1.0));
+    assert_eq!(follow.lead.map(|lead| lead.max), Some(96.0));
 }

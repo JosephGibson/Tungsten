@@ -12,10 +12,10 @@ use tungsten_core::assets::{
     ParticleConfigRegistry, ParticleRender, Range, TextureHandle, UvRect,
 };
 use tungsten_core::{
-    ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraMode,
-    CameraState, Collider, Config, Easing, Entity, InputState, KeyCode, Particle, ParticleEmitter,
-    ParticleEmitterState, PhysicsConfig, Position, RigidBody, Sprite, Stage, Time, Transform,
-    Tween, TweenChannel, TweenComplete, Velocity, Visibility, With, World, system,
+    ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraState, Collider,
+    Config, Easing, Entity, FollowRig, InputState, KeyCode, Particle, ParticleEmitter,
+    ParticleEmitterState, PhysicsConfig, Position, RigKind, RigidBody, Sprite, Stage, Time,
+    Transform, Tween, TweenChannel, TweenComplete, Velocity, Visibility, With, World, system,
 };
 use tungsten_render::{QuadInstance, TextSection};
 
@@ -453,8 +453,7 @@ fn clock_a_pause_holds_the_game_while_a_fade_pushes_a_state() {
     world.insert(body, RigidBody::dynamic());
     world.insert(body, Transform::from_position(start));
     let camera = world.get_resource_mut::<CameraController>().unwrap();
-    camera.mode = CameraMode::Follow(body);
-    camera.smoothing_factor = 1.0;
+    camera.rig.kind = RigKind::Follow(FollowRig::of(body));
     camera.shake_max_offset = Vec2::new(8.0, 8.0);
     camera.shake_frequency_hz = 7.0;
     camera.shake_trauma = 1.0;

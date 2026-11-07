@@ -15,7 +15,7 @@
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
-use tungsten_core::{CameraController, CameraMode, CameraState, Entity, Sprite};
+use tungsten_core::{CameraController, CameraState, Entity, Sprite};
 
 use super::{
     DTS, body_at, drawn_at, frames_for, point_of, recipe, register_sprite, spawn, tagged,
@@ -79,8 +79,8 @@ fn the_camera_follows_the_rogue() {
         let rogue = spawn(&mut harness, "rogue", [64.0, 64.0]);
         harness.step(1);
         assert_eq!(
-            harness.world().resource::<CameraController>().mode,
-            CameraMode::Follow(rogue)
+            harness.world().resource::<CameraController>().rig.target(),
+            Some(rogue)
         );
         let before = harness.world().resource::<CameraState>().position;
         harness.press_action("move_right");

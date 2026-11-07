@@ -4902,31 +4902,84 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::Voice
 pub const tungsten_core::audio::MAX_VOICES: u32
 pub fn tungsten_core::audio::play(&mut tungsten_core::World, &str, f32) -> core::option::Option<tungsten_core::audio::Voice>
 pub mod tungsten_core::camera
-pub enum tungsten_core::camera::CameraMode
-pub tungsten_core::camera::CameraMode::Follow(tungsten_core::Entity)
-pub tungsten_core::camera::CameraMode::Free
-pub tungsten_core::camera::CameraMode::Scripted
-impl core::clone::Clone for tungsten_core::camera::CameraMode
-pub fn tungsten_core::camera::CameraMode::clone(&self) -> tungsten_core::camera::CameraMode
-impl core::cmp::Eq for tungsten_core::camera::CameraMode
-impl core::cmp::PartialEq for tungsten_core::camera::CameraMode
-pub fn tungsten_core::camera::CameraMode::eq(&self, &tungsten_core::camera::CameraMode) -> bool
-impl core::fmt::Debug for tungsten_core::camera::CameraMode
-pub fn tungsten_core::camera::CameraMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::camera::CameraMode
-impl core::marker::StructuralPartialEq for tungsten_core::camera::CameraMode
-impl core::marker::Freeze for tungsten_core::camera::CameraMode
-impl core::marker::Send for tungsten_core::camera::CameraMode
-impl core::marker::Sync for tungsten_core::camera::CameraMode
-impl core::marker::Unpin for tungsten_core::camera::CameraMode
-impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraMode
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraMode
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraMode
+pub enum tungsten_core::camera::FixedRig
+pub tungsten_core::camera::FixedRig::At(glam::f32::vec2::Vec2)
+pub tungsten_core::camera::FixedRig::Corner(glam::f32::vec2::Vec2)
+pub tungsten_core::camera::FixedRig::Rect(tungsten_core::camera::CameraBounds)
+impl core::clone::Clone for tungsten_core::camera::FixedRig
+pub fn tungsten_core::camera::FixedRig::clone(&self) -> tungsten_core::camera::FixedRig
+impl core::cmp::PartialEq for tungsten_core::camera::FixedRig
+pub fn tungsten_core::camera::FixedRig::eq(&self, &tungsten_core::camera::FixedRig) -> bool
+impl core::fmt::Debug for tungsten_core::camera::FixedRig
+pub fn tungsten_core::camera::FixedRig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::FixedRig
+impl core::marker::StructuralPartialEq for tungsten_core::camera::FixedRig
+impl core::marker::Freeze for tungsten_core::camera::FixedRig
+impl core::marker::Send for tungsten_core::camera::FixedRig
+impl core::marker::Sync for tungsten_core::camera::FixedRig
+impl core::marker::Unpin for tungsten_core::camera::FixedRig
+impl core::marker::UnsafeUnpin for tungsten_core::camera::FixedRig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::FixedRig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::FixedRig
+pub enum tungsten_core::camera::LeadFrom
+pub tungsten_core::camera::LeadFrom::Aim
+pub tungsten_core::camera::LeadFrom::Velocity
+impl core::clone::Clone for tungsten_core::camera::LeadFrom
+pub fn tungsten_core::camera::LeadFrom::clone(&self) -> tungsten_core::camera::LeadFrom
+impl core::cmp::Eq for tungsten_core::camera::LeadFrom
+impl core::cmp::PartialEq for tungsten_core::camera::LeadFrom
+pub fn tungsten_core::camera::LeadFrom::eq(&self, &tungsten_core::camera::LeadFrom) -> bool
+impl core::fmt::Debug for tungsten_core::camera::LeadFrom
+pub fn tungsten_core::camera::LeadFrom::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::LeadFrom
+impl core::marker::StructuralPartialEq for tungsten_core::camera::LeadFrom
+impl core::marker::Freeze for tungsten_core::camera::LeadFrom
+impl core::marker::Send for tungsten_core::camera::LeadFrom
+impl core::marker::Sync for tungsten_core::camera::LeadFrom
+impl core::marker::Unpin for tungsten_core::camera::LeadFrom
+impl core::marker::UnsafeUnpin for tungsten_core::camera::LeadFrom
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::LeadFrom
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::LeadFrom
+pub enum tungsten_core::camera::RigKind
+pub tungsten_core::camera::RigKind::Fixed(tungsten_core::camera::FixedRig)
+pub tungsten_core::camera::RigKind::Follow(tungsten_core::camera::FollowRig)
+pub tungsten_core::camera::RigKind::Scripted(glam::f32::vec2::Vec2)
+impl tungsten_core::camera::RigKind
+pub fn tungsten_core::camera::RigKind::name(&self) -> &'static str
+impl core::clone::Clone for tungsten_core::camera::RigKind
+pub fn tungsten_core::camera::RigKind::clone(&self) -> tungsten_core::camera::RigKind
+impl core::cmp::PartialEq for tungsten_core::camera::RigKind
+pub fn tungsten_core::camera::RigKind::eq(&self, &tungsten_core::camera::RigKind) -> bool
+impl core::fmt::Debug for tungsten_core::camera::RigKind
+pub fn tungsten_core::camera::RigKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::RigKind
+impl core::marker::StructuralPartialEq for tungsten_core::camera::RigKind
+impl core::marker::Freeze for tungsten_core::camera::RigKind
+impl core::marker::Send for tungsten_core::camera::RigKind
+impl core::marker::Sync for tungsten_core::camera::RigKind
+impl core::marker::Unpin for tungsten_core::camera::RigKind
+impl core::marker::UnsafeUnpin for tungsten_core::camera::RigKind
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::RigKind
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::RigKind
+pub struct tungsten_core::camera::CameraAim(pub fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<glam::f32::vec2::Vec2>)
+impl core::clone::Clone for tungsten_core::camera::CameraAim
+pub fn tungsten_core::camera::CameraAim::clone(&self) -> tungsten_core::camera::CameraAim
+impl core::fmt::Debug for tungsten_core::camera::CameraAim
+pub fn tungsten_core::camera::CameraAim::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::CameraAim
+impl core::marker::Freeze for tungsten_core::camera::CameraAim
+impl core::marker::Send for tungsten_core::camera::CameraAim
+impl core::marker::Sync for tungsten_core::camera::CameraAim
+impl core::marker::Unpin for tungsten_core::camera::CameraAim
+impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraAim
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraAim
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraAim
 pub struct tungsten_core::camera::CameraBounds
 pub tungsten_core::camera::CameraBounds::max: glam::f32::vec2::Vec2
 pub tungsten_core::camera::CameraBounds::min: glam::f32::vec2::Vec2
 impl tungsten_core::camera::CameraBounds
 pub fn tungsten_core::camera::CameraBounds::clamp_position(&self, glam::f32::vec2::Vec2, f32, f32, f32, f32) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::camera::CameraBounds::new(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_core::camera::CameraBounds
 pub fn tungsten_core::camera::CameraBounds::clone(&self) -> tungsten_core::camera::CameraBounds
 impl core::cmp::PartialEq for tungsten_core::camera::CameraBounds
@@ -4943,24 +4996,20 @@ impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraBounds
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraBounds
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraBounds
 pub struct tungsten_core::camera::CameraController
-pub tungsten_core::camera::CameraController::bounds: core::option::Option<tungsten_core::camera::CameraBounds>
-pub tungsten_core::camera::CameraController::dead_zone_size: glam::f32::vec2::Vec2
-pub tungsten_core::camera::CameraController::mode: tungsten_core::camera::CameraMode
+pub tungsten_core::camera::CameraController::rig: tungsten_core::camera::CameraRig
 pub tungsten_core::camera::CameraController::shake_amplitude: glam::f32::vec2::Vec2
 pub tungsten_core::camera::CameraController::shake_decay: f32
 pub tungsten_core::camera::CameraController::shake_frequency_hz: f32
 pub tungsten_core::camera::CameraController::shake_max_offset: glam::f32::vec2::Vec2
 pub tungsten_core::camera::CameraController::shake_phase: f32
+pub tungsten_core::camera::CameraController::shake_scale: f32
 pub tungsten_core::camera::CameraController::shake_trauma: f32
-pub tungsten_core::camera::CameraController::smoothing_factor: f32
-pub tungsten_core::camera::CameraController::zoom_multiplier: f32
 impl tungsten_core::camera::CameraController
 pub fn tungsten_core::camera::CameraController::add_trauma(&mut self, f32)
-pub fn tungsten_core::camera::CameraController::record_output_position(&mut self, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
-pub fn tungsten_core::camera::CameraController::record_output_zoom(&mut self, f32, f32)
-pub fn tungsten_core::camera::CameraController::resolve_base_position(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
-pub fn tungsten_core::camera::CameraController::resolve_base_zoom(&self, f32) -> f32
+pub fn tungsten_core::camera::CameraController::cut_to(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_core::camera::CameraController::frame(&self) -> tungsten_core::camera::CameraFrame
 pub fn tungsten_core::camera::CameraController::shake_offset(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::camera::CameraController::winner(&self) -> core::option::Option<tungsten_core::Entity>
 impl core::clone::Clone for tungsten_core::camera::CameraController
 pub fn tungsten_core::camera::CameraController::clone(&self) -> tungsten_core::camera::CameraController
 impl core::default::Default for tungsten_core::camera::CameraController
@@ -4975,23 +5024,92 @@ impl core::marker::Unpin for tungsten_core::camera::CameraController
 impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraController
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraController
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraController
+pub struct tungsten_core::camera::CameraFrame
+pub tungsten_core::camera::CameraFrame::anchor: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_core::camera::CameraFrame::blend: core::option::Option<f32>
+pub tungsten_core::camera::CameraFrame::bounds: core::option::Option<tungsten_core::camera::CameraBounds>
+pub tungsten_core::camera::CameraFrame::corner: glam::f32::vec2::Vec2
+pub tungsten_core::camera::CameraFrame::dead_zone: core::option::Option<tungsten_core::camera::CameraBounds>
+pub tungsten_core::camera::CameraFrame::lead: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_core::camera::CameraFrame::size: glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::camera::CameraFrame
+pub fn tungsten_core::camera::CameraFrame::clone(&self) -> tungsten_core::camera::CameraFrame
+impl core::cmp::PartialEq for tungsten_core::camera::CameraFrame
+pub fn tungsten_core::camera::CameraFrame::eq(&self, &tungsten_core::camera::CameraFrame) -> bool
+impl core::default::Default for tungsten_core::camera::CameraFrame
+pub fn tungsten_core::camera::CameraFrame::default() -> tungsten_core::camera::CameraFrame
+impl core::fmt::Debug for tungsten_core::camera::CameraFrame
+pub fn tungsten_core::camera::CameraFrame::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::CameraFrame
+impl core::marker::StructuralPartialEq for tungsten_core::camera::CameraFrame
+impl core::marker::Freeze for tungsten_core::camera::CameraFrame
+impl core::marker::Send for tungsten_core::camera::CameraFrame
+impl core::marker::Sync for tungsten_core::camera::CameraFrame
+impl core::marker::Unpin for tungsten_core::camera::CameraFrame
+impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraFrame
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraFrame
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraFrame
+pub struct tungsten_core::camera::CameraRig
+pub tungsten_core::camera::CameraRig::blend: tungsten_core::camera::RigBlend
+pub tungsten_core::camera::CameraRig::bounds: core::option::Option<tungsten_core::camera::CameraBounds>
+pub tungsten_core::camera::CameraRig::kind: tungsten_core::camera::RigKind
+pub tungsten_core::camera::CameraRig::priority: i32
+pub tungsten_core::camera::CameraRig::view_height: core::option::Option<f32>
+pub tungsten_core::camera::CameraRig::zoom: f32
+impl tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::fixed(tungsten_core::camera::FixedRig) -> Self
+pub fn tungsten_core::camera::CameraRig::follow(tungsten_core::camera::FollowRig) -> Self
+pub fn tungsten_core::camera::CameraRig::is_live(&self) -> bool
+pub fn tungsten_core::camera::CameraRig::lower(&mut self)
+pub fn tungsten_core::camera::CameraRig::lowered(self) -> Self
+pub fn tungsten_core::camera::CameraRig::raise(&mut self)
+pub fn tungsten_core::camera::CameraRig::scripted(glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::camera::CameraRig::set_point(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_core::camera::CameraRig::target(&self) -> core::option::Option<tungsten_core::Entity>
+pub fn tungsten_core::camera::CameraRig::with_blend(self, tungsten_core::camera::RigBlend) -> Self
+pub fn tungsten_core::camera::CameraRig::with_bounds(self, tungsten_core::camera::CameraBounds) -> Self
+pub fn tungsten_core::camera::CameraRig::with_priority(self, i32) -> Self
+pub fn tungsten_core::camera::CameraRig::with_view_height(self, f32) -> Self
+pub fn tungsten_core::camera::CameraRig::with_zoom(self, f32) -> Self
+impl core::clone::Clone for tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::clone(&self) -> tungsten_core::camera::CameraRig
+impl core::cmp::PartialEq for tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::eq(&self, &tungsten_core::camera::CameraRig) -> bool
+impl core::default::Default for tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::default() -> Self
+impl core::fmt::Debug for tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::CameraRig
+impl core::marker::StructuralPartialEq for tungsten_core::camera::CameraRig
+impl core::marker::Freeze for tungsten_core::camera::CameraRig
+impl core::marker::Send for tungsten_core::camera::CameraRig
+impl core::marker::Sync for tungsten_core::camera::CameraRig
+impl core::marker::Unpin for tungsten_core::camera::CameraRig
+impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraRig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraRig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraRig
 pub struct tungsten_core::camera::CameraState
 pub tungsten_core::camera::CameraState::position: glam::f32::vec2::Vec2
 pub tungsten_core::camera::CameraState::rotation: f32
+pub tungsten_core::camera::CameraState::shake: glam::f32::vec2::Vec2
 pub tungsten_core::camera::CameraState::zoom: f32
 impl tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::new() -> Self
 pub fn tungsten_core::camera::CameraState::screen_to_world(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::camera::CameraState::unshaken(&self) -> Self
 pub fn tungsten_core::camera::CameraState::view_projection(&self, f32, f32) -> glam::f32::sse2::mat4::Mat4
 pub fn tungsten_core::camera::CameraState::visible_world_aabb(&self, f32, f32) -> (glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
 pub fn tungsten_core::camera::CameraState::world_to_screen(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 impl core::clone::Clone for tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::clone(&self) -> tungsten_core::camera::CameraState
+impl core::cmp::PartialEq for tungsten_core::camera::CameraState
+pub fn tungsten_core::camera::CameraState::eq(&self, &tungsten_core::camera::CameraState) -> bool
 impl core::default::Default for tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::default() -> Self
 impl core::fmt::Debug for tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tungsten_core::camera::CameraState
+impl core::marker::StructuralPartialEq for tungsten_core::camera::CameraState
 impl core::marker::Freeze for tungsten_core::camera::CameraState
 impl core::marker::Send for tungsten_core::camera::CameraState
 impl core::marker::Sync for tungsten_core::camera::CameraState
@@ -4999,6 +5117,87 @@ impl core::marker::Unpin for tungsten_core::camera::CameraState
 impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraState
+pub struct tungsten_core::camera::FollowRig
+pub tungsten_core::camera::FollowRig::dead_zone: glam::f32::vec2::Vec2
+pub tungsten_core::camera::FollowRig::lead: core::option::Option<tungsten_core::camera::RigLead>
+pub tungsten_core::camera::FollowRig::offset: glam::f32::vec2::Vec2
+pub tungsten_core::camera::FollowRig::smoothing: glam::f32::vec2::Vec2
+pub tungsten_core::camera::FollowRig::target: core::option::Option<tungsten_core::Entity>
+impl tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::of(tungsten_core::Entity) -> Self
+pub fn tungsten_core::camera::FollowRig::with_dead_zone(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::camera::FollowRig::with_lead(self, tungsten_core::camera::RigLead) -> Self
+pub fn tungsten_core::camera::FollowRig::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::camera::FollowRig::with_smoothing(self, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::clone(&self) -> tungsten_core::camera::FollowRig
+impl core::cmp::PartialEq for tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::eq(&self, &tungsten_core::camera::FollowRig) -> bool
+impl core::default::Default for tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::default() -> Self
+impl core::fmt::Debug for tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::FollowRig
+impl core::marker::StructuralPartialEq for tungsten_core::camera::FollowRig
+impl core::marker::Freeze for tungsten_core::camera::FollowRig
+impl core::marker::Send for tungsten_core::camera::FollowRig
+impl core::marker::Sync for tungsten_core::camera::FollowRig
+impl core::marker::Unpin for tungsten_core::camera::FollowRig
+impl core::marker::UnsafeUnpin for tungsten_core::camera::FollowRig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::FollowRig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::FollowRig
+pub struct tungsten_core::camera::RigBlend
+pub tungsten_core::camera::RigBlend::ease: tungsten_core::tween::Easing
+pub tungsten_core::camera::RigBlend::time: f32
+impl tungsten_core::camera::RigBlend
+pub const tungsten_core::camera::RigBlend::CUT: Self
+pub fn tungsten_core::camera::RigBlend::over(f32) -> Self
+pub fn tungsten_core::camera::RigBlend::with_ease(self, tungsten_core::tween::Easing) -> Self
+impl core::clone::Clone for tungsten_core::camera::RigBlend
+pub fn tungsten_core::camera::RigBlend::clone(&self) -> tungsten_core::camera::RigBlend
+impl core::cmp::PartialEq for tungsten_core::camera::RigBlend
+pub fn tungsten_core::camera::RigBlend::eq(&self, &tungsten_core::camera::RigBlend) -> bool
+impl core::default::Default for tungsten_core::camera::RigBlend
+pub fn tungsten_core::camera::RigBlend::default() -> Self
+impl core::fmt::Debug for tungsten_core::camera::RigBlend
+pub fn tungsten_core::camera::RigBlend::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::RigBlend
+impl core::marker::StructuralPartialEq for tungsten_core::camera::RigBlend
+impl core::marker::Freeze for tungsten_core::camera::RigBlend
+impl core::marker::Send for tungsten_core::camera::RigBlend
+impl core::marker::Sync for tungsten_core::camera::RigBlend
+impl core::marker::Unpin for tungsten_core::camera::RigBlend
+impl core::marker::UnsafeUnpin for tungsten_core::camera::RigBlend
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::RigBlend
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::RigBlend
+pub struct tungsten_core::camera::RigLead
+pub tungsten_core::camera::RigLead::from: tungsten_core::camera::LeadFrom
+pub tungsten_core::camera::RigLead::max: f32
+pub tungsten_core::camera::RigLead::smoothing: f32
+pub tungsten_core::camera::RigLead::time: f32
+impl tungsten_core::camera::RigLead
+pub const tungsten_core::camera::RigLead::SMOOTHING: f32
+pub fn tungsten_core::camera::RigLead::aim(f32) -> Self
+pub fn tungsten_core::camera::RigLead::velocity(f32, f32) -> Self
+pub fn tungsten_core::camera::RigLead::with_smoothing(self, f32) -> Self
+impl core::clone::Clone for tungsten_core::camera::RigLead
+pub fn tungsten_core::camera::RigLead::clone(&self) -> tungsten_core::camera::RigLead
+impl core::cmp::PartialEq for tungsten_core::camera::RigLead
+pub fn tungsten_core::camera::RigLead::eq(&self, &tungsten_core::camera::RigLead) -> bool
+impl core::fmt::Debug for tungsten_core::camera::RigLead
+pub fn tungsten_core::camera::RigLead::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::RigLead
+impl core::marker::StructuralPartialEq for tungsten_core::camera::RigLead
+impl core::marker::Freeze for tungsten_core::camera::RigLead
+impl core::marker::Send for tungsten_core::camera::RigLead
+impl core::marker::Sync for tungsten_core::camera::RigLead
+impl core::marker::Unpin for tungsten_core::camera::RigLead
+impl core::marker::UnsafeUnpin for tungsten_core::camera::RigLead
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::RigLead
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::RigLead
+pub fn tungsten_core::camera::lower(&mut tungsten_core::World, tungsten_core::Entity) -> bool
+pub fn tungsten_core::camera::raise(&mut tungsten_core::World, tungsten_core::Entity) -> bool
+pub fn tungsten_core::camera::update(&mut tungsten_core::World, glam::f32::vec2::Vec2, f32) -> core::option::Option<tungsten_core::camera::CameraState>
 pub mod tungsten_core::component_registry
 #[non_exhaustive] pub enum tungsten_core::component_registry::ComponentError
 pub tungsten_core::component_registry::ComponentError::Invalid
@@ -16114,26 +16313,6 @@ impl core::marker::Unpin for tungsten_core::physics::components::BodyKind
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::BodyKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::BodyKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::BodyKind
-pub enum tungsten_core::CameraMode
-pub tungsten_core::CameraMode::Follow(tungsten_core::Entity)
-pub tungsten_core::CameraMode::Free
-pub tungsten_core::CameraMode::Scripted
-impl core::clone::Clone for tungsten_core::camera::CameraMode
-pub fn tungsten_core::camera::CameraMode::clone(&self) -> tungsten_core::camera::CameraMode
-impl core::cmp::Eq for tungsten_core::camera::CameraMode
-impl core::cmp::PartialEq for tungsten_core::camera::CameraMode
-pub fn tungsten_core::camera::CameraMode::eq(&self, &tungsten_core::camera::CameraMode) -> bool
-impl core::fmt::Debug for tungsten_core::camera::CameraMode
-pub fn tungsten_core::camera::CameraMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::camera::CameraMode
-impl core::marker::StructuralPartialEq for tungsten_core::camera::CameraMode
-impl core::marker::Freeze for tungsten_core::camera::CameraMode
-impl core::marker::Send for tungsten_core::camera::CameraMode
-impl core::marker::Sync for tungsten_core::camera::CameraMode
-impl core::marker::Unpin for tungsten_core::camera::CameraMode
-impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraMode
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraMode
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraMode
 #[non_exhaustive] pub enum tungsten_core::ComponentError
 pub tungsten_core::ComponentError::Invalid
 pub tungsten_core::ComponentError::Invalid::field: alloc::string::String
@@ -16470,6 +16649,25 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::FilterMode
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FilterMode
+pub enum tungsten_core::FixedRig
+pub tungsten_core::FixedRig::At(glam::f32::vec2::Vec2)
+pub tungsten_core::FixedRig::Corner(glam::f32::vec2::Vec2)
+pub tungsten_core::FixedRig::Rect(tungsten_core::camera::CameraBounds)
+impl core::clone::Clone for tungsten_core::camera::FixedRig
+pub fn tungsten_core::camera::FixedRig::clone(&self) -> tungsten_core::camera::FixedRig
+impl core::cmp::PartialEq for tungsten_core::camera::FixedRig
+pub fn tungsten_core::camera::FixedRig::eq(&self, &tungsten_core::camera::FixedRig) -> bool
+impl core::fmt::Debug for tungsten_core::camera::FixedRig
+pub fn tungsten_core::camera::FixedRig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::FixedRig
+impl core::marker::StructuralPartialEq for tungsten_core::camera::FixedRig
+impl core::marker::Freeze for tungsten_core::camera::FixedRig
+impl core::marker::Send for tungsten_core::camera::FixedRig
+impl core::marker::Sync for tungsten_core::camera::FixedRig
+impl core::marker::Unpin for tungsten_core::camera::FixedRig
+impl core::marker::UnsafeUnpin for tungsten_core::camera::FixedRig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::FixedRig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::FixedRig
 pub enum tungsten_core::FrameRateCap
 pub tungsten_core::FrameRateCap::Fps(core::num::nonzero::NonZeroU32)
 pub tungsten_core::FrameRateCap::Uncapped
@@ -16729,6 +16927,25 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::LayerKind
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::LayerKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::LayerKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::LayerKind
+pub enum tungsten_core::LeadFrom
+pub tungsten_core::LeadFrom::Aim
+pub tungsten_core::LeadFrom::Velocity
+impl core::clone::Clone for tungsten_core::camera::LeadFrom
+pub fn tungsten_core::camera::LeadFrom::clone(&self) -> tungsten_core::camera::LeadFrom
+impl core::cmp::Eq for tungsten_core::camera::LeadFrom
+impl core::cmp::PartialEq for tungsten_core::camera::LeadFrom
+pub fn tungsten_core::camera::LeadFrom::eq(&self, &tungsten_core::camera::LeadFrom) -> bool
+impl core::fmt::Debug for tungsten_core::camera::LeadFrom
+pub fn tungsten_core::camera::LeadFrom::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::LeadFrom
+impl core::marker::StructuralPartialEq for tungsten_core::camera::LeadFrom
+impl core::marker::Freeze for tungsten_core::camera::LeadFrom
+impl core::marker::Send for tungsten_core::camera::LeadFrom
+impl core::marker::Sync for tungsten_core::camera::LeadFrom
+impl core::marker::Unpin for tungsten_core::camera::LeadFrom
+impl core::marker::UnsafeUnpin for tungsten_core::camera::LeadFrom
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::LeadFrom
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::LeadFrom
 pub enum tungsten_core::LightKind
 pub tungsten_core::LightKind::Directional
 pub tungsten_core::LightKind::Directional::angle: f32
@@ -17105,6 +17322,27 @@ impl core::marker::Unpin for tungsten_core::input::RawInput
 impl core::marker::UnsafeUnpin for tungsten_core::input::RawInput
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RawInput
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RawInput
+pub enum tungsten_core::RigKind
+pub tungsten_core::RigKind::Fixed(tungsten_core::camera::FixedRig)
+pub tungsten_core::RigKind::Follow(tungsten_core::camera::FollowRig)
+pub tungsten_core::RigKind::Scripted(glam::f32::vec2::Vec2)
+impl tungsten_core::camera::RigKind
+pub fn tungsten_core::camera::RigKind::name(&self) -> &'static str
+impl core::clone::Clone for tungsten_core::camera::RigKind
+pub fn tungsten_core::camera::RigKind::clone(&self) -> tungsten_core::camera::RigKind
+impl core::cmp::PartialEq for tungsten_core::camera::RigKind
+pub fn tungsten_core::camera::RigKind::eq(&self, &tungsten_core::camera::RigKind) -> bool
+impl core::fmt::Debug for tungsten_core::camera::RigKind
+pub fn tungsten_core::camera::RigKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::RigKind
+impl core::marker::StructuralPartialEq for tungsten_core::camera::RigKind
+impl core::marker::Freeze for tungsten_core::camera::RigKind
+impl core::marker::Send for tungsten_core::camera::RigKind
+impl core::marker::Sync for tungsten_core::camera::RigKind
+impl core::marker::Unpin for tungsten_core::camera::RigKind
+impl core::marker::UnsafeUnpin for tungsten_core::camera::RigKind
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::RigKind
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::RigKind
 pub enum tungsten_core::ScalarSlot
 pub tungsten_core::ScalarSlot::F0
 pub tungsten_core::ScalarSlot::F1
@@ -18208,11 +18446,25 @@ impl core::marker::Unpin for tungsten_core::post::BloomParams
 impl core::marker::UnsafeUnpin for tungsten_core::post::BloomParams
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::BloomParams
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::BloomParams
+pub struct tungsten_core::CameraAim(pub fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<glam::f32::vec2::Vec2>)
+impl core::clone::Clone for tungsten_core::camera::CameraAim
+pub fn tungsten_core::camera::CameraAim::clone(&self) -> tungsten_core::camera::CameraAim
+impl core::fmt::Debug for tungsten_core::camera::CameraAim
+pub fn tungsten_core::camera::CameraAim::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::CameraAim
+impl core::marker::Freeze for tungsten_core::camera::CameraAim
+impl core::marker::Send for tungsten_core::camera::CameraAim
+impl core::marker::Sync for tungsten_core::camera::CameraAim
+impl core::marker::Unpin for tungsten_core::camera::CameraAim
+impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraAim
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraAim
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraAim
 pub struct tungsten_core::CameraBounds
 pub tungsten_core::CameraBounds::max: glam::f32::vec2::Vec2
 pub tungsten_core::CameraBounds::min: glam::f32::vec2::Vec2
 impl tungsten_core::camera::CameraBounds
 pub fn tungsten_core::camera::CameraBounds::clamp_position(&self, glam::f32::vec2::Vec2, f32, f32, f32, f32) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::camera::CameraBounds::new(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_core::camera::CameraBounds
 pub fn tungsten_core::camera::CameraBounds::clone(&self) -> tungsten_core::camera::CameraBounds
 impl core::cmp::PartialEq for tungsten_core::camera::CameraBounds
@@ -18229,24 +18481,20 @@ impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraBounds
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraBounds
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraBounds
 pub struct tungsten_core::CameraController
-pub tungsten_core::CameraController::bounds: core::option::Option<tungsten_core::camera::CameraBounds>
-pub tungsten_core::CameraController::dead_zone_size: glam::f32::vec2::Vec2
-pub tungsten_core::CameraController::mode: tungsten_core::camera::CameraMode
+pub tungsten_core::CameraController::rig: tungsten_core::camera::CameraRig
 pub tungsten_core::CameraController::shake_amplitude: glam::f32::vec2::Vec2
 pub tungsten_core::CameraController::shake_decay: f32
 pub tungsten_core::CameraController::shake_frequency_hz: f32
 pub tungsten_core::CameraController::shake_max_offset: glam::f32::vec2::Vec2
 pub tungsten_core::CameraController::shake_phase: f32
+pub tungsten_core::CameraController::shake_scale: f32
 pub tungsten_core::CameraController::shake_trauma: f32
-pub tungsten_core::CameraController::smoothing_factor: f32
-pub tungsten_core::CameraController::zoom_multiplier: f32
 impl tungsten_core::camera::CameraController
 pub fn tungsten_core::camera::CameraController::add_trauma(&mut self, f32)
-pub fn tungsten_core::camera::CameraController::record_output_position(&mut self, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
-pub fn tungsten_core::camera::CameraController::record_output_zoom(&mut self, f32, f32)
-pub fn tungsten_core::camera::CameraController::resolve_base_position(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
-pub fn tungsten_core::camera::CameraController::resolve_base_zoom(&self, f32) -> f32
+pub fn tungsten_core::camera::CameraController::cut_to(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_core::camera::CameraController::frame(&self) -> tungsten_core::camera::CameraFrame
 pub fn tungsten_core::camera::CameraController::shake_offset(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::camera::CameraController::winner(&self) -> core::option::Option<tungsten_core::Entity>
 impl core::clone::Clone for tungsten_core::camera::CameraController
 pub fn tungsten_core::camera::CameraController::clone(&self) -> tungsten_core::camera::CameraController
 impl core::default::Default for tungsten_core::camera::CameraController
@@ -18261,23 +18509,92 @@ impl core::marker::Unpin for tungsten_core::camera::CameraController
 impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraController
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraController
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraController
+pub struct tungsten_core::CameraFrame
+pub tungsten_core::CameraFrame::anchor: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_core::CameraFrame::blend: core::option::Option<f32>
+pub tungsten_core::CameraFrame::bounds: core::option::Option<tungsten_core::camera::CameraBounds>
+pub tungsten_core::CameraFrame::corner: glam::f32::vec2::Vec2
+pub tungsten_core::CameraFrame::dead_zone: core::option::Option<tungsten_core::camera::CameraBounds>
+pub tungsten_core::CameraFrame::lead: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_core::CameraFrame::size: glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::camera::CameraFrame
+pub fn tungsten_core::camera::CameraFrame::clone(&self) -> tungsten_core::camera::CameraFrame
+impl core::cmp::PartialEq for tungsten_core::camera::CameraFrame
+pub fn tungsten_core::camera::CameraFrame::eq(&self, &tungsten_core::camera::CameraFrame) -> bool
+impl core::default::Default for tungsten_core::camera::CameraFrame
+pub fn tungsten_core::camera::CameraFrame::default() -> tungsten_core::camera::CameraFrame
+impl core::fmt::Debug for tungsten_core::camera::CameraFrame
+pub fn tungsten_core::camera::CameraFrame::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::CameraFrame
+impl core::marker::StructuralPartialEq for tungsten_core::camera::CameraFrame
+impl core::marker::Freeze for tungsten_core::camera::CameraFrame
+impl core::marker::Send for tungsten_core::camera::CameraFrame
+impl core::marker::Sync for tungsten_core::camera::CameraFrame
+impl core::marker::Unpin for tungsten_core::camera::CameraFrame
+impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraFrame
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraFrame
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraFrame
+pub struct tungsten_core::CameraRig
+pub tungsten_core::CameraRig::blend: tungsten_core::camera::RigBlend
+pub tungsten_core::CameraRig::bounds: core::option::Option<tungsten_core::camera::CameraBounds>
+pub tungsten_core::CameraRig::kind: tungsten_core::camera::RigKind
+pub tungsten_core::CameraRig::priority: i32
+pub tungsten_core::CameraRig::view_height: core::option::Option<f32>
+pub tungsten_core::CameraRig::zoom: f32
+impl tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::fixed(tungsten_core::camera::FixedRig) -> Self
+pub fn tungsten_core::camera::CameraRig::follow(tungsten_core::camera::FollowRig) -> Self
+pub fn tungsten_core::camera::CameraRig::is_live(&self) -> bool
+pub fn tungsten_core::camera::CameraRig::lower(&mut self)
+pub fn tungsten_core::camera::CameraRig::lowered(self) -> Self
+pub fn tungsten_core::camera::CameraRig::raise(&mut self)
+pub fn tungsten_core::camera::CameraRig::scripted(glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::camera::CameraRig::set_point(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_core::camera::CameraRig::target(&self) -> core::option::Option<tungsten_core::Entity>
+pub fn tungsten_core::camera::CameraRig::with_blend(self, tungsten_core::camera::RigBlend) -> Self
+pub fn tungsten_core::camera::CameraRig::with_bounds(self, tungsten_core::camera::CameraBounds) -> Self
+pub fn tungsten_core::camera::CameraRig::with_priority(self, i32) -> Self
+pub fn tungsten_core::camera::CameraRig::with_view_height(self, f32) -> Self
+pub fn tungsten_core::camera::CameraRig::with_zoom(self, f32) -> Self
+impl core::clone::Clone for tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::clone(&self) -> tungsten_core::camera::CameraRig
+impl core::cmp::PartialEq for tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::eq(&self, &tungsten_core::camera::CameraRig) -> bool
+impl core::default::Default for tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::default() -> Self
+impl core::fmt::Debug for tungsten_core::camera::CameraRig
+pub fn tungsten_core::camera::CameraRig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::CameraRig
+impl core::marker::StructuralPartialEq for tungsten_core::camera::CameraRig
+impl core::marker::Freeze for tungsten_core::camera::CameraRig
+impl core::marker::Send for tungsten_core::camera::CameraRig
+impl core::marker::Sync for tungsten_core::camera::CameraRig
+impl core::marker::Unpin for tungsten_core::camera::CameraRig
+impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraRig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraRig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraRig
 pub struct tungsten_core::CameraState
 pub tungsten_core::CameraState::position: glam::f32::vec2::Vec2
 pub tungsten_core::CameraState::rotation: f32
+pub tungsten_core::CameraState::shake: glam::f32::vec2::Vec2
 pub tungsten_core::CameraState::zoom: f32
 impl tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::new() -> Self
 pub fn tungsten_core::camera::CameraState::screen_to_world(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::camera::CameraState::unshaken(&self) -> Self
 pub fn tungsten_core::camera::CameraState::view_projection(&self, f32, f32) -> glam::f32::sse2::mat4::Mat4
 pub fn tungsten_core::camera::CameraState::visible_world_aabb(&self, f32, f32) -> (glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
 pub fn tungsten_core::camera::CameraState::world_to_screen(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 impl core::clone::Clone for tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::clone(&self) -> tungsten_core::camera::CameraState
+impl core::cmp::PartialEq for tungsten_core::camera::CameraState
+pub fn tungsten_core::camera::CameraState::eq(&self, &tungsten_core::camera::CameraState) -> bool
 impl core::default::Default for tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::default() -> Self
 impl core::fmt::Debug for tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tungsten_core::camera::CameraState
+impl core::marker::StructuralPartialEq for tungsten_core::camera::CameraState
 impl core::marker::Freeze for tungsten_core::camera::CameraState
 impl core::marker::Send for tungsten_core::camera::CameraState
 impl core::marker::Sync for tungsten_core::camera::CameraState
@@ -18979,6 +19296,35 @@ impl core::marker::Unpin for tungsten_core::post::FogParams
 impl core::marker::UnsafeUnpin for tungsten_core::post::FogParams
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::FogParams
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::FogParams
+pub struct tungsten_core::FollowRig
+pub tungsten_core::FollowRig::dead_zone: glam::f32::vec2::Vec2
+pub tungsten_core::FollowRig::lead: core::option::Option<tungsten_core::camera::RigLead>
+pub tungsten_core::FollowRig::offset: glam::f32::vec2::Vec2
+pub tungsten_core::FollowRig::smoothing: glam::f32::vec2::Vec2
+pub tungsten_core::FollowRig::target: core::option::Option<tungsten_core::Entity>
+impl tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::of(tungsten_core::Entity) -> Self
+pub fn tungsten_core::camera::FollowRig::with_dead_zone(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::camera::FollowRig::with_lead(self, tungsten_core::camera::RigLead) -> Self
+pub fn tungsten_core::camera::FollowRig::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::camera::FollowRig::with_smoothing(self, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::clone(&self) -> tungsten_core::camera::FollowRig
+impl core::cmp::PartialEq for tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::eq(&self, &tungsten_core::camera::FollowRig) -> bool
+impl core::default::Default for tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::default() -> Self
+impl core::fmt::Debug for tungsten_core::camera::FollowRig
+pub fn tungsten_core::camera::FollowRig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::FollowRig
+impl core::marker::StructuralPartialEq for tungsten_core::camera::FollowRig
+impl core::marker::Freeze for tungsten_core::camera::FollowRig
+impl core::marker::Send for tungsten_core::camera::FollowRig
+impl core::marker::Sync for tungsten_core::camera::FollowRig
+impl core::marker::Unpin for tungsten_core::camera::FollowRig
+impl core::marker::UnsafeUnpin for tungsten_core::camera::FollowRig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::FollowRig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::FollowRig
 pub struct tungsten_core::FontEntry
 pub tungsten_core::FontEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::FontEntry
@@ -20495,6 +20841,55 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedUiTheme
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedUiTheme
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
+pub struct tungsten_core::RigBlend
+pub tungsten_core::RigBlend::ease: tungsten_core::tween::Easing
+pub tungsten_core::RigBlend::time: f32
+impl tungsten_core::camera::RigBlend
+pub const tungsten_core::camera::RigBlend::CUT: Self
+pub fn tungsten_core::camera::RigBlend::over(f32) -> Self
+pub fn tungsten_core::camera::RigBlend::with_ease(self, tungsten_core::tween::Easing) -> Self
+impl core::clone::Clone for tungsten_core::camera::RigBlend
+pub fn tungsten_core::camera::RigBlend::clone(&self) -> tungsten_core::camera::RigBlend
+impl core::cmp::PartialEq for tungsten_core::camera::RigBlend
+pub fn tungsten_core::camera::RigBlend::eq(&self, &tungsten_core::camera::RigBlend) -> bool
+impl core::default::Default for tungsten_core::camera::RigBlend
+pub fn tungsten_core::camera::RigBlend::default() -> Self
+impl core::fmt::Debug for tungsten_core::camera::RigBlend
+pub fn tungsten_core::camera::RigBlend::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::RigBlend
+impl core::marker::StructuralPartialEq for tungsten_core::camera::RigBlend
+impl core::marker::Freeze for tungsten_core::camera::RigBlend
+impl core::marker::Send for tungsten_core::camera::RigBlend
+impl core::marker::Sync for tungsten_core::camera::RigBlend
+impl core::marker::Unpin for tungsten_core::camera::RigBlend
+impl core::marker::UnsafeUnpin for tungsten_core::camera::RigBlend
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::RigBlend
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::RigBlend
+pub struct tungsten_core::RigLead
+pub tungsten_core::RigLead::from: tungsten_core::camera::LeadFrom
+pub tungsten_core::RigLead::max: f32
+pub tungsten_core::RigLead::smoothing: f32
+pub tungsten_core::RigLead::time: f32
+impl tungsten_core::camera::RigLead
+pub const tungsten_core::camera::RigLead::SMOOTHING: f32
+pub fn tungsten_core::camera::RigLead::aim(f32) -> Self
+pub fn tungsten_core::camera::RigLead::velocity(f32, f32) -> Self
+pub fn tungsten_core::camera::RigLead::with_smoothing(self, f32) -> Self
+impl core::clone::Clone for tungsten_core::camera::RigLead
+pub fn tungsten_core::camera::RigLead::clone(&self) -> tungsten_core::camera::RigLead
+impl core::cmp::PartialEq for tungsten_core::camera::RigLead
+pub fn tungsten_core::camera::RigLead::eq(&self, &tungsten_core::camera::RigLead) -> bool
+impl core::fmt::Debug for tungsten_core::camera::RigLead
+pub fn tungsten_core::camera::RigLead::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::camera::RigLead
+impl core::marker::StructuralPartialEq for tungsten_core::camera::RigLead
+impl core::marker::Freeze for tungsten_core::camera::RigLead
+impl core::marker::Send for tungsten_core::camera::RigLead
+impl core::marker::Sync for tungsten_core::camera::RigLead
+impl core::marker::Unpin for tungsten_core::camera::RigLead
+impl core::marker::UnsafeUnpin for tungsten_core::camera::RigLead
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::RigLead
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::RigLead
 pub struct tungsten_core::RigidBody
 pub tungsten_core::RigidBody::friction: f32
 pub tungsten_core::RigidBody::gravity_scale: f32

@@ -1,6 +1,6 @@
 use super::*;
 use crate::transform::hierarchy::spawn_child;
-use tungsten_core::{CommandBuffer, Stage, Time};
+use tungsten_core::{CameraState, CommandBuffer, Stage, Time, WindowSize};
 
 fn setup() -> (World, Schedule) {
     let mut world = World::new();
@@ -71,6 +71,29 @@ fn a_view_takes_what_lies_beyond_its_margin() {
     assert!(world.is_alive(within_the_margin));
     assert!(!world.is_alive(beyond_it));
     assert!(!world.is_alive(above));
+}
+
+#[test]
+fn a_shake_despawns_nothing_the_unshaken_view_keeps() {
+    let (mut world, mut schedule) = setup();
+    world.insert_resource(WindowSize {
+        width: 400,
+        height: 200,
+    });
+    // The view covers (0, 0) to (400, 200); a shake of 30 px to the right
+    // draws it from 30, but despawns by the view without it.
+    let view = DespawnOutside::view(0.0);
+    let left_edge = world.spawn_with(at(5.0, 100.0, view));
+    let past_right = world.spawn_with(at(415.0, 100.0, view));
+    for shake in [Vec2::new(30.0, 0.0), Vec2::new(-30.0, 12.0)] {
+        let mut camera = CameraState::new();
+        camera.position = shake;
+        camera.shake = shake;
+        world.insert_resource(camera);
+        frame(&mut world, &mut schedule);
+        assert!(world.is_alive(left_edge), "{shake}");
+    }
+    assert!(!world.is_alive(past_right), "outside the unshaken view");
 }
 
 #[test]

@@ -246,6 +246,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
                 position: size * 0.5 - VIEWPORT / zoom * 0.5,
                 zoom,
                 rotation: 0.0,
+                ..CameraState::new()
             };
         }
         world.insert_resource(state);
