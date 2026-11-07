@@ -22,6 +22,7 @@ use glam::camera::rh::proj::directx::orthographic;
 use glam::{Mat4, Vec2, Vec3};
 
 use crate::components::Transform;
+use crate::debug_draw::DebugDraw;
 use crate::ecs::{Entity, With, World};
 use crate::physics::Velocity;
 use crate::tween::Easing;
@@ -785,6 +786,11 @@ pub struct CameraController {
     /// Scales the whole shake offset: the share a game's Screen shake
     /// option leaves, 1 by default.
     pub shake_scale: f32,
+    /// Whether the update draws the winner's shapes into the World's
+    /// `DebugDraw`: its dead zone and bounds as boxes, its anchor and led
+    /// point as crosses, at the frame's own view. Off by default; the kit's
+    /// debug overlay sets it each frame.
+    pub draw_shapes: bool,
     runtime: Runtime,
 }
 
@@ -799,6 +805,7 @@ impl Default for CameraController {
             shake_decay: 1.0,
             shake_max_offset: Vec2::ZERO,
             shake_scale: 1.0,
+            draw_shapes: false,
             runtime: Runtime::default(),
         }
     }
@@ -1172,6 +1179,9 @@ pub fn update(world: &mut World, window: Vec2, dt: f32) -> Option<CameraState> {
     controller.shake_phase = (controller.shake_phase
         + controller.shake_frequency_hz.max(0.0) * TAU * dt)
         .rem_euclid(TAU);
+    if controller.draw_shapes {
+        draw_frame(world, &controller.runtime.frame);
+    }
     if let Some(camera) = world.get_resource_mut::<CameraState>() {
         *camera = state;
     }
@@ -1179,6 +1189,45 @@ pub fn update(world: &mut World, window: Vec2, dt: f32) -> Option<CameraState> {
         *camera = controller;
     }
     Some(state)
+}
+
+/// The camera's debug shapes: its dead zone, anchor and led point, and its
+/// bounds.
+const SHAPE_COLOR: [f32; 4] = [1.0, 1.0, 0.3, 1.0];
+const BOUNDS_COLOR: [f32; 4] = [1.0, 0.5, 0.1, 1.0];
+/// A cross's half size and the lines' thickness, in world units.
+const CROSS: f32 = 6.0;
+const THICKNESS: f32 = 1.0;
+
+/// Draws `frame`'s dead zone and its finite bounds as boxes and its anchor
+/// and led point as crosses into the World's `DebugDraw`, when it has one.
+fn draw_frame(world: &mut World, frame: &CameraFrame) {
+    let Some(draw) = world.get_resource_mut::<DebugDraw>() else {
+        return;
+    };
+    if let Some(zone) = frame.dead_zone {
+        draw.draw_aabb(zone.min, zone.max, SHAPE_COLOR, THICKNESS);
+    }
+    if let Some(bounds) = frame.bounds
+        && bounds.min.is_finite()
+        && bounds.max.is_finite()
+    {
+        draw.draw_aabb(bounds.min, bounds.max, BOUNDS_COLOR, THICKNESS);
+    }
+    for at in [frame.anchor, frame.lead].into_iter().flatten() {
+        draw.draw_line(
+            at - Vec2::new(CROSS, 0.0),
+            at + Vec2::new(CROSS, 0.0),
+            SHAPE_COLOR,
+            THICKNESS,
+        );
+        draw.draw_line(
+            at - Vec2::new(0.0, CROSS),
+            at + Vec2::new(0.0, CROSS),
+            SHAPE_COLOR,
+            THICKNESS,
+        );
+    }
 }
 
 /// The camera's output: the view the frame draws, which only the camera

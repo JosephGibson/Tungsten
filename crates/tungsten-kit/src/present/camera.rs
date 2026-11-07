@@ -5,6 +5,7 @@ use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::camera::CameraAim;
 use tungsten_core::ecs::bundle::BundleSink;
+use tungsten_core::script::ScriptHooks;
 use tungsten_core::{
     Bundle, CameraBounds, CameraController, CameraRig, Easing, Entity, FixedRig, FollowRig,
     Inspectable, LeadFrom, Plugin, RigBlend, RigKind, RigLead, Schedule, SpawnContext, With, World,
@@ -128,6 +129,9 @@ fn camera_target(world: &mut World, following: &mut Option<Entity>) {
     }
 }
 
+/// [`CameraRigPlugin`]'s script probe of the camera's rigs.
+pub(crate) const RIGS_PROBE: &str = "rigs";
+
 /// [`CameraRigPlugin`]'s rig scene component.
 pub const CAMERA_RIG: &str = "camera_rig";
 /// [`CameraRigPlugin`]'s camera zone scene component.
@@ -209,11 +213,14 @@ impl CameraRigId {
 /// Registers the `camera_rig` scene component: a `CameraRig` on its
 /// entity, a follow of the entity itself, with its `CameraRigId` beside it
 /// when it names one; `camera_zone`, a [`CameraZone`] with its rig lowered;
-/// the inspector's rows; and the World's `CameraAim` from the kit's
-/// [`Aim`](crate::Aim), so a follow's `aim` lead reads the entity's aim. It
-/// adds no system: the engine's camera update reads the rigs, and the
-/// zone's system the zones. Rigs and zones are presentation, not saved: a
-/// load starts them from their prefabs.
+/// the inspector's rows; the World's `CameraAim` from the kit's
+/// [`Aim`](crate::Aim), so a follow's `aim` lead reads the entity's aim;
+/// and the script probe `rigs`, `{ "winner", "blend", "live": [{
+/// "entity", "id", "kind", "priority" }] }`, the last update's winner (`null`
+/// for the base rig), its blend's share and the live rigs, the winner
+/// first. It adds no system: the engine's camera update reads the rigs,
+/// and the zone's system the zones. Rigs and zones are presentation, not
+/// saved: a load starts them from their prefabs.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CameraRigPlugin;
 
@@ -471,7 +478,62 @@ impl Plugin for CameraRigPlugin {
         if !world.has_resource::<CameraAim>() {
             world.insert_resource(CameraAim(aim_of));
         }
+        let probed = world
+            .get_resource::<ScriptHooks>()
+            .is_some_and(|hooks| hooks.has_probe(RIGS_PROBE));
+        if !probed {
+            world.add_script_probe(
+                RIGS_PROBE,
+                "The camera's rigs: `{winner, blend, live: [{entity, id, kind, priority}]}`, the winner first, null entity for the base rig.",
+                rigs_probe,
+            );
+        }
     }
+}
+
+/// The [`RIGS_PROBE`]: the last update's winner, its blend's share and the
+/// live rigs, the winner first, then by priority and entity; `entity` and
+/// `winner` null for the base rig.
+fn rigs_probe(world: &World, _: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let controller = world
+        .get_resource::<CameraController>()
+        .ok_or("the World has no CameraController")?;
+    let winner = controller.winner();
+    let mut live = vec![(None, controller.rig)];
+    if world.has_any::<CameraRig>() {
+        live.extend(
+            world
+                .query::<(Entity, &CameraRig)>()
+                .filter(|(_, rig)| rig.is_live())
+                .map(|(entity, rig)| (Some(entity), *rig)),
+        );
+    }
+    live.sort_by_key(|&(entity, rig)| {
+        (
+            entity != winner,
+            std::cmp::Reverse(rig.priority),
+            entity.map(Entity::id),
+        )
+    });
+    let rows: Vec<serde_json::Value> = live
+        .iter()
+        .map(|&(entity, rig)| {
+            let id = entity
+                .and_then(|entity| world.get::<CameraRigId>(entity))
+                .map(CameraRigId::as_str);
+            serde_json::json!({
+                "entity": entity.map(Entity::id),
+                "id": id,
+                "kind": rig.kind.name(),
+                "priority": rig.priority,
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({
+        "winner": winner.map(Entity::id),
+        "blend": controller.frame().blend,
+        "live": rows,
+    }))
 }
 
 /// The shapes `camera_rig` names.

@@ -395,3 +395,52 @@ fn a_camera_zone_refuses_a_live_rig() {
     );
     assert!(check(&world, once));
 }
+
+#[test]
+fn the_rigs_probe_names_the_winner_and_the_live_rigs() {
+    use tungsten_core::script::ScriptHooks;
+    let (mut world, _) = rigs(false);
+    world.insert_resource(tungsten_core::CameraState::new());
+    let doc = world
+        .resource::<ScriptHooks>()
+        .probes()
+        .find(|(name, _)| *name == RIGS_PROBE)
+        .map(|(_, doc)| doc);
+    assert!(doc.is_some_and(|doc| !doc.is_empty()), "described");
+    let read = |world: &World| ScriptHooks::read_probe(world, RIGS_PROBE, &Value::Null).unwrap();
+    tungsten_core::camera::update(&mut world, Vec2::new(1280.0, 720.0), 1.0 / 60.0);
+    assert_eq!(
+        read(&world),
+        json!({
+            "winner": null,
+            "blend": null,
+            "live": [{ "entity": null, "id": null, "kind": "follow", "priority": 0 }]
+        }),
+        "the base rig alone"
+    );
+    let hall = world.spawn_with((
+        CameraRig::fixed(FixedRig::At(Vec2::ZERO)),
+        CameraRigId::new("hall.a"),
+    ));
+    let high = world.spawn_with((CameraRig::scripted(Vec2::ZERO)
+        .with_priority(3)
+        .with_blend(RigBlend::over(1.0)),));
+    world.spawn_with((CameraRig::follow(FollowRig::default()).lowered(),));
+    tungsten_core::camera::update(&mut world, Vec2::new(1280.0, 720.0), 1.0 / 60.0);
+    let probed = read(&world);
+    assert_eq!(probed["winner"], json!(high.id()));
+    assert!(
+        probed["blend"]
+            .as_f64()
+            .is_some_and(|share| share > 0.0 && share < 0.1)
+    );
+    assert_eq!(
+        probed["live"],
+        json!([
+            { "entity": high.id(), "id": null, "kind": "scripted", "priority": 3 },
+            { "entity": null, "id": null, "kind": "follow", "priority": 0 },
+            { "entity": hall.id(), "id": "hall.a", "kind": "fixed", "priority": 0 }
+        ]),
+        "the winner first, the lowered rig left out"
+    );
+}

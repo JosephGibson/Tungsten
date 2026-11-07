@@ -4996,6 +4996,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraBounds
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraBounds
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraBounds
 pub struct tungsten_core::camera::CameraController
+pub tungsten_core::camera::CameraController::draw_shapes: bool
 pub tungsten_core::camera::CameraController::rig: tungsten_core::camera::CameraRig
 pub tungsten_core::camera::CameraController::shake_amplitude: glam::f32::vec2::Vec2
 pub tungsten_core::camera::CameraController::shake_decay: f32
@@ -18481,6 +18482,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraBounds
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraBounds
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraBounds
 pub struct tungsten_core::CameraController
+pub tungsten_core::CameraController::draw_shapes: bool
 pub tungsten_core::CameraController::rig: tungsten_core::camera::CameraRig
 pub tungsten_core::CameraController::shake_amplitude: glam::f32::vec2::Vec2
 pub tungsten_core::CameraController::shake_decay: f32

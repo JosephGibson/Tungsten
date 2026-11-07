@@ -735,6 +735,70 @@ fn a_pause_holds_a_blends_progress() {
     assert!((last.1 - 1200.0).abs() < 1e-3);
 }
 
+#[test]
+fn the_update_draws_its_shapes_while_asked() {
+    use tungsten_core::{DebugDraw, DebugShape};
+    let mut world = world_at([1280, 720]);
+    world.insert_resource(DebugDraw::new());
+    let runner = world.spawn_with((
+        Transform::from_position(Vec2::new(640.0, 360.0)),
+        Velocity(Vec2::new(300.0, 0.0)),
+    ));
+    let bounds = CameraBounds::new(Vec2::new(-1000.0, -1000.0), Vec2::new(3000.0, 2000.0));
+    *base(&mut world) = CameraRig::follow(
+        FollowRig::of(runner)
+            .with_dead_zone(Vec2::new(200.0, 100.0))
+            .with_lead(RigLead::velocity(60.0, 0.1).with_smoothing(1.0)),
+    )
+    .with_bounds(bounds);
+    frame(&mut world, DT);
+    assert!(world.resource::<DebugDraw>().is_empty(), "off by default");
+    world.resource_mut::<CameraController>().draw_shapes = true;
+    // Moved this frame: the shapes stand at this frame's view.
+    world.get_mut::<Transform>(runner).unwrap().position.x += 400.0;
+    frame(&mut world, DT);
+    let camera = world.resource::<CameraState>().unshaken();
+    let drawn = world.resource::<CameraController>().frame();
+    assert_eq!(drawn.corner, camera.position, "this frame's view");
+    let commands = world.resource::<DebugDraw>().commands().to_vec();
+    let boxes: Vec<(Vec2, Vec2)> = commands
+        .iter()
+        .filter_map(|command| match command.shape {
+            DebugShape::Aabb { min, max } => Some((min, max)),
+            _ => None,
+        })
+        .collect();
+    let zone = drawn.dead_zone.unwrap();
+    let size = Vec2::new(1280.0, 720.0);
+    assert!(close(
+        zone.min,
+        camera.position + (size - Vec2::new(200.0, 100.0)) * 0.5,
+        1e-3
+    ));
+    assert_eq!(boxes, [(zone.min, zone.max), (bounds.min, bounds.max)]);
+    let lines: Vec<(Vec2, Vec2)> = commands
+        .iter()
+        .filter_map(|command| match command.shape {
+            DebugShape::Line { a, b } => Some((a, b)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lines.len(), 4, "two crosses");
+    let anchor = Vec2::new(1040.0, 360.0);
+    let led = anchor + Vec2::new(30.0, 0.0);
+    for (pair, at) in lines.chunks(2).zip([anchor, led]) {
+        for (a, b) in pair {
+            assert!(close((*a + *b) * 0.5, at, 1e-3), "a cross at {at}");
+        }
+    }
+    assert_eq!((drawn.anchor, drawn.lead), (Some(anchor), Some(led)));
+    // Off: nothing.
+    world.resource_mut::<DebugDraw>().clear();
+    world.resource_mut::<CameraController>().draw_shapes = false;
+    frame(&mut world, DT);
+    assert!(world.resource::<DebugDraw>().is_empty());
+}
+
 /// A world whose camera sits at the origin, holding a laid-out 40 by 20
 /// root anchored at `point` moved by `offset`: (world, root).
 fn anchored(point: Vec2, offset: Vec2) -> (World, tungsten_core::ui::WidgetId) {
