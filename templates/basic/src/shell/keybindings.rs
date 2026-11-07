@@ -1,22 +1,21 @@
-//! Keybindings: a row per `game::BINDABLE_ACTIONS` entry with its Primary
-//! and Alternate key or mouse binding and its Gamepad binding, sharing the
-//! row with its caption, and a Reset; the card scrolls only when the rows
-//! outgrow the viewport.
+//! Keybindings: a row per action `input.json`'s `labels` lists, under its
+//! label, with its Primary and Alternate key or mouse binding and its
+//! Gamepad binding (`ActionMap::binding_at`), sharing the row with its
+//! caption, and a Reset; the card scrolls only when the rows outgrow the
+//! viewport.
 //! A cell captures the next press for 5 real seconds; a press of the other
-//! device class is refused, and a binding another bindable action holds
-//! asks to swap. Each change persists through the action map's user layer;
-//! Reset and Reset all return to `input.json`. The `ui_*` and `engine_*`
-//! actions are never listed, so the menus cannot be lost.
-
-use std::path::Path;
+//! device class is refused, and a binding another listed action holds asks
+//! to swap. Each change persists through the action map's user layer;
+//! Reset and Reset all return to the shipped bindings (`ActionMap::reset`).
+//! The action map refuses a label for a `ui_*` or `engine_*` action, so the
+//! menus cannot be lost.
 
 use tungsten::core::ui::{Sizing, UiEvent, UiKey, UiRouter, UiTree, Visibility, WidgetId, widgets};
-use tungsten::core::{ActionMap, ActionMapError, Binding, Time, Timer, World};
+use tungsten::core::{ActionMap, ActionMapError, Binding, BindingDevice, Time, Timer, World};
 use tungsten::{GameState, StateContext, StateId};
 
 use super::confirm::{self, ConfirmState};
 use super::{BACK, activated, cancelled, enter, events, pop, toast, transitioning};
-use crate::game::BINDABLE_ACTIONS;
 
 pub const KEYBINDINGS: StateId = "keybindings";
 /// A row's binding columns.
@@ -24,6 +23,13 @@ pub const COLUMNS: [&str; 3] = ["Primary", "Alternate", "Gamepad"];
 /// Real seconds a capture waits for a press.
 pub const CAPTURE_SECS: f32 = 5.0;
 const RESET_ALL: UiKey = UiKey::new("reset_all");
+/// Each column's cell: the device and the index among the action's
+/// bindings on it.
+const CELLS: [(BindingDevice, usize); 3] = [
+    (BindingDevice::Keyboard, 0),
+    (BindingDevice::Keyboard, 1),
+    (BindingDevice::Gamepad, 0),
+];
 /// The card's design width, past the smallest viewport's, so a stick's
 /// name keeps one line there; and the least width of a row's caption at
 /// text 100 %, which the text scale scales, so the cells line up.
@@ -47,73 +53,36 @@ fn cell_key(action: &str, column: usize) -> String {
     format!("{action}.{column}")
 }
 
-/// The row and column of the cell keyed `key`.
-fn cell_of(key: UiKey) -> Option<(usize, usize)> {
-    BINDABLE_ACTIONS
-        .iter()
-        .enumerate()
-        .find_map(|(row, (action, _))| {
-            let column = (0..4).find(|column| UiKey::new(&cell_key(action, *column)) == key);
-            column.map(|column| (row, column))
-        })
-}
-
-fn is_pad(binding: Binding) -> bool {
-    matches!(
-        binding,
-        Binding::GamepadButton { .. } | Binding::GamepadAxis { .. }
-    )
-}
-
-/// The binding in `column`: the first or second key or mouse binding, or
-/// the first pad one.
-fn cell(bindings: &[Binding], column: usize) -> Option<Binding> {
-    let mut kind = bindings
-        .iter()
-        .filter(|each| is_pad(**each) == (column == 2));
-    kind.nth(usize::from(column == 1)).copied()
-}
-
-/// `bindings` with `column`'s binding swapped for `with`, the rest kept.
-fn with_cell(bindings: &[Binding], column: usize, with: Binding) -> Vec<Binding> {
-    let mut out = bindings.to_vec();
-    match cell(bindings, column).and_then(|old| out.iter().position(|each| *each == old)) {
-        Some(at) => out[at] = with,
-        None => out.push(with),
-    }
-    out
-}
-
-/// Replaces `action`'s bindings and persists them; without a user folder
-/// the change lasts the run.
-fn bind(world: &mut World, action: &str, bindings: Vec<Binding>) {
+/// Persists the action map's user layer; without a user folder the change
+/// lasts the run.
+fn persist(world: &mut World) {
     let Some(map) = world.get_resource_mut::<ActionMap>() else {
         return;
     };
-    match map.replace_bindings_and_persist(action, bindings) {
+    match map.persist() {
         Ok(()) | Err(ActionMapError::MissingSourcePath) => {}
         Err(error) => log::warn!("Bindings not saved: {error}"),
     }
 }
 
-/// Returns every bindable action, or only `only`, to `input.json`'s
-/// bindings over the engine's defaults.
+/// Returns every action, or only `only`, to its shipped bindings, and
+/// persists.
 pub fn reset(world: &mut World, only: Option<&str>) {
-    let shipped = ActionMap::load(Path::new("input.json")).map(ActionMap::merged_with_defaults);
-    let Ok(shipped) = shipped else {
-        return log::warn!("input.json not read, so the bindings stay");
+    let Some(map) = world.get_resource_mut::<ActionMap>() else {
+        return;
     };
-    for (action, _) in BINDABLE_ACTIONS
-        .iter()
-        .filter(|(action, _)| only.is_none_or(|only| only == *action))
-    {
-        bind(world, action, shipped.bindings(action).to_vec());
+    match only {
+        Some(action) => map.reset(action),
+        None => map.reset_all(),
     }
+    persist(world);
 }
 
 /// The keybindings screen.
 #[derive(Default)]
 pub struct KeybindingsState {
+    /// The listed actions, in `labels`' order, as the screen opened.
+    actions: Vec<String>,
     /// The root and each row's three cells and Reset.
     ui: Option<(WidgetId, Vec<[WidgetId; 4]>)>,
     /// The row and column capturing, and its timer on the real clock.
@@ -121,18 +90,31 @@ pub struct KeybindingsState {
 }
 
 impl KeybindingsState {
+    /// The row and column of the cell keyed `key`.
+    fn cell_of(&self, key: UiKey) -> Option<(usize, usize)> {
+        self.actions.iter().enumerate().find_map(|(row, action)| {
+            let column = (0..4).find(|column| UiKey::new(&cell_key(action, *column)) == key);
+            column.map(|column| (row, column))
+        })
+    }
+
     fn refresh(&self, world: &mut World) {
         let (Some((_, rows)), Some(map)) = (&self.ui, world.get_resource::<ActionMap>()) else {
             return;
         };
-        let bindings: Vec<Vec<Binding>> = BINDABLE_ACTIONS
+        let labels: Vec<Vec<Option<String>>> = self
+            .actions
             .iter()
-            .map(|(action, _)| map.bindings(action).to_vec())
+            .map(|action| {
+                let cell = |(device, index)| map.binding_at(action, device, index);
+                CELLS
+                    .map(|at| cell(at).map(|binding| binding.label().into_owned()))
+                    .to_vec()
+            })
             .collect();
         let tree = world.resource_mut::<UiTree>();
-        for (row, bindings) in rows.iter().zip(bindings) {
-            for (column, id) in row.iter().take(3).enumerate() {
-                let label = cell(&bindings, column).map(Binding::label);
+        for (row, labels) in rows.iter().zip(labels) {
+            for (id, label) in row.iter().zip(labels) {
                 tree.set_text(*id, label.as_deref().unwrap_or("—"));
             }
         }
@@ -140,27 +122,31 @@ impl KeybindingsState {
 
     /// The capturing cell took `binding`.
     fn captured(&self, world: &mut World, row: usize, column: usize, binding: Binding) {
-        if is_pad(binding) != (column == 2) {
+        let (device, index) = CELLS[column];
+        if binding.device() != device {
             let wanted = ["keys", "keys", "pad buttons"][column];
             return toast::toast(world, format!("{} takes {wanted}", COLUMNS[column]));
         }
-        let (action, _) = BINDABLE_ACTIONS[row];
+        let action = self.actions[row].clone();
         let map = world.resource::<ActionMap>();
-        let mine = map.bindings(action).to_vec();
-        let old = cell(&mine, column);
-        let holder = BINDABLE_ACTIONS
+        let old = map.binding_at(&action, device, index);
+        let holder = self
+            .actions
             .iter()
-            .find(|(other, _)| *other != action && map.bindings(other).contains(&binding));
-        let Some(&(other, label)) = holder else {
-            return bind(world, action, with_cell(&mine, column, binding));
+            .find(|other| **other != action && map.bindings(other).contains(&binding));
+        let Some(other) = holder.cloned() else {
+            let map = world.resource_mut::<ActionMap>();
+            map.set_binding_at(&action, device, index, binding);
+            return persist(world);
         };
+        let label = map.label(&other).unwrap_or(&other).to_owned();
         let swap = move |world: &mut World| {
-            let theirs = world.resource::<ActionMap>().bindings(other).to_vec();
-            let theirs = theirs
-                .into_iter()
-                .filter_map(|each| if each == binding { old } else { Some(each) });
-            bind(world, other, theirs.collect());
-            bind(world, action, with_cell(&mine, column, binding));
+            let map = world.resource_mut::<ActionMap>();
+            let theirs = map.bindings(&other).iter();
+            let theirs = theirs.filter_map(|each| if *each == binding { old } else { Some(*each) });
+            map.replace_bindings(other.as_str(), theirs.collect());
+            map.set_binding_at(&action, device, index, binding);
+            persist(world);
         };
         let ask = ConfirmState::new(&format!("Already used by {label}. Swap?"), "Swap", "Cancel");
         confirm::ask(world, ask.on_yes(swap));
@@ -180,6 +166,9 @@ impl GameState for KeybindingsState {
     }
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
+        let map = ctx.world.get_resource::<ActionMap>();
+        let labelled = map.map(|map| map.labelled().to_vec()).unwrap_or_default();
+        self.actions = labelled.iter().map(|(action, _)| action.clone()).collect();
         let tree = ctx.world.resource_mut::<UiTree>();
         let (root, card) = widgets::screen(tree, WIDTH);
         widgets::heading(tree, card, "Keybindings", false);
@@ -191,7 +180,7 @@ impl GameState for KeybindingsState {
         // A hidden Reset keeps the header's columns over the rows'.
         let spacer = widgets::button(tree, header, "Reset");
         tree.set_visibility(spacer, Visibility::Hidden);
-        let rows = BINDABLE_ACTIONS
+        let rows = labelled
             .iter()
             .map(|(action, label)| {
                 let row = row(tree, card, label);
@@ -214,7 +203,9 @@ impl GameState for KeybindingsState {
         tree.set_key(all, "reset_all");
         let back = widgets::button(tree, actions, "Back");
         tree.set_key(back, "back");
-        tree.focus(rows[0][0]);
+        if let Some(first) = rows.first() {
+            tree.focus(first[0]);
+        }
         enter(ctx.world, root);
         self.ui = Some((root, rows));
         self.refresh(ctx.world);
@@ -264,14 +255,14 @@ impl GameState for KeybindingsState {
             }
             return;
         };
-        match (key, cell_of(key)) {
+        match (key, self.cell_of(key)) {
             (BACK, _) => pop(world),
             (RESET_ALL, _) => {
                 reset(world, None);
                 self.refresh(world);
             }
             (_, Some((row, 3))) => {
-                reset(world, Some(BINDABLE_ACTIONS[row].0));
+                reset(world, Some(self.actions[row].as_str()));
                 self.refresh(world);
             }
             (_, Some((row, column))) => {

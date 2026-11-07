@@ -17,18 +17,6 @@ pub const FONT: &str = "sans";
 /// it.
 pub const GAMEPLAY: StateId = "gameplay";
 
-/// The actions the Keybindings screen lists: each action's name and its
-/// row's label. `ui_*` and `engine_*` actions are never listed, so the
-/// menus cannot be lost.
-pub const BINDABLE_ACTIONS: &[(&str, &str)] = &[
-    ("move_up", "Move up"),
-    ("move_down", "Move down"),
-    ("move_left", "Move left"),
-    ("move_right", "Move right"),
-    ("state_pause", "Pause"),
-    ("shoot", "Shoot"),
-];
-
 /// The state the shell puts on the stack for New Game, Continue, Load and
 /// Retry.
 #[must_use]

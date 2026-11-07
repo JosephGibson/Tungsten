@@ -1,22 +1,13 @@
-//! The run's script hooks (redo 7.2): `start_run` and `place_player` for a
-//! script to call, `player` and `area` for it to read, as the template's
-//! sample registers its own; `fill_pit`, `wake_foes` and `pit` set up and
-//! read the full pit ([`pit`](super::pit), redo 7.3).
+//! The run's script hooks (redo 7.2): `place_player` for a script to call,
+//! `player` and `area` for it to read, as the template's sample registers
+//! its own, the shell `start_run`; `fill_pit`, `wake_foes` and `pit` set up
+//! and read the full pit ([`pit`](super::pit), redo 7.3).
 
 use serde::Deserialize;
 use tungsten::core::{Position, PrevPosition, Velocity, World};
 use tungsten::kit::Health;
 
 use super::{Run, pit};
-use crate::shell::{self, Difficulty, RunStart};
-
-/// `start_run`'s arguments.
-#[derive(Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Start {
-    #[serde(default)]
-    difficulty: Difficulty,
-}
 
 /// `place_player`'s arguments.
 #[derive(Deserialize)]
@@ -34,27 +25,6 @@ struct Fill {
 
 /// Adds the run's actions and probes to the World's script hooks.
 pub fn register(world: &mut World) {
-    world.add_script_action(
-        "start_run",
-        "Starts a fresh run: `{\"difficulty\"?: \"easy\" | \"normal\" | \"hard\"}`.",
-        |world, args| {
-            let start = if args.is_null() {
-                Start::default()
-            } else {
-                Start::deserialize(args).map_err(|e| e.to_string())?
-            };
-            let difficulty = start.difficulty;
-            shell::start_run(
-                world,
-                RunStart {
-                    difficulty,
-                    save: None,
-                },
-                None,
-            );
-            Ok(())
-        },
-    );
     world.add_script_action(
         "place_player",
         "Sets the player's body at rest at `{\"at\": [x, y]}`; `until` holds it.",

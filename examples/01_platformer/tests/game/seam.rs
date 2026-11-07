@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use example_01_platformer::features::level::MAP;
 use example_01_platformer::features::player::MAX_HEALTH;
-use example_01_platformer::game::{BINDABLE_ACTIONS, GAMEPLAY};
+use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::save;
 use example_01_platformer::shell::Difficulty;
 use tungsten::core::{CameraController, CameraRig, TilemapInstance};
@@ -63,7 +63,14 @@ fn bindable_actions_are_input_jsons_and_no_menu_or_engine_action() {
         .keys()
         .map(String::as_str)
         .collect();
-    for (action, label) in BINDABLE_ACTIONS {
+    let map = tungsten::core::ActionMap::load(std::path::Path::new("input.json"))
+        .expect("input.json loads");
+    let labelled: Vec<(&str, &str)> = map
+        .labelled()
+        .iter()
+        .map(|(action, label)| (action.as_str(), label.as_str()))
+        .collect();
+    for (action, label) in &labelled {
         assert!(declared.contains(action), "{action} is in input.json");
         assert!(
             !action.starts_with("ui_") && !action.starts_with("engine_"),
@@ -71,6 +78,6 @@ fn bindable_actions_are_input_jsons_and_no_menu_or_engine_action() {
         );
         assert!(!label.is_empty());
     }
-    let listed: BTreeSet<&str> = BINDABLE_ACTIONS.iter().map(|(action, _)| *action).collect();
+    let listed: BTreeSet<&str> = labelled.iter().map(|(action, _)| *action).collect();
     assert_eq!(listed, declared, "every input.json action is bindable");
 }

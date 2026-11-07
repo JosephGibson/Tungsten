@@ -110,6 +110,14 @@ pub struct RunMeta {
     pub playtime_secs: f64,
 }
 
+/// The `start_run` script action's arguments (S-80).
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScriptStart {
+    #[serde(default)]
+    difficulty: Difficulty,
+}
+
 /// How a run starts: its difficulty and, to continue one, its save.
 #[derive(Debug, Clone, Default)]
 pub struct RunStart {
@@ -266,6 +274,16 @@ impl Plugin for ShellPlugin {
             hud.enabled = false;
             hud.corner = HudCorner::TopRight;
         }
+        world.add_script_action_typed(
+            "start_run",
+            "Starts a fresh run: `{\"difficulty\"?: \"easy\" | \"normal\" | \"hard\"}`.",
+            |world, start: ScriptStart| {
+                let difficulty = start.difficulty;
+                let save = None;
+                start_run(world, RunStart { difficulty, save }, None);
+                Ok(())
+            },
+        );
         schedule.add(Stage::Startup, system("shell_start", start));
         let save = system("shell_save", save_due).before(STATE_DISPATCHER);
         schedule.add(Stage::PreUpdate, save);

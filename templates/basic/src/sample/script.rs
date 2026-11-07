@@ -1,22 +1,14 @@
-//! The sample's script hooks (redo 7.2): `start_run`, `place_player` and
-//! `reload_run` for a script to call, `player` for it to read, each with
-//! the line `tungsten describe` prints. A game adds its own the same way,
-//! from its plugin.
+//! The sample's script hooks (redo 7.2): `place_player` and `reload_run`
+//! for a script to call, `player` for it to read, each with the line
+//! `tungsten describe` prints; the shell registers `start_run`. A game adds
+//! its own the same way, from its plugin.
 
 use serde::Deserialize;
 use tungsten::core::{Position, PrevPosition, Velocity, World};
 use tungsten::kit::Health;
 
 use super::SampleRun;
-use crate::shell::{self, Difficulty, RunStart};
-
-/// `start_run`'s arguments.
-#[derive(Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Start {
-    #[serde(default)]
-    difficulty: Difficulty,
-}
+use crate::shell;
 
 /// `place_player`'s arguments.
 #[derive(Deserialize)]
@@ -25,29 +17,13 @@ struct Place {
     at: [f32; 2],
 }
 
+/// `reload_run`'s arguments: none.
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NoArgs {}
+
 /// Adds the sample's actions and probe to the World's script hooks.
 pub fn register(world: &mut World) {
-    world.add_script_action(
-        "start_run",
-        "Starts a fresh run: `{\"difficulty\"?: \"easy\" | \"normal\" | \"hard\"}`.",
-        |world, args| {
-            let start = if args.is_null() {
-                Start::default()
-            } else {
-                Start::deserialize(args).map_err(|e| e.to_string())?
-            };
-            let difficulty = start.difficulty;
-            shell::start_run(
-                world,
-                RunStart {
-                    difficulty,
-                    save: None,
-                },
-                None,
-            );
-            Ok(())
-        },
-    );
     world.add_script_action(
         "place_player",
         "Sets the player's body at rest at `{\"at\": [x, y]}`; `until` holds it.",
@@ -68,10 +44,10 @@ pub fn register(world: &mut World) {
             Ok(())
         },
     );
-    world.add_script_action(
+    world.add_script_action_typed(
         "reload_run",
         "Saves the run in memory and continues it as Continue does, with no user folder.",
-        |world, _| {
+        |world, NoArgs {}| {
             let save = crate::save::capture(world).ok_or("no run to save")?;
             shell::start_run(world, save.into(), None);
             Ok(())
