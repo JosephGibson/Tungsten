@@ -18,10 +18,20 @@
 //! ([`RootCover`]); uncovered, it is restored; its state's exit removes it.
 //! While a transition is queued or active every owned root is frozen and
 //! faded with the frame, since the UI draws after the transition pass.
+//!
+//! Redo 7.11: a state names its music ([`GameState::music`]), and the
+//! top-most state on the stack that names music is heard, at its sound's
+//! manifest level. Every other music state's voice plays on at 0, keeping
+//! its place in the song; each change fades over the incoming state's fade,
+//! and a state's voice stops when it exits, over its own. The dispatcher
+//! applies the rule only on a frame whose commands change the stack.
 
+use std::borrow::Cow;
+
+use tungsten_core::assets::SoundRegistry;
 use tungsten_core::post::PostPass;
 use tungsten_core::ui::{UiTree, Visibility, WidgetId};
-use tungsten_core::{CommandBuffer, Entity, Time, World};
+use tungsten_core::{AudioCommands, CommandBuffer, Entity, Time, Voice, World};
 
 use crate::debug_hud::HudActiveState;
 use crate::transition::{Transition, TransitionState, TransitionStep};
@@ -59,6 +69,58 @@ pub trait GameState: 'static {
     fn holds_clock(&self) -> bool {
         false
     }
+
+    /// The music this state plays (redo 7.11): heard while it is the
+    /// top-most state that names music, at 0 under another that does, and
+    /// stopped at its exit. Read when the state enters; `None`, the default,
+    /// leaves the music to the states below, as a settings screen over the
+    /// title keeps the title's song.
+    fn music(&self) -> Option<StateMusic> {
+        None
+    }
+}
+
+/// A state's music (redo 7.11): the manifest sound it plays and the
+/// seconds each change to it fades over, which its exit's stop takes too.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StateMusic {
+    sound: Cow<'static, str>,
+    fade: f32,
+}
+
+impl StateMusic {
+    /// The manifest's sound `sound`, faded over `fade` seconds; a fade that
+    /// is not finite or is negative is 0.
+    #[must_use]
+    pub fn new(sound: impl Into<Cow<'static, str>>, fade: f32) -> Self {
+        Self {
+            sound: sound.into(),
+            fade: if fade.is_finite() { fade.max(0.0) } else { 0.0 },
+        }
+    }
+
+    /// The sound's manifest ID.
+    #[must_use]
+    pub fn sound(&self) -> &str {
+        &self.sound
+    }
+
+    /// The fade, in seconds.
+    #[must_use]
+    pub fn fade(&self) -> f32 {
+        self.fade
+    }
+}
+
+/// A music state's voice (redo 7.11), by its owner's place on the stack.
+pub(crate) struct MusicVoice {
+    owner: usize,
+    /// `None` when the sound did not resolve: it plays nothing.
+    voice: Option<Voice>,
+    /// The sound's manifest level, which the heard voice plays at.
+    level: f32,
+    fade: f32,
+    heard: bool,
 }
 
 /// A reset's hook, run between the exits and the enter.
@@ -142,6 +204,10 @@ pub struct StateStack {
     /// The resources states own (redo 7.17), by the owner's place on the
     /// stack, each with what removes it.
     pub(crate) owned_resources: Vec<(usize, RemoveResource)>,
+    /// The music states' voices (redo 7.11).
+    pub(crate) music: Vec<MusicVoice>,
+    /// The music IDs warned of as unknown, each once.
+    pub(crate) music_warned: Vec<String>,
 }
 
 impl StateStack {
@@ -155,6 +221,8 @@ impl StateStack {
             owned_roots: Vec::new(),
             dispatching: None,
             owned_resources: Vec::new(),
+            music: Vec::new(),
+            music_warned: Vec::new(),
         }
     }
 
@@ -397,11 +465,12 @@ pub fn state_dispatcher_system(world: &mut World) {
 
     let mut entered = 0;
     let mut held = Vec::new();
+    let mut changed = false;
     for cmd in pending {
-        apply_or_hold(world, cmd, &mut entered, &mut held);
+        changed |= apply_or_hold(world, cmd, &mut entered, &mut held);
     }
 
-    advance_transition(world, &mut entered, &mut held);
+    changed |= advance_transition(world, &mut entered, &mut held);
 
     if !held.is_empty()
         && let Some(stack) = world.get_resource_mut::<StateStack>()
@@ -411,6 +480,9 @@ pub fn state_dispatcher_system(world: &mut World) {
         stack.pending = held;
     }
 
+    if changed {
+        sync_music(world);
+    }
     sync_clock_hold(world);
 
     if let Some(mut top) = pop_top(world) {
@@ -438,28 +510,35 @@ pub fn state_dispatcher_system(world: &mut World) {
 
 /// Applies `cmd`, or holds it for the next frame when a command is already
 /// held or it would exit a state this dispatch entered; `entered` counts the
-/// states at the top of the stack the dispatch has entered.
+/// states at the top of the stack the dispatch has entered. Whether it
+/// applied.
 fn apply_or_hold(
     world: &mut World,
     cmd: StateCommand,
     entered: &mut usize,
     held: &mut Vec<StateCommand>,
-) {
+) -> bool {
     if !held.is_empty() || (*entered > 0 && cmd.exits_top()) {
         held.push(cmd);
-        return;
+        return false;
     }
     *entered = cmd.entered_after(*entered);
     apply_command(world, cmd);
+    true
 }
 
 /// Activate the queued transition when none is active, then advance the
 /// active one. The stored command runs through `apply_or_hold` on the frame
 /// `Out` completes, so hooks, scene despawn and order follow `D-046`.
-fn advance_transition(world: &mut World, entered: &mut usize, held: &mut Vec<StateCommand>) {
+/// Whether that command applied.
+fn advance_transition(
+    world: &mut World,
+    entered: &mut usize,
+    held: &mut Vec<StateCommand>,
+) -> bool {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::real_delta);
     let Some(stack) = world.get_resource_mut::<StateStack>() else {
-        return;
+        return false;
     };
     if stack.active_transition.is_none()
         && let Some(queued) = stack.queued_transition.take()
@@ -471,7 +550,7 @@ fn advance_transition(world: &mut World, entered: &mut usize, held: &mut Vec<Sta
         });
     }
     let Some(active) = stack.active_transition.as_mut() else {
-        return;
+        return false;
     };
 
     let transition = active.transition;
@@ -483,13 +562,112 @@ fn advance_transition(world: &mut World, entered: &mut usize, held: &mut Vec<Sta
         command = active.command.take();
     }
 
-    if let Some(command) = command {
-        apply_or_hold(world, command, entered, held);
-    }
+    let applied = command.is_some_and(|command| apply_or_hold(world, command, entered, held));
     if step == TransitionStep::Finished
         && let Some(stack) = world.get_resource_mut::<StateStack>()
     {
         stack.active_transition = None;
+    }
+    applied
+}
+
+/// The music rule (redo 7.11), after a dispatch changed the stack: each
+/// state that entered naming music starts its voice, and the heard state,
+/// the top-most naming music, plays at its level while every other plays
+/// at 0, each change over the heard state's fade. A sound the registry
+/// lacks warns once by its ID and plays nothing. Exits stopped their voices
+/// already ([`release_roots`]).
+fn sync_music(world: &mut World) {
+    let Some(stack) = world.get_resource_mut::<StateStack>() else {
+        return;
+    };
+    let mut music = std::mem::take(&mut stack.music);
+    let mut entered: Vec<(usize, StateMusic)> = Vec::new();
+    for (index, state) in stack.stack.iter().enumerate() {
+        if !music.iter().any(|voice| voice.owner == index)
+            && let Some(named) = state.music()
+        {
+            entered.push((index, named));
+        }
+    }
+    let owners = music.iter().map(|voice| voice.owner);
+    let Some(heard) = owners.chain(entered.iter().map(|(index, _)| *index)).max() else {
+        stack.music = music;
+        return;
+    };
+    let fade = entered
+        .iter()
+        .find(|(index, _)| *index == heard)
+        .map(|(_, named)| named.fade)
+        .or_else(|| {
+            music
+                .iter()
+                .find(|voice| voice.owner == heard)
+                .map(|voice| voice.fade)
+        })
+        .unwrap_or(0.0);
+
+    let sounds = world.get_resource::<SoundRegistry>();
+    let resolved: Vec<_> = entered
+        .into_iter()
+        .map(|(index, named)| {
+            let sound = sounds.and_then(|sounds| {
+                let handle = sounds.get_by_id(named.sound())?;
+                Some((
+                    handle,
+                    sounds.get_volume(handle),
+                    sounds.get_looping(handle),
+                ))
+            });
+            (index, named, sound)
+        })
+        .collect();
+
+    let mut audio = world.get_resource_mut::<AudioCommands>();
+    for voice in &mut music {
+        let heard_now = voice.owner == heard;
+        if voice.heard == heard_now {
+            continue;
+        }
+        voice.heard = heard_now;
+        if let (Some(playing), Some(audio)) = (voice.voice, audio.as_deref_mut()) {
+            let level = if heard_now { voice.level } else { 0.0 };
+            audio.set_voice_volume(playing, level, fade);
+        }
+    }
+    let mut unknown = Vec::new();
+    for (index, named, sound) in resolved {
+        let heard_now = index == heard;
+        let (voice, level) =
+            if let (Some((handle, level, looping)), Some(audio)) = (sound, audio.as_deref_mut()) {
+                let (volume, rise) = if heard_now {
+                    (level, named.fade)
+                } else {
+                    (0.0, 0.0)
+                };
+                (Some(audio.play_faded(handle, volume, looping, rise)), level)
+            } else {
+                unknown.push(named.sound.clone());
+                (None, 0.0)
+            };
+        music.push(MusicVoice {
+            owner: index,
+            voice,
+            level,
+            fade: named.fade,
+            heard: heard_now,
+        });
+    }
+
+    let Some(stack) = world.get_resource_mut::<StateStack>() else {
+        return;
+    };
+    stack.music = music;
+    for sound in unknown {
+        if !stack.music_warned.iter().any(|warned| *warned == *sound) {
+            log::warn!("A state's music '{sound}' is not a loaded sound; it plays nothing");
+            stack.music_warned.push(sound.into_owned());
+        }
     }
 }
 
@@ -576,12 +754,23 @@ fn remove_resource<T: 'static>(world: &mut World) {
 }
 
 /// Removes the roots and resources the state at `index` owns, after its
-/// exit, and ends its dispatch.
+/// exit, stops its music's voice over its fade (redo 7.11), and ends its
+/// dispatch.
 fn release_roots(world: &mut World, index: usize) {
     let Some(stack) = world.get_resource_mut::<StateStack>() else {
         return;
     };
     stack.dispatching = None;
+    if let Some(at) = stack.music.iter().position(|voice| voice.owner == index) {
+        let gone = stack.music.remove(at);
+        if let (Some(voice), Some(audio)) = (gone.voice, world.get_resource_mut::<AudioCommands>())
+        {
+            audio.stop_voice(voice, gone.fade);
+        }
+    }
+    let Some(stack) = world.get_resource_mut::<StateStack>() else {
+        return;
+    };
     if !stack.owned_resources.is_empty() {
         let mut removers = Vec::new();
         stack.owned_resources.retain(|&(owner, remove)| {

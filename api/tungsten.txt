@@ -811,6 +811,7 @@ pub fn tungsten::screens::Confirm::on_yes(self, impl core::ops::function::FnOnce
 impl tungsten::state::GameState for tungsten::screens::Confirm
 pub fn tungsten::screens::Confirm::holds_clock(&self) -> bool
 pub fn tungsten::screens::Confirm::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::Confirm::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::Confirm::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -829,6 +830,7 @@ pub fn tungsten::screens::DataScreen::new(tungsten::state::StateId) -> Self
 impl tungsten::state::GameState for tungsten::screens::DataScreen
 pub fn tungsten::screens::DataScreen::holds_clock(&self) -> bool
 pub fn tungsten::screens::DataScreen::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::DataScreen::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::DataScreen::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -998,6 +1000,25 @@ impl<'a> core::marker::Unpin for tungsten::state::StateContext<'a>
 impl<'a> core::marker::UnsafeUnpin for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateContext<'a>
+pub struct tungsten::state::StateMusic
+impl tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::fade(&self) -> f32
+pub fn tungsten::state::StateMusic::new(impl core::convert::Into<alloc::borrow::Cow<'static, str>>, f32) -> Self
+pub fn tungsten::state::StateMusic::sound(&self) -> &str
+impl core::clone::Clone for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::clone(&self) -> tungsten::state::StateMusic
+impl core::cmp::PartialEq for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::eq(&self, &tungsten::state::StateMusic) -> bool
+impl core::fmt::Debug for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten::state::StateMusic
+impl core::marker::Freeze for tungsten::state::StateMusic
+impl core::marker::Send for tungsten::state::StateMusic
+impl core::marker::Sync for tungsten::state::StateMusic
+impl core::marker::Unpin for tungsten::state::StateMusic
+impl core::marker::UnsafeUnpin for tungsten::state::StateMusic
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateMusic
+impl core::panic::unwind_safe::UnwindSafe for tungsten::state::StateMusic
 pub struct tungsten::state::StateStack
 impl tungsten::state::StateStack
 pub fn tungsten::state::StateStack::active_id(&self) -> core::option::Option<tungsten::state::StateId>
@@ -1029,6 +1050,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateStack
 pub trait tungsten::state::GameState: 'static
 pub fn tungsten::state::GameState::holds_clock(&self) -> bool
 pub fn tungsten::state::GameState::id(&self) -> tungsten::state::StateId
+pub fn tungsten::state::GameState::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::state::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::state::GameState::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::state::GameState::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -1037,6 +1059,7 @@ pub fn tungsten::state::GameState::update(&mut self, &mut tungsten_core::ecs::wo
 impl tungsten::state::GameState for tungsten::screens::Confirm
 pub fn tungsten::screens::Confirm::holds_clock(&self) -> bool
 pub fn tungsten::screens::Confirm::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::Confirm::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::Confirm::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -1045,6 +1068,7 @@ pub fn tungsten::screens::Confirm::update(&mut self, &mut tungsten_core::ecs::wo
 impl tungsten::state::GameState for tungsten::screens::DataScreen
 pub fn tungsten::screens::DataScreen::holds_clock(&self) -> bool
 pub fn tungsten::screens::DataScreen::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::DataScreen::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::DataScreen::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -2111,6 +2135,25 @@ impl<'a> core::marker::Unpin for tungsten::state::StateContext<'a>
 impl<'a> core::marker::UnsafeUnpin for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateContext<'a>
+pub struct tungsten::StateMusic
+impl tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::fade(&self) -> f32
+pub fn tungsten::state::StateMusic::new(impl core::convert::Into<alloc::borrow::Cow<'static, str>>, f32) -> Self
+pub fn tungsten::state::StateMusic::sound(&self) -> &str
+impl core::clone::Clone for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::clone(&self) -> tungsten::state::StateMusic
+impl core::cmp::PartialEq for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::eq(&self, &tungsten::state::StateMusic) -> bool
+impl core::fmt::Debug for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten::state::StateMusic
+impl core::marker::Freeze for tungsten::state::StateMusic
+impl core::marker::Send for tungsten::state::StateMusic
+impl core::marker::Sync for tungsten::state::StateMusic
+impl core::marker::Unpin for tungsten::state::StateMusic
+impl core::marker::UnsafeUnpin for tungsten::state::StateMusic
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateMusic
+impl core::panic::unwind_safe::UnwindSafe for tungsten::state::StateMusic
 pub struct tungsten::StatePlugin
 impl core::clone::Clone for tungsten::plugins::StatePlugin
 pub fn tungsten::plugins::StatePlugin::clone(&self) -> tungsten::plugins::StatePlugin
@@ -2293,6 +2336,7 @@ pub const tungsten::ENGINE_WHITE: &str
 pub trait tungsten::GameState: 'static
 pub fn tungsten::GameState::holds_clock(&self) -> bool
 pub fn tungsten::GameState::id(&self) -> tungsten::state::StateId
+pub fn tungsten::GameState::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -2301,6 +2345,7 @@ pub fn tungsten::GameState::update(&mut self, &mut tungsten_core::ecs::world::Wo
 impl tungsten::state::GameState for tungsten::screens::Confirm
 pub fn tungsten::screens::Confirm::holds_clock(&self) -> bool
 pub fn tungsten::screens::Confirm::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::Confirm::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::Confirm::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -2309,6 +2354,7 @@ pub fn tungsten::screens::Confirm::update(&mut self, &mut tungsten_core::ecs::wo
 impl tungsten::state::GameState for tungsten::screens::DataScreen
 pub fn tungsten::screens::DataScreen::holds_clock(&self) -> bool
 pub fn tungsten::screens::DataScreen::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::DataScreen::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::DataScreen::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
