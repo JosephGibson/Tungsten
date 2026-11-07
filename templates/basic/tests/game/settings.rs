@@ -815,24 +815,24 @@ fn ui_and_text_scale_apply() {
 #[test]
 fn screen_shake_scales_the_camera() {
     let mut harness = harness();
-    let shipped = harness
-        .world()
-        .resource::<CameraController>()
-        .shake_max_offset;
+    let camera = *harness.world().resource::<CameraController>();
+    assert_eq!(camera.shake_scale, 1.0, "the whole shake at 100 %");
     assert_eq!(
-        shipped.to_array(),
+        camera.shake_max_offset.to_array(),
         CAMERA_SHAKE,
-        "the sample's shake, at 100 %"
+        "the sample's shake"
     );
     from_title(&mut harness);
     press(&mut harness, "Gameplay");
     nudge(&mut harness, "Screen shake", "ui_left");
     assert_eq!(options(&harness).screen_shake(), 0.95);
-    let offset = harness
-        .world()
-        .resource::<CameraController>()
-        .shake_max_offset;
-    assert!((offset - shipped * 0.95).length() < 1e-4, "{offset:?}");
+    let camera = *harness.world().resource::<CameraController>();
+    assert_eq!(camera.shake_scale, 0.95, "the option's share");
+    assert_eq!(
+        camera.shake_max_offset.to_array(),
+        CAMERA_SHAKE,
+        "the game's own shake, left as it set it"
+    );
 }
 
 #[test]
