@@ -11,7 +11,7 @@
   - This session: this file; `ROADMAP.md` (Now, Later's Phase 7 line); `docs/plans/arpg-design.md` (step 6, files to touch).
   - Each later step: its own plan file (`docs/plans/<topic>.md`), this file's §2 status cells and evidence row, `ROADMAP.md`, and what its plan lists.
   - The close: this file (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md` (§3's Phase 8 rows take §2.3's IDs), `docs/plans/arpg-design.md` (its pointer to this file).
-- **ordered steps:** (1) 7.2 agent tooling. (2) 7.3 benchmarks, part 1. (3) 7.4 H2. (4) 7.5 the analysis pass, its rows folded into §2. (5) 7.8 terrain and physics. (7) 7.9 saves and engine seams. (6) 7.17 the UI pass, after step 7. (8) 7.20 screens as data, after step 6. (9) 7.10 the kit pass. (10) 7.18 camera rigs. (11) 7.11 template updates. (12) 7.12 level format, CLI, editor. (13) 7.13 01 on the new systems. (14) 7.14 the CPU pass. (15) 7.15 the GPU pass. (16) 7.16 agent guidance. (17) Close. One track, a step at a time in this order (§2.8): Step 7 runs before Step 6, and both keep their numbers, which plans cite.
+- **ordered steps:** (1) 7.2 agent tooling. (2) 7.3 benchmarks, part 1. (3) 7.4 H2. (4) 7.5 the analysis pass, its rows folded into §2. (5) 7.8 terrain and physics. (7) 7.9 saves and engine seams. (6) 7.17 the UI pass, after step 7. (8) 7.20 screens as data, after step 6. (9) 7.10 the kit pass. (10) 7.18 camera rigs. (11) 7.11 template updates. (18) 7.21 core hardening, after step 11. (12) 7.12 level format, CLI, editor. (13) 7.13 01 on the new systems. (14) 7.14 the CPU pass. (15) 7.15 the GPU pass. (16) 7.16 agent guidance. (17) Close. One track, a step at a time in this order (§2.8): Step 7 runs before Step 6 and Step 18 before Step 12, and each keeps its number, which plans cite.
 - **done-when:** every row in §2.2 reads landed, closed, Later or 9.2 (§2.1), none open in a Phase 7 step, and every open row in §2.3 is carried into the redo's §3 by ID; every item on 7.14's and 7.15's lists reads done, dropped or stopped (§2.5); every step's evidence row written by §3's rule; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
 
 Item `phase-7` in [ROADMAP.md](../../ROADMAP.md), from the redo's step 7.7 (§3, §5.8, §7.3, Q20). Written 2026-10-29 at `08111d5a`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md) and the [operating rules](../operating-rules.md), and differs from the skill in one way: each step is a redo step of a session or more with its own plan, so a session takes one step, never "every remaining step".
@@ -391,7 +391,7 @@ M77's survey predates M82's look and M85's scenery, so the order may change at t
 - **The paper designs' weekly tasks** (§2, §3 there): 7.13 takes LW3 (a lit path: 7.10's light query, 7.12's authoring), SF1 (a room template: 7.12's rooms and seeds) and SF4 (a status band's decay: 7.10's statuses). The other seven need Phase 8 systems (dialogue, items, cutscenes, weapons, AI, perception); 8.6 takes all ten.
 - **The ARPG design's five tasks** (§12 there): 8.6.
 - **Stress rows:** the paper designs' stress numbers and the ARPG design's seven rows (§13 there): 9.1.
-- **System rows** (§5.8): 7.8 friction and slope piles; 7.9 the save snapshot and boot to first frame; 7.10 interaction spread at 12,000 bodies; 7.17 and 7.20 their layout counter guards; 7.18 none.
+- **System rows** (§5.8): 7.8 friction and slope piles; 7.9 the save snapshot and boot to first frame; 7.10 interaction spread at 12,000 bodies; 7.17 and 7.20 their layout counter guards; 7.18 none; 7.21 none.
 
 ### 2.7 7.19's assumptions, rechecked
 
@@ -410,7 +410,7 @@ The brief's kit survey still holds where a row rests on it: crit is a flag and `
 
 ### 2.8 Order, tracks and routes
 
-- **One track,** a step at a time in this tree (2026-10-31, the owner's choice): 7.2 → 7.3 → 7.4 → 7.5 → 7.8 → 7.9 → 7.17 → 7.20 → 7.10 → 7.18 → 7.11 → 7.12 → 7.13 → 7.14 → 7.15 → 7.16. The UI steps no longer run beside 7.8–7.10 in a worktree: a session beside the track would share the CPU with each close's timed rows and leave the owner a merge across version branches, and 7.9 changes the template's saves, the one file set they share. Steps 6 and 7 keep their numbers, which plans cite, so Step 7 (7.9) runs before Step 6 (7.17).
+- **One track,** a step at a time in this tree (2026-10-31, the owner's choice): 7.2 → 7.3 → 7.4 → 7.5 → 7.8 → 7.9 → 7.17 → 7.20 → 7.10 → 7.18 → 7.11 → 7.21 → 7.12 → 7.13 → 7.14 → 7.15 → 7.16. The UI steps no longer run beside 7.8–7.10 in a worktree: a session beside the track would share the CPU with each close's timed rows and leave the owner a merge across version branches, and 7.9 changes the template's saves, the one file set they share. Steps 6 and 7 keep their numbers, which plans cite, so Step 7 (7.9) runs before Step 6 (7.17). 7.21, core hardening, joined between 7.11 and 7.12 on 2026-11-07 (the owner's choice), from track C of that day's big session; its plan was written that day too, so 7.11's hand-off is 7.21's run prompt, not a plan prompt; it keeps the number Step 18, after the close's 17, and runs between Steps 11 and 12 as Steps 6 and 7 run out of number order.
 - **Fixed orders** (the redo's §3): 7.9 → 7.17 → 7.20 → 7.11; 7.18 after 7.10 and before 7.13; 7.5 before 7.8, so its rows reach the steps that build them.
 - **Routes:** every step is large under `D-140` and writes its own plan with the tungsten-plan skill, except 7.16, which is medium unless its research spans sessions. Where a step needs several plans:
   - 7.8: runtime terrain, then physics with slopes and the controller last (the redo's 7.8 row).
@@ -425,7 +425,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 - No row of the step left open: `rg -n '^\| [^|]+ \| [^|]+ \| <step> \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0.
 - Its plan closed: deleted with its citations, `just repo-check` → passes.
 - This file's evidence row written in the step's closing commit, terse as the [plans README](README.md) asks, in about 800 characters: the verdict; the plan and its commit range; its own evidence log, cited by the last commit that held it; at most five key numbers from its done-when, the demo's among them; how many rows landed and moved (the tables name which); the capture paths.
-- From 7.8 on, a system step's benchmark row and counter guard in 7.3's runner (§5.8), except 7.18.
+- From 7.8 on, a system step's benchmark row and counter guard in 7.3's runner (§5.8), except 7.18 (§2.6) and 7.21, which adds no system.
 
 **Hand-off:** each step ends with the plan prompt of the next step in §2.8's order, from tungsten-next's `step` row with this file and the redo's row as its sources.
 
@@ -489,6 +489,12 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 - **Rows:** 7.5's template rows (§2.4). After 7.9, 7.17 and 7.20.
 - **Done-when:** the redo's 7.11 sketch within `D-181`'s budget.
+
+### Step 18 (7.21): Core hardening
+
+- **Rows:** none of §2; its list is 23 findings, `docs/known-issues.md`'s seventeen physics rows that had no step (the row on colliders built past the `rigid_body` caps stays with 7.14's C1) and the six rows its oracles found. **Plan:** `core-hardening`, written 2026-11-07. After 7.11, before 7.12 (§2.8).
+- **Done-when:** its plan's checks: each finding's repro test committed before its fix, the two oracles' default runs and long modes passing, the physics hashes held (§5); no benchmark row, since it adds no system. No sitting of its own (`D-226`): the minor release after 7.21 sits `e01-pit`, `friction`, `physics`, `physics-sparse`, `slopes` and `terrain` as its perf check, since counter guards miss per-pair and per-sleeper cost (the gap `D-233` met).
+- **Moves:** the counter guards and tests each of its steps names, and 02's row digests where a step changes contacts; no physics hash.
 
 ### Step 12 (7.12): Level format, agent CLI, editor
 
