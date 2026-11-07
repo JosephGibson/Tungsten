@@ -6,9 +6,9 @@ use std::path::Path;
 use tungsten::core::assets::manifest::ResolvedManifest;
 use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::{
-    ActionMap, AssetRegistry, AudioCommand, Binding, BodyKind, CameraController, CameraRig,
-    CameraState, Entity, ParticleEmitter, Position, PrevPosition, RigKind, RigidBody,
-    SoundRegistry, Sprite, Time, Transform, UserFolder, Velocity, Voice, With,
+    ActionMap, AssetRegistry, Binding, BodyKind, CameraController, CameraRig, CameraState, Entity,
+    ParticleEmitter, Position, PrevPosition, RigKind, RigidBody, SoundRegistry, Sprite, Time,
+    Transform, UserFolder, Velocity, Voice, With,
 };
 use tungsten::kit::{
     Counters, Damaged, Effects, Hit, HitFlash, LinearMotion, Projectile, Stats, damage,
@@ -19,15 +19,14 @@ use tungsten_template_basic::game;
 use tungsten_template_basic::sample::components::Player;
 use tungsten_template_basic::sample::{
     DUMMY_START, ENEMIES, ENEMY_RETURN_SECS, GEM_PREFAB, HAZARD_PREFAB, HAZARD_START, MUSIC_FADE,
-    MUSIC_PAUSE, MUSIC_RUN, PAUSE_FADE, PICKUPS, PLAY_CENTRE, PLAYER_PREFAB, PLAYER_START,
-    SampleRun,
+    MUSIC_RUN, PICKUPS, PLAY_CENTRE, PLAYER_PREFAB, PLAYER_START, SampleRun,
 };
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::{Difficulty, theme};
 
 use super::{
-    act, config, harness, health, heard, player, player_entity, player_position, plays,
-    release_and_settle, sound, start, start_at, stops, tap,
+    config, harness, health, heard, player, player_entity, player_position, plays,
+    release_and_settle, sound, start, start_at, tap,
 };
 
 /// How far the player moves per second, in pixels: the prefab's
@@ -846,37 +845,19 @@ fn a_new_run_after_scrolling_starts_on_the_play_space() {
     assert!(on_the_play_space(centre), "a load: {centre:?}");
 }
 
-/// The volume changes among `commands`.
-fn levels(commands: &[AudioCommand]) -> Vec<(Voice, f32, f32)> {
-    commands
-        .iter()
-        .filter_map(|command| match command {
-            AudioCommand::SetVoiceVolume {
-                voice,
-                volume,
-                fade,
-                ..
-            } => Some((*voice, *volume, *fade)),
-            _ => None,
-        })
-        .collect()
-}
-
-/// A run started as New Game starts it, with its frames' audio; returns
-/// the run music's voice.
-fn start_heard(harness: &mut UiHarness) -> (Voice, Vec<AudioCommand>) {
+/// A run started as New Game starts it, its audio in the harness's log,
+/// which this clears first; returns the run music's voice.
+fn start_heard(harness: &mut UiHarness) -> Voice {
+    harness.harness_mut().clear_audio_log();
     tungsten_template_basic::shell::start_run(
         harness.world_mut(),
         tungsten_template_basic::shell::RunStart::default(),
         None,
     );
-    let mut commands = heard(harness, 1);
-    while tungsten_template_basic::shell::transitioning(harness.world()) {
-        commands.extend(heard(harness, 1));
-    }
-    let run = plays(harness, &commands, MUSIC_RUN);
+    super::settle(harness);
+    let run = harness.harness().plays(MUSIC_RUN);
     assert_eq!(run.len(), 1, "one run music");
-    (run[0].0, commands)
+    run[0].0
 }
 
 #[test]
@@ -912,122 +893,116 @@ fn a_shot_a_hit_and_a_pickup_play_their_sounds() {
 #[test]
 fn the_run_music_fades_in_with_a_run_and_out_at_its_end() {
     let mut harness = harness();
-    let (run, started) = start_heard(&mut harness);
+    let run = start_heard(&mut harness);
     assert_eq!(
-        plays(&harness, &started, MUSIC_RUN),
+        harness.harness().plays(MUSIC_RUN),
         [(run, true, MUSIC_FADE)],
         "looping, faded in"
     );
-    act(&mut harness, "state_pause");
-    let quit = find_named(&harness, "Quit to Title");
-    assert!(harness.focus(quit));
-    act(&mut harness, "ui_accept");
-    let answer = find_named(&harness, "Quit");
-    assert!(harness.focus(answer));
-    let ended = act(&mut harness, "ui_accept");
+    super::tap(&mut harness, "state_pause");
+    super::press(&mut harness, "Quit to Title");
+    harness.harness_mut().clear_audio_log();
+    super::press(&mut harness, "Quit");
+    let stopped = harness.harness().stops();
     assert!(
-        stops(&ended).contains(&(run, MUSIC_FADE)),
-        "faded out with the run: {ended:?}"
+        stopped.contains(&(run, MUSIC_FADE)),
+        "faded out with the run: {stopped:?}"
     );
 }
 
-/// The enabled control named `name` on the front-most screen.
-fn find_named(harness: &UiHarness, name: &str) -> tungsten::core::ui::WidgetId {
-    harness
-        .find(name)
-        .unwrap_or_else(|| panic!("no control '{name}'"))
+/// The manifest level of the run's song.
+fn run_level(harness: &UiHarness) -> f32 {
+    let sounds = harness.world().resource::<SoundRegistry>();
+    sounds.get_volume(sound(harness, MUSIC_RUN))
 }
 
 #[test]
 fn pause_fades_the_run_music_under_its_loop_and_back() {
     let mut harness = harness();
-    let (run, _) = start_heard(&mut harness);
-    let paused = act(&mut harness, "state_pause");
-    let looped = plays(&harness, &paused, MUSIC_PAUSE);
+    let run = start_heard(&mut harness);
+    harness.harness_mut().clear_audio_log();
+    super::tap(&mut harness, "state_pause");
+    let audio = harness.harness();
+    let looped = audio.plays(theme::PAUSE_MUSIC);
     assert_eq!(looped.len(), 1, "pause's loop starts");
     let (pause, looping, fade) = looped[0];
-    assert!(looping && fade == PAUSE_FADE);
+    assert!(looping && fade == theme::PAUSE_FADE);
     assert_eq!(
-        levels(&paused),
-        [(run, 0.0, PAUSE_FADE)],
-        "the run's voice falls silent"
+        audio.voice_volumes(run),
+        [(0.0, theme::PAUSE_FADE)],
+        "the run's voice falls silent over pause's fade"
     );
-    assert!(stops(&paused).is_empty(), "and plays on");
+    assert!(audio.stops().is_empty(), "and plays on");
     // A screen over pause keeps the loop.
-    let settings = find_named(&harness, "Settings");
-    assert!(harness.focus(settings));
-    let over = act(&mut harness, "ui_accept");
-    let back = act(&mut harness, "ui_cancel");
-    for commands in [&over, &back] {
-        assert!(stops(commands).is_empty() && levels(commands).is_empty());
-        assert!(plays(&harness, commands, MUSIC_PAUSE).is_empty());
-    }
-    let resumed = act(&mut harness, "state_pause");
-    assert_eq!(stops(&resumed), [(pause, PAUSE_FADE)], "the loop stops");
-    let level = {
-        let sounds = harness.world().resource::<SoundRegistry>();
-        sounds.get_volume(sound(&harness, MUSIC_RUN))
-    };
+    harness.harness_mut().clear_audio_log();
+    super::press(&mut harness, "Settings");
+    super::tap(&mut harness, "ui_cancel");
+    let audio = harness.harness();
+    assert!(audio.stops().is_empty(), "{:?}", audio.stops());
+    assert!(audio.voice_volumes(run).is_empty() && audio.voice_volumes(pause).is_empty());
+    assert!(audio.plays(theme::PAUSE_MUSIC).is_empty());
+    harness.harness_mut().clear_audio_log();
+    super::tap(&mut harness, "state_pause");
+    let level = run_level(&harness);
+    let audio = harness.harness();
     assert_eq!(
-        levels(&resumed),
-        [(run, level, PAUSE_FADE)],
-        "the run's voice is back"
+        audio.stops(),
+        [(pause, theme::PAUSE_FADE)],
+        "the loop stops over its own fade"
+    );
+    assert_eq!(
+        audio.voice_volumes(run),
+        [(level, MUSIC_FADE)],
+        "the run's voice is back over the run's fade"
     );
 }
 
 #[test]
 fn quit_to_title_from_pause_stops_the_pause_loop() {
     let mut harness = harness();
-    let (run, _) = start_heard(&mut harness);
-    let paused = act(&mut harness, "state_pause");
-    let pause = plays(&harness, &paused, MUSIC_PAUSE)[0].0;
-    let quit = find_named(&harness, "Quit to Title");
-    assert!(harness.focus(quit));
-    act(&mut harness, "ui_accept");
-    let answer = find_named(&harness, "Quit");
-    assert!(harness.focus(answer));
-    let ended = act(&mut harness, "ui_accept");
-    let stopped = stops(&ended);
+    let run = start_heard(&mut harness);
+    super::tap(&mut harness, "state_pause");
+    let pause = harness.harness().plays(theme::PAUSE_MUSIC)[0].0;
+    super::press(&mut harness, "Quit to Title");
+    harness.harness_mut().clear_audio_log();
+    super::press(&mut harness, "Quit");
+    let stopped = harness.harness().stops();
     assert!(
-        stopped.contains(&(run, MUSIC_FADE)) && stopped.contains(&(pause, MUSIC_FADE)),
-        "both voices stop: {stopped:?}"
+        stopped.contains(&(run, MUSIC_FADE)) && stopped.contains(&(pause, theme::PAUSE_FADE)),
+        "both voices stop, each over its own fade: {stopped:?}"
     );
 }
 
 #[test]
 fn game_over_plays_its_sting_and_music_over_the_silenced_run() {
     let mut harness = harness();
-    let (run, _) = start_heard(&mut harness);
+    let run = start_heard(&mut harness);
+    harness.harness_mut().clear_audio_log();
     let player = player_entity(&harness);
     damage(harness.world_mut(), player, 99.0);
-    let mut over = heard(&mut harness, 1);
-    while tungsten_template_basic::shell::transitioning(harness.world()) {
-        over.extend(heard(&mut harness, 1));
-    }
-    over.extend(heard(&mut harness, 30));
+    harness.step(1);
+    super::settle(&mut harness);
+    harness.step(30);
     assert_eq!(
         tungsten_template_basic::shell::top(harness.world()),
         Some(tungsten_template_basic::shell::game_over::GAME_OVER)
     );
+    let audio = harness.harness();
     let [sting, music] = theme::GAME_OVER_SOUNDS;
-    assert_eq!(plays(&harness, &over, sting).len(), 1, "the sting, once");
-    let played = plays(&harness, &over, music);
+    assert_eq!(audio.plays(sting).len(), 1, "the sting, once");
+    let played = audio.plays(music);
     assert_eq!(played.len(), 1, "game over's music");
     let (music, looping, fade) = played[0];
     assert!(looping && fade == theme::GAME_OVER_FADE);
-    assert!(
-        plays(&harness, &over, MUSIC_PAUSE).is_empty(),
-        "no pause loop"
-    );
+    assert!(audio.plays(theme::PAUSE_MUSIC).is_empty(), "no pause loop");
     assert_eq!(
-        levels(&over),
-        [(run, 0.0, PAUSE_FADE)],
-        "the run's music falls silent"
+        audio.voice_volumes(run),
+        [(0.0, theme::GAME_OVER_FADE)],
+        "the run's music falls silent over game over's fade"
     );
-    let quit = find_named(&harness, "Quit to Title");
-    assert!(harness.focus(quit));
-    let ended = act(&mut harness, "ui_accept");
-    let stopped = stops(&ended);
+    harness.harness_mut().clear_audio_log();
+    super::press(&mut harness, "Quit to Title");
+    let stopped = harness.harness().stops();
     assert!(
         stopped.contains(&(music, theme::GAME_OVER_FADE)) && stopped.contains(&(run, MUSIC_FADE)),
         "both stop with the run: {stopped:?}"

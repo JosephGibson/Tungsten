@@ -27,6 +27,10 @@ pub const MENU_SOUNDS: [&str; 3] = ["ui_move", "ui_select", "ui_back"];
 /// The title's song, by manifest ID, and its fade in and out.
 pub const TITLE_MUSIC: &str = "music_title";
 pub const TITLE_FADE: f32 = 1.0;
+/// Pause's loop, by manifest ID, and its fade in and out: each screen's
+/// song plays while it is the top one naming music (`GameState::music`).
+pub const PAUSE_MUSIC: &str = "music_pause";
+pub const PAUSE_FADE: f32 = 0.3;
 /// Game over's sting and music, by manifest ID, and the music's fade in and
 /// out.
 pub const GAME_OVER_SOUNDS: [&str; 2] = ["game_over", "music_over"];

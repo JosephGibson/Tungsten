@@ -29,8 +29,8 @@ use tungsten_template_basic::shell::{
 
 use super::saves::{gems_left, newer_slot, player_of, set_gems, set_player};
 use super::{
-    act, harness, harness_with, health, heard, player_entity, player_position, plays, press,
-    settle, slot_file, start, start_at, stops, tap, top, user_folder,
+    harness, harness_with, health, player_entity, player_position, press, settle, slot_file, start,
+    start_at, tap, top, user_folder,
 };
 
 fn depth(harness: &UiHarness) -> usize {
@@ -1444,29 +1444,24 @@ fn menu_sounds_play_on_move_activate_and_back() {
 fn the_title_plays_its_song_until_a_run_starts() {
     let mut harness = harness();
     // The title came on the first frame, with its song.
-    let first = harness.harness().audio().to_vec();
-    let song = plays(&harness, &first, theme::TITLE_MUSIC);
+    let song = harness.harness().plays(theme::TITLE_MUSIC);
     assert_eq!(song.len(), 1, "the title's song");
     let (song, looping, fade) = song[0];
     assert!(looping && fade == theme::TITLE_FADE);
-    let shell =
-        |harness: &UiHarness| tungsten_template_basic::shell::transitioning(harness.world());
+    harness.harness_mut().clear_audio_log();
     tungsten_template_basic::shell::start_run(harness.world_mut(), RunStart::default(), None);
-    let mut started = heard(&mut harness, 1);
-    while shell(&harness) {
-        started.extend(heard(&mut harness, 1));
-    }
+    settle(&mut harness);
+    let stopped = harness.harness().stops();
     assert!(
-        stops(&started).contains(&(song, theme::TITLE_FADE)),
-        "a run fades it out"
+        stopped.contains(&(song, theme::TITLE_FADE)),
+        "a run fades it out: {stopped:?}"
     );
     tap(&mut harness, "state_pause");
     press(&mut harness, "Quit to Title");
-    let quit = harness.find("Quit").unwrap();
-    assert!(harness.focus(quit));
-    let back = act(&mut harness, "ui_accept");
+    harness.harness_mut().clear_audio_log();
+    press(&mut harness, "Quit");
     assert_eq!(
-        plays(&harness, &back, theme::TITLE_MUSIC).len(),
+        harness.harness().plays(theme::TITLE_MUSIC).len(),
         1,
         "back again"
     );
@@ -1476,25 +1471,27 @@ fn the_title_plays_its_song_until_a_run_starts() {
 fn game_over_plays_its_sting_and_music_until_the_run_ends() {
     let mut harness = harness();
     start(&mut harness);
+    harness.harness_mut().clear_audio_log();
     let player = player_entity(&harness);
     assert_eq!(damage(harness.world_mut(), player, 99.0), Hit::Killed);
-    let mut over = heard(&mut harness, 1);
-    while tungsten_template_basic::shell::transitioning(harness.world()) {
-        over.extend(heard(&mut harness, 1));
-    }
-    over.extend(heard(&mut harness, 30));
+    harness.step(1);
+    settle(&mut harness);
+    harness.step(30);
     assert_eq!(top(&harness), Some(GAME_OVER));
     let [sting, music] = theme::GAME_OVER_SOUNDS;
-    assert_eq!(plays(&harness, &over, sting).len(), 1, "the sting, once");
-    let music = plays(&harness, &over, music);
+    let audio = harness.harness();
+    assert_eq!(audio.plays(sting).len(), 1, "the sting, once");
+    let music = audio.plays(music);
     assert_eq!(music.len(), 1, "game over's music");
     let (music, looping, fade) = music[0];
     assert!(looping && fade == theme::GAME_OVER_FADE);
-    let quit = harness.find("Quit to Title").unwrap();
-    assert!(harness.focus(quit));
-    let ended = act(&mut harness, "ui_accept");
+    harness.harness_mut().clear_audio_log();
+    press(&mut harness, "Quit to Title");
     assert!(
-        stops(&ended).contains(&(music, theme::GAME_OVER_FADE)),
+        harness
+            .harness()
+            .stops()
+            .contains(&(music, theme::GAME_OVER_FADE)),
         "its music stops with the run"
     );
 }

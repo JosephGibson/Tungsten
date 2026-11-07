@@ -1,5 +1,5 @@
-//! The audio: the exploration loop a run plays, quieted under pause's loop
-//! and game over's music, as the template's sample does; the combat layer
+//! The audio: the exploration loop a run plays, quieted under pause and
+//! game over, whose music the shell's states name; the combat layer
 //! over it while an enemy sees the player; the wisps' hum on one shared
 //! voice, louder as the nearest wisp comes near, the black holes' on
 //! another, by the nearest open hole, and the fires' crackle on a third, by
@@ -23,10 +23,9 @@ use crate::features::run::Run;
 use crate::shell;
 use components::{Ambience, Music, Sound, Sounded};
 
-/// The run's loop and pause's, by manifest ID, and the seconds they fade
-/// over: a run's start and end, and pause coming on top or going.
+/// The run's loop, by manifest ID, and the seconds it fades over: a run's
+/// start and end, and pause or game over coming on top or going.
 pub const MUSIC_EXPLORE: &str = "music_explore";
-pub const MUSIC_PAUSE: &str = "music_pause";
 pub const MUSIC_FADE: f32 = 0.5;
 pub const PAUSE_FADE: f32 = 0.3;
 /// The combat layer, by manifest ID, and the seconds it fades in over while
@@ -235,9 +234,9 @@ pub fn start(world: &mut World) {
     world.insert_resource(Ambience { loops });
 }
 
-/// Stops a run's music, pause's loop, the hums, the crackle, the combat
-/// layer and the ambience too, and removes the listener: a Quit to Title
-/// from pause leaves the stack in one pass, with gameplay never on top.
+/// Stops a run's music, the hums, the crackle, the combat layer and the
+/// ambience too, and removes the listener: a Quit to Title from pause
+/// leaves the stack in one pass, with gameplay never on top.
 pub fn stop(world: &mut World) {
     world.remove_resource::<CueListener>();
     let music = world.remove_resource::<Music>().unwrap_or_default();
@@ -245,7 +244,6 @@ pub fn stop(world: &mut World) {
     let audio = world.resource_mut::<AudioCommands>();
     for voice in [
         music.explore,
-        music.pause,
         music.hum,
         music.holes,
         music.crackle,

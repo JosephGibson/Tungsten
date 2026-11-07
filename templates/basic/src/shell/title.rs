@@ -10,13 +10,13 @@
 //! values the bindings [`bind`] registers over a [`TitleView`]; the cards
 //! stay Rust, a mount, since their pips fill by rank.
 
+use tungsten::core::World;
 use tungsten::core::text::TextAlign;
 use tungsten::core::ui::{
     Edges, Justify, LayoutStyle, Sizing, StyleOverrides, UiBindings, UiKey, UiTree, WidgetId,
     screen_build, widgets,
 };
-use tungsten::core::{AudioCommands, Voice, World};
-use tungsten::{GameState, StateContext, StateId};
+use tungsten::{GameState, StateContext, StateId, StateMusic};
 
 use super::confirm::{self, ConfirmState};
 use super::options::GameOptions;
@@ -24,8 +24,8 @@ use super::saves::{Mode, SavesState, age, slot_name};
 use super::settings::SettingsState;
 use super::{
     AUTOSAVES, BACK, Difficulty, GameInfo, Menu, RunStart, RunState, Shell, SlotState, activated,
-    cancelled, enter, idle, load, newest, play, push, quit_game, read_slots, stack, start_run,
-    theme, toast,
+    cancelled, enter, idle, load, newest, push, quit_game, read_slots, stack, start_run, theme,
+    toast,
 };
 use crate::game::difficulty_note;
 use crate::save::SaveGame;
@@ -136,7 +136,6 @@ pub struct TitleState {
     newest: Option<(&'static str, SaveGame)>,
     autosave_ready: bool,
     opened: Option<WidgetId>,
-    music: Option<Voice>,
 }
 
 impl TitleState {
@@ -205,7 +204,6 @@ impl GameState for TitleState {
             world.resource_mut::<UiTree>().focus(first);
         }
         enter(world, root);
-        self.music = play(world, theme::TITLE_MUSIC, theme::TITLE_FADE);
         let shell = world.resource_mut::<Shell>();
         if warnings > 0 && !std::mem::replace(&mut shell.warned, true) {
             let files = if warnings == 1 { "file" } else { "files" };
@@ -213,11 +211,11 @@ impl GameState for TitleState {
         }
     }
 
-    fn on_exit(&mut self, ctx: &mut StateContext) {
-        if let Some(music) = self.music.take() {
-            let audio = ctx.world.resource_mut::<AudioCommands>();
-            audio.stop_voice(music, theme::TITLE_FADE);
-        }
+    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+
+    /// The title's song, which a screen over it, Settings or Load, keeps.
+    fn music(&self) -> Option<StateMusic> {
+        Some(StateMusic::new(theme::TITLE_MUSIC, theme::TITLE_FADE))
     }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {

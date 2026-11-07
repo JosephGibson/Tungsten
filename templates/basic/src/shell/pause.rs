@@ -7,11 +7,11 @@
 
 use tungsten::core::ui::UiKey;
 use tungsten::core::{Time, World};
-use tungsten::{GameState, StateContext, StateId};
+use tungsten::{GameState, StateContext, StateId, StateMusic};
 
 use super::saves::{Mode, SavesState};
 use super::settings::SettingsState;
-use super::{Menu, autosave, cancelled, idle, pop, pressed, push, quit_game, quit_to_title};
+use super::{Menu, autosave, cancelled, idle, pop, pressed, push, quit_game, quit_to_title, theme};
 
 pub const PAUSE: StateId = "pause";
 const SAVE: UiKey = UiKey::new("save");
@@ -42,6 +42,11 @@ impl GameState for PauseState {
         if let Some(menu) = &self.menu {
             menu.focus(ctx.world);
         }
+    }
+
+    /// Pause's loop, the run's song at 0 under it.
+    fn music(&self) -> Option<StateMusic> {
+        Some(StateMusic::new(theme::PAUSE_MUSIC, theme::PAUSE_FADE))
     }
 
     fn update(&mut self, world: &mut World) {

@@ -22,17 +22,15 @@ use tungsten::core::post::{BloomParams, PostPass, PostStack};
 use tungsten::core::save::{self, SaveState, Saved, restore_world};
 use tungsten::core::ui::UiTree;
 use tungsten::core::{
-    AudioCommands, CameraController, DataRef, Entity, PreparedPrefab, Schedule, SoundRegistry,
-    Stage, Time, Timer, Voice, With, World, system,
+    CameraController, DataRef, Entity, PreparedPrefab, Schedule, Stage, Time, Timer, With, World,
+    system,
 };
 use tungsten::kit::{Counters, EffectRequest, Health, Stats, Tags};
-use tungsten::{GameState, Plugin, SceneEntity, StateContext, StateId};
+use tungsten::{GameState, Plugin, SceneEntity, StateContext, StateId, StateMusic};
 
 use crate::game::GAMEPLAY;
 use crate::save::SaveGame;
-use crate::shell::game_over::GAME_OVER;
 use crate::shell::options::GameOptions;
-use crate::shell::pause::PAUSE;
 use crate::shell::{self, Difficulty, RunStart};
 use components::Player;
 
@@ -84,12 +82,10 @@ pub const PICKUPS: [(&str, [f32; 2]); 2] = [
 pub const DAMAGE_NUMBERS_TAG: &str = "show.damage_numbers";
 /// The play space's centre, which a run's camera starts on.
 pub const PLAY_CENTRE: [f32; 2] = [640.0, 360.0];
-/// The run's music and pause's loop, by manifest ID, and the seconds they
-/// fade over: a run's start and end, and pause coming on top or going.
+/// The run's music, by manifest ID, and the seconds it fades over: a run's
+/// start and end, and pause or game over coming on top or going.
 pub const MUSIC_RUN: &str = "music_run";
-pub const MUSIC_PAUSE: &str = "music_pause";
 pub const MUSIC_FADE: f32 = 0.5;
-pub const PAUSE_FADE: f32 = 0.3;
 /// The camera shake's peak offset, in world pixels, at full trauma: a hit's
 /// `shake` cue adds trauma, and the shell's Screen shake option scales it.
 pub const CAMERA_SHAKE: [f32; 2] = [24.0, 16.0];
@@ -104,15 +100,6 @@ pub const BLOOM: BloomParams = BloomParams {
     intensity: 3.0,
     radius: 1.0,
 };
-
-/// The music playing: the run's voice, which plays on at 0 under pause, and
-/// pause's loop while pause is on top.
-#[derive(Debug, Clone, Copy, Default)]
-struct Music {
-    run: Option<Voice>,
-    pause: Option<Voice>,
-    ducked: bool,
-}
 
 /// The player's full health at `difficulty`: its `max_health` stat's base.
 #[must_use]
@@ -220,43 +207,6 @@ impl Plugin for SamplePlugin {
     }
 }
 
-/// Pause's music: when pause comes on top, the run's voice falls to 0 and
-/// pause's loop fades in; when gameplay is back on top, the loop stops and
-/// the run's voice comes back. A screen over pause keeps the loop. Game
-/// over silences the run's voice too, under the music the shell plays.
-fn duck(world: &mut World) {
-    let Some(music) = world.get_resource::<Music>().copied() else {
-        return;
-    };
-    let top = shell::top(world);
-    let paused = top == Some(PAUSE);
-    let (on, off) = (paused || top == Some(GAME_OVER), top == Some(GAMEPLAY));
-    if on == music.ducked || !(on || off) {
-        return;
-    }
-    let pause = if paused {
-        shell::play(world, MUSIC_PAUSE, PAUSE_FADE)
-    } else {
-        None
-    };
-    let registry = world.resource::<SoundRegistry>();
-    let level = registry
-        .get_by_id(MUSIC_RUN)
-        .map_or(1.0, |run| registry.get_volume(run));
-    let audio = world.resource_mut::<AudioCommands>();
-    if let Some(run) = music.run {
-        audio.set_voice_volume(run, if on { 0.0 } else { level }, PAUSE_FADE);
-    }
-    if let Some(looped) = music.pause {
-        audio.stop_voice(looped, PAUSE_FADE);
-    }
-    world.insert_resource(Music {
-        pause,
-        ducked: on,
-        ..music
-    });
-}
-
 /// Ticks each fallen enemy's timer by the game clock and brings the enemy
 /// back at its place when the timer ends.
 fn bring_back(world: &mut World) {
@@ -279,7 +229,7 @@ fn bring_back(world: &mut World) {
 
 /// `sample_frame`: fallen enemies come back, the damage numbers tag follows
 /// the option on whatever has health (the player, the dummy and the
-/// enemies), the music the stack and the HUD the run.
+/// enemies) and the HUD the run.
 fn frame(world: &mut World) {
     bring_back(world);
     let shown = world.resource::<GameOptions>().damage_numbers;
@@ -290,7 +240,6 @@ fn frame(world: &mut World) {
             tags.remove(DAMAGE_NUMBERS_TAG);
         }
     }
-    duck(world);
     hud::update(world);
 }
 
@@ -357,11 +306,6 @@ impl GameState for GameplayState {
         world
             .resource_mut::<CameraController>()
             .cut_to(PLAY_CENTRE.into());
-        let run = shell::play(world, MUSIC_RUN, MUSIC_FADE);
-        world.insert_resource(Music {
-            run,
-            ..Music::default()
-        });
         let hud = hud::build(world.resource_mut::<UiTree>());
         shell::enter(world, hud.root);
         world.insert_resource(hud);
@@ -380,13 +324,12 @@ impl GameState for GameplayState {
         ctx.world.remove_resource::<SaveState>();
         ctx.world.remove_resource::<hud::Hud>();
         ctx.world.insert_resource(PostStack::default());
-        // Both loops stop with the run, pause's too: a Quit to Title from
-        // pause leaves the stack in one pass, with gameplay never on top.
-        let music = ctx.world.remove_resource::<Music>().unwrap_or_default();
-        let audio = ctx.world.resource_mut::<AudioCommands>();
-        for voice in [music.run, music.pause].into_iter().flatten() {
-            audio.stop_voice(voice, MUSIC_FADE);
-        }
+    }
+
+    /// The run's song: at 0 under pause's loop and game over's music, and
+    /// stopped with the run (`GameState::music`).
+    fn music(&self) -> Option<StateMusic> {
+        Some(StateMusic::new(MUSIC_RUN, MUSIC_FADE))
     }
 
     fn on_pause(&mut self, ctx: &mut StateContext) {

@@ -11,8 +11,8 @@
 
 use tungsten::core::post::PostPass;
 use tungsten::core::ui::{UiKey, UiTree, Visibility, WidgetId, widgets};
-use tungsten::core::{AudioCommands, Easing, Voice, World};
-use tungsten::{GameState, RootCover, StateContext, StateId, TransitionEffect};
+use tungsten::core::{Easing, World};
+use tungsten::{GameState, RootCover, StateContext, StateId, StateMusic, TransitionEffect};
 
 use super::saves::{Mode, SavesState};
 use super::title::TitleState;
@@ -28,11 +28,10 @@ const QUIT_TITLE: UiKey = UiKey::new("quit_title");
 /// The panel holding the buttons, in `assets/ui/screens/game_over.json`.
 const CARD: UiKey = UiKey::new("card");
 
-/// The game-over screen and its music.
+/// The game-over screen; its music plays while it is on top.
 #[derive(Default)]
 pub struct GameOverState {
     menu: Option<Menu>,
-    music: Option<Voice>,
 }
 
 /// Game over's post passes `secs` into it: the world pixelated toward
@@ -107,18 +106,17 @@ impl GameState for GameOverState {
         stack(world).own_root(menu.root, RootCover::Show);
         let shell = world.resource_mut::<Shell>();
         (shell.change, shell.died) = (Some(Change::Entrance(0.0, menu.root)), Some(0.0));
-        let [sting, music] = theme::GAME_OVER_SOUNDS;
-        play(world, sting, 0.0);
-        self.music = play(world, music, theme::GAME_OVER_FADE);
+        play(world, theme::GAME_OVER_SOUNDS[0], 0.0);
         self.menu = Some(menu);
     }
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
         ctx.world.resource_mut::<Shell>().died = None;
-        if let Some(music) = self.music.take() {
-            let audio = ctx.world.resource_mut::<AudioCommands>();
-            audio.stop_voice(music, theme::GAME_OVER_FADE);
-        }
+    }
+
+    fn music(&self) -> Option<StateMusic> {
+        let music = theme::GAME_OVER_SOUNDS[1];
+        Some(StateMusic::new(music, theme::GAME_OVER_FADE))
     }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
