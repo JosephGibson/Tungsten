@@ -1238,3 +1238,44 @@ fn oracle_new_1_a_kept_areas_f32_writes_back_as_it_was_read() {
         &differ[..differ.len().min(5)]
     );
 }
+
+// Evidence for oracle-ecs new-3 (core hardening 2026-11-07, save oracle).
+// It uses new-2's `Marks`, `world_with_marks` and `hero_dog`.
+
+#[test]
+#[ignore = "7.21 step 16: fails until its fix"]
+fn oracle_new_3_a_key_split_across_a_kept_area_keeps_its_order() {
+    // The hero marks the bat (area `cave`), then the dog (global). The
+    // restoring World loads the global record alone, then enters the cave.
+    let mut a = world_with_marks();
+    let (hero, dog, bat) = hero_dog(&mut a, true);
+    a.insert(
+        hero,
+        Marks {
+            key: 1,
+            targets: vec![bat.unwrap(), dog],
+        },
+    );
+    let first = text(&capture_world(&a).unwrap());
+    let mut b = world_with_marks();
+    let (hero_b, _, _) = hero_dog(&mut b, false);
+    restore_world(&mut b, &serde_json::from_str(&first).unwrap(), &(Scene,)).unwrap();
+    let kept = text(&capture_world(&b).unwrap());
+    let bat_b = b.spawn_prefab("bat", [100.0, 40.0]).unwrap();
+    name(&mut b, bat_b, Some("cave"), "bat_1").unwrap();
+    crate::save::enter_area(&mut b, "cave", &(Scene,)).unwrap();
+    let ids = |world: &World, entity: Entity| -> Vec<u64> {
+        world
+            .get::<Marks>(entity)
+            .unwrap()
+            .targets
+            .iter()
+            .map(|&target| world.get::<Saved>(target).unwrap().id().0)
+            .collect()
+    };
+    assert_eq!(
+        (ids(&b, hero_b), kept == first),
+        (ids(&a, hero), true),
+        "the marks in their live order, and the kept World's capture"
+    );
+}
