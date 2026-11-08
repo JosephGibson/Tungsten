@@ -207,6 +207,49 @@ impl LayerCells<'_> {
         mask
     }
 
+    /// Whether the side `side` of the cell at `(col, row)`, on the map's
+    /// edge, is covered by the cell `(across_col, across_row)` of `next`, a
+    /// layer of the map abutting it there, as [`Self::mask`] covers a side
+    /// by a neighbour inside the map: a full or slope cell's leg by a full
+    /// side or a leg, a one-way cell's left or right side by a one-way
+    /// neighbour. A slope's side without a leg stays exposed: the shadow
+    /// rule is not traced across maps.
+    pub(super) fn covered_across(
+        &self,
+        col: u32,
+        row: u32,
+        side: u8,
+        next: &LayerCells<'_>,
+        across_col: i64,
+        across_row: i64,
+    ) -> bool {
+        let Some(tile) = self.tile(i64::from(col), i64::from(row)) else {
+            return false;
+        };
+        let class = self.class(tile);
+        if class.one_way {
+            return matches!(side, FACE_LEFT | FACE_RIGHT) && next.one_way(across_col, across_row);
+        }
+        let need = if class.slope == 0 {
+            Some((0.0, 1.0))
+        } else {
+            slope::legs(class.slope)
+                .into_iter()
+                .find(|&(face, ..)| face == side)
+                .map(|(_, low, high)| (low, high))
+        };
+        let across = match side {
+            FACE_TOP => FACE_BOTTOM,
+            FACE_BOTTOM => FACE_TOP,
+            FACE_LEFT => FACE_RIGHT,
+            _ => FACE_LEFT,
+        };
+        need.is_some_and(|need| {
+            next.cover(across_col, across_row, across)
+                .is_some_and(|(low, high)| low <= need.0 && need.1 <= high)
+        })
+    }
+
     /// The class of the solid cell at `(col, row)`.
     fn class_at(&self, col: u32, row: u32) -> TileClass {
         self.tile(i64::from(col), i64::from(row))

@@ -519,6 +519,8 @@ struct CachedMap {
     classes: Vec<TileClass>,
     /// Its collision layers, in layer order.
     layers: Vec<CachedLayer>,
+    /// Some edge cell's outer face is masked by an abutting map.
+    edged: bool,
 }
 
 /// A collision layer's cells as the cache's last refresh read them, and
@@ -614,7 +616,43 @@ impl CachedMap {
                     }
                 })
                 .collect(),
+            edged: false,
         }
+    }
+
+    /// The layer at `slot`'s cells as the tracer reads them.
+    fn cells(&self, slot: usize) -> LayerCells<'_> {
+        LayerCells {
+            width: self.width,
+            height: self.height,
+            tiles: &self.layers[slot].tiles,
+            classes: &self.classes,
+        }
+    }
+
+    /// Where `other` abuts this map: the side of this map it lies on and
+    /// the row (across a left or right side) or column (across a top or
+    /// bottom one) of `other` level with this map's first; `None` unless
+    /// their cells are of one size and their grids meet edge to edge.
+    fn abutting(&self, other: &CachedMap) -> Option<(u8, i64)> {
+        if self.tile != other.tile || self.tile.x <= 0.0 || self.tile.y <= 0.0 {
+            return None;
+        }
+        let size = Vec2::new(self.width as f32, self.height as f32) * self.tile;
+        let other_size = Vec2::new(other.width as f32, other.height as f32) * other.tile;
+        let cells = (self.at - other.at) / self.tile;
+        let (side, offset) = if other.at.x == self.at.x + size.x {
+            (FACE_RIGHT, cells.y)
+        } else if other.at.x + other_size.x == self.at.x {
+            (FACE_LEFT, cells.y)
+        } else if other.at.y == self.at.y + size.y {
+            (FACE_BOTTOM, cells.x)
+        } else if other.at.y + other_size.y == self.at.y {
+            (FACE_TOP, cells.x)
+        } else {
+            return None;
+        };
+        (offset.fract() == 0.0 && offset.is_finite()).then_some((side, offset as i64))
     }
 
     /// Whether `instance` on `entity` places this map where it was traced.
@@ -1286,6 +1324,9 @@ impl TileCache {
             }
         }
         let same = !changed && kept.is_empty() && state.maps.iter().map(|map| map.entity).eq(order);
+        if state.maps.len() > 1 || state.maps.iter().any(|map| map.edged) {
+            mask_map_edges(&mut state.maps, &mut arrays.proxies);
+        }
         state.written_ids.sort_unstable();
         state.layered = arrays
             .layers
@@ -1329,6 +1370,79 @@ impl TileCache {
             }
         }
         cached.next().is_none()
+    }
+}
+
+/// Masks each map's edge cells' outer faces that a map abutting it covers
+/// ([`LayerCells::covered_across`]) in a collision layer of the same layers,
+/// and restores those of a map that no longer abuts one: each edge cell's
+/// proxy in `proxies` takes its traced mask less the faces covered across.
+/// The runs, which casts meet, keep the traced masks.
+fn mask_map_edges(maps: &mut [CachedMap], proxies: &mut [Proxy]) {
+    for slot in 0..maps.len() {
+        let map = &maps[slot];
+        let near: Vec<(usize, u8, i64)> = (0..maps.len())
+            .filter(|&other| other != slot)
+            .filter_map(|other| {
+                map.abutting(&maps[other])
+                    .map(|(side, offset)| (other, side, offset))
+            })
+            .collect();
+        if near.is_empty() && !map.edged {
+            continue;
+        }
+        let (width, height) = (map.width, map.height);
+        let mut proxy = map.start;
+        for (layer_slot, layer) in map.layers.iter().enumerate() {
+            let cells = map.cells(layer_slot);
+            for row in 0..height {
+                for col in 0..width {
+                    let at = (row as usize) * (width as usize) + col as usize;
+                    if layer.tiles[at] < 0 {
+                        continue;
+                    }
+                    if row == 0 || col == 0 || row + 1 == height || col + 1 == width {
+                        let mut mask = layer.masks[at];
+                        for &(other, side, offset) in &near {
+                            let on_edge = match side {
+                                FACE_LEFT => col == 0,
+                                FACE_RIGHT => col + 1 == width,
+                                FACE_TOP => row == 0,
+                                _ => row + 1 == height,
+                            };
+                            if !on_edge || mask & side == 0 {
+                                continue;
+                            }
+                            let next = &maps[other];
+                            let (across_col, across_row) = match side {
+                                FACE_LEFT => (i64::from(next.width) - 1, i64::from(row) + offset),
+                                FACE_RIGHT => (0, i64::from(row) + offset),
+                                FACE_TOP => (i64::from(col) + offset, i64::from(next.height) - 1),
+                                _ => (i64::from(col) + offset, 0),
+                            };
+                            let covered =
+                                next.layers.iter().enumerate().any(|(slot, next_layer)| {
+                                    next_layer.layers == layer.layers
+                                        && cells.covered_across(
+                                            col,
+                                            row,
+                                            side,
+                                            &next.cells(slot),
+                                            across_col,
+                                            across_row,
+                                        )
+                                });
+                            if covered {
+                                mask &= !side;
+                            }
+                        }
+                        proxies[proxy].face_mask = mask;
+                    }
+                    proxy += 1;
+                }
+            }
+        }
+        maps[slot].edged = !near.is_empty();
     }
 }
 

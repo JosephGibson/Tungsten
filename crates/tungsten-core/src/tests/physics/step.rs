@@ -9132,7 +9132,6 @@ fn static_joins_scale_with_their_faces() {
 }
 
 #[test]
-#[ignore = "7.21 step 19: fails until its fix"]
 fn a_box_crosses_two_maps_placed_edge_to_edge() {
     // ch-map-edges (physics review r2 a2-2, D-228): maps of 10 × 3 cells of
     // 16 px, row 2 solid (its top at y 32), at x 0 and 160, against one map

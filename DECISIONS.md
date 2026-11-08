@@ -3092,6 +3092,7 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 
 ## D-203 — Core physics keeps the tile collision proxies across steps: scanned when a map loads or changes, with their pair grid, their spatial-index entries and each unchanged sensor's tile pairs
 **Amended by D-228:** the rescan, the index's tiles and the sensor pass only; a map is traced again alone when its registry cursor reads a change, by 16 × 16 chunk around the written cells, the index holds the outline's runs, region queries and sensors read the cache's grids, and a sensor as it was re-tests only the cells changed; the kept proxies, their pair grid and the unchanged results stand.
+**Amended by D-260:** the cached proxies only; an edge cell's outer face that an abutting map's cell covers is masked in its cached proxy whenever a map changes, and restored when the neighbour moves, is written or goes; the rest stands.
 **Date:** 2026-10-22
 **Decision:** The physics step's cost of a tile map no longer grows with the map while the map stays as it is, and no query result, candidate order, event or digest changes (`D-080`'s rule):
 
@@ -3537,6 +3538,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 **Amended by D-229:** the tiles' coefficients, the outline and the events only; a tile's `material` gives its friction and rolling resistance through the World's `PhysicsMaterials`, a slope cell is a run of its own masked as `D-229` says, a write also re-traces the chunk of each diagonal neighbour that is a slope, contact and sensor events name a tile's cell, and `PhysicsBuffers::terrain_faces` gives a slope's exposed legs and its face; the rest stands.
 **Amended by D-230:** the edit lists' use only; `TilemapRegistry::revert` puts a map back as inserted with a new history, a world save writes each loaded area's edits by sprite ID and damage by health, and a restore writes them again on the map as inserted; the rest stands.
 **Amended by D-241:** a tile's `material` only; read as a tag, it makes the tile's cells chemistry receivers, whose `damage` goes through `damage_tile` and whose `set_tile` goes through the registry; the rest stands.
+**Amended by D-260:** the outline only; two maps of one cell size whose grids meet edge to edge join, an edge cell's outer face internal where the abutting map's cell in a collision layer of the same layers covers it by the outline's cover rule, in the step; casts still meet the traced faces; the rest stands.
 **Date:** 2026-10-30
 **Decision:** Redo 7.8's first plan (phase 7's Step 5, P7-1): the terrain physics and chemistry stand on, on today's tile grid.
 
@@ -4093,3 +4095,14 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Pins: the physics hashes and 01's and the template's guards hold; 02's `physics` guard sends 31,391 events (from 31,371), so its digest moves.
 - One sort of the static boxes' faces a frame, `O(s log s)` in their `s` faces.
 - Open: a static box against a tile map, partial covers, and casts at the join (`docs/known-issues.md`).
+
+## D-260 — Maps placed edge to edge mask the faces their edge cells share
+**Date:** 2026-11-08
+**Decision:** Core hardening (7.21) Step 19, `ch-map-edges`. Two maps of one cell size whose grids meet edge to edge join: an edge cell's outer face, covered by the abutting map's cell in a collision layer of the same layers by the outline's cover rule, is internal in the step's contacts and sweeps. It is masked whenever a map changes, and restored when the neighbour moves, is written or goes. Casts still meet the traced faces.
+
+**Why:** Two maps placed edge to edge kept their edge cells' outer faces exposed, so a box crossing the seam at floor height stopped at it (`from x 100 at 120 px/s over the seam: at [154.25717, 26.253183], on one map at [220, 26.25295]`), as at the static-box join `D-259` masks.
+
+**Consequences:**
+- Amends `D-203` and `D-228` as their marker lines say.
+- Pins: the physics hashes and 01's and the template's guards hold; 02's `terrain` guard allocates 2,565,740 bytes (from 2,563,820).
+- Open: misaligned grids keep their seams, and casts across a map seam meet them (`docs/known-issues.md`).
