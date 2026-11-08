@@ -1706,6 +1706,7 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab:
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabError
 #[non_exhaustive] pub struct tungsten_core::assets::prefab::PrefabData
 pub tungsten_core::assets::prefab::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub tungsten_core::assets::prefab::PrefabData::extends: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::prefab::PrefabData::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
 pub tungsten_core::assets::prefab::PrefabData::tag: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::prefab::PrefabData::tweens: alloc::vec::Vec<tungsten_core::assets::scene::SceneTween>
@@ -3943,6 +3944,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleMeshRegistry
 #[non_exhaustive] pub struct tungsten_core::assets::PrefabData
 pub tungsten_core::assets::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub tungsten_core::assets::PrefabData::extends: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::PrefabData::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
 pub tungsten_core::assets::PrefabData::tag: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::PrefabData::tweens: alloc::vec::Vec<tungsten_core::assets::scene::SceneTween>
@@ -20605,6 +20607,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::PostStack
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PostStack
 #[non_exhaustive] pub struct tungsten_core::PrefabData
 pub tungsten_core::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub tungsten_core::PrefabData::extends: core::option::Option<alloc::string::String>
 pub tungsten_core::PrefabData::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
 pub tungsten_core::PrefabData::tag: core::option::Option<alloc::string::String>
 pub tungsten_core::PrefabData::tweens: alloc::vec::Vec<tungsten_core::assets::scene::SceneTween>

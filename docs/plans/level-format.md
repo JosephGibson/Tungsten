@@ -1,6 +1,6 @@
-# Level format, commands and CLI (level-format) — draft
+# Level format, commands and CLI (level-format) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Land the first of redo 7.12's plans, phase 7's Step 12 (the redo's 7.12 row and §5.1): rooms in our own format on 7.8's runtime terrain, one file per room with terrain as shapes, objects by prefab, named places, routes and links (P7-17); the commands that edit them, validated, invertible and journaled; the `tungsten level` CLI (`apply`, `query`, `describe`, `check`, `render`); `check`'s level rules, its "props supported" generalizing `D-214`'s floating check; a room file's hot reload and a script's `level` step patching the live room; and the step's prefab and tile rows: variants by `extends` (S-140), a scale in prefab data (S-129), sprite variants per instance (S-58), tiles drawn whole (S-178), engine settings as data (S-85), room objects spawned with their names (S-144's engine part) and physics layer names on a room's tile layers (ROADMAP's Later line, S-175).
 - **non-goals:**
   - Seeded generation (P7-16: IDs from the seed, `check` over seeds, saves as the seed plus changes, the registry's `remove`): the second 7.12 plan, `level-generation`, on this format (Q1). The in-game editor: the third, `level-editor`, on these commands.
@@ -423,5 +423,6 @@ Round 2: the same reviewer at xhigh, 2026-11-08, reading the tree at `6ae570a9` 
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-08 | passed | `cargo test -p tungsten-core --lib --locked assets::prefab::` → exit 0, 34 passed, the five named among them; `cargo test -p tungsten --lib --locked asset_loader::prefab::` → 24 passed with `reloading_a_base_reaches_its_variants`; `describe::` → 5 passed with `describe_lists_each_prefab_resolved_at_version_3`; `cargo test -p tungsten-cli --locked describe::` → 4 passed with `describe_prints_a_prefabs_resolved_fields`; fmt, `just lint`, 02's `guards` (13 passed, pins unchanged), 01's `guards::` (1, `pit.json` unchanged), `views_guard` (2, unchanged), `just api-check` after `just api` (`api/tungsten-core.txt` +3: `PrefabData::extends` at its three paths) and `just docs-ratchet` → exit 0; core, umbrella and CLI suites 1,600, 1,076 and 75 passed. Moves: `describe` 2 → 3. Departures: the registry's entry type is `StoredPrefab`, the manifest's `PrefabEntry` taken; `docs/getting-started.md:89` still says `describe` is at version 2, outside the step's list and unlisted by preflight, so Step 8's command-line section takes it | `perf-runs/20261108-level-format/step1/` |
 
 ## Follow-ups

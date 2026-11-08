@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use serde_json::json;
 
 use super::*;
+use crate::assets::data::{StagedLoad, StagedLoadError};
 use crate::assets::tilemap::{LayerKind, MapObject, ObjectLayer};
 use crate::component_registry::MissingAsset;
 use crate::physics::{BodyKind, Collider, PhysicsPlugin, RigidBody, Shape};
@@ -1317,4 +1318,271 @@ fn map_objects_spawn_with_their_names() {
     let names: Vec<&str> = prepared.iter().map(|(_, name)| name.as_str()).collect();
     assert_eq!(names, ["object1", "", "object2"], "in layer and file order");
     assert!(prepared.iter().all(|(prefab, _)| prefab.id() == "slime"));
+}
+
+/// Prefab files `<id>.json` in a temp directory of their own, removed on
+/// drop.
+struct PrefabDir(PathBuf);
+
+impl PrefabDir {
+    fn new(files: &[(&str, serde_json::Value)]) -> Self {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "tungsten_prefab_variants_{}_{n}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (id, contents) in files {
+            std::fs::write(dir.join(format!("{id}.json")), contents.to_string()).unwrap();
+        }
+        Self(dir)
+    }
+
+    /// One staged load of every file, each as prefab `<id>`.
+    fn load(&self, ids: &[&str]) -> StagedLoad {
+        let mut load = StagedLoad::new();
+        for id in ids {
+            load.add_prefab(*id, self.0.join(format!("{id}.json")))
+                .unwrap();
+        }
+        load
+    }
+}
+
+impl Drop for PrefabDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn a_variant_takes_its_bases_fields_and_merges_components_by_member() {
+    let dir = PrefabDir::new(&[
+        (
+            "slime",
+            json!({
+                "sprite": { "asset_id": "slime", "z_order": 2 },
+                "tag": "enemy",
+                "components": {
+                    "health": { "max": 10 },
+                    "route": { "points": [[0, 0], [1, 1]] },
+                    "rigid_body": { "kind": "dynamic", "shape": { "kind": "circle", "radius": 6 } }
+                }
+            }),
+        ),
+        (
+            "slime_red",
+            json!({
+                "extends": "slime",
+                "sprite": { "asset_id": "slime_red" },
+                "components": {
+                    "health": { "max": 30 },
+                    "route": { "points": [[5, 5]] },
+                    "rigid_body": { "shape": { "radius": 8 } },
+                    "player": null
+                }
+            }),
+        ),
+    ]);
+    let mut world = world();
+    dir.load(&["slime", "slime_red"])
+        .commit(&mut world)
+        .unwrap();
+    let prefabs = world.resource::<PrefabRegistry>();
+    let red = prefabs.get("slime_red").unwrap();
+    assert_eq!(red.extends.as_deref(), Some("slime"));
+    assert_eq!(red.tag.as_deref(), Some("enemy"), "the base's field");
+    let sprite = red.sprite.as_ref().unwrap();
+    assert_eq!(
+        (sprite.asset_id.as_str(), sprite.z_order),
+        ("slime_red", 0),
+        "a top-level field replaces the base's whole"
+    );
+    assert_eq!(
+        red.components,
+        BTreeMap::from([
+            ("health".to_owned(), json!({ "max": 30 })),
+            ("player".to_owned(), json!(null)),
+            (
+                "rigid_body".to_owned(),
+                json!({ "kind": "dynamic", "shape": { "kind": "circle", "radius": 8 } })
+            ),
+            ("route".to_owned(), json!({ "points": [[5, 5]] })),
+        ]),
+        "components merge by member, arrays replaced"
+    );
+    let base = prefabs.get("slime").unwrap();
+    assert_eq!(base.extends, None);
+    assert_eq!(
+        base.components["health"],
+        json!({ "max": 10 }),
+        "the base keeps its own"
+    );
+
+    let entity = world.spawn_prefab("slime_red", [0.0, 0.0]).unwrap();
+    assert_eq!(world.get::<Health>(entity), Some(&Health { max: 30 }));
+    assert_eq!(
+        world.get::<Collider>(entity).unwrap().shape,
+        Shape::Circle { radius: 8.0 }
+    );
+}
+
+#[test]
+fn a_variant_chain_resolves_from_the_root() {
+    let dir = PrefabDir::new(&[
+        (
+            "a",
+            json!({ "extends": "b", "components": { "health": { "max": 3 } } }),
+        ),
+        (
+            "b",
+            json!({ "extends": "c", "tag": "b", "components": { "route": { "points": [[1, 2]] } } }),
+        ),
+        (
+            "c",
+            json!({ "tag": "c", "visible": false, "components": { "health": { "max": 1 } } }),
+        ),
+    ]);
+    let mut world = world();
+    dir.load(&["a", "b", "c"]).commit(&mut world).unwrap();
+    let prefabs = world.resource::<PrefabRegistry>();
+    let summary = |id: &str| {
+        let data = prefabs.get(id).unwrap();
+        (
+            data.extends.clone(),
+            data.tag.clone(),
+            data.visible,
+            data.components.clone(),
+        )
+    };
+    let route = json!({ "points": [[1, 2]] });
+    assert_eq!(
+        summary("a"),
+        (
+            Some("b".to_owned()),
+            Some("b".to_owned()),
+            false,
+            BTreeMap::from([
+                ("health".to_owned(), json!({ "max": 3 })),
+                ("route".to_owned(), route.clone()),
+            ])
+        ),
+        "the root's fields, then b's over them, then a's"
+    );
+    assert_eq!(
+        summary("b"),
+        (
+            Some("c".to_owned()),
+            Some("b".to_owned()),
+            false,
+            BTreeMap::from([
+                ("health".to_owned(), json!({ "max": 1 })),
+                ("route".to_owned(), route),
+            ])
+        )
+    );
+}
+
+#[test]
+fn an_extends_cycle_fails_naming_the_chain() {
+    let dir = PrefabDir::new(&[
+        ("a", json!({ "extends": "b" })),
+        ("b", json!({ "extends": "a", "tag": "b" })),
+        ("solo", json!({ "extends": "solo" })),
+    ]);
+    let mut world = world();
+    let err = dir.load(&["a", "b"]).commit(&mut world).unwrap_err();
+    let StagedLoadError::Prefab { id, .. } = &err else {
+        panic!("a prefab's error: {err}");
+    };
+    assert_eq!(id, "a");
+    assert!(
+        err.to_string()
+            .ends_with("extends: a cycle: `a` \u{2192} `b` \u{2192} `a`"),
+        "{err}"
+    );
+    assert!(
+        world.resource::<PrefabRegistry>().is_empty(),
+        "the commit put everything back"
+    );
+    let err = dir.load(&["solo"]).commit(&mut world).unwrap_err();
+    assert!(
+        err.to_string()
+            .ends_with("extends: a cycle: `solo` \u{2192} `solo`"),
+        "{err}"
+    );
+
+    // A check's commit names each variant of the cycle.
+    let failures = dir.load(&["a", "b"]).commit_for_check(&mut world);
+    let messages: Vec<String> = failures.iter().map(ToString::to_string).collect();
+    assert_eq!(messages.len(), 2, "{messages:?}");
+    assert!(
+        messages[1].ends_with("`b` \u{2192} `a` \u{2192} `b`"),
+        "{messages:?}"
+    );
+}
+
+#[test]
+fn a_missing_base_fails_with_the_nearest_id() {
+    let dir = PrefabDir::new(&[
+        ("goblin", json!({ "tag": "goblin" })),
+        ("goblin_red", json!({ "extends": "gobin" })),
+        ("goblin_dark", json!({ "extends": "goblin_red" })),
+    ]);
+    let mut world = world();
+    let err = dir
+        .load(&["goblin", "goblin_red"])
+        .commit(&mut world)
+        .unwrap_err();
+    assert!(
+        err.to_string()
+            .ends_with("extends: unknown prefab `gobin`; did you mean `goblin`?"),
+        "{err}"
+    );
+    assert!(world.resource::<PrefabRegistry>().is_empty());
+
+    // Past a variant of its own, the error names the link that breaks.
+    let err = dir
+        .load(&["goblin", "goblin_dark", "goblin_red"])
+        .commit(&mut world)
+        .unwrap_err();
+    assert!(
+        err.to_string().ends_with(
+            "extends: `goblin_red` extends unknown prefab `gobin`; did you mean `goblin`?"
+        ),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_prefab_without_extends_keeps_no_file_json() {
+    let dir = PrefabDir::new(&[
+        ("bat", json!({ "tag": "bat" })),
+        ("vampire", json!({ "extends": "bat", "visible": false })),
+    ]);
+    let mut world = world();
+    dir.load(&["bat", "vampire"]).commit(&mut world).unwrap();
+    let prefabs = world.resource::<PrefabRegistry>();
+    assert_eq!(
+        prefabs.variants.keys().collect::<Vec<_>>(),
+        ["vampire"],
+        "the variant's file JSON alone"
+    );
+    assert_eq!(
+        prefabs.variants["vampire"],
+        json!({ "extends": "bat", "visible": false }),
+        "as the file gave it"
+    );
+    let vampire = prefabs.get("vampire").unwrap();
+    assert_eq!(
+        (vampire.tag.as_deref(), vampire.visible),
+        (Some("bat"), false)
+    );
+
+    // A code insert over the variant ends its resolving.
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("vampire".to_owned(), prefab(json!({ "tag": "code" })));
+    assert!(world.resource::<PrefabRegistry>().variants.is_empty());
 }

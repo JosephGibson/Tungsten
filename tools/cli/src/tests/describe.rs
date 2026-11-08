@@ -114,3 +114,44 @@ Screens (1):
     assert!(!is_empty(&saving));
     assert!(is_empty(&named(&with_screens(), "nothing")));
 }
+
+fn with_prefabs() -> Value {
+    let mut description = description();
+    description["assets"]["prefabs"] = json!(["goblin", "goblin_red"]);
+    description["prefabs"] = json!([
+        { "name": "goblin", "extends": null,
+          "prefab": { "tag": "goblin", "visible": true,
+                      "components": { "lifetime": { "seconds": 2.0 } } } },
+        { "name": "goblin_red", "extends": "goblin",
+          "prefab": { "sprite": { "asset_id": "red", "color": [255, 255, 255, 255], "z_order": 0 },
+                      "tag": "goblin", "visible": true,
+                      "components": { "lifetime": { "seconds": 4.0 }, "player": null } } }
+    ]);
+    description
+}
+
+#[test]
+fn describe_prints_a_prefabs_resolved_fields() {
+    let kept = named(&with_prefabs(), "goblin_red");
+    assert!(!is_empty(&kept));
+    assert_eq!(
+        render(&kept),
+        "\
+Assets:
+  prefabs (1): goblin_red
+Prefabs (1):
+  goblin_red (extends goblin)
+    components.lifetime: {\"seconds\":4.0}
+    components.player: null
+    sprite: {\"asset_id\":\"red\",\"color\":[255,255,255,255],\"z_order\":0}
+    tag: \"goblin\"
+    visible: true
+"
+    );
+    let text = render(&with_prefabs());
+    assert!(
+        text.contains("Prefabs (2):\n  goblin\n    components.lifetime: {\"seconds\":2.0}\n"),
+        "{text}"
+    );
+    assert!(is_empty(&named(&with_prefabs(), "nothing")));
+}

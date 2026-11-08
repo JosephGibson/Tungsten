@@ -57,7 +57,7 @@ fn a_description_lists_components_with_kit_fields_hooks_and_manifest_ids() {
     app.run_describe(&out, &dir).unwrap();
     let description: Value = serde_json::from_str(&fs::read_to_string(&out).unwrap()).unwrap();
 
-    assert_eq!(description["version"], 2);
+    assert_eq!(description["version"], 3);
     assert_eq!(description["errors"], json!([]), "{description:#}");
     let components = description["components"].as_array().unwrap();
     let named = |name: &str| components.iter().find(|c| c["name"] == name).cloned();
@@ -115,6 +115,54 @@ fn a_bad_file_is_listed_not_fatal() {
     let errors = description["errors"].as_array().unwrap();
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert_eq!(errors[0]["file"], "assets/prefabs/goblin.json");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn describe_lists_each_prefab_resolved_at_version_3() {
+    let dir = game_folder();
+    write(
+        &dir.join("assets/prefabs/goblin.json"),
+        r#"{ "sprite": { "asset_id": "dot", "z_order": 2 }, "tag": "goblin" }"#,
+    );
+    write(
+        &dir.join("assets/prefabs/goblin_red.json"),
+        r#"{ "extends": "goblin", "tag": "red" }"#,
+    );
+    write(
+        &dir.join("assets/manifest.json"),
+        r#"{
+            "sprites": { "dot": { "path": "sprites/dot.png" } },
+            "prefabs": {
+                "goblin": { "path": "prefabs/goblin.json" },
+                "goblin_red": { "path": "prefabs/goblin_red.json" }
+            }
+        }"#,
+    );
+    let mut app = App::new(Config::default()).unwrap();
+    app.set_manifest_roots(vec![dir.join("assets/manifest.json")]);
+    let out = dir.join("describe.json");
+    app.run_describe(&out, &dir).unwrap();
+    let description: Value = serde_json::from_str(&fs::read_to_string(&out).unwrap()).unwrap();
+
+    assert_eq!(description["version"], 3);
+    assert_eq!(description["errors"], json!([]), "{description:#}");
+    let sprite = json!({ "asset_id": "dot", "color": [255, 255, 255, 255], "z_order": 2 });
+    assert_eq!(
+        description["prefabs"],
+        json!([
+            {
+                "name": "goblin",
+                "extends": null,
+                "prefab": { "sprite": sprite, "tag": "goblin", "visible": true }
+            },
+            {
+                "name": "goblin_red",
+                "extends": "goblin",
+                "prefab": { "sprite": sprite, "tag": "red", "visible": true }
+            }
+        ])
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -217,7 +265,7 @@ fn a_description_lists_screens_and_the_names_they_may_use() {
     app.run_describe(&out, &dir).unwrap();
     let description: Value = serde_json::from_str(&fs::read_to_string(&out).unwrap()).unwrap();
 
-    assert_eq!(description["version"], 2);
+    assert_eq!(description["version"], 3);
     assert_eq!(description["errors"], json!([]), "{description:#}");
     assert_eq!(description["assets"]["ui_screens"], json!(["pause"]));
     let ui = &description["ui"];

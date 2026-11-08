@@ -33,6 +33,19 @@
 //! that source as the flush finds it ([`World::inherit_from_source`]), a
 //! state's marker say, each type the spawn lacks, in one more move; a source
 //! an earlier command despawned drops the spawn.
+//!
+//! A prefab file may be a variant of another (S-140): `"extends": "<id>"`
+//! names its base, and its resolved form is the base's resolved fields with
+//! the file's top-level fields over them, `components` merging component by
+//! component, member by member, as a map object's properties merge (objects
+//! recursively, arrays and scalars replaced). The registry keeps each
+//! variant's file JSON, and every load's commit resolves every variant
+//! again, so a base's reload reaches its variants.
+//!
+//! ```json
+//! { "extends": "slime", "sprite": { "asset_id": "slime_red" },
+//!   "components": { "health": { "max": 30 } } }
+//! ```
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -62,6 +75,12 @@ use crate::tween::Tween;
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct PrefabData {
+    /// The prefab this one is a variant of, by ID (S-140). A load resolves
+    /// it at its commit, its file's fields over the base's; a prefab
+    /// inserted in code is taken as given, `extends` naming nothing to
+    /// resolve.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<String>,
     /// The sprite, by its manifest ID. The spawn interns the name, so a
     /// sprite that a later manifest reload registers draws from then on.
     #[serde(default)]
@@ -104,9 +123,10 @@ impl PrefabData {
     ///
     /// A prefab that names other prefabs or data entries loads with them in
     /// one [`StagedLoad`](crate::assets::data::StagedLoad), which checks
-    /// after every file is in place.
+    /// after every file is in place; so does a variant, which its commit
+    /// resolves over its base. This reads the file's own fields.
     pub fn load(path: &Path, world: &World) -> Result<Self, PrefabError> {
-        let data = Self::parse(path)?;
+        let (data, _) = Self::parse(path)?;
         data.validate(world)
             .map_err(|message| PrefabError::Validation {
                 path: path.display().to_string(),
@@ -115,17 +135,25 @@ impl PrefabData {
         Ok(data)
     }
 
-    /// Phase one of a load: reads and parses `path`, with no World check.
-    pub(crate) fn parse(path: &Path) -> Result<Self, PrefabError> {
+    /// Phase one of a load: reads and parses `path`, with no World check;
+    /// for a variant (its file names `extends`), the file's JSON too, which
+    /// the commit resolves over the base.
+    pub(crate) fn parse(path: &Path) -> Result<(Self, Option<Value>), PrefabError> {
         let file = || path.display().to_string();
         let contents = std::fs::read_to_string(path).map_err(|source| PrefabError::Io {
             path: file(),
             source,
         })?;
-        serde_json::from_str(&contents).map_err(|source| PrefabError::Parse {
+        let parse = |source| PrefabError::Parse {
             path: file(),
             source,
-        })
+        };
+        let data: Self = serde_json::from_str(&contents).map_err(parse)?;
+        if data.extends.is_none() {
+            return Ok((data, None));
+        }
+        let json: Value = serde_json::from_str(&contents).map_err(parse)?;
+        Ok((data, Some(json)))
     }
 
     /// Phase two of a load: the fields' checks, then each component's
@@ -179,6 +207,18 @@ pub struct PrefabRegistry {
     paths: BTreeMap<String, PathBuf>,
     /// The reverse of `paths`: the prefab each file routes to.
     path_to_id: HashMap<PathBuf, String>,
+    /// The file JSON of each prefab whose file extends another, by ID, which
+    /// every load's commit resolves again over its base (S-140); none for a
+    /// prefab that extends nothing.
+    variants: BTreeMap<String, Value>,
+}
+
+/// A prefab's registry entry as a staged load takes and puts it back: its
+/// data, its file and, for a variant, the file's JSON.
+pub(crate) struct StoredPrefab {
+    pub(crate) data: PrefabData,
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) variant: Option<Value>,
 }
 
 impl PrefabRegistry {
@@ -194,6 +234,7 @@ impl PrefabRegistry {
     /// file to it.
     pub fn insert(&mut self, id: String, data: PrefabData) {
         self.drop_path(&id);
+        self.variants.remove(&id);
         self.prefabs.insert(id, data);
     }
 
@@ -204,7 +245,14 @@ impl PrefabRegistry {
     pub fn insert_with_path(&mut self, id: String, data: PrefabData, path: PathBuf) {
         self.drop_path(&id);
         self.release_path(&path);
-        self.put_entry(id, data, Some(path));
+        self.put_entry(
+            id,
+            StoredPrefab {
+                data,
+                path: Some(path),
+                variant: None,
+            },
+        );
     }
 
     /// The prefab `id`.
@@ -222,6 +270,11 @@ impl PrefabRegistry {
     #[must_use]
     pub fn id_for_path(&self, path: &Path) -> Option<&str> {
         self.path_to_id.get(path).map(String::as_str)
+    }
+
+    /// The file prefab `id` was loaded from.
+    pub(crate) fn path_of(&self, id: &str) -> Option<&Path> {
+        self.paths.get(id).map(PathBuf::as_path)
     }
 
     /// How many prefabs are loaded.
@@ -258,24 +311,115 @@ impl PrefabRegistry {
         }
     }
 
-    /// Removes prefab `id` with its file's route.
-    pub(crate) fn take_entry(&mut self, id: &str) -> Option<(PrefabData, Option<PathBuf>)> {
+    /// Removes prefab `id` with its file's route and its variant's JSON.
+    pub(crate) fn take_entry(&mut self, id: &str) -> Option<StoredPrefab> {
         let data = self.prefabs.remove(id)?;
         let path = self.paths.remove(id);
         if let Some(path) = &path {
             self.path_to_id.remove(path);
         }
-        Some((data, path))
+        let variant = self.variants.remove(id);
+        Some(StoredPrefab {
+            data,
+            path,
+            variant,
+        })
     }
 
-    /// Puts `data` as prefab `id`, routing `path` to it; the caller has
+    /// Puts `entry` as prefab `id`, routing its path to it; the caller has
     /// freed the path and the ID's old one.
-    pub(crate) fn put_entry(&mut self, id: String, data: PrefabData, path: Option<PathBuf>) {
+    pub(crate) fn put_entry(&mut self, id: String, entry: StoredPrefab) {
+        let StoredPrefab {
+            data,
+            path,
+            variant,
+        } = entry;
         if let Some(path) = path {
             self.path_to_id.insert(path.clone(), id.clone());
             self.paths.insert(id.clone(), path);
         }
+        match variant {
+            Some(json) => self.variants.insert(id.clone(), json),
+            None => self.variants.remove(&id),
+        };
         self.prefabs.insert(id, data);
+    }
+
+    /// Each file-backed variant resolved again over its base, in ID order:
+    /// its data, or why it does not resolve (a base no prefab holds, with
+    /// the nearest ID; a cycle, the chain named). A variant without its
+    /// file, left by a lost file, is taken as given.
+    pub(crate) fn resolve_variants(&self) -> Vec<(String, Result<PrefabData, String>)> {
+        let mut resolved = BTreeMap::new();
+        self.variants
+            .keys()
+            .filter(|id| self.paths.contains_key(*id))
+            .map(|id| {
+                let result = self
+                    .resolved_json(id, &mut Vec::new(), &mut resolved)
+                    .and_then(|json| {
+                        serde_json::from_value(json)
+                            .map_err(|e| format!("extends: the resolved prefab does not read: {e}"))
+                    });
+                (id.clone(), result)
+            })
+            .collect()
+    }
+
+    /// Prefab `id`'s resolved JSON: a variant's file over its base's
+    /// resolved JSON, anything else its data as it serializes. `chain` holds
+    /// the variants being resolved, outermost first; `resolved` caches each
+    /// variant's.
+    fn resolved_json<'a>(
+        &'a self,
+        id: &'a str,
+        chain: &mut Vec<&'a str>,
+        resolved: &mut BTreeMap<&'a str, Value>,
+    ) -> Result<Value, String> {
+        if let Some(json) = resolved.get(id) {
+            return Ok(json.clone());
+        }
+        let file = (self.paths.contains_key(id))
+            .then(|| self.variants.get(id))
+            .flatten();
+        let Some(file) = file else {
+            let data = self.prefabs.get(id).expect("a resolved base is registered");
+            return serde_json::to_value(data)
+                .map_err(|e| format!("extends: prefab `{id}` does not serialize: {e}"));
+        };
+        if chain.contains(&id) {
+            chain.push(id);
+            let names: Vec<String> = chain.iter().map(|id| format!("`{id}`")).collect();
+            return Err(format!("extends: a cycle: {}", names.join(" \u{2192} ")));
+        }
+        chain.push(id);
+        let base = file
+            .get("extends")
+            .and_then(Value::as_str)
+            .expect("a variant's file names its base");
+        if !self.prefabs.contains_key(base) {
+            let hint = data::nearest(base, self.prefabs.keys().map(String::as_str));
+            let whose = match chain.as_slice() {
+                [_] => String::new(),
+                [.., last] => format!("`{last}` extends "),
+                [] => unreachable!("the chain holds `id`"),
+            };
+            return Err(format!(
+                "extends: {whose}unknown prefab `{base}`{}",
+                data::did_you_mean(hint)
+            ));
+        }
+        let json = overlay(self.resolved_json(base, chain, resolved)?, file);
+        chain.pop();
+        resolved.insert(id, json.clone());
+        Ok(json)
+    }
+
+    /// Puts `data` in place of variant `id`'s, returning the old data.
+    pub(crate) fn replace_resolved(&mut self, id: &str, data: PrefabData) -> Option<PrefabData> {
+        self.prefabs
+            .get_mut(id)
+            .map(|slot| std::mem::replace(slot, data))
     }
 
     /// Every prefab loaded from a file, by ID, with its file.
@@ -950,6 +1094,33 @@ fn apply_property(
     // One segment: a class value over the whole component.
     merge(current, value);
     Ok(())
+}
+
+/// A variant's `file` over its base's resolved JSON: each top-level field
+/// replaces the base's, but `components`, which merge component by
+/// component, each [`merge`]d member by member.
+fn overlay(mut base: Value, file: &Value) -> Value {
+    let (Value::Object(target), Value::Object(fields)) = (&mut base, file) else {
+        return file.clone();
+    };
+    for (key, value) in fields {
+        match (target.get_mut(key), value) {
+            (Some(Value::Object(components)), Value::Object(members)) if key == "components" => {
+                for (name, member) in members {
+                    match components.get_mut(name) {
+                        Some(existing) => merge(existing, member),
+                        None => {
+                            components.insert(name.clone(), member.clone());
+                        }
+                    }
+                }
+            }
+            _ => {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    base
 }
 
 /// `value` over `target`: an object merges member by member, recursively,

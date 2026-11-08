@@ -36,7 +36,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::assets::prefab::{PrefabData, PrefabError, PrefabRegistry};
+use crate::assets::prefab::{PrefabData, PrefabError, PrefabRegistry, StoredPrefab};
 use crate::assets::scene::StrictValue;
 use crate::component_registry::MissingAsset;
 use crate::ecs::World;
@@ -555,7 +555,9 @@ impl<T: Serialize> Serialize for DataRef<T> {
 /// ```
 #[derive(Default)]
 pub struct StagedLoad {
-    prefabs: BTreeMap<String, (PrefabData, PathBuf)>,
+    /// Each staged prefab: its data, its file and, for a variant, the
+    /// file's JSON.
+    prefabs: BTreeMap<String, (PrefabData, PathBuf, Option<Value>)>,
     data: BTreeMap<(&'static str, String), StagedData>,
 }
 
@@ -590,9 +592,9 @@ impl StagedLoad {
         path: impl Into<PathBuf>,
     ) -> Result<(), PrefabError> {
         let path = path.into();
-        let data = PrefabData::parse(&path)?;
+        let (data, variant) = PrefabData::parse(&path)?;
         let path = path.canonicalize().unwrap_or(path);
-        self.prefabs.insert(id.into(), (data, path));
+        self.prefabs.insert(id.into(), (data, path, variant));
         Ok(())
     }
 
@@ -670,30 +672,35 @@ impl StagedLoad {
     /// Puts every staged entry in place of the World's entry of that ID,
     /// inserting the [`DataRegistry`] and [`PrefabRegistry`] the World lacks;
     /// each staged entry takes its file from whichever entry held it, which
-    /// keeps its definition without a file. Then it checks every entry the
-    /// two registries hold from a file, staged or not, with the staging in
-    /// place: data entries by kind, then ID, through their kind's check,
-    /// then prefabs by ID through the checks [`PrefabData::load`] runs.
-    /// Entries without a file, inserted in code or left by a lost file, are
-    /// taken as given.
+    /// keeps its definition without a file. Then it resolves every variant
+    /// the prefab registry holds from a file over its base (`extends`, in ID
+    /// order), staged or not, so a base's reload reaches its variants. Then
+    /// it checks every entry the two registries hold from a file, staged or
+    /// not, with the staging in place: data entries by kind, then ID,
+    /// through their kind's check, then prefabs by ID through the checks
+    /// [`PrefabData::load`] runs. Entries without a file, inserted in code or
+    /// left by a lost file, are taken as given.
     ///
     /// # Errors
     ///
     /// Before anything changes, [`StagedLoadError::Data`] with
     /// [`DataError::UnknownKind`] or [`DataError::MismatchedKind`] for a
     /// staged entry whose kind the World does not register, or registers for
-    /// another type than the one it was read as. Then the first entry that
-    /// fails its check, as [`StagedLoadError::Data`] with
-    /// [`DataError::MissingAsset`] or [`StagedLoadError::Prefab`] with
-    /// [`PrefabError::Validation`]; every staged entry's previous state comes
-    /// back first: a replaced entry with its file, an added one removed, and
-    /// a file's former holder with its file.
+    /// another type than the one it was read as. Then the first variant that
+    /// does not resolve (its base unknown, with the nearest ID, or a cycle,
+    /// the chain named) or the first entry that fails its check, as
+    /// [`StagedLoadError::Data`] with [`DataError::MissingAsset`] or
+    /// [`StagedLoadError::Prefab`] with [`PrefabError::Validation`]; every
+    /// staged entry's previous state comes back first: a replaced entry with
+    /// its file, an added one removed, a file's former holder with its file,
+    /// and each variant as it was resolved before.
     pub fn commit(self, world: &mut World) -> Result<(), StagedLoadError> {
         if let Some((_, error)) = self.kind_failures(world).next() {
             return Err(error);
         }
-        let undo = self.place(world);
-        let checked = check_file_backed(world, &mut Err);
+        let mut undo = self.place(world);
+        let checked = resolve_variants(world, &mut undo, &mut Err)
+            .and_then(|()| check_file_backed(world, &mut Err));
         if checked.is_err() {
             for step in undo.into_iter().rev() {
                 step.revert(world);
@@ -742,11 +749,13 @@ impl StagedLoad {
             self.data.remove(&key);
             failures.push(error);
         }
-        self.place(world);
-        let _ = check_file_backed(world, &mut |error| {
+        let mut undo = self.place(world);
+        let mut keep = |error| {
             failures.push(error);
             Ok(())
-        });
+        };
+        let _ = resolve_variants(world, &mut undo, &mut keep);
+        let _ = check_file_backed(world, &mut keep);
         failures
     }
 
@@ -768,11 +777,16 @@ impl StagedLoad {
             data.put_entry(kind, id.clone(), value, Some(path));
             undo.push(Undo::Data { kind, id, previous });
         }
-        for (id, (prefab, path)) in self.prefabs {
+        for (id, (prefab, path, variant)) in self.prefabs {
             take_file(world, &path, &mut undo);
             let prefabs = world.resource_mut::<PrefabRegistry>();
             let previous = prefabs.take_entry(&id);
-            prefabs.put_entry(id.clone(), prefab, Some(path));
+            let entry = StoredPrefab {
+                data: prefab,
+                path: Some(path),
+                variant,
+            };
+            prefabs.put_entry(id.clone(), entry);
             undo.push(Undo::Prefab { id, previous });
         }
         undo
@@ -840,8 +854,10 @@ enum Undo {
     /// Prefab `id` was replaced by a staged one, or added.
     Prefab {
         id: String,
-        previous: Option<(PrefabData, Option<PathBuf>)>,
+        previous: Option<StoredPrefab>,
     },
+    /// Variant `id` was resolved again, replacing `previous`.
+    Resolved { id: String, previous: PrefabData },
     /// Entry `id` of `kind` lost `path` to a staged entry.
     DataFile {
         kind: &'static str,
@@ -865,9 +881,14 @@ impl Undo {
             Undo::Prefab { id, previous } => {
                 let prefabs = world.resource_mut::<PrefabRegistry>();
                 prefabs.take_entry(&id);
-                if let Some((prefab, path)) = previous {
-                    prefabs.put_entry(id, prefab, path);
+                if let Some(entry) = previous {
+                    prefabs.put_entry(id, entry);
                 }
+            }
+            Undo::Resolved { id, previous } => {
+                world
+                    .resource_mut::<PrefabRegistry>()
+                    .replace_resolved(&id, previous);
             }
             Undo::DataFile { kind, id, path } => {
                 world
@@ -896,6 +917,39 @@ fn take_file(world: &mut World, path: &Path, undo: &mut Vec<Undo>) {
             path: path.to_path_buf(),
         });
     }
+}
+
+/// Every file-backed variant resolved again over its base, in ID order, each
+/// replaced data recorded in `undo` and each failure sent to `report`, as
+/// [`check_file_backed`] sends its own; a variant that fails keeps its data.
+fn resolve_variants(
+    world: &mut World,
+    undo: &mut Vec<Undo>,
+    report: &mut dyn FnMut(StagedLoadError) -> Result<(), StagedLoadError>,
+) -> Result<(), StagedLoadError> {
+    let Some(prefabs) = world.get_resource_mut::<PrefabRegistry>() else {
+        return Ok(());
+    };
+    for (id, resolved) in prefabs.resolve_variants() {
+        match resolved {
+            Ok(data) => {
+                if let Some(previous) = prefabs.replace_resolved(&id, data) {
+                    undo.push(Undo::Resolved { id, previous });
+                }
+            }
+            Err(message) => {
+                let path = prefabs
+                    .path_of(&id)
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_default();
+                report(StagedLoadError::Prefab {
+                    id,
+                    source: Box::new(PrefabError::Validation { path, message }),
+                })?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Phase two's check: every file-backed data entry by kind, then ID, then

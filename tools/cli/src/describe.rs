@@ -1,7 +1,8 @@
 //! `tungsten describe` (redo 7.2): the game run in its own build with
 //! `TUNGSTEN_DESCRIBE` naming a file, which `App::run` fills with the
 //! World's description in place of opening a window; printed here as text,
-//! or as JSON, whole or the entries of one name.
+//! or as JSON, whole or the entries of one name: `tungsten describe
+//! <prefab>` prints that prefab's resolved fields (redo 7.12).
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -109,6 +110,7 @@ pub(crate) fn named(description: &Value, name: &str) -> Value {
         .cloned()
         .collect();
     json!({
+        "prefabs": keep(&description["prefabs"]),
         "version": description["version"],
         "components": keep(&description["components"]),
         "shapes": keep(&description["shapes"]),
@@ -131,6 +133,7 @@ fn is_empty(description: &Value) -> bool {
         && none(&description["script"]["actions"])
         && none(&description["script"]["probes"])
         && none(&description["screens"])
+        && none(&description["prefabs"])
         && description["ui"]
             .as_object()
             .into_iter()
@@ -216,6 +219,16 @@ pub(crate) fn render(description: &Value) -> String {
             }
         }
     }
+    let prefabs = description["prefabs"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if !prefabs.is_empty() {
+        let _ = writeln!(out, "Prefabs ({}):", prefabs.len());
+        for prefab in &prefabs {
+            prefab_lines(&mut out, prefab);
+        }
+    }
     let errors = description["errors"]
         .as_array()
         .cloned()
@@ -257,6 +270,32 @@ fn entry_lines(out: &mut String, entry: &Value) {
             let _ = write!(out, " = {default}");
         }
         let _ = writeln!(out, " \u{2014} {}", text(&field["doc"]));
+    }
+}
+
+/// A prefab: its name and the base it extends, then a line per resolved
+/// field and per component, each value as compact JSON.
+fn prefab_lines(out: &mut String, prefab: &Value) {
+    let name = text(&prefab["name"]);
+    match prefab["extends"].as_str() {
+        Some(base) => {
+            let _ = writeln!(out, "  {name} (extends {base})");
+        }
+        None => {
+            let _ = writeln!(out, "  {name}");
+        }
+    }
+    for (field, value) in prefab["prefab"].as_object().into_iter().flatten() {
+        match value.as_object() {
+            Some(components) if field == "components" => {
+                for (component, value) in components {
+                    let _ = writeln!(out, "    components.{component}: {value}");
+                }
+            }
+            _ => {
+                let _ = writeln!(out, "    {field}: {value}");
+            }
+        }
     }
 }
 
