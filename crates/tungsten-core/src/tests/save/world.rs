@@ -1034,3 +1034,139 @@ fn oracle_new_4_a_restore_leaves_a_world_that_names_nothing_unsaving() {
         "the loaded run saves as the live one does"
     );
 }
+
+// Evidence for oracle-ecs new-2 (core hardening 2026-11-07, save oracle).
+// new-3's test shares `Marks` and `hero_dog`.
+
+/// A list of references under one key whose codec's `load` extends it, as
+/// the area tests' `Hits` and the kit's hit lists do.
+#[derive(Debug, Clone, PartialEq)]
+struct Marks {
+    key: u32,
+    targets: Vec<Entity>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct MarksForm {
+    key: u32,
+}
+
+impl From<&Marks> for MarksForm {
+    fn from(marks: &Marks) -> Self {
+        Self { key: marks.key }
+    }
+}
+
+impl From<MarksForm> for Marks {
+    fn from(form: MarksForm) -> Self {
+        Self {
+            key: form.key,
+            targets: Vec::new(),
+        }
+    }
+}
+
+fn save_marks(marks: &Marks, out: &mut RefWriter<'_>) {
+    for &target in &marks.targets {
+        out.put("marks", target);
+    }
+}
+
+fn load_marks(marks: &mut Marks, refs: &RefReader<'_>) {
+    marks.targets.extend_from_slice(refs.get("marks"));
+}
+
+fn marks_keys(_: &Marks) -> Vec<String> {
+    vec!["marks".into()]
+}
+
+/// `world()` with `Marks` saved under `marks`.
+fn world_with_marks() -> World {
+    let mut world = world();
+    world.register_saved_with(
+        "marks",
+        SaveOptions::<Marks>::form::<MarksForm>().refs(RefCodec {
+            save: save_marks,
+            load: load_marks,
+            keys: marks_keys,
+        }),
+    );
+    world
+}
+
+/// A run's start for new-2 and new-3: `hero` and `dog`, global, and, when
+/// `cave`, `bat_1` in area `cave`. The hero chases the dog.
+fn hero_dog(world: &mut World, cave: bool) -> (Entity, Entity, Option<Entity>) {
+    let hero = world.spawn_prefab("hero", [16.0, 16.0]).unwrap();
+    let dog = world.spawn_prefab("hero", [32.0, 16.0]).unwrap();
+    world.insert(
+        hero,
+        Chase {
+            target: dog,
+            speed: 2.0,
+        },
+    );
+    name(world, hero, None, "hero").unwrap();
+    name(world, dog, None, "dog").unwrap();
+    let bat = cave.then(|| {
+        let bat = world.spawn_prefab("bat", [100.0, 40.0]).unwrap();
+        name(world, bat, Some("cave"), "bat_1").unwrap();
+        bat
+    });
+    (hero, dog, bat)
+}
+
+#[test]
+#[ignore = "7.21 step 6: fails until its fix"]
+fn oracle_new_2_a_named_entitys_list_loads_onto_its_saved_form() {
+    // The bat's level gives it one mark, the hero; the run changes
+    // nothing. The restore leaves the fresh value (no patch) and its codec
+    // extends it with the saved mark.
+    let start = |world: &mut World| {
+        let hero = world.spawn_prefab("hero", [16.0, 16.0]).unwrap();
+        let bat = world.spawn_prefab("bat", [100.0, 40.0]).unwrap();
+        world.insert(
+            bat,
+            Marks {
+                key: 1,
+                targets: vec![hero],
+            },
+        );
+        name(world, hero, None, "hero").unwrap();
+        name(world, bat, Some("cave"), "bat_1").unwrap();
+        (hero, bat)
+    };
+    let mut a = world_with_marks();
+    start(&mut a);
+    let saved = capture_world(&a).unwrap();
+    let mut b = world_with_marks();
+    let (hero, bat) = start(&mut b);
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert_eq!(
+        b.get::<Marks>(bat).unwrap().targets,
+        [hero],
+        "the live World's one mark"
+    );
+}
+
+#[test]
+#[ignore = "7.21 step 6: fails until its fix"]
+fn oracle_new_2_a_reference_waiting_on_a_kept_area_leaves_no_fresh_one() {
+    // The hero's chase, the dog at its naming, turns to the bat in area
+    // `cave`; the restoring World has not loaded the cave.
+    let mut a = world();
+    let (hero, _, bat) = hero_dog(&mut a, true);
+    a.get_mut::<Chase>(hero).unwrap().target = bat.unwrap();
+    let first = text(&capture_world(&a).unwrap());
+    let mut b = world();
+    let (hero_b, dog_b, _) = hero_dog(&mut b, false);
+    restore_world(&mut b, &serde_json::from_str(&first).unwrap(), &(Scene,)).unwrap();
+    assert!(b.resource::<SaveState>().is_kept("cave"));
+    let chasing_dog = b.get::<Chase>(hero_b).unwrap().target == dog_b;
+    let second = text(&capture_world(&b).unwrap());
+    assert!(
+        !chasing_dog && second == first,
+        "the hero chases the fresh dog: {chasing_dog}; the capture writes {}",
+        &second[second.find("\"hero\"").unwrap_or(0)..][..120]
+    );
+}
