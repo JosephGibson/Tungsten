@@ -1170,3 +1170,71 @@ fn oracle_new_2_a_reference_waiting_on_a_kept_area_leaves_no_fresh_one() {
         &second[second.find("\"hero\"").unwrap_or(0)..][..120]
     );
 }
+
+// Evidence for oracle-ecs new-1 (core hardening 2026-11-07, save oracle).
+
+#[test]
+#[ignore = "7.21 step 15: fails until its fix"]
+fn oracle_new_1_a_saved_f64_restores_from_its_text_bit_for_bit() {
+    // A saved resource's f64, written to text and read back as a game's
+    // slot does: serde_json without `float_roundtrip` parses a 17-digit
+    // number best-effort.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Gauge {
+        pressure: f64,
+    }
+    let mut drifted = Vec::new();
+    let mut rewritten = 0;
+    for n in 0..2_000 {
+        let pressure = f64::from(n) * 0.1 - 100.0;
+        let mut a = World::new();
+        a.register_saved_resource::<Gauge>("gauge");
+        a.insert_resource(Gauge { pressure });
+        let first = text(&capture_world(&a).unwrap());
+        let read: WorldSave = serde_json::from_str(&first).unwrap();
+        rewritten += usize::from(text(&read) != first);
+        let mut b = World::new();
+        b.register_saved_resource::<Gauge>("gauge");
+        restore_world(&mut b, &read, &(Scene,)).unwrap();
+        let back = b.resource::<Gauge>().pressure;
+        if back.to_bits() != pressure.to_bits() {
+            drifted.push((pressure, back));
+        }
+    }
+    assert!(
+        drifted.is_empty() && rewritten == 0,
+        "{} of 2,000 pressures restored off (first {:?}); {rewritten} saves wrote other bytes once read",
+        drifted.len(),
+        &drifted[..drifted.len().min(3)]
+    );
+}
+
+#[test]
+#[ignore = "7.21 step 15: fails until its fix"]
+fn oracle_new_1_a_kept_areas_f32_writes_back_as_it_was_read() {
+    // `bat_1`'s f32 health in area `cave`, which the restoring World has
+    // not loaded: the restore keeps the record as parsed, and the next
+    // capture writes it back.
+    let mut a = world();
+    let la = level(&mut a);
+    let mut differ = Vec::new();
+    for n in 1..200_u16 {
+        a.get_mut::<Health>(la.bat_1).unwrap().current = f32::from(n) * 0.1;
+        let first = text(&capture_world(&a).unwrap());
+        let read: WorldSave = serde_json::from_str(&first).unwrap();
+        let mut b = world();
+        let hero = b.spawn_prefab("hero", [16.0, 16.0]).unwrap();
+        name(&mut b, hero, None, "hero").unwrap();
+        restore_world(&mut b, &read, &(Scene,)).unwrap();
+        assert!(b.resource::<SaveState>().is_kept("cave"));
+        if text(&capture_world(&b).unwrap()) != first {
+            differ.push(f32::from(n) * 0.1);
+        }
+    }
+    assert!(
+        differ.is_empty(),
+        "{} of 199 healths wrote other bytes from a kept area (first {:?})",
+        differ.len(),
+        &differ[..differ.len().min(5)]
+    );
+}
