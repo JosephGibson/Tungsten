@@ -8177,3 +8177,24 @@ fn a_world_without_a_kinematic_mass_keeps_no_push_state() {
     ];
     assert_eq!(capacities, [0; 11]);
 }
+
+#[test]
+#[ignore = "7.21 step 2: fails until its fix"]
+fn a_fast_bodys_pair_staging_stays_bounded() {
+    // D-081: one 1/60 s step of a lone circle at the speeds 60 s and 600 s
+    // of fall at gravity 3,600 give it. Its pair box grows by its speed on
+    // both axes, so the pair grid should stage a bounded number of cells.
+    let staged = |speed: f32| {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 3600.0);
+        let (body, shape) = (RigidBody::dynamic(), Collider::circle(8.0));
+        spawn_body(&mut world, body, shape, Vec2::ZERO, Vec2::new(0.0, speed));
+        physics_step(&mut world);
+        world.resource::<PhysicsBuffers>().grid.bodies.cell_refs()
+    };
+    let cells = [staged(216_000.0), staged(2_160_000.0)];
+    assert!(
+        cells.iter().all(|&refs| refs <= 64 * 64),
+        "the pair grid staged {cells:?} cell refs for one body"
+    );
+}

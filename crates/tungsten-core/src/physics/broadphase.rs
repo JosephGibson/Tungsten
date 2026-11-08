@@ -134,6 +134,12 @@ impl SpatialGrid {
         self.cell_size
     }
 
+    /// Tests: the (proxy, cell) refs staged since the last clear.
+    #[cfg(test)]
+    pub(crate) fn cell_refs(&self) -> usize {
+        self.cell_refs
+    }
+
     /// True when at most `few` records are staged and none covers a cell of
     /// `query`: a query would visit nothing, so a caller can skip the walk.
     pub(crate) fn misses_few(&self, query: &Aabb, few: usize) -> bool {
