@@ -164,7 +164,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-075` | Persistent pairs under travel budgets. Supersedes `D-062` staging/prefilter and `D-066` event order. Budget rebuild/radius superseded by `D-081`; sweep amended by `D-080`. |
 | `D-076` | Warm starts follow persistent pair indices. Supersedes `D-063` map rebuild. Amended by `D-081`: repair by pair key. Amended by `D-229`: tangent impulses carried as normal ones. |
 | `D-080` | Statics sweep grid, direct compact cell table, compact flags. Amends `D-062` layout and `D-075` sweep note. Amended by `D-203`: the tiles' own grid, staged once per cache, walked with the entity grid in one grid's order. Amended by `D-251`: an oversize proxy stages no cell. |
-| `D-081` | Repair pairs only for tripped proxies; full rebuild for wakes/large changes. Supersedes `D-075` rule (a)/radius; amends `D-076`. Amended by `D-154`: kinematic budgets. Amended by `D-234`: contact wakes repaired too. Amended by `D-251`: oversize proxies pair in one pass, and their trips rebuild. |
+| `D-081` | Repair pairs only for tripped proxies; full rebuild for wakes/large changes. Supersedes `D-075` rule (a)/radius; amends `D-076`. Amended by `D-154`: kinematic budgets. Amended by `D-234`: contact wakes repaired too. Amended by `D-251`: oversize proxies pair in one pass, and their trips rebuild. Amended by `D-261`: each budget takes its own gravity scale. |
 | `D-082` | Sleep arrays parallel to proxies, rebuilt only on body-sequence change. Amends `D-065` keyed map/rebuild. |
 | `D-083` | Sorted columns, unboxed moves and slot-table access. Amends `D-036` storage; accepted costs recorded here. |
 | `D-084` | Typed command queues, function-pointer removes, reused buffer and grouped inserts. Amends `D-039`; accepted regression recorded here. |
@@ -281,6 +281,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-258` | Static velocity (7.21 step 17): a proxy neither dynamic nor kinematic takes velocity zero in the gather, so a static body's `Velocity` moves nothing; a moving immovable surface is a kinematic body. Amends `D-066`, `D-154`. |
 | `D-259` | Static joins (7.21 step 18): touching static boxes in the same layers mask the faces they share whole, in the step's contacts and sweeps, by one sort and two sweeps a frame; queries keep every entity face (`index_bodies` writes `FACE_ALL`). Amends `D-064`, `D-066`. |
 | `D-260` | Map edges (7.21 step 19): two maps of one cell size whose grids meet edge to edge mask the edge cells' outer faces the other's cells cover, in the step, whenever a map changes; casts still meet the traced faces. Amends `D-203`, `D-228`. |
+| `D-261` | Per-proxy gravity budgets (7.21 step 20): an awake dynamic proxy's pair budget takes the gravity term at `max(1, |s_i|)`, its own scale; no other body's scale reaches it, and `pair_config`'s lift is gone. Amends `D-081`. |
 
 ## When To Open a Decision
 

@@ -731,6 +731,7 @@ Cells without a verdict read `improved`. Two variants were measured and dropped.
 **Amended by D-154:** the budgets and the tripped set only; a kinematic proxy takes an awake dynamic proxy's budget without the gravity term, initiates and is repaired as one, and never trips, since its velocity is fixed within a frame.
 **Amended by D-234:** the build after a contact wake only; the woken proxy joins the tripped set and is repaired, the quarter rule counting it with the tripped ones.
 **Amended by D-251:** the build and the repair only; an oversize proxy (inflated past 64 pair-grid cells) pairs in one pass over every proxy's bounds, a repair's members test the oversize list beside their grid walks, and a trip of an oversize proxy, or a member whose fresh `r_i` passes the cap, rebuilds; the budgets, the check, completeness and the impulses stand.
+**Amended by D-261:** the gravity term only; an awake dynamic proxy's budget takes it at its own scale, `max(1, |s_i|)·|g|·h²·(n−1)(n+2)/2`, so no other body's scale reaches a budget and worlds whose scales are all at most 1 keep theirs bit for bit; the rest stands.
 **Date:** 2026-10-01
 **Decision:** A proxy that runs out of travel budget gets its own pairs rebuilt; the pair list, the grid and every other proxy's budget stay. `D-075`'s build still runs at frame start, after a contact wake and when the proxy set changes.
 
@@ -4106,3 +4107,13 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Amends `D-203` and `D-228` as their marker lines say.
 - Pins: the physics hashes and 01's and the template's guards hold; 02's `terrain` guard allocates 2,565,740 bytes (from 2,563,820).
 - Open: misaligned grids keep their seams, and casts across a map seam meet them (`docs/known-issues.md`).
+
+## D-261 — A pair budget takes its own body's gravity scale
+**Date:** 2026-11-08
+**Decision:** Core hardening (7.21) Step 20, `ch-gravity-scale-pairs`. An awake dynamic proxy's pair budget takes the gravity term at its own scale: `r_i = |v_i|·t_left + max(1, |s_i|)·|g|·h²·(n−1)(n+2)/2 + m + 2·linear_slop`. No other body's scale reaches a budget, so worlds whose scales are all at most 1 keep their budgets bit for bit. `pair_config`, which lifted every budget to the largest scale, is gone; a repair's oversize check (`D-251`) reads the same per-proxy lift. With `D-251`'s oversize path, the gravity term needs no cap on the scale.
+
+**Why:** One body's gravity scale above 1 lifted every awake body's pair allowance, though `D-081`'s budget is per proxy: with one box of scale 3 anywhere, the others' budgets grew 37 times (`left: (1, 57.25001)`, `right: (0, 1.5625001)`), a cost the physics oracle counted in 3.4 million allowances.
+
+**Consequences:**
+- Amends `D-081` as its marker line says. The physics oracle's `ch-gravity-scale-pairs` entry and witness are gone.
+- Pins: the physics hashes and every counter guard hold; no workspace body outside tests has a scale other than 1, and the kit's scale-2 lob test holds.

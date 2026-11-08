@@ -1137,20 +1137,6 @@ pub fn physics_step(world: &mut World) {
     world.insert_resource(buffers);
 }
 
-/// The config the pair budgets read (D-081): `config`, its gravity times
-/// the largest gravity scale's size when one is above 1, so a body falling
-/// faster than the world's gravity keeps its pairs; at scales up to 1 the
-/// budgets are `config`'s, bit for bit.
-fn pair_config(config: &PhysicsConfig, gravity_scales: &[f32]) -> PhysicsConfig {
-    let lift = gravity_scales
-        .iter()
-        .fold(1.0_f32, |most, &scale| most.max(scale.abs()));
-    PhysicsConfig {
-        gravity: config.gravity * lift,
-        ..*config
-    }
-}
-
 /// The step's substep count (D-064): `PhysicsConfig::substeps`, or, in a
 /// world with a kinematic proxy, enough that no substep is longer than a
 /// 1/60 s step's, from `substeps` up to twice it. Contacts against a
@@ -1257,8 +1243,8 @@ fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
 
 /// One solver substep: contacts once, warm-started soft solve, integrate,
 /// arrival pass, relax, restitution, speculative safety net. Runs entirely on the
-/// dense proxy arrays — no `World` access (D-066). The pair budgets read
-/// [`pair_config`]'s gravity.
+/// dense proxy arrays — no `World` access (D-066). Each pair budget reads
+/// its own body's gravity scale (D-081).
 fn substep(
     config: &PhysicsConfig,
     sub_dt: f32,
@@ -1266,8 +1252,7 @@ fn substep(
     buffers: &mut PhysicsBuffers,
     sleep_enabled: bool,
 ) {
-    let pair_config = pair_config(config, &buffers.extra.gravity_scales);
-    refresh_pairs(&pair_config, sub_dt, time_left, buffers);
+    refresh_pairs(config, sub_dt, time_left, buffers);
     #[cfg(test)]
     if buffers.check_pair_contacts {
         tests::assert_pair_contacts(config, sub_dt, buffers);

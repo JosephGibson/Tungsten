@@ -243,6 +243,17 @@ pub(super) fn gravity_allowance(config: &PhysicsConfig, sub_dt: f32, time_left: 
     0.5 * config.gravity.length() * (time_left - sub_dt).max(0.0) * (time_left + 2.0 * sub_dt)
 }
 
+/// The share of the world's gravity allowance the budget of the entity
+/// proxy at `index` takes (D-081): its own gravity scale's size, at least 1,
+/// so a body falling faster than the world's gravity keeps its pairs and no
+/// other body's budget changes; at scales up to 1 it is the world's, bit for
+/// bit.
+fn gravity_lift(gravity_scales: &[f32], index: usize) -> f32 {
+    gravity_scales
+        .get(index)
+        .map_or(1.0, |scale| scale.abs().max(1.0))
+}
+
 /// Pair inflation of a moving body at `speed` (D-081); a kinematic body
 /// passes a `gravity_allowance` of 0.
 fn awake_pair_radius(
@@ -299,7 +310,7 @@ fn trips_oversize(
         let gravity = if proxy.kinematic {
             0.0
         } else {
-            gravity_allowance
+            gravity_allowance * gravity_lift(&buffers.extra.gravity_scales, member as usize)
         };
         awake_pair_radius(config, proxy.velocity.length(), time_left, gravity) > cap
     })
@@ -337,6 +348,7 @@ pub(super) fn build_pairs(
         ..
     } = buffers;
     let super::StepExtra {
+        gravity_scales,
         pair_bounds,
         tile_bounds,
         oversize,
@@ -371,7 +383,7 @@ pub(super) fn build_pairs(
                 if proxy.kinematic {
                     0.0
                 } else {
-                    gravity_allowance
+                    gravity_allowance * gravity_lift(gravity_scales, id)
                 },
             )
         } else {
@@ -545,6 +557,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         ..
     } = buffers;
     let super::StepExtra {
+        gravity_scales,
         oversize,
         frictions,
         pair_tangents,
@@ -619,7 +632,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
             if proxy.kinematic {
                 0.0
             } else {
-                gravity_allowance
+                gravity_allowance * gravity_lift(gravity_scales, index)
             },
         );
         let mut aabb = proxy.world_aabb();

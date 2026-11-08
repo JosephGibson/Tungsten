@@ -9180,7 +9180,6 @@ fn a_box_crosses_two_maps_placed_edge_to_edge() {
 }
 
 #[test]
-#[ignore = "7.21 step 20: fails until its fix"]
 fn one_bodys_gravity_scale_leaves_the_other_pair_boxes_alone() {
     // D-081's budget is per proxy: two resting boxes 16 px apart at gravity
     // 3,600 take their own fall's allowance and no pair, whatever the

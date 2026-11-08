@@ -2439,23 +2439,6 @@ fn witness_island_tags() -> Scene {
     )
 }
 
-/// Two boxes apart on the floor, one with gravity scale 3: the other's
-/// allowance takes the lift.
-fn witness_gravity_scale_pairs() -> Scene {
-    let mut scaled = block(8.0, Vec2::new(100.0, 91.75), Vec2::ZERO, 1.0);
-    scaled.gravity_scale = 3.0;
-    witness_scene(
-        900.0,
-        2,
-        vec![floor(10.0)],
-        vec![
-            block(8.0, Vec2::new(-100.0, 91.75), Vec2::ZERO, 1.0),
-            scaled,
-        ],
-        Vec::new(),
-    )
-}
-
 /// A box of gravity scale 0.04 asleep in mid-air (at y 4.54 after half a
 /// second), a box teleported 2 px into it from below at step 40 and
 /// despawned at step 41, still touching: the sleeper hangs with nothing
@@ -2532,13 +2515,6 @@ const KNOWN: &[Known] = &[
                 sleeper's island tag (a contact woke it out of the island), the contact ending \
                 with the sleeper asleep",
         witness: witness_island_tags,
-    },
-    Known {
-        id: "ch-gravity-scale-pairs",
-        source: "known-issues' ch-gravity-scale-pairs row",
-        skips: "invariant 1: a moving proxy's fresh allowance above its own while some body's \
-                gravity scale is above 1 (a cost: no pair is missed)",
-        witness: witness_gravity_scale_pairs,
     },
 ];
 
