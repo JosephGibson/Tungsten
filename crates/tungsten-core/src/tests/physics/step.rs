@@ -397,6 +397,118 @@ fn sweep_net_lets_a_fast_body_slide_along_a_floor_it_touches() {
 }
 
 #[test]
+#[ignore = "7.21 step 3: fails until its fix"]
+fn sweep_net_lets_a_fast_body_slide_along_a_face_it_lands_on() {
+    // A frictionless box faster than its smallest half extent a substep,
+    // let go 4 px over a floor while moving along it, or 4 px over the
+    // 45° ramp of `a_box_slides_down_a_frictionless_slope` while falling:
+    // the net's clamp at landing leaves it a hair over the face, where the
+    // next substep's clamp undoes its whole move, so it would hold there
+    // with its velocity and never sleep. It slides on instead.
+    let mut frozen = Vec::new();
+    let mut runs = 0;
+    for tiles in [false, true] {
+        for gravity in [900.0, 3_600.0] {
+            for dt in [1.0 / 60.0, 1.0 / 30.0] {
+                for (half, speed) in [(Vec2::splat(2.0), 500.0), (Vec2::splat(4.0), 1_000.0)] {
+                    let mut world = seed_world();
+                    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, gravity);
+                    world.resource_mut::<Time>().advance_frame(dt);
+                    if tiles {
+                        let floor = vec![vec![0; 1_024]];
+                        spawn_map(&mut world, "floor", Vec2::new(-512.0, 100.0), 1_024, floor);
+                    } else {
+                        let floor = Collider::aabb(Vec2::new(8_000.0, 10.0));
+                        spawn_static(&mut world, floor, Vec2::new(0.0, 110.0));
+                    }
+                    let start = Vec2::new(0.0, 100.0 - half.y - 4.0);
+                    let launch = Vec2::new(speed, 0.0);
+                    let body = spawn_body(
+                        &mut world,
+                        RigidBody::dynamic(),
+                        Collider::aabb(half),
+                        start,
+                        launch,
+                    );
+                    let steps = (1.0 / dt).round() as usize;
+                    let mut half_way = 0.0;
+                    for step in 1..=steps {
+                        physics_step(&mut world);
+                        drain_events(&mut world);
+                        if step == steps / 2 {
+                            half_way = world.get::<Position>(body).unwrap().0.x;
+                        }
+                    }
+                    runs += 1;
+                    let at = world.get::<Position>(body).unwrap().0;
+                    if at.x - half_way < 0.4 * speed {
+                        frozen.push(format!(
+                            "{} g {gravity} dt {dt:.4} half {half} at {speed} px/s: x {half_way} \
+                             at 0.5 s, {} at 1 s, velocity {}, {} px over the face",
+                            if tiles { "tiles" } else { "static box" },
+                            at.x,
+                            world.get::<Velocity>(body).unwrap().0,
+                            100.0 - (at.y + half.y),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    let rows: Vec<String> = (0..12)
+        .map(|row| {
+            (0..12)
+                .map(|col| match (col + row).cmp(&11) {
+                    std::cmp::Ordering::Equal => 'a',
+                    std::cmp::Ordering::Greater => '#',
+                    std::cmp::Ordering::Less => '.',
+                })
+                .collect()
+        })
+        .collect();
+    let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+    for gravity in [900.0, 3_600.0] {
+        for half in [Vec2::new(4.0, 1.0), Vec2::splat(4.0)] {
+            let mut world = one_way_world(slope_map(&rows));
+            world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, gravity);
+            let start = Vec2::new(150.0, 192.0 - (150.0 + half.x) - half.y - 4.0);
+            let launch = Vec2::new(0.0, 1_600.0);
+            let body = spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                Collider::aabb(half),
+                start,
+                launch,
+            );
+            let mut at20 = Vec2::ZERO;
+            for step in 1..=40 {
+                physics_step(&mut world);
+                drain_events(&mut world);
+                if step == 20 {
+                    at20 = world.get::<Position>(body).unwrap().0;
+                }
+            }
+            runs += 1;
+            let at = world.get::<Position>(body).unwrap().0;
+            // Still sliding between steps 20 and 40, or off the ramp's foot.
+            if at.distance(at20) < 4.0 && at.x > 8.0 {
+                frozen.push(format!(
+                    "ramp g {gravity} half {half} at 1600 px/s: {at20} after 20 steps, {at} after \
+                     40, velocity {}",
+                    world.get::<Velocity>(body).unwrap().0,
+                ));
+            }
+        }
+    }
+    assert!(
+        frozen.is_empty(),
+        "{} of {runs} runs froze on the face:\n{}",
+        frozen.len(),
+        frozen.join("\n")
+    );
+}
+
+#[test]
 fn sweep_net_restages_statics_when_the_proxy_set_changes() {
     // The sweep grid is staged per frame (D-080). After a static despawns and
     // two spawn, proxy indices shift: the old slab must stop clamping and the
