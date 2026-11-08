@@ -397,7 +397,6 @@ fn sweep_net_lets_a_fast_body_slide_along_a_floor_it_touches() {
 }
 
 #[test]
-#[ignore = "7.21 step 3: fails until its fix"]
 fn sweep_net_lets_a_fast_body_slide_along_a_face_it_lands_on() {
     // A frictionless box faster than its smallest half extent a substep,
     // let go 4 px over a floor while moving along it, or 4 px over the

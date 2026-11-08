@@ -3,6 +3,7 @@
 
 use super::gather::TileCache;
 use super::pairs::PairGrid;
+use super::solver::one_way_holds;
 use super::{Proxy, ProxyLayers, TouchObs, tile_hit};
 use crate::physics::PhysicsConfig;
 use crate::physics::broadphase::{ProxyId, SpatialGrid, for_each_in_both};
@@ -106,7 +107,9 @@ impl SweepGrid {
 /// Only statics can be hit, never a kinematic body, and only those whose
 /// layers meet the body's. The pair grid answers the query until the
 /// statics-only grid is worth staging (D-080); both return the same statics
-/// in the same order, so the first hit is the same. Each clamp's event names
+/// in the same order, so the first hit is the same. A move that ends within
+/// `4 · linear_slop` past the face it enters, and within its smallest half
+/// extent, is left to the contacts (D-064). Each clamp's event names
 /// the speed it stopped and a tile's cell, and with `touches`, the contact
 /// record's, it is a touch too.
 #[allow(clippy::too_many_arguments)]
@@ -207,6 +210,21 @@ pub(super) fn speculative_pass(
                     && (face_bit != FACE_TOP
                         || a_prev.y + a_half.y > target.center.y - b_half.y + slack)
                 {
+                    continue;
+                }
+                // A move that ends within the narrow phase's slack past the
+                // face, and within the body's smallest half extent, is no
+                // hit: the next substep's contact holds the body there, as
+                // it holds one it admitted, where a clamp to `t` would undo
+                // the move's slide along the face (a one-way top by the
+                // admission's own test).
+                let depth = (1.0 - t) * -(a_cur - a_prev).dot(n);
+                let held = if target.face_mask & FACE_ONE_WAY != 0 {
+                    one_way_holds(proxy, a_cur, target, target.center, n, slack)
+                } else {
+                    depth <= slack
+                };
+                if held && depth <= min_extent {
                     continue;
                 }
                 if best.is_none_or(|(best_t, _, _)| t < best_t) {
