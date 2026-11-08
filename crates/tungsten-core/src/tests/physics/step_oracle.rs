@@ -2488,20 +2488,6 @@ fn witness_thin_box() -> Scene {
     scene
 }
 
-/// A box at rest on a 16 px static floor that carries a velocity of
-/// (0, 200), through which it sinks.
-fn witness_static_velocity() -> Scene {
-    let mut ground = floor(8.0);
-    ground.velocity = Vec2::new(0.0, 200.0);
-    witness_scene(
-        900.0,
-        120,
-        vec![ground],
-        vec![block(8.0, Vec2::new(0.0, 91.75), Vec2::ZERO, 1.0)],
-        Vec::new(),
-    )
-}
-
 const KNOWN: &[Known] = &[
     Known {
         id: "oracle-thin-box",
@@ -2553,14 +2539,6 @@ const KNOWN: &[Known] = &[
         skips: "invariant 1: a moving proxy's fresh allowance above its own while some body's \
                 gravity scale is above 1 (a cost: no pair is missed)",
         witness: witness_gravity_scale_pairs,
-    },
-    Known {
-        id: "ch-static-velocity",
-        source: "known-issues' ch-static-velocity row",
-        skips: "invariants 1 and 2: a pair with a static box that has a velocity missed by the \
-                allowance, or a body passing a static box or solid cells it entered within three \
-                steps of touching such a box (which carries it as a moving surface)",
-        witness: witness_static_velocity,
     },
 ];
 

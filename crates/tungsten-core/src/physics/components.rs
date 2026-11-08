@@ -149,6 +149,7 @@ impl Collider {
 #[non_exhaustive]
 pub enum BodyKind {
     /// Never moves; the immovable side of its contacts with dynamic bodies.
+    /// Its `Velocity`, if it has one, is ignored: it is no surface speed.
     Static,
     /// Moved by gravity times its [`gravity_scale`](RigidBody::gravity_scale),
     /// its `Velocity` and its contacts; sleeps in islands.

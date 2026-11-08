@@ -166,6 +166,13 @@ pub(super) fn gather_proxies(
             Some(b) => (false, false, 0.0, b.restitution),
             None => (false, false, 0.0, 0.0),
         };
+        // A static body never moves, so its `Velocity` is no surface speed:
+        // only a dynamic or kinematic proxy carries one.
+        let velocity = if is_dynamic || kinematic {
+            velocity
+        } else {
+            Vec2::ZERO
+        };
         let center = position.0 + collider.offset;
         let gravity_scale = match body {
             Some(b) if is_dynamic => b.gravity_scale,

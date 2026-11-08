@@ -9001,7 +9001,6 @@ fn oracle_new_1_a_heavy_body_never_drives_a_light_one_through_a_static_floor() {
 }
 
 #[test]
-#[ignore = "7.21 step 17: fails until its fix"]
 fn a_static_bodys_velocity_moves_nothing_on_it() {
     // ch-static-velocity (physics review a1-5): a box of half 8 resting at
     // 0 px on a static floor of half (64, 8). A static body never moves, so
