@@ -465,7 +465,8 @@ fn serialize_error(what: &str, component: &str, err: &serde_json::Error) -> Capt
 /// the World has not loaded is kept, migrated to the registry's versions, for
 /// [`enter_area`](super::enter_area) and the next capture. Then a second
 /// pass resolves the references by save ID, once every entity exists; one
-/// into a kept area waits for it. Last, each moving body it placed that
+/// into a kept area waits for it, so a key split between a loaded area and
+/// a kept one loads in two calls, each in saved order. Last, each moving body it placed that
 /// overlaps a solid goes to its [`free_spot`](crate::physics::free_spot).
 ///
 /// It checks everything first and changes nothing on an error: the

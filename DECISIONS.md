@@ -3581,6 +3581,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 ## D-230 — Saves of many areas: save identities on named entities and a run's spawns; a registry of saved components and resources the kit fills; a capture per area of each named entity's changes over its fresh spawn, the spawns whole, references by save ID, tiles and kept areas; a restore that sets bodies out of solids; migrations a schema at a time
 **Amended by D-241:** identities and the kit's saves only; `CommandBuffer::replace_prefab` gives the spawn that takes an entity's place its `Saved` ID and area with the new prefab's ID, so a capture writes a named entity replaced as gone and the replacement as a spawn under its ID; the kit saves chemistry's queue, its tile statuses and `became`; the rest stands.
 **Amended by D-253:** the free spot only; a body overlapping no solid by more than four `linear_slop`s, `D-064`'s admission slack, stays where it is, and one past it goes to the nearest ring point that overlaps no solid past one `linear_slop`; the search, its order and its reach stand, and so does the rest.
+**Amended by D-257:** the references only; a key whose references are split between a loaded area and a kept one loads in two calls, each in saved order, its resolved references at the restore and its waiting ones at the area's entry, and a capture between the two writes the live references, then the waiting ones; the rest stands.
 **Date:** 2026-10-31
 **Decision:** Redo 7.9's first plan (phase 7's Step 7, P7-8, S-2, S-3, S-43, S-59's kit part, S-101, S-125's engine part): the engine saves the World for the game. No default moves today's worlds: a World where nothing was named holds no save state and spawns as before.
 
@@ -4054,3 +4055,14 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Amends `D-153` and `D-239` as their marker lines say. `api/tungsten-core.txt` gains `RigidBody::MAX_MASS`.
 - Pins: the physics hashes and every counter guard hold; no workspace body's mass passes 1e6 (core's tunneling tests), 01's and the data's stay under 10.
 - Open: the public `inv_mass` field and the mass's lower end (`docs/known-issues.md`).
+
+## D-257 — A key split across a kept area loads in two calls, each in saved order
+**Date:** 2026-11-08
+**Decision:** Core hardening (7.21) Step 16, `ref-order`, a contract rather than a fix. A key whose references are split between a loaded area and a kept one loads in two calls of its codec's `load`, each in saved order: the resolved references at the restore and the waiting ones at the area's entry (`enter_area`). A capture between the two writes the live references, then the waiting ones. `RefReader`'s and `RefCodec::load`'s docs say so, and `oracle_new_3_a_key_split_across_a_kept_area_keeps_its_order` pins the order.
+
+**Why:** `RefReader` promised each key's references "in their saved order", which a split key broke: after the entry they read loaded first, waiting after. Neither fix holds. Waiting with the whole key until the entry leaves a restored `Hitbox` without the loaded targets it has hit, so they can be hit again before the entry (the kit's guard `a_split_hit_list_never_hits_its_loaded_target_again_before_the_entry` holds the window); putting each reference back at its saved index needs every codec's cooperation, since a list codec appends.
+
+**Consequences:**
+- Amends `D-230` as its marker line says. The ECS oracle's `DESIGN` list holds `ref-order` where the save oracle's `FOUND` held it.
+- The kit's ten codecs (`rg -n 'RefCodec \{' crates/tungsten-kit/src`): `Delivery`, `Carried`, `ContactDamage`, `Source`, `Spawned`, `Effects`, `EffectRequests`, `Requests` and `Chemistry` hold one reference per key, so no key of theirs splits; `Hitbox` keeps a list under its activation and reads it by membership (`has_hit`), so a split changes only a capture's order after the entry, never a hit.
+- Pins: nothing moves.

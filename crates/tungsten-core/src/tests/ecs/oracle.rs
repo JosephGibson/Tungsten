@@ -98,6 +98,12 @@ pub(crate) const DESIGN: &[(&str, &str, &str)] = &[
         "serde_json",
         "a non-finite float writes `null`: saved floats are finite",
     ),
+    (
+        "ref-order",
+        "save/registry.rs `RefReader` (D-257)",
+        "a key split between a loaded area and a kept one loads in two calls, its resolved references \
+         first: the default run's kept runs drop `hall`'s targets from a hit list that also names others",
+    ),
 ];
 
 /// The row of [`KNOWN`] a failure's text matches, if any.

@@ -407,19 +407,11 @@ fn float64(rng: &mut Rng, any: bool) -> f64 {
 /// The oracle's own findings, each with its `new-<n>.md` in
 /// `perf-runs/20261107-core-hardening/oracle-ecs/` and the case the
 /// default run leaves out.
-pub(crate) const FOUND: &[(&str, &str, &str)] = &[
-    (
-        "float-parse",
-        "new-1.md",
-        "a float whose JSON form takes 17 digits: the default run writes multiples of 0.25",
-    ),
-    (
-        "ref-order",
-        "new-3.md",
-        "one key's references split between a loaded area and a kept one: the default run's \
-         kept runs drop `hall`'s targets from a hit list that also names others",
-    ),
-];
+pub(crate) const FOUND: &[(&str, &str, &str)] = &[(
+    "float-parse",
+    "new-1.md",
+    "a float whose JSON form takes 17 digits: the default run writes multiples of 0.25",
+)];
 
 fn random_val(kind: SKind, rng: &mut Rng, any: bool) -> SVal {
     match kind {
@@ -711,7 +703,7 @@ enum Step {
         /// the runs).
         fresh_refs: bool,
         /// Whether a hit list may name `hall` and other areas at once in a
-        /// kept run (`ref-order`, [`FOUND`]).
+        /// kept run (`ref-order`, the ECS oracle's `DESIGN`).
         split_refs: bool,
     },
     Op(SOp),

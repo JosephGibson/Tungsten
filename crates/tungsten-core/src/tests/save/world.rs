@@ -1243,7 +1243,6 @@ fn oracle_new_1_a_kept_areas_f32_writes_back_as_it_was_read() {
 // It uses new-2's `Marks`, `world_with_marks` and `hero_dog`.
 
 #[test]
-#[ignore = "7.21 step 16: fails until its fix"]
 fn oracle_new_3_a_key_split_across_a_kept_area_keeps_its_order() {
     // The hero marks the bat (area `cave`), then the dog (global). The
     // restoring World loads the global record alone, then enters the cave.
@@ -1273,9 +1272,24 @@ fn oracle_new_3_a_key_split_across_a_kept_area_keeps_its_order() {
             .map(|&target| world.get::<Saved>(target).unwrap().id().0)
             .collect()
     };
+    // `D-257`: a split key loads in two calls, each in saved order, the dog
+    // (global) at the restore and the bat at the cave's entry; a capture
+    // between them writes the live reference, then the waiting one.
+    let marks = |text: &str| -> Vec<u64> {
+        let save: serde_json::Value = serde_json::from_str(text).unwrap();
+        save["global"]["named"]["hero"]["refs"]["marks"]["marks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_u64().unwrap())
+            .collect()
+    };
+    let live = ids(&a, hero);
+    let loaded_then_waiting = vec![live[1], live[0]];
+    assert_eq!(marks(&first), live, "the save keeps the live order");
     assert_eq!(
-        (ids(&b, hero_b), kept == first),
-        (ids(&a, hero), true),
-        "the marks in their live order, and the kept World's capture"
+        (ids(&b, hero_b), marks(&kept)),
+        (loaded_then_waiting.clone(), loaded_then_waiting),
+        "the marks after the entry, and the window's capture"
     );
 }
