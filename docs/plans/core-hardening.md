@@ -1,6 +1,6 @@
-# Core hardening (7.21) — draft
+# Core hardening (7.21)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** core's physics and saves hold where the 2026-11-07 big session's track C found them failing: two seeded oracles land in core's tests, then each of the 23 findings it reproduced gets a fix, its repro test committed before the fix and its rule recorded. That is the 17 physics rows `docs/known-issues.md` held without a step, and the six rows the oracles found.
 - **non-goals:** query.rs's refresh cost (`docs/known-issues.md`'s row for colliders built past the `rigid_body` caps, 7.14's C1); the physics rows that already have steps (the cast from a landed shape at 7.13; the grid clears and the island wakes' O(k·N) at 7.14); S-59's known mismatch (physics stepped after a load); the residuals each fix names in its row (the co-moving pair group, loaded columns sinking past the resting band, one-way case (b), a static box against a tile map, the ghost ledge beside a covered slope leg); a physics hash moved (`docs/plans/phase-7.md` §5); a perf sitting of its own (`D-226`): the minor release after 7.21 sits it (§2.8).
 - **files to touch:** the union below; §3 gives each step's own.

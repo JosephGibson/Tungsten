@@ -387,6 +387,10 @@ pub struct PhysicsBuffers {
     /// D-063 reference model, rebuilt every substep in regression tests only.
     #[cfg(test)]
     reference_impulses: Option<ImpulseMap>,
+    /// The random-scene oracle's probe, which reads the pair list after each
+    /// refresh and the contacts after each substep (`step_oracle.rs`).
+    #[cfg(test)]
+    oracle: Option<Box<oracle::Probe>>,
     pairs: Vec<(u32, u32)>,
     events: Vec<CollisionEvent>,
     /// Sensors gathered this frame, in gather order.
@@ -1256,6 +1260,10 @@ fn substep(
         tests::assert_pair_contacts(config, sub_dt, buffers);
         buffers.checked_substeps += 1;
     }
+    #[cfg(test)]
+    if buffers.oracle.is_some() {
+        oracle::after_refresh(config, sub_dt, time_left, buffers);
+    }
     let PhysicsBuffers {
         proxies,
         bodies,
@@ -1744,6 +1752,10 @@ fn substep(
         if proxy.moves() {
             budget.travel += (proxy.center - proxy.prev_center).length();
         }
+    }
+    #[cfg(test)]
+    if buffers.oracle.is_some() {
+        oracle::after_substep(config, sub_dt, buffers);
     }
 }
 
@@ -2799,3 +2811,7 @@ impl PushRecord {
 #[cfg(test)]
 #[path = "../../tests/physics/step.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../tests/physics/step_oracle.rs"]
+mod oracle;
