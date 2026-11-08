@@ -9178,3 +9178,48 @@ fn a_box_crosses_two_maps_placed_edge_to_edge() {
         );
     }
 }
+
+#[test]
+#[ignore = "7.21 step 20: fails until its fix"]
+fn one_bodys_gravity_scale_leaves_the_other_pair_boxes_alone() {
+    // D-081's budget is per proxy: two resting boxes 16 px apart at gravity
+    // 3,600 take their own fall's allowance and no pair, whatever the
+    // gravity scale of a far box that never falls (it has no `Velocity`),
+    // and that box keeps its own scaled allowance.
+    let run = |scale: f32| {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 3600.0);
+        let far = world.spawn_with((
+            Position(Vec2::new(1.0e6, 0.0)),
+            Collider::aabb(Vec2::splat(8.0)),
+            RigidBody::dynamic().with_gravity_scale(scale),
+        ));
+        let boxes = [0.0, 32.0].map(|x| {
+            let (body, shape) = (RigidBody::dynamic(), Collider::aabb(Vec2::splat(8.0)));
+            spawn_body(&mut world, body, shape, Vec2::new(x, 0.0), Vec2::ZERO)
+        });
+        physics_step(&mut world);
+        let buffers = world.resource::<PhysicsBuffers>();
+        let radius = |entity: Entity| {
+            let index = buffers
+                .proxies
+                .iter()
+                .position(|p| p.entity == Some(entity));
+            buffers.pair_budgets[index.unwrap()].radius
+        };
+        (buffers.pairs.len(), radius(boxes[0]), radius(far))
+    };
+    let (_, unit, _) = run(1.0);
+    let (pairs, near, far) = run(100.0);
+    assert_eq!(
+        (pairs, near),
+        (0, unit),
+        "a far box of gravity scale 100 lifted the near boxes' allowance"
+    );
+    let margin = (PAIR_MARGIN_SLOPS + 2.0) * PhysicsConfig::default().linear_slop;
+    let own = 100.0 * (unit - margin) + margin;
+    assert!(
+        (far - own).abs() < 1e-3,
+        "the scaled box's radius {far}, its own fall's {own}"
+    );
+}
