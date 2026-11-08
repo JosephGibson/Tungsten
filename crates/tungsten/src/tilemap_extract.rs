@@ -2,9 +2,12 @@
 //! layer's `LayerDraw` (redo 7.9) tints its tiles and, when unlit, draws a
 //! lit tileset on the stock pipeline; the default sprite base draws a layer
 //! with a `z` among the sprites, while these extracts keep every layer in
-//! file order.
+//! file order. A whole tile (S-178) draws at its sprite's own size from its
+//! cell's bottom-left, and the view's cell range widens left and down by
+//! the map's widest and tallest whole tile, so one whose cell is out of view
+//! still draws its part in view.
 
-use tungsten_core::assets::{LayerKind, TextureHandle, TilemapRegistry};
+use tungsten_core::assets::{LayerKind, TextureHandle, TileIndex, TilemapData, TilemapRegistry};
 use tungsten_core::{
     AssetRegistry, CameraState, Entity, FilterMode, SpriteAsset, TilemapInstance, World,
 };
@@ -22,6 +25,8 @@ pub(crate) struct TileSprite {
     lit: bool,
     uv_min: [f32; 2],
     uv_size: [f32; 2],
+    /// The sprite's own size in pixels, which a whole tile draws at.
+    size: [f32; 2],
 }
 
 #[derive(Clone, Copy, Default)]
@@ -66,6 +71,7 @@ impl TilesetCache {
                         asset.uv.max[0] - asset.uv.min[0],
                         asset.uv.max[1] - asset.uv.min[1],
                     ],
+                    size: [asset.width as f32, asset.height as f32],
                 }),
                 None => TileSlot::Missing,
             };
@@ -166,8 +172,18 @@ fn extract_layers(
             let row_start = (local_min_y / th).floor().max(0.0) as u32;
             let col_end = ((local_max_x / tw).ceil().max(0.0) as u32).min(data.width);
             let row_end = ((local_max_y / th).ceil().max(0.0) as u32).min(data.height);
+            // Whole tiles reach up and right from their cells: cells left of
+            // the view and below it hold the ones that can reach into it.
+            let has_whole = data.whole_tiles().next().is_some();
+            let (left, below) = if has_whole {
+                whole_reach(data, assets)
+            } else {
+                (0, 0)
+            };
+            let wide_col_start = col_start.saturating_sub(left);
+            let wide_row_end = row_end.saturating_add(below).min(data.height);
 
-            if col_start >= col_end || row_start >= row_end {
+            if wide_col_start >= col_end || row_start >= wide_row_end {
                 continue;
             }
 
@@ -196,11 +212,15 @@ fn extract_layers(
                 let layer_start = target.len();
                 let mut last: Option<(TextureHandle, bool, usize)> = None;
 
-                for row in row_start..row_end {
-                    for col in col_start..col_end {
+                for row in row_start..wide_row_end {
+                    for col in wide_col_start..col_end {
                         let idx = (row as usize) * (data.width as usize) + (col as usize);
                         let tile = layer.tiles[idx];
                         if tile < 0 {
+                            continue;
+                        }
+                        let whole = has_whole && data.tile_props(tile).whole;
+                        if !whole && (col < col_start || row >= row_end) {
                             continue;
                         }
                         let tile = tile as usize;
@@ -242,9 +262,15 @@ fn extract_layers(
 
                         let world_x = instance.origin.x + (col as f32) * tw;
                         let world_y = instance.origin.y + (row as f32) * th;
+                        let (position, size) = if whole {
+                            let [w, h] = sprite.size;
+                            ([world_x, world_y + th - h], [w, h])
+                        } else {
+                            ([world_x, world_y], [tw, th])
+                        };
                         target[batch].instances.push(SpriteInstance {
-                            position: [world_x, world_y],
-                            size: [tw, th],
+                            position,
+                            size,
                             rotation: 0.0,
                             color: draw.tint,
                             uv_min: sprite.uv_min,
@@ -268,6 +294,22 @@ fn extract_layers(
         batch_lens.extend(out.iter().map(|batch| batch.instances.len() as u32));
         out
     })
+}
+
+/// How many cells left and below the view a whole tile of `data` can reach
+/// into it from: its widest whole sprite's extra columns and its tallest's
+/// extra rows; `(0, 0)` for a map without whole tiles.
+fn whole_reach(data: &TilemapData, assets: &AssetRegistry) -> (u32, u32) {
+    let cells = |pixels: u32, cell: u32| pixels.div_ceil(cell.max(1)).saturating_sub(1);
+    data.whole_tiles()
+        .filter_map(|tile: TileIndex| data.tileset.get(tile as usize))
+        .filter_map(|sprite| assets.get_sprite(sprite))
+        .fold((0, 0), |(left, below), asset| {
+            (
+                left.max(cells(asset.width, data.tile_width)),
+                below.max(cells(asset.height, data.tile_height)),
+            )
+        })
 }
 
 #[cfg(test)]

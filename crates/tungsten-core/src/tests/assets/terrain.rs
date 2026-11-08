@@ -848,3 +848,28 @@ fn revert_puts_a_map_back_as_inserted_with_a_new_history() {
     assert_ne!(registry.cursor("quarry"), Some(before), "a new history");
     assert!(!registry.revert("pit"), "a map the registry lacks");
 }
+
+#[test]
+fn whole_leaves_the_fingerprint() {
+    let base = quarry();
+    let mut whole = quarry();
+    whole.set_tile_props(
+        PLAIN,
+        TileProps {
+            whole: true,
+            ..TileProps::default()
+        },
+    );
+    assert_eq!(whole.whole_tiles().collect::<Vec<_>>(), [PLAIN]);
+    assert_eq!(fingerprint(&whole), fingerprint(&base), "draw-only");
+    // A field the step reads moves it.
+    let mut one_way = quarry();
+    one_way.set_tile_props(
+        PLAIN,
+        TileProps {
+            one_way: true,
+            ..TileProps::default()
+        },
+    );
+    assert_ne!(fingerprint(&one_way), fingerprint(&base));
+}

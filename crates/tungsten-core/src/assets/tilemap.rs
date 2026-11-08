@@ -193,6 +193,12 @@ pub struct TileProps {
     /// In a collision layer, the slope its cell is instead of a full box;
     /// a slope tile cannot be one-way.
     pub slope: Option<Slope>,
+    /// Drawn at its sprite's own size, the sprite's bottom-left on its
+    /// cell's bottom-left, as Tiled's image-collection tiles are (S-178).
+    /// Draw-only: out of the map's fingerprint, and a collision layer's cell
+    /// stays one cell. A room's tileset file sets it; the Tiled loader does
+    /// not.
+    pub whole: bool,
 }
 
 /// The default [`TileProps`], which a tile without its own reads.
@@ -205,6 +211,7 @@ static PLAIN_TILE: TileProps = TileProps {
     mask: None,
     weight: 1,
     slope: None,
+    whole: false,
 };
 
 /// A slope tile's shape: how far its sloped face rises across the cell and
@@ -672,6 +679,17 @@ impl TilemapData {
             .ok()
             .and_then(|tile| self.terrain.tiles.get(tile))
             .unwrap_or(&PLAIN_TILE)
+    }
+
+    /// The tileset entries drawn whole ([`TileProps::whole`]), in order:
+    /// what the extract widens its view's cell range by.
+    pub fn whole_tiles(&self) -> impl Iterator<Item = TileIndex> + '_ {
+        self.terrain
+            .tiles
+            .iter()
+            .enumerate()
+            .filter(|(_, props)| props.whole)
+            .map(|(tile, _)| tile as TileIndex)
     }
 
     /// Sets the properties of tileset entry `tile`.

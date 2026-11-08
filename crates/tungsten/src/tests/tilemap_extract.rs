@@ -590,3 +590,115 @@ fn an_unlit_layer_draws_unlit() {
     assert_eq!(batches[1].texture, TextureHandle(0), "its albedo page");
     assert_eq!(batches[1].instances.len(), 2);
 }
+
+/// Registers `id` as a `width` × `height` sprite on page 7.
+fn register_sized(world: &mut World, id: &str, width: u32, height: u32) {
+    world.resource_mut::<AssetRegistry>().register_sprite(
+        id.to_string(),
+        FilterMode::Nearest,
+        width,
+        height,
+        PathBuf::from(format!("test/{id}.png")),
+        TextureHandle(7),
+        UvRect::FULL,
+        None,
+        None,
+        None,
+    );
+}
+
+/// A 200 × 60 map of 16 px cells, its view at `camera`: tiles `rock`
+/// (16 × 16), `arch` (48 × 32) and `tall` (48 × 48), the last two whole
+/// when `whole`, placed at `tiles` (tile, col, row) in one render layer.
+fn whole_world(camera: Vec2, whole: bool, tiles: &[(i32, u32, u32)]) -> World {
+    let (width, height) = (200u32, 60u32);
+    let mut cells = vec![-1; (width * height) as usize];
+    for &(tile, col, row) in tiles {
+        cells[(row * width + col) as usize] = tile;
+    }
+    let mut world = world_with_map(
+        camera,
+        &["rock", "arch", "tall"],
+        width,
+        vec![layer("art", LayerKind::Render, cells)],
+    );
+    register_sized(&mut world, "rock", 16, 16);
+    register_sized(&mut world, "arch", 48, 32);
+    register_sized(&mut world, "tall", 48, 48);
+    if whole {
+        let tilemaps = world.resource_mut::<TilemapRegistry>();
+        let mut map = tilemaps.get("map").unwrap().clone();
+        for tile in [1, 2] {
+            let mut props = tungsten_core::assets::TileProps::default();
+            props.whole = true;
+            map.set_tile_props(tile, props);
+        }
+        tilemaps.insert("map".to_string(), map);
+    }
+    world
+}
+
+/// Every instance drawn, as (position, size), sorted.
+fn drawn(world: &World) -> Vec<([f32; 2], [f32; 2])> {
+    let mut drawn: Vec<([f32; 2], [f32; 2])> = extract_tilemaps(world)
+        .iter()
+        .flat_map(|batch| batch.instances.iter().map(|i| (i.position, i.size)))
+        .collect();
+    drawn.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    drawn
+}
+
+#[test]
+fn a_whole_tile_draws_at_its_sprites_size_from_its_cells_bottom_left() {
+    let world = whole_world(Vec2::ZERO, true, &[(0, 0, 3), (1, 1, 3), (2, 5, 4)]);
+    assert_eq!(
+        drawn(&world),
+        [
+            ([0.0, 48.0], [16.0, 16.0]),
+            // The arch's cell (1, 3) spans y 48 to 64: its sprite rises 32
+            // from that bottom.
+            ([16.0, 32.0], [48.0, 32.0]),
+            ([80.0, 32.0], [48.0, 48.0]),
+        ]
+    );
+}
+
+#[test]
+fn a_whole_tile_whose_cell_is_out_of_view_draws_its_part_in_view() {
+    // The view spans x 640 to 1920, y 0 to 720: columns 40 to 119, rows 0
+    // to 44. `arch` at column 38 reaches x 656; `tall` at row 46 reaches up
+    // to y 704; the rocks beside them, and an arch too far left, stay out.
+    let world = whole_world(
+        Vec2::new(640.0, 0.0),
+        true,
+        &[
+            (1, 38, 10),
+            (0, 39, 10),
+            (2, 50, 46),
+            (0, 51, 46),
+            (1, 30, 10),
+            (0, 40, 10),
+        ],
+    );
+    assert_eq!(
+        drawn(&world),
+        [
+            ([608.0, 144.0], [48.0, 32.0]),
+            ([640.0, 160.0], [16.0, 16.0]),
+            ([800.0, 704.0], [48.0, 48.0]),
+        ]
+    );
+}
+
+#[test]
+fn a_tile_without_whole_draws_at_its_cells_size() {
+    let world = whole_world(Vec2::ZERO, false, &[(1, 1, 3), (2, 38, 2)]);
+    assert_eq!(
+        drawn(&world),
+        [([16.0, 48.0], [16.0, 16.0]), ([608.0, 32.0], [16.0, 16.0])]
+    );
+    // Without whole tiles the view's range is not widened: a view starting
+    // past the arch's column draws nothing of it.
+    let world = whole_world(Vec2::new(640.0, 0.0), false, &[(1, 38, 10)]);
+    assert!(drawn(&world).is_empty());
+}
