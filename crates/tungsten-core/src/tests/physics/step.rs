@@ -8179,7 +8179,6 @@ fn a_world_without_a_kinematic_mass_keeps_no_push_state() {
 }
 
 #[test]
-#[ignore = "7.21 step 2: fails until its fix"]
 fn a_fast_bodys_pair_staging_stays_bounded() {
     // D-081: one 1/60 s step of a lone circle at the speeds 60 s and 600 s
     // of fall at gravity 3,600 give it. Its pair box grows by its speed on
@@ -8196,5 +8195,148 @@ fn a_fast_bodys_pair_staging_stays_bounded() {
     assert!(
         cells.iter().all(|&refs| refs <= 64 * 64),
         "the pair grid staged {cells:?} cell refs for one body"
+    );
+}
+
+#[test]
+fn oversize_bodies_keep_every_contact_and_warm_start() {
+    // D-081: at 8 px cells a moving body inflated past `OVERSIZE_CELLS`
+    // cells (512 px) stays out of the pair grid. Two balls and a kinematic
+    // box at about 40,000 px/s cross a pile on a floor; the oracle checks
+    // every substep's contacts and carried impulses against a fresh search.
+    use crate::Pcg32;
+    let mut rng = Pcg32::seeded(0x0081);
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().broadphase_cell_size = 8.0;
+    let floor = Collider::aabb(Vec2::new(400.0, 8.0));
+    spawn_static(&mut world, floor, Vec2::new(0.0, 80.0));
+    for i in 0..30 {
+        let at = Vec2::new(
+            (i % 6) as f32 * 11.0 - 28.0 + rng.next_range(-1.0, 1.0),
+            65.0 - (i / 6) as f32 * 11.0 + rng.next_range(-1.0, 1.0),
+        );
+        let shape = if i % 3 == 0 {
+            Collider::aabb(Vec2::splat(5.0))
+        } else {
+            Collider::circle(5.0)
+        };
+        spawn_body(&mut world, RigidBody::dynamic(), shape, at, Vec2::ZERO);
+    }
+    physics_step(&mut world);
+    let buffers = world.resource_mut::<PhysicsBuffers>();
+    buffers.check_pair_contacts = true;
+    buffers.reference_impulses = Some(buffers.impulses.clone());
+    let (body, ball) = (RigidBody::dynamic(), Collider::circle(4.0));
+    let fast = [
+        spawn_body(
+            &mut world,
+            body,
+            ball,
+            Vec2::new(-700.0, 40.0),
+            Vec2::new(42_000.0, 0.0),
+        ),
+        spawn_body(
+            &mut world,
+            body,
+            ball,
+            Vec2::new(700.0, 20.0),
+            Vec2::new(-42_000.0, 0.0),
+        ),
+        spawn_kinematic(
+            &mut world,
+            Collider::aabb(Vec2::new(6.0, 3.0)),
+            Vec2::new(-700.0, 60.0),
+            Vec2::new(40_000.0, 0.0),
+        ),
+    ];
+    let (mut oversize_steps, mut oversize_pairs) = (0, 0);
+    for _ in 0..40 {
+        physics_step(&mut world);
+        drain_events(&mut world);
+        let buffers = world.resource::<PhysicsBuffers>();
+        let oversize = &buffers.extra.oversize;
+        oversize_steps += usize::from(!oversize.is_empty());
+        oversize_pairs += buffers
+            .pairs
+            .iter()
+            .filter(|(a, b)| oversize.contains(a) || oversize.contains(b))
+            .count();
+    }
+    let buffers = world.resource::<PhysicsBuffers>();
+    let substeps = world.resource::<PhysicsConfig>().substeps as usize;
+    assert_eq!(buffers.checked_substeps, 40 * substeps);
+    assert!(
+        oversize_steps > 0 && oversize_pairs > 0,
+        "{oversize_steps} steps listed an oversize body, with {oversize_pairs} pairs"
+    );
+    assert!(fast.iter().all(|&e| world.get::<Position>(e).is_some()));
+}
+
+#[test]
+fn a_repair_pairs_its_members_with_an_oversize_body() {
+    // D-081 at 8 px cells: a kinematic box passing a 5 by 4 lattice's side
+    // at 40,000 px/s is oversize (index 20) and in no grid. Two lattice
+    // bodies trip; their repair finds it in the oversize list, and both
+    // oracles check the substep.
+    let mut world = seed_world();
+    spawn_lattice(&mut world, 5, 4);
+    let mover = Collider::aabb(Vec2::new(6.0, 20.0));
+    spawn_kinematic(
+        &mut world,
+        mover,
+        Vec2::new(58.0, 14.0),
+        Vec2::new(0.0, 40_000.0),
+    );
+    let mut config = *world.get_resource::<PhysicsConfig>().unwrap();
+    config.broadphase_cell_size = 8.0;
+    let dt = 1.0 / 60.0;
+    let sub_dt = dt / 4.0;
+    let mut buffers = oracle_buffers(&world);
+    substep(&config, sub_dt, dt, &mut buffers, false);
+    assert_eq!((buffers.pair_builds, buffers.pair_repairs), (1, 0));
+    assert_eq!(buffers.extra.oversize, [20]);
+    buffers.proxies[9].velocity = Vec2::new(300.0, 0.0);
+    buffers.proxies[14].velocity = Vec2::new(300.0, 0.0);
+    substep(&config, sub_dt, dt - sub_dt, &mut buffers, false);
+    assert_eq!((buffers.pair_builds, buffers.pair_repairs), (1, 1));
+    assert_eq!(buffers.repaired, [9, 14]);
+    carried_impulse(&buffers, 9, 20);
+    carried_impulse(&buffers, 14, 20);
+}
+
+#[test]
+fn the_arrival_pass_meets_an_oversize_body_a_push_reaches() {
+    // D-081 and D-092 at 8 px cells: a box, a ball and a thin kinematic wall
+    // move together at 150,000 px/s, so each is oversize (past 512 px of
+    // pair inflation) at every substep and in no grid. The ball, 6,000 px/s
+    // faster toward the box, hits it, their contact solved before the
+    // ball's with the wall (pairs run in proxy order), so the solve sends
+    // the box toward the wall, 2 px off, which the narrow phase did not
+    // admit at their zero closing speed. The arrival pass must clamp the box
+    // against the wall, found only in the oversize list, or the box passes
+    // through it in one substep.
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().broadphase_cell_size = 8.0;
+    let along = Vec2::new(0.0, 150_000.0);
+    let (body, block) = (RigidBody::dynamic(), Collider::aabb(Vec2::splat(2.0)));
+    let pushed = spawn_body(&mut world, body, block, Vec2::new(5.0, 0.0), along);
+    let ball = Collider::circle(2.0);
+    let hit = Vec2::new(6_000.0, 0.0);
+    spawn_body(&mut world, body, ball, Vec2::new(0.9, 0.0), along + hit);
+    let wall = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::new(1.0, 30.0)),
+        Vec2::new(10.0, 0.0),
+        along,
+    );
+    physics_step(&mut world);
+    drain_events(&mut world);
+    let buffers = world.resource::<PhysicsBuffers>();
+    assert_eq!(buffers.extra.oversize.len(), 3, "every body is oversize");
+    let wall_left = world.get::<Position>(wall).unwrap().0.x - 1.0;
+    let box_right = world.get::<Position>(pushed).unwrap().0.x + 2.0;
+    assert!(
+        box_right <= wall_left + 1.0,
+        "the pushed box's right edge at x {box_right}, the wall's left face at x {wall_left}"
     );
 }

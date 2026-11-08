@@ -694,6 +694,7 @@ Synchronize the keyed map from the immediately preceding substep's live positive
 
 ## D-080 — Physics broadphase layout: statics-only sweep grid, direct cell table, compact pair flags
 **Amended by D-203:** the pair grid's layout only; the tiles stage once per tile cache version, cell size and inflation into a grid of their own, walked with the entity proxies' grid in one grid's order, and the statics-only grid stages the entity statics with the same tile grid; no query result, candidate order or digest changes; the rest stands.
+**Amended by D-251:** what the pair grid stages only; a moving proxy inflated past 64 of its cells (`OVERSIZE_CELLS`) stages none, its pairs found in one pass over every proxy's bounds in proxy order; no other proxy's cells, candidates or order change; the rest stands.
 **Date:** 2026-10-01
 **Decision:** Four changes to how the broadphase grid is laid out and read. None changes a query result, a candidate order or a benchmark digest.
 
@@ -725,6 +726,7 @@ Cells without a verdict read `improved`. Two variants were measured and dropped.
 ## D-081 — Physics pair list is repaired for tripped proxies instead of rebuilt
 **Amended by D-154:** the budgets and the tripped set only; a kinematic proxy takes an awake dynamic proxy's budget without the gravity term, initiates and is repaired as one, and never trips, since its velocity is fixed within a frame.
 **Amended by D-234:** the build after a contact wake only; the woken proxy joins the tripped set and is repaired, the quarter rule counting it with the tripped ones.
+**Amended by D-251:** the build and the repair only; an oversize proxy (inflated past 64 pair-grid cells) pairs in one pass over every proxy's bounds, a repair's members test the oversize list beside their grid walks, and a trip of an oversize proxy, or a member whose fresh `r_i` passes the cap, rebuilds; the budgets, the check, completeness and the impulses stand.
 **Date:** 2026-10-01
 **Decision:** A proxy that runs out of travel budget gets its own pairs rebuilt; the pair list, the grid and every other proxy's budget stay. `D-075`'s build still runs at frame start, after a contact wake and when the proxy set changes.
 
@@ -3974,3 +3976,19 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Rows: S-118, S-145, S-50, S-120 and S-147 land their engine parts; S-68, S-124, S-168, S-44, S-119, S-176, S-57, S-63, S-149, S-80, S-86, S-163, S-165, S-188, S-193, S-49 and S-167 land; S-157 lands its template site. The shell's parts of the first five, S-28, S-33, S-62, S-81, S-109, S-123, S-133, S-139, S-187 and S-157's 01 site go to 7.13.
 - Pins: the physics hashes, the kit's pin `0xa2de_8a8e_2368_07d3`, every counter guard pin (01's pit at 59,977 allocations and 68,096,156 bytes) and the kit's schedule snapshot hold; `api/*` moves.
 - Open: the three engine findings the stopped shell step made (known issues); the template's perf row on the kit's `tagged` probe at a release that re-baselines it; the logo itself.
+
+## D-251 — Oversize pair boxes: a moving proxy inflated past 64 pair-grid cells stages no cell and pairs in one pass over every proxy
+**Date:** 2026-11-08
+**Decision:** Core hardening (7.21) Step 2, `ch-pair-box`. A moving proxy whose pair inflation `r_i` exceeds 64 cells of the pair grid (`pairs::OVERSIZE_CELLS`; 2,048 px at the default 32 px cell) is oversize.
+
+- **The build** stages no cell for it. It finds its pairs in one pass over every proxy's pair bounds, in proxy order, by the overlap and layer tests the grid's candidates take, storing an awake pair (lower index, higher index) and a pair of two oversize proxies once.
+- **A repair's** members test the oversize proxies beside their grid walks. A trip of an oversize proxy, or a member whose fresh `r_i` passes the cap, rebuilds.
+- **The arrival pass** (`D-092`) takes every oversize proxy as a candidate of each listed body.
+- The pair set is the grid's, so `D-081`'s completeness and each substep's contact set stand. Only a frame that lists an oversize proxy orders its pairs differently. No box stages more than its shape's cells grown by 64 a side, whatever the speed, gravity scale or step.
+
+**Why:** A moving body's pair box grew by its speed times the time left on both axes, so its cells grew with the square of its speed, and nothing bounds a dynamic body's speed: a circle falling off a level at gravity 3,600 staged 51,076 cells a build after 60 s and 5,071,504 after 600 s. A box swept along the motion would stage cells by travel, but `D-064` admits a contact within `|v_a − v_b|·h + 4·linear_slop` in any direction, so the swept prototype missed contacts in four equivalence oracles; the cap needs no new admission.
+
+**Consequences:**
+- Amends `D-080` and `D-081` as their marker lines say.
+- Pins: the physics hashes, `Proxy`'s 80 bytes and every counter guard hold; no workspace body is oversize (the fastest tested moves 15,360 px/s, 512 px of travel at a 1/30 s step).
+- Open: a co-moving group still pairs every pair, bounded by N² (`docs/known-issues.md`).

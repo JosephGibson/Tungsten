@@ -222,6 +222,17 @@ const PAIR_TRIPPED: u8 = 1 << 1;
 /// `pair_flags` bit: repaired since the last build, so the pair grid still
 /// holds the cells of its old AABB.
 pub(super) const PAIR_REPAIRED: u8 = 1 << 2;
+/// `pair_flags` bit: a moving proxy the last build left out of the pair
+/// grid, its pair inflation over [`OVERSIZE_CELLS`] cells (D-081).
+const PAIR_OVERSIZE: u8 = 1 << 3;
+
+/// A moving proxy whose pair inflation exceeds this many pair-grid cells is
+/// oversize (D-081): the build leaves it out of the grid and finds its pairs
+/// in one pass over every proxy's bounds, a repair's members test the
+/// oversize list beside their grid walks, and one that trips, or a member
+/// that would become one, rebuilds. No speed stages more than this many
+/// cells around a box.
+pub(super) const OVERSIZE_CELLS: f32 = 64.0;
 
 /// Travel gravity can add beyond `|v|·time_left` before the frame's last
 /// budget check: `|g|·h²·(n−1)(n+2)/2` with `n = time_left / h` substeps
@@ -261,11 +272,37 @@ pub(super) fn refresh_pairs(
     if buffers.tripped.is_empty() {
         return;
     }
-    if buffers.tripped.len() * REBUILD_ONE_IN > awake {
+    if buffers.tripped.len() * REBUILD_ONE_IN > awake
+        || trips_oversize(config, sub_dt, time_left, buffers)
+    {
         build_pairs(config, sub_dt, time_left, buffers);
     } else {
         repair_pairs(config, sub_dt, time_left, buffers);
     }
+}
+
+/// Whether a tripped proxy is oversize or its fresh inflation would make it
+/// one, which a repair does not handle.
+fn trips_oversize(
+    config: &PhysicsConfig,
+    sub_dt: f32,
+    time_left: f32,
+    buffers: &PhysicsBuffers,
+) -> bool {
+    let cap = OVERSIZE_CELLS * buffers.grid.cell_size();
+    let gravity_allowance = gravity_allowance(config, sub_dt, time_left);
+    buffers.tripped.iter().any(|&member| {
+        if buffers.pair_flags[member as usize] & PAIR_OVERSIZE != 0 {
+            return true;
+        }
+        let proxy = &buffers.proxies[member as usize];
+        let gravity = if proxy.kinematic {
+            0.0
+        } else {
+            gravity_allowance
+        };
+        awake_pair_radius(config, proxy.velocity.length(), time_left, gravity) > cap
+    })
 }
 
 /// Build pairs from fresh per-proxy travel-inflated AABBs (D-075, radius per
@@ -302,12 +339,15 @@ pub(super) fn build_pairs(
     let super::StepExtra {
         pair_bounds,
         tile_bounds,
+        oversize,
         ..
     } = &mut **extra;
     let bodies = *bodies;
     if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
         grid.bodies.set_cell_size(config.broadphase_cell_size);
     }
+    oversize.clear();
+    let oversize_radius = OVERSIZE_CELLS * grid.cell_size();
     grid.bodies.clear();
     pair_aabbs.clear();
     pair_bounds.clear();
@@ -345,8 +385,13 @@ pub(super) fn build_pairs(
             radius,
             travel: 0.0,
         });
-        pair_flags.push(if awake { PAIR_AWAKE } else { 0 });
-        grid.bodies.insert(id as ProxyId, &aabb);
+        if awake && radius > oversize_radius {
+            pair_flags.push(PAIR_AWAKE | PAIR_OVERSIZE);
+            oversize.push(id as u32);
+        } else {
+            pair_flags.push(if awake { PAIR_AWAKE } else { 0 });
+            grid.bodies.insert(id as ProxyId, &aabb);
+        }
     }
     // The tiles: static, never awake, grown by the static radius; staged
     // once for the cache and kept across builds, and into the entity grid
@@ -385,6 +430,28 @@ pub(super) fn build_pairs(
             continue;
         }
         let query = query_bounds(aabb);
+        if pair_flags[a_idx] & PAIR_OVERSIZE != 0 {
+            // No cell holds it and no other querier meets it: one pass over
+            // every proxy in proxy order, each pair stored as a build stores
+            // it, a pair of two oversize proxies by the lower one.
+            for (b_idx, &bounds) in pair_bounds.iter().enumerate() {
+                let b_flags = pair_flags[b_idx];
+                let lower_awake = b_flags & PAIR_AWAKE != 0 && b_idx < a_idx;
+                if b_idx == a_idx
+                    || (lower_awake && b_flags & PAIR_OVERSIZE != 0)
+                    || !bounds_overlap(query, bounds)
+                    || !layers.meet(a_idx, b_idx)
+                {
+                    continue;
+                }
+                pairs.push(if lower_awake {
+                    (b_idx as u32, a_idx as u32)
+                } else {
+                    (a_idx as u32, b_idx as u32)
+                });
+            }
+            continue;
+        }
         grid.for_each_in(aabb, Some(a_idx as ProxyId), |b_id| {
             let b_idx = b_id as usize;
             // An awake candidate at or below this index runs its own query.
@@ -478,6 +545,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         ..
     } = buffers;
     let super::StepExtra {
+        oversize,
         frictions,
         pair_tangents,
         repair_tangents,
@@ -631,6 +699,18 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
                 admit(member, other, other);
             }
         });
+        // The oversize proxies are in no grid and never members here.
+        for &other in oversize.iter() {
+            if bounds_overlap(query, pair_bounds[other as usize])
+                && layers.meet(member as usize, other as usize)
+            {
+                if other < member {
+                    admit(other, member, other);
+                } else {
+                    admit(member, other, other);
+                }
+            }
+        }
     }
     for &member in tripped.iter() {
         pair_flags[member as usize] &= !PAIR_TRIPPED;

@@ -456,6 +456,9 @@ struct StepExtra {
     /// Each entity proxy's gravity scale, in proxy order; empty while every
     /// one is 1.
     gravity_scales: Vec<f32>,
+    /// The moving proxies the last pair build left out of the pair grid as
+    /// oversize (`pairs::OVERSIZE_CELLS`), in proxy order.
+    oversize: Vec<u32>,
     /// Each proxy's pair box as the pair tests read it
     /// (`pairs::box_bounds`), set with its `PhysicsBuffers::pair_aabbs` box.
     pair_bounds: Vec<Vec4>,
@@ -1639,6 +1642,7 @@ fn substep(
             pair_flags,
             layers,
             repaired,
+            &extra.oversize,
             candidates,
             arrival,
             (record_on || push_on).then_some(&mut extra.touches),

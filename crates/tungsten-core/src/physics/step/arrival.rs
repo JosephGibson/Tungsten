@@ -197,6 +197,7 @@ pub(super) fn arrival_pass(
     pair_flags: &[u8],
     layers: &ProxyLayers,
     repaired: &[u32],
+    oversize: &[u32],
     candidates: &mut Vec<ProxyId>,
     arrival: &mut ArrivalScratch,
     mut touches: Option<&mut Vec<TouchObs>>,
@@ -271,6 +272,9 @@ pub(super) fn arrival_pass(
             if !repaired.is_empty() {
                 repair_grid.for_each_in(&aabb, Some(body as ProxyId), |id| candidates.push(id));
             }
+            // An oversize proxy is in no grid (D-081): every one is a
+            // candidate.
+            candidates.extend(oversize.iter().filter(|&&id| id as usize != body));
             for &other_id in candidates.iter() {
                 let other = other_id as usize;
                 // The body passes a neighbour its layers do not meet.
