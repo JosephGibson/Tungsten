@@ -8852,3 +8852,60 @@ fn a_box_walks_off_one_way_cells_onto_the_solid_beside_them() {
         "off the one-way cells over the ramp's apex: at {at}"
     );
 }
+
+#[test]
+#[ignore = "7.21 step 12: fails until its fix"]
+fn a_hit_on_a_body_pressed_on_a_sleeper_wakes_the_sleeper() {
+    // D-065, D-092: P (radius 10) at 1,000 or 3,000 px/s into X, which rests
+    // 0.25 px into a sleeping S (both settled asleep, or S alone and X
+    // spawned 0.5 px into it beside P), zero gravity, at 40 offsets of P's
+    // arrival within a substep, at 1/60 and 1/30 s. With sleeping off S takes
+    // about a third of the hit; asleep at inverse mass 0 it must wake and
+    // take its share, and the x momentum stays.
+    let mut absorbed = Vec::new();
+    for (speed, dt, x_awake) in [1000.0_f32, 3000.0]
+        .into_iter()
+        .flat_map(|v| [(v, 1.0 / 60.0), (v, 1.0 / 30.0)])
+        .flat_map(|(v, dt)| [(v, dt, false), (v, dt, true)])
+    {
+        for k in 0..40 {
+            let mut world = seed_world();
+            let run = |world: &mut World, steps: usize| {
+                for _ in 0..steps {
+                    physics_step(world);
+                    drain_events(world);
+                }
+            };
+            let x = (!x_awake).then(|| spawn_ball(&mut world, Vec2::ZERO));
+            let s = spawn_ball(&mut world, Vec2::new(19.5, 0.0));
+            run(&mut world, 90);
+            assert!(is_sleeping(&world, s), "S never slept");
+            let x = x.unwrap_or_else(|| spawn_ball(&mut world, Vec2::ZERO));
+            world.resource_mut::<Time>().advance_frame(dt);
+            let gap = 30.0 + k as f32 * speed * (dt / 4.0) / 40.0;
+            let x0 = world.get::<Position>(x).unwrap().0.x;
+            let at = Vec2::new(x0 - 20.0 - gap, 0.0);
+            let p = spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                Collider::circle(10.0),
+                at,
+                Vec2::new(speed, 0.0),
+            );
+            run(&mut world, 30);
+            let vx = |e: Entity| world.get::<Velocity>(e).unwrap().0.x;
+            let momentum = vx(p) + vx(x) + vx(s);
+            if is_sleeping(&world, s) || vx(s) <= 0.0 || momentum < 0.95 * speed {
+                let case = (speed, dt.recip().round(), x_awake, k);
+                absorbed.push((case, vx(s), momentum));
+            }
+        }
+    }
+    assert!(
+        absorbed.is_empty(),
+        "{} of 320 hits left S asleep, still or under 95 % of the x momentum \
+         ((speed, 1/dt, X awake, offset), S vx, momentum; the first 3): {:?}",
+        absorbed.len(),
+        &absorbed[..absorbed.len().min(3)]
+    );
+}
