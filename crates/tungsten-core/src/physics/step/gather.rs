@@ -10,7 +10,9 @@
 //! outline's runs beside them, which casts meet.
 
 use super::outline::{CHUNK, LayerCells, Run, TileClass, trace_chunk};
-use super::{Layers, NO_SPIN, Proxy, ProxyLayers, SensorBody, SpinState, StepExtra, SweptSensor};
+use super::{
+    Layers, NO_SPIN, Proxy, ProxyLayers, SensorBody, SpinState, StepExtra, SweptSensor, wrap_angle,
+};
 use crate::assets::{
     LayerKind, MapCursor, TileChanges, TileIndex, TilemapData, TilemapInstance, TilemapRegistry,
 };
@@ -266,7 +268,7 @@ pub(super) fn gather_proxies(
         let Some(spin) = world.get::<Spin>(turn.entity) else {
             return false;
         };
-        turn.angle = spin.angle;
+        turn.angle = wrap_angle(spin.angle);
         turn.angular_velocity = spin.angular_velocity;
         true
     });

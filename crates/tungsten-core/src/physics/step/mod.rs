@@ -1162,7 +1162,7 @@ fn substep_count(config: &PhysicsConfig, dt: f32, kinematic: bool) -> u32 {
 /// invariant external-write detection relies on (D-065). A moving kinematic
 /// body writes its `Position` only: the step never changes its velocity. A
 /// sensor row pulls no proxy: it moves by `velocity · dt` and records its
-/// new centre. An awake spinner writes its `Spin`'s angle and angular
+/// new centre. An awake spinner writes its `Spin`'s angle, in [0, 2π), and angular
 /// velocity. The mutable query iterates the exact archetype/row order
 /// `gather_proxies` used, so entity proxies zip positionally with the query
 /// rows.
@@ -1213,10 +1213,30 @@ fn write_back(
             continue;
         }
         if let Some(spin) = world.get_mut::<Spin>(turn.entity) {
-            spin.angle = turn.angle;
+            // The gather took the stored angle whole turns off and the end
+            // is too; the previous angle moves by the same turns, so the
+            // drawn turn does not sweep back.
+            let (start, from) = (spin.angle, wrap_angle(spin.angle));
+            let angle = wrap_angle(turn.angle);
+            if from != start || angle != turn.angle {
+                spin.prev_angle = from - (start - spin.prev_angle) - (turn.angle - angle);
+            }
+            spin.angle = angle;
             spin.angular_velocity = turn.angular_velocity;
         }
     }
+}
+
+/// `angle` whole turns off into [0, 2π), [`Spin`]'s range: an angle there
+/// already, or NaN, as it is.
+fn wrap_angle(angle: f32) -> f32 {
+    use std::f32::consts::TAU;
+    if (0.0..TAU).contains(&angle) {
+        return angle;
+    }
+    let wrapped = angle.rem_euclid(TAU);
+    // A tiny negative angle rounds up to a whole turn.
+    if wrapped >= TAU { 0.0 } else { wrapped }
 }
 
 /// Dynamic bodies without a collider never enter the solver; integrate them

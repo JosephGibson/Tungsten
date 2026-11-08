@@ -3565,6 +3565,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 **Amended by D-233:** the contact events only; `PhysicsPlugin` registers neither `ContactBegan` nor `ContactEnded`, so the record runs once a game registers either; the rest stands.
 **Amended by D-239:** the slope casts only; a path whose last entry is a masked side within a rounding behind an exposed side's entry enters through the exposed side at the later `t`, and the safety net's sweep takes the cell's mask; the rest stands.
 **Amended by D-255:** the slope contacts and casts for circles only; a circle takes a slope cell's exposed side's line beside a masked leg only where a neighbour continues the side through the vertex, and at an open corner, where an axis side between the two normals is exposed by the shadow rule, meets the rounded vertex on the exposed side's side of the leg's line and nothing past it, in contacts and casts alike; boxes, sweeps and rays stand, and so does the rest.
+**Amended by D-263:** rolling circles only; `Spin::angle` stays in [0, 2π), the gather and the writeback taking it whole turns in and `prev_angle` moved by the same turns, so a spinner's rate holds however long it turns and its drawn rotation never sweeps back; the rest stand.
 **Date:** 2026-10-31
 **Decision:** Redo 7.8's second plan (phase 7's Step 5): the physics `D-228` left open, as far as its steps landed. Every default keeps today's worlds: friction 0, no spin, no slope, no swept sensor, so the physics hashes and the kit's pin hold.
 
@@ -4128,3 +4129,13 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 **Consequences:**
 - Amends `D-065` as its marker line says. The physics oracle's `ch-midair-sleep` entry and witness are gone.
 - Pins: the physics hashes and every counter guard hold.
+
+## D-263 — A spinner's angle wraps into one turn
+**Date:** 2026-11-08
+**Decision:** Core hardening (7.21) Step 23, `ch-spin-angle`. `Spin::angle` stays in [0, 2π). The gather takes the stored angle whole turns in, and the writeback takes the end whole turns in, moving `prev_angle` by the same turns, so `prev_angle` can lie outside the range and the drawn rotation, interpolated between the two, never sweeps back. A written angle is taken in at the next awake step, and a sleeping spinner keeps its angle.
+
+**Why:** A spinner's angle grew without bound in f32, so each step's turn rounded: from angle 0 at 100 rad/s the turn ran 0.6 % short after 11 minutes and 10 % after 2.9 hours, and one set at 360,000 rad turned 97.5 rad in a second where it should turn 100 (`from 360000: turned 97.5 rad of 100, angle 360097.5`).
+
+**Consequences:**
+- Amends `D-229` as its marker line says. `a_spinner_on_a_frictionless_floor_keeps_its_spin` reads each step's turn across the wrap, where it read a rising angle.
+- Pins: the physics hashes and every counter guard hold; 02's `sprites_drawable` count, which culls an unrotated sprite by its box, holds.

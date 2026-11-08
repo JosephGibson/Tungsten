@@ -48,7 +48,11 @@ impl Velocity {
 /// and its angle before the last fixed step, which
 /// [`physics_prev_snapshot`](crate::physics::physics_prev_snapshot) copies
 /// and [`physics_sync`](crate::physics::physics_sync) draws `Transform`'s
-/// rotation from, as it does positions. The step spins a dynamic circle that
+/// rotation from, as it does positions. The step keeps the angle in
+/// [0, 2π), so its turns keep their precision: an angle it turns past the
+/// range, or one written outside it, goes whole turns back, and the angle
+/// before moves by the same turns (so it can lie outside [0, 2π)) and the
+/// drawn turn does not sweep back. The step spins a dynamic circle that
 /// [`rolls`](RigidBody::rolls) and has one: its contacts' friction turns it
 /// and rolling resistance slows it. Spawn it with the body ([`RigidBodyBundle::with_spin`]), since
 /// inserting it later moves the entity's archetype and reorders the solve
@@ -56,7 +60,7 @@ impl Velocity {
 /// wake it; [`wake`](crate::physics::wake) does.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Spin {
-    /// Radians, clockwise on screen.
+    /// Radians, clockwise on screen, in [0, 2π) once the step turns it.
     pub angle: f32,
     /// Radians a second.
     pub angular_velocity: f32,

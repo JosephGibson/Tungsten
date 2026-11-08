@@ -2202,18 +2202,17 @@ fn rolling_resistance_brings_a_ball_to_rest() {
 #[test]
 fn a_spinner_on_a_frictionless_floor_keeps_its_spin() {
     // Its rim at 50 px/s keeps it awake past the sleep delay though it
-    // stands still: no friction couples the spin to the floor.
+    // stands still: no friction couples the spin to the floor. Its angle
+    // stays in [0, 2π), so a step's turn is read across the wrap.
     let (mut world, ball) = rolling_rig(0.0, 0.0, 0.0);
     world.get_mut::<Spin>(ball).unwrap().angular_velocity = 5.0;
-    let mut angle = 0.0;
+    let (mut last, mut angle) = (0.0, 0.0);
     for step in 0..120 {
         physics_step(&mut world);
         let spin = *world.get::<Spin>(ball).unwrap();
-        assert!(
-            spin.angle > angle,
-            "step {step}: the angle stopped at {angle}"
-        );
-        angle = spin.angle;
+        let turn = (spin.angle - last).rem_euclid(std::f32::consts::TAU);
+        assert!(turn > 0.0, "step {step}: the angle stopped at {last}");
+        (last, angle) = (spin.angle, angle + turn);
     }
     assert!(
         !is_sleeping(&world, ball),
@@ -9263,7 +9262,6 @@ fn a_free_body_under_a_small_gravity_scale_never_sleeps_in_the_air() {
 }
 
 #[test]
-#[ignore = "7.21 step 23: fails until its fix"]
 fn a_spinner_far_from_angle_zero_keeps_its_rate() {
     // Physics review a3-4: the angle grew without bound in f32, so each turn
     // rounded: 60 steps at 100 rad/s from the angles a spinner reaches after
