@@ -8909,3 +8909,93 @@ fn a_hit_on_a_body_pressed_on_a_sleeper_wakes_the_sleeper() {
         &absorbed[..absorbed.len().min(3)]
     );
 }
+
+// Evidence for oracle new-1 (core hardening 2026-11-07, physics oracle).
+
+/// new-1's rig: a light body of mass 0.25 at rest on a static floor whose
+/// top is at y 100 and whose half height is `half_y`, and a body `ratio`
+/// times its mass falling onto it at `speed`, under gravity 3,600 for 40
+/// steps of `dt`. Returns the light body's centre y at the end; the floor's
+/// bottom face is at 100 + 2 · `half_y`.
+fn oracle_new_1_crush(
+    victim: Collider,
+    pusher: Collider,
+    ratio: f32,
+    speed: f32,
+    half_y: f32,
+    dt: f32,
+) -> f32 {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 3600.0);
+    world.resource_mut::<Time>().advance_frame(dt);
+    spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(600.0, half_y)),
+        Vec2::new(0.0, 100.0 + half_y),
+    );
+    let (vh, ph) = (victim.shape.half_extents().y, pusher.shape.half_extents().y);
+    let rest = 100.0 - vh - 0.25;
+    let light = spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_mass(0.25),
+        victim,
+        Vec2::new(0.0, rest),
+        Vec2::ZERO,
+    );
+    spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_mass(0.25 * ratio),
+        pusher,
+        Vec2::new(0.0, rest - vh - ph - 0.5 - speed * dt),
+        Vec2::new(0.0, speed),
+    );
+    for _ in 0..40 {
+        physics_step(&mut world);
+        drain_events(&mut world);
+    }
+    world.get::<Position>(light).unwrap().0.y
+}
+
+#[test]
+#[ignore = "7.21 step 13: fails until its fix"]
+fn oracle_new_1_a_heavy_body_never_drives_a_light_one_through_a_static_floor() {
+    let victims = [
+        ("circle 6", Collider::circle(6.0)),
+        ("circle 19", Collider::circle(19.0)),
+        ("box 6", Collider::aabb(Vec2::splat(6.0))),
+    ];
+    let pushers = [
+        ("circle 30", Collider::circle(30.0)),
+        ("box 20", Collider::aabb(Vec2::splat(20.0))),
+    ];
+    let mut failed = Vec::new();
+    let mut cases = 0;
+    for (victim_name, victim) in victims {
+        for (pusher_name, pusher) in pushers {
+            for ratio in [4.0, 10.0, 30.0, 100.0, 300.0, 1000.0] {
+                for speed in [500.0, 1000.0, 2000.0, 5000.0] {
+                    for half_y in [4.0, 8.0, 13.0] {
+                        for dt in [1.0 / 60.0, 1.0 / 30.0] {
+                            cases += 1;
+                            let y = oracle_new_1_crush(victim, pusher, ratio, speed, half_y, dt);
+                            if y > 100.0 + 2.0 * half_y {
+                                failed.push(format!(
+                                    "{victim_name} under {pusher_name}, ratio {ratio}, {speed} px/s, \
+                                     floor {} px, dt 1/{}: centre at y {y:.2}",
+                                    2.0 * half_y,
+                                    (1.0 / dt).round()
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        failed.is_empty(),
+        "{} of {cases} cases end below the floor:\n{}",
+        failed.len(),
+        failed.join("\n")
+    );
+}
