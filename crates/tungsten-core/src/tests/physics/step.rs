@@ -8665,3 +8665,70 @@ fn a_write_to_a_sleeper_or_its_support_wakes_it() {
         held.join("\n")
     );
 }
+
+/// ch-island-tags (`D-065`): a light hit wakes the bottom ball of a sleeping
+/// two-ball stack alone; despawning, removing the collider of, turning
+/// sensor, teleporting, masking or waking that ball then wakes the top one,
+/// which falls, as it does when the stack is struck while still asleep.
+#[test]
+#[ignore = "7.21 step 9: fails until its fix"]
+fn removing_a_contact_woken_support_wakes_the_sleepers_it_held() {
+    let mut stranded = Vec::new();
+    for removal in [
+        "despawn",
+        "no collider",
+        "sensor",
+        "teleport",
+        "mask 0",
+        "wake",
+    ] {
+        let mut world = seed_world();
+        let (bottom, top) = spawn_sleeping_stack(&mut world);
+        settle_to_sleep(&mut world, &[bottom, top]);
+        let at = world.get::<Position>(bottom).unwrap().0 - Vec2::new(9.0, 0.0);
+        let light = RigidBody::dynamic().with_mass(0.01).with_gravity_scale(0.0);
+        let hitter = spawn_body(
+            &mut world,
+            light,
+            Collider::circle(2.0),
+            at,
+            Vec2::new(60.0, 0.0),
+        );
+        physics_step(&mut world);
+        drain_events(&mut world);
+        assert!(
+            !is_sleeping(&world, bottom) && is_sleeping(&world, top),
+            "{removal}: the hit did not wake the bottom ball alone"
+        );
+        world.despawn(hitter);
+        let top_y = world.get::<Position>(top).unwrap().0.y;
+        match removal {
+            "despawn" => world.despawn(bottom),
+            "no collider" => {
+                world.remove_component::<Collider>(bottom);
+            }
+            "sensor" => world.get_mut::<RigidBody>(bottom).unwrap().kind = BodyKind::Sensor,
+            "teleport" => teleport(&mut world, bottom, Vec2::new(300.0, 0.0)),
+            "mask 0" => world.get_mut::<RigidBody>(bottom).unwrap().mask = 0,
+            _ => wake(&mut world, bottom),
+        }
+        let asleep_at_once = is_sleeping(&world, top);
+        for _ in 0..20 {
+            physics_step(&mut world);
+            drain_events(&mut world);
+        }
+        let dy = world.get::<Position>(top).unwrap().0.y - top_y;
+        let asleep = is_sleeping(&world, top);
+        if (removal == "wake" && asleep_at_once) || (removal != "wake" && (asleep || dy <= 5.0)) {
+            stranded.push(format!(
+                "{removal}: top asleep at once {asleep_at_once}, after 20 steps {asleep}, fell {dy} px"
+            ));
+        }
+    }
+    assert!(
+        stranded.is_empty(),
+        "{} tops stranded:\n{}",
+        stranded.len(),
+        stranded.join("\n")
+    );
+}
