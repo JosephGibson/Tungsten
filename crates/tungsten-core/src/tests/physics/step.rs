@@ -9261,3 +9261,34 @@ fn a_free_body_under_a_small_gravity_scale_never_sleeps_in_the_air() {
         hung.join("\n")
     );
 }
+
+#[test]
+#[ignore = "7.21 step 23: fails until its fix"]
+fn a_spinner_far_from_angle_zero_keeps_its_rate() {
+    // Physics review a3-4: the angle grew without bound in f32, so each turn
+    // rounded: 60 steps at 100 rad/s from the angles a spinner reaches after
+    // 1 h, 4.85 h and 23.3 h turned 97.5, 90 and 0 rad. The step keeps the
+    // angle in [0, 2π) and turns it at its rate from any angle.
+    let turn = f64::from(std::f32::consts::TAU);
+    for start in [360_000.0_f32, 1_746_000.0, 8_388_608.0] {
+        let (mut world, ball) = rolling_rig(0.0, 0.0, 0.0);
+        *world.get_mut::<Spin>(ball).unwrap() = Spin {
+            angle: start,
+            angular_velocity: 100.0,
+            prev_angle: start,
+        };
+        let (mut turned, mut last) = (0.0_f64, start);
+        for _ in 0..60 {
+            physics_step(&mut world);
+            let angle = world.get::<Spin>(ball).unwrap().angle;
+            // A step turns 100/60 rad, under half a turn.
+            let half = turn / 2.0;
+            turned += (f64::from(angle) - f64::from(last) + half).rem_euclid(turn) - half;
+            last = angle;
+        }
+        assert!(
+            (turned - 100.0).abs() < 0.01 && (0.0..std::f32::consts::TAU).contains(&last),
+            "from {start}: turned {turned} rad of 100, angle {last}"
+        );
+    }
+}
