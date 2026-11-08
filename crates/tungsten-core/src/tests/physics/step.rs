@@ -9040,3 +9040,47 @@ fn a_static_bodys_velocity_moves_nothing_on_it() {
         );
     }
 }
+
+#[test]
+#[ignore = "7.21 step 18: fails until its fix"]
+fn a_box_slides_over_the_join_of_two_touching_static_boxes() {
+    // ch-static-join: two static decks of half (64, 8) touching at x 64,
+    // their tops at y -8. A box of half 6 let go on one at 0 px and sliding
+    // at 120 px/s for a second crosses the join at its speed, as it does on
+    // one deck of their union, both ways.
+    let slide = |decks: &[(f32, f32)], start: f32, speed: f32| {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+        for &(x, half) in decks {
+            spawn_static(
+                &mut world,
+                Collider::aabb(Vec2::new(half, 8.0)),
+                Vec2::new(x, 0.0),
+            );
+        }
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::aabb(Vec2::splat(6.0)),
+            Vec2::new(start, -14.0),
+            Vec2::new(speed, 0.0),
+        );
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        world.get::<Position>(body).unwrap().0
+    };
+    let (one, two) = (&[(64.0, 128.0)][..], &[(0.0, 64.0), (128.0, 64.0)][..]);
+    for (start, speed) in [(0.0, 120.0), (128.0, -120.0)] {
+        let control = slide(one, start, speed);
+        let joined = slide(two, start, speed);
+        assert!(
+            (control.x - start).abs() > 100.0,
+            "on one deck at {control}"
+        );
+        assert!(
+            (joined.x - control.x).abs() < 0.01,
+            "from x {start} at {speed} px/s over the join: at {joined}, on one deck at {control}"
+        );
+    }
+}
