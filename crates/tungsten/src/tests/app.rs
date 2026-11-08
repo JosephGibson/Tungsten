@@ -18,6 +18,54 @@ use tungsten_render::{QuadInstance, RenderOutcome, ScreenshotError};
 struct ExampleEvent;
 
 #[test]
+fn the_app_takes_physics_and_particles_from_its_config() {
+    let config: Config = serde_json::from_str(
+        r#"{ "physics": { "gravity": [0, 900], "broadphase_cell": 64 },
+             "particles": { "budget": 2500 } }"#,
+    )
+    .unwrap();
+    let app = App::new(config).expect("App::new failed");
+    let physics = app
+        .world()
+        .resource::<tungsten_core::physics::PhysicsConfig>();
+    assert_eq!(physics.gravity, glam::Vec2::new(0.0, 900.0));
+    assert_eq!(physics.broadphase_cell_size, 64.0);
+    let engine = tungsten_core::physics::PhysicsConfig::default();
+    assert_eq!(
+        physics.substeps, engine.substeps,
+        "the rest stays the engine's"
+    );
+    assert_eq!(
+        app.world()
+            .resource::<tungsten_core::ParticleBudget>()
+            .global_cap,
+        2500
+    );
+
+    // Without the sections, the engine's defaults.
+    let app = App::new(Config::default()).expect("App::new failed");
+    let physics = app
+        .world()
+        .resource::<tungsten_core::physics::PhysicsConfig>();
+    assert_eq!(
+        (physics.gravity, physics.broadphase_cell_size),
+        (engine.gravity, engine.broadphase_cell_size)
+    );
+    assert_eq!(
+        app.world()
+            .resource::<tungsten_core::ParticleBudget>()
+            .global_cap,
+        10_000
+    );
+
+    // A cell built in code that is not above 0 is refused.
+    let mut bad = Config::default();
+    bad.physics.broadphase_cell = 0.0;
+    let error = App::new(bad).err().expect("refused").to_string();
+    assert!(error.contains("physics.broadphase_cell"), "{error}");
+}
+
+#[test]
 fn register_event_is_idempotent_per_type() {
     let mut app = App::new(Config::default()).expect("App::new failed");
     let initial_flushers = app.world.registered_event_count();

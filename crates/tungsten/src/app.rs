@@ -570,6 +570,7 @@ impl App {
             .err()
             .or_else(|| config.time.validate().err())
             .or_else(|| config.audio.validate().err())
+            .or_else(|| config.physics.validate().err())
             .or_else(|| invalid_logging_level(&config.logging.level));
         let user_dirs = match (&invalid, &script_path) {
             (Some(_), _) => None,
@@ -719,12 +720,20 @@ impl App {
         world.insert_resource(ParticleConfigRegistry::new());
         world.insert_resource(ParticleMeshRegistry::new());
         world.insert_resource(ShaderRegistry::new());
-        world.insert_resource(ParticleBudget::default());
+        // `tungsten.json`'s particle budget and physics (redo 7.12), which a
+        // game's plugin may set again after.
+        world.insert_resource(ParticleBudget {
+            global_cap: config.particles.budget,
+        });
         world.insert_resource(ParticleActive::default());
         world.insert_resource(WorldRngSeed::default());
         world.insert_resource(CameraState::new());
         world.insert_resource(CameraController::default());
-        world.insert_resource(PhysicsConfig::default());
+        world.insert_resource(PhysicsConfig {
+            gravity: config.physics.gravity.into(),
+            broadphase_cell_size: config.physics.broadphase_cell,
+            ..PhysicsConfig::default()
+        });
         world.insert_resource(FrameTimings::new());
         world.insert_resource(GpuFrameTimings::default());
         world.insert_resource(resolved_display);

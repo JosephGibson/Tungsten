@@ -301,6 +301,15 @@ The game clock is spent in fixed steps of 1/60 s, at most two a frame: `fixed_up
 
 A rate below 30 or a bound of 0 fails at startup, and `"interpolate": false` draws every body at its `Position`.
 
+Two more sections set the World's physics and particles at startup, which a plugin may set again after: `physics`, the gravity every dynamic body falls by (px/s², y down, none by default) and the broadphase's cell (32 px), and `particles`, the most particles alive at once (10,000):
+
+```json
+"physics": { "gravity": [0, 900], "broadphase_cell": 32 },
+"particles": { "budget": 10000 }
+```
+
+A cell that is not above 0 fails at startup.
+
 ## Read next
 
 - The engine's API: `cargo doc -p tungsten -p tungsten-core -p tungsten-kit --no-deps --open`, from the game's folder; `tungsten::core` and `tungsten::kit` are those two crates, re-exported.
