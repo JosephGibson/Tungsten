@@ -8783,3 +8783,72 @@ fn a_ball_by_a_ramp_top_or_a_peak_meets_no_false_overlap() {
     }
     assert!(bad.is_empty(), "{}", bad.join("\n"));
 }
+
+/// A map of 16 px cells from rows of letters: `#` solid (tile 0), `a` a 45°
+/// slope of kind 1 (tile 1), `=` one-way (tile 2) and `.` empty.
+fn joined_map(rows: &[&str]) -> TilemapData {
+    let mut data = TilemapData::new(16, 16, rows[0].len() as u32, rows.len() as u32);
+    data.add_tile("solid");
+    for (tile, props) in [
+        (
+            data.add_tile("ramp"),
+            TileProps {
+                slope: Some(slope_kind(1)),
+                ..TileProps::default()
+            },
+        ),
+        (
+            data.add_tile("ledge"),
+            TileProps {
+                one_way: true,
+                ..TileProps::default()
+            },
+        ),
+    ] {
+        data.set_tile_props(tile, props);
+    }
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    for (row, letters) in rows.iter().enumerate() {
+        for (col, letter) in letters.chars().enumerate() {
+            if let Some(tile) = "#a=".find(letter) {
+                data.set_tile(layer, col as u32, row as u32, tile as i32);
+            }
+        }
+    }
+    data
+}
+
+#[test]
+#[ignore = "7.21 step 11: fails until its fix"]
+fn a_box_walks_off_one_way_cells_onto_the_solid_beside_them() {
+    // ch-one-way-join (physics review r2 a2-1, D-228): row 4's top at y 64.
+    // A box of half 6 let go at 0 px on one-way cells walks left at 120
+    // px/s for two seconds onto solid cells at their height, or over the
+    // apex of a ramp beside them: it crosses as it does on solid cells.
+    let walk = |rows: &[&str]| {
+        let mut world = one_way_world(joined_map(rows));
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::aabb(Vec2::splat(6.0)),
+            Vec2::new(400.0, 58.0),
+            Vec2::new(-120.0, 0.0),
+        );
+        for _ in 0..120 {
+            physics_step(&mut world);
+        }
+        world.get::<Position>(body).unwrap().0
+    };
+    let sky = "..............................";
+    let at = walk(&[sky, sky, sky, sky, "####################=========="]);
+    assert!(
+        at.x < 300.0,
+        "off the one-way cells onto the solid: at {at}"
+    );
+    let floor = "##############################";
+    let at = walk(&[sky, sky, sky, sky, "...................a==========", floor]);
+    assert!(
+        at.x < 300.0,
+        "off the one-way cells over the ramp's apex: at {at}"
+    );
+}
