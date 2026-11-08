@@ -523,6 +523,13 @@ struct StepExtra {
     sensor_exits: Vec<SensorExited>,
     /// The kinematic bodies' pushes ([`take_push`]).
     push: PushRecord,
+    /// Scratch for the gather's static joins (`gather::mask_static_joins`):
+    /// each static box's faces.
+    static_faces: Vec<gather::StaticFace>,
+    /// Tests: the static-join pass's face checks since the buffers were
+    /// created.
+    #[cfg(test)]
+    static_join_checks: usize,
 }
 
 /// A swept sensor of the step ([`RigidBody::swept`]): its place among the
@@ -725,7 +732,10 @@ impl PhysicsBuffers {
                     entity: proxy.entity,
                     center: proxy.center,
                     shape: proxy.shape,
-                    face_mask: proxy.face_mask,
+                    // Queries keep every entity face: a cast's filter or a
+                    // despawn after the step can drop the box that covers a
+                    // face the step's static joins mask (D-259).
+                    face_mask: FACE_ALL,
                     slope: 0,
                     sensor: false,
                     identity: proxy.key,

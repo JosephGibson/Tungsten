@@ -2260,3 +2260,29 @@ fn casts_can_skip_one_way_tiles() {
     assert_eq!((layered.mask(), layered.without()), (0b101, 0b100));
     assert_eq!((all().mask(), all().without()), (RigidBody::ALL_LAYERS, 0));
 }
+
+#[test]
+fn a_cast_past_a_dropped_box_meets_the_box_touching_it() {
+    // D-259: the step masks the faces two touching static boxes share, but
+    // queries keep every entity face, so a cast that leaves the left box out
+    // by its filter, or runs after the left box is despawned, meets the
+    // right box's left face.
+    let mut world = world();
+    let left = wall(&mut world, Vec2::new(50.0, 0.0), Vec2::splat(10.0));
+    let right = wall(&mut world, Vec2::new(70.0, 0.0), Vec2::splat(10.0));
+    physics_step(&mut world);
+    let probe = Shape::Aabb {
+        half_extents: Vec2::splat(4.0),
+    };
+    let cast = |world: &World, filter: &SpatialFilter| {
+        cast_shape(world, probe, Vec2::ZERO, Vec2::X, 500.0, filter).map(hit_parts)
+    };
+    assert_eq!(
+        cast(&world, &all()),
+        Some((Some(left), Vec2::new(40.0, 0.0), Vec2::NEG_X, 36.0))
+    );
+    let past_left = Some((Some(right), Vec2::new(60.0, 0.0), Vec2::NEG_X, 56.0));
+    assert_eq!(cast(&world, &all().excluding(left)), past_left, "excluded");
+    world.despawn(left);
+    assert_eq!(cast(&world, &all()), past_left, "despawned after the step");
+}

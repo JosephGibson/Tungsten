@@ -9042,7 +9042,6 @@ fn a_static_bodys_velocity_moves_nothing_on_it() {
 }
 
 #[test]
-#[ignore = "7.21 step 18: fails until its fix"]
 fn a_box_slides_over_the_join_of_two_touching_static_boxes() {
     // ch-static-join: two static decks of half (64, 8) touching at x 64,
     // their tops at y -8. A box of half 6 let go on one at 0 px and sliding
@@ -9082,5 +9081,52 @@ fn a_box_slides_over_the_join_of_two_touching_static_boxes() {
             (joined.x - control.x).abs() < 0.01,
             "from x {start} at {speed} px/s over the join: at {joined}, on one deck at {control}"
         );
+    }
+}
+
+#[test]
+fn static_joins_scale_with_their_faces() {
+    // D-259: 2,048 static boxes of one height in a row share their top and
+    // bottom planes. Separated or touching, the join pass checks each face
+    // a bounded number of times; touching, every inner side is masked.
+    use crate::physics::collision::{FACE_ALL, FACE_LEFT, FACE_RIGHT};
+    const BOXES: usize = 2_048;
+    for (gap, touching) in [(4.0, false), (0.0, true)] {
+        let mut world = seed_world();
+        for i in 0..BOXES {
+            let at = Vec2::new(i as f32 * (16.0 + gap), 0.0);
+            spawn_static(&mut world, Collider::aabb(Vec2::splat(8.0)), at);
+        }
+        spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::circle(4.0),
+            Vec2::new(0.0, -500.0),
+            Vec2::ZERO,
+        );
+        physics_step(&mut world);
+        let buffers = world.resource::<PhysicsBuffers>();
+        let faces = 4 * BOXES;
+        let checks = buffers.extra.static_join_checks;
+        assert!(
+            checks < 4 * faces,
+            "gap {gap}: {checks} checks for {faces} faces"
+        );
+        let statics: Vec<u8> = buffers.proxies[..buffers.bodies]
+            .iter()
+            .filter(|proxy| !proxy.is_dynamic)
+            .map(|proxy| proxy.face_mask)
+            .collect();
+        assert_eq!(statics.len(), BOXES);
+        for (i, &mask) in statics.iter().enumerate() {
+            let mut expected = FACE_ALL;
+            if touching && i > 0 {
+                expected &= !FACE_LEFT;
+            }
+            if touching && i + 1 < BOXES {
+                expected &= !FACE_RIGHT;
+            }
+            assert_eq!(mask, expected, "gap {gap}: box {i}");
+        }
     }
 }

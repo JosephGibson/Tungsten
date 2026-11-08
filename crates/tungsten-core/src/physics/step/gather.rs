@@ -15,9 +15,7 @@ use crate::assets::{
     LayerKind, MapCursor, TileChanges, TileIndex, TilemapData, TilemapInstance, TilemapRegistry,
 };
 use crate::ecs::{Entity, World};
-use crate::physics::collision::FACE_ALL;
-#[cfg(test)]
-use crate::physics::collision::{FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
+use crate::physics::collision::{FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
 use crate::physics::components::{BodyKind, Collider, Position, RigidBody, Shape, Spin, Velocity};
 use crate::physics::query::TileHit;
 use crate::physics::{PhysicsMaterial, PhysicsMaterials};
@@ -244,6 +242,7 @@ pub(super) fn gather_proxies(
         layers.of.push(body_layers);
     }
 
+    mask_static_joins(proxies, &layers.of, extra);
     tiles.refresh(world);
     let bodies = proxies.len();
     // The tiles' frictions and rolling resistances follow the bodies'; the
@@ -287,6 +286,127 @@ pub(super) fn gather_proxies(
         tile_ids.extend_from_slice(&tiles.ids);
     }
     kinematics
+}
+
+/// One static box's face for [`mask_static_joins`]: on `axis`'s plane
+/// `plane` (0 x, 1 y), its box below the plane (`high` false: a right or
+/// bottom face) or above it, its span across the axis, and its proxy's
+/// layers, index and face bit.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct StaticFace {
+    axis: u8,
+    plane: f32,
+    layers: (u32, u32),
+    high: bool,
+    start: f32,
+    end: f32,
+    proxy: u32,
+    side: u8,
+}
+
+/// Masks the faces where two static boxes touch, as the outline masks a
+/// tile's internal faces: a static box's face is internal when another
+/// static box in the same layers has its opposite face on the same plane,
+/// exactly, and spanning it whole, so a body sliding over their join meets
+/// no wall. Partial covers, overlaps and static/tile seams keep their faces,
+/// and the query index keeps every entity face (`index_bodies`). The static
+/// boxes are the entity proxies neither dynamic nor kinematic with a box
+/// shape. One sort groups the faces by axis, plane and layers, the low side
+/// first and each side by span start; a sweep each way then keeps, among
+/// the opposite faces starting at or before a face's start, the greatest
+/// end, and masks the face when that end reaches its own: a plane of `k`
+/// faces costs `O(k log k)`.
+fn mask_static_joins(proxies: &mut [Proxy], layers: &[Layers], extra: &mut StepExtra) {
+    let faces = &mut extra.static_faces;
+    faces.clear();
+    for (index, proxy) in proxies.iter().enumerate() {
+        if proxy.is_dynamic || proxy.kinematic {
+            continue;
+        }
+        let Shape::Aabb { half_extents } = proxy.shape else {
+            continue;
+        };
+        let (min, max) = (proxy.center - half_extents, proxy.center + half_extents);
+        let layers = (layers[index].layers, layers[index].mask);
+        let proxy = index as u32;
+        for (axis, plane, high, side, start, end) in [
+            (0, max.x, false, FACE_RIGHT, min.y, max.y),
+            (0, min.x, true, FACE_LEFT, min.y, max.y),
+            (1, max.y, false, FACE_BOTTOM, min.x, max.x),
+            (1, min.y, true, FACE_TOP, min.x, max.x),
+        ] {
+            faces.push(StaticFace {
+                axis,
+                // `+ 0.0` reads a negative zero as zero, so planes group as
+                // `==` compares them.
+                plane: plane + 0.0,
+                layers,
+                high,
+                start,
+                end,
+                proxy,
+                side,
+            });
+        }
+    }
+    if faces.len() < 8 {
+        return;
+    }
+    // A total order, so the unstable sort, which allocates nothing, is
+    // deterministic.
+    faces.sort_unstable_by(|a, b| {
+        a.axis
+            .cmp(&b.axis)
+            .then_with(|| a.plane.total_cmp(&b.plane))
+            .then_with(|| a.layers.cmp(&b.layers))
+            .then_with(|| a.high.cmp(&b.high))
+            .then_with(|| a.start.total_cmp(&b.start))
+            .then_with(|| a.proxy.cmp(&b.proxy))
+    });
+    let same = |a: &StaticFace, b: &StaticFace| {
+        a.axis == b.axis && a.plane.to_bits() == b.plane.to_bits() && a.layers == b.layers
+    };
+    #[cfg(test)]
+    let mut checks = 0;
+    let mut group = 0;
+    while group < faces.len() {
+        let mut split = group;
+        while split < faces.len() && same(&faces[group], &faces[split]) && !faces[split].high {
+            split += 1;
+        }
+        let mut end = split;
+        while end < faces.len() && same(&faces[group], &faces[end]) {
+            end += 1;
+        }
+        // `group..split` the low side's faces, `split..end` the high side's,
+        // each by start: each side's faces against the other's.
+        for (covered, cover) in [(group..split, split..end), (split..end, group..split)] {
+            let mut reach = f32::NEG_INFINITY;
+            let mut next = cover.start;
+            for i in covered {
+                while next < cover.end && faces[next].start <= faces[i].start {
+                    reach = reach.max(faces[next].end);
+                    next += 1;
+                    #[cfg(test)]
+                    {
+                        checks += 1;
+                    }
+                }
+                #[cfg(test)]
+                {
+                    checks += 1;
+                }
+                if reach >= faces[i].end {
+                    proxies[faces[i].proxy as usize].face_mask &= !faces[i].side;
+                }
+            }
+        }
+        group = end;
+    }
+    #[cfg(test)]
+    {
+        extra.static_join_checks += checks;
+    }
 }
 
 /// The static tile proxies of every collision layer, each in its layer's
