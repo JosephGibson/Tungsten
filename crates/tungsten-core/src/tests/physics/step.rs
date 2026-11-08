@@ -9130,3 +9130,52 @@ fn static_joins_scale_with_their_faces() {
         }
     }
 }
+
+#[test]
+#[ignore = "7.21 step 19: fails until its fix"]
+fn a_box_crosses_two_maps_placed_edge_to_edge() {
+    // ch-map-edges (physics review r2 a2-2, D-228): maps of 10 × 3 cells of
+    // 16 px, row 2 solid (its top at y 32), at x 0 and 160, against one map
+    // of 20 × 3 as the control. A box of half 6 let go at 0 px and sliding
+    // at 120 px/s for a second crosses the seam at its speed, both ways.
+    let floor = |width: u32| {
+        let mut data = TilemapData::new(16, 16, width, 3);
+        let solid = data.add_tile("solid");
+        let layer = data.add_layer("solid", LayerKind::Collision);
+        for col in 0..width {
+            data.set_tile(layer, col, 2, solid);
+        }
+        data
+    };
+    let slide = |maps: &[(&str, u32, f32)], start: f32, speed: f32| {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+        for &(id, width, x) in maps {
+            world
+                .resource_mut::<TilemapRegistry>()
+                .insert(id.into(), floor(width));
+            let map = world.spawn();
+            world.insert(map, TilemapInstance::new(id, Vec2::new(x, 0.0)));
+        }
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::aabb(Vec2::splat(6.0)),
+            Vec2::new(start, 26.0),
+            Vec2::new(speed, 0.0),
+        );
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        world.get::<Position>(body).unwrap().0
+    };
+    for (start, speed) in [(100.0, 120.0), (220.0, -120.0)] {
+        let control = slide(&[("one", 20, 0.0)], start, speed);
+        let seam = slide(&[("a", 10, 0.0), ("b", 10, 160.0)], start, speed);
+        assert!((control.x - start).abs() > 100.0, "on one map at {control}");
+        assert!(
+            (seam.x - control.x).abs() < 0.01,
+            "from x {start} at {speed} px/s over the seam: at {seam}, on one map at {control}"
+        );
+    }
+}
