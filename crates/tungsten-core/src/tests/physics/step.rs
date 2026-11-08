@@ -8451,3 +8451,111 @@ fn the_arrival_pass_meets_an_oversize_body_a_push_reaches() {
         "the pushed box's right edge at x {box_right}, the wall's left face at x {wall_left}"
     );
 }
+
+/// ch-kinematic-support (`D-156`): a box asleep on a still kinematic
+/// platform falls when the platform goes, turns sensor, loses its collider
+/// or stops meeting it, as one on a static platform does; and when it goes
+/// after carrying the box 100 px and stopping, while a floater far off kept
+/// an island asleep throughout. Flattened to a quarter of its height under
+/// the box (the oracle's deck reshape), it lets the box drop onto it.
+#[test]
+#[ignore = "7.21 step 7: fails until its fix"]
+fn a_sleeper_on_a_still_kinematic_platform_falls_when_it_goes() {
+    let mut hung = Vec::new();
+    for platform_first in [true, false] {
+        for change in [
+            "despawn",
+            "mask 0",
+            "sensor",
+            "no collider",
+            "moved, despawn",
+            "flattened",
+        ] {
+            let mut world = seed_world();
+            world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+            let spawn = |world: &mut World, body: RigidBody, half: Vec2, y: f32| {
+                spawn_body(
+                    world,
+                    body.with_friction(1.0),
+                    Collider::aabb(half),
+                    Vec2::new(0.0, y),
+                    Vec2::ZERO,
+                )
+            };
+            let platform = |world: &mut World| {
+                spawn(world, RigidBody::kinematic(), Vec2::new(40.0, 8.0), 100.0)
+            };
+            let rider =
+                |world: &mut World| spawn(world, RigidBody::dynamic(), Vec2::splat(8.0), 84.2);
+            let (platform, rider) = if platform_first {
+                let platform = platform(&mut world);
+                (platform, rider(&mut world))
+            } else {
+                let rider = rider(&mut world);
+                (platform(&mut world), rider)
+            };
+            let floater = RigidBody::dynamic().with_gravity_scale(0.0);
+            spawn_body(
+                &mut world,
+                floater,
+                Collider::circle(4.0),
+                Vec2::new(1000.0, -500.0),
+                Vec2::ZERO,
+            );
+            let run = |world: &mut World, steps: usize| {
+                for _ in 0..steps {
+                    physics_step(world);
+                    drain_events(world);
+                }
+            };
+            run(&mut world, 150);
+            if change == "moved, despawn" {
+                world.get_mut::<Velocity>(platform).unwrap().0 = Vec2::new(120.0, 0.0);
+                run(&mut world, 50);
+                world.get_mut::<Velocity>(platform).unwrap().0 = Vec2::ZERO;
+                run(&mut world, 150);
+            }
+            assert!(
+                is_sleeping(&world, rider),
+                "{change}: the rider never slept"
+            );
+            let y0 = world.get::<Position>(rider).unwrap().0.y;
+            match change {
+                "mask 0" => world.get_mut::<RigidBody>(platform).unwrap().mask = 0,
+                "sensor" => world.get_mut::<RigidBody>(platform).unwrap().kind = BodyKind::Sensor,
+                "no collider" => {
+                    world.remove_component::<Collider>(platform);
+                }
+                "flattened" => {
+                    world.get_mut::<Collider>(platform).unwrap().shape = Shape::Aabb {
+                        half_extents: Vec2::new(40.0, 2.0),
+                    };
+                }
+                _ => {
+                    world.despawn(platform);
+                }
+            }
+            run(&mut world, 60);
+            let fell = world.get::<Position>(rider).unwrap().0.y - y0;
+            // Flattened, the deck's top drops 6 px and the box lands on it,
+            // where it may sleep again; otherwise nothing holds it.
+            let hangs = if change == "flattened" {
+                fell < 5.0
+            } else {
+                is_sleeping(&world, rider) || fell < 100.0
+            };
+            if hangs {
+                let asleep = is_sleeping(&world, rider);
+                hung.push(format!(
+                    "platform first {platform_first}, {change}: asleep {asleep}, fell {fell}"
+                ));
+            }
+        }
+    }
+    assert!(
+        hung.is_empty(),
+        "{} riders hang:\n{}",
+        hung.len(),
+        hung.join("\n")
+    );
+}
