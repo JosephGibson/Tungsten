@@ -911,3 +911,40 @@ fn paths_past_an_exposed_sides_line_miss() {
         "{masked_entries} of the paths entered by a masked side"
     );
 }
+
+#[test]
+#[ignore = "7.21 step 10: fails until its fix"]
+fn a_circle_beside_a_masked_leg_reads_no_false_overlap() {
+    // ch-slope-clamp (`D-229`): a ramp's top cell, 45 br or 2:1 high br, its
+    // apex (80, 16) beside a floor that covers its right leg, and a peak's
+    // 45 br beside a bl at the apex (32, 16), each mask `FACE_TOP`. A circle
+    // of radius 4 on the floor right of the ramp's apex, or on bl's face 1 px
+    // past the peak's, clamped to the face's line and read 1.3 to 5.4 px
+    // deep though it stood off; a circle cast down onto the floor at x 82
+    // met the face's line square before the floor. A contact is never deeper
+    // than the circle's true gap, and the cast meets nothing before the
+    // floor's y 12.
+    let ramp = polygon(1, Vec2::new(72.0, 24.0), HALF);
+    let high = polygon(9, Vec2::new(72.0, 24.0), HALF);
+    let peak = polygon(1, Vec2::new(24.0, 24.0), HALF);
+    let mut bad = Vec::new();
+    for (poly, center) in [
+        (&ramp, Vec2::new(80.5, 11.99)),
+        (&ramp, Vec2::new(82.0, 11.99)),
+        (&ramp, Vec2::new(84.0, 11.99)),
+        (&high, Vec2::new(82.0, 11.99)),
+        (&peak, Vec2::new(35.83, 14.17)),
+    ] {
+        let gap = center_distance(center, poly) - 4.0;
+        let contact = circle_contact(center, 4.0, poly, FACE_TOP, 1.0);
+        if contact.is_some_and(|c| c.penetration > 1e-4 - gap) {
+            bad.push(format!("at {center}: {contact:?}, true gap {gap}"));
+        }
+    }
+    let shape = Shape::Circle { radius: 4.0 };
+    let hit = cast(shape, Vec2::new(82.0, 0.0), Vec2::Y, &ramp, FACE_TOP);
+    if hit.is_some_and(|(t, _)| t < 12.0) {
+        bad.push(format!("cast down from (82, 0): {hit:?}"));
+    }
+    assert!(bad.is_empty(), "{}", bad.join("\n"));
+}

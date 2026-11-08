@@ -8732,3 +8732,55 @@ fn removing_a_contact_woken_support_wakes_the_sleepers_it_held() {
         stranded.join("\n")
     );
 }
+
+#[test]
+#[ignore = "7.21 step 10: fails until its fix"]
+fn a_ball_by_a_ramp_top_or_a_peak_meets_no_false_overlap() {
+    // ch-slope-clamp (`D-229`): a frictionless circle of radius 4 resting on
+    // the floor 1 or 2 px right of a ramp top's apex (80, 16), or on a
+    // peak's bl face 1 px past its apex (32, 16), met the br cell's face
+    // line beside its covered right leg as a deep overlap, so it was thrown
+    // over the apex and down the ramp or held on the peak. After 1 s at
+    // 1/60 s each stays right of the ramp's apex or rolls past x 36, as a box
+    // of half 4 does, and a circle cast from the floor beside the apex,
+    // moving right, away from the ramp, never meets its top cell.
+    let ramp = ["........", "....a###", "...a####", "..a#####", "########"];
+    let peak = ["....", ".ab.", "####"];
+    let (ball, crate_) = (Collider::circle(4.0), Collider::aabb(Vec2::splat(4.0)));
+    let mut bad = Vec::new();
+    for (rows, collider, start, past) in [
+        (&ramp[..], ball, Vec2::new(82.0, 11.99), 80.0),
+        (&ramp[..], ball, Vec2::new(81.0, 12.0), 80.0),
+        (&ramp[..], crate_, Vec2::new(82.0, 11.99), 80.0),
+        (&peak[..], ball, Vec2::new(35.83, 14.17), 36.0),
+        (&peak[..], crate_, Vec2::new(37.0, 11.0), 36.0),
+    ] {
+        let mut world = one_way_world(slope_map(rows));
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            collider,
+            start,
+            Vec2::ZERO,
+        );
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        let end = world.get::<Position>(body).unwrap().0;
+        if end.x < past {
+            let shape = collider.shape;
+            bad.push(format!(
+                "{shape:?} from {start}: at {end}, not past x {past}"
+            ));
+        }
+    }
+    let mut world = one_way_world(slope_map(&ramp));
+    physics_step(&mut world);
+    let (origin, shape) = (Vec2::new(82.0, 12.05), Shape::Circle { radius: 4.0 });
+    let filter = crate::physics::SpatialFilter::new();
+    let hit = crate::physics::cast_shape(&world, shape, origin, Vec2::X, 8.0, &filter);
+    if hit.is_some_and(|hit| hit.tile.is_some_and(|tile| (tile.col, tile.row) == (4, 1))) {
+        bad.push(format!("cast from {origin} along +x: {hit:?}"));
+    }
+    assert!(bad.is_empty(), "{}", bad.join("\n"));
+}
