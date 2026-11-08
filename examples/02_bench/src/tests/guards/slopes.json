@@ -1,9 +1,9 @@
 {
-  "allocated_bytes": 3526668,
-  "allocations": 3130,
+  "allocated_bytes": 3527204,
+  "allocations": 3115,
   "archetype_moves": 0,
   "despawned": 0,
-  "events_sent": 46180,
+  "events_sent": 34488,
   "max_sprite_batches": 3,
   "max_sprite_instances": 514,
   "spawned": 0

@@ -8734,7 +8734,6 @@ fn removing_a_contact_woken_support_wakes_the_sleepers_it_held() {
 }
 
 #[test]
-#[ignore = "7.21 step 10: fails until its fix"]
 fn a_ball_by_a_ramp_top_or_a_peak_meets_no_false_overlap() {
     // ch-slope-clamp (`D-229`): a frictionless circle of radius 4 resting on
     // the floor 1 or 2 px right of a ramp top's apex (80, 16), or on a

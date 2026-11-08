@@ -163,6 +163,21 @@ fn masked_normal(normal: Vec2, mask: u8) -> bool {
     mask & face == 0
 }
 
+/// Whether the vertex between the exposed side of outward normal `open`
+/// and the masked one of `leg` is an open corner: an axis side strictly
+/// between their normals that `mask` exposes, as the outline exposes a side
+/// without a leg while no neighbour stands past the vertex.
+fn open_corner(open: Vec2, leg: Vec2, mask: u8) -> bool {
+    let turn = open.perp_dot(leg);
+    [Vec2::X, Vec2::Y, Vec2::NEG_X, Vec2::NEG_Y]
+        .into_iter()
+        .any(|side| {
+            open.perp_dot(side) * turn > 0.0
+                && side.perp_dot(leg) * turn > 0.0
+                && !masked_normal(side, mask)
+        })
+}
+
 /// Where a separated shape's centre lies against what it meets.
 #[derive(Debug, Clone, Copy)]
 enum Region {
@@ -172,7 +187,8 @@ enum Region {
     /// A vertex beside one masked edge: the gap along the exposed one's
     /// normal, from its line.
     Clamped(Vec2, f32),
-    /// A masked edge's inside or a vertex between two masked edges.
+    /// A masked edge's inside, a vertex between two masked edges, or an
+    /// open corner past its masked edge's line.
     Masked,
 }
 
@@ -208,15 +224,28 @@ fn region(center: Vec2, points: &[Vec2], offset: f32, mask: u8) -> (Region, f32)
     };
     let vertex = points[l];
     let direction = |k: usize| (points[(k + 1) % n] - points[k]).normalize();
-    let bound = (center - vertex)
+    let mut bound = (center - vertex)
         .dot(direction(j))
         .min(-(center - vertex).dot(direction(l)));
-    let clamped =
-        |k: usize| Region::Clamped(edges[k].1, (center - vertex).dot(edges[k].1) - offset);
+    let mut clamped = |open: usize, leg: usize| {
+        let (normal, leg) = (edges[open].1, edges[leg].1);
+        if !open_corner(normal, leg, mask) {
+            return Region::Clamped(normal, (center - vertex).dot(normal) - offset);
+        }
+        // An open corner: the vertex on the exposed side's side of the
+        // masked edge's line, nothing past it.
+        let past = (center - vertex).dot(leg);
+        bound = bound.min(past.abs());
+        if past > 0.0 {
+            Region::Masked
+        } else {
+            Region::Exact((center - vertex) / best)
+        }
+    };
     let region = match (exposed(j), exposed(l)) {
         (true, true) => Region::Exact((center - vertex) / best),
-        (true, false) => clamped(j),
-        (false, true) => clamped(l),
+        (true, false) => clamped(j, l),
+        (false, true) => clamped(l, j),
         (false, false) => Region::Masked,
     };
     (region, bound)
@@ -352,8 +381,9 @@ fn slope_contacts_separate_and_measure_exactly() {
 fn slope_contacts_clamp_at_a_masked_endpoint() {
     // A box and a circle 1 px out from each vertex where a masked side meets
     // an exposed one, of the polygon or of its sum with the box, along the
-    // bisector of their normals.
-    let mut met = 0;
+    // bisector of their normals; at an open corner, which only a circle's
+    // polygon has, that lies past the masked side's line and meets nothing.
+    let (mut met, mut open_met) = (0, 0);
     for code in 1..=12u8 {
         let poly = polygon(code, Vec2::ZERO, HALF);
         for shape in [
@@ -368,15 +398,21 @@ fn slope_contacts_clamp_at_a_masked_endpoint() {
                 for (l, &vertex) in sum.iter().enumerate() {
                     let j = (l + sum.len() - 1) % sum.len();
                     let (before, after) = (edges[j].1, edges[l].1);
-                    let open = match (masked_normal(before, mask), masked_normal(after, mask)) {
-                        (false, true) => before,
-                        (true, false) => after,
-                        _ => continue,
-                    };
+                    let (open, leg) =
+                        match (masked_normal(before, mask), masked_normal(after, mask)) {
+                            (false, true) => (before, after),
+                            (true, false) => (after, before),
+                            _ => continue,
+                        };
                     let center = vertex + (before + after).normalize() * (offset + 1.0);
                     let at = format!("kind {code}, mask {mask:#06b}, {shape:?} at {center}");
-                    let contact = contact(shape, center, &poly, mask, 8.0)
-                        .unwrap_or_else(|| panic!("{at}: no contact"));
+                    let contact = contact(shape, center, &poly, mask, 8.0);
+                    if open_corner(open, leg, mask) {
+                        assert!(contact.is_none(), "{at}: {contact:?} at an open corner");
+                        open_met += 1;
+                        continue;
+                    }
+                    let contact = contact.unwrap_or_else(|| panic!("{at}: no contact"));
                     let gap = (center - vertex).dot(open) - offset;
                     assert!(contact.normal.abs_diff_eq(open, 1e-5), "{at}: {contact:?}");
                     assert!(
@@ -388,7 +424,10 @@ fn slope_contacts_clamp_at_a_masked_endpoint() {
             }
         }
     }
-    assert!(met > 200, "{met} masked endpoints met");
+    assert!(
+        met > 200 && open_met > 20,
+        "{met} masked endpoints met, {open_met} open corners"
+    );
 }
 
 #[test]
@@ -913,7 +952,6 @@ fn paths_past_an_exposed_sides_line_miss() {
 }
 
 #[test]
-#[ignore = "7.21 step 10: fails until its fix"]
 fn a_circle_beside_a_masked_leg_reads_no_false_overlap() {
     // ch-slope-clamp (`D-229`): a ramp's top cell, 45 br or 2:1 high br, its
     // apex (80, 16) beside a floor that covers its right leg, and a peak's

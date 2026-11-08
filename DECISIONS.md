@@ -3555,6 +3555,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 ## D-229 — Physics on the runtime terrain: physics layer names and materials; Coulomb friction and opt-in rolling; contact events with speeds, begins and ends; sensor exits and swept sensors; casts that pass refused hits; 45° and 2:1 slope tiles
 **Amended by D-233:** the contact events only; `PhysicsPlugin` registers neither `ContactBegan` nor `ContactEnded`, so the record runs once a game registers either; the rest stands.
 **Amended by D-239:** the slope casts only; a path whose last entry is a masked side within a rounding behind an exposed side's entry enters through the exposed side at the later `t`, and the safety net's sweep takes the cell's mask; the rest stands.
+**Amended by D-255:** the slope contacts and casts for circles only; a circle takes a slope cell's exposed side's line beside a masked leg only where a neighbour continues the side through the vertex, and at an open corner, where an axis side between the two normals is exposed by the shadow rule, meets the rounded vertex on the exposed side's side of the leg's line and nothing past it, in contacts and casts alike; boxes, sweeps and rays stand, and so does the rest.
 **Date:** 2026-10-31
 **Decision:** Redo 7.8's second plan (phase 7's Step 5): the physics `D-228` left open, as far as its steps landed. Every default keeps today's worlds: friction 0, no spin, no slope, no swept sensor, so the physics hashes and the kit's pin hold.
 
@@ -4028,3 +4029,15 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Amends `D-156` as its marker line says.
 - `Support` grows from 32 to 56 bytes. Pins: the physics hashes, `Proxy`'s 80 bytes, 02's and the template's guards hold; 01's pit guard reads 59,980 allocations and 69,236,700 bytes (from 59,977 and 68,096,156), the record's larger supports.
 - While an island sleeps, each kinematic proxy costs a compare a frame, and a moving one a binary search of the sorted record.
+
+## D-255 — An open slope corner rounds a circle's contact instead of extending the exposed side's line
+**Date:** 2026-11-08
+**Decision:** Core hardening (7.21) Step 10, `ch-slope-clamp`. Beside a slope cell's masked leg, a circle takes the exposed side's line only where a neighbour continues that side through the vertex. Where an axis side strictly between the two normals, one without a leg, is exposed by the shadow rule (`D-229`), the vertex is an open corner: there a circle meets the rounded vertex on the exposed side's side of the leg's line, and nothing past it, in contacts and casts alike. Boxes, sweeps and rays are unchanged.
+
+**Why:** Beside a vertex where an exposed side met a masked one at an acute angle, a circle clamped to the exposed side's line and read a false deep overlap: by a ramp's top a circle 0.48 px off read 2.58 px deep, and balls by a ramp's top or a peak were thrown back (`at [82, 11.99]` … `not past x 80`).
+
+**Consequences:**
+- Amends `D-229` as its marker line says.
+- Two region-oracle expectations in `tests/physics/slope.rs` follow the rule: an open corner's circle is `Masked` past the leg's line and unclamped on the face's side.
+- Pins: the physics hashes and 01's and the template's guards hold; 02's `slopes` guard moves, its false contacts gone (`events_sent` 46,180 → 34,488 on 7.21's step 3), so its digest moves.
+- One more test per circle–slope vertex in `circle_contact`.
