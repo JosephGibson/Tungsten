@@ -6,7 +6,7 @@ use super::{Layers, PhysicsBuffers, Proxy};
 use crate::ecs::World;
 use crate::physics::PhysicsConfig;
 use crate::physics::collision::Aabb;
-use crate::physics::components::{Spin, Velocity};
+use crate::physics::components::{Shape, Spin, Velocity};
 use glam::Vec2;
 
 fn hash_key(key: u64) -> u64 {
@@ -59,17 +59,19 @@ pub(super) struct SleepTable {
     next_entries: Vec<SleepEntry>,
     /// Scratch: old entries a rebuild carried over.
     carried: Vec<bool>,
-    /// The static and tile proxies at the end of the last frame in which an
-    /// island slept, in proxy order: key, box and layers. Only dynamic
-    /// members carry sleep entries, so a support that went, moved or changed
-    /// is found by comparing this with the next frame's (`wake_on_supports`).
+    /// The static, tile and kinematic proxies at the end of the last frame in
+    /// which an island slept, in proxy order: key, box and layers. Only
+    /// dynamic members carry sleep entries, so a support that went, moved or
+    /// changed is found by comparing this with the next frame's
+    /// (`wake_on_supports`); a kinematic one's box follows it unread.
     supports: Vec<Support>,
     /// `supports` matches the last frame's proxies; false while no island
     /// sleeps, when nothing is recorded.
     supports_valid: bool,
     /// Scratch: supports whose box or layers changed, by index, with the
-    /// new ones.
-    moved_supports: Vec<(usize, Support)>,
+    /// new ones and whether the change wakes (a kinematic one's move does
+    /// not).
+    moved_supports: Vec<(usize, Support, bool)>,
     /// Scratch: the old and new boxes of the supports that changed.
     changed_supports: Vec<Aabb>,
     /// The sorted comparison when supports appear or go: `sorted_old` is
@@ -81,10 +83,11 @@ pub(super) struct SleepTable {
     pub(super) rebuilds: usize,
 }
 
-/// A proxy sleepers can rest on that holds no sleep entry: a static entity
-/// or a tile. Kinematic bodies wake what they press (`D-154`).
+/// A proxy sleepers can rest on that holds no sleep entry: a static entity,
+/// a tile or a kinematic body. A kinematic body's moves wake what it presses
+/// (`D-154`); the record sees it go or change its layers or shape alone.
 fn is_support(proxy: &Proxy) -> bool {
-    !proxy.is_dynamic && !proxy.kinematic
+    !proxy.is_dynamic
 }
 
 /// A sleeper's gathered state differs from the state it froze with: an
@@ -94,12 +97,37 @@ fn written(proxy: &Proxy, layers: Layers, entry: &SleepEntry) -> bool {
 }
 
 /// A support as the sleep record keeps it: a change to its box or its
-/// layers wakes the sleepers near it.
+/// layers wakes the sleepers near it; a kinematic one's box moves unread,
+/// and a change to its kind, layers or shape wakes them instead.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Support {
     key: u64,
     aabb: Aabb,
     layers: Layers,
+    /// A kinematic support's collider: its shape's kind and size and its
+    /// offset, as bits ([`shape_bits`]); zeros for a static or tile one,
+    /// whose box holds them.
+    shape: [u32; 5],
+    kinematic: bool,
+}
+
+/// A kinematic proxy's collider as bits: the shape's kind (1 a box, 2 a
+/// circle), its half extents or radius, and its offset.
+fn shape_bits(proxy: &Proxy) -> [u32; 5] {
+    if !proxy.kinematic {
+        return [0; 5];
+    }
+    let (kind, a, b) = match proxy.shape {
+        Shape::Aabb { half_extents } => (1, half_extents.x.to_bits(), half_extents.y.to_bits()),
+        Shape::Circle { radius } => (2, radius.to_bits(), 0),
+    };
+    [
+        kind,
+        a,
+        b,
+        proxy.offset.x.to_bits(),
+        proxy.offset.y.to_bits(),
+    ]
 }
 
 impl Support {
@@ -108,22 +136,45 @@ impl Support {
             key: proxy.key,
             aabb: proxy.world_aabb(),
             layers,
+            shape: shape_bits(proxy),
+            kinematic: proxy.kinematic,
+        }
+    }
+
+    /// `new` is this support changed in a way that wakes: anything for a
+    /// static or tile one, its kind, layers or shape for a kinematic one,
+    /// never its box.
+    fn changed(&self, new: &Self) -> bool {
+        if self.kinematic && new.kinematic {
+            self.layers != new.layers || self.shape != new.shape
+        } else {
+            self != new
         }
     }
 }
 
-/// A total order on a support for the sorted comparison: key, then the box's
-/// bits, then the layers.
+/// A total order on a support for the sorted comparison: key, kind, then
+/// the box's bits, a kinematic one's left out, then the layers and the
+/// shape's bits.
 fn support_order(a: &Support, b: &Support) -> std::cmp::Ordering {
     let bits = |support: &Support| {
+        let aabb = if support.kinematic {
+            [0; 4]
+        } else {
+            [
+                support.aabb.center.x.to_bits(),
+                support.aabb.center.y.to_bits(),
+                support.aabb.half_extents.x.to_bits(),
+                support.aabb.half_extents.y.to_bits(),
+            ]
+        };
         (
             support.key,
-            support.aabb.center.x.to_bits(),
-            support.aabb.center.y.to_bits(),
-            support.aabb.half_extents.x.to_bits(),
-            support.aabb.half_extents.y.to_bits(),
+            support.kinematic,
+            aabb,
             support.layers.layers,
             support.layers.mask,
+            support.shape,
         )
     };
     bits(a).cmp(&bits(b))
@@ -271,9 +322,10 @@ impl SleepTable {
 
     /// Brings the support record up to `proxies` and collects into
     /// `changed_supports` the old and new box of every support that moved,
-    /// changed shape or changed its layers or mask, and the box of every one
-    /// that went or appeared. While the supports keep their keys in order,
-    /// they compare in place.
+    /// changed shape or changed its layers or mask (a kinematic one: its
+    /// shape, layers or mask, its last box for both), and the box of every
+    /// one that went or appeared. While the supports keep their keys in
+    /// order, they compare in place.
     fn diff_supports(&mut self, proxies: &[Proxy], layers: &[Layers]) {
         self.changed_supports.clear();
         self.moved_supports.clear();
@@ -288,7 +340,7 @@ impl SleepTable {
                 Some(old) if old.key == proxy.key => {
                     let new = Support::of(proxy, proxy_layers);
                     if *old != new {
-                        self.moved_supports.push((count, new));
+                        self.moved_supports.push((count, new, old.changed(&new)));
                     }
                 }
                 _ => {
@@ -299,12 +351,21 @@ impl SleepTable {
             count += 1;
         }
         if same_keys && count == self.supports.len() {
-            if !self.moved_supports.is_empty() {
+            if self.moved_supports.iter().any(|&(_, _, wakes)| wakes) {
                 self.sorted_new.clear();
             }
-            for &(index, new) in &self.moved_supports {
-                self.changed_supports.push(self.supports[index].aabb);
-                self.changed_supports.push(new.aabb);
+            for &(index, new, wakes) in &self.moved_supports {
+                if wakes {
+                    self.changed_supports.push(self.supports[index].aabb);
+                    self.changed_supports.push(new.aabb);
+                } else if let Ok(sorted) = self
+                    .sorted_new
+                    .binary_search_by(|support| support_order(support, &new))
+                {
+                    // A kinematic box is no part of the order, so the
+                    // sorted copy keeps its place and takes the new box.
+                    self.sorted_new[sorted].aabb = new.aabb;
+                }
                 self.supports[index] = new;
             }
             return;
@@ -396,7 +457,8 @@ pub(super) fn uf_union(parent: &mut [u32], a: u32, b: u32) {
 /// (or lost their dynamic body/collider), islands with an external write or
 /// a member whose layers or mask changed, and islands within `margin` of a
 /// static or tile support that went, moved or changed, its layers and mask
-/// included, since the last frame.
+/// included, or of a kinematic one that went or changed its layers or
+/// shape, since the last frame.
 pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers, margin: f32) {
     let PhysicsBuffers {
         proxies,

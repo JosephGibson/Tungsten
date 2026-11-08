@@ -2402,32 +2402,6 @@ fn witness_arrival_wake() -> Scene {
     )
 }
 
-/// A box asleep on a still kinematic platform, which despawns at step 60.
-fn witness_kinematic_support() -> Scene {
-    let platform = BodySpec {
-        kind: Kind::Kinematic,
-        shape: Shape::Aabb {
-            half_extents: Vec2::new(40.0, 6.0),
-        },
-        center: Vec2::ZERO,
-        velocity: Vec2::ZERO,
-        mass: 1.0,
-        gravity_scale: 1.0,
-        restitution: 0.0,
-        friction: 0.0,
-    };
-    witness_scene(
-        900.0,
-        62,
-        Vec::new(),
-        vec![
-            platform,
-            block(8.0, Vec2::new(0.0, -14.25), Vec2::ZERO, 1.0),
-        ],
-        vec![op(60, 0, Op::Despawn)],
-    )
-}
-
 /// A box asleep on the floor whose collider shrinks to half at step 60.
 fn witness_write_wake() -> Scene {
     witness_scene(
@@ -2557,13 +2531,6 @@ const KNOWN: &[Known] = &[
                 side's normal velocity by more than the sleep threshold in a substep, or a begin \
                 above the threshold, with the sleeper asleep after the step",
         witness: witness_arrival_wake,
-    },
-    Known {
-        id: "ch-kinematic-support",
-        source: "known-issues' ch-kinematic-support row",
-        skips: "invariant 3: a sleeper held up by a still kinematic body that despawns or is \
-                reshaped off it, the sleeper asleep after the step",
-        witness: witness_kinematic_support,
     },
     Known {
         id: "ch-write-wake",

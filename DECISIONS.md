@@ -2082,6 +2082,7 @@ The milestone's sitting (0.68 against the candidate twice in one sitting, five r
 ## D-156 — A static or tile support that goes, moves or changes wakes the sleeping islands near it, and an island sleeps only after a frame with every member below the threshold
 **Amended by D-178:** the support record only; it holds each support's layers and mask beside its key and box, so a static or tile support whose layers or mask changed wakes the sleepers near it as a moved one does; the rest stand.
 **Amended by D-229:** the support key only; a slope cell's key mixes its kind, so a cell changing kind is a new support; the rest stand.
+**Amended by D-254:** the support record only; it records kinematic bodies beside the static and tile proxies, by key, kind, layers and shape, their last box kept but never compared, so a kinematic body that goes (despawned, made a sensor or dynamic, its `Collider` removed) or changes its kind, layers, mask or shape wakes the sleeping islands within the speculative slack of its last box; its moves stay with `D-154`'s contact wake; the rest stand.
 **Date:** 2026-10-14
 **Decision:** A fifth wake path joins `D-065`'s four. The sleep table records the static and tile proxies, key and box, at the end of every frame in which an island sleeps (`SleepTable::supports`). At the next frame start, while that record holds, `sleep_frame_start` compares the frame's supports with it: in place while the keys keep their order, where a support that moved or changed shape gives its old and its new box, and through a sorted multiset difference when one appears or goes, where each box in only one list counts. Every sleeping island with a member whose box overlaps a changed box grown by the speculative slack, `4 × linear_slop`, wakes. A support is a proxy that is neither dynamic nor kinematic, a static entity body or a collision tile; a kinematic body keeps its own wake (`D-154`), and a sensor is no proxy. The sleep test changes too: an island sleeps when its slowest member's timer is above 0, so every member was below `sleep_threshold` this frame, and at least `time_to_sleep`; at `time_to_sleep <= 0` an island sleeps at the end of the first frame in which every member is below the threshold.
 
@@ -4016,3 +4017,14 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Amends `D-230` as its marker line says.
 - Pins: the physics hashes and every counter guard hold; 01 restores no world until 7.13, and the template's continue tests compare exactly, which the band's monotone change keeps.
 - Open: loaded columns sink past the band and still move a quarter cell into the bodies above (`docs/known-issues.md`).
+
+## D-254 — Kinematic bodies in the support record: one that goes or changes its kind, layers or shape wakes the sleepers on it
+**Date:** 2026-11-08
+**Decision:** Core hardening (7.21) Step 7, `ch-kinematic-support`. The sleep table's support record (`D-156`) holds kinematic bodies beside the static and tile proxies, by key, kind, layers and shape: the shape's kind, its half extents or radius and its offset, as bits. A kinematic support's box is kept, and refreshed as it moves, but never compared. One that goes (despawned, made a sensor or dynamic, its `Collider` removed) or changes its kind, layers, mask or shape wakes every sleeping island within the speculative slack of its last box, as a static support does. A kinematic body's moves wake nothing through the record and stay with `D-154`'s contact wake.
+
+**Why:** The record left kinematic bodies out, so a box asleep on a still kinematic platform stayed asleep in mid-air when the platform despawned, turned sensor, lost its collider or stopped meeting it, and when it was flattened under the box: 12 of 12 cases hung. The finders' patch compared a kinematic support's kind and layers alone, which leaves the flattened deck (the physics oracle's `Op::Reshape`) hanging; the shape compare covers it.
+
+**Consequences:**
+- Amends `D-156` as its marker line says.
+- `Support` grows from 32 to 56 bytes. Pins: the physics hashes, `Proxy`'s 80 bytes, 02's and the template's guards hold; 01's pit guard reads 59,980 allocations and 69,236,700 bytes (from 59,977 and 68,096,156), the record's larger supports.
+- While an island sleeps, each kinematic proxy costs a compare a frame, and a moving one a binary search of the sorted record.

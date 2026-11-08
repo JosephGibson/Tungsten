@@ -8459,7 +8459,6 @@ fn the_arrival_pass_meets_an_oversize_body_a_push_reaches() {
 /// an island asleep throughout. Flattened to a quarter of its height under
 /// the box (the oracle's deck reshape), it lets the box drop onto it.
 #[test]
-#[ignore = "7.21 step 7: fails until its fix"]
 fn a_sleeper_on_a_still_kinematic_platform_falls_when_it_goes() {
     let mut hung = Vec::new();
     for platform_first in [true, false] {
