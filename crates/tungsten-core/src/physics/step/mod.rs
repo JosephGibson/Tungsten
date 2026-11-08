@@ -526,6 +526,9 @@ struct StepExtra {
     /// Scratch for the gather's static joins (`gather::mask_static_joins`):
     /// each static box's faces.
     static_faces: Vec<gather::StaticFace>,
+    /// Scratch for the frame-end sleep pass: each proxy had a contact in the
+    /// final substep; filled only under gravity.
+    contacted: Vec<bool>,
     /// Tests: the static-join pass's face checks since the buffers were
     /// created.
     #[cfg(test)]

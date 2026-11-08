@@ -9227,7 +9227,6 @@ fn one_bodys_gravity_scale_leaves_the_other_pair_boxes_alone() {
 /// scale 0.04 dropped from rest, or of scale 0.08 tossed up at 20 px/s, keeps
 /// falling instead of sleeping in mid-air while slower than the threshold.
 #[test]
-#[ignore = "7.21 step 21: fails until its fix"]
 fn a_free_body_under_a_small_gravity_scale_never_sleeps_in_the_air() {
     let mut hung = Vec::new();
     for (scale, toss) in [(0.04, 0.0), (0.08, -20.0)] {

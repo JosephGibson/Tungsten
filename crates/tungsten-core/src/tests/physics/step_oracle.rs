@@ -2439,28 +2439,6 @@ fn witness_island_tags() -> Scene {
     )
 }
 
-/// A box of gravity scale 0.04 asleep in mid-air (at y 4.54 after half a
-/// second), a box teleported 2 px into it from below at step 40 and
-/// despawned at step 41, still touching: the sleeper hangs with nothing
-/// under it, where a box that fell away at the threshold's speed woke it.
-fn witness_midair_sleep() -> Scene {
-    let mut floater = block(8.0, Vec2::ZERO, Vec2::ZERO, 1.0);
-    floater.gravity_scale = 0.04;
-    witness_scene(
-        900.0,
-        60,
-        vec![floor(10.0)],
-        vec![
-            floater,
-            block(8.0, Vec2::new(300.0, 91.75), Vec2::ZERO, 1.0),
-        ],
-        vec![
-            op(40, 1, Op::Teleport(Vec2::new(0.0, 18.5))),
-            op(41, 1, Op::Despawn),
-        ],
-    )
-}
-
 /// Seed 13734's scene up to its step 18, where a thin box (half 4.4 by
 /// 19.3) pushed into a solid cell beside a ceiling slope falls through it.
 /// A random scene, so a fix elsewhere can move it: reduce another seed then.
@@ -2477,13 +2455,6 @@ const KNOWN: &[Known] = &[
         source: "known-issues' oracle-thin-box row, from new-2",
         skips: "invariant 2: a box narrower than half a cell passes solid cells",
         witness: witness_thin_box,
-    },
-    Known {
-        id: "ch-midair-sleep",
-        source: "known-issues' ch-midair-sleep row",
-        skips: "invariant 3: a sleeper that fell asleep held up by nothing loses the last contact \
-                that held it since, the sleeper asleep after the step",
-        witness: witness_midair_sleep,
     },
     Known {
         id: "oracle-crush",

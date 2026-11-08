@@ -510,7 +510,9 @@ pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers, margin: f32) {
 /// timer runs only while its rim speed `|ω| · r` is under the threshold as
 /// well. A member that touched a
 /// moving kinematic body this frame restarts its timer and keeps its island
-/// awake, whatever `time_to_sleep` is. Members freeze with zeroed
+/// awake, whatever `time_to_sleep` is, and so does one that gravity pulls
+/// and that had no contact in the final substep, so a slow fall never
+/// sleeps in the air. Members freeze with zeroed
 /// velocity and spin. An island falling asleep while resting on an already sleeping
 /// island adopts that island's tag, so a later island wake (despawn deep in a
 /// pile) also lifts bodies that settled on top after it slept; bridging two
@@ -533,6 +535,26 @@ pub(super) fn sleep_frame_end(
         ..
     } = buffers;
     let layers = &layers.of;
+    // The final substep's contacts, speculative ones included, mark the
+    // members something holds or is about to; with no gravity none falls.
+    let falls = config.gravity != Vec2::ZERO;
+    extra.contacted.clear();
+    if falls {
+        extra.contacted.resize(proxies.len(), false);
+        for contact in contacts.iter() {
+            extra.contacted[contact.a as usize] = true;
+            extra.contacted[contact.b as usize] = true;
+        }
+    }
+    let falling = |index: usize, proxy: &Proxy| {
+        falls
+            && proxy.has_velocity
+            && !extra.contacted[index]
+            && extra
+                .gravity_scales
+                .get(index)
+                .is_none_or(|&scale| scale != 0.0)
+    };
     let spin = |index: usize| {
         extra
             .spin_of
@@ -561,12 +583,15 @@ pub(super) fn sleep_frame_end(
             let rim = spin.angular_velocity * spin.radius;
             rim * rim <= threshold_sq
         });
-        entry.timer =
-            if proxy.velocity.length_squared() <= threshold_sq && rim_still && !proxy.kept_awake {
-                entry.timer + dt
-            } else {
-                0.0
-            };
+        entry.timer = if proxy.velocity.length_squared() <= threshold_sq
+            && rim_still
+            && !proxy.kept_awake
+            && !falling(index, proxy)
+        {
+            entry.timer + dt
+        } else {
+            0.0
+        };
         let root = uf_find(island_parent, index as u32) as usize;
         let timer = if proxy.kept_awake {
             f32::NEG_INFINITY
