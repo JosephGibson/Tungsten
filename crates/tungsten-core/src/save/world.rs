@@ -460,8 +460,9 @@ fn serialize_error(what: &str, component: &str, err: &serde_json::Error) -> Capt
 /// [`teleport`](crate::physics::teleport)), the gone despawn, each run's
 /// spawn comes back from its prefab with a clone of `with` (a state's
 /// marker, as a prefab spawn's `with`), its saved components and its ID,
-/// the resources are replaced and the counter set. Each area the World has
-/// not loaded is kept, migrated to the registry's versions, for
+/// the resources are replaced and the counter set; a World that named
+/// nothing gains save state only when the save names something. Each area
+/// the World has not loaded is kept, migrated to the registry's versions, for
 /// [`enter_area`](super::enter_area) and the next capture. Then a second
 /// pass resolves the references by save ID, once every entity exists; one
 /// into a kept area waits for it. Last, each moving body it placed that
@@ -553,16 +554,31 @@ pub fn restore_world<B: Bundle + Clone>(
         plan.resources.push((entry.clone(), value));
     }
 
-    // Checked: from here every change applies.
+    // Checked: from here every change applies. A World that named nothing
+    // gains save state only from a save that names something (D-230).
+    if !world.has_resource::<SaveState>() && names_anything(save, &kept) {
+        world.insert_resource(SaveState::default());
+    }
     let holders = apply(world, &registry, plan, with);
     let placed: Vec<Entity> = holders.iter().map(|&(entity, _)| entity).collect();
-    let state = world.resource_mut::<SaveState>();
-    state.next_id = save.next_id;
-    state.kept = kept;
-    state.pending.clear();
+    if let Some(state) = world.get_resource_mut::<SaveState>() {
+        state.next_id = save.next_id;
+        state.kept = kept;
+        state.pending.clear();
+    }
     resolve_all(world, &registry, holders, &save.resource_refs, &mut report);
     settle(world, &placed, &mut report);
     Ok(report)
+}
+
+/// Whether `save` names something a World keeps save state for: a named
+/// record, a gone name or a spawn in any area, an area the restore keeps,
+/// or a counter above 0. A save of resources alone names nothing.
+fn names_anything(save: &WorldSave, kept: &BTreeMap<String, AreaSave>) -> bool {
+    let names = |area: &AreaSave| {
+        !area.named.is_empty() || !area.gone.is_empty() || !area.spawns.is_empty()
+    };
+    save.next_id > 0 || !kept.is_empty() || names(&save.global) || save.areas.values().any(names)
 }
 
 /// Applies area `level`'s kept record, once the game has spawned it, then
@@ -927,9 +943,6 @@ fn apply<B: Bundle + Clone>(
     plan: Plan,
     with: &B,
 ) -> Vec<(Entity, BTreeMap<String, Refs>)> {
-    if !world.has_resource::<SaveState>() {
-        world.insert_resource(SaveState::default());
-    }
     apply_tiles(world, plan.tiles);
     for entity in plan.despawn {
         world.despawn(entity);
@@ -1042,7 +1055,9 @@ fn resolve_all(
     report: &mut RestoreReport,
 ) {
     let by_id = saved_entities(world);
-    let waits = Waits::of(world.resource::<SaveState>());
+    // Without save state nothing is kept, so nothing waits.
+    let no_state = SaveState::default();
+    let waits = Waits::of(world.get_resource::<SaveState>().unwrap_or(&no_state));
     let mut waiting = Vec::new();
     for (entity, refs) in holders {
         let id = world.get::<Saved>(entity).map(|saved| saved.id);
@@ -1073,7 +1088,9 @@ fn resolve_all(
         None,
         resource_refs,
     );
-    world.resource_mut::<SaveState>().pending.extend(waiting);
+    if let Some(state) = world.get_resource_mut::<SaveState>() {
+        state.pending.extend(waiting);
+    }
 }
 
 /// The second pass's lookups and what it collects.

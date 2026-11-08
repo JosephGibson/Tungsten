@@ -1010,7 +1010,6 @@ fn a_body_resting_on_a_floor_comes_back_where_it_was_saved() {
 // Evidence for oracle-ecs new-4 (core hardening 2026-11-07, save oracle).
 
 #[test]
-#[ignore = "7.21 step 5: fails until its fix"]
 fn oracle_new_4_a_restore_leaves_a_world_that_names_nothing_unsaving() {
     // A game that saves its resources alone and names no entity: the live
     // run holds no save state, so the kit's passes keep their query order.

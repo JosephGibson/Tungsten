@@ -421,11 +421,6 @@ pub(crate) const FOUND: &[(&str, &str, &str)] = &[
          form (`moves`)",
     ),
     (
-        "saving-flips",
-        "new-4.md",
-        "a level that names nothing: the default run's levels name 2 to 10 entities",
-    ),
-    (
         "ref-order",
         "new-3.md",
         "one key's references split between a loaded area and a kept one: the default run's \
@@ -754,11 +749,7 @@ fn generate(seed: u64, len: usize) -> Vec<Step> {
     let mut rng = Rng::new(seed ^ 0x5a5a_0000);
     let any = found_on("float-parse");
     let mut steps = Vec::new();
-    let ents = if found_on("saving-flips") && rng.chance(20) {
-        0
-    } else {
-        2 + rng.below(9)
-    };
+    let ents = if rng.chance(20) { 0 } else { 2 + rng.below(9) };
     for _ in 0..ents {
         steps.push(Step::Ent {
             area: rng.below(3) as u8,
