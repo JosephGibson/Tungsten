@@ -533,10 +533,12 @@ fn a_reference_to_an_unsaved_entity_is_dropped_and_reported() {
         report.dropped,
         ["`chase`'s reference `target` to save ID 999: no such entity"]
     );
+    // The chase has no patch, so it loads onto its saved form's
+    // placeholder, not the fresh spawn's target (`RefCodec::load`).
     assert_eq!(
         b.get::<Chase>(lb.bat_2).unwrap().target,
-        lb.bat_1,
-        "the fresh spawn's"
+        Entity::PLACEHOLDER,
+        "the saved form's placeholder"
     );
 }
 
@@ -1117,7 +1119,6 @@ fn hero_dog(world: &mut World, cave: bool) -> (Entity, Entity, Option<Entity>) {
 }
 
 #[test]
-#[ignore = "7.21 step 6: fails until its fix"]
 fn oracle_new_2_a_named_entitys_list_loads_onto_its_saved_form() {
     // The bat's level gives it one mark, the hero; the run changes
     // nothing. The restore leaves the fresh value (no patch) and its codec
@@ -1150,7 +1151,6 @@ fn oracle_new_2_a_named_entitys_list_loads_onto_its_saved_form() {
 }
 
 #[test]
-#[ignore = "7.21 step 6: fails until its fix"]
 fn oracle_new_2_a_reference_waiting_on_a_kept_area_leaves_no_fresh_one() {
     // The hero's chase, the dog at its naming, turns to the bat in area
     // `cave`; the restoring World has not loaded the cave.

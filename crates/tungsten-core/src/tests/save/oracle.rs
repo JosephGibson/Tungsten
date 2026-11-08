@@ -80,8 +80,8 @@ enum Stance {
 struct Link {
     target: Entity,
     weight: u8,
-    /// Reference changes, counted in the form unless the run lets
-    /// `fresh-refs` in.
+    /// Reference changes, counted in the form unless the run is a
+    /// `fresh_refs` one.
     moves: u32,
 }
 
@@ -414,13 +414,6 @@ pub(crate) const FOUND: &[(&str, &str, &str)] = &[
         "a float whose JSON form takes 17 digits: the default run writes multiples of 0.25",
     ),
     (
-        "fresh-refs",
-        "new-2.md",
-        "a named holder's references at its naming or changed with its saved form unchanged: \
-         the default run's level hit lists start empty and each reference change counts in the \
-         form (`moves`)",
-    ),
-    (
         "ref-order",
         "new-3.md",
         "one key's references split between a loaded area and a kept one: the default run's \
@@ -714,7 +707,8 @@ enum Step {
         keep_hall: bool,
         tidy: bool,
         /// Whether reference changes leave the saved form as it was and
-        /// level hit lists start with a target (`fresh-refs`, [`FOUND`]).
+        /// level hit lists start with a target (`fresh-refs`'s case, half
+        /// the runs).
         fresh_refs: bool,
         /// Whether a hit list may name `hall` and other areas at once in a
         /// kept run (`ref-order`, [`FOUND`]).
@@ -767,7 +761,7 @@ fn generate(seed: u64, len: usize) -> Vec<Step> {
         churn: rng.below(40) as u32,
         keep_hall: rng.chance(35),
         tidy: rng.chance(75),
-        fresh_refs: found_on("fresh-refs"),
+        fresh_refs: rng.chance(50),
         split_refs: found_on("ref-order"),
     });
     let dangle_weight = if rng.chance(30) { 3 } else { 0 };

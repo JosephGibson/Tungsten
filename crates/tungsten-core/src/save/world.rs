@@ -768,6 +768,24 @@ fn plan_area(
             check(entry, &value, &what)?;
             puts.push((entry.clone(), component.clone(), value));
         }
+        // A component with references and no patch is put from its own saved
+        // form too, so its codec's `load` starts from the form's placeholders,
+        // as a patched one's does, not from the references the level gave
+        // the fresh spawn (`RefCodec::load`).
+        for (component, entry) in &registry.components.entries {
+            if !entry.saved.has_refs()
+                || named.components.contains_key(component)
+                || named.removed.contains(component)
+            {
+                continue;
+            }
+            if let Some(Ok(form)) = entry.saved.to_value(world, Holder::Entity(entity)) {
+                let what = format!("{}'s `{component}`", in_area(name));
+                if check(entry, &form, &what).is_ok() {
+                    puts.push((entry.clone(), component.clone(), form));
+                }
+            }
+        }
         let mut removes = Vec::new();
         for component in &named.removed {
             match registry.components.entries.get(component) {
