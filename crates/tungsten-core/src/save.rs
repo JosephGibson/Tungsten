@@ -517,3 +517,7 @@ fn now_ms(now: SystemTime) -> u64 {
 #[cfg(test)]
 #[path = "tests/save.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/save/oracle.rs"]
+pub(crate) mod oracle;

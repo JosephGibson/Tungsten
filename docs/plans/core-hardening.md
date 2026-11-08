@@ -814,6 +814,7 @@ Round 2:
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-08 | passed | Both oracle patches dry-run and apply clean (exit 0). The default runs sharded: eight physics tests over `DEFAULT_SEEDS`' eighths and `physics_oracle_witnesses_trip_their_findings`, eight ECS tests, four save tests (`seed_part`); `KNOWN`'s sources name each finding's known-issues row by ID. `cargo test -p tungsten-core --lib --locked oracle` → exit 0, 32 passed, 6 ignored, 5.46 s. `cargo test -p tungsten-core --locked`, warm → exit 0, lib 1,515 passed, 6 ignored, finished in 6.02 s (8.2 s for the command; functional only). Long modes in release → exit 0: physics seeds 0..20000 246.4 s, saves 51.1 s, ECS 289.0 s. `TUNGSTEN_ORACLE_FOUND=all … a_restored_world_equals` → exit 101, each quarter failing (`save oracle: 342 of 1000 seeds failed`; tags `restored-saving`, `parse-round-trip`, `restored-hits-targets`, `recapture`). `each_known_row_is_still_open` → ok. `cargo test --workspace --locked --no-fail-fast` → exit 0, 4,746 passed, 16 ignored in 30 binaries, 146 s, nothing moved. `just preflight docs/plans/core-hardening.md` → P2 fires on `ecs/mod.rs` (10 guard files), every guard held. `just physics-release` → exit 0, 16 passed, the two hash tests ok. `cargo fmt --all -- --check`, `just lint`, `just repo-check`, `just ctx`, `git diff --check` → exit 0. `just smoke` not run: both commits are `cfg(test)` only, so no example binary changes. | `e5756114`; this commit |
 
 ## Follow-ups
 
