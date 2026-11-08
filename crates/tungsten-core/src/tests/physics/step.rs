@@ -8558,3 +8558,110 @@ fn a_sleeper_on_a_still_kinematic_platform_falls_when_it_goes() {
         hung.join("\n")
     );
 }
+
+/// ch-write-wake (`D-065`, `D-156`): a box held asleep by friction on its
+/// floor under a tilted gravity moves once its collider shrinks or grows, its
+/// gravity scale or friction changes, its floor's friction goes or its tile
+/// floor's material loses its friction.
+#[test]
+#[ignore = "7.21 step 8: fails until its fix"]
+fn a_write_to_a_sleeper_or_its_support_wakes_it() {
+    use crate::physics::{PhysicsMaterial, PhysicsMaterials};
+    let rubber = |friction| PhysicsMaterial {
+        friction,
+        ..PhysicsMaterial::default()
+    };
+    let mut held = Vec::new();
+    for write in [
+        "shrunk",
+        "grown",
+        "gravity scale -1",
+        "own friction 0",
+        "floor friction 0",
+        "material",
+    ] {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(450.0, 900.0);
+        // Either floor's top is at y 90.
+        let floor = if write == "material" {
+            let mut data = TilemapData::new(16, 16, 32, 8);
+            let tile = data.add_tile("rubber");
+            let material = Some("rubber".into());
+            data.set_tile_props(
+                tile,
+                TileProps {
+                    material,
+                    ..TileProps::default()
+                },
+            );
+            let layer = data.add_layer("solid", LayerKind::Collision);
+            for col in 0..32 {
+                data.set_tile(layer, col, 6, tile);
+            }
+            world
+                .resource_mut::<TilemapRegistry>()
+                .insert("floor".into(), data);
+            world.insert_resource(PhysicsMaterials::new([("rubber".to_owned(), rubber(2.0))]));
+            let map = world.spawn();
+            world.insert(map, TilemapInstance::new("floor", Vec2::new(-256.0, -6.0)));
+            map
+        } else {
+            let floor = spawn_static(
+                &mut world,
+                Collider::aabb(Vec2::new(400.0, 10.0)),
+                Vec2::new(0.0, 100.0),
+            );
+            world.insert(floor, RigidBody::r#static().with_friction(2.0));
+            floor
+        };
+        let body = RigidBody::dynamic().with_friction(2.0);
+        let body = spawn_body(
+            &mut world,
+            body,
+            Collider::aabb(Vec2::splat(8.0)),
+            Vec2::new(0.0, 82.0),
+            Vec2::ZERO,
+        );
+        for _ in 0..120 {
+            physics_step(&mut world);
+            drain_events(&mut world);
+        }
+        assert!(
+            is_sleeping(&world, body),
+            "{write}: the held box never slept"
+        );
+        let at = world.get::<Position>(body).unwrap().0;
+        match write {
+            "shrunk" => {
+                *world.get_mut::<Collider>(body).unwrap() = Collider::aabb(Vec2::splat(4.0));
+            }
+            "grown" => {
+                *world.get_mut::<Collider>(body).unwrap() = Collider::aabb(Vec2::splat(16.0));
+            }
+            "gravity scale -1" => world.get_mut::<RigidBody>(body).unwrap().gravity_scale = -1.0,
+            "own friction 0" => world.get_mut::<RigidBody>(body).unwrap().friction = 0.0,
+            "floor friction 0" => world.get_mut::<RigidBody>(floor).unwrap().friction = 0.0,
+            _ => world
+                .resource_mut::<PhysicsMaterials>()
+                .replace([("rubber".to_owned(), rubber(0.0))]),
+        }
+        physics_step(&mut world);
+        let asleep = is_sleeping(&world, body);
+        for _ in 0..29 {
+            physics_step(&mut world);
+            drain_events(&mut world);
+        }
+        let moved = world.get::<Position>(body).unwrap().0.distance(at);
+        if asleep || moved < 2.0 {
+            held.push(format!(
+                "{write}: asleep after the write {asleep}, moved {moved} px"
+            ));
+        }
+    }
+    assert!(
+        held.is_empty(),
+        "{} sleepers held:\n{}",
+        held.len(),
+        held.join("\n")
+    );
+}
