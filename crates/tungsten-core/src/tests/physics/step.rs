@@ -9290,3 +9290,120 @@ fn a_spinner_far_from_angle_zero_keeps_its_rate() {
         );
     }
 }
+
+// Evidence for oracle new-2 (core hardening 2026-11-07, physics oracle).
+
+/// A map of 16 px cells drawn by rows of letters in one collision layer:
+/// `#` solid, `=` one-way, `a` to `l` slope kinds 1 to 12 (`slope_kind`'s)
+/// and `.` empty, placed at `origin`.
+fn spawn_oracle_map(world: &mut World, rows: &[&str], origin: Vec2) -> Entity {
+    let (width, height) = (rows[0].len() as u32, rows.len() as u32);
+    let mut data = TilemapData::new(16, 16, width, height);
+    let solid = data.add_tile("solid");
+    let ledge = data.add_tile("ledge");
+    data.set_tile_props(
+        ledge,
+        TileProps {
+            one_way: true,
+            ..TileProps::default()
+        },
+    );
+    let slopes: Vec<_> = (1..=12)
+        .map(|code| {
+            let tile = data.add_tile(format!("slope{code}"));
+            data.set_tile_props(
+                tile,
+                TileProps {
+                    slope: Some(slope_kind(code)),
+                    ..TileProps::default()
+                },
+            );
+            tile
+        })
+        .collect();
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    for (row, letters) in rows.iter().enumerate() {
+        for (col, letter) in letters.chars().enumerate() {
+            let tile = match letter {
+                '#' => solid,
+                '=' => ledge,
+                'a'..='l' => slopes[usize::from(letter as u8 - b'a')],
+                _ => continue,
+            };
+            data.set_tile(layer, col as u32, row as u32, tile);
+        }
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("oracle".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("oracle", origin));
+    map
+}
+
+#[test]
+#[ignore = "7.21 step 24: fails until its fix"]
+// The scene's values are the oracle's, as it printed them, so it
+// reproduces bit for bit.
+#[allow(clippy::unreadable_literal)]
+fn oracle_new_2_a_thin_box_never_falls_through_a_solid_cell() {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    world.resource_mut::<Time>().advance_frame(0.033333335);
+    spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(10.655905, 280.0)),
+        Vec2::new(-410.6559, 0.0),
+    );
+    // Row 0, column 6 is the solid cell the box falls through; under it,
+    // row 1 column 6 is a 2:1 high top-right ceiling slope (`k`).
+    let rows = [
+        "......#.......",
+        ".....#k.......",
+        "..............",
+        "..............",
+    ];
+    let origin = Vec2::new(-331.63654, 164.18094);
+    spawn_oracle_map(&mut world, &rows, origin);
+    spawn_body(
+        &mut world,
+        RigidBody::kinematic(),
+        Collider::aabb(Vec2::new(43.784332, 4.9526196)),
+        Vec2::new(-203.39116, -106.263565),
+        Vec2::new(36.15542, 0.0),
+    );
+    let thin = spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_mass(4.37329),
+        Collider::aabb(Vec2::new(4.423781, 19.343067)),
+        Vec2::new(-302.789, 97.07454),
+        Vec2::new(-89.312225, 115.71345),
+    );
+    spawn_body(
+        &mut world,
+        RigidBody::dynamic()
+            .with_mass(1.838235)
+            .with_gravity_scale(0.07977821),
+        Collider::circle(18.590725),
+        Vec2::new(-247.52002, 114.40555),
+        Vec2::new(-15087.362, 504.69916),
+    );
+    spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_mass(0.15357432),
+        Collider::aabb(Vec2::new(30.40907, 14.215732)),
+        Vec2::new(-356.38452, 125.57388),
+        Vec2::new(-62.5766, 98.43069),
+    );
+    let cell_x = origin.x + 6.0 * 16.0..origin.x + 7.0 * 16.0;
+    let cell_bottom = origin.y + 16.0;
+    for step in 0..40 {
+        physics_step(&mut world);
+        drain_events(&mut world);
+        let at = world.get::<Position>(thin).unwrap().0;
+        assert!(
+            !(cell_x.contains(&at.x) && at.y > cell_bottom),
+            "step {step}: the thin box's centre {at} passed the solid cell's bottom face (y {cell_bottom})"
+        );
+    }
+}
