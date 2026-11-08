@@ -8999,3 +8999,45 @@ fn oracle_new_1_a_heavy_body_never_drives_a_light_one_through_a_static_floor() {
         failed.join("\n")
     );
 }
+
+#[test]
+#[ignore = "7.21 step 17: fails until its fix"]
+fn a_static_bodys_velocity_moves_nothing_on_it() {
+    // ch-static-velocity (physics review a1-5): a box of half 8 resting at
+    // 0 px on a static floor of half (64, 8). A static body never moves, so
+    // its `Velocity` must leave the box where a floor with Velocity zero
+    // leaves it: up, down, and along with friction 1.
+    let run = |velocity: Vec2, friction: f32| {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+        let body = spawn_body(
+            &mut world,
+            RigidBody::dynamic().with_friction(friction),
+            Collider::aabb(Vec2::splat(8.0)),
+            Vec2::new(0.0, -16.0),
+            Vec2::ZERO,
+        );
+        spawn_body(
+            &mut world,
+            RigidBody::r#static().with_friction(friction),
+            Collider::aabb(Vec2::new(64.0, 8.0)),
+            Vec2::ZERO,
+            velocity,
+        );
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        world.get::<Position>(body).unwrap().0
+    };
+    for (velocity, friction) in [
+        (Vec2::new(0.0, -200.0), 0.0),
+        (Vec2::new(0.0, 200.0), 0.0),
+        (Vec2::new(100.0, 0.0), 1.0),
+    ] {
+        assert_eq!(
+            run(velocity, friction),
+            run(Vec2::ZERO, friction),
+            "the box on a static floor of velocity {velocity}"
+        );
+    }
+}
