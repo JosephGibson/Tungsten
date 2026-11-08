@@ -21,6 +21,10 @@ const DEFAULT_CELL: f32 = 16.0;
 const REACH_CELLS: i32 = 8;
 /// The rings a cell holds: a quarter cell apart.
 const RINGS_PER_CELL: i32 = 4;
+/// The resting band: how deep, in `linear_slop`s, a body may overlap a
+/// solid where it is and stay; the solver's admission slack (`D-064`), past
+/// the 0.25–0.9 px the soft contacts rest a lone body at.
+const REST_SLOPS: f32 = 4.0;
 
 /// A solid the body must not overlap.
 enum Solid {
@@ -28,9 +32,10 @@ enum Solid {
     Circle(Vec2, f32),
 }
 
-/// For a body whose collider overlaps a solid past
-/// [`PhysicsConfig::linear_slop`], the nearest position where it overlaps
-/// none, searched outward in rings a quarter cell apart out to eight cells;
+/// For a body whose collider overlaps a solid past the resting band, four
+/// [`PhysicsConfig::linear_slop`]s, the nearest position where it overlaps
+/// none past one `linear_slop`, searched outward in rings a quarter cell
+/// apart out to eight cells;
 /// within a ring the nearest wins, ties going up, then right, down, left.
 /// A cell is the tile size of the map the body overlaps, 16 px where it
 /// overlaps none. Solids are the full collision cells of the layers its
@@ -38,7 +43,9 @@ enum Solid {
 /// bodies those layers meet, a collider without a body among them (layer
 /// 0, as the step reads it); one-way and slope cells are not.
 ///
-/// Returns the body's own position when it overlaps nothing, and `None`
+/// Returns the body's own position when it overlaps nothing past the band,
+/// where the step rests a body it holds on a floor or against a wall
+/// (`D-064`'s admission slack), and `None`
 /// for an entity without `Position`, `Collider` and `RigidBody`, or when
 /// no free spot lies in reach.
 #[must_use]
@@ -56,12 +63,12 @@ pub fn free_spot(world: &World, entity: Entity) -> Option<Vec2> {
     let bounds = aabb_at(&collider, position);
     let area = Aabb::new(bounds.center, bounds.half_extents + reach);
     let solids = solids(world, entity, body, &area);
-    let overlaps = |at: Vec2| {
+    let overlaps = |at: Vec2, allowed: f32| {
         solids
             .iter()
-            .any(|solid| penetration(&collider, at, solid).is_some_and(|depth| depth > slop))
+            .any(|solid| penetration(&collider, at, solid).is_some_and(|depth| depth > allowed))
     };
-    if !overlaps(position) {
+    if !overlaps(position, REST_SLOPS * slop) {
         return Some(position);
     }
     let step = cell / RINGS_PER_CELL as f32;
@@ -70,7 +77,7 @@ pub fn free_spot(world: &World, entity: Entity) -> Option<Vec2> {
         points.sort_by(|&a, &b| ring_order(a, b, step));
         for (i, j) in points {
             let at = position + Vec2::new(i as f32 * step.x, j as f32 * step.y);
-            if !overlaps(at) {
+            if !overlaps(at, slop) {
                 return Some(at);
             }
         }

@@ -3577,6 +3577,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 
 ## D-230 — Saves of many areas: save identities on named entities and a run's spawns; a registry of saved components and resources the kit fills; a capture per area of each named entity's changes over its fresh spawn, the spawns whole, references by save ID, tiles and kept areas; a restore that sets bodies out of solids; migrations a schema at a time
 **Amended by D-241:** identities and the kit's saves only; `CommandBuffer::replace_prefab` gives the spawn that takes an entity's place its `Saved` ID and area with the new prefab's ID, so a capture writes a named entity replaced as gone and the replacement as a spawn under its ID; the kit saves chemistry's queue, its tile statuses and `became`; the rest stands.
+**Amended by D-253:** the free spot only; a body overlapping no solid by more than four `linear_slop`s, `D-064`'s admission slack, stays where it is, and one past it goes to the nearest ring point that overlaps no solid past one `linear_slop`; the search, its order and its reach stand, and so does the rest.
 **Date:** 2026-10-31
 **Decision:** Redo 7.9's first plan (phase 7's Step 7, P7-8, S-2, S-3, S-43, S-59's kit part, S-101, S-125's engine part): the engine saves the World for the game. No default moves today's worlds: a World where nothing was named holds no save state and spawns as before.
 
@@ -4004,3 +4005,14 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Amends `D-064` as its marker line says.
 - Pins: the physics hashes and 01's pit guard hold. 02's `physics`, `physics-sparse` and `slopes` guards move: bodies the net held over a face now land in their contacts and send a touching contact event each substep while awake (`events_sent` +4.5 % in `physics`, +5.7 % in `slopes`), so those rows' digests move.
 - A fast body may end up to 1 px into a static face where it stopped `BACKOFF` short, and the next substep's contact pushes it out.
+
+## D-253 — The free spot keeps a body within the resting band where it is
+**Date:** 2026-11-08
+**Decision:** Core hardening (7.21) Step 4, `ch-resting-band`. `physics::free_spot` leaves a body where it is when it overlaps no solid by more than four `linear_slop`s: `D-064`'s admission slack, 1 px at the default, the resting band the soft contacts hold a body in against a floor, a static body or a wall (0.250–0.900 px measured for a lone body). A body past the band goes to the nearest ring point that overlaps no solid past one `linear_slop`; the search, its order and its reach are unchanged.
+
+**Why:** `free_spot` read every body the step rests on a full tile, a static body or a wall as overlapping past `linear_slop`, so `restore_world` lifted each resting body a quarter cell (4 px at 16 px tiles) and a saved run came back moved: a body resting 0.256 px deep restored at y 136.256 where it was saved at 140.256.
+
+**Consequences:**
+- Amends `D-230` as its marker line says.
+- Pins: the physics hashes and every counter guard hold; 01 restores no world until 7.13, and the template's continue tests compare exactly, which the band's monotone change keeps.
+- Open: loaded columns sink past the band and still move a quarter cell into the bodies above (`docs/known-issues.md`).

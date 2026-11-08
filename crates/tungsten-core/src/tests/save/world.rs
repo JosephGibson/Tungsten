@@ -962,7 +962,6 @@ fn a_replaced_entity_keeps_its_save_identity() {
 }
 
 #[test]
-#[ignore = "7.21 step 4: fails until its fix"]
 fn a_body_resting_on_a_floor_comes_back_where_it_was_saved() {
     // The crate rests 0.256 px into the floor, past `linear_slop`; the
     // restore's free spot leaves it there.

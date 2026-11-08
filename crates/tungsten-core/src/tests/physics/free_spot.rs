@@ -229,7 +229,6 @@ fn rest(world: &mut World, gravity: f32, bound: f32, dt: f32, frames: usize) {
 }
 
 #[test]
-#[ignore = "7.21 step 4: fails until its fix"]
 fn a_body_the_step_rests_on_a_solid_stays() {
     // The soft contacts rest a body 0.25 to 0.90 px into the floor or wall
     // that holds it, past `linear_slop`; the free spot leaves it there.
