@@ -1006,3 +1006,32 @@ fn a_body_resting_on_a_floor_comes_back_where_it_was_saved() {
         rest.y + 4.0 - 144.0
     );
 }
+
+// Evidence for oracle-ecs new-4 (core hardening 2026-11-07, save oracle).
+
+#[test]
+#[ignore = "7.21 step 5: fails until its fix"]
+fn oracle_new_4_a_restore_leaves_a_world_that_names_nothing_unsaving() {
+    // A game that saves its resources alone and names no entity: the live
+    // run holds no save state, so the kit's passes keep their query order.
+    let start = || {
+        let mut world = World::new();
+        world.register_saved_resource::<Weather>("weather");
+        world.insert_resource(Weather {
+            raining: false,
+            wind: 0.0,
+        });
+        world
+    };
+    let mut a = start();
+    a.resource_mut::<Weather>().raining = true;
+    let saved = capture_world(&a).unwrap();
+    let mut b = start();
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert_eq!(b.resource::<Weather>(), a.resource::<Weather>());
+    assert_eq!(
+        crate::save::saving(&b),
+        crate::save::saving(&a),
+        "the loaded run saves as the live one does"
+    );
+}
