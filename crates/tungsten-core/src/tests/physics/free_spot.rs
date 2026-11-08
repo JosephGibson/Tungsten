@@ -214,3 +214,88 @@ fn ties_go_up_then_right_down_left() {
         }
     }
 }
+
+/// Runs `frames` physics steps of `dt`, at gravity `gravity` down and
+/// `max_step_dt` `bound`.
+fn rest(world: &mut World, gravity: f32, bound: f32, dt: f32, frames: usize) {
+    let config = world.resource_mut::<PhysicsConfig>();
+    config.gravity = Vec2::new(0.0, gravity);
+    config.max_step_dt = bound;
+    world.insert_resource(crate::time::Time::new());
+    for _ in 0..frames {
+        world.resource_mut::<crate::time::Time>().advance_frame(dt);
+        crate::physics::physics_step(world);
+    }
+}
+
+#[test]
+#[ignore = "7.21 step 4: fails until its fix"]
+fn a_body_the_step_rests_on_a_solid_stays() {
+    // The soft contacts rest a body 0.25 to 0.90 px into the floor or wall
+    // that holds it, past `linear_slop`; the free spot leaves it there.
+    let floor: Vec<_> = (0..20).map(|col| (col, 10, WALL)).collect();
+    let mut moved = Vec::new();
+    // `face` is the solid's face on `axis`, which the 8 px body rests on.
+    let mut check = |world: &World, body: Entity, axis: usize, face: f32, case: String| {
+        let at = world.get::<Position>(body).unwrap().0;
+        let spot = free_spot(world, body);
+        if spot != Some(at) {
+            let depth = (at[axis] + 4.0 - face).abs();
+            moved.push(format!(
+                "{case}: rests {depth:.6} px deep, free_spot {spot:?} from {at:?}"
+            ));
+        }
+    };
+    for tiles in [true, false] {
+        for circle in [false, true] {
+            for (gravity, bound, dt) in [
+                (900.0, 1.0 / 30.0, 1.0 / 60.0),
+                (3600.0, 1.0 / 30.0, 1.0 / 30.0),
+                (3600.0, 0.0, 0.1),
+            ] {
+                // A floor whose top is at y 160: tile row 10, or a static box.
+                let mut world = world(if tiles { &floor } else { &[] });
+                if !tiles {
+                    world.spawn_with(RigidBodyBundle::r#static(
+                        Position(Vec2::new(160.0, 168.0)),
+                        Collider::aabb(Vec2::new(160.0, 8.0)),
+                    ));
+                }
+                let shape = if circle {
+                    Collider::circle(4.0)
+                } else {
+                    Collider::aabb(Vec2::splat(4.0))
+                };
+                let body = world.spawn_with(RigidBodyBundle::dynamic(
+                    Position(Vec2::new(104.0, 150.0)),
+                    shape,
+                ));
+                rest(&mut world, gravity, bound, dt, (2.0 / dt).ceil() as usize);
+                let case = format!("tiles {tiles} circle {circle} g {gravity} dt {dt:.4}");
+                check(&world, body, 1, 160.0, case);
+            }
+        }
+    }
+    // A two-crate stack's bottom crate.
+    let mut stack = world(&floor);
+    let bottom = crate_at(&mut stack, Vec2::new(104.0, 150.0));
+    crate_at(&mut stack, Vec2::new(104.0, 140.0));
+    rest(&mut stack, 900.0, 1.0 / 30.0, 1.0 / 60.0, 180);
+    check(&stack, bottom, 1, 160.0, "a stack's bottom crate".into());
+    // A crate thrown at a static wall's left face (x 200) without gravity.
+    let mut room = world(&[]);
+    room.spawn_with(RigidBodyBundle::r#static(
+        Position(Vec2::new(208.0, 100.0)),
+        Collider::aabb(Vec2::new(8.0, 40.0)),
+    ));
+    let thrown = crate_at(&mut room, Vec2::new(150.0, 100.0));
+    room.get_mut::<crate::physics::Velocity>(thrown).unwrap().0 = Vec2::new(100.0, 0.0);
+    rest(&mut room, 0.0, 1.0 / 30.0, 1.0 / 60.0, 600);
+    check(&room, thrown, 0, 200.0, "against a wall".into());
+    assert!(
+        moved.is_empty(),
+        "{} moved:\n{}",
+        moved.len(),
+        moved.join("\n")
+    );
+}

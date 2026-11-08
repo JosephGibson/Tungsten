@@ -960,3 +960,50 @@ fn a_replaced_entity_keeps_its_save_identity() {
     flush(&mut c);
     assert_eq!((c.entity_count(), charred_of(&c).len()), (count, 1));
 }
+
+#[test]
+#[ignore = "7.21 step 4: fails until its fix"]
+fn a_body_resting_on_a_floor_comes_back_where_it_was_saved() {
+    // The crate rests 0.256 px into the floor, past `linear_slop`; the
+    // restore's free spot leaves it there.
+    use crate::assets::{LayerKind, TilemapData, TilemapInstance, TilemapRegistry};
+    use crate::physics::PhysicsConfig;
+
+    // A 20 × 10 map of 16 px cells, its floor row 9 (top at y 144), and the crate.
+    let floored = || {
+        let mut map = TilemapData::new(16, 16, 20, 10);
+        let rock = map.add_tile("rock");
+        let walls = map.add_layer("walls", LayerKind::Collision);
+        for col in 0..20 {
+            map.set_tile(walls, col, 9, rock);
+        }
+        let mut maps = TilemapRegistry::new();
+        maps.insert("room".into(), map);
+        let mut world = world();
+        world.insert_resource(maps);
+        world.spawn_with((TilemapInstance::new("room", Vec2::ZERO),));
+        world.insert_resource(PhysicsConfig {
+            gravity: Vec2::new(0.0, 900.0),
+            ..PhysicsConfig::default()
+        });
+        world.insert_resource(crate::time::Time::new());
+        let body = crate_body(&mut world);
+        (world, body)
+    };
+    let (mut a, body) = floored();
+    for _ in 0..120 {
+        a.resource_mut::<crate::time::Time>()
+            .advance_frame(1.0 / 60.0);
+        crate::physics::physics_step(&mut a);
+    }
+    let rest = a.get::<Position>(body).unwrap().0;
+    let (mut b, body) = floored();
+    let report = restore_world(&mut b, &capture_world(&a).unwrap(), &(Scene,)).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(
+        b.get::<Position>(body).unwrap().0,
+        rest,
+        "rested {} px deep",
+        rest.y + 4.0 - 144.0
+    );
+}
