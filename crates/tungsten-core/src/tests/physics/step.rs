@@ -9222,3 +9222,43 @@ fn one_bodys_gravity_scale_leaves_the_other_pair_boxes_alone() {
         "the scaled box's radius {far}, its own fall's {own}"
     );
 }
+
+/// ch-midair-sleep (`D-065`): under gravity 900 a free circle of gravity
+/// scale 0.04 dropped from rest, or of scale 0.08 tossed up at 20 px/s, keeps
+/// falling instead of sleeping in mid-air while slower than the threshold.
+#[test]
+#[ignore = "7.21 step 21: fails until its fix"]
+fn a_free_body_under_a_small_gravity_scale_never_sleeps_in_the_air() {
+    let mut hung = Vec::new();
+    for (scale, toss) in [(0.04, 0.0), (0.08, -20.0)] {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+        let body = RigidBody::dynamic().with_gravity_scale(scale);
+        let ball = spawn_body(
+            &mut world,
+            body,
+            Collider::circle(4.0),
+            Vec2::ZERO,
+            Vec2::new(0.0, toss),
+        );
+        let mut slept = None;
+        for step in 1..=630 {
+            physics_step(&mut world);
+            if slept.is_none() && is_sleeping(&world, ball) {
+                slept = Some((step, world.get::<Position>(ball).unwrap().0.y));
+            }
+        }
+        let y = world.get::<Position>(ball).unwrap().0.y;
+        if y < 1000.0 {
+            hung.push(format!(
+                "scale {scale}, toss {toss}: slept at (step, y) {slept:?}, y after 630 steps {y}"
+            ));
+        }
+    }
+    assert!(
+        hung.is_empty(),
+        "{} bodies hang:\n{}",
+        hung.len(),
+        hung.join("\n")
+    );
+}
