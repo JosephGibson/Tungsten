@@ -8275,6 +8275,7 @@ pub tungsten_core::physics::components::RigidBody::swept: bool
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
+pub const tungsten_core::physics::components::RigidBody::MAX_MASS: f32
 pub fn tungsten_core::physics::components::RigidBody::dynamic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
@@ -8913,6 +8914,7 @@ pub tungsten_core::physics::RigidBody::swept: bool
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
+pub const tungsten_core::physics::components::RigidBody::MAX_MASS: f32
 pub fn tungsten_core::physics::components::RigidBody::dynamic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
@@ -21024,6 +21026,7 @@ pub tungsten_core::RigidBody::swept: bool
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
+pub const tungsten_core::physics::components::RigidBody::MAX_MASS: f32
 pub fn tungsten_core::physics::components::RigidBody::dynamic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool

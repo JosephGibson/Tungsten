@@ -190,6 +190,10 @@ pub enum BodyKind {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RigidBody {
     pub kind: BodyKind,
+    /// The inverse mass: 1 from [`dynamic`](Self::dynamic), 0 from the other
+    /// constructors, at least `1 / MAX_MASS` from
+    /// [`with_mass`](Self::with_mass); a write below that is the writer's to
+    /// keep the solver's impulses finite with ([`MAX_MASS`](Self::MAX_MASS)).
     pub inv_mass: f32,
     pub restitution: f32,
     /// The layers the body is in, one bit per layer;
@@ -227,6 +231,12 @@ impl RigidBody {
     pub const DEFAULT_LAYERS: u32 = 1;
     /// Every layer: every constructor's `mask`.
     pub const ALL_LAYERS: u32 = u32::MAX;
+    /// The largest mass [`with_mass`](Self::with_mass) and `rigid_body.mass`
+    /// take: a contact's impulse is its mass times its closing speed, so at
+    /// 1e12 one at 1e6 px/s stays far from `f32::MAX`, where a mass of 1e36
+    /// meeting a floor at 1,000 px/s made the impulse infinite and the body
+    /// NaN.
+    pub const MAX_MASS: f32 = 1.0e12;
 
     /// Unit-mass dynamic body.
     #[must_use]
@@ -310,12 +320,14 @@ impl RigidBody {
     ///
     /// # Panics
     ///
-    /// When `mass` is not finite and above 0 with a finite inverse.
+    /// When `mass` is not above 0 and at most [`MAX_MASS`](Self::MAX_MASS)
+    /// with a finite inverse.
     #[must_use]
     pub fn with_mass(mut self, mass: f32) -> Self {
         assert!(
-            mass.is_finite() && mass > 0.0 && (1.0 / mass).is_finite(),
-            "mass must be finite and > 0 with a finite inverse (got {mass})"
+            mass > 0.0 && mass <= Self::MAX_MASS && (1.0 / mass).is_finite(),
+            "mass must be in (0, {:e}] with a finite inverse (got {mass})",
+            Self::MAX_MASS
         );
         self.inv_mass = 1.0 / mass;
         self

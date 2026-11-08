@@ -861,7 +861,6 @@ fn swept_is_for_sensors() {
 }
 
 #[test]
-#[ignore = "7.21 step 14: fails until its fix"]
 fn a_huge_mass_is_refused_at_both_doors_or_stays_finite() {
     // Physics review a3-5: a mass both doors took (finite, above 0, with a
     // finite inverse) overflowed the solver's `normal_mass · (vn + bias)`

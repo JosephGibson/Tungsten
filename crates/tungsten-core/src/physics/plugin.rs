@@ -437,6 +437,12 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
                 "`mass` must be finite and > 0 with a finite inverse (got {mass})"
             ));
         }
+        if mass > RigidBody::MAX_MASS {
+            return Err(format!(
+                "`mass` must be at most {:e} (got {mass:e})",
+                RigidBody::MAX_MASS
+            ));
+        }
         let gravity_scale = match fields.gravity_scale {
             Some(_) if !matches!(fields.kind, SceneBodyKind::Dynamic) => {
                 return Err("`gravity_scale` is for dynamic bodies only".to_owned());
