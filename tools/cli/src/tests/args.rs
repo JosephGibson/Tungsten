@@ -37,7 +37,7 @@ fn the_three_commands_parse() {
         parse_str(&["new", "games/my-game"]),
         Ok(Command::New(PathBuf::from("games/my-game")))
     );
-    assert_eq!(parse_str(&["check"]), Ok(Command::Check));
+    assert_eq!(parse_str(&["check"]), Ok(Command::Check(None)));
     assert_eq!(parse_str(&["package"]), Ok(Command::Package));
 }
 
@@ -332,6 +332,7 @@ fn level_verbs_parse_and_a_misplaced_option_fails() {
         level(&["check", "cave", "hall"]),
         Ok(Command::Level(LevelArgs::Check {
             rooms: vec!["cave".into(), "hall".into()],
+            seeds: None,
         }))
     );
     assert!(matches!(
@@ -384,6 +385,93 @@ fn level_verbs_parse_and_a_misplaced_option_fails() {
         level(&["query", "cave", "--at", "7"]),
         Err(UsageError(
             "`--at 7`: expected <col>,<row>, two whole numbers".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn check_takes_seeds_or_one_seed() {
+    let seeds = |first, count| Some(Seeds { first, count });
+    assert_eq!(
+        parse_str(&["check", "--seeds", "500"]),
+        Ok(Command::Check(seeds(0, 500)))
+    );
+    assert_eq!(
+        parse_str(&["check", "--seed", "7"]),
+        Ok(Command::Check(seeds(7, 1)))
+    );
+    assert_eq!(
+        parse_str(&["check", "--seeds", "3", "--seed", "7"]),
+        Err(UsageError(
+            "give `--seeds` or `--seed`, not both".to_owned()
+        ))
+    );
+    for bad in ["0", "-2", "many"] {
+        assert_eq!(
+            parse_str(&["check", "--seeds", bad]),
+            Err(UsageError(format!(
+                "`--seeds {bad}`: expected a count above 0"
+            ))),
+            "{bad}"
+        );
+    }
+    assert_eq!(
+        parse_str(&["check", "--seed", "-1"]),
+        Err(UsageError(
+            "`--seed -1`: expected a whole number".to_owned()
+        ))
+    );
+    assert_eq!(
+        parse_str(&["check", "--seeds"]),
+        Err(UsageError("`--seeds` needs a <count>".to_owned()))
+    );
+    assert_eq!(
+        parse_str(&["run", "--seeds", "5"]),
+        Err(UsageError(
+            "`--seeds` is an option of `check`, not of `run`".to_owned()
+        ))
+    );
+    for word in ["--seeds <count>", "--seed <seed>"] {
+        assert!(USAGE.contains(word), "{word}");
+    }
+}
+
+#[test]
+fn level_check_takes_seeds_or_one_seed() {
+    use crate::level::LevelArgs;
+    let check = |args: &[&str]| {
+        let mut all = vec!["level", "check"];
+        all.extend_from_slice(args);
+        parse_str(&all)
+    };
+    assert_eq!(
+        check(&["cave", "--seeds", "500"]),
+        Ok(Command::Level(LevelArgs::Check {
+            rooms: vec!["cave".into()],
+            seeds: Some(Seeds {
+                first: 0,
+                count: 500
+            }),
+        }))
+    );
+    assert_eq!(
+        check(&["--seed", "9"]),
+        Ok(Command::Level(LevelArgs::Check {
+            rooms: Vec::new(),
+            seeds: Some(Seeds { first: 9, count: 1 }),
+        }))
+    );
+    assert_eq!(
+        check(&["--seed", "1", "--seeds", "2"]),
+        Err(UsageError(
+            "give `--seeds` or `--seed`, not both".to_owned()
+        ))
+    );
+    assert_eq!(
+        parse_str(&["level", "describe", "--seed", "1"]),
+        Err(UsageError(
+            "`--seed` is an option of `check` and `level check`, not of `level describe`"
+                .to_owned()
         ))
     );
 }

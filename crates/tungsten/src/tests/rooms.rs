@@ -562,7 +562,9 @@ mod generators {
     use tungsten_core::assets::{Generate, RoomGenerator, RoomGenerators};
 
     use super::*;
-    use crate::asset_loader::room::{reload_rooms_from_manifest, stale_warnings};
+    use crate::asset_loader::room::{
+        CheckSeeds, check_generators, reload_rooms_from_manifest, stale_warnings,
+    };
 
     /// Two copies of the fixture's `hall`, side by side.
     struct Pair;
@@ -631,5 +633,159 @@ mod generators {
         assert!(registry.generation("pair_a").is_some() && registry.path("pair_a").is_none());
         assert!(world.resource::<TilemapRegistry>().get("pair_b").is_some());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `hall` with a lamp, standing on its floor at odd seeds and three
+    /// cells over it at even ones.
+    struct Lamps;
+
+    impl RoomGenerator for Lamps {
+        fn version(&self) -> u32 {
+            2
+        }
+
+        fn generate(&self, generation: &mut Generate<'_>) -> Result<(), String> {
+            let mut hall = generation.template("hall")?;
+            let row = if generation.seed() % 2 == 0 { 6 } else { 9 };
+            let lamp = format!(
+                r#"[{{ "place": {{ "objects": {{ "id": "lamp_9", "prefab": "lamp", "at": [5, {row}] }} }} }}]"#
+            );
+            let batch = tungsten_core::assets::RoomCommand::parse_batch(&lamp).unwrap();
+            generation.apply("a", &mut hall, &batch)?;
+            generation.add("a", hall, [0.0, 0.0])
+        }
+    }
+
+    /// `hall` alone, failing at seed 3.
+    struct Broken;
+
+    impl RoomGenerator for Broken {
+        fn version(&self) -> u32 {
+            1
+        }
+
+        fn generate(&self, generation: &mut Generate<'_>) -> Result<(), String> {
+            if generation.seed() == 3 {
+                return Err("no exit fits".to_owned());
+            }
+            let hall = generation.template("hall")?;
+            generation.add("a", hall, [0.0, 0.0])
+        }
+    }
+
+    /// The fixture checked into an app's World with `register`'s generators,
+    /// then swept over `seeds`: the findings as `<file>: <message>`, and
+    /// the notes.
+    fn sweep(
+        register: impl FnOnce(&mut App),
+        seeds: CheckSeeds,
+    ) -> (World, Vec<String>, Vec<String>) {
+        let mut app = App::new(Config::default()).unwrap();
+        register(&mut app);
+        let dir = fixture();
+        let errors = check_files(app.world_mut(), &[dir.join("manifest.json")], &dir);
+        assert!(errors.is_empty(), "{errors:?}");
+        let mut world = std::mem::take(app.world_mut());
+        let (mut findings, mut notes) = (Vec::new(), Vec::new());
+        check_generators(
+            &mut world,
+            seeds,
+            |file, message| findings.push(format!("{file}: {message}")),
+            |note| notes.push(note),
+        );
+        (world, findings, notes)
+    }
+
+    #[test]
+    fn check_generators_sweeps_every_generator_over_its_seeds() {
+        let (_, findings, notes) = sweep(
+            |app| {
+                app.register_generator("pair", Pair);
+                app.register_generator("broken", Broken);
+            },
+            CheckSeeds { first: 5, count: 3 },
+        );
+        assert!(findings.is_empty(), "{findings:?}");
+        assert_eq!(
+            notes,
+            [
+                "generator `broken` (version 1): seeds 5+3, 3 rooms",
+                "generator `pair` (version 1): seeds 5+3, 6 rooms"
+            ],
+            "sorted, each over every seed"
+        );
+        let (_, _, notes) = sweep(
+            |app| app.register_generator("pair", Pair),
+            CheckSeeds {
+                first: 0,
+                count: 750,
+            },
+        );
+        assert_eq!(
+            notes,
+            ["generator `pair` (version 1): seeds 0+750, 1,500 rooms"]
+        );
+    }
+
+    #[test]
+    fn a_finding_at_many_seeds_is_one_line_naming_them() {
+        let seeds = CheckSeeds {
+            first: 0,
+            count: 12,
+        };
+        let (_, findings, notes) = sweep(|app| app.register_generator("lamps", Lamps), seeds);
+        assert_eq!(
+            findings,
+            [
+                "generator lamps: seeds 0, 2, 4, 6, 8 and 1 more: lamps_a: lamp_9: objects[0]: floats: 0 of 8 bottom columns have ground within 2 px"
+            ]
+        );
+        assert_eq!(
+            notes,
+            ["generator `lamps` (version 2): seeds 0+12, 12 rooms"]
+        );
+        let (_, findings, _) = sweep(
+            |app| app.register_generator("lamps", Lamps),
+            CheckSeeds { first: 4, count: 5 },
+        );
+        assert_eq!(
+            findings,
+            [
+                "generator lamps: seeds 4, 6 and 8: lamps_a: lamp_9: objects[0]: floats: 0 of 8 bottom columns have ground within 2 px"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_generators_error_is_a_finding_at_its_seed() {
+        let (_, findings, notes) = sweep(
+            |app| app.register_generator("broken", Broken),
+            CheckSeeds { first: 0, count: 5 },
+        );
+        assert_eq!(findings, ["generator broken: seed 3: no exit fits"]);
+        assert_eq!(
+            notes,
+            ["generator `broken` (version 1): seeds 0+5, 4 rooms"]
+        );
+    }
+
+    #[test]
+    fn the_sweep_leaves_no_generated_room_registered() {
+        let (world, _, _) = sweep(
+            |app| {
+                app.register_generator("pair", Pair);
+                app.register_generator("lamps", Lamps);
+            },
+            CheckSeeds { first: 0, count: 4 },
+        );
+        let rooms: Vec<&str> = world.resource::<RoomRegistry>().ids().collect();
+        assert_eq!(rooms, ["cave", "hall"]);
+        let mut maps: Vec<&str> = world.resource::<TilemapRegistry>().ids().collect();
+        maps.sort_unstable();
+        assert_eq!(maps, ["cave", "hall"]);
+        assert!(
+            !world.has_resource::<tungsten_core::save::SaveState>(),
+            "nothing spawned or named"
+        );
     }
 }

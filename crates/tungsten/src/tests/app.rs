@@ -958,7 +958,7 @@ fn run_check_writes_one_line_naming_the_manifest_and_fails_on_a_missing_sprite_f
     let mut app = App::new(Config::default()).unwrap();
     app.set_manifest_roots(vec![root]);
     let report = dir.join("report.txt");
-    let err = app.run_check(&report, &dir).unwrap_err();
+    let err = app.run_check(&report, &dir, &|_| None).unwrap_err();
     assert!(err.to_string().contains("found 1 error,"), "{err}");
     let text = std::fs::read_to_string(&report).unwrap();
     let lines: Vec<&str> = text.lines().collect();
@@ -978,8 +978,99 @@ fn run_check_writes_an_empty_report_and_passes_on_clean_files() {
     // The reload root stands in when no composition roots are set.
     app.enable_hot_reload(&[dir.join("assets")], root);
     let report = dir.join("report.txt");
-    app.run_check(&report, &dir).unwrap();
+    app.run_check(&report, &dir, &|_| None).unwrap();
     assert_eq!(std::fs::read_to_string(&report).unwrap(), "");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Two copies of the rooms fixture's `hall`.
+struct Halls;
+
+impl tungsten_core::assets::RoomGenerator for Halls {
+    fn version(&self) -> u32 {
+        1
+    }
+
+    fn generate(&self, generation: &mut tungsten_core::assets::Generate<'_>) -> Result<(), String> {
+        let hall = generation.template("hall")?;
+        generation.add("a", hall.clone(), [0.0, 0.0])?;
+        generation.add("b", hall, [320.0, 0.0])
+    }
+}
+
+/// The rooms fixture through `run_check`, `Halls` registered when
+/// `generator`, `TUNGSTEN_CHECK_SEEDS` as `seeds` gives it: the result and
+/// the report's text.
+fn check_rooms_fixture(generator: bool, seeds: Option<&str>) -> (anyhow::Result<()>, String) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static RUN: AtomicU32 = AtomicU32::new(0);
+    let dir = crate::asset_loader::room::tests::fixture();
+    let mut app = App::new(Config::default()).unwrap();
+    if generator {
+        app.register_generator("halls", Halls);
+    }
+    app.set_manifest_roots(vec![dir.join("manifest.json")]);
+    let report = std::env::temp_dir().join(format!(
+        "tungsten_app_seeds_{}_{}.txt",
+        std::process::id(),
+        RUN.fetch_add(1, Ordering::SeqCst)
+    ));
+    let env = |name: &str| {
+        (name == "TUNGSTEN_CHECK_SEEDS")
+            .then(|| seeds.map(std::ffi::OsString::from))
+            .flatten()
+    };
+    let result = app.run_check(&report, &dir, &env);
+    let text = std::fs::read_to_string(&report).unwrap();
+    let _ = std::fs::remove_file(&report);
+    (result, text)
+}
+
+#[test]
+fn run_check_reads_the_seeds_variable() {
+    let (result, text) = check_rooms_fixture(true, Some("5+3"));
+    result.unwrap();
+    assert_eq!(
+        text,
+        "#\tgenerator `halls` (version 1): seeds 5+3, 6 rooms\n"
+    );
+    let (result, text) = check_rooms_fixture(true, None);
+    result.unwrap();
+    assert_eq!(
+        text, "#\tgenerator `halls` (version 1): seeds 0+16, 32 rooms\n",
+        "unset: 0+16"
+    );
+    let (result, text) = check_rooms_fixture(true, Some("5-3"));
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("found 1 error,"), "{err}");
+    assert_eq!(
+        text, "\tTUNGSTEN_CHECK_SEEDS `5-3`: expected <first>+<count>, two whole numbers\n",
+        "one finding with no file"
+    );
+}
+
+#[test]
+fn run_check_without_a_generator_writes_what_it_wrote_before() {
+    // The clean rooms fixture: an empty report, whatever the variable says.
+    for seeds in [None, Some("5+3"), Some("garbage")] {
+        let (result, text) = check_rooms_fixture(false, seeds);
+        assert!(result.is_ok(), "{seeds:?}");
+        assert_eq!(text, "", "{seeds:?}");
+    }
+    // A failing check's one line, as before.
+    let (dir, root) = check_folder("seeds", true);
+    let mut app = App::new(Config::default()).unwrap();
+    app.set_manifest_roots(vec![root]);
+    let report = dir.join("report.txt");
+    let env = |name: &str| (name == "TUNGSTEN_CHECK_SEEDS").then(|| "0+500".into());
+    let err = app.run_check(&report, &dir, &env).unwrap_err();
+    assert!(err.to_string().contains("found 1 error,"), "{err}");
+    let text = std::fs::read_to_string(&report).unwrap();
+    assert_eq!(text.lines().count(), 1, "{text}");
+    assert!(
+        text.starts_with("assets/manifest.json\tsprite 'hero' references missing file: "),
+        "{text}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

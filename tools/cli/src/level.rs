@@ -49,8 +49,11 @@ pub(crate) enum LevelArgs {
     },
     /// `describe [<room>] [--json]`.
     Describe { room: Option<String>, json: bool },
-    /// `check [<room>...]`.
-    Check { rooms: Vec<String> },
+    /// `check [<room>...] [--seeds <count> | --seed <seed>]`.
+    Check {
+        rooms: Vec<String>,
+        seeds: Option<check::Seeds>,
+    },
     /// `render <room> -o <png> [--overlay] [--size] [--frame] [--release]`.
     Render { args: RenderArgs },
 }
@@ -86,7 +89,7 @@ pub(crate) fn run(dir: &Path, args: &LevelArgs) -> anyhow::Result<bool> {
             print!("{}", describe(&Game::open(dir)?, room.as_deref(), *json)?);
             Ok(true)
         }
-        LevelArgs::Check { rooms } => check_rooms(dir, rooms),
+        LevelArgs::Check { rooms, seeds } => check_rooms(dir, rooms, *seeds),
         LevelArgs::Render { args } => {
             check::require_game(dir)?;
             render::run(dir, args)
@@ -687,7 +690,7 @@ pub(crate) fn describe(game: &Game, arg: Option<&str>, json: bool) -> anyhow::Re
 
 /// Runs the game's check and prints the findings in room and tileset
 /// files, of `rooms` alone when it names any; `false` on any.
-fn check_rooms(dir: &Path, rooms: &[String]) -> anyhow::Result<bool> {
+fn check_rooms(dir: &Path, rooms: &[String], seeds: Option<check::Seeds>) -> anyhow::Result<bool> {
     check::require_game(dir)?;
     let game = Game::open(dir)?;
     let mut files: BTreeSet<String> = BTreeSet::new();
@@ -716,28 +719,44 @@ fn check_rooms(dir: &Path, rooms: &[String]) -> anyhow::Result<bool> {
     let report =
         std::env::temp_dir().join(format!("tungsten-level-check-{}.txt", std::process::id()));
     let _ = std::fs::remove_file(&report);
-    let status = check::content_stage(dir, &report, &mut Command::new("cargo"))?;
-    let findings = check::read_report(&report, status)?;
-    let found = room_findings(&findings, &files);
-    for line in &found {
+    let status = check::content_stage(dir, &report, seeds, &mut Command::new("cargo"))?;
+    let report = check::read_report(&report, status)?;
+    let (lines, found) = check_lines(&report, &files, seeds);
+    for line in &lines {
         println!("{line}");
     }
     println!(
         "tungsten level check: {}",
-        if found.is_empty() {
+        if found == 0 {
             "no room findings".to_owned()
         } else {
-            count(found.len(), "room finding")
+            count(found, "room finding")
         }
     );
-    Ok(found.is_empty())
+    Ok(found == 0)
 }
 
-/// The findings in `files`, as `<file>: <message>`.
+/// What `level check` prints before its summary, and how many findings:
+/// the report's notes ([`check::note_lines`]), then the findings in
+/// `files` and every room generator's.
+pub(crate) fn check_lines(
+    report: &check::Report,
+    files: &BTreeSet<String>,
+    seeds: Option<check::Seeds>,
+) -> (Vec<String>, usize) {
+    let mut lines = check::note_lines(report, seeds);
+    let found = room_findings(&report.findings, files);
+    let count = found.len();
+    lines.extend(found);
+    (lines, count)
+}
+
+/// The findings in `files` and every room generator's (filed under
+/// `generator <id>`), as `<file>: <message>`.
 pub(crate) fn room_findings(findings: &[check::Finding], files: &BTreeSet<String>) -> Vec<String> {
     let kept: Vec<check::Finding> = findings
         .iter()
-        .filter(|finding| files.contains(&finding.file))
+        .filter(|finding| files.contains(&finding.file) || finding.file.starts_with("generator "))
         .cloned()
         .collect();
     check::format_findings(&kept)

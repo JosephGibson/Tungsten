@@ -69,6 +69,8 @@ const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
 /// Names the report file `tungsten check` reads. Set, `App::run` checks the
 /// game's files in place of opening a window (M70).
 const CHECK_ENV: &str = "TUNGSTEN_CHECK";
+/// A check's seeds for the room generators, `<first>+<count>` (redo 7.12).
+const CHECK_SEEDS_ENV: &str = "TUNGSTEN_CHECK_SEEDS";
 /// Names the script a run follows (redo 7.2); `TUNGSTEN_REPORT` names the
 /// report it writes. Both are the command line's, not a promised interface.
 const SCRIPT_ENV: &str = "TUNGSTEN_SCRIPT";
@@ -1155,7 +1157,7 @@ impl App {
         if let Some(report) = env_path(&env, CHECK_ENV) {
             let game_dir = std::env::current_dir()
                 .inspect_err(|err| log::error!("No current folder to check: {err}"))?;
-            return self.run_check(&report, &game_dir);
+            return self.run_check(&report, &game_dir, &env);
         }
         let started = self.run_window();
         if self.script.is_some() {
@@ -1218,9 +1220,18 @@ impl App {
 
     /// `tungsten check`'s content stage in the game's own build (M70): the
     /// reload roots' files checked in `game_dir` with this app's World, and
-    /// the report written to `report`, one line per error. Loaders log
-    /// warnings and errors only.
-    pub(crate) fn run_check(mut self, report: &Path, game_dir: &Path) -> anyhow::Result<()> {
+    /// the report written to `report`, one line per error. With a room
+    /// generator registered, each is then swept over the seeds
+    /// `TUNGSTEN_CHECK_SEEDS` names (`<first>+<count>`, `0+16` unset; redo
+    /// 7.12), its findings filed under `generator <id>` and a `#\t<note>`
+    /// line each; an unreadable value is one finding with no file. Loaders
+    /// log warnings and errors only.
+    pub(crate) fn run_check(
+        mut self,
+        report: &Path,
+        game_dir: &Path,
+        env: Env<'_>,
+    ) -> anyhow::Result<()> {
         use std::fmt::Write as _;
 
         log::set_max_level(LevelFilter::Warn);
@@ -1230,13 +1241,46 @@ impl App {
         for error in &errors {
             let _ = writeln!(lines, "{}\t{}", error.file.display(), error.message);
         }
+        let mut found = errors.len();
+        let generators = self
+            .world
+            .get_resource::<tungsten_core::assets::RoomGenerators>()
+            .is_some_and(|generators| !generators.is_empty());
+        if generators {
+            let seeds = match env(CHECK_SEEDS_ENV).filter(|value| !value.is_empty()) {
+                None => Ok(asset_loader::room::CheckSeeds::DEFAULT),
+                Some(value) => asset_loader::room::CheckSeeds::parse(&value.to_string_lossy()),
+            };
+            match seeds {
+                Err(message) => {
+                    let _ = writeln!(lines, "\t{message}");
+                    found += 1;
+                }
+                Ok(seeds) => {
+                    let (mut findings, mut notes) = (Vec::new(), Vec::new());
+                    asset_loader::room::check_generators(
+                        &mut self.world,
+                        seeds,
+                        |file, message| findings.push((file, message)),
+                        |note| notes.push(note),
+                    );
+                    found += findings.len();
+                    for (file, message) in findings {
+                        let _ = writeln!(lines, "{file}\t{message}");
+                    }
+                    for note in notes {
+                        let _ = writeln!(lines, "#\t{note}");
+                    }
+                }
+            }
+        }
         std::fs::write(report, lines).map_err(|err| {
             anyhow::anyhow!(
                 "Failed to write the check report '{}': {err}",
                 report.display()
             )
         })?;
-        match errors.len() {
+        match found {
             0 => Ok(()),
             n => Err(anyhow::anyhow!(
                 "the check found {n} error{}, written to '{}'",

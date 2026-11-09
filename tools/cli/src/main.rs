@@ -54,7 +54,10 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::New(path) => finish("new", new::run(&path)),
-        Command::Check => finish("check", current_dir().and_then(|dir| check::run(&dir))),
+        Command::Check(seeds) => finish(
+            "check",
+            current_dir().and_then(|dir| check::run(&dir, seeds)),
+        ),
         Command::Package => finish("package", current_dir().and_then(|dir| package::run(&dir))),
         Command::Run(args) => finish("run", current_dir().and_then(|dir| run::run(&dir, &args))),
         Command::Render(args) => finish(

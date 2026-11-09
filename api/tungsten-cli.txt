@@ -36,6 +36,11 @@ Options of run:
                     folder, removed after)
   --release         Run the game's release build
 
+Options of check and level check, one of:
+  --seeds <count>   Generate each room generator's rooms at seeds 0 to
+                    <count> - 1 and check them (default: 16 seeds)
+  --seed <seed>     Generate and check them at <seed> alone
+
 Options of describe:
   --json            Print the description as JSON
 
@@ -78,6 +83,7 @@ Verbs of level, a <room> a rooms ID or a room file:
   describe [<room>] Print each room's layers and named things by kind
     --json          Print JSON
   check [<room>...] Run the game's check and print the rooms' findings
+                    and every room generator's
   render <room>     Render the room on an empty stage to a PNG; with
                     -o, --overlay, --size, --frame and --release as render's
 

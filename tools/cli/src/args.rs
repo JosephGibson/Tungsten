@@ -4,6 +4,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use crate::check::Seeds;
 use crate::level::LevelArgs;
 use crate::render::{self, RenderArgs};
 
@@ -47,6 +48,11 @@ Options of run:
                     folder, removed after)
   --release         Run the game's release build
 
+Options of check and level check, one of:
+  --seeds <count>   Generate each room generator's rooms at seeds 0 to
+                    <count> - 1 and check them (default: 16 seeds)
+  --seed <seed>     Generate and check them at <seed> alone
+
 Options of describe:
   --json            Print the description as JSON
 
@@ -89,6 +95,7 @@ Verbs of level, a <room> a rooms ID or a room file:
   describe [<room>] Print each room's layers and named things by kind
     --json          Print JSON
   check [<room>...] Run the game's check and print the rooms' findings
+                    and every room generator's
   render <room>     Render the room on an empty stage to a PNG; with
                     -o, --overlay, --size, --frame and --release as render's
 
@@ -104,8 +111,9 @@ pub(crate) enum Command {
     Version,
     /// Make a game in the new folder.
     New(PathBuf),
-    /// Check the game in the current folder.
-    Check,
+    /// Check the game in the current folder, the room generators over the
+    /// seeds given (redo 7.12).
+    Check(Option<Seeds>),
     /// Package the game in the current folder.
     Package,
     /// Run the game in the current folder from a script.
@@ -155,6 +163,10 @@ type OptionSpec = (&'static str, Option<&'static str>);
 /// Each command's options.
 const OPTIONS: &[(&str, &[OptionSpec])] = &[
     (
+        "check",
+        &[("--seeds", Some("<count>")), ("--seed", Some("<seed>"))],
+    ),
+    (
         "run",
         &[
             ("--script", Some("<file>")),
@@ -194,7 +206,10 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
         &[("--at", Some("<col>,<row>")), ("--json", None)],
     ),
     ("level describe", &[("--json", None)]),
-    ("level check", &[]),
+    (
+        "level check",
+        &[("--seeds", Some("<count>")), ("--seed", Some("<seed>"))],
+    ),
     (
         "level render",
         &[
@@ -249,6 +264,13 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
             .and_then(|(_, v)| v.clone())
             .map(PathBuf::from)
     };
+    let given = |option: &str| {
+        options
+            .iter()
+            .find(|(o, _)| *o == option)
+            .and_then(|(_, v)| v.as_ref())
+            .map(|v| v.to_string_lossy().into_owned())
+    };
     match name.as_str() {
         "new" => match <[OsString; 1]>::try_from(positional) {
             Ok([path]) => Ok(Command::New(PathBuf::from(path))),
@@ -260,7 +282,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
         "check" | "package" | "run" | "render" if !positional.is_empty() => {
             Err(extra(&name, &positional))
         }
-        "check" => Ok(Command::Check),
+        "check" => Ok(Command::Check(seeds(&given)?)),
         "package" => Ok(Command::Package),
         "render" => {
             let text = |option: &str| {
@@ -423,7 +445,10 @@ fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
             },
             _ => return Err(too_many(1)),
         },
-        "check" => LevelArgs::Check { rooms: positional },
+        "check" => LevelArgs::Check {
+            seeds: seeds(&text)?,
+            rooms: positional,
+        },
         _ => match positional.as_slice() {
             [room] => LevelArgs::Render {
                 args: render::room_args(room, text, flag).map_err(UsageError)?,
@@ -435,6 +460,29 @@ fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
         },
     };
     Ok(Command::Level(args))
+}
+
+/// `--seeds <count>`, seeds 0 to `count` - 1, or `--seed <seed>` alone;
+/// `None` for neither.
+fn seeds(text: &dyn Fn(&str) -> Option<String>) -> Result<Option<Seeds>, UsageError> {
+    match (text("--seeds"), text("--seed")) {
+        (Some(_), Some(_)) => Err(UsageError(
+            "give `--seeds` or `--seed`, not both".to_owned(),
+        )),
+        (Some(count), None) => match count.trim().parse::<u64>() {
+            Ok(count) if count > 0 => Ok(Some(Seeds { first: 0, count })),
+            _ => Err(UsageError(format!(
+                "`--seeds {count}`: expected a count above 0"
+            ))),
+        },
+        (None, Some(seed)) => match seed.trim().parse::<u64>() {
+            Ok(first) => Ok(Some(Seeds { first, count: 1 })),
+            Err(_) => Err(UsageError(format!(
+                "`--seed {seed}`: expected a whole number"
+            ))),
+        },
+        (None, None) => Ok(None),
+    }
 }
 
 /// `<col>,<row>` as two whole numbers.

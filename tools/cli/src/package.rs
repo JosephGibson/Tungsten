@@ -82,8 +82,8 @@ pub(crate) fn run(dir: &Path) -> anyhow::Result<bool> {
     println!("tungsten package: checking the staged game");
     let report = std::env::temp_dir().join(format!("tungsten-package-{}.txt", std::process::id()));
     let _ = std::fs::remove_file(&report);
-    let status = check::content_stage(&layout.stage, &report, &mut Command::new(&staged))?;
-    let findings = check::read_report(&report, status)?;
+    let status = check::content_stage(&layout.stage, &report, None, &mut Command::new(&staged))?;
+    let findings = check::read_report(&report, status)?.findings;
     if !findings.is_empty() {
         print_findings(&findings);
         println!("{}", check::summary(&findings));

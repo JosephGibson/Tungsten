@@ -8,7 +8,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use tungsten_core::World;
-use tungsten_core::assets::{ResolvedManifest, Room, RoomError, RoomRegistry, Tileset};
+use tungsten_core::assets::{
+    GenerateError, ResolvedManifest, Room, RoomError, RoomGenerators, RoomRegistry, Tileset,
+};
 
 /// Whether `manifest` lists a room or a tileset: only then does a load
 /// insert the `RoomRegistry`, so a game without rooms holds none.
@@ -136,6 +138,155 @@ pub(crate) fn check_room_rules(
             error(path, finding.to_string());
         }
     }
+}
+
+/// The seeds `tungsten check` sweeps each room generator over (redo 7.12):
+/// `count` of them from `first`, each `first.wrapping_add(i)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CheckSeeds {
+    pub(crate) first: u64,
+    pub(crate) count: u64,
+}
+
+impl CheckSeeds {
+    /// A check's seeds when `TUNGSTEN_CHECK_SEEDS` is unset: `0+16`.
+    pub(crate) const DEFAULT: Self = Self {
+        first: 0,
+        count: 16,
+    };
+
+    /// `TUNGSTEN_CHECK_SEEDS`'s form, `<first>+<count>`.
+    pub(crate) fn parse(text: &str) -> Result<Self, String> {
+        text.split_once('+')
+            .and_then(|(first, count)| {
+                Some(Self {
+                    first: first.trim().parse().ok()?,
+                    count: count.trim().parse().ok()?,
+                })
+            })
+            .ok_or_else(|| {
+                format!(
+                    "TUNGSTEN_CHECK_SEEDS `{text}`: expected <first>+<count>, two whole numbers"
+                )
+            })
+    }
+}
+
+/// `tungsten check`'s sweep of the room generators (redo 7.12): each
+/// registered generator, sorted, at each of `seeds`, generates its rooms
+/// under its own ID as the prefix (an error is a finding), checks each
+/// room's objects against the prefabs, core's level rules and, with the
+/// kit, each route's reach, then removes them, none spawned. A finding's
+/// file is `generator <id>`, sent to `error` once with every seed that
+/// gave its message, the first five then the count; each generator sends
+/// `note` one line of what it swept.
+pub(crate) fn check_generators(
+    world: &mut World,
+    seeds: CheckSeeds,
+    mut error: impl FnMut(String, String),
+    mut note: impl FnMut(String),
+) {
+    let Some(generators) = world.get_resource::<RoomGenerators>() else {
+        return;
+    };
+    let ids: Vec<(String, u32)> = generators
+        .ids()
+        .filter_map(|id| Some((id.to_owned(), generators.get(id)?.version())))
+        .collect();
+    for (id, version) in ids {
+        let mut found: Vec<(String, Vec<u64>)> = Vec::new();
+        let mut at: BTreeMap<String, usize> = BTreeMap::new();
+        let mut rooms = 0_u64;
+        for i in 0..seeds.count {
+            let seed = seeds.first.wrapping_add(i);
+            let mut finding = |message: String| {
+                if let Some(&index) = at.get(&message) {
+                    found[index].1.push(seed);
+                } else {
+                    at.insert(message.clone(), found.len());
+                    found.push((message, vec![seed]));
+                }
+            };
+            let generated = match world.generate_rooms(&id, seed, &id) {
+                Ok(generated) => generated,
+                Err(err) => {
+                    finding(without_seed(&err));
+                    continue;
+                }
+            };
+            for (room, _) in generated.rooms() {
+                rooms += 1;
+                let objects = world
+                    .get_resource::<tungsten_core::TilemapRegistry>()
+                    .and_then(|maps| maps.get(room))
+                    .map(|map| world.check_map_objects(room, map));
+                if let Some(Err(e)) = objects {
+                    finding(format!("room '{room}': {e}"));
+                }
+                for rule in world.room_findings(room, &["light"]) {
+                    finding(rule.to_string());
+                }
+                #[cfg(feature = "kit")]
+                for rule in tungsten_kit::route_findings(world, room) {
+                    finding(rule.to_string());
+                }
+            }
+            for (room, _) in generated.rooms() {
+                let removed = world.remove_room(room);
+                debug_assert!(removed.is_ok(), "a swept room is spawned by none");
+            }
+        }
+        for (message, seeds) in found {
+            error(
+                format!("generator {id}"),
+                format!("{}: {message}", seed_list(&seeds)),
+            );
+        }
+        note(format!(
+            "generator `{id}` (version {version}): seeds {}+{}, {} rooms",
+            seeds.first,
+            seeds.count,
+            thousands(rooms)
+        ));
+    }
+}
+
+/// `err` without its generator and seed, so equal errors at two seeds
+/// merge into one finding.
+fn without_seed(err: &GenerateError) -> String {
+    match err {
+        GenerateError::Failed { message, .. } => message.clone(),
+        GenerateError::Template {
+            template, message, ..
+        } => format!("template `{template}`: {message}"),
+        GenerateError::Empty { .. } => "added no room".to_owned(),
+        other => other.to_string(),
+    }
+}
+
+/// `seed 3`, `seeds 3, 17 and 40`, or the first five and the count past
+/// them: `seeds 3, 17, 40, 41, 66 and 12 more`.
+fn seed_list(seeds: &[u64]) -> String {
+    let shown: Vec<String> = seeds.iter().take(5).map(u64::to_string).collect();
+    match (seeds.len(), shown.split_last()) {
+        (1, _) => format!("seed {}", shown[0]),
+        (n, Some(_)) if n > 5 => format!("seeds {} and {} more", shown.join(", "), n - 5),
+        (_, Some((last, rest))) => format!("seeds {} and {last}", rest.join(", ")),
+        (_, None) => String::new(),
+    }
+}
+
+/// `n` with a comma every three digits: `1,500`.
+fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, digit) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
 }
 
 /// The room whose file is `path`, by the files the registry recorded.

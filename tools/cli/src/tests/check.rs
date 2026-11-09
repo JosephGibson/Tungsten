@@ -96,7 +96,8 @@ fn a_report_prints_sorted_by_file_with_the_count() {
         "assets/prefabs/gem.json\tunknown component `x`\n\
          assets/manifest.json\tsprite 'a' references missing file: assets/a.png\n\
          assets/prefabs/gem.json\tsecond\n",
-    );
+    )
+    .findings;
     assert_eq!(
         format_findings(&findings),
         [
@@ -119,7 +120,70 @@ fn no_report_means_the_content_stage_did_not_run() {
     let err = read_report(&report, status).unwrap_err();
     assert!(err.to_string().contains("did not run"), "{err}");
     std::fs::write(&report, "a.json\tbad\n").unwrap();
-    let findings = read_report(&report, status).unwrap();
+    let findings = read_report(&report, status).unwrap().findings;
     assert_eq!(findings.len(), 1);
     assert!(!report.exists(), "the report is removed once read");
+}
+
+#[test]
+fn a_report_reads_notes_apart_from_findings() {
+    let report = parse_report(
+        "#\tgenerator `chain` (version 1): seeds 0+500, 1,500 rooms\n\
+         generator chain\tseeds 3 and 17: chain_r1: lamp_9: objects[0]: floats\n\
+         \tTUNGSTEN_CHECK_SEEDS `x`: expected <first>+<count>, two whole numbers\n\
+         #\tgenerator `maze` (version 2): seeds 0+500, 500 rooms\n",
+    );
+    assert_eq!(
+        report.notes,
+        [
+            "generator `chain` (version 1): seeds 0+500, 1,500 rooms",
+            "generator `maze` (version 2): seeds 0+500, 500 rooms"
+        ]
+    );
+    assert_eq!(report.findings.len(), 2);
+    assert_eq!(report.findings[0].file, "generator chain");
+    assert_eq!(report.findings[1].file, "", "a finding with no file");
+    let seeds = Some(Seeds {
+        first: 0,
+        count: 500,
+    });
+    assert_eq!(
+        report_lines(&report, seeds),
+        [
+            "generator `chain` (version 1): seeds 0+500, 1,500 rooms",
+            "generator `maze` (version 2): seeds 0+500, 500 rooms",
+            ": TUNGSTEN_CHECK_SEEDS `x`: expected <first>+<count>, two whole numbers",
+            "generator chain: seeds 3 and 17: chain_r1: lamp_9: objects[0]: floats",
+        ],
+        "the notes first, then the findings by file"
+    );
+    assert_eq!(
+        summary(&report.findings),
+        "tungsten check: 2 errors in 2 files"
+    );
+}
+
+#[test]
+fn seeds_with_no_note_say_no_generator_ran() {
+    let clean = parse_report("");
+    let seeds = Some(Seeds { first: 7, count: 1 });
+    assert_eq!(
+        report_lines(&clean, seeds),
+        ["no room generator registered"]
+    );
+    assert_eq!(
+        report_lines(&clean, None),
+        Vec::<String>::new(),
+        "none asked for"
+    );
+    let with_note = parse_report("#\tgenerator `chain` (version 1): seeds 7+1, 3 rooms\n");
+    assert_eq!(
+        report_lines(&with_note, seeds),
+        ["generator `chain` (version 1): seeds 7+1, 3 rooms"]
+    );
+    assert_eq!(
+        Seeds { first: 7, count: 1 }.to_string(),
+        "7+1",
+        "the handshake's form"
+    );
 }

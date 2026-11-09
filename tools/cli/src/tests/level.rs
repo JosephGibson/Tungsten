@@ -292,3 +292,35 @@ fn room_findings_keep_the_room_files_alone() {
         ["assets/rooms/cave.json: cave: crate_1: objects[0]: floats"]
     );
 }
+
+#[test]
+fn level_check_prints_every_generators_findings() {
+    let report = check::parse_report(
+        "#\tgenerator `chain` (version 1): seeds 0+16, 48 rooms\n\
+         assets/rooms/cave.json\tcave: crate_1: objects[0]: floats\n\
+         generator chain\tseed 4: chain_r2: lamp_9: objects[0]: floats\n\
+         assets/rooms/hall.json\thall: west_door: places[0].to: links to `cave.exit`, which no room holds\n\
+         assets/prefabs/lamp.json\tbad\n",
+    );
+    let files: BTreeSet<String> = ["assets/rooms/cave.json".to_owned()].into();
+    let (lines, found) = check_lines(&report, &files, None);
+    assert_eq!(
+        lines,
+        [
+            "generator `chain` (version 1): seeds 0+16, 48 rooms",
+            "assets/rooms/cave.json: cave: crate_1: objects[0]: floats",
+            "generator chain: seed 4: chain_r2: lamp_9: objects[0]: floats",
+        ],
+        "the named room's and every generator's, not hall's or the prefab's"
+    );
+    assert_eq!(found, 2);
+    let seeds = Some(check::Seeds {
+        first: 0,
+        count: 500,
+    });
+    let (lines, found) = check_lines(&check::parse_report(""), &files, seeds);
+    assert_eq!(
+        (lines, found),
+        (vec!["no room generator registered".to_owned()], 0)
+    );
+}
