@@ -152,6 +152,52 @@ fn registry_insert_and_lookup() {
 }
 
 #[test]
+fn remove_drops_a_map_its_copy_as_inserted_and_its_paths() {
+    use crate::assets::TileChanges;
+    let mut reg = TilemapRegistry::new();
+    reg.insert_with_path("demo".into(), tiny_map(), PathBuf::from("/tmp/demo.tmj"));
+    reg.insert("other".into(), tiny_map());
+    let fresh = reg.cursor("demo").unwrap();
+    assert!(reg.set_tile("demo", 0, 0, 0, 1));
+    let edited = reg.cursor("demo").unwrap();
+    let removed = reg.remove("demo").expect("the map");
+    assert_eq!(removed.tile_at(0, 0, 0), Some(1), "the map as it stood");
+    assert!(reg.get("demo").is_none());
+    assert_eq!(reg.id_for_path(Path::new("/tmp/demo.tmj")), None);
+    assert!(!reg.revert("demo"), "its copy as inserted is gone");
+    assert!(reg.cursor("demo").is_none());
+    assert!(reg.changes_since("demo", &edited).is_none());
+    assert_eq!(reg.edited_cells("demo").count(), 0, "its history is gone");
+    assert_eq!(reg.ids().collect::<Vec<_>>(), ["other"]);
+    // The clock stays: inserted again, the map starts past every revision
+    // given, and a cursor reads it by its content's fingerprint.
+    let clock = reg.clock;
+    reg.insert("demo".into(), tiny_map());
+    assert!(reg.clock > clock);
+    assert!(matches!(
+        reg.changes_since("demo", &fresh),
+        Some(TileChanges::Unchanged)
+    ));
+    assert!(matches!(
+        reg.changes_since("demo", &edited),
+        Some(TileChanges::Replaced)
+    ));
+    assert_eq!(reg.id_for_path(Path::new("/tmp/demo.tmj")), None);
+}
+
+#[test]
+fn remove_of_an_unknown_map_is_none() {
+    let mut reg = TilemapRegistry::new();
+    reg.insert_with_path("demo".into(), tiny_map(), PathBuf::from("/tmp/demo.tmj"));
+    let clock = reg.clock;
+    assert!(reg.remove("dmeo").is_none());
+    assert!(reg.get("demo").is_some());
+    assert_eq!(reg.id_for_path(Path::new("/tmp/demo.tmj")), Some("demo"));
+    assert_eq!(reg.clock, clock);
+    assert!(TilemapRegistry::new().remove("demo").is_none());
+}
+
+#[test]
 fn sparse_tiled_ids_resolve_and_invalid_gids_return_errors() {
     let path = std::env::temp_dir().join(format!(
         "tungsten-sparse-tiles-{}-{}.tmj",

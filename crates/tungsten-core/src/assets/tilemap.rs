@@ -1397,6 +1397,17 @@ impl TilemapRegistry {
         true
     }
 
+    /// Removes map `id` and returns it as it stands: its copy as inserted,
+    /// its history and every path naming it go too. The clock stays, so a
+    /// map inserted again under `id` starts past every revision given, and
+    /// a cursor over it reads by its content's fingerprint. Readers skip an
+    /// ID the registry lacks. `None` for a map the registry lacks.
+    pub fn remove(&mut self, id: &str) -> Option<TilemapData> {
+        let map = self.maps.remove(id)?;
+        self.path_to_id.retain(|_, named| named != id);
+        Some(map.data)
+    }
+
     /// Insert with source-path reverse lookup.
     pub fn insert_with_path(&mut self, id: String, data: TilemapData, path: PathBuf) {
         self.path_to_id.insert(path, id.clone());

@@ -1,7 +1,8 @@
 //! Rooms in the World (redo 7.12): the [`RoomRegistry`] of tilesets, room
 //! documents and their compiled forms; [`World::insert_room`], which
 //! compiles a room and registers its map; [`World::spawn_room`], which
-//! spawns it as an area with its objects named `<room>.<id>`.
+//! spawns it as an area with its objects named `<room>.<id>`;
+//! [`World::remove_room`], which takes it out with its map and its area.
 //!
 //! A room is live at most once: the registry records the instance
 //! `spawn_room` spawned, and a second spawn of the room while that entity
@@ -14,14 +15,13 @@ use std::path::{Path, PathBuf};
 
 use glam::Vec2;
 
-use super::{CompiledPlace, CompiledRoom, PlaceShape, Room, RoomError, Tileset, hint};
+use super::{CompiledPlace, CompiledRoom, PlaceShape, Room, RoomError, RoomJournal, Tileset, hint};
 use crate::assets::{TilemapInstance, TilemapRegistry};
 use crate::ecs::{Bundle, Entity, World};
 use crate::lighting::AmbientLight;
 use crate::physics::PhysicsLayers;
 use crate::post::PostStack;
-use crate::save::AreaError;
-use crate::save::name;
+use crate::save::{AreaError, SaveState, name};
 
 /// The rooms and tilesets a World holds, a resource: each room's document,
 /// its compiled form and file, and the instance its last spawn made; each
@@ -380,5 +380,68 @@ impl World {
             objects,
             places,
         })
+    }
+
+    /// Removes room `id` and returns its document: its entry in the
+    /// [`RoomRegistry`] (document, compiled form, file and live record), its
+    /// map from the `TilemapRegistry`, its [`RoomJournal`] history, and its
+    /// area from the World's save state: loaded, kept, and every name given
+    /// in it. Nothing despawns; the game despawns the room's entities first.
+    /// References waiting on a kept record it forgets stay waiting, as those
+    /// into an area never entered do. A manifest room removed is no room
+    /// until a manifest reload loads it again.
+    ///
+    /// # Errors
+    ///
+    /// [`AreaError::UnknownRoom`] for a room the registry lacks;
+    /// [`AreaError::Live`] while the instance of its last spawn lives;
+    /// [`AreaError::Held`] while an entity named in its area lives, since a
+    /// named entity saves as changes over the spawn its room makes. Nothing
+    /// changes on an error.
+    pub fn remove_room(&mut self, id: &str) -> Result<Room, AreaError> {
+        let entry = self
+            .get_resource::<RoomRegistry>()
+            .and_then(|rooms| rooms.rooms.get(id))
+            .ok_or_else(|| AreaError::UnknownRoom {
+                room: id.to_owned(),
+            })?;
+        if entry.live.is_some_and(|instance| self.is_alive(instance)) {
+            return Err(AreaError::Live {
+                room: id.to_owned(),
+            });
+        }
+        let held = self.get_resource::<SaveState>().and_then(|state| {
+            state
+                .named
+                .values()
+                .filter(|named| named.area.as_deref() == Some(id) && self.is_alive(named.entity))
+                .map(|named| named.name.as_str())
+                .min()
+        });
+        if let Some(name) = held {
+            return Err(AreaError::Held {
+                room: id.to_owned(),
+                name: name.to_owned(),
+            });
+        }
+        let entry = self
+            .resource_mut::<RoomRegistry>()
+            .rooms
+            .remove(id)
+            .expect("the room was found");
+        if let Some(maps) = self.get_resource_mut::<TilemapRegistry>() {
+            maps.remove(id);
+        }
+        if let Some(journal) = self.get_resource_mut::<RoomJournal>() {
+            journal.clear(id);
+        }
+        if let Some(state) = self.get_resource_mut::<SaveState>() {
+            state.loaded.remove(id);
+            state.kept.remove(id);
+            state
+                .named
+                .retain(|_, named| named.area.as_deref() != Some(id));
+        }
+        Ok(entry.document)
     }
 }

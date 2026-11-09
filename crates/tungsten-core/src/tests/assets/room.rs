@@ -551,4 +551,188 @@ mod spawning {
             .unwrap();
         assert_eq!(world.counters().archetype_moves - before, with);
     }
+
+    /// Despawns `spawned`'s instance and each of its objects.
+    fn despawn_all(world: &mut World, spawned: &SpawnedRoom) {
+        world.despawn(spawned.instance());
+        for (_, entity) in spawned.objects() {
+            world.despawn(entity);
+        }
+    }
+
+    #[test]
+    fn remove_room_refuses_a_live_room() {
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        let spawned = world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        for (_, entity) in spawned.objects() {
+            world.despawn(entity);
+        }
+        let err = world.remove_room("cave").unwrap_err();
+        assert!(
+            matches!(err, AreaError::Live { ref room } if room == "cave"),
+            "{err}"
+        );
+        assert_eq!(
+            err.to_string(),
+            "room `cave` is live; despawn its instance first"
+        );
+        assert!(world.resource::<RoomRegistry>().room("cave").is_some());
+        assert!(world.resource::<TilemapRegistry>().get("cave").is_some());
+        assert!(world.resource::<SaveState>().is_loaded("cave"));
+        // An unknown room, and a tilemap's ID that no room registered.
+        let map = world
+            .resource::<TilemapRegistry>()
+            .get("cave")
+            .unwrap()
+            .clone();
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("level".into(), map);
+        for id in ["cove", "level"] {
+            assert!(matches!(
+                world.remove_room(id),
+                Err(AreaError::UnknownRoom { ref room }) if room == id
+            ));
+        }
+        assert!(world.resource::<TilemapRegistry>().get("level").is_some());
+    }
+
+    #[test]
+    fn remove_room_refuses_while_an_entity_named_in_it_lives() {
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        let spawned = world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        world.despawn(spawned.instance());
+        let held = |world: &mut World| match world.remove_room("cave") {
+            Err(AreaError::Held { room, name }) => {
+                assert_eq!(room, "cave");
+                name
+            }
+            other => panic!("expected Held, got {other:?}"),
+        };
+        assert_eq!(held(&mut world), "cave.crate_1", "the first by name");
+        world.despawn(spawned.object("crate_1").unwrap());
+        assert_eq!(held(&mut world), "cave.crate_2");
+        let err = world.remove_room("cave").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "room `cave`'s area names `cave.crate_2`, which lives; despawn it before removing the room"
+        );
+        assert!(world.resource::<RoomRegistry>().room("cave").is_some());
+        assert!(world.resource::<TilemapRegistry>().get("cave").is_some());
+        // An entity named in another area holds nothing here.
+        let other = world.spawn_with((Marker(2),));
+        crate::save::name(&mut world, other, Some("den"), "den.lamp").unwrap();
+        world.despawn(spawned.object("crate_2").unwrap());
+        assert!(world.remove_room("cave").is_ok());
+        assert_eq!(
+            world
+                .resource::<SaveState>()
+                .named_entity(SaveId::authored("den.lamp")),
+            Some(other)
+        );
+    }
+
+    #[test]
+    fn remove_room_drops_the_room_its_map_and_its_journal() {
+        let mut world = world();
+        let room = crates("");
+        world
+            .insert_room_with_path("cave", room.clone(), "rooms/cave.json".into())
+            .unwrap();
+        world.insert_room("den", crates("")).unwrap();
+        let mut journal = RoomJournal::new();
+        journal.record("cave", Vec::new(), Vec::new());
+        journal.record("den", Vec::new(), Vec::new());
+        world.insert_resource(journal);
+        let spawned = world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        despawn_all(&mut world, &spawned);
+        assert_eq!(world.remove_room("cave").unwrap(), room, "its document");
+        let rooms = world.resource::<RoomRegistry>();
+        assert!(rooms.room("cave").is_none() && rooms.compiled("cave").is_none());
+        assert!(rooms.path("cave").is_none() && rooms.live("cave").is_none());
+        assert_eq!(rooms.ids().collect::<Vec<_>>(), ["den"]);
+        assert!(rooms.tileset("cave").is_some(), "its tileset stays");
+        assert!(world.resource::<TilemapRegistry>().get("cave").is_none());
+        assert!(world.resource::<TilemapRegistry>().get("den").is_some());
+        let journal = world.resource::<RoomJournal>();
+        assert_eq!((journal.undo_len("cave"), journal.undo_len("den")), (0, 1));
+        assert!(matches!(
+            world.remove_room("cave"),
+            Err(AreaError::UnknownRoom { .. })
+        ));
+    }
+
+    #[test]
+    fn remove_room_forgets_its_areas_names() {
+        use crate::save::{capture_world, restore_world};
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        world.insert_room("den", crates("")).unwrap();
+        let cave = world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        world
+            .spawn_room("den", [200.0, 0.0], &(Marker(1),))
+            .unwrap();
+        let save = capture_world(&world).unwrap();
+        despawn_all(&mut world, &cave);
+        let areas = |world: &World| -> Vec<String> {
+            capture_world(world)
+                .unwrap()
+                .area_names()
+                .map(str::to_owned)
+                .collect()
+        };
+        assert_eq!(
+            areas(&world),
+            ["cave", "den"],
+            "the dead crates read as gone"
+        );
+        world.remove_room("cave").unwrap();
+        let state = world.resource::<SaveState>();
+        assert!(!state.is_loaded("cave") && state.is_loaded("den"));
+        for name in ["cave.crate_1", "cave.crate_2"] {
+            assert_eq!(state.name_of(SaveId::authored(name)), None, "{name}");
+        }
+        assert!(state.name_of(SaveId::authored("den.crate_1")).is_some());
+        assert_eq!(areas(&world), ["den"]);
+        // A kept area goes too: a restore keeps `den`, which this World has
+        // not spawned, and its removal forgets the record.
+        let mut other = self::world();
+        assert!(!other.has_resource::<SaveState>());
+        other.insert_room("cave", crates("")).unwrap();
+        other.insert_room("den", crates("")).unwrap();
+        other.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        restore_world(&mut other, &save, &(Marker(1),)).unwrap();
+        assert!(other.resource::<SaveState>().is_kept("den"));
+        assert_eq!(areas(&other), ["cave", "den"]);
+        other.remove_room("den").unwrap();
+        assert!(!other.resource::<SaveState>().is_kept("den"));
+        assert_eq!(areas(&other), ["cave"]);
+    }
+
+    #[test]
+    fn a_removed_room_inserts_and_spawns_again() {
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        let first = world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        despawn_all(&mut world, &first);
+        world.remove_room("cave").unwrap();
+        assert!(matches!(
+            world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)),
+            Err(AreaError::UnknownRoom { .. })
+        ));
+        world.insert_room("cave", crates("")).unwrap();
+        assert!(world.resource::<TilemapRegistry>().get("cave").is_some());
+        let second = world
+            .spawn_room("cave", [64.0, 0.0], &(Marker(1),))
+            .unwrap();
+        let again = second.object("crate_1").unwrap();
+        assert_eq!(name_of(&world, again), "cave.crate_1");
+        assert_eq!(
+            world.resource::<RoomRegistry>().live("cave"),
+            Some(second.instance())
+        );
+        assert!(world.resource::<SaveState>().is_loaded("cave"));
+    }
 }

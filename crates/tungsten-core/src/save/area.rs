@@ -176,7 +176,8 @@ pub(crate) fn apply_tiles(world: &mut World, plans: Vec<TilePlan>) {
     }
 }
 
-/// Why [`World::spawn_area`] or [`World::spawn_room`] spawned nothing.
+/// Why [`World::spawn_area`] or [`World::spawn_room`] spawned nothing, or
+/// [`World::remove_room`] removed nothing.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum AreaError {
@@ -198,11 +199,22 @@ pub enum AreaError {
         room: String,
     },
     /// The room's last spawned instance still lives: a room is live at most
-    /// once (redo 7.12).
-    #[error("room `{room}` is live; despawn its instance before spawning it again")]
+    /// once, and is removed only once its instance is gone (redo 7.12).
+    #[error("room `{room}` is live; despawn its instance first")]
     Live {
         /// The room's ID.
         room: String,
+    },
+    /// An entity named in the room's area lives: it saves as changes over
+    /// the spawn its room makes, so the room stays while it does (redo 7.12).
+    #[error(
+        "room `{room}`'s area names `{name}`, which lives; despawn it before removing the room"
+    )]
+    Held {
+        /// The room's ID.
+        room: String,
+        /// The first such entity's name, by name.
+        name: String,
     },
 }
 
