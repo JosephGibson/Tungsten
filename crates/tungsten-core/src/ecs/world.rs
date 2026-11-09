@@ -222,19 +222,25 @@ impl World {
     /// Gives `target` what the spawn inheritance derives from `source`, in
     /// one archetype move after its own components, when anything is given:
     /// with a `prefab`, a saved source's spawn also takes the run's next
-    /// save ID and the source's area.
+    /// save ID and the source's area, and shows the sprite variant that ID
+    /// picks.
     fn derive_from(&mut self, source: Entity, target: Entity, prefab: Option<String>) {
         self.bundle_scratch.reset();
         for i in 0..self.source_derivers.len() {
             (self.source_derivers[i])(self, source, target);
         }
+        let mut identity = None;
         if let Some(prefab) = prefab
             && let Some(saved) = crate::save::id::saved_spawn(self, source, prefab)
         {
+            identity = Some(saved.id);
             self.bundle_scratch.put(saved);
         }
         if !self.bundle_scratch.run.is_empty() {
             self.apply_bundle(target);
+        }
+        if let Some(id) = identity {
+            crate::save::id::pick_variant(self, target, id);
         }
     }
 
@@ -247,13 +253,18 @@ impl World {
         for i in 0..self.source_derivers.len() {
             (self.source_derivers[i])(self, source, target);
         }
+        let mut identity = None;
         if let Some(prefab) = prefab
             && let Some(saved) = crate::save::id::replaced_identity(self, source, prefab)
         {
+            identity = Some(saved.id);
             self.bundle_scratch.put(saved);
         }
         if !self.bundle_scratch.run.is_empty() {
             self.apply_bundle(target);
+        }
+        if let Some(id) = identity {
+            crate::save::id::pick_variant(self, target, id);
         }
         self.despawn(source);
     }

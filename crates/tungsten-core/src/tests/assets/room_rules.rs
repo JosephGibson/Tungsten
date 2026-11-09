@@ -387,3 +387,65 @@ fn lights_and_objects_past_the_budget_are_findings() {
         ["cave: lamp_16: objects[16]: budget: 17 objects hold a light, past budget.lights 16"]
     );
 }
+
+#[test]
+fn a_scaled_prop_is_judged_by_its_drawn_box() {
+    let scaled = |sprite: &str, scale: [f32; 2]| json!({ "sprite": { "asset_id": sprite }, "support": "ground", "scale": scale });
+    let mut world = world(&[
+        ("short", scaled("lamp", [1.0, 0.5])),
+        ("tall", scaled("lamp", [1.0, 2.0])),
+        ("wide", scaled("lamp", [2.0, 1.0])),
+        ("post", scaled("post", [1.0, 2.0])),
+    ]);
+    // `lamp` is 8 × 16: at row 4 it stands on the floor's top (80 px); at
+    // half its height it floats 8 px over it, at twice it sinks 16 px.
+    assert_eq!(
+        room(
+            &mut world,
+            &json!({ "objects": [
+                object("short_1", "short", [1.0, 4.0]),
+                object("tall_1", "tall", [3.0, 4.0]),
+                object("wide_1", "wide", [5.0, 3.0])
+            ] })
+        ),
+        [
+            "cave: short_1: objects[0]: floats: 0 of 8 bottom columns have ground within 2 px",
+            "cave: tall_1: objects[1]: sunk: 8 of 8 bottom columns are more than 6 px into the ground",
+            "cave: wide_1: objects[2]: floats: 0 of 16 bottom columns have ground within 2 px"
+        ]
+    );
+    // The anchor scales with it: `post`'s bottom middle at the floor's top
+    // keeps the doubled post on it.
+    assert_eq!(
+        room(
+            &mut world,
+            &json!({ "objects": [object("post_1", "post", [3.25, 5.0])] })
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_props_variant_is_judged_by_its_own_sprite() {
+    // `lamp` (8 × 16) stands on the floor at row 4; `torch` (6 × 8), a
+    // variant, floats 8 px over it there.
+    let lamps =
+        json!({ "sprite": { "asset_id": "lamp", "variants": ["torch"] }, "support": "ground" });
+    let mut world = world(&[("lamps", lamps)]);
+    let pick = |id: &str| variant_by_save_id(SaveId::authored(&format!("cave.{id}")), 2);
+    let ids: Vec<String> = (0..).map(|i| format!("lamp_{i}")).take(64).collect();
+    let on_lamp = ids.iter().find(|id| pick(id) == 0).unwrap();
+    let on_torch = ids.iter().find(|id| pick(id) == 1).unwrap();
+    assert_eq!(
+        room(
+            &mut world,
+            &json!({ "objects": [
+                object(on_lamp, "lamps", [1.0, 4.0]),
+                object(on_torch, "lamps", [4.0, 4.0])
+            ] })
+        ),
+        [format!(
+            "cave: {on_torch}: objects[1]: floats: 0 of 6 bottom columns have ground within 2 px"
+        )]
+    );
+}

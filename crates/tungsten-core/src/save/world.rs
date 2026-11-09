@@ -1190,6 +1190,7 @@ fn apply<B: Bundle + Clone>(
                 prefab: Some(spawn.prefab_id),
             },
         );
+        super::id::pick_variant(world, entity, spawn.id);
         holders.push((entity, spawn.refs));
     }
     for (entry, value) in plan.resources {

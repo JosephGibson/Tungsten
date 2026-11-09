@@ -1294,6 +1294,64 @@ fn oracle_new_3_a_key_split_across_a_kept_area_keeps_its_order() {
     );
 }
 
+#[test]
+fn a_restored_spawn_shows_its_variant_in_a_churned_world() {
+    use crate::assets::AssetRegistry;
+    use crate::components::Sprite;
+    /// `world()` with the prefab `orb` showing `orb`, `orb_b` or `orb_c`,
+    /// their names interned in `order`.
+    fn orbs(order: [&str; 3]) -> World {
+        let mut world = world();
+        let mut assets = AssetRegistry::new();
+        for name in order {
+            assets.intern_sprite(name);
+        }
+        world.insert_resource(assets);
+        world.resource_mut::<PrefabRegistry>().insert(
+            "orb".into(),
+            prefab(json!({ "tag": "orb",
+                "sprite": { "asset_id": "orb", "variants": ["orb_b", "orb_c"] },
+                "components": { "brain": { "mood": "drift" } } })),
+        );
+        world
+    }
+    /// Each saved orb's save ID with the sprite it shows, by name.
+    fn shown(world: &World) -> Vec<(SaveId, String)> {
+        let assets = world.resource::<AssetRegistry>();
+        let mut shown: Vec<(SaveId, String)> = world
+            .query::<(&Saved, &Sprite)>()
+            .filter(|(saved, _)| saved.prefab() == Some("orb"))
+            .map(|(saved, sprite)| {
+                let name = assets.sprite_name(sprite.asset_id).unwrap();
+                (saved.id(), name.to_owned())
+            })
+            .collect();
+        shown.sort();
+        shown
+    }
+    let mut a = orbs(["orb", "orb_b", "orb_c"]);
+    let la = level(&mut a);
+    for x in 0..9 {
+        let orb = a.prepare_prefab("orb", [x as f32 * 24.0, 40.0]).unwrap();
+        a.resource_mut::<CommandBuffer>()
+            .spawn_prefab_from(la.turret, orb);
+    }
+    flush(&mut a);
+    let before = shown(&a);
+    assert_eq!(before.len(), 9);
+    let names: BTreeSet<&str> = before.iter().map(|(_, name)| name.as_str()).collect();
+    assert!(names.len() > 1, "{before:?}");
+    let saved = capture_world(&a).unwrap();
+    assert!(!text(&saved).contains("orb_b"), "a variant saves nothing");
+    // Other entity indices, the names interned in another order, and the
+    // spawns placed where the save names no position: the save ID picks.
+    let mut b = orbs(["orb_c", "orb", "orb_b"]);
+    churn(&mut b, 40);
+    level(&mut b);
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert_eq!(shown(&b), before);
+}
+
 /// Generated areas (redo 7.12): a save of a generated run as its seed and
 /// its changes, regenerated and matched against the World's generation.
 mod generated {

@@ -34,8 +34,10 @@ use super::RoomRegistry;
 use crate::assets::registry::AssetRegistry;
 use crate::assets::tilemap::{LayerKind, LayerPhysics, Slope, SlopeCorner, SlopeRise, TilemapData};
 use crate::assets::{PrefabData, PrefabRegistry};
+use crate::components::variant_by_save_id;
 use crate::ecs::World;
 use crate::physics::{BodyKind, Collider, PhysicsLayers, Shape};
+use crate::save::SaveId;
 
 /// How a room judges a prop's sprite supported: a prefab's `support`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -446,14 +448,26 @@ fn circle_meets_polygon(points: &[Vec2], center: Vec2, radius: f32) -> bool {
     })
 }
 
-/// How a prop's sprite sits: its drawn box in the room's pixels.
-fn drawn_box(world: &World, prefab: &PrefabData, position: Vec2) -> Option<(Vec2, Vec2)> {
+/// How a prop's sprite sits: its drawn box in the room's pixels, as the
+/// extract draws it for the object named `name`: the sprite its save
+/// identity picks from the pool (the sprite and its `variants`), its size
+/// and anchor times the prefab's `scale`.
+fn drawn_box(
+    world: &World,
+    prefab: &PrefabData,
+    position: Vec2,
+    name: &str,
+) -> Option<(Vec2, Vec2)> {
     let sprite = prefab.sprite.as_ref()?;
-    let asset = world
-        .get_resource::<AssetRegistry>()?
-        .get_sprite(&sprite.asset_id)?;
-    let size = Vec2::new(asset.width as f32, asset.height as f32);
-    let anchor = asset.anchor.map_or(Vec2::ZERO, Vec2::from);
+    let pick = variant_by_save_id(SaveId::authored(name), 1 + sprite.variants.len());
+    let shown = match pick {
+        0 => &sprite.asset_id,
+        n => &sprite.variants[n - 1],
+    };
+    let asset = world.get_resource::<AssetRegistry>()?.get_sprite(shown)?;
+    let scale = Vec2::from(prefab.scale);
+    let size = Vec2::new(asset.width as f32, asset.height as f32) * scale;
+    let anchor = asset.anchor.map_or(Vec2::ZERO, Vec2::from) * scale;
     let min = position - anchor;
     Some((min, min + size))
 }
@@ -526,7 +540,7 @@ impl World {
                     }
                     None => &|_| true,
                 };
-                match drawn_box(self, prefab, position) {
+                match drawn_box(self, prefab, position, &format!("{id}.{}", object.id)) {
                     None => findings.push(finding(
                         "support: the prefab draws no registered sprite to judge".to_owned(),
                     )),

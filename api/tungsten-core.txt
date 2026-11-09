@@ -1764,6 +1764,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::Pr
 #[non_exhaustive] pub struct tungsten_core::assets::prefab::PrefabData
 pub tungsten_core::assets::prefab::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub tungsten_core::assets::prefab::PrefabData::extends: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::prefab::PrefabData::scale: [f32; 2]
 pub tungsten_core::assets::prefab::PrefabData::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
 pub tungsten_core::assets::prefab::PrefabData::support: core::option::Option<tungsten_core::assets::room::Support>
 pub tungsten_core::assets::prefab::PrefabData::tag: core::option::Option<alloc::string::String>
@@ -3177,6 +3178,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::Scen
 pub struct tungsten_core::assets::scene::SceneSprite
 pub tungsten_core::assets::scene::SceneSprite::asset_id: alloc::string::String
 pub tungsten_core::assets::scene::SceneSprite::color: [u8; 4]
+pub tungsten_core::assets::scene::SceneSprite::variants: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::scene::SceneSprite::z_order: i32
 impl core::clone::Clone for tungsten_core::assets::scene::SceneSprite
 pub fn tungsten_core::assets::scene::SceneSprite::clone(&self) -> tungsten_core::assets::scene::SceneSprite
@@ -5373,6 +5375,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::P
 #[non_exhaustive] pub struct tungsten_core::assets::PrefabData
 pub tungsten_core::assets::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub tungsten_core::assets::PrefabData::extends: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::PrefabData::scale: [f32; 2]
 pub tungsten_core::assets::PrefabData::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
 pub tungsten_core::assets::PrefabData::support: core::option::Option<tungsten_core::assets::room::Support>
 pub tungsten_core::assets::PrefabData::tag: core::option::Option<alloc::string::String>
@@ -6042,6 +6045,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::Scen
 pub struct tungsten_core::assets::SceneSprite
 pub tungsten_core::assets::SceneSprite::asset_id: alloc::string::String
 pub tungsten_core::assets::SceneSprite::color: [u8; 4]
+pub tungsten_core::assets::SceneSprite::variants: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::SceneSprite::z_order: i32
 impl core::clone::Clone for tungsten_core::assets::scene::SceneSprite
 pub fn tungsten_core::assets::scene::SceneSprite::clone(&self) -> tungsten_core::assets::scene::SceneSprite
@@ -7453,6 +7457,27 @@ impl core::marker::Unpin for tungsten_core::components::SpriteSquashStretch
 impl core::marker::UnsafeUnpin for tungsten_core::components::SpriteSquashStretch
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::SpriteSquashStretch
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::SpriteSquashStretch
+pub struct tungsten_core::components::SpriteVariants
+impl tungsten_core::components::SpriteVariants
+pub fn tungsten_core::components::SpriteVariants::by_position(&self, glam::f32::vec2::Vec2) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::components::SpriteVariants::by_save_id(&self, tungsten_core::SaveId) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::components::SpriteVariants::new(impl core::convert::Into<alloc::boxed::Box<[tungsten_core::assets::registry::SpriteAssetId]>>) -> Self
+pub fn tungsten_core::components::SpriteVariants::pool(&self) -> &[tungsten_core::assets::registry::SpriteAssetId]
+impl core::clone::Clone for tungsten_core::components::SpriteVariants
+pub fn tungsten_core::components::SpriteVariants::clone(&self) -> tungsten_core::components::SpriteVariants
+impl core::cmp::Eq for tungsten_core::components::SpriteVariants
+impl core::cmp::PartialEq for tungsten_core::components::SpriteVariants
+pub fn tungsten_core::components::SpriteVariants::eq(&self, &tungsten_core::components::SpriteVariants) -> bool
+impl core::fmt::Debug for tungsten_core::components::SpriteVariants
+pub fn tungsten_core::components::SpriteVariants::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::components::SpriteVariants
+impl core::marker::Freeze for tungsten_core::components::SpriteVariants
+impl core::marker::Send for tungsten_core::components::SpriteVariants
+impl core::marker::Sync for tungsten_core::components::SpriteVariants
+impl core::marker::Unpin for tungsten_core::components::SpriteVariants
+impl core::marker::UnsafeUnpin for tungsten_core::components::SpriteVariants
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::SpriteVariants
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::SpriteVariants
 pub struct tungsten_core::components::SquashStretchState
 pub tungsten_core::components::SquashStretchState::base_scale: glam::f32::vec2::Vec2
 pub tungsten_core::components::SquashStretchState::elapsed: f32
@@ -22762,6 +22787,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PostStack
 #[non_exhaustive] pub struct tungsten_core::PrefabData
 pub tungsten_core::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub tungsten_core::PrefabData::extends: core::option::Option<alloc::string::String>
+pub tungsten_core::PrefabData::scale: [f32; 2]
 pub tungsten_core::PrefabData::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
 pub tungsten_core::PrefabData::support: core::option::Option<tungsten_core::assets::room::Support>
 pub tungsten_core::PrefabData::tag: core::option::Option<alloc::string::String>
@@ -23606,6 +23632,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::Scen
 pub struct tungsten_core::SceneSprite
 pub tungsten_core::SceneSprite::asset_id: alloc::string::String
 pub tungsten_core::SceneSprite::color: [u8; 4]
+pub tungsten_core::SceneSprite::variants: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::SceneSprite::z_order: i32
 impl core::clone::Clone for tungsten_core::assets::scene::SceneSprite
 pub fn tungsten_core::assets::scene::SceneSprite::clone(&self) -> tungsten_core::assets::scene::SceneSprite

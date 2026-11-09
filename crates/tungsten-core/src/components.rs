@@ -75,6 +75,72 @@ impl Sprite {
     }
 }
 
+/// The sprites a prefab's spawn picks among (redo 7.12, S-58): the prefab's
+/// sprite and its `sprite.variants`, interned, held only by a spawn whose
+/// prefab names variants. The spawn shows one: picked by its save identity
+/// once it has one ([`by_save_id`](Self::by_save_id)), else by its spawn
+/// position ([`by_position`](Self::by_position)). A pick writes
+/// `Sprite.asset_id` in place, so nothing is saved for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpriteVariants {
+    pool: Box<[SpriteAssetId]>,
+}
+
+impl SpriteVariants {
+    /// The pool, the prefab's sprite first.
+    ///
+    /// # Panics
+    ///
+    /// When `pool` is empty.
+    #[must_use]
+    pub fn new(pool: impl Into<Box<[SpriteAssetId]>>) -> Self {
+        let pool = pool.into();
+        assert!(!pool.is_empty(), "a variant pool holds the sprite at least");
+        Self { pool }
+    }
+
+    /// The pool, the prefab's sprite first.
+    #[must_use]
+    pub fn pool(&self) -> &[SpriteAssetId] {
+        &self.pool
+    }
+
+    /// The variant save identity `id` shows.
+    #[must_use]
+    pub fn by_save_id(&self, id: crate::save::SaveId) -> SpriteAssetId {
+        self.pool[variant_by_save_id(id, self.pool.len())]
+    }
+
+    /// The variant a spawn at `position` with no save identity shows.
+    #[must_use]
+    pub fn by_position(&self, position: Vec2) -> SpriteAssetId {
+        self.pool[variant_by_position(position, self.pool.len())]
+    }
+}
+
+/// The 64-bit FNV-1a of `bytes`.
+fn fnv1a(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, &byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+/// The index into a pool of `len` that save identity `id` picks: its
+/// eight little-endian bytes' FNV-1a modulo `len`.
+pub(crate) fn variant_by_save_id(id: crate::save::SaveId, len: usize) -> usize {
+    (fnv1a(&id.0.to_le_bytes()) % len as u64) as usize
+}
+
+/// The index into a pool of `len` that a spawn at `position` picks: its
+/// whole pixels' FNV-1a modulo `len`.
+pub(crate) fn variant_by_position(position: Vec2, len: usize) -> usize {
+    let [x, y] = position.floor().to_array().map(|axis| axis as i32);
+    let mut bytes = [0; 8];
+    bytes[..4].copy_from_slice(&x.to_le_bytes());
+    bytes[4..].copy_from_slice(&y.to_le_bytes());
+    (fnv1a(&bytes) % len as u64) as usize
+}
+
 /// Explicit render gate required by default sprite extract.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Visibility {

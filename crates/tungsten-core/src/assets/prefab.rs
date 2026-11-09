@@ -66,7 +66,7 @@ use crate::assets::tilemap::{MapObject, TilemapData, TilemapRegistry};
 use crate::component_registry::{
     ComponentError, ComponentRegistry, PreparedComponent, SpawnContext,
 };
-use crate::components::{Sprite, Tag, Transform, Visibility};
+use crate::components::{Sprite, SpriteVariants, Tag, Transform, Visibility};
 use crate::ecs::{Bundle, CommandBuffer, Entity, PendingEntity, World};
 use crate::tween::Tween;
 
@@ -83,8 +83,14 @@ pub struct PrefabData {
     pub extends: Option<String>,
     /// The sprite, by its manifest ID. The spawn interns the name, so a
     /// sprite that a later manifest reload registers draws from then on.
+    /// With `variants`, each spawn shows one of the pool (redo 7.12, S-58):
+    /// by its save identity once it has one, else by its spawn position.
     #[serde(default)]
     pub sprite: Option<SceneSprite>,
+    /// The spawn's `Transform.scale` (redo 7.12, S-129), each axis finite
+    /// and above 0; `[1, 1]` by default.
+    #[serde(default = "one_scale", skip_serializing_if = "is_one_scale")]
+    pub scale: [f32; 2],
     /// `Visibility.visible`, `= true`.
     #[serde(default = "default_visible")]
     pub visible: bool,
@@ -161,11 +167,30 @@ impl PrefabData {
         Ok((data, Some(json)))
     }
 
-    /// Phase two of a load: the fields' checks, then each component's
-    /// `check_in` against `world`, a missing prefab or data ID with the
-    /// nearest one appended.
+    /// Phase two of a load: the fields' checks, each sprite variant against
+    /// the names the World's `AssetRegistry` holds (as a load-time sprite
+    /// check reads one, an ability's `icon`; the base `asset_id` is interned
+    /// at the spawn, as before), then each component's `check_in` against
+    /// `world`, a missing prefab, data or sprite ID with the nearest one
+    /// appended.
     pub(crate) fn validate(&self, world: &World) -> Result<(), String> {
         self.validate_fields()?;
+        if let Some(sprite) = &self.sprite {
+            let sprites = world.get_resource::<AssetRegistry>();
+            for (i, variant) in sprite.variants.iter().enumerate() {
+                if sprites.is_none_or(|sprites| sprites.sprite_id(variant).is_none()) {
+                    let hint = sprites.and_then(|sprites| {
+                        let mut names: Vec<&str> = sprites.sprite_names().collect();
+                        names.sort_unstable();
+                        data::nearest(variant, names.into_iter())
+                    });
+                    return Err(format!(
+                        "sprite.variants[{i}]: unknown sprite ID `{variant}`{}",
+                        data::did_you_mean(hint)
+                    ));
+                }
+            }
+        }
         let empty = ComponentRegistry::new();
         let registry = world.get_resource::<ComponentRegistry>().unwrap_or(&empty);
         for (name, value) in &self.components {
@@ -182,11 +207,28 @@ impl PrefabData {
         Ok(())
     }
 
-    /// The checks of the prefab's own fields: at most one tween, and each
+    /// The checks of the prefab's own fields: a scale finite and above 0, a
+    /// variant list naming no sprite twice, at most one tween, and each
     /// tween's own. [`load`](Self::load) runs them, and every spawn runs them
     /// again, since data deserialized in code and inserted into the
     /// [`PrefabRegistry`] skips the load.
     fn validate_fields(&self) -> Result<(), String> {
+        let [x, y] = self.scale;
+        if !(x.is_finite() && y.is_finite() && x > 0.0 && y > 0.0) {
+            return Err(format!(
+                "scale: each axis is finite and above 0 (got [{x}, {y}])"
+            ));
+        }
+        if let Some(sprite) = &self.sprite {
+            for (i, variant) in sprite.variants.iter().enumerate() {
+                let earlier = std::iter::once(&sprite.asset_id).chain(&sprite.variants[..i]);
+                if variant.is_empty() || earlier.into_iter().any(|seen| seen == variant) {
+                    return Err(format!(
+                        "sprite.variants[{i}]: `{variant}` is empty or already in the pool"
+                    ));
+                }
+            }
+        }
         if self.tweens.len() > 1 {
             return Err(format!(
                 "tweens: a prefab holds at most one tween (got {})",
@@ -200,6 +242,19 @@ impl PrefabData {
         }
         Ok(())
     }
+}
+
+/// A prefab's default scale.
+fn one_scale() -> [f32; 2] {
+    [1.0, 1.0]
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes a reference"
+)]
+fn is_one_scale(scale: &[f32; 2]) -> bool {
+    *scale == [1.0, 1.0]
 }
 
 /// The loaded prefabs by ID, a `World` resource: what
@@ -560,11 +615,20 @@ impl fmt::Debug for PreparedPrefab {
 struct Built {
     id: String,
     transform: Transform,
-    sprite: Option<SceneSprite>,
+    sprite: Option<BuiltSprite>,
     visible: bool,
     tag: Option<String>,
     tween: Option<Tween>,
     components: Vec<PreparedComponent>,
+}
+
+/// A built spawn's sprite: its `SceneSprite` but the variants, which the
+/// interning reads from the prefab, so a built spawn costs what it did
+/// before them (02's `rooms` row holds a room's built objects).
+struct BuiltSprite {
+    asset_id: String,
+    color: [u8; 4],
+    z_order: i32,
 }
 
 impl Built {
@@ -579,7 +643,8 @@ impl Built {
     ) -> Result<Self, ComponentError> {
         let empty = ComponentRegistry::new();
         let registry = world.get_resource::<ComponentRegistry>().unwrap_or(&empty);
-        let transform = Transform::from_position(position);
+        let mut transform = Transform::from_position(position);
+        transform.scale = Vec2::from(data.scale);
         let at = SpawnContext::new(world, transform);
         let components = components
             .iter()
@@ -588,7 +653,11 @@ impl Built {
         Ok(Self {
             id: id.to_owned(),
             transform,
-            sprite: data.sprite.clone(),
+            sprite: data.sprite.as_ref().map(|sprite| BuiltSprite {
+                asset_id: sprite.asset_id.clone(),
+                color: sprite.color,
+                z_order: sprite.z_order,
+            }),
             visible: data.visible,
             tag: data.tag.clone(),
             tween: data.tweens.first().map(SceneTween::into_tween),
@@ -596,8 +665,18 @@ impl Built {
         })
     }
 
-    /// Interns the sprite's name: the one step that changes the World.
+    /// Interns the sprite's name, and its variants' with it: the one step
+    /// that changes the World. With variants, the sprite is the one its
+    /// spawn position picks until a save identity picks again.
     fn intern(self, world: &mut World) -> PreparedPrefab {
+        let names: Vec<String> = world
+            .get_resource::<PrefabRegistry>()
+            .and_then(|prefabs| prefabs.get(&self.id))
+            .and_then(|data| data.sprite.as_ref())
+            .filter(|sprite| !sprite.variants.is_empty())
+            .map(|sprite| sprite.variants.clone())
+            .unwrap_or_default();
+        let mut variants = None;
         let sprite = self.sprite.map(|sprite| {
             let registry = world
                 .get_resource_mut::<AssetRegistry>()
@@ -607,13 +686,28 @@ impl Built {
                         self.id, sprite.asset_id
                     )
                 });
+            let mut asset_id = registry.intern_sprite(&sprite.asset_id);
+            if !names.is_empty() {
+                let pool: Vec<_> = std::iter::once(asset_id)
+                    .chain(names.iter().map(|name| registry.intern_sprite(name)))
+                    .collect();
+                let pool = SpriteVariants::new(pool);
+                asset_id = pool.by_position(self.transform.position);
+                variants = Some(pool);
+            }
             Sprite {
-                asset_id: registry.intern_sprite(&sprite.asset_id),
+                asset_id,
                 color: sprite.color,
                 z_order: sprite.z_order,
                 material_id: None,
             }
         });
+        // The pool rides the run as an extra, so a prefab without variants
+        // prepares as it did.
+        let mut extras: Vec<Extra> = Vec::new();
+        if let Some(variants) = variants {
+            extras.push(Box::new(move |buffer, at| at.insert(buffer, variants)));
+        }
         PreparedPrefab {
             id: self.id,
             saved: crate::save::saving(world),
@@ -625,7 +719,7 @@ impl Built {
             tag: self.tag.map(Tag::new),
             tween: self.tween,
             components: self.components,
-            extras: Vec::new(),
+            extras,
         }
     }
 }

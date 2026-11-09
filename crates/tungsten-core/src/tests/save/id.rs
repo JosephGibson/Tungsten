@@ -126,3 +126,39 @@ fn order_keys_put_saved_entities_first_by_id_then_the_rest_by_index() {
         (false, SaveId::authored("player").0)
     );
 }
+
+#[test]
+fn naming_an_entity_picks_its_variant_again() {
+    use glam::Vec2;
+
+    use crate::assets::AssetRegistry;
+    use crate::components::{Sprite, SpriteVariants};
+    let mut assets = AssetRegistry::new();
+    let pool: Vec<_> = ["crate", "crate_b", "crate_c"]
+        .map(|name| assets.intern_sprite(name))
+        .into();
+    let pool = SpriteVariants::new(pool);
+    let mut world = World::new();
+    world.insert_resource(assets);
+    let mut seen = std::collections::BTreeSet::new();
+    for i in 0..12 {
+        let at = Vec2::new(i as f32 * 16.0, 0.0);
+        let entity = world.spawn_with((Sprite::new(pool.by_position(at)), pool.clone()));
+        let before = world.counters().archetype_moves;
+        let id = name(&mut world, entity, Some("cave"), &format!("crate_{i}")).unwrap();
+        assert_eq!(
+            world.counters().archetype_moves - before,
+            1,
+            "the `Saved` insert alone: the pick moves nothing"
+        );
+        let shown = world.get::<Sprite>(entity).unwrap().asset_id;
+        assert_eq!(shown, pool.by_save_id(id));
+        seen.insert(shown.index());
+    }
+    assert_eq!(seen.len(), 3, "{seen:?}");
+    // An entity with no pool keeps its sprite.
+    let lamp = pool.pool()[1];
+    let plain = world.spawn_with((Sprite::new(lamp),));
+    name(&mut world, plain, Some("cave"), "lamp_1").unwrap();
+    assert_eq!(world.get::<Sprite>(plain).unwrap().asset_id, lamp);
+}

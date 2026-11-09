@@ -224,6 +224,7 @@ fn scene_sprite_named_before_registration_draws_once_registered() {
                 asset_id: "late".into(),
                 color: [255; 4],
                 z_order: 0,
+                variants: Vec::new(),
             }),
             visible: true,
             tag: None,

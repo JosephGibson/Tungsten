@@ -492,3 +492,36 @@ fn check_reports_a_sheet_whose_frame_does_not_fit() {
     }
     assert!(sprites.get_sprite("wide_0").is_none());
 }
+
+#[test]
+fn a_prefab_variant_naming_no_sprite_is_a_check_error() {
+    let game = Folder::new();
+    game.png("assets/sprites/crate.png", 16);
+    game.png("assets/sprites/crate_b.png", 16);
+    game.write(
+        "assets/prefabs/crate.json",
+        r#"{ "sprite": { "asset_id": "crate", "variants": ["crate_b", "crate_bb"] }, "scale": [2, 2] }"#,
+    );
+    game.write(
+        "assets/prefabs/box.json",
+        r#"{ "sprite": { "asset_id": "crate", "variants": ["crate_b"] } }"#,
+    );
+    let root = game.write(
+        "assets/manifest.json",
+        r#"{ "sprites": { "crate": { "path": "sprites/crate.png" }, "crate_b": { "path": "sprites/crate_b.png" } },
+             "prefabs": { "crate": { "path": "prefabs/crate.json" }, "box": { "path": "prefabs/box.json" } } }"#,
+    );
+    let mut app = game_world();
+    let errors = check_files(app.world_mut(), &[root], &game.0);
+    let report: Vec<String> = errors
+        .iter()
+        .map(|e| format!("{}: {}", e.file.display(), e.message))
+        .collect();
+    assert_eq!(
+        report,
+        [
+            "assets/prefabs/crate.json: Failed to load prefab 'crate': invalid prefab 'assets/prefabs/crate.json': sprite.variants[1]: unknown sprite ID `crate_bb`; did you mean `crate_b`?"
+        ],
+        "the known variant and the scale pass"
+    );
+}

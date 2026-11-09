@@ -526,3 +526,54 @@ fn a_second_generator_under_one_id_panics() {
     let mut world = world();
     world.register_generator("chain", Chain { rooms: 1 });
 }
+
+#[test]
+fn a_seed_shows_the_same_variants_each_time() {
+    use crate::assets::AssetRegistry;
+    use crate::components::Sprite;
+    /// A World of `world()` whose `crate` shows `crate`, `crate_b` or
+    /// `crate_c`, and the names its run's crates show.
+    fn run(seed: u64) -> Vec<(String, String)> {
+        let mut world = world();
+        let mut assets = AssetRegistry::new();
+        for name in ["crate", "crate_b", "crate_c"] {
+            assets.intern_sprite(name);
+        }
+        world.insert_resource(assets);
+        let crate_prefab: PrefabData = serde_json::from_value(
+            json!({ "sprite": { "asset_id": "crate", "variants": ["crate_b", "crate_c"] } }),
+        )
+        .unwrap();
+        world
+            .resource_mut::<PrefabRegistry>()
+            .insert("crate".into(), crate_prefab);
+        let rooms = world.generate_rooms("chain", seed, "chain").unwrap();
+        let mut shown = Vec::new();
+        for (id, origin) in rooms.rooms() {
+            let spawned = world.spawn_room(id, origin, &(Marker,)).unwrap();
+            for (object, entity) in spawned.objects() {
+                let sprite = world.get::<Sprite>(entity).unwrap().asset_id;
+                let pool = world
+                    .get::<crate::components::SpriteVariants>(entity)
+                    .unwrap();
+                assert_eq!(
+                    sprite,
+                    pool.by_save_id(SaveId::authored(&format!("{id}.{object}"))),
+                    "named before it is drawn"
+                );
+                let name = world
+                    .resource::<AssetRegistry>()
+                    .sprite_name(sprite)
+                    .unwrap();
+                shown.push((format!("{id}.{object}"), name.to_owned()));
+            }
+        }
+        shown
+    }
+    let first = run(7);
+    assert_eq!(first.len(), 6);
+    assert_eq!(run(7), first, "the same seed, the same variants");
+    let names: std::collections::BTreeSet<&str> =
+        first.iter().map(|(_, name)| name.as_str()).collect();
+    assert!(names.len() > 1, "{first:?}");
+}
