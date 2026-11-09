@@ -12519,6 +12519,7 @@ pub tungsten_core::script::Verb::Camera(core::option::Option<tungsten_core::scri
 pub tungsten_core::script::Verb::Capture(alloc::string::String)
 pub tungsten_core::script::Verb::Cursor(tungsten_core::script::Cursor)
 pub tungsten_core::script::Verb::Exit
+pub tungsten_core::script::Verb::Generate(tungsten_core::script::GenerateStep)
 pub tungsten_core::script::Verb::Level(tungsten_core::script::LevelStep)
 pub tungsten_core::script::Verb::Overlay(tungsten_core::script::OverlayStep)
 pub tungsten_core::script::Verb::Press(alloc::string::String)
@@ -12667,6 +12668,28 @@ impl core::marker::Unpin for tungsten_core::script::FailedStep
 impl core::marker::UnsafeUnpin for tungsten_core::script::FailedStep
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::FailedStep
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::FailedStep
+pub struct tungsten_core::script::GenerateStep
+pub tungsten_core::script::GenerateStep::generator: alloc::string::String
+pub tungsten_core::script::GenerateStep::prefix: core::option::Option<alloc::string::String>
+pub tungsten_core::script::GenerateStep::seed: u64
+impl core::clone::Clone for tungsten_core::script::GenerateStep
+pub fn tungsten_core::script::GenerateStep::clone(&self) -> tungsten_core::script::GenerateStep
+impl core::cmp::PartialEq for tungsten_core::script::GenerateStep
+pub fn tungsten_core::script::GenerateStep::eq(&self, &tungsten_core::script::GenerateStep) -> bool
+impl core::fmt::Debug for tungsten_core::script::GenerateStep
+pub fn tungsten_core::script::GenerateStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::GenerateStep
+impl serde_core::ser::Serialize for tungsten_core::script::GenerateStep
+pub fn tungsten_core::script::GenerateStep::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::GenerateStep
+pub fn tungsten_core::script::GenerateStep::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::GenerateStep
+impl core::marker::Send for tungsten_core::script::GenerateStep
+impl core::marker::Sync for tungsten_core::script::GenerateStep
+impl core::marker::Unpin for tungsten_core::script::GenerateStep
+impl core::marker::UnsafeUnpin for tungsten_core::script::GenerateStep
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::GenerateStep
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::GenerateStep
 pub struct tungsten_core::script::LevelStep
 pub tungsten_core::script::LevelStep::edit: tungsten_core::script::LevelEdit
 pub tungsten_core::script::LevelStep::room: alloc::string::String

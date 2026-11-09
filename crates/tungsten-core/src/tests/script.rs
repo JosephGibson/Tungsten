@@ -688,6 +688,71 @@ fn a_typed_action_returns_the_deserialize_error() {
 }
 
 #[test]
+fn a_generate_step_reads_and_refuses_a_repeat() {
+    let script = Script::parse(
+        r#"{ "version": 1, "frames": 10, "steps": [
+            { "frame": 2, "generate": { "generator": "chain", "seed": 7 } },
+            { "frame": 3, "generate": { "generator": "chain", "seed": 18446744073709551615, "prefix": "deep" } }
+        ] }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        script.steps[0].verb,
+        Verb::Generate(GenerateStep {
+            generator: "chain".into(),
+            seed: 7,
+            prefix: None
+        })
+    );
+    assert_eq!(script.steps[0].verb.name(), "generate");
+    assert!(matches!(&script.steps[1].verb,
+        Verb::Generate(GenerateStep { seed: u64::MAX, prefix: Some(prefix), .. }) if prefix == "deep"));
+    let text = serde_json::to_string(&script).unwrap();
+    assert_eq!(
+        Script::parse(&text).unwrap(),
+        script,
+        "it writes back as it reads"
+    );
+    assert!(!text.contains("prefix\":null"), "{text}");
+    let bad = |steps: &str| {
+        Script::parse(&format!(
+            r#"{{ "version": 1, "frames": 10, "steps": [{steps}] }}"#
+        ))
+        .unwrap_err()
+        .to_string()
+    };
+    assert!(
+        bad(r#"{ "frame": 2, "until": 4, "generate": { "generator": "chain", "seed": 1 } }"#)
+            .contains("`generate` does not repeat; drop `until`"),
+        "a generation runs once"
+    );
+    assert_eq!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "Chain", "seed": 1 } }"#),
+        "steps[0]: `Chain` must match [a-z][a-z0-9_]*"
+    );
+    assert_eq!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain", "seed": 1, "prefix": "a-b" } }"#),
+        "steps[0]: `a-b` must match [a-z][a-z0-9_]*"
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain" } }"#)
+            .contains("missing field `seed`")
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain", "seed": -1 } }"#)
+            .contains("steps[0].generate.seed")
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain", "seed": 1, "rooms": 3 } }"#)
+            .contains("unknown field `rooms`")
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain", "seed": 1 }, "room": "cave" }"#)
+            .contains("one verb")
+    );
+}
+
+#[test]
 fn the_room_verb_and_place_probe_parse_and_name_their_fields() {
     let script = Script::parse(
         r#"{ "version": 1, "frames": 10, "steps": [

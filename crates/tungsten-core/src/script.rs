@@ -18,6 +18,7 @@
 //! | `stage` | `{}`, or `{"ambient": [r, g, b]}` |
 //! | `room` | a `rooms` ID, spawned with `World::spawn_room` at the origin under the stage (redo 7.12) |
 //! | `level` | `{"room", "apply": [commands]}`, a batch applied to the live room and journaled (`World::apply_room_batch`), or `{"room", "undo": true}`, its newest batch undone; no file is written |
+//! | `generate` | `{"generator": id, "seed": n, "prefix"?: id}`: `World::generate_rooms`, the generator's ID the prefix unless given, then each room spawned at its origin under the stage (redo 7.12) |
 //! | `sheet` | `{"items": ["prefab:goblin", "sprite:icon"], "columns"?, "cell"?, "labels"?}` |
 //! | `camera` | `{"center": [x, y], "zoom": z}`, `{"center", "view_height": h}`, `{"fit": "staged"}` or `null` |
 //! | `overlay` | `{"physics": bool, "kit": bool}` |
@@ -283,6 +284,9 @@ pub enum Verb {
     Room(String),
     /// Applies a batch to a live room, or undoes its newest (redo 7.12).
     Level(LevelStep),
+    /// Generates rooms from a seed and spawns each at its origin under the
+    /// stage (redo 7.12).
+    Generate(GenerateStep),
     /// Stages and lays out items in a captioned grid.
     Sheet(SheetStep),
     /// Draws with another camera until `None`.
@@ -317,6 +321,7 @@ impl Verb {
             Verb::Stage(_) => "stage",
             Verb::Room(_) => "room",
             Verb::Level(_) => "level",
+            Verb::Generate(_) => "generate",
             Verb::Sheet(_) => "sheet",
             Verb::Camera(_) => "camera",
             Verb::Overlay(_) => "overlay",
@@ -398,6 +403,20 @@ pub struct SpawnStep {
     pub prefab: String,
     /// Where, in world pixels.
     pub at: [f32; 2],
+}
+
+/// `generate` (redo 7.12): a registered room generator, its seed and the
+/// prefix of its rooms' IDs, the generator's ID when absent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GenerateStep {
+    /// The generator's ID.
+    pub generator: String,
+    /// The seed.
+    pub seed: u64,
+    /// The prefix of its rooms' IDs; the generator's ID when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
 }
 
 /// `stage`: an empty stage, with an ambient light when given.
@@ -862,6 +881,8 @@ struct RawStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     level: Option<LevelStep>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    generate: Option<GenerateStep>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     sheet: Option<SheetStep>,
     #[serde(
         default,
@@ -1020,6 +1041,9 @@ impl TryFrom<RawStep> for Step {
         if let Some(level) = raw.level {
             verbs.push(("level", Verb::Level(level)));
         }
+        if let Some(generate) = raw.generate {
+            verbs.push(("generate", Verb::Generate(generate)));
+        }
         if let Some(sheet) = raw.sheet {
             verbs.push(("sheet", Verb::Sheet(sheet)));
         }
@@ -1067,7 +1091,12 @@ impl TryFrom<RawStep> for Step {
         if raw.until.is_some()
             && matches!(
                 verb,
-                Verb::Exit | Verb::Stage(_) | Verb::Sheet(_) | Verb::Room(_) | Verb::Level(_)
+                Verb::Exit
+                    | Verb::Stage(_)
+                    | Verb::Sheet(_)
+                    | Verb::Room(_)
+                    | Verb::Level(_)
+                    | Verb::Generate(_)
             )
         {
             return Err(format!("`{}` does not repeat; drop `until`", verb.name()));
@@ -1089,6 +1118,10 @@ fn check_verb(verb: &Verb, repeats: bool) -> Result<(), String> {
             non_empty(name)
         }
         Verb::Room(id) | Verb::Level(LevelStep { room: id, .. }) => hook_name(id),
+        Verb::Generate(generate) => {
+            hook_name(&generate.generator)?;
+            generate.prefix.as_deref().map_or(Ok(()), hook_name)
+        }
         Verb::Action(ActionStep { name, .. }) => hook_name(name),
         Verb::Probe(ProbeStep { name, path, .. }) => {
             hook_name(name)?;
@@ -1189,6 +1222,7 @@ impl From<Step> for RawStep {
             Verb::Stage(stage) => raw.stage = Some(stage),
             Verb::Room(room) => raw.room = Some(room),
             Verb::Level(level) => raw.level = Some(level),
+            Verb::Generate(generate) => raw.generate = Some(generate),
             Verb::Sheet(sheet) => raw.sheet = Some(sheet),
             Verb::Camera(camera) => raw.camera = Some(camera),
             Verb::Overlay(overlay) => raw.overlay = Some(overlay),

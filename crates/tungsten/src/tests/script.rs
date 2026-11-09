@@ -661,6 +661,122 @@ fn a_room_step_spawns_the_room_and_the_place_probe_reads_a_marker() {
     assert!(!report.passed);
 }
 
+/// An app with the sprite `rock`, the prefab `crate`, the cave tileset and
+/// the template `cave`: a floor, a crate and the place `start`.
+fn cave_app() -> crate::App {
+    use tungsten_core::assets::{PrefabData, PrefabRegistry, Room, RoomRegistry, Tileset};
+    let mut app = app();
+    add_owned_probe(app.world_mut());
+    let world = app.world_mut();
+    register_sprite(world, "rock");
+    let crate_prefab: PrefabData = serde_json::from_value(json!({ "tag": "crate" })).unwrap();
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("crate".into(), crate_prefab);
+    let mut rooms = RoomRegistry::new();
+    rooms.insert_tileset(
+        "cave",
+        Tileset::from_json(r#"{ "version": 1, "tiles": [{ "sprite": "rock" }] }"#).unwrap(),
+    );
+    world.insert_resource(rooms);
+    let room = Room::from_json(
+        r#"{ "version": 1, "cell": [16, 16], "size": [10, 4], "tileset": "cave",
+             "layers": [{ "name": "solid", "kind": "collision" }],
+             "shapes": [{ "id": "floor", "rect": [0, 3, 10, 1], "tile": "rock", "layers": ["solid"] }],
+             "objects": [{ "id": "crate_1", "prefab": "crate", "at": [2, 2] }],
+             "places": [{ "id": "start", "point": [1.5, 2] }] }"#,
+    )
+    .unwrap();
+    world.insert_room("cave", room).unwrap();
+    app
+}
+
+/// Two copies of `cave`, 160 px apart; failing at seed 3.
+struct Pair;
+
+impl tungsten_core::assets::RoomGenerator for Pair {
+    fn version(&self) -> u32 {
+        1
+    }
+
+    fn generate(&self, generation: &mut tungsten_core::assets::Generate<'_>) -> Result<(), String> {
+        if generation.seed() == 3 {
+            return Err("no exit fits".to_owned());
+        }
+        let cave = generation.template("cave")?;
+        generation.add("a", cave.clone(), [0.0, 0.0])?;
+        generation.add("b", cave, [160.0, 0.0])
+    }
+}
+
+#[test]
+fn a_generate_step_spawns_each_room_at_its_origin() {
+    use tungsten_core::assets::RoomRegistry;
+    let mut app = cave_app();
+    app.register_generator("pair", Pair);
+    let mut harness = Harness::new(app);
+    let report = harness.run_script(&script(
+        10,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "generate": { "generator": "pair", "seed": 7 } },
+            { "frame": 2, "camera": { "fit": "staged" } },
+            { "frame": 5, "probe": "place", "args": { "room": "pair_b", "id": "start" } },
+            { "frame": 5, "assert": { "probe": "owned", "args": { "state": "script_stage" }, "op": "==", "value": 4 } },
+            { "frame": 6, "generate": { "generator": "pair", "seed": 8, "prefix": "deep" } },
+            { "frame": 8, "probe": "place", "args": { "room": "deep_a", "id": "start" } },
+            { "frame": 8, "assert": { "probe": "owned", "args": { "state": "script_stage" }, "op": "==", "value": 8 } }
+        ]),
+    ));
+    assert!(report.passed, "{report:#?}");
+    assert_eq!(
+        probes(&report, "place"),
+        [(5, &json!([184.0, 32.0])), (8, &json!([24.0, 32.0]))],
+        "each room at its origin: `b` 160 px over"
+    );
+    let rooms = harness.world().resource::<RoomRegistry>();
+    for room in ["pair_a", "pair_b", "deep_a", "deep_b"] {
+        assert!(rooms.live(room).is_some(), "{room}");
+        assert!(rooms.generation(room).is_some(), "{room}");
+    }
+}
+
+#[test]
+fn a_generate_step_that_fails_fails_the_script() {
+    let mut app = cave_app();
+    app.register_generator("pair", Pair);
+    let mut harness = Harness::new(app);
+    let report = harness.run_script(&script(
+        6,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "generate": { "generator": "pair", "seed": 3 } },
+            { "frame": 4, "generate": { "generator": "chain", "seed": 1 } }
+        ]),
+    ));
+    assert!(!report.passed);
+    let failed: Vec<(u32, &str, &str)> = report
+        .failed_steps
+        .iter()
+        .map(|f| (f.frame, f.verb.as_str(), f.error.as_str()))
+        .collect();
+    assert_eq!(
+        failed,
+        [
+            (2, "generate", "generator `pair` at seed 3: no exit fits"),
+            (4, "generate", "no room generator `chain`"),
+        ]
+    );
+    let rooms = harness
+        .world()
+        .resource::<tungsten_core::assets::RoomRegistry>();
+    assert_eq!(
+        rooms.ids().collect::<Vec<_>>(),
+        ["cave"],
+        "nothing registered"
+    );
+}
+
 #[test]
 fn a_level_step_patches_the_live_room_and_undo_restores_it() {
     use tungsten_core::assets::{
