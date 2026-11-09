@@ -810,25 +810,25 @@ impl World {
                 .ok_or_else(|| PrefabError::UnknownMap {
                     map: map.to_owned(),
                 })?;
-            let mut built = Vec::new();
-            for_each_classed_object(self, map, data, |object, prefab, components| {
-                prefab
-                    .validate_fields()
-                    .map_err(|message| format!("prefab `{}`: {message}", object.class))?;
-                let position = origin + object.position;
-                if !within_position_bound(position.x, position.y) {
-                    return Err(format!(
-                        "prefab `{}`: position {position} must be finite and within ±{MAX_POSITION}",
-                        object.class
-                    ));
-                }
-                let next = Built::new(self, &object.class, prefab, components, position)
-                    .map_err(|err| format!("prefab `{}`: {err}", object.class))?;
-                built.push((next, object.name.clone()));
-                Ok(())
-            })?;
-            built
+            build_objects(self, map, data, origin, |_| true)?
         };
+        Ok(built
+            .into_iter()
+            .map(|(next, name)| (next.intern(self), name))
+            .collect())
+    }
+
+    /// [`prepare_map_objects_named`](Self::prepare_map_objects_named) for
+    /// `data`, map `map` as it will be once registered (a room's patch,
+    /// redo 7.12): the objects `keep` admits, in layer and file order.
+    pub(crate) fn prepare_objects_of(
+        &mut self,
+        map: &str,
+        data: &TilemapData,
+        origin: Vec2,
+        keep: impl Fn(&MapObject) -> bool,
+    ) -> Result<Vec<(PreparedPrefab, String)>, PrefabError> {
+        let built = build_objects(self, map, data, origin, keep)?;
         Ok(built
             .into_iter()
             .map(|(next, name)| (next.intern(self), name))
@@ -1013,6 +1013,38 @@ fn for_each_classed_object(
         }
     }
     Ok(())
+}
+
+/// Each classed object of `data` that `keep` admits, built at `origin` plus
+/// its position, with its name; its sprite name not yet interned.
+fn build_objects(
+    world: &World,
+    map: &str,
+    data: &TilemapData,
+    origin: Vec2,
+    keep: impl Fn(&MapObject) -> bool,
+) -> Result<Vec<(Built, String)>, PrefabError> {
+    let mut built = Vec::new();
+    for_each_classed_object(world, map, data, |object, prefab, components| {
+        if !keep(object) {
+            return Ok(());
+        }
+        prefab
+            .validate_fields()
+            .map_err(|message| format!("prefab `{}`: {message}", object.class))?;
+        let position = origin + object.position;
+        if !within_position_bound(position.x, position.y) {
+            return Err(format!(
+                "prefab `{}`: position {position} must be finite and within ±{MAX_POSITION}",
+                object.class
+            ));
+        }
+        let next = Built::new(world, &object.class, prefab, components, position)
+            .map_err(|err| format!("prefab `{}`: {err}", object.class))?;
+        built.push((next, object.name.clone()));
+        Ok(())
+    })?;
+    Ok(built)
 }
 
 /// The prefab's `components` with the object's `properties` applied, in

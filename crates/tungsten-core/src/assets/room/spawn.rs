@@ -30,22 +30,22 @@ use crate::save::name;
 /// builds rooms in code.
 #[derive(Debug, Default)]
 pub struct RoomRegistry {
-    rooms: BTreeMap<String, Registered>,
-    tilesets: BTreeMap<String, RegisteredTileset>,
+    pub(super) rooms: BTreeMap<String, Registered>,
+    pub(super) tilesets: BTreeMap<String, RegisteredTileset>,
 }
 
 #[derive(Debug)]
-struct Registered {
-    document: Room,
-    compiled: CompiledRoom,
-    path: Option<PathBuf>,
-    live: Option<Entity>,
+pub(super) struct Registered {
+    pub(super) document: Room,
+    pub(super) compiled: CompiledRoom,
+    pub(super) path: Option<PathBuf>,
+    pub(super) live: Option<Entity>,
 }
 
 #[derive(Debug)]
-struct RegisteredTileset {
-    tileset: Tileset,
-    path: Option<PathBuf>,
+pub(super) struct RegisteredTileset {
+    pub(super) tileset: Tileset,
+    pub(super) path: Option<PathBuf>,
 }
 
 impl RoomRegistry {
@@ -104,6 +104,15 @@ impl RoomRegistry {
         self.tilesets.keys().map(String::as_str)
     }
 
+    /// Records `path` as the file tileset `id` loads from, as a manifest
+    /// reload that moved it does. False for a tileset the registry lacks.
+    pub fn set_tileset_path(&mut self, id: &str, path: PathBuf) -> bool {
+        self.tilesets
+            .get_mut(id)
+            .map(|entry| entry.path = Some(path))
+            .is_some()
+    }
+
     /// The room IDs, sorted.
     pub fn ids(&self) -> impl Iterator<Item = &str> {
         self.rooms.keys().map(String::as_str)
@@ -126,6 +135,15 @@ impl RoomRegistry {
     #[must_use]
     pub fn path(&self, id: &str) -> Option<&Path> {
         self.rooms.get(id).and_then(|entry| entry.path.as_deref())
+    }
+
+    /// Records `path` as the file room `id` loads from, as a manifest
+    /// reload that moved it does. False for a room the registry lacks.
+    pub fn set_path(&mut self, id: &str, path: PathBuf) -> bool {
+        self.rooms
+            .get_mut(id)
+            .map(|entry| entry.path = Some(path))
+            .is_some()
     }
 
     /// Place `id` of room `room`, in the room's own pixels.

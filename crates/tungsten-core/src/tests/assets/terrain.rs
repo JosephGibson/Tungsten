@@ -919,3 +919,81 @@ fn slope_tiles_close_their_neighbours_sides_and_are_never_picked() {
     assert_eq!(map.tile_at(layer, 1, 0), Some(brush));
     assert_ne!(map.tile_at(layer, 1, 0), Some(ramp));
 }
+
+#[test]
+fn an_authored_tile_moves_the_inserted_map_and_drops_the_cells_edit() {
+    let mut registry = registry();
+    assert!(registry.set_tile("quarry", 1, 0, 0, PLAIN));
+    registry.damage_tile("quarry", 1, 1, 2, 3.0);
+    let before = registry.cursor("quarry").unwrap();
+    assert!(registry.set_authored_tile("quarry", 1, 0, 0, RUBBLE));
+    assert!(registry.set_authored_tile("quarry", 1, 1, 2, PLAIN));
+    assert_eq!(
+        listed(registry.changes_since("quarry", &before)),
+        Some(vec![cell(1, 0, 0), cell(1, 1, 2)]),
+        "journaled as set_tile journals"
+    );
+    assert_eq!(registry.edited_cells("quarry").count(), 0, "no play's edit");
+    assert_eq!(registry.damaged_cells("quarry").count(), 0);
+    assert!(registry.revert("quarry"));
+    let map = registry.get("quarry").unwrap();
+    assert_eq!(
+        map.tile_at(1, 0, 0),
+        Some(RUBBLE),
+        "the map as inserted moved"
+    );
+    assert_eq!(map.tile_at(1, 1, 2), Some(PLAIN));
+    assert!(!registry.set_authored_tile("pit", 0, 0, 0, ROCK));
+
+    // A brush resolves in both copies, its neighbours re-picked, as an
+    // insert of the source with the cell written resolves it.
+    let mut registry = TilemapRegistry::new();
+    registry.insert("cave".into(), cave());
+    assert!(registry.set_authored_tile("cave", 0, 2, 1, EMPTY_TILE));
+    assert!(registry.set_authored_tile("cave", 0, 4, 2, BRUSH));
+    let mut source = cave();
+    source.set_tile(0, 2, 1, EMPTY_TILE);
+    source.set_tile(0, 4, 2, BRUSH);
+    let mut fresh = TilemapRegistry::new();
+    fresh.insert("cave".into(), source);
+    let expected = rows(fresh.get("cave").unwrap(), 0);
+    assert_eq!(rows(registry.get("cave").unwrap(), 0), expected, "live");
+    assert!(registry.revert("cave"));
+    assert_eq!(
+        rows(registry.get("cave").unwrap(), 0),
+        expected,
+        "as inserted"
+    );
+    assert!(registry.get("cave").unwrap().is_auto(0, 4, 2));
+}
+
+#[test]
+fn authored_objects_replace_the_maps_and_the_inserted_copys() {
+    use crate::assets::tilemap::MapObject;
+    let mut registry = registry();
+    let before = registry.cursor("quarry").unwrap();
+    let layers = vec![ObjectLayer {
+        name: "objects".into(),
+        objects: vec![MapObject {
+            id: 1,
+            name: "quarry.cart".into(),
+            class: "cart".into(),
+            position: glam::Vec2::new(16.0, 16.0),
+            size: glam::Vec2::ZERO,
+            properties: std::collections::BTreeMap::new(),
+        }],
+    }];
+    assert!(registry.set_authored_objects("quarry", layers.clone()));
+    assert_eq!(registry.get("quarry").unwrap().object_layers, layers);
+    assert!(
+        is_unchanged(registry.changes_since("quarry", &before)),
+        "objects are outside the fingerprint"
+    );
+    assert!(registry.revert("quarry"));
+    assert_eq!(
+        registry.get("quarry").unwrap().object_layers,
+        layers,
+        "the copy as inserted"
+    );
+    assert!(!registry.set_authored_objects("pit", Vec::new()));
+}

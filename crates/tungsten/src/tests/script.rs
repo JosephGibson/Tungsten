@@ -660,3 +660,90 @@ fn a_room_step_spawns_the_room_and_the_place_probe_reads_a_marker() {
     ));
     assert!(!report.passed);
 }
+
+#[test]
+fn a_level_step_patches_the_live_room_and_undo_restores_it() {
+    use tungsten_core::assets::{
+        PrefabData, PrefabRegistry, Room, RoomJournal, RoomRegistry, Tileset,
+    };
+    use tungsten_core::save::{SaveId, SaveState};
+    let mut app = app();
+    add_owned_probe(app.world_mut());
+    let world = app.world_mut();
+    world.add_script_probe("named_x", "A named entity's x.", |world, args| {
+        let name = args["name"].as_str().ok_or("`name` names an entity")?;
+        let entity = world
+            .get_resource::<SaveState>()
+            .and_then(|state| state.named_entity(SaveId::authored(name)))
+            .filter(|&entity| world.is_alive(entity))
+            .ok_or("no such entity")?;
+        Ok(json!(world.get::<Transform>(entity).unwrap().position.x))
+    });
+    register_sprite(world, "rock");
+    register_sprite(world, "plank");
+    let crate_prefab: PrefabData = serde_json::from_value(json!({ "tag": "crate" })).unwrap();
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("crate".into(), crate_prefab);
+    let mut rooms = RoomRegistry::new();
+    rooms.insert_tileset(
+        "cave",
+        Tileset::from_json(
+            r#"{ "version": 1, "tiles": [{ "sprite": "rock" }, { "sprite": "plank" }] }"#,
+        )
+        .unwrap(),
+    );
+    world.insert_resource(rooms);
+    let room = Room::from_json(
+        r#"{ "version": 1, "cell": [16, 16], "size": [10, 4], "tileset": "cave",
+             "layers": [{ "name": "solid", "kind": "collision" }],
+             "shapes": [{ "id": "floor", "rect": [0, 3, 10, 1], "tile": "rock", "layers": ["solid"] }],
+             "objects": [{ "id": "crate_1", "prefab": "crate", "at": [2, 2] }] }"#,
+    )
+    .unwrap();
+    world.insert_room("cave", room.clone()).unwrap();
+    let mut harness = Harness::new(app);
+    let crate_x = json!({ "name": "cave.crate_1" });
+    let report = harness.run_script(&script(
+        8,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 3, "level": { "room": "cave", "apply": [
+                { "move": { "id": "crate_1", "by": [3, 0] } },
+                { "paint": { "layer": "solid", "cells": [[5, 1]], "tile": "plank" } }
+            ] } },
+            { "frame": 4, "probe": "named_x", "args": crate_x },
+            { "frame": 4, "probe": "owned", "args": { "state": "script_stage" } },
+            { "frame": 5, "level": { "room": "cave", "undo": true } },
+            { "frame": 6, "probe": "named_x", "args": crate_x },
+            { "frame": 7, "level": { "room": "cave", "undo": true } }
+        ]),
+    ));
+    assert_eq!(
+        probes(&report, "named_x"),
+        [(4, &json!(80.0)), (6, &json!(32.0))],
+        "moved by the batch, back by the undo"
+    );
+    assert_eq!(
+        probes(&report, "owned"),
+        [(4, &json!(2))],
+        "the respawned crate takes the instance's state"
+    );
+    let failed: Vec<(u32, &str, &str)> = report
+        .failed_steps
+        .iter()
+        .map(|f| (f.frame, f.verb.as_str(), f.error.as_str()))
+        .collect();
+    assert_eq!(failed, [(7, "level", "room `cave` has nothing to undo")]);
+    let world = harness.world();
+    assert_eq!(
+        world.resource::<RoomRegistry>().room("cave"),
+        Some(&room),
+        "the document as it was"
+    );
+    let map = world.resource::<TilemapRegistry>().get("cave").unwrap();
+    assert_eq!(map.tile_at(0, 5, 1), Some(-1), "the paint undone");
+    let journal = world.resource::<RoomJournal>();
+    assert_eq!((journal.undo_len("cave"), journal.redo_len("cave")), (0, 1));
+}

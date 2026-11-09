@@ -276,3 +276,283 @@ fn the_fixtures_clean_rooms_have_no_findings() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+mod reloads {
+    use serde_json::{Value, json};
+    use tungsten_core::assets::{RoomCommand, RoomJournal, TileChanges};
+    use tungsten_core::save::{SaveId, SaveState};
+    use tungsten_core::{Entity, Transform};
+
+    use super::*;
+    use crate::asset_loader::reload_json_files;
+    use crate::state::SceneEntity;
+
+    /// The fixture's copy loaded and room `cave` spawned at the origin
+    /// under state `game`.
+    fn live_cave() -> (PathBuf, World) {
+        let dir = fixture_copy();
+        let manifest = ResolvedManifest::load(dir.join("manifest.json")).unwrap();
+        let mut world = app_world();
+        load(&manifest, &mut world);
+        world
+            .spawn_room("cave", [0.0, 0.0], &(SceneEntity { state_id: "game" },))
+            .unwrap();
+        (dir, world)
+    }
+
+    /// The JSON file at `path` changed by `change`.
+    fn edit(path: &Path, change: impl FnOnce(&mut Value)) {
+        let mut value: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        change(&mut value);
+        fs::write(path, serde_json::to_string_pretty(&value).unwrap()).unwrap();
+    }
+
+    fn room_file(world: &World, id: &str) -> PathBuf {
+        world
+            .resource::<RoomRegistry>()
+            .path(id)
+            .unwrap()
+            .to_path_buf()
+    }
+
+    fn tileset_file(world: &World) -> PathBuf {
+        world
+            .resource::<RoomRegistry>()
+            .tileset_path("cave")
+            .unwrap()
+            .to_path_buf()
+    }
+
+    /// The live entity named `name`.
+    fn named(world: &World, name: &str) -> Option<Entity> {
+        world
+            .get_resource::<SaveState>()?
+            .named_entity(SaveId::authored(name))
+            .filter(|&entity| world.is_alive(entity))
+    }
+
+    fn undo_len(world: &World, room: &str) -> usize {
+        world
+            .get_resource::<RoomJournal>()
+            .map_or(0, |journal| journal.undo_len(room))
+    }
+
+    fn nudge(world: &mut World, room: &str, batch: &str) {
+        let batch = RoomCommand::parse_batch(batch).unwrap();
+        world.apply_room_batch(room, &batch).unwrap();
+    }
+
+    #[test]
+    fn reloading_a_room_file_patches_the_live_room() {
+        let (_dir, mut world) = live_cave();
+        let ball = named(&world, "cave.ball_1").unwrap();
+        let crate_1 = named(&world, "cave.crate_1").unwrap();
+        let path = room_file(&world, "cave");
+        edit(&path, |room| {
+            room["objects"][2]["at"] = json!([32.5, 12]);
+            room["layers"][0]["cells"]["3,3"] = json!("plank");
+        });
+        let errors = reload_json_files(&[path], &mut world, false);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(!world.is_alive(ball), "the moved ball spawned again");
+        let again = named(&world, "cave.ball_1").unwrap();
+        assert_eq!(
+            world.get::<Transform>(again).unwrap().position,
+            Vec2::new(520.0, 192.0)
+        );
+        assert_eq!(
+            world.get::<SceneEntity>(again).map(|scene| scene.state_id),
+            Some("game"),
+            "the instance's state, by the spawn inheritance"
+        );
+        assert_eq!(named(&world, "cave.crate_1"), Some(crate_1));
+        let map = world.resource::<TilemapRegistry>().get("cave").unwrap();
+        assert_eq!(map.tile_at(0, 3, 3), Some(4), "the plank, in place");
+    }
+
+    #[test]
+    fn a_room_failing_its_reload_keeps_the_live_room() {
+        let (_dir, mut world) = live_cave();
+        let ball = named(&world, "cave.ball_1").unwrap();
+        let document = world.resource::<RoomRegistry>().room("cave").cloned();
+        let cursor = world.resource::<TilemapRegistry>().cursor("cave").unwrap();
+        let path = room_file(&world, "cave");
+        edit(&path, |room| {
+            room["objects"][2]["at"] = json!([32.5, 12]);
+            room["shapes"][0]["tile"] = json!("rokc");
+        });
+        let errors = reload_json_files(std::slice::from_ref(&path), &mut world, false);
+        assert_eq!(
+            errors,
+            [
+                "Hot reload room 'cave': room `cave`: shapes[0].tile: no tile `rokc` in the tileset; keeping the live room"
+            ]
+        );
+        fs::write(&path, "{ not json").unwrap();
+        let errors = reload_json_files(&[path], &mut world, false);
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].starts_with("Hot reload room 'cave': "),
+            "{errors:?}"
+        );
+        assert_eq!(
+            world.resource::<RoomRegistry>().room("cave").cloned(),
+            document
+        );
+        assert_eq!(named(&world, "cave.ball_1"), Some(ball));
+        assert!(matches!(
+            world
+                .resource::<TilemapRegistry>()
+                .changes_since("cave", &cursor),
+            Some(TileChanges::Unchanged)
+        ));
+    }
+
+    #[test]
+    fn a_tileset_edit_patches_every_room_on_it() {
+        let (_dir, mut world) = live_cave();
+        let cursors: Vec<_> = ["cave", "hall"]
+            .map(|room| world.resource::<TilemapRegistry>().cursor(room).unwrap())
+            .into();
+        let path = tileset_file(&world);
+        edit(&path, |tileset| {
+            tileset["tiles"][4]["material"] = json!("stone");
+        });
+        let errors = reload_json_files(&[path], &mut world, false);
+        assert!(errors.is_empty(), "{errors:?}");
+        for (room, cursor) in ["cave", "hall"].iter().zip(&cursors) {
+            let maps = world.resource::<TilemapRegistry>();
+            assert!(
+                matches!(
+                    maps.changes_since(room, cursor),
+                    Some(TileChanges::Replaced)
+                ),
+                "{room}'s map inserted whole"
+            );
+            let props = maps.get(room).unwrap().tile_props(4);
+            assert_eq!(props.material.as_deref(), Some("stone"), "{room}");
+        }
+        let tileset = world.resource::<RoomRegistry>().tileset("cave").unwrap();
+        assert_eq!(tileset.tiles[4].material.as_deref(), Some("stone"));
+    }
+
+    #[test]
+    fn a_tileset_reload_naming_an_unknown_sprite_keeps_the_old_one() {
+        let (_dir, mut world) = live_cave();
+        let before = world.resource::<RoomRegistry>().tileset("cave").cloned();
+        let cursor = world.resource::<TilemapRegistry>().cursor("cave").unwrap();
+        let path = tileset_file(&world);
+        edit(&path, |tileset| {
+            tileset["tiles"][4]["material"] = json!("stone");
+            tileset["tiles"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({ "sprite": "rock_88" }));
+        });
+        let errors = reload_json_files(&[path], &mut world, false);
+        assert_eq!(
+            errors,
+            [
+                "Hot reload tileset 'cave': room `cave`: tileset `cave`: tiles[6].sprite: unknown sprite `rock_88`; keeping the previous tileset and its rooms"
+            ]
+        );
+        assert_eq!(
+            world.resource::<RoomRegistry>().tileset("cave").cloned(),
+            before
+        );
+        assert!(matches!(
+            world
+                .resource::<TilemapRegistry>()
+                .changes_since("cave", &cursor),
+            Some(TileChanges::Unchanged)
+        ));
+    }
+
+    #[test]
+    fn a_reload_changing_the_document_or_the_tileset_clears_its_journal_and_an_equal_one_keeps_it()
+    {
+        let (_dir, mut world) = live_cave();
+        let path = room_file(&world, "cave");
+        let file = fs::read_to_string(&path).unwrap();
+        let ball = r#"[{ "move": { "id": "ball_1", "by": [1, 0] } }]"#;
+        nudge(&mut world, "cave", ball);
+        assert_eq!(undo_len(&world, "cave"), 1);
+        // The registry's document saved to the file, as an editor saves it.
+        let saved = world
+            .resource::<RoomRegistry>()
+            .room("cave")
+            .unwrap()
+            .to_canonical();
+        fs::write(&path, saved).unwrap();
+        assert!(reload_json_files(std::slice::from_ref(&path), &mut world, false).is_empty());
+        assert_eq!(undo_len(&world, "cave"), 1, "an equal document keeps it");
+        // The file as it was: a changed document, the ball back.
+        fs::write(&path, &file).unwrap();
+        assert!(reload_json_files(&[path], &mut world, false).is_empty());
+        assert_eq!(undo_len(&world, "cave"), 0, "a changed document clears it");
+        let ball_at = |world: &World| {
+            let ball = named(world, "cave.ball_1").unwrap();
+            world.get::<Transform>(ball).unwrap().position
+        };
+        assert_eq!(ball_at(&world), Vec2::new(488.0, 192.0));
+
+        nudge(&mut world, "cave", ball);
+        nudge(
+            &mut world,
+            "hall",
+            r#"[{ "move": { "id": "west_door", "by": [1, 0] } }]"#,
+        );
+        let tileset = tileset_file(&world);
+        assert!(reload_json_files(std::slice::from_ref(&tileset), &mut world, false).is_empty());
+        assert_eq!(
+            (undo_len(&world, "cave"), undo_len(&world, "hall")),
+            (1, 1),
+            "an equal tileset keeps them"
+        );
+        edit(&tileset, |tileset| {
+            tileset["tiles"][4]["material"] = json!("stone");
+        });
+        assert!(reload_json_files(&[tileset], &mut world, false).is_empty());
+        assert_eq!(
+            (undo_len(&world, "cave"), undo_len(&world, "hall")),
+            (0, 0),
+            "a changed tileset clears each room's on it"
+        );
+    }
+
+    #[test]
+    fn a_manifest_reload_patches_the_live_rooms() {
+        let (dir, mut world) = live_cave();
+        let ball = named(&world, "cave.ball_1").unwrap();
+        edit(&room_file(&world, "cave"), |room| {
+            room["objects"][2]["at"] = json!([32.5, 12]);
+        });
+        // A new room, and the tileset moved.
+        fs::copy(dir.join("rooms/hall.json"), dir.join("rooms/den.json")).unwrap();
+        fs::create_dir_all(dir.join("tiles")).unwrap();
+        fs::rename(dir.join("tilesets/cave.json"), dir.join("tiles/cave.json")).unwrap();
+        edit(&dir.join("manifest.json"), |manifest| {
+            manifest["rooms"]["den"] = json!({ "path": "rooms/den.json" });
+            manifest["tilesets"]["cave"] = json!({ "path": "tiles/cave.json" });
+        });
+        let edited = ResolvedManifest::load(dir.join("manifest.json")).unwrap();
+        super::super::reload_rooms_from_manifest(&edited, &mut world);
+        assert!(!world.is_alive(ball));
+        let again = named(&world, "cave.ball_1").unwrap();
+        assert_eq!(
+            world.get::<Transform>(again).unwrap().position,
+            Vec2::new(520.0, 192.0)
+        );
+        let rooms = world.resource::<RoomRegistry>();
+        assert_eq!(rooms.ids().collect::<Vec<_>>(), ["cave", "den", "hall"]);
+        assert_eq!(rooms.path("den"), Some(edited.rooms["den"].path.as_path()));
+        assert_eq!(
+            rooms.tileset_path("cave"),
+            Some(edited.tilesets["cave"].path.as_path()),
+            "the moved file recorded"
+        );
+        assert!(world.resource::<TilemapRegistry>().get("den").is_some());
+        // The tilemap block leaves the rooms' maps to the room block.
+        assert!(crate::asset_loader::reload::reload_new_tilemaps(&edited, &mut world).is_empty());
+    }
+}

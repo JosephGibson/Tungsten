@@ -17,6 +17,7 @@
 //! | `screen` | a `ui_screens` ID or a registered screen's name, opened as `tungsten::screens::open` opens it |
 //! | `stage` | `{}`, or `{"ambient": [r, g, b]}` |
 //! | `room` | a `rooms` ID, spawned with `World::spawn_room` at the origin under the stage (redo 7.12) |
+//! | `level` | `{"room", "apply": [commands]}`, a batch applied to the live room and journaled (`World::apply_room_batch`), or `{"room", "undo": true}`, its newest batch undone; no file is written |
 //! | `sheet` | `{"items": ["prefab:goblin", "sprite:icon"], "columns"?, "cell"?, "labels"?}` |
 //! | `camera` | `{"center": [x, y], "zoom": z}`, `{"center", "view_height": h}`, `{"fit": "staged"}` or `null` |
 //! | `overlay` | `{"physics": bool, "kit": bool}` |
@@ -68,7 +69,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 
-use crate::assets::{PlaceShape, RoomRegistry, TilemapInstance};
+use crate::assets::{PlaceShape, RoomCommand, RoomRegistry, TilemapInstance};
 use crate::camera::CameraState;
 use crate::component_registry::ComponentRegistry;
 use crate::ecs::World;
@@ -280,6 +281,8 @@ pub enum Verb {
     Stage(StageStep),
     /// Spawns a room at the origin under the stage (redo 7.12).
     Room(String),
+    /// Applies a batch to a live room, or undoes its newest (redo 7.12).
+    Level(LevelStep),
     /// Stages and lays out items in a captioned grid.
     Sheet(SheetStep),
     /// Draws with another camera until `None`.
@@ -313,6 +316,7 @@ impl Verb {
             Verb::Screen(_) => "screen",
             Verb::Stage(_) => "stage",
             Verb::Room(_) => "room",
+            Verb::Level(_) => "level",
             Verb::Sheet(_) => "sheet",
             Verb::Camera(_) => "camera",
             Verb::Overlay(_) => "overlay",
@@ -856,6 +860,8 @@ struct RawStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     room: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    level: Option<LevelStep>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     sheet: Option<SheetStep>,
     #[serde(
         default,
@@ -886,6 +892,74 @@ struct RawStep {
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ExitStep {}
+
+/// `level`'s value (redo 7.12): a room and what the step does to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "RawLevel", into = "RawLevel")]
+pub struct LevelStep {
+    /// The room, a `rooms` ID, live when the step runs.
+    pub room: String,
+    /// What the step does to it.
+    pub edit: LevelEdit,
+}
+
+/// What a `level` step does to its room.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LevelEdit {
+    /// Applies the batch as `tungsten level apply` does, patches the live
+    /// room and journals it, writing no file.
+    Apply(Vec<RoomCommand>),
+    /// Undoes the room's newest journaled batch.
+    Undo,
+}
+
+/// `level` as the file writes it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawLevel {
+    room: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    apply: Option<Vec<RoomCommand>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    undo: Option<bool>,
+}
+
+impl TryFrom<RawLevel> for LevelStep {
+    type Error = String;
+
+    fn try_from(raw: RawLevel) -> Result<Self, String> {
+        let edit = match (raw.apply, raw.undo) {
+            (Some(_), Some(_)) => {
+                return Err("`level` takes `apply` or `undo`, not both".to_owned());
+            }
+            (Some(batch), None) if batch.is_empty() => {
+                return Err("`apply` needs at least one command".to_owned());
+            }
+            (Some(batch), None) => LevelEdit::Apply(batch),
+            (None, Some(true)) => LevelEdit::Undo,
+            (None, Some(false)) => return Err("`undo` is `true` or left out".to_owned()),
+            (None, None) => return Err("`level` needs `apply` or `undo`".to_owned()),
+        };
+        Ok(Self {
+            room: raw.room,
+            edit,
+        })
+    }
+}
+
+impl From<LevelStep> for RawLevel {
+    fn from(step: LevelStep) -> Self {
+        let (apply, undo) = match step.edit {
+            LevelEdit::Apply(batch) => (Some(batch), None),
+            LevelEdit::Undo => (None, Some(true)),
+        };
+        Self {
+            room: step.room,
+            apply,
+            undo,
+        }
+    }
+}
 
 /// A present key, `null` included: `Some(None)` for `"camera": null`.
 #[expect(clippy::option_option, reason = "an absent key differs from `null`")]
@@ -943,6 +1017,9 @@ impl TryFrom<RawStep> for Step {
         if let Some(room) = raw.room {
             verbs.push(("room", Verb::Room(room)));
         }
+        if let Some(level) = raw.level {
+            verbs.push(("level", Verb::Level(level)));
+        }
         if let Some(sheet) = raw.sheet {
             verbs.push(("sheet", Verb::Sheet(sheet)));
         }
@@ -990,7 +1067,7 @@ impl TryFrom<RawStep> for Step {
         if raw.until.is_some()
             && matches!(
                 verb,
-                Verb::Exit | Verb::Stage(_) | Verb::Sheet(_) | Verb::Room(_)
+                Verb::Exit | Verb::Stage(_) | Verb::Sheet(_) | Verb::Room(_) | Verb::Level(_)
             )
         {
             return Err(format!("`{}` does not repeat; drop `until`", verb.name()));
@@ -1011,7 +1088,7 @@ fn check_verb(verb: &Verb, repeats: bool) -> Result<(), String> {
         Verb::Press(name) | Verb::Release(name) | Verb::Scene(name) | Verb::Screen(name) => {
             non_empty(name)
         }
-        Verb::Room(id) => hook_name(id),
+        Verb::Room(id) | Verb::Level(LevelStep { room: id, .. }) => hook_name(id),
         Verb::Action(ActionStep { name, .. }) => hook_name(name),
         Verb::Probe(ProbeStep { name, path, .. }) => {
             hook_name(name)?;
@@ -1111,6 +1188,7 @@ impl From<Step> for RawStep {
             Verb::Screen(id) => raw.screen = Some(id),
             Verb::Stage(stage) => raw.stage = Some(stage),
             Verb::Room(room) => raw.room = Some(room),
+            Verb::Level(level) => raw.level = Some(level),
             Verb::Sheet(sheet) => raw.sheet = Some(sheet),
             Verb::Camera(camera) => raw.camera = Some(camera),
             Verb::Overlay(overlay) => raw.overlay = Some(overlay),

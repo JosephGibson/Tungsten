@@ -26,9 +26,9 @@ use std::sync::Arc;
 use glam::{Vec2, Vec3};
 use serde_json::{Value, json};
 use tungsten_core::script::{
-    CameraView, CaptureReport, Cursor, Ending, FailedStep, LogReport, Occurrence, ProbeReport,
-    Report, Script, ScriptHooks, ScriptRun, SheetKind, SheetStep, SpawnStep, Unreached, Verb,
-    select,
+    CameraView, CaptureReport, Cursor, Ending, FailedStep, LevelEdit, LevelStep, LogReport,
+    Occurrence, ProbeReport, Report, Script, ScriptHooks, ScriptRun, SheetKind, SheetStep,
+    SpawnStep, Unreached, Verb, select,
 };
 use tungsten_core::ui::UiTree;
 use tungsten_core::{
@@ -245,6 +245,8 @@ enum Staged {
     Sheet(SheetStep),
     /// A room, spawned at the origin (redo 7.12).
     Room(String),
+    /// A live room's batch or undo (redo 7.12).
+    Level(LevelStep),
 }
 
 /// A sheet item held at its cell.
@@ -644,6 +646,7 @@ impl ScriptRunner {
             Verb::Spawn(spawn) => return self.stage_or_now(world, at, Staged::Spawn(spawn)),
             Verb::Scene(scene) => return self.stage_or_now(world, at, Staged::Scene(scene)),
             Verb::Room(room) => return self.stage_or_now(world, at, Staged::Room(room)),
+            Verb::Level(level) => return self.stage_or_now(world, at, Staged::Level(level)),
             Verb::Screen(id) => {
                 if let Some(reason) = crate::screens::refusal(world, &id) {
                     return Err(reason);
@@ -789,6 +792,21 @@ impl ScriptRunner {
                     .map_or(Vec2::ZERO, TilemapData::pixel_size);
                 self.grow_bounds(Vec2::ZERO, size);
             }
+            // The patch's spawns take the instance's `SceneEntity` through
+            // the spawn inheritance; no file is written.
+            Staged::Level(LevelStep { room, edit }) => match edit {
+                LevelEdit::Apply(batch) => {
+                    world
+                        .apply_room_batch(&room, &batch)
+                        .map_err(|err| err.to_string())?;
+                }
+                LevelEdit::Undo => {
+                    world
+                        .undo_room_batch(&room)
+                        .map_err(|err| err.to_string())?
+                        .ok_or_else(|| format!("room `{room}` has nothing to undo"))?;
+                }
+            },
         }
         Ok(())
     }

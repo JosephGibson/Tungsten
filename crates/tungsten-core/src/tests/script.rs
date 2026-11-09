@@ -736,3 +736,77 @@ fn the_room_verb_and_place_probe_parse_and_name_their_fields() {
         Err("probe `place`: the World has no rooms".to_owned())
     );
 }
+
+#[test]
+fn the_level_verb_parses_apply_and_undo() {
+    let script = Script::parse(
+        r#"{ "version": 1, "frames": 10, "steps": [
+            { "frame": 3, "level": { "room": "cave", "apply": [{ "move": { "id": "ball_1", "by": [1, 0] } }] } },
+            { "frame": 5, "level": { "room": "cave", "undo": true } }
+        ] }"#,
+    )
+    .unwrap();
+    let Verb::Level(apply) = &script.steps[0].verb else {
+        panic!("a level step: {:?}", script.steps[0].verb);
+    };
+    assert_eq!(apply.room, "cave");
+    let batch =
+        RoomCommand::parse_batch(r#"[{ "move": { "id": "ball_1", "by": [1, 0] } }]"#).unwrap();
+    assert_eq!(apply.edit, LevelEdit::Apply(batch));
+    assert_eq!(
+        script.steps[1].verb,
+        Verb::Level(LevelStep {
+            room: "cave".into(),
+            edit: LevelEdit::Undo
+        })
+    );
+    assert_eq!(script.steps[1].verb.name(), "level");
+    // It writes back as it reads.
+    let text = serde_json::to_string(&script).unwrap();
+    assert!(
+        text.contains(r#""level":{"room":"cave","undo":true}"#),
+        "{text}"
+    );
+    assert_eq!(Script::parse(&text).unwrap(), script);
+    let bad = |level: &str| {
+        Script::parse(&format!(
+            r#"{{ "version": 1, "frames": 10, "steps": [{{ "frame": 2, "level": {level} }}] }}"#
+        ))
+        .unwrap_err()
+        .to_string()
+    };
+    assert_eq!(
+        bad(r#"{ "room": "cave" }"#),
+        "steps[0].level: `level` needs `apply` or `undo`"
+    );
+    assert_eq!(
+        bad(r#"{ "room": "cave", "apply": [], "undo": true }"#),
+        "steps[0].level: `level` takes `apply` or `undo`, not both"
+    );
+    assert_eq!(
+        bad(r#"{ "room": "cave", "undo": false }"#),
+        "steps[0].level: `undo` is `true` or left out"
+    );
+    assert_eq!(
+        bad(r#"{ "room": "cave", "apply": [] }"#),
+        "steps[0].level: `apply` needs at least one command"
+    );
+    assert!(
+        bad(r#"{ "room": "cave", "apply": [{ "move": { "id": "a", "by": [1] } }] }"#)
+            .starts_with("steps[0].level.apply[0].move.by: "),
+        "a command's field is named"
+    );
+    assert_eq!(
+        bad(r#"{ "room": "Cave", "undo": true }"#),
+        "steps[0]: `Cave` must match [a-z][a-z0-9_]*"
+    );
+    assert!(
+        Script::parse(
+            r#"{ "version": 1, "frames": 10, "steps": [
+                { "frame": 2, "until": 4, "level": { "room": "cave", "undo": true } }] }"#
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("does not repeat")
+    );
+}
