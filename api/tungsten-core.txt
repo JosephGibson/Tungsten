@@ -1859,6 +1859,427 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::TextureHandl
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::TextureHandle
 pub type tungsten_core::assets::registry::SpriteAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::registry::SpriteAsset>
+pub mod tungsten_core::assets::room
+pub mod tungsten_core::assets::room::tileset
+#[non_exhaustive] pub struct tungsten_core::assets::room::tileset::Tileset
+pub tungsten_core::assets::room::tileset::Tileset::tiles: alloc::vec::Vec<tungsten_core::assets::room::tileset::TilesetTile>
+pub tungsten_core::assets::room::tileset::Tileset::version: u32
+impl tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::from_json(&str) -> core::result::Result<Self, tungsten_core::assets::room::RoomError>
+pub fn tungsten_core::assets::room::tileset::Tileset::index_of(&self, &str) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
+pub fn tungsten_core::assets::room::tileset::Tileset::to_canonical(&self) -> alloc::string::String
+pub fn tungsten_core::assets::room::tileset::Tileset::validate(&self) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
+impl core::clone::Clone for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::clone(&self) -> tungsten_core::assets::room::tileset::Tileset
+impl core::cmp::PartialEq for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::eq(&self, &tungsten_core::assets::room::tileset::Tileset) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::tileset::Tileset
+impl serde_core::ser::Serialize for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::Send for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::Sync for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::Unpin for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::tileset::Tileset
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::tileset::Tileset
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::tileset::Tileset
+#[non_exhaustive] pub struct tungsten_core::assets::room::tileset::TilesetTile
+pub tungsten_core::assets::room::tileset::TilesetTile::broken: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::tileset::TilesetTile::health: core::option::Option<f32>
+pub tungsten_core::assets::room::tileset::TilesetTile::mask: core::option::Option<u8>
+pub tungsten_core::assets::room::tileset::TilesetTile::material: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::tileset::TilesetTile::one_way: bool
+pub tungsten_core::assets::room::tileset::TilesetTile::slope: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::tileset::TilesetTile::sprite: alloc::string::String
+pub tungsten_core::assets::room::tileset::TilesetTile::style: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::tileset::TilesetTile::weight: u32
+pub tungsten_core::assets::room::tileset::TilesetTile::whole: bool
+impl tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::clone(&self) -> tungsten_core::assets::room::tileset::TilesetTile
+impl core::cmp::PartialEq for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::eq(&self, &tungsten_core::assets::room::tileset::TilesetTile) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::tileset::TilesetTile
+impl serde_core::ser::Serialize for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::Send for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::Sync for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::Unpin for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::tileset::TilesetTile
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::tileset::TilesetTile
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::tileset::TilesetTile
+pub const tungsten_core::assets::room::tileset::TILESET_VERSION: u32
+pub fn tungsten_core::assets::room::tileset::json_schema() -> serde_json::value::Value
+#[non_exhaustive] pub enum tungsten_core::assets::room::PlaceShape
+pub tungsten_core::assets::room::PlaceShape::Point(glam::f32::vec2::Vec2)
+pub tungsten_core::assets::room::PlaceShape::Rect
+pub tungsten_core::assets::room::PlaceShape::Rect::min: glam::f32::vec2::Vec2
+pub tungsten_core::assets::room::PlaceShape::Rect::size: glam::f32::vec2::Vec2
+pub tungsten_core::assets::room::PlaceShape::Route(alloc::vec::Vec<glam::f32::vec2::Vec2>)
+impl tungsten_core::assets::PlaceShape
+pub fn tungsten_core::assets::PlaceShape::anchor(&self) -> glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::assets::PlaceShape
+pub fn tungsten_core::assets::PlaceShape::clone(&self) -> tungsten_core::assets::PlaceShape
+impl core::cmp::PartialEq for tungsten_core::assets::PlaceShape
+pub fn tungsten_core::assets::PlaceShape::eq(&self, &tungsten_core::assets::PlaceShape) -> bool
+impl core::fmt::Debug for tungsten_core::assets::PlaceShape
+pub fn tungsten_core::assets::PlaceShape::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::PlaceShape
+impl core::marker::Freeze for tungsten_core::assets::PlaceShape
+impl core::marker::Send for tungsten_core::assets::PlaceShape
+impl core::marker::Sync for tungsten_core::assets::PlaceShape
+impl core::marker::Unpin for tungsten_core::assets::PlaceShape
+impl core::marker::UnsafeUnpin for tungsten_core::assets::PlaceShape
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::PlaceShape
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::PlaceShape
+#[non_exhaustive] pub enum tungsten_core::assets::room::RoomLayerKind
+pub tungsten_core::assets::room::RoomLayerKind::Collision
+pub tungsten_core::assets::room::RoomLayerKind::Render
+impl core::clone::Clone for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::clone(&self) -> tungsten_core::assets::room::RoomLayerKind
+impl core::cmp::Eq for tungsten_core::assets::room::RoomLayerKind
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::eq(&self, &tungsten_core::assets::room::RoomLayerKind) -> bool
+impl core::default::Default for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::default() -> tungsten_core::assets::room::RoomLayerKind
+impl core::fmt::Debug for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomLayerKind
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::Send for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::Sync for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::Unpin for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomLayerKind
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomLayerKind
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomLayerKind
+#[non_exhaustive] pub enum tungsten_core::assets::room::RouteStop
+pub tungsten_core::assets::room::RouteStop::Place(alloc::string::String)
+pub tungsten_core::assets::room::RouteStop::Point([f32; 2])
+impl core::clone::Clone for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::clone(&self) -> tungsten_core::assets::room::RouteStop
+impl core::cmp::PartialEq for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::eq(&self, &tungsten_core::assets::room::RouteStop) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RouteStop
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RouteStop
+impl core::marker::Send for tungsten_core::assets::room::RouteStop
+impl core::marker::Sync for tungsten_core::assets::room::RouteStop
+impl core::marker::Unpin for tungsten_core::assets::room::RouteStop
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RouteStop
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RouteStop
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RouteStop
+#[non_exhaustive] pub struct tungsten_core::assets::room::CompiledPlace
+pub tungsten_core::assets::room::CompiledPlace::by: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::CompiledPlace::shape: tungsten_core::assets::PlaceShape
+pub tungsten_core::assets::room::CompiledPlace::to: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::CompiledPlace
+pub fn tungsten_core::assets::CompiledPlace::clone(&self) -> tungsten_core::assets::CompiledPlace
+impl core::cmp::PartialEq for tungsten_core::assets::CompiledPlace
+pub fn tungsten_core::assets::CompiledPlace::eq(&self, &tungsten_core::assets::CompiledPlace) -> bool
+impl core::fmt::Debug for tungsten_core::assets::CompiledPlace
+pub fn tungsten_core::assets::CompiledPlace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::CompiledPlace
+impl core::marker::Freeze for tungsten_core::assets::CompiledPlace
+impl core::marker::Send for tungsten_core::assets::CompiledPlace
+impl core::marker::Sync for tungsten_core::assets::CompiledPlace
+impl core::marker::Unpin for tungsten_core::assets::CompiledPlace
+impl core::marker::UnsafeUnpin for tungsten_core::assets::CompiledPlace
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::CompiledPlace
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::CompiledPlace
+#[non_exhaustive] pub struct tungsten_core::assets::room::CompiledRoom
+pub tungsten_core::assets::room::CompiledRoom::ambient: core::option::Option<glam::f32::vec3::Vec3>
+pub tungsten_core::assets::room::CompiledRoom::lights: u32
+pub tungsten_core::assets::room::CompiledRoom::map: tungsten_core::assets::tilemap::TilemapData
+pub tungsten_core::assets::room::CompiledRoom::objects: u32
+pub tungsten_core::assets::room::CompiledRoom::places: alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::CompiledPlace>
+pub tungsten_core::assets::room::CompiledRoom::post: core::option::Option<alloc::vec::Vec<tungsten_core::post::PostPass>>
+impl tungsten_core::assets::CompiledRoom
+pub fn tungsten_core::assets::CompiledRoom::place(&self, &str) -> core::option::Option<&tungsten_core::assets::CompiledPlace>
+impl core::clone::Clone for tungsten_core::assets::CompiledRoom
+pub fn tungsten_core::assets::CompiledRoom::clone(&self) -> tungsten_core::assets::CompiledRoom
+impl core::cmp::PartialEq for tungsten_core::assets::CompiledRoom
+pub fn tungsten_core::assets::CompiledRoom::eq(&self, &tungsten_core::assets::CompiledRoom) -> bool
+impl core::fmt::Debug for tungsten_core::assets::CompiledRoom
+pub fn tungsten_core::assets::CompiledRoom::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::CompiledRoom
+impl core::marker::Freeze for tungsten_core::assets::CompiledRoom
+impl core::marker::Send for tungsten_core::assets::CompiledRoom
+impl core::marker::Sync for tungsten_core::assets::CompiledRoom
+impl core::marker::Unpin for tungsten_core::assets::CompiledRoom
+impl core::marker::UnsafeUnpin for tungsten_core::assets::CompiledRoom
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::CompiledRoom
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::CompiledRoom
+#[non_exhaustive] pub struct tungsten_core::assets::room::Room
+pub tungsten_core::assets::room::Room::ambient: core::option::Option<[f32; 3]>
+pub tungsten_core::assets::room::Room::budget: core::option::Option<tungsten_core::assets::room::RoomBudget>
+pub tungsten_core::assets::room::Room::cell: [u32; 2]
+pub tungsten_core::assets::room::Room::layers: alloc::vec::Vec<tungsten_core::assets::room::RoomLayer>
+pub tungsten_core::assets::room::Room::objects: alloc::vec::Vec<tungsten_core::assets::room::RoomObject>
+pub tungsten_core::assets::room::Room::places: alloc::vec::Vec<tungsten_core::assets::room::RoomPlace>
+pub tungsten_core::assets::room::Room::post: core::option::Option<alloc::vec::Vec<tungsten_core::post::PostPass>>
+pub tungsten_core::assets::room::Room::shapes: alloc::vec::Vec<tungsten_core::assets::room::RoomShape>
+pub tungsten_core::assets::room::Room::size: [u32; 2]
+pub tungsten_core::assets::room::Room::tileset: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::Room::version: u32
+impl tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::compile(&self, &str, &tungsten_core::assets::room::tileset::Tileset, &tungsten_core::physics::PhysicsLayers) -> core::result::Result<tungsten_core::assets::CompiledRoom, tungsten_core::assets::room::RoomError>
+impl tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::from_json(&str) -> core::result::Result<Self, tungsten_core::assets::room::RoomError>
+pub fn tungsten_core::assets::room::Room::new([u32; 2], [u32; 2]) -> Self
+pub fn tungsten_core::assets::room::Room::to_canonical(&self) -> alloc::string::String
+pub fn tungsten_core::assets::room::Room::validate(&self) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
+impl core::clone::Clone for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::clone(&self) -> tungsten_core::assets::room::Room
+impl core::cmp::PartialEq for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::eq(&self, &tungsten_core::assets::room::Room) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::Room
+impl serde_core::ser::Serialize for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::Room
+impl core::marker::Send for tungsten_core::assets::room::Room
+impl core::marker::Sync for tungsten_core::assets::room::Room
+impl core::marker::Unpin for tungsten_core::assets::room::Room
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::Room
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::Room
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::Room
+#[non_exhaustive] pub struct tungsten_core::assets::room::RoomBudget
+pub tungsten_core::assets::room::RoomBudget::lights: core::option::Option<u32>
+pub tungsten_core::assets::room::RoomBudget::objects: core::option::Option<u32>
+impl tungsten_core::assets::room::RoomBudget
+pub const tungsten_core::assets::room::RoomBudget::DEFAULT_LIGHTS: u32
+pub const tungsten_core::assets::room::RoomBudget::DEFAULT_OBJECTS: u32
+pub fn tungsten_core::assets::room::RoomBudget::lights(&self) -> u32
+pub fn tungsten_core::assets::room::RoomBudget::objects(&self) -> u32
+impl core::clone::Clone for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::clone(&self) -> tungsten_core::assets::room::RoomBudget
+impl core::cmp::Eq for tungsten_core::assets::room::RoomBudget
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::eq(&self, &tungsten_core::assets::room::RoomBudget) -> bool
+impl core::default::Default for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::default() -> tungsten_core::assets::room::RoomBudget
+impl core::fmt::Debug for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::room::RoomBudget
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomBudget
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomBudget
+impl core::marker::Send for tungsten_core::assets::room::RoomBudget
+impl core::marker::Sync for tungsten_core::assets::room::RoomBudget
+impl core::marker::Unpin for tungsten_core::assets::room::RoomBudget
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomBudget
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomBudget
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomBudget
+#[non_exhaustive] pub struct tungsten_core::assets::room::RoomError
+pub tungsten_core::assets::room::RoomError::field: alloc::string::String
+pub tungsten_core::assets::room::RoomError::message: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::room::RoomError
+pub fn tungsten_core::assets::room::RoomError::clone(&self) -> tungsten_core::assets::room::RoomError
+impl core::cmp::Eq for tungsten_core::assets::room::RoomError
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomError
+pub fn tungsten_core::assets::room::RoomError::eq(&self, &tungsten_core::assets::room::RoomError) -> bool
+impl core::error::Error for tungsten_core::assets::room::RoomError
+impl core::fmt::Debug for tungsten_core::assets::room::RoomError
+pub fn tungsten_core::assets::room::RoomError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::room::RoomError
+pub fn tungsten_core::assets::room::RoomError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomError
+impl core::marker::Freeze for tungsten_core::assets::room::RoomError
+impl core::marker::Send for tungsten_core::assets::room::RoomError
+impl core::marker::Sync for tungsten_core::assets::room::RoomError
+impl core::marker::Unpin for tungsten_core::assets::room::RoomError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomError
+#[non_exhaustive] pub struct tungsten_core::assets::room::RoomLayer
+pub tungsten_core::assets::room::RoomLayer::cells: alloc::collections::btree::map::BTreeMap<alloc::string::String, core::option::Option<alloc::string::String>>
+pub tungsten_core::assets::room::RoomLayer::kind: tungsten_core::assets::room::RoomLayerKind
+pub tungsten_core::assets::room::RoomLayer::layers: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub tungsten_core::assets::room::RoomLayer::mask: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub tungsten_core::assets::room::RoomLayer::name: alloc::string::String
+pub tungsten_core::assets::room::RoomLayer::tint: core::option::Option<[u8; 4]>
+pub tungsten_core::assets::room::RoomLayer::unlit: bool
+pub tungsten_core::assets::room::RoomLayer::z: core::option::Option<i32>
+impl core::clone::Clone for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::clone(&self) -> tungsten_core::assets::room::RoomLayer
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::eq(&self, &tungsten_core::assets::room::RoomLayer) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomLayer
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomLayer
+impl core::marker::Send for tungsten_core::assets::room::RoomLayer
+impl core::marker::Sync for tungsten_core::assets::room::RoomLayer
+impl core::marker::Unpin for tungsten_core::assets::room::RoomLayer
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomLayer
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomLayer
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomLayer
+#[non_exhaustive] pub struct tungsten_core::assets::room::RoomObject
+pub tungsten_core::assets::room::RoomObject::at: [f32; 2]
+pub tungsten_core::assets::room::RoomObject::id: alloc::string::String
+pub tungsten_core::assets::room::RoomObject::on: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::RoomObject::prefab: alloc::string::String
+pub tungsten_core::assets::room::RoomObject::set: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+impl core::clone::Clone for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::clone(&self) -> tungsten_core::assets::room::RoomObject
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::eq(&self, &tungsten_core::assets::room::RoomObject) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomObject
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomObject
+impl core::marker::Send for tungsten_core::assets::room::RoomObject
+impl core::marker::Sync for tungsten_core::assets::room::RoomObject
+impl core::marker::Unpin for tungsten_core::assets::room::RoomObject
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomObject
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomObject
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomObject
+#[non_exhaustive] pub struct tungsten_core::assets::room::RoomPlace
+pub tungsten_core::assets::room::RoomPlace::by: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::RoomPlace::id: alloc::string::String
+pub tungsten_core::assets::room::RoomPlace::point: core::option::Option<[f32; 2]>
+pub tungsten_core::assets::room::RoomPlace::rect: core::option::Option<[f32; 4]>
+pub tungsten_core::assets::room::RoomPlace::route: core::option::Option<alloc::vec::Vec<tungsten_core::assets::room::RouteStop>>
+pub tungsten_core::assets::room::RoomPlace::to: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::clone(&self) -> tungsten_core::assets::room::RoomPlace
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::eq(&self, &tungsten_core::assets::room::RoomPlace) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomPlace
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomPlace
+impl core::marker::Send for tungsten_core::assets::room::RoomPlace
+impl core::marker::Sync for tungsten_core::assets::room::RoomPlace
+impl core::marker::Unpin for tungsten_core::assets::room::RoomPlace
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomPlace
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomPlace
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomPlace
+#[non_exhaustive] pub struct tungsten_core::assets::room::RoomShape
+pub tungsten_core::assets::room::RoomShape::id: alloc::string::String
+pub tungsten_core::assets::room::RoomShape::layers: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::room::RoomShape::line: core::option::Option<alloc::vec::Vec<[u32; 2]>>
+pub tungsten_core::assets::room::RoomShape::polygon: core::option::Option<alloc::vec::Vec<[u32; 2]>>
+pub tungsten_core::assets::room::RoomShape::rect: core::option::Option<[u32; 4]>
+pub tungsten_core::assets::room::RoomShape::tile: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::clone(&self) -> tungsten_core::assets::room::RoomShape
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::eq(&self, &tungsten_core::assets::room::RoomShape) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomShape
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomShape
+impl core::marker::Send for tungsten_core::assets::room::RoomShape
+impl core::marker::Sync for tungsten_core::assets::room::RoomShape
+impl core::marker::Unpin for tungsten_core::assets::room::RoomShape
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomShape
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomShape
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomShape
+#[non_exhaustive] pub struct tungsten_core::assets::room::Tileset
+pub tungsten_core::assets::room::Tileset::tiles: alloc::vec::Vec<tungsten_core::assets::room::tileset::TilesetTile>
+pub tungsten_core::assets::room::Tileset::version: u32
+impl tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::from_json(&str) -> core::result::Result<Self, tungsten_core::assets::room::RoomError>
+pub fn tungsten_core::assets::room::tileset::Tileset::index_of(&self, &str) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
+pub fn tungsten_core::assets::room::tileset::Tileset::to_canonical(&self) -> alloc::string::String
+pub fn tungsten_core::assets::room::tileset::Tileset::validate(&self) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
+impl core::clone::Clone for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::clone(&self) -> tungsten_core::assets::room::tileset::Tileset
+impl core::cmp::PartialEq for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::eq(&self, &tungsten_core::assets::room::tileset::Tileset) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::tileset::Tileset
+impl serde_core::ser::Serialize for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::Send for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::Sync for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::Unpin for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::tileset::Tileset
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::tileset::Tileset
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::tileset::Tileset
+#[non_exhaustive] pub struct tungsten_core::assets::room::TilesetTile
+pub tungsten_core::assets::room::TilesetTile::broken: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::TilesetTile::health: core::option::Option<f32>
+pub tungsten_core::assets::room::TilesetTile::mask: core::option::Option<u8>
+pub tungsten_core::assets::room::TilesetTile::material: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::TilesetTile::one_way: bool
+pub tungsten_core::assets::room::TilesetTile::slope: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::TilesetTile::sprite: alloc::string::String
+pub tungsten_core::assets::room::TilesetTile::style: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::room::TilesetTile::weight: u32
+pub tungsten_core::assets::room::TilesetTile::whole: bool
+impl tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::clone(&self) -> tungsten_core::assets::room::tileset::TilesetTile
+impl core::cmp::PartialEq for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::eq(&self, &tungsten_core::assets::room::tileset::TilesetTile) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::tileset::TilesetTile
+impl serde_core::ser::Serialize for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::Send for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::Sync for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::Unpin for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::tileset::TilesetTile
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::tileset::TilesetTile
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::tileset::TilesetTile
+pub const tungsten_core::assets::room::MAX_ROOM_CELLS: u32
+pub const tungsten_core::assets::room::ROOM_OBJECT_LAYER: &str
+pub const tungsten_core::assets::room::ROOM_VERSION: u32
+pub const tungsten_core::assets::room::TILESET_VERSION: u32
+pub fn tungsten_core::assets::room::json_schema() -> serde_json::value::Value
 pub mod tungsten_core::assets::scene
 pub enum tungsten_core::assets::scene::SceneError
 pub tungsten_core::assets::scene::SceneError::Io
@@ -2484,8 +2905,11 @@ pub fn tungsten_core::assets::tilemap::TilemapData::auto_tile(&mut self)
 pub fn tungsten_core::assets::tilemap::TilemapData::is_auto(&self, usize, u32, u32) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TilemapData
+pub fn tungsten_core::assets::tilemap::TilemapData::eq(&self, &tungsten_core::assets::tilemap::TilemapData) -> bool
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::TilemapData
 impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::tilemap::TilemapData
@@ -2517,8 +2941,11 @@ pub tungsten_core::assets::tilemap::TilemapLayer::name: alloc::string::String
 pub tungsten_core::assets::tilemap::TilemapLayer::tiles: alloc::vec::Vec<tungsten_core::assets::tilemap::TileIndex>
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapLayer
 pub fn tungsten_core::assets::tilemap::TilemapLayer::clone(&self) -> tungsten_core::assets::tilemap::TilemapLayer
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TilemapLayer
+pub fn tungsten_core::assets::tilemap::TilemapLayer::eq(&self, &tungsten_core::assets::tilemap::TilemapLayer) -> bool
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapLayer
 pub fn tungsten_core::assets::tilemap::TilemapLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::TilemapLayer
 impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::tilemap::TilemapLayer
 pub fn tungsten_core::assets::tilemap::TilemapLayer::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::tilemap::TilemapLayer
@@ -2911,6 +3338,28 @@ impl core::marker::Unpin for tungsten_core::assets::particle::ParticleRender
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::ParticleRender
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::ParticleRender
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleRender
+#[non_exhaustive] pub enum tungsten_core::assets::PlaceShape
+pub tungsten_core::assets::PlaceShape::Point(glam::f32::vec2::Vec2)
+pub tungsten_core::assets::PlaceShape::Rect
+pub tungsten_core::assets::PlaceShape::Rect::min: glam::f32::vec2::Vec2
+pub tungsten_core::assets::PlaceShape::Rect::size: glam::f32::vec2::Vec2
+pub tungsten_core::assets::PlaceShape::Route(alloc::vec::Vec<glam::f32::vec2::Vec2>)
+impl tungsten_core::assets::PlaceShape
+pub fn tungsten_core::assets::PlaceShape::anchor(&self) -> glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::assets::PlaceShape
+pub fn tungsten_core::assets::PlaceShape::clone(&self) -> tungsten_core::assets::PlaceShape
+impl core::cmp::PartialEq for tungsten_core::assets::PlaceShape
+pub fn tungsten_core::assets::PlaceShape::eq(&self, &tungsten_core::assets::PlaceShape) -> bool
+impl core::fmt::Debug for tungsten_core::assets::PlaceShape
+pub fn tungsten_core::assets::PlaceShape::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::PlaceShape
+impl core::marker::Freeze for tungsten_core::assets::PlaceShape
+impl core::marker::Send for tungsten_core::assets::PlaceShape
+impl core::marker::Sync for tungsten_core::assets::PlaceShape
+impl core::marker::Unpin for tungsten_core::assets::PlaceShape
+impl core::marker::UnsafeUnpin for tungsten_core::assets::PlaceShape
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::PlaceShape
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::PlaceShape
 #[non_exhaustive] pub enum tungsten_core::assets::PrefabError
 pub tungsten_core::assets::PrefabError::Component
 pub tungsten_core::assets::PrefabError::Component::id: alloc::string::String
@@ -2954,6 +3403,52 @@ impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabError
+#[non_exhaustive] pub enum tungsten_core::assets::RoomLayerKind
+pub tungsten_core::assets::RoomLayerKind::Collision
+pub tungsten_core::assets::RoomLayerKind::Render
+impl core::clone::Clone for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::clone(&self) -> tungsten_core::assets::room::RoomLayerKind
+impl core::cmp::Eq for tungsten_core::assets::room::RoomLayerKind
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::eq(&self, &tungsten_core::assets::room::RoomLayerKind) -> bool
+impl core::default::Default for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::default() -> tungsten_core::assets::room::RoomLayerKind
+impl core::fmt::Debug for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomLayerKind
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomLayerKind
+pub fn tungsten_core::assets::room::RoomLayerKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::Send for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::Sync for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::Unpin for tungsten_core::assets::room::RoomLayerKind
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomLayerKind
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomLayerKind
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomLayerKind
+#[non_exhaustive] pub enum tungsten_core::assets::RouteStop
+pub tungsten_core::assets::RouteStop::Place(alloc::string::String)
+pub tungsten_core::assets::RouteStop::Point([f32; 2])
+impl core::clone::Clone for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::clone(&self) -> tungsten_core::assets::room::RouteStop
+impl core::cmp::PartialEq for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::eq(&self, &tungsten_core::assets::room::RouteStop) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RouteStop
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RouteStop
+pub fn tungsten_core::assets::room::RouteStop::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RouteStop
+impl core::marker::Send for tungsten_core::assets::room::RouteStop
+impl core::marker::Sync for tungsten_core::assets::room::RouteStop
+impl core::marker::Unpin for tungsten_core::assets::room::RouteStop
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RouteStop
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RouteStop
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RouteStop
 pub enum tungsten_core::assets::SceneError
 pub tungsten_core::assets::SceneError::Io
 pub tungsten_core::assets::SceneError::Io::path: alloc::string::String
@@ -3414,6 +3909,47 @@ impl<'a> core::marker::Unpin for tungsten_core::assets::terrain::ChangedCells<'a
 impl<'a> core::marker::UnsafeUnpin for tungsten_core::assets::terrain::ChangedCells<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::ChangedCells<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::ChangedCells<'a>
+#[non_exhaustive] pub struct tungsten_core::assets::CompiledPlace
+pub tungsten_core::assets::CompiledPlace::by: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::CompiledPlace::shape: tungsten_core::assets::PlaceShape
+pub tungsten_core::assets::CompiledPlace::to: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::CompiledPlace
+pub fn tungsten_core::assets::CompiledPlace::clone(&self) -> tungsten_core::assets::CompiledPlace
+impl core::cmp::PartialEq for tungsten_core::assets::CompiledPlace
+pub fn tungsten_core::assets::CompiledPlace::eq(&self, &tungsten_core::assets::CompiledPlace) -> bool
+impl core::fmt::Debug for tungsten_core::assets::CompiledPlace
+pub fn tungsten_core::assets::CompiledPlace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::CompiledPlace
+impl core::marker::Freeze for tungsten_core::assets::CompiledPlace
+impl core::marker::Send for tungsten_core::assets::CompiledPlace
+impl core::marker::Sync for tungsten_core::assets::CompiledPlace
+impl core::marker::Unpin for tungsten_core::assets::CompiledPlace
+impl core::marker::UnsafeUnpin for tungsten_core::assets::CompiledPlace
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::CompiledPlace
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::CompiledPlace
+#[non_exhaustive] pub struct tungsten_core::assets::CompiledRoom
+pub tungsten_core::assets::CompiledRoom::ambient: core::option::Option<glam::f32::vec3::Vec3>
+pub tungsten_core::assets::CompiledRoom::lights: u32
+pub tungsten_core::assets::CompiledRoom::map: tungsten_core::assets::tilemap::TilemapData
+pub tungsten_core::assets::CompiledRoom::objects: u32
+pub tungsten_core::assets::CompiledRoom::places: alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::CompiledPlace>
+pub tungsten_core::assets::CompiledRoom::post: core::option::Option<alloc::vec::Vec<tungsten_core::post::PostPass>>
+impl tungsten_core::assets::CompiledRoom
+pub fn tungsten_core::assets::CompiledRoom::place(&self, &str) -> core::option::Option<&tungsten_core::assets::CompiledPlace>
+impl core::clone::Clone for tungsten_core::assets::CompiledRoom
+pub fn tungsten_core::assets::CompiledRoom::clone(&self) -> tungsten_core::assets::CompiledRoom
+impl core::cmp::PartialEq for tungsten_core::assets::CompiledRoom
+pub fn tungsten_core::assets::CompiledRoom::eq(&self, &tungsten_core::assets::CompiledRoom) -> bool
+impl core::fmt::Debug for tungsten_core::assets::CompiledRoom
+pub fn tungsten_core::assets::CompiledRoom::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::CompiledRoom
+impl core::marker::Freeze for tungsten_core::assets::CompiledRoom
+impl core::marker::Send for tungsten_core::assets::CompiledRoom
+impl core::marker::Sync for tungsten_core::assets::CompiledRoom
+impl core::marker::Unpin for tungsten_core::assets::CompiledRoom
+impl core::marker::UnsafeUnpin for tungsten_core::assets::CompiledRoom
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::CompiledRoom
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::CompiledRoom
 pub struct tungsten_core::assets::Curve<V: core::marker::Copy>
 pub tungsten_core::assets::Curve::points: alloc::vec::Vec<(f32, V)>
 impl<V: core::marker::Copy + tungsten_core::assets::particle::Lerp> tungsten_core::assets::particle::Curve<V>
@@ -4239,6 +4775,195 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedUiTheme
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedUiTheme
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
+#[non_exhaustive] pub struct tungsten_core::assets::Room
+pub tungsten_core::assets::Room::ambient: core::option::Option<[f32; 3]>
+pub tungsten_core::assets::Room::budget: core::option::Option<tungsten_core::assets::room::RoomBudget>
+pub tungsten_core::assets::Room::cell: [u32; 2]
+pub tungsten_core::assets::Room::layers: alloc::vec::Vec<tungsten_core::assets::room::RoomLayer>
+pub tungsten_core::assets::Room::objects: alloc::vec::Vec<tungsten_core::assets::room::RoomObject>
+pub tungsten_core::assets::Room::places: alloc::vec::Vec<tungsten_core::assets::room::RoomPlace>
+pub tungsten_core::assets::Room::post: core::option::Option<alloc::vec::Vec<tungsten_core::post::PostPass>>
+pub tungsten_core::assets::Room::shapes: alloc::vec::Vec<tungsten_core::assets::room::RoomShape>
+pub tungsten_core::assets::Room::size: [u32; 2]
+pub tungsten_core::assets::Room::tileset: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::Room::version: u32
+impl tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::compile(&self, &str, &tungsten_core::assets::room::tileset::Tileset, &tungsten_core::physics::PhysicsLayers) -> core::result::Result<tungsten_core::assets::CompiledRoom, tungsten_core::assets::room::RoomError>
+impl tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::from_json(&str) -> core::result::Result<Self, tungsten_core::assets::room::RoomError>
+pub fn tungsten_core::assets::room::Room::new([u32; 2], [u32; 2]) -> Self
+pub fn tungsten_core::assets::room::Room::to_canonical(&self) -> alloc::string::String
+pub fn tungsten_core::assets::room::Room::validate(&self) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
+impl core::clone::Clone for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::clone(&self) -> tungsten_core::assets::room::Room
+impl core::cmp::PartialEq for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::eq(&self, &tungsten_core::assets::room::Room) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::Room
+impl serde_core::ser::Serialize for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::Room
+impl core::marker::Send for tungsten_core::assets::room::Room
+impl core::marker::Sync for tungsten_core::assets::room::Room
+impl core::marker::Unpin for tungsten_core::assets::room::Room
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::Room
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::Room
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::Room
+#[non_exhaustive] pub struct tungsten_core::assets::RoomBudget
+pub tungsten_core::assets::RoomBudget::lights: core::option::Option<u32>
+pub tungsten_core::assets::RoomBudget::objects: core::option::Option<u32>
+impl tungsten_core::assets::room::RoomBudget
+pub const tungsten_core::assets::room::RoomBudget::DEFAULT_LIGHTS: u32
+pub const tungsten_core::assets::room::RoomBudget::DEFAULT_OBJECTS: u32
+pub fn tungsten_core::assets::room::RoomBudget::lights(&self) -> u32
+pub fn tungsten_core::assets::room::RoomBudget::objects(&self) -> u32
+impl core::clone::Clone for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::clone(&self) -> tungsten_core::assets::room::RoomBudget
+impl core::cmp::Eq for tungsten_core::assets::room::RoomBudget
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::eq(&self, &tungsten_core::assets::room::RoomBudget) -> bool
+impl core::default::Default for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::default() -> tungsten_core::assets::room::RoomBudget
+impl core::fmt::Debug for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::room::RoomBudget
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomBudget
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomBudget
+pub fn tungsten_core::assets::room::RoomBudget::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomBudget
+impl core::marker::Send for tungsten_core::assets::room::RoomBudget
+impl core::marker::Sync for tungsten_core::assets::room::RoomBudget
+impl core::marker::Unpin for tungsten_core::assets::room::RoomBudget
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomBudget
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomBudget
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomBudget
+#[non_exhaustive] pub struct tungsten_core::assets::RoomError
+pub tungsten_core::assets::RoomError::field: alloc::string::String
+pub tungsten_core::assets::RoomError::message: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::room::RoomError
+pub fn tungsten_core::assets::room::RoomError::clone(&self) -> tungsten_core::assets::room::RoomError
+impl core::cmp::Eq for tungsten_core::assets::room::RoomError
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomError
+pub fn tungsten_core::assets::room::RoomError::eq(&self, &tungsten_core::assets::room::RoomError) -> bool
+impl core::error::Error for tungsten_core::assets::room::RoomError
+impl core::fmt::Debug for tungsten_core::assets::room::RoomError
+pub fn tungsten_core::assets::room::RoomError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::room::RoomError
+pub fn tungsten_core::assets::room::RoomError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomError
+impl core::marker::Freeze for tungsten_core::assets::room::RoomError
+impl core::marker::Send for tungsten_core::assets::room::RoomError
+impl core::marker::Sync for tungsten_core::assets::room::RoomError
+impl core::marker::Unpin for tungsten_core::assets::room::RoomError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomError
+#[non_exhaustive] pub struct tungsten_core::assets::RoomLayer
+pub tungsten_core::assets::RoomLayer::cells: alloc::collections::btree::map::BTreeMap<alloc::string::String, core::option::Option<alloc::string::String>>
+pub tungsten_core::assets::RoomLayer::kind: tungsten_core::assets::room::RoomLayerKind
+pub tungsten_core::assets::RoomLayer::layers: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub tungsten_core::assets::RoomLayer::mask: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub tungsten_core::assets::RoomLayer::name: alloc::string::String
+pub tungsten_core::assets::RoomLayer::tint: core::option::Option<[u8; 4]>
+pub tungsten_core::assets::RoomLayer::unlit: bool
+pub tungsten_core::assets::RoomLayer::z: core::option::Option<i32>
+impl core::clone::Clone for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::clone(&self) -> tungsten_core::assets::room::RoomLayer
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::eq(&self, &tungsten_core::assets::room::RoomLayer) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomLayer
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomLayer
+pub fn tungsten_core::assets::room::RoomLayer::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomLayer
+impl core::marker::Send for tungsten_core::assets::room::RoomLayer
+impl core::marker::Sync for tungsten_core::assets::room::RoomLayer
+impl core::marker::Unpin for tungsten_core::assets::room::RoomLayer
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomLayer
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomLayer
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomLayer
+#[non_exhaustive] pub struct tungsten_core::assets::RoomObject
+pub tungsten_core::assets::RoomObject::at: [f32; 2]
+pub tungsten_core::assets::RoomObject::id: alloc::string::String
+pub tungsten_core::assets::RoomObject::on: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::RoomObject::prefab: alloc::string::String
+pub tungsten_core::assets::RoomObject::set: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+impl core::clone::Clone for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::clone(&self) -> tungsten_core::assets::room::RoomObject
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::eq(&self, &tungsten_core::assets::room::RoomObject) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomObject
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomObject
+pub fn tungsten_core::assets::room::RoomObject::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomObject
+impl core::marker::Send for tungsten_core::assets::room::RoomObject
+impl core::marker::Sync for tungsten_core::assets::room::RoomObject
+impl core::marker::Unpin for tungsten_core::assets::room::RoomObject
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomObject
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomObject
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomObject
+#[non_exhaustive] pub struct tungsten_core::assets::RoomPlace
+pub tungsten_core::assets::RoomPlace::by: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::RoomPlace::id: alloc::string::String
+pub tungsten_core::assets::RoomPlace::point: core::option::Option<[f32; 2]>
+pub tungsten_core::assets::RoomPlace::rect: core::option::Option<[f32; 4]>
+pub tungsten_core::assets::RoomPlace::route: core::option::Option<alloc::vec::Vec<tungsten_core::assets::room::RouteStop>>
+pub tungsten_core::assets::RoomPlace::to: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::clone(&self) -> tungsten_core::assets::room::RoomPlace
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::eq(&self, &tungsten_core::assets::room::RoomPlace) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomPlace
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomPlace
+pub fn tungsten_core::assets::room::RoomPlace::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomPlace
+impl core::marker::Send for tungsten_core::assets::room::RoomPlace
+impl core::marker::Sync for tungsten_core::assets::room::RoomPlace
+impl core::marker::Unpin for tungsten_core::assets::room::RoomPlace
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomPlace
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomPlace
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomPlace
+#[non_exhaustive] pub struct tungsten_core::assets::RoomShape
+pub tungsten_core::assets::RoomShape::id: alloc::string::String
+pub tungsten_core::assets::RoomShape::layers: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::RoomShape::line: core::option::Option<alloc::vec::Vec<[u32; 2]>>
+pub tungsten_core::assets::RoomShape::polygon: core::option::Option<alloc::vec::Vec<[u32; 2]>>
+pub tungsten_core::assets::RoomShape::rect: core::option::Option<[u32; 4]>
+pub tungsten_core::assets::RoomShape::tile: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::clone(&self) -> tungsten_core::assets::room::RoomShape
+impl core::cmp::PartialEq for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::eq(&self, &tungsten_core::assets::room::RoomShape) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::RoomShape
+impl serde_core::ser::Serialize for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::RoomShape
+pub fn tungsten_core::assets::room::RoomShape::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::RoomShape
+impl core::marker::Send for tungsten_core::assets::room::RoomShape
+impl core::marker::Sync for tungsten_core::assets::room::RoomShape
+impl core::marker::Unpin for tungsten_core::assets::room::RoomShape
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomShape
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomShape
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomShape
 pub struct tungsten_core::assets::SceneData
 pub tungsten_core::assets::SceneData::entities: alloc::vec::Vec<tungsten_core::assets::scene::SceneEntry>
 impl tungsten_core::assets::scene::SceneData
@@ -4607,8 +5332,11 @@ pub fn tungsten_core::assets::tilemap::TilemapData::auto_tile(&mut self)
 pub fn tungsten_core::assets::tilemap::TilemapData::is_auto(&self, usize, u32, u32) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TilemapData
+pub fn tungsten_core::assets::tilemap::TilemapData::eq(&self, &tungsten_core::assets::tilemap::TilemapData) -> bool
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::TilemapData
 impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::tilemap::TilemapData
@@ -4655,8 +5383,11 @@ pub tungsten_core::assets::TilemapLayer::name: alloc::string::String
 pub tungsten_core::assets::TilemapLayer::tiles: alloc::vec::Vec<tungsten_core::assets::tilemap::TileIndex>
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapLayer
 pub fn tungsten_core::assets::tilemap::TilemapLayer::clone(&self) -> tungsten_core::assets::tilemap::TilemapLayer
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TilemapLayer
+pub fn tungsten_core::assets::tilemap::TilemapLayer::eq(&self, &tungsten_core::assets::tilemap::TilemapLayer) -> bool
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapLayer
 pub fn tungsten_core::assets::tilemap::TilemapLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::TilemapLayer
 impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::tilemap::TilemapLayer
 pub fn tungsten_core::assets::tilemap::TilemapLayer::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::tilemap::TilemapLayer
@@ -4697,6 +5428,63 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::TilemapRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TilemapRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TilemapRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TilemapRegistry
+#[non_exhaustive] pub struct tungsten_core::assets::Tileset
+pub tungsten_core::assets::Tileset::tiles: alloc::vec::Vec<tungsten_core::assets::room::tileset::TilesetTile>
+pub tungsten_core::assets::Tileset::version: u32
+impl tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::from_json(&str) -> core::result::Result<Self, tungsten_core::assets::room::RoomError>
+pub fn tungsten_core::assets::room::tileset::Tileset::index_of(&self, &str) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
+pub fn tungsten_core::assets::room::tileset::Tileset::to_canonical(&self) -> alloc::string::String
+pub fn tungsten_core::assets::room::tileset::Tileset::validate(&self) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
+impl core::clone::Clone for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::clone(&self) -> tungsten_core::assets::room::tileset::Tileset
+impl core::cmp::PartialEq for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::eq(&self, &tungsten_core::assets::room::tileset::Tileset) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::tileset::Tileset
+impl serde_core::ser::Serialize for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::tileset::Tileset
+pub fn tungsten_core::assets::room::tileset::Tileset::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::Send for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::Sync for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::Unpin for tungsten_core::assets::room::tileset::Tileset
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::tileset::Tileset
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::tileset::Tileset
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::tileset::Tileset
+#[non_exhaustive] pub struct tungsten_core::assets::TilesetTile
+pub tungsten_core::assets::TilesetTile::broken: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::TilesetTile::health: core::option::Option<f32>
+pub tungsten_core::assets::TilesetTile::mask: core::option::Option<u8>
+pub tungsten_core::assets::TilesetTile::material: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::TilesetTile::one_way: bool
+pub tungsten_core::assets::TilesetTile::slope: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::TilesetTile::sprite: alloc::string::String
+pub tungsten_core::assets::TilesetTile::style: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::TilesetTile::weight: u32
+pub tungsten_core::assets::TilesetTile::whole: bool
+impl tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::clone(&self) -> tungsten_core::assets::room::tileset::TilesetTile
+impl core::cmp::PartialEq for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::eq(&self, &tungsten_core::assets::room::tileset::TilesetTile) -> bool
+impl core::fmt::Debug for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::room::tileset::TilesetTile
+impl serde_core::ser::Serialize for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::room::tileset::TilesetTile
+pub fn tungsten_core::assets::room::tileset::TilesetTile::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::Send for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::Sync for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::Unpin for tungsten_core::assets::room::tileset::TilesetTile
+impl core::marker::UnsafeUnpin for tungsten_core::assets::room::tileset::TilesetTile
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::tileset::TilesetTile
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::tileset::TilesetTile
 pub struct tungsten_core::assets::UiThemeEntry
 pub tungsten_core::assets::UiThemeEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::UiThemeEntry
@@ -22201,8 +22989,11 @@ pub fn tungsten_core::assets::tilemap::TilemapData::auto_tile(&mut self)
 pub fn tungsten_core::assets::tilemap::TilemapData::is_auto(&self, usize, u32, u32) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TilemapData
+pub fn tungsten_core::assets::tilemap::TilemapData::eq(&self, &tungsten_core::assets::tilemap::TilemapData) -> bool
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::TilemapData
 impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::tilemap::TilemapData
@@ -22234,8 +23025,11 @@ pub tungsten_core::TilemapLayer::name: alloc::string::String
 pub tungsten_core::TilemapLayer::tiles: alloc::vec::Vec<tungsten_core::assets::tilemap::TileIndex>
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapLayer
 pub fn tungsten_core::assets::tilemap::TilemapLayer::clone(&self) -> tungsten_core::assets::tilemap::TilemapLayer
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TilemapLayer
+pub fn tungsten_core::assets::tilemap::TilemapLayer::eq(&self, &tungsten_core::assets::tilemap::TilemapLayer) -> bool
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapLayer
 pub fn tungsten_core::assets::tilemap::TilemapLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::TilemapLayer
 impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::tilemap::TilemapLayer
 pub fn tungsten_core::assets::tilemap::TilemapLayer::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::tilemap::TilemapLayer

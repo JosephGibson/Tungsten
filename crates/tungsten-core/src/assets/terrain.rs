@@ -13,8 +13,11 @@
 //! fingerprints mean equal maps, so a cursor reads [`TileChanges::Unchanged`]
 //! only for a map that is the one it saw.
 //!
-//! The auto-tiler: a tile with a `style` and no `mask` is that style's
-//! brush, one with a `mask` a variant. A brush cell is an auto cell, which
+//! The auto-tiler: a tile with a `style` and neither a `mask` nor a `slope`
+//! is that style's brush, one with a `mask` a variant, and one with a
+//! `slope` and no `mask` a slope tile, which counts as its style for its
+//! neighbours as an override does and is never picked. A brush cell is an
+//! auto cell, which
 //! holds a variant of its style for its open sides: a side is closed when
 //! the neighbour holds any tile of the style or is off the map, and the mask
 //! sums 1 up, 2 right, 4 down and 8 left for the open ones. One of the mask's
@@ -208,6 +211,8 @@ impl Styles {
                 });
             *slot = Some(style);
             match props.mask {
+                // A slope tile: its style to its neighbours, never picked.
+                None if props.slope.is_some() => {}
                 None => {
                     styles.brushes[style].get_or_insert(tile);
                 }

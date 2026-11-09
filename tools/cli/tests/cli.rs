@@ -174,13 +174,15 @@ fn schema_writes_its_file() {
 }
 
 #[test]
-fn an_unknown_schema_exits_2_naming_both() {
+fn an_unknown_schema_exits_2_naming_each_format() {
     let output = tungsten().args(["schema", "prefab"]).output().unwrap();
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.starts_with("tungsten: unknown schema `prefab`: ui_screen or ui_theme\n"),
+        stderr.starts_with(
+            "tungsten: unknown schema `prefab`: ui_screen, ui_theme, room or tileset\n"
+        ),
         "{stderr}"
     );
 }

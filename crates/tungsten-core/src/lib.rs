@@ -3,6 +3,7 @@
 pub mod assets;
 pub mod audio;
 pub mod camera;
+mod canonical;
 pub mod component_registry;
 pub mod components;
 pub mod config;

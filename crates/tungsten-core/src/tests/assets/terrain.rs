@@ -873,3 +873,49 @@ fn whole_leaves_the_fingerprint() {
     );
     assert_ne!(fingerprint(&one_way), fingerprint(&base));
 }
+
+#[test]
+fn slope_tiles_close_their_neighbours_sides_and_are_never_picked() {
+    // Style `rock`: a brush, variants for masks 0 (closed) and 8 (open to
+    // the left), and a slope tile. A row of three: brush, brush, slope.
+    let mut map = TilemapData::new(16, 16, 3, 1);
+    let styled = |mask: Option<u8>, slope: Option<&str>| TileProps {
+        style: Some("rock".into()),
+        mask,
+        slope: slope.map(|text| crate::assets::Slope::parse(text).unwrap()),
+        ..TileProps::default()
+    };
+    let brush = map.add_tile("rock");
+    let closed = map.add_tile("rock_0");
+    let open_left = map.add_tile("rock_8");
+    let ramp = map.add_tile("rock_45_bl");
+    map.set_tile_props(brush, styled(None, None));
+    map.set_tile_props(closed, styled(Some(0), None));
+    map.set_tile_props(open_left, styled(Some(8), None));
+    map.set_tile_props(ramp, styled(None, Some("45 bl")));
+    let layer = map.add_layer("solid", LayerKind::Collision);
+    map.set_tile(layer, 0, 0, brush);
+    map.set_tile(layer, 1, 0, brush);
+    map.set_tile(layer, 2, 0, ramp);
+    map.auto_tile();
+    // (1, 0)'s right neighbour is the slope tile, of its style, so every
+    // side of it is closed; (0, 0)'s left is the map's edge, also closed.
+    assert_eq!(map.tile_at(layer, 0, 0), Some(closed));
+    assert_eq!(map.tile_at(layer, 1, 0), Some(closed));
+    assert_eq!(
+        map.tile_at(layer, 2, 0),
+        Some(ramp),
+        "the slope tile stays as written"
+    );
+    assert!(map.is_auto(layer, 0, 0) && map.is_auto(layer, 1, 0));
+    assert!(!map.is_auto(layer, 2, 0), "an override, never re-picked");
+
+    // Cleared, the slope's cell opens (1, 0)'s right side: no mask-2
+    // variant, so it draws the brush, never the slope tile.
+    let mut registry = TilemapRegistry::new();
+    registry.insert("row".into(), map);
+    registry.set_tile("row", layer, 2, 0, EMPTY_TILE);
+    let map = registry.get("row").unwrap();
+    assert_eq!(map.tile_at(layer, 1, 0), Some(brush));
+    assert_ne!(map.tile_at(layer, 1, 0), Some(ramp));
+}

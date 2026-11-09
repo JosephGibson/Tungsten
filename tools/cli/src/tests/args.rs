@@ -265,13 +265,13 @@ fn schema_takes_a_format_and_an_output() {
     assert_eq!(
         parse_str(&["schema", "prefab"]),
         Err(UsageError(
-            "unknown schema `prefab`: ui_screen or ui_theme".to_owned()
+            "unknown schema `prefab`: ui_screen, ui_theme, room or tileset".to_owned()
         ))
     );
     assert_eq!(
         parse_str(&["schema"]),
         Err(UsageError(
-            "`schema` needs a format: ui_screen or ui_theme".to_owned()
+            "`schema` needs a format: ui_screen, ui_theme, room or tileset".to_owned()
         ))
     );
     assert!(parse_str(&["schema", "ui_screen", "ui_theme"]).is_err());

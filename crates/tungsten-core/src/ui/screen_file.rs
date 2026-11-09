@@ -25,6 +25,7 @@ use thiserror::Error;
 
 use super::theme::ColorTokens;
 use super::theme_file::{Color, OverridesFile, TextFile, shared_schema_defs};
+use crate::canonical;
 
 /// The screen file format's version.
 pub const SCREEN_VERSION: u32 = 1;
@@ -938,14 +939,7 @@ impl ScreenFile {
     /// file, and is its own canonical form.
     #[must_use]
     pub fn to_canonical(&self) -> String {
-        // Through text first: a model number is an `f32`, which serde_json
-        // writes in its shortest form, and which reads back as that decimal.
-        let text = serde_json::to_string(self).unwrap_or_default();
-        let value: Value = serde_json::from_str(&text).unwrap_or_default();
-        let mut out = String::new();
-        write_canonical(&value, 0, &mut out);
-        out.push('\n');
-        out
+        canonical::to_canonical(self, canonical::Arrays::Lines)
     }
 
     /// Each name the file uses that `known` lacks, with its field's path:
@@ -1396,57 +1390,6 @@ fn overrides_check(overrides: &OverridesFile, path: &str) -> Result<(), ScreenEr
         ));
     }
     Ok(())
-}
-
-/// Writes `value` canonically at `indent` spaces.
-fn write_canonical(value: &Value, indent: usize, out: &mut String) {
-    let pad = |out: &mut String, indent: usize| out.extend(std::iter::repeat_n(' ', indent));
-    match value {
-        Value::Null => out.push_str("null"),
-        Value::Bool(on) => out.push_str(if *on { "true" } else { "false" }),
-        Value::Number(number) => out.push_str(&canonical_number(number)),
-        Value::String(text) => out.push_str(&Value::String(text.clone()).to_string()),
-        Value::Array(items) if items.is_empty() => out.push_str("[]"),
-        Value::Array(items) => {
-            out.push_str("[\n");
-            for (at, item) in items.iter().enumerate() {
-                pad(out, indent + 2);
-                write_canonical(item, indent + 2, out);
-                out.push_str(if at + 1 < items.len() { ",\n" } else { "\n" });
-            }
-            pad(out, indent);
-            out.push(']');
-        }
-        Value::Object(map) if map.is_empty() => out.push_str("{}"),
-        Value::Object(map) => {
-            let mut keys: Vec<&String> = map.keys().collect();
-            keys.sort();
-            out.push_str("{\n");
-            for (at, key) in keys.iter().enumerate() {
-                pad(out, indent + 2);
-                out.push_str(&Value::String((*key).clone()).to_string());
-                out.push_str(": ");
-                write_canonical(&map[*key], indent + 2, out);
-                out.push_str(if at + 1 < keys.len() { ",\n" } else { "\n" });
-            }
-            pad(out, indent);
-            out.push('}');
-        }
-    }
-}
-
-/// A whole number without a fraction, any other in the shortest form that
-/// reads back as the same `f64`.
-fn canonical_number(number: &serde_json::Number) -> String {
-    if number.is_i64() || number.is_u64() {
-        return number.to_string();
-    }
-    let value = number.as_f64().unwrap_or_default();
-    if value.fract() == 0.0 && value.abs() < 1e15 {
-        format!("{}", value as i64)
-    } else {
-        format!("{value}")
-    }
 }
 
 /// Names a screen file may use, by kind: what [`ScreenFile::check`] holds a

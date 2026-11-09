@@ -7,6 +7,7 @@ pub mod material;
 pub mod particle;
 pub mod prefab;
 pub mod registry;
+pub mod room;
 pub mod scene;
 pub mod shader;
 pub mod terrain;
@@ -33,6 +34,10 @@ pub use particle::{
 };
 pub use prefab::{PrefabData, PrefabError, PrefabRegistry, PreparedPrefab};
 pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, SpriteAssetId, TextureHandle};
+pub use room::{
+    CompiledPlace, CompiledRoom, PlaceShape, Room, RoomBudget, RoomError, RoomLayer, RoomLayerKind,
+    RoomObject, RoomPlace, RoomShape, RouteStop, Tileset, TilesetTile,
+};
 pub use scene::{
     SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,
     SceneTweenRepeat,

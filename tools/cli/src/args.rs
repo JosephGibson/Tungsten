@@ -29,8 +29,8 @@ Commands:
               a contact sheet, a scene or a point of its world, once or as
               a loop of frames
   schema <name>
-              Print the JSON Schema of the ui_screen or ui_theme file
-              format, from this command line's engine
+              Print the JSON Schema of the ui_screen, ui_theme, room or
+              tileset file format, from this command line's engine
 
 Options:
   -h, --help     Print this help
@@ -243,7 +243,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
                 if !crate::schema::NAMES.contains(&name.as_str()) {
                     return Err(UsageError(format!(
                         "unknown schema `{name}`: {}",
-                        crate::schema::NAMES.join(" or ")
+                        crate::schema::listed()
                     )));
                 }
                 Ok(Command::Schema(SchemaArgs {
@@ -253,7 +253,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
             }
             Err(rest) if rest.is_empty() => Err(UsageError(format!(
                 "`schema` needs a format: {}",
-                crate::schema::NAMES.join(" or ")
+                crate::schema::listed()
             ))),
             Err(rest) => Err(extra("schema", &rest[1..])),
         },
