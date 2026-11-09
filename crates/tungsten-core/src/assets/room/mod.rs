@@ -50,10 +50,16 @@ use serde_json::{Map, Value, json};
 use crate::canonical::{self, Arrays};
 use crate::post::PostPass;
 
+mod command;
 mod compile;
 mod spawn;
 pub mod tileset;
 
+pub use command::{
+    DeleteCommand, DuplicateCommand, EraseCommand, JournalEntry, LinkCommand, MoveCommand,
+    PaintCommand, PlaceCommand, RenameCommand, RoomCommand, RoomCommandError, RoomContext,
+    RoomJournal, SetCommand,
+};
 pub use compile::{CompiledPlace, CompiledRoom, PlaceShape, ROOM_OBJECT_LAYER};
 pub use spawn::{RoomRegistry, SpawnedRoom};
 pub use tileset::{TILESET_VERSION, Tileset, TilesetTile};
