@@ -231,6 +231,22 @@ Owns a live room's patch (redo 7.12), the path a script's `level` step and a roo
 - **Owned:** `stage.update` p50/p95; its first capture is functional only (`D-226`).
 - **Guards:** `bench.moved constant` and `bench.painted constant`.
 
+
+## `generate`
+
+Owns a generated run's churn (redo 7.12, P7-16): `World::generate_rooms` runs a generator registered in code over a template room, each room it adds compiled and registered with its generation, then spawned at its origin with its objects named; the frame after, every room's instance and objects despawn and `World::remove_room` takes each room out with its map and its area before the next seed's run. Warm-up 60 frames. Module: `generate.rs`.
+
+- **Rooms.** The template is built in code (`World::insert_room`): a 24 × 14 hall of 16 px cells, a floor two rows deep and a wall at its left, in an art layer and a collision layer, holding one circle from a prefab registered in code, a dynamic body the step never moves, since the physics plugin builds into a schedule the app never runs, as `rooms`'s does. The generator adds `rooms` copies side by side, SF22's chain, each with `objects` circles at cells the generation's seeded stream picks. Each frame despawns the last run, removes its rooms, generates the next seed's and spawns them, so a frame pays a run's whole churn; runs alternate the prefixes `run_a` and `run_b`, so a removal that left a run's rooms or areas behind would show. The art layer draws through the engine's tilemap extract and the circles through the lean view, the camera fitting the chain.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `rooms` | 8 | 1–64 | | Rooms a generation adds side by side |
+| `objects` | 24 | 1–1,000 | yes | Circles each room holds |
+
+- **Presets:** `min` (2 rooms of 4 circles) and `default`.
+- **Counters:** `bench:` `rooms` (rooms the frame generated and spawned), `spawned` (entities their spawns made), `removed` (rooms it removed) and `visible`.
+- **Owned:** `stage.update` p50/p95.
+- **Guards:** `bench.rooms`, `bench.spawned` and `bench.removed` constant over the window.
 ## `friction` and `slopes`
 
 `friction` owns `physics_step`'s friction and rolling rows; `slopes` its slope tiles' contacts (phase 7's piles). One benchmark, `piles`, whose `mode` knob names its row as `physics`' names `physics-sparse`. Warm-up 120 frames. Module: `piles.rs`.
@@ -294,6 +310,7 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `saves` | `guards_saves` | `saves` at `min` | records = `objects` + 1 + `spawns`; view instances |
 | `spread` | `guards_spread` | `spread` at `min` | the receivers tagged and every one lit; each window frame every one burning, chemistry's queue at most one entry a receiver, nothing dropped; view instances |
 | `rooms` | `guards_rooms` | `rooms` at `min` | `RigidBody` count = `bodies`, one map; each window frame `moves` bodies spawned again and `paints` cells written in place; instances = bodies in view plus visible art tiles |
+| `generate` | `guards_generate` | `generate` at `min` | the template and the generator registered; each window frame `rooms` rooms generated and spawned, `rooms` × (`objects` + 1) entities, `rooms` removed; instances = bodies in view plus visible art tiles; after the frames, `the_generate_row_keeps_only_the_live_runs_rooms_and_areas` finds the template and the live run's rooms alone, the other prefix's areas neither loaded nor kept |
 | `boot` | `guards_boot` | `boot` at `min`, its assets' load run by `LoadPlan::run_headless`, no frame stepped | the plan's units = `bench.units`; every sound the manifests name loaded, no sprite packed (the reading is the load's: its sprite batches read 0, and its bytes, which carry the checkout's canonical path, are not pinned) |
 | `pit` | `example-01-platformer` `guards::the_full_pit_holds_its_counts` | `start_run`, 2,000 balls, 120 settle frames, `wake_foes`, a 60-frame window | the `pit` counts (headless 01 loads no sprite assets, so its batches read 0) |
 | `idle-screen` | `tungsten` `screens::tests::an_idle_screen_lays_out_no_root` | a `Menu` screen pushed and past its entrance, then 60 frames without input | `UiHarness::layout_totals` unchanged over the 60, with no pin file: the zero is the assertion; a focus move then lays out no root and one label's new text exactly one, so the guard sees work (redo 7.17) |

@@ -21,6 +21,7 @@ use crate::boot;
 use crate::churn::Life;
 use crate::counters::BenchCounters;
 use crate::r#gen::{self, TextureSink};
+use crate::generate::{self, GenerateCounts, GenerateState};
 use crate::knobs::{self, BenchConfig};
 use crate::physics::Ball;
 use crate::piles::{self, PileCounts};
@@ -93,6 +94,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
         "terrain" => terrain::startup(harness.world_mut(), &mut textures, cfg),
         "piles" => piles::startup(harness.world_mut(), &mut textures, cfg),
         "rooms" => rooms::startup(harness.world_mut(), &mut textures, cfg),
+        "generate" => generate::startup(harness.world_mut(), &mut textures),
         other => panic!("no guard startup for bench {other}"),
     }
     harness
@@ -480,6 +482,106 @@ fn guards_rooms() {
         "rooms: the guard drew nothing"
     );
     reading.check(manifest_path("src/tests/guards/rooms.json"));
+}
+
+/// `generate` at `min` (redo 7.12, P7-16): the template and the generator
+/// registered, then each window frame's run of `rooms` rooms, each with
+/// `objects` circles, spawned after the last run's `rooms` rooms removed,
+/// before the pin.
+#[test]
+fn guards_generate() {
+    let bench = knobs::select(BENCHES, Some("generate")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(
+        cfg.row(),
+        "generate",
+        "the configuration measures another row"
+    );
+    let mut harness = harness(&cfg);
+    let world = harness.world();
+    let rooms: Vec<&str> = world
+        .resource::<tungsten::core::RoomRegistry>()
+        .ids()
+        .collect();
+    assert_eq!(rooms, [generate::TEMPLATE], "the template alone");
+    let generators: Vec<&str> = world
+        .resource::<tungsten::core::RoomGenerators>()
+        .ids()
+        .collect();
+    assert_eq!(generators, [generate::GENERATOR]);
+    let (rooms, objects) = (knob(&cfg, "rooms"), knob(&cfg, "objects"));
+    let reading = measure_checking(
+        &mut harness,
+        cfg.bench.warmup,
+        tiled_drawable,
+        |world, at| {
+            let counts = &world.resource::<BenchCounters<GenerateCounts>>().counts;
+            assert_eq!(
+                (counts.rooms, counts.spawned, counts.removed),
+                (rooms, rooms * (objects + 1), rooms),
+                "window frame {at}: rooms generated, entities spawned, rooms removed"
+            );
+        },
+    );
+    assert!(
+        reading.max_sprite_instances > 0,
+        "generate: the guard drew nothing"
+    );
+    reading.check(manifest_path("src/tests/guards/generate.json"));
+}
+
+/// After the guard's frames, the registries hold the template and the live
+/// run's rooms alone, and the save state loads only the live run's areas
+/// and keeps none: a removal leaving a run behind is P7-16's leak, which a
+/// prefix's next run would meet as `Taken`.
+#[test]
+fn the_generate_row_keeps_only_the_live_runs_rooms_and_areas() {
+    use tungsten::core::save::{SaveId, SaveState};
+    let bench = knobs::select(BENCHES, Some("generate")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    let mut harness = harness(&cfg);
+    harness.step(cfg.bench.warmup + WINDOW);
+    let world = harness.world();
+    let live = world.resource::<GenerateState>().live.clone();
+    let rooms = knob(&cfg, "rooms") as usize;
+    assert_eq!(live.len(), rooms, "the live run");
+    let prefix = live[0].split_once("_r").map(|(prefix, _)| prefix).unwrap();
+    let other = generate::PREFIXES
+        .into_iter()
+        .find(|&each| each != prefix)
+        .unwrap();
+    let mut expected: Vec<String> = live.clone();
+    expected.push(generate::TEMPLATE.to_owned());
+    expected.sort();
+    let held: Vec<String> = world
+        .resource::<tungsten::core::RoomRegistry>()
+        .ids()
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(held, expected, "the template and the live run's rooms");
+    let mut maps: Vec<String> = world
+        .resource::<tungsten::core::TilemapRegistry>()
+        .ids()
+        .map(str::to_owned)
+        .collect();
+    maps.sort();
+    assert_eq!(maps, expected, "their maps alone");
+    let saves = world.resource::<SaveState>();
+    for room in &live {
+        assert!(saves.is_loaded(room), "{room} loaded");
+    }
+    for at in 0..rooms {
+        let gone = format!("{other}_r{at}");
+        assert!(
+            !saves.is_loaded(&gone) && !saves.is_kept(&gone),
+            "{gone}: neither loaded nor kept"
+        );
+        assert_eq!(
+            saves.name_of(SaveId::authored(&format!("{gone}.ball_0"))),
+            None,
+            "{gone}'s names forgotten"
+        );
+    }
 }
 
 /// `spread` at `min` (redo 7.10b): every receiver tagged and lit, then, each

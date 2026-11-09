@@ -18,6 +18,7 @@ mod churn;
 mod counters;
 mod ecs;
 mod r#gen;
+mod generate;
 mod gpu;
 mod knobs;
 mod particles;
@@ -52,6 +53,7 @@ const BENCHES: &[&Bench] = &[
     &boot::BENCH,
     &spread::BENCH,
     &rooms::BENCH,
+    &generate::BENCH,
 ];
 
 fn main() -> anyhow::Result<()> {
