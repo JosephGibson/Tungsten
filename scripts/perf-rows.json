@@ -787,6 +787,45 @@
       "workload_version": 1
     },
     {
+      "name": "rooms",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "rooms",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 120,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "moved",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "painted",
+          "kind": "counter_const"
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "e01-pit",
       "package": "example-01-platformer",
       "folder": "examples/01_platformer",

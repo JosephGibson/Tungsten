@@ -23,6 +23,7 @@ mod knobs;
 mod particles;
 mod physics;
 mod piles;
+mod rooms;
 mod saves;
 mod spread;
 mod terrain;
@@ -50,6 +51,7 @@ const BENCHES: &[&Bench] = &[
     &saves::BENCH,
     &boot::BENCH,
     &spread::BENCH,
+    &rooms::BENCH,
 ];
 
 fn main() -> anyhow::Result<()> {

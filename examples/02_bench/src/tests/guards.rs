@@ -24,6 +24,7 @@ use crate::r#gen::{self, TextureSink};
 use crate::knobs::{self, BenchConfig};
 use crate::physics::Ball;
 use crate::piles::{self, PileCounts};
+use crate::rooms::{self, RoomCounts};
 use crate::saves::SaveCounts;
 use crate::spread::{self, SpreadCounts};
 use crate::terrain::{self, TerrainCounts};
@@ -91,6 +92,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
         }
         "terrain" => terrain::startup(harness.world_mut(), &mut textures, cfg),
         "piles" => piles::startup(harness.world_mut(), &mut textures, cfg),
+        "rooms" => rooms::startup(harness.world_mut(), &mut textures, cfg),
         other => panic!("no guard startup for bench {other}"),
     }
     harness
@@ -441,6 +443,43 @@ fn guards_saves() {
         },
         view_drawable,
     );
+}
+
+/// `rooms` at `min` (redo 7.12): the room's bodies and map spawned, then
+/// each window frame's patch spawning `moves` bodies again and writing
+/// `paints` cells in place, before the pin.
+#[test]
+fn guards_rooms() {
+    let bench = knobs::select(BENCHES, Some("rooms")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(cfg.row(), "rooms", "the configuration measures another row");
+    let mut harness = harness(&cfg);
+    let world = harness.world();
+    assert_eq!(
+        count::<tungsten::core::RigidBody>(world),
+        knob(&cfg, "bodies"),
+        "bodies"
+    );
+    assert_eq!(count::<TilemapInstance>(world), 1, "the room's map");
+    let (moves, paints) = (knob(&cfg, "moves"), knob(&cfg, "paints"));
+    let reading = measure_checking(
+        &mut harness,
+        cfg.bench.warmup,
+        tiled_drawable,
+        |world, at| {
+            let counts = &world.resource::<BenchCounters<RoomCounts>>().counts;
+            assert_eq!(
+                (counts.moved, counts.painted),
+                (moves, paints),
+                "window frame {at}: bodies spawned again and cells written"
+            );
+        },
+    );
+    assert!(
+        reading.max_sprite_instances > 0,
+        "rooms: the guard drew nothing"
+    );
+    reading.check(manifest_path("src/tests/guards/rooms.json"));
 }
 
 /// `spread` at `min` (redo 7.10b): every receiver tagged and lit, then, each

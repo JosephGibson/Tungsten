@@ -6,7 +6,7 @@ The rows `just perf` measures (`D-078` as redo 7.3 amends it), each owning one c
 just perf list                                   # every row, its kind and repeats
 just perf run ecs                                # one capture
 just perf sitting --quick                        # the working tree against the last tag, CPU rows, informational
-cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the ten benchmarks
+cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the eleven benchmarks
 TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 ```
 
@@ -14,7 +14,7 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 
 ## Harness
 
-- **Two kinds of row.** The ten benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
+- **Two kinds of row.** The eleven benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
 - **The bench binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and builds the app through `bench_app`, which the counter guards build alike. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's knobs and presets as JSON and `=config` the resolved configuration, before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays. In an interactive run Tab relaunches the binary on the next benchmark, keeping the preset when it has it.
 - **Determinism.** Every random choice comes from `Pcg32::seeded(seed)` and dt is pinned, so one build replays one workload. No rendered text depends on wall-clock time. A capture's runs share a digest over the window's `physics:` and `bench:` lines.
 - **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest; `boot` writes its own, seeded, under `target/bench-boot/`.
@@ -213,6 +213,24 @@ Owns chemistry's spread over a saturated field (redo 7.10b): `chemistry`'s run (
 - **Owned:** `system.chemistry`, `system.chemistry_tick` and `system.effect_tick` p50/p95, and `stage.update` p95.
 - **Guards:** `bench.pending <= 16,384` (the queue's bound), `bench.dropped <= 0` and `bench.burning >= 12,000`, its first valid reading rounded down to a thousand: the whole field stays lit.
 
+## `rooms`
+
+Owns a live room's patch (redo 7.12), the path a script's `level` step and a room file's reload share: `World::apply_room_batch` applies a batch to a copy of the room's document, compiles it for the batch's check and again for the patch, checks its objects against the prefabs, compares the cells and writes the changed ones in place, and despawns the moved objects and spawns them again under their names; and, every 120 frames, the room's whole spawn. Warm-up 120 frames. Module: `rooms.rs`.
+
+- **Room.** Built in code (`World::insert_room`): a seeded cave of 16 px cells, a floor four rows deep and two walls, a ramp every 20 columns rising right four rows, 45° and 2:1 in turn, seeded ledges and a one-way bridge line a third of the way down, in an art layer and a collision layer on a styled rock brush with its slope tiles; `bodies` circles of a prefab registered in code, dynamic bodies the step never moves, since the physics plugin builds into a schedule the app never runs, as `saves`'s does. Each frame's batch moves the first `moves` bodies a cell right and paints `paints` seeded art cells; the next frame's moves them back and erases the cells, so from the second frame on every frame patches the same work. Every 120 frames the room's instance and objects despawn at once, freeing their names, and the room spawns again. A moved body's new spawn takes its lean-view sprite from the instance through the spawn inheritance; the art layer draws through the engine's tilemap extract, the camera fitting the room.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `width`, `height` | 120, 68 | 40–512, 24–256 | | Cells of 16 px |
+| `bodies` | 400 | 1–10,000 | yes | |
+| `moves` | 16 | 1–1,000 | yes | Bodies a batch moves a cell, at most `bodies` |
+| `paints` | 32 | 1–1,000 | yes | Art cells a batch paints, or erases on the next |
+
+- **Presets:** `min` (40 × 24 cells, 40 bodies, 4 moves, 8 paints) and `default`.
+- **Counters:** `bench:` `moved` (bodies the frame's patch spawned again), `painted` (cells it wrote in place), `spawned` (entities the frame's whole spawn made, else 0) and `visible`.
+- **Owned:** `stage.update` p50/p95; its first capture is functional only (`D-226`).
+- **Guards:** `bench.moved constant` and `bench.painted constant`.
+
 ## `friction` and `slopes`
 
 `friction` owns `physics_step`'s friction and rolling rows; `slopes` its slope tiles' contacts (phase 7's piles). One benchmark, `piles`, whose `mode` knob names its row as `physics`' names `physics-sparse`. Warm-up 120 frames. Module: `piles.rs`.
@@ -275,6 +293,7 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `slopes` | `guards_slopes` | `piles` at `slopes-min` | `Body` count = `bodies`, no paddle, one map; each window frame no centre inside a slope cell's polygon and at least 60 returns over the last 60 frames; instances as `friction` |
 | `saves` | `guards_saves` | `saves` at `min` | records = `objects` + 1 + `spawns`; view instances |
 | `spread` | `guards_spread` | `spread` at `min` | the receivers tagged and every one lit; each window frame every one burning, chemistry's queue at most one entry a receiver, nothing dropped; view instances |
+| `rooms` | `guards_rooms` | `rooms` at `min` | `RigidBody` count = `bodies`, one map; each window frame `moves` bodies spawned again and `paints` cells written in place; instances = bodies in view plus visible art tiles |
 | `boot` | `guards_boot` | `boot` at `min`, its assets' load run by `LoadPlan::run_headless`, no frame stepped | the plan's units = `bench.units`; every sound the manifests name loaded, no sprite packed (the reading is the load's: its sprite batches read 0, and its bytes, which carry the checkout's canonical path, are not pinned) |
 | `pit` | `example-01-platformer` `guards::the_full_pit_holds_its_counts` | `start_run`, 2,000 balls, 120 settle frames, `wake_foes`, a 60-frame window | the `pit` counts (headless 01 loads no sprite assets, so its batches read 0) |
 | `idle-screen` | `tungsten` `screens::tests::an_idle_screen_lays_out_no_root` | a `Menu` screen pushed and past its entrance, then 60 frames without input | `UiHarness::layout_totals` unchanged over the 60, with no pin file: the zero is the assertion; a focus move then lays out no root and one label's new text exactly one, so the guard sees work (redo 7.17) |
