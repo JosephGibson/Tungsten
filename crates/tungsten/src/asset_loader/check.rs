@@ -242,6 +242,11 @@ pub(crate) fn check_files(
         }
     }
 
+    // 10b. The level rules on every room (redo 7.12).
+    super::room::check_room_rules(&manifest, world, |path, message| {
+        errors.push(path, message);
+    });
+
     // 11. Scenes: every JSON file under a root's folder that no manifest
     // names.
     check_scenes(roots, game_dir, world, &mut errors);

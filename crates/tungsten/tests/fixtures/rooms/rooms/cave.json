@@ -5,7 +5,7 @@
   "tileset": "cave",
   "layers": [
     { "name": "art", "cells": { "16,19": "arch" } },
-    { "name": "solid", "kind": "collision", "layers": ["terrain"], "mask": ["player", "enemy"] }
+    { "name": "solid", "kind": "collision", "layers": ["terrain"], "mask": ["terrain", "player", "enemy"] }
   ],
   "shapes": [
     { "id": "floor", "rect": [0, 20, 40, 4], "tile": "rock", "layers": ["art", "solid"] },
@@ -23,7 +23,7 @@
   "places": [
     { "id": "player_start", "point": [2, 19] },
     { "id": "arena", "rect": [20, 4, 16, 12] },
-    { "id": "main", "route": ["player_start", [16, 19], "exit"], "by": "walker" },
+    { "id": "main", "route": ["player_start", [16, 19], "exit"] },
     { "id": "exit", "point": [39, 19], "to": "hall.west_door" }
   ],
   "ambient": [0.2, 0.2, 0.3]

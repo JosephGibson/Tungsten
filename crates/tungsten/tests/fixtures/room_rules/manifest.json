@@ -1,0 +1,24 @@
+{
+  "rooms": {
+    "link_lost": {
+      "path": "link_lost.json"
+    },
+    "lamp_crowd": {
+      "path": "lamp_crowd.json"
+    },
+    "prop_float": {
+      "path": "prop_float.json"
+    },
+    "route_gap": {
+      "path": "route_gap.json"
+    },
+    "spawn_stuck": {
+      "path": "spawn_stuck.json"
+    }
+  },
+  "prefabs": {
+    "runner": {
+      "path": "prefabs/runner.json"
+    }
+  }
+}

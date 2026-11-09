@@ -233,7 +233,12 @@ fn describe_lists_named_things_by_kind() {
         ),
         "{all}"
     );
-    assert!(all.contains("  places (4): player_start (point), arena (rect), main (route by walker), exit (point)\n"), "{all}");
+    assert!(
+        all.contains(
+            "  places (4): player_start (point), arena (rect), main (route), exit (point)\n"
+        ),
+        "{all}"
+    );
     let value: Value = serde_json::from_str(&describe(&game, None, true).unwrap()).unwrap();
     let ids: Vec<&str> = value["rooms"]
         .as_array()

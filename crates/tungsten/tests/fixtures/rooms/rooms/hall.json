@@ -5,7 +5,7 @@
   "tileset": "cave",
   "layers": [
     { "name": "art" },
-    { "name": "solid", "kind": "collision", "layers": ["terrain"], "mask": ["player", "enemy"] }
+    { "name": "solid", "kind": "collision", "layers": ["terrain"], "mask": ["terrain", "player", "enemy"] }
   ],
   "shapes": [
     { "id": "floor", "rect": [0, 10, 20, 2], "tile": "rock", "layers": ["art", "solid"] }

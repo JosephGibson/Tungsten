@@ -312,6 +312,7 @@ pub use motion::path::{PATH_FOLLOW, PathFollower, PathFollowerPlugin};
 pub use motion::platformer::{
     PLATFORMER_CONTROLLER, PlatformerController, PlatformerControllerPlugin,
 };
+pub use motion::reach::route_findings;
 pub use motion::speed_limit::{SPEED_LIMIT, SPEED_LIMIT_SETTLE, SpeedLimit, SpeedLimitPlugin};
 pub use motion::stay_in_view::{STAY_IN_VIEW, StayInView, StayInViewPlugin};
 pub use motion::steering::{STEERING, Steering, SteeringPlugin};

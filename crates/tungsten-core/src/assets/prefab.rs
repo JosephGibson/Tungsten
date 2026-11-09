@@ -103,6 +103,11 @@ pub struct PrefabData {
         deserialize_with = "strict_components"
     )]
     pub components: BTreeMap<String, Value>,
+    /// How a room judges the prefab's sprite supported (redo 7.12,
+    /// `D-214` generalized): on the ground, hung under a ceiling or against
+    /// a wall. Read only by the level rules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support: Option<crate::assets::room::Support>,
 }
 
 impl PrefabData {
@@ -1013,7 +1018,7 @@ fn for_each_classed_object(
 /// The prefab's `components` with the object's `properties` applied, in
 /// property-name order, so a field property applies after its
 /// component's class property.
-fn apply_properties(
+pub(crate) fn apply_properties(
     components: &BTreeMap<String, Value>,
     properties: &BTreeMap<String, Value>,
 ) -> Result<BTreeMap<String, Value>, String> {

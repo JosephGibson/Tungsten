@@ -9648,5 +9648,6 @@ pub fn tungsten_kit::kill(&mut tungsten_core::ecs::world::World, tungsten_core::
 pub fn tungsten_kit::knock_back(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_kit::lob_velocity(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::release(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::route_findings(&tungsten_core::ecs::world::World, &str) -> alloc::vec::Vec<tungsten_core::assets::room::rules::RoomFinding>
 pub fn tungsten_kit::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity
 pub fn tungsten_kit::use_ability(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str) -> tungsten_kit::Used

@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "cell": [
+    16,
+    16
+  ],
+  "size": [
+    12,
+    6
+  ],
+  "tileset": "cave",
+  "layers": [
+    {
+      "name": "solid",
+      "kind": "collision",
+      "layers": [
+        "terrain"
+      ],
+      "mask": [
+        "terrain",
+        "player",
+        "enemy"
+      ]
+    }
+  ],
+  "shapes": [
+    {
+      "id": "floor",
+      "rect": [
+        0,
+        5,
+        12,
+        1
+      ],
+      "tile": "rock",
+      "layers": [
+        "solid"
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "id": "crate_1",
+      "prefab": "crate",
+      "at": [
+        2,
+        4.5
+      ]
+    }
+  ]
+}

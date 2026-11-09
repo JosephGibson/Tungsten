@@ -114,6 +114,29 @@ pub(crate) fn check_rooms(
     }
 }
 
+/// `tungsten check`'s level rules on every listed room, sorted: core's
+/// (spawns, supports, links and budgets, the umbrella's `light` lighting an
+/// object), then, with the kit, each route's reach; each finding sent to
+/// `error` with its room's file.
+pub(crate) fn check_room_rules(
+    manifest: &ResolvedManifest,
+    world: &World,
+    mut error: impl FnMut(&Path, String),
+) {
+    let mut rooms: Vec<&String> = manifest.rooms.keys().collect();
+    rooms.sort();
+    for id in rooms {
+        let path = &manifest.rooms[id].path;
+        for finding in world.room_findings(id, &["light"]) {
+            error(path, finding.to_string());
+        }
+        #[cfg(feature = "kit")]
+        for finding in tungsten_kit::route_findings(world, id) {
+            error(path, finding.to_string());
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "../tests/rooms.rs"]
 pub(crate) mod tests;

@@ -94,7 +94,7 @@ fn the_fixtures_rooms_load_after_the_physics_names() {
         map.layer_physics(1),
         LayerPhysics {
             layers: 1 << 1,
-            mask: (1 << 2) | (1 << 3)
+            mask: (1 << 1) | (1 << 2) | (1 << 3)
         }
     );
     assert!(map.tile_props(5).whole, "the arch is drawn whole");
@@ -207,5 +207,72 @@ fn room_and_tileset_files_are_not_checked_as_scenes() {
         errors[0].starts_with("rooms/cave.json: room 'cave': tilemap `cave`, layer `objects`, object 2: unknown prefab `lantern`"),
         "{errors:?}"
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A game folder holding the rooms fixture under `rooms/` and the rules
+/// fixture, one room a finding kind, under `room_rules/`.
+fn rules_copy() -> PathBuf {
+    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+    let dir = std::env::temp_dir().join(format!("tungsten_room_rules_{}_{n}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    copy(&fixture(), &dir.join("rooms"));
+    copy(&fixture().join("../room_rules"), &dir.join("room_rules"));
+    dir.canonicalize().unwrap()
+}
+
+/// Every error `check_files` finds over `roots`, the kit's components
+/// registered, as `<file>: <message>`.
+fn check_with_kit(dir: &Path, roots: &[&str]) -> Vec<String> {
+    let mut app = App::new(Config::default()).unwrap();
+    #[cfg(feature = "kit")]
+    app.add_plugins(tungsten_kit::KitPlugins::set());
+    let roots: Vec<PathBuf> = roots.iter().map(|root| dir.join(root)).collect();
+    check_files(app.world_mut(), &roots, dir)
+        .into_iter()
+        .map(|error| format!("{}: {}", error.file.display(), error.message))
+        .collect()
+}
+
+#[test]
+fn tungsten_check_reports_each_rules_finding_by_room_id_and_path() {
+    let dir = rules_copy();
+    let found = check_with_kit(&dir, &["rooms/manifest.json", "room_rules/manifest.json"]);
+    let mut expected = vec![
+        "room_rules/lamp_crowd.json: lamp_crowd: lamp_2: objects[1]: budget: 2 objects hold a light, past budget.lights 1",
+        "room_rules/link_lost.json: link_lost: door: places[0].to: links to `hall.nowhere`, which no room holds",
+        "room_rules/prop_float.json: prop_float: lamp_1: objects[0]: floats: 0 of 8 bottom columns have ground within 2 px",
+        "room_rules/spawn_stuck.json: spawn_stuck: crate_1: objects[0]: spawns inside the terrain: its collider overlaps cell (2, 5)",
+    ];
+    if cfg!(feature = "kit") {
+        expected.insert(
+            3,
+            "room_rules/route_gap.json: route_gap: main: places[1].route[1]: out of reach of route[0] for `runner`",
+        );
+    }
+    assert_eq!(found, expected);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_fixtures_clean_rooms_have_no_findings() {
+    let dir = rules_copy();
+    assert_eq!(
+        check_with_kit(&dir, &["rooms/manifest.json"]),
+        Vec::<String>::new()
+    );
+    // With the rules rooms beside them, the clean rooms still find nothing.
+    let found = check_with_kit(&dir, &["rooms/manifest.json", "room_rules/manifest.json"]);
+    assert!(
+        found.iter().all(|line| line.starts_with("room_rules/")),
+        "{found:?}"
+    );
+    // Each rule of the clean rooms runs on its prop, crate and links.
+    let manifest = ResolvedManifest::load(dir.join("rooms/manifest.json")).unwrap();
+    let mut world = app_world();
+    load(&manifest, &mut world);
+    for room in ["cave", "hall"] {
+        assert_eq!(world.room_findings(room, &["light"]), []);
+    }
     let _ = fs::remove_dir_all(&dir);
 }

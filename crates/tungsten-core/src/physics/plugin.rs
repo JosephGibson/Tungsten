@@ -524,6 +524,37 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
     }
 }
 
+impl PhysicsPlugin {
+    /// A `rigid_body` value as the level rules read it (redo 7.12): its
+    /// body and collider, its layer names' bits resolved through `layers`
+    /// and added as a spawn adds them.
+    pub(crate) fn read_rigid_body(
+        value: &serde_json::Value,
+        layers: Option<&PhysicsLayers>,
+    ) -> Result<(RigidBody, Collider), String> {
+        read_rigid_body(value, layers)
+    }
+}
+
+fn read_rigid_body(
+    value: &serde_json::Value,
+    layers: Option<&PhysicsLayers>,
+) -> Result<(RigidBody, Collider), String> {
+    let def: RigidBodyDef = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+    let bits = |names: &[(usize, String)]| -> Result<u32, String> {
+        names.iter().try_fold(0, |bits, (_, name)| {
+            layers
+                .and_then(|layers| layers.bit(name))
+                .map(|bit| bits | bit)
+                .ok_or_else(|| format!("unknown physics layer `{name}`"))
+        })
+    };
+    let mut body = def.body;
+    body.layers |= bits(&def.layer_names)?;
+    body.mask |= bits(&def.mask_names)?;
+    Ok((body, def.collider))
+}
+
 /// `rigid_body`'s World check: each layer name in the World's
 /// [`PhysicsLayers`] and the material in its [`PhysicsMaterials`].
 fn check_rigid_body(def: &RigidBodyDef, world: &World) -> Result<(), MissingAsset> {
