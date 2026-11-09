@@ -147,6 +147,20 @@ pub struct Generation {
     pub templates: BTreeMap<String, String>,
 }
 
+impl fmt::Display for Generation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "`{}` version {} at seed {} under prefix `{}`",
+            self.generator, self.version, self.seed, self.prefix
+        )?;
+        for (template, hash) in &self.templates {
+            write!(f, ", template `{template}` {hash}")?;
+        }
+        Ok(())
+    }
+}
+
 /// The rooms one generation registered: its record, and each room's ID and
 /// origin in the order the generator added them.
 #[derive(Debug, Clone, PartialEq)]
@@ -396,11 +410,25 @@ fn hash(document: &Room) -> String {
     format!("{hash:016x}")
 }
 
+/// Template `id`'s hash now, as a generation that read it records it:
+/// `None` for a room the registry lacks or a generated one.
+fn template_hash(rooms: &RoomRegistry, id: &str) -> Option<String> {
+    let entry = rooms.rooms.get(id)?;
+    entry.generation.is_none().then(|| hash(&entry.document))
+}
+
 /// A generation prepared whole: every room compiled and checked, nothing
 /// registered.
 pub(crate) struct PreparedGeneration {
     generation: Generation,
     rooms: Vec<(String, Room, CompiledRoom, Vec2)>,
+}
+
+impl PreparedGeneration {
+    /// Its rooms' IDs, in the order added.
+    pub(crate) fn ids(&self) -> impl Iterator<Item = &str> {
+        self.rooms.iter().map(|(id, ..)| id.as_str())
+    }
 }
 
 impl World {
@@ -452,6 +480,42 @@ impl World {
             generator: generator.to_owned(),
             hint: hint(generator, generators.ids()),
         }
+    }
+
+    /// A saved generation prepared again, as a restore of its save needs
+    /// it (`save::regenerate`): `None` when the World holds a room under an
+    /// equal record; else at the saved version when the generator still
+    /// reproduces it and every saved template's hash matches the template
+    /// now, at its current version otherwise.
+    pub(crate) fn prepare_regeneration(
+        &self,
+        saved: &Generation,
+    ) -> Result<Option<PreparedGeneration>, GenerateError> {
+        let empty = RoomRegistry::default();
+        let rooms = self.get_resource::<RoomRegistry>().unwrap_or(&empty);
+        if rooms
+            .rooms
+            .values()
+            .any(|entry| entry.generation.as_ref() == Some(saved))
+        {
+            return Ok(None);
+        }
+        let generator = self
+            .get_resource::<RoomGenerators>()
+            .and_then(|generators| generators.get(&saved.generator))
+            .ok_or_else(|| self.unknown_generator(&saved.generator))?;
+        let same = generator.reproduces(saved.version)
+            && saved
+                .templates
+                .iter()
+                .all(|(id, hash)| template_hash(rooms, id).as_deref() == Some(hash.as_str()));
+        let version = if same {
+            saved.version
+        } else {
+            generator.version()
+        };
+        self.prepare_generation(&saved.generator, version, saved.seed, &saved.prefix)
+            .map(Some)
     }
 
     /// Generation `generator` at `version` on `seed` under `prefix`,

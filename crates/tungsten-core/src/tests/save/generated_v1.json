@@ -1,0 +1,80 @@
+{
+  "format": 1,
+  "next_id": 0,
+  "versions": {
+    "components": {
+      "health": 1
+    },
+    "resources": {}
+  },
+  "global": {
+    "named": {},
+    "gone": [],
+    "spawns": []
+  },
+  "areas": {
+    "chain_r0": {
+      "named": {
+        "chain_r0.crate_1": {
+          "components": {
+            "health": {
+              "current": 1.0
+            }
+          }
+        }
+      },
+      "gone": [],
+      "spawns": []
+    },
+    "chain_r1": {
+      "named": {},
+      "gone": [
+        "chain_r1.crate_2"
+      ],
+      "spawns": []
+    },
+    "chain_r2": {
+      "named": {
+        "chain_r2.crate_1": {
+          "components": {
+            "health": {
+              "current": 2.0
+            }
+          }
+        }
+      },
+      "gone": [],
+      "spawns": []
+    }
+  },
+  "resources": {},
+  "generated": {
+    "chain_r0": {
+      "generator": "chain",
+      "version": 1,
+      "seed": 7,
+      "prefix": "chain",
+      "templates": {
+        "hall": "81171bda5a44e2c5"
+      }
+    },
+    "chain_r1": {
+      "generator": "chain",
+      "version": 1,
+      "seed": 7,
+      "prefix": "chain",
+      "templates": {
+        "hall": "81171bda5a44e2c5"
+      }
+    },
+    "chain_r2": {
+      "generator": "chain",
+      "version": 1,
+      "seed": 7,
+      "prefix": "chain",
+      "templates": {
+        "hall": "81171bda5a44e2c5"
+      }
+    }
+  }
+}

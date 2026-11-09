@@ -2346,6 +2346,8 @@ impl core::cmp::PartialEq for tungsten_core::Generation
 pub fn tungsten_core::Generation::eq(&self, &tungsten_core::Generation) -> bool
 impl core::fmt::Debug for tungsten_core::Generation
 pub fn tungsten_core::Generation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::Generation
+pub fn tungsten_core::Generation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tungsten_core::Generation
 impl serde_core::ser::Serialize for tungsten_core::Generation
 pub fn tungsten_core::Generation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
@@ -4955,6 +4957,8 @@ impl core::cmp::Eq for tungsten_core::Generation
 impl core::cmp::PartialEq for tungsten_core::Generation
 pub fn tungsten_core::Generation::eq(&self, &tungsten_core::Generation) -> bool
 impl core::fmt::Debug for tungsten_core::Generation
+pub fn tungsten_core::Generation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::Generation
 pub fn tungsten_core::Generation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tungsten_core::Generation
 impl serde_core::ser::Serialize for tungsten_core::Generation
@@ -11840,6 +11844,10 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::NameError
 #[non_exhaustive] pub enum tungsten_core::save::RestoreError
 pub tungsten_core::save::RestoreError::Format
 pub tungsten_core::save::RestoreError::Format::found: u32
+pub tungsten_core::save::RestoreError::Generation
+pub tungsten_core::save::RestoreError::Generation::area: alloc::string::String
+pub tungsten_core::save::RestoreError::Generation::now: core::option::Option<alloc::boxed::Box<tungsten_core::Generation>>
+pub tungsten_core::save::RestoreError::Generation::saved: alloc::boxed::Box<tungsten_core::Generation>
 pub tungsten_core::save::RestoreError::Migration
 pub tungsten_core::save::RestoreError::Migration::message: alloc::string::String
 pub tungsten_core::save::RestoreError::Migration::what: alloc::string::String
@@ -12165,6 +12173,7 @@ pub struct tungsten_core::save::WorldSave
 impl tungsten_core::save::WorldSave
 pub fn tungsten_core::save::WorldSave::area_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::save::WorldSave::dropped_refs(&self) -> usize
+pub fn tungsten_core::save::WorldSave::generations(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_core::Generation)>
 pub fn tungsten_core::save::WorldSave::next_id(&self) -> u64
 impl core::clone::Clone for tungsten_core::save::WorldSave
 pub fn tungsten_core::save::WorldSave::clone(&self) -> tungsten_core::save::WorldSave
@@ -12194,6 +12203,7 @@ pub fn tungsten_core::save::capture_world(&tungsten_core::World) -> core::result
 pub fn tungsten_core::save::enter_area<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &str, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::name(&mut tungsten_core::World, tungsten_core::Entity, core::option::Option<&str>, &str) -> core::result::Result<tungsten_core::SaveId, tungsten_core::save::NameError>
 pub fn tungsten_core::save::order_key(&tungsten_core::World, tungsten_core::Entity) -> (bool, u64)
+pub fn tungsten_core::save::regenerate(&mut tungsten_core::World, &tungsten_core::save::WorldSave) -> core::result::Result<alloc::vec::Vec<tungsten_core::GeneratedRooms>, tungsten_core::GenerateError>
 pub fn tungsten_core::save::restore_world<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &tungsten_core::save::WorldSave, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::saving(&tungsten_core::World) -> bool
 pub type tungsten_core::save::MigrationStep = fn(serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String>
@@ -21726,6 +21736,8 @@ impl core::cmp::Eq for tungsten_core::Generation
 impl core::cmp::PartialEq for tungsten_core::Generation
 pub fn tungsten_core::Generation::eq(&self, &tungsten_core::Generation) -> bool
 impl core::fmt::Debug for tungsten_core::Generation
+pub fn tungsten_core::Generation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::Generation
 pub fn tungsten_core::Generation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tungsten_core::Generation
 impl serde_core::ser::Serialize for tungsten_core::Generation

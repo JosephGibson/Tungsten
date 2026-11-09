@@ -32,7 +32,8 @@ pub use registry::{
     MigrationStep, RefCodec, RefReader, RefWriter, Refs, SaveOptions, SaveRegistry,
 };
 pub use world::{
-    CaptureError, FORMAT, RestoreError, RestoreReport, WorldSave, capture_world, restore_world,
+    CaptureError, FORMAT, RestoreError, RestoreReport, WorldSave, capture_world, regenerate,
+    restore_world,
 };
 
 /// The JSON value [`SaveData::migrate`] rewrites, re-exported so a game
