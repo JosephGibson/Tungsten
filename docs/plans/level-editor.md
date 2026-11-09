@@ -1,0 +1,250 @@
+# Level editor (phase-7's step 12, `level-editor`) — draft
+
+- **status:** draft
+- **goal:** 7.12's third and last plan (the redo's 7.12 row and §5.1; `D-266`'s open "authoring-time generation and the editor"; level-generation's Q1). (a) Authoring-time generation: a room object carries the generator that made it, a hand edit through the commands detaches it, and `tungsten level generate` writes a generation's rooms as room files, regenerating a listed room while keeping the objects its author owns. (b) The in-game editor on the same commands: F10 in a build that watches its assets opens a debug window that stops the game clock and takes the game's input, then selects, moves, places, deletes and duplicates objects and paints and erases cells through `World::apply_room_batch`, undoes and redoes through the World's `RoomJournal`, and writes each edit to the room's file canonically. Its close closes phase 7's Step 12.
+- **non-goals:**
+  - Editing places, links, renames and `set` overrides in the editor: they need text input, which 8.1 brings (P8-5); the CLI keeps them (Q1). Multi-select, box select, copy between rooms, a cell grid, a searchable palette (Q10), and a regenerate key in the editor (Q7): Later lines.
+  - Runtime generation's semantics (`D-266`): a runtime-generated room stays a seed's and is read-only in the editor (Q4).
+  - Marks on shapes, places or cells, and tombstones for a generated object deleted by hand (Q2, Q3).
+  - Editing Tiled maps (`.tmj`): the loader stays an import path (the redo's Q16); 01's level moves onto rooms at 7.13.
+  - A benchmark row: the editor is off in every row and frame of every guard; the closed editor's cost is the existing pins holding (§2.6).
+  - The `tungsten level apply <room> -` defect (`docs/known-issues.md`, P2), generators in `describe` and the other `D-266` Later lines.
+  - World-anchored UI roots following the editor's panned view (they follow the game's camera; a recorded limit, §2.4).
+- **files to touch:**
+  - Step 1: `crates/tungsten-core/src/assets/room/mod.rs`, `crates/tungsten-core/src/assets/room/command.rs`, `crates/tungsten-core/src/tests/assets/room.rs`, `crates/tungsten-core/src/tests/assets/room_command.rs`, `api/tungsten-core.txt`, `examples/02_bench/src/tests/guards/rooms.json`, `examples/02_bench/src/tests/guards/generate.json`, `docs/assets.md`, `DESIGN.md`.
+  - Step 2: `crates/tungsten-core/src/assets/room/generate.rs`, `crates/tungsten-core/src/assets/room/mod.rs` and `crates/tungsten-core/src/assets/mod.rs` (the re-exports), `crates/tungsten-core/src/tests/assets/room_generate.rs`, `api/tungsten-core.txt`.
+  - Step 3: `crates/tungsten/src/app.rs`, `crates/tungsten/src/asset_loader/room.rs`, `crates/tungsten/src/tests/rooms.rs`, `tools/cli/src/args.rs`, `tools/cli/src/level.rs`, `tools/cli/src/check.rs`, `tools/cli/src/tests/args.rs`, `tools/cli/src/tests/level.rs`, `docs/getting-started.md`, `DESIGN.md`.
+  - Step 4: `crates/tungsten-core/src/assets/room/patch.rs`, `crates/tungsten-core/src/time.rs`, `crates/tungsten-core/src/input/action_map.rs`, `crates/tungsten-core/src/tests/assets/room_patch.rs`, `crates/tungsten-core/src/tests/time.rs`, `crates/tungsten-core/src/tests/input/action_map.rs`, `api/tungsten-core.txt`.
+  - Step 5: `crates/tungsten/src/level_editor.rs` (new), `crates/tungsten/src/tests/level_editor.rs` (new), `crates/tungsten/src/lib.rs`, `crates/tungsten/src/debug_views.rs`, `crates/tungsten/src/inspector.rs`, `crates/tungsten/src/app.rs`, `docs/LLM_INDEX.md`, `docs/getting-started.md`, `DESIGN.md`, `docs/known-issues.md`.
+  - Step 6: `crates/tungsten/src/level_editor.rs`, `crates/tungsten/src/tests/level_editor.rs`, `docs/getting-started.md`.
+  - Step 7: `DECISIONS.md`, `docs/DECISION_INDEX.md`, `DESIGN.md`.
+  - Step 8 (close): this plan (deleted), `ROADMAP.md`, `docs/plans/phase-7.md`, `docs/known-issues.md`.
+- **ordered steps:** (1) Generated marks and the detach rule. (2) Authored rooms from a generator, in core. (3) `tungsten level generate`. (4) The editor's seams in core: redo, the editing stop, the actions. (5) The editor: open, look, select, move, delete, duplicate, undo, redo, write. (6) The editor: place, paint, erase, the eyedropper and findings. (7) The decision. (8) Close.
+- **done-when:** every step's done-when passes, quoted in the evidence log; `just check` passes, the physics hashes and 01's `pit` pin hold, and the demo works: a generation written, hand-edited and regenerated keeping the hand edit, and a `tungsten run --script` that opens the editor and drags a crate one cell, the room file read back moved; the plan deleted with its citations, `level-editor` out of Now and phase 7's Step 12 closed (no 7.12 row open).
+
+Item `level-editor` in [ROADMAP.md](../../ROADMAP.md), from [phase 7](phase-7.md)'s Step 12 and the [roadmap redo](roadmap-redo.md)'s 7.12 row and §5.1. Written 2026-11-09 at `1a971dc9`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md) and the [operating rules](../operating-rules.md); this plan records only where it differs.
+
+## Context digest
+
+7.12 is three plans: `level-format` (`D-264`: rooms, commands with exact inverses, `RoomJournal`, `tungsten level`, level rules, live patching) and `level-generation` (`D-266`: `RoomGenerator`s building rooms in memory from a seed and templates, saves as seed plus changes, the check over seeds) have landed. `D-266` left open "authoring-time generation and the editor (`level-editor`)", and level-generation's Q1 defaulted §5.1's authoring-time output ("generated objects carry their generator, and a hand edit detaches one") here, as "a command front-end on the editor's commands".
+
+It stands on the commands (`Room::apply`, all or nothing, with inverses), `World::apply_room_batch` and `undo_room_batch` (the script's `level` step), `patch_room`'s rule that an equal document keeps the journal, the generators' `prepare_generation`, the check handshake (`TUNGSTEN_CHECK`, `run_game`), 7.17's modal roots and held clocks (`D-149`, `D-235`), and M57/M58's debug views (`D-165`, `D-168`).
+
+Decisions cited: `D-264`, `D-266`, `D-182` (the CLI), `D-225` (scripts), `D-165`, `D-168` (debug views), `D-149` (routing), `D-235` (held clocks), `D-045` (bindings carry no modifiers), `D-249` (the camera's output is never read back), `D-230` (saves), `D-053` (reload). `DESIGN.md` lists "Editor tooling" as a non-commitment needing an explicit decision: Step 7 records it (`D-26[7]`).
+
+Later items expect: 7.13 moves 01's level onto rooms and can author it with these tools; 8.1's text input (P8-5) lets the editor take places, links and renames; 8.3 is the rest of the hand-made-content tooling.
+
+## 1. Audit
+
+Read at `1a971dc9`.
+
+| # | Finding | Evidence |
+| --- | --- | --- |
+| A1 | `RoomObject` holds `id`, `prefab`, `at`, `set`, `on`, `deny_unknown_fields`: nothing records what made an object. Its size is 104 bytes (three `String`-sized fields, `BTreeMap`, `[f32; 2]`) | `crates/tungsten-core/src/assets/room/mod.rs:206-226` |
+| A2 | `Room::apply` applies a batch to a clone, each command checked against the room the earlier ones leave, and returns the inverse batch; `move`, `set` (no `id` path; `set.<key>` one override), `delete`, `duplicate` (the copy keeps every field) and `rename` each write their inverse | `crates/tungsten-core/src/assets/room/command.rs:323-351`, `:504-588`, `:591-638`, `:640-701`, `:703-747`, `:832-881` |
+| A3 | `RoomJournal` records, undoes and redoes 64 batches a room; the World has `apply_room_batch` and `undo_room_batch` but no redo | `command.rs:1064-1158`, `crates/tungsten-core/src/assets/room/patch.rs:320-371` |
+| A4 | `patch_room` clears the journal only for a changed document, and an equal compiled room patches nothing: a reload of a file holding the live document is a no-op | `patch.rs:12-14`, `:223-232`, `:399-528` |
+| A5 | `apply_room_batch` writes no file ("the room file's next reload wins"); the CLI's `apply` writes the canonical form and journals `{batch, inverse, before, after}` with FNV-1a hashes, and `--undo` refuses a file changed outside its journal | `patch.rs:306-319`, `tools/cli/src/level.rs:255-347` |
+| A6 | `Room::to_canonical` reads back as the same room, so a file the editor writes reloads equal | `mod.rs:359-368` |
+| A7 | `prepare_generation` runs a generator into rooms in memory and refuses an ID a registered room or map holds (`Taken`); `register_generation` registers them; templates are authored registered rooms, recorded by hash | `crates/tungsten-core/src/assets/room/generate.rs:300-330`, `:522-622`, `:586-593`, `:625-650` |
+| A8 | The check's content stage runs in the game's own build when `TUNGSTEN_CHECK` names a report (`run_check`, which also sweeps generators); `App::build` treats a check or describe run as one with no user folder; the handshake names are consts | `crates/tungsten/src/app.rs:69-80`, `:565-566`, `:1155-1163`, `:1222-1290` |
+| A9 | The CLI runs the game's build with handshake variables through `run_game`; `level`'s verbs, options and usage are tables in `args.rs` | `tools/cli/src/check.rs:159-182`, `tools/cli/src/args.rs:85-103`, `:200-218`, `:349-462` |
+| A10 | Room and tileset reloads read the files and patch, a failure keeping the live room | `crates/tungsten/src/asset_loader/room.rs:318-371` |
+| A11 | `Time` has two stops kept apart, the game's pause and the state stack's hold; the stack writes `held` at every dispatch, so a third party cannot use it | `crates/tungsten-core/src/time.rs:31-37`, `:137`, `crates/tungsten/src/state.rs:737-748` |
+| A12 | A shown modal root takes the pointer anywhere in the window and every key and pad press, and `hit_test` misses every root below it; debug-window buttons are not focusable, so a modal debug window takes no focus | `crates/tungsten-core/src/ui/route.rs:856-859`, `:1218-1219`, `crates/tungsten-core/src/ui/hit.rs:31-35`, `crates/tungsten-core/src/ui/tree.rs:1127-1131`, `crates/tungsten/src/debug_views.rs:1254-1293` |
+| A13 | The kit's `ActionInput` and the template's gameplay read `RoutedInput`, what the UI left to the game | `crates/tungsten-kit/src/intent/action_input.rs:31`, `templates/basic/AGENTS.md` (Input) |
+| A14 | The debug views run once a frame after the schedule, the flush and hot reload, before the layout; `update_with` returns at once while every view is closed; the zoom keys read raw key events with their modifiers | `app.rs:2762-2774`, `debug_views.rs:1687-1713`, `:1873-1900` |
+| A15 | Every schedule system writes a timing entry each frame, so a new system moves every counter guard pin (the ui-pass run's lesson) | `app.rs:2086-2092`, `app.rs:2115-2118` |
+| A16 | The inspector picks the smallest sprite box, then collider box, under `CameraState::screen_to_world`, reading the routed input at the press | `crates/tungsten/src/inspector.rs:209-358`, `crates/tungsten-core/src/camera.rs:1309-1321` |
+| A17 | The engine's debug actions take F1–F9 and F11; F10 and F12 are free; a game's `input.json` merges over the defaults; bindings carry no modifiers (`D-045`) | `crates/tungsten-core/src/input/action_map.rs:342-391`, `:537-552`, `crates/tungsten-core/src/ui/route.rs:46-49` |
+| A18 | `DebugDraw` commands drain into every frame's extract, overlay on or off | `app.rs:2481`, `:3068-3090` |
+| A19 | Hot reload watches the manifest when `assets.hot_reload` says so, else in debug builds | `app.rs:1101`, `crates/tungsten-core/src/config.rs:577-582` |
+| A20 | A write to `CameraState` is never read back: it lasts until the next camera update | `crates/tungsten/src/camera.rs:15-18` |
+| A21 | 02's `guards_rooms` patches a room each window frame and `guards_generate` generates rooms each window frame, both cloning room documents, so `RoomObject`'s size is in their `allocated_bytes`; pins rewrite with `TUNGSTEN_GUARDS_WRITE=1` | `examples/02_bench/src/tests/guards.rs:454-536`, `crates/tungsten/src/testing/guard.rs:16`, `:186-187` |
+| A22 | `RoomRegistry` gives a room's file, live instance and generation; a generated room has no file | `crates/tungsten-core/src/assets/room/spawn.rs:140-176` |
+| A23 | A script presses an action's first binding into `InputState` and moves the cursor, so actions are scriptable and raw keys are not | `crates/tungsten/src/script.rs:624-645`, `crates/tungsten/src/input_bridge.rs:175-204` |
+| A24 | The check runs core's room rules and the kit's route rules per listed room | `crates/tungsten/src/asset_loader/room.rs:124-140` |
+| A25 | `docs/assets.md`'s Room row lists an object's fields; `DESIGN.md` lists "Editor tooling" as a non-commitment; the getting-started guide describes reloads and `tungsten level`'s verbs; the LLM index sits at 12,264 of its 12,288 bytes | `docs/assets.md:27`, `DESIGN.md:700-706`, `docs/getting-started.md:60`, `:93`, `scripts/check-agent-context.py:25` |
+| A26 | The umbrella pins the debug views' own cost: `views_guard_closed` (every view off, 240 allocations, 162,240 bytes) and `views_guard_open_idle` (the five set `enabled` directly, no key pressed), so a closed editor runs inside both windows; the views' fit test lays out five | `crates/tungsten/src/tests/debug_views.rs:2268-2345`, `crates/tungsten/src/tests/guards/views-closed.json`, `views-open.json` |
+| A27 | The CLI's tests pin `level`'s verb list in two usage errors | `tools/cli/src/tests/args.rs:365`, `:371` |
+
+## 2. Design
+
+### 2.1 Generated objects and the detach rule (Step 1)
+
+`RoomObject` gains `generator: Option<String>`, an ID (`[a-z][a-z0-9_]*`, `validate_object` checking it), `None` skipped in the canonical form. The format stays at version 1: the field is optional, so every version-1 file reads as before; a file that uses it needs this engine, which the CLI's version rule already ties to the game's (`D-182`). The JSON Schema's object gains the property. The compile ignores it: a mark never changes a map object, so a detach respawns nothing (`patch.rs:708-711` compares prefab, `set` and `at`).
+
+In `Room::apply`, a command that names a marked object and changes it detaches it, in the same command:
+
+- `move` of the object, `set` of any of its paths but `generator`, and `rename` of it drop its mark; each one's inverse also sets the mark back, so the inverse still gives the room back byte for byte.
+- `set {id, path: "generator", value}` marks or detaches explicitly and detaches nothing else: undo's path, and an author's.
+- `duplicate` of a marked object gives an unmarked copy; the original keeps its mark.
+- A shape's `move` carries the objects `on` it without detaching them: the generator owns the shape too (§2.2), so the carry is the generator's to redo.
+- `delete` needs nothing: its inverse places the object whole, mark included. `place` takes a mark: a generation front-end's, or an inverse's.
+
+The module docs' verb table gains the rule. The mark costs 24 bytes an object (A1: 104 → 128), which moves 02's `guards_rooms` and `guards_generate` `allocated_bytes` by the objects their windows clone, a multiple of 24 bytes each, allocations unchanged (A21; §5).
+
+### 2.2 Authored rooms from a generator (Steps 2–3)
+
+`World::author_rooms(generator, seed, prefix) -> Result<AuthoredRooms, GenerateError>` prepares the generation as `generate_rooms` does (`prepare_generation`, A7) and registers nothing, with three differences:
+
+1. An ID an authored registered room holds is allowed: that room is the one regenerated. An ID a map that is no room's, or a generated room, holds is still `Taken`. A generation that reads one of its own output rooms as a template is refused, so a regeneration never feeds on its last output (read a base room instead: `cave_base` in, `cave_main` out).
+2. Every object of every output room carries `generator: <generator>`, whatever template it came from: the generator owns its output.
+3. Over an authored room R of the same ID, R's objects that do not carry this generator (placed or detached by hand, or another generator's) are kept, in R's order after the output's objects; an ID a kept object and a generated object share keeps R's and drops the generated one. The merged room is checked whole: validated, compiled against its tileset and the physics names, its objects against the prefabs (`check_map_objects`), and every object name of the generation taking its own save ID; a kept object that no longer fits (its `on` shape gone, its ID a shape's or place's now) refuses the generation, naming the room and the object.
+
+Everything else of R (terrain, layers, places, settings) is the new output's: the generator owns it, and a room the author reshapes by hand is a room no longer regenerated (Q2). Each `AuthoredRoom` gives its ID, its merged document, whether it replaces a registered room, the counts generated, the IDs kept and dropped, and `reshaped` (R and the merged room differ outside `objects`).
+
+`tungsten level generate <generator> [--seed <seed>] [--prefix <prefix>] [--into <folder>] [--regenerate]` is its front-end (`D-182`'s exit codes: 0, 1 for errors or a refusal, 2 for usage). It runs the config stage as `check` does, then the game's own build through `run_game` with `TUNGSTEN_GENERATE` naming a report file and `TUNGSTEN_GENERATE_RUN` holding `<generator>:<seed>:<prefix>` (as `TUNGSTEN_CHECK_SEEDS` holds its seeds; the seed 0 and the prefix the generator's ID by default). `App::build` treats the run as a check run (no user folder, A8); `App::run` loads the game's files as a check does, and with no load error writes the report: version 1, the generation, and each room's ID, canonical text, counts and flags; with load errors it writes them and generates nothing. The command line, which reads the manifest itself (`Game::open`), then decides every target before writing any: a listed room's own file, else `<into>/<id>.json` (`into` the manifest's folder's `rooms/` by default). It refuses, writing nothing, a listed room without `--regenerate`, a new room whose target exists or leaves the game's folder, and a report error. It prints a line per room (written or regenerated, with its counts and `reshaped`) and, for each new room, the manifest entry to add (`"<id>": { "path": "rooms/<id>.json" }`); it never edits the manifest, and appends nothing to the CLI journal, whose `--undo` then refuses the file by its hash rule (A5): a generation is undone through Git (Q8, Q9).
+
+### 2.3 The editor's seams in core (Step 4)
+
+- `World::redo_room_batch(id) -> Result<Option<RoomPatch>, RoomPatchError>`: `undo_room_batch`'s twin over `RoomJournal::redo`, the room patched the same way.
+- `Time`'s third stop: `ClockStop` gains `editing`; `Time::set_editing(bool)` and `Time::is_editing()`; `advance_frame` stops the game clock while any of the three is on. The stack's `held` and the game's pause stay as they are, so the editor's stop neither undoes nor is undone by them (A11).
+- Three default actions: `engine_toggle_level_editor` on F10, `engine_editor_primary` on the left mouse button and `engine_editor_secondary` on the right. They are actions so a script can press them (A23); a game's `input.json` merges over them (A17).
+
+### 2.4 The in-game editor (Steps 5–6)
+
+`crates/tungsten/src/level_editor.rs`, a debug view beside the inspector, with no schedule system (A15): `debug_views::update_with` calls `level_editor::update` first, before its early return, and that returns at once while the editor is closed and its key is not pressed. Its state is a crate-private `LevelEditor` resource `App::new` inserts beside the other views (`app.rs:778-788`), `available` when `config.assets.hot_reload_or(cfg!(debug_assertions))` (A19): the editor exists where the files it writes are watched.
+
+**Open and close.** `engine_toggle_level_editor` toggles it, read from the raw `InputState` as the other views' toggles are. Open: `Time::set_editing(true)`, and a window on `UiLayer::Debug` docked top right (`ViewSpec` `level_editor`, "Level editor", its key in the title) whose root is set modal (`UiTree::set_modal`). From the next routing the game's `RoutedInput` gets no pointer, key or pad press (A12, A13), and the editor reads the raw `InputState` behind that, as a shell screen reads its hotkeys. Close, by the key or the window's close button: the stop off, the window removed, the editor's camera dropped. A game that reads the raw `InputState` itself still sees the presses while the clock stands: a recorded limit, with `Time::is_editing()` to check.
+
+**Whose press.** A press the UI tree hits (`hit_test` at the pointer over the `ScaleFactor`) is a window's: the editor's own, or a debug window opened over it. A press that hits nothing is the editor's (A12).
+
+**The view.** While open, the arrow keys pan by a cell (the current room's, else 16 px), a middle drag pans, the wheel zooms about the cursor (×1.25 a notch, 1/4 to 8), and Home goes back to the game's view. The editor writes its view to `CameraState` in its update, after the frame's camera update, so the extract draws it and the next update overwrites it (A20); closing stops the writes, and the game's camera is back the next frame. World-anchored UI roots follow the game's camera meanwhile.
+
+**Rooms and picking.** The rooms in view are the registry's rooms with a live instance; a cursor's room is the one whose instance's box (`TilemapInstance::origin`, `size × cell`) holds it, the current room first, then by ID. The current room is the last one picked or edited. Each live room draws its bounds, a marker at every object's spawn point (`origin + at × cell`, marked objects in their own hue) and its places (points, areas, routes) through `DebugDraw` (A18). A pick takes the room objects under the cursor: each named `<room>.<id>` through `SaveState::named_entity`, boxed as the inspector boxes an entity (its drawing box shared from `inspector.rs`, A16), else within 6 px of its marker, the smallest box winning; an object a play despawned is picked by its marker.
+
+**Tools and keys.** The window lists every key; the tool, palette and layer keys are raw keys while open, as the views' zoom keys are (A14, `D-045`):
+
+| Input | Does |
+| --- | --- |
+| `engine_editor_primary` | Select (1): a press picks, or on nothing clears the selection; a drag moves the pick by whole cells, previewed, one `move {by}` at the release. Place (2): a `place` of the palette's prefab at the cell under the cursor (`at` its top-left corner), ID `<prefab>_<n>`, the lowest free `n` (a prefab ID made an ID), then selected. Paint (3): a stroke gathers the cells it crosses, previewed; at the release one batch, a `paint` per target layer. Erase (4): the same with `erase` |
+| `engine_editor_secondary` | The eyedropper: the prefab of the object under the cursor, or the topmost tile at the cell and its layer |
+| 1–4, `[` and `]`, L | The tool; the palette's previous and next prefab (every `PrefabRegistry` ID) or tile (the room's tileset); the target layer, each layer then all |
+| Delete or Backspace, Ctrl+D | `delete` the selection; `duplicate` it one cell right as `<stem>_<n>` |
+| Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z | `undo_room_batch`, `redo_room_batch` on the current room |
+
+**Writes.** Each edit goes through `World::apply_room_batch` (or undo or redo) on the current room, so it is checked, applied whole, patched live and journaled exactly as a script's `level` step is (A3, A4), and a marked object it changes detaches (§2.1). Before the edit, a room with a file must read from that file (`Room::from_json`) as its live document; otherwise (a reload pending or failed, or the file edited outside) the edit is refused, the live room unchanged, and the window says why, so the editor never overwrites work it has not loaded. After it, the room's document is written to its file canonically; the reload that follows reads an equal document, patches nothing and keeps the journal (A4, A6). A room with no file (built in code) is edited live and not written. A generated room is read only: the window names its generation (Q4). A refusal or a command's error goes to the window's last line and the log, never a panic.
+
+**The window.** A label and value table: the room (its ID and file, `no file`, or its generation), the tool and its key, the palette item, the target layer, the cursor's cell, the selection (ID, prefab, `at` and its mark), the undo and redo depths, the last edit or error, and the room's findings after each edit (core's room rules and, with the kit, its route rules, as the check runs them, A24): their count and the first two.
+
+**Closed cost.** Per frame, two resource reads and one action lookup; no allocation, no system, no `DebugDraw` command, no window and no new `UiTree` node state (it sets a root's existing modal flag): the views' guards measure exactly this path (A26, §2.6).
+
+### 2.5 The decision (Step 7)
+
+`D-26[7]` records: the object's `generator` and the detach rule; `World::author_rooms` and `tungsten level generate` with `--regenerate`; the in-game editor (availability, the editing stop, the modal window, the tools and keys, the writes and their refusal); `World::redo_room_batch`. It amends `D-264` (the format's field, the commands' rule, redo), `D-266` (authoring-time output), `D-182` (the verb and the handshake), `D-165` (a sixth debug view, modal while open) and `D-235` (a third clock stop), and narrows `DESIGN.md`'s "Editor tooling" non-commitment to editors past the in-game level editor.
+
+### 2.6 Pins and cost
+
+The editor adds no schedule system (A15), no saved component or resource, no core probe, no `describe` field and no bench counter. Its default actions and resource are built once in `App::new`, outside every guard's window (`guards_boot` measures the load plan alone, `examples/02_bench/src/tests/guards.rs:664-671`). With it closed, a frame does two resource reads and an action lookup (`ActionMap::just_pressed`, a map lookup by `&str`): 01's `pit` and every 02 guard but the two Step 1 moves on purpose hold, and Steps 4–6 gate on them.
+
+## 3. Steps
+
+Every code step also gives `cargo fmt --all -- --check` → exit 0 and `cargo clippy -p <its packages> --all-targets --locked -- -D warnings` → exit 0. A filter's run quotes its `test result` line with the step's new tests named in it.
+
+### Step 1: Generated marks and the detach rule
+
+- **Files:** `crates/tungsten-core/src/assets/room/mod.rs`, `crates/tungsten-core/src/assets/room/command.rs`, `crates/tungsten-core/src/tests/assets/room.rs`, `crates/tungsten-core/src/tests/assets/room_command.rs`, `api/tungsten-core.txt`, `examples/02_bench/src/tests/guards/rooms.json`, `examples/02_bench/src/tests/guards/generate.json` (forced pins: the field's 24 bytes, §2.1), `docs/assets.md` (the Room row's object fields), `DESIGN.md` (the Rooms paragraph's commands).
+- **Change:** §2.1: the field, its check and schema; the rule in `move_entry`, `set_field`, `rename` and `duplicate`, the inverses restoring the mark; the module docs' table. Tests: a move, a set and a rename of a marked object each detach it and their inverse re-marks it byte for byte; a shape's move keeps the marks of the objects on it; a duplicate's copy is unmarked; `set generator` marks and detaches; a mark that is no ID fails `validate` naming `objects[i].generator`; the field reads and writes canonically and is skipped when absent; every fixture room's canonical text is unchanged. Then `TUNGSTEN_GUARDS_WRITE=1` on the two guards and `just api`.
+- **Done-when:** `cargo test -p tungsten-core --lib --locked assets::room` → `test result: ok`; `TUNGSTEN_GUARDS_WRITE=1 cargo test -p example-02-bench --locked -- guards_rooms guards_generate` → 2 passed, then for each of `rooms.json` and `generate.json`, `diff <(git show HEAD:examples/02_bench/src/tests/guards/<file> | jq -S 'del(.allocated_bytes)') <(jq -S 'del(.allocated_bytes)' examples/02_bench/src/tests/guards/<file>)` → exit 0 and the `allocated_bytes` delta positive and divisible by 24 (quoted with its quotient); `cargo test -p example-02-bench --locked guards` → every guard passes; `cargo test -p tungsten-cli --locked schema` → pass; `just api-check` → exit 0.
+- **Commit:** `feat(core): mark a room's generated objects and detach them on edit`
+- **Moves:** 02's `guards_rooms` and `guards_generate` `allocated_bytes`, by design.
+
+### Step 2: Authored rooms from a generator, in core
+
+- **Files:** `crates/tungsten-core/src/assets/room/generate.rs`, `crates/tungsten-core/src/assets/room/mod.rs` and `crates/tungsten-core/src/assets/mod.rs` (the new types beside `GeneratedRooms` in both re-exports, `assets/mod.rs:38-41`), `crates/tungsten-core/src/tests/assets/room_generate.rs`, `api/tungsten-core.txt`.
+- **Change:** §2.2's `World::author_rooms`, `AuthoredRooms` and `AuthoredRoom` (`#[non_exhaustive]`, read by methods or public fields as the module's other records are), on `prepare_generation` with its `Taken` rule widened for authored rooms (a private parameter, `generate_rooms` unchanged); the template-is-output refusal; the merge and its checks; any new `GenerateError` variant naming the room and the object. Tests with a test generator over two registered templates: every output object marked; nothing registered or changed (the registries, maps and journal compared before and after); over a registered room, its unmarked and other-generator objects kept in order, a shared ID keeping the kept object and listing the dropped one, a kept object `on` a shape the output lacks refusing, `reshaped` false for an output equal outside objects and true otherwise; a template that is an output refusing; an ID a map holds still `Taken`; `generate_rooms`' tests unchanged.
+- **Done-when:** `cargo test -p tungsten-core --lib --locked assets::room::generate` → `test result: ok`; `cargo test -p tungsten-core --lib --locked assets::room` → ok; `just api-check` → exit 0 after `just api`.
+- **Commit:** `feat(assets): author a generator's rooms over the rooms they regenerate`
+- **Moves:** none.
+
+### Step 3: `tungsten level generate`
+
+- **Files:** `crates/tungsten/src/app.rs` (the two handshake consts, `build`'s check run, `run`'s branch, `run_generate`), `crates/tungsten/src/asset_loader/room.rs` (the run's request parse and report), `crates/tungsten/src/tests/rooms.rs`, `tools/cli/src/args.rs`, `tools/cli/src/level.rs`, `tools/cli/src/check.rs` (the handshake names beside `CHECK_ENV`), `tools/cli/src/tests/args.rs`, `tools/cli/src/tests/level.rs`, `docs/getting-started.md` (the `tungsten level` paragraph), `DESIGN.md` (the Rooms paragraph).
+- **Change:** §2.2's front-end. Engine tests over the rooms fixture's copy with a test generator registered: a run's report holds each room's canonical text with every object marked; over a listed room, its hand objects kept and counted; load errors generate nothing and are reported; a malformed `TUNGSTEN_GENERATE_RUN` is one error. CLI tests: the verb's options and errors parse (missing generator, an unknown option, `--seed` not a number); from a written report over the fixture copy, a listed room is rewritten in place only with `--regenerate`, a new one lands under `--into` with its manifest line printed, an existing unlisted target refuses every write (no file changed), and a report error exits 1.
+- **Done-when:** `cargo test -p tungsten --lib --locked` → `test result: ok`, the new `asset_loader::room` tests among them; `cargo test -p tungsten-cli --locked` → ok, the verb lists its args tests pin (A27) naming `generate`; `cargo test -p tungsten-template-basic --locked the_schedule_matches_the_snapshot` → pass; `cargo test -p example-01-platformer --locked guards::` → pass, `pit` at 59,980 allocations and 69,236,700 bytes; `cargo test -p example-02-bench --locked guards` → pass; `rg -n 'level generate' docs/getting-started.md` → a match.
+- **Commit:** `feat(cli): write a generator's rooms as files with tungsten level generate`
+- **Moves:** none.
+
+### Step 4: The editor's seams in core
+
+- **Files:** `crates/tungsten-core/src/assets/room/patch.rs`, `crates/tungsten-core/src/time.rs`, `crates/tungsten-core/src/input/action_map.rs`, `crates/tungsten-core/src/tests/assets/room_patch.rs`, `crates/tungsten-core/src/tests/time.rs`, `crates/tungsten-core/src/tests/input/action_map.rs`, `api/tungsten-core.txt`.
+- **Change:** §2.3. Tests: redo after undo re-applies the batch, patches the live object back and moves it from the undone list to the done list; nothing to redo is `Ok(None)`; a reload that clears the journal leaves nothing to redo; the editing stop gives game dt 0 and no fixed step while real time runs, leaves `is_paused` and `is_held` alone, and a pause made under it stays the game's; the default map binds the three actions.
+- **Done-when:** `cargo test -p tungsten-core --lib --locked -- assets::room::patch time:: input::action_map` → `test result: ok`; `cargo test -p example-01-platformer --locked guards::` → pass, `pit` at 59,980 allocations and 69,236,700 bytes; `cargo test -p example-02-bench --locked guards` → pass; `just api-check` → exit 0 after `just api`.
+- **Commit:** `feat(core): add room redo, an editing clock stop and editor actions`
+- **Moves:** none.
+
+### Step 5: The editor: open, look, select, move, delete, duplicate, undo, redo, write
+
+- **Files:** `crates/tungsten/src/level_editor.rs` (new), `crates/tungsten/src/tests/level_editor.rs` (new), `crates/tungsten/src/lib.rs`, `crates/tungsten/src/debug_views.rs`, `crates/tungsten/src/inspector.rs` (the shared drawing box, `pub(crate)`, with its first caller here), `crates/tungsten/src/app.rs` (the resource), `docs/LLM_INDEX.md` (the rooms row names the editor, trimmed elsewhere to stay within 12,288 bytes), `docs/getting-started.md` ("Change it while it runs"), `DESIGN.md` (the Rooms paragraph; the non-commitment line reworded without an ID until Step 7), `docs/known-issues.md` (the raw-input and world-anchored-UI limits).
+- **Change:** §2.4 but for Place, Paint, Erase, the eyedropper and findings. Tests on the headless `Harness` over the rooms fixture's copy, `cave` spawned at the origin: F10 opens it (`Time::is_editing()`, the window keyed `level_editor`, its root modal) and the next frame's left press reaches no `RoutedInput`; F10 again closes it; `assets.hot_reload: false` keeps it shut; a drag on `crate_1` by 16 px moves it to `[6, 19]` in the document, respawns `cave.crate_1` there, journals one batch and leaves the file's text equal to the document's canonical form; Ctrl+Z and Ctrl+Y take the document and the file back and forth; Delete removes it and Ctrl+D copies it as `crate_2` one cell right; a press over the window selects nothing; a marked object's move drops its mark; a generated room refuses the drag, unchanged; a file holding another valid document refuses the edit, the live room and the file unchanged; a room with no file is edited and nothing written; the arrows and the wheel move and zoom the drawn camera and closing gives the game's back; a closed editor queues no `DebugDraw` command and builds no window; the editor open beside the five views fits at 1280×720 on 1.75 (`assert_fits`, as `the_views_fit_at_the_owners_scale`).
+- **Done-when:** `cargo test -p tungsten --lib --locked` → `test result: ok`, the `level_editor` tests and the views' guards (`views_guard_closed`, `views_guard_open_idle`, A26) among them, their pins unchanged; `rg -n 'level_editor' crates/tungsten/src/plugins.rs crates/tungsten-core/src/schedule.rs; test $? -eq 1` → exit 0 (no system); `cargo test -p tungsten-template-basic --locked the_schedule_matches_the_snapshot` → pass; `cargo test -p example-01-platformer --locked guards::` → pass, `pit` as at Step 4; `cargo test -p example-02-bench --locked guards` → pass; `just ctx` → exit 0; `rg -n 'F10' docs/getting-started.md` → a match.
+- **Commit:** `feat(debug): edit live rooms in a level editor window`
+- **Moves:** none.
+
+### Step 6: The editor: place, paint, erase, the eyedropper and findings
+
+- **Files:** `crates/tungsten/src/level_editor.rs`, `crates/tungsten/src/tests/level_editor.rs`, `docs/getting-started.md`.
+- **Change:** the rest of §2.4. Tests: Place with the palette on `lamp` puts `lamp_2` at the clicked cell's corner, spawned as `cave.lamp_2`, selected and written; the eyedropper takes `crate` from `crate_1` and `rock` and its layer from a floor cell; a Paint stroke over three cells is one journal entry, a `paint` per target layer, its cells in the overrides and written in place in the map (`TilemapRegistry`); Erase empties them; L cycles each layer, then all; a lamp placed in mid-air (`support: ground`) shows one finding, and its undo none.
+- **Done-when:** `cargo test -p tungsten --lib --locked` → `test result: ok`, the views' guards' pins unchanged; `cargo test -p example-01-platformer --locked guards::` → pass, `pit` unchanged; `cargo test -p example-02-bench --locked guards` → pass.
+- **Commit:** `feat(debug): place, paint and erase in the level editor`
+- **Moves:** none.
+
+### Step 7: The decision
+
+- **Files:** `DECISIONS.md`, `docs/DECISION_INDEX.md`, `DESIGN.md` (the non-commitment line takes the ID).
+- **Change:** §2.5 through the `tungsten-decision` skill, after rechecking that the next free ID is still `D-26[7]` (another session may take it).
+- **Done-when:** `rg -c '^## D-26[7] — ' DECISIONS.md` → `1`; `rg -c '^\*\*Amended by D-26[7]:\*\*' DECISIONS.md` → one per entry §2.5 amends (5; a different set is named with its reason in the evidence row); `just repo-check` → exit 0.
+- **Commit:** `docs(decisions): record the level editor and authored generation`
+- **Moves:** none.
+
+### Step 8: Close
+
+- **Files:** this plan (deleted), `ROADMAP.md`, `docs/plans/phase-7.md`, `docs/known-issues.md`, and the files that cite this plan.
+- **Change:** the checks and the demo; phase 7's Step 12 gains its part-3 note and evidence row, which quotes Step 12's done-when (no 7.12 row open; the redo's 7.12 sketch whole: the format and CLI, seeded generation, `check`'s props supported generalizing `D-214` since `D-264`, and the editor); follow-ups to known issues or Later (Q1, Q3, Q7, Q10); the plan and its citations deleted; `level-editor` out of Now and phase 7's line naming 7.13 next.
+- **Done-when:** `just check` → exit 0; `just physics-release` → 16 passed, the hashes unchanged; `just api-check`, `just docs-ratchet`, `just perf-test`, `just ctx`, `just repo-check` and `git diff --check` (the tree and the plan's commit to HEAD) → exit 0; `just smoke` → every section passed; `just visual` → exit 0, no golden moved; `just template-check` → exit 0, its output as pinned; `rg -n '^\| [^|]+ \| [^|]+ \| 7\.12 \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0. The demo, in a `tungsten new` copy outside the repository pinned to this checkout (a CLI built into its own `target/demo-*`, both engine lines pointed at `crates/tungsten`, the repo's `.cargo/config.toml`, `CARGO_TARGET_DIR` and `CARGO_NET_OFFLINE=true` on every call) with the rooms fixture's tileset, sprites, rooms, prefabs and physics layer names and a `chain` generator like level-generation's demo's (three halls from `hall` as locals `r0`–`r2`, doors linked, two crates at seeded cells) registered in its `src/`: `tungsten level generate chain --seed 3 --prefix run` → `run_r0`–`run_r2` written and their manifest lines, added by hand, then `tungsten level check` → `no room findings`; a `tungsten level apply run_r0` batch moving one generated crate a cell → its `generator` gone in `tungsten level query run_r0 <crate> --json`; `tungsten level generate chain --seed 4 --prefix run --regenerate` → `run_r0` keeping that crate (`1 kept`), the query showing its moved `at`, and without `--regenerate` → refused, exit 1, no file changed; `tungsten run --script` (an empty stage, `room cave`, F10 pressed and released, the cursor on `crate_1`'s drawn box, the primary press, the cursor 16 px right, the release, a capture, F10 again) → passed, then `tungsten level query cave crate_1 --json` → `at` `[6, 19]` and no `generator`; the capture linked for the owner.
+- **Ends with:** the commits, the evidence, what the owner should try (F10 in a copy with rooms: drag, place, paint, Ctrl+Z, close; the file changed), and the next prompt: phase 7's Step 13 (7.13) `step` prompt.
+
+## 4. Open questions
+
+| # | Question | Default |
+| --- | --- | --- |
+| Q1 | Places, links, renames and `set` overrides in the editor | Not here: they need text input (8.1's P8-5); the editor draws places, the CLI edits them; a Later line |
+| Q2 | Hand edits to a regenerated room's terrain, layers or places | The generator owns them: a regeneration replaces them and reports `reshaped`; a room reshaped by hand is no longer regenerated |
+| Q3 | A generated object deleted by hand | Comes back at the next regeneration; a tombstone list is a Later line |
+| Q4 | A runtime-generated room in the editor | Read only, the window naming its generation: its rooms are a seed's (`D-266`) |
+| Q5 | The editor in a release build | Only where `assets.hot_reload` is on; off by default in release builds |
+| Q6 | The editor's keys | The toggle and the two pointer buttons as rebindable actions; tools, palette, layer, delete, duplicate, undo and redo as fixed raw keys while open, as the views' zoom keys are |
+| Q7 | Regeneration from inside the editor | Not here: the CLI's `--regenerate`; a Later line |
+| Q8 | The CLI journal after an editor write or a generation | Neither appends to it; `apply --undo` refuses the file by its hash, and Git undoes a generation |
+| Q9 | The manifest entries a generation's new rooms need | Printed, never written, so the manifest's own formatting stays |
+| Q10 | Multi-select, box select, copy between rooms, a cell grid, a searchable palette | Later lines |
+| Q11 | A room with no live instance | Not in the editor, which edits what it shows; the CLI edits any room |
+| Q12 | A drag's snap | Whole cells by `by`, keeping the object's fraction; Place snaps `at` to the cell's top-left corner |
+
+## 5. Invariants
+
+- **May move:** 02's `guards_rooms` and `guards_generate` `allocated_bytes`, by Step 1, each by a multiple of 24 bytes with allocations and every other field unchanged, the new values and quotients in the evidence log.
+- **Must not move:** the physics hashes (`just physics-release`, 16); the kit's determinism pin; 01's `pit` (59,980 allocations, 69,236,700 bytes); the views' `views-closed` and `views-open` pins; every other counter guard pin; the two schedule snapshots; `describe` at version 3; the script and report formats at version 1; the room and tileset formats at version 1 and every fixture room's canonical text; the visual goldens; the template check's pinned output.
+
+## 6. Stop conditions
+
+- A done-when check fails: restore the step's files from the last commit, mark the step skipped, and continue with the steps that don't depend on it. Steps 2 and 3 depend on Step 1, Step 3 on Step 2, Steps 5 and 6 on Step 4, and Step 6 on Step 5; Steps 4 and 5 do not need Step 1 (the editor then shows no mark and drops its detach test). Step 7 records what landed.
+- Step 1's guards move anything but the two `allocated_bytes` by multiples of 24 bytes: stop Step 1.
+- Any step moves 01's `pit`, a 02 pin other than Step 1's, the physics hashes, the kit's determinism pin, a schedule snapshot or a golden: stop that step.
+- A file outside a step's list needs changing, beyond a pin its own change forces (named with its reason in the evidence row): stop the step.
+- The editor's closed frame needs a schedule system or an allocation to work: stop Step 5 and record why in the evidence log.
+
+## 7. Critique
+
+Not run: `critique: codex exec failed (exit 1, usage limit reached)`. Round 1 (gpt-6-astra, `--raw --repo`, 2026-11-09, the tree at `1a971dc9` with this draft) stopped at the plan's weekly limit after 18 commands (228.6 KB read; usage 5h 11% → 24%, week 98% → 100%) and wrote no finding; the weekly window resets 2026-11-10 23:25 UTC.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+
+## Evidence log
+
+| Step | Date | Verdict | Key numbers | Paths |
+| --- | --- | --- | --- | --- |
+
+## Follow-ups
