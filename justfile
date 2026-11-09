@@ -78,7 +78,7 @@ script-test: perf-test
     python3 -B templates/basic/tools/sounds.py --check
     python3 -B templates/basic/tools/sprites.py --check
     python3 -B templates/basic/tools/icon.py --check
-    python3 -B templates/basic/tools/logo.py --check
+    python3 -B templates/basic/tools/boot.py --check
 
 # Dependency policy: advisories, licenses, bans, sources.
 deps:

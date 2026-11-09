@@ -52,10 +52,9 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - The kit's `Conduct` exported at its root and in its prelude, and a Rust builder for a projectile's `end` blast (`D-244`), when a game builds them in Rust rather than in data.
 - Camera rigs past 7.18's: a rig's rotation, saved rigs, a data kind of rigs, a follow of another entity in data, a zone's bounds from its box and `camera` among the world cues' actions (`D-249`), each when a game needs it.
 - Record and replay of play: the player's inputs written each fixed step in `tungsten run --script`'s format from a save, so a playtest bug replays as a script and lands as a test; a determinism check first (the same script giving the same hashes twice and at 30, 60 and 144 Hz). A feature with its own plan and decision, when the track has room.
-- The template's logo after the owner's review of its first draw (`perf-runs/20261108-template-logo/sheet.png`, local): each round of notes a small asset session on `tools/logo.py` at Opus 5.5 max, re-shooting only what changed (`D-250`).
-- A Windows icon from the template's logo, its coiled W in place of the gem's diamond (`tools/icon.py`).
+- A Windows icon from the boot splash's element tile, its W in place of the gem's diamond (`tools/icon.py`, `D-265`).
 - The template's perf row on the kit's `tagged` probe in place of the sample's `player`, at a release that re-baselines the row, since a sitting refuses base and candidate rows whose scripts differ (`D-250`).
-- Mipmaps for linear-filtered sprites drawn below their size: a sprite texture has one level, so the template's boot logo at 288 × 96 (a 1280 × 720 window at OS scale 1) is a 2.67× bilinear minification (7.11's Step 14).
+- Mipmaps for linear-filtered sprites drawn below their size: a sprite texture has one level, so 7.11's boot logo at 288 × 96 (a 1280 × 720 window at OS scale 1) was a 2.67× bilinear minification (7.11's Step 14).
 - Phase 7, Seams (redo §3, in [phase-7.md](docs/plans/phase-7.md)'s order, one track): saves, the UI pass (7.17), screens as data (7.20), the kit pass, camera rigs (7.18), the template, core hardening (7.21), the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
 - Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, ARPG systems (8.7), 01 refreshed, the template's final pass, proof.
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, records, release candidates, 1.0.

@@ -3981,6 +3981,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Open: a rig's rotation, saved rigs, a data kind of rigs, a follow of another entity in data and a zone's bounds from its box, each waiting for a user; world cues leave `camera` out.
 
 ## D-250 — The template on the engine: `Settings`' game section, Bloom and the focus mute; the action map's labels, device cells and reset; the harness's taps and audio log; typed script actions and the kit's `place` and `tagged`; music per state; the hit flash's material in the engine; the sample on spawners, a flag and a held clock; one sound module; a boot hold and the template's splash
+**Amended by D-265:** the template's splash only; `shell/boot.rs` builds a tungsten atom from the group's logo, a white disc `tools/boot.py` draws, in place of `tools/logo.py`'s logo and bar, and the hold is 2 s; the rest stand.
 **Date:** 2026-11-07
 **Decision:** Redo 7.11 (phase 7's Step 11) lands ten of its fourteen code steps. The shell's move onto `tungsten::screens` and onto these settings (its Steps 6 and 7) stopped, its rows going to 7.13.
 
@@ -4158,3 +4159,14 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - `tungsten schema room` and `tileset` print the formats; `describe` is at version 3.
 - Open: a prefab's `scale` and an instance's sprite `variants` (S-129, S-58), whose pick at a run's spawn needs the flush's naming in `ecs/world.rs`; `tungsten level apply <room> -`, whose `-` the parser takes for an option (`docs/known-issues.md`); seeded generation (P7-16, `level-generation`) and the editor (`level-editor`); 01's level on rooms (7.13).
 - Pins: the physics hashes, the kit's determinism pin, 01's `pit` and 02's thirteen pins hold; 02 gains the `rooms` row and its guard, and the template check takes a room through `tungsten level`.
+
+## D-265 — The template's boot splash: a tungsten atom built as the load runs, drawn from one disc sprite and held 2 s
+**Date:** 2026-11-09
+**Decision:** The template's `shell/boot.rs`, and so every example's shell copy, draws a tungsten atom in place of 7.11's logo and bar, the owner's pick from a look-and-feel pass (`perf-runs/20261109-boot-bw/`, round 9's G1 Neon). (1) The splash is laid out on a 1280 × 720 frame scaled to fit the window, not on the UI's scale: six dotted orbits round the element's tile, typed in the engine's mono on whole-pixel cells; the 74 electrons, landing shell by shell as the load runs, magenta and white with comet tails and soft glows; and readouts of the element, the atom's state and electrons, the configuration and the load's units over a hairline. A wave of light runs out through the orbits as the last electron lands. (2) The atom builds over 60 % of the hold at least: it shows the load's fraction held to the time's share of that build, so a fast load is still seen building, and an electron a slower load lands late arrives whole. The boot group's `hold` goes from 1.5 s to 2 s. (3) Everything but the text is drawn from the group's `logo`, a 32 px white disc that `tools/boot.py` draws (`boot_dot`, replacing `tools/logo.py`, `boot_logo` and `boot_bar`): a glow or an electron from the whole disc, a rect from its solid middle by its UVs, all in one batch in drawing order; the group names no bar. (4) Sprite tints are linear and blend in linear light, while text takes sRGB colours, so the splash decodes its sRGB colours for tints and covers each glow's layers at the 2.2 power of the coverage that reads the same in sRGB.
+
+**Why:** The owner asked for a black-and-white, brutalist, technical splash and chose this one over nine rounds of mockups: the element's own atom names the engine, and the load's real progress drives it. One disc serves every shape, so the boot group needs one page and the view one batch, and the frame's scaling keeps the mockup's layout in any window.
+
+**Consequences:**
+- Amends `D-250` as its marker line says.
+- The template's tests check the fit in six windows, the build's pacing, the readouts, the tile's whole-pixel rows and the fades; the shell stays within `D-199`'s 2,900 lines.
+- Open: a Windows icon from the tile (Later).
