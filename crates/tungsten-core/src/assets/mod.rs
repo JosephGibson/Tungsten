@@ -36,9 +36,10 @@ pub use particle::{
 pub use prefab::{PrefabData, PrefabError, PrefabRegistry, PreparedPrefab};
 pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, SpriteAssetId, TextureHandle};
 pub use room::{
-    CompiledPlace, CompiledRoom, PlaceShape, Room, RoomBudget, RoomCommand, RoomCommandError,
-    RoomContext, RoomError, RoomJournal, RoomLayer, RoomLayerKind, RoomObject, RoomPlace,
-    RoomRegistry, RoomShape, RouteStop, SpawnedRoom, Tileset, TilesetTile,
+    CompiledPlace, CompiledRoom, Generate, GenerateError, GeneratedRooms, Generation, PlaceShape,
+    Room, RoomBudget, RoomCommand, RoomCommandError, RoomContext, RoomError, RoomGenerator,
+    RoomGenerators, RoomJournal, RoomLayer, RoomLayerKind, RoomObject, RoomPlace, RoomRegistry,
+    RoomShape, RouteStop, SpawnedRoom, Tileset, TilesetTile,
 };
 pub use scene::{
     SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,

@@ -227,28 +227,35 @@ fn log_patch(what: &str, patch: &tungsten_core::assets::room::RoomPatch) {
     }
 }
 
+/// The manifest reload's warnings for what `held` registers and
+/// `new_manifest` no longer lists: each tileset, and each room but a
+/// generated one, which no manifest lists.
+pub(crate) fn stale_warnings(held: &RoomRegistry, new_manifest: &ResolvedManifest) -> Vec<String> {
+    let tilesets = held
+        .tileset_ids()
+        .filter(|id| !new_manifest.tilesets.contains_key(*id))
+        .map(|id| format!("Manifest reload: tileset '{id}' removed — keeping stale"));
+    let rooms = held
+        .ids()
+        .filter(|id| !new_manifest.rooms.contains_key(*id) && held.generation(id).is_none())
+        .map(|id| format!("Manifest reload: room '{id}' removed — keeping stale"));
+    tilesets.chain(rooms).collect()
+}
+
 /// The manifest reload's rooms and tilesets (redo 7.12), after its prefabs,
 /// which their objects name: a new tileset registers; a new room inserts
 /// with its map, its objects checked against the prefabs now loaded (a
 /// failure logs while its tiles stay); every other listed tileset and room
 /// is read again and patched as [`reload_room_files`] patches a batch, a
 /// moved file's path recorded; one the manifest no longer lists warns and
-/// stays. A manifest without rooms or tilesets, in a World that holds
-/// none, does nothing.
+/// stays, but for a generated room, which no manifest lists. A manifest
+/// without rooms or tilesets, in a World that holds none, does nothing.
 pub(crate) fn reload_rooms_from_manifest(new_manifest: &ResolvedManifest, world: &mut World) {
     if !has_rooms(new_manifest) && !world.has_resource::<RoomRegistry>() {
         return;
     }
-    let held = registry(world);
-    for id in held.tileset_ids() {
-        if !new_manifest.tilesets.contains_key(id) {
-            log::warn!("Manifest reload: tileset '{id}' removed — keeping stale");
-        }
-    }
-    for id in held.ids() {
-        if !new_manifest.rooms.contains_key(id) {
-            log::warn!("Manifest reload: room '{id}' removed — keeping stale");
-        }
+    for line in stale_warnings(registry(world), new_manifest) {
+        log::warn!("{line}");
     }
     let mut tilesets: Vec<(&String, &PathBuf)> = new_manifest
         .tilesets

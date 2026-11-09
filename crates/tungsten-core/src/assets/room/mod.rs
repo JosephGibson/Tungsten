@@ -52,6 +52,7 @@ use crate::post::PostPass;
 
 mod command;
 mod compile;
+mod generate;
 mod patch;
 mod rules;
 mod spawn;
@@ -63,6 +64,9 @@ pub use command::{
     RoomJournal, SetCommand,
 };
 pub use compile::{CompiledPlace, CompiledRoom, PlaceShape, ROOM_OBJECT_LAYER};
+pub use generate::{
+    Generate, GenerateError, GeneratedRooms, Generation, RoomGenerator, RoomGenerators,
+};
 pub use patch::{MapPatch, RoomPatch, RoomPatchError};
 pub use rules::{
     CellKind, PrefabBody, RoomFinding, Support, Terrain, prefab_body, slope_normal, slope_top,

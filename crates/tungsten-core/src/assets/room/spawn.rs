@@ -15,7 +15,10 @@ use std::path::{Path, PathBuf};
 
 use glam::Vec2;
 
-use super::{CompiledPlace, CompiledRoom, PlaceShape, Room, RoomError, RoomJournal, Tileset, hint};
+use super::{
+    CompiledPlace, CompiledRoom, Generation, PlaceShape, Room, RoomError, RoomJournal, Tileset,
+    hint,
+};
 use crate::assets::{TilemapInstance, TilemapRegistry};
 use crate::ecs::{Bundle, Entity, World};
 use crate::lighting::AmbientLight;
@@ -24,8 +27,8 @@ use crate::post::PostStack;
 use crate::save::{AreaError, SaveState, name};
 
 /// The rooms and tilesets a World holds, a resource: each room's document,
-/// its compiled form and file, and the instance its last spawn made; each
-/// tileset with its file. The asset loader inserts it only for a manifest
+/// its compiled form and file, the instance its last spawn made and, for a
+/// generated room, its [`Generation`]; each tileset with its file. The asset loader inserts it only for a manifest
 /// that lists a room or a tileset, and [`World::insert_room`] when a game
 /// builds rooms in code.
 #[derive(Debug, Default)]
@@ -40,6 +43,7 @@ pub(super) struct Registered {
     pub(super) compiled: CompiledRoom,
     pub(super) path: Option<PathBuf>,
     pub(super) live: Option<Entity>,
+    pub(super) generation: Option<Generation>,
 }
 
 #[derive(Debug)]
@@ -157,6 +161,15 @@ impl RoomRegistry {
     pub fn live(&self, id: &str) -> Option<Entity> {
         self.rooms.get(id).and_then(|entry| entry.live)
     }
+
+    /// What generated room `id`; `None` for a room a file or
+    /// [`World::insert_room`] gave, or none.
+    #[must_use]
+    pub fn generation(&self, id: &str) -> Option<&Generation> {
+        self.rooms
+            .get(id)
+            .and_then(|entry| entry.generation.as_ref())
+    }
 }
 
 /// A room [`World::spawn_room`] spawned: its instance, its objects by ID
@@ -225,7 +238,8 @@ impl World {
     /// in code), and the World's physics layer names, then registers it: its
     /// map in the `TilemapRegistry` under `id` (auto-tiled there) and the
     /// room in the `RoomRegistry`, each inserted when the World has none.
-    /// A room inserted again keeps the record of its live instance.
+    /// A room inserted again keeps the record of its live instance; a
+    /// generated room inserted again is no longer a generated one.
     ///
     /// # Errors
     ///
@@ -284,6 +298,22 @@ impl World {
                 format!("`{id}` is a tilemap's ID; a room's ID is its map's"),
             ));
         }
+        self.register_room(id, room, compiled, path, None);
+        Ok(())
+    }
+
+    /// Registers room `id`, compiled: its map in the `TilemapRegistry`
+    /// (auto-tiled there) and the room in the `RoomRegistry` with its file
+    /// and generation, each inserted when the World has none; the record of
+    /// its live instance kept.
+    pub(super) fn register_room(
+        &mut self,
+        id: String,
+        document: Room,
+        compiled: CompiledRoom,
+        path: Option<PathBuf>,
+        generation: Option<Generation>,
+    ) {
         if !self.has_resource::<TilemapRegistry>() {
             self.insert_resource(TilemapRegistry::new());
         }
@@ -297,13 +327,13 @@ impl World {
         rooms.insert(
             id,
             Registered {
-                document: room,
+                document,
                 compiled,
                 path,
                 live,
+                generation,
             },
         );
-        Ok(())
     }
 
     /// Spawns room `id` at `origin`, as [`spawn_area`](Self::spawn_area)
@@ -383,7 +413,8 @@ impl World {
     }
 
     /// Removes room `id` and returns its document: its entry in the
-    /// [`RoomRegistry`] (document, compiled form, file and live record), its
+    /// [`RoomRegistry`] (document, compiled form, file, live record and
+    /// generation), its
     /// map from the `TilemapRegistry`, its [`RoomJournal`] history, and its
     /// area from the World's save state: loaded, kept, and every name given
     /// in it. Nothing despawns; the game despawns the room's entities first.

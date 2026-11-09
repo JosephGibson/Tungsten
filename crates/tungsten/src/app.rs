@@ -36,7 +36,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tungsten_core::assets::{
     FontRegistry, LoadedManifest, ParticleConfigRegistry, ParticleMeshRegistry, ResolvedManifest,
-    ShaderRegistry, SoundRegistry, TilemapRegistry,
+    RoomGenerator, ShaderRegistry, SoundRegistry, TilemapRegistry,
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack, PostTail};
@@ -920,6 +920,18 @@ impl App {
         name: &str,
     ) {
         self.world.register_saved_resource::<T>(name);
+    }
+
+    /// [`World::register_generator`] on the app's world: rooms generated
+    /// from a seed by `generator`, run by `World::generate_rooms`, a script's
+    /// `generate` step and `tungsten check`'s sweep over seeds.
+    ///
+    /// # Panics
+    ///
+    /// When `id` is not `[a-z][a-z0-9_]*` or is already a generator's.
+    #[track_caller]
+    pub fn register_generator(&mut self, id: &str, generator: impl RoomGenerator) {
+        self.world.register_generator(id, generator);
     }
 
     /// Builds `plugin` into the schedule and the world now.

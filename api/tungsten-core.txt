@@ -1999,6 +1999,51 @@ impl core::marker::Unpin for tungsten_core::assets::room::CellKind
 impl core::marker::UnsafeUnpin for tungsten_core::assets::room::CellKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::CellKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::CellKind
+#[non_exhaustive] pub enum tungsten_core::assets::room::GenerateError
+pub tungsten_core::assets::room::GenerateError::Clash
+pub tungsten_core::assets::room::GenerateError::Clash::name: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Clash::other: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Empty
+pub tungsten_core::assets::room::GenerateError::Empty::generator: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Empty::seed: u64
+pub tungsten_core::assets::room::GenerateError::Failed
+pub tungsten_core::assets::room::GenerateError::Failed::generator: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Failed::message: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Failed::seed: u64
+pub tungsten_core::assets::room::GenerateError::Prefix
+pub tungsten_core::assets::room::GenerateError::Prefix::prefix: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Room
+pub tungsten_core::assets::room::GenerateError::Room::room: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Room::source: tungsten_core::assets::room::RoomError
+pub tungsten_core::assets::room::GenerateError::Taken
+pub tungsten_core::assets::room::GenerateError::Taken::room: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Template
+pub tungsten_core::assets::room::GenerateError::Template::generator: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Template::message: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Template::seed: u64
+pub tungsten_core::assets::room::GenerateError::Template::template: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::UnknownGenerator
+pub tungsten_core::assets::room::GenerateError::UnknownGenerator::generator: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::UnknownGenerator::hint: alloc::string::String
+impl core::clone::Clone for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::clone(&self) -> tungsten_core::GenerateError
+impl core::cmp::Eq for tungsten_core::GenerateError
+impl core::cmp::PartialEq for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::eq(&self, &tungsten_core::GenerateError) -> bool
+impl core::error::Error for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::GenerateError
+impl core::marker::Freeze for tungsten_core::GenerateError
+impl core::marker::Send for tungsten_core::GenerateError
+impl core::marker::Sync for tungsten_core::GenerateError
+impl core::marker::Unpin for tungsten_core::GenerateError
+impl core::marker::UnsafeUnpin for tungsten_core::GenerateError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::GenerateError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::GenerateError
 #[non_exhaustive] pub enum tungsten_core::assets::room::MapPatch
 pub tungsten_core::assets::room::MapPatch::Cells(usize)
 pub tungsten_core::assets::room::MapPatch::Inserted
@@ -2253,6 +2298,66 @@ impl core::marker::Unpin for tungsten_core::assets::room::EraseCommand
 impl core::marker::UnsafeUnpin for tungsten_core::assets::room::EraseCommand
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::EraseCommand
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::EraseCommand
+pub struct tungsten_core::assets::room::Generate<'w>
+impl tungsten_core::Generate<'_>
+pub fn tungsten_core::Generate<'_>::add(&mut self, &str, tungsten_core::assets::room::Room, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::Generate<'_>::apply(&mut self, &str, &mut tungsten_core::assets::room::Room, &[tungsten_core::RoomCommand]) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::Generate<'_>::id(&self, &str) -> alloc::string::String
+pub fn tungsten_core::Generate<'_>::prefix(&self) -> &str
+pub fn tungsten_core::Generate<'_>::rng(&mut self) -> &mut tungsten_core::rng::Pcg32
+pub fn tungsten_core::Generate<'_>::seed(&self) -> u64
+pub fn tungsten_core::Generate<'_>::template(&mut self, &str) -> core::result::Result<tungsten_core::assets::room::Room, alloc::string::String>
+pub fn tungsten_core::Generate<'_>::version(&self) -> u32
+impl<'w> core::marker::Freeze for tungsten_core::Generate<'w>
+impl<'w> !core::marker::Send for tungsten_core::Generate<'w>
+impl<'w> !core::marker::Sync for tungsten_core::Generate<'w>
+impl<'w> core::marker::Unpin for tungsten_core::Generate<'w>
+impl<'w> core::marker::UnsafeUnpin for tungsten_core::Generate<'w>
+impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Generate<'w>
+impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::Generate<'w>
+pub struct tungsten_core::assets::room::GeneratedRooms
+impl tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::generation(&self) -> &tungsten_core::Generation
+pub fn tungsten_core::GeneratedRooms::rooms(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, glam::f32::vec2::Vec2)>
+impl core::clone::Clone for tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::clone(&self) -> tungsten_core::GeneratedRooms
+impl core::cmp::PartialEq for tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::eq(&self, &tungsten_core::GeneratedRooms) -> bool
+impl core::fmt::Debug for tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::GeneratedRooms
+impl core::marker::Freeze for tungsten_core::GeneratedRooms
+impl core::marker::Send for tungsten_core::GeneratedRooms
+impl core::marker::Sync for tungsten_core::GeneratedRooms
+impl core::marker::Unpin for tungsten_core::GeneratedRooms
+impl core::marker::UnsafeUnpin for tungsten_core::GeneratedRooms
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::GeneratedRooms
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::GeneratedRooms
+#[non_exhaustive] pub struct tungsten_core::assets::room::Generation
+pub tungsten_core::assets::room::Generation::generator: alloc::string::String
+pub tungsten_core::assets::room::Generation::prefix: alloc::string::String
+pub tungsten_core::assets::room::Generation::seed: u64
+pub tungsten_core::assets::room::Generation::templates: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub tungsten_core::assets::room::Generation::version: u32
+impl core::clone::Clone for tungsten_core::Generation
+pub fn tungsten_core::Generation::clone(&self) -> tungsten_core::Generation
+impl core::cmp::Eq for tungsten_core::Generation
+impl core::cmp::PartialEq for tungsten_core::Generation
+pub fn tungsten_core::Generation::eq(&self, &tungsten_core::Generation) -> bool
+impl core::fmt::Debug for tungsten_core::Generation
+pub fn tungsten_core::Generation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::Generation
+impl serde_core::ser::Serialize for tungsten_core::Generation
+pub fn tungsten_core::Generation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::Generation
+pub fn tungsten_core::Generation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::Generation
+impl core::marker::Send for tungsten_core::Generation
+impl core::marker::Sync for tungsten_core::Generation
+impl core::marker::Unpin for tungsten_core::Generation
+impl core::marker::UnsafeUnpin for tungsten_core::Generation
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Generation
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::Generation
 #[non_exhaustive] pub struct tungsten_core::assets::room::JournalEntry
 pub tungsten_core::assets::room::JournalEntry::batch: alloc::vec::Vec<tungsten_core::RoomCommand>
 pub tungsten_core::assets::room::JournalEntry::inverse: alloc::vec::Vec<tungsten_core::RoomCommand>
@@ -2558,6 +2663,24 @@ impl core::marker::Unpin for tungsten_core::assets::room::RoomFinding
 impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomFinding
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomFinding
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomFinding
+pub struct tungsten_core::assets::room::RoomGenerators
+impl tungsten_core::RoomGenerators
+pub fn tungsten_core::RoomGenerators::get(&self, &str) -> core::option::Option<&dyn tungsten_core::RoomGenerator>
+pub fn tungsten_core::RoomGenerators::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::RoomGenerators::is_empty(&self) -> bool
+pub fn tungsten_core::RoomGenerators::new() -> Self
+pub fn tungsten_core::RoomGenerators::register(&mut self, &str, impl tungsten_core::RoomGenerator)
+impl core::default::Default for tungsten_core::RoomGenerators
+pub fn tungsten_core::RoomGenerators::default() -> tungsten_core::RoomGenerators
+impl core::fmt::Debug for tungsten_core::RoomGenerators
+pub fn tungsten_core::RoomGenerators::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::RoomGenerators
+impl !core::marker::Send for tungsten_core::RoomGenerators
+impl !core::marker::Sync for tungsten_core::RoomGenerators
+impl core::marker::Unpin for tungsten_core::RoomGenerators
+impl core::marker::UnsafeUnpin for tungsten_core::RoomGenerators
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::RoomGenerators
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::RoomGenerators
 pub struct tungsten_core::assets::room::RoomJournal
 impl tungsten_core::RoomJournal
 pub const tungsten_core::RoomJournal::LIMIT: usize
@@ -2711,6 +2834,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomP
 pub struct tungsten_core::assets::room::RoomRegistry
 impl tungsten_core::RoomRegistry
 pub fn tungsten_core::RoomRegistry::compiled(&self, &str) -> core::option::Option<&tungsten_core::assets::CompiledRoom>
+pub fn tungsten_core::RoomRegistry::generation(&self, &str) -> core::option::Option<&tungsten_core::Generation>
 pub fn tungsten_core::RoomRegistry::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::RoomRegistry::insert_tileset(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::tileset::Tileset)
 pub fn tungsten_core::RoomRegistry::insert_tileset_with_path(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::tileset::Tileset, std::path::PathBuf)
@@ -2885,6 +3009,11 @@ pub const tungsten_core::assets::room::MAX_ROOM_CELLS: u32
 pub const tungsten_core::assets::room::ROOM_OBJECT_LAYER: &str
 pub const tungsten_core::assets::room::ROOM_VERSION: u32
 pub const tungsten_core::assets::room::TILESET_VERSION: u32
+pub trait tungsten_core::assets::room::RoomGenerator: 'static
+pub fn tungsten_core::assets::room::RoomGenerator::generate(&self, &mut tungsten_core::Generate<'_>) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::assets::room::RoomGenerator::migrate(&self, &tungsten_core::Generation, core::option::Option<&tungsten_core::Generation>, &mut serde_json::value::Value) -> bool
+pub fn tungsten_core::assets::room::RoomGenerator::reproduces(&self, u32) -> bool
+pub fn tungsten_core::assets::room::RoomGenerator::version(&self) -> u32
 pub fn tungsten_core::assets::room::json_schema() -> serde_json::value::Value
 pub fn tungsten_core::assets::room::prefab_body(&alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>, core::option::Option<&tungsten_core::physics::PhysicsLayers>) -> core::result::Result<core::option::Option<tungsten_core::assets::room::PrefabBody>, alloc::string::String>
 pub fn tungsten_core::assets::room::slope_normal(tungsten_core::assets::tilemap::Slope) -> glam::f32::vec2::Vec2
@@ -3755,6 +3884,51 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::FilterMode
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FilterMode
+#[non_exhaustive] pub enum tungsten_core::assets::GenerateError
+pub tungsten_core::assets::GenerateError::Clash
+pub tungsten_core::assets::GenerateError::Clash::name: alloc::string::String
+pub tungsten_core::assets::GenerateError::Clash::other: alloc::string::String
+pub tungsten_core::assets::GenerateError::Empty
+pub tungsten_core::assets::GenerateError::Empty::generator: alloc::string::String
+pub tungsten_core::assets::GenerateError::Empty::seed: u64
+pub tungsten_core::assets::GenerateError::Failed
+pub tungsten_core::assets::GenerateError::Failed::generator: alloc::string::String
+pub tungsten_core::assets::GenerateError::Failed::message: alloc::string::String
+pub tungsten_core::assets::GenerateError::Failed::seed: u64
+pub tungsten_core::assets::GenerateError::Prefix
+pub tungsten_core::assets::GenerateError::Prefix::prefix: alloc::string::String
+pub tungsten_core::assets::GenerateError::Room
+pub tungsten_core::assets::GenerateError::Room::room: alloc::string::String
+pub tungsten_core::assets::GenerateError::Room::source: tungsten_core::assets::room::RoomError
+pub tungsten_core::assets::GenerateError::Taken
+pub tungsten_core::assets::GenerateError::Taken::room: alloc::string::String
+pub tungsten_core::assets::GenerateError::Template
+pub tungsten_core::assets::GenerateError::Template::generator: alloc::string::String
+pub tungsten_core::assets::GenerateError::Template::message: alloc::string::String
+pub tungsten_core::assets::GenerateError::Template::seed: u64
+pub tungsten_core::assets::GenerateError::Template::template: alloc::string::String
+pub tungsten_core::assets::GenerateError::UnknownGenerator
+pub tungsten_core::assets::GenerateError::UnknownGenerator::generator: alloc::string::String
+pub tungsten_core::assets::GenerateError::UnknownGenerator::hint: alloc::string::String
+impl core::clone::Clone for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::clone(&self) -> tungsten_core::GenerateError
+impl core::cmp::Eq for tungsten_core::GenerateError
+impl core::cmp::PartialEq for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::eq(&self, &tungsten_core::GenerateError) -> bool
+impl core::error::Error for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::GenerateError
+impl core::marker::Freeze for tungsten_core::GenerateError
+impl core::marker::Send for tungsten_core::GenerateError
+impl core::marker::Sync for tungsten_core::GenerateError
+impl core::marker::Unpin for tungsten_core::GenerateError
+impl core::marker::UnsafeUnpin for tungsten_core::GenerateError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::GenerateError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::GenerateError
 pub enum tungsten_core::assets::InitialVelocity
 pub tungsten_core::assets::InitialVelocity::Cone
 pub tungsten_core::assets::InitialVelocity::Cone::direction: [f32; 2]
@@ -4734,6 +4908,66 @@ impl core::marker::Unpin for tungsten_core::assets::registry::FontRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::FontRegistry
+pub struct tungsten_core::assets::Generate<'w>
+impl tungsten_core::Generate<'_>
+pub fn tungsten_core::Generate<'_>::add(&mut self, &str, tungsten_core::assets::room::Room, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::Generate<'_>::apply(&mut self, &str, &mut tungsten_core::assets::room::Room, &[tungsten_core::RoomCommand]) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::Generate<'_>::id(&self, &str) -> alloc::string::String
+pub fn tungsten_core::Generate<'_>::prefix(&self) -> &str
+pub fn tungsten_core::Generate<'_>::rng(&mut self) -> &mut tungsten_core::rng::Pcg32
+pub fn tungsten_core::Generate<'_>::seed(&self) -> u64
+pub fn tungsten_core::Generate<'_>::template(&mut self, &str) -> core::result::Result<tungsten_core::assets::room::Room, alloc::string::String>
+pub fn tungsten_core::Generate<'_>::version(&self) -> u32
+impl<'w> core::marker::Freeze for tungsten_core::Generate<'w>
+impl<'w> !core::marker::Send for tungsten_core::Generate<'w>
+impl<'w> !core::marker::Sync for tungsten_core::Generate<'w>
+impl<'w> core::marker::Unpin for tungsten_core::Generate<'w>
+impl<'w> core::marker::UnsafeUnpin for tungsten_core::Generate<'w>
+impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Generate<'w>
+impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::Generate<'w>
+pub struct tungsten_core::assets::GeneratedRooms
+impl tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::generation(&self) -> &tungsten_core::Generation
+pub fn tungsten_core::GeneratedRooms::rooms(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, glam::f32::vec2::Vec2)>
+impl core::clone::Clone for tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::clone(&self) -> tungsten_core::GeneratedRooms
+impl core::cmp::PartialEq for tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::eq(&self, &tungsten_core::GeneratedRooms) -> bool
+impl core::fmt::Debug for tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::GeneratedRooms
+impl core::marker::Freeze for tungsten_core::GeneratedRooms
+impl core::marker::Send for tungsten_core::GeneratedRooms
+impl core::marker::Sync for tungsten_core::GeneratedRooms
+impl core::marker::Unpin for tungsten_core::GeneratedRooms
+impl core::marker::UnsafeUnpin for tungsten_core::GeneratedRooms
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::GeneratedRooms
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::GeneratedRooms
+#[non_exhaustive] pub struct tungsten_core::assets::Generation
+pub tungsten_core::assets::Generation::generator: alloc::string::String
+pub tungsten_core::assets::Generation::prefix: alloc::string::String
+pub tungsten_core::assets::Generation::seed: u64
+pub tungsten_core::assets::Generation::templates: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub tungsten_core::assets::Generation::version: u32
+impl core::clone::Clone for tungsten_core::Generation
+pub fn tungsten_core::Generation::clone(&self) -> tungsten_core::Generation
+impl core::cmp::Eq for tungsten_core::Generation
+impl core::cmp::PartialEq for tungsten_core::Generation
+pub fn tungsten_core::Generation::eq(&self, &tungsten_core::Generation) -> bool
+impl core::fmt::Debug for tungsten_core::Generation
+pub fn tungsten_core::Generation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::Generation
+impl serde_core::ser::Serialize for tungsten_core::Generation
+pub fn tungsten_core::Generation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::Generation
+pub fn tungsten_core::Generation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::Generation
+impl core::marker::Send for tungsten_core::Generation
+impl core::marker::Sync for tungsten_core::Generation
+impl core::marker::Unpin for tungsten_core::Generation
+impl core::marker::UnsafeUnpin for tungsten_core::Generation
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Generation
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::Generation
 pub struct tungsten_core::assets::LayerPhysics
 pub tungsten_core::assets::LayerPhysics::layers: u32
 pub tungsten_core::assets::LayerPhysics::mask: u32
@@ -5588,6 +5822,24 @@ impl core::marker::Unpin for tungsten_core::assets::room::RoomError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomError
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomError
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomError
+pub struct tungsten_core::assets::RoomGenerators
+impl tungsten_core::RoomGenerators
+pub fn tungsten_core::RoomGenerators::get(&self, &str) -> core::option::Option<&dyn tungsten_core::RoomGenerator>
+pub fn tungsten_core::RoomGenerators::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::RoomGenerators::is_empty(&self) -> bool
+pub fn tungsten_core::RoomGenerators::new() -> Self
+pub fn tungsten_core::RoomGenerators::register(&mut self, &str, impl tungsten_core::RoomGenerator)
+impl core::default::Default for tungsten_core::RoomGenerators
+pub fn tungsten_core::RoomGenerators::default() -> tungsten_core::RoomGenerators
+impl core::fmt::Debug for tungsten_core::RoomGenerators
+pub fn tungsten_core::RoomGenerators::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::RoomGenerators
+impl !core::marker::Send for tungsten_core::RoomGenerators
+impl !core::marker::Sync for tungsten_core::RoomGenerators
+impl core::marker::Unpin for tungsten_core::RoomGenerators
+impl core::marker::UnsafeUnpin for tungsten_core::RoomGenerators
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::RoomGenerators
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::RoomGenerators
 pub struct tungsten_core::assets::RoomJournal
 impl tungsten_core::RoomJournal
 pub const tungsten_core::RoomJournal::LIMIT: usize
@@ -5690,6 +5942,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomP
 pub struct tungsten_core::assets::RoomRegistry
 impl tungsten_core::RoomRegistry
 pub fn tungsten_core::RoomRegistry::compiled(&self, &str) -> core::option::Option<&tungsten_core::assets::CompiledRoom>
+pub fn tungsten_core::RoomRegistry::generation(&self, &str) -> core::option::Option<&tungsten_core::Generation>
 pub fn tungsten_core::RoomRegistry::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::RoomRegistry::insert_tileset(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::tileset::Tileset)
 pub fn tungsten_core::RoomRegistry::insert_tileset_with_path(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::tileset::Tileset, std::path::PathBuf)
@@ -6360,6 +6613,11 @@ impl tungsten_core::assets::particle::Lerp for [f32; 4]
 pub fn [f32; 4]::lerp(Self, Self, f32) -> Self
 impl tungsten_core::assets::particle::Lerp for f32
 pub fn f32::lerp(Self, Self, f32) -> Self
+pub trait tungsten_core::assets::RoomGenerator: 'static
+pub fn tungsten_core::assets::RoomGenerator::generate(&self, &mut tungsten_core::Generate<'_>) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::assets::RoomGenerator::migrate(&self, &tungsten_core::Generation, core::option::Option<&tungsten_core::Generation>, &mut serde_json::value::Value) -> bool
+pub fn tungsten_core::assets::RoomGenerator::reproduces(&self, u32) -> bool
+pub fn tungsten_core::assets::RoomGenerator::version(&self) -> u32
 pub fn tungsten_core::assets::oversized<'a, 'b>(&'b [tungsten_core::assets::atlas::PackInput<'a>], u32, u32) -> core::option::Option<&'b tungsten_core::assets::atlas::PackInput<'a>>
 pub fn tungsten_core::assets::pack_shelf(&[tungsten_core::assets::atlas::PackInput<'_>], u32, u32) -> tungsten_core::assets::atlas::PackResult
 pub type tungsten_core::assets::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>
@@ -8766,6 +9024,9 @@ pub fn tungsten_core::World::resource_mut<T: 'static>(&mut self) -> &mut T
 pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
+impl tungsten_core::World
+pub fn tungsten_core::World::generate_rooms(&mut self, &str, u64, &str) -> core::result::Result<tungsten_core::GeneratedRooms, tungsten_core::GenerateError>
+pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_core::RoomGenerator)
 impl tungsten_core::World
 pub fn tungsten_core::World::insert_room(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
 pub fn tungsten_core::World::insert_room_with_path(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room, std::path::PathBuf) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
@@ -18579,6 +18840,51 @@ impl core::marker::Unpin for tungsten_core::input::GamepadButton
 impl core::marker::UnsafeUnpin for tungsten_core::input::GamepadButton
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::GamepadButton
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::GamepadButton
+#[non_exhaustive] pub enum tungsten_core::GenerateError
+pub tungsten_core::GenerateError::Clash
+pub tungsten_core::GenerateError::Clash::name: alloc::string::String
+pub tungsten_core::GenerateError::Clash::other: alloc::string::String
+pub tungsten_core::GenerateError::Empty
+pub tungsten_core::GenerateError::Empty::generator: alloc::string::String
+pub tungsten_core::GenerateError::Empty::seed: u64
+pub tungsten_core::GenerateError::Failed
+pub tungsten_core::GenerateError::Failed::generator: alloc::string::String
+pub tungsten_core::GenerateError::Failed::message: alloc::string::String
+pub tungsten_core::GenerateError::Failed::seed: u64
+pub tungsten_core::GenerateError::Prefix
+pub tungsten_core::GenerateError::Prefix::prefix: alloc::string::String
+pub tungsten_core::GenerateError::Room
+pub tungsten_core::GenerateError::Room::room: alloc::string::String
+pub tungsten_core::GenerateError::Room::source: tungsten_core::assets::room::RoomError
+pub tungsten_core::GenerateError::Taken
+pub tungsten_core::GenerateError::Taken::room: alloc::string::String
+pub tungsten_core::GenerateError::Template
+pub tungsten_core::GenerateError::Template::generator: alloc::string::String
+pub tungsten_core::GenerateError::Template::message: alloc::string::String
+pub tungsten_core::GenerateError::Template::seed: u64
+pub tungsten_core::GenerateError::Template::template: alloc::string::String
+pub tungsten_core::GenerateError::UnknownGenerator
+pub tungsten_core::GenerateError::UnknownGenerator::generator: alloc::string::String
+pub tungsten_core::GenerateError::UnknownGenerator::hint: alloc::string::String
+impl core::clone::Clone for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::clone(&self) -> tungsten_core::GenerateError
+impl core::cmp::Eq for tungsten_core::GenerateError
+impl core::cmp::PartialEq for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::eq(&self, &tungsten_core::GenerateError) -> bool
+impl core::error::Error for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::GenerateError
+pub fn tungsten_core::GenerateError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::GenerateError
+impl core::marker::Freeze for tungsten_core::GenerateError
+impl core::marker::Send for tungsten_core::GenerateError
+impl core::marker::Sync for tungsten_core::GenerateError
+impl core::marker::Unpin for tungsten_core::GenerateError
+impl core::marker::UnsafeUnpin for tungsten_core::GenerateError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::GenerateError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::GenerateError
 pub enum tungsten_core::InitialVelocity
 pub tungsten_core::InitialVelocity::Cone
 pub tungsten_core::InitialVelocity::Cone::direction: [f32; 2]
@@ -21373,6 +21679,66 @@ impl core::marker::Unpin for tungsten_core::input::GamepadId
 impl core::marker::UnsafeUnpin for tungsten_core::input::GamepadId
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::GamepadId
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::GamepadId
+pub struct tungsten_core::Generate<'w>
+impl tungsten_core::Generate<'_>
+pub fn tungsten_core::Generate<'_>::add(&mut self, &str, tungsten_core::assets::room::Room, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::Generate<'_>::apply(&mut self, &str, &mut tungsten_core::assets::room::Room, &[tungsten_core::RoomCommand]) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::Generate<'_>::id(&self, &str) -> alloc::string::String
+pub fn tungsten_core::Generate<'_>::prefix(&self) -> &str
+pub fn tungsten_core::Generate<'_>::rng(&mut self) -> &mut tungsten_core::rng::Pcg32
+pub fn tungsten_core::Generate<'_>::seed(&self) -> u64
+pub fn tungsten_core::Generate<'_>::template(&mut self, &str) -> core::result::Result<tungsten_core::assets::room::Room, alloc::string::String>
+pub fn tungsten_core::Generate<'_>::version(&self) -> u32
+impl<'w> core::marker::Freeze for tungsten_core::Generate<'w>
+impl<'w> !core::marker::Send for tungsten_core::Generate<'w>
+impl<'w> !core::marker::Sync for tungsten_core::Generate<'w>
+impl<'w> core::marker::Unpin for tungsten_core::Generate<'w>
+impl<'w> core::marker::UnsafeUnpin for tungsten_core::Generate<'w>
+impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Generate<'w>
+impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::Generate<'w>
+pub struct tungsten_core::GeneratedRooms
+impl tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::generation(&self) -> &tungsten_core::Generation
+pub fn tungsten_core::GeneratedRooms::rooms(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, glam::f32::vec2::Vec2)>
+impl core::clone::Clone for tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::clone(&self) -> tungsten_core::GeneratedRooms
+impl core::cmp::PartialEq for tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::eq(&self, &tungsten_core::GeneratedRooms) -> bool
+impl core::fmt::Debug for tungsten_core::GeneratedRooms
+pub fn tungsten_core::GeneratedRooms::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::GeneratedRooms
+impl core::marker::Freeze for tungsten_core::GeneratedRooms
+impl core::marker::Send for tungsten_core::GeneratedRooms
+impl core::marker::Sync for tungsten_core::GeneratedRooms
+impl core::marker::Unpin for tungsten_core::GeneratedRooms
+impl core::marker::UnsafeUnpin for tungsten_core::GeneratedRooms
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::GeneratedRooms
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::GeneratedRooms
+#[non_exhaustive] pub struct tungsten_core::Generation
+pub tungsten_core::Generation::generator: alloc::string::String
+pub tungsten_core::Generation::prefix: alloc::string::String
+pub tungsten_core::Generation::seed: u64
+pub tungsten_core::Generation::templates: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub tungsten_core::Generation::version: u32
+impl core::clone::Clone for tungsten_core::Generation
+pub fn tungsten_core::Generation::clone(&self) -> tungsten_core::Generation
+impl core::cmp::Eq for tungsten_core::Generation
+impl core::cmp::PartialEq for tungsten_core::Generation
+pub fn tungsten_core::Generation::eq(&self, &tungsten_core::Generation) -> bool
+impl core::fmt::Debug for tungsten_core::Generation
+pub fn tungsten_core::Generation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::Generation
+impl serde_core::ser::Serialize for tungsten_core::Generation
+pub fn tungsten_core::Generation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::Generation
+pub fn tungsten_core::Generation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::Generation
+impl core::marker::Send for tungsten_core::Generation
+impl core::marker::Sync for tungsten_core::Generation
+impl core::marker::Unpin for tungsten_core::Generation
+impl core::marker::UnsafeUnpin for tungsten_core::Generation
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Generation
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::Generation
 pub struct tungsten_core::GlitchParams
 pub tungsten_core::GlitchParams::block_strength: f32
 pub tungsten_core::GlitchParams::shift_px: f32
@@ -22908,6 +23274,24 @@ impl core::marker::Unpin for tungsten_core::assets::room::RoomError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::room::RoomError
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::RoomError
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomError
+pub struct tungsten_core::RoomGenerators
+impl tungsten_core::RoomGenerators
+pub fn tungsten_core::RoomGenerators::get(&self, &str) -> core::option::Option<&dyn tungsten_core::RoomGenerator>
+pub fn tungsten_core::RoomGenerators::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::RoomGenerators::is_empty(&self) -> bool
+pub fn tungsten_core::RoomGenerators::new() -> Self
+pub fn tungsten_core::RoomGenerators::register(&mut self, &str, impl tungsten_core::RoomGenerator)
+impl core::default::Default for tungsten_core::RoomGenerators
+pub fn tungsten_core::RoomGenerators::default() -> tungsten_core::RoomGenerators
+impl core::fmt::Debug for tungsten_core::RoomGenerators
+pub fn tungsten_core::RoomGenerators::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::RoomGenerators
+impl !core::marker::Send for tungsten_core::RoomGenerators
+impl !core::marker::Sync for tungsten_core::RoomGenerators
+impl core::marker::Unpin for tungsten_core::RoomGenerators
+impl core::marker::UnsafeUnpin for tungsten_core::RoomGenerators
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::RoomGenerators
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::RoomGenerators
 pub struct tungsten_core::RoomJournal
 impl tungsten_core::RoomJournal
 pub const tungsten_core::RoomJournal::LIMIT: usize
@@ -22934,6 +23318,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::RoomJournal
 pub struct tungsten_core::RoomRegistry
 impl tungsten_core::RoomRegistry
 pub fn tungsten_core::RoomRegistry::compiled(&self, &str) -> core::option::Option<&tungsten_core::assets::CompiledRoom>
+pub fn tungsten_core::RoomRegistry::generation(&self, &str) -> core::option::Option<&tungsten_core::Generation>
 pub fn tungsten_core::RoomRegistry::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::RoomRegistry::insert_tileset(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::tileset::Tileset)
 pub fn tungsten_core::RoomRegistry::insert_tileset_with_path(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::tileset::Tileset, std::path::PathBuf)
@@ -24928,6 +25313,9 @@ pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
 impl tungsten_core::World
+pub fn tungsten_core::World::generate_rooms(&mut self, &str, u64, &str) -> core::result::Result<tungsten_core::GeneratedRooms, tungsten_core::GenerateError>
+pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_core::RoomGenerator)
+impl tungsten_core::World
 pub fn tungsten_core::World::insert_room(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
 pub fn tungsten_core::World::insert_room_with_path(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room, std::path::PathBuf) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
 pub fn tungsten_core::World::remove_room(&mut self, &str) -> core::result::Result<tungsten_core::assets::room::Room, tungsten_core::save::AreaError>
@@ -25142,6 +25530,11 @@ pub fn tungsten_core::Plugin::name(&self) -> &'static str
 impl tungsten_core::schedule::Plugin for tungsten_core::PhysicsPlugin
 pub fn tungsten_core::PhysicsPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
 pub fn tungsten_core::PhysicsPlugin::name(&self) -> &'static str
+pub trait tungsten_core::RoomGenerator: 'static
+pub fn tungsten_core::RoomGenerator::generate(&self, &mut tungsten_core::Generate<'_>) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::RoomGenerator::migrate(&self, &tungsten_core::Generation, core::option::Option<&tungsten_core::Generation>, &mut serde_json::value::Value) -> bool
+pub fn tungsten_core::RoomGenerator::reproduces(&self, u32) -> bool
+pub fn tungsten_core::RoomGenerator::version(&self) -> u32
 pub trait tungsten_core::SaveData: serde_core::ser::Serialize + serde_core::de::DeserializeOwned
 pub const tungsten_core::SaveData::SCHEMA: u32
 pub fn tungsten_core::SaveData::migrate(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>

@@ -556,3 +556,80 @@ mod reloads {
         assert!(crate::asset_loader::reload::reload_new_tilemaps(&edited, &mut world).is_empty());
     }
 }
+
+mod generators {
+    use serde_json::Value;
+    use tungsten_core::assets::{Generate, RoomGenerator, RoomGenerators};
+
+    use super::*;
+    use crate::asset_loader::room::{reload_rooms_from_manifest, stale_warnings};
+
+    /// Two copies of the fixture's `hall`, side by side.
+    struct Pair;
+
+    impl RoomGenerator for Pair {
+        fn version(&self) -> u32 {
+            1
+        }
+
+        fn generate(&self, generation: &mut Generate<'_>) -> Result<(), String> {
+            let hall = generation.template("hall")?;
+            generation.add("a", hall.clone(), [0.0, 0.0])?;
+            generation.add("b", hall, [640.0, 0.0])
+        }
+    }
+
+    #[test]
+    fn app_register_generator_reaches_the_world() {
+        let mut app = App::new(Config::default()).unwrap();
+        app.register_generator("pair", Pair);
+        let world = app.world_mut();
+        let ids: Vec<&str> = world.resource::<RoomGenerators>().ids().collect();
+        assert_eq!(ids, ["pair"]);
+        let manifest = ResolvedManifest::load(fixture().join("manifest.json")).unwrap();
+        load(&manifest, world);
+        let rooms = world.generate_rooms("pair", 1, "pair").unwrap();
+        let ids: Vec<&str> = rooms.rooms().map(|(id, _)| id).collect();
+        assert_eq!(ids, ["pair_a", "pair_b"]);
+        let registry = world.resource::<RoomRegistry>();
+        assert_eq!(registry.generation("pair_b"), Some(rooms.generation()));
+        assert_eq!(registry.generation("hall"), None);
+        assert!(world.resource::<TilemapRegistry>().get("pair_a").is_some());
+    }
+
+    #[test]
+    fn a_manifest_reload_keeps_generated_rooms_without_a_warning() {
+        let dir = fixture_copy();
+        let path = dir.join("manifest.json");
+        let manifest = ResolvedManifest::load(&path).unwrap();
+        let mut world = app_world();
+        load(&manifest, &mut world);
+        world.register_generator("pair", Pair);
+        world.generate_rooms("pair", 1, "pair").unwrap();
+        let held = |world: &World| -> Vec<String> {
+            world
+                .resource::<RoomRegistry>()
+                .ids()
+                .map(str::to_owned)
+                .collect()
+        };
+        assert_eq!(held(&world), ["cave", "hall", "pair_a", "pair_b"]);
+        assert!(stale_warnings(world.resource::<RoomRegistry>(), &manifest).is_empty());
+        // The manifest without `hall`: the authored room it no longer lists
+        // warns, the generated ones do not.
+        let mut edited: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        edited["rooms"].as_object_mut().unwrap().remove("hall");
+        fs::write(&path, edited.to_string()).unwrap();
+        let edited = ResolvedManifest::load(&path).unwrap();
+        assert_eq!(
+            stale_warnings(world.resource::<RoomRegistry>(), &edited),
+            ["Manifest reload: room 'hall' removed — keeping stale"]
+        );
+        reload_rooms_from_manifest(&edited, &mut world);
+        assert_eq!(held(&world), ["cave", "hall", "pair_a", "pair_b"]);
+        let registry = world.resource::<RoomRegistry>();
+        assert!(registry.generation("pair_a").is_some() && registry.path("pair_a").is_none());
+        assert!(world.resource::<TilemapRegistry>().get("pair_b").is_some());
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

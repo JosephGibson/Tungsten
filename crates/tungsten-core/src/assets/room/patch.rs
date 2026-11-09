@@ -389,20 +389,8 @@ impl World {
 
     /// What a batch on room `id`, now `document`, is checked against.
     fn context_parts(&self, id: &str, document: &Room) -> Result<ContextParts, RoomPatchError> {
-        let tileset = tileset_of(self.rooms_with(id)?, id, document)?;
-        let layers = self
-            .get_resource::<PhysicsLayers>()
-            .cloned()
-            .unwrap_or_default();
-        let prefabs = self
-            .get_resource::<PrefabRegistry>()
-            .map(|prefabs| prefabs.ids().map(str::to_owned).collect())
-            .unwrap_or_default();
-        Ok(ContextParts {
-            tileset,
-            layers,
-            prefabs,
-        })
+        self.rooms_with(id)?;
+        ContextParts::of(self, id, document)
     }
 
     /// Prepares room `id`'s patch to `document`, compiled on `tileset`:
@@ -598,15 +586,38 @@ impl World {
 }
 
 /// What a batch's [`RoomContext`] borrows, owned.
-struct ContextParts {
+pub(super) struct ContextParts {
     tileset: Tileset,
     layers: PhysicsLayers,
     prefabs: Vec<String>,
 }
 
 impl ContextParts {
+    /// The parts a batch on `document`, room `id`'s, is checked against:
+    /// the tileset it names from the World's `RoomRegistry`, the World's
+    /// physics layer names and its prefab IDs. Room `id` need not be
+    /// registered, as a generated room is not yet.
+    pub(super) fn of(world: &World, id: &str, document: &Room) -> Result<Self, RoomPatchError> {
+        let empty = RoomRegistry::default();
+        let rooms = world.get_resource::<RoomRegistry>().unwrap_or(&empty);
+        let tileset = tileset_of(rooms, id, document)?;
+        let layers = world
+            .get_resource::<PhysicsLayers>()
+            .cloned()
+            .unwrap_or_default();
+        let prefabs = world
+            .get_resource::<PrefabRegistry>()
+            .map(|prefabs| prefabs.ids().map(str::to_owned).collect())
+            .unwrap_or_default();
+        Ok(Self {
+            tileset,
+            layers,
+            prefabs,
+        })
+    }
+
     /// Runs `check` with the context of room `room`.
-    fn with<T>(&self, room: &str, check: impl FnOnce(&RoomContext<'_>) -> T) -> T {
+    pub(super) fn with<T>(&self, room: &str, check: impl FnOnce(&RoomContext<'_>) -> T) -> T {
         let prefabs: Vec<&str> = self.prefabs.iter().map(String::as_str).collect();
         check(&RoomContext {
             room,
