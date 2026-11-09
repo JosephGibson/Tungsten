@@ -16,6 +16,7 @@
 //! | `scene` | a scene file, relative to the game's folder |
 //! | `screen` | a `ui_screens` ID or a registered screen's name, opened as `tungsten::screens::open` opens it |
 //! | `stage` | `{}`, or `{"ambient": [r, g, b]}` |
+//! | `room` | a `rooms` ID, spawned with `World::spawn_room` at the origin under the stage (redo 7.12) |
 //! | `sheet` | `{"items": ["prefab:goblin", "sprite:icon"], "columns"?, "cell"?, "labels"?}` |
 //! | `camera` | `{"center": [x, y], "zoom": z}`, `{"center", "view_height": h}`, `{"fit": "staged"}` or `null` |
 //! | `overlay` | `{"physics": bool, "kit": bool}` |
@@ -30,7 +31,7 @@
 //! builds anything. A `path` is a JSON pointer (RFC 6901) into a probe's
 //! value. The umbrella crate runs scripts; core holds the formats, the
 //! hooks and the engine's core probes (`frame`, `entities`, `count`,
-//! `camera`).
+//! `camera`, and `place`, a live room's place in world pixels).
 //!
 //! ```
 //! use tungsten_core::script::{Op, Script, Verb};
@@ -67,6 +68,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 
+use crate::assets::{PlaceShape, RoomRegistry, TilemapInstance};
 use crate::camera::CameraState;
 use crate::component_registry::ComponentRegistry;
 use crate::ecs::World;
@@ -276,6 +278,8 @@ pub enum Verb {
     Screen(String),
     /// Clears the game's states for an empty stage, held from its frame.
     Stage(StageStep),
+    /// Spawns a room at the origin under the stage (redo 7.12).
+    Room(String),
     /// Stages and lays out items in a captioned grid.
     Sheet(SheetStep),
     /// Draws with another camera until `None`.
@@ -308,6 +312,7 @@ impl Verb {
             Verb::Scene(_) => "scene",
             Verb::Screen(_) => "screen",
             Verb::Stage(_) => "stage",
+            Verb::Room(_) => "room",
             Verb::Sheet(_) => "sheet",
             Verb::Camera(_) => "camera",
             Verb::Overlay(_) => "overlay",
@@ -849,6 +854,8 @@ struct RawStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     stage: Option<StageStep>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    room: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     sheet: Option<SheetStep>,
     #[serde(
         default,
@@ -933,6 +940,9 @@ impl TryFrom<RawStep> for Step {
         if let Some(stage) = raw.stage {
             verbs.push(("stage", Verb::Stage(stage)));
         }
+        if let Some(room) = raw.room {
+            verbs.push(("room", Verb::Room(room)));
+        }
         if let Some(sheet) = raw.sheet {
             verbs.push(("sheet", Verb::Sheet(sheet)));
         }
@@ -977,7 +987,12 @@ impl TryFrom<RawStep> for Step {
         if raw.path.is_some() && !matches!(verb, Verb::Probe(_)) {
             return Err(format!("`path` goes with `probe`, not `{}`", verb.name()));
         }
-        if raw.until.is_some() && matches!(verb, Verb::Exit | Verb::Stage(_) | Verb::Sheet(_)) {
+        if raw.until.is_some()
+            && matches!(
+                verb,
+                Verb::Exit | Verb::Stage(_) | Verb::Sheet(_) | Verb::Room(_)
+            )
+        {
             return Err(format!("`{}` does not repeat; drop `until`", verb.name()));
         }
         check_verb(&verb, raw.until.is_some())?;
@@ -996,6 +1011,7 @@ fn check_verb(verb: &Verb, repeats: bool) -> Result<(), String> {
         Verb::Press(name) | Verb::Release(name) | Verb::Scene(name) | Verb::Screen(name) => {
             non_empty(name)
         }
+        Verb::Room(id) => hook_name(id),
         Verb::Action(ActionStep { name, .. }) => hook_name(name),
         Verb::Probe(ProbeStep { name, path, .. }) => {
             hook_name(name)?;
@@ -1094,6 +1110,7 @@ impl From<Step> for RawStep {
             Verb::Scene(scene) => raw.scene = Some(scene),
             Verb::Screen(id) => raw.screen = Some(id),
             Verb::Stage(stage) => raw.stage = Some(stage),
+            Verb::Room(room) => raw.room = Some(room),
             Verb::Sheet(sheet) => raw.sheet = Some(sheet),
             Verb::Camera(camera) => raw.camera = Some(camera),
             Verb::Overlay(overlay) => raw.overlay = Some(overlay),
@@ -1336,7 +1353,7 @@ impl Default for ScriptHooks {
 }
 
 impl ScriptHooks {
-    /// The core probes: `frame`, `entities`, `count` and `camera`.
+    /// The core probes: `frame`, `entities`, `count`, `camera` and `place`.
     #[must_use]
     pub fn new() -> Self {
         let mut hooks = Self {
@@ -1360,6 +1377,11 @@ impl ScriptHooks {
             "camera",
             "The game's camera `{position, zoom, rotation}`; `{\"drawn\": true}` for the view the frame drew.",
             probe_camera,
+        );
+        hooks.add_probe(
+            "place",
+            "`{\"room\", \"id\"}`: a live room's place in world pixels, a point `[x, y]`, an area `{min, size}` or a route's points.",
+            probe_place,
         );
         hooks
     }
@@ -1524,6 +1546,50 @@ fn probe_count(world: &World, args: &Value) -> Result<Value, String> {
         format!(
             "component `{component}` is registered by a definition, so its spawned types are its build's; count it with a game probe"
         )
+    })
+}
+
+fn probe_place(world: &World, args: &Value) -> Result<Value, String> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Args {
+        room: String,
+        id: String,
+    }
+    let Args { room, id } = hook_args(args)?;
+    let rooms = world
+        .get_resource::<RoomRegistry>()
+        .ok_or("the World has no rooms")?;
+    if rooms.compiled(&room).is_none() {
+        return Err(format!("unknown room `{room}`"));
+    }
+    let place = rooms
+        .place(&room, &id)
+        .ok_or_else(|| format!("room `{room}` has no place `{id}`"))?;
+    let origin = rooms
+        .live(&room)
+        .filter(|&instance| world.is_alive(instance))
+        .and_then(|instance| world.get::<TilemapInstance>(instance))
+        .map(|instance| instance.origin)
+        .ok_or_else(|| format!("room `{room}` is not live"))?;
+    Ok(match &place.shape {
+        PlaceShape::Point(point) => {
+            let point = *point + origin;
+            json!([point.x, point.y])
+        }
+        PlaceShape::Rect { min, size } => {
+            let min = *min + origin;
+            json!({ "min": [min.x, min.y], "size": [size.x, size.y] })
+        }
+        PlaceShape::Route(stops) => json!(
+            stops
+                .iter()
+                .map(|stop| {
+                    let stop = *stop + origin;
+                    [stop.x, stop.y]
+                })
+                .collect::<Vec<_>>()
+        ),
     })
 }
 

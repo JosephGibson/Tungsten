@@ -599,3 +599,64 @@ fn a_refused_screen_step_fails_with_its_reason() {
         ]
     );
 }
+
+#[test]
+fn a_room_step_spawns_the_room_and_the_place_probe_reads_a_marker() {
+    use tungsten_core::assets::{PrefabData, PrefabRegistry, Room, RoomRegistry, Tileset};
+    let mut app = app();
+    add_owned_probe(app.world_mut());
+    let world = app.world_mut();
+    register_sprite(world, "rock");
+    let crate_prefab: PrefabData = serde_json::from_value(json!({ "tag": "crate" })).unwrap();
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("crate".into(), crate_prefab);
+    let mut rooms = RoomRegistry::new();
+    rooms.insert_tileset(
+        "cave",
+        Tileset::from_json(r#"{ "version": 1, "tiles": [{ "sprite": "rock" }] }"#).unwrap(),
+    );
+    world.insert_resource(rooms);
+    let room = Room::from_json(
+        r#"{ "version": 1, "cell": [16, 16], "size": [10, 4], "tileset": "cave",
+             "layers": [{ "name": "solid", "kind": "collision" }],
+             "shapes": [{ "id": "floor", "rect": [0, 3, 10, 1], "tile": "rock", "layers": ["solid"] }],
+             "objects": [{ "id": "crate_1", "prefab": "crate", "at": [2, 2] }],
+             "places": [{ "id": "start", "point": [1.5, 2] }] }"#,
+    )
+    .unwrap();
+    world.insert_room("cave", room).unwrap();
+    let mut harness = Harness::new(app);
+    let report = harness.run_script(&script(
+        10,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 2, "camera": { "fit": "staged" } },
+            { "frame": 5, "probe": "place", "args": { "room": "cave", "id": "start" } },
+            { "frame": 5, "assert": { "probe": "owned", "args": { "state": "script_stage" }, "op": "==", "value": 2 } },
+            { "frame": 6, "assert": { "probe": "place", "args": { "room": "cave", "id": "start" }, "path": "/0", "op": "==", "value": 24 } }
+        ]),
+    ));
+    assert!(report.passed, "{report:#?}");
+    assert_eq!(
+        probes(&report, "place"),
+        [(5, &json!([24.0, 32.0]))],
+        "the marker in world pixels"
+    );
+    // The room spawned once, its crate named for its room.
+    let world = harness.world();
+    let crates = world
+        .query::<&tungsten_core::Tag>()
+        .filter(|tag| tag.name == "crate")
+        .count();
+    assert_eq!(crates, 1);
+    assert!(world.resource::<RoomRegistry>().live("cave").is_some());
+    // An unknown room fails its step and the run.
+    let mut harness = Harness::new(crate::App::new(Config::default()).unwrap());
+    let report = harness.run_script(&script(
+        4,
+        &json!([{ "frame": 2, "stage": {} }, { "frame": 2, "room": "cove" }]),
+    ));
+    assert!(!report.passed);
+}

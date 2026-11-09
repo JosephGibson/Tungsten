@@ -21,6 +21,9 @@ Commands:
   schema <name>
               Print the JSON Schema of the ui_screen, ui_theme, room or
               tileset file format, from this command line's engine
+  level <verb>
+              Edit, read, check and render the game's rooms: apply,
+              query, describe, check or render, below
 
 Options:
   -h, --help     Print this help
@@ -61,6 +64,22 @@ Options of render, one of --sheet, --scene, --at and --screen, and -o:
 
 Options of schema:
   -o <path>         Write the schema to <path> instead
+
+Verbs of level, a <room> a rooms ID or a room file:
+  apply <room> <batch>
+                    Apply a batch of commands (a file, or - for stdin),
+                    write the room canonically and journal the batch
+    --inverse <file>  Also write the batch that undoes it
+    --undo          Undo the journal's newest batch instead of a batch
+  query <room> [<id>]
+                    Print an entry, or with --at what lies at a cell
+    --at <col>,<row>  The cell
+    --json          Print JSON
+  describe [<room>] Print each room's layers and named things by kind
+    --json          Print JSON
+  check [<room>...] Run the game's check and print the rooms' findings
+  render <room>     Render the room on an empty stage to a PNG; with
+                    -o, --overlay, --size, --frame and --release as render's
 
 Run every command but new and schema in the game's folder. They need
 the game's engine to be the version of this command line.

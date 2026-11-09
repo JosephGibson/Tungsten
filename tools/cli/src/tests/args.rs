@@ -276,3 +276,114 @@ fn schema_takes_a_format_and_an_output() {
     );
     assert!(parse_str(&["schema", "ui_screen", "ui_theme"]).is_err());
 }
+
+#[test]
+fn level_verbs_parse_and_a_misplaced_option_fails() {
+    use crate::level::LevelArgs;
+    let level = |args: &[&str]| {
+        let mut all = vec!["level"];
+        all.extend_from_slice(args);
+        parse_str(&all)
+    };
+    assert_eq!(
+        level(&["apply", "cave", "batch.json", "--inverse", "undo.json"]),
+        Ok(Command::Level(LevelArgs::Apply {
+            room: "cave".into(),
+            batch: Some(PathBuf::from("batch.json")),
+            inverse: Some(PathBuf::from("undo.json")),
+            undo: false,
+        }))
+    );
+    assert_eq!(
+        level(&["apply", "cave", "--undo"]),
+        Ok(Command::Level(LevelArgs::Apply {
+            room: "cave".into(),
+            batch: None,
+            inverse: None,
+            undo: true,
+        }))
+    );
+    assert_eq!(
+        level(&["query", "assets/rooms/cave.json", "--at", "7,19", "--json"]),
+        Ok(Command::Level(LevelArgs::Query {
+            room: "assets/rooms/cave.json".into(),
+            id: None,
+            at: Some([7, 19]),
+            json: true,
+        }))
+    );
+    assert_eq!(
+        level(&["query", "cave", "crate_1"]),
+        Ok(Command::Level(LevelArgs::Query {
+            room: "cave".into(),
+            id: Some("crate_1".into()),
+            at: None,
+            json: false,
+        }))
+    );
+    assert_eq!(
+        level(&["describe", "--json"]),
+        Ok(Command::Level(LevelArgs::Describe {
+            room: None,
+            json: true,
+        }))
+    );
+    assert_eq!(
+        level(&["check", "cave", "hall"]),
+        Ok(Command::Level(LevelArgs::Check {
+            rooms: vec!["cave".into(), "hall".into()],
+        }))
+    );
+    assert!(matches!(
+        level(&["render", "cave", "-o", "cave.png", "--overlay", "physics"]),
+        Ok(Command::Level(LevelArgs::Render { .. }))
+    ));
+    // A misplaced option names the verb it belongs to.
+    assert_eq!(
+        level(&["apply", "cave", "batch.json", "--at", "1,1"]),
+        Err(UsageError(
+            "`--at` is an option of `render` and `level query`, not of `level apply`".to_owned()
+        ))
+    );
+    assert_eq!(
+        level(&["check", "--json"]),
+        Err(UsageError(
+            "`--json` is an option of `describe`, `level query` and `level describe`, not of `level check`"
+                .to_owned()
+        ))
+    );
+    assert_eq!(
+        level(&["render", "cave", "-o", "cave.png", "--loop", "1..5/1"]),
+        Err(UsageError(
+            "`--loop` is an option of `render`, not of `level render`".to_owned()
+        ))
+    );
+    assert_eq!(
+        level(&[]),
+        Err(UsageError(
+            "`level` needs a verb: apply, query, describe, check or render".to_owned()
+        ))
+    );
+    assert_eq!(
+        level(&["edit", "cave"]),
+        Err(UsageError(
+            "unknown level verb `edit`: apply, query, describe, check or render".to_owned()
+        ))
+    );
+    assert_eq!(
+        level(&["apply", "cave", "batch.json", "--undo"]),
+        Err(UsageError("`--undo` takes no batch".to_owned()))
+    );
+    assert_eq!(
+        level(&["apply", "cave"]),
+        Err(UsageError(
+            "`level apply` needs <room> <batch>, or <room> --undo".to_owned()
+        ))
+    );
+    assert_eq!(
+        level(&["query", "cave", "--at", "7"]),
+        Err(UsageError(
+            "`--at 7`: expected <col>,<row>, two whole numbers".to_owned()
+        ))
+    );
+}

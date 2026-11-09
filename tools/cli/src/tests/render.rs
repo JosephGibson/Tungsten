@@ -265,3 +265,48 @@ fn render_screen_writes_a_screen_step_after_its_actions() {
         json!(2)
     );
 }
+
+#[test]
+fn level_render_writes_a_room_script() {
+    use crate::level::LevelArgs;
+    let args = |extra: &[&str]| {
+        let mut all = vec!["level", "render", "cave", "-o", "shots/cave.png"];
+        all.extend_from_slice(extra);
+        match parse(all.iter().map(OsString::from)) {
+            Ok(Command::Level(LevelArgs::Render { args })) => args,
+            other => panic!("{other:?}"),
+        }
+    };
+    let made = script(
+        Path::new("/game"),
+        &args(&["--overlay", "physics", "--size", "640x360"]),
+    );
+    Script::parse(&made.to_string()).expect("core parses the script");
+    assert_eq!(
+        made,
+        json!({
+            "version": 1, "frames": 60, "resolution": [640, 360],
+            "steps": [
+                { "frame": 2, "stage": {} },
+                { "frame": 2, "room": "cave" },
+                { "frame": 2, "camera": { "fit": "staged" } },
+                { "frame": 1, "overlay": { "physics": true } },
+                { "frame": 60, "capture": game("shots/cave.png") }
+            ]
+        })
+    );
+    let made = script(Path::new("/game"), &args(&["--frame", "2"]));
+    assert_eq!(made["frames"], 2);
+    let err = match parse(
+        ["level", "render", "cave", "-o", "cave.png", "--frame", "1"]
+            .iter()
+            .map(OsString::from),
+    ) {
+        Err(UsageError(reason)) => reason,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        err,
+        "`--frame`: the room stages at frame 2, so capture from 2"
+    );
+}

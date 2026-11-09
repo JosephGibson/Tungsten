@@ -540,7 +540,10 @@ fn hooks_register_once_and_run_by_name() {
         [("double", "Doubles the score."), ("fail", "Always fails.")]
     );
     let probes: Vec<&str> = hooks.probes().map(|(name, _)| name).collect();
-    assert_eq!(probes, ["camera", "count", "entities", "frame", "score"]);
+    assert_eq!(
+        probes,
+        ["camera", "count", "entities", "frame", "place", "score"]
+    );
     assert!(hooks.probes().all(|(_, doc)| !doc.is_empty()));
 
     let message = panic_message(|| {
@@ -682,4 +685,54 @@ fn a_typed_action_returns_the_deserialize_error() {
     let error = ScriptHooks::call_action(&mut world, "add", &json!({ "point": 3 })).unwrap_err();
     assert!(error.contains("unknown field `point`"), "{error}");
     assert_eq!(world.resource::<Took>().0, None, "the action never ran");
+}
+
+#[test]
+fn the_room_verb_and_place_probe_parse_and_name_their_fields() {
+    let script = Script::parse(
+        r#"{ "version": 1, "frames": 10, "steps": [
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 5, "probe": "place", "args": { "room": "cave", "id": "start" } }
+        ] }"#,
+    )
+    .unwrap();
+    assert_eq!(script.steps[1].verb, Verb::Room("cave".into()));
+    assert_eq!(script.steps[1].verb.name(), "room");
+    // It writes back as it reads.
+    let text = serde_json::to_string(&script).unwrap();
+    assert_eq!(Script::parse(&text).unwrap(), script);
+    let bad = |steps: &str| {
+        Script::parse(&format!(
+            r#"{{ "version": 1, "frames": 10, "steps": [{steps}] }}"#
+        ))
+        .unwrap_err()
+        .to_string()
+    };
+    assert_eq!(
+        bad(r#"{ "frame": 2, "room": "Cave" }"#),
+        "steps[0]: `Cave` must match [a-z][a-z0-9_]*"
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "until": 4, "room": "cave" }"#).contains("does not repeat"),
+        "a room spawns once"
+    );
+    assert!(bad(r#"{ "frame": 2, "room": "cave", "stage": {} }"#).contains("one verb"));
+
+    // The probe names its arguments and the room it needs live.
+    let mut world = World::new();
+    world.insert_resource(ScriptHooks::new());
+    let read = |args: Value| ScriptHooks::read_probe(&world, "place", &args);
+    assert_eq!(
+        read(json!({ "room": "cave" })),
+        Err("probe `place`: args: missing field `id`".to_owned())
+    );
+    assert_eq!(
+        read(json!({ "room": "cave", "id": "start", "at": 1 })).unwrap_err(),
+        "probe `place`: args: unknown field `at`, expected `room` or `id`"
+    );
+    assert_eq!(
+        read(json!({ "room": "cave", "id": "start" })),
+        Err("probe `place`: the World has no rooms".to_owned())
+    );
 }

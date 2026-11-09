@@ -4,6 +4,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use crate::level::LevelArgs;
 use crate::render::{self, RenderArgs};
 
 /// `tungsten --help`, which `api/tungsten-cli.txt` records.
@@ -31,6 +32,9 @@ Commands:
   schema <name>
               Print the JSON Schema of the ui_screen, ui_theme, room or
               tileset file format, from this command line's engine
+  level <verb>
+              Edit, read, check and render the game's rooms: apply,
+              query, describe, check or render, below
 
 Options:
   -h, --help     Print this help
@@ -72,6 +76,22 @@ Options of render, one of --sheet, --scene, --at and --screen, and -o:
 Options of schema:
   -o <path>         Write the schema to <path> instead
 
+Verbs of level, a <room> a rooms ID or a room file:
+  apply <room> <batch>
+                    Apply a batch of commands (a file, or - for stdin),
+                    write the room canonically and journal the batch
+    --inverse <file>  Also write the batch that undoes it
+    --undo          Undo the journal's newest batch instead of a batch
+  query <room> [<id>]
+                    Print an entry, or with --at what lies at a cell
+    --at <col>,<row>  The cell
+    --json          Print JSON
+  describe [<room>] Print each room's layers and named things by kind
+    --json          Print JSON
+  check [<room>...] Run the game's check and print the rooms' findings
+  render <room>     Render the room on an empty stage to a PNG; with
+                    -o, --overlay, --size, --frame and --release as render's
+
 Run every command but new and schema in the game's folder. They need
 the game's engine to be the version of this command line.";
 
@@ -96,6 +116,8 @@ pub(crate) enum Command {
     Render(RenderArgs),
     /// Print or write a file format's JSON Schema.
     Schema(SchemaArgs),
+    /// Edit, read, check or render the game's rooms (redo 7.12).
+    Level(LevelArgs),
 }
 
 /// `schema`'s format and option.
@@ -163,6 +185,26 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
         ],
     ),
     ("schema", &[("-o", Some("<path>"))]),
+    (
+        "level apply",
+        &[("--inverse", Some("<file>")), ("--undo", None)],
+    ),
+    (
+        "level query",
+        &[("--at", Some("<col>,<row>")), ("--json", None)],
+    ),
+    ("level describe", &[("--json", None)]),
+    ("level check", &[]),
+    (
+        "level render",
+        &[
+            ("-o", Some("<path>")),
+            ("--overlay", Some("<names>")),
+            ("--size", Some("<w>x<h>")),
+            ("--frame", Some("<n>")),
+            ("--release", None),
+        ],
+    ),
 ];
 
 /// The options a command may give more than once.
@@ -190,6 +232,9 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
     }
     let rest: Vec<OsString> = args.collect();
     let name = command.to_string_lossy().into_owned();
+    if name == "level" {
+        return level(rest);
+    }
     let (positional, options) = match name.as_str() {
         "new" | "check" | "package" | "run" | "describe" | "render" | "schema" => {
             split(&name, rest)?
@@ -278,6 +323,127 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
     }
 }
 
+/// `level <verb>`'s arguments.
+fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
+    const VERBS: &str = "apply, query, describe, check or render";
+    let mut rest = rest.into_iter();
+    let Some(verb) = rest.next() else {
+        return Err(UsageError(format!("`level` needs a verb: {VERBS}")));
+    };
+    if is_option(&verb) {
+        return Err(misplaced(&verb, Some("level")));
+    }
+    let verb = verb.to_string_lossy().into_owned();
+    if !["apply", "query", "describe", "check", "render"].contains(&verb.as_str()) {
+        return Err(UsageError(format!("unknown level verb `{verb}`: {VERBS}")));
+    }
+    let command = format!("level {verb}");
+    let (positional, options) = split(&command, rest.collect())?;
+    let positional: Vec<String> = positional
+        .into_iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    let flag = |option: &str| options.iter().any(|(o, _)| *o == option);
+    let text = |option: &str| {
+        options
+            .iter()
+            .find(|(o, _)| *o == option)
+            .and_then(|(_, v)| v.as_ref())
+            .map(|v| v.to_string_lossy().into_owned())
+    };
+    let too_many = |taken: usize| {
+        extra(
+            &command,
+            &positional[taken..]
+                .iter()
+                .map(OsString::from)
+                .collect::<Vec<_>>(),
+        )
+    };
+    let args = match verb.as_str() {
+        "apply" => {
+            let undo = flag("--undo");
+            match (positional.as_slice(), undo) {
+                ([room, batch], false) => LevelArgs::Apply {
+                    room: room.clone(),
+                    batch: Some(PathBuf::from(batch)),
+                    inverse: text("--inverse").map(PathBuf::from),
+                    undo,
+                },
+                ([room], true) if text("--inverse").is_none() => LevelArgs::Apply {
+                    room: room.clone(),
+                    batch: None,
+                    inverse: None,
+                    undo,
+                },
+                ([_], true) => {
+                    return Err(UsageError("`--undo` writes no --inverse".to_owned()));
+                }
+                ([_, _], true) => {
+                    return Err(UsageError("`--undo` takes no batch".to_owned()));
+                }
+                (more, _) if more.len() > 2 => return Err(too_many(2)),
+                _ => {
+                    return Err(UsageError(
+                        "`level apply` needs <room> <batch>, or <room> --undo".to_owned(),
+                    ));
+                }
+            }
+        }
+        "query" => {
+            let at = text("--at")
+                .map(|at| cell(&at))
+                .transpose()
+                .map_err(UsageError)?;
+            match positional.as_slice() {
+                [room] => LevelArgs::Query {
+                    room: room.clone(),
+                    id: None,
+                    at,
+                    json: flag("--json"),
+                },
+                [room, id] => LevelArgs::Query {
+                    room: room.clone(),
+                    id: Some(id.clone()),
+                    at,
+                    json: flag("--json"),
+                },
+                [] => return Err(UsageError("`level query` needs a <room>".to_owned())),
+                _ => return Err(too_many(2)),
+            }
+        }
+        "describe" => match positional.as_slice() {
+            [] => LevelArgs::Describe {
+                room: None,
+                json: flag("--json"),
+            },
+            [room] => LevelArgs::Describe {
+                room: Some(room.clone()),
+                json: flag("--json"),
+            },
+            _ => return Err(too_many(1)),
+        },
+        "check" => LevelArgs::Check { rooms: positional },
+        _ => match positional.as_slice() {
+            [room] => LevelArgs::Render {
+                args: render::room_args(room, text, flag).map_err(UsageError)?,
+            },
+            [] => {
+                return Err(UsageError("`level render` needs a <room>".to_owned()));
+            }
+            _ => return Err(too_many(1)),
+        },
+    };
+    Ok(Command::Level(args))
+}
+
+/// `<col>,<row>` as two whole numbers.
+fn cell(text: &str) -> Result<[u32; 2], String> {
+    text.split_once(',')
+        .and_then(|(col, row)| Some([col.trim().parse().ok()?, row.trim().parse().ok()?]))
+        .ok_or_else(|| format!("`--at {text}`: expected <col>,<row>, two whole numbers"))
+}
+
 /// An option and its value.
 type Given = (&'static str, Option<OsString>);
 
@@ -325,21 +491,42 @@ fn is_option(arg: &OsString) -> bool {
 /// command or commands it belongs to, or that it is unknown.
 fn misplaced(option: &OsString, command: Option<&str>) -> UsageError {
     let option = option.to_string_lossy();
-    let owners: Vec<String> = OPTIONS
+    let all: Vec<&str> = OPTIONS
         .iter()
         .filter(|(_, options)| options.iter().any(|(name, _)| *name == option))
-        .map(|(name, _)| format!("`{name}`"))
+        .map(|(name, _)| *name)
+        .collect();
+    // A command's error names the commands it is likely meant for: a `level`
+    // verb's every owner, another command's top-level owners, else all.
+    let level = command.is_some_and(|command| command.starts_with("level"));
+    let top: Vec<&str> = all
+        .iter()
+        .copied()
+        .filter(|name| !name.starts_with("level"))
+        .collect();
+    let owners: Vec<String> = if level || top.is_empty() { &all } else { &top }
+        .iter()
+        .map(|name| format!("`{name}`"))
         .collect();
     match (owners.is_empty(), command) {
         (true, _) => UsageError(format!("unknown option `{option}`")),
         (false, Some(command)) => UsageError(format!(
             "`{option}` is an option of {}, not of `{command}`",
-            owners.join(" and ")
+            listed(&owners, "and")
         )),
         (false, None) => UsageError(format!(
             "`{option}` goes after its command: {}",
-            owners.join(" or ")
+            listed(&owners, "or")
         )),
+    }
+}
+
+/// `a`, `a and b`, or `a, b and c`.
+fn listed(items: &[String], last: &str) -> String {
+    match items.split_last() {
+        Some((only, [])) => only.clone(),
+        Some((final_item, rest)) => format!("{} {last} {final_item}", rest.join(", ")),
+        None => String::new(),
     }
 }
 

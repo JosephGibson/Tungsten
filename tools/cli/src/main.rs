@@ -3,13 +3,15 @@
 //! the game reads and reports every error, `package` builds the game's
 //! release archives, `run` runs it from a script, `render` renders it to PNG
 //! and `describe` prints its components, script hooks and asset IDs (redo
-//! 7.2); `schema` prints a file format's JSON Schema (redo 7.20).
+//! 7.2); `schema` prints a file format's JSON Schema (redo 7.20); `level`
+//! edits, reads, checks and renders its rooms (redo 7.12).
 
 mod args;
 mod cargo;
 mod check;
 mod describe;
 mod elf;
+mod level;
 mod new;
 mod notices;
 mod package;
@@ -64,6 +66,10 @@ fn main() -> ExitCode {
             current_dir().and_then(|dir| describe::run(&dir, &args)),
         ),
         Command::Schema(args) => finish("schema", schema::run(&args)),
+        Command::Level(args) => finish(
+            "level",
+            current_dir().and_then(|dir| level::run(&dir, &args)),
+        ),
     }
 }
 
