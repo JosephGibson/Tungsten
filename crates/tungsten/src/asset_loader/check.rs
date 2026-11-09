@@ -200,18 +200,44 @@ pub(crate) fn check_files(
         }
     }
 
-    // 9. The physics layer names and materials, which bodies name; then the
-    // data entries and prefabs, in two phases, and each prefab's sprite.
+    // 9. The physics layer names and materials, which bodies name; the
+    // tilesets and rooms (redo 7.12), whose collision layers name them, each
+    // room's map registered; then the data entries and prefabs, in two
+    // phases, and each prefab's sprite.
     super::load_physics_names(&manifest, world);
+    super::room::check_rooms(&manifest, world, |path, message| {
+        errors.push(path, message);
+    });
     check_prefabs_and_data(&manifest, world, &mut errors);
 
-    // 10. Each map's objects against the prefabs.
+    // 10. Each map's and each room's objects against the prefabs, and each
+    // room's tileset sprites.
     if let Some(maps) = world.get_resource::<TilemapRegistry>() {
         for id in sorted(manifest.tilemaps.keys()) {
             if let Some(data) = maps.get(id)
                 && let Err(e) = world.check_map_objects(id, data)
             {
                 errors.push(&manifest.tilemaps[id].path, e.to_string());
+            }
+        }
+        for id in sorted(manifest.rooms.keys()) {
+            let Some(data) = maps.get(id) else {
+                continue;
+            };
+            let path = &manifest.rooms[id].path;
+            if let Err(e) = world.check_map_objects(id, data) {
+                errors.push(path, format!("room '{id}': {e}"));
+            }
+            let sprites = world.get_resource::<AssetRegistry>();
+            for (i, sprite) in data.tileset.iter().enumerate() {
+                if sprites.is_none_or(|sprites| sprites.get_sprite(sprite).is_none()) {
+                    errors.push(
+                        path,
+                        format!(
+                            "room '{id}': its tileset's tiles[{i}] references unknown sprite ID '{sprite}'"
+                        ),
+                    );
+                }
             }
         }
     }
@@ -522,6 +548,8 @@ fn manifest_files(manifest: &ResolvedManifest) -> impl Iterator<Item = &PathBuf>
         .chain(manifest.ui_themes.values().map(|e| &e.path))
         .chain(manifest.ui_screens.values().map(|e| &e.path))
         .chain(manifest.prefabs.values().map(|e| &e.path))
+        .chain(manifest.tilesets.values().map(|e| &e.path))
+        .chain(manifest.rooms.values().map(|e| &e.path))
         .chain(data)
 }
 

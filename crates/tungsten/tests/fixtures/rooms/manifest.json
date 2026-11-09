@@ -1,0 +1,66 @@
+{
+  "sprites": {
+    "arch": {
+      "path": "sprites/arch.png"
+    },
+    "ball": {
+      "path": "sprites/ball.png"
+    },
+    "crate": {
+      "path": "sprites/crate.png"
+    },
+    "lamp": {
+      "path": "sprites/lamp.png"
+    },
+    "plank": {
+      "path": "sprites/plank.png"
+    },
+    "rock": {
+      "path": "sprites/rock.png"
+    },
+    "rock_45_br": {
+      "path": "sprites/rock_45_br.png"
+    },
+    "rock_high_br": {
+      "path": "sprites/rock_high_br.png"
+    },
+    "rock_low_br": {
+      "path": "sprites/rock_low_br.png"
+    },
+    "walker": {
+      "path": "sprites/walker.png"
+    }
+  },
+  "physics_layers": {
+    "terrain": 1,
+    "player": 2,
+    "enemy": 3
+  },
+  "prefabs": {
+    "ball": {
+      "path": "prefabs/ball.json"
+    },
+    "crate": {
+      "path": "prefabs/crate.json"
+    },
+    "lamp": {
+      "path": "prefabs/lamp.json"
+    },
+    "walker": {
+      "path": "prefabs/walker.json"
+    }
+  },
+  "tilesets": {
+    "cave": {
+      "path": "tilesets/cave.json"
+    }
+  },
+  "rooms": {
+    "cave": {
+      "path": "rooms/cave.json"
+    },
+    "hall": {
+      "path": "rooms/hall.json"
+    }
+  }
+}

@@ -166,6 +166,25 @@ fn describe_lists_each_prefab_resolved_at_version_3() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn describe_lists_room_and_tileset_ids() {
+    let dir = crate::asset_loader::room::tests::fixture_copy();
+    let mut app = App::new(Config::default()).unwrap();
+    app.set_manifest_roots(vec![dir.join("manifest.json")]);
+    let out = dir.join("describe.json");
+    app.run_describe(&out, &dir).unwrap();
+    let description: Value = serde_json::from_str(&fs::read_to_string(&out).unwrap()).unwrap();
+    assert_eq!(description["errors"], json!([]), "{description:#}");
+    assert_eq!(description["assets"]["rooms"], json!(["cave", "hall"]));
+    assert_eq!(description["assets"]["tilesets"], json!(["cave"]));
+    assert_eq!(
+        description["assets"]["tilemaps"],
+        json!([]),
+        "a room is no tilemap entry"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// `name` = `value` pairs as an environment.
 fn env_of(vars: Vec<(&'static str, OsString)>) -> impl Fn(&str) -> Option<OsString> {
     move |name| {

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "cell": [16, 16],
+  "size": [20, 12],
+  "tileset": "cave",
+  "layers": [
+    { "name": "art" },
+    { "name": "solid", "kind": "collision", "layers": ["terrain"], "mask": ["player", "enemy"] }
+  ],
+  "shapes": [
+    { "id": "floor", "rect": [0, 10, 20, 2], "tile": "rock", "layers": ["art", "solid"] }
+  ],
+  "places": [
+    { "id": "west_door", "point": [1, 9], "to": "cave.exit" }
+  ]
+}

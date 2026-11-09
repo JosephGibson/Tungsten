@@ -188,11 +188,13 @@ pub tungsten::asset_loader::LoadUnit::ParticleMeshes
 pub tungsten::asset_loader::LoadUnit::Particles
 pub tungsten::asset_loader::LoadUnit::PhysicsNames
 pub tungsten::asset_loader::LoadUnit::Prefabs
+pub tungsten::asset_loader::LoadUnit::Room(alloc::string::String)
 pub tungsten::asset_loader::LoadUnit::Shaders
 pub tungsten::asset_loader::LoadUnit::Sound(alloc::string::String)
 pub tungsten::asset_loader::LoadUnit::Sprites(std::path::PathBuf)
 pub tungsten::asset_loader::LoadUnit::Themes
 pub tungsten::asset_loader::LoadUnit::Tilemap(alloc::string::String)
+pub tungsten::asset_loader::LoadUnit::Tileset(alloc::string::String)
 impl core::clone::Clone for tungsten::asset_loader::LoadUnit
 pub fn tungsten::asset_loader::LoadUnit::clone(&self) -> tungsten::asset_loader::LoadUnit
 impl core::cmp::Eq for tungsten::asset_loader::LoadUnit

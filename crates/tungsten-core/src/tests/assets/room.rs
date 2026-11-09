@@ -317,3 +317,238 @@ fn the_schemas_name_every_field() {
     }
     assert!(seen.iter().any(|path| path == ".places[2].by"), "{seen:?}");
 }
+
+mod spawning {
+    use glam::{Vec2, Vec3};
+    use serde::Deserialize;
+    use serde_json::json;
+
+    use super::*;
+    use crate::assets::{PrefabData, PrefabRegistry, TilemapRegistry};
+    use crate::ecs::{Entity, World};
+    use crate::lighting::AmbientLight;
+    use crate::post::{PostPass, PostStack};
+    use crate::save::{AreaError, SaveId, SaveState, Saved};
+
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Health {
+        max: u32,
+    }
+
+    /// What a spawn's `with` gives.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    struct Marker(u32);
+
+    /// A World with the prefab `crate` and the cave tileset.
+    fn world() -> World {
+        let mut world = World::new();
+        world.register_component::<Health>("health");
+        let mut prefabs = PrefabRegistry::new();
+        let crate_prefab: PrefabData = serde_json::from_value(
+            json!({ "tag": "crate", "components": { "health": { "max": 3 } } }),
+        )
+        .unwrap();
+        prefabs.insert("crate".into(), crate_prefab);
+        world.insert_resource(prefabs);
+        let mut rooms = RoomRegistry::new();
+        rooms.insert_tileset("cave", Tileset::from_json(FULL_TILESET).unwrap());
+        world.insert_resource(rooms);
+        world
+    }
+
+    /// An 8 × 4 room on the cave tileset with two crates.
+    fn crates(extra: &str) -> Room {
+        Room::from_json(&format!(
+            r#"{{ "version": 1, "cell": [16, 16], "size": [8, 4], "tileset": "cave",
+                 "layers": [{{ "name": "solid", "kind": "collision" }}],
+                 "shapes": [{{ "id": "floor", "rect": [0, 3, 8, 1], "tile": "rock", "layers": ["solid"] }}],
+                 "objects": [{{ "id": "crate_1", "prefab": "crate", "at": [1, 2] }},
+                             {{ "id": "crate_2", "prefab": "crate", "at": [5.5, 2] }}],
+                 "places": [{{ "id": "start", "point": [0.5, 2] }}] {extra} }}"#
+        ))
+        .unwrap()
+    }
+
+    fn name_of(world: &World, entity: Entity) -> String {
+        let saved = world.get::<Saved>(entity).expect("named");
+        world
+            .resource::<SaveState>()
+            .name_of(saved.id())
+            .unwrap()
+            .to_owned()
+    }
+
+    #[test]
+    fn spawn_room_names_each_object_room_dot_id_and_returns_them_by_id() {
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        assert!(world.resource::<TilemapRegistry>().get("cave").is_some());
+        let spawned = world
+            .spawn_room("cave", [100.0, 50.0], &(Marker(1),))
+            .unwrap();
+        let ids: Vec<&str> = spawned.objects().map(|(id, _)| id).collect();
+        assert_eq!(ids, ["crate_1", "crate_2"]);
+        let first = spawned.object("crate_1").unwrap();
+        assert_eq!(name_of(&world, first), "cave.crate_1");
+        assert_eq!(world.get::<Saved>(first).unwrap().area(), Some("cave"));
+        assert_eq!(
+            world
+                .get::<crate::components::Transform>(first)
+                .unwrap()
+                .position,
+            Vec2::new(116.0, 82.0),
+            "the origin plus at × cell"
+        );
+        assert_eq!(
+            world.get::<Health>(spawned.object("crate_2").unwrap()),
+            Some(&Health { max: 3 })
+        );
+        assert_eq!(
+            spawned.place("start").unwrap().shape,
+            PlaceShape::Point(Vec2::new(108.0, 82.0)),
+            "a place in world pixels"
+        );
+        assert_eq!(
+            world
+                .resource::<RoomRegistry>()
+                .place("cave", "start")
+                .unwrap()
+                .shape,
+            PlaceShape::Point(Vec2::new(8.0, 32.0)),
+            "in the room's own"
+        );
+        assert_eq!(
+            world.resource::<RoomRegistry>().live("cave"),
+            Some(spawned.instance())
+        );
+        assert!(world.resource::<SaveState>().is_loaded("cave"));
+    }
+
+    #[test]
+    fn two_rooms_with_the_same_ids_spawn_side_by_side() {
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        world.insert_room("den", crates("")).unwrap();
+        let cave = world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        let den = world
+            .spawn_room("den", [200.0, 0.0], &(Marker(2),))
+            .unwrap();
+        let (a, b) = (
+            cave.object("crate_1").unwrap(),
+            den.object("crate_1").unwrap(),
+        );
+        assert_ne!(a, b);
+        assert_eq!(name_of(&world, a), "cave.crate_1");
+        assert_eq!(name_of(&world, b), "den.crate_1");
+        assert_ne!(
+            world.get::<Saved>(a).unwrap().id(),
+            world.get::<Saved>(b).unwrap().id()
+        );
+        assert!(world.is_alive(a) && world.is_alive(b));
+    }
+
+    #[test]
+    fn spawning_a_live_room_again_fails_and_spawns_nothing() {
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        let count = world.entity_count();
+        let err = world
+            .spawn_room("cave", [300.0, 0.0], &(Marker(1),))
+            .unwrap_err();
+        assert!(
+            matches!(err, AreaError::Live { ref room } if room == "cave"),
+            "{err}"
+        );
+        assert_eq!(world.entity_count(), count, "nothing spawned");
+        assert!(matches!(
+            world.spawn_room("cove", [0.0, 0.0], &(Marker(1),)),
+            Err(AreaError::UnknownRoom { .. })
+        ));
+    }
+
+    #[test]
+    fn a_room_whose_objects_all_died_still_refuses_a_second_spawn() {
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        let spawned = world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        for (_, entity) in spawned.objects() {
+            world.despawn(entity);
+        }
+        assert!(matches!(
+            world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)),
+            Err(AreaError::Live { .. })
+        ));
+    }
+
+    #[test]
+    fn a_room_spawns_again_once_its_instance_is_gone() {
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        let first = world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        world.despawn(first.instance());
+        for (_, entity) in first.objects() {
+            world.despawn(entity);
+        }
+        let second = world.spawn_room("cave", [0.0, 0.0], &(Marker(1),)).unwrap();
+        assert_ne!(second.instance(), first.instance());
+        let again = second.object("crate_1").unwrap();
+        assert_eq!(
+            name_of(&world, again),
+            "cave.crate_1",
+            "the name taken again"
+        );
+        assert_eq!(
+            world
+                .resource::<SaveState>()
+                .named_entity(SaveId::authored("cave.crate_1")),
+            Some(again)
+        );
+    }
+
+    #[test]
+    fn spawn_room_sets_the_rooms_post_stack_and_ambient_light() {
+        let mut world = world();
+        let lit =
+            crates(r#", "post": [{ "kind": "pixelate", "params": 4 }], "ambient": [0.25, 0.5, 1]"#);
+        world.insert_room("lit", lit).unwrap();
+        world.insert_room("plain", crates("")).unwrap();
+        world.insert_resource(AmbientLight(Vec3::ONE));
+        world
+            .spawn_room("plain", [0.0, 0.0], &(Marker(1),))
+            .unwrap();
+        assert!(
+            !world.has_resource::<PostStack>(),
+            "a room without them leaves them"
+        );
+        assert_eq!(world.resource::<AmbientLight>().0, Vec3::ONE);
+        world.spawn_room("lit", [0.0, 0.0], &(Marker(1),)).unwrap();
+        assert_eq!(world.resource::<PostStack>().0, [PostPass::Pixelate(4.0)]);
+        assert_eq!(
+            world.resource::<AmbientLight>().0,
+            Vec3::new(0.25, 0.5, 1.0)
+        );
+    }
+
+    #[test]
+    fn spawn_room_gives_its_bundle_to_the_instance_and_each_object() {
+        let mut world = world();
+        world.insert_room("cave", crates("")).unwrap();
+        world.insert_room("den", crates("")).unwrap();
+        let before = world.counters().archetype_moves;
+        let spawned = world.spawn_room("cave", [0.0, 0.0], &(Marker(7),)).unwrap();
+        let with = world.counters().archetype_moves - before;
+        assert_eq!(world.get::<Marker>(spawned.instance()), Some(&Marker(7)));
+        for (id, entity) in spawned.objects() {
+            assert_eq!(world.get::<Marker>(entity), Some(&Marker(7)), "{id}");
+        }
+        // The bundle rides each spawn's own move: a spawn with a bundle of
+        // two moves as many times as one with a bundle of one.
+        let before = world.counters().archetype_moves;
+        world
+            .spawn_room("den", [0.0, 0.0], &(Marker(7), Health { max: 9 }))
+            .unwrap();
+        assert_eq!(world.counters().archetype_moves - before, with);
+    }
+}

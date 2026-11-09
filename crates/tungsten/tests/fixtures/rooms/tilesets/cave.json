@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "tiles": [
+    {
+      "sprite": "rock",
+      "style": "rock"
+    },
+    {
+      "sprite": "rock_45_br",
+      "style": "rock",
+      "slope": "45 br"
+    },
+    {
+      "sprite": "rock_low_br",
+      "style": "rock",
+      "slope": "2:1 low br"
+    },
+    {
+      "sprite": "rock_high_br",
+      "style": "rock",
+      "slope": "2:1 high br"
+    },
+    {
+      "sprite": "plank",
+      "one_way": true,
+      "material": "wood"
+    },
+    {
+      "sprite": "arch",
+      "whole": true
+    }
+  ]
+}

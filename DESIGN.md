@@ -192,9 +192,13 @@ assets/
 ├── fonts/
 ├── sounds/
 ├── tilemaps/
+├── tilesets/
+├── rooms/
 ├── particles/
 └── shaders/
 ```
+
+**Rooms (redo 7.12):** a level in the engine's own format, a file a room listed in `rooms`, its tiles from a `tilesets` file every room on it shares. `Room::compile` paints its shapes and cell overrides into a 7.8 map (`TilemapData`), its objects in one object layer named `<room>.<id>`, its places in pixels; `World::insert_room` registers the map under the room's ID and the room in the `RoomRegistry`, which a load inserts only for a manifest listing rooms or tilesets. The load plan runs a unit a tileset and a unit a room after the physics names and before the prefabs, so the cross-checks cover a room's map as a Tiled one's. `World::spawn_room` spawns a room as `spawn_area` spawns a map, a bundle given to the instance and each object in its spawn's move, the room's post stack and ambient light set when it gives them; the registry records the live instance, and a second spawn while it lives fails with `AreaError::Live`.
 
 A game keeps `assets/` in its own folder, its working directory, and a game made from `templates/basic` loads that manifest as its only root; no engine feature reads the workspace's root manifest ([Standalone Games](#standalone-games-and-the-template--m36), `D-123`). Examples ship `examples/NN_name/assets/` with a local manifest. `App::set_manifest_roots` declares the load order; `load_all_merged` loads the composed result before user startup (`D-052`). Explicit scene files are the path-based exception (`D-046`). Materials and particle meshes (`particle_meshes`, `D-093`) are inline manifest entries.
 

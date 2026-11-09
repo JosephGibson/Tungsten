@@ -36,12 +36,12 @@ pub use assets::{
     ParticleEntry, ParticleMesh, ParticleMeshAssetId, ParticleMeshEntry, ParticleMeshRegistry,
     ParticleRender, PrefabData, PrefabEntry, PrefabError, PrefabRegistry, PreparedPrefab, Range,
     ResolvedDataEntry, ResolvedFont, ResolvedFontFamily, ResolvedManifest, ResolvedMaterial,
-    ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab, ResolvedSound, ResolvedUiTheme,
-    SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,
-    SceneTweenRepeat, Slope, SlopeCorner, SlopeRise, SoundData, SoundEntry, SoundRegistry,
-    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileChanges,
-    TileDamage, TileIndex, TileProps, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry,
-    UiThemeEntry, WorldRngSeed,
+    ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab, ResolvedSound, ResolvedUiTheme, Room,
+    RoomError, RoomRegistry, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
+    SceneTween, SceneTweenChannel, SceneTweenRepeat, Slope, SlopeCorner, SlopeRise, SoundData,
+    SoundEntry, SoundRegistry, SpawnedRoom, SpriteAsset, SpriteAssetId, StagedLoad,
+    StagedLoadError, TextureHandle, TileChanges, TileDamage, TileIndex, TileProps, TilemapData,
+    TilemapInstance, TilemapLayer, TilemapRegistry, Tileset, UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioBus, AudioCommand, AudioCommands, MAX_VOICES, Voice};
 pub use camera::{

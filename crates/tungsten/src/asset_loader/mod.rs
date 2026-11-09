@@ -24,6 +24,7 @@ mod atlas;
 pub(crate) mod check;
 mod prefab;
 mod reload;
+pub(crate) mod room;
 mod scene;
 
 pub use atlas::{
@@ -1066,6 +1067,10 @@ pub enum LoadUnit {
     Particles,
     /// The physics layer names and materials.
     PhysicsNames,
+    /// One tileset (redo 7.12).
+    Tileset(String),
+    /// One room, compiled and its map registered (redo 7.12).
+    Room(String),
     /// The prefabs and data entries, in two phases.
     Prefabs,
     /// Animation frames, tilesets and particle configs against the sprites
@@ -1123,6 +1128,11 @@ impl LoadPlan {
         world.insert_resource(FontRegistry::new());
         world.insert_resource(SoundRegistry::new());
         world.insert_resource(TilemapRegistry::new());
+        // Redo 7.12: a manifest without rooms or tilesets inserts no
+        // registry, so its load allocates nothing new.
+        if room::has_rooms(&manifest) {
+            world.insert_resource(tungsten_core::assets::RoomRegistry::new());
+        }
 
         let files: Vec<Vec<String>> = atlas::sprites_by_file(&manifest)
             .into_iter()
@@ -1156,9 +1166,10 @@ impl LoadPlan {
             LoadUnit::ParticleMeshes,
             LoadUnit::Particles,
             LoadUnit::PhysicsNames,
-            LoadUnit::Prefabs,
-            LoadUnit::CrossChecks,
         ]);
+        units.extend(named(sorted_keys(&manifest.tilesets), LoadUnit::Tileset));
+        units.extend(named(sorted_keys(&manifest.rooms), LoadUnit::Room));
+        units.extend([LoadUnit::Prefabs, LoadUnit::CrossChecks]);
         Self {
             manifest,
             units,
@@ -1316,6 +1327,8 @@ impl LoadPlan {
             LoadUnit::ParticleMeshes => load_particle_meshes_into(manifest, world, target),
             LoadUnit::Particles => load_particles(manifest, world)?,
             LoadUnit::PhysicsNames => load_physics_names(manifest, world),
+            LoadUnit::Tileset(id) => room::load_tileset_unit(manifest, id, world)?,
+            LoadUnit::Room(id) => room::load_room_unit(manifest, id, world)?,
             LoadUnit::Prefabs => load_prefabs(manifest, world)?,
             LoadUnit::CrossChecks => cross_check(manifest, world)?,
         }

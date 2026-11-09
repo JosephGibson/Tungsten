@@ -1,0 +1,28 @@
+{
+  "sprite": {
+    "asset_id": "walker"
+  },
+  "tag": "walker",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          6,
+          10
+        ]
+      },
+      "offset": [
+        8,
+        12
+      ],
+      "layers": [
+        "player"
+      ],
+      "mask": [
+        "terrain"
+      ]
+    }
+  }
+}

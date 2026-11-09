@@ -217,6 +217,8 @@ fn assets(manifest: &ResolvedManifest) -> Value {
         "ui_themes": ids(&manifest.ui_themes),
         "ui_screens": ids(&manifest.ui_screens),
         "prefabs": ids(&manifest.prefabs),
+        "tilesets": ids(&manifest.tilesets),
+        "rooms": ids(&manifest.rooms),
         "data": data,
     })
 }
