@@ -19,21 +19,28 @@
 //! the keys. Whatever a button does, a key and the `editor` script action
 //! do through the same [`Action`], so nothing is reachable by a key alone.
 //!
-//! In the world ([`overlay`]) it draws each live room's bounds, a marker at
-//! every object's spawn point (an object a generator made in its own hue)
-//! and its places through `DebugDraw`, and a view of its own: the arrows
-//! pan a cell, a middle drag pans, the wheel zooms about the cursor, F fits
-//! the current room beside the panel and Home goes back to the game's
-//! view, written to `CameraState` after the frame's camera update so the
-//! extract draws it. `engine_editor_primary` (the left button) is the
-//! tool's: Select picks an object, boxed as the inspector boxes an entity
-//! or within 6 px of its marker, and a drag moves it by whole cells, one
-//! `move` at the release; Place puts the palette's prefab at the cell's
-//! top-left; Paint and Erase gather a stroke of cells, one batch at the
-//! release, a `paint` or an `erase` per target layer.
-//! `engine_editor_secondary` (the right button) is the eyedropper: the
-//! prefab of the object under the cursor, or the topmost tile at the cell
-//! and its layer.
+//! In the world ([`overlay`]) it draws what a click will act on: each live
+//! room's bounds and ID, the current room's cell grid (G), a marker at
+//! every object's spawn point in view (an object a generator made in its
+//! own hue), its places, a box about the object under the cursor and about
+//! the pick with their IDs, and a ghost of what the tool will do at the
+//! cursor's cell. Its view is its own: the arrows pan a cell, a middle
+//! drag pans, the wheel zooms about the cursor, F fits the current room
+//! beside the panel and Home goes back to the game's view, written to
+//! `CameraState` after the frame's camera update so the extract draws it.
+//!
+//! `engine_editor_primary` (the left button) is the tool's: Select picks an
+//! object, boxed as the inspector boxes an entity or within 6 px of its
+//! marker, and a drag moves it by whole cells, one `move` at the release;
+//! Place puts the palette's prefab at the cell's top-left; Paint and Erase
+//! gather a stroke of cells, or with Shift held at the press the rectangle
+//! from the first cell to the cursor's, one batch at the release, a `paint`
+//! or an `erase` per target layer; Pick, and Alt with the button in any
+//! tool, is the eyedropper: the prefab of the object under the cursor, or
+//! the topmost tile at the cell and its layer, and the tool that uses it.
+//! `engine_editor_secondary` (the right button) erases: a stroke of cells
+//! under Paint and Erase, the object under the cursor under the others.
+//! Escape drops a drag or a stroke under way, else the pick.
 //!
 //! Every edit goes through `World::apply_room_batch` (or its undo or redo),
 //! checked, applied whole, patched live and journaled. Before it, a room
@@ -72,7 +79,7 @@ pub(crate) use hooks::register as register_hooks;
 pub(crate) const TOGGLE: &str = "engine_toggle_level_editor";
 /// The editor's primary button: the tool's.
 pub(crate) const PRIMARY: &str = "engine_editor_primary";
-/// The editor's secondary button: the eyedropper.
+/// The editor's secondary button: it erases.
 pub(crate) const SECONDARY: &str = "engine_editor_secondary";
 
 /// How far from its marker a press picks an object, in screen pixels.
@@ -85,6 +92,10 @@ const ZOOM_MAX: f32 = 8.0;
 const PAN_STEP: f32 = 16.0;
 /// The room's margin in a fitted view, in screen pixels a side.
 const FIT_MARGIN: f32 = 24.0;
+/// How far from the cursor, in world pixels an axis, an object's spawn
+/// point may lie and its box still be tested for a pick: what keeps a room
+/// of thousands from a lookup an object a frame.
+const PICK_REACH: f32 = 1024.0;
 
 /// How the editor writes a room file: [`write_atomic`] unless a test
 /// replaces it.
@@ -139,7 +150,7 @@ impl Live {
     }
 }
 
-/// The primary button's tool, keys 1 to 4.
+/// The primary button's tool, keys 1 to 5.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tool {
     /// Pick, drag to move.
@@ -150,11 +161,19 @@ pub(crate) enum Tool {
     Paint,
     /// Erase cells to empty.
     Erase,
+    /// Take the prefab or the tile under the cursor: the eyedropper.
+    Pick,
 }
 
 impl Tool {
     /// Every tool, in its key's order.
-    pub(crate) const ALL: [Self; 4] = [Self::Select, Self::Place, Self::Paint, Self::Erase];
+    pub(crate) const ALL: [Self; 5] = [
+        Self::Select,
+        Self::Place,
+        Self::Paint,
+        Self::Erase,
+        Self::Pick,
+    ];
 
     /// Its name in a script and a probe.
     pub(crate) fn name(self) -> &'static str {
@@ -163,6 +182,7 @@ impl Tool {
             Self::Place => "place",
             Self::Paint => "paint",
             Self::Erase => "erase",
+            Self::Pick => "pick",
         }
     }
 
@@ -173,6 +193,7 @@ impl Tool {
             Self::Place => "2 Place",
             Self::Paint => "3 Paint",
             Self::Erase => "4 Erase",
+            Self::Pick => "5 Pick",
         }
     }
 
@@ -202,6 +223,8 @@ pub(crate) enum Action {
     Fit,
     /// Goes back to the game's view.
     GameView,
+    /// Shows or hides the current room's cell grid.
+    Grid,
     /// Makes a live room the current one and fits it.
     Room(String),
     /// Takes a prefab into the palette and takes up Place.
@@ -219,12 +242,52 @@ pub(crate) enum Action {
 }
 
 /// A paint or erase stroke under way: its room and the cells it crossed,
-/// in order, each once.
+/// in order, each once; or, for a rectangle, its first cell and the
+/// cursor's.
 #[derive(Debug, Clone, PartialEq)]
 struct Stroke {
     room: String,
     cells: Vec<[u32; 2]>,
+    first: [i64; 2],
     last: [i64; 2],
+    /// Shift was held at the press: the rectangle from `first` to `last`.
+    rect: bool,
+    /// It erases: the Erase tool's, or the secondary button's.
+    erase: bool,
+    /// The secondary button holds it.
+    secondary: bool,
+}
+
+impl Stroke {
+    /// A rectangle stroke's cells as a batch writes them: its top-left
+    /// cell, then its width and height.
+    fn bounds(&self) -> [u32; 4] {
+        let min = [
+            self.first[0].min(self.last[0]),
+            self.first[1].min(self.last[1]),
+        ];
+        let max = [
+            self.first[0].max(self.last[0]),
+            self.first[1].max(self.last[1]),
+        ];
+        [
+            min[0].max(0) as u32,
+            min[1].max(0) as u32,
+            (max[0] - min[0] + 1) as u32,
+            (max[1] - min[1] + 1) as u32,
+        ]
+    }
+
+    /// What it covers, in a sentence: "3 cells", "a 4 × 2 rectangle".
+    fn extent(&self) -> String {
+        if self.rect {
+            let [_, _, width, height] = self.bounds();
+            format!("a {width} \u{d7} {height} rectangle")
+        } else {
+            let cells = self.cells.len();
+            format!("{cells} cell{}", plural(cells))
+        }
+    }
 }
 
 /// What an edit asks the World for.
@@ -236,6 +299,7 @@ enum Edit {
 }
 
 /// The level editor's state: a crate-private resource `App::new` inserts.
+#[allow(clippy::struct_excessive_bools)] // Independent switches: the build's, the window's, the status', the grid's, the eyedropper's.
 pub(crate) struct LevelEditor {
     /// Whether this build can open it: `assets.hot_reload`'s.
     pub(crate) available: bool,
@@ -273,6 +337,11 @@ pub(crate) struct LevelEditor {
     pub(crate) layer: Option<String>,
     /// The current room's findings after the last edit.
     pub(crate) findings: Vec<String>,
+    /// Whether the current room's cell grid is drawn.
+    pub(crate) grid: bool,
+    /// Whether the primary button is the eyedropper this frame: the Pick
+    /// tool, or Alt held.
+    picking: bool,
     stroke: Option<Stroke>,
     view: Option<View>,
     drag: Option<Drag>,
@@ -318,6 +387,8 @@ impl LevelEditor {
             tile: None,
             layer: None,
             findings: Vec::new(),
+            grid: true,
+            picking: false,
             stroke: None,
             view: None,
             drag: None,
@@ -432,14 +503,31 @@ impl LevelEditor {
             .and_then(|at| pick(world, &rooms, camera, at));
         self.keys(world, &frame, &rooms, game);
         self.wheel_and_pan(&frame, blocked, game);
+        self.picking = self.tool == Tool::Pick || frame.alt;
         if let Some(at) = at {
-            match self.tool {
-                Tool::Select => self.select(world, &frame, &rooms, camera, at, blocked),
-                Tool::Place => self.place(world, &frame, &rooms, at, blocked),
-                Tool::Paint | Tool::Erase => self.stroke(world, &frame, &rooms, at, blocked),
+            // Read before the eyedropper takes up a tool, so the press that
+            // took a tile starts no stroke.
+            let picking = self.picking;
+            let strokes = matches!(self.tool, Tool::Paint | Tool::Erase);
+            if picking {
+                if frame.primary.pressed && !blocked {
+                    self.eyedropper(world, &rooms, camera, at);
+                }
+            } else {
+                match self.tool {
+                    Tool::Select => self.select(world, &frame, &rooms, camera, at, blocked),
+                    Tool::Place => self.place(world, &frame, &rooms, at, blocked),
+                    Tool::Paint | Tool::Erase | Tool::Pick => {}
+                }
             }
-            if frame.secondary.pressed && !blocked {
-                self.eyedropper(world, &rooms, camera, at);
+            if strokes {
+                self.stroke(world, &frame, &rooms, at, blocked, !picking);
+            } else if frame.secondary.pressed
+                && !blocked
+                && let Some((room, id)) = pick(world, &rooms, camera, at)
+            {
+                self.set_current(&room);
+                self.delete_object(world, &room, &id);
             }
         }
         self.hint = self.hint_of(world, &rooms, blocked);
@@ -511,9 +599,25 @@ impl LevelEditor {
             if repeat {
                 continue;
             }
+            if code == KeyCode::Escape {
+                self.cancel();
+                continue;
+            }
             if let Some(action) = key_action(code, control, modifiers.shift()) {
                 self.act(world, action);
             }
+        }
+    }
+
+    /// Escape: drops a drag or a stroke under way, nothing edited; else the
+    /// pick. A gesture has no button, so this is the one key without one.
+    fn cancel(&mut self) {
+        if self.drag.take().is_some() {
+            self.say("Dropped the move: nothing changed.".to_owned());
+        } else if self.stroke.take().is_some() {
+            self.say("Dropped the stroke: nothing changed.".to_owned());
+        } else {
+            self.selection = None;
         }
     }
 
@@ -532,6 +636,7 @@ impl LevelEditor {
             Action::Copy => self.duplicate(world),
             Action::Fit => self.fit(world),
             Action::GameView => self.view = None,
+            Action::Grid => self.grid = !self.grid,
             Action::Room(id) => {
                 if live_rooms(world, None).iter().any(|room| room.id == id) {
                     self.current = Some(id);
@@ -778,10 +883,13 @@ impl LevelEditor {
         }
     }
 
-    /// Paint's and erase's primary button: a press starts a stroke in the
-    /// room under the cursor, the cells it crosses gather while it is held,
-    /// and the release applies them as one batch, a `paint` or an `erase`
-    /// per target layer.
+    /// Paint's and Erase's buttons: a press starts a stroke in the room
+    /// under the cursor, the primary button's the tool's (while `primary`,
+    /// which the eyedropper turns off) and the secondary's an erasing one.
+    /// The cells it crosses gather while its button is held, or with Shift
+    /// held at the press it is the rectangle from its first cell to the
+    /// cursor's, kept inside the room; the release applies it as one batch,
+    /// a `paint` or an `erase` per target layer.
     fn stroke(
         &mut self,
         world: &mut World,
@@ -789,42 +897,68 @@ impl LevelEditor {
         rooms: &[Live],
         at: Vec2,
         blocked: bool,
+        primary: bool,
     ) {
-        if frame.primary.pressed
+        let pressed = if primary && frame.primary.pressed {
+            Some(false)
+        } else if frame.secondary.pressed {
+            Some(true)
+        } else {
+            None
+        };
+        if self.stroke.is_none()
             && !blocked
+            && let Some(secondary) = pressed
             && let Some((room, cell)) = cell_under(rooms, at)
         {
             self.set_current(&room);
+            let first = [i64::from(cell[0]), i64::from(cell[1])];
             self.stroke = Some(Stroke {
                 room,
                 cells: vec![cell],
-                last: [i64::from(cell[0]), i64::from(cell[1])],
+                first,
+                last: first,
+                rect: frame.shift,
+                erase: secondary || self.tool == Tool::Erase,
+                secondary,
             });
         }
-        if let Some(stroke) = &mut self.stroke
-            && let Some(live) = rooms.iter().find(|live| live.id == stroke.room)
-        {
+        let Some(stroke) = &mut self.stroke else {
+            return;
+        };
+        if let Some(live) = rooms.iter().find(|live| live.id == stroke.room) {
             let cell = ((at - live.origin) / live.cell).floor();
             let to = [cell.x as i64, cell.y as i64];
             let size = [
                 (live.size.x / live.cell.x) as i64,
                 (live.size.y / live.cell.y) as i64,
             ];
-            for [col, row] in line(stroke.last, to) {
-                let inside = (0..size[0]).contains(&col) && (0..size[1]).contains(&row);
-                let cell = [col as u32, row as u32];
-                if inside && !stroke.cells.contains(&cell) {
-                    stroke.cells.push(cell);
+            if stroke.rect {
+                stroke.last = [
+                    to[0].clamp(0, (size[0] - 1).max(0)),
+                    to[1].clamp(0, (size[1] - 1).max(0)),
+                ];
+            } else {
+                for [col, row] in line(stroke.last, to) {
+                    let inside = (0..size[0]).contains(&col) && (0..size[1]).contains(&row);
+                    let cell = [col as u32, row as u32];
+                    if inside && !stroke.cells.contains(&cell) {
+                        stroke.cells.push(cell);
+                    }
                 }
+                stroke.last = to;
             }
-            stroke.last = to;
         }
-        if frame.primary.released
-            && let Some(stroke) = self.stroke.take()
-        {
-            self.apply_stroke(world, &stroke);
-        }
-        if !frame.primary.held && !frame.primary.released {
+        let button = if stroke.secondary {
+            frame.secondary
+        } else {
+            frame.primary
+        };
+        if button.released {
+            if let Some(stroke) = self.stroke.take() {
+                self.apply_stroke(world, &stroke);
+            }
+        } else if !button.held {
             self.stroke = None;
         }
     }
@@ -852,7 +986,7 @@ impl LevelEditor {
             return;
         };
         let layers = self.target_layers(document);
-        let erase = self.tool == Tool::Erase;
+        let erase = stroke.erase;
         if layers.is_empty() {
             self.refuse(format!(
                 "Can't {}: room `{}` has no layer.",
@@ -873,17 +1007,21 @@ impl LevelEditor {
             };
             Some(tile)
         };
+        // A rectangle is the batch's `rect`, so its undo step and its file
+        // diff are the rectangle, not its cells.
+        let (shape, area) = if stroke.rect {
+            ("rect", json!(stroke.bounds()))
+        } else {
+            ("cells", json!(stroke.cells))
+        };
         let commands: Vec<serde_json::Value> = layers
             .iter()
             .map(|layer| match &tile {
-                None => json!({ "erase": { "layer": layer, "cells": stroke.cells } }),
-                Some(tile) => {
-                    json!({ "paint": { "layer": layer, "cells": stroke.cells, "tile": tile } })
-                }
+                None => json!({ "erase": { "layer": layer, shape: area } }),
+                Some(tile) => json!({ "paint": { "layer": layer, shape: area, "tile": tile } }),
             })
             .collect();
-        let cells = stroke.cells.len();
-        let cells = format!("{cells} cell{}", plural(cells));
+        let cells = stroke.extent();
         let into = layers.join(" and ");
         let (what, done) = match &tile {
             None => (
@@ -899,8 +1037,8 @@ impl LevelEditor {
         self.edit(world, &stroke.room, Edit::Apply(batch), &what, &done);
     }
 
-    /// The eyedropper: the prefab of the object under the cursor, else the
-    /// topmost tile at the cell and its layer.
+    /// The eyedropper: the prefab of the object under the cursor and Place,
+    /// else the topmost tile at the cell, its layer and Paint.
     fn eyedropper(&mut self, world: &World, rooms: &[Live], camera: CameraState, at: Vec2) {
         let registry = world.get_resource::<RoomRegistry>();
         if let Some((room, id)) = pick(world, rooms, camera, at)
@@ -913,9 +1051,11 @@ impl LevelEditor {
                 object.prefab
             ));
             self.prefab = Some(object.prefab.clone());
+            self.tool = Tool::Place;
             return;
         }
         let Some((room, [col, row])) = cell_under(rooms, at) else {
+            self.say("Nothing to take here: the cursor is over no room.".to_owned());
             return;
         };
         let maps = world.get_resource::<tungsten_core::assets::TilemapRegistry>();
@@ -939,6 +1079,7 @@ impl LevelEditor {
                 ));
                 self.tile = Some(sprite);
                 self.layer = Some(layer);
+                self.tool = Tool::Paint;
             }
             None => self.say(format!("Cell {col}, {row} holds no tile to take.")),
         }
@@ -1010,15 +1151,23 @@ impl LevelEditor {
             self.refuse("Nothing is picked to delete: click an object with Select.".to_owned());
             return;
         };
-        let batch = parse(&format!(r#"[{{ "delete": {{ "id": "{id}" }} }}]"#));
+        self.delete_object(world, &room, &id);
+    }
+
+    /// Deletes `room`'s object `id`: the pick's Delete, and the secondary
+    /// button's on the object under the cursor.
+    fn delete_object(&mut self, world: &mut World, room: &str, id: &str) {
+        let batch = parse(&json!([{ "delete": { "id": id } }]).to_string());
         if self.edit(
             world,
-            &room,
+            room,
             Edit::Apply(batch),
             &format!("delete `{id}`"),
             &format!("Deleted `{id}`."),
-        ) {
+        ) && self.selection.as_deref() == Some(id)
+        {
             self.selection = None;
+            self.drag = None;
         }
     }
 
@@ -1178,12 +1327,18 @@ impl LevelEditor {
             return "The cursor is over a window: move it into the world to edit.".to_owned();
         }
         let does = match self.tool {
+            _ if self.picking => {
+                "Click an object: take its prefab. Click a cell: take its tile and layer."
+                    .to_owned()
+            }
             Tool::Select => match (&self.drag, &self.hover) {
                 (Some(drag), _) if drag.by != [0.0, 0.0] => format!(
-                    "Release: move `{}` by {}, {}.",
+                    "Release: move `{}` by {}, {}. Esc drops it.",
                     drag.id, drag.by[0], drag.by[1]
                 ),
-                (_, Some((_, id))) => format!("Click: pick `{id}`. Drag: move it by cells."),
+                (_, Some((_, id))) => {
+                    format!("Click: pick `{id}`. Drag: move it by cells. Right click: delete it.")
+                }
                 _ => "Click an object to pick it, then drag it.".to_owned(),
             },
             Tool::Place => match (self.prefab_or_first(world), &self.cursor) {
@@ -1193,29 +1348,29 @@ impl LevelEditor {
                 (Some(prefab), None) => format!("Click in a room: place `{prefab}`."),
                 (None, _) => "The game lists no prefab to place.".to_owned(),
             },
-            Tool::Paint | Tool::Erase => {
-                let room = self.current_room(world);
-                let into =
-                    room.map_or_else(String::new, |room| self.target_layers(room).join(" and "));
-                let cells = self.stroke.as_ref().map(|stroke| stroke.cells.len());
-                match (self.tool, cells) {
-                    (Tool::Erase, Some(n)) => {
-                        format!("Release: erase {n} cell{} of {into}.", plural(n))
+            Tool::Paint | Tool::Erase | Tool::Pick => {
+                let into = (self.current_room(world))
+                    .map_or_else(String::new, |room| self.target_layers(room).join(" and "));
+                let room = self.current.clone().unwrap_or_default();
+                // A stroke under way says what its release does; the
+                // secondary button's erases under Paint too.
+                let erase =
+                    (self.stroke.as_ref()).map_or(self.tool == Tool::Erase, |stroke| stroke.erase);
+                let extent = self.stroke.as_ref().map(Stroke::extent);
+                match (erase, extent, self.tile_or_first(world, &room)) {
+                    (true, Some(extent), _) => {
+                        format!("Release: erase {extent} of {into}. Esc drops it.")
                     }
-                    (Tool::Erase, None) => format!("Drag: erase cells of {into}."),
-                    (_, cells) => {
-                        let room = self.current.clone().unwrap_or_default();
-                        match (self.tile_or_first(world, &room), cells) {
-                            (Some(tile), Some(n)) => format!(
-                                "Release: paint {n} cell{} of {into} with `{tile}`.",
-                                plural(n)
-                            ),
-                            (Some(tile), None) => {
-                                format!("Drag: paint `{tile}` into {into}.")
-                            }
-                            (None, _) => format!("Room `{room}`'s tileset has no tile to paint."),
-                        }
+                    (true, None, _) => {
+                        format!("Drag: erase cells of {into}. Shift+drag: a rectangle.")
                     }
+                    (false, Some(extent), Some(tile)) => {
+                        format!("Release: paint {extent} of {into} with `{tile}`. Esc drops it.")
+                    }
+                    (false, None, Some(tile)) => format!(
+                        "Drag: paint `{tile}` into {into}. Shift+drag: a rectangle. Right drag: erase."
+                    ),
+                    (false, _, None) => format!("Room `{room}`'s tileset has no tile to paint."),
                 }
             }
         };
@@ -1242,9 +1397,10 @@ enum Landed {
     Nothing,
 }
 
-/// The action a key asks for, the arrows aside: 1 to 4 the tools, `[` and
-/// `]` the palette, L the layer, F fit, Home the game's view, Delete or
-/// Backspace, Ctrl+D, Ctrl+Z, and Ctrl+Y or Ctrl+Shift+Z.
+/// The action a key asks for, the arrows and Escape aside: 1 to 5 the
+/// tools, `[` and `]` the palette, L the layer, F fit, G the grid, Home the
+/// game's view, Delete or Backspace, Ctrl+D, Ctrl+Z, and Ctrl+Y or
+/// Ctrl+Shift+Z.
 fn key_action(code: KeyCode, control: bool, shift: bool) -> Option<Action> {
     Some(match code {
         KeyCode::KeyD if control => Action::Copy,
@@ -1258,10 +1414,12 @@ fn key_action(code: KeyCode, control: bool, shift: bool) -> Option<Action> {
         KeyCode::Digit2 => Action::Tool(Tool::Place),
         KeyCode::Digit3 => Action::Tool(Tool::Paint),
         KeyCode::Digit4 => Action::Tool(Tool::Erase),
+        KeyCode::Digit5 => Action::Tool(Tool::Pick),
         KeyCode::BracketLeft => Action::PaletteStep(-1),
         KeyCode::BracketRight => Action::PaletteStep(1),
         KeyCode::KeyL => Action::LayerStep,
         KeyCode::KeyF => Action::Fit,
+        KeyCode::KeyG => Action::Grid,
         _ => return None,
     })
 }
@@ -1312,6 +1470,9 @@ struct Input {
     cursor: Option<Vec2>,
     keys: Vec<(KeyCode, Modifiers, bool)>,
     wheel: f32,
+    /// Shift and Alt, as held now.
+    shift: bool,
+    alt: bool,
     primary: Button,
     secondary: Button,
     middle: Button,
@@ -1349,6 +1510,8 @@ impl Input {
             cursor: input.cursor_position().map(|(x, y)| Vec2::new(x, y)),
             keys,
             wheel: lines + pixels / 120.0,
+            shift: input.modifiers().shift(),
+            alt: input.modifiers().alt(),
             primary: Button {
                 pressed: actions.just_pressed(input, PRIMARY),
                 held: actions.is_pressed(input, PRIMARY),
@@ -1465,6 +1628,9 @@ fn pick(world: &World, rooms: &[Live], camera: CameraState, at: Vec2) -> Option<
         };
         for object in &document.objects {
             let marker = live.origin + Vec2::from(object.at) * live.cell;
+            if (at - marker).abs().max_element() > PICK_REACH {
+                continue;
+            }
             let boxed = object_entity(world, &live.id, &object.id)
                 .and_then(|entity| crate::inspector::drawn_box(world, entity, camera.position))
                 .filter(|(min, size)| {
@@ -1571,6 +1737,21 @@ fn line(from: [i64; 2], to: [i64; 2]) -> Vec<[i64; 2]> {
             [lerp(from[0], to[0]), lerp(from[1], to[1])]
         })
         .collect()
+}
+
+/// The size of prefab `prefab`'s sprite in pixels: the box Place's ghost
+/// draws at the cell. `None` for a prefab with no sprite, or one whose
+/// sprite is not registered.
+fn prefab_size(world: &World, prefab: &str) -> Option<Vec2> {
+    let name = &world
+        .get_resource::<tungsten_core::assets::PrefabRegistry>()?
+        .get(prefab)?
+        .sprite
+        .as_ref()?
+        .asset_id;
+    let sprites = world.get_resource::<tungsten_core::assets::AssetRegistry>()?;
+    let sprite = sprites.sprite(sprites.sprite_id(name)?)?;
+    Some(Vec2::new(sprite.width as f32, sprite.height as f32))
 }
 
 /// The registered prefab IDs, sorted.

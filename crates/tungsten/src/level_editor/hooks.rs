@@ -23,13 +23,14 @@ use tungsten_core::script::ScriptHooks;
 use super::{Action, LevelEditor, Tool};
 
 /// What `do` may name, with the action each is.
-const DOES: [(&str, Action); 9] = [
+const DOES: [(&str, Action); 10] = [
     ("undo", Action::Undo),
     ("redo", Action::Redo),
     ("delete", Action::Delete),
     ("copy", Action::Copy),
     ("fit", Action::Fit),
     ("game_view", Action::GameView),
+    ("grid", Action::Grid),
     ("palette_next", Action::PaletteStep(1)),
     ("palette_previous", Action::PaletteStep(-1)),
     ("layer_next", Action::LayerStep),
@@ -39,12 +40,12 @@ const DOES: [(&str, Action); 9] = [
 pub(crate) fn register(hooks: &mut ScriptHooks) {
     hooks.add_probe(
         "editor",
-        "The level editor's state: `available`, `open`, `tool`, `room`, `rooms` (the live ones), `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings`, `view`.",
+        "The level editor's state: `available`, `open`, `tool`, `room`, `rooms` (the live ones), `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings`, `grid`, `view`.",
         probe,
     );
     hooks.add_action(
         "editor",
-        "Drives the level editor as its keys and buttons do: any of `{\"open\": bool, \"room\": id, \"tool\": \"select\" | \"place\" | \"paint\" | \"erase\", \"prefab\": id, \"tile\": sprite, \"layer\": name | null, \"select\": id | null, \"do\": \"undo\" | \"redo\" | \"delete\" | \"copy\" | \"fit\" | \"game_view\" | \"palette_next\" | \"palette_previous\" | \"layer_next\"}`, applied in that order.",
+        "Drives the level editor as its keys and buttons do: any of `{\"open\": bool, \"room\": id, \"tool\": \"select\" | \"place\" | \"paint\" | \"erase\" | \"pick\", \"prefab\": id, \"tile\": sprite, \"layer\": name | null, \"select\": id | null, \"do\": \"undo\" | \"redo\" | \"delete\" | \"copy\" | \"fit\" | \"game_view\" | \"grid\" | \"palette_next\" | \"palette_previous\" | \"layer_next\"}`, applied in that order.",
         action,
     );
 }
@@ -81,6 +82,7 @@ fn probe(world: &World, _: &Value) -> Result<Value, String> {
         "undo": undo,
         "redo": redo,
         "findings": editor.findings,
+        "grid": editor.grid,
         "view": editor.view.map(|view| json!({
             "position": [view.position.x, view.position.y],
             "zoom": view.zoom,

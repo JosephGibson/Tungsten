@@ -12,6 +12,7 @@ use tungsten_core::save::{SaveId, SaveState};
 use tungsten_core::ui::{UiKey, UiLayer, WidgetId};
 use tungsten_core::{CameraState, Config, DebugDraw, Time, Transform, World};
 
+use super::overlay::Mark;
 use super::*;
 use crate::App;
 use crate::asset_loader::room::tests::fixture_copy;
@@ -604,13 +605,51 @@ fn place_puts_the_palettes_prefab_at_the_clicked_cells_corner() {
     );
 }
 
+/// A press of the secondary button at `cells[0]`, a move through the rest
+/// and the release, a frame each.
+fn secondary_stroke(harness: &mut UiHarness, cells: &[Vec2]) {
+    harness.pointer_to(cells[0].x, cells[0].y);
+    let input = harness.world_mut().resource_mut::<InputState>();
+    input.mouse_down(MouseButton::Right);
+    harness.step(1);
+    for at in &cells[1..] {
+        harness.pointer_to(at.x, at.y);
+        harness.step(1);
+    }
+    harness
+        .world_mut()
+        .resource_mut::<InputState>()
+        .mouse_up(MouseButton::Right);
+    harness.step(1);
+}
+
+/// Holds `modifiers` from here on; `Modifiers::empty()` lets go.
+fn hold(harness: &mut UiHarness, modifiers: Modifiers) {
+    harness
+        .world_mut()
+        .resource_mut::<InputState>()
+        .set_modifiers(modifiers);
+}
+
 #[test]
-fn the_eyedropper_takes_a_prefab_from_an_object_and_a_tile_and_its_layer_from_a_cell() {
+fn alt_click_takes_a_tile_and_a_prefab() {
     let (_dir, mut harness) = editor();
     open(&mut harness);
-    secondary_click(&mut harness, CRATE);
-    assert_eq!(state(&harness).prefab.as_deref(), Some("crate"));
-    secondary_click(&mut harness, cell(2, 21));
+    // Alt with the button, in Select: the object's prefab and Place, and
+    // no pick, drag or edit.
+    hold(&mut harness, Modifiers::ALT);
+    drag(&mut harness, CRATE, RIGHT);
+    let editor = state(&harness);
+    assert_eq!(editor.prefab.as_deref(), Some("crate"));
+    assert_eq!(editor.tool, Tool::Place);
+    assert_eq!(editor.selection, None);
+    assert_eq!(
+        editor.status,
+        "Took prefab `crate` from `crate_1`: Place puts it down."
+    );
+    assert_eq!(journal(harness.world(), "cave"), (0, 0));
+    // In Place, still held: a cell's topmost tile, its layer and Paint.
+    drag(&mut harness, cell(2, 21), cell(2, 21));
     let editor = state(&harness);
     assert_eq!(editor.tile.as_deref(), Some("rock"));
     assert_eq!(
@@ -618,10 +657,180 @@ fn the_eyedropper_takes_a_prefab_from_an_object_and_a_tile_and_its_layer_from_a_
         Some("solid"),
         "the last layer holding one"
     );
+    assert_eq!(editor.tool, Tool::Paint);
     assert_eq!(
         editor.status,
         "Took tile `rock` and layer `solid`: Paint writes there."
     );
+    // The press that took the tile started no stroke.
+    assert_eq!(journal(harness.world(), "cave"), (0, 0));
+    assert_eq!(
+        state(&harness).hint,
+        "Click an object: take its prefab. Click a cell: take its tile and layer. At 2, 21 in `cave`."
+    );
+    hold(&mut harness, Modifiers::empty());
+
+    // The Pick tool is the same eyedropper without the key, for one take.
+    harness.tap_key(KeyCode::Digit5);
+    assert_eq!(state(&harness).tool, Tool::Pick);
+    drag(&mut harness, CRATE, CRATE);
+    assert_eq!(state(&harness).tool, Tool::Place);
+    harness.tap_key(KeyCode::Digit5);
+    drag(&mut harness, cell(20, 2), cell(20, 2));
+    assert_eq!(state(&harness).status, "Cell 20, 2 holds no tile to take.");
+    assert_eq!(
+        state(&harness).tool,
+        Tool::Pick,
+        "nothing taken, the tool stays"
+    );
+    assert_eq!(journal(harness.world(), "cave"), (0, 0));
+}
+
+#[test]
+fn the_secondary_button_erases_cells_and_deletes_an_object() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    // Under Paint it erases a stroke of cells, one undo step.
+    harness.tap_key(KeyCode::Digit3);
+    secondary_stroke(&mut harness, &[cell(1, 21), cell(2, 21)]);
+    assert_eq!(state(&harness).status, "Erased 2 cells of art and solid.");
+    assert_eq!(state(&harness).tool, Tool::Paint, "the tool stays");
+    let room = document(harness.world(), "cave");
+    assert_eq!(room.layers[1].cells.get("2,21"), Some(&None));
+    assert_eq!(journal(harness.world(), "cave"), (1, 0));
+    assert_eq!(file(&dir), room.to_canonical());
+    // Under Select it deletes the object under the cursor, picked or not.
+    harness.tap_key(KeyCode::Digit1);
+    secondary_click(&mut harness, CRATE);
+    assert_eq!(state(&harness).status, "Deleted `crate_1`.");
+    let room = document(harness.world(), "cave");
+    assert!(room.objects.iter().all(|object| object.id != "crate_1"));
+    assert_eq!(named(harness.world(), "cave.crate_1"), None);
+    assert_eq!(file(&dir), room.to_canonical());
+    // Under Place too; on nothing it does nothing.
+    harness.tap_key(KeyCode::Digit2);
+    let lamp = Vec2::from(at(harness.world(), "cave", "lamp_1")) * 16.0 + Vec2::splat(2.0);
+    secondary_click(&mut harness, lamp);
+    assert_eq!(state(&harness).status, "Deleted `lamp_1`.");
+    secondary_click(&mut harness, cell(20, 2));
+    assert_eq!(journal(harness.world(), "cave"), (3, 0));
+    // Each is undone as any edit is.
+    chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyZ);
+    assert_eq!(at(harness.world(), "cave", "lamp_1"), [8.0, 19.0]);
+}
+
+#[test]
+fn shift_makes_a_stroke_a_rectangle() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    click(&mut harness, "tool_paint");
+    click(&mut harness, "item_plank");
+    click(&mut harness, "layer_art");
+    hold(&mut harness, Modifiers::SHIFT);
+    harness.pointer_to(cell(1, 10).x, cell(1, 10).y);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(cell(4, 12).x, cell(4, 12).y);
+    harness.step(1);
+    assert_eq!(
+        state(&harness).hint,
+        "Release: paint a 4 \u{d7} 3 rectangle of art with `plank`. Esc drops it. At 4, 12 in `cave`."
+    );
+    // The overlay draws the rectangle as one box.
+    let boxes = overlay(&harness).marks;
+    assert!(boxes.iter().any(|mark| matches!(
+        mark,
+        Mark::Aabb(min, max, _) if *min == Vec2::new(16.0, 160.0) && *max == Vec2::new(80.0, 208.0)
+    )));
+    // Shift let go before the release changes nothing: the press chose.
+    hold(&mut harness, Modifiers::empty());
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(
+        state(&harness).status,
+        "Painted a 4 \u{d7} 3 rectangle of art with `plank`."
+    );
+    let room = document(harness.world(), "cave");
+    for col in 1..=4 {
+        for row in 10..=12 {
+            let key = format!("{col},{row}");
+            assert_eq!(
+                room.layers[0].cells.get(&key),
+                Some(&Some("plank".to_owned()))
+            );
+        }
+    }
+    assert_eq!(room.layers[0].cells.get("5,12"), None);
+    assert_eq!(journal(harness.world(), "cave"), (1, 0), "one batch");
+    assert_eq!(file(&dir), room.to_canonical());
+
+    // The secondary button's rectangle erases, and a corner dragged out of
+    // the room stays inside it.
+    hold(&mut harness, Modifiers::SHIFT);
+    secondary_stroke(&mut harness, &[cell(38, 22), Vec2::new(900.0, 600.0)]);
+    hold(&mut harness, Modifiers::empty());
+    assert_eq!(
+        state(&harness).status,
+        "Erased a 2 \u{d7} 2 rectangle of art."
+    );
+    chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyZ);
+    chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyZ);
+    let room = document(harness.world(), "cave");
+    assert_eq!(
+        room.layers[0].cells.get("1,10"),
+        None,
+        "the rectangle undone whole"
+    );
+}
+
+#[test]
+fn escape_drops_a_drag() {
+    let (dir, mut harness) = editor();
+    let before = file(&dir);
+    open(&mut harness);
+    harness.pointer_to(CRATE.x, CRATE.y);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(CRATE.x + 32.0, CRATE.y);
+    harness.step(1);
+    assert_eq!(
+        state(&harness).hint,
+        "Release: move `crate_1` by 2, 0. Esc drops it. At 7, 19 in `cave`."
+    );
+    harness.tap_key(KeyCode::Escape);
+    assert!(
+        state(&harness).open,
+        "Escape is the gesture's, not the window's"
+    );
+    assert!(
+        !harness.world().has_resource::<crate::app::Exiting>(),
+        "nor the game's: the modal root keeps the key from `engine_exit`"
+    );
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(at(harness.world(), "cave", "crate_1"), [5.0, 19.0]);
+    assert_eq!(journal(harness.world(), "cave"), (0, 0));
+    assert_eq!(state(&harness).status, "Dropped the move: nothing changed.");
+    assert_eq!(state(&harness).selection.as_deref(), Some("crate_1"));
+    // With no gesture under way it drops the pick.
+    harness.tap_key(KeyCode::Escape);
+    assert_eq!(state(&harness).selection, None);
+    // A stroke is dropped the same way.
+    harness.tap_key(KeyCode::Digit3);
+    harness.pointer_to(cell(1, 10).x, cell(1, 10).y);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(cell(3, 10).x, cell(3, 10).y);
+    harness.step(1);
+    harness.tap_key(KeyCode::Escape);
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(
+        state(&harness).status,
+        "Dropped the stroke: nothing changed."
+    );
+    assert_eq!(journal(harness.world(), "cave"), (0, 0));
+    assert_eq!(file(&dir), before);
 }
 
 #[test]
@@ -780,7 +989,7 @@ fn every_action_has_a_button() {
         let button = keyed(&harness, &format!("tool_{}", tool.name()));
         assert_eq!(harness.tree().plain_text(button), tool.caption());
     }
-    for key in ["undo", "redo", "delete", "copy", "fit", "game_view"] {
+    for key in ["undo", "redo", "delete", "copy", "fit", "game_view", "grid"] {
         keyed(&harness, key);
     }
     // Every key's action is a tool's, a button's or a list row's.
@@ -789,6 +998,8 @@ fn every_action_has_a_button() {
         (KeyCode::Digit2, false, false),
         (KeyCode::Digit3, false, false),
         (KeyCode::Digit4, false, false),
+        (KeyCode::Digit5, false, false),
+        (KeyCode::KeyG, false, false),
         (KeyCode::BracketLeft, false, false),
         (KeyCode::BracketRight, false, false),
         (KeyCode::KeyL, false, false),
@@ -810,7 +1021,8 @@ fn every_action_has_a_button() {
             | Action::Delete
             | Action::Copy
             | Action::Fit
-            | Action::GameView => true,
+            | Action::GameView
+            | Action::Grid => true,
             // The palette's and the layer's rows are their steps' buttons.
             Action::PaletteStep(_) => !rows(&harness, "palette").is_empty(),
             Action::LayerStep => rows(&harness, "layers").len() == 3,
@@ -827,7 +1039,11 @@ fn every_action_has_a_button() {
     assert_eq!(key_action(KeyCode::Digit2, true, false), None);
     // The keys are written out on the panel.
     assert!(harness.shows("Del: delete   Ctrl+D: copy"));
-    assert!(harness.shows("left button: the tool"));
+    assert!(harness.shows("right button: erase cells, delete an object"));
+    // Escape drops a gesture under way, which no button can: the one key
+    // that is no action.
+    assert_eq!(key_action(KeyCode::Escape, false, false), None);
+    assert!(harness.shows("Esc: drop a drag or the pick   F10: close"));
 }
 
 #[test]
@@ -1092,7 +1308,7 @@ fn the_editor_action_drives_every_control() {
     for (args, error) in [
         (
             json!({ "tool": "brush" }),
-            "no tool `brush`: select, place, paint, erase",
+            "no tool `brush`: select, place, paint, erase, pick",
         ),
         (json!({ "prefab": "ghost" }), "No prefab `ghost`."),
         (
@@ -1110,7 +1326,7 @@ fn the_editor_action_drives_every_control() {
         ),
         (
             json!({ "do": "explode" }),
-            "`do` names no action `explode`: undo, redo, delete, copy, fit, game_view, palette_next, palette_previous, layer_next",
+            "`do` names no action `explode`: undo, redo, delete, copy, fit, game_view, grid, palette_next, palette_previous, layer_next",
         ),
         (
             json!({ "select": null, "do": "delete" }),
@@ -1154,10 +1370,11 @@ fn the_editor_probe_reads_its_state() {
             "selection": "crate_1",
             "status": "Moved `crate_1` by 1, 0.",
             "refused": false,
-            "hint": "Click: pick `crate_1`. Drag: move it by cells. At 6, 19 in `cave`.",
+            "hint": "Click: pick `crate_1`. Drag: move it by cells. Right click: delete it. At 6, 19 in `cave`.",
             "undo": 1,
             "redo": 0,
             "findings": [],
+            "grid": true,
             "view": null,
         })
     );
@@ -1222,4 +1439,235 @@ fn an_idle_open_editor_writes_no_node() {
     harness.pointer_to(RIGHT.x + 64.0, RIGHT.y);
     harness.step(1);
     assert_eq!(writes(&harness), before + 1);
+}
+
+/// What the editor draws in the world this frame.
+fn overlay(harness: &UiHarness) -> super::overlay::Overlay {
+    let world = harness.world();
+    let editor = state(harness);
+    let camera = editor.drawn(editor.game_view(world));
+    let rooms = live_rooms(world, editor.current.as_deref());
+    super::overlay::gather(editor, world, &rooms, camera)
+}
+
+/// The overlay's lines: the grid's.
+fn lines_of(harness: &UiHarness) -> Vec<(Vec2, Vec2)> {
+    (overlay(harness).marks.iter())
+        .filter_map(|mark| match mark {
+            Mark::Line(a, b, _) => Some((*a, *b)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether the overlay holds a box from `min` to `max`.
+fn boxed(harness: &UiHarness, min: Vec2, max: Vec2) -> bool {
+    overlay(harness)
+        .marks
+        .iter()
+        .any(|mark| matches!(mark, Mark::Aabb(a, b, _) if *a == min && *b == max))
+}
+
+#[test]
+fn the_grid_draws_the_views_cells_alone() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(1);
+    // The fixture's routes are lines too: the grid's are what G takes away.
+    harness.tap_key(KeyCode::KeyG);
+    assert!(!state(&harness).grid);
+    let routes = lines_of(&harness).len();
+    harness.tap_key(KeyCode::KeyG);
+    let grid = |harness: &UiHarness| lines_of(harness).len() - routes;
+    // The game's view holds the room whole, 40 by 24 cells of 16 px: the 39
+    // and 23 lines between them, the room's edges being its bounds'.
+    assert_eq!(grid(&harness), 39 + 23);
+    // Zoomed in, the lines the view holds, each cut to it: 320 by 180 px
+    // of the world at 4, so 20 columns' and 11 rows' lines.
+    harness.world_mut().resource_mut::<LevelEditor>().view = Some(View {
+        position: Vec2::ZERO,
+        zoom: 4.0,
+    });
+    harness.step(1);
+    assert_eq!(grid(&harness), 20 + 11);
+    for (a, b) in lines_of(&harness).into_iter().take(31) {
+        assert!(
+            a.x <= 320.0 && b.x <= 320.0 && a.y <= 180.0 && b.y <= 180.0,
+            "{a} {b}"
+        );
+    }
+    // Zoomed out until a cell is under 6 px, none.
+    harness.world_mut().resource_mut::<LevelEditor>().view = Some(View {
+        position: Vec2::ZERO,
+        zoom: 0.25,
+    });
+    harness.step(1);
+    assert_eq!(grid(&harness), 0);
+    // The Grid button is the key's, marked while the grid is on.
+    harness.world_mut().resource_mut::<LevelEditor>().view = None;
+    let fill = |harness: &UiHarness| {
+        (harness.tree().overrides(keyed(harness, "grid")))
+            .and_then(|style| style.background)
+            .unwrap()
+    };
+    harness.step(1);
+    let on = fill(&harness);
+    click(&mut harness, "grid");
+    assert!(!state(&harness).grid);
+    harness.step(1);
+    assert_ne!(fill(&harness), on);
+    assert_eq!(grid(&harness), 0);
+}
+
+#[test]
+fn a_ghost_shows_where_place_will_put_its_prefab() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    // Place: the prefab's sprite, 8 by 16 px for the lamp, from the cell's
+    // top-left, where the object's spawn point will be.
+    click(&mut harness, "item_lamp");
+    harness.pointer_to(cell(3, 19).x, cell(3, 19).y);
+    harness.step(1);
+    assert_eq!(
+        state(&harness).hint,
+        "Click: place `lamp` at 3, 19. At 3, 19 in `cave`."
+    );
+    assert!(boxed(
+        &harness,
+        Vec2::new(48.0, 304.0),
+        Vec2::new(56.0, 320.0)
+    ));
+    // Paint and Erase: the cell.
+    click(&mut harness, "tool_paint");
+    harness.pointer_to(cell(3, 19).x, cell(3, 19).y);
+    harness.step(1);
+    assert!(boxed(
+        &harness,
+        Vec2::new(48.0, 304.0),
+        Vec2::new(64.0, 320.0)
+    ));
+    assert!(!boxed(
+        &harness,
+        Vec2::new(48.0, 304.0),
+        Vec2::new(56.0, 320.0)
+    ));
+    // Select: no ghost, but a box and the ID of the object under the
+    // cursor, and each room's ID at its corner.
+    click(&mut harness, "tool_select");
+    harness.pointer_to(cell(3, 19).x, cell(3, 19).y);
+    harness.step(1);
+    assert!(!boxed(
+        &harness,
+        Vec2::new(48.0, 304.0),
+        Vec2::new(64.0, 320.0)
+    ));
+    let labels = |harness: &UiHarness| -> Vec<String> {
+        (overlay(harness).labels.into_iter())
+            .map(|(text, ..)| text)
+            .collect()
+    };
+    assert_eq!(labels(&harness), ["cave"]);
+    harness.pointer_to(CRATE.x + 4.0, CRATE.y + 4.0);
+    harness.step(1);
+    assert_eq!(labels(&harness), ["cave", "crate_1"]);
+    assert!(boxed(
+        &harness,
+        Vec2::new(80.0, 304.0),
+        Vec2::new(96.0, 320.0)
+    ));
+    // Off the room, and over the panel, nothing is promised.
+    click(&mut harness, "tool_place");
+    harness.pointer_to(700.0, 500.0);
+    harness.step(1);
+    assert_eq!(state(&harness).hint, "Click in a room: place `lamp`.");
+    // The frame's labels reach the frame's draw.
+    let drawn = &harness.harness().draw().unwrap().world_labels;
+    assert!(
+        drawn.iter().any(|label| label.content == "cave"),
+        "{drawn:?}"
+    );
+}
+
+#[test]
+fn fit_shows_the_room_beside_the_panel() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    harness.tap_key(KeyCode::KeyF);
+    let editor = state(&harness);
+    let view = editor.view.expect("a view of its own");
+    let (panel, _) = editor.panel_rect.expect("the panel's box");
+    // The room, 640 by 384 px, whole in the strip left of the panel, at a
+    // whole zoom.
+    let camera = editor.drawn(CameraState::new());
+    let min = camera.world_to_screen(Vec2::ZERO);
+    let max = camera.world_to_screen(Vec2::new(640.0, 384.0));
+    assert!(min.x >= 0.0 && min.y >= 0.0, "{min}");
+    assert!(max.x <= panel.x && max.y <= 720.0, "{max} beside {panel}");
+    assert_eq!(view.zoom, view.zoom.floor());
+    assert!(view.zoom >= 1.0);
+    // Centred in the strip.
+    assert!((min.x - (panel.x - max.x)).abs() <= 1.0, "{min} {max}");
+}
+
+#[test]
+fn a_room_of_thousands_draws_what_the_view_holds() {
+    const OBJECTS: usize = 4000;
+    let (_dir, mut harness) = editor_with(
+        Config::default(),
+        |dir| {
+            // A prefab with a sprite and no body, and 4,000 of it over
+            // the room's 40 by 24 cells.
+            fs::write(
+                dir.join("prefabs/peg.json"),
+                r#"{ "sprite": { "asset_id": "ball" }, "tag": "peg" }"#,
+            )
+            .unwrap();
+            let path = dir.join("manifest.json");
+            let mut manifest: Value =
+                serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            manifest["prefabs"]["peg"] = json!({ "path": "prefabs/peg.json" });
+            fs::write(&path, manifest.to_string()).unwrap();
+            let path = dir.join("rooms/cave.json");
+            let mut room: Value =
+                serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            let objects = room["objects"].as_array_mut().unwrap();
+            for n in 0..OBJECTS {
+                objects.push(json!({
+                    "id": format!("peg_{}", n + 1),
+                    "prefab": "peg",
+                    "at": [n % 40, (n / 40) % 24],
+                }));
+            }
+            fs::write(&path, room.to_string()).unwrap();
+        },
+        "cave",
+    );
+    open(&mut harness);
+    harness.step(1);
+    let boxes = |harness: &UiHarness| {
+        (overlay(harness).marks.iter())
+            .filter(|mark| matches!(mark, Mark::Aabb(..)))
+            .count()
+    };
+    // The game's view holds the room: every object's marker.
+    assert!(boxes(&harness) > OBJECTS);
+    // Zoomed in to 160 by 90 px of it, with the margin about 14 by 10
+    // cells of the 960: the markers there, a small share of the room's.
+    harness.world_mut().resource_mut::<LevelEditor>().view = Some(View {
+        position: Vec2::new(320.0, 192.0),
+        zoom: 8.0,
+    });
+    harness.pointer_to(400.0, 300.0);
+    harness.step(1);
+    let near = boxes(&harness);
+    assert!(near < OBJECTS / 4, "{near}");
+    assert!(near > 100, "{near}");
+    // The object under the cursor is still found, and a click picks it.
+    assert!(state(&harness).hover.is_some());
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_up();
+    harness.step(1);
+    assert!(state(&harness).selection.is_some());
 }

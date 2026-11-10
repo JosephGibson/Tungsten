@@ -55,27 +55,30 @@ const SENTENCE_LINES: u32 = 6;
 const WELCOME: &str = "Every edit is checked, written to the room's file and can be undone. F10 or the × closes the editor.";
 
 /// The mouse and the keys, the panel's last lines.
-const KEYS: [&str; 9] = [
+const KEYS: [&str; 11] = [
     "left button: the tool",
-    "right button: take a prefab or a tile",
-    "middle drag, arrows: pan",
-    "wheel: zoom   F: fit   Home: game view",
-    "1 2 3 4: the tools",
+    "Shift+drag: a rectangle of cells",
+    "right button: erase cells, delete an object",
+    "Alt+left: take a prefab or a tile",
+    "middle drag, arrows: pan   wheel: zoom",
+    "F: fit   Home: game view   G: grid",
+    "1 2 3 4 5: the tools",
     "[ ]: palette   L: layer",
     "Del: delete   Ctrl+D: copy",
     "Ctrl+Z: undo   Ctrl+Y: redo",
-    "F10: close",
+    "Esc: drop a drag or the pick   F10: close",
 ];
 
 /// The action buttons under the tools, in order, with their captions; undo
-/// and redo show their counts after them.
-const ACTIONS: [(Action, &str); 6] = [
+/// and redo show their counts after them, and Grid is marked while on.
+const ACTIONS: [(Action, &str); 7] = [
     (Action::Undo, "Undo"),
     (Action::Redo, "Redo"),
     (Action::Delete, "Delete"),
     (Action::Copy, "Copy"),
     (Action::Fit, "Fit"),
     (Action::GameView, "Game view"),
+    (Action::Grid, "Grid"),
 ];
 
 /// A list's row: its button, its text and the action a click asks for.
@@ -139,6 +142,7 @@ struct Shown {
     /// The current room's batches to undo and to redo.
     history: (usize, usize),
     picked: bool,
+    grid: bool,
     palette: Palette,
     /// Each layer's name and kind.
     layers: Vec<(String, String)>,
@@ -258,6 +262,7 @@ impl Shown {
             tool: editor.tool,
             history,
             picked: object.is_some(),
+            grid: editor.grid,
             layer: editor
                 .layer
                 .clone()
@@ -498,22 +503,25 @@ impl Panel {
                 );
             }
         }
-        if changed!(history) || changed!(picked) {
+        if changed!(history) || changed!(picked) || changed!(grid) {
             self.writes += 1;
             for (button, action, caption) in &self.actions {
-                let (text, dim) = match action {
+                let (text, active, dim) = match action {
                     Action::Undo => (
                         format!("{caption} {}", shown.history.0),
+                        false,
                         shown.history.0 == 0,
                     ),
                     Action::Redo => (
                         format!("{caption} {}", shown.history.1),
+                        false,
                         shown.history.1 == 0,
                     ),
-                    Action::Delete | Action::Copy => ((*caption).to_owned(), !shown.picked),
-                    _ => ((*caption).to_owned(), false),
+                    Action::Delete | Action::Copy => ((*caption).to_owned(), false, !shown.picked),
+                    Action::Grid => ((*caption).to_owned(), shown.grid, false),
+                    _ => ((*caption).to_owned(), false, false),
                 };
-                paint(tree, look, *button, &text, false, dim);
+                paint(tree, look, *button, &text, active, dim);
             }
         }
         if changed!(palette) {

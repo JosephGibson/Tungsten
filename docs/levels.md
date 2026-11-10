@@ -165,22 +165,27 @@ F10 opens the level editor in a build that watches its assets: the game clock st
 
 - **What happened.** The last edit as a sentence ("Moved `crate_1` by 1, 0."), or in red why one was refused ("Can't move `crate_1`: [5, 31] is past the room's 40 × 24 cells."). Under it, what a click does with the current tool and the cell under the cursor. A game with no live room says so here, with the rooms it lists.
 - **Rooms.** The live rooms, the current one marked, each with the file its edits write to or `read only` (a generated room, and one whose file another room shares). A click makes a room current and fits it in view; otherwise the current room is the one under the view's centre.
-- **Tools.** Select, Place, Paint and Erase, then Undo and Redo with their counts, Delete, Copy, Fit and Game view. A button that has nothing to act on is dimmed.
+- **Tools.** Select, Place, Paint, Erase and Pick, then Undo and Redo with their counts, Delete, Copy, Fit, Game view and Grid. A button that has nothing to act on is dimmed.
 - **The palette.** The prefabs with their sprites under Select and Place, the room's tiles under Paint and Erase. A click takes one and takes up its tool.
 - **Layer.** The layer Paint and Erase write to, or every layer.
 - **Pick, findings.** The picked object's ID, prefab and cell, and the room's findings as `tungsten check` reports them, read again after each edit.
 
 | Input | Does |
 | --- | --- |
-| left button | Select: a click picks an object, a drag moves it by whole cells. Place: the palette's prefab at the cell. Paint and Erase: a stroke of cells, one undo step. |
-| right button | takes the prefab of the object, or the tile and layer of the cell, under the cursor |
+| left button | Select: a click picks an object, a drag moves it by whole cells. Place: the palette's prefab at the cell. Paint and Erase: a stroke of cells, one undo step. Pick: takes the prefab of the object, or the tile and layer of the cell, under the cursor, and the tool that uses it. |
+| Shift + drag | Paint and Erase: the rectangle from the first cell to the cursor's, one `rect` in the batch |
+| Alt + left button | Pick's take, in any tool |
+| right button | erases: a stroke of cells under Paint and Erase, the object under the cursor under the other tools |
 | middle drag, arrows, wheel | pan and zoom |
-| `1` `2` `3` `4` | Select, Place, Paint, Erase |
+| `1` `2` `3` `4` `5` | Select, Place, Paint, Erase, Pick |
 | `[` `]`, `L` | step the palette; step the layer |
 | Delete, Ctrl+D | delete the pick; copy it a cell right |
 | Ctrl+Z, Ctrl+Y | undo, redo |
-| `F`, Home | fit the current room beside the panel; back to the game's view |
+| `F`, Home, `G` | fit the current room beside the panel; back to the game's view; the grid on or off |
+| Escape | drops a drag or a stroke under way, nothing edited; else the pick |
 | F10 | close |
+
+In the world the editor draws what a click will act on: each live room's bounds and ID, the current room's cell grid once a cell is 6 px or more on screen, a marker at every object's spawn point, a box and the ID of the object under the cursor and of the pick, and a ghost of the tool's effect at the cursor's cell: Place's prefab as its sprite's box, Paint's and Erase's cell, a stroke's cells or rectangle.
 
 Each edit is one batch: checked as `tungsten level apply` checks it, journaled, and written to the room's file at once, which the reload then finds unchanged. A refused edit changes nothing, and a file that can't be written takes the edit back out of the room. The editor edits rooms the game has spawned.
 
@@ -192,4 +197,4 @@ A script drives the editor through the `editor` action, which does what the butt
 { "frame": 10, "assert": { "probe": "editor", "path": "/status", "op": "==", "value": "Copied `gem_1` as `gem_2`, a cell right." } }
 ```
 
-The action's fields, each optional, apply in this order: `open`, `room`, `tool`, `prefab`, `tile`, `layer` (a name, or `null` for every layer), `select` (an object's ID, or `null`), `do` (`undo`, `redo`, `delete`, `copy`, `fit`, `game_view`, `palette_next`, `palette_previous`, `layer_next`). One the editor refuses fails the step with the sentence the panel shows. The probe gives `available`, `open`, `tool`, `room`, `rooms`, `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings` and `view`. Unlike a `level` step, an edit made through the editor writes the room's file. A click in the world is a `cursor` step and a press of `engine_editor_primary`, as any input is.
+The action's fields, each optional, apply in this order: `open`, `room`, `tool`, `prefab`, `tile`, `layer` (a name, or `null` for every layer), `select` (an object's ID, or `null`), `do` (`undo`, `redo`, `delete`, `copy`, `fit`, `game_view`, `grid`, `palette_next`, `palette_previous`, `layer_next`). One the editor refuses fails the step with the sentence the panel shows. The probe gives `available`, `open`, `tool`, `room`, `rooms`, `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings`, `grid` and `view`. Unlike a `level` step, an edit made through the editor writes the room's file. A click in the world is a `cursor` step and a press of `engine_editor_primary` (`engine_editor_secondary` for the right button), as any input is; a script holds no Shift or Alt, so a rectangle is a `level` step's `rect` and a take is the action's `prefab` or `tile`.
