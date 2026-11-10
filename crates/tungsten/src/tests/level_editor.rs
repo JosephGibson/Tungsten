@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use tungsten_core::assets::{ResolvedManifest, Room, RoomCommand, RoomJournal, RoomRegistry};
 use tungsten_core::input::{InputState, KeyCode, Modifiers, MouseButton, RoutedInput};
 use tungsten_core::save::{SaveId, SaveState};
-use tungsten_core::ui::UiLayer;
+use tungsten_core::ui::{UiKey, UiLayer, WidgetId};
 use tungsten_core::{CameraState, Config, DebugDraw, Time, Transform, World};
 
 use super::*;
@@ -175,7 +175,8 @@ fn a_drag_moves_an_object_by_whole_cells_and_writes_its_file() {
     );
     assert_eq!(journal(world, "cave"), (1, 0), "one batch");
     assert_eq!(file(&dir), document(world, "cave").to_canonical());
-    assert_eq!(state(&harness).status, "moved crate_1 by 1, 0");
+    assert_eq!(state(&harness).status, "Moved `crate_1` by 1, 0.");
+    assert!(!state(&harness).refused);
     assert_eq!(state(&harness).selection.as_deref(), Some("crate_1"));
 }
 
@@ -272,7 +273,11 @@ fn a_press_over_a_debug_window_edits_nothing() {
     // game's view picks it.
     harness.tap_key(KeyCode::F4);
     harness.tap_key(KeyCode::F3);
-    harness.world_mut().resource_mut::<LevelEditor>().view = None;
+    let editor = harness.world_mut().resource_mut::<LevelEditor>();
+    editor.view = None;
+    // The press on the editor's own window fell on its panel, whose
+    // buttons act: Select again, whatever it took up.
+    editor.tool = Tool::Select;
     drag(&mut harness, CRATE, RIGHT);
     assert_eq!(at(harness.world(), "cave", "crate_1"), [6.0, 19.0]);
 }
@@ -299,10 +304,14 @@ fn a_failed_write_puts_the_room_the_file_and_the_journal_back() {
     assert!(
         state(&harness)
             .status
-            .ends_with("the disk is full; nothing edited"),
+            .starts_with("Can't move `crate_1`: '")
+            && state(&harness)
+                .status
+                .ends_with("cannot be written (the disk is full); nothing edited."),
         "{}",
         state(&harness).status
     );
+    assert!(state(&harness).refused);
     // Undo and redo give what they gave before.
     harness.world_mut().resource_mut::<LevelEditor>().writer = write_atomic;
     chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyY);
@@ -420,7 +429,7 @@ fn a_generated_room_refuses_the_drag() {
     assert!(
         state(&harness)
             .status
-            .starts_with("`run_a` is a generated room"),
+            .starts_with("Can't move `crate_1`: `run_a` is a generated room"),
         "{}",
         state(&harness).status
     );
@@ -461,7 +470,7 @@ fn a_room_with_no_file_is_edited_live_and_nothing_written() {
     assert_eq!(at(harness.world(), "nook", "crate_1"), [6.0, 19.0]);
     assert_eq!(
         state(&harness).status,
-        "moved crate_1 by 1, 0 (no file: kept live)"
+        "Moved `crate_1` by 1, 0. The room has no file, so the edit stays in the running game."
     );
     assert_eq!(file(&dir), before);
     assert!(!dir.join("rooms/nook.json").exists());
@@ -588,7 +597,7 @@ fn place_puts_the_palettes_prefab_at_the_clicked_cells_corner() {
     assert!(named(world, "cave.lamp_2").is_some(), "spawned");
     assert_eq!(state(&harness).selection.as_deref(), Some("lamp_2"));
     assert_eq!(file(&dir), document(world, "cave").to_canonical());
-    assert_eq!(state(&harness).status, "placed lamp_2 at 3, 19");
+    assert_eq!(state(&harness).status, "Placed `lamp_2` at 3, 19.");
     assert!(
         state(&harness).findings.is_empty(),
         "it stands on the floor"
@@ -609,7 +618,10 @@ fn the_eyedropper_takes_a_prefab_from_an_object_and_a_tile_and_its_layer_from_a_
         Some("solid"),
         "the last layer holding one"
     );
-    assert_eq!(editor.status, "took rock from layer solid");
+    assert_eq!(
+        editor.status,
+        "Took tile `rock` and layer `solid`: Paint writes there."
+    );
 }
 
 #[test]
@@ -651,7 +663,10 @@ fn a_paint_stroke_is_one_batch_a_paint_per_layer_written_in_place() {
         assert_eq!(map.tile_at(0, col, 10), Some(plank as i32), "in place");
     }
     assert_eq!(file(&dir), room.to_canonical());
-    assert_eq!(state(&harness).status, "painted 3 cells plank");
+    assert_eq!(
+        state(&harness).status,
+        "Painted 3 cells of art and solid with `plank`."
+    );
     // Erase empties them.
     harness.tap_key(KeyCode::Digit4);
     stroke(&mut harness, &[cell(1, 10), cell(2, 10), cell(3, 10)]);
@@ -698,4 +713,513 @@ fn a_lamp_placed_in_mid_air_shows_one_finding_and_its_undo_none() {
     assert!(findings[0].contains("lamp_2"), "{findings:?}");
     chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyZ);
     assert!(state(&harness).findings.is_empty());
+}
+
+/// The panel's widget keyed `key`.
+fn keyed(harness: &UiHarness, key: &str) -> WidgetId {
+    harness
+        .find_key(UiKey::new(key))
+        .unwrap_or_else(|| panic!("no widget keyed `{key}`"))
+}
+
+/// Clicks the panel's widget keyed `key`, and runs the frame that acts.
+fn click(harness: &mut UiHarness, key: &str) {
+    let widget = keyed(harness, key);
+    harness.click(widget);
+    harness.step(1);
+}
+
+/// The text of the panel's widget keyed `key`: a label's, or a button's.
+fn text(harness: &UiHarness, key: &str) -> String {
+    harness.tree().plain_text(keyed(harness, key))
+}
+
+/// The texts of the labels under the panel's list keyed `key`, in order,
+/// a row's being its label's.
+fn rows(harness: &UiHarness, key: &str) -> Vec<String> {
+    let tree = harness.tree();
+    tree.children(keyed(harness, key))
+        .iter()
+        .map(|&row| {
+            let own = tree.plain_text(row);
+            if own.is_empty() {
+                (tree.children(row).iter())
+                    .map(|&child| tree.plain_text(child))
+                    .find(|text| !text.is_empty())
+                    .unwrap_or_default()
+            } else {
+                own
+            }
+        })
+        .collect()
+}
+
+/// Calls the `editor` script action with `args`; an error is the editor's
+/// own, without the hooks' `action `editor`: ` before it.
+fn script(harness: &mut UiHarness, args: &Value) -> Result<(), String> {
+    tungsten_core::script::ScriptHooks::call_action(harness.world_mut(), "editor", args).map_err(
+        |err| match err.strip_prefix("action `editor`: ") {
+            Some(own) => own.to_owned(),
+            None => err,
+        },
+    )
+}
+
+/// Reads the `editor` script probe.
+fn probe(harness: &UiHarness) -> Value {
+    tungsten_core::script::ScriptHooks::read_probe(harness.world(), "editor", &Value::Null).unwrap()
+}
+
+#[test]
+fn every_action_has_a_button() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    // Each tool, and each thing a key does, is a keyed button of the panel.
+    for tool in Tool::ALL {
+        let button = keyed(&harness, &format!("tool_{}", tool.name()));
+        assert_eq!(harness.tree().plain_text(button), tool.caption());
+    }
+    for key in ["undo", "redo", "delete", "copy", "fit", "game_view"] {
+        keyed(&harness, key);
+    }
+    // Every key's action is a tool's, a button's or a list row's.
+    let keys = [
+        (KeyCode::Digit1, false, false),
+        (KeyCode::Digit2, false, false),
+        (KeyCode::Digit3, false, false),
+        (KeyCode::Digit4, false, false),
+        (KeyCode::BracketLeft, false, false),
+        (KeyCode::BracketRight, false, false),
+        (KeyCode::KeyL, false, false),
+        (KeyCode::KeyF, false, false),
+        (KeyCode::Home, false, false),
+        (KeyCode::Delete, false, false),
+        (KeyCode::Backspace, false, false),
+        (KeyCode::KeyD, true, false),
+        (KeyCode::KeyZ, true, false),
+        (KeyCode::KeyZ, true, true),
+        (KeyCode::KeyY, true, false),
+    ];
+    for (code, control, shift) in keys {
+        let action = key_action(code, control, shift).unwrap_or_else(|| panic!("{code:?}"));
+        let on_the_panel = match action {
+            Action::Tool(_)
+            | Action::Undo
+            | Action::Redo
+            | Action::Delete
+            | Action::Copy
+            | Action::Fit
+            | Action::GameView => true,
+            // The palette's and the layer's rows are their steps' buttons.
+            Action::PaletteStep(_) => !rows(&harness, "palette").is_empty(),
+            Action::LayerStep => rows(&harness, "layers").len() == 3,
+            Action::Room(_)
+            | Action::Prefab(_)
+            | Action::Tile(_)
+            | Action::Layer(_)
+            | Action::Select(_) => false,
+        };
+        assert!(on_the_panel, "{code:?} asks for {action:?}");
+    }
+    // A key that is no action asks for none; Ctrl turns a plain key off.
+    assert_eq!(key_action(KeyCode::KeyQ, false, false), None);
+    assert_eq!(key_action(KeyCode::Digit2, true, false), None);
+    // The keys are written out on the panel.
+    assert!(harness.shows("Del: delete   Ctrl+D: copy"));
+    assert!(harness.shows("left button: the tool"));
+}
+
+#[test]
+fn a_tool_button_picks_its_tool_and_marks_it() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    let filled = |harness: &UiHarness, tool: Tool| {
+        let button = keyed(harness, &format!("tool_{}", tool.name()));
+        harness
+            .tree()
+            .overrides(button)
+            .and_then(|style| style.background)
+            .unwrap()
+    };
+    let active = filled(&harness, Tool::Select);
+    for tool in [Tool::Place, Tool::Paint, Tool::Erase, Tool::Select] {
+        click(&mut harness, &format!("tool_{}", tool.name()));
+        assert_eq!(state(&harness).tool, tool);
+        harness.step(1);
+        for other in Tool::ALL {
+            assert_eq!(
+                filled(&harness, other) == active,
+                other == tool,
+                "{other:?} while {tool:?} is taken up"
+            );
+        }
+    }
+    // The click was the panel's: nothing in the world was picked or edited.
+    assert_eq!(state(&harness).selection, None);
+    assert_eq!(journal(harness.world(), "cave"), (0, 0));
+}
+
+#[test]
+fn a_palette_row_picks_its_prefab_and_its_tile() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    // Select shows the prefabs, the first one chosen.
+    assert_eq!(text(&harness, "palette").as_str(), "");
+    assert_eq!(
+        rows(&harness, "palette"),
+        ["ball", "crate", "lamp", "walker"]
+    );
+    // A prefab's row takes it and takes up Place.
+    click(&mut harness, "item_lamp");
+    assert_eq!(state(&harness).prefab.as_deref(), Some("lamp"));
+    assert_eq!(state(&harness).tool, Tool::Place);
+    drag(&mut harness, cell(3, 19), cell(3, 19));
+    assert_eq!(at(harness.world(), "cave", "lamp_2"), [3.0, 19.0]);
+    // Paint shows the room's tiles; a tile's row takes it.
+    click(&mut harness, "tool_paint");
+    harness.step(1);
+    assert_eq!(
+        rows(&harness, "palette"),
+        [
+            "rock",
+            "rock_45_br",
+            "rock_low_br",
+            "rock_high_br",
+            "plank",
+            "arch"
+        ]
+    );
+    click(&mut harness, "item_plank");
+    assert_eq!(state(&harness).tile.as_deref(), Some("plank"));
+    assert_eq!(state(&harness).tool, Tool::Paint);
+    stroke(&mut harness, &[cell(1, 10), cell(2, 10)]);
+    let room = document(harness.world(), "cave");
+    assert_eq!(
+        room.layers[0].cells.get("2,10"),
+        Some(&Some("plank".to_owned()))
+    );
+    assert_eq!(file(&dir), room.to_canonical());
+    // Erase keeps the tiles in view; a tile's row there takes up Paint.
+    click(&mut harness, "tool_erase");
+    harness.step(1);
+    assert_eq!(rows(&harness, "palette").len(), 6);
+    click(&mut harness, "item_rock");
+    assert_eq!(state(&harness).tool, Tool::Paint);
+}
+
+#[test]
+fn a_layer_row_picks_the_target_layer() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    assert_eq!(
+        rows(&harness, "layers"),
+        ["all  every layer", "art  render", "solid  collision"]
+    );
+    click(&mut harness, "layer_solid");
+    assert_eq!(state(&harness).layer.as_deref(), Some("solid"));
+    click(&mut harness, "tool_erase");
+    stroke(&mut harness, &[cell(1, 21), cell(2, 21)]);
+    let room = document(harness.world(), "cave");
+    assert_eq!(
+        room.layers[1].cells.get("1,21"),
+        Some(&None),
+        "solid erased"
+    );
+    assert_eq!(room.layers[0].cells.get("1,21"), None, "art left");
+    assert_eq!(state(&harness).status, "Erased 2 cells of solid.");
+    click(&mut harness, "layer_all");
+    assert_eq!(state(&harness).layer, None);
+}
+
+#[test]
+fn a_refusal_reads_as_a_sentence_and_wraps() {
+    let (dir, mut harness) = editor();
+    let before = file(&dir);
+    open(&mut harness);
+    // A drag out of the room's bottom: the move is refused.
+    drag(&mut harness, CRATE, CRATE + Vec2::new(0.0, 16.0 * 12.0));
+    let editor = state(&harness);
+    assert_eq!(
+        editor.status,
+        "Can't move `crate_1`: [5, 31] is past the room's 40 \u{d7} 24 cells."
+    );
+    assert!(editor.refused);
+    assert_eq!(file(&dir), before);
+    harness.step(1);
+    // The panel shows the whole sentence, in the error colour, on lines of
+    // its own width: no window grows to hold it on one.
+    assert_eq!(text(&harness, "status"), editor_status(&harness));
+    let status = keyed(&harness, "status");
+    let tree = harness.tree();
+    let style = tree.overrides(status).unwrap();
+    assert_eq!(style.text.color, Some(crate::debug_views::ERROR_TEXT));
+    let rect = tree.rect(status).unwrap();
+    assert!(rect.width() <= 300.0, "{}", rect.width());
+    assert!(rect.height() >= 2.0 * 20.0, "wrapped: {}", rect.height());
+    // A button's refusal reads the same way.
+    drag(&mut harness, cell(20, 6), cell(20, 6));
+    click(&mut harness, "delete");
+    assert_eq!(
+        state(&harness).status,
+        "Nothing is picked to delete: click an object with Select."
+    );
+    assert!(state(&harness).refused);
+    // An edit that lands clears the refusal.
+    drag(&mut harness, CRATE, RIGHT);
+    assert!(!state(&harness).refused);
+    harness.step(1);
+    let style = harness.tree().overrides(keyed(&harness, "status")).unwrap();
+    assert_eq!(style.text.color, Some(crate::debug_views::VALUE));
+}
+
+fn editor_status(harness: &UiHarness) -> String {
+    state(harness).status.clone()
+}
+
+#[test]
+fn no_live_room_says_so() {
+    // Rooms listed, none spawned.
+    let (_dir, mut harness) = editor_with(Config::default(), |_| {}, "none");
+    open(&mut harness);
+    harness.step(2);
+    assert_eq!(state(&harness).current, None);
+    let hint = text(&harness, "hint");
+    assert_eq!(
+        hint,
+        "No room is live: the game has spawned none of its 2 rooms (cave, hall). The editor edits a room once `world.spawn_room` has spawned it."
+    );
+    assert_eq!(rows(&harness, "rooms"), ["none is live"]);
+    // A click in the world edits nothing and the buttons say why.
+    drag(&mut harness, CRATE, RIGHT);
+    assert_eq!(journal(harness.world(), "cave"), (0, 0));
+    click(&mut harness, "undo");
+    assert_eq!(state(&harness).status, "Nothing to undo: no room is live.");
+    click(&mut harness, "fit");
+    assert_eq!(state(&harness).status, "No room to fit: none is live.");
+
+    // A game with no room at all.
+    let mut harness = UiHarness::new(App::new(Config::default()).unwrap());
+    harness.step(2);
+    open(&mut harness);
+    harness.step(2);
+    assert_eq!(
+        text(&harness, "hint"),
+        "No room to edit: the game lists none. `tungsten level new <room>` makes one, and the game spawns it with `world.spawn_room`."
+    );
+}
+
+#[test]
+fn a_read_only_room_says_why() {
+    let (_dir, mut harness) = editor_with(Config::default(), |_| {}, "none");
+    let world = harness.world_mut();
+    world.register_generator("copy", Copy);
+    world.generate_rooms("copy", 1, "run").unwrap();
+    world.spawn_room("run_a", [0.0, 0.0], &(Marker,)).unwrap();
+    harness.step(1);
+    open(&mut harness);
+    harness.step(2);
+    // Before any edit is tried: its row and the hint say it.
+    assert_eq!(state(&harness).current.as_deref(), Some("run_a"));
+    assert_eq!(rows(&harness, "rooms"), ["run_a  read only"]);
+    assert_eq!(
+        text(&harness, "hint"),
+        "`run_a` is read only: generator `copy` made it for this run. `tungsten level generate` writes rooms to edit."
+    );
+}
+
+#[test]
+fn the_editor_action_drives_every_control() {
+    let (dir, mut harness) = editor();
+    // Closed, it takes only `open`.
+    assert_eq!(
+        script(&mut harness, &json!({ "tool": "paint" })),
+        Err("the level editor is closed: `{\"open\": true}` opens it".to_owned())
+    );
+    script(&mut harness, &json!({ "open": true })).unwrap();
+    assert!(state(&harness).open);
+    assert!(harness.world().resource::<Time>().is_editing());
+    assert_eq!(
+        state(&harness).current.as_deref(),
+        Some("cave"),
+        "current at once"
+    );
+    harness.step(1);
+    // A tool, a palette pick, a layer and a pick, as the buttons give them.
+    script(
+        &mut harness,
+        &json!({ "tool": "paint", "tile": "plank", "layer": "art" }),
+    )
+    .unwrap();
+    let editor = state(&harness);
+    assert_eq!(
+        (editor.tool, editor.tile.as_deref(), editor.layer.as_deref()),
+        (Tool::Paint, Some("plank"), Some("art"))
+    );
+    script(&mut harness, &json!({ "prefab": "lamp" })).unwrap();
+    assert_eq!(state(&harness).tool, Tool::Place, "a prefab takes up Place");
+    script(&mut harness, &json!({ "tool": "select", "prefab": "ball" })).unwrap();
+    assert_eq!(
+        state(&harness).tool,
+        Tool::Select,
+        "a tool named beside it stands"
+    );
+    script(&mut harness, &json!({ "layer": null, "select": "crate_1" })).unwrap();
+    assert_eq!(state(&harness).layer, None);
+    assert_eq!(state(&harness).selection.as_deref(), Some("crate_1"));
+    // What its buttons do, by name: edits land in the file.
+    script(&mut harness, &json!({ "do": "copy" })).unwrap();
+    assert_eq!(at(harness.world(), "cave", "crate_2"), [6.0, 19.0]);
+    script(&mut harness, &json!({ "do": "delete" })).unwrap();
+    script(&mut harness, &json!({ "do": "undo" })).unwrap();
+    assert_eq!(journal(harness.world(), "cave"), (1, 1));
+    script(&mut harness, &json!({ "do": "redo" })).unwrap();
+    assert_eq!(journal(harness.world(), "cave"), (2, 0));
+    assert_eq!(file(&dir), document(harness.world(), "cave").to_canonical());
+    script(&mut harness, &json!({ "do": "palette_next" })).unwrap();
+    assert_eq!(state(&harness).prefab.as_deref(), Some("crate"));
+    script(&mut harness, &json!({ "do": "layer_next" })).unwrap();
+    assert_eq!(state(&harness).layer.as_deref(), Some("art"));
+    script(&mut harness, &json!({ "do": "fit" })).unwrap();
+    assert!(state(&harness).view.is_some());
+    script(&mut harness, &json!({ "do": "game_view" })).unwrap();
+    assert_eq!(state(&harness).view, None);
+    script(&mut harness, &json!({ "room": "cave" })).unwrap();
+    // What it refuses fails the step with its sentence.
+    for (args, error) in [
+        (
+            json!({ "tool": "brush" }),
+            "no tool `brush`: select, place, paint, erase",
+        ),
+        (json!({ "prefab": "ghost" }), "No prefab `ghost`."),
+        (
+            json!({ "tile": "grass" }),
+            "Room `cave`'s tileset has no tile `grass`.",
+        ),
+        (json!({ "layer": "sky" }), "The room has no layer `sky`."),
+        (
+            json!({ "select": "crate_9" }),
+            "The room has no object `crate_9`.",
+        ),
+        (
+            json!({ "room": "hall" }),
+            "Room `hall` is not live: the game has not spawned it.",
+        ),
+        (
+            json!({ "do": "explode" }),
+            "`do` names no action `explode`: undo, redo, delete, copy, fit, game_view, palette_next, palette_previous, layer_next",
+        ),
+        (
+            json!({ "select": null, "do": "delete" }),
+            "Nothing is picked to delete: click an object with Select.",
+        ),
+    ] {
+        assert_eq!(script(&mut harness, &args), Err(error.to_owned()), "{args}");
+    }
+    assert!(
+        script(&mut harness, &json!({ "tol": "paint" }))
+            .unwrap_err()
+            .starts_with("args: unknown field `tol`")
+    );
+    script(&mut harness, &json!({ "open": false })).unwrap();
+    assert!(!state(&harness).open);
+    assert!(!harness.world().resource::<Time>().is_editing());
+}
+
+#[test]
+fn the_editor_probe_reads_its_state() {
+    let (_dir, mut harness) = editor();
+    let closed = probe(&harness);
+    assert_eq!(closed["available"], true);
+    assert_eq!(closed["open"], false);
+    open(&mut harness);
+    drag(&mut harness, CRATE, RIGHT);
+    harness.pointer_to(RIGHT.x, RIGHT.y);
+    harness.step(1);
+    let read = probe(&harness);
+    assert_eq!(
+        read,
+        json!({
+            "available": true,
+            "open": true,
+            "tool": "select",
+            "room": "cave",
+            "rooms": ["cave"],
+            "layer": null,
+            "prefab": "ball",
+            "tile": "rock",
+            "selection": "crate_1",
+            "status": "Moved `crate_1` by 1, 0.",
+            "refused": false,
+            "hint": "Click: pick `crate_1`. Drag: move it by cells. At 6, 19 in `cave`.",
+            "undo": 1,
+            "redo": 0,
+            "findings": [],
+            "view": null,
+        })
+    );
+    harness.tap_key(KeyCode::ArrowRight);
+    assert_eq!(
+        probe(&harness)["view"],
+        json!({ "position": [16.0, 0.0], "zoom": 1.0 })
+    );
+}
+
+#[test]
+fn the_panel_fits_at_the_owners_scale() {
+    for os in [1.0, 1.75] {
+        let (_dir, mut harness) = editor();
+        {
+            let world = harness.world_mut();
+            *world.resource_mut::<crate::app::WindowSize>() = crate::app::WindowSize {
+                width: 1280,
+                height: 720,
+            };
+            world
+                .resource_mut::<tungsten_core::ScaleFactor>()
+                .set_os(os);
+        }
+        open(&mut harness);
+        harness.step(4);
+        harness.assert_fits(&format!("the editor's panel at 1280\u{d7}720 on {os}"));
+        // The whole panel, or all of it but what its body scrolls, shows:
+        // the status, the tools and the palette are inside the window.
+        let tree = harness.tree();
+        let window = state(&harness).window.as_ref().unwrap();
+        let root = tree.visual_rect(window.root).unwrap();
+        for key in ["status", "hint", "tool_select", "undo", "palette"] {
+            let rect = tree.visual_rect(keyed(&harness, key)).unwrap();
+            assert!(
+                rect.min.y >= root.min.y && rect.max.y <= root.max.y,
+                "`{key}` at {os}: {rect:?} in {root:?}"
+            );
+        }
+        // Taller than the other views' 60 %: it has the height to itself.
+        let viewport = tree.layer_viewport(UiLayer::Debug).unwrap();
+        assert!(
+            root.height() > 0.6 * viewport.y,
+            "{} of {viewport} at {os}",
+            root.height()
+        );
+    }
+}
+
+#[test]
+fn an_idle_open_editor_writes_no_node() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.pointer_to(RIGHT.x, RIGHT.y);
+    harness.step(3);
+    let writes = |harness: &UiHarness| state(harness).panel.as_ref().unwrap().writes;
+    let before = writes(&harness);
+    assert!(before > 0, "it was written once");
+    harness.step(30);
+    assert_eq!(writes(&harness), before, "30 idle frames");
+    // Moving the cursor writes the hint, and nothing else.
+    harness.pointer_to(RIGHT.x + 64.0, RIGHT.y);
+    harness.step(1);
+    assert_eq!(writes(&harness), before + 1);
 }

@@ -10,27 +10,30 @@
 //! reads the raw `InputState` behind it, as a shell screen reads its
 //! hotkeys. A press inside any shown debug window is never the world's.
 //!
-//! It draws each live room's bounds, a marker at every object's spawn point
-//! (an object a generator made in its own hue) and its places through
-//! `DebugDraw`, and a view of its own: the arrows pan a cell, a middle drag
-//! pans, the wheel zooms about the cursor and Home goes back to the game's
+//! The window is a panel ([`panel`]) that shows what is in force and holds
+//! a button for every action: the last result or refusal and what the
+//! primary button will do under the cursor; the live rooms, the current one
+//! marked; the tools; undo, redo, delete, copy and the view's buttons; the
+//! palette, the prefabs for Place and the room's tiles for Paint, each
+//! with its sprite; the target layer; the pick; the room's findings; and
+//! the keys. Whatever a button does, a key and the `editor` script action
+//! do through the same [`Action`], so nothing is reachable by a key alone.
+//!
+//! In the world ([`overlay`]) it draws each live room's bounds, a marker at
+//! every object's spawn point (an object a generator made in its own hue)
+//! and its places through `DebugDraw`, and a view of its own: the arrows
+//! pan a cell, a middle drag pans, the wheel zooms about the cursor, F fits
+//! the current room beside the panel and Home goes back to the game's
 //! view, written to `CameraState` after the frame's camera update so the
-//! extract draws it. `engine_editor_primary` (the left button) picks an
-//! object, boxed as the inspector boxes an entity or within 6 px of its
-//! marker, and a drag moves it by whole cells, one `move` at the release;
-//! Delete or Backspace deletes the pick, Ctrl+D copies it a cell right,
-//! Ctrl+Z and Ctrl+Y (or Ctrl+Shift+Z) undo and redo the current room's
-//! batches in the World's `RoomJournal`. The keys 1 to 4 pick the primary
-//! button's tool: select, place (the palette's prefab at the cell's
-//! top-left), paint (a stroke of the palette's tile, one batch at the
-//! release, a `paint` per target layer) and erase (the same with `erase`);
-//! `[` and `]` step the palette through the prefabs or, painting, the
-//! room's tileset, and L the target layer through each layer, then all.
+//! extract draws it. `engine_editor_primary` (the left button) is the
+//! tool's: Select picks an object, boxed as the inspector boxes an entity
+//! or within 6 px of its marker, and a drag moves it by whole cells, one
+//! `move` at the release; Place puts the palette's prefab at the cell's
+//! top-left; Paint and Erase gather a stroke of cells, one batch at the
+//! release, a `paint` or an `erase` per target layer.
 //! `engine_editor_secondary` (the right button) is the eyedropper: the
 //! prefab of the object under the cursor, or the topmost tile at the cell
-//! (the last of the room's layers holding one) and its layer. After each
-//! edit the window shows the room's findings, core's level rules and,
-//! with the kit, its routes', as `tungsten check` runs them.
+//! and its layer.
 //!
 //! Every edit goes through `World::apply_room_batch` (or its undo or redo),
 //! checked, applied whole, patched live and journaled. Before it, a room
@@ -40,8 +43,10 @@
 //! and keeps the journal. A write that fails puts the room and the journal
 //! back as they were before the action. A generated room, and a room whose
 //! file another listed room names, is read only; a room with no file is
-//! edited live. It adds no system: [`update`] runs first in the debug
-//! views' frame and returns at once while it is closed and its key is up.
+//! edited live. A refusal reads as a sentence, the edit in the editor's
+//! words and the reason without the batch's path. It adds no system:
+//! [`update`] runs first in the debug views' frame and returns at once
+//! while it is closed and its key is up.
 
 use std::path::{Path, PathBuf};
 
@@ -50,15 +55,18 @@ use serde_json::json;
 use tungsten_core::assets::{Room, RoomCommand, RoomJournal, RoomRegistry, TilemapInstance};
 use tungsten_core::input::{ActionMap, InputState, KeyCode, Modifiers, MouseButton, RawInput};
 use tungsten_core::save::{SaveId, SaveState};
-use tungsten_core::text::TextAlign;
 use tungsten_core::ui::{UiLayer, UiTree, Visibility};
-use tungsten_core::{CameraState, DebugDraw, Entity, ScaleFactor, Time, World};
+use tungsten_core::{CameraState, Entity, ScaleFactor, Time, World};
 
+use crate::app::WindowSize;
 use crate::debug_hud::HudCorner;
-use crate::debug_views::{
-    BORDER, Cell, Column, Header, PANEL, Row, Shape, Tone, VALUE, ViewFrame, ViewSpec, ViewWindow,
-    Width, look_of, toggle_key, write_table,
-};
+use crate::debug_views::{BORDER, PANEL, VALUE, ViewFrame, ViewWindow};
+
+mod hooks;
+mod overlay;
+mod panel;
+
+pub(crate) use hooks::register as register_hooks;
 
 /// The editor's toggle, F10 by default.
 pub(crate) const TOGGLE: &str = "engine_toggle_level_editor";
@@ -66,12 +74,6 @@ pub(crate) const TOGGLE: &str = "engine_toggle_level_editor";
 pub(crate) const PRIMARY: &str = "engine_editor_primary";
 /// The editor's secondary button: the eyedropper.
 pub(crate) const SECONDARY: &str = "engine_editor_secondary";
-
-/// The window's columns: the field, then its value.
-const COLUMNS: &[Column] = &[
-    Column::new(TextAlign::Start, Width::Auto, Tone::Label),
-    Column::new(TextAlign::Start, Width::Fill, Tone::Value),
-];
 
 /// How far from its marker a press picks an object, in screen pixels.
 const PICK_RADIUS: f32 = 6.0;
@@ -81,14 +83,8 @@ const ZOOM_MIN: f32 = 0.25;
 const ZOOM_MAX: f32 = 8.0;
 /// The arrows' pan without a current room: 16 px.
 const PAN_STEP: f32 = 16.0;
-
-/// The overlay's colours, linear RGBA.
-const BOUNDS: [f32; 4] = [0.55, 0.55, 0.62, 0.9];
-const AUTHORED: [f32; 4] = [0.3, 0.8, 0.95, 1.0];
-const GENERATED: [f32; 4] = [0.72, 0.6, 1.0, 1.0];
-const PLACE: [f32; 4] = [0.35, 0.85, 0.45, 0.9];
-const SELECTED: [f32; 4] = [0.95, 0.85, 0.3, 1.0];
-const PREVIEW: [f32; 4] = [0.96, 0.6, 0.25, 1.0];
+/// The room's margin in a fitted view, in screen pixels a side.
+const FIT_MARGIN: f32 = 24.0;
 
 /// How the editor writes a room file: [`write_atomic`] unless a test
 /// replaces it.
@@ -157,7 +153,11 @@ pub(crate) enum Tool {
 }
 
 impl Tool {
-    fn name(self) -> &'static str {
+    /// Every tool, in its key's order.
+    pub(crate) const ALL: [Self; 4] = [Self::Select, Self::Place, Self::Paint, Self::Erase];
+
+    /// Its name in a script and a probe.
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Select => "select",
             Self::Place => "place",
@@ -165,6 +165,57 @@ impl Tool {
             Self::Erase => "erase",
         }
     }
+
+    /// Its button's caption: its key, then its name.
+    pub(crate) fn caption(self) -> &'static str {
+        match self {
+            Self::Select => "1 Select",
+            Self::Place => "2 Place",
+            Self::Paint => "3 Paint",
+            Self::Erase => "4 Erase",
+        }
+    }
+
+    /// The tool `name` names.
+    pub(crate) fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|tool| tool.name() == name)
+    }
+}
+
+/// Something the editor is asked to do. A key, a button of its panel and
+/// the `editor` script action each make one, and [`LevelEditor::act`] is
+/// the one place they are carried out, so every action a key has a button
+/// has too.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Action {
+    /// Takes up a tool.
+    Tool(Tool),
+    /// Undoes the current room's newest batch.
+    Undo,
+    /// Redoes its newest undone batch.
+    Redo,
+    /// Deletes the pick.
+    Delete,
+    /// Copies the pick a cell right.
+    Copy,
+    /// Fits the current room into the view beside the panel.
+    Fit,
+    /// Goes back to the game's view.
+    GameView,
+    /// Makes a live room the current one and fits it.
+    Room(String),
+    /// Takes a prefab into the palette and takes up Place.
+    Prefab(String),
+    /// Takes a tile into the palette and takes up Paint.
+    Tile(String),
+    /// Sets the target layer; every layer for `None`.
+    Layer(Option<String>),
+    /// Steps the palette on or back.
+    PaletteStep(i64),
+    /// Steps the target layer on through the layers, then all.
+    LayerStep,
+    /// Picks an entry of the current room by its ID; nothing for `None`.
+    Select(Option<String>),
 }
 
 /// A paint or erase stroke under way: its room and the cells it crossed,
@@ -201,12 +252,18 @@ pub(crate) struct LevelEditor {
     pub(crate) outline_px: f32,
     /// How a room file is written; tests replace it.
     pub(crate) writer: RoomWriter,
-    /// The room last picked or edited.
+    /// The room last picked or edited; the live room nearest the view
+    /// while none is.
     pub(crate) current: Option<String>,
     /// The picked object's ID, in the current room.
     pub(crate) selection: Option<String>,
-    /// The last edit or error, the window's header.
+    /// The last edit or refusal, a sentence: the panel's first lines.
     pub(crate) status: String,
+    /// Whether `status` is a refusal.
+    pub(crate) refused: bool,
+    /// What the primary button will do under the cursor, and where the
+    /// cursor is: the panel's second lines.
+    pub(crate) hint: String,
     pub(crate) tool: Tool,
     /// The palette's prefab and tile, by ID and sprite; the first of each
     /// while unset.
@@ -225,8 +282,14 @@ pub(crate) struct LevelEditor {
     written: Option<CameraState>,
     /// The cursor's cell and its room, at the last frame.
     cursor: Option<(String, [i64; 2])>,
+    /// The object under the cursor at the last frame, as `(room, id)`.
+    hover: Option<(String, String)>,
     pub(crate) window: Option<ViewWindow>,
-    shown: Option<(String, Vec<Row>)>,
+    /// The window's contents, built once a window.
+    panel: Option<panel::Panel>,
+    /// The window's box on screen at its last update, in physical pixels:
+    /// what a fitted view keeps clear of.
+    panel_rect: Option<(Vec2, Vec2)>,
 }
 
 impl LevelEditor {
@@ -248,6 +311,8 @@ impl LevelEditor {
             current: None,
             selection: None,
             status: String::new(),
+            refused: false,
+            hint: String::new(),
             tool: Tool::Select,
             prefab: None,
             tile: None,
@@ -260,12 +325,17 @@ impl LevelEditor {
             game_camera: None,
             written: None,
             cursor: None,
+            hover: None,
             window: None,
-            shown: None,
+            panel: None,
+            panel_rect: None,
         }
     }
 
-    fn open(&mut self, world: &mut World) {
+    pub(crate) fn open(&mut self, world: &mut World) {
+        if self.open || !self.available {
+            return;
+        }
         self.open = true;
         if let Some(time) = world.get_resource_mut::<Time>() {
             time.set_editing(true);
@@ -273,11 +343,15 @@ impl LevelEditor {
         log::info!("Level editor open: the game clock stops until it closes");
     }
 
-    fn close(&mut self, world: &mut World) {
+    pub(crate) fn close(&mut self, world: &mut World) {
+        if !self.open {
+            return;
+        }
         self.open = false;
         self.drag = None;
         self.stroke = None;
         self.pan = None;
+        self.hover = None;
         if let Some(time) = world.get_resource_mut::<Time>() {
             time.set_editing(false);
         }
@@ -312,6 +386,16 @@ impl LevelEditor {
         })
     }
 
+    /// The game's camera as the editor last saw it, else the World's.
+    fn game_view(&self, world: &World) -> CameraState {
+        self.game_camera.unwrap_or_else(|| {
+            world
+                .get_resource::<CameraState>()
+                .copied()
+                .unwrap_or_default()
+        })
+    }
+
     /// The editor's frame while open, and the toggle's.
     fn frame(&mut self, world: &mut World, toggled: bool) {
         if toggled {
@@ -331,17 +415,21 @@ impl LevelEditor {
         if self.written != Some(game) {
             self.game_camera = Some(game);
         }
-        let rooms = live_rooms(world, self.current.as_deref());
         let camera = self.drawn(game);
+        self.keep_current(world, camera);
+        let rooms = live_rooms(world, self.current.as_deref());
         let at = frame.cursor.map(|cursor| camera.screen_to_world(cursor));
         let blocked = frame
             .cursor
             .is_some_and(|cursor| over_debug_window(world, cursor));
-        self.cursor = at.and_then(|at| {
+        self.cursor = at.filter(|_| !blocked).and_then(|at| {
             let room = rooms.iter().find(|room| room.holds(at))?;
             let cell = ((at - room.origin) / room.cell).floor();
             Some((room.id.clone(), [cell.x as i64, cell.y as i64]))
         });
+        self.hover = at
+            .filter(|_| !blocked)
+            .and_then(|at| pick(world, &rooms, camera, at));
         self.keys(world, &frame, &rooms, game);
         self.wheel_and_pan(&frame, blocked, game);
         if let Some(at) = at {
@@ -354,7 +442,8 @@ impl LevelEditor {
                 self.eyedropper(world, &rooms, camera, at);
             }
         }
-        self.draw(world, &rooms, self.drawn(game));
+        self.hint = self.hint_of(world, &rooms, blocked);
+        overlay::draw(self, world, &rooms, self.drawn(game));
         if self.view.is_some() {
             let mine = self.drawn(game);
             if let Some(camera) = world.get_resource_mut::<CameraState>() {
@@ -366,8 +455,40 @@ impl LevelEditor {
         }
     }
 
-    /// The keys, raw while open: Home, the arrows, Delete and Backspace,
-    /// Ctrl+D, Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z, 1 to 4, `[`, `]` and L.
+    /// Keeps `current` a live room: the one picked while it lives, else
+    /// the live room that holds the view's centre, else the nearest to it,
+    /// so a room is current from the frame the editor opens.
+    fn keep_current(&mut self, world: &World, camera: CameraState) {
+        let rooms = live_rooms(world, None);
+        let alive = |id: &str| rooms.iter().any(|room| room.id == id);
+        if self.current.as_deref().is_some_and(alive) {
+            return;
+        }
+        let window = world
+            .get_resource::<WindowSize>()
+            .map_or(Vec2::new(1280.0, 720.0), |size| {
+                Vec2::new(size.width as f32, size.height as f32)
+            });
+        let centre = camera.screen_to_world(window * 0.5);
+        let nearest = rooms
+            .iter()
+            .map(|room| {
+                let middle = room.origin + room.size * 0.5;
+                let away = if room.holds(centre) {
+                    -1.0
+                } else {
+                    middle.distance_squared(centre)
+                };
+                (away, &room.id)
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(b.1)));
+        self.current = nearest.map(|(_, id)| id.clone());
+        self.selection = None;
+        self.findings.clear();
+    }
+
+    /// The keys, raw while open: the arrows pan, and each other one is an
+    /// [`Action`] a button does too.
     fn keys(&mut self, world: &mut World, frame: &Input, rooms: &[Live], game: CameraState) {
         for &(code, modifiers, repeat) in &frame.keys {
             let control = modifiers.control();
@@ -390,23 +511,94 @@ impl LevelEditor {
             if repeat {
                 continue;
             }
-            match code {
-                KeyCode::Home => self.view = None,
-                KeyCode::Delete | KeyCode::Backspace if !control => self.delete(world),
-                KeyCode::KeyD if control => self.duplicate(world),
-                KeyCode::KeyZ if control && modifiers.shift() => self.history(world, Edit::Redo),
-                KeyCode::KeyZ if control => self.history(world, Edit::Undo),
-                KeyCode::KeyY if control => self.history(world, Edit::Redo),
-                KeyCode::Digit1 if !control => self.tool = Tool::Select,
-                KeyCode::Digit2 if !control => self.tool = Tool::Place,
-                KeyCode::Digit3 if !control => self.tool = Tool::Paint,
-                KeyCode::Digit4 if !control => self.tool = Tool::Erase,
-                KeyCode::BracketLeft if !control => self.palette(world, rooms, -1),
-                KeyCode::BracketRight if !control => self.palette(world, rooms, 1),
-                KeyCode::KeyL if !control => self.next_layer(world),
-                _ => {}
+            if let Some(action) = key_action(code, control, modifiers.shift()) {
+                self.act(world, action);
             }
         }
+    }
+
+    /// Carries out `action`: the one place a key, a panel button and the
+    /// `editor` script action meet.
+    pub(crate) fn act(&mut self, world: &mut World, action: Action) {
+        match action {
+            Action::Tool(tool) => {
+                self.tool = tool;
+                self.drag = None;
+                self.stroke = None;
+            }
+            Action::Undo => self.history(world, Edit::Undo),
+            Action::Redo => self.history(world, Edit::Redo),
+            Action::Delete => self.delete(world),
+            Action::Copy => self.duplicate(world),
+            Action::Fit => self.fit(world),
+            Action::GameView => self.view = None,
+            Action::Room(id) => {
+                if live_rooms(world, None).iter().any(|room| room.id == id) {
+                    self.current = Some(id);
+                    self.selection = None;
+                    self.findings.clear();
+                    self.fit(world);
+                } else {
+                    self.refuse(format!(
+                        "Room `{id}` is not live: the game has not spawned it."
+                    ));
+                }
+            }
+            Action::Prefab(id) => {
+                if prefab_ids(world).contains(&id) {
+                    self.prefab = Some(id);
+                    self.tool = Tool::Place;
+                } else {
+                    self.refuse(format!("No prefab `{id}`."));
+                }
+            }
+            Action::Tile(sprite) => {
+                let room = self.current.clone().unwrap_or_default();
+                if tile_ids(world, &room).contains(&sprite) {
+                    self.tile = Some(sprite);
+                    self.tool = Tool::Paint;
+                } else {
+                    self.refuse(format!("Room `{room}`'s tileset has no tile `{sprite}`."));
+                }
+            }
+            Action::Layer(layer) => {
+                let known = layer.as_deref().is_none_or(|name| {
+                    self.current_room(world)
+                        .is_some_and(|room| room.layers.iter().any(|layer| layer.name == name))
+                });
+                if known {
+                    self.layer = layer;
+                } else {
+                    self.refuse(format!(
+                        "The room has no layer `{}`.",
+                        layer.unwrap_or_default()
+                    ));
+                }
+            }
+            Action::PaletteStep(step) => self.palette(world, step),
+            Action::LayerStep => self.next_layer(world),
+            Action::Select(id) => {
+                let known = id.as_deref().is_none_or(|id| {
+                    self.current_room(world)
+                        .is_some_and(|room| room.objects.iter().any(|object| object.id == id))
+                });
+                if known {
+                    self.selection = id;
+                } else {
+                    self.refuse(format!(
+                        "The room has no object `{}`.",
+                        id.unwrap_or_default()
+                    ));
+                }
+            }
+        }
+    }
+
+    /// The current room's document.
+    fn current_room<'a>(&self, world: &'a World) -> Option<&'a Room> {
+        world
+            .get_resource::<RoomRegistry>()?
+            .room(self.current.as_deref()?)
     }
 
     /// The wheel zooms about the cursor and a middle drag pans, outside the
@@ -439,6 +631,45 @@ impl LevelEditor {
         }
     }
 
+    /// Fits the current room into the part of the window the panel leaves:
+    /// the wider side of it, at the largest zoom that shows the whole room,
+    /// a whole number of screen pixels a world pixel once that is 1 or
+    /// more, the room centred there.
+    fn fit(&mut self, world: &World) {
+        let Some(room) = live_rooms(world, self.current.as_deref())
+            .into_iter()
+            .find(|room| Some(room.id.as_str()) == self.current.as_deref())
+        else {
+            self.refuse("No room to fit: none is live.".to_owned());
+            return;
+        };
+        let window = world
+            .get_resource::<WindowSize>()
+            .map_or(Vec2::new(1280.0, 720.0), |size| {
+                Vec2::new(size.width as f32, size.height as f32)
+            });
+        // The free strip left or right of the panel, whichever is wider.
+        let (left, right) = match self.panel_rect {
+            Some((min, max)) if min.x > window.x - max.x => (0.0, min.x.clamp(0.0, window.x)),
+            Some((_, max)) => (max.x.clamp(0.0, window.x), window.x),
+            None => (0.0, window.x),
+        };
+        let free = Vec2::new(right - left, window.y) - Vec2::splat(2.0 * FIT_MARGIN);
+        if free.x <= 0.0 || free.y <= 0.0 || room.size.x <= 0.0 || room.size.y <= 0.0 {
+            return;
+        }
+        let mut zoom = (free.x / room.size.x).min(free.y / room.size.y);
+        if zoom >= 1.0 {
+            zoom = zoom.floor();
+        }
+        let zoom = zoom.clamp(ZOOM_MIN, ZOOM_MAX);
+        let centre = Vec2::new(f32::midpoint(left, right), window.y * 0.5);
+        self.view = Some(View {
+            position: room.origin + room.size * 0.5 - centre / zoom,
+            zoom,
+        });
+    }
+
     /// Select's primary button: a press picks, or on nothing clears the
     /// pick; a drag moves the pick by whole cells, one `move` at the
     /// release.
@@ -457,7 +688,7 @@ impl LevelEditor {
                     .iter()
                     .find(|live| live.id == room)
                     .map_or(Vec2::ONE, |live| live.cell);
-                self.current = Some(room.clone());
+                self.set_current(&room);
                 self.selection = Some(id.clone());
                 self.drag = Some(Drag {
                     room,
@@ -469,7 +700,7 @@ impl LevelEditor {
             } else {
                 self.selection = None;
                 if let Some(room) = rooms.iter().find(|room| room.holds(at)) {
-                    self.current = Some(room.id.clone());
+                    self.set_current(&room.id);
                 }
             }
         }
@@ -485,11 +716,27 @@ impl LevelEditor {
                 r#"[{{ "move": {{ "id": "{}", "by": [{}, {}] }} }}]"#,
                 drag.id, drag.by[0], drag.by[1]
             ));
-            let what = format!("moved {} by {}, {}", drag.id, drag.by[0], drag.by[1]);
-            self.edit(world, &drag.room, Edit::Apply(batch), &what);
+            let id = &drag.id;
+            let by = format!("{}, {}", drag.by[0], drag.by[1]);
+            self.edit(
+                world,
+                &drag.room,
+                Edit::Apply(batch),
+                &format!("move `{id}`"),
+                &format!("Moved `{id}` by {by}."),
+            );
         }
         if !frame.primary.held && !frame.primary.released {
             self.drag = None;
+        }
+    }
+
+    /// Makes `room` the current one, its findings forgotten when it
+    /// changes.
+    fn set_current(&mut self, room: &str) {
+        if self.current.as_deref() != Some(room) {
+            self.current = Some(room.to_owned());
+            self.findings.clear();
         }
     }
 
@@ -501,11 +748,11 @@ impl LevelEditor {
             return;
         }
         let Some((room, [col, row])) = cell_under(rooms, at) else {
-            "no live room under the cursor".clone_into(&mut self.status);
+            self.refuse("Can't place here: no live room is under the cursor.".to_owned());
             return;
         };
         let Some(prefab) = self.prefab_or_first(world) else {
-            "no prefab to place".clone_into(&mut self.status);
+            self.refuse("Can't place: the game lists no prefab.".to_owned());
             return;
         };
         let Some(document) = world
@@ -519,12 +766,13 @@ impl LevelEditor {
             &json!([{ "place": { "objects": { "id": id, "prefab": prefab, "at": [col, row] } } }])
                 .to_string(),
         );
-        self.current = Some(room.clone());
+        self.set_current(&room);
         if self.edit(
             world,
             &room,
             Edit::Apply(batch),
-            &format!("placed {id} at {col}, {row}"),
+            &format!("place `{prefab}` at {col}, {row}"),
+            &format!("Placed `{id}` at {col}, {row}."),
         ) {
             self.selection = Some(id);
         }
@@ -546,7 +794,7 @@ impl LevelEditor {
             && !blocked
             && let Some((room, cell)) = cell_under(rooms, at)
         {
-            self.current = Some(room.clone());
+            self.set_current(&room);
             self.stroke = Some(Stroke {
                 room,
                 cells: vec![cell],
@@ -581,14 +829,10 @@ impl LevelEditor {
         }
     }
 
-    fn apply_stroke(&mut self, world: &mut World, stroke: &Stroke) {
-        let Some(document) = world
-            .get_resource::<RoomRegistry>()
-            .and_then(|rooms| rooms.room(&stroke.room))
-        else {
-            return;
-        };
-        let layers: Vec<String> = match self.layer.as_deref() {
+    /// The layers a stroke writes: the target layer while the room has it,
+    /// else every layer.
+    fn target_layers(&self, document: &Room) -> Vec<String> {
+        match self.layer.as_deref() {
             Some(layer) if document.layers.iter().any(|known| known.name == layer) => {
                 vec![layer.to_owned()]
             }
@@ -597,13 +841,34 @@ impl LevelEditor {
                 .iter()
                 .map(|layer| layer.name.clone())
                 .collect(),
+        }
+    }
+
+    fn apply_stroke(&mut self, world: &mut World, stroke: &Stroke) {
+        let Some(document) = world
+            .get_resource::<RoomRegistry>()
+            .and_then(|rooms| rooms.room(&stroke.room))
+        else {
+            return;
         };
+        let layers = self.target_layers(document);
         let erase = self.tool == Tool::Erase;
+        if layers.is_empty() {
+            self.refuse(format!(
+                "Can't {}: room `{}` has no layer.",
+                if erase { "erase" } else { "paint" },
+                stroke.room
+            ));
+            return;
+        }
         let tile = if erase {
             None
         } else {
             let Some(tile) = self.tile_or_first(world, &stroke.room) else {
-                "no tile to paint: the room names no tileset".clone_into(&mut self.status);
+                self.refuse(format!(
+                    "Can't paint: room `{}`'s tileset has no tile.",
+                    stroke.room
+                ));
                 return;
             };
             Some(tile)
@@ -618,12 +883,20 @@ impl LevelEditor {
             })
             .collect();
         let cells = stroke.cells.len();
-        let what = match &tile {
-            None => format!("erased {cells} cell{}", plural(cells)),
-            Some(tile) => format!("painted {cells} cell{} {tile}", plural(cells)),
+        let cells = format!("{cells} cell{}", plural(cells));
+        let into = layers.join(" and ");
+        let (what, done) = match &tile {
+            None => (
+                format!("erase {cells}"),
+                format!("Erased {cells} of {into}."),
+            ),
+            Some(tile) => (
+                format!("paint {cells}"),
+                format!("Painted {cells} of {into} with `{tile}`."),
+            ),
         };
         let batch = parse(&serde_json::Value::Array(commands).to_string());
-        self.edit(world, &stroke.room, Edit::Apply(batch), &what);
+        self.edit(world, &stroke.room, Edit::Apply(batch), &what, &done);
     }
 
     /// The eyedropper: the prefab of the object under the cursor, else the
@@ -635,7 +908,10 @@ impl LevelEditor {
                 .and_then(|registry| registry.room(&room))
                 .and_then(|document| document.objects.iter().find(|object| object.id == id))
         {
-            self.status = format!("took {} from {id}", object.prefab);
+            self.say(format!(
+                "Took prefab `{}` from `{id}`: Place puts it down.",
+                object.prefab
+            ));
             self.prefab = Some(object.prefab.clone());
             return;
         }
@@ -658,11 +934,13 @@ impl LevelEditor {
         });
         match topmost {
             Some((sprite, layer)) => {
-                self.status = format!("took {sprite} from layer {layer}");
+                self.say(format!(
+                    "Took tile `{sprite}` and layer `{layer}`: Paint writes there."
+                ));
                 self.tile = Some(sprite);
                 self.layer = Some(layer);
             }
-            None => self.status = format!("cell {col}, {row} holds no tile"),
+            None => self.say(format!("Cell {col}, {row} holds no tile to take.")),
         }
     }
 
@@ -675,42 +953,39 @@ impl LevelEditor {
 
     /// The palette's tile, the room's tileset's first while unset.
     fn tile_or_first(&self, world: &World, room: &str) -> Option<String> {
+        let tiles = tile_ids(world, room);
         self.tile
             .clone()
-            .or_else(|| tile_ids(world, room).into_iter().next())
+            .filter(|tile| tiles.contains(tile))
+            .or_else(|| tiles.into_iter().next())
     }
 
     /// `[` and `]`: the palette one step back or on, through the tiles of
-    /// the current room's tileset (the first live room's while none is
-    /// current) while painting, else the prefabs.
-    fn palette(&mut self, world: &World, rooms: &[Live], step: i64) {
+    /// the current room's tileset while painting, else the prefabs.
+    fn palette(&mut self, world: &World, step: i64) {
         let painting = self.tool == Tool::Paint;
         let (items, chosen) = if painting {
-            let room = (self.current.as_deref())
-                .or_else(|| rooms.first().map(|room| room.id.as_str()))
-                .unwrap_or_default();
-            (tile_ids(world, room), &mut self.tile)
+            let room = self.current.clone().unwrap_or_default();
+            (tile_ids(world, &room), &mut self.tile)
         } else {
             (prefab_ids(world), &mut self.prefab)
         };
         if items.is_empty() {
             return;
         }
+        // With nothing chosen the first shows, and the step is from it.
         let at = chosen
             .as_deref()
             .and_then(|item| items.iter().position(|known| known == item))
             .unwrap_or(0) as i64;
         let count = items.len() as i64;
-        let next = items[(at + step).rem_euclid(count) as usize].clone();
-        *chosen = Some(next);
+        *chosen = Some(items[(at + step).rem_euclid(count) as usize].clone());
     }
 
     /// L: the target layer on through the current room's layers, then all.
     fn next_layer(&mut self, world: &World) {
         let names: Vec<String> = self
-            .current
-            .as_deref()
-            .and_then(|room| world.get_resource::<RoomRegistry>()?.room(room))
+            .current_room(world)
             .map(|document| {
                 document
                     .layers
@@ -732,11 +1007,17 @@ impl LevelEditor {
     /// Deletes the pick.
     fn delete(&mut self, world: &mut World) {
         let (Some(room), Some(id)) = (self.current.clone(), self.selection.clone()) else {
-            "nothing picked to delete".clone_into(&mut self.status);
+            self.refuse("Nothing is picked to delete: click an object with Select.".to_owned());
             return;
         };
         let batch = parse(&format!(r#"[{{ "delete": {{ "id": "{id}" }} }}]"#));
-        if self.edit(world, &room, Edit::Apply(batch), &format!("deleted {id}")) {
+        if self.edit(
+            world,
+            &room,
+            Edit::Apply(batch),
+            &format!("delete `{id}`"),
+            &format!("Deleted `{id}`."),
+        ) {
             self.selection = None;
         }
     }
@@ -745,7 +1026,7 @@ impl LevelEditor {
     /// and picks the copy.
     fn duplicate(&mut self, world: &mut World) {
         let (Some(room), Some(id)) = (self.current.clone(), self.selection.clone()) else {
-            "nothing picked to copy".clone_into(&mut self.status);
+            self.refuse("Nothing is picked to copy: click an object with Select.".to_owned());
             return;
         };
         let Some(document) = world
@@ -762,7 +1043,8 @@ impl LevelEditor {
             world,
             &room,
             Edit::Apply(batch),
-            &format!("copied {id} as {copy}"),
+            &format!("copy `{id}`"),
+            &format!("Copied `{id}` as `{copy}`, a cell right."),
         ) {
             self.selection = Some(copy);
         }
@@ -770,50 +1052,73 @@ impl LevelEditor {
 
     /// Undoes or redoes the current room's newest batch.
     fn history(&mut self, world: &mut World, edit: Edit) {
+        let undo = matches!(edit, Edit::Undo);
         let Some(room) = self.current.clone() else {
-            "no room picked: click in one first".clone_into(&mut self.status);
+            self.refuse(format!(
+                "Nothing to {}: no room is live.",
+                if undo { "undo" } else { "redo" }
+            ));
             return;
         };
-        let what = if matches!(edit, Edit::Undo) {
-            "undid a batch"
+        let (what, done) = if undo {
+            ("undo", "Undid the last edit.")
         } else {
-            "redid a batch"
+            ("redo", "Redid the edit.")
         };
-        self.edit(world, &room, edit, what);
+        self.edit(world, &room, edit, what, done);
+    }
+
+    /// Shows `text` as the last result.
+    fn say(&mut self, text: String) {
+        self.status = text;
+        self.refused = false;
+    }
+
+    /// Shows `text` as a refusal, and logs it: the panel keeps three lines
+    /// of it and the log console the whole.
+    fn refuse(&mut self, text: String) {
+        log::warn!("Level editor: {text}");
+        self.status = text;
+        self.refused = true;
     }
 
     /// Runs `edit` on `room` and writes the room's file: refused, nothing
     /// changed, for a read-only room or a file that does not hold the live
-    /// document; put back whole when the write fails. Returns whether it
-    /// landed; the window's last line says what happened.
-    fn edit(&mut self, world: &mut World, room: &str, edit: Edit, what: &str) -> bool {
-        match self.try_edit(world, room, edit, what) {
-            Ok(done) => {
-                self.status = done;
+    /// document; put back whole when the write fails. `what` names the edit
+    /// in a refusal ("Can't `what`: …") and `done` is the sentence shown
+    /// when it lands. Returns whether it landed.
+    fn edit(&mut self, world: &mut World, room: &str, edit: Edit, what: &str, done: &str) -> bool {
+        match self.try_edit(world, room, edit) {
+            Ok(Landed::Written) => {
+                self.say(done.to_owned());
                 self.findings = findings(world, room);
                 true
             }
+            Ok(Landed::Live) => {
+                self.say(format!(
+                    "{done} The room has no file, so the edit stays in the running game."
+                ));
+                self.findings = findings(world, room);
+                true
+            }
+            Ok(Landed::Nothing) => {
+                self.say(format!("Nothing to {what} in `{room}`."));
+                false
+            }
             Err(why) => {
-                log::warn!("Level editor: {why}");
-                self.status = why;
+                self.refuse(format!("Can't {what}: {why}"));
                 false
             }
         }
     }
 
-    fn try_edit(
-        &mut self,
-        world: &mut World,
-        room: &str,
-        edit: Edit,
-        what: &str,
-    ) -> Result<String, String> {
+    fn try_edit(&mut self, world: &mut World, room: &str, edit: Edit) -> Result<Landed, String> {
         let file = writable(world, room)?;
         let before = world
             .get_resource::<RoomRegistry>()
             .and_then(|rooms| rooms.room(room))
             .cloned()
-            .ok_or_else(|| format!("no room `{room}`"))?;
+            .ok_or_else(|| format!("no room `{room}`."))?;
         let journal = world.get_resource::<RoomJournal>().cloned();
         let result = match edit {
             Edit::Apply(batch) => world.apply_room_batch(room, &batch).map(Some),
@@ -821,18 +1126,14 @@ impl LevelEditor {
             Edit::Redo => world.redo_room_batch(room),
         };
         match result {
-            Err(err) => return Err(err.to_string()),
-            Ok(None) => {
-                return Ok(if what.starts_with("undid") {
-                    format!("{room}: nothing to undo")
-                } else {
-                    format!("{room}: nothing to redo")
-                });
-            }
+            // The reason alone: the batch is the editor's own, so its path
+            // tells an author nothing.
+            Err(err) => return Err(format!("{}.", err.reason())),
+            Ok(None) => return Ok(Landed::Nothing),
             Ok(Some(_)) => {}
         }
         let Some(path) = file else {
-            return Ok(format!("{what} (no file: kept live)"));
+            return Ok(Landed::Live);
         };
         let text = world
             .get_resource::<RoomRegistry>()
@@ -840,7 +1141,7 @@ impl LevelEditor {
             .map(Room::to_canonical)
             .unwrap_or_default();
         let Err(err) = (self.writer)(&path, &text) else {
-            return Ok(what.to_owned());
+            return Ok(Landed::Written);
         };
         // Everything back as it was before the action: the room, then the
         // journal, which the patch cleared and the edit had moved.
@@ -853,240 +1154,157 @@ impl LevelEditor {
         }
         let file = path.display();
         Err(match restored {
-            Ok(_) => format!("cannot write '{file}': {err}; nothing edited"),
+            Ok(_) => format!("'{file}' cannot be written ({err}); nothing edited."),
             Err(again) => format!(
-                "cannot write '{file}': {err}; and the room did not go back ({again}): the live room and the file differ until the file reloads"
+                "'{file}' cannot be written ({err}), and the room did not go back ({again}): the live room and the file differ until the file reloads."
             ),
         })
     }
 
-    /// The overlay: each live room's bounds, its objects' markers and its
-    /// places; the pick's box and a drag's preview.
-    fn draw(&self, world: &mut World, rooms: &[Live], camera: CameraState) {
-        let mut draw = Vec::new();
-        let picked = |room: &str, id: &str| {
-            self.current.as_deref() == Some(room) && self.selection.as_deref() == Some(id)
-        };
-        let radius = 3.0 / camera.zoom.max(f32::EPSILON);
-        if let Some(registry) = world.get_resource::<RoomRegistry>() {
-            for live in rooms {
-                let Some(document) = registry.room(&live.id) else {
-                    continue;
-                };
-                draw.push(Mark::Aabb(live.origin, live.origin + live.size, BOUNDS));
-                for object in &document.objects {
-                    let marker = live.origin + Vec2::from(object.at) * live.cell;
-                    let hue = if object.generator.is_some() {
-                        GENERATED
-                    } else {
-                        AUTHORED
-                    };
-                    draw.push(Mark::Circle(marker, radius, hue));
-                    if picked(&live.id, &object.id) {
-                        let (min, size) = object_box(world, &live.id, &object.id, marker, camera);
-                        draw.push(Mark::Aabb(min, min + size, SELECTED));
-                        if let Some(drag) = &self.drag {
-                            let by = Vec2::from(drag.by) * live.cell;
-                            draw.push(Mark::Aabb(min + by, min + size + by, PREVIEW));
+    /// What the primary button will do under the cursor, then where the
+    /// cursor is: the panel's hint.
+    fn hint_of(&self, world: &World, rooms: &[Live], blocked: bool) -> String {
+        if rooms.is_empty() {
+            return no_live_room(world);
+        }
+        let read_only = self
+            .current
+            .as_deref()
+            .and_then(|room| read_only(world, room));
+        if let Some(why) = read_only {
+            return why;
+        }
+        if blocked {
+            return "The cursor is over a window: move it into the world to edit.".to_owned();
+        }
+        let does = match self.tool {
+            Tool::Select => match (&self.drag, &self.hover) {
+                (Some(drag), _) if drag.by != [0.0, 0.0] => format!(
+                    "Release: move `{}` by {}, {}.",
+                    drag.id, drag.by[0], drag.by[1]
+                ),
+                (_, Some((_, id))) => format!("Click: pick `{id}`. Drag: move it by cells."),
+                _ => "Click an object to pick it, then drag it.".to_owned(),
+            },
+            Tool::Place => match (self.prefab_or_first(world), &self.cursor) {
+                (Some(prefab), Some((_, [col, row]))) => {
+                    format!("Click: place `{prefab}` at {col}, {row}.")
+                }
+                (Some(prefab), None) => format!("Click in a room: place `{prefab}`."),
+                (None, _) => "The game lists no prefab to place.".to_owned(),
+            },
+            Tool::Paint | Tool::Erase => {
+                let room = self.current_room(world);
+                let into =
+                    room.map_or_else(String::new, |room| self.target_layers(room).join(" and "));
+                let cells = self.stroke.as_ref().map(|stroke| stroke.cells.len());
+                match (self.tool, cells) {
+                    (Tool::Erase, Some(n)) => {
+                        format!("Release: erase {n} cell{} of {into}.", plural(n))
+                    }
+                    (Tool::Erase, None) => format!("Drag: erase cells of {into}."),
+                    (_, cells) => {
+                        let room = self.current.clone().unwrap_or_default();
+                        match (self.tile_or_first(world, &room), cells) {
+                            (Some(tile), Some(n)) => format!(
+                                "Release: paint {n} cell{} of {into} with `{tile}`.",
+                                plural(n)
+                            ),
+                            (Some(tile), None) => {
+                                format!("Drag: paint `{tile}` into {into}.")
+                            }
+                            (None, _) => format!("Room `{room}`'s tileset has no tile to paint."),
                         }
                     }
                 }
-                if let Some(stroke) = self.stroke.as_ref().filter(|stroke| stroke.room == live.id) {
-                    for &[col, row] in &stroke.cells {
-                        let min = live.origin + Vec2::new(col as f32, row as f32) * live.cell;
-                        draw.push(Mark::Aabb(min, min + live.cell, PREVIEW));
-                    }
-                }
-                if let Some(compiled) = registry.compiled(&live.id) {
-                    for place in compiled.places.values() {
-                        place_marks(&mut draw, live.origin, place, radius);
-                    }
-                }
             }
-        }
-        if let Some(debug) = world.get_resource_mut::<DebugDraw>() {
-            for mark in draw {
-                match mark {
-                    Mark::Aabb(min, max, color) => debug.draw_aabb(min, max, color, 1.0),
-                    Mark::Circle(centre, radius, color) => {
-                        debug.draw_circle(centre, radius, color, 1.0);
-                    }
-                    Mark::Line(a, b, color) => debug.draw_line(a, b, color, 1.0),
-                }
-            }
+        };
+        match &self.cursor {
+            Some((room, [col, row])) => format!("{does} At {col}, {row} in `{room}`."),
+            None => does,
         }
     }
 
     /// The window's frame (redo 7.12): built, kept modal and filled while
     /// open, removed when closed; its close button closes the editor.
     pub(crate) fn update_window(&mut self, world: &mut World, frame: &mut ViewFrame<'_>) {
-        if frame.closes(self.window.as_ref()) {
-            self.close(world);
-        }
-        let spec = ViewSpec {
-            name: "level_editor",
-            title: "Level editor",
-            key: toggle_key(world, TOGGLE),
-            enabled: self.open,
-            corner: self.corner,
-            padding: self.padding_px,
-            strip: false,
-            look: look_of!(self),
-            shape: Shape {
-                columns: COLUMNS,
-                header: Header::Line,
-                buttons: 0,
-            },
-        };
-        if !frame.sync(&mut self.window, &spec) {
-            self.shown = None;
-            return;
-        }
-        let Some(window) = self.window.as_ref() else {
-            return;
-        };
-        frame.tree.set_modal(window.root, true);
-        let content = self.rows(world);
-        if self.shown.as_ref() == Some(&content) {
-            return;
-        }
-        if let Some(line) = window.header {
-            frame.tree.set_plain_text(line, &content.0);
-        }
-        write_table(frame.tree, window, &content.1);
-        self.shown = Some(content);
+        panel::update(self, world, frame);
     }
+}
 
-    /// The header line, the last edit or error, and the rows: the room, the
-    /// tool, the cursor's cell, the pick, the history, then the keys.
-    fn rows(&self, world: &World) -> (String, Vec<Row>) {
-        let header = if self.status.is_empty() {
-            "drag an object to move it".to_owned()
+/// How an edit landed.
+enum Landed {
+    /// Applied and written to the room's file.
+    Written,
+    /// Applied to a room with no file.
+    Live,
+    /// Nothing to undo or redo.
+    Nothing,
+}
+
+/// The action a key asks for, the arrows aside: 1 to 4 the tools, `[` and
+/// `]` the palette, L the layer, F fit, Home the game's view, Delete or
+/// Backspace, Ctrl+D, Ctrl+Z, and Ctrl+Y or Ctrl+Shift+Z.
+fn key_action(code: KeyCode, control: bool, shift: bool) -> Option<Action> {
+    Some(match code {
+        KeyCode::KeyD if control => Action::Copy,
+        KeyCode::KeyZ if control && shift => Action::Redo,
+        KeyCode::KeyZ if control => Action::Undo,
+        KeyCode::KeyY if control => Action::Redo,
+        _ if control => return None,
+        KeyCode::Home => Action::GameView,
+        KeyCode::Delete | KeyCode::Backspace => Action::Delete,
+        KeyCode::Digit1 => Action::Tool(Tool::Select),
+        KeyCode::Digit2 => Action::Tool(Tool::Place),
+        KeyCode::Digit3 => Action::Tool(Tool::Paint),
+        KeyCode::Digit4 => Action::Tool(Tool::Erase),
+        KeyCode::BracketLeft => Action::PaletteStep(-1),
+        KeyCode::BracketRight => Action::PaletteStep(1),
+        KeyCode::KeyL => Action::LayerStep,
+        KeyCode::KeyF => Action::Fit,
+        _ => return None,
+    })
+}
+
+/// What the hint says while no room is live: whether the game lists any,
+/// and how one comes to be live.
+fn no_live_room(world: &World) -> String {
+    let ids: Vec<&str> = world
+        .get_resource::<RoomRegistry>()
+        .map(|registry| registry.ids().collect())
+        .unwrap_or_default();
+    if ids.is_empty() {
+        return "No room to edit: the game lists none. `tungsten level new <room>` makes one, and the game spawns it with `world.spawn_room`.".to_owned();
+    }
+    format!(
+        "No room is live: the game has spawned none of its {} ({}). The editor edits a room once `world.spawn_room` has spawned it.",
+        if ids.len() == 1 {
+            "room".to_owned()
         } else {
-            self.status.clone()
-        };
-        let registry = world.get_resource::<RoomRegistry>();
-        let row = |label: &str, value: String| Row::data(vec![Cell::new(label), Cell::new(value)]);
-        let mut rows = Vec::new();
-        let room = self.current.as_deref();
-        rows.push(row("room", room.map_or("–".to_owned(), str::to_owned)));
-        let file = match (room, registry) {
-            (Some(room), Some(registry)) => {
-                match (registry.generation(room), registry.path(room)) {
-                    (Some(generation), _) => format!("generated: {}", generation.generator),
-                    (None, Some(path)) => path
-                        .file_name()
-                        .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
-                    (None, None) => "no file".to_owned(),
-                }
-            }
-            _ => "–".to_owned(),
-        };
-        rows.push(row("file", file));
-        let key = match self.tool {
-            Tool::Select => 1,
-            Tool::Place => 2,
-            Tool::Paint => 3,
-            Tool::Erase => 4,
-        };
-        rows.push(row("tool", format!("{key} {}", self.tool.name())));
-        let palette = if self.tool == Tool::Paint {
-            room.and_then(|room| self.tile_or_first(world, room))
-        } else {
-            self.prefab_or_first(world)
-        };
-        rows.push(row("palette", palette.unwrap_or_else(|| "–".to_owned())));
-        rows.push(row(
-            "layer",
-            self.layer.clone().unwrap_or_else(|| "all".to_owned()),
+            format!("{} rooms", ids.len())
+        },
+        ids.join(", ")
+    )
+}
+
+/// Why room `room` is read only, without reading its file: a generated
+/// room, or one whose file another listed room names. `None` for a room
+/// the editor may write, which an edit still checks against its file.
+fn read_only(world: &World, room: &str) -> Option<String> {
+    let registry = world.get_resource::<RoomRegistry>()?;
+    if let Some(generation) = registry.generation(room) {
+        return Some(format!(
+            "`{room}` is read only: generator `{}` made it for this run. `tungsten level generate` writes rooms to edit.",
+            generation.generator
         ));
-        let cell = self
-            .cursor
-            .as_ref()
-            .map_or("–".to_owned(), |(room, [col, row])| {
-                format!("{col}, {row}  {room}")
-            });
-        rows.push(row("cell", cell));
-        let object = room
-            .zip(self.selection.as_deref())
-            .and_then(|(room, id)| registry?.room(room)?.objects.iter().find(|o| o.id == id));
-        match object {
-            Some(object) => {
-                rows.push(row("pick", format!("{}  {}", object.id, object.prefab)));
-                rows.push(row("at", format!("{}, {}", object.at[0], object.at[1])));
-                rows.push(row(
-                    "mark",
-                    object.generator.clone().unwrap_or_else(|| "–".to_owned()),
-                ));
-            }
-            None => rows.push(row("pick", "–".to_owned())),
-        }
-        let (undo, redo) = room
-            .zip(world.get_resource::<RoomJournal>())
-            .map_or((0, 0), |(room, journal)| {
-                (journal.undo_len(room), journal.redo_len(room))
-            });
-        rows.push(row("history", format!("{undo} undo  {redo} redo")));
-        rows.push(row("findings", self.findings.len().to_string()));
-        for finding in self.findings.iter().take(2) {
-            rows.push(Row::data(vec![
-                Cell::new(""),
-                Cell::new(finding.clone()).colored(crate::debug_views::YELLOW),
-            ]));
-        }
-        rows.push(Row {
-            cells: vec![Cell::new("keys")],
-            header: true,
-            indent: false,
-        });
-        for (key, does) in [
-            ("1–4", "select place paint erase"),
-            ("[ ]", "palette"),
-            ("L", "layer, then all"),
-            ("right", "eyedropper"),
-            ("drag", "move by cells"),
-            ("Del", "delete"),
-            ("Ctrl+D", "copy a cell right"),
-            ("Ctrl+Z", "undo"),
-            ("Ctrl+Y", "redo"),
-            ("arrows", "pan a cell"),
-            ("middle", "drag to pan"),
-            ("wheel", "zoom"),
-            ("Home", "the game's view"),
-        ] {
-            rows.push(row(key, does.to_owned()));
-        }
-        (header, rows)
     }
-}
-
-/// One overlay mark, gathered before the `DebugDraw` is borrowed.
-enum Mark {
-    Aabb(Vec2, Vec2, [f32; 4]),
-    Circle(Vec2, f32, [f32; 4]),
-    Line(Vec2, Vec2, [f32; 4]),
-}
-
-/// A place's marks: a point's circle, an area's box, a route's lines.
-fn place_marks(
-    draw: &mut Vec<Mark>,
-    origin: Vec2,
-    place: &tungsten_core::assets::CompiledPlace,
-    radius: f32,
-) {
-    use tungsten_core::assets::PlaceShape;
-    match &place.shape {
-        PlaceShape::Point(point) => draw.push(Mark::Circle(origin + *point, radius * 2.0, PLACE)),
-        PlaceShape::Rect { min, size } => {
-            draw.push(Mark::Aabb(origin + *min, origin + *min + *size, PLACE));
-        }
-        PlaceShape::Route(points) => {
-            for pair in points.windows(2) {
-                draw.push(Mark::Line(origin + pair[0], origin + pair[1], PLACE));
-            }
-        }
-        _ => {}
-    }
+    let path = registry.path(room)?;
+    let other = registry
+        .ids()
+        .find(|other| *other != room && registry.path(other) == Some(path))?;
+    Some(format!(
+        "`{room}` is read only: it shares its file with room `{other}`, and writing one would rewrite the other."
+    ))
 }
 
 /// The frame's input, read from the raw `InputState`.
@@ -1288,18 +1506,18 @@ fn over_debug_window(world: &World, cursor: Vec2) -> bool {
 }
 
 /// The file an edit of `room` writes, `None` for a room with no file; an
-/// error for a read-only room or a file that does not hold its live
-/// document.
+/// error, a sentence's end, for a read-only room or a file that does not
+/// hold its live document.
 fn writable(world: &World, room: &str) -> Result<Option<PathBuf>, String> {
     let registry = world
         .get_resource::<RoomRegistry>()
-        .ok_or_else(|| format!("no room `{room}`"))?;
+        .ok_or_else(|| format!("no room `{room}`."))?;
     let document = registry
         .room(room)
-        .ok_or_else(|| format!("no room `{room}`"))?;
+        .ok_or_else(|| format!("no room `{room}`."))?;
     if let Some(generation) = registry.generation(room) {
         return Err(format!(
-            "`{room}` is a generated room ({generation}): read only; `tungsten level generate` writes rooms to edit"
+            "`{room}` is a generated room ({generation}): read only. `tungsten level generate` writes rooms to edit."
         ));
     }
     let Some(path) = registry.path(room) else {
@@ -1310,19 +1528,19 @@ fn writable(world: &World, room: &str) -> Result<Option<PathBuf>, String> {
         .find(|other| *other != room && registry.path(other) == Some(path))
     {
         return Err(format!(
-            "`{room}` shares its file with room `{other}`: read only, since writing one rewrites the other"
+            "`{room}` shares its file with room `{other}`: read only, since writing one rewrites the other."
         ));
     }
     let file = path.display();
     let text =
-        std::fs::read_to_string(path).map_err(|err| format!("cannot read '{file}': {err}"))?;
+        std::fs::read_to_string(path).map_err(|err| format!("'{file}' cannot be read ({err})."))?;
     match Room::from_json(&text) {
         Ok(read) if read == *document => Ok(Some(path.to_path_buf())),
         Ok(_) => Err(format!(
-            "'{file}' differs from the live `{room}` (a reload pending or failed, or an edit outside): nothing edited"
+            "'{file}' differs from the live `{room}` (a reload pending or failed, or an edit outside): nothing edited."
         )),
         Err(err) => Err(format!(
-            "'{file}' does not read ({err}): nothing edited, so no work is written over"
+            "'{file}' does not read ({err}): nothing edited, so no work is written over."
         )),
     }
 }

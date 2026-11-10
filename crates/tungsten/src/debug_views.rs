@@ -122,19 +122,19 @@ pub(crate) const MAGENTA: [u8; 4] = [245, 132, 208, 255];
 pub(crate) const BADGE_ALPHA: u8 = 8;
 
 /// No colour.
-const TRANSPARENT: [u8; 4] = [0, 0, 0, 0];
+pub(crate) const TRANSPARENT: [u8; 4] = [0, 0, 0, 0];
 
 // ---- sizes (M58), in UI units ----
 
 /// The window's and the title bar's corner radius.
-const RADIUS: f32 = 4.0;
+pub(crate) const RADIUS: f32 = 4.0;
 
 /// Space inside the title bar and around the header and the body.
-const INSET: f32 = 6.0;
+pub(crate) const INSET: f32 = 6.0;
 
 /// Space at each side of a table cell; there is no gap between columns,
 /// so the stripes run unbroken.
-const CELL_PAD: f32 = 6.0;
+pub(crate) const CELL_PAD: f32 = 6.0;
 
 /// How much further a cell under a header row starts.
 const INDENT: f32 = 12.0;
@@ -279,7 +279,7 @@ impl Look {
     /// Every text property, so nothing inherits from a game's theme: the
     /// engine font in `ink`, unspaced, wrapped by glyph and held to one line
     /// that ends in `…` (M58).
-    fn text(&self, ink: Ink) -> TextOverrides {
+    pub(crate) fn text(&self, ink: Ink) -> TextOverrides {
         let step = if ink.title { TITLE_STEP } else { 0.0 };
         TextOverrides {
             family: Some(self.family.clone()),
@@ -299,7 +299,7 @@ impl Look {
     }
 
     /// Every style property of a node of `fill` and `border` of `width`.
-    fn node(
+    pub(crate) fn node(
         &self,
         fill: [u8; 4],
         border: [u8; 4],
@@ -340,12 +340,12 @@ impl Look {
 
     /// Anything inside the window with no fill of its own: no fill, no
     /// border.
-    fn plain(&self, ink: Ink) -> StyleOverrides {
+    pub(crate) fn plain(&self, ink: Ink) -> StyleOverrides {
         self.node(TRANSPARENT, TRANSPARENT, 0.0, 0.0, ink)
     }
 
     /// A table cell: `fill` behind it, no border.
-    fn cell(&self, fill: [u8; 4], ink: Ink) -> StyleOverrides {
+    pub(crate) fn cell(&self, fill: [u8; 4], ink: Ink) -> StyleOverrides {
         self.node(fill, TRANSPARENT, 0.0, 0.0, ink)
     }
 
@@ -462,6 +462,10 @@ pub(crate) struct ViewSpec {
     /// A strip along its corner's horizontal edge, as wide as the viewport
     /// less its margins: the log console (M58).
     pub(crate) strip: bool,
+    /// May take the viewport's height less its margins, where another
+    /// window takes 60 % of it at most: the level editor's panel, which is
+    /// the only thing worked in while it is open.
+    pub(crate) tall: bool,
     pub(crate) look: Look,
     pub(crate) shape: Shape,
 }
@@ -543,6 +547,9 @@ struct Dock {
     root: WidgetId,
     corner: HudCorner,
     strip: bool,
+    /// [`ViewSpec::tall`]; beside `strip`, in the struct's padding, so the
+    /// views' pins hold.
+    tall: bool,
     wanted: f32,
     margin: f32,
     line: f32,
@@ -1006,7 +1013,12 @@ impl ViewFrame<'_> {
             (Sizing::Px(width), width, viewport.y * STRIP_SHARE)
         } else {
             let width = viewport.x * WIDTH_SHARE;
-            (Sizing::Auto, width, viewport.y * HEIGHT_SHARE)
+            let height = if spec.tall {
+                viewport.y - 2.0 * margin
+            } else {
+                viewport.y * HEIGHT_SHARE
+            };
+            (Sizing::Auto, width, height)
         };
         let saved = window.saved;
         self.tree.edit_layout(window.root, |style| {
@@ -1043,6 +1055,7 @@ impl ViewFrame<'_> {
                 root: window.root,
                 corner: spec.corner,
                 strip: spec.strip,
+                tall: spec.tall,
                 wanted,
                 margin,
                 line: window.look.line_height,
@@ -1129,9 +1142,10 @@ impl ViewFrame<'_> {
                     .iter()
                     .map(|&j| RESERVED_LINES * docks[j].line + margin)
                     .sum();
+                let share = if docks[i].tall { 1.0 } else { HEIGHT_SHARE };
                 given[i] = docks[i]
                     .wanted
-                    .min(height * HEIGHT_SHARE)
+                    .min(height * share)
                     .min(room - used - reserved)
                     .max(docks[i].title);
                 used += given[i] + margin;
@@ -2225,6 +2239,7 @@ impl LogConsole {
             corner: self.corner,
             padding: self.padding_px,
             strip: true,
+            tall: false,
             look: look_of!(self),
             shape: Shape {
                 columns: CONSOLE_COLUMNS,
@@ -2530,6 +2545,7 @@ impl UiInspector {
             corner: self.corner,
             padding: self.padding_px,
             strip: false,
+            tall: false,
             look: look_of!(self),
             shape: Shape {
                 columns: UI_INSPECTOR_COLUMNS,

@@ -125,7 +125,7 @@ pub(crate) fn verdict(report: &Report) -> String {
 }
 
 /// The engine's script hooks: core's probes, then `states`, `log` and
-/// `startup`.
+/// `startup`, and the level editor's `editor` probe and action.
 pub(crate) fn engine_hooks() -> ScriptHooks {
     let mut hooks = ScriptHooks::new();
     hooks.add_probe(
@@ -158,6 +158,7 @@ pub(crate) fn engine_hooks() -> ScriptHooks {
                 .map_or(Value::Null, |timings| json!(timings)))
         },
     );
+    crate::level_editor::register_hooks(&mut hooks);
     hooks
 }
 

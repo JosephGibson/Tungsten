@@ -220,6 +220,7 @@ impl DebugHud {
             corner: self.corner,
             padding: self.padding_px,
             strip: false,
+            tall: false,
             look: look_of!(self),
             shape: Shape {
                 columns: COLUMNS,

@@ -161,4 +161,35 @@ A debug build watches its assets. Save a room file, or its tileset, and the live
 
 ## The editor
 
-F10 opens the level editor in a build that watches its assets: the game clock stops, and its window lists the keys. Drag an object to move it by whole cells, Delete removes the picked one, Ctrl+D copies it a cell right, Ctrl+Z and Ctrl+Y undo and redo, the arrows and a middle drag pan and the wheel zooms. The keys 1 to 4 switch the left button between select, place (the palette's prefab at a cell), paint and erase (a stroke of cells, one undo step), `[` and `]` step the palette through the prefabs or the room's tiles, L picks the target layer, and the right button takes the prefab or the tile under the cursor. After each edit the window shows the room's findings, as `tungsten check` reports them. Each edit is checked as `tungsten level apply` checks a batch and written to the room's file at once, which the reload then finds unchanged. The editor edits rooms the game has spawned; a generated room, and one whose file another room shares, is read only. F10 again closes it.
+F10 opens the level editor in a build that watches its assets: the game clock stops and a panel takes the window's right side. Every action is a button or a row of the panel, and the keys are listed at its foot. From the top it shows:
+
+- **What happened.** The last edit as a sentence ("Moved `crate_1` by 1, 0."), or in red why one was refused ("Can't move `crate_1`: [5, 31] is past the room's 40 × 24 cells."). Under it, what a click does with the current tool and the cell under the cursor. A game with no live room says so here, with the rooms it lists.
+- **Rooms.** The live rooms, the current one marked, each with the file its edits write to or `read only` (a generated room, and one whose file another room shares). A click makes a room current and fits it in view; otherwise the current room is the one under the view's centre.
+- **Tools.** Select, Place, Paint and Erase, then Undo and Redo with their counts, Delete, Copy, Fit and Game view. A button that has nothing to act on is dimmed.
+- **The palette.** The prefabs with their sprites under Select and Place, the room's tiles under Paint and Erase. A click takes one and takes up its tool.
+- **Layer.** The layer Paint and Erase write to, or every layer.
+- **Pick, findings.** The picked object's ID, prefab and cell, and the room's findings as `tungsten check` reports them, read again after each edit.
+
+| Input | Does |
+| --- | --- |
+| left button | Select: a click picks an object, a drag moves it by whole cells. Place: the palette's prefab at the cell. Paint and Erase: a stroke of cells, one undo step. |
+| right button | takes the prefab of the object, or the tile and layer of the cell, under the cursor |
+| middle drag, arrows, wheel | pan and zoom |
+| `1` `2` `3` `4` | Select, Place, Paint, Erase |
+| `[` `]`, `L` | step the palette; step the layer |
+| Delete, Ctrl+D | delete the pick; copy it a cell right |
+| Ctrl+Z, Ctrl+Y | undo, redo |
+| `F`, Home | fit the current room beside the panel; back to the game's view |
+| F10 | close |
+
+Each edit is one batch: checked as `tungsten level apply` checks it, journaled, and written to the room's file at once, which the reload then finds unchanged. A refused edit changes nothing, and a file that can't be written takes the edit back out of the room. The editor edits rooms the game has spawned.
+
+A script drives the editor through the `editor` action, which does what the buttons do, and reads it through the `editor` probe:
+
+```json
+{ "frame": 5, "action": "editor", "args": { "open": true, "tool": "paint", "tile": "rock", "layer": "solid" } },
+{ "frame": 9, "action": "editor", "args": { "select": "gem_1", "do": "copy" } },
+{ "frame": 10, "assert": { "probe": "editor", "path": "/status", "op": "==", "value": "Copied `gem_1` as `gem_2`, a cell right." } }
+```
+
+The action's fields, each optional, apply in this order: `open`, `room`, `tool`, `prefab`, `tile`, `layer` (a name, or `null` for every layer), `select` (an object's ID, or `null`), `do` (`undo`, `redo`, `delete`, `copy`, `fit`, `game_view`, `palette_next`, `palette_previous`, `layer_next`). One the editor refuses fails the step with the sentence the panel shows. The probe gives `available`, `open`, `tool`, `room`, `rooms`, `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings` and `view`. Unlike a `level` step, an edit made through the editor writes the room's file. A click in the world is a `cursor` step and a press of `engine_editor_primary`, as any input is.

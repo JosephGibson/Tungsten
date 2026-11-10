@@ -78,7 +78,7 @@ fn a_description_lists_components_with_kit_fields_hooks_and_manifest_ids() {
     let probes = description["script"]["probes"].as_array().unwrap();
     let names: Vec<&str> = probes.iter().map(|p| p["name"].as_str().unwrap()).collect();
     for name in [
-        "camera", "count", "entities", "frame", "log", "states", "tagged",
+        "camera", "count", "editor", "entities", "frame", "log", "states", "tagged",
     ] {
         assert!(names.contains(&name), "{names:?}");
     }
@@ -87,15 +87,26 @@ fn a_description_lists_components_with_kit_fields_hooks_and_manifest_ids() {
             .iter()
             .all(|p| !p["doc"].as_str().unwrap().is_empty())
     );
+    // The engine's own action, the level editor's, then the game's.
+    let actions = description["script"]["actions"].as_array().unwrap();
+    assert_eq!(actions[0]["name"], "editor");
+    assert!(
+        actions[0]["doc"]
+            .as_str()
+            .unwrap()
+            .starts_with("Drives the level editor as its keys and buttons do")
+    );
     assert_eq!(
-        description["script"]["actions"],
-        json!([
+        actions[1..],
+        *json!([
             {
                 "name": "place",
                 "doc": "Sets the first entity holding `{\"tag\": t}` at rest at `\"at\": [x, y]`; fails with none."
             },
             { "name": "start_run", "doc": "Starts a run." }
         ])
+        .as_array()
+        .unwrap()
     );
     assert_eq!(description["assets"]["sprites"], json!(["dot"]));
     assert_eq!(description["assets"]["prefabs"], json!(["goblin"]));
