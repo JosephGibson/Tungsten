@@ -132,7 +132,20 @@ pub(crate) type RoomWriter = fn(&Path, &str) -> Result<(), String>;
 /// A room file written so a reader sees the old file or the new one, never
 /// a torn one; the watcher skips its temp file.
 pub(crate) fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
-    tungsten_core::persist::write_atomic(path, text.as_bytes()).map_err(|err| err.to_string())
+    // The cause alone: the error's own text names the file, which the
+    // editor's sentence already does.
+    tungsten_core::persist::write_atomic(path, text.as_bytes()).map_err(|err| {
+        std::error::Error::source(&err).map_or_else(|| err.to_string(), ToString::to_string)
+    })
+}
+
+/// A room file as a sentence names it: from the game's folder when it is
+/// under it, as the manifest and the command line write it, else whole.
+fn shown(path: &Path) -> String {
+    let under = std::env::current_dir()
+        .ok()
+        .and_then(|dir| path.strip_prefix(dir).ok().map(Path::to_path_buf));
+    under.as_deref().unwrap_or(path).display().to_string()
 }
 
 /// The editor's view: its top-left and zoom, unrotated.
@@ -404,6 +417,8 @@ pub(crate) struct LevelEditor {
     over_window: bool,
     /// The game camera's rotation when the editor opened.
     rotation: Option<f32>,
+    /// A fit made before the panel's box was known: made again when it is.
+    pub(crate) refit: bool,
     pub(crate) window: Option<ViewWindow>,
     /// The window's contents, built once a window.
     panel: Option<panel::Panel>,
@@ -454,6 +469,7 @@ impl LevelEditor {
             hover: None,
             over_window: false,
             rotation: None,
+            refit: false,
             window: None,
             panel: None,
             panel_rect: None,
@@ -514,6 +530,7 @@ impl LevelEditor {
         }
         self.restore_rotation(world, true);
         self.view = None;
+        self.refit = false;
     }
 
     /// The camera the editor draws through this frame: its view, else the
@@ -1096,7 +1113,7 @@ impl LevelEditor {
     /// the wider side of it, at the largest zoom that shows the whole room,
     /// a whole number of screen pixels a world pixel once that is 1 or
     /// more, the room centred there.
-    fn fit(&mut self, world: &World) {
+    pub(crate) fn fit(&mut self, world: &World) {
         let Some(room) = live_rooms(world, self.current.as_deref())
             .into_iter()
             .find(|room| Some(room.id.as_str()) == self.current.as_deref())
@@ -1129,6 +1146,9 @@ impl LevelEditor {
             position: room.origin + room.size * 0.5 - centre / zoom,
             zoom,
         });
+        // Asked before the panel was laid out, as a script's first step
+        // asks: fitted again beside it once its box is known.
+        self.refit = self.panel_rect.is_none();
     }
 
     /// Select's primary button: a press picks, or on nothing clears the
@@ -1742,7 +1762,7 @@ impl LevelEditor {
                 world.remove_resource::<RoomJournal>();
             }
         }
-        let file = path.display();
+        let file = shown(&path);
         Err(match restored {
             Ok(_) => format!("'{file}' cannot be written ({err}); nothing edited."),
             Err(again) => format!(
@@ -2208,7 +2228,7 @@ fn writable(world: &World, room: &str) -> Result<Option<PathBuf>, String> {
             "`{room}` shares its file with room `{other}`: read only, since writing one rewrites the other."
         ));
     }
-    let file = path.display();
+    let file = shown(path);
     let text =
         std::fs::read_to_string(path).map_err(|err| format!("'{file}' cannot be read ({err})."))?;
     match Room::from_json(&text) {

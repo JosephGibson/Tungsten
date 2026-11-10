@@ -382,6 +382,9 @@ pub(super) fn update(editor: &mut LevelEditor, world: &mut World, frame: &mut Vi
         .tree
         .visual_rect(root)
         .map(|rect| (rect.min * frame.scale, rect.max * frame.scale));
+    if editor.panel_rect.is_some() && std::mem::take(&mut editor.refit) {
+        editor.fit(world);
+    }
     let mut panel = match editor.panel.take() {
         Some(panel) if panel.root == root && frame.tree.contains(panel.status) => panel,
         _ => Panel::build(frame.tree, &spec.look, root, body),

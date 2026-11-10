@@ -1633,6 +1633,19 @@ fn fit_shows_the_room_beside_the_panel() {
     assert!(view.zoom >= 1.0);
     // Centred in the strip.
     assert!((min.x - (panel.x - max.x)).abs() <= 1.0, "{min} {max}");
+
+    // Asked in the step that opens the editor, before its panel has a
+    // box, the fit is made again beside the panel once it has one.
+    let (_dir, mut harness) = self::editor();
+    script(&mut harness, &json!({ "open": true, "do": "fit" })).unwrap();
+    harness.step(3);
+    let editor = state(&harness);
+    let (panel, _) = editor.panel_rect.expect("the panel's box");
+    let max = editor
+        .drawn(CameraState::new())
+        .world_to_screen(Vec2::new(640.0, 384.0));
+    assert!(max.x <= panel.x, "{max} beside {panel}");
+    assert!(!editor.refit);
 }
 
 #[test]
@@ -2756,4 +2769,20 @@ fn the_games_camera_keeps_its_rotation() {
     harness.tap_action(TOGGLE);
     harness.step(2);
     assert_eq!(harness.world().resource::<CameraState>().rotation, 0.25);
+}
+
+#[test]
+fn a_sentence_names_a_room_file_from_the_games_folder() {
+    let here = std::env::current_dir().unwrap();
+    assert_eq!(
+        shown(&here.join("assets/rooms/cave.json")),
+        Path::new("assets/rooms/cave.json").display().to_string()
+    );
+    // A file elsewhere keeps its whole path.
+    let elsewhere = Path::new("/nowhere/rooms/cave.json");
+    assert_eq!(shown(elsewhere), elsewhere.display().to_string());
+    // A failed write's cause is said once, without the path again.
+    let missing = here.join("target/no-such-folder-for-a-room/\0/cave.json");
+    let why = write_atomic(&missing, "{}").unwrap_err();
+    assert!(!why.contains("cave.json"), "{why}");
 }
