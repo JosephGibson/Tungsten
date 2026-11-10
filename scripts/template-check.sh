@@ -246,9 +246,10 @@ rm "$copy/outside.png"
 echo "Paths leaving the manifest's folder (../outside.png, an absolute path): OK"
 
 # The room flow (redo 7.12): a tileset and a room `yard` on the game's own
-# `gem` sprite, listed in its manifest. `tungsten level` applies a batch,
-# queries the room, describes it and checks it clean, and `apply --undo`
-# puts the file back byte for byte; then two seeded room errors each fail
+# `gem` sprite, listed in its manifest. `tungsten level` applies a batch
+# from a file and one from stdin, queries the room, describes it and checks
+# it clean, and `apply --undo` puts the file back byte for byte, `--redo`
+# and a second `--undo` after it; then two seeded room errors each fail
 # `level check` with its finding. The room, its tileset and the prefab's
 # edit leave before the seeded content errors.
 edit <<'EOF'
@@ -280,24 +281,27 @@ batch="$copy_root/batch.json"
 write_batch() {
   cat >"$batch"
 }
-undoes="\`tungsten level apply yard --undo\` undoes it"
 write_batch <<<'[{ "place": { "objects": { "id": "dummy_1", "prefab": "dummy", "at": [4, 8] } } }]'
 if ! level apply yard "$batch" \
-  || [ "$(cat "$out")" != "applied 1 command to assets/rooms/yard.json; $undoes" ]; then
+  || [ "$(sed -n 1p "$out")" != "applied 1 command to assets/rooms/yard.json:" ] \
+  || [ "$(sed -n 2p "$out")" != "  place object \`dummy_1\` (\`dummy\`) at 4, 8" ] \
+  || [ "$(sed -n 3p "$out")" != "undo: tungsten level apply yard --undo" ]; then
   echo "error: tungsten level apply did not place the dummy:" >&2
   cat "$out" >&2
   exit 1
 fi
 placed="$copy_root/yard-placed.json"
 cp "$room" "$placed"
-write_batch <<<'[{ "move": { "id": "dummy_1", "by": [3, 0] } },
-  { "paint": { "layer": "art", "cells": [[8, 4]], "tile": "gem" } }]'
-if ! level apply yard "$batch" \
-  || [ "$(cat "$out")" != "applied 2 commands to assets/rooms/yard.json; $undoes" ]; then
-  echo "error: tungsten level apply did not move the dummy and paint a cell:" >&2
+# The second batch on stdin, as `apply <room> -` reads it.
+if ! level apply yard - <<<'[{ "move": { "id": "dummy_1", "by": [3, 0] } },
+  { "paint": { "layer": "art", "cells": [[8, 4]], "tile": "gem" } }]' \
+  || [ "$(sed -n 1p "$out")" != "applied 2 commands to assets/rooms/yard.json:" ]; then
+  echo "error: tungsten level apply did not move the dummy and paint a cell from stdin:" >&2
   cat "$out" >&2
   exit 1
 fi
+applied="$copy_root/yard-applied.json"
+cp "$room" "$applied"
 if ! level query yard dummy_1 || [ "$(head -1 "$out")" != "object dummy_1 (objects[0]):" ]; then
   echo "error: tungsten level query did not print the dummy:" >&2
   cat "$out" >&2
@@ -323,13 +327,26 @@ if ! level check yard || [ "$(tail -1 "$out")" != "tungsten level check: no room
   tail -20 "$out" >&2
   exit 1
 fi
-if ! level apply yard --undo || [ "$(cat "$out")" != "undid the last batch on assets/rooms/yard.json" ] \
+if ! level apply yard --undo \
+  || [ "$(sed -n 1p "$out")" != "undid 2 commands on assets/rooms/yard.json:" ] \
   || ! cmp -s "$room" "$placed"; then
   echo "error: tungsten level apply --undo did not restore the room byte for byte:" >&2
   cat "$out" >&2
   exit 1
 fi
-echo "Room flow (level apply, query, describe, check, apply --undo): OK"
+if ! level apply yard --redo \
+  || [ "$(sed -n 1p "$out")" != "redid 2 commands on assets/rooms/yard.json:" ] \
+  || ! cmp -s "$room" "$applied"; then
+  echo "error: tungsten level apply --redo did not apply the undone batch again:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if ! level apply yard --undo || ! cmp -s "$room" "$placed"; then
+  echo "error: tungsten level apply --undo did not undo the redone batch:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+echo "Room flow (level apply from a file and stdin, query, describe, check, apply --undo, --redo): OK"
 
 # A seeded room error: the batch ($2) places an object `level check` must
 # fail naming ($3); then the batch is undone. $1 names it.

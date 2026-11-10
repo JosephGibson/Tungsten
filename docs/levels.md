@@ -54,7 +54,7 @@ Run it in the game's folder. A `<room>` is a `rooms` ID or a room file's path.
 
 | Verb | What it does | Needs the game's build |
 | --- | --- | --- |
-| `apply <room> <batch>` | Applies a batch of commands, a JSON array in a file, writes the room in its canonical form and journals the batch. `--inverse <file>` also writes the batch that undoes it; `apply <room> --undo` undoes the journal's newest batch. | no |
+| `apply <room> <batch>` | Applies a batch of commands, a JSON array in a file or on stdin for `-`, writes the room in its canonical form and journals the batch. `apply <room> --undo` undoes the journal's newest batch and `apply <room> --redo` applies the newest undone one again. `--dry-run` checks and reports what would change and writes nothing; `--check` runs `level check` on the room after the write; `--inverse <file>` also writes the batch that undoes this one. | no |
 | `query <room> <id>` | Prints one entry. `query <room> --at <col>,<row>` prints what lies at a cell: each layer's tile, the shapes over it, the objects in it and the places holding it. `--json` prints JSON. | no |
 | `describe [<room>]` | Lists each room's layers and named things by kind, with its links. `--json` prints JSON. | no |
 | `check [<room>...]` | Runs the game's check and prints those rooms' findings, every room's with none named, and every room generator's (`--seeds`, `--seed` as `check` takes them). | yes |
@@ -79,9 +79,18 @@ A batch is a JSON array of commands, each an object with one verb. Every command
 | `link` | `id` of a point or an area, `to` `<room>.<place>` or `null` | `{ "link": { "id": "exit", "to": "cellar.door" } }` |
 | `rename` | `id`, `to`; the room's own references follow | `{ "rename": { "id": "dummy_2", "to": "guard" } }` |
 
-`apply` checks what the room file alone decides: IDs, geometry, layers, tiles and prefab IDs. An override's path and value are checked against the game's components by `tungsten level check`, which needs the game's build, so run it after a batch that sets one.
+`apply` answers with a line a command and the commands that undo and check it:
 
-`apply` appends each batch with the one that undoes it to `target/tungsten/journal/<room>.jsonl`, with the room file's hashes before and after; `--undo` refuses a file edited since.
+```text
+$ tungsten level apply yard - <<<'[{ "move": { "id": "gem_1", "by": [1, 0] } }]'
+applied 1 command to assets/rooms/yard.json:
+  move `gem_1` by 1, 0
+undo: tungsten level apply yard --undo
+```
+
+`apply` checks what the room file alone decides: IDs, geometry, layers, tiles and prefab IDs. An override's path and value are checked against the game's components by `tungsten level check`, which needs the game's build: a batch that places an object or sets an override names that check in its answer, and `--check` runs it at once.
+
+`apply` appends each batch with the one that undoes it to `target/tungsten/journal/<room>.jsonl`, with the room file's hashes before and after; `--undo` refuses a file edited since, and moves the batch to `<room>.redo.jsonl`, which `--redo` reads and a new `apply` empties. `--redo` refuses a file edited since its undo. Each of the three writes the room file and its journals as one set: when a write fails, the files written before it are put back and the command fails with nothing changed.
 
 ### Findings
 

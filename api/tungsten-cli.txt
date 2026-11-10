@@ -76,6 +76,9 @@ Verbs of level, a <room> a rooms ID or a room file:
                     write the room canonically and journal the batch
     --inverse <file>  Also write the batch that undoes it
     --undo          Undo the journal's newest batch instead of a batch
+    --redo          Apply the newest undone batch again instead
+    --dry-run       Check and report what would change; write nothing
+    --check         Run level check on the room after the write
   query <room> [<id>]
                     Print an entry, or with --at what lies at a cell
     --at <col>,<row>  The cell

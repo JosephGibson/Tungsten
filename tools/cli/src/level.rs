@@ -8,8 +8,15 @@
 //! writes the room canonically and appends `{batch, inverse, before,
 //! after}` (the room file's FNV-1a hashes) as a line to
 //! `target/tungsten/journal/<room>.jsonl`, cargo's ignored folder; `--undo`
-//! applies the newest line's inverse and drops it, refusing a file that
-//! changed outside the journal. `check` runs the game's check and prints
+//! applies the newest line's inverse and moves the line to
+//! `<room>.redo.jsonl` with `at`, the hash of the file as it wrote it,
+//! refusing a file that changed outside the journal; `--redo` applies the
+//! redo journal's newest batch again, refusing a file that changed since
+//! its undo, and an `apply` empties the redo journal. Each of the three
+//! writes its files as one set ([`write_set`]): the room, the journal, the
+//! redo journal and `--inverse`'s file, in that order, each through
+//! `write_atomic`, the files written before a write that fails put back.
+//! `check` runs the game's check and prints
 //! the room findings alone; `render` writes and runs a script that stages
 //! the room and captures it. `generate` runs the game's build with
 //! `TUNGSTEN_GENERATE` naming a report, which the engine fills with a
@@ -38,12 +45,14 @@ use crate::render::{self, RenderArgs};
 /// `level`'s verb and its arguments.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum LevelArgs {
-    /// `apply <room> <batch> [--inverse <file>]` or `apply <room> --undo`.
+    /// `apply <room> <batch> [--inverse <file>]`, `apply <room> --undo` or
+    /// `apply <room> --redo`, each with `--dry-run` or `--check`.
     Apply {
         room: String,
-        batch: Option<PathBuf>,
+        edit: ApplyEdit,
         inverse: Option<PathBuf>,
-        undo: bool,
+        dry_run: bool,
+        check: bool,
     },
     /// `query <room> [<id>] [--at <col>,<row>] [--json]`.
     Query {
@@ -72,24 +81,46 @@ pub(crate) enum LevelArgs {
     },
 }
 
+/// What `apply` does to its room.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ApplyEdit {
+    /// Applies the batch in this file, `-` for stdin.
+    Batch(PathBuf),
+    /// Undoes the journal's newest batch.
+    Undo,
+    /// Applies the newest undone batch again.
+    Redo,
+}
+
 /// Runs `args` on the game in `dir`; `false` when it found errors.
 pub(crate) fn run(dir: &Path, args: &LevelArgs) -> anyhow::Result<bool> {
     match args {
         LevelArgs::Apply {
             room,
-            batch,
+            edit,
             inverse,
-            undo,
+            dry_run,
+            check,
         } => {
             let game = Game::open(dir)?;
-            let message = if *undo {
-                undo_last(&game, room)?
-            } else {
-                let batch = batch.as_deref().context("`apply` needs a batch")?;
-                let text = read_batch(dir, batch)?;
-                apply(&game, room, &text, inverse.as_deref())?
+            let message = match edit {
+                ApplyEdit::Batch(batch) => {
+                    let text = read_batch(dir, batch)?;
+                    let options = ApplyOptions {
+                        inverse: inverse.as_deref(),
+                        dry_run: *dry_run,
+                    };
+                    apply(&game, room, &text, &options, &mut write_file)?
+                }
+                ApplyEdit::Undo => undo_last(&game, room, *dry_run, &mut write_file)?,
+                ApplyEdit::Redo => redo_last(&game, room, *dry_run, &mut write_file)?,
             };
             println!("{message}");
+            if *check && !*dry_run {
+                // The room is written; the check's findings say what a
+                // further batch, or an undo, should fix.
+                return check_rooms(dir, std::slice::from_ref(room), None);
+            }
             Ok(true)
         }
         LevelArgs::Query { room, id, at, json } => {
@@ -274,6 +305,19 @@ impl Game {
             .join("target/tungsten/journal")
             .join(format!("{id}.jsonl"))
     }
+
+    /// The redo journal of room `id`: the batches its undos took back, the
+    /// next to redo last.
+    pub(crate) fn redo_journal(&self, id: &str) -> PathBuf {
+        self.dir
+            .join("target/tungsten/journal")
+            .join(format!("{id}.redo.jsonl"))
+    }
+
+    /// What a batch on `room`, the file at `target`, is checked against.
+    fn context_of(&self, room: &Room) -> anyhow::Result<(Tileset, PhysicsLayers)> {
+        Ok((self.tileset(room)?, self.layers()))
+    }
 }
 
 /// A batch's text: the file `batch` names, relative to `dir`, or stdin for
@@ -300,20 +344,142 @@ pub(crate) fn hash(bytes: &[u8]) -> String {
     format!("{hash:016x}")
 }
 
+/// One file of a command's write set: what a message calls it, where it
+/// is, and the text it holds after the command, `None` for a file removed.
+struct Write {
+    what: &'static str,
+    path: PathBuf,
+    text: Option<String>,
+}
+
+/// How a write set changes one file: the text it takes, or `None` to
+/// remove it. [`write_file`] unless a test fails one.
+pub(crate) type Writer<'a> = dyn FnMut(&Path, Option<&str>) -> anyhow::Result<()> + 'a;
+
+/// Writes `text` to `path` so a reader sees the old file or the new one
+/// (`write_atomic`, which makes the folder), or for `None` removes the
+/// file, an absent one included.
+pub(crate) fn write_file(path: &Path, text: Option<&str>) -> anyhow::Result<()> {
+    match text {
+        Some(text) => {
+            tungsten_core::persist::write_atomic(path, text.as_bytes()).map_err(anyhow::Error::from)
+        }
+        None => match std::fs::remove_file(path) {
+            Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err.into()),
+            _ => Ok(()),
+        },
+    }
+}
+
+/// Writes a command's files in order through `write`, all or none: no two
+/// of them may be one file (`--inverse` naming the room or a journal),
+/// which is refused before anything is written, and a write that fails
+/// puts the files written before it back as they were, an absent one
+/// removed, and fails the command.
+///
+/// # Errors
+///
+/// Two entries naming one file; a write that failed, the error naming any
+/// file that could not be put back and so holds the command's result.
+fn write_set(game: &Game, set: &[Write], write: &mut Writer<'_>) -> anyhow::Result<()> {
+    let keys: Vec<PathBuf> = set.iter().map(|file| file_key(&file.path)).collect();
+    for (at, key) in keys.iter().enumerate() {
+        if let Some(first) = keys[..at].iter().position(|other| other == key) {
+            bail!(
+                "{} '{}' is also {}; nothing written",
+                set[at].what,
+                game.relative(&set[at].path),
+                set[first].what
+            );
+        }
+    }
+    let old: Vec<Option<String>> = set
+        .iter()
+        .map(|file| std::fs::read_to_string(&file.path).ok())
+        .collect();
+    for (at, file) in set.iter().enumerate() {
+        let Err(err) = write(&file.path, file.text.as_deref()) else {
+            continue;
+        };
+        let mut stuck = Vec::new();
+        for (written, text) in set[..at].iter().zip(&old).rev() {
+            if write_file(&written.path, text.as_deref()).is_err() {
+                stuck.push(format!(
+                    "{} '{}'",
+                    written.what,
+                    game.relative(&written.path)
+                ));
+            }
+        }
+        let back = if stuck.is_empty() {
+            "nothing changed".to_owned()
+        } else {
+            format!(
+                "and could not put back {}, which holds the command's result",
+                stuck.join(" and ")
+            )
+        };
+        bail!(
+            "cannot write {} '{}': {err:#}; {back}",
+            file.what,
+            game.relative(&file.path)
+        );
+    }
+    Ok(())
+}
+
+/// A journal's lines, oldest first; none for a file that is not there.
+fn journal_lines(path: &Path) -> Vec<String> {
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// `lines` as a journal's text; `None`, the file removed, for none.
+fn journal_text(lines: &[String]) -> Option<String> {
+    (!lines.is_empty()).then(|| {
+        lines
+            .iter()
+            .fold(String::new(), |text, line| text + line + "\n")
+    })
+}
+
+/// A batch as a report lists it: a line a command, indented.
+fn summary(batch: &[RoomCommand]) -> String {
+    batch.iter().fold(String::new(), |mut lines, command| {
+        let _ = write!(lines, "\n  {}", command.summary());
+        lines
+    })
+}
+
+/// `apply`'s options beside its batch.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ApplyOptions<'a> {
+    /// A file that also gets the batch that undoes this one.
+    pub(crate) inverse: Option<&'a Path>,
+    /// Check and report, writing nothing.
+    pub(crate) dry_run: bool,
+}
+
 /// Applies the batch `text` to room `arg`: the room written canonically,
-/// the batch journaled with its inverse, which `inverse` also gets when it
-/// names a file.
+/// the batch journaled with its inverse, the redo journal emptied, and the
+/// inverse written to `options.inverse` when it names a file, as one
+/// [`write_set`]. Returns the report: a line a command, then the commands
+/// that undo and check it.
 pub(crate) fn apply(
     game: &Game,
     arg: &str,
     text: &str,
-    inverse_file: Option<&Path>,
+    options: &ApplyOptions<'_>,
+    write: &mut Writer<'_>,
 ) -> anyhow::Result<String> {
     let target = game.target(arg)?;
     let (before, mut room) = game.room(&target)?;
     let batch = RoomCommand::parse_batch(text).map_err(|e| anyhow::anyhow!("{e}"))?;
-    let tileset = game.tileset(&room)?;
-    let layers = game.layers();
+    let (tileset, layers) = game.context_of(&room)?;
     let prefabs = game.prefabs();
     let context = RoomContext {
         room: &target.id,
@@ -325,59 +491,96 @@ pub(crate) fn apply(
         .apply(&batch, &context)
         .map_err(|e| anyhow::anyhow!("{}: {e}", game.relative(&target.path)))?;
     let after = room.to_canonical();
-    std::fs::write(&target.path, &after)
-        .with_context(|| format!("cannot write '{}'", game.relative(&target.path)))?;
-    let line = json!({
-        "batch": batch,
-        "inverse": inverse,
-        "before": hash(before.as_bytes()),
-        "after": hash(after.as_bytes()),
+    let file = game.relative(&target.path);
+    let commands = count(batch.len(), "command");
+    if options.dry_run {
+        return Ok(format!(
+            "would apply {commands} to {file}:{}\ndry run: nothing written",
+            summary(&batch)
+        ));
+    }
+    let mut lines = journal_lines(&game.journal(&target.id));
+    lines.push(
+        json!({
+            "batch": batch,
+            "inverse": inverse,
+            "before": hash(before.as_bytes()),
+            "after": hash(after.as_bytes()),
+        })
+        .to_string(),
+    );
+    let mut set = vec![
+        Write {
+            what: "the room's file",
+            path: target.path.clone(),
+            text: Some(after),
+        },
+        Write {
+            what: "the journal",
+            path: game.journal(&target.id),
+            text: journal_text(&lines),
+        },
+        Write {
+            what: "the redo journal",
+            path: game.redo_journal(&target.id),
+            text: None,
+        },
+    ];
+    if let Some(file) = options.inverse {
+        set.push(Write {
+            what: "`--inverse`'s file",
+            path: game.dir.join(file),
+            text: Some(serde_json::to_string_pretty(&inverse)? + "\n"),
+        });
+    }
+    write_set(game, &set, write)?;
+    // What `apply` cannot check is the game's: an object's prefab fields.
+    let unchecked = batch.iter().any(|command| match command {
+        RoomCommand::Place(place) => place.objects.is_some(),
+        RoomCommand::Set(set) => set.id.is_some(),
+        _ => false,
     });
-    let journal = game.journal(&target.id);
-    if let Some(parent) = journal.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("cannot make '{}'", parent.display()))?;
-    }
-    let mut lines = std::fs::read_to_string(&journal).unwrap_or_default();
-    lines.push_str(&line.to_string());
-    lines.push('\n');
-    std::fs::write(&journal, lines)
-        .with_context(|| format!("cannot write the journal '{}'", journal.display()))?;
-    if let Some(file) = inverse_file {
-        let text = serde_json::to_string_pretty(&inverse)? + "\n";
-        std::fs::write(game.dir.join(file), text)
-            .with_context(|| format!("cannot write '{}'", file.display()))?;
-    }
+    let check = if unchecked {
+        format!(
+            "\ncheck: tungsten level check {} (the level rules and the game's components)",
+            target.id
+        )
+    } else {
+        String::new()
+    };
     Ok(format!(
-        "applied {} to {}; `tungsten level apply {} --undo` undoes it",
-        count(batch.len(), "command"),
-        game.relative(&target.path),
+        "applied {commands} to {file}:{}\nundo: tungsten level apply {} --undo{check}",
+        summary(&batch),
         target.id
     ))
 }
 
 /// Undoes room `arg`'s newest journaled batch, refusing a file that changed
-/// since it was written.
-pub(crate) fn undo_last(game: &Game, arg: &str) -> anyhow::Result<String> {
+/// since it was written: the room written, the journal's line moved to the
+/// redo journal with `at`, the hash of the file as written, as one
+/// [`write_set`].
+pub(crate) fn undo_last(
+    game: &Game,
+    arg: &str,
+    dry_run: bool,
+    write: &mut Writer<'_>,
+) -> anyhow::Result<String> {
     let target = game.target(arg)?;
-    let journal = game.journal(&target.id);
-    let text = std::fs::read_to_string(&journal).unwrap_or_default();
-    let mut lines: Vec<&str> = text.lines().filter(|line| !line.is_empty()).collect();
+    let mut lines = journal_lines(&game.journal(&target.id));
     let Some(last) = lines.pop() else {
         bail!("room `{}` has nothing to undo", target.id);
     };
-    let entry: Value = serde_json::from_str(last).context("the journal's newest line")?;
+    let entry: Value = serde_json::from_str(&last).context("the journal's newest line")?;
     let (current, mut room) = game.room(&target)?;
+    let file = game.relative(&target.path);
     if Some(hash(current.as_bytes()).as_str()) != entry["after"].as_str() {
-        bail!(
-            "{} changed outside the journal since its last apply; nothing undone",
-            game.relative(&target.path)
-        );
+        bail!("{file} changed outside the journal since its last apply; nothing undone");
     }
+    let batch = RoomCommand::batch_from_value(&entry["batch"])
+        .map_err(|e| anyhow::anyhow!("the journal's batch: {e}"))?;
     let inverse = RoomCommand::batch_from_value(&entry["inverse"])
         .map_err(|e| anyhow::anyhow!("the journal's inverse: {e}"))?;
-    let tileset = game.tileset(&room)?;
-    let layers = game.layers();
+    let (tileset, layers) = game.context_of(&room)?;
     let prefabs = game.prefabs();
     let context = RoomContext {
         room: &target.id,
@@ -386,19 +589,116 @@ pub(crate) fn undo_last(game: &Game, arg: &str) -> anyhow::Result<String> {
         prefabs: &prefabs,
     };
     room.apply(&inverse, &context)
-        .map_err(|e| anyhow::anyhow!("{}: {e}", game.relative(&target.path)))?;
-    std::fs::write(&target.path, room.to_canonical())
-        .with_context(|| format!("cannot write '{}'", game.relative(&target.path)))?;
-    let rest: String = lines.iter().fold(String::new(), |mut rest, line| {
-        rest.push_str(line);
-        rest.push('\n');
-        rest
-    });
-    std::fs::write(&journal, rest)
-        .with_context(|| format!("cannot write the journal '{}'", journal.display()))?;
+        .map_err(|e| anyhow::anyhow!("{file}: {e}"))?;
+    let commands = count(batch.len(), "command");
+    if dry_run {
+        return Ok(format!(
+            "would undo {commands} on {file}:{}\ndry run: nothing written",
+            summary(&batch)
+        ));
+    }
+    let text = room.to_canonical();
+    let mut undone = journal_lines(&game.redo_journal(&target.id));
+    undone.push(json!({ "batch": batch, "at": hash(text.as_bytes()) }).to_string());
+    let set = [
+        Write {
+            what: "the room's file",
+            path: target.path.clone(),
+            text: Some(text),
+        },
+        Write {
+            what: "the journal",
+            path: game.journal(&target.id),
+            text: journal_text(&lines),
+        },
+        Write {
+            what: "the redo journal",
+            path: game.redo_journal(&target.id),
+            text: journal_text(&undone),
+        },
+    ];
+    write_set(game, &set, write)?;
     Ok(format!(
-        "undid the last batch on {}",
-        game.relative(&target.path)
+        "undid {commands} on {file}:{}\nredo: tungsten level apply {} --redo",
+        summary(&batch),
+        target.id
+    ))
+}
+
+/// Applies room `arg`'s newest undone batch again, refusing a file that
+/// changed since the undo wrote it: the room written, the batch journaled
+/// with its new inverse and its line dropped from the redo journal, as one
+/// [`write_set`].
+pub(crate) fn redo_last(
+    game: &Game,
+    arg: &str,
+    dry_run: bool,
+    write: &mut Writer<'_>,
+) -> anyhow::Result<String> {
+    let target = game.target(arg)?;
+    let mut undone = journal_lines(&game.redo_journal(&target.id));
+    let Some(last) = undone.pop() else {
+        bail!("room `{}` has nothing to redo", target.id);
+    };
+    let entry: Value = serde_json::from_str(&last).context("the redo journal's newest line")?;
+    let (current, mut room) = game.room(&target)?;
+    let file = game.relative(&target.path);
+    if Some(hash(current.as_bytes()).as_str()) != entry["at"].as_str() {
+        bail!("{file} changed since its undo; nothing redone");
+    }
+    let batch = RoomCommand::batch_from_value(&entry["batch"])
+        .map_err(|e| anyhow::anyhow!("the redo journal's batch: {e}"))?;
+    let (tileset, layers) = game.context_of(&room)?;
+    let prefabs = game.prefabs();
+    let context = RoomContext {
+        room: &target.id,
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &prefabs,
+    };
+    let inverse = room
+        .apply(&batch, &context)
+        .map_err(|e| anyhow::anyhow!("{file}: {e}"))?;
+    let commands = count(batch.len(), "command");
+    if dry_run {
+        return Ok(format!(
+            "would redo {commands} on {file}:{}\ndry run: nothing written",
+            summary(&batch)
+        ));
+    }
+    let after = room.to_canonical();
+    let mut lines = journal_lines(&game.journal(&target.id));
+    lines.push(
+        json!({
+            "batch": batch,
+            "inverse": inverse,
+            "before": hash(current.as_bytes()),
+            "after": hash(after.as_bytes()),
+        })
+        .to_string(),
+    );
+    let set = [
+        Write {
+            what: "the room's file",
+            path: target.path.clone(),
+            text: Some(after),
+        },
+        Write {
+            what: "the journal",
+            path: game.journal(&target.id),
+            text: journal_text(&lines),
+        },
+        Write {
+            what: "the redo journal",
+            path: game.redo_journal(&target.id),
+            text: journal_text(&undone),
+        },
+    ];
+    write_set(game, &set, write)?;
+    Ok(format!(
+        "redid {commands} on {file}:{}\nundo: tungsten level apply {} --undo",
+        summary(&batch),
+        target.id
     ))
 }
 

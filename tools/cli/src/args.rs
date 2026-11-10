@@ -5,7 +5,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::check::Seeds;
-use crate::level::LevelArgs;
+use crate::level::{ApplyEdit, LevelArgs};
 use crate::render::{self, RenderArgs};
 
 /// `tungsten --help`, which `api/tungsten-cli.txt` records.
@@ -88,6 +88,9 @@ Verbs of level, a <room> a rooms ID or a room file:
                     write the room canonically and journal the batch
     --inverse <file>  Also write the batch that undoes it
     --undo          Undo the journal's newest batch instead of a batch
+    --redo          Apply the newest undone batch again instead
+    --dry-run       Check and report what would change; write nothing
+    --check         Run level check on the room after the write
   query <room> [<id>]
                     Print an entry, or with --at what lies at a cell
     --at <col>,<row>  The cell
@@ -206,7 +209,13 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
     ("schema", &[("-o", Some("<path>"))]),
     (
         "level apply",
-        &[("--inverse", Some("<file>")), ("--undo", None)],
+        &[
+            ("--inverse", Some("<file>")),
+            ("--undo", None),
+            ("--redo", None),
+            ("--dry-run", None),
+            ("--check", None),
+        ],
     ),
     (
         "level query",
@@ -400,32 +409,36 @@ fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
     };
     let args = match verb.as_str() {
         "apply" => {
-            let undo = flag("--undo");
-            match (positional.as_slice(), undo) {
-                ([room, batch], false) => LevelArgs::Apply {
-                    room: room.clone(),
-                    batch: Some(PathBuf::from(batch)),
-                    inverse: text("--inverse").map(PathBuf::from),
-                    undo,
-                },
-                ([room], true) if text("--inverse").is_none() => LevelArgs::Apply {
-                    room: room.clone(),
-                    batch: None,
-                    inverse: None,
-                    undo,
-                },
-                ([_], true) => {
-                    return Err(UsageError("`--undo` writes no --inverse".to_owned()));
-                }
+            let (undo, redo) = (flag("--undo"), flag("--redo"));
+            if undo && redo {
+                return Err(UsageError("give `--undo` or `--redo`, not both".to_owned()));
+            }
+            let history = if undo { "--undo" } else { "--redo" };
+            let (room, edit) = match (positional.as_slice(), undo || redo) {
+                ([room, batch], false) => (room, ApplyEdit::Batch(PathBuf::from(batch))),
+                ([room], true) if undo => (room, ApplyEdit::Undo),
+                ([room], true) => (room, ApplyEdit::Redo),
                 ([_, _], true) => {
-                    return Err(UsageError("`--undo` takes no batch".to_owned()));
+                    return Err(UsageError(format!("`{history}` takes no batch")));
                 }
                 (more, _) if more.len() > 2 => return Err(too_many(2)),
                 _ => {
                     return Err(UsageError(
-                        "`level apply` needs <room> <batch>, or <room> --undo".to_owned(),
+                        "`level apply` needs <room> <batch>, <room> --undo or <room> --redo"
+                            .to_owned(),
                     ));
                 }
+            };
+            let inverse = text("--inverse").map(PathBuf::from);
+            if inverse.is_some() && (undo || redo) {
+                return Err(UsageError(format!("`{history}` writes no --inverse")));
+            }
+            LevelArgs::Apply {
+                room: room.clone(),
+                edit,
+                inverse,
+                dry_run: flag("--dry-run"),
+                check: flag("--check"),
             }
         }
         "query" => {
@@ -571,8 +584,11 @@ fn split(command: &str, rest: Vec<OsString>) -> Result<(Vec<OsString>, Vec<Given
     Ok((positional, options))
 }
 
+/// Whether `arg` is an option: it starts with `-` and is more than a bare
+/// `-`, which names stdin where a file goes (`level apply <room> -`).
 fn is_option(arg: &OsString) -> bool {
-    arg.as_encoded_bytes().starts_with(b"-")
+    let bytes = arg.as_encoded_bytes();
+    bytes.starts_with(b"-") && bytes.len() > 1
 }
 
 /// The error for `option` given to `command`, or before any command: the

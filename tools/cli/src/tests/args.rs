@@ -289,18 +289,40 @@ fn level_verbs_parse_and_a_misplaced_option_fails() {
         level(&["apply", "cave", "batch.json", "--inverse", "undo.json"]),
         Ok(Command::Level(LevelArgs::Apply {
             room: "cave".into(),
-            batch: Some(PathBuf::from("batch.json")),
+            edit: ApplyEdit::Batch(PathBuf::from("batch.json")),
             inverse: Some(PathBuf::from("undo.json")),
-            undo: false,
+            dry_run: false,
+            check: false,
         }))
     );
     assert_eq!(
         level(&["apply", "cave", "--undo"]),
         Ok(Command::Level(LevelArgs::Apply {
             room: "cave".into(),
-            batch: None,
+            edit: ApplyEdit::Undo,
             inverse: None,
-            undo: true,
+            dry_run: false,
+            check: false,
+        }))
+    );
+    assert_eq!(
+        level(&["apply", "cave", "--redo", "--dry-run"]),
+        Ok(Command::Level(LevelArgs::Apply {
+            room: "cave".into(),
+            edit: ApplyEdit::Redo,
+            inverse: None,
+            dry_run: true,
+            check: false,
+        }))
+    );
+    assert_eq!(
+        level(&["apply", "cave", "batch.json", "--check"]),
+        Ok(Command::Level(LevelArgs::Apply {
+            room: "cave".into(),
+            edit: ApplyEdit::Batch(PathBuf::from("batch.json")),
+            inverse: None,
+            dry_run: false,
+            check: true,
         }))
     );
     assert_eq!(
@@ -379,8 +401,20 @@ fn level_verbs_parse_and_a_misplaced_option_fails() {
     assert_eq!(
         level(&["apply", "cave"]),
         Err(UsageError(
-            "`level apply` needs <room> <batch>, or <room> --undo".to_owned()
+            "`level apply` needs <room> <batch>, <room> --undo or <room> --redo".to_owned()
         ))
+    );
+    assert_eq!(
+        level(&["apply", "cave", "batch.json", "--redo"]),
+        Err(UsageError("`--redo` takes no batch".to_owned()))
+    );
+    assert_eq!(
+        level(&["apply", "cave", "--undo", "--redo"]),
+        Err(UsageError("give `--undo` or `--redo`, not both".to_owned()))
+    );
+    assert_eq!(
+        level(&["apply", "cave", "--redo", "--inverse", "undo.json"]),
+        Err(UsageError("`--redo` writes no --inverse".to_owned()))
     );
     assert_eq!(
         level(&["query", "cave", "--at", "7"]),
@@ -540,4 +574,42 @@ fn level_generate_takes_a_generator_and_its_options() {
             "`level generate` takes no further argument, given `more`".to_owned()
         ))
     );
+}
+
+#[test]
+fn a_bare_dash_is_the_batch_on_stdin() {
+    let level = |args: &[&str]| {
+        let mut all = vec!["level"];
+        all.extend_from_slice(args);
+        parse_str(&all)
+    };
+    assert_eq!(
+        level(&["apply", "cave", "-"]),
+        Ok(Command::Level(LevelArgs::Apply {
+            room: "cave".into(),
+            edit: ApplyEdit::Batch(PathBuf::from("-")),
+            inverse: None,
+            dry_run: false,
+            check: false,
+        }))
+    );
+    // Its place among the options does not matter.
+    assert_eq!(
+        level(&["apply", "cave", "--dry-run", "-"]),
+        Ok(Command::Level(LevelArgs::Apply {
+            room: "cave".into(),
+            edit: ApplyEdit::Batch(PathBuf::from("-")),
+            inverse: None,
+            dry_run: true,
+            check: false,
+        }))
+    );
+    // Any other argument starting with `-` is still an option.
+    assert_eq!(
+        level(&["apply", "cave", "-x"]),
+        Err(UsageError("unknown option `-x`".to_owned()))
+    );
+    for word in ["--redo", "--dry-run", "--check", "- for stdin"] {
+        assert!(USAGE.contains(word), "{word}");
+    }
 }

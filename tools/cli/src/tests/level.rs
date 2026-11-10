@@ -49,6 +49,26 @@ fn canonical_cave(dir: &Path) -> String {
     canonical
 }
 
+/// `apply` with no option, writing for real.
+fn apply_batch(game: &Game, room: &str, text: &str) -> anyhow::Result<String> {
+    apply(game, room, text, &ApplyOptions::default(), &mut write_file)
+}
+
+fn undo(game: &Game, room: &str) -> anyhow::Result<String> {
+    undo_last(game, room, false, &mut write_file)
+}
+
+fn redo(game: &Game, room: &str) -> anyhow::Result<String> {
+    redo_last(game, room, false, &mut write_file)
+}
+
+/// The room file, the journal and the redo journal as they read now,
+/// `None` for one that is not there.
+fn apply_files(game: &Game, dir: &Path) -> [Option<String>; 3] {
+    [cave(dir), game.journal("cave"), game.redo_journal("cave")]
+        .map(|path| std::fs::read_to_string(path).ok())
+}
+
 #[test]
 fn apply_writes_the_canonical_room_and_journals_the_inverse() {
     let dir = game();
@@ -57,12 +77,16 @@ fn apply_writes_the_canonical_room_and_journals_the_inverse() {
         &game,
         "cave",
         r#"[{ "move": { "id": "ball_1", "by": [1, 0] } }, { "link": { "id": "exit", "to": null } }]"#,
-        Some(Path::new("undo.json")),
+        &ApplyOptions {
+            inverse: Some(Path::new("undo.json")),
+            dry_run: false,
+        },
+        &mut write_file,
     )
     .unwrap();
     assert_eq!(
         message,
-        "applied 2 commands to assets/rooms/cave.json; `tungsten level apply cave --undo` undoes it"
+        "applied 2 commands to assets/rooms/cave.json:\n  move `ball_1` by 1, 0\n  unlink `exit`\nundo: tungsten level apply cave --undo"
     );
     let written = std::fs::read_to_string(cave(&dir)).unwrap();
     let room = Room::from_json(&written).unwrap();
@@ -94,18 +118,17 @@ fn apply_refuses_a_bad_batch_and_leaves_the_file() {
     let dir = game();
     let game = Game::open(&dir).unwrap();
     let before = std::fs::read(cave(&dir)).unwrap();
-    let err = apply(
+    let err = apply_batch(
         &game,
         "cave",
         r#"[{ "move": { "id": "ball_1", "by": [1, 0] } }, { "move": { "id": "bal_1", "by": [1, 0] } }]"#,
-        None,
     )
     .unwrap_err();
     assert_eq!(
         format!("{err:#}"),
         "assets/rooms/cave.json: commands[1].move.id: no entry `bal_1`; did you mean `ball_1`?"
     );
-    let err = apply(&game, "cave", r#"{ "move": {} }"#, None).unwrap_err();
+    let err = apply_batch(&game, "cave", r#"{ "move": {} }"#).unwrap_err();
     assert_eq!(
         format!("{err:#}"),
         r#"a batch is a JSON array of commands, as `[{ "move": { "id": "crate_1", "by": [1, 0] } }]`"#
@@ -124,25 +147,27 @@ fn apply_undo_restores_the_file_byte_for_byte() {
     let dir = game();
     let before = canonical_cave(&dir);
     let game = Game::open(&dir).unwrap();
-    apply(
+    apply_batch(
         &game,
         "cave",
         r#"[{ "place": { "objects": { "id": "crate_2", "prefab": "crate", "at": [6, 19], "on": "floor" } } },
             { "move": { "id": "floor", "by": [0, -1] } },
             { "paint": { "layer": "art", "cells": [[3, 3]], "tile": "plank" } }]"#,
-        None,
     )
     .unwrap();
-    apply(&game, "cave", r#"[{ "delete": { "id": "lamp_1" } }]"#, None).unwrap();
+    apply_batch(&game, "cave", r#"[{ "delete": { "id": "lamp_1" } }]"#).unwrap();
     assert_ne!(std::fs::read_to_string(cave(&dir)).unwrap(), before);
     assert_eq!(
-        undo_last(&game, "cave").unwrap(),
-        "undid the last batch on assets/rooms/cave.json"
+        undo(&game, "cave").unwrap(),
+        "undid 1 command on assets/rooms/cave.json:\n  delete `lamp_1`\nredo: tungsten level apply cave --redo"
     );
-    undo_last(&game, "cave").unwrap();
+    undo(&game, "cave").unwrap();
     assert_eq!(std::fs::read_to_string(cave(&dir)).unwrap(), before);
-    assert_eq!(std::fs::read_to_string(game.journal("cave")).unwrap(), "");
-    let err = undo_last(&game, "cave").unwrap_err();
+    assert!(
+        !game.journal("cave").exists(),
+        "an emptied journal is removed"
+    );
+    let err = undo(&game, "cave").unwrap_err();
     assert_eq!(format!("{err:#}"), "room `cave` has nothing to undo");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -151,11 +176,10 @@ fn apply_undo_restores_the_file_byte_for_byte() {
 fn apply_undo_refuses_after_an_outside_edit() {
     let dir = game();
     let game = Game::open(&dir).unwrap();
-    apply(
+    apply_batch(
         &game,
         "cave",
         r#"[{ "move": { "id": "ball_1", "by": [1, 0] } }]"#,
-        None,
     )
     .unwrap();
     let edited = std::fs::read_to_string(cave(&dir))
@@ -163,7 +187,7 @@ fn apply_undo_refuses_after_an_outside_edit() {
         .replace("31.5", "32");
     std::fs::write(cave(&dir), &edited).unwrap();
     let journal = std::fs::read_to_string(game.journal("cave")).unwrap();
-    let err = undo_last(&game, "cave").unwrap_err();
+    let err = undo(&game, "cave").unwrap_err();
     assert_eq!(
         format!("{err:#}"),
         "assets/rooms/cave.json changed outside the journal since its last apply; nothing undone"
@@ -565,4 +589,275 @@ fn a_report_error_writes_nothing_and_fails() {
             .to_string()
             .starts_with("the generation's report is version 2")
     );
+}
+
+const NUDGE: &str = r#"[{ "move": { "id": "ball_1", "by": [1, 0] } }]"#;
+const PLACE: &str = r#"[{ "place": { "objects": { "id": "crate_2", "prefab": "crate", "at": [6, 19] } } },
+    { "paint": { "layer": "art", "rect": [3, 3, 2, 1], "tile": "plank" } }]"#;
+
+#[test]
+fn redo_applies_what_undo_took_back() {
+    let dir = game();
+    let before = canonical_cave(&dir);
+    let game = Game::open(&dir).unwrap();
+    apply_batch(&game, "cave", NUDGE).unwrap();
+    apply_batch(&game, "cave", PLACE).unwrap();
+    let applied = apply_files(&game, &dir);
+    undo(&game, "cave").unwrap();
+    undo(&game, "cave").unwrap();
+    assert_eq!(std::fs::read_to_string(cave(&dir)).unwrap(), before);
+    assert_eq!(journal_lines(&game.redo_journal("cave")).len(), 2);
+    // The newest undone batch first, as a stack.
+    assert_eq!(
+        redo(&game, "cave").unwrap(),
+        "redid 1 command on assets/rooms/cave.json:\n  move `ball_1` by 1, 0\nundo: tungsten level apply cave --undo"
+    );
+    assert_eq!(
+        redo(&game, "cave").unwrap(),
+        "redid 2 commands on assets/rooms/cave.json:\n  place object `crate_2` (`crate`) at 6, 19\n  paint 2 cells of `art` with `plank`\nundo: tungsten level apply cave --undo"
+    );
+    assert_eq!(
+        apply_files(&game, &dir),
+        applied,
+        "the room and its journal as applied"
+    );
+    let err = redo(&game, "cave").unwrap_err();
+    assert_eq!(format!("{err:#}"), "room `cave` has nothing to redo");
+    // And the redone batches undo again.
+    undo(&game, "cave").unwrap();
+    undo(&game, "cave").unwrap();
+    assert_eq!(std::fs::read_to_string(cave(&dir)).unwrap(), before);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn redo_follows_an_undo_of_a_file_that_was_not_canonical() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    // The fixture's file is hand-formatted: its bytes are not its
+    // canonical form, which an undo writes.
+    let original = std::fs::read_to_string(cave(&dir)).unwrap();
+    let canonical = Room::from_json(&original).unwrap().to_canonical();
+    assert_ne!(original, canonical, "the fixture is not canonical");
+    apply_batch(&game, "cave", NUDGE).unwrap();
+    let applied = std::fs::read_to_string(cave(&dir)).unwrap();
+    undo(&game, "cave").unwrap();
+    assert_eq!(std::fs::read_to_string(cave(&dir)).unwrap(), canonical);
+    redo(&game, "cave").unwrap();
+    assert_eq!(std::fs::read_to_string(cave(&dir)).unwrap(), applied);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_apply_clears_the_redo_journal() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    apply_batch(&game, "cave", NUDGE).unwrap();
+    undo(&game, "cave").unwrap();
+    assert!(game.redo_journal("cave").exists());
+    apply_batch(&game, "cave", PLACE).unwrap();
+    assert!(
+        !game.redo_journal("cave").exists(),
+        "a new batch ends the redos"
+    );
+    let err = redo(&game, "cave").unwrap_err();
+    assert_eq!(format!("{err:#}"), "room `cave` has nothing to redo");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn redo_refuses_a_file_edited_since() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    apply_batch(&game, "cave", NUDGE).unwrap();
+    undo(&game, "cave").unwrap();
+    let edited = std::fs::read_to_string(cave(&dir))
+        .unwrap()
+        .replace("30.5", "29");
+    std::fs::write(cave(&dir), &edited).unwrap();
+    let before = apply_files(&game, &dir);
+    let err = redo(&game, "cave").unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "assets/rooms/cave.json changed since its undo; nothing redone"
+    );
+    assert_eq!(apply_files(&game, &dir), before);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_dry_run_writes_nothing() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    let before = apply_files(&game, &dir);
+    let dry = ApplyOptions {
+        inverse: Some(Path::new("undo.json")),
+        dry_run: true,
+    };
+    assert_eq!(
+        apply(&game, "cave", NUDGE, &dry, &mut write_file).unwrap(),
+        "would apply 1 command to assets/rooms/cave.json:\n  move `ball_1` by 1, 0\ndry run: nothing written"
+    );
+    assert_eq!(apply_files(&game, &dir), before);
+    assert!(!dir.join("undo.json").exists());
+    // A batch that does not apply fails a dry run as it fails an apply.
+    let err = apply(
+        &game,
+        "cave",
+        r#"[{ "move": { "id": "bal_1", "by": [1, 0] } }]"#,
+        &dry,
+        &mut write_file,
+    )
+    .unwrap_err();
+    assert!(
+        format!("{err:#}").contains("did you mean `ball_1`?"),
+        "{err:#}"
+    );
+    // An undo and a redo dry-run the same way.
+    apply_batch(&game, "cave", NUDGE).unwrap();
+    let applied = apply_files(&game, &dir);
+    assert_eq!(
+        undo_last(&game, "cave", true, &mut write_file).unwrap(),
+        "would undo 1 command on assets/rooms/cave.json:\n  move `ball_1` by 1, 0\ndry run: nothing written"
+    );
+    assert_eq!(apply_files(&game, &dir), applied);
+    undo(&game, "cave").unwrap();
+    let undone = apply_files(&game, &dir);
+    assert_eq!(
+        redo_last(&game, "cave", true, &mut write_file).unwrap(),
+        "would redo 1 command on assets/rooms/cave.json:\n  move `ball_1` by 1, 0\ndry run: nothing written"
+    );
+    assert_eq!(apply_files(&game, &dir), undone);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_apply_reports_each_command() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    // A placed object and an override are the game's to check, so the
+    // report names the check.
+    assert_eq!(
+        apply_batch(&game, "cave", PLACE).unwrap(),
+        "applied 2 commands to assets/rooms/cave.json:\n  place object `crate_2` (`crate`) at 6, 19\n  paint 2 cells of `art` with `plank`\nundo: tungsten level apply cave --undo\ncheck: tungsten level check cave (the level rules and the game's components)"
+    );
+    let set = apply_batch(
+        &game,
+        "cave",
+        r#"[{ "set": { "id": "crate_2", "path": "set.rigid_body.mass", "value": 2 } }]"#,
+    )
+    .unwrap();
+    assert!(
+        set.ends_with(
+            "check: tungsten level check cave (the level rules and the game's components)"
+        ),
+        "{set}"
+    );
+    // Terrain and moves alone are checked whole by the apply.
+    let moved = apply_batch(&game, "cave", NUDGE).unwrap();
+    assert!(!moved.contains("check:"), "{moved}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_inverse_file_that_is_the_room_or_a_journal_is_refused() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    // A journal that exists, so each path resolves to its file.
+    apply_batch(&game, "cave", NUDGE).unwrap();
+    undo(&game, "cave").unwrap();
+    let before = apply_files(&game, &dir);
+    for (inverse, also) in [
+        ("assets/rooms/cave.json", "the room's file"),
+        ("assets/rooms/../rooms/cave.json", "the room's file"),
+        ("target/tungsten/journal/cave.jsonl", "the journal"),
+        (
+            "target/tungsten/journal/cave.redo.jsonl",
+            "the redo journal",
+        ),
+    ] {
+        let options = ApplyOptions {
+            inverse: Some(Path::new(inverse)),
+            dry_run: false,
+        };
+        let err = apply(&game, "cave", NUDGE, &options, &mut write_file).unwrap_err();
+        let message = format!("{err:#}");
+        assert!(
+            message.starts_with("`--inverse`'s file '")
+                && message.ends_with(&format!("' is also {also}; nothing written")),
+            "{inverse}: {message}"
+        );
+        assert_eq!(apply_files(&game, &dir), before, "{inverse}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_write_that_fails_puts_back_the_files_before_it() {
+    let dir = game();
+    canonical_cave(&dir);
+    let game = Game::open(&dir).unwrap();
+    // The state before each command: one batch journaled, one undone, so
+    // all three files exist and each command rewrites all three.
+    apply_batch(&game, "cave", NUDGE).unwrap();
+    apply_batch(&game, "cave", PLACE).unwrap();
+    undo(&game, "cave").unwrap();
+    let before = apply_files(&game, &dir);
+    type Command = fn(&Game, &mut Writer<'_>) -> anyhow::Result<String>;
+    let commands: [(&str, Command, usize); 3] = [
+        (
+            "apply",
+            |game, write| {
+                let options = ApplyOptions {
+                    inverse: Some(Path::new("undo.json")),
+                    dry_run: false,
+                };
+                apply(game, "cave", NUDGE, &options, write)
+            },
+            4,
+        ),
+        (
+            "undo",
+            |game, write| undo_last(game, "cave", false, write),
+            3,
+        ),
+        (
+            "redo",
+            |game, write| redo_last(game, "cave", false, write),
+            3,
+        ),
+    ];
+    for (name, command, writes) in commands {
+        for failing in 0..writes {
+            let mut calls = 0;
+            let mut write = |path: &Path, text: Option<&str>| {
+                calls += 1;
+                if calls - 1 == failing {
+                    anyhow::bail!("the disk is full");
+                }
+                write_file(path, text)
+            };
+            let err = command(&game, &mut write).unwrap_err();
+            let message = format!("{err:#}");
+            assert!(
+                message.starts_with("cannot write ")
+                    && message.ends_with(": the disk is full; nothing changed"),
+                "{name}, write {failing}: {message}"
+            );
+            assert_eq!(apply_files(&game, &dir), before, "{name}, write {failing}");
+            assert!(!dir.join("undo.json").exists(), "{name}, write {failing}");
+        }
+    }
+    // With no write failing, each lands.
+    for (name, command, _) in commands {
+        let mut write = |path: &Path, text: Option<&str>| write_file(path, text);
+        command(&game, &mut write).unwrap_or_else(|err| panic!("{name}: {err:#}"));
+        if name != "apply" {
+            continue;
+        }
+        // The apply emptied the redo journal; give the undo and the redo
+        // after it something to do.
+        assert!(!game.redo_journal("cave").exists());
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

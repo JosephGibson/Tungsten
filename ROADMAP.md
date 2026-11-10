@@ -16,7 +16,6 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - Regeneration from inside the level editor, which the command line's `--regenerate` does today (`D-267`, level-editor's Q7).
 - Multi-select, box select, copy between rooms, a cell grid and a searchable palette in the level editor (`D-267`, level-editor's Q10).
 - The manifest's own check refusing two room IDs on one file, as it refuses prefabs and data entries; `level generate` and the editor refuse to write such a file today (`D-267`, level-editor's Q13).
-- `tungsten level apply` and its `--undo` writing with `write_atomic`, as `level generate` and the editor do (`D-267`, level-editor's Q14).
 - The platformer controller's free air-jump count set at run time, and an unlimited free count (K25's rest): a game that wants them.
 - Example 01's route test: eight `LAUNCHES` rows start with the body over the next step's face; restart them clear of the rock, as the tomes' rows are.
 - Example 01's snowballs dousing burning props and chilling bodies, if play asks for it.
