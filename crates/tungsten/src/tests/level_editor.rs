@@ -2786,3 +2786,43 @@ fn a_sentence_names_a_room_file_from_the_games_folder() {
     let why = write_atomic(&missing, "{}").unwrap_err();
     assert!(!why.contains("cave.json"), "{why}");
 }
+
+#[test]
+fn the_picks_label_and_the_hovers_never_share_a_line() {
+    use super::overlay::Side;
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    // The crate picked and dragged onto the lamp's cell: while the drag
+    // is under way the lamp under the cursor is not hovered.
+    let lamp = Vec2::new(8.0 * 16.0 + 4.0, 19.0 * 16.0 + 8.0);
+    harness.pointer_to(CRATE.x, CRATE.y);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(lamp.x, lamp.y);
+    harness.step(1);
+    let sides = |harness: &UiHarness| -> Vec<(String, Side)> {
+        (overlay(harness).labels.into_iter())
+            .map(|(text, _, _, side)| (text, side))
+            .collect()
+    };
+    assert_eq!(
+        sides(&harness),
+        [
+            ("cave".to_owned(), Side::Over),
+            ("crate_1".to_owned(), Side::Over)
+        ]
+    );
+    harness.pointer_up();
+    harness.step(2);
+    // Dropped there, both sit in one cell: the pick's ID over its box and
+    // the hovered lamp's under its own.
+    let labels = sides(&harness);
+    assert!(
+        labels.contains(&("crate_1".to_owned(), Side::Over)),
+        "{labels:?}"
+    );
+    assert!(
+        labels.contains(&("lamp_1".to_owned(), Side::Under)),
+        "{labels:?}"
+    );
+}

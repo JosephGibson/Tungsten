@@ -56,7 +56,16 @@ pub(super) enum Mark {
 }
 
 /// A label: its text, the world point its bottom-left sits on, its colour.
-type Label = (String, Vec2, [u8; 4]);
+type Label = (String, Vec2, [u8; 4], Side);
+
+/// Where a label sits against its point: a room's and the pick's over it,
+/// the hovered entry's under its box, so the two never share a line when
+/// the cursor is over the pick's neighbour in the same cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Side {
+    Over,
+    Under,
+}
 
 /// The frame's overlay: its marks and its labels, in draw order.
 #[derive(Debug, Default)]
@@ -80,11 +89,15 @@ pub(super) fn draw(editor: &LevelEditor, world: &mut World, rooms: &[Live], came
         }
     }
     if let Some(labels) = world.get_resource_mut::<WorldLabels>() {
-        for (text, anchor, color) in overlay.labels {
+        for (text, anchor, color, side) in overlay.labels {
+            let (pivot, offset) = match side {
+                Side::Over => (Vec2::new(0.0, 1.0), Vec2::new(0.0, -2.0)),
+                Side::Under => (Vec2::ZERO, Vec2::new(0.0, 2.0)),
+            };
             labels.push(
                 WorldLabel::new(text, anchor, editor.font_id.clone(), LABEL_SIZE)
-                    .with_pivot(Vec2::new(0.0, 1.0))
-                    .with_offset(Vec2::new(0.0, -2.0))
+                    .with_pivot(pivot)
+                    .with_offset(offset)
                     .with_color(color)
                     .with_outline(TextOutline::new(LABEL_OUTLINE, 1.0)),
             );
@@ -122,8 +135,10 @@ pub(super) fn gather(
     let current = editor.current.as_deref();
     let picked =
         |room: &str, id: &str| current == Some(room) && editor.selection.as_deref() == Some(id);
+    // No hover while a drag is under way: the cursor is the drag's.
     let hovered = |room: &str, id: &str| {
         !editor.over_window
+            && editor.drag.is_none()
             && (editor.hover.as_ref()).is_some_and(|(over, object)| over == room && object == id)
     };
     let Overlay { marks, labels } = &mut overlay;
@@ -135,7 +150,7 @@ pub(super) fn gather(
             grid(marks, live, view, zoom);
         }
         marks.push(Mark::Aabb(live.origin, live.origin + live.size, BOUNDS));
-        labels.push((live.id.clone(), live.origin, ROOM_LABEL));
+        labels.push((live.id.clone(), live.origin, ROOM_LABEL, Side::Over));
         for object in &document.objects {
             let marker = live.origin + Vec2::from(object.at) * live.cell;
             if !in_view(marker) {
@@ -154,7 +169,7 @@ pub(super) fn gather(
             if picked(&live.id, &object.id) {
                 let (min, size) = object_box(world, &live.id, &object.id, marker, camera);
                 marks.push(Mark::Aabb(min, min + size, SELECTED));
-                labels.push((object.id.clone(), min, PICK_LABEL));
+                labels.push((object.id.clone(), min, PICK_LABEL, Side::Over));
                 if let Some(drag) = &editor.drag {
                     let by = Vec2::from(drag.by) * live.cell;
                     marks.push(Mark::Aabb(min + by, min + size + by, PREVIEW));
@@ -162,7 +177,8 @@ pub(super) fn gather(
             } else if hovered(&live.id, &object.id) {
                 let (min, size) = object_box(world, &live.id, &object.id, marker, camera);
                 marks.push(Mark::Aabb(min, min + size, HOVER));
-                labels.push((object.id.clone(), min, HOVER_LABEL));
+                let under = Vec2::new(min.x, min.y + size.y);
+                labels.push((object.id.clone(), under, HOVER_LABEL, Side::Under));
             }
         }
         if let Some(stroke) = (editor.stroke.as_ref()).filter(|stroke| stroke.room == live.id) {
@@ -202,14 +218,15 @@ pub(super) fn gather(
                 };
                 if picked(&live.id, id) {
                     marks.push(Mark::Aabb(min, min + size, SELECTED));
-                    labels.push((id.clone(), min, PICK_LABEL));
+                    labels.push((id.clone(), min, PICK_LABEL, Side::Over));
                     if let Some(drag) = &editor.drag {
                         let by = Vec2::from(drag.by) * live.cell;
                         marks.push(Mark::Aabb(min + by, min + size + by, PREVIEW));
                     }
                 } else if hovered(&live.id, id) {
                     marks.push(Mark::Aabb(min, min + size, HOVER));
-                    labels.push((id.clone(), min, HOVER_LABEL));
+                    let under = Vec2::new(min.x, min.y + size.y);
+                    labels.push((id.clone(), under, HOVER_LABEL, Side::Under));
                 }
             }
         }
