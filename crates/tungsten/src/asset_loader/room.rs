@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use serde_json::{Value, json};
 use tungsten_core::World;
 use tungsten_core::assets::{
     GenerateError, ResolvedManifest, Room, RoomError, RoomGenerators, RoomRegistry, Tileset,
@@ -249,6 +250,93 @@ pub(crate) fn check_generators(
             thousands(rooms)
         ));
     }
+}
+
+/// The generation `tungsten level generate` asks the game's build for
+/// (redo 7.12), `TUNGSTEN_GENERATE_RUN`'s `<generator>:<seed>:<prefix>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GenerateRequest {
+    pub(crate) generator: String,
+    pub(crate) seed: u64,
+    pub(crate) prefix: String,
+}
+
+impl GenerateRequest {
+    /// `<generator>:<seed>:<prefix>`, the seed a whole number.
+    pub(crate) fn parse(text: &str) -> Result<Self, String> {
+        let mut parts = text.splitn(3, ':');
+        let parsed = match (parts.next(), parts.next(), parts.next()) {
+            (Some(generator), Some(seed), Some(prefix))
+                if !generator.is_empty() && !prefix.is_empty() =>
+            {
+                seed.trim().parse().ok().map(|seed| Self {
+                    generator: generator.to_owned(),
+                    seed,
+                    prefix: prefix.to_owned(),
+                })
+            }
+            _ => None,
+        };
+        parsed.ok_or_else(|| {
+            format!(
+                "TUNGSTEN_GENERATE_RUN `{text}`: expected <generator>:<seed>:<prefix>, the seed a whole number"
+            )
+        })
+    }
+}
+
+/// The version of the report `tungsten level generate` reads.
+pub(crate) const GENERATE_REPORT_VERSION: u32 = 1;
+
+/// `tungsten level generate`'s report (redo 7.12), a JSON object at
+/// `version` 1: `errors`, each `{file, message}` (the file relative to the
+/// game's folder, empty for none), and with none the `generation` and its
+/// `rooms`, each its `id`, its canonical `text`, `replaces`, the counts
+/// `generated`, `kept` and `dropped` (the kept and dropped objects' IDs)
+/// and `reshaped`, from [`World::author_rooms`] over `world` as `request`
+/// asks. A load error, or a request that does not read, generates nothing.
+pub(crate) fn generate_report(
+    world: &World,
+    errors: Vec<(String, String)>,
+    request: Result<GenerateRequest, String>,
+) -> Value {
+    let error = |file: String, message: String| json!({ "file": file, "message": message });
+    let mut errors: Vec<Value> = errors
+        .into_iter()
+        .map(|(file, message)| error(file, message))
+        .collect();
+    let mut report = json!({ "version": GENERATE_REPORT_VERSION });
+    match request {
+        Err(message) => errors.push(error(String::new(), message)),
+        Ok(_) if !errors.is_empty() => {}
+        Ok(request) => {
+            match world.author_rooms(&request.generator, request.seed, &request.prefix) {
+                Err(err) => errors.push(error(
+                    format!("generator {}", request.generator),
+                    err.to_string(),
+                )),
+                Ok(authored) => {
+                    let rooms: Vec<Value> = (authored.rooms().iter())
+                        .map(|room| {
+                            json!({
+                                "id": room.id,
+                                "text": room.document.to_canonical(),
+                                "replaces": room.replaces,
+                                "generated": room.generated,
+                                "kept": room.kept,
+                                "dropped": room.dropped,
+                                "reshaped": room.reshaped,
+                            })
+                        })
+                        .collect();
+                    report["generation"] = json!(authored.generation());
+                    report["rooms"] = Value::Array(rooms);
+                }
+            }
+        }
+    }
+    report["errors"] = Value::Array(errors);
+    report
 }
 
 /// `err` without its generator and seed, so equal errors at two seeds

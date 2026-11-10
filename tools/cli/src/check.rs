@@ -26,6 +26,12 @@ pub(crate) const CHECK_ENV: &str = "TUNGSTEN_CHECK";
 /// (redo 7.12); unset, the engine sweeps `0+16`.
 pub(crate) const SEEDS_ENV: &str = "TUNGSTEN_CHECK_SEEDS";
 
+/// `tungsten level generate`'s handshake (redo 7.12): the report file a
+/// generate run writes, and the generation it runs,
+/// `<generator>:<seed>:<prefix>`.
+pub(crate) const GENERATE_ENV: &str = "TUNGSTEN_GENERATE";
+pub(crate) const GENERATE_RUN_ENV: &str = "TUNGSTEN_GENERATE_RUN";
+
 /// The seeds `--seeds <count>` or `--seed <seed>` asks a check to sweep
 /// each room generator over: `count` of them from `first`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

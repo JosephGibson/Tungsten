@@ -559,7 +559,7 @@ mod reloads {
 
 mod generators {
     use serde_json::Value;
-    use tungsten_core::assets::{Generate, RoomGenerator, RoomGenerators};
+    use tungsten_core::assets::{Generate, Room, RoomGenerator, RoomGenerators};
 
     use super::*;
     use crate::asset_loader::room::{
@@ -767,6 +767,174 @@ mod generators {
             notes,
             ["generator `broken` (version 1): seeds 0+5, 4 rooms"]
         );
+    }
+
+    /// The fixture's `cave` as room `a`.
+    struct Caves;
+
+    impl RoomGenerator for Caves {
+        fn version(&self) -> u32 {
+            1
+        }
+
+        fn generate(&self, generation: &mut Generate<'_>) -> Result<(), String> {
+            let cave = generation.template("cave")?;
+            generation.add("a", cave, [0.0, 0.0])
+        }
+    }
+
+    /// `run_generate` over `dir`'s manifest with `Caves` registered and
+    /// `TUNGSTEN_GENERATE_RUN` as `run`: the result and the report.
+    fn generate(dir: &Path, run: Option<&str>) -> (anyhow::Result<()>, Value) {
+        let mut app = App::new(Config::default()).unwrap();
+        app.register_generator("caves", Caves);
+        app.set_manifest_roots(vec![dir.join("manifest.json")]);
+        // Outside the game's folder, which the check reads as scenes.
+        let report = dir.with_extension("generate.json");
+        let env = |name: &str| {
+            (name == "TUNGSTEN_GENERATE_RUN")
+                .then(|| run.map(std::ffi::OsString::from))
+                .flatten()
+        };
+        let result = app.run_generate(&report, dir, &env);
+        let value = serde_json::from_str(&fs::read_to_string(&report).unwrap()).unwrap();
+        let _ = fs::remove_file(&report);
+        (result, value)
+    }
+
+    /// A report room's document and its objects' marks.
+    fn marks(room: &Value) -> (Room, Vec<(String, Option<String>)>) {
+        let text = room["text"].as_str().unwrap();
+        let document = Room::from_json(text).unwrap();
+        assert_eq!(document.to_canonical(), text, "canonical");
+        let marks = (document.objects.iter())
+            .map(|object| (object.id.clone(), object.generator.clone()))
+            .collect();
+        (document, marks)
+    }
+
+    #[test]
+    fn a_generate_run_reports_each_room_marked_in_its_canonical_text() {
+        let dir = fixture_copy();
+        let (result, report) = generate(&dir, Some("caves:1:run"));
+        result.unwrap();
+        assert_eq!(report["version"], 1);
+        assert_eq!(report["errors"], serde_json::json!([]));
+        let generation = &report["generation"];
+        assert_eq!(
+            (
+                &generation["generator"],
+                &generation["seed"],
+                &generation["prefix"]
+            ),
+            (&"caves".into(), &1.into(), &"run".into())
+        );
+        assert!(generation["templates"]["cave"].is_string());
+        let rooms = report["rooms"].as_array().unwrap();
+        assert_eq!(rooms.len(), 1);
+        assert_eq!(rooms[0]["id"], "run_a");
+        let (_, marks) = marks(&rooms[0]);
+        assert_eq!(marks.len(), 4);
+        assert!(
+            marks
+                .iter()
+                .all(|(_, mark)| mark.as_deref() == Some("caves")),
+            "{marks:?}"
+        );
+        assert_eq!(rooms[0]["replaces"], false);
+        assert_eq!(rooms[0]["generated"], 4);
+        assert_eq!(rooms[0]["kept"], serde_json::json!([]));
+        assert_eq!(rooms[0]["reshaped"], false);
+        assert!(
+            !dir.join("rooms/run_a.json").exists(),
+            "the run writes no room"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_generate_run_over_a_listed_room_keeps_its_hand_objects() {
+        let dir = fixture_copy();
+        let (_, report) = generate(&dir, Some("caves:1:run"));
+        // The output written as `run_a`, with a crate placed by hand.
+        let mut room: Value =
+            serde_json::from_str(report["rooms"][0]["text"].as_str().unwrap()).unwrap();
+        room["objects"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(
+                { "id": "box_1", "prefab": "crate", "at": [6, 19], "on": "floor" }
+            ));
+        let room = Room::from_json(&room.to_string()).unwrap();
+        fs::write(dir.join("rooms/run_a.json"), room.to_canonical()).unwrap();
+        let path = dir.join("manifest.json");
+        let mut manifest: Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        manifest["rooms"]["run_a"] = serde_json::json!({ "path": "rooms/run_a.json" });
+        fs::write(&path, manifest.to_string()).unwrap();
+        let (result, report) = generate(&dir, Some("caves:2:run"));
+        result.unwrap();
+        let rooms = report["rooms"].as_array().unwrap();
+        assert_eq!(rooms[0]["replaces"], true);
+        assert_eq!(rooms[0]["generated"], 4);
+        assert_eq!(rooms[0]["kept"], serde_json::json!(["box_1"]));
+        assert_eq!(rooms[0]["dropped"], serde_json::json!([]));
+        let (_, marks) = marks(&rooms[0]);
+        assert_eq!(
+            marks.last().unwrap(),
+            &("box_1".to_owned(), None),
+            "kept last"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_generate_run_with_load_errors_generates_nothing() {
+        let dir = fixture_copy();
+        fs::write(dir.join("rooms/hall.json"), "{").unwrap();
+        let (result, report) = generate(&dir, Some("caves:1:run"));
+        let err = result.unwrap_err();
+        // `hall` does not read, and `cave` links to it.
+        assert!(
+            err.to_string().contains("the generation found 2 errors"),
+            "{err}"
+        );
+        let errors = report["errors"].as_array().unwrap();
+        let files: Vec<&str> = (errors.iter())
+            .map(|error| error["file"].as_str().unwrap())
+            .collect();
+        assert_eq!(files, ["rooms/hall.json", "rooms/cave.json"], "{errors:?}");
+        assert!(report.get("rooms").is_none() && report.get("generation").is_none());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_malformed_generate_run_is_one_error() {
+        let dir = fixture_copy();
+        for (run, message) in [
+            (
+                Some("caves:x:run"),
+                "TUNGSTEN_GENERATE_RUN `caves:x:run`: expected <generator>:<seed>:<prefix>, the seed a whole number",
+            ),
+            (
+                None,
+                "TUNGSTEN_GENERATE_RUN is unset: `tungsten level generate` names the generation",
+            ),
+        ] {
+            let (result, report) = generate(&dir, run);
+            assert!(result.is_err());
+            assert_eq!(
+                report["errors"],
+                serde_json::json!([{ "file": "", "message": message }])
+            );
+        }
+        // An unknown generator is the generation's error.
+        let (_, report) = generate(&dir, Some("cavs:1:run"));
+        assert_eq!(
+            report["errors"],
+            serde_json::json!([{ "file": "generator cavs", "message": "no room generator `cavs`; did you mean `caves`?" }])
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

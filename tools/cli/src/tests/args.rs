@@ -362,13 +362,14 @@ fn level_verbs_parse_and_a_misplaced_option_fails() {
     assert_eq!(
         level(&[]),
         Err(UsageError(
-            "`level` needs a verb: apply, query, describe, check or render".to_owned()
+            "`level` needs a verb: apply, query, describe, check, generate or render".to_owned()
         ))
     );
     assert_eq!(
         level(&["edit", "cave"]),
         Err(UsageError(
-            "unknown level verb `edit`: apply, query, describe, check or render".to_owned()
+            "unknown level verb `edit`: apply, query, describe, check, generate or render"
+                .to_owned()
         ))
     );
     assert_eq!(
@@ -470,8 +471,73 @@ fn level_check_takes_seeds_or_one_seed() {
     assert_eq!(
         parse_str(&["level", "describe", "--seed", "1"]),
         Err(UsageError(
-            "`--seed` is an option of `check` and `level check`, not of `level describe`"
+            "`--seed` is an option of `check`, `level check` and `level generate`, not of `level describe`"
                 .to_owned()
+        ))
+    );
+}
+
+#[test]
+fn level_generate_takes_a_generator_and_its_options() {
+    use crate::level::LevelArgs;
+    let generate = |args: &[&str]| {
+        let mut all = vec!["level", "generate"];
+        all.extend_from_slice(args);
+        parse_str(&all)
+    };
+    assert_eq!(
+        generate(&["chain"]),
+        Ok(Command::Level(LevelArgs::Generate {
+            generator: "chain".into(),
+            seed: 0,
+            prefix: None,
+            into: None,
+            regenerate: false,
+        }))
+    );
+    assert_eq!(
+        generate(&[
+            "chain",
+            "--seed",
+            "3",
+            "--prefix",
+            "run",
+            "--into",
+            "assets/levels",
+            "--regenerate"
+        ]),
+        Ok(Command::Level(LevelArgs::Generate {
+            generator: "chain".into(),
+            seed: 3,
+            prefix: Some("run".into()),
+            into: Some("assets/levels".into()),
+            regenerate: true,
+        }))
+    );
+    assert_eq!(
+        generate(&[]),
+        Err(UsageError(
+            "`level generate` needs a <generator>".to_owned()
+        ))
+    );
+    assert_eq!(
+        generate(&["chain", "--seed", "x"]),
+        Err(UsageError("`--seed x`: expected a whole number".to_owned()))
+    );
+    assert_eq!(
+        generate(&["chain", "--bogus"]),
+        Err(UsageError("unknown option `--bogus`".to_owned()))
+    );
+    assert_eq!(
+        generate(&["chain", "--undo"]),
+        Err(UsageError(
+            "`--undo` is an option of `level apply`, not of `level generate`".to_owned()
+        ))
+    );
+    assert_eq!(
+        generate(&["chain", "more"]),
+        Err(UsageError(
+            "`level generate` takes no further argument, given `more`".to_owned()
         ))
     );
 }

@@ -11,7 +11,12 @@
 //! applies the newest line's inverse and drops it, refusing a file that
 //! changed outside the journal. `check` runs the game's check and prints
 //! the room findings alone; `render` writes and runs a script that stages
-//! the room and captures it.
+//! the room and captures it. `generate` runs the game's build with
+//! `TUNGSTEN_GENERATE` naming a report, which the engine fills with a
+//! generation's rooms (`World::author_rooms`), then decides every room's
+//! file before it writes any, each with `write_atomic`, and puts back the
+//! files written before a write that fails. It never edits the manifest
+//! and appends to no journal: Git undoes a generation.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -56,6 +61,15 @@ pub(crate) enum LevelArgs {
     },
     /// `render <room> -o <png> [--overlay] [--size] [--frame] [--release]`.
     Render { args: RenderArgs },
+    /// `generate <generator> [--seed <seed>] [--prefix <prefix>]
+    /// [--into <folder>] [--regenerate]`.
+    Generate {
+        generator: String,
+        seed: u64,
+        prefix: Option<String>,
+        into: Option<PathBuf>,
+        regenerate: bool,
+    },
 }
 
 /// Runs `args` on the game in `dir`; `false` when it found errors.
@@ -94,6 +108,20 @@ pub(crate) fn run(dir: &Path, args: &LevelArgs) -> anyhow::Result<bool> {
             check::require_game(dir)?;
             render::run(dir, args)
         }
+        LevelArgs::Generate {
+            generator,
+            seed,
+            prefix,
+            into,
+            regenerate,
+        } => generate(
+            dir,
+            generator,
+            *seed,
+            prefix.as_deref().unwrap_or(generator),
+            into.as_deref(),
+            *regenerate,
+        ),
     }
 }
 
@@ -101,6 +129,8 @@ pub(crate) fn run(dir: &Path, args: &LevelArgs) -> anyhow::Result<bool> {
 pub(crate) struct Game {
     dir: PathBuf,
     manifest: ResolvedManifest,
+    /// The manifest's file, whose folder a new room's path is relative to.
+    manifest_file: PathBuf,
 }
 
 /// A room the arguments name: its ID and its file.
@@ -126,10 +156,12 @@ impl Game {
                 manifest.display()
             );
         }
-        let manifest = ResolvedManifest::load(&manifest).context("the manifest")?;
+        let manifest_file = manifest;
+        let manifest = ResolvedManifest::load(&manifest_file).context("the manifest")?;
         Ok(Self {
             dir: dir.to_path_buf(),
             manifest,
+            manifest_file,
         })
     }
 
@@ -760,6 +792,337 @@ pub(crate) fn room_findings(findings: &[check::Finding], files: &BTreeSet<String
         .cloned()
         .collect();
     check::format_findings(&kept)
+}
+
+/// Runs `tungsten level generate` in `dir`: the config stage, the game's
+/// build writing generation `generator` at `seed` under `prefix` to a
+/// report, then [`finish_generation`] writing it; `false` on a report
+/// error.
+fn generate(
+    dir: &Path,
+    generator: &str,
+    seed: u64,
+    prefix: &str,
+    into: Option<&Path>,
+    regenerate: bool,
+) -> anyhow::Result<bool> {
+    check::require_game(dir)?;
+    let game = Game::open(dir)?;
+    let config = check::config_stage(dir);
+    if !config.is_empty() {
+        for line in check::format_findings(&config) {
+            println!("{line}");
+        }
+        println!("{}", check::config_summary(config.len()));
+        return Ok(false);
+    }
+    let report = std::env::temp_dir().join(format!(
+        "tungsten-level-generate-{}.json",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&report);
+    let mut command = Command::new("cargo");
+    command.env(
+        check::GENERATE_RUN_ENV,
+        format!("{generator}:{seed}:{prefix}"),
+    );
+    let status = check::run_game(dir, false, &[(check::GENERATE_ENV, &report)], &mut command)?;
+    let Ok(text) = std::fs::read_to_string(&report) else {
+        bail!(
+            "the generation did not run: the game stopped ({status}) before App::run generated; its output above says why"
+        );
+    };
+    let _ = std::fs::remove_file(&report);
+    let report = parse_generation(&text)?;
+    let (lines, written) =
+        finish_generation(&game, &report, into, regenerate, &mut write_room_file)?;
+    for line in &lines {
+        println!("{line}");
+    }
+    Ok(written)
+}
+
+/// The version of the report a generate run writes.
+const GENERATE_REPORT_VERSION: u64 = 1;
+
+/// A generate run's report: its errors, else the generation's generator,
+/// seed and templates and its rooms.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct GenerateReport {
+    pub(crate) errors: Vec<check::Finding>,
+    pub(crate) generator: String,
+    pub(crate) seed: u64,
+    pub(crate) templates: Vec<String>,
+    pub(crate) rooms: Vec<GeneratedRoom>,
+}
+
+/// One room of a [`GenerateReport`]: its ID, its canonical text, whether
+/// it regenerates a listed room, and its counts.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct GeneratedRoom {
+    pub(crate) id: String,
+    pub(crate) text: String,
+    pub(crate) generated: u64,
+    pub(crate) kept: usize,
+    pub(crate) dropped: usize,
+    pub(crate) reshaped: bool,
+}
+
+/// A generate run's report from its JSON.
+pub(crate) fn parse_generation(json: &str) -> anyhow::Result<GenerateReport> {
+    let value: Value = serde_json::from_str(json).context("the generation's report")?;
+    if value["version"].as_u64() != Some(GENERATE_REPORT_VERSION) {
+        bail!(
+            "the generation's report is version {}; this command line reads version {GENERATE_REPORT_VERSION}",
+            value["version"]
+        );
+    }
+    let list = |value: &Value| value.as_array().cloned().unwrap_or_default();
+    let errors = list(&value["errors"])
+        .iter()
+        .map(|error| check::Finding {
+            file: text(&error["file"]).to_owned(),
+            message: text(&error["message"]).to_owned(),
+        })
+        .collect();
+    let generation = &value["generation"];
+    let mut templates: Vec<String> = generation["templates"]
+        .as_object()
+        .map(|templates| templates.keys().cloned().collect())
+        .unwrap_or_default();
+    templates.sort();
+    let rooms = list(&value["rooms"])
+        .iter()
+        .map(|room| GeneratedRoom {
+            id: text(&room["id"]).to_owned(),
+            text: text(&room["text"]).to_owned(),
+            generated: room["generated"].as_u64().unwrap_or(0),
+            kept: room["kept"].as_array().map_or(0, Vec::len),
+            dropped: room["dropped"].as_array().map_or(0, Vec::len),
+            reshaped: room["reshaped"].as_bool().unwrap_or(false),
+        })
+        .collect();
+    Ok(GenerateReport {
+        errors,
+        generator: text(&generation["generator"]).to_owned(),
+        seed: generation["seed"].as_u64().unwrap_or(0),
+        templates,
+        rooms,
+    })
+}
+
+/// A room file written by `level generate`: `write_atomic`, so a reader
+/// sees the old file or the new one; the folder is made.
+fn write_room_file(path: &Path, text: &str) -> anyhow::Result<()> {
+    tungsten_core::persist::write_atomic(path, text.as_bytes()).map_err(anyhow::Error::from)
+}
+
+/// What `level generate` prints for `report`, and whether it wrote its
+/// rooms: a report's errors and `false`; else every room's file decided
+/// first, then each written through `write`, a line per room and the
+/// manifest entry each new room needs.
+///
+/// # Errors
+///
+/// A refusal, nothing written: a listed room without `regenerate`, a new
+/// room whose file exists or lies outside the game's folder, a file two of
+/// the rooms would write, or a file a listed room it does not write or a
+/// template it read names (rooms may share a file). A write that fails,
+/// after the files written before it are put back.
+pub(crate) fn finish_generation(
+    game: &Game,
+    report: &GenerateReport,
+    into: Option<&Path>,
+    regenerate: bool,
+    write: &mut dyn FnMut(&Path, &str) -> anyhow::Result<()>,
+) -> anyhow::Result<(Vec<String>, bool)> {
+    if !report.errors.is_empty() {
+        let mut lines = check::format_findings(&report.errors);
+        lines.push(format!(
+            "tungsten level generate: {}; nothing written",
+            count(report.errors.len(), "error")
+        ));
+        return Ok((lines, false));
+    }
+    let manifest_dir = game
+        .manifest_file
+        .parent()
+        .unwrap_or(&game.dir)
+        .to_path_buf();
+    let folder = into.map_or_else(|| manifest_dir.join("rooms"), |into| game.dir.join(into));
+    // Every room's file, decided before any is written.
+    let mut targets: Vec<(&GeneratedRoom, PathBuf, Option<String>)> = Vec::new();
+    for room in &report.rooms {
+        if let Some(entry) = game.manifest.rooms.get(&room.id) {
+            let file = game.relative(&entry.path);
+            if !regenerate {
+                bail!(
+                    "room `{}` is listed ({file}); `--regenerate` rewrites it",
+                    room.id
+                );
+            }
+            let old = std::fs::read_to_string(&entry.path)
+                .with_context(|| format!("cannot read '{file}'"))?;
+            targets.push((room, entry.path.clone(), Some(old)));
+            continue;
+        }
+        let path = folder.join(format!("{}.json", room.id));
+        let file = game.relative(&path);
+        if !normal(&path).starts_with(normal(&game.dir)) {
+            bail!(
+                "room `{}`'s file '{file}' is outside the game's folder",
+                room.id
+            );
+        }
+        if path.exists() {
+            bail!(
+                "room `{}`'s file '{file}' exists; a new room is written over no file",
+                room.id
+            );
+        }
+        targets.push((room, path, None));
+    }
+    let keys: Vec<PathBuf> = targets.iter().map(|(_, path, _)| file_key(path)).collect();
+    for (at, key) in keys.iter().enumerate() {
+        if let Some(first) = keys[..at].iter().position(|other| other == key) {
+            bail!(
+                "rooms `{}` and `{}` would both write '{}'",
+                targets[first].0.id,
+                targets[at].0.id,
+                game.relative(&targets[at].1)
+            );
+        }
+    }
+    let written: BTreeSet<&str> = report.rooms.iter().map(|room| room.id.as_str()).collect();
+    let mut listed: Vec<(&String, &PathBuf)> = (game.manifest.rooms.iter())
+        .map(|(id, entry)| (id, &entry.path))
+        .collect();
+    listed.sort();
+    // A template's file first, for its own message; then any listed room
+    // the generation does not write.
+    let named = listed
+        .iter()
+        .filter(|(id, _)| report.templates.contains(id))
+        .map(|(id, path)| (format!("template `{id}`"), *path))
+        .chain(
+            (listed.iter())
+                .filter(|(id, _)| !written.contains(id.as_str()))
+                .map(|(id, path)| (format!("room `{id}`"), *path)),
+        );
+    for (owner, path) in named {
+        let key = file_key(path);
+        if let Some(at) = keys.iter().position(|target| *target == key) {
+            bail!(
+                "room `{}`'s file '{}' is also {owner}'s, which the generation does not write; nothing written",
+                targets[at].0.id,
+                game.relative(path)
+            );
+        }
+    }
+    for (at, (room, path, _)) in targets.iter().enumerate() {
+        if let Err(err) = write(path, &room.text) {
+            let mut failed = Vec::new();
+            for (_, path, old) in targets[..at].iter().rev() {
+                let restored = match old {
+                    Some(old) => write_room_file(path, old),
+                    None => std::fs::remove_file(path).map_err(anyhow::Error::from),
+                };
+                if restored.is_err() {
+                    failed.push(game.relative(path));
+                }
+            }
+            let back = if failed.is_empty() {
+                format!("{} written before it put back", count(at, "file"))
+            } else {
+                format!("and could not put back {}", failed.join(", "))
+            };
+            bail!("cannot write '{}': {err:#}; {back}", game.relative(path));
+        }
+    }
+    let mut lines = Vec::new();
+    let mut entries = Vec::new();
+    for (room, path, old) in &targets {
+        let file = game.relative(path);
+        if old.is_some() {
+            lines.push(format!(
+                "regenerated {file}: {} generated, {} kept, {} dropped{}",
+                room.generated,
+                room.kept,
+                room.dropped,
+                if room.reshaped { ", reshaped" } else { "" }
+            ));
+        } else {
+            lines.push(format!("wrote {file}: {} generated", room.generated));
+            entries.push(format!(
+                "  \"{}\": {{ \"path\": \"{}\" }}",
+                room.id,
+                relative_to(&manifest_dir, path)
+            ));
+        }
+    }
+    if !entries.is_empty() {
+        lines.push("add to the manifest's rooms:".to_owned());
+        lines.extend(entries);
+    }
+    lines.push(format!(
+        "tungsten level generate: generator `{}` at seed {}, {} written",
+        report.generator,
+        report.seed,
+        count(targets.len(), "room")
+    ));
+    Ok((lines, true))
+}
+
+/// `path` made absolute and its `.` and `..` resolved by name.
+fn normal(path: &Path) -> PathBuf {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_default().join(path)
+    };
+    let mut out = PathBuf::new();
+    for part in absolute.components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// What names `path`'s file: the path canonical when the file exists,
+/// else its folder's canonical path when that exists, else [`normal`].
+fn file_key(path: &Path) -> PathBuf {
+    if let Ok(path) = path.canonicalize() {
+        return path;
+    }
+    match (path.parent().map(Path::canonicalize), path.file_name()) {
+        (Some(Ok(folder)), Some(name)) => folder.join(name),
+        _ => normal(path),
+    }
+}
+
+/// `path` relative to the folder `from`, `/`-separated, with `..` where it
+/// leaves it.
+fn relative_to(from: &Path, path: &Path) -> String {
+    let (from, path) = (normal(from), normal(path));
+    let common = from
+        .components()
+        .zip(path.components())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let ups = from.components().count() - common;
+    let parts: Vec<String> = std::iter::repeat_n("..".to_owned(), ups)
+        .chain(
+            path.components()
+                .skip(common)
+                .map(|part| part.as_os_str().to_string_lossy().into_owned()),
+        )
+        .collect();
+    parts.join("/")
 }
 
 fn count(n: usize, noun: &str) -> String {

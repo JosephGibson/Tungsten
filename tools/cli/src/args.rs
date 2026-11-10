@@ -96,6 +96,13 @@ Verbs of level, a <room> a rooms ID or a room file:
     --json          Print JSON
   check [<room>...] Run the game's check and print the rooms' findings
                     and every room generator's
+  generate <generator>
+                    Write a generator's rooms as room files, every object
+                    marked; a regenerated room keeps its author's objects
+    --seed <seed>   The seed (default 0)
+    --prefix <prefix> The rooms' ID prefix (default the generator's ID)
+    --into <folder> Where new rooms go (default the manifest's rooms/)
+    --regenerate    Rewrite the listed rooms it generates
   render <room>     Render the room on an empty stage to a PNG; with
                     -o, --overlay, --size, --frame and --release as render's
 
@@ -209,6 +216,15 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
     (
         "level check",
         &[("--seeds", Some("<count>")), ("--seed", Some("<seed>"))],
+    ),
+    (
+        "level generate",
+        &[
+            ("--seed", Some("<seed>")),
+            ("--prefix", Some("<prefix>")),
+            ("--into", Some("<folder>")),
+            ("--regenerate", None),
+        ],
     ),
     (
         "level render",
@@ -347,7 +363,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
 
 /// `level <verb>`'s arguments.
 fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
-    const VERBS: &str = "apply, query, describe, check or render";
+    const VERBS: &str = "apply, query, describe, check, generate or render";
     let mut rest = rest.into_iter();
     let Some(verb) = rest.next() else {
         return Err(UsageError(format!("`level` needs a verb: {VERBS}")));
@@ -356,7 +372,7 @@ fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
         return Err(misplaced(&verb, Some("level")));
     }
     let verb = verb.to_string_lossy().into_owned();
-    if !["apply", "query", "describe", "check", "render"].contains(&verb.as_str()) {
+    if !["apply", "query", "describe", "check", "generate", "render"].contains(&verb.as_str()) {
         return Err(UsageError(format!("unknown level verb `{verb}`: {VERBS}")));
     }
     let command = format!("level {verb}");
@@ -449,6 +465,30 @@ fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
             seeds: seeds(&text)?,
             rooms: positional,
         },
+        "generate" => {
+            let seed = match text("--seed") {
+                None => 0,
+                Some(seed) => seed
+                    .trim()
+                    .parse()
+                    .map_err(|_| UsageError(format!("`--seed {seed}`: expected a whole number")))?,
+            };
+            match positional.as_slice() {
+                [generator] => LevelArgs::Generate {
+                    generator: generator.clone(),
+                    seed,
+                    prefix: text("--prefix"),
+                    into: text("--into").map(PathBuf::from),
+                    regenerate: flag("--regenerate"),
+                },
+                [] => {
+                    return Err(UsageError(
+                        "`level generate` needs a <generator>".to_owned(),
+                    ));
+                }
+                _ => return Err(too_many(1)),
+            }
+        }
         _ => match positional.as_slice() {
             [room] => LevelArgs::Render {
                 args: render::room_args(room, text, flag).map_err(UsageError)?,

@@ -324,3 +324,242 @@ fn level_check_prints_every_generators_findings() {
         (vec!["no room generator registered".to_owned()], 0)
     );
 }
+
+/// A generate run's report of `rooms`, each `(id, replaces)` with a small
+/// room's text, 4 objects generated and one kept, after reading
+/// `templates`.
+fn generation(rooms: &[&str], templates: &[&str]) -> GenerateReport {
+    let rooms: Vec<Value> = rooms
+        .iter()
+        .map(|id| {
+            json!({ "id": id, "text": small(), "replaces": false, "generated": 4,
+                    "kept": ["box_1"], "dropped": [], "reshaped": false })
+        })
+        .collect();
+    let templates: serde_json::Map<String, Value> = templates
+        .iter()
+        .map(|id| ((*id).to_owned(), json!("0123456789abcdef")))
+        .collect();
+    let report = json!({ "version": 1, "errors": [], "rooms": rooms, "generation":
+        { "generator": "chain", "version": 1, "seed": 3, "prefix": "run", "templates": templates } });
+    parse_generation(&report.to_string()).unwrap()
+}
+
+/// A 4 × 4 room's canonical text.
+fn small() -> String {
+    Room::new([16, 16], [4, 4]).to_canonical()
+}
+
+/// The manifest of `dir` with `rooms` listed too, each `(id, path)`.
+fn list(dir: &Path, rooms: &[(&str, &str)]) {
+    let path = dir.join("assets/manifest.json");
+    let mut manifest: Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    for (id, file) in rooms {
+        manifest["rooms"][*id] = json!({ "path": file });
+    }
+    std::fs::write(&path, manifest.to_string()).unwrap();
+}
+
+fn files(dir: &Path) -> Vec<(PathBuf, String)> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir.join("assets/rooms"))
+        .unwrap()
+        .flatten()
+    {
+        found.push((entry.path(), std::fs::read_to_string(entry.path()).unwrap()));
+    }
+    found.sort();
+    found
+}
+
+#[test]
+fn generate_rewrites_a_listed_room_only_with_regenerate() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    let report = generation(&["cave"], &[]);
+    let before = files(&dir);
+    let err = finish_generation(&game, &report, None, false, &mut write_room_file).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "room `cave` is listed (assets/rooms/cave.json); `--regenerate` rewrites it"
+    );
+    assert_eq!(files(&dir), before, "nothing written");
+    let (lines, written) =
+        finish_generation(&game, &report, None, true, &mut write_room_file).unwrap();
+    assert!(written);
+    assert_eq!(
+        lines,
+        [
+            "regenerated assets/rooms/cave.json: 4 generated, 1 kept, 0 dropped",
+            "tungsten level generate: generator `chain` at seed 3, 1 room written"
+        ]
+    );
+    assert_eq!(std::fs::read_to_string(cave(&dir)).unwrap(), small());
+}
+
+#[test]
+fn generate_writes_new_rooms_and_prints_their_manifest_lines() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    let report = generation(&["run_r0", "run_r1"], &["hall"]);
+    let (lines, _) = finish_generation(&game, &report, None, false, &mut write_room_file).unwrap();
+    assert_eq!(
+        lines,
+        [
+            "wrote assets/rooms/run_r0.json: 4 generated",
+            "wrote assets/rooms/run_r1.json: 4 generated",
+            "add to the manifest's rooms:",
+            r#"  "run_r0": { "path": "rooms/run_r0.json" }"#,
+            r#"  "run_r1": { "path": "rooms/run_r1.json" }"#,
+            "tungsten level generate: generator `chain` at seed 3, 2 rooms written"
+        ]
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("assets/rooms/run_r1.json")).unwrap(),
+        small()
+    );
+    // Under `--into`, a folder made for them, the path from the manifest's.
+    let (lines, _) = finish_generation(
+        &game,
+        &generation(&["run_r2"], &[]),
+        Some(Path::new("levels")),
+        false,
+        &mut write_room_file,
+    )
+    .unwrap();
+    assert_eq!(lines[0], "wrote levels/run_r2.json: 4 generated");
+    assert_eq!(
+        lines[2],
+        r#"  "run_r2": { "path": "../levels/run_r2.json" }"#
+    );
+    assert!(dir.join("levels/run_r2.json").is_file());
+    // A folder outside the game's.
+    let err = finish_generation(
+        &game,
+        &generation(&["run_r3"], &[]),
+        Some(Path::new("../elsewhere")),
+        false,
+        &mut write_room_file,
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().ends_with("is outside the game's folder"),
+        "{err}"
+    );
+}
+
+#[test]
+fn generate_refuses_every_write_for_an_existing_unlisted_file() {
+    let dir = game();
+    std::fs::write(dir.join("assets/rooms/run_r1.json"), "{}").unwrap();
+    let game = Game::open(&dir).unwrap();
+    let before = files(&dir);
+    let err = finish_generation(
+        &game,
+        &generation(&["run_r0", "run_r1"], &[]),
+        None,
+        false,
+        &mut write_room_file,
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "room `run_r1`'s file 'assets/rooms/run_r1.json' exists; a new room is written over no file"
+    );
+    assert_eq!(files(&dir), before, "not even run_r0");
+}
+
+#[test]
+fn generate_refuses_a_file_another_listed_room_or_a_template_names() {
+    // `twin` lists `cave`'s file: regenerating `cave` would rewrite it.
+    let dir = game();
+    list(&dir, &[("twin", "rooms/cave.json")]);
+    let game = Game::open(&dir).unwrap();
+    let before = files(&dir);
+    let err = finish_generation(
+        &game,
+        &generation(&["cave"], &[]),
+        None,
+        true,
+        &mut write_room_file,
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "room `cave`'s file 'assets/rooms/cave.json' is also room `twin`'s, which the generation does not write; nothing written"
+    );
+    // `run_r0` lists the template `hall`'s file.
+    list(&dir, &[("run_r0", "rooms/hall.json")]);
+    let game = Game::open(&dir).unwrap();
+    let err = finish_generation(
+        &game,
+        &generation(&["run_r0"], &["hall"]),
+        None,
+        true,
+        &mut write_room_file,
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "room `run_r0`'s file 'assets/rooms/hall.json' is also template `hall`'s, which the generation does not write; nothing written"
+    );
+    assert_eq!(files(&dir), before, "no file changed");
+}
+
+#[test]
+fn a_failed_write_puts_back_the_files_written_before_it() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    let before = files(&dir);
+    let mut calls = 0;
+    let mut failing = |path: &Path, text: &str| -> anyhow::Result<()> {
+        calls += 1;
+        if calls == 2 {
+            anyhow::bail!("the disk is full");
+        }
+        write_room_file(path, text)
+    };
+    let err = finish_generation(
+        &game,
+        &generation(&["cave", "run_r0", "run_r1"], &[]),
+        None,
+        true,
+        &mut failing,
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot write 'assets/rooms/run_r0.json': the disk is full; 1 file written before it put back"
+    );
+    assert_eq!(files(&dir), before, "cave as it was, no new file");
+}
+
+#[test]
+fn a_report_error_writes_nothing_and_fails() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    let report = parse_generation(
+        &json!({ "version": 1, "errors": [{ "file": "assets/rooms/hall.json", "message": "room 'hall': not JSON" }] })
+            .to_string(),
+    )
+    .unwrap();
+    let before = files(&dir);
+    let (lines, written) =
+        finish_generation(&game, &report, None, true, &mut write_room_file).unwrap();
+    assert!(!written, "exit 1");
+    assert_eq!(
+        lines,
+        [
+            "assets/rooms/hall.json: room 'hall': not JSON",
+            "tungsten level generate: 1 error; nothing written"
+        ]
+    );
+    assert_eq!(files(&dir), before);
+    assert!(
+        parse_generation(r#"{ "version": 2 }"#)
+            .unwrap_err()
+            .to_string()
+            .starts_with("the generation's report is version 2")
+    );
+}

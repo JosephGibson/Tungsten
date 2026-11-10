@@ -78,6 +78,12 @@ const REPORT_ENV: &str = "TUNGSTEN_REPORT";
 /// Names the file `tungsten describe` reads. Set, `App::run` describes the
 /// game's World in place of opening a window (redo 7.2).
 const DESCRIBE_ENV: &str = "TUNGSTEN_DESCRIBE";
+/// Names the report file `tungsten level generate` reads. Set, `App::run`
+/// writes a generation's rooms there in place of opening a window (redo
+/// 7.12).
+const GENERATE_ENV: &str = "TUNGSTEN_GENERATE";
+/// The generation that run asks for, `<generator>:<seed>:<prefix>`.
+const GENERATE_RUN_ENV: &str = "TUNGSTEN_GENERATE_RUN";
 
 /// Looks an environment variable up; a parameter, so tests need no
 /// `set_var`.
@@ -562,8 +568,11 @@ impl App {
         env: Env<'_>,
     ) -> anyhow::Result<Self> {
         let smoke_frames = smoke_frames(env);
-        // A describe run is a check run until `App::run` (redo 7.2).
-        let checking = env_path(env, CHECK_ENV).is_some() || env_path(env, DESCRIBE_ENV).is_some();
+        // A describe or generate run is a check run until `App::run` (redo
+        // 7.2, 7.12).
+        let checking = [CHECK_ENV, DESCRIBE_ENV, GENERATE_ENV]
+            .iter()
+            .any(|name| env_path(env, name).is_some());
         // A script run reads its user folder from `TUNGSTEN_USER_DIR` alone.
         let script_path = env_path(env, SCRIPT_ENV).filter(|_| !checking);
         let invalid = config
@@ -1146,13 +1155,21 @@ impl App {
     /// World's description there as JSON: its components, script hooks and
     /// asset IDs (redo 7.2). With `TUNGSTEN_SCRIPT` set, it runs that script
     /// in the window and writes `TUNGSTEN_REPORT`, returning an error unless
-    /// the script passed. These variables are the command line's too.
+    /// the script passed. With `TUNGSTEN_GENERATE` set, as `tungsten level
+    /// generate` sets it, it writes the rooms of the generation
+    /// `TUNGSTEN_GENERATE_RUN` names to that file (redo 7.12). These
+    /// variables are the command line's too.
     pub fn run(mut self) -> anyhow::Result<()> {
         let env = |name: &str| std::env::var_os(name);
         if let Some(out) = env_path(&env, DESCRIBE_ENV) {
             let game_dir = std::env::current_dir()
                 .inspect_err(|err| log::error!("No current folder to describe: {err}"))?;
             return self.run_describe(&out, &game_dir);
+        }
+        if let Some(report) = env_path(&env, GENERATE_ENV) {
+            let game_dir = std::env::current_dir()
+                .inspect_err(|err| log::error!("No current folder to generate in: {err}"))?;
+            return self.run_generate(&report, &game_dir, &env);
         }
         if let Some(report) = env_path(&env, CHECK_ENV) {
             let game_dir = std::env::current_dir()
@@ -1284,6 +1301,51 @@ impl App {
             0 => Ok(()),
             n => Err(anyhow::anyhow!(
                 "the check found {n} error{}, written to '{}'",
+                if n == 1 { "" } else { "s" },
+                report.display()
+            )),
+        }
+    }
+
+    /// `tungsten level generate`'s engine side (redo 7.12): the reload
+    /// roots' files checked in `game_dir` as [`run_check`](Self::run_check)
+    /// checks them, then, with no error, the generation
+    /// `TUNGSTEN_GENERATE_RUN` names run by `World::author_rooms`, nothing
+    /// registered, and the report written to `report` as JSON
+    /// (`asset_loader::room::generate_report`). Any error is in the report
+    /// and fails the run. Loaders log warnings and errors only.
+    pub(crate) fn run_generate(
+        mut self,
+        report: &Path,
+        game_dir: &Path,
+        env: Env<'_>,
+    ) -> anyhow::Result<()> {
+        log::set_max_level(LevelFilter::Warn);
+        let roots = manifest_reload_roots(&self.manifest_roots, self.manifest_path.as_deref());
+        let errors = asset_loader::check::check_files(&mut self.world, &roots, game_dir)
+            .into_iter()
+            .map(|error| (error.file.to_string_lossy().into_owned(), error.message))
+            .collect();
+        let request = match env(GENERATE_RUN_ENV) {
+            None => Err(format!(
+                "{GENERATE_RUN_ENV} is unset: `tungsten level generate` names the generation"
+            )),
+            Some(value) => asset_loader::room::GenerateRequest::parse(&value.to_string_lossy()),
+        };
+        let value = asset_loader::room::generate_report(&self.world, errors, request);
+        let found = value["errors"].as_array().map_or(0, Vec::len);
+        let mut text = serde_json::to_string_pretty(&value)?;
+        text.push('\n');
+        std::fs::write(report, text).map_err(|err| {
+            anyhow::anyhow!(
+                "Failed to write the generation report '{}': {err}",
+                report.display()
+            )
+        })?;
+        match found {
+            0 => Ok(()),
+            n => Err(anyhow::anyhow!(
+                "the generation found {n} error{}, written to '{}'",
                 if n == 1 { "" } else { "s" },
                 report.display()
             )),

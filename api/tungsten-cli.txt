@@ -84,6 +84,13 @@ Verbs of level, a <room> a rooms ID or a room file:
     --json          Print JSON
   check [<room>...] Run the game's check and print the rooms' findings
                     and every room generator's
+  generate <generator>
+                    Write a generator's rooms as room files, every object
+                    marked; a regenerated room keeps its author's objects
+    --seed <seed>   The seed (default 0)
+    --prefix <prefix> The rooms' ID prefix (default the generator's ID)
+    --into <folder> Where new rooms go (default the manifest's rooms/)
+    --regenerate    Rewrite the listed rooms it generates
   render <room>     Render the room on an empty stage to a PNG; with
                     -o, --overlay, --size, --frame and --release as render's
 
