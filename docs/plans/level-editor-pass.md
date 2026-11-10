@@ -1,6 +1,6 @@
-# The level editor and command line pass (`editor-pass`) — draft
+# The level editor and command line pass (`editor-pass`) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** two outcomes. (1) Someone who has never seen the in-game level editor (F10) opens it and builds or changes a room without reading its source: the tool, room, layer and selection in force and what a click will do are on screen, every action has a button, and a refused edit says why. (2) An agent with the `tungsten` command line and the docs alone makes every edit the editor can, sees the result and recovers from an error by its message; what one of the three surfaces (the editor, `tungsten level`, a script's `level` step) cannot do that another can is named.
 - **non-goals:** `D-267`'s core stands: every edit goes through the room commands, checked, journaled and undone the same way on every surface. No change to the room or tileset format's version, to the level rules, to generation or to saves. No UI text input in core (P8-5 stays 8.1's): the editor's prompt is its own. Shapes, layers, routes and the room's own settings stay the command line's; multi-select, box select, copy between rooms, a searchable palette, regeneration from the editor, tombstones and the manifest's shared-file check stay in Later. No release.
 - **files to touch:** by step, in §3; nothing outside those lists.
@@ -274,5 +274,6 @@ Round 1: gpt-6-astra at xhigh, `--repo`, 2026-11-10, on the draft over `30b7c6a1
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
 | Review | 2026-11-10 | done | Baseline: 8 stalls (0 source, 5 guess, 3 blocked), 11 failed commands, 3 of 3 tasks; 15 command-line and 10 editor points in the walk notes | `perf-runs/20261110-editor-pass/review/`, `cold/before-report.md`, `before/` |
+| 1 | 2026-11-10 | done | `just repo-check` exit 0; `just ctx` exit 0 (the LLM index at 12,277 of 12,288 B, its rooms row in one brace form to pay for the guide's path); `rg -c 'tungsten level' docs/getting-started.md` 3 | `docs/levels.md` |
 
 ## Follow-ups

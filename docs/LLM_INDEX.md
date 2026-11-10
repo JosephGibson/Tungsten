@@ -38,7 +38,7 @@ Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tun
 | Manifest load, boot plan, data entries, load path, GPU upload, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`, `D-171`, `D-231`) | `core/assets/manifest.rs`, `core/assets/data.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/` |
 | Hot reload, file watch (`D-031`, `D-053`) | `tungsten/hot_reload.rs`, `tungsten/asset_loader/reload.rs` |
 | Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader/atlas.rs` |
-| Tilemaps, rooms, level editor, tile collision (`D-032`, `D-033`, `D-228`, `D-264`) | `core/assets/{tilemap,terrain}.rs`, `core/assets/room/`, `tungsten/{tilemap_extract,level_editor}.rs`, `core/physics/step/gather.rs` |
+| Tilemaps, rooms, level editor, tile collision (`D-032`, `D-033`, `D-228`, `D-264`) | `docs/levels.md`, `core/assets/{tilemap.rs,terrain.rs,room/}`, `tungsten/{tilemap_extract,level_editor}.rs`, `core/physics/step/gather.rs` |
 | Prefabs, spawn inheritance, Tiled objects, tilemap builder (`D-157`, `D-170`) | `core/assets/prefab.rs`, `core/assets/tilemap.rs`, `tungsten/asset_loader/prefab.rs` |
 | UI theme and screen files, nine-slice insets, letter spacing (`D-148`, `D-198`, `D-236`) | `core/ui/theme_file.rs`, `core/ui/screen_file.rs`, `core/assets/manifest.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/asset_loader/reload.rs` |
 
