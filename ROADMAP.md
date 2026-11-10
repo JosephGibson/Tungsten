@@ -11,7 +11,6 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Later
 
-- Places, links, renames and `set` overrides in the level editor, once 8.1's text input lands (P8-5); `tungsten level apply` edits them today (`D-267`, level-editor's Q1).
 - A tombstone list, so a generated object deleted by hand stays gone at the next `--regenerate` (`D-267`, level-editor's Q3).
 - Regeneration from inside the level editor, which the command line's `--regenerate` does today (`D-267`, level-editor's Q7).
 - Multi-select, box select, copy between rooms, a cell grid and a searchable palette in the level editor (`D-267`, level-editor's Q10).

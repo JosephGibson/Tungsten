@@ -1,9 +1,10 @@
 //! What the level editor draws in the world, so a click's effect shows
 //! before it: each live room's bounds and ID, the current room's cell grid,
 //! a marker at every object's spawn point (an object a generator made in
-//! its own hue), its places, a box about the object under the cursor and
-//! about the pick with their IDs, a drag's preview, a stroke's cells, and
-//! the tool's ghost at the cursor's cell. Lines go through `DebugDraw` and
+//! its own hue), its places, a box about the object or place under the
+//! cursor and about the pick with their IDs, a drag's preview, a stroke's
+//! cells, a mark's point or area, and the tool's ghost at the cursor's
+//! cell. Lines go through `DebugDraw` and
 //! IDs through `WorldLabels`.
 //!
 //! It draws what the view holds: a grid line and an object's marker
@@ -122,7 +123,8 @@ pub(super) fn gather(
     let picked =
         |room: &str, id: &str| current == Some(room) && editor.selection.as_deref() == Some(id);
     let hovered = |room: &str, id: &str| {
-        (editor.hover.as_ref()).is_some_and(|(over, object)| over == room && object == id)
+        !editor.over_window
+            && (editor.hover.as_ref()).is_some_and(|(over, object)| over == room && object == id)
     };
     let Overlay { marks, labels } = &mut overlay;
     for live in rooms {
@@ -180,9 +182,35 @@ pub(super) fn gather(
                 }
             }
         }
+        if let Some(mark) = (editor.mark.as_ref()).filter(|mark| mark.room == live.id) {
+            let [col, row, width, height] = mark.bounds();
+            let min = live.origin + Vec2::new(col as f32, row as f32) * live.cell;
+            let size = Vec2::new(width as f32, height as f32) * live.cell;
+            marks.push(Mark::Aabb(min, min + size, PLACE));
+        }
         if let Some(compiled) = registry.compiled(&live.id) {
-            for place in compiled.places.values() {
+            for (id, place) in &compiled.places {
                 place_marks(marks, live.origin, place, radius);
+                // A point's box is its marker's; a route has none.
+                let (min, size) = match &place.shape {
+                    PlaceShape::Point(point) => (
+                        live.origin + *point - Vec2::splat(radius * 2.0),
+                        Vec2::splat(radius * 4.0),
+                    ),
+                    PlaceShape::Rect { min, size } => (live.origin + *min, *size),
+                    _ => continue,
+                };
+                if picked(&live.id, id) {
+                    marks.push(Mark::Aabb(min, min + size, SELECTED));
+                    labels.push((id.clone(), min, PICK_LABEL));
+                    if let Some(drag) = &editor.drag {
+                        let by = Vec2::from(drag.by) * live.cell;
+                        marks.push(Mark::Aabb(min + by, min + size + by, PREVIEW));
+                    }
+                } else if hovered(&live.id, id) {
+                    marks.push(Mark::Aabb(min, min + size, HOVER));
+                    labels.push((id.clone(), min, HOVER_LABEL));
+                }
             }
         }
         ghost(marks, editor, world, live);
@@ -223,7 +251,13 @@ fn ghost(marks: &mut Vec<Mark>, editor: &LevelEditor, world: &World, live: &Live
     let Some((room, [col, row])) = &editor.cursor else {
         return;
     };
-    if *room != live.id || editor.drag.is_some() || editor.stroke.is_some() {
+    if *room != live.id
+        || editor.over_window
+        || editor.drag.is_some()
+        || editor.stroke.is_some()
+        || editor.mark.is_some()
+        || editor.prompt.is_some()
+    {
         return;
     }
     let min = live.origin + Vec2::new(*col as f32, *row as f32) * live.cell;
@@ -237,6 +271,7 @@ fn ghost(marks: &mut Vec<Mark>, editor: &LevelEditor, world: &World, live: &Live
         }
         Tool::Paint => (live.cell, PREVIEW),
         Tool::Erase => (live.cell, ERASING),
+        Tool::Mark => (live.cell, PLACE),
         Tool::Select | Tool::Pick => return,
     };
     marks.push(Mark::Aabb(min, min + size, hue));

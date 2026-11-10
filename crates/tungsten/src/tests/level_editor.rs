@@ -994,7 +994,9 @@ fn every_action_has_a_button() {
         let button = keyed(&harness, &format!("tool_{}", tool.name()));
         assert_eq!(harness.tree().plain_text(button), tool.caption());
     }
-    for key in ["undo", "redo", "delete", "copy", "fit", "game_view", "grid"] {
+    for key in [
+        "undo", "redo", "delete", "copy", "fit", "home", "grid", "rename", "set", "link",
+    ] {
         keyed(&harness, key);
     }
     // Every key's action is a tool's, a button's or a list row's.
@@ -1005,6 +1007,8 @@ fn every_action_has_a_button() {
         (KeyCode::Digit4, false, false),
         (KeyCode::Digit5, false, false),
         (KeyCode::KeyG, false, false),
+        (KeyCode::Digit6, false, false),
+        (KeyCode::KeyR, false, false),
         (KeyCode::BracketLeft, false, false),
         (KeyCode::BracketRight, false, false),
         (KeyCode::KeyL, false, false),
@@ -1027,7 +1031,8 @@ fn every_action_has_a_button() {
             | Action::Copy
             | Action::Fit
             | Action::GameView
-            | Action::Grid => true,
+            | Action::Grid
+            | Action::Prompt(_) => true,
             // The palette's and the layer's rows are their steps' buttons.
             Action::PaletteStep(_) => !rows(&harness, "palette").is_empty(),
             Action::LayerStep => rows(&harness, "layers").len() == 3,
@@ -1323,7 +1328,7 @@ fn the_editor_action_drives_every_control() {
     for (args, error) in [
         (
             json!({ "tool": "brush" }),
-            "no tool `brush`: select, place, paint, erase, pick",
+            "no tool `brush`: select, place, paint, erase, pick, mark",
         ),
         (json!({ "prefab": "ghost" }), "No prefab `ghost`."),
         (
@@ -1333,7 +1338,7 @@ fn the_editor_action_drives_every_control() {
         (json!({ "layer": "sky" }), "The room has no layer `sky`."),
         (
             json!({ "select": "crate_9" }),
-            "The room has no object `crate_9`.",
+            "The room has no object or place `crate_9`.",
         ),
         (
             json!({ "room": "attic" }),
@@ -1391,6 +1396,7 @@ fn the_editor_probe_reads_its_state() {
             "redo": 0,
             "findings": [],
             "grid": true,
+            "prompt": null,
             "view": null,
         })
     );
@@ -1423,13 +1429,16 @@ fn the_panel_fits_at_the_owners_scale() {
         let tree = harness.tree();
         let window = state(&harness).window.as_ref().unwrap();
         let root = tree.visual_rect(window.root).unwrap();
-        for key in ["status", "hint", "tool_select", "undo", "palette"] {
+        for key in ["status", "hint", "tool_select", "undo", "link", "layers"] {
             let rect = tree.visual_rect(keyed(&harness, key)).unwrap();
             assert!(
                 rect.min.y >= root.min.y && rect.max.y <= root.max.y,
                 "`{key}` at {os}: {rect:?} in {root:?}"
             );
         }
+        // The palette, which scrolls in itself, starts in view.
+        let palette = tree.visual_rect(keyed(&harness, "palette")).unwrap();
+        assert!(palette.min.y + 20.0 < root.max.y, "{palette:?} in {root:?}");
         // Taller than the other views' 60 %: it has the height to itself.
         let viewport = tree.layer_viewport(UiLayer::Debug).unwrap();
         assert!(
@@ -1963,4 +1972,603 @@ fn a_last_frame_closes_the_editor_before_its_save() {
         assert!(live(world, "cave"));
         assert!(!world.resource::<Time>().is_editing());
     }
+}
+
+/// Types `text` into the open prompt, a key press a character, on the US
+/// layout the prompt reads.
+fn type_text(harness: &mut UiHarness, text: &str) {
+    const LETTERS: [KeyCode; 26] = [
+        KeyCode::KeyA,
+        KeyCode::KeyB,
+        KeyCode::KeyC,
+        KeyCode::KeyD,
+        KeyCode::KeyE,
+        KeyCode::KeyF,
+        KeyCode::KeyG,
+        KeyCode::KeyH,
+        KeyCode::KeyI,
+        KeyCode::KeyJ,
+        KeyCode::KeyK,
+        KeyCode::KeyL,
+        KeyCode::KeyM,
+        KeyCode::KeyN,
+        KeyCode::KeyO,
+        KeyCode::KeyP,
+        KeyCode::KeyQ,
+        KeyCode::KeyR,
+        KeyCode::KeyS,
+        KeyCode::KeyT,
+        KeyCode::KeyU,
+        KeyCode::KeyV,
+        KeyCode::KeyW,
+        KeyCode::KeyX,
+        KeyCode::KeyY,
+        KeyCode::KeyZ,
+    ];
+    const DIGITS: [KeyCode; 10] = [
+        KeyCode::Digit0,
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+        KeyCode::Digit6,
+        KeyCode::Digit7,
+        KeyCode::Digit8,
+        KeyCode::Digit9,
+    ];
+    let other = |code: winit::keyboard::KeyCode| KeyCode::Other(code as u32);
+    for c in text.chars() {
+        let (key, shift) = match c {
+            'a'..='z' => (LETTERS[(c as u8 - b'a') as usize], false),
+            'A'..='Z' => (LETTERS[(c as u8 - b'A') as usize], true),
+            '0'..='9' => (DIGITS[(c as u8 - b'0') as usize], false),
+            ' ' => (KeyCode::Space, false),
+            '-' => (KeyCode::Minus, false),
+            '_' => (KeyCode::Minus, true),
+            '=' => (KeyCode::Equal, false),
+            '[' => (KeyCode::BracketLeft, false),
+            ']' => (KeyCode::BracketRight, false),
+            '.' => (other(winit::keyboard::KeyCode::Period), false),
+            ',' => (other(winit::keyboard::KeyCode::Comma), false),
+            '\'' => (other(winit::keyboard::KeyCode::Quote), false),
+            '"' => (other(winit::keyboard::KeyCode::Quote), true),
+            _ => panic!("the prompt types no `{c}`"),
+        };
+        if shift {
+            chord(harness, Modifiers::SHIFT, key);
+        } else {
+            harness.tap_key(key);
+        }
+    }
+}
+
+/// The open prompt's text.
+fn prompt_text(harness: &UiHarness) -> Option<&str> {
+    state(harness)
+        .prompt
+        .as_ref()
+        .map(|prompt| prompt.text.as_str())
+}
+
+fn place<'a>(room: &'a Room, id: &str) -> &'a tungsten_core::assets::RoomPlace {
+    room.places
+        .iter()
+        .find(|place| place.id == id)
+        .unwrap_or_else(|| panic!("no place `{id}`"))
+}
+
+#[test]
+fn the_prompt_types_backspaces_commits_and_cancels() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    drag(&mut harness, CRATE, CRATE);
+    harness.tap_key(KeyCode::KeyR);
+    // It opens on the pick's ID, shown in the hint with a caret.
+    assert_eq!(prompt_text(&harness), Some("crate_1"));
+    harness.step(1);
+    assert_eq!(
+        text(&harness, "hint"),
+        "Rename `crate_1` to: crate_1_  (Enter commits, Esc cancels)"
+    );
+    for _ in 0..7 {
+        harness.tap_key(KeyCode::Backspace);
+    }
+    assert_eq!(prompt_text(&harness), Some(""));
+    harness.tap_key(KeyCode::Backspace);
+    assert_eq!(prompt_text(&harness), Some(""), "nothing left to take");
+    // Every character it types, by its US key.
+    type_text(&mut harness, "aZ09 -_=[].,'\"");
+    assert_eq!(prompt_text(&harness), Some("aZ09 -_=[].,'\""));
+    // A key with no character types nothing: Shift+1, Tab, an arrow.
+    chord(&mut harness, Modifiers::SHIFT, KeyCode::Digit1);
+    harness.tap_key(KeyCode::Tab);
+    harness.tap_key(KeyCode::ArrowLeft);
+    assert_eq!(prompt_text(&harness), Some("aZ09 -_=[].,'\""));
+    for _ in 0..14 {
+        harness.tap_key(KeyCode::Backspace);
+    }
+    type_text(&mut harness, "guard_2");
+    harness.tap_key(KeyCode::Enter);
+    // Enter commits: one `rename`, written, the pick following the ID.
+    let editor = state(&harness);
+    assert_eq!(editor.prompt, None);
+    assert_eq!(editor.status, "Renamed `crate_1` to `guard_2`.");
+    assert_eq!(editor.selection.as_deref(), Some("guard_2"));
+    assert_eq!(at(harness.world(), "cave", "guard_2"), [5.0, 19.0]);
+    assert_eq!(journal(harness.world(), "cave"), (1, 0));
+    assert_eq!(file(&dir), document(harness.world(), "cave").to_canonical());
+    // Escape cancels: nothing renamed.
+    harness.tap_key(KeyCode::KeyR);
+    type_text(&mut harness, "x");
+    assert_eq!(prompt_text(&harness), Some("guard_2x"));
+    harness.tap_key(KeyCode::Escape);
+    assert_eq!(state(&harness).prompt, None);
+    assert_eq!(state(&harness).status, "Left as it was.");
+    assert_eq!(state(&harness).selection.as_deref(), Some("guard_2"));
+    assert_eq!(journal(harness.world(), "cave"), (1, 0));
+    // The same ID again is no edit.
+    harness.tap_key(KeyCode::KeyR);
+    harness.tap_key(KeyCode::Enter);
+    assert_eq!(state(&harness).status, "`guard_2` keeps its name.");
+    assert_eq!(journal(harness.world(), "cave"), (1, 0));
+    // It holds 96 characters.
+    harness.tap_key(KeyCode::KeyR);
+    for _ in 0..120 {
+        harness.tap_key(KeyCode::KeyA);
+    }
+    assert_eq!(prompt_text(&harness).unwrap().len(), 96);
+}
+
+#[test]
+fn no_editor_key_acts_while_the_prompt_is_open() {
+    let (dir, mut harness) = editor();
+    let before = file(&dir);
+    open(&mut harness);
+    drag(&mut harness, CRATE, CRATE);
+    harness.tap_key(KeyCode::KeyR);
+    // A tool's key, the grid's, the palette's and the layer's type or do
+    // nothing; Delete, the arrows and Ctrl+Z do nothing.
+    for key in [
+        KeyCode::Digit3,
+        KeyCode::KeyG,
+        KeyCode::KeyL,
+        KeyCode::KeyF,
+        KeyCode::BracketRight,
+        KeyCode::Delete,
+        KeyCode::ArrowRight,
+        KeyCode::Home,
+        KeyCode::KeyR,
+    ] {
+        harness.tap_key(key);
+    }
+    chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyZ);
+    chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyD);
+    let editor = state(&harness);
+    assert_eq!(prompt_text(&harness), Some("crate_13glf]r"));
+    assert_eq!(editor.tool, Tool::Select);
+    assert!(editor.grid);
+    assert_eq!(editor.layer, None);
+    assert_eq!(editor.view, None);
+    assert_eq!(editor.selection.as_deref(), Some("crate_1"));
+    assert_eq!(journal(harness.world(), "cave"), (0, 0));
+    // A press in the world waits for the prompt too: nothing moves.
+    drag(&mut harness, CRATE, RIGHT);
+    secondary_click(&mut harness, CRATE);
+    assert_eq!(at(harness.world(), "cave", "crate_1"), [5.0, 19.0]);
+    assert_eq!(file(&dir), before);
+    assert!(state(&harness).prompt.is_some());
+    // A button of the panel ends it, its text dropped, and acts.
+    click(&mut harness, "tool_paint");
+    assert_eq!(state(&harness).prompt, None);
+    assert_eq!(state(&harness).tool, Tool::Paint);
+    assert_eq!(file(&dir), before);
+    // Closing the editor ends it.
+    click(&mut harness, "tool_select");
+    drag(&mut harness, CRATE, CRATE);
+    harness.tap_key(KeyCode::KeyR);
+    assert!(state(&harness).prompt.is_some());
+    harness.tap_action(TOGGLE);
+    assert!(!state(&harness).open);
+    assert_eq!(state(&harness).prompt, None);
+}
+
+#[test]
+fn r_renames_the_pick() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    // With nothing picked the key and the button say what to pick.
+    harness.tap_key(KeyCode::KeyR);
+    assert_eq!(
+        state(&harness).status,
+        "Nothing is picked to rename: click an object or a place with Select."
+    );
+    assert!(state(&harness).refused);
+    assert_eq!(state(&harness).prompt, None);
+    // The Rename button is the key's, dimmed until something is picked.
+    let dim = |harness: &UiHarness, key: &str| {
+        let tree = harness.tree();
+        let label = tree.children(keyed(harness, key))[0];
+        tree.overrides(label).and_then(|style| style.text.color) == Some(crate::debug_views::LABEL)
+    };
+    assert!(dim(&harness, "rename") && dim(&harness, "set") && dim(&harness, "link"));
+    drag(&mut harness, CRATE, CRATE);
+    harness.step(1);
+    assert!(!dim(&harness, "rename") && !dim(&harness, "set"));
+    assert!(dim(&harness, "link"), "an object has no link");
+    click(&mut harness, "rename");
+    assert_eq!(prompt_text(&harness), Some("crate_1"));
+    harness.tap_key(KeyCode::Backspace);
+    type_text(&mut harness, "7");
+    harness.tap_key(KeyCode::Enter);
+    assert_eq!(at(harness.world(), "cave", "crate_7"), [5.0, 19.0]);
+    // A place renames the same way, and the route that names it follows.
+    script(
+        &mut harness,
+        &json!({ "select": "exit", "prompt": "rename", "text": "east_door" }),
+    )
+    .unwrap();
+    let room = document(harness.world(), "cave");
+    assert_eq!(place(&room, "east_door").point, Some([39.0, 19.0]));
+    assert_eq!(
+        serde_json::to_value(&place(&room, "main").route).unwrap(),
+        json!(["player_start", [16.0, 19.0], "east_door"])
+    );
+    assert_eq!(state(&harness).selection.as_deref(), Some("east_door"));
+    assert_eq!(file(&dir), room.to_canonical());
+}
+
+#[test]
+fn set_writes_and_removes_an_override() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    script(&mut harness, &json!({ "select": "ball_1" })).unwrap();
+    click(&mut harness, "set");
+    assert_eq!(prompt_text(&harness), Some(""));
+    harness.step(1);
+    assert_eq!(
+        text(&harness, "hint"),
+        "Set on `ball_1`, as path = value: _  (Enter commits, Esc cancels)"
+    );
+    type_text(&mut harness, "rigid_body.shape.radius = 5");
+    harness.tap_key(KeyCode::Enter);
+    assert_eq!(
+        state(&harness).status,
+        "Set `rigid_body.shape.radius` on `ball_1` to 5."
+    );
+    let room = document(harness.world(), "cave");
+    let ball = room.objects.iter().find(|o| o.id == "ball_1").unwrap();
+    assert_eq!(ball.set.get("rigid_body.shape.radius"), Some(&json!(5)));
+    assert_eq!(file(&dir), room.to_canonical());
+    harness.step(1);
+    assert!(
+        harness.shows("set rigid_body.shape.radius = 5"),
+        "the pick lists it"
+    );
+    // An empty value takes it off again.
+    script(
+        &mut harness,
+        &json!({ "prompt": "set", "text": "rigid_body.shape.radius =" }),
+    )
+    .unwrap();
+    assert_eq!(
+        state(&harness).status,
+        "Took `rigid_body.shape.radius` off `ball_1`."
+    );
+    let room = document(harness.world(), "cave");
+    let ball = room.objects.iter().find(|o| o.id == "ball_1").unwrap();
+    assert!(ball.set.is_empty());
+    assert_eq!(journal(harness.world(), "cave"), (2, 0));
+    // A place takes no override.
+    assert_eq!(
+        script(&mut harness, &json!({ "select": "arena", "prompt": "set" })),
+        Err("`arena` is a place: Set writes an object's override.".to_owned())
+    );
+    assert_eq!(state(&harness).prompt, None);
+}
+
+#[test]
+fn link_points_a_place_at_another_rooms() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    // It opens on the place's link, and an empty text unlinks.
+    script(&mut harness, &json!({ "select": "exit" })).unwrap();
+    harness.step(1);
+    assert!(harness.shows("linked to `hall.west_door`"));
+    click(&mut harness, "link");
+    assert_eq!(prompt_text(&harness), Some("hall.west_door"));
+    for _ in 0..14 {
+        harness.tap_key(KeyCode::Backspace);
+    }
+    harness.tap_key(KeyCode::Enter);
+    assert_eq!(state(&harness).status, "Unlinked `exit`.");
+    assert_eq!(place(&document(harness.world(), "cave"), "exit").to, None);
+    // A point links by `room.place`.
+    script(&mut harness, &json!({ "select": "player_start" })).unwrap();
+    click(&mut harness, "link");
+    assert_eq!(prompt_text(&harness), Some(""));
+    type_text(&mut harness, "hall.west_door");
+    harness.tap_key(KeyCode::Enter);
+    assert_eq!(
+        state(&harness).status,
+        "Linked `player_start` to `hall.west_door`."
+    );
+    let room = document(harness.world(), "cave");
+    assert_eq!(
+        place(&room, "player_start").to.as_deref(),
+        Some("hall.west_door")
+    );
+    assert_eq!(file(&dir), room.to_canonical());
+    // An object and a route have no link.
+    for (id, error) in [
+        (
+            "crate_1",
+            "`crate_1` is an object: Link joins a point or an area to another room's place.",
+        ),
+        (
+            "main",
+            "`main` is a route: Link joins a point or an area to another room's place.",
+        ),
+    ] {
+        assert_eq!(
+            script(&mut harness, &json!({ "select": id, "prompt": "link" })),
+            Err(error.to_owned())
+        );
+    }
+    assert_eq!(
+        script(&mut harness, &json!({ "prompt": "retitle" })),
+        Err("no prompt `retitle`: rename, set, link".to_owned())
+    );
+}
+
+#[test]
+fn mark_places_a_point_and_an_area() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    harness.tap_key(KeyCode::Digit6);
+    assert_eq!(state(&harness).tool, Tool::Mark);
+    harness.pointer_to(cell(3, 5).x, cell(3, 5).y);
+    harness.step(1);
+    assert_eq!(
+        state(&harness).hint,
+        "Click: mark a point at 3, 5. Drag: mark an area. At 3, 5 in `cave`."
+    );
+    // A click is a point place at the cell, picked.
+    drag(&mut harness, cell(3, 5), cell(3, 5));
+    let room = document(harness.world(), "cave");
+    assert_eq!(place(&room, "point_1").point, Some([3.0, 5.0]));
+    assert_eq!(
+        state(&harness).status,
+        "Marked point `point_1` at 3, 5. Rename names it."
+    );
+    assert_eq!(state(&harness).selection.as_deref(), Some("point_1"));
+    // A drag is an area from its first cell to its last.
+    harness.pointer_to(cell(5, 5).x, cell(5, 5).y);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(cell(8, 7).x, cell(8, 7).y);
+    harness.step(1);
+    assert_eq!(
+        state(&harness).hint,
+        "Release: mark a 4 \u{d7} 3 area. Esc drops it. At 8, 7 in `cave`."
+    );
+    assert!(boxed(
+        &harness,
+        Vec2::new(80.0, 80.0),
+        Vec2::new(144.0, 128.0)
+    ));
+    harness.pointer_up();
+    harness.step(1);
+    let room = document(harness.world(), "cave");
+    assert_eq!(place(&room, "area_1").rect, Some([5.0, 5.0, 4.0, 3.0]));
+    assert_eq!(
+        state(&harness).status,
+        "Marked area `area_1`, 4 \u{d7} 3 at 5, 5. Rename names it."
+    );
+    assert_eq!(journal(harness.world(), "cave"), (2, 0));
+    assert_eq!(file(&dir), room.to_canonical());
+    // Escape drops a mark under way.
+    harness.pointer_to(cell(10, 5).x, cell(10, 5).y);
+    harness.pointer_down();
+    harness.step(1);
+    harness.tap_key(KeyCode::Escape);
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(state(&harness).status, "Dropped the mark: nothing changed.");
+    assert_eq!(journal(harness.world(), "cave"), (2, 0));
+    // The pick shows what it is.
+    script(&mut harness, &json!({ "select": "area_1" })).unwrap();
+    harness.step(1);
+    assert!(harness.shows("`area_1`, an area"));
+    assert!(harness.shows("4 \u{d7} 3 at 5, 5"));
+    assert!(harness.shows("not linked"));
+}
+
+#[test]
+fn select_moves_and_deletes_a_place() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    // `exit`, a point at (39, 19): picked within reach of its marker, and
+    // dragged by cells.
+    let exit = Vec2::new(39.0 * 16.0, 19.0 * 16.0);
+    harness.pointer_to(exit.x - 4.0, exit.y);
+    harness.step(1);
+    assert_eq!(
+        state(&harness).hint,
+        "Click: pick `exit`. Drag: move it by cells. Right click: delete it. At 38, 19 in `cave`."
+    );
+    drag(&mut harness, exit, exit - Vec2::new(32.0, 0.0));
+    assert_eq!(state(&harness).status, "Moved `exit` by -2, 0.");
+    assert_eq!(state(&harness).selection.as_deref(), Some("exit"));
+    let room = document(harness.world(), "cave");
+    assert_eq!(place(&room, "exit").point, Some([37.0, 19.0]));
+    assert_eq!(file(&dir), room.to_canonical());
+    // `arena`, an area: picked by its outline, not by its inside.
+    drag(
+        &mut harness,
+        Vec2::new(400.0, 150.0),
+        Vec2::new(400.0, 150.0),
+    );
+    assert_eq!(
+        state(&harness).selection,
+        None,
+        "a press inside is the room's"
+    );
+    drag(&mut harness, Vec2::new(400.0, 65.0), Vec2::new(400.0, 65.0));
+    assert_eq!(state(&harness).selection.as_deref(), Some("arena"));
+    harness.step(1);
+    assert!(boxed(
+        &harness,
+        Vec2::new(320.0, 64.0),
+        Vec2::new(576.0, 256.0)
+    ));
+    // An object at a place's spot wins the press.
+    drag(&mut harness, Vec2::new(34.0, 306.0), Vec2::new(34.0, 306.0));
+    assert_eq!(state(&harness).selection.as_deref(), Some("walker_1"));
+    // Ctrl+D copies a place and Delete removes it.
+    drag(&mut harness, Vec2::new(400.0, 65.0), Vec2::new(400.0, 65.0));
+    chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyD);
+    assert_eq!(
+        state(&harness).status,
+        "Copied `arena` as `arena_1`, a cell right."
+    );
+    let room = document(harness.world(), "cave");
+    assert_eq!(place(&room, "arena_1").rect, Some([21.0, 4.0, 16.0, 12.0]));
+    harness.tap_key(KeyCode::Delete);
+    assert_eq!(state(&harness).status, "Deleted `arena_1`.");
+    let room = document(harness.world(), "cave");
+    assert!(room.places.iter().all(|place| place.id != "arena_1"));
+    assert_eq!(file(&dir), room.to_canonical());
+}
+
+#[test]
+fn a_refused_prompt_keeps_its_text_and_says_why() {
+    let (dir, mut harness) = editor();
+    let before = file(&dir);
+    open(&mut harness);
+    drag(&mut harness, CRATE, CRATE);
+    harness.tap_key(KeyCode::KeyR);
+    for _ in 0..7 {
+        harness.tap_key(KeyCode::Backspace);
+    }
+    type_text(&mut harness, "lamp_1");
+    harness.tap_key(KeyCode::Enter);
+    // The ID is taken: the status says so, and the prompt stays open on
+    // what was typed.
+    let editor = state(&harness);
+    assert!(editor.refused);
+    assert!(
+        editor
+            .status
+            .starts_with("Can't rename `crate_1` to `lamp_1`: "),
+        "{}",
+        editor.status
+    );
+    assert!(editor.status.contains("lamp_1"), "{}", editor.status);
+    assert_eq!(prompt_text(&harness), Some("lamp_1"));
+    assert_eq!(file(&dir), before);
+    harness.step(1);
+    assert_eq!(
+        text(&harness, "hint"),
+        "Rename `crate_1` to: lamp_1_  (Enter commits, Esc cancels)"
+    );
+    // Mended, it lands.
+    harness.tap_key(KeyCode::Backspace);
+    type_text(&mut harness, "9");
+    harness.tap_key(KeyCode::Enter);
+    assert_eq!(state(&harness).status, "Renamed `crate_1` to `lamp_9`.");
+    assert!(!state(&harness).refused);
+    assert_eq!(state(&harness).prompt, None);
+    // An ID that is no ID, and a Set with no `=`, are refused the same way.
+    harness.tap_key(KeyCode::KeyR);
+    type_text(&mut harness, " X");
+    harness.tap_key(KeyCode::Enter);
+    assert!(state(&harness).refused, "{}", state(&harness).status);
+    assert_eq!(prompt_text(&harness), Some("lamp_9 X"));
+    harness.tap_key(KeyCode::Escape);
+    click(&mut harness, "set");
+    type_text(&mut harness, "mass 5");
+    harness.tap_key(KeyCode::Enter);
+    assert_eq!(
+        state(&harness).status,
+        "Can't set: write it as path = value, as `health = 5`. An empty value takes the override off."
+    );
+    assert_eq!(prompt_text(&harness), Some("mass 5"));
+    // From a script a refusal fails the step and leaves no prompt open.
+    harness.tap_key(KeyCode::Escape);
+    let refused = script(
+        &mut harness,
+        &json!({ "prompt": "rename", "text": "lamp_1" }),
+    );
+    assert!(
+        refused
+            .unwrap_err()
+            .starts_with("Can't rename `lamp_9` to `lamp_1`: ")
+    );
+    assert_eq!(state(&harness).prompt, None);
+    assert_eq!(
+        script(&mut harness, &json!({ "text": "guard" })),
+        Err("`text` is a prompt's: name it with `prompt`".to_owned())
+    );
+}
+
+#[test]
+fn the_panels_buttons_stay_put_as_the_cursor_comes_for_them() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    let top = |harness: &UiHarness, key: &str| {
+        harness
+            .tree()
+            .visual_rect(keyed(harness, key))
+            .unwrap()
+            .min
+            .y
+    };
+    // Over an object the hint is at its longest.
+    harness.pointer_to(CRATE.x + 4.0, CRATE.y + 4.0);
+    harness.step(2);
+    let hint = state(&harness).hint.clone();
+    assert!(hint.starts_with("Click: pick `crate_1`."), "{hint}");
+    let over_the_world = (top(&harness, "tool_select"), top(&harness, "rename"));
+    assert!(boxed(
+        &harness,
+        Vec2::new(80.0, 304.0),
+        Vec2::new(96.0, 320.0)
+    ));
+    // The cursor comes onto the panel for a button: the hint stays what
+    // it was, so nothing under it moves, and the world's hover box goes.
+    let button = harness
+        .tree()
+        .visual_rect(keyed(&harness, "rename"))
+        .unwrap();
+    let scale = harness
+        .world()
+        .resource::<tungsten_core::ScaleFactor>()
+        .get();
+    let centre = (button.min + button.max) * 0.5 * scale;
+    harness.pointer_to(centre.x, centre.y);
+    harness.step(2);
+    assert_eq!(state(&harness).hint, hint);
+    assert_eq!(
+        (top(&harness, "tool_select"), top(&harness, "rename")),
+        over_the_world
+    );
+    assert!(!boxed(
+        &harness,
+        Vec2::new(80.0, 304.0),
+        Vec2::new(96.0, 320.0)
+    ));
+    // A click there changes the hint to the click's: the tool's.
+    click(&mut harness, "tool_paint");
+    harness.step(1);
+    assert!(state(&harness).hint.starts_with("Drag: paint `rock`"));
+    // A one-line status after a three-line welcome keeps them there too.
+    let before = top(&harness, "tool_select");
+    click(&mut harness, "undo");
+    harness.step(1);
+    assert_eq!(state(&harness).status, "Nothing to undo in `cave`.");
+    assert_eq!(top(&harness, "tool_select"), before);
 }

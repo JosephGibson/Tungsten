@@ -25,7 +25,7 @@ use tungsten_core::ui::{
 use tungsten_core::{AssetRegistry, World};
 
 use super::{
-    Action, LevelEditor, TOGGLE, Tool, live_rooms, prefab_ids, read_only, tile_ids, why_closed,
+    Action, Ask, LevelEditor, TOGGLE, Tool, live_rooms, prefab_ids, read_only, tile_ids, why_closed,
 };
 use crate::debug_views::{
     CELL_PAD, ERROR_TEXT, Header, INSET, Ink, LABEL, Look, RADIUS, Shape, TRANSPARENT, ViewFrame,
@@ -38,13 +38,15 @@ pub(super) const WIDTH: f32 = 300.0;
 const INNER: f32 = WIDTH - 2.0 * INSET;
 /// The gap between two buttons of a row.
 const GAP: f32 = 4.0;
-/// The buttons a row of the tools and of the actions holds.
-const PER_ROW: usize = 3;
+/// The buttons a row of the tools holds, and a row of the actions: a
+/// tool's caption carries its key, an action's is one word.
+const TOOLS_PER_ROW: usize = 3;
+const ACTIONS_PER_ROW: usize = 4;
 /// A palette row's sprite box, a square.
 const THUMB: f32 = 16.0;
 /// The palette's rows in view before it scrolls, and the rooms'.
-const PALETTE_ROWS: f32 = 7.0;
-const ROOM_ROWS: f32 = 6.0;
+const PALETTE_ROWS: f32 = 6.0;
+const ROOM_ROWS: f32 = 5.0;
 /// A button's fill, and an active button's or a marked row's.
 const BUTTON: [u8; 4] = [255, 255, 255, 12];
 const ACTIVE: [u8; 4] = [255, 255, 255, 44];
@@ -54,18 +56,26 @@ const ACTIVE: [u8; 4] = [255, 255, 255, 44];
 /// read whole.
 const SENTENCE_LINES: u32 = 6;
 
+/// The lines the status and the hint always keep, so the buttons under
+/// them stay where they are from one message to the next: a status that
+/// shrank at a click would move the button under the cursor before the
+/// next one. Most of each fit; a longer one grows.
+const STATUS_LINES: f32 = 2.0;
+const HINT_LINES: f32 = 3.0;
+
 /// What the panel shows while the editor has said nothing yet.
-const WELCOME: &str = "Every edit is checked, written to the room's file and can be undone. F10 or the × closes the editor.";
+const WELCOME: &str = "Edits are checked, saved to the room's file and undoable.";
 
 /// The mouse and the keys, the panel's last lines.
-const KEYS: [&str; 11] = [
+const KEYS: [&str; 12] = [
     "left button: the tool",
     "Shift+drag: a rectangle of cells",
     "right button: erase cells, delete an object",
     "Alt+left: take a prefab or a tile",
     "middle drag, arrows: pan   wheel: zoom",
-    "F: fit   Home: game view   G: grid",
-    "1 2 3 4 5: the tools",
+    "F: fit   Home: the game's view   G: grid",
+    "1 2 3 4 5 6: the tools",
+    "R: rename the pick",
     "[ ]: palette   L: layer",
     "Del: delete   Ctrl+D: copy",
     "Ctrl+Z: undo   Ctrl+Y: redo",
@@ -73,15 +83,19 @@ const KEYS: [&str; 11] = [
 ];
 
 /// The action buttons under the tools, in order, with their captions; undo
-/// and redo show their counts after them, and Grid is marked while on.
-const ACTIONS: [(Action, &str); 7] = [
+/// and redo show their counts after them, and Grid is marked while on. The
+/// last three open a prompt for the pick.
+const ACTIONS: [(Action, &str); 10] = [
     (Action::Undo, "Undo"),
     (Action::Redo, "Redo"),
     (Action::Delete, "Delete"),
     (Action::Copy, "Copy"),
     (Action::Fit, "Fit"),
-    (Action::GameView, "Game view"),
+    (Action::GameView, "Home"),
     (Action::Grid, "Grid"),
+    (Action::Prompt(Ask::Rename), "Rename"),
+    (Action::Prompt(Ask::Set), "Set"),
+    (Action::Prompt(Ask::Link), "Link"),
 ];
 
 /// A list's row: its button, its text and the action a click asks for.
@@ -134,6 +148,17 @@ struct Palette {
     tiles: bool,
 }
 
+/// What is picked, by what acts on it: Delete, Copy and Rename on any
+/// pick, Set on an object, Link on a point or an area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Picked {
+    Nothing,
+    Object,
+    /// A point or an area: a place that links.
+    Place,
+    Route,
+}
+
 /// Everything the panel shows, read from the editor and the World each
 /// frame and compared with the last written.
 #[derive(Debug, Clone, PartialEq)]
@@ -145,7 +170,7 @@ struct Shown {
     tool: Tool,
     /// The current room's batches to undo and to redo.
     history: (usize, usize),
-    picked: bool,
+    picked: Picked,
     grid: bool,
     palette: Palette,
     /// Each layer's name and kind.
@@ -246,8 +271,11 @@ impl Shown {
         let object = document
             .zip(editor.selection.as_deref())
             .and_then(|(document, id)| document.objects.iter().find(|object| object.id == id));
-        let selection = match object {
-            Some(object) => {
+        let place = document
+            .zip(editor.selection.as_deref())
+            .and_then(|(document, id)| document.places.iter().find(|place| place.id == id));
+        let selection = match (object, place) {
+            (Some(object), _) => {
                 let mut lines = vec![
                     format!("`{}`, a `{}`", object.id, object.prefab),
                     format!("at {}, {}", object.at[0], object.at[1]),
@@ -263,7 +291,29 @@ impl Shown {
                 );
                 lines
             }
-            None => vec!["nothing: click an object with Select".to_owned()],
+            (None, Some(place)) => {
+                let mut lines = match (place.point, place.rect, &place.route) {
+                    (Some([x, y]), ..) => {
+                        vec![format!("`{}`, a point", place.id), format!("at {x}, {y}")]
+                    }
+                    (_, Some([x, y, width, height]), _) => vec![
+                        format!("`{}`, an area", place.id),
+                        format!("{width} \u{d7} {height} at {x}, {y}"),
+                    ],
+                    (_, _, Some(route)) => {
+                        vec![format!("`{}`, a route of {} stops", place.id, route.len())]
+                    }
+                    _ => vec![format!("`{}`, a place", place.id)],
+                };
+                if place.route.is_none() {
+                    lines.push(match &place.to {
+                        Some(to) => format!("linked to `{to}`"),
+                        None => "not linked".to_owned(),
+                    });
+                }
+                lines
+            }
+            (None, None) => vec!["nothing: click an object or a place with Select".to_owned()],
         };
         Self {
             status: if editor.status.is_empty() {
@@ -276,7 +326,12 @@ impl Shown {
             rooms,
             tool: editor.tool,
             history,
-            picked: object.is_some(),
+            picked: match (object, place) {
+                (Some(_), _) => Picked::Object,
+                (None, Some(place)) if place.route.is_none() => Picked::Place,
+                (None, Some(_)) => Picked::Route,
+                (None, None) => Picked::Nothing,
+            },
             grid: editor.grid,
             layer: editor
                 .layer
@@ -361,6 +416,16 @@ impl Panel {
         tree.set_key(status, "status");
         let hint = wrapped(tree, look, column, SENTENCE_LINES);
         tree.set_key(hint, "hint");
+        for (label, lines) in [(status, STATUS_LINES), (hint, HINT_LINES)] {
+            tree.set_layout_style(
+                label,
+                LayoutStyle {
+                    width: Sizing::Px(INNER),
+                    min_height: Some(lines * look.line_height),
+                    ..LayoutStyle::default()
+                },
+            );
+        }
         tree.set_overrides(hint, wrap(look.plain(Ink::body(LABEL)), SENTENCE_LINES));
 
         heading(tree, look, column, "Rooms");
@@ -376,23 +441,28 @@ impl Panel {
 
         heading(tree, look, column, "Tools");
         let mut tools = Vec::new();
-        for row in Tool::ALL.chunks(PER_ROW) {
+        for row in Tool::ALL.chunks(TOOLS_PER_ROW) {
             let line = button_row(tree, look, column);
             for &tool in row {
-                let button = button(tree, line);
+                let button = button(tree, line, TOOLS_PER_ROW);
                 tree.set_key(button, &format!("tool_{}", tool.name()));
                 tools.push((button, tool));
             }
         }
         let mut actions = Vec::new();
-        for row in ACTIONS.chunks(PER_ROW) {
+        for row in ACTIONS.chunks(ACTIONS_PER_ROW) {
             let line = button_row(tree, look, column);
             for (action, caption) in row {
-                let button = button(tree, line);
+                let button = button(tree, line, ACTIONS_PER_ROW);
                 tree.set_key(button, &caption.to_lowercase().replace(' ', "_"));
                 actions.push((button, action.clone(), *caption));
             }
         }
+
+        // The layers before the palette: they are few and the palette
+        // scrolls, so both show in a short window.
+        heading(tree, look, column, "Layer");
+        let layers = list(tree, look, column, "layers");
 
         let palette_title = heading(tree, look, column, "Palette");
         let palette = tree.scroll_panel(
@@ -404,9 +474,6 @@ impl Panel {
         );
         tree.set_overrides(palette, look.plain(Ink::body(look.color)));
         tree.set_key(palette, "palette");
-
-        heading(tree, look, column, "Layer");
-        let layers = list(tree, look, column, "layers");
 
         heading(tree, look, column, "Pick");
         let selection = list(tree, look, column, "pick");
@@ -540,7 +607,17 @@ impl Panel {
                         false,
                         shown.history.1 == 0,
                     ),
-                    Action::Delete | Action::Copy => ((*caption).to_owned(), false, !shown.picked),
+                    Action::Delete | Action::Copy | Action::Prompt(Ask::Rename) => (
+                        (*caption).to_owned(),
+                        false,
+                        shown.picked == Picked::Nothing,
+                    ),
+                    Action::Prompt(Ask::Set) => {
+                        ((*caption).to_owned(), false, shown.picked != Picked::Object)
+                    }
+                    Action::Prompt(Ask::Link) => {
+                        ((*caption).to_owned(), false, shown.picked != Picked::Place)
+                    }
                     Action::Grid => ((*caption).to_owned(), shown.grid, false),
                     _ => ((*caption).to_owned(), false, false),
                 };
@@ -715,15 +792,15 @@ fn button_row(tree: &mut UiTree, look: &Look, parent: WidgetId) -> WidgetId {
     row
 }
 
-/// A button in a row of [`PER_ROW`], each a third of the panel's text
+/// A button in a row of `per_row`, each that share of the panel's text
 /// wide; [`paint`] gives it its caption and look.
-fn button(tree: &mut UiTree, row: WidgetId) -> WidgetId {
+fn button(tree: &mut UiTree, row: WidgetId, per_row: usize) -> WidgetId {
     let button = tree.button(row, "");
     tree.set_focusable(button, false);
     tree.set_layout_style(
         button,
         LayoutStyle {
-            width: Sizing::Px((INNER - GAP * (PER_ROW as f32 - 1.0)) / PER_ROW as f32),
+            width: Sizing::Px((INNER - GAP * (per_row as f32 - 1.0)) / per_row as f32),
             ..LayoutStyle::default()
         },
     );

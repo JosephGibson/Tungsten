@@ -11,8 +11,10 @@
 //!
 //! The action's fields apply in this order, each optional: `open`, `room`,
 //! `tool`, `prefab`, `tile`, `layer` (a name, or `null` for every layer),
-//! `select` (an object's ID, or `null`), `do`. A field the editor refuses
-//! fails the step with the editor's own sentence.
+//! `select` (an object's or a place's ID, or `null`), `do`, then `prompt`
+//! with its `text`: the prompt opened for the pick, given the text and
+//! committed, or left open without one. A field the editor refuses fails
+//! the step with the editor's own sentence.
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -20,7 +22,7 @@ use tungsten_core::World;
 use tungsten_core::assets::RoomJournal;
 use tungsten_core::script::ScriptHooks;
 
-use super::{Action, LevelEditor, Tool};
+use super::{Action, Ask, LevelEditor, Tool};
 
 /// What `do` may name, with the action each is.
 const DOES: [(&str, Action); 10] = [
@@ -40,12 +42,12 @@ const DOES: [(&str, Action); 10] = [
 pub(crate) fn register(hooks: &mut ScriptHooks) {
     hooks.add_probe(
         "editor",
-        "The level editor's state: `available`, `open`, `tool`, `room`, `rooms` (the live ones), `opened` (those the editor opened), `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings`, `grid`, `view`.",
+        "The level editor's state: `available`, `open`, `tool`, `room`, `rooms` (the live ones), `opened` (those the editor opened), `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings`, `grid`, `prompt` (`ask`, `id` and `text` while one is open), `view`.",
         probe,
     );
     hooks.add_action(
         "editor",
-        "Drives the level editor as its keys and buttons do: any of `{\"open\": bool, \"room\": id, \"tool\": \"select\" | \"place\" | \"paint\" | \"erase\" | \"pick\", \"prefab\": id, \"tile\": sprite, \"layer\": name | null, \"select\": id | null, \"do\": \"undo\" | \"redo\" | \"delete\" | \"copy\" | \"fit\" | \"game_view\" | \"grid\" | \"palette_next\" | \"palette_previous\" | \"layer_next\"}`, applied in that order.",
+        "Drives the level editor as its keys and buttons do: any of `{\"open\": bool, \"room\": id, \"tool\": \"select\" | \"place\" | \"paint\" | \"erase\" | \"pick\" | \"mark\", \"prefab\": id, \"tile\": sprite, \"layer\": name | null, \"select\": id | null, \"do\": \"undo\" | \"redo\" | \"delete\" | \"copy\" | \"fit\" | \"game_view\" | \"grid\" | \"palette_next\" | \"palette_previous\" | \"layer_next\", \"prompt\": \"rename\" | \"set\" | \"link\", \"text\": string}`, applied in that order.",
         action,
     );
 }
@@ -84,6 +86,11 @@ fn probe(world: &World, _: &Value) -> Result<Value, String> {
         "redo": redo,
         "findings": editor.findings,
         "grid": editor.grid,
+        "prompt": editor.prompt.as_ref().map(|prompt| json!({
+            "ask": prompt.ask.name(),
+            "id": prompt.id,
+            "text": prompt.text,
+        })),
         "view": editor.view.map(|view| json!({
             "position": [view.position.x, view.position.y],
             "zoom": view.zoom,
@@ -108,6 +115,8 @@ struct Args {
     select: Option<Option<String>>,
     #[serde(rename = "do")]
     does: Option<String>,
+    prompt: Option<String>,
+    text: Option<String>,
 }
 
 /// A present key, `null` included.
@@ -160,12 +169,49 @@ fn action(world: &mut World, args: &Value) -> Result<(), String> {
             })?;
         actions.push(does);
     }
+    let ask = match args.prompt {
+        Some(name) => Some(Ask::named(&name).ok_or_else(|| {
+            let names: Vec<&str> = Ask::ALL.iter().map(|ask| ask.name()).collect();
+            format!("no prompt `{name}`: {}", names.join(", "))
+        })?),
+        None if args.text.is_some() => {
+            return Err("`text` is a prompt's: name it with `prompt`".to_owned());
+        }
+        None => None,
+    };
     let mut editor = world
         .remove_resource::<LevelEditor>()
         .ok_or("the World has no level editor")?;
-    let result = run(&mut editor, world, args.open, actions);
+    let mut result = run(&mut editor, world, args.open, actions);
+    if let (Ok(()), Some(ask)) = (&result, ask) {
+        result = ask_for(&mut editor, world, ask, args.text);
+    }
     world.insert_resource(editor);
     result
+}
+
+/// Opens `ask` for the pick and, with `text`, commits it: a script's whole
+/// prompt in one step. A refusal fails the step and leaves no prompt open.
+fn ask_for(
+    editor: &mut LevelEditor,
+    world: &mut World,
+    ask: Ask,
+    text: Option<String>,
+) -> Result<(), String> {
+    if !editor.open {
+        return Err("the level editor is closed: `{\"open\": true}` opens it".to_owned());
+    }
+    editor.refused = false;
+    editor.act(world, Action::Prompt(ask));
+    if let (Some(text), Some(prompt)) = (text, editor.prompt.as_mut()) {
+        prompt.text = text;
+        editor.commit_prompt(world);
+    }
+    if editor.refused {
+        editor.prompt = None;
+        return Err(editor.status.clone());
+    }
+    Ok(())
 }
 
 /// Opens or closes the editor, then carries out `actions` in order,

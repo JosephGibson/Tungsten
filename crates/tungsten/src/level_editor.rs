@@ -40,7 +40,16 @@
 //! the topmost tile at the cell and its layer, and the tool that uses it.
 //! `engine_editor_secondary` (the right button) erases: a stroke of cells
 //! under Paint and Erase, the object under the cursor under the others.
-//! Escape drops a drag or a stroke under way, else the pick.
+//! Escape drops a drag or a stroke under way, else the pick. Mark places a
+//! place: a click a point, a drag an area. Select picks a place as it
+//! picks an object, a point by its marker and an area by its outline, and
+//! moves, copies and deletes it.
+//!
+//! What has no gesture goes through a one-line prompt ([`prompt`]): Rename
+//! (R; F1 to F11 are the engine's) gives the pick a new ID, Set an object's override as
+//! `path = value`, Link a point or an area as `room.place`. Its text shows
+//! in the panel's hint; while it is open the keys type and nothing else
+//! acts.
 //!
 //! The panel lists every registered room. One the game has not spawned
 //! opens at a click: the editor spawns it right of the live rooms, under
@@ -69,7 +78,9 @@ use std::path::{Path, PathBuf};
 
 use glam::Vec2;
 use serde_json::json;
-use tungsten_core::assets::{Room, RoomCommand, RoomJournal, RoomRegistry, TilemapInstance};
+use tungsten_core::assets::{
+    PlaceShape, Room, RoomCommand, RoomJournal, RoomRegistry, TilemapInstance,
+};
 use tungsten_core::input::{ActionMap, InputState, KeyCode, Modifiers, MouseButton, RawInput};
 use tungsten_core::save::{SaveId, SaveState};
 use tungsten_core::ui::{UiLayer, UiTree, Visibility};
@@ -83,8 +94,10 @@ use crate::state::{SceneEntity, StateId, StateStack};
 mod hooks;
 mod overlay;
 mod panel;
+mod prompt;
 
 pub(crate) use hooks::register as register_hooks;
+pub(crate) use prompt::{Ask, Prompt};
 
 /// The editor's toggle, F10 by default.
 pub(crate) const TOGGLE: &str = "engine_toggle_level_editor";
@@ -103,6 +116,8 @@ const ZOOM_MAX: f32 = 8.0;
 const PAN_STEP: f32 = 16.0;
 /// The room's margin in a fitted view, in screen pixels a side.
 const FIT_MARGIN: f32 = 24.0;
+/// The most characters a prompt holds.
+const PROMPT_LIMIT: usize = 96;
 /// The state an opened room's entities belong to while the stack is empty.
 const EDITOR_STATE: StateId = "engine_level_editor";
 /// How far from the cursor, in world pixels an axis, an object's spawn
@@ -163,7 +178,7 @@ impl Live {
     }
 }
 
-/// The primary button's tool, keys 1 to 5.
+/// The primary button's tool, keys 1 to 6.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tool {
     /// Pick, drag to move.
@@ -176,16 +191,19 @@ pub(crate) enum Tool {
     Erase,
     /// Take the prefab or the tile under the cursor: the eyedropper.
     Pick,
+    /// Place a place: a click a point, a drag an area.
+    Mark,
 }
 
 impl Tool {
     /// Every tool, in its key's order.
-    pub(crate) const ALL: [Self; 5] = [
+    pub(crate) const ALL: [Self; 6] = [
         Self::Select,
         Self::Place,
         Self::Paint,
         Self::Erase,
         Self::Pick,
+        Self::Mark,
     ];
 
     /// Its name in a script and a probe.
@@ -196,6 +214,7 @@ impl Tool {
             Self::Paint => "paint",
             Self::Erase => "erase",
             Self::Pick => "pick",
+            Self::Mark => "mark",
         }
     }
 
@@ -207,6 +226,7 @@ impl Tool {
             Self::Paint => "3 Paint",
             Self::Erase => "4 Erase",
             Self::Pick => "5 Pick",
+            Self::Mark => "6 Mark",
         }
     }
 
@@ -238,6 +258,8 @@ pub(crate) enum Action {
     GameView,
     /// Shows or hides the current room's cell grid.
     Grid,
+    /// Opens a prompt for the pick: Rename, Set or Link.
+    Prompt(Ask),
     /// Makes a live room the current one and fits it; opens a registered
     /// room that is not live.
     Room(String),
@@ -361,6 +383,11 @@ pub(crate) struct LevelEditor {
     /// Whether the primary button is the eyedropper this frame: the Pick
     /// tool, or Alt held.
     picking: bool,
+    /// The prompt under way: its text is the keys' until it ends.
+    pub(crate) prompt: Option<Prompt>,
+    /// A mark under way: the rectangle from its first cell to the
+    /// cursor's, a point place while it is one cell.
+    mark: Option<Stroke>,
     stroke: Option<Stroke>,
     view: Option<View>,
     drag: Option<Drag>,
@@ -372,6 +399,9 @@ pub(crate) struct LevelEditor {
     cursor: Option<(String, [i64; 2])>,
     /// The object under the cursor at the last frame, as `(room, id)`.
     hover: Option<(String, String)>,
+    /// Whether the cursor is over a debug window: `cursor` and `hover` are
+    /// then where it last was in the world.
+    over_window: bool,
     pub(crate) window: Option<ViewWindow>,
     /// The window's contents, built once a window.
     panel: Option<panel::Panel>,
@@ -410,6 +440,8 @@ impl LevelEditor {
             look: None,
             grid: true,
             picking: false,
+            prompt: None,
+            mark: None,
             stroke: None,
             view: None,
             drag: None,
@@ -418,6 +450,7 @@ impl LevelEditor {
             written: None,
             cursor: None,
             hover: None,
+            over_window: false,
             window: None,
             panel: None,
             panel_rect: None,
@@ -442,6 +475,8 @@ impl LevelEditor {
         self.open = false;
         self.drag = None;
         self.stroke = None;
+        self.mark = None;
+        self.prompt = None;
         self.pan = None;
         self.hover = None;
         if let Some(time) = world.get_resource_mut::<Time>() {
@@ -531,18 +566,24 @@ impl LevelEditor {
         let blocked = frame
             .cursor
             .is_some_and(|cursor| over_debug_window(world, cursor));
-        self.cursor = at.filter(|_| !blocked).and_then(|at| {
-            let room = rooms.iter().find(|room| room.holds(at))?;
-            let cell = ((at - room.origin) / room.cell).floor();
-            Some((room.id.clone(), [cell.x as i64, cell.y as i64]))
-        });
-        self.hover = at
-            .filter(|_| !blocked)
-            .and_then(|at| pick(world, &rooms, camera, at));
+        // Over a debug window the cursor's cell and the object under it
+        // stay what they last were in the world, so the hint does not
+        // change, and the panel's buttons do not move, as the cursor comes
+        // onto the panel for one of them. The overlay draws neither then.
+        self.over_window = blocked;
+        if !blocked {
+            self.cursor = at.and_then(|at| {
+                let room = rooms.iter().find(|room| room.holds(at))?;
+                let cell = ((at - room.origin) / room.cell).floor();
+                Some((room.id.clone(), [cell.x as i64, cell.y as i64]))
+            });
+            self.hover = at.and_then(|at| pick(world, &rooms, camera, at));
+        }
         self.keys(world, &frame, &rooms, game);
         self.wheel_and_pan(&frame, blocked, game);
         self.picking = self.tool == Tool::Pick || frame.alt;
-        if let Some(at) = at {
+        // An open prompt has the keys; the world waits for it to end.
+        if let Some(at) = at.filter(|_| self.prompt.is_none()) {
             // Read before the eyedropper takes up a tool, so the press that
             // took a tile starts no stroke.
             let picking = self.picking;
@@ -555,6 +596,7 @@ impl LevelEditor {
                 match self.tool {
                     Tool::Select => self.select(world, &frame, &rooms, camera, at, blocked),
                     Tool::Place => self.place(world, &frame, &rooms, at, blocked),
+                    Tool::Mark => self.mark(world, &frame, &rooms, at, blocked),
                     Tool::Paint | Tool::Erase | Tool::Pick => {}
                 }
             }
@@ -568,7 +610,10 @@ impl LevelEditor {
                 self.delete_object(world, &room, &id);
             }
         }
-        self.hint = self.hint_of(world, &rooms, blocked);
+        self.hint = match &self.prompt {
+            Some(prompt) => prompt.line(),
+            None => self.hint_of(world, &rooms),
+        };
         overlay::draw(self, world, &rooms, self.drawn(game));
         if self.view.is_some() {
             let mine = self.drawn(game);
@@ -618,6 +663,13 @@ impl LevelEditor {
     fn keys(&mut self, world: &mut World, frame: &Input, rooms: &[Live], game: CameraState) {
         for &(code, modifiers, repeat) in &frame.keys {
             let control = modifiers.control();
+            if self.prompt.is_some() {
+                // Every press is the prompt's, a held key's repeats too.
+                if !control {
+                    self.type_key(world, code, modifiers.shift());
+                }
+                continue;
+            }
             let step = self
                 .current
                 .as_deref()
@@ -654,20 +706,188 @@ impl LevelEditor {
             self.say("Dropped the move: nothing changed.".to_owned());
         } else if self.stroke.take().is_some() {
             self.say("Dropped the stroke: nothing changed.".to_owned());
+        } else if self.mark.take().is_some() {
+            self.say("Dropped the mark: nothing changed.".to_owned());
         } else {
             self.selection = None;
+        }
+    }
+
+    /// A key press while a prompt is open: a character, Backspace, Enter
+    /// or Escape.
+    fn type_key(&mut self, world: &mut World, code: KeyCode, shift: bool) {
+        let Some(prompt) = &mut self.prompt else {
+            return;
+        };
+        match prompt::typed(code, shift) {
+            prompt::Typed::Char(c) => {
+                if prompt.text.chars().count() < PROMPT_LIMIT {
+                    prompt.text.push(c);
+                }
+            }
+            prompt::Typed::Backspace => {
+                prompt.text.pop();
+            }
+            prompt::Typed::Commit => self.commit_prompt(world),
+            prompt::Typed::Cancel => {
+                self.prompt = None;
+                self.say("Left as it was.".to_owned());
+            }
+            prompt::Typed::Nothing => {}
+        }
+    }
+
+    /// Opens `ask` for the pick, its text what the pick holds now: its ID
+    /// for Rename, its link for Link, nothing for Set. Refused for a pick
+    /// the prompt does not fit.
+    fn ask(&mut self, world: &World, ask: Ask) {
+        let picked = (self.current.clone())
+            .zip(self.selection.clone())
+            .zip(self.current_room(world));
+        let Some(((room, id), document)) = picked else {
+            self.refuse(
+                match ask {
+                    Ask::Rename => {
+                        "Nothing is picked to rename: click an object or a place with Select."
+                    }
+                    Ask::Set => {
+                        "Nothing is picked to set an override on: click an object with Select."
+                    }
+                    Ask::Link => "Nothing is picked to link: click a point or an area with Select.",
+                }
+                .to_owned(),
+            );
+            return;
+        };
+        let place = document.places.iter().find(|place| place.id == id);
+        let text = match (ask, place) {
+            (Ask::Rename, _) => id.clone(),
+            (Ask::Set, None) => String::new(),
+            (Ask::Set, Some(_)) => {
+                self.refuse(format!(
+                    "`{id}` is a place: Set writes an object's override."
+                ));
+                return;
+            }
+            (Ask::Link, Some(place)) if place.route.is_none() => {
+                place.to.clone().unwrap_or_default()
+            }
+            (Ask::Link, Some(_)) => {
+                self.refuse(format!(
+                    "`{id}` is a route: Link joins a point or an area to another room's place."
+                ));
+                return;
+            }
+            (Ask::Link, None) => {
+                self.refuse(format!(
+                    "`{id}` is an object: Link joins a point or an area to another room's place."
+                ));
+                return;
+            }
+        };
+        self.drag = None;
+        self.prompt = Some(Prompt {
+            ask,
+            room,
+            id,
+            text,
+        });
+    }
+
+    /// Enter: the prompt's text as one command. It lands and the prompt
+    /// ends, or it is refused and the prompt stays open with its text, the
+    /// status saying why.
+    pub(crate) fn commit_prompt(&mut self, world: &mut World) {
+        let Some(Prompt {
+            ask,
+            room,
+            id,
+            text,
+        }) = self.prompt.clone()
+        else {
+            return;
+        };
+        let text = text.trim();
+        let (command, what, done) = match ask {
+            Ask::Rename if text == id => {
+                self.prompt = None;
+                self.say(format!("`{id}` keeps its name."));
+                return;
+            }
+            Ask::Rename => (
+                json!({ "rename": { "id": id, "to": text } }),
+                format!("rename `{id}` to `{text}`"),
+                format!("Renamed `{id}` to `{text}`."),
+            ),
+            Ask::Set => {
+                let Some((path, value)) = text.split_once('=') else {
+                    self.refuse(
+                        "Can't set: write it as path = value, as `health = 5`. An empty value takes the override off."
+                            .to_owned(),
+                    );
+                    return;
+                };
+                let (path, value) = (path.trim(), value.trim());
+                // JSON where it reads as JSON, so `5`, `true` and `[1, 2]`
+                // are what they look like; anything else is text.
+                let value = if value.is_empty() {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::from_str(value)
+                        .unwrap_or_else(|_| serde_json::Value::String(value.to_owned()))
+                };
+                let done = if value.is_null() {
+                    format!("Took `{path}` off `{id}`.")
+                } else {
+                    format!("Set `{path}` on `{id}` to {value}.")
+                };
+                (
+                    json!({ "set": { "id": id, "path": format!("set.{path}"), "value": value } }),
+                    format!("set `{path}` on `{id}`"),
+                    done,
+                )
+            }
+            Ask::Link if text.is_empty() => (
+                json!({ "link": { "id": id, "to": null } }),
+                format!("unlink `{id}`"),
+                format!("Unlinked `{id}`."),
+            ),
+            Ask::Link => (
+                json!({ "link": { "id": id, "to": text } }),
+                format!("link `{id}` to `{text}`"),
+                format!("Linked `{id}` to `{text}`."),
+            ),
+        };
+        let batch = match RoomCommand::parse_batch(&json!([command]).to_string()) {
+            Ok(batch) => batch,
+            Err(err) => {
+                self.refuse(format!("Can't {what}: {}.", err.reason));
+                return;
+            }
+        };
+        if self.edit(world, &room, Edit::Apply(batch), &what, &done) {
+            self.prompt = None;
+            if ask == Ask::Rename {
+                self.selection = Some(text.to_owned());
+            }
         }
     }
 
     /// Carries out `action`: the one place a key, a panel button and the
     /// `editor` script action meet.
     pub(crate) fn act(&mut self, world: &mut World, action: Action) {
+        // A button pressed while a prompt is open ends it, text dropped.
+        if !matches!(action, Action::Prompt(_)) {
+            self.prompt = None;
+        }
         match action {
             Action::Tool(tool) => {
                 self.tool = tool;
                 self.drag = None;
                 self.stroke = None;
+                self.mark = None;
             }
+            Action::Prompt(ask) => self.ask(world, ask),
             Action::Undo => self.history(world, Edit::Undo),
             Action::Redo => self.history(world, Edit::Redo),
             Action::Delete => self.delete(world),
@@ -733,14 +953,16 @@ impl LevelEditor {
             Action::LayerStep => self.next_layer(world),
             Action::Select(id) => {
                 let known = id.as_deref().is_none_or(|id| {
-                    self.current_room(world)
-                        .is_some_and(|room| room.objects.iter().any(|object| object.id == id))
+                    self.current_room(world).is_some_and(|room| {
+                        room.objects.iter().any(|object| object.id == id)
+                            || room.places.iter().any(|place| place.id == id)
+                    })
                 });
                 if known {
                     self.selection = id;
                 } else {
                     self.refuse(format!(
-                        "The room has no object `{}`.",
+                        "The room has no object or place `{}`.",
                         id.unwrap_or_default()
                     ));
                 }
@@ -1060,6 +1282,85 @@ impl LevelEditor {
             }
         } else if !button.held {
             self.stroke = None;
+        }
+    }
+
+    /// Mark's primary button: a press starts a mark at the cell under the
+    /// cursor and the release places it, a point place where it never left
+    /// its cell, else the area from the first cell to the last, kept inside
+    /// the room.
+    fn mark(&mut self, world: &mut World, frame: &Input, rooms: &[Live], at: Vec2, blocked: bool) {
+        if frame.primary.pressed
+            && !blocked
+            && let Some((room, cell)) = cell_under(rooms, at)
+        {
+            self.set_current(&room);
+            let first = [i64::from(cell[0]), i64::from(cell[1])];
+            self.mark = Some(Stroke {
+                room,
+                cells: Vec::new(),
+                first,
+                last: first,
+                rect: true,
+                erase: false,
+                secondary: false,
+            });
+        }
+        let Some(mark) = &mut self.mark else {
+            return;
+        };
+        if let Some(live) = rooms.iter().find(|live| live.id == mark.room) {
+            let cell = ((at - live.origin) / live.cell).floor();
+            let size = [
+                (live.size.x / live.cell.x) as i64,
+                (live.size.y / live.cell.y) as i64,
+            ];
+            mark.last = [
+                (cell.x as i64).clamp(0, (size[0] - 1).max(0)),
+                (cell.y as i64).clamp(0, (size[1] - 1).max(0)),
+            ];
+        }
+        if frame.primary.released {
+            if let Some(mark) = self.mark.take() {
+                self.apply_mark(world, &mark);
+            }
+        } else if !frame.primary.held {
+            self.mark = None;
+        }
+    }
+
+    /// Places `mark` as `point_<n>` or `area_<n>`, the lowest free `n`,
+    /// and picks it, so Rename and Link act on it next.
+    fn apply_mark(&mut self, world: &mut World, mark: &Stroke) {
+        let Some(document) = world
+            .get_resource::<RoomRegistry>()
+            .and_then(|rooms| rooms.room(&mark.room))
+        else {
+            return;
+        };
+        let [col, row, width, height] = mark.bounds();
+        let (id, entry, what, done) = if width == 1 && height == 1 {
+            let id = free_id(document, "point");
+            (
+                id.clone(),
+                json!({ "id": id, "point": [col, row] }),
+                format!("mark a point at {col}, {row}"),
+                format!("Marked point `{id}` at {col}, {row}. Rename names it."),
+            )
+        } else {
+            let id = free_id(document, "area");
+            (
+                id.clone(),
+                json!({ "id": id, "rect": [col, row, width, height] }),
+                format!("mark a {width} \u{d7} {height} area"),
+                format!(
+                    "Marked area `{id}`, {width} \u{d7} {height} at {col}, {row}. Rename names it."
+                ),
+            )
+        };
+        let batch = parse(&json!([{ "place": { "places": entry } }]).to_string());
+        if self.edit(world, &mark.room, Edit::Apply(batch), &what, &done) {
+            self.selection = Some(id);
         }
     }
 
@@ -1412,7 +1713,7 @@ impl LevelEditor {
 
     /// What the primary button will do under the cursor, then where the
     /// cursor is: the panel's hint.
-    fn hint_of(&self, world: &World, rooms: &[Live], blocked: bool) -> String {
+    fn hint_of(&self, world: &World, rooms: &[Live]) -> String {
         if rooms.is_empty() {
             return no_live_room(world);
         }
@@ -1422,9 +1723,6 @@ impl LevelEditor {
             .and_then(|room| read_only(world, room));
         if let Some(why) = read_only {
             return why;
-        }
-        if blocked {
-            return "The cursor is over a window: move it into the world to edit.".to_owned();
         }
         let does = match self.tool {
             _ if self.picking => {
@@ -1439,7 +1737,7 @@ impl LevelEditor {
                 (_, Some((_, id))) => {
                     format!("Click: pick `{id}`. Drag: move it by cells. Right click: delete it.")
                 }
-                _ => "Click an object to pick it, then drag it.".to_owned(),
+                _ => "Click an object or a place to pick it, then drag it.".to_owned(),
             },
             Tool::Place => match (self.prefab_or_first(world), &self.cursor) {
                 (Some(prefab), Some((_, [col, row]))) => {
@@ -1447,6 +1745,18 @@ impl LevelEditor {
                 }
                 (Some(prefab), None) => format!("Click in a room: place `{prefab}`."),
                 (None, _) => "The game lists no prefab to place.".to_owned(),
+            },
+            Tool::Mark => match (self.mark.as_ref().map(Stroke::bounds), &self.cursor) {
+                (Some([col, row, 1, 1]), _) => {
+                    format!("Release: mark a point at {col}, {row}. Esc drops it.")
+                }
+                (Some([_, _, width, height]), _) => {
+                    format!("Release: mark a {width} \u{d7} {height} area. Esc drops it.")
+                }
+                (None, Some((_, [col, row]))) => {
+                    format!("Click: mark a point at {col}, {row}. Drag: mark an area.")
+                }
+                (None, None) => "Click in a room: mark a point. Drag: mark an area.".to_owned(),
             },
             Tool::Paint | Tool::Erase | Tool::Pick => {
                 let into = (self.current_room(world))
@@ -1497,8 +1807,8 @@ enum Landed {
     Nothing,
 }
 
-/// The action a key asks for, the arrows and Escape aside: 1 to 5 the
-/// tools, `[` and `]` the palette, L the layer, F fit, G the grid, Home the
+/// The action a key asks for, the arrows and Escape aside: 1 to 6 the
+/// tools, R the rename prompt, `[` and `]` the palette, L the layer, F fit, G the grid, Home the
 /// game's view, Delete or Backspace, Ctrl+D, Ctrl+Z, and Ctrl+Y or
 /// Ctrl+Shift+Z.
 fn key_action(code: KeyCode, control: bool, shift: bool) -> Option<Action> {
@@ -1515,6 +1825,8 @@ fn key_action(code: KeyCode, control: bool, shift: bool) -> Option<Action> {
         KeyCode::Digit3 => Action::Tool(Tool::Paint),
         KeyCode::Digit4 => Action::Tool(Tool::Erase),
         KeyCode::Digit5 => Action::Tool(Tool::Pick),
+        KeyCode::Digit6 => Action::Tool(Tool::Mark),
+        KeyCode::KeyR => Action::Prompt(Ask::Rename),
         KeyCode::BracketLeft => Action::PaletteStep(-1),
         KeyCode::BracketRight => Action::PaletteStep(1),
         KeyCode::KeyL => Action::LayerStep,
@@ -1748,8 +2060,11 @@ fn object_box(
         .unwrap_or((marker - Vec2::splat(radius), Vec2::splat(radius * 2.0)))
 }
 
-/// The object under `at`: inside its box or within the pick radius of its
-/// marker, the smallest box winning, as `(room, id)`.
+/// The object or place under `at`, as `(room, id)`: an object inside its
+/// box or within the pick radius of its marker, the smallest box winning;
+/// else a point place within twice that of its marker, or an area within
+/// it of its outline. An area is not picked by its inside, where a press
+/// is the room's: it can cover a whole arena. A route is not picked.
 fn pick(world: &World, rooms: &[Live], camera: CameraState, at: Vec2) -> Option<(String, String)> {
     let registry = world.get_resource::<RoomRegistry>()?;
     let radius = PICK_RADIUS / camera.zoom.max(f32::EPSILON);
@@ -1776,6 +2091,30 @@ fn pick(world: &World, rooms: &[Live], camera: CameraState, at: Vec2) -> Option<
             };
             if best.is_none_or(|(smallest, ..)| area < smallest) {
                 best = Some((area, &live.id, &object.id));
+            }
+        }
+        // A place counts as larger than any marker, so an object at the
+        // same spot wins.
+        let places = registry.compiled(&live.id).map(|room| &room.places);
+        for (id, place) in places.into_iter().flatten() {
+            let hit = match &place.shape {
+                PlaceShape::Point(point) => at.distance(live.origin + *point) <= radius * 2.0,
+                PlaceShape::Rect { min, size } => {
+                    let min = live.origin + *min;
+                    let max = min + *size;
+                    let within = |grow: f32| {
+                        at.x >= min.x - grow
+                            && at.y >= min.y - grow
+                            && at.x <= max.x + grow
+                            && at.y <= max.y + grow
+                    };
+                    within(radius) && !within(-radius)
+                }
+                _ => false,
+            };
+            let area = (radius * 4.0).powi(2);
+            if hit && best.is_none_or(|(smallest, ..)| area < smallest) {
+                best = Some((area, &live.id, id));
             }
         }
     }
