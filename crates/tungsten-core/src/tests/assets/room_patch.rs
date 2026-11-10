@@ -471,3 +471,58 @@ fn redo_after_undo_applies_the_batch_again_and_patches_the_live_object() {
     assert_eq!(world.redo_room_batch("cave"), Ok(None));
     assert!(spawned.object("ball_1").is_some());
 }
+
+#[test]
+fn an_objects_error_names_its_id() {
+    let mut world = world();
+    spawn(&mut world, &cave());
+    let document = world
+        .resource::<RoomRegistry>()
+        .room("cave")
+        .unwrap()
+        .clone();
+    let mut bad = cave();
+    bad["objects"][1]["set"] = json!({ "rigid_body.shape.radius": -1 });
+    let bad = room(&bad);
+    let compiled = bad
+        .compile(
+            "cave",
+            &Tileset::from_json(TILESET).unwrap(),
+            &PhysicsLayers::default(),
+        )
+        .unwrap();
+    let err = world.check_map_objects("cave", &compiled.map).unwrap_err();
+    // The map's terms, then the room's.
+    assert!(
+        err.to_string()
+            .starts_with("tilemap `cave`, layer `objects`, object 2: prefab `ball`"),
+        "{err}"
+    );
+    let (index, object, message) = bad.object_of(&err).expect("a room object's error");
+    assert_eq!((index, object.id.as_str()), (1, "ball_1"));
+    assert!(message.starts_with("prefab `ball`"), "{message}");
+    // An error about no object is no entry's.
+    let unknown = PrefabError::UnknownMap { map: "x".into() };
+    assert!(document.object_of(&unknown).is_none());
+}
+
+#[test]
+fn a_refused_batch_gives_its_reason_without_the_path() {
+    let mut world = world();
+    spawn(&mut world, &cave());
+    let far =
+        RoomCommand::parse_batch(r#"[{ "move": { "id": "crate_1", "by": [0, 40] } }]"#).unwrap();
+    let err = world.apply_room_batch("cave", &far).unwrap_err();
+    assert_eq!(
+        err.message(),
+        "room `cave`: commands[0].move: objects[0].at: [2, 44] is past the room's 10 \u{d7} 6 cells"
+    );
+    assert_eq!(err.reason(), "[2, 44] is past the room's 10 \u{d7} 6 cells");
+    // A patch that fails outside a batch: the reason is the message past
+    // the room's name.
+    let mut gone = cave();
+    gone["tileset"] = json!("nope");
+    let err = world.patch_room("cave", room(&gone)).unwrap_err();
+    assert_eq!(err.message(), "room `cave`: tileset: no tileset `nope`");
+    assert_eq!(err.reason(), "tileset: no tileset `nope`");
+}

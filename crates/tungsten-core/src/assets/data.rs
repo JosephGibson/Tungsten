@@ -1176,8 +1176,9 @@ pub(crate) fn did_you_mean(suggestion: Option<&str>) -> String {
     suggestion.map_or_else(String::new, |name| format!("; did you mean `{name}`?"))
 }
 
-/// The candidate nearest `target` by Levenshtein distance over chars, at
-/// most max(1, length / 3) edits away, ties to the first; `candidates` come
+/// The candidate nearest `target` by edits over chars (an insertion, a
+/// deletion, a substitution or a swap of two neighbours each one), at most
+/// max(1, length / 3) edits away, ties to the first; `candidates` come
 /// sorted, so the first is the smallest.
 pub(crate) fn nearest<'a>(
     target: &str,
@@ -1187,7 +1188,7 @@ pub(crate) fn nearest<'a>(
     let bound = (target.len() / 3).max(1);
     let mut best: Option<(usize, &str)> = None;
     for candidate in candidates {
-        let distance = levenshtein(&target, candidate);
+        let distance = edits(&target, candidate);
         if distance == 0 || distance > bound {
             continue;
         }
@@ -1198,16 +1199,25 @@ pub(crate) fn nearest<'a>(
     best.map(|(_, candidate)| candidate)
 }
 
-fn levenshtein(a: &[char], b: &str) -> usize {
+/// The edits from `a` to `b`, a swap of two neighbouring chars counting as
+/// one (the optimal string alignment distance), so `gaurd` is one edit from
+/// `guard` as a dropped letter is.
+fn edits(a: &[char], b: &str) -> usize {
     let b: Vec<char> = b.chars().collect();
+    let mut two_back = vec![0; b.len() + 1];
     let mut previous: Vec<usize> = (0..=b.len()).collect();
     let mut current = vec![0; b.len() + 1];
     for (i, &ca) in a.iter().enumerate() {
         current[0] = i + 1;
         for (j, &cb) in b.iter().enumerate() {
             let substitution = previous[j] + usize::from(ca != cb);
-            current[j + 1] = substitution.min(previous[j + 1] + 1).min(current[j] + 1);
+            let mut least = substitution.min(previous[j + 1] + 1).min(current[j] + 1);
+            if i > 0 && j > 0 && ca == b[j - 1] && a[i - 1] == cb {
+                least = least.min(two_back[j - 1] + 1);
+            }
+            current[j + 1] = least;
         }
+        std::mem::swap(&mut two_back, &mut previous);
         std::mem::swap(&mut previous, &mut current);
     }
     previous[b.len()]

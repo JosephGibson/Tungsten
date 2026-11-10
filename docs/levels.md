@@ -44,6 +44,8 @@ The conventions every surface shares:
 - An object's `set` overrides its prefab's components by dotted path: `"set": { "health.max": 50 }`.
 - A place is a `point`, a `rect` or a `route`; a point's or an area's `to` links it to `<room>.<place>`.
 
+`tungsten schema room` and `tungsten schema tileset` print each format's JSON Schema, every field with its description.
+
 The game spawns a room by its ID, as it spawns a map: `world.spawn_room("yard", [0.0, 0.0], &(SceneEntity { state_id: GAMEPLAY },))`, the bundle going to the room's instance and to each object. A room is live once at a time.
 
 ## `tungsten level`
@@ -63,7 +65,7 @@ Exit codes: 0 when it worked, 1 when it found errors or failed, 2 on a usage mis
 
 ### Batches
 
-A batch is a JSON array of commands, each an object with one verb. Every command is checked against the room as the earlier ones leave it, and nothing is written unless all pass; an error names its command and field, as `commands[1].move.id`.
+A batch is a JSON array of commands, each an object with one verb. Every command is checked against the room as the earlier ones leave it, and nothing is written unless all pass; an error names its command and field, as `commands[1].move.id`, and the nearest name when one is near: ``no entry `gaurd`; did you mean `guard`?``. A tile the tileset lacks lists a small tileset's tiles.
 
 | Verb | Fields | Example |
 | --- | --- | --- |
@@ -83,7 +85,7 @@ A batch is a JSON array of commands, each an object with one verb. Every command
 
 ### Findings
 
-`tungsten check` and `tungsten level check` hold each room to the level rules: an object's dynamic or kinematic body clear of the terrain it meets, each prop with the `support` its prefab names, each link's room and place there, the budget kept and, with the kit, each route with a `by` reachable by that prefab's mover. A finding prints as `<file>: <room>: <id>: <path>: <message>`; a file that does not load prints the loader's error under the same file.
+`tungsten check` and `tungsten level check` hold each room to the level rules: an object's dynamic or kinematic body clear of the terrain it meets, each prop with the `support` its prefab names, each link's room and place there, the budget kept and, with the kit, each route with a `by` reachable by that prefab's mover. A finding prints as `<file>: <room>: <id>: <path>: <message>`, and so does an object whose prefab is unknown or whose override names a field its component lacks: ``assets/rooms/yard.json: yard: guard: objects[1]: prefab `dummy`: component `health`, field `maxx`: unknown field `maxx`, expected one of `max`, …``. A file that does not load prints the loader's error under the same file.
 
 ### Generated rooms
 

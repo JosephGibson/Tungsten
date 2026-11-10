@@ -106,7 +106,10 @@ fn apply_refuses_a_bad_batch_and_leaves_the_file() {
         "assets/rooms/cave.json: commands[1].move.id: no entry `bal_1`; did you mean `ball_1`?"
     );
     let err = apply(&game, "cave", r#"{ "move": {} }"#, None).unwrap_err();
-    assert_eq!(format!("{err:#}"), "a batch is a JSON array of commands");
+    assert_eq!(
+        format!("{err:#}"),
+        r#"a batch is a JSON array of commands, as `[{ "move": { "id": "crate_1", "by": [1, 0] } }]`"#
+    );
     assert_eq!(
         std::fs::read(cave(&dir)).unwrap(),
         before,

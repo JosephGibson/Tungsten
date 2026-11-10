@@ -264,6 +264,47 @@ fn same_fields(value: &Value, schema: &Value, root: &Value, path: &str, seen: &m
     }
 }
 
+/// Every property under `schema`, by its path, that has no `description`.
+fn undescribed(schema: &Value, path: &str, missing: &mut Vec<String>) {
+    if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
+        for (name, property) in properties {
+            let at = format!("{path}.{name}");
+            let described = property["description"]
+                .as_str()
+                .is_some_and(|text| !text.is_empty());
+            if !described {
+                missing.push(at.clone());
+            }
+            undescribed(property, &at, missing);
+        }
+    }
+    if let Some(definitions) = schema.get("$defs").and_then(Value::as_object) {
+        for (name, definition) in definitions {
+            undescribed(definition, &format!("$defs.{name}"), missing);
+        }
+    }
+}
+
+#[test]
+fn the_schemas_describe_every_property() {
+    for (name, schema) in [("room", json_schema()), ("tileset", tileset::json_schema())] {
+        let mut missing = Vec::new();
+        undescribed(&schema, name, &mut missing);
+        assert!(missing.is_empty(), "no description: {missing:?}");
+        assert!(schema["description"].is_string(), "{name}");
+    }
+    // The conventions an author needs are in the text itself.
+    let room = json_schema();
+    let at = room["$defs"]["object"]["properties"]["at"]["description"]
+        .as_str()
+        .unwrap();
+    assert!(at.contains("in cells") && at.contains("y down"), "{at}");
+    let rect = room["$defs"]["shape"]["properties"]["rect"]["description"]
+        .as_str()
+        .unwrap();
+    assert!(rect.contains("[col, row, width, height]"), "{rect}");
+}
+
 #[test]
 fn the_schemas_name_every_field() {
     let room: Value = serde_json::from_str(&Room::from_json(FULL).unwrap().to_canonical()).unwrap();

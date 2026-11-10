@@ -275,5 +275,6 @@ Round 1: gpt-6-astra at xhigh, `--repo`, 2026-11-10, on the draft over `30b7c6a1
 | --- | --- | --- | --- | --- |
 | Review | 2026-11-10 | done | Baseline: 8 stalls (0 source, 5 guess, 3 blocked), 11 failed commands, 3 of 3 tasks; 15 command-line and 10 editor points in the walk notes | `perf-runs/20261110-editor-pass/review/`, `cold/before-report.md`, `before/` |
 | 1 | 2026-11-10 | done | `just repo-check` exit 0; `just ctx` exit 0 (the LLM index at 12,277 of 12,288 B, its rooms row in one brace form to pay for the guide's path); `rg -c 'tungsten level' docs/getting-started.md` 3 | `docs/levels.md` |
+| 2 | 2026-11-10 | done | `cargo test -p tungsten-core --locked` exit 0 (lib 1,682 passed, the nine new tests among them; the plan's eight and `a_refused_batch_gives_its_reason_without_the_path`); `cargo test -p tungsten --locked rooms` exit 0, and its module's filter `asset_loader::room` 22 passed; `cargo test -p tungsten-cli --locked` 88 and 10 passed; `just api-check` exit 0 (five additions to `api/tungsten-core.txt`); fmt and clippy exit 0. Pinned messages corrected: `room_compile.rs:164` (the tile list), `tests/rooms.rs:207` (the object's ID), `tests/rooms.rs:388` (`rokc` now suggests `rock`), `tools/cli/src/tests/level.rs:109` (the batch example) | the step's commit |
 
 ## Follow-ups

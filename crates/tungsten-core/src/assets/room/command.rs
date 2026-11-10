@@ -40,7 +40,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::{
-    Room, RoomError, RoomLayer, RoomObject, RoomPlace, RoomShape, RouteStop, Tileset, hint,
+    Room, RoomError, RoomLayer, RoomObject, RoomPlace, RoomShape, RouteStop, Tileset, closed,
+    described, hint,
 };
 use crate::physics::PhysicsLayers;
 
@@ -226,6 +227,102 @@ impl RoomCommand {
         }
     }
 
+    /// The command in a line, as a report of a batch or an editor's history
+    /// names it: ``move `guard` to 8, 12``, ``paint 4 cells of `solid` with
+    /// `rock` ``. Positions are in cells.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let pair = |[x, y]: [f32; 2]| format!("{x}, {y}");
+        let cells = |rect: Option<[u32; 4]>, cells: Option<&Vec<[u32; 2]>>| {
+            let count = match (rect, cells) {
+                (Some([_, _, w, h]), _) => u64::from(w) * u64::from(h),
+                (None, Some(cells)) => cells.len() as u64,
+                (None, None) => 0,
+            };
+            format!("{count} cell{}", if count == 1 { "" } else { "s" })
+        };
+        match self {
+            Self::Place(place) => {
+                if let Some(object) = &place.objects {
+                    format!(
+                        "place object `{}` (`{}`) at {}",
+                        object.id,
+                        object.prefab,
+                        pair(object.at)
+                    )
+                } else if let Some(shape) = &place.shapes {
+                    format!("place shape `{}`", shape.id)
+                } else if let Some(entry) = &place.places {
+                    match (entry.point, entry.rect) {
+                        (Some(point), _) => {
+                            format!("place point `{}` at {}", entry.id, pair(point))
+                        }
+                        (None, Some([x, y, w, h])) => {
+                            format!("place area `{}` at {}, {w} by {h}", entry.id, pair([x, y]))
+                        }
+                        (None, None) => format!("place route `{}`", entry.id),
+                    }
+                } else if let Some(layer) = &place.layers {
+                    let kind = match layer.kind {
+                        super::RoomLayerKind::Render => "render",
+                        super::RoomLayerKind::Collision => "collision",
+                    };
+                    format!("place layer `{}` ({kind})", layer.name)
+                } else {
+                    "place nothing".to_owned()
+                }
+            }
+            Self::Move(movement) => match (movement.by, movement.to) {
+                (Some(by), _) => format!("move `{}` by {}", movement.id, pair(by)),
+                (None, Some(to)) => format!("move `{}` to {}", movement.id, pair(to)),
+                (None, None) => format!("move `{}`", movement.id),
+            },
+            Self::Set(set) => {
+                let target = match (&set.id, &set.layer) {
+                    (Some(id), _) => format!("`{id}`'s"),
+                    (None, Some(layer)) => format!("layer `{layer}`'s"),
+                    (None, None) => "the room's".to_owned(),
+                };
+                if set.value.is_null() {
+                    format!("clear {target} `{}`", set.path)
+                } else {
+                    format!("set {target} `{}` to {}", set.path, set.value)
+                }
+            }
+            Self::Delete(delete) => match (&delete.id, &delete.layer) {
+                (Some(id), _) => format!("delete `{id}`"),
+                (None, Some(layer)) => format!("delete layer `{layer}`"),
+                (None, None) => "delete nothing".to_owned(),
+            },
+            Self::Duplicate(duplicate) => match duplicate.by {
+                Some(by) => format!(
+                    "copy `{}` as `{}`, {} from it",
+                    duplicate.id,
+                    duplicate.as_id,
+                    pair(by)
+                ),
+                None => format!("copy `{}` as `{}`", duplicate.id, duplicate.as_id),
+            },
+            Self::Paint(paint) => {
+                let cells = cells(paint.rect, paint.cells.as_ref());
+                match &paint.tile {
+                    Some(tile) => format!("paint {cells} of `{}` with `{tile}`", paint.layer),
+                    None => format!("clear {cells} of `{}`'s overrides", paint.layer),
+                }
+            }
+            Self::Erase(erase) => format!(
+                "erase {} of `{}`",
+                cells(erase.rect, erase.cells.as_ref()),
+                erase.layer
+            ),
+            Self::Link(link) => match &link.to {
+                Some(to) => format!("link `{}` to `{to}`", link.id),
+                None => format!("unlink `{}`", link.id),
+            },
+            Self::Rename(rename) => format!("rename `{}` to `{}`", rename.id, rename.to),
+        }
+    }
+
     /// Parses a batch: a JSON array of commands.
     ///
     /// # Errors
@@ -233,10 +330,8 @@ impl RoomCommand {
     /// A [`RoomCommandError`] naming the command and the field where
     /// reading stopped.
     pub fn parse_batch(json: &str) -> Result<Vec<Self>, RoomCommandError> {
-        let value: Value = serde_json::from_str(json).map_err(|err| RoomCommandError {
-            field: String::new(),
-            message: format!("not JSON: {err}"),
-        })?;
+        let value: Value = serde_json::from_str(json)
+            .map_err(|err| RoomCommandError::whole(format!("not JSON: {err}")))?;
         Self::batch_from_value(&value)
     }
 
@@ -247,16 +342,17 @@ impl RoomCommand {
     /// As [`parse_batch`](Self::parse_batch).
     pub fn batch_from_value(value: &Value) -> Result<Vec<Self>, RoomCommandError> {
         if !value.is_array() {
-            return Err(RoomCommandError {
-                field: String::new(),
-                message: "a batch is a JSON array of commands".to_owned(),
-            });
+            return Err(RoomCommandError::whole(format!(
+                "a batch is a JSON array of commands, as `{BATCH_EXAMPLE}`"
+            )));
         }
         serde_path_to_error::deserialize(value).map_err(|err| {
             let path = err.path().to_string();
+            let message = err.into_inner().to_string();
             RoomCommandError {
                 field: format!("commands{}", if path == "." { "" } else { &path }),
-                message: err.into_inner().to_string(),
+                reason: message.clone(),
+                message,
             }
         })
     }
@@ -284,9 +380,28 @@ pub struct RoomContext<'a> {
 pub struct RoomCommandError {
     /// The path, as `commands[3].move.id`.
     pub field: String,
-    /// What is wrong.
+    /// What is wrong, after the room's own path to it when a check of the
+    /// whole room found it (``objects[1].at: [8, 31] is past the room's 40
+    /// × 24 cells``).
     pub message: String,
+    /// What is wrong, alone: `message` without a path, for a surface that
+    /// names the edit in its own words, as the level editor does.
+    pub reason: String,
 }
+
+impl RoomCommandError {
+    /// An error about the batch as a whole.
+    fn whole(message: String) -> Self {
+        Self {
+            field: String::new(),
+            reason: message.clone(),
+            message,
+        }
+    }
+}
+
+/// The batch an error shows when what it read is no batch.
+const BATCH_EXAMPLE: &str = r#"[{ "move": { "id": "crate_1", "by": [1, 0] } }]"#;
 
 impl fmt::Display for RoomCommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -345,6 +460,7 @@ impl Room {
                 } else {
                     format!("{field}.{}", err.field)
                 },
+                reason: err.message.clone(),
                 message: err.message,
             };
             let (inverse, terrain) = room.apply_one(command, context).map_err(fail)?;
@@ -352,6 +468,7 @@ impl Room {
                 .map_err(|err| RoomCommandError {
                     field: field.clone(),
                     message: err.to_string(),
+                    reason: err.message,
                 })?;
             inverses.push(inverse);
         }
@@ -1221,6 +1338,263 @@ impl RoomJournal {
         history.done.push_back(entry);
         Ok(true)
     }
+}
+
+/// The JSON Schema (draft 2020-12) of a batch: an array of commands, each
+/// an object with one verb. Every verb and field carries a `description`
+/// and every verb an example; the entries a `place` takes are the room
+/// schema's ([`json_schema`](super::json_schema)), under `$defs`.
+#[must_use]
+pub fn batch_schema() -> Value {
+    use serde_json::json;
+
+    let id = |text: &str| {
+        described(
+            json!({ "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }),
+            text,
+        )
+    };
+    let numbers = |count: usize, item: &str, text: &str| {
+        described(
+            json!({ "type": "array", "items": { "type": item }, "minItems": count, "maxItems": count }),
+            text,
+        )
+    };
+    let reference =
+        |name: &str, text: &str| described(json!({ "$ref": format!("#/$defs/{name}") }), text);
+    let one_of = |forms: &[&str]| -> Value {
+        json!(
+            forms
+                .iter()
+                .map(|form| json!({ "required": [form] }))
+                .collect::<Vec<_>>()
+        )
+    };
+    let layer = || described(json!({ "type": "string" }), "The layer, by its name.");
+    let rect = || {
+        numbers(
+            4,
+            "integer",
+            "`[col, row, width, height]` in cells; give this or `cells`.",
+        )
+    };
+    let cells = || {
+        described(
+            json!({
+                "type": "array",
+                "items": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+            }),
+            "The cells, `[col, row]` each; give this or `rect`.",
+        )
+    };
+
+    let mut place = closed(
+        &[
+            ("objects", reference("object", "An object to add.")),
+            ("shapes", reference("shape", "A shape to add.")),
+            ("places", reference("place", "A place to add.")),
+            ("layers", reference("layer", "A layer to add.")),
+            (
+                "index",
+                described(
+                    json!({ "type": "integer", "minimum": 0 }),
+                    "Where it goes in its list; its end when absent.",
+                ),
+            ),
+        ],
+        &[],
+    );
+    place["oneOf"] = one_of(&["objects", "shapes", "places", "layers"]);
+    let mut movement = closed(
+        &[
+            ("id", id("The entry: a shape, an object or a place.")),
+            (
+                "by",
+                numbers(
+                    2,
+                    "number",
+                    "An offset in cells, `[dx, dy]`; a shape moves by whole cells and carries the objects `on` it.",
+                ),
+            ),
+            (
+                "to",
+                numbers(
+                    2,
+                    "number",
+                    "The point its position takes, in cells: an object's `at`, a point, an area's or a rect's top-left, a polygon's or a line's first point.",
+                ),
+            ),
+        ],
+        &["id"],
+    );
+    movement["oneOf"] = one_of(&["by", "to"]);
+    let set = closed(
+        &[
+            (
+                "id",
+                id(
+                    "The entry; with neither `id` nor `layer`, the room itself (`size`, `tileset`, `post`, `ambient`, `budget`).",
+                ),
+            ),
+            ("layer", layer()),
+            (
+                "path",
+                described(
+                    json!({ "type": "string", "minLength": 1 }),
+                    "The field, dotted. On an object, `set.<key>` names one override of its prefab's components, the key a dotted path into them: `set.health.max`.",
+                ),
+            ),
+            (
+                "value",
+                described(
+                    json!({}),
+                    "The field's new value; null removes an optional field or an override.",
+                ),
+            ),
+        ],
+        &["path", "value"],
+    );
+    let mut delete = closed(
+        &[
+            (
+                "id",
+                id("The entry to remove; objects `on` a deleted shape lose `on`."),
+            ),
+            ("layer", layer()),
+        ],
+        &[],
+    );
+    delete["oneOf"] = one_of(&["id", "layer"]);
+    let duplicate = closed(
+        &[
+            ("id", id("The entry to copy.")),
+            ("as", id("The copy's ID.")),
+            (
+                "by",
+                numbers(
+                    2,
+                    "number",
+                    "The copy's offset in cells, `[dx, dy]`; none when absent.",
+                ),
+            ),
+        ],
+        &["id", "as"],
+    );
+    let mut paint = closed(
+        &[
+            ("layer", layer()),
+            ("rect", rect()),
+            ("cells", cells()),
+            (
+                "tile",
+                described(
+                    json!({ "type": ["string", "null"], "minLength": 1 }),
+                    "A tile by its sprite in the room's tileset; null removes the cells' overrides, so the shapes show through.",
+                ),
+            ),
+        ],
+        &["layer"],
+    );
+    paint["oneOf"] = one_of(&["rect", "cells"]);
+    let mut erase = closed(
+        &[("layer", layer()), ("rect", rect()), ("cells", cells())],
+        &["layer"],
+    );
+    erase["oneOf"] = one_of(&["rect", "cells"]);
+    let link = closed(
+        &[
+            ("id", id("The place: a point or an area.")),
+            (
+                "to",
+                described(
+                    json!({ "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" }),
+                    "`<room>.<place>`; null unlinks.",
+                ),
+            ),
+        ],
+        &["id"],
+    );
+    let rename = closed(
+        &[
+            ("id", id("The entry.")),
+            ("to", id("Its new ID; the room's own references follow.")),
+        ],
+        &["id", "to"],
+    );
+
+    let verbs: [(&str, &str, Value, Value); 9] = [
+        (
+            "place",
+            "Adds an entry or a layer, as the room file writes it. Undone by a delete.",
+            place,
+            json!({ "objects": { "id": "crate_2", "prefab": "crate", "at": [6, 19] } }),
+        ),
+        (
+            "move",
+            "Moves an entry by an offset or to a point, in cells.",
+            movement,
+            json!({ "id": "crate_1", "by": [1, 0] }),
+        ),
+        (
+            "set",
+            "Sets a field of an entry, a layer or the room; an object's override through `set.<key>`.",
+            set,
+            json!({ "id": "crate_1", "path": "set.health.max", "value": 50 }),
+        ),
+        (
+            "delete",
+            "Removes an entry or a layer.",
+            delete,
+            json!({ "id": "crate_1" }),
+        ),
+        (
+            "duplicate",
+            "Copies an entry under a new ID, right after it in its list.",
+            duplicate,
+            json!({ "id": "crate_1", "as": "crate_2", "by": [1, 0] }),
+        ),
+        (
+            "paint",
+            "Writes a tile over cells of a layer as overrides, painted after the shapes.",
+            paint,
+            json!({ "layer": "solid", "rect": [4, 12, 2, 2], "tile": "rock" }),
+        ),
+        (
+            "erase",
+            "Empties cells of a layer, as overrides.",
+            erase,
+            json!({ "layer": "solid", "cells": [[4, 12], [5, 12]] }),
+        ),
+        (
+            "link",
+            "Links a point or an area to another room's place.",
+            link,
+            json!({ "id": "exit", "to": "hall.west_door" }),
+        ),
+        (
+            "rename",
+            "Gives an entry a new ID.",
+            rename,
+            json!({ "id": "crate_1", "to": "big_crate" }),
+        ),
+    ];
+    let commands: Vec<Value> = verbs
+        .into_iter()
+        .map(|(verb, text, fields, example)| {
+            let mut command = closed(&[(verb, fields)], &[verb]);
+            command["description"] = json!(text);
+            command["examples"] = json!([{ verb: example }]);
+            command
+        })
+        .collect();
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Tungsten room batch",
+        "description": "A batch of room commands: `tungsten level apply`'s input and a script's `level` step's `apply`. Each command is checked against the room as the earlier ones leave it, and the batch applies whole or not at all. Positions are in cells from the room's top-left corner, x right and y down.",
+        "type": "array",
+        "items": { "oneOf": commands },
+        "$defs": super::json_schema()["$defs"],
+    })
 }
 
 #[cfg(test)]

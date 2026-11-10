@@ -161,7 +161,48 @@ fn cell_overrides_paint_over_the_shapes() {
     room.layers[1].cells = [("1,2".to_owned(), Some("gravel".to_owned()))].into();
     assert_eq!(
         compile(&room).unwrap_err().to_string(),
-        "layers[1].cells.1,2: no tile `gravel` in the tileset"
+        "layers[1].cells.1,2: no tile `gravel` in the tileset; its tiles are `rock`, `rock_45_br`, `rock_45_tl`, `rock_low_br`, `rock_high_br`, `rock_crack`, `plank`, `arch`"
+    );
+}
+
+#[test]
+fn a_missing_tile_names_the_tilesets_tiles() {
+    let message = |tile: &str, tileset: &Tileset| {
+        let mut room: Room = serde_json::from_value(json!({
+            "version": 1, "cell": [16, 16], "size": [4, 4], "tileset": "cave",
+            "layers": [{ "name": "art" }],
+            "shapes": [{ "id": "floor", "rect": [0, 3, 4, 1], "tile": "rock", "layers": ["art"] }]
+        }))
+        .unwrap();
+        room.shapes[0].tile = Some(tile.to_owned());
+        room.compile("cave", tileset, &layers())
+            .unwrap_err()
+            .to_string()
+    };
+    // A near name is the hint, a swap of two letters included.
+    assert_eq!(
+        message("rokc", &tileset()),
+        "shapes[0].tile: no tile `rokc` in the tileset; did you mean `rock`?"
+    );
+    // With none near, a small tileset's tiles are listed.
+    assert_eq!(
+        message("grass", &tileset()),
+        "shapes[0].tile: no tile `grass` in the tileset; its tiles are `rock`, `rock_45_br`, `rock_45_tl`, `rock_low_br`, `rock_high_br`, `rock_crack`, `plank`, `arch`"
+    );
+    // A large one's are not.
+    let many: Vec<Value> = (0..13)
+        .map(|n| json!({ "sprite": format!("stone_{n}") }))
+        .collect();
+    let many = Tileset::from_json(&json!({ "version": 1, "tiles": many }).to_string()).unwrap();
+    assert_eq!(
+        message("grass", &many),
+        "shapes[0].tile: no tile `grass` in the tileset"
+    );
+    // An empty one says so.
+    let empty = Tileset::from_json(r#"{ "version": 1 }"#).unwrap();
+    assert_eq!(
+        message("grass", &empty),
+        "shapes[0].tile: no tile `grass` in the tileset, which has no tiles"
     );
 }
 

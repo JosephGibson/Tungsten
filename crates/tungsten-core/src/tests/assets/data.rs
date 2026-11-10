@@ -832,6 +832,24 @@ fn the_nearest_name_is_within_its_bound_and_ties_go_first() {
 }
 
 #[test]
+fn nearest_takes_a_swap_as_one_edit() {
+    // Two neighbours swapped: one edit, inside a five-letter name's bound.
+    assert_eq!(nearest("gaurd", ["guard"].into_iter()), Some("guard"));
+    assert_eq!(nearest("rokc", ["rock"].into_iter()), Some("rock"));
+    assert_eq!(nearest("ba", ["ab"].into_iter()), Some("ab"));
+    // A swap and a substitution are two edits, past a bound of one.
+    assert_eq!(nearest("gaurx", ["guard"].into_iter()), None);
+    // Letters two apart are no swap: two substitutions.
+    assert_eq!(nearest("cba", ["abc"].into_iter()), None);
+    // A swap ties with a one-letter change, and the first candidate wins.
+    assert_eq!(
+        nearest("abdc", ["abcc", "abcd"].into_iter()),
+        Some("abcc"),
+        "a tie"
+    );
+}
+
+#[test]
 fn a_commit_refuses_a_kind_the_world_lacks_or_holds_for_another_type() {
     let files = Files::new();
     let burning = files.write("burning.json", r#"{ "duration": 1.0 }"#);

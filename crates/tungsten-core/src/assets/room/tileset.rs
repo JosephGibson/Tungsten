@@ -23,7 +23,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::{RoomError, closed, from_value, hint, versioned};
+use super::{RoomError, closed, described, from_value, hint, versioned};
 use crate::assets::tilemap::{EMPTY_TILE, Slope, TileIndex, TileProps};
 use crate::canonical::{self, Arrays};
 
@@ -243,40 +243,97 @@ fn is_false(value: &bool) -> bool {
 }
 
 /// The JSON Schema (draft 2020-12) of a tileset file: every object closed,
-/// a slope as its text.
+/// a slope as its text, and a `description` on every property.
 #[must_use]
 pub fn json_schema() -> Value {
     let text = json!({ "type": "string", "minLength": 1 });
     let tile = closed(
         &[
-            ("sprite", text.clone()),
-            ("material", text.clone()),
-            ("health", json!({ "type": "number", "exclusiveMinimum": 0 })),
-            ("broken", text.clone()),
-            ("one_way", json!({ "type": "boolean" })),
-            ("style", text),
+            (
+                "sprite",
+                described(
+                    text.clone(),
+                    "The sprite it draws, a `sprites` ID, and its name in a room; at most once in a tileset.",
+                ),
+            ),
+            (
+                "material",
+                described(text.clone(), "Its material, a name a game's rules read."),
+            ),
+            (
+                "health",
+                described(
+                    json!({ "type": "number", "exclusiveMinimum": 0 }),
+                    "The damage it takes before it breaks.",
+                ),
+            ),
+            (
+                "broken",
+                described(
+                    text.clone(),
+                    "The tile a broken cell becomes, by its sprite; needs `health`.",
+                ),
+            ),
+            (
+                "one_way",
+                described(
+                    json!({ "type": "boolean" }),
+                    "In a collision layer, solid through its top face alone, from above.",
+                ),
+            ),
+            (
+                "style",
+                described(
+                    text,
+                    "Its auto-tile style; a styled tile with no `mask` and no `slope` is the style's brush, the tile a room paints with.",
+                ),
+            ),
             (
                 "mask",
-                json!({ "type": "integer", "minimum": 0, "maximum": 15 }),
+                described(
+                    json!({ "type": "integer", "minimum": 0, "maximum": 15 }),
+                    "A variant's open sides: 1 up, 2 right, 4 down, 8 left; needs `style`.",
+                ),
             ),
-            ("weight", json!({ "type": "integer", "minimum": 1 })),
+            (
+                "weight",
+                described(
+                    json!({ "type": "integer", "minimum": 1 }),
+                    "A variant's draw weight; needs `mask`.",
+                ),
+            ),
             (
                 "slope",
-                json!({
-                    "type": "string",
-                    "pattern": "^(45|2:1 low|2:1 high) (br|bl|tr|tl)$",
-                }),
+                described(
+                    json!({
+                        "type": "string",
+                        "pattern": "^(45|2:1 low|2:1 high) (br|bl|tr|tl)$",
+                    }),
+                    "In a collision layer, the slope its cell is: its rise, then the corner its solid part holds, as `45 br`.",
+                ),
             ),
-            ("whole", json!({ "type": "boolean" })),
+            (
+                "whole",
+                described(
+                    json!({ "type": "boolean" }),
+                    "Drawn at its sprite's own size from its cell's bottom-left.",
+                ),
+            ),
         ],
         &["sprite"],
     );
     let mut schema = closed(
         &[
-            ("version", json!({ "const": TILESET_VERSION })),
+            (
+                "version",
+                described(json!({ "const": TILESET_VERSION }), "The format's version."),
+            ),
             (
                 "tiles",
-                json!({ "type": "array", "items": { "$ref": "#/$defs/tile" } }),
+                described(
+                    json!({ "type": "array", "items": { "$ref": "#/$defs/tile" } }),
+                    "The tiles the rooms on it share, each named by its sprite.",
+                ),
             ),
         ],
         &["version"],

@@ -182,13 +182,7 @@ impl Room {
             let tile = match &shape.tile {
                 None => EMPTY_TILE,
                 Some(sprite) => tiles.index(sprite).ok_or_else(|| {
-                    RoomError::new(
-                        format!("{field}.tile"),
-                        format!(
-                            "no tile `{sprite}` in the tileset{}",
-                            hint(sprite, tileset.tiles.iter().map(|t| t.sprite.as_str()))
-                        ),
-                    )
+                    RoomError::new(format!("{field}.tile"), no_tile(sprite, tileset))
                 })?,
             };
             let cells = self.shape_cells(shape, &field, tile, &tiles)?;
@@ -207,10 +201,7 @@ impl Room {
                     Some(sprite) => tiles.index(sprite).ok_or_else(|| {
                         RoomError::new(
                             format!("layers[{at}].cells.{key}"),
-                            format!(
-                                "no tile `{sprite}` in the tileset{}",
-                                hint(sprite, tileset.tiles.iter().map(|t| t.sprite.as_str()))
-                            ),
+                            no_tile(sprite, tileset),
                         )
                     })?,
                 };
@@ -669,6 +660,27 @@ fn folds_back((a0, a1): ((i64, i64), (i64, i64)), (b0, b1): ((i64, i64), (i64, i
     let cross = u.0 * v.1 - u.1 * v.0;
     let dot = u.0 * v.0 + u.1 * v.1;
     cross == 0 && dot > 0
+}
+
+/// The most tiles a missing tile's message lists.
+const LISTED_TILES: usize = 12;
+
+/// "no tile `<sprite>` in the tileset", then the nearest tile's name or,
+/// with none near, every tile of a tileset of at most [`LISTED_TILES`].
+fn no_tile(sprite: &str, tileset: &Tileset) -> String {
+    let names = || tileset.tiles.iter().map(|tile| tile.sprite.as_str());
+    let near = hint(sprite, names());
+    let rest = if !near.is_empty() {
+        near
+    } else if tileset.tiles.is_empty() {
+        ", which has no tiles".to_owned()
+    } else if tileset.tiles.len() <= LISTED_TILES {
+        let listed: Vec<String> = names().map(|name| format!("`{name}`")).collect();
+        format!("; its tiles are {}", listed.join(", "))
+    } else {
+        String::new()
+    };
+    format!("no tile `{sprite}` in the tileset{rest}")
 }
 
 #[cfg(test)]

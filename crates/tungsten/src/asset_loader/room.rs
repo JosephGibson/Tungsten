@@ -141,6 +141,26 @@ pub(crate) fn check_room_rules(
     }
 }
 
+/// A room object's prefab or override error as the level rules print a
+/// finding, `<room>: <id>: objects[<n>]: <message>`, so the check names
+/// the object by its ID; any other error as ``room '<id>': <error>``.
+pub(crate) fn object_finding(
+    world: &World,
+    room: &str,
+    err: &tungsten_core::assets::PrefabError,
+) -> String {
+    let entry = world
+        .get_resource::<RoomRegistry>()
+        .and_then(|rooms| rooms.room(room))
+        .and_then(|document| document.object_of(err));
+    match entry {
+        Some((index, object, message)) => {
+            format!("{room}: {}: objects[{index}]: {message}", object.id)
+        }
+        None => format!("room '{room}': {err}"),
+    }
+}
+
 /// The seeds `tungsten check` sweeps each room generator over (redo 7.12):
 /// `count` of them from `first`, each `first.wrapping_add(i)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -222,7 +242,7 @@ pub(crate) fn check_generators(
                     .and_then(|maps| maps.get(room))
                     .map(|map| world.check_map_objects(room, map));
                 if let Some(Err(e)) = objects {
-                    finding(format!("room '{room}': {e}"));
+                    finding(object_finding(world, room, &e));
                 }
                 for rule in world.room_findings(room, &["light"]) {
                     finding(rule.to_string());

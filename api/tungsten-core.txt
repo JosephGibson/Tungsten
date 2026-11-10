@@ -2106,6 +2106,7 @@ pub tungsten_core::assets::room::RoomCommand::Set(tungsten_core::assets::room::S
 impl tungsten_core::RoomCommand
 pub fn tungsten_core::RoomCommand::batch_from_value(&serde_json::value::Value) -> core::result::Result<alloc::vec::Vec<Self>, tungsten_core::assets::RoomCommandError>
 pub fn tungsten_core::RoomCommand::parse_batch(&str) -> core::result::Result<alloc::vec::Vec<Self>, tungsten_core::assets::RoomCommandError>
+pub fn tungsten_core::RoomCommand::summary(&self) -> alloc::string::String
 pub fn tungsten_core::RoomCommand::verb(&self) -> &'static str
 impl core::clone::Clone for tungsten_core::RoomCommand
 pub fn tungsten_core::RoomCommand::clone(&self) -> tungsten_core::RoomCommand
@@ -2580,6 +2581,8 @@ pub fn tungsten_core::assets::room::Room::from_json(&str) -> core::result::Resul
 pub fn tungsten_core::assets::room::Room::new([u32; 2], [u32; 2]) -> Self
 pub fn tungsten_core::assets::room::Room::to_canonical(&self) -> alloc::string::String
 pub fn tungsten_core::assets::room::Room::validate(&self) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
+impl tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::object_of<'a>(&'a self, &'a tungsten_core::assets::prefab::PrefabError) -> core::option::Option<(usize, &'a tungsten_core::assets::room::RoomObject, &'a str)>
 impl core::clone::Clone for tungsten_core::assets::room::Room
 pub fn tungsten_core::assets::room::Room::clone(&self) -> tungsten_core::assets::room::Room
 impl core::cmp::PartialEq for tungsten_core::assets::room::Room
@@ -2631,6 +2634,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomB
 #[non_exhaustive] pub struct tungsten_core::assets::room::RoomCommandError
 pub tungsten_core::assets::room::RoomCommandError::field: alloc::string::String
 pub tungsten_core::assets::room::RoomCommandError::message: alloc::string::String
+pub tungsten_core::assets::room::RoomCommandError::reason: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::RoomCommandError
 pub fn tungsten_core::assets::RoomCommandError::clone(&self) -> tungsten_core::assets::RoomCommandError
 impl core::cmp::Eq for tungsten_core::assets::RoomCommandError
@@ -2837,6 +2841,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomP
 pub struct tungsten_core::assets::room::RoomPatchError
 impl tungsten_core::assets::room::RoomPatchError
 pub fn tungsten_core::assets::room::RoomPatchError::message(&self) -> &str
+pub fn tungsten_core::assets::room::RoomPatchError::reason(&self) -> &str
 impl core::clone::Clone for tungsten_core::assets::room::RoomPatchError
 pub fn tungsten_core::assets::room::RoomPatchError::clone(&self) -> tungsten_core::assets::room::RoomPatchError
 impl core::cmp::Eq for tungsten_core::assets::room::RoomPatchError
@@ -3063,6 +3068,7 @@ pub fn tungsten_core::assets::room::RoomGenerator::generate(&self, &mut tungsten
 pub fn tungsten_core::assets::room::RoomGenerator::migrate(&self, &tungsten_core::Generation, core::option::Option<&tungsten_core::Generation>, &mut serde_json::value::Value) -> bool
 pub fn tungsten_core::assets::room::RoomGenerator::reproduces(&self, u32) -> bool
 pub fn tungsten_core::assets::room::RoomGenerator::version(&self) -> u32
+pub fn tungsten_core::assets::room::batch_schema() -> serde_json::value::Value
 pub fn tungsten_core::assets::room::json_schema() -> serde_json::value::Value
 pub fn tungsten_core::assets::room::prefab_body(&alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>, core::option::Option<&tungsten_core::physics::PhysicsLayers>) -> core::result::Result<core::option::Option<tungsten_core::assets::room::PrefabBody>, alloc::string::String>
 pub fn tungsten_core::assets::room::slope_normal(tungsten_core::assets::tilemap::Slope) -> glam::f32::vec2::Vec2
@@ -4264,6 +4270,7 @@ pub tungsten_core::assets::RoomCommand::Set(tungsten_core::assets::room::SetComm
 impl tungsten_core::RoomCommand
 pub fn tungsten_core::RoomCommand::batch_from_value(&serde_json::value::Value) -> core::result::Result<alloc::vec::Vec<Self>, tungsten_core::assets::RoomCommandError>
 pub fn tungsten_core::RoomCommand::parse_batch(&str) -> core::result::Result<alloc::vec::Vec<Self>, tungsten_core::assets::RoomCommandError>
+pub fn tungsten_core::RoomCommand::summary(&self) -> alloc::string::String
 pub fn tungsten_core::RoomCommand::verb(&self) -> &'static str
 impl core::clone::Clone for tungsten_core::RoomCommand
 pub fn tungsten_core::RoomCommand::clone(&self) -> tungsten_core::RoomCommand
@@ -5798,6 +5805,8 @@ pub fn tungsten_core::assets::room::Room::from_json(&str) -> core::result::Resul
 pub fn tungsten_core::assets::room::Room::new([u32; 2], [u32; 2]) -> Self
 pub fn tungsten_core::assets::room::Room::to_canonical(&self) -> alloc::string::String
 pub fn tungsten_core::assets::room::Room::validate(&self) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
+impl tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::object_of<'a>(&'a self, &'a tungsten_core::assets::prefab::PrefabError) -> core::option::Option<(usize, &'a tungsten_core::assets::room::RoomObject, &'a str)>
 impl core::clone::Clone for tungsten_core::assets::room::Room
 pub fn tungsten_core::assets::room::Room::clone(&self) -> tungsten_core::assets::room::Room
 impl core::cmp::PartialEq for tungsten_core::assets::room::Room
@@ -5849,6 +5858,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomB
 #[non_exhaustive] pub struct tungsten_core::assets::RoomCommandError
 pub tungsten_core::assets::RoomCommandError::field: alloc::string::String
 pub tungsten_core::assets::RoomCommandError::message: alloc::string::String
+pub tungsten_core::assets::RoomCommandError::reason: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::RoomCommandError
 pub fn tungsten_core::assets::RoomCommandError::clone(&self) -> tungsten_core::assets::RoomCommandError
 impl core::cmp::Eq for tungsten_core::assets::RoomCommandError
@@ -19655,6 +19665,7 @@ pub tungsten_core::RoomCommand::Set(tungsten_core::assets::room::SetCommand)
 impl tungsten_core::RoomCommand
 pub fn tungsten_core::RoomCommand::batch_from_value(&serde_json::value::Value) -> core::result::Result<alloc::vec::Vec<Self>, tungsten_core::assets::RoomCommandError>
 pub fn tungsten_core::RoomCommand::parse_batch(&str) -> core::result::Result<alloc::vec::Vec<Self>, tungsten_core::assets::RoomCommandError>
+pub fn tungsten_core::RoomCommand::summary(&self) -> alloc::string::String
 pub fn tungsten_core::RoomCommand::verb(&self) -> &'static str
 impl core::clone::Clone for tungsten_core::RoomCommand
 pub fn tungsten_core::RoomCommand::clone(&self) -> tungsten_core::RoomCommand
@@ -23396,6 +23407,8 @@ pub fn tungsten_core::assets::room::Room::from_json(&str) -> core::result::Resul
 pub fn tungsten_core::assets::room::Room::new([u32; 2], [u32; 2]) -> Self
 pub fn tungsten_core::assets::room::Room::to_canonical(&self) -> alloc::string::String
 pub fn tungsten_core::assets::room::Room::validate(&self) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
+impl tungsten_core::assets::room::Room
+pub fn tungsten_core::assets::room::Room::object_of<'a>(&'a self, &'a tungsten_core::assets::prefab::PrefabError) -> core::option::Option<(usize, &'a tungsten_core::assets::room::RoomObject, &'a str)>
 impl core::clone::Clone for tungsten_core::assets::room::Room
 pub fn tungsten_core::assets::room::Room::clone(&self) -> tungsten_core::assets::room::Room
 impl core::cmp::PartialEq for tungsten_core::assets::room::Room

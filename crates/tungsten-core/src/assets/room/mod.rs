@@ -61,7 +61,7 @@ pub mod tileset;
 pub use command::{
     DeleteCommand, DuplicateCommand, EraseCommand, JournalEntry, LinkCommand, MoveCommand,
     PaintCommand, PlaceCommand, RenameCommand, RoomCommand, RoomCommandError, RoomContext,
-    RoomJournal, SetCommand,
+    RoomJournal, SetCommand, batch_schema,
 };
 pub use compile::{CompiledPlace, CompiledRoom, PlaceShape, ROOM_OBJECT_LAYER};
 pub use generate::{
@@ -823,7 +823,8 @@ fn is_false(value: &bool) -> bool {
 
 /// The JSON Schema (draft 2020-12) of a room file: every object closed, a
 /// shape and a place each one of their forms, IDs and names as their
-/// pattern, a route's stop a point or an ID.
+/// pattern, a route's stop a point or an ID, and a `description` on every
+/// property, so the schema reads as the format's reference.
 #[must_use]
 pub fn json_schema() -> Value {
     let reference = |name: &str| json!({ "$ref": format!("#/$defs/{name}") });
@@ -844,28 +845,69 @@ pub fn json_schema() -> Value {
                 .collect::<Vec<_>>()
         )
     };
+    let entry_id =
+        "Its ID, `[a-z][a-z0-9_]*`, unique across the room's shapes, objects and places.";
     let mut defs = Map::new();
     defs.insert(
         "layer".into(),
         closed(
             &[
-                ("name", id.clone()),
-                ("kind", json!({ "enum": ["render", "collision"] })),
-                ("z", json!({ "type": "integer" })),
-                ("unlit", json!({ "type": "boolean" })),
+                (
+                    "name",
+                    described(id.clone(), "Its name, unique in the room."),
+                ),
+                (
+                    "kind",
+                    described(
+                        json!({ "enum": ["render", "collision"] }),
+                        "`render` (drawn, the default) or `collision` (collided with, never drawn). Terrain that draws and collides paints into one layer of each.",
+                    ),
+                ),
+                (
+                    "z",
+                    described(
+                        json!({ "type": "integer" }),
+                        "A render layer's place among the sprites: after every sprite of a lower `z_order`; under every sprite when absent.",
+                    ),
+                ),
+                (
+                    "unlit",
+                    described(
+                        json!({ "type": "boolean" }),
+                        "A render layer drawn without lighting.",
+                    ),
+                ),
                 (
                     "tint",
-                    quad(json!({ "type": "integer", "minimum": 0, "maximum": 255 })),
+                    described(
+                        quad(json!({ "type": "integer", "minimum": 0, "maximum": 255 })),
+                        "A render layer's tint, sRGB bytes `[r, g, b, a]`.",
+                    ),
                 ),
-                ("layers", names.clone()),
-                ("mask", names.clone()),
+                (
+                    "layers",
+                    described(
+                        names.clone(),
+                        "A collision layer's physics layers, by `physics_layers` name; layer 0 when absent.",
+                    ),
+                ),
+                (
+                    "mask",
+                    described(
+                        names.clone(),
+                        "The physics layers a collision layer meets, by name; every layer when absent.",
+                    ),
+                ),
                 (
                     "cells",
-                    json!({
-                        "type": "object",
-                        "propertyNames": { "pattern": "^[0-9]+,[0-9]+$" },
-                        "additionalProperties": { "type": ["string", "null"], "minLength": 1 },
-                    }),
+                    described(
+                        json!({
+                            "type": "object",
+                            "propertyNames": { "pattern": "^[0-9]+,[0-9]+$" },
+                            "additionalProperties": { "type": ["string", "null"], "minLength": 1 },
+                        }),
+                        "Per-cell overrides keyed `\"<col>,<row>\"`, painted after the shapes: a tile by its sprite, or null for an empty cell.",
+                    ),
                 ),
             ],
             &["name"],
@@ -873,23 +915,41 @@ pub fn json_schema() -> Value {
     );
     let mut shape = closed(
         &[
-            ("id", id.clone()),
-            ("rect", quad(cell.clone())),
+            ("id", described(id.clone(), entry_id)),
+            (
+                "rect",
+                described(
+                    quad(cell.clone()),
+                    "`[col, row, width, height]` in cells from the room's top-left, y down; each side at least 1.",
+                ),
+            ),
             (
                 "polygon",
-                json!({ "type": "array", "items": pair(cell.clone()), "minItems": 3 }),
+                described(
+                    json!({ "type": "array", "items": pair(cell.clone()), "minItems": 3 }),
+                    "At least three vertices at cell corners, `[col, row]` each; every edge horizontal, vertical, 45° or 2:1, a sloped edge taking the tile's style's slope tiles.",
+                ),
             ),
             (
                 "line",
-                json!({ "type": "array", "items": pair(cell.clone()), "minItems": 2 }),
+                described(
+                    json!({ "type": "array", "items": pair(cell.clone()), "minItems": 2 }),
+                    "At least two cells, `[col, row]` each, joined by horizontal or vertical runs one cell thick.",
+                ),
             ),
             (
                 "tile",
-                json!({ "type": ["string", "null"], "minLength": 1 }),
+                described(
+                    json!({ "type": ["string", "null"], "minLength": 1 }),
+                    "The tile it paints, by its sprite in the tileset; null erases.",
+                ),
             ),
             (
                 "layers",
-                json!({ "type": "array", "items": id.clone(), "minItems": 1 }),
+                described(
+                    json!({ "type": "array", "items": id.clone(), "minItems": 1 }),
+                    "The layers it paints, by name; at least one.",
+                ),
             ),
         ],
         &["id", "tile", "layers"],
@@ -900,34 +960,85 @@ pub fn json_schema() -> Value {
         "object".into(),
         closed(
             &[
-                ("id", id.clone()),
-                ("prefab", text.clone()),
-                ("at", pair(number.clone())),
-                ("set", json!({ "type": "object" })),
-                ("on", id.clone()),
-                ("generator", id.clone()),
+                ("id", described(id.clone(), entry_id)),
+                (
+                    "prefab",
+                    described(text.clone(), "The `prefabs` ID it spawns."),
+                ),
+                (
+                    "at",
+                    described(
+                        pair(number.clone()),
+                        "Its spawn position in cells from the room's top-left, `[col, row]`, y down, fractions allowed: `at` times `cell` is where its sprite draws from, its top-left unless the sprite has an anchor.",
+                    ),
+                ),
+                (
+                    "set",
+                    described(
+                        json!({ "type": "object" }),
+                        "Overrides of its prefab's components, each key a dotted path and its value the field's, as `{ \"health.max\": 50 }`; `tungsten level check` holds them to the game's components.",
+                    ),
+                ),
+                (
+                    "on",
+                    described(
+                        id.clone(),
+                        "The shape it rests on, which a move of that shape carries.",
+                    ),
+                ),
+                (
+                    "generator",
+                    described(
+                        id.clone(),
+                        "The room generator that made it; a hand edit through the commands drops the mark.",
+                    ),
+                ),
             ],
             &["id", "prefab", "at"],
         ),
     );
     let mut place = closed(
         &[
-            ("id", id.clone()),
-            ("point", pair(number.clone())),
-            ("rect", quad(number.clone())),
+            ("id", described(id.clone(), entry_id)),
+            (
+                "point",
+                described(
+                    pair(number.clone()),
+                    "A point in cells, `[col, row]`, fractions allowed.",
+                ),
+            ),
+            (
+                "rect",
+                described(
+                    quad(number.clone()),
+                    "An area, `[col, row, width, height]` in cells, each side above 0.",
+                ),
+            ),
             (
                 "route",
-                json!({
-                    "type": "array",
-                    "minItems": 2,
-                    "items": { "oneOf": [id.clone(), pair(number.clone())] },
-                }),
+                described(
+                    json!({
+                        "type": "array",
+                        "minItems": 2,
+                        "items": { "oneOf": [id.clone(), pair(number.clone())] },
+                    }),
+                    "At least two stops, each a point in cells or a point place's ID.",
+                ),
             ),
             (
                 "to",
-                json!({ "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" }),
+                described(
+                    json!({ "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" }),
+                    "A point's or an area's link, `<room>.<place>`.",
+                ),
             ),
-            ("by", text.clone()),
+            (
+                "by",
+                described(
+                    text.clone(),
+                    "A route's mover: the prefab whose reach `tungsten level check` holds the route to.",
+                ),
+            ),
         ],
         &["id"],
     );
@@ -937,8 +1048,20 @@ pub fn json_schema() -> Value {
         "budget".into(),
         closed(
             &[
-                ("lights", json!({ "type": "integer", "minimum": 0 })),
-                ("objects", json!({ "type": "integer", "minimum": 0 })),
+                (
+                    "lights",
+                    described(
+                        json!({ "type": "integer", "minimum": 0 }),
+                        "The most objects with a light; 16 when absent.",
+                    ),
+                ),
+                (
+                    "objects",
+                    described(
+                        json!({ "type": "integer", "minimum": 0 }),
+                        "The most objects; 1,024 when absent.",
+                    ),
+                ),
             ],
             &[],
         ),
@@ -946,41 +1069,97 @@ pub fn json_schema() -> Value {
     let list = |name: &str| json!({ "type": "array", "items": reference(name) });
     let mut schema = closed(
         &[
-            ("version", json!({ "const": ROOM_VERSION })),
-            ("cell", pair(json!({ "type": "integer", "minimum": 1 }))),
+            (
+                "version",
+                described(json!({ "const": ROOM_VERSION }), "The format's version."),
+            ),
+            (
+                "cell",
+                described(
+                    pair(json!({ "type": "integer", "minimum": 1 })),
+                    "A cell's size in pixels, `[width, height]`.",
+                ),
+            ),
             (
                 "size",
-                pair(json!({ "type": "integer", "minimum": 1, "maximum": MAX_ROOM_CELLS })),
+                described(
+                    pair(json!({ "type": "integer", "minimum": 1, "maximum": MAX_ROOM_CELLS })),
+                    "The room's size in cells, `[columns, rows]`.",
+                ),
             ),
-            ("tileset", text),
-            ("layers", list("layer")),
-            ("shapes", list("shape")),
-            ("objects", list("object")),
-            ("places", list("place")),
+            (
+                "tileset",
+                described(
+                    text,
+                    "The `tilesets` ID its tiles come from; needed once a layer exists.",
+                ),
+            ),
+            (
+                "layers",
+                described(
+                    list("layer"),
+                    "Its layers, each one runtime layer, in this order.",
+                ),
+            ),
+            (
+                "shapes",
+                described(
+                    list("shape"),
+                    "Its terrain, painted in this order, a later shape over an earlier, into the layers each names.",
+                ),
+            ),
+            (
+                "objects",
+                described(
+                    list("object"),
+                    "The prefabs it spawns, each named `<room>.<id>` in the running game.",
+                ),
+            ),
+            (
+                "places",
+                described(list("place"), "Its named points, areas and routes."),
+            ),
             (
                 "post",
-                json!({
-                    "type": "array",
-                    "items": { "type": "object", "required": ["kind"] },
-                }),
+                described(
+                    json!({
+                        "type": "array",
+                        "items": { "type": "object", "required": ["kind"] },
+                    }),
+                    "The post stack its spawn sets, as `PostStack`'s passes; left as it is when absent.",
+                ),
             ),
             (
                 "ambient",
-                json!({
-                    "type": "array",
-                    "items": { "type": "number", "minimum": 0 },
-                    "minItems": 3,
-                    "maxItems": 3,
-                }),
+                described(
+                    json!({
+                        "type": "array",
+                        "items": { "type": "number", "minimum": 0 },
+                        "minItems": 3,
+                        "maxItems": 3,
+                    }),
+                    "The ambient light its spawn sets, linear RGB; left as it is when absent.",
+                ),
             ),
-            ("budget", reference("budget")),
+            (
+                "budget",
+                described(reference("budget"), "The caps its level rules hold it to."),
+            ),
         ],
         &["version", "cell", "size"],
     );
     schema["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
     schema["title"] = json!("Tungsten room");
-    schema["description"] = json!("A room file, listed in a manifest's rooms.");
+    schema["description"] = json!(
+        "A room file, listed in a manifest's rooms. Positions are in cells from the room's top-left corner, x right and y down."
+    );
     schema["$defs"] = Value::Object(defs);
+    schema
+}
+
+/// `schema` with `text` as its `description`.
+pub(crate) fn described(mut schema: Value, text: &str) -> Value {
+    schema["description"] = json!(text);
     schema
 }
 

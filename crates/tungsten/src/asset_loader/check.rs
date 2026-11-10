@@ -226,7 +226,7 @@ pub(crate) fn check_files(
             };
             let path = &manifest.rooms[id].path;
             if let Err(e) = world.check_map_objects(id, data) {
-                errors.push(path, format!("room '{id}': {e}"));
+                errors.push(path, super::room::object_finding(world, id, &e));
             }
             let sprites = world.get_resource::<AssetRegistry>();
             for (i, sprite) in data.tileset.iter().enumerate() {

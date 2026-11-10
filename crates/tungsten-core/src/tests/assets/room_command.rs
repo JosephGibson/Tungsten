@@ -675,3 +675,158 @@ fn a_duplicates_copy_is_unmarked_and_set_generator_marks_and_detaches() {
         "{err}"
     );
 }
+
+#[test]
+fn a_batch_that_is_no_array_shows_one() {
+    let err =
+        RoomCommand::parse_batch(r#"{ "move": { "id": "crate_1", "by": [1, 0] } }"#).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        r#"a batch is a JSON array of commands, as `[{ "move": { "id": "crate_1", "by": [1, 0] } }]`"#
+    );
+    // The example it shows is a batch.
+    let example = err.message.split('`').nth(1).unwrap();
+    assert_eq!(RoomCommand::parse_batch(example).unwrap().len(), 1);
+}
+
+#[test]
+fn a_refusal_carries_its_reason() {
+    let (tileset, layers) = world();
+    let context = RoomContext {
+        room: "cave",
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &PREFABS,
+    };
+    let refuse =
+        |commands: serde_json::Value| cave().apply(&batch(&commands), &context).unwrap_err();
+    // A command's own error: the reason is its message.
+    let err = refuse(json!([{ "move": { "id": "crate_9", "by": [1, 0] } }]));
+    assert_eq!(err.field, "commands[0].move.id");
+    assert_eq!(err.reason, err.message);
+    assert!(err.reason.starts_with("no entry `crate_9`"), "{err}");
+    // A check of the whole room: the message keeps the room's path, the
+    // reason drops it.
+    let err = refuse(json!([{ "move": { "id": "crate_1", "by": [0, 40] } }]));
+    assert_eq!(err.field, "commands[0].move");
+    assert_eq!(
+        err.message,
+        "objects[0].at: [5, 59] is past the room's 40 \u{d7} 24 cells"
+    );
+    assert_eq!(err.reason, "[5, 59] is past the room's 40 \u{d7} 24 cells");
+    assert!(err.to_string().ends_with(&err.reason));
+    // A batch that does not read: the reason is the reader's.
+    let err = RoomCommand::parse_batch(r#"[{ "mov": {} }]"#).unwrap_err();
+    assert_eq!(err.reason, err.message);
+}
+
+#[test]
+fn every_command_sums_up_in_a_line() {
+    let lines: Vec<String> = batch(&json!([
+        { "place": { "objects": { "id": "crate_2", "prefab": "crate", "at": [6, 19] } } },
+        { "place": { "shapes": { "id": "step", "rect": [1, 2, 3, 4], "tile": "rock", "layers": ["art"] } } },
+        { "place": { "places": { "id": "door", "point": [2.5, 19] } } },
+        { "place": { "places": { "id": "zone", "rect": [1, 2, 3, 4] } } },
+        { "place": { "places": { "id": "path", "route": [[1, 2], "door"] } } },
+        { "place": { "layers": { "name": "back" } } },
+        { "move": { "id": "crate_1", "by": [1, 0] } },
+        { "move": { "id": "crate_1", "to": [8, 12.5] } },
+        { "set": { "id": "ball_1", "path": "set.health.max", "value": 50 } },
+        { "set": { "id": "ball_1", "path": "set.health.max", "value": null } },
+        { "set": { "layer": "art", "path": "z", "value": 2 } },
+        { "set": { "path": "size", "value": [40, 30] } },
+        { "delete": { "id": "crate_1" } },
+        { "delete": { "layer": "art" } },
+        { "duplicate": { "id": "crate_1", "as": "crate_2" } },
+        { "duplicate": { "id": "crate_1", "as": "crate_2", "by": [1, 0] } },
+        { "paint": { "layer": "solid", "rect": [4, 12, 2, 2], "tile": "rock" } },
+        { "paint": { "layer": "solid", "cells": [[4, 12]], "tile": null } },
+        { "erase": { "layer": "solid", "cells": [[4, 12], [5, 12]] } },
+        { "link": { "id": "exit", "to": "hall.west_door" } },
+        { "link": { "id": "exit", "to": null } },
+        { "rename": { "id": "crate_1", "to": "big_crate" } },
+    ]))
+    .iter()
+    .map(RoomCommand::summary)
+    .collect();
+    assert_eq!(
+        lines,
+        [
+            "place object `crate_2` (`crate`) at 6, 19",
+            "place shape `step`",
+            "place point `door` at 2.5, 19",
+            "place area `zone` at 1, 2, 3 by 4",
+            "place route `path`",
+            "place layer `back` (render)",
+            "move `crate_1` by 1, 0",
+            "move `crate_1` to 8, 12.5",
+            "set `ball_1`'s `set.health.max` to 50",
+            "clear `ball_1`'s `set.health.max`",
+            "set layer `art`'s `z` to 2",
+            "set the room's `size` to [40,30]",
+            "delete `crate_1`",
+            "delete layer `art`",
+            "copy `crate_1` as `crate_2`",
+            "copy `crate_1` as `crate_2`, 1, 0 from it",
+            "paint 4 cells of `solid` with `rock`",
+            "clear 1 cell of `solid`'s overrides",
+            "erase 2 cells of `solid`",
+            "link `exit` to `hall.west_door`",
+            "unlink `exit`",
+            "rename `crate_1` to `big_crate`",
+        ]
+    );
+}
+
+#[test]
+fn the_batch_schema_names_every_verb() {
+    let schema = batch_schema();
+    assert_eq!(
+        schema["$schema"],
+        "https://json-schema.org/draft/2020-12/schema"
+    );
+    assert_eq!(schema["type"], "array");
+    let commands = schema["items"]["oneOf"].as_array().unwrap();
+    let described = |value: &serde_json::Value| {
+        value["description"]
+            .as_str()
+            .is_some_and(|text| !text.is_empty())
+    };
+    let mut verbs = Vec::new();
+    for command in commands {
+        let verb = command["required"][0].as_str().unwrap();
+        assert!(described(command), "`{verb}` is described");
+        // Its example reads as a batch of that verb.
+        let example = &command["examples"][0];
+        let read = RoomCommand::batch_from_value(&json!([example]))
+            .unwrap_or_else(|err| panic!("`{verb}`'s example: {err}"));
+        assert_eq!(read[0].verb(), verb);
+        // Every field it takes is described.
+        let fields = command["properties"][verb]["properties"]
+            .as_object()
+            .unwrap();
+        for (name, field) in fields {
+            assert!(described(field), "`{verb}.{name}` is described");
+        }
+        verbs.push(verb);
+    }
+    assert_eq!(
+        verbs,
+        [
+            "place",
+            "move",
+            "set",
+            "delete",
+            "duplicate",
+            "paint",
+            "erase",
+            "link",
+            "rename"
+        ]
+    );
+    // The entries a place takes are the room schema's.
+    assert_eq!(schema["$defs"], crate::assets::room::json_schema()["$defs"]);
+    for entry in ["object", "shape", "place", "layer"] {
+        assert!(schema["$defs"][entry].is_object(), "{entry}");
+    }
+}

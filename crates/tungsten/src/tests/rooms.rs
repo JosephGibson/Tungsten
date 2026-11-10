@@ -204,7 +204,8 @@ fn room_and_tileset_files_are_not_checked_as_scenes() {
     let errors = check(&dir);
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(
-        errors[0].starts_with("rooms/cave.json: room 'cave': tilemap `cave`, layer `objects`, object 2: unknown prefab `lantern`"),
+        errors[0]
+            .starts_with("rooms/cave.json: cave: lamp_1: objects[1]: unknown prefab `lantern`"),
         "{errors:?}"
     );
     let _ = fs::remove_dir_all(&dir);
@@ -385,7 +386,7 @@ mod reloads {
         assert_eq!(
             errors,
             [
-                "Hot reload room 'cave': room `cave`: shapes[0].tile: no tile `rokc` in the tileset; keeping the live room"
+                "Hot reload room 'cave': room `cave`: shapes[0].tile: no tile `rokc` in the tileset; did you mean `rock`?; keeping the live room"
             ]
         );
         fs::write(&path, "{ not json").unwrap();

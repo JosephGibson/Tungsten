@@ -38,8 +38,8 @@ use glam::{Vec2, Vec3};
 
 use super::spawn::RegisteredTileset;
 use super::{
-    CompiledRoom, ROOM_OBJECT_LAYER, Room, RoomCommand, RoomContext, RoomJournal, RoomRegistry,
-    TILESET_VERSION, Tileset, hint,
+    CompiledRoom, ROOM_OBJECT_LAYER, Room, RoomCommand, RoomCommandError, RoomContext, RoomJournal,
+    RoomObject, RoomRegistry, TILESET_VERSION, Tileset, hint,
 };
 use crate::assets::registry::AssetRegistry;
 use crate::assets::tilemap::{MapObject, TileIndex, TilemapData};
@@ -143,21 +143,44 @@ pub enum MapPatch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoomPatchError {
     message: String,
+    /// Where `message`'s bare reason starts.
+    reason: usize,
 }
 
 impl RoomPatchError {
     fn new(message: String) -> Self {
-        Self { message }
+        Self { message, reason: 0 }
     }
 
     fn room(id: &str, message: impl fmt::Display) -> Self {
-        Self::new(format!("room `{id}`: {message}"))
+        let message = format!("room `{id}`: {message}");
+        let reason = "room ``: ".len() + id.len();
+        Self { message, reason }
+    }
+
+    /// A batch that did not apply to room `id`: its reason is the
+    /// command's, without the batch's path.
+    fn command(id: &str, err: &RoomCommandError) -> Self {
+        let message = format!("room `{id}`: {err}");
+        let reason = message.len() - err.reason.len();
+        debug_assert!(message.ends_with(&err.reason), "a reason ends its message");
+        Self { message, reason }
     }
 
     /// What failed.
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    /// What failed without the room's name and, for a batch that did not
+    /// apply, without the command's path: ``[8, 31] is past the room's 40 ×
+    /// 24 cells`` of ``room `cave`: commands[0].move: objects[1].at: [8, 31]
+    /// is past the room's 40 × 24 cells``. A surface that names the edit in
+    /// its own words shows this.
+    #[must_use]
+    pub fn reason(&self) -> &str {
+        self.message.get(self.reason..).unwrap_or(&self.message)
     }
 }
 
@@ -326,7 +349,7 @@ impl World {
         let inverse = self
             .context_parts(id, &document)?
             .with(id, |context| document.apply(batch, context))
-            .map_err(|err| RoomPatchError::room(id, err))?;
+            .map_err(|err| RoomPatchError::command(id, &err))?;
         let tileset = tileset_of(self.rooms_with(id)?, id, &document)?;
         let prepared = self.prepare_patch(id, document, &tileset, false)?;
         let report = self.apply_patch(prepared);
@@ -361,7 +384,7 @@ impl World {
         let mut document = self.rooms_with(id)?.rooms[id].document.clone();
         self.context_parts(id, &document)?
             .with(id, |context| journal.undo(id, &mut document, context))
-            .map_err(|err| RoomPatchError::room(id, err))?;
+            .map_err(|err| RoomPatchError::command(id, &err))?;
         let tileset = tileset_of(self.rooms_with(id)?, id, &document)?;
         let prepared = self.prepare_patch(id, document, &tileset, false)?;
         let report = self.apply_patch(prepared);
@@ -392,7 +415,7 @@ impl World {
         let mut document = self.rooms_with(id)?.rooms[id].document.clone();
         self.context_parts(id, &document)?
             .with(id, |context| journal.redo(id, &mut document, context))
-            .map_err(|err| RoomPatchError::room(id, err))?;
+            .map_err(|err| RoomPatchError::command(id, &err))?;
         let tileset = tileset_of(self.rooms_with(id)?, id, &document)?;
         let prepared = self.prepare_patch(id, document, &tileset, false)?;
         let report = self.apply_patch(prepared);
@@ -740,18 +763,42 @@ fn same_object(a: &MapObject, b: &MapObject) -> bool {
     a.class == b.class && a.properties == b.properties && a.position == b.position
 }
 
+impl Room {
+    /// The entry a compiled object's error is about: its index in
+    /// `objects`, the object and what is wrong, without the compiled map's
+    /// own terms (``tilemap `cave`, layer `objects`, object 3``). `None`
+    /// for any other error, or an object the room lacks.
+    #[must_use]
+    pub fn object_of<'a>(
+        &'a self,
+        err: &'a PrefabError,
+    ) -> Option<(usize, &'a RoomObject, &'a str)> {
+        let PrefabError::Object {
+            layer,
+            object,
+            message,
+            ..
+        } = err
+        else {
+            return None;
+        };
+        if layer != ROOM_OBJECT_LAYER {
+            return None;
+        }
+        let index = (*object as usize).checked_sub(1)?;
+        let entry = self.objects.get(index)?;
+        Some((index, entry, message.as_str()))
+    }
+}
+
 /// A map object's error named by the room's entry: `objects[2] (`ball_1`)`.
 fn object_error(document: &Room, err: &PrefabError) -> String {
-    if let PrefabError::Object {
-        object, message, ..
-    } = err
-    {
-        let index = (*object as usize).saturating_sub(1);
-        if let Some(entry) = document.objects.get(index) {
-            return format!("objects[{index}] (`{}`): {message}", entry.id);
+    match document.object_of(err) {
+        Some((index, entry, message)) => {
+            format!("objects[{index}] (`{}`): {message}", entry.id)
         }
+        None => err.to_string(),
     }
-    err.to_string()
 }
 
 /// Spawns `prefab` now from `source`, taking what the World's spawn
