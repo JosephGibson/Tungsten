@@ -4,7 +4,7 @@ How a game's levels are made, changed and checked: room and tileset files, the `
 
 ## A room, its tileset and the manifest
 
-A room is one JSON file, listed in the manifest's `rooms` by its ID. Its tiles come from a tileset file, listed in `tilesets`, which names each tile by a sprite's ID. The smallest pair that draws and collides, on a new game's own sprites:
+A room is one JSON file, listed in the manifest's `rooms` by its ID. Its tiles come from a tileset file, listed in `tilesets`, which names each tile by a sprite's ID. `tungsten level new yard --size 24x14 --cell 32 --tile dummy` writes the pair to start from, a room with a render layer `art` and a collision layer `solid` and a tileset `tiles` holding that tile, and lists both in the manifest; batches build the rest. Written by hand, the smallest pair that draws and collides, on a new game's own sprites:
 
 ```json
 { "version": 1, "tiles": [{ "sprite": "dummy" }] }
@@ -54,14 +54,36 @@ Run it in the game's folder. A `<room>` is a `rooms` ID or a room file's path.
 
 | Verb | What it does | Needs the game's build |
 | --- | --- | --- |
+| `new <room>` | Makes a room file, `rooms/<room>.json` beside the manifest, with a render layer `art` and a collision layer `solid`, and lists it in the manifest, keeping the manifest's formatting. `--size <cols>x<rows>` (40x24), `--cell <px>` or `<w>x<h>` (the cell of the tileset's other rooms, else 16) and `--tileset <id>` (the game's only tileset) set it. With no tileset listed, or a `--tileset` the manifest lacks, it also writes that tileset, `tiles` by default, with a tile for each `--tile <sprite>`. It refuses an ID a room or a tilemap holds and a file that exists; `--dry-run` reports and writes nothing. | no |
 | `apply <room> <batch>` | Applies a batch of commands, a JSON array in a file or on stdin for `-`, writes the room in its canonical form and journals the batch. `apply <room> --undo` undoes the journal's newest batch and `apply <room> --redo` applies the newest undone one again. `--dry-run` checks and reports what would change and writes nothing; `--check` runs `level check` on the room after the write; `--inverse <file>` also writes the batch that undoes this one. | no |
-| `query <room> <id>` | Prints one entry. `query <room> --at <col>,<row>` prints what lies at a cell: each layer's tile, the shapes over it, the objects in it and the places holding it. `--json` prints JSON. | no |
+| `query <room>` | Lists every layer, shape, object and place with its geometry, a line each. `query <room> <id>` prints one entry, and `query <room> --at <col>,<row>` what lies at a cell: each layer's tile, the shapes over it, the objects in it and the places holding it. `--json` prints JSON. | no |
+| `map <room>` | Prints the room as text, a character a cell: `#` solid, `=` one-way, `/` and `\` slopes, `+` drawn only, `.` empty, a letter for each object and a digit for each place, listed under the map. `--rect <col>,<row>,<width>,<height>` prints those cells, which a room past 200 by 100 cells needs. | no |
 | `describe [<room>]` | Lists each room's layers and named things by kind, with its links. `--json` prints JSON. | no |
 | `check [<room>...]` | Runs the game's check and prints those rooms' findings, every room's with none named, and every room generator's (`--seeds`, `--seed` as `check` takes them). | yes |
 | `render <room> -o <png>` | Stages the room on an empty stage and captures it, with `--overlay`, `--size`, `--frame` and `--release` as `render` takes them. `--overlay physics` outlines what collides. | yes |
 | `generate <generator>` | Runs a room generator and writes its rooms as files (below). | yes |
 
 Exit codes: 0 when it worked, 1 when it found errors or failed, 2 on a usage mistake.
+
+`map` is the quickest look at a room without a render. The room above, a second gem added:
+
+```text
+$ tungsten level map yard --rect 0,9,24,5
+yard: 24 × 14 cells of 32 × 32 px, cells 0,9 to 23,13
+# solid  = one-way  / \ slope  + drawn only  . empty  a-z objects  1-9 places
+   0         1         2
+   012345678901234567890123
+ 9 ........................
+10 ........................
+11 ..1........a.b..........
+12 ########################
+13 ########################
+objects:
+  a gem_1 (gem) at 11, 11
+  b gem_2 (gem) at 13, 11
+places:
+  1 start point at 2, 11
+```
 
 ### Batches
 

@@ -5,9 +5,10 @@
 # builds, tests, smoke-runs, describes itself and runs a script there against
 # this checkout's engine, and `tungsten package` archives it; the archive's
 # binary smoke-runs too. Then two entries that leave their manifest's folder
-# must fail, a room must apply, query, describe, check and undo through
-# `tungsten level` (redo 7.12), and two seeded room errors and seven seeded
-# errors must fail as they should (RC-A7).
+# must fail, a room must be made, applied to, queried, mapped, described,
+# checked, undone and redone through `tungsten level` (redo 7.12), and two
+# seeded room errors and seven seeded errors must fail as they should
+# (RC-A7).
 #
 # The copy builds into this checkout's target folder with the workspace's
 # profiles (which `new` writes) and .cargo/config.toml, offline, so most
@@ -245,32 +246,14 @@ done
 rm "$copy/outside.png"
 echo "Paths leaving the manifest's folder (../outside.png, an absolute path): OK"
 
-# The room flow (redo 7.12): a tileset and a room `yard` on the game's own
-# `gem` sprite, listed in its manifest. `tungsten level` applies a batch
-# from a file and one from stdin, queries the room, describes it and checks
-# it clean, and `apply --undo` puts the file back byte for byte, `--redo`
-# and a second `--undo` after it; then two seeded room errors each fail
-# `level check` with its finding. The room, its tileset and the prefab's
-# edit leave before the seeded content errors.
-edit <<'EOF'
-import json, sys, pathlib
-assets = pathlib.Path(sys.argv[1]) / "assets"
-for folder, name, data in [
-    ("tilesets", "yard.json", {"version": 1, "tiles": [{"sprite": "gem"}]}),
-    ("rooms", "yard.json", {
-        "version": 1, "cell": [16, 16], "size": [20, 12], "tileset": "yard",
-        "layers": [{"name": "art"}, {"name": "solid", "kind": "collision"}],
-        "shapes": [{"id": "floor", "rect": [0, 10, 20, 2], "tile": "gem", "layers": ["art", "solid"]}],
-        "places": [{"id": "start", "point": [2, 9]}]}),
-]:
-    (assets / folder).mkdir(exist_ok=True)
-    (assets / folder / name).write_text(json.dumps(data, indent=2))
-manifest = assets / "manifest.json"
-data = json.loads(manifest.read_text())
-data["tilesets"] = {"yard": {"path": "tilesets/yard.json"}}
-data["rooms"] = {"yard": {"path": "rooms/yard.json"}}
-manifest.write_text(json.dumps(data, indent=2))
-EOF
+# The room flow (redo 7.12): `tungsten level new` makes a room `yard` and
+# a tileset on the game's own `gem` sprite and lists both in its manifest.
+# `tungsten level` then applies a batch from a file and one from stdin,
+# queries the room, maps it, describes it and checks it clean, and `apply
+# --undo` puts the file back byte for byte, `--redo` and a second `--undo`
+# after it; then two seeded room errors each fail `level check` with its
+# finding. The room, its tileset and the prefab's edit leave before the
+# seeded content errors.
 room="$copy/assets/rooms/yard.json"
 # Runs `tungsten level` in the copy, its output in $out.
 level() {
@@ -281,6 +264,26 @@ batch="$copy_root/batch.json"
 write_batch() {
   cat >"$batch"
 }
+if ! level new yard --size 20x12 --tile gem \
+  || ! grep -qxF 'wrote assets/tilesets/tiles.json: 1 tile (gem)' "$out" \
+  || ! grep -qxF "listed room \`yard\` and tileset \`tiles\` in assets/manifest.json" "$out" \
+  || [ ! -f "$room" ] || [ ! -f "$copy/assets/tilesets/tiles.json" ]; then
+  echo "error: tungsten level new did not make the room and its tileset:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if level new yard; then
+  echo "error: tungsten level new made a room that is listed already" >&2
+  exit 1
+fi
+write_batch <<<'[{ "place": { "shapes": { "id": "floor", "rect": [0, 10, 20, 2], "tile": "gem", "layers": ["art", "solid"] } } },
+  { "place": { "places": { "id": "start", "point": [2, 9] } } }]'
+if ! level apply yard "$batch" \
+  || [ "$(sed -n 1p "$out")" != "applied 2 commands to assets/rooms/yard.json:" ]; then
+  echo "error: tungsten level apply did not build the new room's floor:" >&2
+  cat "$out" >&2
+  exit 1
+fi
 write_batch <<<'[{ "place": { "objects": { "id": "dummy_1", "prefab": "dummy", "at": [4, 8] } } }]'
 if ! level apply yard "$batch" \
   || [ "$(sed -n 1p "$out")" != "applied 1 command to assets/rooms/yard.json:" ] \
@@ -317,6 +320,20 @@ if ! level query yard --at 8,4 || ! grep -qxF '  art: gem' "$out"; then
   cat "$out" >&2
   exit 1
 fi
+# The map shows the dummy at (7, 8), the painted cell and the floor.
+if ! level map yard || ! grep -qxF ' 8 .......a............' "$out" \
+  || ! grep -qxF ' 4 ........+...........' "$out" \
+  || ! grep -qxF '10 ####################' "$out" \
+  || ! grep -qxF '  a dummy_1 (dummy) at 7, 8' "$out"; then
+  echo "error: tungsten level map did not draw the room:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if ! level query yard || ! grep -qF 'dummy_1  dummy  at 7, 8' "$out"; then
+  echo "error: tungsten level query did not list the room's entries:" >&2
+  cat "$out" >&2
+  exit 1
+fi
 if ! level describe yard --json || ! python3 -I -c 'import json, sys; room = json.load(open(sys.argv[1]))["rooms"][0]; sys.exit(0 if room["id"] == "yard" and [o["id"] for o in room["objects"]] == ["dummy_1"] else 1)' "$out"; then
   echo "error: tungsten level describe --json did not list the room and its dummy:" >&2
   cat "$out" >&2
@@ -346,7 +363,7 @@ if ! level apply yard --undo || ! cmp -s "$room" "$placed"; then
   cat "$out" >&2
   exit 1
 fi
-echo "Room flow (level apply from a file and stdin, query, describe, check, apply --undo, --redo): OK"
+echo "Room flow (level new, apply from a file and stdin, query, map, describe, check, apply --undo, --redo): OK"
 
 # A seeded room error: the batch ($2) places an object `level check` must
 # fail naming ($3); then the batch is undone. $1 names it.
@@ -399,7 +416,7 @@ manifest = assets / "manifest.json"
 data = json.loads(manifest.read_text())
 del data["tilesets"], data["rooms"]
 manifest.write_text(json.dumps(data, indent=2))
-for name in ["rooms/yard.json", "tilesets/yard.json"]:
+for name in ["rooms/yard.json", "tilesets/tiles.json"]:
     (assets / name).unlink()
 for folder in ["rooms", "tilesets"]:
     (assets / folder).rmdir()

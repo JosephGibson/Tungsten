@@ -5,7 +5,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::check::Seeds;
-use crate::level::{ApplyEdit, LevelArgs};
+use crate::level::{ApplyEdit, DEFAULT_SIZE, LevelArgs, NewArgs};
 use crate::render::{self, RenderArgs};
 
 /// `tungsten --help`, which `api/tungsten-cli.txt` records.
@@ -34,8 +34,9 @@ Commands:
               Print the JSON Schema of the ui_screen, ui_theme, room or
               tileset file format, from this command line's engine
   level <verb>
-              Edit, read, check and render the game's rooms: apply,
-              query, describe, check or render, below
+              Make, edit, read, check and render the game's rooms: new,
+              apply, query, map, describe, check, generate or render,
+              below
 
 Options:
   -h, --help     Print this help
@@ -83,6 +84,16 @@ Options of schema:
   -o <path>         Write the schema to <path> instead
 
 Verbs of level, a <room> a rooms ID or a room file:
+  new <room>        Make a room file with a render layer and a collision
+                    layer, and list it in the manifest
+    --size <cols>x<rows>
+                    Its size in cells (default 40x24)
+    --cell <px>     A cell's size, <px> or <w>x<h> (default: that of the
+                    tileset's other rooms, else 16)
+    --tileset <id>  Its tileset (default: the game's only one; with none,
+                    a new one, tiles)
+    --tile <sprite> A tile of a new tileset, by its sprite; repeatable
+    --dry-run       Report what would be written; write nothing
   apply <room> <batch>
                     Apply a batch of commands (a file, or - for stdin),
                     write the room canonically and journal the batch
@@ -92,9 +103,14 @@ Verbs of level, a <room> a rooms ID or a room file:
     --dry-run       Check and report what would change; write nothing
     --check         Run level check on the room after the write
   query <room> [<id>]
-                    Print an entry, or with --at what lies at a cell
+                    Print every entry with its geometry, one entry by
+                    its ID, or with --at what lies at a cell
     --at <col>,<row>  The cell
     --json          Print JSON
+  map <room>        Print the room as text, a character a cell, with its
+                    objects and places lettered and listed
+    --rect <col>,<row>,<width>,<height>
+                    The cells to print; a room past 200x100 needs it
   describe [<room>] Print each room's layers and named things by kind
     --json          Print JSON
   check [<room>...] Run the game's check and print the rooms' findings
@@ -208,6 +224,20 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
     ),
     ("schema", &[("-o", Some("<path>"))]),
     (
+        "level new",
+        &[
+            ("--size", Some("<cols>x<rows>")),
+            ("--cell", Some("<px>")),
+            ("--tileset", Some("<id>")),
+            ("--tile", Some("<sprite>")),
+            ("--dry-run", None),
+        ],
+    ),
+    (
+        "level map",
+        &[("--rect", Some("<col>,<row>,<width>,<height>"))],
+    ),
+    (
         "level apply",
         &[
             ("--inverse", Some("<file>")),
@@ -248,7 +278,7 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
 ];
 
 /// The options a command may give more than once.
-const REPEATABLE: &[&str] = &["--after"];
+const REPEATABLE: &[&str] = &["--after", "--tile"];
 
 /// Parses the arguments after the program's name. `-h` or `--help`
 /// anywhere asks for the usage, then `-V` or `--version` anywhere for the
@@ -372,7 +402,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
 
 /// `level <verb>`'s arguments.
 fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
-    const VERBS: &str = "apply, query, describe, check, generate or render";
+    const VERBS: &str = "new, apply, query, map, describe, check, generate or render";
     let mut rest = rest.into_iter();
     let Some(verb) = rest.next() else {
         return Err(UsageError(format!("`level` needs a verb: {VERBS}")));
@@ -381,7 +411,11 @@ fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
         return Err(misplaced(&verb, Some("level")));
     }
     let verb = verb.to_string_lossy().into_owned();
-    if !["apply", "query", "describe", "check", "generate", "render"].contains(&verb.as_str()) {
+    if ![
+        "new", "apply", "query", "map", "describe", "check", "generate", "render",
+    ]
+    .contains(&verb.as_str())
+    {
         return Err(UsageError(format!("unknown level verb `{verb}`: {VERBS}")));
     }
     let command = format!("level {verb}");
@@ -408,6 +442,80 @@ fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
         )
     };
     let args = match verb.as_str() {
+        "new" => {
+            let size = match text("--size") {
+                None => DEFAULT_SIZE,
+                Some(size) => pair(&size)
+                    .filter(|[w, h]| (1..=4096).contains(w) && (1..=4096).contains(h))
+                    .ok_or_else(|| {
+                        UsageError(format!(
+                            "`--size {size}`: expected <cols>x<rows>, each 1 to 4096, as 40x24"
+                        ))
+                    })?,
+            };
+            let cell = match text("--cell") {
+                None => None,
+                Some(cell) => Some(
+                    pair(&cell)
+                        .or_else(|| cell.trim().parse().ok().map(|px| [px, px]))
+                        .filter(|[w, h]| *w >= 1 && *h >= 1)
+                        .ok_or_else(|| {
+                            UsageError(format!(
+                                "`--cell {cell}`: expected <px> or <w>x<h> in pixels, as 16 or 16x8"
+                            ))
+                        })?,
+                ),
+            };
+            let tiles: Vec<String> = options
+                .iter()
+                .filter(|(option, _)| *option == "--tile")
+                .filter_map(|(_, value)| value.as_ref())
+                .map(|value| value.to_string_lossy().into_owned())
+                .collect();
+            match positional.as_slice() {
+                [room] => LevelArgs::New(NewArgs {
+                    room: room.clone(),
+                    size,
+                    cell,
+                    tileset: text("--tileset"),
+                    tiles,
+                    dry_run: flag("--dry-run"),
+                }),
+                [] => {
+                    return Err(UsageError(
+                        "`level new` needs the new <room>'s ID".to_owned(),
+                    ));
+                }
+                _ => return Err(too_many(1)),
+            }
+        }
+        "map" => {
+            let rect = match text("--rect") {
+                None => None,
+                Some(rect) => {
+                    let numbers: Vec<u32> = rect
+                        .split(',')
+                        .filter_map(|part| part.trim().parse().ok())
+                        .collect();
+                    match (<[u32; 4]>::try_from(numbers), rect.split(',').count()) {
+                        (Ok(rect), 4) => Some(rect),
+                        _ => {
+                            return Err(UsageError(format!(
+                                "`--rect {rect}`: expected <col>,<row>,<width>,<height>, four whole numbers"
+                            )));
+                        }
+                    }
+                }
+            };
+            match positional.as_slice() {
+                [room] => LevelArgs::Map {
+                    room: room.clone(),
+                    rect,
+                },
+                [] => return Err(UsageError("`level map` needs a <room>".to_owned())),
+                _ => return Err(too_many(1)),
+            }
+        }
         "apply" => {
             let (undo, redo) = (flag("--undo"), flag("--redo"));
             if undo && redo {
@@ -536,6 +644,12 @@ fn seeds(text: &dyn Fn(&str) -> Option<String>) -> Result<Option<Seeds>, UsageEr
         },
         (None, None) => Ok(None),
     }
+}
+
+/// `<a>x<b>` as two whole numbers.
+fn pair(text: &str) -> Option<[u32; 2]> {
+    let (a, b) = text.split_once('x')?;
+    Some([a.trim().parse().ok()?, b.trim().parse().ok()?])
 }
 
 /// `<col>,<row>` as two whole numbers.

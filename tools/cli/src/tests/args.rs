@@ -384,13 +384,14 @@ fn level_verbs_parse_and_a_misplaced_option_fails() {
     assert_eq!(
         level(&[]),
         Err(UsageError(
-            "`level` needs a verb: apply, query, describe, check, generate or render".to_owned()
+            "`level` needs a verb: new, apply, query, map, describe, check, generate or render"
+                .to_owned()
         ))
     );
     assert_eq!(
         level(&["edit", "cave"]),
         Err(UsageError(
-            "unknown level verb `edit`: apply, query, describe, check, generate or render"
+            "unknown level verb `edit`: new, apply, query, map, describe, check, generate or render"
                 .to_owned()
         ))
     );
@@ -610,6 +611,114 @@ fn a_bare_dash_is_the_batch_on_stdin() {
         Err(UsageError("unknown option `-x`".to_owned()))
     );
     for word in ["--redo", "--dry-run", "--check", "- for stdin"] {
+        assert!(USAGE.contains(word), "{word}");
+    }
+}
+
+#[test]
+fn level_new_and_map_read_their_options() {
+    let level = |args: &[&str]| {
+        let mut all = vec!["level"];
+        all.extend_from_slice(args);
+        parse_str(&all)
+    };
+    assert_eq!(
+        level(&["new", "yard"]),
+        Ok(Command::Level(LevelArgs::New(NewArgs {
+            room: "yard".into(),
+            size: [40, 24],
+            cell: None,
+            tileset: None,
+            tiles: Vec::new(),
+            dry_run: false,
+        })))
+    );
+    assert_eq!(
+        level(&[
+            "new",
+            "yard",
+            "--size",
+            "24x14",
+            "--cell",
+            "32",
+            "--tileset",
+            "tiles",
+            "--tile",
+            "rock",
+            "--tile",
+            "moss",
+            "--dry-run",
+        ]),
+        Ok(Command::Level(LevelArgs::New(NewArgs {
+            room: "yard".into(),
+            size: [24, 14],
+            cell: Some([32, 32]),
+            tileset: Some("tiles".into()),
+            tiles: vec!["rock".into(), "moss".into()],
+            dry_run: true,
+        })))
+    );
+    assert_eq!(
+        level(&["new", "yard", "--cell", "16x8"]).map(|command| match command {
+            Command::Level(LevelArgs::New(args)) => args.cell,
+            _ => None,
+        }),
+        Ok(Some([16, 8]))
+    );
+    assert_eq!(
+        level(&["new"]),
+        Err(UsageError(
+            "`level new` needs the new <room>'s ID".to_owned()
+        ))
+    );
+    for size in ["24", "0x4", "24x5000", "axb"] {
+        assert_eq!(
+            level(&["new", "yard", "--size", size]),
+            Err(UsageError(format!(
+                "`--size {size}`: expected <cols>x<rows>, each 1 to 4096, as 40x24"
+            ))),
+            "{size}"
+        );
+    }
+    assert_eq!(
+        level(&["new", "yard", "--cell", "0"]),
+        Err(UsageError(
+            "`--cell 0`: expected <px> or <w>x<h> in pixels, as 16 or 16x8".to_owned()
+        ))
+    );
+    assert_eq!(
+        level(&["map", "cave", "--rect", "8,16,12,4"]),
+        Ok(Command::Level(LevelArgs::Map {
+            room: "cave".into(),
+            rect: Some([8, 16, 12, 4]),
+        }))
+    );
+    assert_eq!(
+        level(&["map", "cave"]),
+        Ok(Command::Level(LevelArgs::Map {
+            room: "cave".into(),
+            rect: None,
+        }))
+    );
+    for rect in ["8,16,12", "8,16,12,x", "1,2,3,4,5"] {
+        assert_eq!(
+            level(&["map", "cave", "--rect", rect]),
+            Err(UsageError(format!(
+                "`--rect {rect}`: expected <col>,<row>,<width>,<height>, four whole numbers"
+            ))),
+            "{rect}"
+        );
+    }
+    assert_eq!(
+        level(&["map"]),
+        Err(UsageError("`level map` needs a <room>".to_owned()))
+    );
+    for word in [
+        "new <room>",
+        "map <room>",
+        "--tile <sprite>",
+        "--rect <col>",
+    ] {
         assert!(USAGE.contains(word), "{word}");
     }
 }

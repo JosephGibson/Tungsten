@@ -861,3 +861,420 @@ fn a_write_that_fails_puts_back_the_files_before_it() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A game folder with no room: `manifest` as its `assets/manifest.json`.
+fn bare_game(manifest: &str) -> PathBuf {
+    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+    let dir = std::env::temp_dir().join(format!("tungsten_level_new_{}_{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("assets/sprites")).unwrap();
+    std::fs::write(dir.join("assets/manifest.json"), manifest).unwrap();
+    // The manifest's load wants each sprite's file there, not its pixels.
+    for sprite in ["rock", "moss"] {
+        std::fs::write(dir.join(format!("assets/sprites/{sprite}.png")), "").unwrap();
+    }
+    std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"bare\"\n").unwrap();
+    std::fs::write(
+        dir.join("tungsten.json"),
+        r#"{ "assets": { "manifest": "assets/manifest.json" } }"#,
+    )
+    .unwrap();
+    dir.canonicalize().unwrap()
+}
+
+const SPRITES: &str = r#"{
+  "sprites": {
+    "rock": { "path": "sprites/rock.png", "filter": "nearest" },
+    "moss": { "path": "sprites/moss.png", "filter": "nearest" }
+  }
+}
+"#;
+
+fn new_args(room: &str) -> NewArgs {
+    NewArgs {
+        room: room.to_owned(),
+        size: DEFAULT_SIZE,
+        cell: None,
+        tileset: None,
+        tiles: Vec::new(),
+        dry_run: false,
+    }
+}
+
+#[test]
+fn new_writes_a_room_its_tileset_and_the_manifests_entries() {
+    let dir = bare_game(SPRITES);
+    let game = Game::open(&dir).unwrap();
+    let args = NewArgs {
+        size: [24, 14],
+        cell: Some([32, 32]),
+        tiles: vec!["rock".to_owned(), "moss".to_owned()],
+        ..new_args("yard")
+    };
+    // A dry run reports and writes nothing.
+    let dry = NewArgs {
+        dry_run: true,
+        ..args.clone()
+    };
+    assert_eq!(
+        new::new(&game, &dry, &mut write_file).unwrap(),
+        "would write assets/rooms/yard.json: 24 \u{d7} 14 cells of 32 \u{d7} 32 px on tileset `tiles`, layers `art` (render) and `solid` (collision)\n\
+         would write assets/tilesets/tiles.json: 2 tiles (rock, moss)\n\
+         would list room `yard` and tileset `tiles` in assets/manifest.json\n\
+         dry run: nothing written"
+    );
+    assert!(!dir.join("assets/rooms").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("assets/manifest.json")).unwrap(),
+        SPRITES
+    );
+
+    let report = new::new(&game, &args, &mut write_file).unwrap();
+    assert!(
+        report.starts_with(
+            "wrote assets/rooms/yard.json: 24 \u{d7} 14 cells of 32 \u{d7} 32 px on tileset `tiles`"
+        ),
+        "{report}"
+    );
+    assert!(report.contains("listed room `yard` and tileset `tiles` in assets/manifest.json"));
+    assert!(
+        report.contains("next: tungsten level apply yard <batch>"),
+        "{report}"
+    );
+    // The manifest keeps every byte it had and gains the two sections.
+    assert_eq!(
+        std::fs::read_to_string(dir.join("assets/manifest.json")).unwrap(),
+        r#"{
+  "sprites": {
+    "rock": { "path": "sprites/rock.png", "filter": "nearest" },
+    "moss": { "path": "sprites/moss.png", "filter": "nearest" }
+  },
+  "rooms": {
+    "yard": { "path": "rooms/yard.json" }
+  },
+  "tilesets": {
+    "tiles": { "path": "tilesets/tiles.json" }
+  }
+}
+"#
+    );
+    // The room reads back canonical, on its tileset, a layer of each kind.
+    let text = std::fs::read_to_string(dir.join("assets/rooms/yard.json")).unwrap();
+    let room = Room::from_json(&text).unwrap();
+    assert_eq!(room.to_canonical(), text);
+    assert_eq!((room.cell, room.size), ([32, 32], [24, 14]));
+    assert_eq!(room.tileset.as_deref(), Some("tiles"));
+    let layers: Vec<&str> = room
+        .layers
+        .iter()
+        .map(|layer| layer.name.as_str())
+        .collect();
+    assert_eq!(layers, ["art", "solid"]);
+    let tileset = std::fs::read_to_string(dir.join("assets/tilesets/tiles.json")).unwrap();
+    let tileset = Tileset::from_json(&tileset).unwrap();
+    let tiles: Vec<&str> = tileset
+        .tiles
+        .iter()
+        .map(|tile| tile.sprite.as_str())
+        .collect();
+    assert_eq!(tiles, ["rock", "moss"]);
+
+    // The game now lists it, and a batch builds on it.
+    let game = Game::open(&dir).unwrap();
+    apply_batch(
+        &game,
+        "yard",
+        r#"[{ "paint": { "layer": "solid", "rect": [0, 12, 24, 2], "tile": "rock" } }]"#,
+    )
+    .unwrap();
+    // A second room takes the one tileset and its rooms' cell.
+    let report = new::new(&game, &new_args("cellar"), &mut write_file).unwrap();
+    assert!(
+        report.starts_with("wrote assets/rooms/cellar.json: 40 \u{d7} 24 cells of 32 \u{d7} 32 px on tileset `tiles`"),
+        "{report}"
+    );
+    assert!(report.contains("listed room `cellar` in assets/manifest.json"));
+    let manifest = std::fs::read_to_string(dir.join("assets/manifest.json")).unwrap();
+    assert!(
+        manifest.contains("    \"yard\": { \"path\": \"rooms/yard.json\" },\n    \"cellar\": { \"path\": \"rooms/cellar.json\" }\n  },"),
+        "{manifest}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn new_keeps_the_manifests_formatting() {
+    let add = |text: &str| new::insert_entry(text, "rooms", "yard", "rooms/yard.json").unwrap();
+    let entry = r#""yard": { "path": "rooms/yard.json" }"#;
+    // A `rooms` object with entries: after its last, at its indent.
+    assert_eq!(
+        add(
+            "{\n    \"rooms\": {\n        \"cave\": {\n            \"path\": \"rooms/cave.json\"\n        }\n    },\n    \"sounds\": {}\n}\n"
+        ),
+        format!(
+            "{{\n    \"rooms\": {{\n        \"cave\": {{\n            \"path\": \"rooms/cave.json\"\n        }},\n        {entry}\n    }},\n    \"sounds\": {{}}\n}}\n"
+        )
+    );
+    // An empty one.
+    assert_eq!(
+        add("{\n  \"rooms\": {},\n  \"sounds\": {}\n}\n"),
+        format!("{{\n  \"rooms\": {{\n    {entry}\n  }},\n  \"sounds\": {{}}\n}}\n")
+    );
+    // None: a section after the last member, tabs kept.
+    assert_eq!(
+        add("{\n\t\"sounds\": {\n\t\t\"hit\": { \"path\": \"a,}\\\"b.wav\" }\n\t}\n}"),
+        format!(
+            "{{\n\t\"sounds\": {{\n\t\t\"hit\": {{ \"path\": \"a,}}\\\"b.wav\" }}\n\t}},\n\t\"rooms\": {{\n\t\t{entry}\n\t}}\n}}"
+        )
+    );
+    // A one-line file stays one line.
+    assert_eq!(
+        add(r#"{ "sounds": {}, "rooms": { "cave": { "path": "rooms/cave.json" } } }"#),
+        format!(
+            r#"{{ "sounds": {{}}, "rooms": {{ "cave": {{ "path": "rooms/cave.json" }}, {entry} }} }}"#
+        )
+    );
+    assert_eq!(add("{}"), format!("{{ \"rooms\": {{ {entry} }} }}"));
+    // Each result is the old manifest plus the entry.
+    for text in [
+        "{\n  \"rooms\": { \"a\": { \"path\": \"a.json\" } },\n  \"x\": [1, {\"y\": \"}\"}]\n}",
+        "{\"rooms\":{}}",
+        "  {\r\n  \"x\": 1\r\n}\r\n",
+    ] {
+        let mut expected: Value = serde_json::from_str(text).unwrap();
+        if !expected["rooms"].is_object() {
+            expected["rooms"] = json!({});
+        }
+        expected["rooms"]["yard"] = json!({ "path": "rooms/yard.json" });
+        let added: Value = serde_json::from_str(&add(text)).unwrap();
+        assert_eq!(added, expected, "{text}");
+    }
+    // What is no object, or holds a `rooms` that is none, is refused.
+    for text in [
+        "[]",
+        "{ \"rooms\": [] }",
+        "{ \"rooms\": {} } trailing",
+        "{ \"rooms\": {",
+    ] {
+        assert_eq!(
+            new::insert_entry(text, "rooms", "yard", "rooms/yard.json"),
+            None,
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn new_refuses_a_taken_id_and_an_existing_file() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    let before = std::fs::read_to_string(dir.join("assets/manifest.json")).unwrap();
+    let refused = |args: &NewArgs| {
+        let err = new::new(&game, args, &mut write_file).unwrap_err();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("assets/manifest.json")).unwrap(),
+            before,
+            "the manifest as it was"
+        );
+        format!("{err:#}")
+    };
+    assert_eq!(
+        refused(&new_args("cave")),
+        "room `cave` is listed already (assets/rooms/cave.json); `tungsten level apply cave <batch>` edits it"
+    );
+    assert_eq!(
+        refused(&new_args("Attic")),
+        "`Attic` is no room ID: lowercase letters, digits and `_`, a letter first"
+    );
+    std::fs::write(dir.join("assets/rooms/attic.json"), "{}").unwrap();
+    assert_eq!(
+        refused(&new_args("attic")),
+        "'assets/rooms/attic.json' exists; a new room is written over no file"
+    );
+    // `--tile` belongs to a new tileset.
+    let tiled = NewArgs {
+        tiles: vec!["rock".to_owned()],
+        ..new_args("loft")
+    };
+    assert!(
+        refused(&tiled)
+            .starts_with("`--tile` names a new tileset's tiles, and tileset `cave` is listed"),
+    );
+    let unknown = NewArgs {
+        tileset: Some("fresh".to_owned()),
+        tiles: vec!["rokc".to_owned()],
+        ..new_args("loft")
+    };
+    assert!(
+        refused(&unknown)
+            .starts_with("`--tile rokc`: the manifest lists no sprite `rokc`; its sprites: "),
+    );
+    // A failed write leaves no file behind.
+    let mut calls = 0;
+    let mut failing = |path: &Path, text: Option<&str>| {
+        calls += 1;
+        if calls == 2 {
+            anyhow::bail!("the disk is full");
+        }
+        write_file(path, text)
+    };
+    let err = new::new(&game, &new_args("loft"), &mut failing).unwrap_err();
+    assert!(
+        format!("{err:#}").ends_with("the disk is full; nothing changed"),
+        "{err:#}"
+    );
+    assert!(!dir.join("assets/rooms/loft.json").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("assets/manifest.json")).unwrap(),
+        before
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn query_lists_a_rooms_entries() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    assert_eq!(
+        query(&game, "cave", None, None, false).unwrap(),
+        "cave (assets/rooms/cave.json): 40 \u{d7} 24 cells of 16 \u{d7} 16 px, tileset cave\n\
+         layers:\n  art    render, 1 cell override\n  solid  collision\n\
+         shapes:\n  floor   rect 0, 20, 40 by 4  tile rock  in art, solid\n  ramp    polygon 10,20 14,16 14,20  tile rock  in art, solid\n  slope   polygon 20,20 24,18 24,20  tile rock  in art, solid\n  bridge  line 28,14 34,14  tile plank  in art, solid\n  pit     rect 36, 20, 2 by 4  erases  in art, solid\n\
+         objects:\n  crate_1   crate  at 5, 19  on floor\n  lamp_1    lamp  at 8, 19\n  ball_1    ball  at 30.5, 12\n  walker_1  walker  at 2, 18.5\n\
+         places:\n  player_start  point at 2, 19\n  arena         area at 20, 4, 16 by 12\n  main          route player_start 16,19 exit\n  exit          point at 39, 19  to hall.west_door\n"
+    );
+    let listed: Value =
+        serde_json::from_str(&query(&game, "cave", None, None, true).unwrap()).unwrap();
+    assert_eq!(listed["room"], "cave");
+    assert_eq!(listed["size"], json!([40, 24]));
+    assert_eq!(
+        listed["layers"],
+        json!([
+            { "name": "art", "kind": "render", "cells": 1 },
+            { "name": "solid", "kind": "collision", "cells": 0 }
+        ])
+    );
+    assert_eq!(listed["objects"][0]["at"], json!([5.0, 19.0]));
+    assert_eq!(listed["places"][3]["to"], "hall.west_door");
+    assert_eq!(listed["shapes"].as_array().unwrap().len(), 5);
+    // An ID and a cell together are still refused.
+    let err = query(&game, "cave", Some("crate_1"), Some([1, 1]), false).unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "`query` takes an entry's <id> or a cell with --at, not both"
+    );
+    // A game with no room says how to make one.
+    let bare = bare_game(SPRITES);
+    assert_eq!(
+        describe(&Game::open(&bare).unwrap(), None, false).unwrap(),
+        "the manifest lists no room; `tungsten level new <room>` makes one and lists it\n"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&bare);
+}
+
+#[test]
+fn map_draws_solid_one_way_and_slope_cells_with_a_legend() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    let text = map::map(&game, "cave", None).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines[0], "cave: 40 \u{d7} 24 cells of 16 \u{d7} 16 px");
+    assert_eq!(
+        lines[1],
+        "# solid  = one-way  / \\ slope  + drawn only  . empty  a-z objects  1-9 places"
+    );
+    assert_eq!(lines[2], "   0         1         2         3");
+    assert_eq!(lines[3], "   0123456789012345678901234567890123456789");
+    let row = |n: usize| lines[4 + n];
+    assert_eq!(
+        row(4),
+        " 4 ....................2...................",
+        "the area's corner"
+    );
+    assert_eq!(
+        row(12),
+        "12 ..............................c.........",
+        "a ball"
+    );
+    assert_eq!(
+        row(14),
+        "14 ............................=======.....",
+        "the plank bridge"
+    );
+    assert_eq!(
+        row(17),
+        "17 ............/#..........................",
+        "the ramp"
+    );
+    assert_eq!(
+        row(19),
+        "19 ..3..a..b./###..+...//##...............4",
+        "the route's first stop over the point it names, a drawn-only cell, the 2:1 slope"
+    );
+    assert_eq!(
+        row(20),
+        "20 ####################################..##",
+        "the pit"
+    );
+    assert_eq!(
+        &lines[28..],
+        [
+            "objects:",
+            "  a crate_1 (crate) at 5, 19",
+            "  b lamp_1 (lamp) at 8, 19",
+            "  c ball_1 (ball) at 30.5, 12",
+            "  d walker_1 (walker) at 2, 18.5",
+            "places:",
+            "  1 player_start point at 2, 19",
+            "  2 arena area at 20, 4, 16 by 12",
+            "  3 main route of 3 stops",
+            "  4 exit point at 39, 19 to hall.west_door",
+        ]
+    );
+    // A window prints its cells alone, the ruler from its first column.
+    let text = map::map(&game, "cave", Some([8, 16, 12, 4])).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(
+        &lines[..8],
+        [
+            "cave: 40 \u{d7} 24 cells of 16 \u{d7} 16 px, cells 8,16 to 19,19",
+            "# solid  = one-way  / \\ slope  + drawn only  . empty  a-z objects  1-9 places",
+            "     1",
+            "   890123456789",
+            "16 ...../......",
+            "17 ..../#......",
+            "18 .../##......",
+            "19 b./###..+...",
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn map_asks_for_a_rect_past_its_bounds() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    let wide = NewArgs {
+        size: [300, 10],
+        ..new_args("wide")
+    };
+    new::new(&game, &wide, &mut write_file).unwrap();
+    let game = Game::open(&dir).unwrap();
+    let err = map::map(&game, "wide", None).unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "room `wide` is 300 \u{d7} 10 cells and `map` prints at most 200 \u{d7} 100: give `--rect <col>,<row>,<width>,<height>`, as `--rect 0,0,200,10`"
+    );
+    let text = map::map(&game, "wide", Some([150, 0, 200, 10])).unwrap();
+    assert!(
+        text.starts_with("wide: 300 \u{d7} 10 cells of 16 \u{d7} 16 px, cells 150,0 to 299,9\n"),
+        "a window is clipped to the room: {text}"
+    );
+    let err = map::map(&game, "cave", Some([40, 0, 4, 4])).unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "`--rect 40,0,4,4` holds no cell of room `cave`'s 40 \u{d7} 24 cells"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

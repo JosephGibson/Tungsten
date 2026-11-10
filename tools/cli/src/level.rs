@@ -1,7 +1,9 @@
-//! `tungsten level` (redo 7.12): a game's rooms edited, read, checked and
-//! rendered from the command line.
+//! `tungsten level` (redo 7.12): a game's rooms made, edited, read, checked
+//! and rendered from the command line.
 //!
-//! `apply`, `query` and `describe` read the game's files with this command
+//! `new` ([`new`](self::new)) writes a room to start from and lists it in
+//! the manifest; `map` ([`map`](self::map)) prints a room as text.
+//! `new`, `apply`, `query`, `map` and `describe` read the game's files with this command
 //! line's own engine, as `schema` does, so they need no build: the manifest
 //! `tungsten.json`'s `assets.manifest` names (`assets/manifest.json` when it
 //! names none), its tilesets, physics layer names and prefab IDs. `apply`
@@ -42,6 +44,11 @@ use tungsten_core::physics::PhysicsLayers;
 use crate::check;
 use crate::render::{self, RenderArgs};
 
+mod map;
+mod new;
+
+pub(crate) use new::{DEFAULT_SIZE, NewArgs};
+
 /// `level`'s verb and its arguments.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum LevelArgs {
@@ -53,6 +60,13 @@ pub(crate) enum LevelArgs {
         inverse: Option<PathBuf>,
         dry_run: bool,
         check: bool,
+    },
+    /// `new <room> [--size] [--cell] [--tileset] [--tile]... [--dry-run]`.
+    New(NewArgs),
+    /// `map <room> [--rect <col>,<row>,<w>,<h>]`.
+    Map {
+        room: String,
+        rect: Option<[u32; 4]>,
     },
     /// `query <room> [<id>] [--at <col>,<row>] [--json]`.
     Query {
@@ -121,6 +135,14 @@ pub(crate) fn run(dir: &Path, args: &LevelArgs) -> anyhow::Result<bool> {
                 // further batch, or an undo, should fix.
                 return check_rooms(dir, std::slice::from_ref(room), None);
             }
+            Ok(true)
+        }
+        LevelArgs::New(args) => {
+            println!("{}", new::new(&Game::open(dir)?, args, &mut write_file)?);
+            Ok(true)
+        }
+        LevelArgs::Map { room, rect } => {
+            print!("{}", map::map(&Game::open(dir)?, room, *rect)?);
             Ok(true)
         }
         LevelArgs::Query { room, id, at, json } => {
@@ -736,8 +758,148 @@ pub(crate) fn query(
             }
             Ok(cell_text(&target.id, &cell))
         }
-        _ => bail!("`query` names an entry's <id> or a cell with --at, one of them"),
+        (None, None) => listing(game, &target, &room, json),
+        (Some(_), Some(_)) => {
+            bail!("`query` takes an entry's <id> or a cell with --at, not both")
+        }
     }
+}
+
+/// Every layer, shape, object and place of `room` with its geometry: as
+/// text a line each, as JSON the entries whole.
+fn listing(game: &Game, target: &Target, room: &Room, json: bool) -> anyhow::Result<String> {
+    let kind = |layer: &tungsten_core::assets::RoomLayer| {
+        serde_json::to_value(layer.kind).unwrap_or_default()
+    };
+    if json {
+        let value = json!({
+            "room": target.id,
+            "file": game.relative(&target.path),
+            "cell": room.cell,
+            "size": room.size,
+            "tileset": room.tileset,
+            "layers": room.layers.iter().map(|layer| json!({
+                "name": layer.name,
+                "kind": kind(layer),
+                "cells": layer.cells.len(),
+            })).collect::<Vec<_>>(),
+            "shapes": room.shapes,
+            "objects": room.objects,
+            "places": room.places,
+        });
+        return Ok(format!("{}\n", serde_json::to_string_pretty(&value)?));
+    }
+    let points = |points: &[[u32; 2]]| {
+        let listed: Vec<String> = points.iter().map(|[x, y]| format!("{x},{y}")).collect();
+        listed.join(" ")
+    };
+    // Each section's rows: an ID, then what follows it.
+    let mut sections: Vec<(&str, Vec<(String, String)>)> = Vec::new();
+    sections.push((
+        "layers",
+        (room.layers.iter())
+            .map(|layer| {
+                let overrides = match layer.cells.len() {
+                    0 => String::new(),
+                    n => format!(", {}", count(n, "cell override")),
+                };
+                (
+                    layer.name.clone(),
+                    format!("{}{overrides}", text(&kind(layer))),
+                )
+            })
+            .collect(),
+    ));
+    sections.push((
+        "shapes",
+        (room.shapes.iter())
+            .map(|shape| {
+                let geometry = if let Some([x, y, w, h]) = shape.rect {
+                    format!("rect {x}, {y}, {w} by {h}")
+                } else if let Some(polygon) = &shape.polygon {
+                    format!("polygon {}", points(polygon))
+                } else {
+                    format!("line {}", points(shape.line.as_deref().unwrap_or_default()))
+                };
+                let tile = (shape.tile.as_ref())
+                    .map_or_else(|| "erases".to_owned(), |tile| format!("tile {tile}"));
+                (
+                    shape.id.clone(),
+                    format!("{geometry}  {tile}  in {}", shape.layers.join(", ")),
+                )
+            })
+            .collect(),
+    ));
+    sections.push((
+        "objects",
+        (room.objects.iter())
+            .map(|object| {
+                let mut rest = format!("{}  at {}, {}", object.prefab, object.at[0], object.at[1]);
+                if let Some(shape) = &object.on {
+                    let _ = write!(rest, "  on {shape}");
+                }
+                if !object.set.is_empty() {
+                    let set: Vec<String> = (object.set.iter())
+                        .map(|(path, value)| format!("{path}={value}"))
+                        .collect();
+                    let _ = write!(rest, "  set {}", set.join(" "));
+                }
+                if let Some(generator) = &object.generator {
+                    let _ = write!(rest, "  generator {generator}");
+                }
+                (object.id.clone(), rest)
+            })
+            .collect(),
+    ));
+    sections.push((
+        "places",
+        (room.places.iter())
+            .map(|place| {
+                let mut rest = if let Some([x, y]) = place.point {
+                    format!("point at {x}, {y}")
+                } else if let Some([x, y, w, h]) = place.rect {
+                    format!("area at {x}, {y}, {w} by {h}")
+                } else {
+                    let stops: Vec<String> = (place.route.iter().flatten())
+                        .map(|stop| match stop {
+                            RouteStop::Point([x, y]) => format!("{x},{y}"),
+                            RouteStop::Place(id) => id.clone(),
+                            _ => "?".to_owned(),
+                        })
+                        .collect();
+                    format!("route {}", stops.join(" "))
+                };
+                if let Some(to) = &place.to {
+                    let _ = write!(rest, "  to {to}");
+                }
+                if let Some(by) = &place.by {
+                    let _ = write!(rest, "  by {by}");
+                }
+                (place.id.clone(), rest)
+            })
+            .collect(),
+    ));
+    let mut out = format!(
+        "{} ({}): {} \u{d7} {} cells of {} \u{d7} {} px{}\n",
+        target.id,
+        game.relative(&target.path),
+        room.size[0],
+        room.size[1],
+        room.cell[0],
+        room.cell[1],
+        (room.tileset.as_ref()).map_or_else(String::new, |tileset| format!(", tileset {tileset}"))
+    );
+    for (name, rows) in sections {
+        if rows.is_empty() {
+            continue;
+        }
+        let width = rows.iter().map(|(id, _)| id.len()).max().unwrap_or(0);
+        let _ = writeln!(out, "{name}:");
+        for (id, rest) in rows {
+            let _ = writeln!(out, "  {id:width$}  {rest}");
+        }
+    }
+    Ok(out)
 }
 
 /// Entry `id`'s kind, index and JSON.
@@ -951,6 +1113,11 @@ pub(crate) fn describe(game: &Game, arg: Option<&str>, json: bool) -> anyhow::Re
         ));
     }
     let mut out = String::new();
+    if rooms.is_empty() {
+        out.push_str(
+            "the manifest lists no room; `tungsten level new <room>` makes one and lists it\n",
+        );
+    }
     for room in &rooms {
         let _ = writeln!(
             out,
