@@ -23,8 +23,9 @@
 //! the user folder's `debug_windows.json` (`WindowPlacements`), in
 //! OS-logical units, else it docks at its view's corner: the HUD top left,
 //! the systems overlay top right, the inspector bottom left, the UI
-//! inspector bottom right and the log console as a strip along the bottom,
-//! each given a fixed height before the layout so that no two overlap at a
+//! inspector bottom right, the level editor (redo 7.12) top right below
+//! the overlay and the log console as a strip along the bottom, each given
+//! a fixed height before the layout so that no two overlap at a
 //! debug viewport of 960×540 units or more. A saved place is read again
 //! when the debug scale moves, clamped again with the window's measured
 //! size after its first layout and whenever the viewport changes, and
@@ -1688,9 +1689,14 @@ pub(crate) fn update_with(world: &mut World, paint: Option<&PaintList>) {
     if let Some(console) = world.get_resource_mut::<LogConsole>() {
         console.drain();
     }
-    let active = world
-        .get_resource::<DebugHud>()
-        .is_some_and(|hud| hud.enabled || hud.window.is_some())
+    // The level editor first: its toggle, and while open its edits and view
+    // (redo 7.12); at once back while it is closed and its key is up.
+    crate::level_editor::update(world);
+    let editor = crate::level_editor::active(world);
+    let active = editor
+        || world
+            .get_resource::<DebugHud>()
+            .is_some_and(|hud| hud.enabled || hud.window.is_some())
         || world
             .get_resource::<SystemTimingOverlay>()
             .is_some_and(|overlay| overlay.enabled || overlay.window.is_some())
@@ -1811,6 +1817,12 @@ pub(crate) fn update_with(world: &mut World, paint: Option<&PaintList>) {
     if let Some(mut inspector) = world.remove_resource::<UiInspector>() {
         inspector.update_window(world, &mut frame, paint);
         world.insert_resource(inspector);
+    }
+    // Only while it shows or keeps a window, so the other views' frames
+    // move no resource of its.
+    if editor && let Some(mut level) = world.remove_resource::<crate::level_editor::LevelEditor>() {
+        level.update_window(world, &mut frame);
+        world.insert_resource(level);
     }
     let docked = frame.dock();
     let save_warned = frame.save_warned;

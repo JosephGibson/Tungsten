@@ -795,6 +795,11 @@ impl App {
         // M57: the log console on the logger's feed, and the UI inspector.
         world.insert_resource(LogConsole::with_feed(console_feed));
         world.insert_resource(UiInspector::default());
+        // Redo 7.12: the level editor, where the files it writes are
+        // watched.
+        world.insert_resource(crate::level_editor::LevelEditor::new(
+            config.assets.hot_reload_or(cfg!(debug_assertions)),
+        ));
         world.insert_resource(placements);
         world.insert_resource(default_inspect_registry());
         // M48: the components scene entries name, with those the default
