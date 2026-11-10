@@ -760,6 +760,40 @@ fn an_apply_reports_each_command() {
 }
 
 #[test]
+fn an_apply_names_the_rooms_that_share_its_file() {
+    let dir = game();
+    // A second ID on `cave`'s file, as a manifest may list.
+    let path = dir.join("assets/manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    manifest["rooms"]["twin"] = manifest["rooms"]["cave"].clone();
+    std::fs::write(&path, manifest.to_string()).unwrap();
+    let game = Game::open(&dir).unwrap();
+    let dry = apply(
+        &game,
+        "cave",
+        NUDGE,
+        &ApplyOptions {
+            inverse: None,
+            dry_run: true,
+        },
+        &mut write_file,
+    )
+    .unwrap();
+    let note = "\nnote: room `twin` is listed on this file too and changes with it\n";
+    assert!(dry.contains(note), "{dry}");
+    let applied = apply_batch(&game, "twin", NUDGE).unwrap();
+    assert!(
+        applied
+            .contains("\nnote: room `cave` is listed on this file too and changes with it\nundo: "),
+        "{applied}"
+    );
+    // A room on a file of its own says nothing.
+    assert!(!apply_batch(&game, "hall", "[]").unwrap().contains("note:"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn an_inverse_file_that_is_the_room_or_a_journal_is_refused() {
     let dir = game();
     let game = Game::open(&dir).unwrap();

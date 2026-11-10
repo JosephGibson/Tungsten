@@ -267,6 +267,28 @@ impl Game {
         })
     }
 
+    /// A report's line naming the other rooms the manifest lists on
+    /// `target`'s file, each of which an edit of it changes too; nothing
+    /// for a file of its own. The level editor holds such rooms read only,
+    /// where a write would change a second live room under its journal.
+    fn sharing(&self, target: &Target) -> String {
+        let same = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let file = same(&target.path);
+        let mut others: Vec<String> = (self.manifest.rooms.iter())
+            .filter(|(id, entry)| **id != target.id && same(&entry.path) == file)
+            .map(|(id, _)| format!("`{id}`"))
+            .collect();
+        others.sort();
+        match others.as_slice() {
+            [] => String::new(),
+            [one] => format!("\nnote: room {one} is listed on this file too and changes with it"),
+            many => format!(
+                "\nnote: rooms {} are listed on this file too and change with it",
+                many.join(", ")
+            ),
+        }
+    }
+
     /// The room file at `target`, read and checked.
     fn room(&self, target: &Target) -> anyhow::Result<(String, Room)> {
         let text = std::fs::read_to_string(&target.path)
@@ -441,10 +463,13 @@ fn write_set(game: &Game, set: &[Write], write: &mut Writer<'_>) -> anyhow::Resu
                 stuck.join(" and ")
             )
         };
+        // The cause alone: the error's own text names the file again, by
+        // its whole path, and `{err:#}` would print the cause twice.
         bail!(
-            "cannot write {} '{}': {err:#}; {back}",
+            "cannot write {} '{}': {}; {back}",
             file.what,
-            game.relative(&file.path)
+            game.relative(&file.path),
+            err.root_cause()
         );
     }
     Ok(())
@@ -515,9 +540,10 @@ pub(crate) fn apply(
     let after = room.to_canonical();
     let file = game.relative(&target.path);
     let commands = count(batch.len(), "command");
+    let shared = game.sharing(&target);
     if options.dry_run {
         return Ok(format!(
-            "would apply {commands} to {file}:{}\ndry run: nothing written",
+            "would apply {commands} to {file}:{}{shared}\ndry run: nothing written",
             summary(&batch)
         ));
     }
@@ -571,7 +597,7 @@ pub(crate) fn apply(
         String::new()
     };
     Ok(format!(
-        "applied {commands} to {file}:{}\nundo: tungsten level apply {} --undo{check}",
+        "applied {commands} to {file}:{}{shared}\nundo: tungsten level apply {} --undo{check}",
         summary(&batch),
         target.id
     ))
@@ -1503,7 +1529,11 @@ pub(crate) fn finish_generation(
             } else {
                 format!("and could not put back {}", failed.join(", "))
             };
-            bail!("cannot write '{}': {err:#}; {back}", game.relative(path));
+            bail!(
+                "cannot write '{}': {}; {back}",
+                game.relative(path),
+                err.root_cause()
+            );
         }
     }
     let mut lines = Vec::new();
