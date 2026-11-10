@@ -50,7 +50,7 @@ The game spawns a room by its ID, as it spawns a map: `world.spawn_room("yard", 
 
 ## `tungsten level`
 
-Run it in the game's folder. A `<room>` is a `rooms` ID or a room file's path.
+Run it in the game's folder. A `<room>` is a `rooms` ID or a room file's path. `tungsten level --help` prints a worked example, every verb and the batch commands, and `tungsten level <verb> --help` one verb's; a mistake is answered with its reason and that verb's usage alone.
 
 | Verb | What it does | Needs the game's build |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ Run it in the game's folder. A `<room>` is a `rooms` ID or a room file's path.
 | `map <room>` | Prints the room as text, a character a cell: `#` solid, `=` one-way, `/` and `\` slopes, `+` drawn only, `.` empty, a letter for each object and a digit for each place, listed under the map. `--rect <col>,<row>,<width>,<height>` prints those cells, which a room past 200 by 100 cells needs. | no |
 | `describe [<room>]` | Lists each room's layers and named things by kind, with its links. `--json` prints JSON. | no |
 | `check [<room>...]` | Runs the game's check and prints those rooms' findings, every room's with none named, and every room generator's (`--seeds`, `--seed` as `check` takes them). | yes |
-| `render <room> -o <png>` | Stages the room on an empty stage and captures it, with `--overlay`, `--size`, `--frame` and `--release` as `render` takes them. `--overlay physics` outlines what collides. | yes |
+| `render <room> -o <png>` | Stages the room on an empty stage and captures it, with `--overlay`, `--size`, `--frame`, `--save-script` and `--release` as `render` takes them. `--overlay physics` outlines what collides; `--save-script <file>` keeps the script it ran, its `stage` and `room` steps a start for one of your own. | yes |
 | `generate <generator>` | Runs a room generator and writes its rooms as files (below). | yes |
 
 Exit codes: 0 when it worked, 1 when it found errors or failed, 2 on a usage mistake.
@@ -87,7 +87,7 @@ places:
 
 ### Batches
 
-A batch is a JSON array of commands, each an object with one verb. Every command is checked against the room as the earlier ones leave it, and nothing is written unless all pass; an error names its command and field, as `commands[1].move.id`, and the nearest name when one is near: ``no entry `gaurd`; did you mean `guard`?``. A tile the tileset lacks lists a small tileset's tiles.
+A batch is a JSON array of commands, each an object with one verb. `tungsten schema batch` prints its JSON Schema, every field described and every verb with an example. Every command is checked against the room as the earlier ones leave it, and nothing is written unless all pass; an error names its command and field, as `commands[1].move.id`, and the nearest name when one is near: ``no entry `gaurd`; did you mean `guard`?``. A tile the tileset lacks lists a small tileset's tiles.
 
 | Verb | Fields | Example |
 | --- | --- | --- |
@@ -124,7 +124,7 @@ undo: tungsten level apply yard --undo
 
 ## In a script
 
-`tungsten run --script` stages and edits rooms in the running game ([getting started](getting-started.md#script-render-and-describe) has the script's other verbs):
+`tungsten run --script` stages and edits rooms in the running game ([getting started](getting-started.md#script-render-and-describe) has the script's other verbs, and `tungsten schema script` every verb's value with an example):
 
 | Step | Value |
 | --- | --- |

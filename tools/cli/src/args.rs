@@ -8,8 +8,86 @@ use crate::check::Seeds;
 use crate::level::{ApplyEdit, DEFAULT_SIZE, LevelArgs, NewArgs};
 use crate::render::{self, RenderArgs};
 
+/// The `level` verbs with their options, as `tungsten --help` and
+/// `tungsten level --help` both print them.
+macro_rules! level_verbs {
+    () => {
+        "\
+Verbs of level, a <room> a rooms ID or a room file:
+  new <room>        Make a room file with a render layer and a collision
+                    layer, and list it in the manifest
+    --size <cols>x<rows>
+                    Its size in cells (default 40x24)
+    --cell <px>     A cell's size, <px> or <w>x<h> (default: that of the
+                    tileset's other rooms, else 16)
+    --tileset <id>  Its tileset (default: the game's only one; with none,
+                    a new one, tiles)
+    --tile <sprite> A tile of a new tileset, by its sprite; repeatable
+    --dry-run       Report what would be written; write nothing
+  apply <room> <batch>
+                    Apply a batch of commands (a file, or - for stdin),
+                    write the room canonically and journal the batch
+    --inverse <file>  Also write the batch that undoes it
+    --undo          Undo the journal's newest batch instead of a batch
+    --redo          Apply the newest undone batch again instead
+    --dry-run       Check and report what would change; write nothing
+    --check         Run level check on the room after the write
+  query <room> [<id>]
+                    Print every entry with its geometry, one entry by
+                    its ID, or with --at what lies at a cell
+    --at <col>,<row>  The cell
+    --json          Print JSON
+  map <room>        Print the room as text, a character a cell, with its
+                    objects and places lettered and listed
+    --rect <col>,<row>,<width>,<height>
+                    The cells to print; a room past 200x100 needs it
+  describe [<room>] Print each room's layers and named things by kind
+    --json          Print JSON
+  check [<room>...] Run the game's check and print the rooms' findings
+                    and every room generator's, with --seeds and --seed
+                    as check's
+  generate <generator>
+                    Write a generator's rooms as room files, every object
+                    marked; a regenerated room keeps its author's objects
+    --seed <seed>   The seed (default 0)
+    --prefix <prefix> The rooms' ID prefix (default the generator's ID)
+    --into <folder> Where new rooms go (default the manifest's rooms/)
+    --regenerate    Rewrite the listed rooms it generates
+  render <room>     Render the room on an empty stage to a PNG; with
+                    -o, --overlay, --size, --frame, --save-script and
+                    --release as render's
+"
+    };
+}
+
+/// The batch commands in brief, as `tungsten level --help` and `tungsten
+/// level apply --help` print them.
+macro_rules! batch_commands {
+    () => {
+        "\
+Batch commands, each an object with one verb; a batch is a JSON array:
+  place      {\"objects\" | \"shapes\" | \"places\" | \"layers\": <entry>,
+              \"index\"?}: an entry as the room file writes it
+  move       {\"id\", \"by\": [dx, dy]} or {\"id\", \"to\": [x, y]}
+  set        {\"id\" | \"layer\"?, \"path\", \"value\"}; an object's override
+             is \"path\": \"set.<component>.<field>\"; null removes it
+  delete     {\"id\"} or {\"layer\"}
+  duplicate  {\"id\", \"as\", \"by\"?}
+  paint      {\"layer\", \"rect\": [col, row, w, h] | \"cells\": [[col, row]],
+              \"tile\"}: a tile by its sprite, over cells of a layer
+  erase      {\"layer\", \"rect\" | \"cells\"}
+  link       {\"id\", \"to\": \"<room>.<place>\" | null}
+  rename     {\"id\", \"to\"}
+Positions are in cells from the room's top-left, x right and y down.
+`tungsten schema batch` prints every field with its description and an
+example, and `tungsten schema room` the room file's.
+"
+    };
+}
+
 /// `tungsten --help`, which `api/tungsten-cli.txt` records.
-pub(crate) const USAGE: &str = "\
+pub(crate) const USAGE: &str = concat!(
+    "\
 Usage: tungsten <command>
 
 Commands:
@@ -31,8 +109,9 @@ Commands:
               a contact sheet, a scene or a point of its world, once or as
               a loop of frames
   schema <name>
-              Print the JSON Schema of the ui_screen, ui_theme, room or
-              tileset file format, from this command line's engine
+              Print the JSON Schema of a file format, from this command
+              line's engine: ui_screen, ui_theme, room, tileset, batch (a
+              level batch) or script (a run script)
   level <verb>
               Make, edit, read, check and render the game's rooms: new,
               apply, query, map, describe, check, generate or render,
@@ -83,56 +162,207 @@ Options of render, one of --sheet, --scene, --at and --screen, and -o:
 Options of schema:
   -o <path>         Write the schema to <path> instead
 
-Verbs of level, a <room> a rooms ID or a room file:
-  new <room>        Make a room file with a render layer and a collision
-                    layer, and list it in the manifest
-    --size <cols>x<rows>
-                    Its size in cells (default 40x24)
-    --cell <px>     A cell's size, <px> or <w>x<h> (default: that of the
-                    tileset's other rooms, else 16)
-    --tileset <id>  Its tileset (default: the game's only one; with none,
-                    a new one, tiles)
-    --tile <sprite> A tile of a new tileset, by its sprite; repeatable
-    --dry-run       Report what would be written; write nothing
-  apply <room> <batch>
-                    Apply a batch of commands (a file, or - for stdin),
-                    write the room canonically and journal the batch
-    --inverse <file>  Also write the batch that undoes it
-    --undo          Undo the journal's newest batch instead of a batch
-    --redo          Apply the newest undone batch again instead
-    --dry-run       Check and report what would change; write nothing
-    --check         Run level check on the room after the write
-  query <room> [<id>]
-                    Print every entry with its geometry, one entry by
-                    its ID, or with --at what lies at a cell
-    --at <col>,<row>  The cell
-    --json          Print JSON
-  map <room>        Print the room as text, a character a cell, with its
-                    objects and places lettered and listed
-    --rect <col>,<row>,<width>,<height>
-                    The cells to print; a room past 200x100 needs it
-  describe [<room>] Print each room's layers and named things by kind
-    --json          Print JSON
-  check [<room>...] Run the game's check and print the rooms' findings
-                    and every room generator's
-  generate <generator>
-                    Write a generator's rooms as room files, every object
-                    marked; a regenerated room keeps its author's objects
-    --seed <seed>   The seed (default 0)
-    --prefix <prefix> The rooms' ID prefix (default the generator's ID)
-    --into <folder> Where new rooms go (default the manifest's rooms/)
-    --regenerate    Rewrite the listed rooms it generates
-  render <room>     Render the room on an empty stage to a PNG; with
-                    -o, --overlay, --size, --frame and --release as render's
+",
+    level_verbs!(),
+    "
+`tungsten level --help` adds the batch commands and a worked example.
 
 Run every command but new and schema in the game's folder. They need
-the game's engine to be the version of this command line.";
+the game's engine to be the version of this command line."
+);
+
+/// `tungsten level --help`, which `api/tungsten-cli.txt` records too: a
+/// worked example first, then the verbs and the batch commands.
+pub(crate) const LEVEL_USAGE: &str = concat!(
+    "\
+Usage: tungsten level <verb> [arguments]
+
+Make, edit, read, check and render the game's rooms. A room is a JSON file
+listed in the manifest's rooms. Every edit is a batch of commands, checked
+whole before anything is written, journaled, and undone and redone.
+
+A room from nothing, on a new game's own sprites and prefabs:
+  tungsten level new yard --size 24x14 --cell 32 --tile dummy
+  tungsten level apply yard - <<'EOF'
+  [{ \"place\": { \"shapes\": {
+       \"id\": \"floor\", \"rect\": [0, 12, 24, 2], \"tile\": \"dummy\",
+       \"layers\": [\"art\", \"solid\"] } } },
+   { \"place\": { \"objects\": {
+       \"id\": \"gem_1\", \"prefab\": \"gem\", \"at\": [5, 11] } } }]
+  EOF
+  tungsten level map yard
+  tungsten level check yard
+  tungsten level render yard -o yard.png
+
+",
+    level_verbs!(),
+    "\n",
+    batch_commands!(),
+    "
+Exit codes: 0 done, 1 an error or a finding, 2 a usage mistake."
+);
+
+/// The `level` verbs, in the order the usage lists them.
+pub(crate) const LEVEL_VERBS: [&str; 8] = [
+    "new", "apply", "query", "map", "describe", "check", "generate", "render",
+];
+
+/// What `--help` is asked about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HelpTopic {
+    /// Every command: `tungsten --help`.
+    Top,
+    /// The level verbs: `tungsten level --help`.
+    Level,
+    /// One level verb: `tungsten level apply --help`.
+    LevelVerb(String),
+}
+
+/// What `--help` prints for `topic`, without a final newline.
+pub(crate) fn help(topic: &HelpTopic) -> String {
+    match topic {
+        HelpTopic::Top => USAGE.to_owned(),
+        HelpTopic::Level => LEVEL_USAGE.to_owned(),
+        HelpTopic::LevelVerb(verb) => {
+            let mut text = format!("tungsten level {verb}:\n{}", level_verb(verb));
+            if verb == "apply" {
+                text.push('\n');
+                text.push_str(batch_commands!());
+            }
+            text.push_str("\n`tungsten level --help` prints every verb and a worked example.");
+            text
+        }
+    }
+}
+
+/// The usage a mistake in `args` is answered with: the part of the usage
+/// its command, or its `level` verb, owns, then the help that prints the
+/// rest, so an error costs its reader a few lines and not the whole usage.
+pub(crate) fn usage_for(args: &[OsString]) -> String {
+    let word = |at: usize| {
+        args.get(at)
+            .filter(|arg| !is_option(arg))
+            .map(|arg| arg.to_string_lossy().into_owned())
+    };
+    match word(0).as_deref() {
+        Some("level") => {
+            if let Some(verb) = word(1).filter(|verb| LEVEL_VERBS.contains(&verb.as_str())) {
+                return format!(
+                    "{}\n`tungsten level --help` prints every verb with a worked example.",
+                    level_verb(&verb)
+                );
+            }
+            let verbs: String = LEVEL_VERBS
+                .iter()
+                .map(|verb| described(level_verb(verb)))
+                .collect();
+            format!(
+                "Verbs of level:\n{verbs}\n`tungsten level --help` prints their options and a worked example."
+            )
+        }
+        Some(command) if command_entry(command).is_some() => {
+            let mut text = command_entry(command).unwrap_or_default().to_owned();
+            if let Some(options) = options_of(command) {
+                text.push('\n');
+                text.push_str(options);
+            }
+            text.push_str("\n`tungsten --help` prints every command.");
+            text
+        }
+        _ => format!(
+            "{}\n`tungsten --help` prints every command's options.",
+            section(USAGE, "Commands:")
+        ),
+    }
+}
+
+/// The lines of `text` from the one that is `heading` through the last
+/// before a blank line, each with its newline.
+fn section(text: &'static str, heading: &str) -> &'static str {
+    let Some(start) = text
+        .match_indices(heading)
+        .map(|(at, _)| at)
+        .find(|&at| at == 0 || text.as_bytes()[at - 1] == b'\n')
+    else {
+        return "";
+    };
+    let rest = &text[start..];
+    let end = rest.find("\n\n").map_or(rest.len(), |at| at + 1);
+    &rest[..end]
+}
+
+/// The lines an entry of a usage list owns: the line that starts with two
+/// spaces and then `name` as a whole word, and the deeper lines after it.
+fn entry(list: &'static str, name: &str) -> Option<&'static str> {
+    let mut start = None;
+    let mut at = 0;
+    for line in list.split_inclusive('\n') {
+        let own = line
+            .strip_prefix("  ")
+            .filter(|rest| !rest.starts_with(' '));
+        match (start, own) {
+            (None, Some(rest)) => {
+                let named = rest
+                    .strip_prefix(name)
+                    .is_some_and(|after| after.is_empty() || after.starts_with([' ', '\n']));
+                if named {
+                    start = Some(at);
+                }
+            }
+            // The next entry, or a line that is no part of the list.
+            (Some(from), Some(_)) => return Some(&list[from..at]),
+            (Some(from), None) if !line.starts_with("    ") => return Some(&list[from..at]),
+            _ => {}
+        }
+        at += line.len();
+    }
+    start.map(|from| &list[from..])
+}
+
+/// A top-level command's entry in the usage's `Commands:` list.
+fn command_entry(command: &str) -> Option<&'static str> {
+    entry(section(USAGE, "Commands:"), command)
+}
+
+/// A top-level command's `Options of …` block in the usage, when it has
+/// one: the block whose heading names it as a word.
+fn options_of(command: &str) -> Option<&'static str> {
+    USAGE
+        .lines()
+        .filter(|line| line.starts_with("Options of "))
+        .find(|line| {
+            line.split(|c: char| !c.is_ascii_alphanumeric())
+                .skip(2)
+                .take_while(|word| *word != "level")
+                .any(|word| word == command)
+        })
+        .map(|heading| section(USAGE, heading))
+}
+
+/// A level verb's lines in the usage: its arguments, what it does and its
+/// options.
+fn level_verb(verb: &str) -> &'static str {
+    entry(level_verbs!(), verb).unwrap_or_default()
+}
+
+/// A usage entry without its options: the lines before its first option,
+/// which sits four spaces in.
+fn described(entry: &'static str) -> &'static str {
+    let mut end = 0;
+    for line in entry.split_inclusive('\n') {
+        if line.starts_with("    -") {
+            break;
+        }
+        end += line.len();
+    }
+    &entry[..end]
+}
 
 /// What the arguments ask for.
 #[derive(Debug, PartialEq)]
 pub(crate) enum Command {
-    /// Print the usage.
-    Help,
+    /// Print the usage, or the part of it `--help` was asked about.
+    Help(HelpTopic),
     /// Print `tungsten <version>`.
     Version,
     /// Make a game in the new folder.
@@ -272,6 +502,7 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
             ("--overlay", Some("<names>")),
             ("--size", Some("<w>x<h>")),
             ("--frame", Some("<n>")),
+            ("--save-script", Some("<file>")),
             ("--release", None),
         ],
     ),
@@ -281,14 +512,24 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
 const REPEATABLE: &[&str] = &["--after", "--tile"];
 
 /// Parses the arguments after the program's name. `-h` or `--help`
-/// anywhere asks for the usage, then `-V` or `--version` anywhere for the
+/// anywhere asks for the usage (after `level`, for level's own, and after
+/// one of its verbs for that verb's), then `-V` or `--version` anywhere for the
 /// version; then the command, then its own arguments. An option of another
 /// command, or one before the command, names the command it belongs to;
 /// any other argument starting with `-` is an unknown option.
 pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, UsageError> {
     let args: Vec<OsString> = args.into_iter().collect();
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
-        return Ok(Command::Help);
+        // `level --help` and `level <verb> --help` print level's own.
+        let word = |at: usize| args.get(at).map(|arg| arg.to_string_lossy().into_owned());
+        let topic = match (word(0).as_deref(), word(1)) {
+            (Some("level"), Some(verb)) if LEVEL_VERBS.contains(&verb.as_str()) => {
+                HelpTopic::LevelVerb(verb)
+            }
+            (Some("level"), _) => HelpTopic::Level,
+            _ => HelpTopic::Top,
+        };
+        return Ok(Command::Help(topic));
     }
     if args.iter().any(|arg| arg == "-V" || arg == "--version") {
         return Ok(Command::Version);
@@ -411,11 +652,7 @@ fn level(rest: Vec<OsString>) -> Result<Command, UsageError> {
         return Err(misplaced(&verb, Some("level")));
     }
     let verb = verb.to_string_lossy().into_owned();
-    if ![
-        "new", "apply", "query", "map", "describe", "check", "generate", "render",
-    ]
-    .contains(&verb.as_str())
-    {
+    if !LEVEL_VERBS.contains(&verb.as_str()) {
         return Err(UsageError(format!("unknown level verb `{verb}`: {VERBS}")));
     }
     let command = format!("level {verb}");

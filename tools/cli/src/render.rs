@@ -279,7 +279,7 @@ pub(crate) fn room_args(
     let mut args = args(
         |option| match option {
             "--at" => Some("0,0".to_owned()),
-            "-o" | "--overlay" | "--size" | "--frame" => value(option),
+            "-o" | "--overlay" | "--size" | "--frame" | "--save-script" => value(option),
             _ => None,
         },
         |_| Vec::new(),

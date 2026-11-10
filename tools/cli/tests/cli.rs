@@ -36,8 +36,16 @@ fn an_unknown_command_prints_the_usage_to_stderr_and_exits_2() {
     assert!(output.stdout.is_empty());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.starts_with("tungsten: unknown command `frobnicate`\n\nUsage: tungsten <command>"),
+        stderr.starts_with("tungsten: unknown command `frobnicate`\n\nCommands:\n  new <path>"),
         "{stderr}"
+    );
+    assert!(
+        stderr.ends_with("`tungsten --help` prints every command's options.\n"),
+        "{stderr}"
+    );
+    assert!(
+        !stderr.contains("Options of"),
+        "the commands alone: {stderr}"
     );
 }
 
@@ -79,8 +87,16 @@ fn run_without_its_script_and_a_misplaced_option_exit_2() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.starts_with("tungsten: `run` needs --script <file>\n\nUsage:"),
+        stderr.starts_with("tungsten: `run` needs --script <file>\n\n  run         Run the game"),
         "{stderr}"
+    );
+    assert!(
+        stderr.contains("Options of run:\n  --script <file>"),
+        "{stderr}"
+    );
+    assert!(
+        !stderr.contains("Verbs of level"),
+        "run's own usage: {stderr}"
     );
     let output = tungsten().args(["check", "--json"]).output().unwrap();
     assert_eq!(output.status.code(), Some(2));
@@ -132,9 +148,10 @@ fn render_without_its_output_exits_2() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.starts_with("tungsten: `render` needs -o <path>\n\nUsage:"),
+        stderr.starts_with("tungsten: `render` needs -o <path>\n\n  render      Render the game"),
         "{stderr}"
     );
+    assert!(stderr.contains("  -o <path>         The PNG"), "{stderr}");
 }
 
 #[test]
@@ -181,8 +198,67 @@ fn an_unknown_schema_exits_2_naming_each_format() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
         stderr.starts_with(
-            "tungsten: unknown schema `prefab`: ui_screen, ui_theme, room or tileset\n"
+            "tungsten: unknown schema `prefab`: ui_screen, ui_theme, room, tileset, batch or script\n"
         ),
         "{stderr}"
     );
+}
+
+#[test]
+fn a_level_mistake_prints_a_few_lines_and_level_help_prints_its_own() {
+    let output = tungsten().args(["level", "bogus"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("tungsten: unknown level verb `bogus`: new, apply, query, map,"),
+        "{stderr}"
+    );
+    assert!(stderr.lines().count() < 30, "{}", stderr.lines().count());
+    let output = tungsten()
+        .args(["level", "apply", "cave"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with(
+            "tungsten: `level apply` needs <room> <batch>, <room> --undo or <room> --redo\n\n  apply <room> <batch>\n"
+        ),
+        "{stderr}"
+    );
+    assert!(stderr.lines().count() < 15, "{stderr}");
+    for (args, start) in [
+        (
+            &["level", "--help"][..],
+            "Usage: tungsten level <verb> [arguments]\n",
+        ),
+        (
+            &["level", "apply", "--help"],
+            "tungsten level apply:\n  apply <room> <batch>\n",
+        ),
+    ] {
+        let output = tungsten().args(args).output().unwrap();
+        assert_eq!(output.status.code(), Some(0), "{args:?}");
+        assert!(output.stderr.is_empty());
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(stdout.starts_with(start), "{stdout}");
+        assert!(stdout.contains("Batch commands, each an object with one verb"));
+    }
+}
+
+#[test]
+fn a_closed_pipe_ends_the_command_without_a_panic() {
+    // A pipe whose reader is gone before the command writes.
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+    let output = tungsten()
+        .arg("--help")
+        .stdout(writer)
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.is_empty(), "no panic message: {stderr}");
+    assert_eq!(output.status.code(), Some(141));
 }

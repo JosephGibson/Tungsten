@@ -187,3 +187,39 @@ fn seeds_with_no_note_say_no_generator_ran() {
         "the handshake's form"
     );
 }
+
+#[test]
+fn the_checks_closing_line_is_the_one_dropped() {
+    assert!(names_the_report(
+        "Error: the check found 2 errors, written to '/tmp/tungsten-check-1.txt'"
+    ));
+    assert!(names_the_report(
+        "Error: the check found 1 error, written to '/tmp/tungsten-level-check-9.txt'"
+    ));
+    for kept in [
+        "Error: no manifest",
+        "error: could not compile `game`",
+        "the check found 2 errors, written to 'x'",
+        "Error: the check found a problem",
+    ] {
+        assert!(!names_the_report(kept), "{kept}");
+    }
+}
+
+/// A stand-in for the game runs under the check's stage: it writes the
+/// report, prints a line and the closing line to stderr and fails. The
+/// stage hands back its status with the report in place; what it lets
+/// through goes to this test's own stderr.
+#[cfg(unix)]
+#[test]
+fn a_check_run_hands_back_the_games_status_and_report() {
+    let dir = Folder::new();
+    let report = dir.0.join("report.txt");
+    let mut command = Command::new("sh");
+    command.arg("-c").arg(
+        "printf 'x\\n' > \"$TUNGSTEN_CHECK\"; echo 'warning: kept' >&2; echo \"Error: the check found 1 error, written to '$TUNGSTEN_CHECK'\" >&2; exit 1",
+    );
+    let status = content_stage(&dir.0, &report, None, &mut command).unwrap();
+    assert_eq!(status.code(), Some(1));
+    assert_eq!(std::fs::read_to_string(&report).unwrap(), "x\n");
+}

@@ -159,7 +159,48 @@ pub(crate) fn content_stage(
         Some(seeds) => command.env(SEEDS_ENV, seeds.to_string()),
         None => command.env_remove(SEEDS_ENV),
     };
-    run_game(dir, false, &[(CHECK_ENV, report)], command)
+    prepare_game(dir, false, &[(CHECK_ENV, report)], command);
+    // The game's stderr passes through but for its closing line, which
+    // names the report: a temp file this command line reads and removes,
+    // its findings printed after.
+    let mut child = command
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .with_context(|| format!("cannot run `{}`", command.get_program().to_string_lossy()))?;
+    if let Some(stderr) = child.stderr.take() {
+        use std::io::BufRead as _;
+        for line in std::io::BufReader::new(stderr).lines() {
+            let Ok(line) = line else { break };
+            if !names_the_report(&line) {
+                eprintln!("{line}");
+            }
+        }
+    }
+    child
+        .wait()
+        .with_context(|| format!("cannot run `{}`", command.get_program().to_string_lossy()))
+}
+
+/// Whether `line` is the game's closing line of a check that found errors,
+/// `Error: the check found <n> error(s), written to '<report>'`.
+pub(crate) fn names_the_report(line: &str) -> bool {
+    line.strip_prefix("Error: the check found ")
+        .is_some_and(|rest| rest.contains(", written to '"))
+}
+
+/// Sets `command` up to run the game in `dir` as [`run_game`] runs it: the
+/// `cargo run` arguments for `cargo`, the variables and the folder.
+fn prepare_game(dir: &Path, release: bool, envs: &[(&str, &Path)], command: &mut Command) {
+    if command.get_program() == "cargo" {
+        command.args(["run", "--quiet"]);
+        if release {
+            command.arg("--release");
+        }
+    }
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    command.current_dir(dir);
 }
 
 /// Runs the game in `dir` with the handshake's variables `envs` set: as
@@ -172,17 +213,8 @@ pub(crate) fn run_game(
     envs: &[(&str, &Path)],
     command: &mut Command,
 ) -> anyhow::Result<ExitStatus> {
-    if command.get_program() == "cargo" {
-        command.args(["run", "--quiet"]);
-        if release {
-            command.arg("--release");
-        }
-    }
-    for (name, value) in envs {
-        command.env(name, value);
-    }
+    prepare_game(dir, release, envs, command);
     command
-        .current_dir(dir)
         .status()
         .with_context(|| format!("cannot run `{}`", command.get_program().to_string_lossy()))
 }

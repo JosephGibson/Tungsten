@@ -34,19 +34,44 @@ mod embedded {
 
 use std::process::ExitCode;
 
-use args::{Command, USAGE};
+use args::Command;
+
+/// The exit code of a command whose reader closed the pipe: 128 + SIGPIPE,
+/// as a tool the signal ends exits.
+const CLOSED_PIPE: i32 = 141;
+
+/// Ends the command quietly when its reader closes the pipe early
+/// (`tungsten level map cave | head`): `println!` panics on a closed
+/// stdout, and this hook exits in the panic's place, with no message.
+fn quiet_on_a_closed_pipe() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let closed = info
+            .payload()
+            .downcast_ref::<String>()
+            .is_some_and(|message| message.starts_with("failed printing to stdout"));
+        if closed {
+            std::process::exit(CLOSED_PIPE);
+        }
+        default(info);
+    }));
+}
 
 fn main() -> ExitCode {
-    let command = match args::parse(std::env::args_os().skip(1)) {
+    quiet_on_a_closed_pipe();
+    let arguments: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    let command = match args::parse(arguments.clone()) {
         Ok(command) => command,
         Err(args::UsageError(reason)) => {
-            eprintln!("tungsten: {reason}\n\n{USAGE}");
+            // The reason, then its command's own usage: a mistake is
+            // answered in a few lines, and `--help` prints the rest.
+            eprintln!("tungsten: {reason}\n\n{}", args::usage_for(&arguments));
             return ExitCode::from(2);
         }
     };
     match command {
-        Command::Help => {
-            println!("{USAGE}");
+        Command::Help(topic) => {
+            println!("{}", args::help(&topic));
             ExitCode::SUCCESS
         }
         Command::Version => {

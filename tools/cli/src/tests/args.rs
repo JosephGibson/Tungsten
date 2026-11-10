@@ -15,7 +15,11 @@ fn help_anywhere_wins() {
         &["-V", "-h"],
         &["--bogus", "--help"],
     ] {
-        assert_eq!(parse_str(args), Ok(Command::Help), "{args:?}");
+        assert_eq!(
+            parse_str(args),
+            Ok(Command::Help(HelpTopic::Top)),
+            "{args:?}"
+        );
     }
 }
 
@@ -265,13 +269,15 @@ fn schema_takes_a_format_and_an_output() {
     assert_eq!(
         parse_str(&["schema", "prefab"]),
         Err(UsageError(
-            "unknown schema `prefab`: ui_screen, ui_theme, room or tileset".to_owned()
+            "unknown schema `prefab`: ui_screen, ui_theme, room, tileset, batch or script"
+                .to_owned()
         ))
     );
     assert_eq!(
         parse_str(&["schema"]),
         Err(UsageError(
-            "`schema` needs a format: ui_screen, ui_theme, room or tileset".to_owned()
+            "`schema` needs a format: ui_screen, ui_theme, room, tileset, batch or script"
+                .to_owned()
         ))
     );
     assert!(parse_str(&["schema", "ui_screen", "ui_theme"]).is_err());
@@ -721,4 +727,166 @@ fn level_new_and_map_read_their_options() {
     ] {
         assert!(USAGE.contains(word), "{word}");
     }
+}
+
+#[test]
+fn level_help_lists_every_verb_with_an_example() {
+    assert_eq!(
+        parse_str(&["level", "--help"]),
+        Ok(Command::Help(HelpTopic::Level))
+    );
+    assert_eq!(
+        parse_str(&["level", "-h", "apply"]),
+        Ok(Command::Help(HelpTopic::Level)),
+        "the verb comes right after `level`"
+    );
+    assert_eq!(
+        parse_str(&["level", "apply", "cave", "--help"]),
+        Ok(Command::Help(HelpTopic::LevelVerb("apply".to_owned())))
+    );
+    assert_eq!(
+        parse_str(&["level", "bogus", "--help"]),
+        Ok(Command::Help(HelpTopic::Level))
+    );
+    let level = help(&HelpTopic::Level);
+    assert!(level.starts_with("Usage: tungsten level <verb> [arguments]\n"));
+    assert!(level.lines().all(|line| line.len() <= 76), "76 columns");
+    assert!(!level.ends_with('\n'));
+    // A worked example first: each command it runs is a verb the help
+    // lists below it.
+    let example: Vec<&str> = level
+        .lines()
+        .filter_map(|line| line.strip_prefix("  tungsten level "))
+        .map(|rest| rest.split(' ').next().unwrap())
+        .collect();
+    assert_eq!(example, ["new", "apply", "map", "check", "render"]);
+    for verb in LEVEL_VERBS {
+        assert!(
+            level.contains(&format!("\n  {verb} ")),
+            "`{verb}` has its entry"
+        );
+        // Each verb's own help is its entry, and no other verb's.
+        let own = help(&HelpTopic::LevelVerb(verb.to_owned()));
+        assert!(
+            own.starts_with(&format!("tungsten level {verb}:\n  {verb}")),
+            "{own}"
+        );
+        let others = LEVEL_VERBS
+            .iter()
+            .filter(|other| **other != verb)
+            .filter(|other| own.contains(&format!("\n  {other} ")))
+            .count();
+        assert_eq!(others, 0, "{own}");
+        assert!(
+            own.lines().count() < 40,
+            "{verb}: {} lines",
+            own.lines().count()
+        );
+    }
+    // The batch commands sit in level's help and in apply's.
+    let apply = help(&HelpTopic::LevelVerb("apply".to_owned()));
+    for text in [&level, &apply] {
+        for verb in [
+            "place",
+            "move",
+            "set",
+            "delete",
+            "duplicate",
+            "paint",
+            "erase",
+            "link",
+            "rename",
+        ] {
+            assert!(text.contains(&format!("\n  {verb} ")), "`{verb}`");
+        }
+        assert!(text.contains("tungsten schema batch"));
+    }
+    assert!(apply.contains("--redo") && apply.contains("--dry-run"));
+    // The whole usage still lists every verb and points at level's help.
+    assert!(USAGE.contains("tungsten level --help"));
+    assert_eq!(help(&HelpTopic::Top), USAGE);
+}
+
+#[test]
+fn a_usage_error_prints_its_verbs_usage_alone() {
+    let usage = |args: &[&str]| {
+        let args: Vec<OsString> = args.iter().map(OsString::from).collect();
+        usage_for(&args)
+    };
+    // A level verb's mistake: that verb's entry with its options.
+    let apply = usage(&["level", "apply", "cave"]);
+    assert!(apply.starts_with("  apply <room> <batch>\n"), "{apply}");
+    assert!(
+        apply.contains("--undo") && apply.contains("--redo"),
+        "{apply}"
+    );
+    assert!(!apply.contains("generate <generator>"), "{apply}");
+    assert!(apply.ends_with("`tungsten level --help` prints every verb with a worked example."));
+    assert!(apply.lines().count() < 15, "{apply}");
+    // No verb, or an unknown one: the verbs without their options.
+    for args in [&["level"][..], &["level", "bogus"], &["level", "--undo"]] {
+        let verbs = usage(args);
+        assert!(
+            verbs.starts_with("Verbs of level:\n  new <room>"),
+            "{verbs}"
+        );
+        assert!(
+            verbs.contains("--save-script and"),
+            "render's whole description"
+        );
+        assert!(!verbs.contains("    --size"), "no option: {verbs}");
+        assert!(verbs.lines().count() < 30, "{}", verbs.lines().count());
+    }
+    // A command's mistake: its entry and its options.
+    let run = usage(&["run"]);
+    assert!(run.starts_with("  run         Run the game"), "{run}");
+    assert!(run.contains("Options of run:\n  --script <file>"), "{run}");
+    assert!(
+        !run.contains("Verbs of level") && !run.contains("package"),
+        "{run}"
+    );
+    assert!(run.ends_with("`tungsten --help` prints every command."));
+    let check = usage(&["check", "--json"]);
+    assert!(
+        check.contains("Options of check and level check, one of:\n  --seeds"),
+        "{check}"
+    );
+    let render = usage(&["render"]);
+    assert!(render.contains("Options of render,") && render.contains("--sheet <items>"));
+    assert!(!render.contains("Options of run:"), "{render}");
+    // A command with no options: its entry alone.
+    let package = usage(&["package", "now"]);
+    assert!(
+        package.starts_with("  package     Build the game for release"),
+        "{package}"
+    );
+    assert!(!package.contains("Options of"), "{package}");
+    // No command, an unknown one or a leading option: the commands.
+    for args in [&[][..], &["frobnicate"], &["--json"]] {
+        let commands = usage(args);
+        assert!(
+            commands.starts_with("Commands:\n  new <path>"),
+            "{commands}"
+        );
+        assert!(commands.contains("\n  level <verb>\n"), "{commands}");
+        assert!(!commands.contains("Options of"), "{commands}");
+    }
+}
+
+#[test]
+fn level_render_keeps_its_script() {
+    let command = parse_str(&[
+        "level",
+        "render",
+        "cave",
+        "-o",
+        "cave.png",
+        "--save-script",
+        "cave-script.json",
+    ]);
+    let Ok(Command::Level(LevelArgs::Render { args })) = command else {
+        panic!("{command:?}");
+    };
+    assert_eq!(args.save_script, Some(PathBuf::from("cave-script.json")));
+    assert!(USAGE.contains("--save-script and"));
 }

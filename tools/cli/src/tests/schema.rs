@@ -70,6 +70,31 @@ fn schema_prints_room_and_tileset() {
             "https://json-schema.org/draft/2020-12/schema"
         );
     }
-    assert_eq!(listed(), "ui_screen, ui_theme, room or tileset");
+    assert_eq!(
+        listed(),
+        "ui_screen, ui_theme, room, tileset, batch or script"
+    );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn schema_names_batch_and_script() {
+    assert_eq!(schema("batch"), Some(room::batch_schema()));
+    assert_eq!(schema("script"), Some(script::json_schema()));
+    assert_eq!(
+        listed(),
+        "ui_screen, ui_theme, room, tileset, batch or script"
+    );
+    for name in ["batch", "script"] {
+        let schema = schema(name).unwrap();
+        assert_eq!(
+            schema["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+        assert!(schema["description"].is_string(), "{name}");
+    }
+    // The usage's schema line names every format.
+    for name in NAMES {
+        assert!(crate::args::USAGE.contains(name), "{name}");
+    }
 }
