@@ -1203,3 +1203,24 @@ fn reset_returns_to_the_shipped_bindings() {
     let saved = ActionMap::load(&user).unwrap();
     assert_eq!(saved.iter().count(), 0, "nothing of the player's to save");
 }
+
+#[test]
+fn default_map_binds_the_level_editors_actions() {
+    let map = ActionMap::default_map();
+    assert_eq!(
+        map.bindings("engine_toggle_level_editor"),
+        &[Binding::Key { code: KeyCode::F10 }]
+    );
+    assert_eq!(
+        map.bindings("engine_editor_primary"),
+        &[Binding::Mouse {
+            button: MouseButton::Left
+        }]
+    );
+    assert_eq!(
+        map.bindings("engine_editor_secondary"),
+        &[Binding::Mouse {
+            button: MouseButton::Right
+        }]
+    );
+}

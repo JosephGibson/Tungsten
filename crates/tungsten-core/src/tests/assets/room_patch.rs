@@ -429,3 +429,45 @@ fn an_equal_compiled_room_patches_nothing() {
         "the registry takes the document"
     );
 }
+
+#[test]
+fn redo_after_undo_applies_the_batch_again_and_patches_the_live_object() {
+    let mut world = world();
+    let spawned = spawn(&mut world, &cave());
+    let batch =
+        RoomCommand::parse_batch(r#"[{ "move": { "id": "crate_1", "by": [1, 0] } }]"#).unwrap();
+    assert_eq!(world.redo_room_batch("cave"), Ok(None), "no journal yet");
+    world.apply_room_batch("cave", &batch).unwrap();
+    let moved = world
+        .resource::<RoomRegistry>()
+        .room("cave")
+        .unwrap()
+        .clone();
+    let at = |world: &World| position(world, object(world, "crate_1").unwrap());
+    let after = at(&world);
+    assert_eq!(world.redo_room_batch("cave"), Ok(None), "nothing undone");
+    world.undo_room_batch("cave").unwrap().unwrap();
+    assert_eq!(at(&world), Vec2::new(132.0, 114.0), "back at (2, 4)");
+    let journal = world.resource::<RoomJournal>();
+    assert_eq!((journal.undo_len("cave"), journal.redo_len("cave")), (0, 1));
+    let redone = world.redo_room_batch("cave").unwrap().unwrap();
+    assert_eq!(redone.respawned, ["crate_1"]);
+    assert_eq!(at(&world), after);
+    assert_eq!(world.resource::<RoomRegistry>().room("cave"), Some(&moved));
+    let journal = world.resource::<RoomJournal>();
+    assert_eq!(
+        (journal.undo_len("cave"), journal.redo_len("cave")),
+        (1, 0),
+        "from the undone list to the done list"
+    );
+    assert_eq!(world.redo_room_batch("cave"), Ok(None));
+    // Undone again, then a reload that changes the document clears the
+    // journal: nothing to redo.
+    world.undo_room_batch("cave").unwrap().unwrap();
+    let mut edited = cave();
+    edited["objects"][1]["at"] = json!([7, 4]);
+    world.patch_room("cave", room(&edited)).unwrap();
+    assert_eq!(world.resource::<RoomJournal>().redo_len("cave"), 0);
+    assert_eq!(world.redo_room_batch("cave"), Ok(None));
+    assert!(spawned.object("ball_1").is_some());
+}

@@ -9092,6 +9092,7 @@ impl tungsten_core::World
 pub fn tungsten_core::World::apply_room_batch(&mut self, &str, &[tungsten_core::RoomCommand]) -> core::result::Result<tungsten_core::assets::room::RoomPatch, tungsten_core::assets::room::RoomPatchError>
 pub fn tungsten_core::World::patch_room(&mut self, &str, tungsten_core::assets::room::Room) -> core::result::Result<tungsten_core::assets::room::RoomPatch, tungsten_core::assets::room::RoomPatchError>
 pub fn tungsten_core::World::patch_tileset(&mut self, &str, tungsten_core::assets::room::tileset::Tileset, alloc::vec::Vec<(alloc::string::String, tungsten_core::assets::room::Room)>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
+pub fn tungsten_core::World::redo_room_batch(&mut self, &str) -> core::result::Result<core::option::Option<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
 pub fn tungsten_core::World::undo_room_batch(&mut self, &str) -> core::result::Result<core::option::Option<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
 impl tungsten_core::World
 pub fn tungsten_core::World::author_rooms(&self, &str, u64, &str) -> core::result::Result<tungsten_core::assets::AuthoredRooms, tungsten_core::GenerateError>
@@ -13848,6 +13849,7 @@ pub fn tungsten_core::time::Time::fixed_steps_this_frame(&self) -> u32
 pub fn tungsten_core::time::Time::frame(&self) -> u64
 pub fn tungsten_core::time::Time::game_delta(&self) -> f32
 pub fn tungsten_core::time::Time::interpolate(&self) -> bool
+pub fn tungsten_core::time::Time::is_editing(&self) -> bool
 pub fn tungsten_core::time::Time::is_held(&self) -> bool
 pub fn tungsten_core::time::Time::is_paused(&self) -> bool
 pub fn tungsten_core::time::Time::leave_fixed_steps(&mut self)
@@ -13858,6 +13860,7 @@ pub fn tungsten_core::time::Time::real_delta(&self) -> f32
 pub fn tungsten_core::time::Time::real_elapsed(&self) -> f64
 pub fn tungsten_core::time::Time::resume(&mut self)
 pub fn tungsten_core::time::Time::scale(&self) -> f32
+pub fn tungsten_core::time::Time::set_editing(&mut self, bool)
 pub fn tungsten_core::time::Time::set_fixed_step(&mut self, f32)
 pub fn tungsten_core::time::Time::set_held(&mut self, bool)
 pub fn tungsten_core::time::Time::set_interpolate(&mut self, bool)
@@ -24703,6 +24706,7 @@ pub fn tungsten_core::time::Time::fixed_steps_this_frame(&self) -> u32
 pub fn tungsten_core::time::Time::frame(&self) -> u64
 pub fn tungsten_core::time::Time::game_delta(&self) -> f32
 pub fn tungsten_core::time::Time::interpolate(&self) -> bool
+pub fn tungsten_core::time::Time::is_editing(&self) -> bool
 pub fn tungsten_core::time::Time::is_held(&self) -> bool
 pub fn tungsten_core::time::Time::is_paused(&self) -> bool
 pub fn tungsten_core::time::Time::leave_fixed_steps(&mut self)
@@ -24713,6 +24717,7 @@ pub fn tungsten_core::time::Time::real_delta(&self) -> f32
 pub fn tungsten_core::time::Time::real_elapsed(&self) -> f64
 pub fn tungsten_core::time::Time::resume(&mut self)
 pub fn tungsten_core::time::Time::scale(&self) -> f32
+pub fn tungsten_core::time::Time::set_editing(&mut self, bool)
 pub fn tungsten_core::time::Time::set_fixed_step(&mut self, f32)
 pub fn tungsten_core::time::Time::set_held(&mut self, bool)
 pub fn tungsten_core::time::Time::set_interpolate(&mut self, bool)
@@ -25418,6 +25423,7 @@ impl tungsten_core::World
 pub fn tungsten_core::World::apply_room_batch(&mut self, &str, &[tungsten_core::RoomCommand]) -> core::result::Result<tungsten_core::assets::room::RoomPatch, tungsten_core::assets::room::RoomPatchError>
 pub fn tungsten_core::World::patch_room(&mut self, &str, tungsten_core::assets::room::Room) -> core::result::Result<tungsten_core::assets::room::RoomPatch, tungsten_core::assets::room::RoomPatchError>
 pub fn tungsten_core::World::patch_tileset(&mut self, &str, tungsten_core::assets::room::tileset::Tileset, alloc::vec::Vec<(alloc::string::String, tungsten_core::assets::room::Room)>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
+pub fn tungsten_core::World::redo_room_batch(&mut self, &str) -> core::result::Result<core::option::Option<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
 pub fn tungsten_core::World::undo_room_batch(&mut self, &str) -> core::result::Result<core::option::Option<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
 impl tungsten_core::World
 pub fn tungsten_core::World::author_rooms(&self, &str, u64, &str) -> core::result::Result<tungsten_core::assets::AuthoredRooms, tungsten_core::GenerateError>

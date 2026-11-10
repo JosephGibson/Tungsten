@@ -369,6 +369,37 @@ impl World {
         Ok(Some(report))
     }
 
+    /// Redoes room `id`'s newest undone batch in the World's
+    /// [`RoomJournal`]: the batch applied to the room's document again and
+    /// the room patched as [`undo_room_batch`](Self::undo_room_batch)
+    /// patches it. `Ok(None)` when the room has nothing to redo.
+    ///
+    /// # Errors
+    ///
+    /// As [`apply_room_batch`](Self::apply_room_batch), for a batch that no
+    /// longer applies; the journal stays as it was.
+    ///
+    /// # Panics
+    ///
+    /// As [`patch_room`](Self::patch_room).
+    pub fn redo_room_batch(&mut self, id: &str) -> Result<Option<RoomPatch>, RoomPatchError> {
+        let Some(mut journal) = self.get_resource::<RoomJournal>().cloned() else {
+            return Ok(None);
+        };
+        if journal.redo_len(id) == 0 {
+            return Ok(None);
+        }
+        let mut document = self.rooms_with(id)?.rooms[id].document.clone();
+        self.context_parts(id, &document)?
+            .with(id, |context| journal.redo(id, &mut document, context))
+            .map_err(|err| RoomPatchError::room(id, err))?;
+        let tileset = tileset_of(self.rooms_with(id)?, id, &document)?;
+        let prepared = self.prepare_patch(id, document, &tileset, false)?;
+        let report = self.apply_patch(prepared);
+        *self.resource_mut::<RoomJournal>() = journal;
+        Ok(Some(report))
+    }
+
     /// The World's `RoomRegistry` when it holds room `id`.
     fn rooms_with(&self, id: &str) -> Result<&RoomRegistry, RoomPatchError> {
         let Some(rooms) = self.get_resource::<RoomRegistry>() else {

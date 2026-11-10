@@ -382,6 +382,22 @@ impl ActionMap {
             vec![Binding::Key { code: KeyCode::F9 }],
         );
         actions.insert(
+            "engine_toggle_level_editor".into(),
+            vec![Binding::Key { code: KeyCode::F10 }],
+        );
+        actions.insert(
+            "engine_editor_primary".into(),
+            vec![Binding::Mouse {
+                button: MouseButton::Left,
+            }],
+        );
+        actions.insert(
+            "engine_editor_secondary".into(),
+            vec![Binding::Mouse {
+                button: MouseButton::Right,
+            }],
+        );
+        actions.insert(
             "engine_toggle_fullscreen".into(),
             vec![Binding::Key { code: KeyCode::F11 }],
         );
