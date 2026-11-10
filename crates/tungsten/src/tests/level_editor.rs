@@ -2572,3 +2572,188 @@ fn the_panels_buttons_stay_put_as_the_cursor_comes_for_them() {
     assert_eq!(state(&harness).status, "Nothing to undo in `cave`.");
     assert_eq!(top(&harness, "tool_select"), before);
 }
+
+#[test]
+fn a_pick_stays_in_its_room() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    // `hall`, opened beside `cave`, gets a `crate_1` of its own.
+    click(&mut harness, "room_hall");
+    script(&mut harness, &json!({ "prefab": "crate" })).unwrap();
+    let hall = |harness: &UiHarness, col: f32, row: f32| {
+        state(harness)
+            .drawn(CameraState::new())
+            .world_to_screen(Vec2::new(672.0 + col * 16.0 + 8.0, row * 16.0 + 8.0))
+    };
+    let spot = hall(&harness, 3.0, 9.0);
+    drag(&mut harness, spot, spot);
+    assert_eq!(at(harness.world(), "hall", "crate_1"), [3.0, 9.0]);
+    // `cave`'s `crate_1` is picked, then a stroke starts in `hall`: the
+    // pick is dropped with the room, so nothing acts on `hall`'s crate.
+    script(
+        &mut harness,
+        &json!({ "room": "cave", "select": "crate_1", "tool": "paint" }),
+    )
+    .unwrap();
+    assert_eq!(state(&harness).selection.as_deref(), Some("crate_1"));
+    script(&mut harness, &json!({ "do": "game_view" })).unwrap();
+    harness.world_mut().resource_mut::<LevelEditor>().view = Some(View {
+        position: Vec2::ZERO,
+        zoom: 1.0,
+    });
+    let cell_in_hall = Vec2::new(672.0 + 5.0 * 16.0 + 8.0, 2.0 * 16.0 + 8.0);
+    stroke(&mut harness, &[cell_in_hall, cell_in_hall]);
+    let editor = state(&harness);
+    assert_eq!(editor.current.as_deref(), Some("hall"));
+    assert_eq!(editor.selection, None);
+    harness.tap_key(KeyCode::Delete);
+    assert_eq!(
+        state(&harness).status,
+        "Nothing is picked to delete: click an object with Select."
+    );
+    assert_eq!(at(harness.world(), "hall", "crate_1"), [3.0, 9.0]);
+    assert_eq!(at(harness.world(), "cave", "crate_1"), [5.0, 19.0]);
+}
+
+#[test]
+fn the_eyedropper_takes_the_authored_tile_not_what_play_left() {
+    let (_dir, mut harness) = editor();
+    // Play changes a cell of the live map: the room's own tile there is
+    // still `rock`.
+    let maps = harness
+        .world_mut()
+        .resource_mut::<tungsten_core::assets::TilemapRegistry>();
+    let plank = maps
+        .get("cave")
+        .unwrap()
+        .tileset
+        .iter()
+        .position(|sprite| sprite == "plank")
+        .unwrap();
+    assert!(maps.set_tile("cave", 1, 2, 21, plank as _));
+    open(&mut harness);
+    hold(&mut harness, Modifiers::ALT);
+    drag(&mut harness, cell(2, 21), cell(2, 21));
+    hold(&mut harness, Modifiers::empty());
+    assert_eq!(state(&harness).tile.as_deref(), Some("rock"));
+    assert_eq!(
+        state(&harness).status,
+        "Took tile `rock` and layer `solid`: Paint writes there."
+    );
+}
+
+#[test]
+fn a_gesture_ends_with_its_tool() {
+    let (_dir, mut harness) = editor();
+    let before = document(harness.world(), "cave");
+    open(&mut harness);
+    harness.step(2);
+    // Alt pressed during a drag does not make the release the
+    // eyedropper's: the move lands as it would have.
+    harness.pointer_to(CRATE.x, CRATE.y);
+    harness.pointer_down();
+    harness.step(1);
+    hold(&mut harness, Modifiers::ALT);
+    harness.pointer_to(RIGHT.x, RIGHT.y);
+    harness.step(1);
+    harness.pointer_up();
+    harness.step(1);
+    hold(&mut harness, Modifiers::empty());
+    assert_eq!(state(&harness).status, "Moved `crate_1` by 1, 0.");
+    assert_eq!(state(&harness).tool, Tool::Select);
+    chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyZ);
+    assert_eq!(document(harness.world(), "cave"), before);
+    // A palette row clicked, or a script's `tile`, while a mark is under
+    // way takes up its tool and drops the mark: no box is left drawn and
+    // the new tool's ghost shows.
+    harness.tap_key(KeyCode::Digit6);
+    harness.pointer_to(cell(5, 5).x, cell(5, 5).y);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(cell(8, 7).x, cell(8, 7).y);
+    harness.step(1);
+    assert!(boxed(
+        &harness,
+        Vec2::new(80.0, 80.0),
+        Vec2::new(144.0, 128.0)
+    ));
+    script(&mut harness, &json!({ "tile": "plank" })).unwrap();
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(state(&harness).tool, Tool::Paint);
+    assert!(!boxed(
+        &harness,
+        Vec2::new(80.0, 80.0),
+        Vec2::new(144.0, 128.0)
+    ));
+    assert!(
+        boxed(&harness, Vec2::new(128.0, 112.0), Vec2::new(144.0, 128.0)),
+        "Paint's ghost"
+    );
+    assert_eq!(
+        document(harness.world(), "cave"),
+        before,
+        "no place was marked"
+    );
+    // Under Erase the keys step what the panel shows: the tiles.
+    harness.tap_key(KeyCode::Digit4);
+    harness.tap_key(KeyCode::BracketRight);
+    assert_eq!(state(&harness).tile.as_deref(), Some("arch"));
+    assert_eq!(state(&harness).prefab, None, "the prefabs are not showing");
+}
+
+#[test]
+fn a_scripts_prompt_never_commits_one_left_open() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    // A Link prompt left open on `exit` by an earlier step.
+    script(&mut harness, &json!({ "select": "exit", "prompt": "link" })).unwrap();
+    assert_eq!(prompt_text(&harness), Some("hall.west_door"));
+    // A Set, which a place refuses, with a text: the step fails with
+    // Set's reason, and the text never reaches the link.
+    assert_eq!(
+        script(
+            &mut harness,
+            &json!({ "prompt": "set", "text": "hall.door" })
+        ),
+        Err("`exit` is a place: Set writes an object's override.".to_owned())
+    );
+    assert_eq!(state(&harness).prompt, None);
+    assert_eq!(
+        place(&document(harness.world(), "cave"), "exit")
+            .to
+            .as_deref(),
+        Some("hall.west_door")
+    );
+    assert_eq!(journal(harness.world(), "cave"), (0, 0));
+    // At the panel a refused button ends the open prompt too.
+    script(&mut harness, &json!({ "prompt": "rename" })).unwrap();
+    click(&mut harness, "set");
+    assert_eq!(state(&harness).prompt, None);
+    assert!(state(&harness).refused);
+}
+
+#[test]
+fn the_games_camera_keeps_its_rotation() {
+    let (_dir, mut harness) = editor();
+    harness.world_mut().resource_mut::<CameraState>().rotation = 0.25;
+    harness.step(1);
+    open(&mut harness);
+    harness.step(1);
+    // The editor's own view is level.
+    harness.tap_key(KeyCode::KeyF);
+    harness.step(2);
+    assert_eq!(harness.world().resource::<CameraState>().rotation, 0.0);
+    // Home goes back to the game's view, turned as it was.
+    harness.tap_key(KeyCode::Home);
+    harness.step(2);
+    assert_eq!(harness.world().resource::<CameraState>().rotation, 0.25);
+    // And closing from the editor's view gives it back too.
+    harness.tap_key(KeyCode::KeyF);
+    harness.step(2);
+    harness.tap_action(TOGGLE);
+    harness.step(2);
+    assert_eq!(harness.world().resource::<CameraState>().rotation, 0.25);
+}

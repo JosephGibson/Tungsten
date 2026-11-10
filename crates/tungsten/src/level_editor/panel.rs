@@ -630,8 +630,10 @@ impl Panel {
                 last.palette.items == shown.palette.items
                     && last.palette.tiles == shown.palette.tiles
             });
+            // Two rooms' tilesets may hold the same tiles: the title is
+            // the room's own either way.
+            tree.set_plain_text(self.palette_title, &shown.palette.title);
             if !same_rows {
-                tree.set_plain_text(self.palette_title, &shown.palette.title);
                 clear(tree, self.palette);
                 let sprites = world.get_resource::<AssetRegistry>();
                 self.palette_rows = (shown.palette.items.iter())

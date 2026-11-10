@@ -202,6 +202,8 @@ fn ask_for(
         return Err("the level editor is closed: `{\"open\": true}` opens it".to_owned());
     }
     editor.refused = false;
+    // A prompt left open by an earlier step ends in `act`, so `text` goes
+    // to this one or to none.
     editor.act(world, Action::Prompt(ask));
     if let (Some(text), Some(prompt)) = (text, editor.prompt.as_mut()) {
         prompt.text = text;

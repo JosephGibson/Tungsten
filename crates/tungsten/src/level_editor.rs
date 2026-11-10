@@ -402,6 +402,8 @@ pub(crate) struct LevelEditor {
     /// Whether the cursor is over a debug window: `cursor` and `hover` are
     /// then where it last was in the world.
     over_window: bool,
+    /// The game camera's rotation when the editor opened.
+    rotation: Option<f32>,
     pub(crate) window: Option<ViewWindow>,
     /// The window's contents, built once a window.
     panel: Option<panel::Panel>,
@@ -451,6 +453,7 @@ impl LevelEditor {
             cursor: None,
             hover: None,
             over_window: false,
+            rotation: None,
             window: None,
             panel: None,
             panel_rect: None,
@@ -462,6 +465,9 @@ impl LevelEditor {
             return;
         }
         self.open = true;
+        self.rotation = world
+            .get_resource::<CameraState>()
+            .map(|camera| camera.rotation);
         if let Some(time) = world.get_resource_mut::<Time>() {
             time.set_editing(true);
         }
@@ -506,6 +512,7 @@ impl LevelEditor {
         {
             *camera = game;
         }
+        self.restore_rotation(world, true);
         self.view = None;
     }
 
@@ -581,7 +588,10 @@ impl LevelEditor {
         }
         self.keys(world, &frame, &rooms, game);
         self.wheel_and_pan(&frame, blocked, game);
-        self.picking = self.tool == Tool::Pick || frame.alt;
+        // Alt is read at a press: a gesture under way stays its tool's and
+        // ends as it would have.
+        let gesture = self.drag.is_some() || self.stroke.is_some() || self.mark.is_some();
+        self.picking = (self.tool == Tool::Pick || frame.alt) && !gesture;
         // An open prompt has the keys; the world waits for it to end.
         if let Some(at) = at.filter(|_| self.prompt.is_none()) {
             // Read before the eyedropper takes up a tool, so the press that
@@ -621,8 +631,25 @@ impl LevelEditor {
                 *camera = mine;
             }
             self.written = Some(mine);
+        } else if self.written.take().is_some() {
+            // Back to the game's view: its rotation with it.
+            self.restore_rotation(world, false);
+        }
+    }
+
+    /// Gives the game's camera the rotation it had when the editor opened.
+    /// The editor's own view is unrotated, and the camera update keeps
+    /// whatever rotation `CameraState` holds, so a view written over it
+    /// would leave the game's camera level for good.
+    fn restore_rotation(&mut self, world: &mut World, closing: bool) {
+        let rotation = if closing {
+            self.rotation.take()
         } else {
-            self.written = None;
+            self.rotation
+        };
+        if let (Some(rotation), Some(camera)) = (rotation, world.get_resource_mut::<CameraState>())
+        {
+            camera.rotation = rotation;
         }
     }
 
@@ -741,6 +768,8 @@ impl LevelEditor {
     /// for Rename, its link for Link, nothing for Set. Refused for a pick
     /// the prompt does not fit.
     fn ask(&mut self, world: &World, ask: Ask) {
+        // One open before this one ends here, whether or not this opens.
+        self.prompt = None;
         let picked = (self.current.clone())
             .zip(self.selection.clone())
             .zip(self.current_room(world));
@@ -881,12 +910,7 @@ impl LevelEditor {
             self.prompt = None;
         }
         match action {
-            Action::Tool(tool) => {
-                self.tool = tool;
-                self.drag = None;
-                self.stroke = None;
-                self.mark = None;
-            }
+            Action::Tool(tool) => self.take_up(tool),
             Action::Prompt(ask) => self.ask(world, ask),
             Action::Undo => self.history(world, Edit::Undo),
             Action::Redo => self.history(world, Edit::Redo),
@@ -921,7 +945,7 @@ impl LevelEditor {
             Action::Prefab(id) => {
                 if prefab_ids(world).contains(&id) {
                     self.prefab = Some(id);
-                    self.tool = Tool::Place;
+                    self.take_up(Tool::Place);
                 } else {
                     self.refuse(format!("No prefab `{id}`."));
                 }
@@ -930,7 +954,7 @@ impl LevelEditor {
                 let room = self.current.clone().unwrap_or_default();
                 if tile_ids(world, &room).contains(&sprite) {
                     self.tile = Some(sprite);
-                    self.tool = Tool::Paint;
+                    self.take_up(Tool::Paint);
                 } else {
                     self.refuse(format!("Room `{room}`'s tileset has no tile `{sprite}`."));
                 }
@@ -1019,6 +1043,16 @@ impl LevelEditor {
             }
             Err(err) => self.refuse(format!("Can't open `{id}`: {err}.")),
         }
+    }
+
+    /// Takes up `tool`, dropping a gesture the last one had under way: a
+    /// tool's key, a palette row and the eyedropper all come here, so no
+    /// drag, stroke or mark outlives its tool.
+    fn take_up(&mut self, tool: Tool) {
+        self.tool = tool;
+        self.drag = None;
+        self.stroke = None;
+        self.mark = None;
     }
 
     /// The current room's document.
@@ -1164,6 +1198,9 @@ impl LevelEditor {
         if self.current.as_deref() != Some(room) {
             self.current = Some(room.to_owned());
             self.findings.clear();
+            // The pick is an ID of the room left: the next room may hold
+            // the same ID, which Delete, Copy and the prompts would act on.
+            self.selection = None;
         }
     }
 
@@ -1439,7 +1476,8 @@ impl LevelEditor {
     }
 
     /// The eyedropper: the prefab of the object under the cursor and Place,
-    /// else the topmost tile at the cell, its layer and Paint.
+    /// else the topmost tile the room's author put at the cell, its layer
+    /// and Paint.
     fn eyedropper(&mut self, world: &World, rooms: &[Live], camera: CameraState, at: Vec2) {
         let registry = world.get_resource::<RoomRegistry>();
         if let Some((room, id)) = pick(world, rooms, camera, at)
@@ -1452,18 +1490,19 @@ impl LevelEditor {
                 object.prefab
             ));
             self.prefab = Some(object.prefab.clone());
-            self.tool = Tool::Place;
+            self.take_up(Tool::Place);
             return;
         }
         let Some((room, [col, row])) = cell_under(rooms, at) else {
             self.say("Nothing to take here: the cursor is over no room.".to_owned());
             return;
         };
-        let maps = world.get_resource::<tungsten_core::assets::TilemapRegistry>();
-        let (Some(document), Some(map)) = (
-            registry.and_then(|registry| registry.room(&room)),
-            maps.and_then(|maps| maps.get(&room)),
-        ) else {
+        // The room's map as compiled, not the live one: a cell reads the
+        // tile its author wrote, where the live map holds the variant the
+        // auto-tiler picked for its neighbours and whatever play left.
+        let Some((document, map)) = registry
+            .and_then(|registry| Some((registry.room(&room)?, &registry.compiled(&room)?.map)))
+        else {
             return;
         };
         let topmost = (0..document.layers.len()).rev().find_map(|layer| {
@@ -1480,7 +1519,7 @@ impl LevelEditor {
                 ));
                 self.tile = Some(sprite);
                 self.layer = Some(layer);
-                self.tool = Tool::Paint;
+                self.take_up(Tool::Paint);
             }
             None => self.say(format!("Cell {col}, {row} holds no tile to take.")),
         }
@@ -1502,10 +1541,11 @@ impl LevelEditor {
             .or_else(|| tiles.into_iter().next())
     }
 
-    /// `[` and `]`: the palette one step back or on, through the tiles of
-    /// the current room's tileset while painting, else the prefabs.
+    /// `[` and `]`: the palette one step back or on, through what the panel
+    /// shows: the tiles of the current room's tileset under Paint and
+    /// Erase, else the prefabs.
     fn palette(&mut self, world: &World, step: i64) {
-        let painting = self.tool == Tool::Paint;
+        let painting = matches!(self.tool, Tool::Paint | Tool::Erase);
         let (items, chosen) = if painting {
             let room = self.current.clone().unwrap_or_default();
             (tile_ids(world, &room), &mut self.tile)
