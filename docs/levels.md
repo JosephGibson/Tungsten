@@ -99,10 +99,13 @@ A batch is a JSON array of commands, each an object with one verb. Every command
 | --- | --- |
 | `stage` | `{}`: clears the game's states for an empty stage, where the steps below spawn. |
 | `room` | a `rooms` ID, spawned at the origin. |
-| `level` | `{ "room": "<id>", "apply": [<commands>] }` applies a batch to the live room and journals it; `{ "room": "<id>", "undo": true }` undoes its newest batch. No file is written, so a script never changes a room's file. |
+| `level` | `{ "room": "<id>", "apply": [<commands>] }` applies a batch to the live room and journals it; `{ "room": "<id>", "undo": true }` undoes its newest batch and `{ "room": "<id>", "redo": true }` applies the newest undone one again. No file is written, so a script never changes a room's file. |
 | `generate` | `{ "generator": "<id>", "seed": <n>, "prefix": "<id>" }`: generates rooms and spawns each at its origin. |
 
-The `place` probe reads a live room's place in world pixels: `{ "probe": "place", "args": { "room": "yard", "id": "start" } }` gives a point `[x, y]`, an area `{min, size}` or a route's points.
+Two probes read a room back:
+
+- `room` is the script's `query`. `{ "room": "yard" }` gives the room whole: `live`, `origin`, `cell`, `size`, `tileset`, its `layers`, its `shapes`, `objects` and `places` as the file writes them, and its journal's `undo` and `redo` counts. While the room is live each object also carries `world`, its spawn point in world pixels, and `alive`, whether the entity it spawned as still lives. `{ "room": "yard", "id": "gem_1" }` gives one entry as `{kind, index, entry}`; a `path` picks a field, as `/entry/at`.
+- `place` reads a live room's place in world pixels: `{ "room": "yard", "id": "start" }` gives a point `[x, y]`, an area `{min, size}` or a route's points.
 
 ```json
 {
@@ -113,8 +116,10 @@ The `place` probe reads a live room's place in world pixels: `{ "probe": "place"
     { "frame": 2, "room": "yard" },
     { "frame": 5, "assert": { "probe": "place", "args": { "room": "yard", "id": "start" }, "op": "==", "value": [64.0, 352.0] } },
     { "frame": 6, "level": { "room": "yard", "apply": [{ "move": { "id": "gem_1", "by": [1, 0] } }] } },
+    { "frame": 8, "assert": { "probe": "room", "args": { "room": "yard", "id": "gem_1" }, "path": "/entry/at", "op": "==", "value": [12, 11] } },
     { "frame": 10, "capture": "yard.png" },
-    { "frame": 12, "level": { "room": "yard", "undo": true } }
+    { "frame": 12, "level": { "room": "yard", "undo": true } },
+    { "frame": 14, "assert": { "probe": "room", "args": { "room": "yard" }, "path": "/redo", "op": "==", "value": 1 } }
   ]
 }
 ```

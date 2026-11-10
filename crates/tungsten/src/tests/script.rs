@@ -863,3 +863,116 @@ fn a_level_step_patches_the_live_room_and_undo_restores_it() {
     let journal = world.resource::<RoomJournal>();
     assert_eq!((journal.undo_len("cave"), journal.redo_len("cave")), (0, 1));
 }
+
+#[test]
+fn a_level_step_redoes_what_it_undid() {
+    let mut harness = Harness::new(cave_app());
+    let crate_at = json!({ "room": "cave", "id": "crate_1" });
+    let report = harness.run_script(&script(
+        10,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 3, "level": { "room": "cave", "apply": [{ "move": { "id": "crate_1", "by": [3, 0] } }] } },
+            { "frame": 4, "level": { "room": "cave", "undo": true } },
+            { "frame": 5, "probe": "room", "args": crate_at, "path": "/entry/at" },
+            { "frame": 6, "level": { "room": "cave", "redo": true } },
+            { "frame": 7, "probe": "room", "args": crate_at, "path": "/entry/at" },
+            { "frame": 7, "probe": "room", "args": { "room": "cave" }, "path": "/undo" },
+            { "frame": 7, "probe": "room", "args": { "room": "cave" }, "path": "/redo" },
+            { "frame": 8, "level": { "room": "cave", "redo": true } }
+        ]),
+    ));
+    assert_eq!(
+        probes(&report, "room"),
+        [
+            (5, &json!([2.0, 2.0])),
+            (7, &json!([5.0, 2.0])),
+            (7, &json!(1)),
+            (7, &json!(0)),
+        ],
+        "back by the undo, moved again by the redo, the journal one batch deep"
+    );
+    let failed: Vec<(u32, &str, &str)> = report
+        .failed_steps
+        .iter()
+        .map(|f| (f.frame, f.verb.as_str(), f.error.as_str()))
+        .collect();
+    assert_eq!(failed, [(8, "level", "room `cave` has nothing to redo")]);
+}
+
+#[test]
+fn the_room_probe_reads_a_live_rooms_entries() {
+    let mut harness = Harness::new(cave_app());
+    let all = json!({ "room": "cave" });
+    let report = harness.run_script(&script(
+        8,
+        &json!([
+            { "frame": 1, "probe": "room", "args": all, "path": "/live" },
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 4, "probe": "room", "args": all },
+            { "frame": 4, "probe": "room", "args": { "room": "cave", "id": "crate_1" } },
+            { "frame": 4, "probe": "room", "args": { "room": "cave", "id": "start" } },
+            { "frame": 4, "probe": "room", "args": { "room": "cave", "id": "floor" }, "path": "/kind" },
+            { "frame": 5, "level": { "room": "cave", "apply": [
+                { "place": { "objects": { "id": "crate_2", "prefab": "crate", "at": [6, 2] } } }
+            ] } },
+            { "frame": 6, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_2" }, "path": "/entry/world", "op": "==", "value": [96, 32] } },
+            { "frame": 6, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_2" }, "path": "/entry/alive", "op": "==", "value": true } },
+            { "frame": 7, "probe": "room", "args": { "room": "cave", "id": "crate_9" } }
+        ]),
+    ));
+    let read = probes(&report, "room");
+    assert_eq!(read[0], (1, &json!(false)), "registered, not live yet");
+    assert_eq!(
+        read[1],
+        (
+            4,
+            &json!({
+                "room": "cave",
+                "live": true,
+                "origin": [0.0, 0.0],
+                "cell": [16, 16],
+                "size": [10, 4],
+                "tileset": "cave",
+                "layers": [{ "name": "solid", "kind": "collision", "cells": 0 }],
+                "shapes": [{ "id": "floor", "rect": [0, 3, 10, 1], "tile": "rock", "layers": ["solid"] }],
+                "objects": [{ "id": "crate_1", "prefab": "crate", "at": [2.0, 2.0], "world": [32.0, 32.0], "alive": true }],
+                "places": [{ "id": "start", "point": [1.5, 2.0] }],
+                "undo": 0,
+                "redo": 0,
+            })
+        )
+    );
+    assert_eq!(
+        read[2],
+        (
+            4,
+            &json!({ "kind": "object", "index": 0, "entry": {
+                "id": "crate_1", "prefab": "crate", "at": [2.0, 2.0], "world": [32.0, 32.0], "alive": true
+            } })
+        )
+    );
+    assert_eq!(
+        read[3],
+        (
+            4,
+            &json!({ "kind": "place", "index": 0, "entry": { "id": "start", "point": [1.5, 2.0] } })
+        )
+    );
+    assert_eq!(read[4], (4, &json!("shape")));
+    assert!(
+        report.asserts.iter().all(|assert| assert.passed),
+        "{report:#?}"
+    );
+    let failed: Vec<&str> = report
+        .failed_steps
+        .iter()
+        .map(|f| f.error.as_str())
+        .collect();
+    assert_eq!(
+        failed,
+        ["probe `room`: room `cave` has no entry `crate_9`; did you mean `crate_1`?"]
+    );
+}

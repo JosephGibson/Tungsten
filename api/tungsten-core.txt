@@ -12571,6 +12571,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Ending
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Ending
 pub enum tungsten_core::script::LevelEdit
 pub tungsten_core::script::LevelEdit::Apply(alloc::vec::Vec<tungsten_core::RoomCommand>)
+pub tungsten_core::script::LevelEdit::Redo
 pub tungsten_core::script::LevelEdit::Undo
 impl core::clone::Clone for tungsten_core::script::LevelEdit
 pub fn tungsten_core::script::LevelEdit::clone(&self) -> tungsten_core::script::LevelEdit
@@ -13216,6 +13217,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Unreached
 pub const tungsten_core::script::DEFAULT_TOLERANCE: f64
 pub const tungsten_core::script::REPORT_VERSION: u32
 pub const tungsten_core::script::SCRIPT_VERSION: u32
+pub fn tungsten_core::script::json_schema() -> serde_json::value::Value
 pub fn tungsten_core::script::select<'v>(&'v serde_json::value::Value, core::option::Option<&str>) -> core::result::Result<&'v serde_json::value::Value, alloc::string::String>
 pub type tungsten_core::script::ScriptAction = dyn core::ops::function::Fn(&mut tungsten_core::World, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String>
 pub type tungsten_core::script::ScriptProbe = dyn core::ops::function::Fn(&tungsten_core::World, &serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String>

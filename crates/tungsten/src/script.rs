@@ -831,6 +831,12 @@ impl ScriptRunner {
                         .map_err(|err| err.to_string())?
                         .ok_or_else(|| format!("room `{room}` has nothing to undo"))?;
                 }
+                LevelEdit::Redo => {
+                    world
+                        .redo_room_batch(&room)
+                        .map_err(|err| err.to_string())?
+                        .ok_or_else(|| format!("room `{room}` has nothing to redo"))?;
+                }
             },
         }
         Ok(())

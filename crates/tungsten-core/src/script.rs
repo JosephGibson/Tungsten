@@ -17,7 +17,7 @@
 //! | `screen` | a `ui_screens` ID or a registered screen's name, opened as `tungsten::screens::open` opens it |
 //! | `stage` | `{}`, or `{"ambient": [r, g, b]}` |
 //! | `room` | a `rooms` ID, spawned with `World::spawn_room` at the origin under the stage (redo 7.12) |
-//! | `level` | `{"room", "apply": [commands]}`, a batch applied to the live room and journaled (`World::apply_room_batch`), or `{"room", "undo": true}`, its newest batch undone; no file is written |
+//! | `level` | `{"room", "apply": [commands]}`, a batch applied to the live room and journaled (`World::apply_room_batch`), `{"room", "undo": true}`, its newest batch undone, or `{"room", "redo": true}`, its newest undone batch applied again; no file is written |
 //! | `generate` | `{"generator": id, "seed": n, "prefix"?: id}`: `World::generate_rooms`, the generator's ID the prefix unless given, then each room spawned at its origin under the stage (redo 7.12) |
 //! | `sheet` | `{"items": ["prefab:goblin", "sprite:icon"], "columns"?, "cell"?, "labels"?}` |
 //! | `camera` | `{"center": [x, y], "zoom": z}`, `{"center", "view_height": h}`, `{"fit": "staged"}` or `null` |
@@ -33,7 +33,9 @@
 //! builds anything. A `path` is a JSON pointer (RFC 6901) into a probe's
 //! value. The umbrella crate runs scripts; core holds the formats, the
 //! hooks and the engine's core probes (`frame`, `entities`, `count`,
-//! `camera`, and `place`, a live room's place in world pixels).
+//! `camera`, `place`, a live room's place in world pixels, and `room`, a
+//! room's entries read back). [`json_schema`] describes the format, every
+//! verb's value with it.
 //!
 //! ```
 //! use tungsten_core::script::{Op, Script, Verb};
@@ -70,10 +72,12 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 
-use crate::assets::{PlaceShape, RoomCommand, RoomRegistry, TilemapInstance};
+use crate::assets::room::{closed, described, hint};
+use crate::assets::{PlaceShape, RoomCommand, RoomJournal, RoomRegistry, TilemapInstance};
 use crate::camera::CameraState;
 use crate::component_registry::ComponentRegistry;
 use crate::ecs::World;
+use crate::save::{SaveId, SaveState};
 
 /// The script format's version; a field added or changed bumps it.
 pub const SCRIPT_VERSION: u32 = 1;
@@ -932,6 +936,8 @@ pub enum LevelEdit {
     Apply(Vec<RoomCommand>),
     /// Undoes the room's newest journaled batch.
     Undo,
+    /// Applies the room's newest undone batch again.
+    Redo,
 }
 
 /// `level` as the file writes it.
@@ -943,23 +949,29 @@ struct RawLevel {
     apply: Option<Vec<RoomCommand>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     undo: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    redo: Option<bool>,
 }
 
 impl TryFrom<RawLevel> for LevelStep {
     type Error = String;
 
     fn try_from(raw: RawLevel) -> Result<Self, String> {
-        let edit = match (raw.apply, raw.undo) {
-            (Some(_), Some(_)) => {
-                return Err("`level` takes `apply` or `undo`, not both".to_owned());
-            }
-            (Some(batch), None) if batch.is_empty() => {
+        let edit = match (raw.apply, raw.undo, raw.redo) {
+            (Some(batch), None, None) if batch.is_empty() => {
                 return Err("`apply` needs at least one command".to_owned());
             }
-            (Some(batch), None) => LevelEdit::Apply(batch),
-            (None, Some(true)) => LevelEdit::Undo,
-            (None, Some(false)) => return Err("`undo` is `true` or left out".to_owned()),
-            (None, None) => return Err("`level` needs `apply` or `undo`".to_owned()),
+            (Some(batch), None, None) => LevelEdit::Apply(batch),
+            (None, Some(true), None) => LevelEdit::Undo,
+            (None, None, Some(true)) => LevelEdit::Redo,
+            (None, Some(false), None) => return Err("`undo` is `true` or left out".to_owned()),
+            (None, None, Some(false)) => return Err("`redo` is `true` or left out".to_owned()),
+            (None, None, None) => {
+                return Err("`level` needs `apply`, `undo` or `redo`".to_owned());
+            }
+            _ => {
+                return Err("`level` takes one of `apply`, `undo` and `redo`".to_owned());
+            }
         };
         Ok(Self {
             room: raw.room,
@@ -970,14 +982,16 @@ impl TryFrom<RawLevel> for LevelStep {
 
 impl From<LevelStep> for RawLevel {
     fn from(step: LevelStep) -> Self {
-        let (apply, undo) = match step.edit {
-            LevelEdit::Apply(batch) => (Some(batch), None),
-            LevelEdit::Undo => (None, Some(true)),
+        let (apply, undo, redo) = match step.edit {
+            LevelEdit::Apply(batch) => (Some(batch), None, None),
+            LevelEdit::Undo => (None, Some(true), None),
+            LevelEdit::Redo => (None, None, Some(true)),
         };
         Self {
             room: step.room,
             apply,
             undo,
+            redo,
         }
     }
 }
@@ -1495,6 +1509,11 @@ impl ScriptHooks {
             "`{\"room\", \"id\"}`: a live room's place in world pixels, a point `[x, y]`, an area `{min, size}` or a route's points.",
             probe_place,
         );
+        hooks.add_probe(
+            "room",
+            "`{\"room\"}`: a room read back: `live`, `origin`, `cell`, `size`, `tileset`, its `layers`, `shapes`, `objects` (each with `world`, its spawn point in world pixels, and `alive` while live) and `places`, and its journal's `undo` and `redo` counts; `{\"room\", \"id\"}`: one entry as `{kind, index, entry}`.",
+            probe_room,
+        );
         hooks
     }
 
@@ -1705,6 +1724,104 @@ fn probe_place(world: &World, args: &Value) -> Result<Value, String> {
     })
 }
 
+fn probe_room(world: &World, args: &Value) -> Result<Value, String> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Args {
+        room: String,
+        #[serde(default)]
+        id: Option<String>,
+    }
+    let Args { room, id } = hook_args(args)?;
+    let rooms = world
+        .get_resource::<RoomRegistry>()
+        .ok_or("the World has no rooms")?;
+    let document = rooms
+        .room(&room)
+        .ok_or_else(|| format!("unknown room `{room}`{}", hint(&room, rooms.ids())))?;
+    let origin = rooms
+        .live(&room)
+        .filter(|&instance| world.is_alive(instance))
+        .and_then(|instance| world.get::<TilemapInstance>(instance))
+        .map(|instance| instance.origin);
+    let cell = glam::Vec2::new(document.cell[0] as f32, document.cell[1] as f32);
+    let written = |entry: Result<Value, serde_json::Error>| entry.unwrap_or_default();
+    // An object as its file writes it and, while its room is live, where it
+    // spawns in world pixels and whether the entity it spawned as lives.
+    let object = |object: &crate::assets::room::RoomObject| {
+        let mut entry = written(serde_json::to_value(object));
+        if let Some(origin) = origin {
+            let at = origin + glam::Vec2::from(object.at) * cell;
+            let alive = world
+                .get_resource::<SaveState>()
+                .and_then(|state| {
+                    state.named_entity(SaveId::authored(&format!("{room}.{}", object.id)))
+                })
+                .is_some_and(|entity| world.is_alive(entity));
+            entry["world"] = json!([at.x, at.y]);
+            entry["alive"] = json!(alive);
+        }
+        entry
+    };
+    if let Some(id) = id {
+        let found = if let Some(at) = document.shapes.iter().position(|shape| shape.id == id) {
+            (
+                "shape",
+                at,
+                written(serde_json::to_value(&document.shapes[at])),
+            )
+        } else if let Some(at) = document.objects.iter().position(|entry| entry.id == id) {
+            ("object", at, object(&document.objects[at]))
+        } else if let Some(at) = document.places.iter().position(|place| place.id == id) {
+            (
+                "place",
+                at,
+                written(serde_json::to_value(&document.places[at])),
+            )
+        } else {
+            let ids = (document.shapes.iter().map(|shape| shape.id.as_str()))
+                .chain(document.objects.iter().map(|entry| entry.id.as_str()))
+                .chain(document.places.iter().map(|place| place.id.as_str()));
+            return Err(format!(
+                "room `{room}` has no entry `{id}`{}",
+                hint(&id, ids)
+            ));
+        };
+        let (kind, index, entry) = found;
+        return Ok(json!({ "kind": kind, "index": index, "entry": entry }));
+    }
+    let (undo, redo) = world
+        .get_resource::<RoomJournal>()
+        .map_or((0, 0), |journal| {
+            (journal.undo_len(&room), journal.redo_len(&room))
+        });
+    let layers: Vec<Value> = document
+        .layers
+        .iter()
+        .map(|layer| {
+            json!({
+                "name": layer.name,
+                "kind": written(serde_json::to_value(layer.kind)),
+                "cells": layer.cells.len(),
+            })
+        })
+        .collect();
+    Ok(json!({
+        "room": room,
+        "live": origin.is_some(),
+        "origin": origin.map(|origin| [origin.x, origin.y]),
+        "cell": document.cell,
+        "size": document.size,
+        "tileset": document.tileset,
+        "layers": layers,
+        "shapes": written(serde_json::to_value(&document.shapes)),
+        "objects": document.objects.iter().map(object).collect::<Vec<_>>(),
+        "places": written(serde_json::to_value(&document.places)),
+        "undo": undo,
+        "redo": redo,
+    }))
+}
+
 fn probe_camera(world: &World, args: &Value) -> Result<Value, String> {
     #[derive(Deserialize, Default)]
     #[serde(deny_unknown_fields)]
@@ -1804,6 +1921,347 @@ fn hooks_mut(world: &mut World) -> &mut ScriptHooks {
         world.insert_resource(ScriptHooks::new());
     }
     world.resource_mut::<ScriptHooks>()
+}
+
+/// The JSON Schema (draft 2020-12) of a script: its header, its steps and
+/// every verb's value, each with a `description` and an example, so a
+/// script is written from the schema alone. A step holds exactly one verb.
+#[must_use]
+pub fn json_schema() -> Value {
+    let name = |text: &str| {
+        described(
+            json!({ "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }),
+            text,
+        )
+    };
+    let text = |about: &str| described(json!({ "type": "string", "minLength": 1 }), about);
+    let numbers = |count: usize, about: &str| {
+        described(
+            json!({ "type": "array", "items": { "type": "number" }, "minItems": count, "maxItems": count }),
+            about,
+        )
+    };
+    let flag = |about: &str| described(json!({ "type": "boolean" }), about);
+    let whole =
+        |least: u32, about: &str| described(json!({ "type": "integer", "minimum": least }), about);
+
+    let mut cursor = described(
+        json!({ "oneOf": [
+            { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+            closed(&[("world", numbers(2, "A point of the game's world, through its camera."))], &["world"]),
+        ] }),
+        "Moves the cursor: `[x, y]` in window pixels, or `{\"world\": [x, y]}` through the game's camera.",
+    );
+    cursor["examples"] = json!([[640, 360], { "world": [88, 312] }]);
+    let spawn = closed(
+        &[
+            ("prefab", text("The manifest's prefab ID.")),
+            ("at", numbers(2, "Where, in world pixels.")),
+        ],
+        &["prefab", "at"],
+    );
+    let stage = closed(
+        &[(
+            "ambient",
+            numbers(3, "The stage's ambient light, linear `[r, g, b]`."),
+        )],
+        &[],
+    );
+    let mut level = closed(
+        &[
+            (
+                "room",
+                name("The room, a `rooms` ID, live when the step runs."),
+            ),
+            (
+                "apply",
+                described(
+                    json!({ "type": "array", "minItems": 1, "items": { "type": "object" } }),
+                    "A batch of room commands, as `tungsten level apply` takes (`tungsten schema batch`): applied whole or not at all, the live room patched and the batch journaled.",
+                ),
+            ),
+            (
+                "undo",
+                described(json!({ "const": true }), "Undoes the room's newest batch."),
+            ),
+            (
+                "redo",
+                described(
+                    json!({ "const": true }),
+                    "Applies the room's newest undone batch again.",
+                ),
+            ),
+        ],
+        &["room"],
+    );
+    level["oneOf"] = json!([
+        { "required": ["apply"] },
+        { "required": ["undo"] },
+        { "required": ["redo"] },
+    ]);
+    let generate = closed(
+        &[
+            ("generator", name("A registered room generator's ID.")),
+            ("seed", whole(0, "The seed.")),
+            (
+                "prefix",
+                name("The prefix of its rooms' IDs; the generator's ID when absent."),
+            ),
+        ],
+        &["generator", "seed"],
+    );
+    let sheet = closed(
+        &[
+            (
+                "items",
+                described(
+                    json!({ "type": "array", "minItems": 1, "items": { "type": "string" } }),
+                    "What to lay out, in order: `prefab:<id>` or a bare prefab ID, `sprite:<id>`, `animation:<id>`, `particles:<id>`.",
+                ),
+            ),
+            (
+                "columns",
+                whole(1, "Columns in the grid; a near-square grid when absent."),
+            ),
+            (
+                "cell",
+                numbers(
+                    2,
+                    "A cell's size in world pixels; from the items' sprites when absent.",
+                ),
+            ),
+            (
+                "labels",
+                flag("Whether each cell carries its item's name; true when absent."),
+            ),
+        ],
+        &["items"],
+    );
+    let camera = described(
+        json!({ "oneOf": [
+            { "type": "null" },
+            closed(&[
+                ("center", numbers(2, "The view's centre in world pixels.")),
+                ("zoom", described(json!({ "type": "number", "exclusiveMinimum": 0 }), "Screen pixels per world pixel.")),
+            ], &["center", "zoom"]),
+            closed(&[
+                ("center", numbers(2, "The view's centre in world pixels.")),
+                ("view_height", described(json!({ "type": "number", "exclusiveMinimum": 0 }), "World pixels from the view's top to its bottom.")),
+            ], &["center", "view_height"]),
+            closed(&[("fit", described(json!({ "const": "staged" }), "Fits what the stage holds."))], &["fit"]),
+        ] }),
+        "Draws with another camera from this frame: a centre with a `zoom` or a `view_height`, or `{\"fit\": \"staged\"}`; null gives the game's camera back.",
+    );
+    let overlay = closed(
+        &[
+            (
+                "physics",
+                flag("The physics overlay: what collides, outlined."),
+            ),
+            ("kit", flag("The kit's debug overlay.")),
+        ],
+        &[],
+    );
+    let assert = closed(
+        &[
+            ("probe", name("The probe to read.")),
+            ("args", described(json!({}), "The probe's arguments.")),
+            (
+                "path",
+                text(
+                    "A JSON pointer into the probe's value, as `/objects/0/at`; the whole value when absent.",
+                ),
+            ),
+            (
+                "op",
+                described(
+                    json!({ "enum": ["==", "!=", "<", "<=", ">", ">=", "~="] }),
+                    "How the value compares: `==` and `!=` any JSON values, the orderings two numbers or two strings, `~=` two numbers or two arrays of numbers within `tolerance`.",
+                ),
+            ),
+            ("value", described(json!({}), "What it compares against.")),
+            (
+                "tolerance",
+                described(
+                    json!({ "type": "number", "minimum": 0 }),
+                    "`~=`'s tolerance; 1e-6 when absent.",
+                ),
+            ),
+        ],
+        &["probe", "op", "value"],
+    );
+
+    // Each verb: its key, its value's schema and an example of the value.
+    let verbs: Vec<(&str, Value, Value)> = vec![
+        (
+            "press",
+            name("Presses an action's first binding and holds it until a `release`."),
+            json!("jump"),
+        ),
+        (
+            "release",
+            name("Releases an action's first binding."),
+            json!("jump"),
+        ),
+        ("cursor", cursor, json!({ "world": [88, 312] })),
+        (
+            "action",
+            name(
+                "Calls an action the game or the engine registered, with the step's `args`; `tungsten describe` lists them.",
+            ),
+            json!("start_run"),
+        ),
+        (
+            "spawn",
+            described(spawn, "Spawns a prefab at a point."),
+            json!({ "prefab": "goblin", "at": [64, 128] }),
+        ),
+        (
+            "scene",
+            text("Spawns a scene file, its path relative to the game's folder."),
+            json!("assets/scenes/arena.json"),
+        ),
+        (
+            "screen",
+            text("Opens a screen: a `ui_screens` ID, or a screen the game registered by name."),
+            json!("pause"),
+        ),
+        (
+            "stage",
+            described(
+                stage,
+                "Clears the game's states for an empty stage, held from this frame: `{}`. The steps that spawn (`spawn`, `scene`, `room`, `generate`, `sheet`) then spawn on it.",
+            ),
+            json!({}),
+        ),
+        (
+            "room",
+            name("Spawns a room by its `rooms` ID, its top-left at the world's origin."),
+            json!("cave"),
+        ),
+        (
+            "level",
+            described(
+                level,
+                "Edits a live room, as `tungsten level apply` edits its file: one of `apply`, `undo` and `redo`. No file is written.",
+            ),
+            json!({ "room": "cave", "apply": [{ "move": { "id": "crate_1", "by": [1, 0] } }] }),
+        ),
+        (
+            "generate",
+            described(
+                generate,
+                "Generates rooms from a seed and spawns each at its origin.",
+            ),
+            json!({ "generator": "chain", "seed": 7 }),
+        ),
+        (
+            "sheet",
+            described(sheet, "Lays items out in a captioned grid on the stage."),
+            json!({ "items": ["goblin", "sprite:icon_fire"] }),
+        ),
+        ("camera", camera, json!({ "center": [320, 192], "zoom": 2 })),
+        (
+            "overlay",
+            described(
+                overlay,
+                "Turns debug overlays on or off; one left out stays as it is.",
+            ),
+            json!({ "physics": true }),
+        ),
+        ("ui", flag("Whether the UI draws."), json!(false)),
+        (
+            "capture",
+            text(
+                "Captures the frame to a `.png` path; with `until`, to a folder of `NNNN.png` frames named by frame.",
+            ),
+            json!("shots/room.png"),
+        ),
+        (
+            "probe",
+            name(
+                "Reads a probe into the report, with the step's `args` and `path`; `tungsten describe` lists the probes.",
+            ),
+            json!("entities"),
+        ),
+        (
+            "assert",
+            described(
+                assert,
+                "Checks a probe's value; a failed one fails the run.",
+            ),
+            json!({ "probe": "room", "args": { "room": "cave" }, "path": "/objects/0/at", "op": "==", "value": [5, 19] }),
+        ),
+        (
+            "exit",
+            described(closed(&[], &[]), "Ends the run after this frame: `{}`."),
+            json!({}),
+        ),
+    ];
+    let mut properties = vec![
+        ("frame", whole(1, "The frame it runs on, counting from 1.")),
+        (
+            "until",
+            whole(
+                1,
+                "With it, the step repeats through this frame; not for `stage`, `sheet`, `room`, `level`, `generate` or `exit`.",
+            ),
+        ),
+        (
+            "every",
+            whole(
+                1,
+                "A repeat's stride in frames; 1 when absent. Needs `until`.",
+            ),
+        ),
+        (
+            "args",
+            described(json!({}), "The arguments of an `action` or a `probe`."),
+        ),
+        ("path", text("With `probe`: a JSON pointer into its value.")),
+    ];
+    let mut one_of = Vec::new();
+    for (verb, mut schema, example) in verbs {
+        if schema.get("examples").is_none() {
+            schema["examples"] = json!([example]);
+        }
+        one_of.push(json!({ "required": [verb] }));
+        properties.push((verb, schema));
+    }
+    let mut step = closed(&properties, &["frame"]);
+    step["oneOf"] = Value::Array(one_of);
+    step["description"] = json!("One step: a frame and exactly one verb.");
+    let mut schema = closed(
+        &[
+            (
+                "version",
+                described(json!({ "const": SCRIPT_VERSION }), "The format's version."),
+            ),
+            ("frames", whole(1, "The last frame; the run ends after it.")),
+            (
+                "resolution",
+                described(
+                    json!({ "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 2, "maxItems": 2 }),
+                    "The window's and the captures' size, `[width, height]` in pixels; the game's own when absent.",
+                ),
+            ),
+            (
+                "steps",
+                described(
+                    json!({ "type": "array", "items": { "$ref": "#/$defs/step" } }),
+                    "The steps, each run on its frame; steps of one frame run in file order.",
+                ),
+            ),
+        ],
+        &["version", "frames"],
+    );
+    schema["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
+    schema["title"] = json!("Tungsten script");
+    schema["description"] = json!(
+        "A script for `tungsten run --script`: what the run does on which frame, and its last frame. dt is pinned at 60 Hz and the keyboard and mouse are ignored, so a run repeats."
+    );
+    schema["$defs"] = json!({ "step": step });
+    schema
 }
 
 #[cfg(test)]
