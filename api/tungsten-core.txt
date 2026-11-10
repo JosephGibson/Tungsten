@@ -9161,6 +9161,7 @@ pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
 impl tungsten_core::World
+pub fn tungsten_core::World::despawn_room(&mut self, &str) -> core::result::Result<usize, tungsten_core::save::AreaError>
 pub fn tungsten_core::World::insert_room(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
 pub fn tungsten_core::World::insert_room_with_path(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room, std::path::PathBuf) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
 pub fn tungsten_core::World::remove_room(&mut self, &str) -> core::result::Result<tungsten_core::assets::room::Room, tungsten_core::save::AreaError>
@@ -25497,6 +25498,7 @@ pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
 impl tungsten_core::World
+pub fn tungsten_core::World::despawn_room(&mut self, &str) -> core::result::Result<usize, tungsten_core::save::AreaError>
 pub fn tungsten_core::World::insert_room(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
 pub fn tungsten_core::World::insert_room_with_path(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room, std::path::PathBuf) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
 pub fn tungsten_core::World::remove_room(&mut self, &str) -> core::result::Result<tungsten_core::assets::room::Room, tungsten_core::save::AreaError>

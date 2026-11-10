@@ -40,7 +40,7 @@ const DOES: [(&str, Action); 10] = [
 pub(crate) fn register(hooks: &mut ScriptHooks) {
     hooks.add_probe(
         "editor",
-        "The level editor's state: `available`, `open`, `tool`, `room`, `rooms` (the live ones), `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings`, `grid`, `view`.",
+        "The level editor's state: `available`, `open`, `tool`, `room`, `rooms` (the live ones), `opened` (those the editor opened), `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings`, `grid`, `view`.",
         probe,
     );
     hooks.add_action(
@@ -69,6 +69,7 @@ fn probe(world: &World, _: &Value) -> Result<Value, String> {
         "tool": editor.tool.name(),
         "room": editor.current,
         "rooms": rooms,
+        "opened": editor.opened,
         "layer": editor.layer,
         "prefab": editor.prefab_or_first(world),
         "tile": editor

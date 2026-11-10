@@ -24,7 +24,9 @@ use tungsten_core::ui::{
 };
 use tungsten_core::{AssetRegistry, World};
 
-use super::{Action, LevelEditor, TOGGLE, Tool, live_rooms, prefab_ids, read_only, tile_ids};
+use super::{
+    Action, LevelEditor, TOGGLE, Tool, live_rooms, prefab_ids, read_only, tile_ids, why_closed,
+};
 use crate::debug_views::{
     CELL_PAD, ERROR_TEXT, Header, INSET, Ink, LABEL, Look, RADIUS, Shape, TRANSPARENT, ViewFrame,
     ViewSpec, YELLOW, look_of, toggle_key,
@@ -40,8 +42,9 @@ const GAP: f32 = 4.0;
 const PER_ROW: usize = 3;
 /// A palette row's sprite box, a square.
 const THUMB: f32 = 16.0;
-/// The palette's rows in view before it scrolls.
+/// The palette's rows in view before it scrolls, and the rooms'.
 const PALETTE_ROWS: f32 = 7.0;
+const ROOM_ROWS: f32 = 6.0;
 /// A button's fill, and an active button's or a marked row's.
 const BUTTON: [u8; 4] = [255, 255, 255, 12];
 const ACTIVE: [u8; 4] = [255, 255, 255, 44];
@@ -111,12 +114,13 @@ pub(super) struct Panel {
     pub(super) writes: u64,
 }
 
-/// A room's row: its ID, what its edits write to, and whether it is the
-/// current one.
+/// A room's row: its ID; for a live room what its edits write to, else
+/// whether a click opens it; whether it is live, and the current one.
 #[derive(Debug, Clone, PartialEq)]
 struct RoomRow {
     id: String,
     note: String,
+    live: bool,
     current: bool,
 }
 
@@ -155,14 +159,24 @@ impl Shown {
     fn of(editor: &LevelEditor, world: &World) -> Self {
         let registry = world.get_resource::<RoomRegistry>();
         let current = editor.current.as_deref();
-        let rooms = live_rooms(world, None)
-            .into_iter()
-            .map(|room| {
-                let note = if read_only(world, &room.id).is_some() {
+        // Every registered room, the live ones first.
+        let live = live_rooms(world, None);
+        let is_live = |id: &str| live.iter().any(|room| room.id == id);
+        let ids = registry.map_or_else(Vec::new, |registry| registry.ids().collect());
+        let rooms = (ids.iter().filter(|id| is_live(id)))
+            .chain(ids.iter().filter(|id| !is_live(id)))
+            .map(|&id| {
+                let live = is_live(id);
+                let note = if !live {
+                    match why_closed(world, id) {
+                        Some(_) => "not live: the game opens it".to_owned(),
+                        None => "click to open".to_owned(),
+                    }
+                } else if read_only(world, id).is_some() {
                     "read only".to_owned()
                 } else {
                     registry
-                        .and_then(|registry| registry.path(&room.id))
+                        .and_then(|registry| registry.path(id))
                         .and_then(|path| path.file_name())
                         .map_or_else(
                             || "no file: edits stay live".to_owned(),
@@ -170,9 +184,10 @@ impl Shown {
                         )
                 };
                 RoomRow {
-                    current: current == Some(room.id.as_str()),
-                    id: room.id,
+                    current: current == Some(id),
+                    id: id.to_owned(),
                     note,
+                    live,
                 }
             })
             .collect();
@@ -349,7 +364,15 @@ impl Panel {
         tree.set_overrides(hint, wrap(look.plain(Ink::body(LABEL)), SENTENCE_LINES));
 
         heading(tree, look, column, "Rooms");
-        let rooms = list(tree, look, column, "rooms");
+        let rooms = tree.scroll_panel(
+            column,
+            LayoutStyle {
+                max_height: Some(ROOM_ROWS * look.line_height),
+                ..LayoutStyle::default()
+            },
+        );
+        tree.set_overrides(rooms, look.plain(Ink::body(look.color)));
+        tree.set_key(rooms, "rooms");
 
         heading(tree, look, column, "Tools");
         let mut tools = Vec::new();
@@ -466,7 +489,7 @@ impl Panel {
             let same_rows = last.is_some_and(|last| {
                 last.rooms.len() == shown.rooms.len()
                     && (last.rooms.iter().zip(&shown.rooms))
-                        .all(|(a, b)| a.id == b.id && a.note == b.note)
+                        .all(|(a, b)| a.id == b.id && a.note == b.note && a.live == b.live)
             });
             if !same_rows {
                 clear(tree, self.rooms);
@@ -482,12 +505,12 @@ impl Panel {
                     })
                     .collect();
                 if shown.rooms.is_empty() {
-                    let none = tree.label(self.rooms, "none is live");
+                    let none = tree.label(self.rooms, "the game lists none");
                     tree.set_overrides(none, look.plain(Ink::body(LABEL)));
                 }
             }
             for (entry, room) in self.room_rows.iter().zip(&shown.rooms) {
-                mark(tree, look, entry, room.current);
+                mark(tree, look, entry, room.current, !room.live);
             }
         }
         if changed!(tool) {
@@ -575,6 +598,7 @@ impl Panel {
                     look,
                     entry,
                     shown.palette.chosen.as_deref() == Some(id),
+                    false,
                 );
             }
         }
@@ -600,7 +624,7 @@ impl Panel {
             }
             for entry in &self.layer_rows {
                 let chosen = matches!(&entry.action, Action::Layer(layer) if *layer == shown.layer);
-                mark(tree, look, entry, chosen);
+                mark(tree, look, entry, chosen, false);
             }
         }
         if changed!(selection) {
@@ -788,16 +812,16 @@ fn entry(tree: &mut UiTree, look: &Look, parent: WidgetId, thumb: &Thumb, key: &
         label,
         action: Action::GameView,
     };
-    mark(tree, look, &entry, false);
+    mark(tree, look, &entry, false, false);
     entry
 }
 
 /// A row's look: filled and strong while `marked`.
-fn mark(tree: &mut UiTree, look: &Look, entry: &Entry, marked: bool) {
-    let (fill, ink) = if marked {
-        (ACTIVE, Ink::body(look.color).strong())
-    } else {
-        (TRANSPARENT, Ink::body(look.color))
+fn mark(tree: &mut UiTree, look: &Look, entry: &Entry, marked: bool, dim: bool) {
+    let (fill, ink) = match (marked, dim) {
+        (true, _) => (ACTIVE, Ink::body(look.color).strong()),
+        (false, true) => (TRANSPARENT, Ink::body(LABEL)),
+        (false, false) => (TRANSPARENT, Ink::body(look.color)),
     };
     tree.set_overrides(entry.button, look.node(fill, TRANSPARENT, 0.0, RADIUS, ink));
     tree.set_overrides(entry.label, look.plain(ink));

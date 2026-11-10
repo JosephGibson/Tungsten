@@ -27,9 +27,14 @@ struct Marker;
 /// The fixture's copy, changed by `prepare` before it loads, loaded into
 /// an app on `config`, and room `spawn` spawned at the origin.
 fn editor_with(config: Config, prepare: impl FnOnce(&Path), spawn: &str) -> (PathBuf, UiHarness) {
+    editor_on(App::new(config).unwrap(), prepare, spawn)
+}
+
+/// [`editor_with`] over `app`, which a test gave its own systems.
+fn editor_on(app: App, prepare: impl FnOnce(&Path), spawn: &str) -> (PathBuf, UiHarness) {
     let dir = fixture_copy();
     prepare(&dir);
-    let mut harness = UiHarness::new(App::new(config).unwrap());
+    let mut harness = UiHarness::new(app);
     let world = harness.world_mut();
     let manifest = ResolvedManifest::load(dir.join("manifest.json")).unwrap();
     let mut plan = LoadPlan::new(manifest, world);
@@ -1206,9 +1211,12 @@ fn no_live_room_says_so() {
     let hint = text(&harness, "hint");
     assert_eq!(
         hint,
-        "No room is live: the game has spawned none of its 2 rooms (cave, hall). The editor edits a room once `world.spawn_room` has spawned it."
+        "No room is live: the game has spawned none of its 2 rooms. Click one under Rooms to open it here."
     );
-    assert_eq!(rows(&harness, "rooms"), ["none is live"]);
+    assert_eq!(
+        rows(&harness, "rooms"),
+        ["cave  click to open", "hall  click to open"]
+    );
     // A click in the world edits nothing and the buttons say why.
     drag(&mut harness, CRATE, RIGHT);
     assert_eq!(journal(harness.world(), "cave"), (0, 0));
@@ -1240,7 +1248,14 @@ fn a_read_only_room_says_why() {
     harness.step(2);
     // Before any edit is tried: its row and the hint say it.
     assert_eq!(state(&harness).current.as_deref(), Some("run_a"));
-    assert_eq!(rows(&harness, "rooms"), ["run_a  read only"]);
+    assert_eq!(
+        rows(&harness, "rooms"),
+        [
+            "run_a  read only",
+            "cave  click to open",
+            "hall  click to open"
+        ]
+    );
     assert_eq!(
         text(&harness, "hint"),
         "`run_a` is read only: generator `copy` made it for this run. `tungsten level generate` writes rooms to edit."
@@ -1321,8 +1336,8 @@ fn the_editor_action_drives_every_control() {
             "The room has no object `crate_9`.",
         ),
         (
-            json!({ "room": "hall" }),
-            "Room `hall` is not live: the game has not spawned it.",
+            json!({ "room": "attic" }),
+            "No room `attic`: the game lists cave, hall.",
         ),
         (
             json!({ "do": "explode" }),
@@ -1364,6 +1379,7 @@ fn the_editor_probe_reads_its_state() {
             "tool": "select",
             "room": "cave",
             "rooms": ["cave"],
+            "opened": [],
             "layer": null,
             "prefab": "ball",
             "tile": "rock",
@@ -1670,4 +1686,281 @@ fn a_room_of_thousands_draws_what_the_view_holds() {
     harness.pointer_up();
     harness.step(1);
     assert!(state(&harness).selection.is_some());
+}
+
+/// Whether room `id` has a live instance.
+fn live(world: &World, id: &str) -> bool {
+    world
+        .resource::<RoomRegistry>()
+        .live(id)
+        .is_some_and(|instance| world.is_alive(instance))
+}
+
+#[test]
+fn the_rooms_list_names_rooms_that_are_not_live() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    // The live room with its file, then the rest, greyed: a click away.
+    assert_eq!(
+        rows(&harness, "rooms"),
+        ["cave  cave.json", "hall  click to open"]
+    );
+    let ink = |harness: &UiHarness, key: &str| {
+        let tree = harness.tree();
+        let label = tree.children(keyed(harness, key))[1];
+        tree.overrides(label).and_then(|style| style.text.color)
+    };
+    assert_ne!(ink(&harness, "room_hall"), ink(&harness, "room_cave"));
+    assert_eq!(ink(&harness, "room_hall"), Some(crate::debug_views::LABEL));
+    assert_eq!(probe(&harness)["rooms"], json!(["cave"]));
+}
+
+#[test]
+fn a_click_opens_a_room_beside_the_live_ones() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    click(&mut harness, "room_hall");
+    let world = harness.world();
+    assert!(live(world, "hall"));
+    // Two of its 16 px cells right of `cave`'s 640 px, at its top.
+    let instance = world.resource::<RoomRegistry>().live("hall").unwrap();
+    assert_eq!(
+        world
+            .get::<tungsten_core::assets::TilemapInstance>(instance)
+            .unwrap()
+            .origin,
+        Vec2::new(672.0, 0.0)
+    );
+    // Under the top state, or the editor's own with none on the stack.
+    assert!(world.get::<crate::state::SceneEntity>(instance).is_some());
+    let editor = state(&harness);
+    assert_eq!(editor.current.as_deref(), Some("hall"));
+    assert_eq!(editor.opened, ["hall"]);
+    assert!(editor.view.is_some(), "fitted");
+    assert_eq!(
+        editor.status,
+        "Opened `hall` beside the live rooms. Closing the editor puts it away."
+    );
+    harness.step(1);
+    assert_eq!(
+        rows(&harness, "rooms"),
+        ["cave  cave.json", "hall  hall.json"]
+    );
+    assert_eq!(probe(&harness)["opened"], json!(["hall"]));
+    // It is edited as any live room is: checked, journaled, written.
+    script(&mut harness, &json!({ "prefab": "crate" })).unwrap();
+    let floor = state(&harness)
+        .drawn(CameraState::new())
+        .world_to_screen(Vec2::new(672.0 + 3.0 * 16.0 + 8.0, 9.0 * 16.0 + 8.0));
+    drag(&mut harness, floor, floor);
+    assert_eq!(state(&harness).status, "Placed `crate_1` at 3, 9.");
+    assert_eq!(at(harness.world(), "hall", "crate_1"), [3.0, 9.0]);
+    assert_eq!(
+        fs::read_to_string(dir.join("rooms/hall.json")).unwrap(),
+        document(harness.world(), "hall").to_canonical()
+    );
+    // The same from a script.
+    let (_dir, mut harness) = self::editor();
+    script(&mut harness, &json!({ "open": true, "room": "hall" })).unwrap();
+    assert!(live(harness.world(), "hall"));
+}
+
+#[test]
+fn a_room_with_saved_progress_is_not_opened() {
+    // The game had `hall` live in this run and left it: its area is still
+    // among the World's loaded ones.
+    let (_dir, mut harness) = editor();
+    let world = harness.world_mut();
+    let hall = world.spawn_room("hall", [700.0, 0.0], &(Marker,)).unwrap();
+    world.despawn(hall.instance());
+    open(&mut harness);
+    harness.step(2);
+    assert_eq!(
+        rows(&harness, "rooms"),
+        ["cave  cave.json", "hall  not live: the game opens it"]
+    );
+    click(&mut harness, "room_hall");
+    assert_eq!(
+        state(&harness).status,
+        "Can't open `hall`: the game has had it live in this run, and a spawn here would write over what changed. It opens once the game spawns it."
+    );
+    assert!(state(&harness).refused);
+    assert!(!live(harness.world(), "hall"));
+    assert!(state(&harness).opened.is_empty());
+
+    // A loaded save holds `hall`, which this run has not entered.
+    let (_dir, mut source) = editor();
+    source
+        .world_mut()
+        .spawn_room("hall", [700.0, 0.0], &(Marker,))
+        .unwrap();
+    let save = tungsten_core::save::capture_world(source.world()).unwrap();
+    let (_dir, mut harness) = editor();
+    tungsten_core::save::restore_world(harness.world_mut(), &save, &(Marker,)).unwrap();
+    assert!(harness.world().resource::<SaveState>().is_kept("hall"));
+    open(&mut harness);
+    harness.step(2);
+    click(&mut harness, "room_hall");
+    assert_eq!(
+        state(&harness).status,
+        "Can't open `hall`: a loaded save holds progress there, which a spawn here would write over. It opens once the game spawns it."
+    );
+    assert!(!live(harness.world(), "hall"));
+    assert!(harness.world().resource::<SaveState>().is_kept("hall"));
+}
+
+#[test]
+fn closing_puts_away_the_rooms_the_editor_opened() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    click(&mut harness, "room_hall");
+    script(&mut harness, &json!({ "prefab": "crate" })).unwrap();
+    let floor = state(&harness)
+        .drawn(CameraState::new())
+        .world_to_screen(Vec2::new(672.0 + 56.0, 152.0));
+    drag(&mut harness, floor, floor);
+    assert!(named(harness.world(), "hall.crate_1").is_some());
+    harness.tap_action(TOGGLE);
+    assert!(!state(&harness).open);
+    let world = harness.world();
+    assert!(!live(world, "hall"), "put away");
+    assert_eq!(named(world, "hall.crate_1"), None);
+    assert!(world.resource::<RoomRegistry>().room("hall").is_some());
+    let saves = world.resource::<SaveState>();
+    assert!(!saves.is_loaded("hall"), "no save of this run holds it");
+    assert!(state(&harness).opened.is_empty());
+    // The edit stays in its file and its journal, and it opens again.
+    assert_eq!(journal(world, "hall"), (1, 0));
+    open(&mut harness);
+    harness.step(2);
+    click(&mut harness, "room_hall");
+    assert!(live(harness.world(), "hall"));
+    assert!(named(harness.world(), "hall.crate_1").is_some());
+}
+
+#[test]
+fn a_room_the_game_spawned_stays_when_the_editor_closes() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.step(2);
+    click(&mut harness, "room_hall");
+    // The game's room is made current again, edited, and left live.
+    click(&mut harness, "room_cave");
+    assert_eq!(state(&harness).current.as_deref(), Some("cave"));
+    assert_eq!(state(&harness).opened, ["hall"]);
+    harness.tap_action(TOGGLE);
+    let world = harness.world();
+    assert!(live(world, "cave"));
+    assert!(named(world, "cave.crate_1").is_some());
+    assert!(world.resource::<SaveState>().is_loaded("cave"));
+    assert!(!live(world, "hall"));
+}
+
+#[test]
+fn closing_gives_back_the_post_stack_and_the_ambient_light() {
+    use tungsten_core::{AmbientLight, PostStack};
+    // `hall` gives an ambient light and `den`, its copy, a post stack.
+    let prepare = |dir: &Path| {
+        let path = dir.join("rooms/hall.json");
+        let mut hall: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let mut den = hall.clone();
+        hall["ambient"] = json!([0.25, 0.5, 1.0]);
+        fs::write(&path, hall.to_string()).unwrap();
+        den["post"] = json!([{ "kind": "pixelate", "params": 4 }]);
+        den["places"] = json!([]);
+        fs::write(dir.join("rooms/den.json"), den.to_string()).unwrap();
+        let path = dir.join("manifest.json");
+        let mut manifest: Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        manifest["rooms"]["den"] = json!({ "path": "rooms/den.json" });
+        fs::write(&path, manifest.to_string()).unwrap();
+    };
+    let look = |world: &World| {
+        (
+            world.get_resource::<PostStack>().map(|post| post.0.len()),
+            world.get_resource::<AmbientLight>().map(|light| light.0),
+        )
+    };
+    // What the game had comes back, whichever room set which.
+    let (_dir, mut harness) = editor_with(Config::default(), prepare, "cave");
+    let world = harness.world_mut();
+    world.insert_resource(PostStack(Vec::new()));
+    world.insert_resource(AmbientLight(glam::Vec3::splat(0.5)));
+    let before = look(harness.world());
+    open(&mut harness);
+    harness.step(2);
+    click(&mut harness, "room_hall");
+    click(&mut harness, "room_den");
+    assert_eq!(
+        look(harness.world()),
+        (Some(1), Some(glam::Vec3::new(0.25, 0.5, 1.0))),
+        "the rooms' own while they are open"
+    );
+    harness.tap_action(TOGGLE);
+    assert_eq!(look(harness.world()), before);
+
+    // A World with neither ends with neither.
+    let (_dir, mut harness) = editor_with(Config::default(), prepare, "cave");
+    let world = harness.world_mut();
+    world.remove_resource::<PostStack>();
+    world.remove_resource::<AmbientLight>();
+    open(&mut harness);
+    harness.step(2);
+    click(&mut harness, "room_den");
+    click(&mut harness, "room_hall");
+    assert_eq!(look(harness.world()).0, Some(1));
+    harness.tap_action(TOGGLE);
+    assert_eq!(look(harness.world()), (None, None));
+}
+
+/// Whether the World had `hall`'s area loaded in each last frame's
+/// `PreUpdate`, where a game saves on quit.
+#[derive(Debug, Default)]
+struct SeenAtExit(Vec<bool>);
+
+#[test]
+fn a_last_frame_closes_the_editor_before_its_save() {
+    use tungsten_core::schedule::{Stage, system};
+    for close_the_window in [true, false] {
+        let mut app = App::new(Config::default()).unwrap();
+        app.add_system_to(
+            Stage::PreUpdate,
+            system("save_on_quit", |world: &mut World| {
+                if world.has_resource::<crate::app::Exiting>() {
+                    let loaded = world
+                        .get_resource::<SaveState>()
+                        .is_some_and(|saves| saves.is_loaded("hall"));
+                    world.resource_mut::<SeenAtExit>().0.push(loaded);
+                }
+            }),
+        );
+        let (_dir, mut harness) = editor_on(app, |_| {}, "cave");
+        harness.world_mut().insert_resource(SeenAtExit::default());
+        open(&mut harness);
+        harness.step(2);
+        click(&mut harness, "room_hall");
+        assert!(harness.world().resource::<SaveState>().is_loaded("hall"));
+        if close_the_window {
+            // The window's close: `Exiting` at once, the next frame the last.
+            harness.harness_mut().request_close();
+            harness.step(1);
+        } else {
+            // A game's Quit: the frame after the next is the last.
+            crate::request_exit(harness.world_mut());
+            harness.step(2);
+        }
+        let world = harness.world();
+        assert_eq!(
+            world.resource::<SeenAtExit>().0,
+            [false],
+            "close_the_window: {close_the_window}"
+        );
+        assert!(!state(&harness).open);
+        assert!(!live(world, "hall"));
+        assert!(live(world, "cave"));
+        assert!(!world.resource::<Time>().is_editing());
+    }
 }

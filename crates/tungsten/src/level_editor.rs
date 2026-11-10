@@ -42,6 +42,16 @@
 //! under Paint and Erase, the object under the cursor under the others.
 //! Escape drops a drag or a stroke under way, else the pick.
 //!
+//! The panel lists every registered room. One the game has not spawned
+//! opens at a click: the editor spawns it right of the live rooms, under
+//! the top state, and puts it away with `World::despawn_room` when it
+//! closes, with the `PostStack` and `AmbientLight` the room's spawn may
+//! have set. It opens no room whose area the World has loaded or a restore
+//! kept, since that is a run's progress and a spawn would write over it,
+//! and never puts away a room the game spawned. The run's last frame
+//! starts by closing the editor ([`close_for_exit`]), so a save taken in
+//! it holds none of the editor's rooms.
+//!
 //! Every edit goes through `World::apply_room_batch` (or its undo or redo),
 //! checked, applied whole, patched live and journaled. Before it, a room
 //! with a file must read from that file as its live document, else the edit
@@ -63,11 +73,12 @@ use tungsten_core::assets::{Room, RoomCommand, RoomJournal, RoomRegistry, Tilema
 use tungsten_core::input::{ActionMap, InputState, KeyCode, Modifiers, MouseButton, RawInput};
 use tungsten_core::save::{SaveId, SaveState};
 use tungsten_core::ui::{UiLayer, UiTree, Visibility};
-use tungsten_core::{CameraState, Entity, ScaleFactor, Time, World};
+use tungsten_core::{AmbientLight, CameraState, Entity, PostStack, ScaleFactor, Time, World};
 
 use crate::app::WindowSize;
 use crate::debug_hud::HudCorner;
 use crate::debug_views::{BORDER, PANEL, VALUE, ViewFrame, ViewWindow};
+use crate::state::{SceneEntity, StateId, StateStack};
 
 mod hooks;
 mod overlay;
@@ -92,6 +103,8 @@ const ZOOM_MAX: f32 = 8.0;
 const PAN_STEP: f32 = 16.0;
 /// The room's margin in a fitted view, in screen pixels a side.
 const FIT_MARGIN: f32 = 24.0;
+/// The state an opened room's entities belong to while the stack is empty.
+const EDITOR_STATE: StateId = "engine_level_editor";
 /// How far from the cursor, in world pixels an axis, an object's spawn
 /// point may lie and its box still be tested for a pick: what keeps a room
 /// of thousands from a lookup an object a frame.
@@ -225,7 +238,8 @@ pub(crate) enum Action {
     GameView,
     /// Shows or hides the current room's cell grid.
     Grid,
-    /// Makes a live room the current one and fits it.
+    /// Makes a live room the current one and fits it; opens a registered
+    /// room that is not live.
     Room(String),
     /// Takes a prefab into the palette and takes up Place.
     Prefab(String),
@@ -337,6 +351,11 @@ pub(crate) struct LevelEditor {
     pub(crate) layer: Option<String>,
     /// The current room's findings after the last edit.
     pub(crate) findings: Vec<String>,
+    /// The rooms the editor opened itself, which closing puts away.
+    pub(crate) opened: Vec<String>,
+    /// The World's `PostStack` and `AmbientLight` before the first room it
+    /// opened, their absence included: what closing puts back.
+    look: Option<(Option<PostStack>, Option<AmbientLight>)>,
     /// Whether the current room's cell grid is drawn.
     pub(crate) grid: bool,
     /// Whether the primary button is the eyedropper this frame: the Pick
@@ -387,6 +406,8 @@ impl LevelEditor {
             tile: None,
             layer: None,
             findings: Vec::new(),
+            opened: Vec::new(),
+            look: None,
             grid: true,
             picking: false,
             stroke: None,
@@ -425,6 +446,23 @@ impl LevelEditor {
         self.hover = None;
         if let Some(time) = world.get_resource_mut::<Time>() {
             time.set_editing(false);
+        }
+        // The rooms it opened go, and what the first of them found in the
+        // World's post stack and ambient light comes back.
+        for id in std::mem::take(&mut self.opened) {
+            if let Err(err) = world.despawn_room(&id) {
+                log::warn!("Level editor: room `{id}` was not put away: {err}");
+            }
+        }
+        if let Some((post, ambient)) = self.look.take() {
+            match post {
+                Some(post) => world.insert_resource(post),
+                None => drop(world.remove_resource::<PostStack>()),
+            }
+            match ambient {
+                Some(ambient) => world.insert_resource(ambient),
+                None => drop(world.remove_resource::<AmbientLight>()),
+            }
         }
         // The game's view back, should no camera update write over ours.
         if let (Some(game), Some(written)) = (self.game_camera.take(), self.written.take())
@@ -638,15 +676,26 @@ impl LevelEditor {
             Action::GameView => self.view = None,
             Action::Grid => self.grid = !self.grid,
             Action::Room(id) => {
+                let registered = world
+                    .get_resource::<RoomRegistry>()
+                    .is_some_and(|rooms| rooms.room(&id).is_some());
                 if live_rooms(world, None).iter().any(|room| room.id == id) {
                     self.current = Some(id);
                     self.selection = None;
                     self.findings.clear();
                     self.fit(world);
+                } else if registered {
+                    self.open_room(world, id);
                 } else {
-                    self.refuse(format!(
-                        "Room `{id}` is not live: the game has not spawned it."
-                    ));
+                    let ids: Vec<&str> = world
+                        .get_resource::<RoomRegistry>()
+                        .map(|rooms| rooms.ids().collect())
+                        .unwrap_or_default();
+                    self.refuse(if ids.is_empty() {
+                        format!("No room `{id}`: the game lists none.")
+                    } else {
+                        format!("No room `{id}`: the game lists {}.", ids.join(", "))
+                    });
                 }
             }
             Action::Prefab(id) => {
@@ -696,6 +745,57 @@ impl LevelEditor {
                     ));
                 }
             }
+        }
+    }
+
+    /// Opens registered room `id`, which is not live: spawned two cells
+    /// right of the live rooms under the top state, made current and
+    /// fitted. Refused, nothing spawned, for a room whose area holds a
+    /// run's progress ([`why_closed`]).
+    fn open_room(&mut self, world: &mut World, id: String) {
+        if let Some(why) = why_closed(world, &id) {
+            self.refuse(format!("Can't open `{id}`: {why}"));
+            return;
+        }
+        let cell = world
+            .get_resource::<RoomRegistry>()
+            .and_then(|rooms| rooms.room(&id))
+            .map_or(Vec2::splat(PAN_STEP), |room| {
+                Vec2::new(room.cell[0] as f32, room.cell[1] as f32)
+            });
+        let live = live_rooms(world, None);
+        let origin = if live.is_empty() {
+            Vec2::ZERO
+        } else {
+            let right = (live.iter())
+                .map(|room| room.origin.x + room.size.x)
+                .fold(f32::MIN, f32::max);
+            let top = (live.iter())
+                .map(|room| room.origin.y)
+                .fold(f32::MAX, f32::min);
+            Vec2::new(right + 2.0 * cell.x, top)
+        };
+        let look = (
+            world.get_resource::<PostStack>().cloned(),
+            world.get_resource::<AmbientLight>().copied(),
+        );
+        let owner = world
+            .get_resource::<StateStack>()
+            .and_then(StateStack::active_id)
+            .unwrap_or(EDITOR_STATE);
+        match world.spawn_room(&id, origin, &(SceneEntity { state_id: owner },)) {
+            Ok(_) => {
+                self.look.get_or_insert(look);
+                self.opened.push(id.clone());
+                self.say(format!(
+                    "Opened `{id}` beside the live rooms. Closing the editor puts it away."
+                ));
+                self.current = Some(id);
+                self.selection = None;
+                self.findings.clear();
+                self.fit(world);
+            }
+            Err(err) => self.refuse(format!("Can't open `{id}`: {err}.")),
         }
     }
 
@@ -1435,14 +1535,46 @@ fn no_live_room(world: &World) -> String {
         return "No room to edit: the game lists none. `tungsten level new <room>` makes one, and the game spawns it with `world.spawn_room`.".to_owned();
     }
     format!(
-        "No room is live: the game has spawned none of its {} ({}). The editor edits a room once `world.spawn_room` has spawned it.",
+        "No room is live: the game has spawned none of its {}. Click one under Rooms to open it here.",
         if ids.len() == 1 {
             "room".to_owned()
         } else {
             format!("{} rooms", ids.len())
         },
-        ids.join(", ")
     )
+}
+
+/// Why the editor will not open registered room `room`, which is not live:
+/// its area holds a run's progress, which a spawn here would write over.
+/// `None` for a room it may open.
+fn why_closed(world: &World, room: &str) -> Option<String> {
+    let state = world.get_resource::<SaveState>()?;
+    if state.is_kept(room) {
+        return Some(
+            "a loaded save holds progress there, which a spawn here would write over. It opens once the game spawns it."
+                .to_owned(),
+        );
+    }
+    state.is_loaded(room).then(|| {
+        "the game has had it live in this run, and a spawn here would write over what changed. It opens once the game spawns it."
+            .to_owned()
+    })
+}
+
+/// Closes the editor at the start of the run's last frame, before its
+/// first stage: the rooms it opened are put away, so a save a game takes
+/// in that frame, as early as `PreUpdate`, holds none of them.
+pub(crate) fn close_for_exit(world: &mut World) {
+    if !world
+        .get_resource::<LevelEditor>()
+        .is_some_and(|editor| editor.open)
+    {
+        return;
+    }
+    if let Some(mut editor) = world.remove_resource::<LevelEditor>() {
+        editor.close(world);
+        world.insert_resource(editor);
+    }
 }
 
 /// Why room `room` is read only, without reading its file: a generated

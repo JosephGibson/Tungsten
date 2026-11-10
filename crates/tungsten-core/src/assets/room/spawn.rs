@@ -2,7 +2,9 @@
 //! documents and their compiled forms; [`World::insert_room`], which
 //! compiles a room and registers its map; [`World::spawn_room`], which
 //! spawns it as an area with its objects named `<room>.<id>`;
-//! [`World::remove_room`], which takes it out with its map and its area.
+//! [`World::despawn_room`], which puts a spawned room away and keeps it
+//! registered; [`World::remove_room`], which takes it out with its map and
+//! its area.
 //!
 //! A room is live at most once: the registry records the instance
 //! `spawn_room` spawned, and a second spawn of the room while that entity
@@ -412,6 +414,68 @@ impl World {
         })
     }
 
+    /// Puts room `id` away and keeps it registered, so
+    /// [`spawn_room`](Self::spawn_room) spawns it again: despawns the
+    /// instance of its last spawn and every live entity named in its area,
+    /// takes the area out of the World's loaded areas and forgets the names
+    /// given in it. The room's document, map, file, journal and generation
+    /// stay. Returns how many entities it despawned; a room that is not
+    /// live, with no name left in its area, despawns none.
+    ///
+    /// A record a restore kept for the area stays kept: it is the player's
+    /// progress there, which only [`remove_room`](Self::remove_room) and the
+    /// area's own entering take. What the room's entities changed since the
+    /// spawn is dropped with them, as it is for any area a game leaves
+    /// without a save.
+    ///
+    /// # Errors
+    ///
+    /// [`AreaError::UnknownRoom`] for a room the registry lacks. Nothing
+    /// changes on an error.
+    pub fn despawn_room(&mut self, id: &str) -> Result<usize, AreaError> {
+        let entry = self
+            .get_resource::<RoomRegistry>()
+            .and_then(|rooms| rooms.rooms.get(id))
+            .ok_or_else(|| AreaError::UnknownRoom {
+                room: id.to_owned(),
+            })?;
+        let mut entities: Vec<Entity> = entry
+            .live
+            .into_iter()
+            .filter(|&instance| self.is_alive(instance))
+            .collect();
+        if let Some(state) = self.get_resource::<SaveState>() {
+            entities.extend(
+                state
+                    .named
+                    .values()
+                    .filter(|named| {
+                        named.area.as_deref() == Some(id) && self.is_alive(named.entity)
+                    })
+                    .map(|named| named.entity),
+            );
+        }
+        // A despawned entity is no longer alive, so one named twice, or
+        // the instance under a name, counts once.
+        let mut despawned = 0;
+        for entity in entities {
+            if self.is_alive(entity) {
+                self.despawn(entity);
+                despawned += 1;
+            }
+        }
+        if let Some(entry) = self.resource_mut::<RoomRegistry>().rooms.get_mut(id) {
+            entry.live = None;
+        }
+        if let Some(state) = self.get_resource_mut::<SaveState>() {
+            state.loaded.remove(id);
+            state
+                .named
+                .retain(|_, named| named.area.as_deref() != Some(id));
+        }
+        Ok(despawned)
+    }
+
     /// Removes room `id` and returns its document: its entry in the
     /// [`RoomRegistry`] (document, compiled form, file, live record and
     /// generation), its
@@ -476,3 +540,7 @@ impl World {
         Ok(entry.document)
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/assets/room_spawn.rs"]
+mod tests;

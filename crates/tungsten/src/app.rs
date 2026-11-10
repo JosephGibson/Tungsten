@@ -2814,6 +2814,11 @@ impl App {
     ) -> FrameEnd {
         let interval_ms =
             frame_interval_ms(self.prev_frame_start.replace(frame_start), frame_start);
+        // The run's last frame: the level editor closes before its first
+        // stage, so a save taken in it holds no room the editor opened.
+        if self.world.has_resource::<Exiting>() {
+            crate::level_editor::close_for_exit(&mut self.world);
+        }
         self.stage_gamepads();
         self.apply_pending_display_request();
 
