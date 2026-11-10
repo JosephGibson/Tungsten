@@ -248,7 +248,7 @@ pub(crate) fn new(game: &Game, args: &NewArgs, write: &mut Writer<'_>) -> anyhow
         "      tungsten level map {id} and tungsten level render {id} -o {id}.png show it"
     ));
     lines.push(format!(
-        "      in the game: world.spawn_room(\"{id}\", origin, &with)"
+        "      in the game: the level editor (F10) opens it from its Rooms list; world.spawn_room(\"{id}\", origin, &with) spawns it"
     ));
     Ok(lines.join("\n"))
 }

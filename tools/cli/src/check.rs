@@ -163,6 +163,31 @@ pub(crate) fn content_stage(
     // The game's stderr passes through but for its closing line, which
     // names the report: a temp file this command line reads and removes,
     // its findings printed after.
+    let quiet = quiet_log();
+    pass_stderr(command, |line| {
+        !(names_the_report(line) || quiet && is_info_record(line))
+    })
+}
+
+/// Whether the game's `INFO` records are dropped from its output: unless
+/// the caller set `RUST_LOG`, which asks for a log and is the game's whole
+/// filter. A run's records are its load's, about sixty lines that say
+/// nothing went wrong; its warnings, errors and panics pass.
+pub(crate) fn quiet_log() -> bool {
+    std::env::var_os("RUST_LOG").is_none()
+}
+
+/// Whether `line` is one of the engine logger's `INFO` records,
+/// `[<time> INFO  <target>] <message>`.
+pub(crate) fn is_info_record(line: &str) -> bool {
+    line.strip_prefix('[')
+        .and_then(|rest| rest.split_once(']'))
+        .is_some_and(|(head, _)| head.split_whitespace().nth(1) == Some("INFO"))
+}
+
+/// Runs `command` with its stderr passed through line by line, those
+/// `keep` refuses dropped.
+fn pass_stderr(command: &mut Command, keep: impl Fn(&str) -> bool) -> anyhow::Result<ExitStatus> {
     let mut child = command
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -171,7 +196,7 @@ pub(crate) fn content_stage(
         use std::io::BufRead as _;
         for line in std::io::BufReader::new(stderr).lines() {
             let Ok(line) = line else { break };
-            if !names_the_report(&line) {
+            if keep(&line) {
                 eprintln!("{line}");
             }
         }
@@ -205,8 +230,8 @@ fn prepare_game(dir: &Path, release: bool, envs: &[(&str, &Path)], command: &mut
 
 /// Runs the game in `dir` with the handshake's variables `envs` set: as
 /// `cargo run --quiet` (with `--release` when asked) when `command` is
-/// `cargo`, else the program given. Its output is the terminal's unless
-/// the caller set it.
+/// `cargo`, else the program given. Its output is the terminal's, less its
+/// `INFO` log records unless `RUST_LOG` is set ([`quiet_log`]).
 pub(crate) fn run_game(
     dir: &Path,
     release: bool,
@@ -214,6 +239,9 @@ pub(crate) fn run_game(
     command: &mut Command,
 ) -> anyhow::Result<ExitStatus> {
     prepare_game(dir, release, envs, command);
+    if quiet_log() {
+        return pass_stderr(command, |line| !is_info_record(line));
+    }
     command
         .status()
         .with_context(|| format!("cannot run `{}`", command.get_program().to_string_lossy()))

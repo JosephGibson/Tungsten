@@ -206,6 +206,27 @@ fn the_checks_closing_line_is_the_one_dropped() {
     }
 }
 
+#[test]
+fn the_games_info_records_are_the_ones_dropped() {
+    for dropped in [
+        "[2026-11-10T10:07:19Z INFO  tungsten::capture] captured frame 58 -> out/a.png",
+        "[2026-11-10T10:07:19Z INFO  tungsten::asset_loader] Packed 10 Nearest sprites",
+    ] {
+        assert!(is_info_record(dropped), "{dropped}");
+    }
+    for kept in [
+        "[2026-11-10T10:07:19Z WARN  tungsten::level_editor] Level editor: no",
+        "[2026-11-10T10:07:19Z ERROR tungsten::app] script 'a.json' did not pass",
+        "Error: script 'a.json' did not pass: 1 assert failed",
+        "thread 'main' panicked at src/main.rs:4:5:",
+        "INFO: not a record",
+        "[INFO] not the engine's",
+        "",
+    ] {
+        assert!(!is_info_record(kept), "{kept}");
+    }
+}
+
 /// A stand-in for the game runs under the check's stage: it writes the
 /// report, prints a line and the closing line to stderr and fails. The
 /// stage hands back its status with the report in place; what it lets

@@ -760,6 +760,62 @@ fn an_apply_reports_each_command() {
 }
 
 #[test]
+fn describe_counts_a_long_list_past_its_first_entries() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    let batch: Vec<serde_json::Value> = (2..=50)
+        .map(|n| serde_json::json!({ "duplicate": { "id": "lamp_1", "as": format!("lamp_{n}") } }))
+        .collect();
+    apply_batch(&game, "cave", &serde_json::to_string(&batch).unwrap()).unwrap();
+    let text = describe(&game, Some("cave"), false).unwrap();
+    let objects = text
+        .lines()
+        .find(|line| line.starts_with("  objects"))
+        .unwrap();
+    assert!(
+        objects.starts_with("  objects (53): crate_1 (crate), "),
+        "{objects}"
+    );
+    assert!(
+        objects.ends_with(", and 13 more (`tungsten level query cave` lists them)"),
+        "{objects}"
+    );
+    assert_eq!(
+        objects.matches(" (lamp)").count(),
+        39,
+        "40 named: {objects}"
+    );
+    // The JSON form holds every entry.
+    let json: serde_json::Value =
+        serde_json::from_str(&describe(&game, Some("cave"), true).unwrap()).unwrap();
+    assert_eq!(json["rooms"][0]["objects"].as_array().unwrap().len(), 53);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_long_batch_is_summed_up() {
+    let dir = game();
+    let game = Game::open(&dir).unwrap();
+    // 25 moves, there and back, the last leaving the crate a cell right.
+    let batch: Vec<serde_json::Value> = (0..25)
+        .map(|n| {
+            let by = if n % 2 == 0 { 1 } else { -1 };
+            serde_json::json!({ "move": { "id": "crate_1", "by": [by, 0] } })
+        })
+        .collect();
+    let report = apply_batch(&game, "cave", &serde_json::to_string(&batch).unwrap()).unwrap();
+    let lines: Vec<&str> = report.lines().collect();
+    assert_eq!(lines[0], "applied 25 commands to assets/rooms/cave.json:");
+    assert_eq!(lines[20], "  move `crate_1` by -1, 0", "the twentieth");
+    assert_eq!(lines[21], "  and 5 more commands");
+    assert_eq!(lines[22], "undo: tungsten level apply cave --undo");
+    // One past the list is still listed whole.
+    let report = apply_batch(&game, "cave", &serde_json::to_string(&batch[..20]).unwrap()).unwrap();
+    assert!(!report.contains("more command"), "{report}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn an_apply_names_the_rooms_that_share_its_file() {
     let dir = game();
     // A second ID on `cave`'s file, as a manifest may list.
@@ -1216,25 +1272,25 @@ fn map_draws_solid_one_way_and_slope_cells_with_a_legend() {
     assert_eq!(lines[0], "cave: 40 \u{d7} 24 cells of 16 \u{d7} 16 px");
     assert_eq!(
         lines[1],
-        "# solid  = one-way  / \\ slope  + drawn only  . empty  a-z objects  1-9 places"
+        "# solid  = one-way  / \\ slope  + drawn only  . empty  a-z objects  1-9 places, an area over its empty cells"
     );
     assert_eq!(lines[2], "   0         1         2         3");
     assert_eq!(lines[3], "   0123456789012345678901234567890123456789");
     let row = |n: usize| lines[4 + n];
     assert_eq!(
         row(4),
-        " 4 ....................2...................",
-        "the area's corner"
+        " 4 ....................2222222222222222....",
+        "the area's top row"
     );
     assert_eq!(
         row(12),
-        "12 ..............................c.........",
-        "a ball"
+        "12 ....................2222222222c22222....",
+        "a ball in the area"
     );
     assert_eq!(
         row(14),
-        "14 ............................=======.....",
-        "the plank bridge"
+        "14 ....................22222222=======2....",
+        "the plank bridge, which the area leaves showing"
     );
     assert_eq!(
         row(17),
@@ -1273,14 +1329,29 @@ fn map_draws_solid_one_way_and_slope_cells_with_a_legend() {
         &lines[..8],
         [
             "cave: 40 \u{d7} 24 cells of 16 \u{d7} 16 px, cells 8,16 to 19,19",
-            "# solid  = one-way  / \\ slope  + drawn only  . empty  a-z objects  1-9 places",
+            "# solid  = one-way  / \\ slope  + drawn only  . empty  a-z objects  1-9 places, an area over its empty cells",
             "     1",
             "   890123456789",
             "16 ...../......",
             "17 ..../#......",
             "18 .../##......",
-            "19 b./###..+...",
+            "19 a./###..+...",
         ]
+    );
+    // Its legend names what the window holds, lettered from `a`.
+    assert_eq!(&lines[8..], ["objects:", "  a lamp_1 (lamp) at 8, 19"]);
+    // Entries past the symbols all read `*` and are counted in one line.
+    let batch: Vec<serde_json::Value> = (2..=60)
+        .map(|n| serde_json::json!({ "duplicate": { "id": "lamp_1", "as": format!("lamp_{n}") } }))
+        .collect();
+    apply_batch(&game, "cave", &serde_json::to_string(&batch).unwrap()).unwrap();
+    let text = map::map(&game, "cave", None).unwrap();
+    let objects = text.split("objects:\n").nth(1).unwrap();
+    let objects = objects.split("places:\n").next().unwrap();
+    assert_eq!(objects.lines().count(), 53, "52 symbols and the count");
+    assert_eq!(
+        objects.lines().last(),
+        Some("  * 11 more: `tungsten level query cave` lists them, and `--rect` maps a part")
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

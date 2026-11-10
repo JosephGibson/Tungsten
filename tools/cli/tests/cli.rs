@@ -15,7 +15,7 @@ fn help_prints_the_usage_and_exits_0() {
         stdout.starts_with("Usage: tungsten <command>\n"),
         "{stdout}"
     );
-    assert!(stdout.ends_with("this command line.\n"), "{stdout}");
+    assert!(stdout.ends_with("RUST_LOG=info shows them.\n"), "{stdout}");
     assert!(output.stderr.is_empty());
 }
 

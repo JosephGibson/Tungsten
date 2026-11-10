@@ -132,8 +132,16 @@ pub(crate) fn run(dir: &Path, args: &LevelArgs) -> anyhow::Result<bool> {
             println!("{message}");
             if *check && !*dry_run {
                 // The room is written; the check's findings say what a
-                // further batch, or an undo, should fix.
-                return check_rooms(dir, std::slice::from_ref(room), None);
+                // further batch, or an undo, should fix. A batch that
+                // brought a finding is still in the file, which a second
+                // batch beside it would leave there: say how it goes.
+                let clean = check_rooms(dir, std::slice::from_ref(room), None)?;
+                if !clean && matches!(edit, ApplyEdit::Batch(_)) {
+                    println!(
+                        "the batch stays applied: `tungsten level apply {room} --undo` takes it back"
+                    );
+                }
+                return Ok(clean);
             }
             Ok(true)
         }
@@ -494,12 +502,25 @@ fn journal_text(lines: &[String]) -> Option<String> {
     })
 }
 
-/// A batch as a report lists it: a line a command, indented.
+/// The commands of a batch a report lists before it counts the rest: a
+/// batch of thousands is a generator's, and its reader wants the count.
+const SUMMARY_LINES: usize = 20;
+
+/// A batch as a report lists it: a line a command, indented, the first
+/// [`SUMMARY_LINES`] and then how many more.
 fn summary(batch: &[RoomCommand]) -> String {
-    batch.iter().fold(String::new(), |mut lines, command| {
+    let mut lines = (batch.iter().take(SUMMARY_LINES)).fold(String::new(), |mut lines, command| {
         let _ = write!(lines, "\n  {}", command.summary());
         lines
-    })
+    });
+    if let Some(more) = batch
+        .len()
+        .checked_sub(SUMMARY_LINES)
+        .filter(|more| *more > 0)
+    {
+        let _ = write!(lines, "\n  and {}", count(more, "more command"));
+    }
+    lines
 }
 
 /// `apply`'s options beside its batch.
@@ -1082,6 +1103,9 @@ fn cell_text(room: &str, cell: &Value) -> String {
     out
 }
 
+/// The entries of a kind `describe`'s text names before it counts the rest.
+const DESCRIBE_ITEMS: usize = 40;
+
 /// Each room's layers and named things by kind, links with their targets:
 /// every listed room, or the one `arg` names.
 pub(crate) fn describe(game: &Game, arg: Option<&str>, json: bool) -> anyhow::Result<String> {
@@ -1158,10 +1182,21 @@ pub(crate) fn describe(game: &Game, arg: Option<&str>, json: bool) -> anyhow::Re
                 .as_str()
                 .map_or_else(String::new, |tileset| format!(", tileset {tileset}"))
         );
+        // The first of a long list, then its count: `query` lists a room
+        // of thousands, and `--json` gives every entry.
+        let id = text(&room["id"]);
         let list = |out: &mut String, kind: &str, items: Vec<String>| {
-            if !items.is_empty() {
-                let _ = writeln!(out, "  {kind} ({}): {}", items.len(), items.join(", "));
+            if items.is_empty() {
+                return;
             }
+            let more = match items.len().checked_sub(DESCRIBE_ITEMS) {
+                Some(more) if more > 0 => {
+                    format!(", and {more} more (`tungsten level query {id}` lists them)")
+                }
+                _ => String::new(),
+            };
+            let shown = items[..items.len().min(DESCRIBE_ITEMS)].join(", ");
+            let _ = writeln!(out, "  {kind} ({}): {shown}{more}", items.len());
         };
         let array = |key: &str| room[key].as_array().cloned().unwrap_or_default();
         list(

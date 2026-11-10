@@ -168,7 +168,9 @@ Options of schema:
 `tungsten level --help` adds the batch commands and a worked example.
 
 Run every command but new and schema in the game's folder. They need
-the game's engine to be the version of this command line."
+the game's engine to be the version of this command line. A command
+that runs the game prints its warnings and errors and leaves out its
+INFO log lines; RUST_LOG=info shows them."
 );
 
 /// `tungsten level --help`, which `api/tungsten-cli.txt` records too: a

@@ -7,9 +7,11 @@
 //! `\` a slope by the way its surface runs; then `+` for a tile that is
 //! only drawn and `.` for an empty cell. An object's letter and a place's
 //! digit go over the terrain at the cell their position falls in, an
-//! area's at its top-left cell and a route's at its first point, and the
-//! legend under the map gives each one's ID and geometry. A room larger
-//! than [`MAX_COLS`] by [`MAX_ROWS`] prints through `--rect`.
+//! area's at its top-left cell and over each empty cell it covers, so it
+//! reads as an area, and a route's at its first point. The legend under
+//! the map gives the ID and geometry of each entry the window holds; the
+//! entries past the symbols, which all show `*`, are counted in one line.
+//! A room larger than [`MAX_COLS`] by [`MAX_ROWS`] prints through `--rect`.
 
 use std::fmt::Write as _;
 
@@ -102,32 +104,64 @@ pub(crate) fn map(game: &Game, arg: &str, rect: Option<[u32; 4]>) -> anyhow::Res
     let mut grid: Vec<Vec<u8>> = (y..y + h)
         .map(|row| (x..x + w).map(|col| terrain(col, row)).collect())
         .collect();
-    // An entry's symbol at the cell `at` falls in, when the window holds it.
-    let mut mark = |at: [f32; 2], symbol: u8| {
+    // The window's cell `at` falls in, when it holds it.
+    let cell = |at: [f32; 2]| -> Option<(usize, usize)> {
         let (col, row) = (at[0].floor(), at[1].floor());
-        if col >= x as f32 && row >= y as f32 && col < (x + w) as f32 && row < (y + h) as f32 {
-            grid[row as usize - y as usize][col as usize - x as usize] = symbol;
+        (col >= x as f32 && row >= y as f32 && col < (x + w) as f32 && row < (y + h) as f32)
+            .then(|| (row as usize - y as usize, col as usize - x as usize))
+    };
+    // Symbols go to the entries the window shows, in the room's order, so
+    // a part of a large room has letters of its own.
+    let symbol = |symbols: &[u8], shown: usize| symbols.get(shown).copied().unwrap_or(b'*');
+    // The legend names what the window shows; the entries past the
+    // symbols all read `*` and are counted.
+    let legend = |list: &mut Vec<String>, more: &mut usize, symbol: u8, line: String| {
+        if symbol == b'*' {
+            *more += 1;
+        } else {
+            list.push(format!("{} {line}", symbol as char));
         }
     };
-    let symbol = |symbols: &[u8], index: usize| symbols.get(index).copied().unwrap_or(b'*');
-    let mut places = Vec::new();
-    for (index, place) in room.places.iter().enumerate() {
-        let symbol = symbol(PLACE_SYMBOLS, index);
+    let (mut places, mut more_places) = (Vec::new(), 0);
+    for place in &room.places {
+        let symbol = symbol(PLACE_SYMBOLS, places.len() + more_places);
         let (at, shape) = place_shape(&room, place);
-        if let Some(at) = at {
-            mark(at, symbol);
+        let mut shown = false;
+        // An area over each empty cell it covers, so its extent reads.
+        if let Some([px, py, pw, ph]) = place.rect {
+            for (row, cells) in grid.iter_mut().enumerate() {
+                for (col, glyph) in cells.iter_mut().enumerate() {
+                    let (cx, cy) = ((x as usize + col) as f32, (y as usize + row) as f32);
+                    let inside = cx + 1.0 > px && cx < px + pw && cy + 1.0 > py && cy < py + ph;
+                    shown |= inside;
+                    if inside && *glyph == b'.' {
+                        *glyph = symbol;
+                    }
+                }
+            }
         }
-        let link = (place.to.as_ref()).map_or_else(String::new, |to| format!(" to {to}"));
-        places.push(format!("{} {} {shape}{link}", symbol as char, place.id));
+        if let Some((row, col)) = at.and_then(cell) {
+            grid[row][col] = symbol;
+            shown = true;
+        }
+        if shown {
+            let link = (place.to.as_ref()).map_or_else(String::new, |to| format!(" to {to}"));
+            let line = format!("{} {shape}{link}", place.id);
+            legend(&mut places, &mut more_places, symbol, line);
+        }
     }
-    let mut objects = Vec::new();
-    for (index, object) in room.objects.iter().enumerate() {
-        let symbol = symbol(OBJECT_SYMBOLS, index);
-        mark(object.at, symbol);
-        objects.push(format!(
-            "{} {} ({}) at {}, {}",
-            symbol as char, object.id, object.prefab, object.at[0], object.at[1]
-        ));
+    let (mut objects, mut more_objects) = (Vec::new(), 0);
+    for object in &room.objects {
+        let symbol = symbol(OBJECT_SYMBOLS, objects.len() + more_objects);
+        let Some((row, col)) = cell(object.at) else {
+            continue;
+        };
+        grid[row][col] = symbol;
+        let line = format!(
+            "{} ({}) at {}, {}",
+            object.id, object.prefab, object.at[0], object.at[1]
+        );
+        legend(&mut objects, &mut more_objects, symbol, line);
     }
 
     let mut out = String::new();
@@ -143,7 +177,7 @@ pub(crate) fn map(game: &Game, arg: &str, rect: Option<[u32; 4]>) -> anyhow::Res
     );
     let _ = writeln!(
         out,
-        "# solid  = one-way  / \\ slope  + drawn only  . empty  a-z objects  1-9 places"
+        "# solid  = one-way  / \\ slope  + drawn only  . empty  a-z objects  1-9 places, an area over its empty cells"
     );
     // The column ruler: the tens over the ones.
     let gutter = (y + h - 1).to_string().len();
@@ -162,13 +196,23 @@ pub(crate) fn map(game: &Game, arg: &str, rect: Option<[u32; 4]>) -> anyhow::Res
     for (row, cells) in (y..y + h).zip(&grid) {
         let _ = writeln!(out, "{row:>gutter$} {}", String::from_utf8_lossy(cells));
     }
-    for (what, list) in [("objects", objects), ("places", places)] {
-        if list.is_empty() {
+    for (what, list, more) in [
+        ("objects", objects, more_objects),
+        ("places", places, more_places),
+    ] {
+        if list.is_empty() && more == 0 {
             continue;
         }
         let _ = writeln!(out, "{what}:");
         for line in list {
             let _ = writeln!(out, "  {line}");
+        }
+        if more > 0 {
+            let _ = writeln!(
+                out,
+                "  * {more} more: `tungsten level query {}` lists them, and `--rect` maps a part",
+                target.id
+            );
         }
     }
     Ok(out)
