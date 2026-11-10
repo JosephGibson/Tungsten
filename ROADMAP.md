@@ -13,7 +13,10 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 - A tombstone list, so a generated object deleted by hand stays gone at the next `--regenerate` (`D-267`, level-editor's Q3).
 - Regeneration from inside the level editor, which the command line's `--regenerate` does today (`D-267`, level-editor's Q7).
-- Multi-select, box select, copy between rooms, a cell grid and a searchable palette in the level editor (`D-267`, level-editor's Q10).
+- Multi-select, box select, copy between rooms and a searchable palette in the level editor (`D-267`, level-editor's Q10; the cell grid landed in `D-268`).
+- Shapes, layers, routes and a room's own settings (size, tileset, post, ambient, budget) in the level editor; `tungsten level apply` edits them today (`D-268`).
+- An overlay for `tungsten level render`, the grid, IDs and places the editor draws; `level map` and `query` name them today, and a script that opens the editor captures its overlay (`D-268`).
+- The level editor's prompt on core's text input once 8.1 lands it (P8-5): any layout, a caret that moves, a paste (`D-268`).
 - The manifest's own check refusing two room IDs on one file, as it refuses prefabs and data entries; `level generate` and the editor refuse to write such a file today (`D-267`, level-editor's Q13).
 - The platformer controller's free air-jump count set at run time, and an unlimited free count (K25's rest): a game that wants them.
 - Example 01's route test: eight `LAUNCHES` rows start with the body over the next step's face; restart them clear of the rock, as the tomes' rows are.
