@@ -13,6 +13,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod blast;
 mod boot;
 mod churn;
 mod counters;
@@ -54,6 +55,7 @@ const BENCHES: &[&Bench] = &[
     &spread::BENCH,
     &rooms::BENCH,
     &generate::BENCH,
+    &blast::BENCH,
 ];
 
 fn main() -> anyhow::Result<()> {

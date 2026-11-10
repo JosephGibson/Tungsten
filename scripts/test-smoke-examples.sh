@@ -99,7 +99,7 @@ if run_case "all pass" 0; then
   for line in "Passed: 3/3" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" "Seams passed: 1/1" \
     "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "UI screens passed: 1/1" \
-    "Debug views passed: 1/1" "Benchmarks passed: 23/23" \
+    "Debug views passed: 1/1" "Benchmarks passed: 25/25" \
     "Frame cap passed: 1/1"; do
     expect_output "all pass" "$line"
   done
@@ -150,6 +150,8 @@ example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=boot 
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=boot preset=default
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=spread preset=min
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=spread preset=default
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=blast preset=min
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=blast preset=default
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=20 timing= bench= preset= scene=transition cap=20
 EOF
   if ! diff -u "$expected_runs" "$work/runs.txt"; then
@@ -185,7 +187,7 @@ fi
 
 if run_case "frame cap ignored" nonzero STUB_UNCAPPED=1; then
   expect_output "frame cap ignored" "expected at least 900 ms"
-  expect_output "frame cap ignored" "Benchmarks passed: 23/23"
+  expect_output "frame cap ignored" "Benchmarks passed: 25/25"
   expect_output "frame cap ignored" "Frame cap passed: 0/1"
 fi
 

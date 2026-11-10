@@ -17,6 +17,7 @@ use tungsten::core::{
 };
 use tungsten::testing::{CounterGuard, Harness, allocations};
 
+use crate::blast::{self, BlastCounts};
 use crate::boot;
 use crate::churn::Life;
 use crate::counters::BenchCounters;
@@ -93,6 +94,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
         }
         "terrain" => terrain::startup(harness.world_mut(), &mut textures, cfg),
         "piles" => piles::startup(harness.world_mut(), &mut textures, cfg),
+        "blast" => blast::startup(harness.world_mut(), &mut textures, cfg),
         "rooms" => rooms::startup(harness.world_mut(), &mut textures, cfg),
         "generate" => generate::startup(harness.world_mut(), &mut textures),
         other => panic!("no guard startup for bench {other}"),
@@ -424,6 +426,59 @@ fn guards_slopes() {
             counts.recycled
         );
     });
+}
+
+#[test]
+fn guards_blast() {
+    // The pile sleeps through the warm-up, the window's first blast wakes
+    // it whole, and nothing leaves the bin.
+    let bench = knobs::select(BENCHES, Some("blast")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(cfg.row(), "blast", "the configuration measures another row");
+    let mut harness = harness(&cfg);
+    let world = harness.world();
+    assert_eq!(count::<blast::Body>(world), knob(&cfg, "bodies"), "bodies");
+    assert_eq!(count::<TilemapInstance>(world), 1, "the map");
+    let first = blast::FIRST;
+    let period = knob(&cfg, "period") as u32;
+    let reading = measure_checking(
+        &mut harness,
+        cfg.bench.warmup,
+        tiled_drawable,
+        move |world, at| {
+            let counts = &world.resource::<BenchCounters<BlastCounts>>().counts;
+            assert_eq!(counts.escaped, 0, "window frame {at}: escaped");
+            if at < first {
+                assert_eq!(
+                    (counts.awake, counts.events),
+                    (0, 0),
+                    "window frame {at}: the pile is not asleep before its first blast"
+                );
+            } else {
+                assert_eq!(
+                    counts.blasts,
+                    u32::from((at - first).is_multiple_of(period)),
+                    "window frame {at}: blasts"
+                );
+            }
+            if at == first {
+                assert_eq!(
+                    counts.sleeping, 0,
+                    "window frame {at}: the blast left sleepers"
+                );
+                assert!(
+                    counts.pushed > 0,
+                    "window frame {at}: the blast met no body"
+                );
+                assert!(counts.events > 0, "window frame {at}: no collision event");
+            }
+        },
+    );
+    assert!(
+        reading.max_sprite_instances > 0,
+        "blast: the guard drew nothing"
+    );
+    reading.check(manifest_path("src/tests/guards/blast.json"));
 }
 
 #[test]

@@ -6,7 +6,7 @@ The rows `just perf` measures (`D-078` as redo 7.3 amends it), each owning one c
 just perf list                                   # every row, its kind and repeats
 just perf run ecs                                # one capture
 just perf sitting --quick                        # the working tree against the last tag, CPU rows, informational
-cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the eleven benchmarks
+cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the thirteen benchmarks
 TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 ```
 
@@ -14,7 +14,7 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 
 ## Harness
 
-- **Two kinds of row.** The eleven benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
+- **Two kinds of row.** The thirteen benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
 - **The bench binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and builds the app through `bench_app`, which the counter guards build alike. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's knobs and presets as JSON and `=config` the resolved configuration, before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays. In an interactive run Tab relaunches the binary on the next benchmark, keeping the preset when it has it.
 - **Determinism.** Every random choice comes from `Pcg32::seeded(seed)` and dt is pinned, so one build replays one workload. No rendered text depends on wall-clock time. A capture's runs share a digest over the window's `physics:` and `bench:` lines.
 - **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest; `boot` writes its own, seeded, under `target/bench-boot/`.
@@ -270,12 +270,47 @@ Owns a generated run's churn (redo 7.12, P7-16): `World::generate_rooms` runs a 
 - **Owned:** `physics_step` p50/p95 and `update` p95, each row.
 - **Guards:** `friction`: `bench.sleeping <= 0` and `bench.escaped <= 0`. `slopes`: `bench.recycled >= 60`, at least one a frame over each second, and `bench.inside <= 0`.
 
+## `blast`
+
+Owns `physics_step` over a dense pile's sleep, wake and blasts, with no game system beside it (the CPU stress pass): example 01's full pit as a bench, so a physics change reads apart from 01's own systems. Warm-up 480 frames. Module: `blast.rs`.
+
+- **Pile.** `bodies` circles of `radius` start at rest on a hexagonal lattice in a closed bin of 16 px tiles, `width` cells across with a floor, two walls and a ceiling, under 01's gravity, restitution and broadphase cell. They settle and sleep, one island, inside the warm-up: by frame 400 at `default`.
+- **Blasts.** From window frame 20 a blast lands every `period` frames: `apply_radial_impulse` of `impulse` over `reach` px, centred on the highest body within a body's width of a seeded column, as a projectile meeting the pile there would land it. The first wakes the island whole, and at `period` 20 the pile never sleeps again, so a window holds 20 frames asleep, the wake, and 14 blasts on an awake pile.
+- **Reference machine**, 2026-11-10, three runs: `physics_step` 0.68 ms asleep, 25.2 ms in the wake's frame and 48.8 ms six frames on, about 24.3 ms between blasts; p50 26.9 to 27.3 ms, p95 40.8 to 41.2 ms, p99 46.3 to 46.7 ms. The step sends about 200,000 collision events a frame while the pile is awake.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `width`, `height` | 98, 144 | 18–512, 24–512 | | Cells of 16 px, the walls', the ceiling's and the floor's included; 96 cells inside is 01's pit |
+| `bodies` | 12,000 | 100–50,000 | yes | 12,000 is 01's full pit |
+| `radius` | 7.5 | 2–16 px | | 01's small ball |
+| `period` | 20 | 1–600 | | Frames between blasts |
+| `reach`, `impulse` | 288, 2,500 | 16–1,024 px, 0–10,000 | | A blast's radius and its impulse at the centre, falling linearly to none at the reach; 01's fire missile |
+| `gravity`, `restitution`, `cell` | 3,600, 0.85, 64 | | | 01's gravity, its small ball's restitution and its broadphase cell |
+
+- **Presets:** `min` (34 × 48 cells, 600 bodies, reach 96, impulse 1,200) and `default`.
+- **Counters:** `bench:` `bodies`, `awake`, `sleeping`, `escaped` (bodies outside the bin), `blasts` (1 on a blast's frame), `pushed` (bodies its impulse reached), `events` (the step's collision events) and `visible`.
+- **Owned:** `physics_step` p50/p95/p99 and `update` p95.
+- **Guards:** `bench.bodies constant` and `bench.escaped <= 0`.
+
 ## `e01-pit`
 
 Example 01's heaviest frame: the full ball pit under the rope bridge with six enemies awake about the player (`features/run/pit.rs`). The script: `start_run` at frame 2, `fill_pit` to 12,000 balls at 30, `wake_foes` at 630, then 180 warm-up frames (warm-up 810 in all) and 300 measured; it ends asserting the `pit` probe (`balls` = 12,000, `foes_alive` = 6, `foes_awake` ≥ 5). 1920×1080, CPU, five repeats.
 
 - **Owned:** `total` p50/p95; `update`, `physics_step` and `extract` p50.
 - **Guard:** the script's report.
+
+## `e01-stress`
+
+Example 01's full pit under a storm of spells (the CPU stress pass): the frames where blasts, a pile's wake, fire, impacts and enemies load the step together. `e01-pit`'s setup and warm-up (`start_run` at frame 2, `fill_pit` to 12,000 at 30, `wake_foes` at 630, warm-up 810), then `cast_at`, which lands a spell's toy at a point free of mana and cooldown, through the 300 measured frames, numbered from 0:
+
+- **Blasts:** a fire missile's on the pile's surface every 20 frames from frame 20, at five points in turn, and one on the deck among the enemies every 100 from frame 30.
+- **Other spells:** lightning onto the deck every 96 frames from 25 and onto the pile every 96 from 73; a force push along the deck, east every 120 from 35 and west every 120 from 95; an iron block dropped onto the pile at 44, 104, 164 and 224; a black hole over the pile at 149.
+
+The window holds the pile asleep for 20 frames, its one island's wake at the first blast and the storm on an awake pile; the fire reaches every ball by about frame 90. It ends asserting the `pit` probe (`foes_alive` = 6, `foes_awake` ≥ 5, `balls` ≥ 11,000, the hole sweeping some up) and the `pit_fire` probe (`burning` ≥ 10,000). 1920×1080, CPU, five repeats.
+
+- **Reference machine**, 2026-11-10, three runs: `total` 5.8 ms asleep and 42.7 ms in the wake's frame; p50 55.1 to 55.2 ms, p95 63.2 to 64.1 ms, p99 67.2 to 67.3 ms. Of the 20 highest frames' 64.8 ms, `physics_step` holds 58.9 %, 01's `fire_spread` 18.4 %, `iron_crush` 5.3 % and `fire_exposure` 4.6 %.
+- **Owned:** `total` p50/p95/p99; `update` p50/p95; `extract` p50; `physics_step` p50/p95; `fire_spread`, `fire_exposure`, `body_impacts`, `iron_friction` and `animation_tick` p50; `iron_crush` p95.
+- **Guard:** the script's report. It has no counter guard: `pit`'s pins the full pit's frame and `blast`'s the engine's pile under blasts.
 
 ## `template`
 
@@ -307,6 +342,7 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `terrain` | `guards_terrain` | `terrain` at `min` | `Body` count = `bodies`, `Sensor` count = `sensors`, one map; the warm-up's last frame and the window's last break and refill `edits` cells each and trace 1 to 8 × `edits` chunks; every frame's instances = bodies in view plus visible art tiles |
 | `friction` | `guards_friction` | `piles` at `friction-min` | `Body` count = `bodies`, one paddle, one map; each window frame no body asleep or out of the bin and a circle spinning; instances = bodies and paddles in view plus visible art tiles |
 | `slopes` | `guards_slopes` | `piles` at `slopes-min` | `Body` count = `bodies`, no paddle, one map; each window frame no centre inside a slope cell's polygon and at least 60 returns over the last 60 frames; instances as `friction` |
+| `blast` | `guards_blast` | `blast` at `min` | `Body` count = `bodies`, one map; before window frame 20 no body awake and no collision event; at 20 the blast reaching bodies and leaving no sleeper, then a blast every `period` frames; each window frame no body out of the bin; instances = bodies in view plus visible art tiles |
 | `saves` | `guards_saves` | `saves` at `min` | records = `objects` + 1 + `spawns`; view instances |
 | `spread` | `guards_spread` | `spread` at `min` | the receivers tagged and every one lit; each window frame every one burning, chemistry's queue at most one entry a receiver, nothing dropped; view instances |
 | `rooms` | `guards_rooms` | `rooms` at `min` | `RigidBody` count = `bodies`, one map; each window frame `moves` bodies spawned again and `paints` cells written in place; instances = bodies in view plus visible art tiles |

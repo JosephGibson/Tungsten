@@ -1,7 +1,8 @@
 //! The run's script hooks (redo 7.2): `place_player` for a script to call,
 //! `player` and `area` for it to read, as the template's sample registers
 //! its own, the shell `start_run`; `fill_pit`, `wake_foes` and `pit` set up
-//! and read the full pit ([`pit`](super::pit), redo 7.3).
+//! and read the full pit ([`pit`](super::pit), redo 7.3), and `cast_at` and
+//! `pit_fire` land spells on it and read its fire for the `e01-stress` row.
 
 use serde::Deserialize;
 use tungsten::core::{Position, PrevPosition, Velocity, World};
@@ -21,6 +22,14 @@ struct Place {
 #[serde(deny_unknown_fields)]
 struct Fill {
     count: usize,
+}
+
+/// `cast_at`'s arguments.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CastAt {
+    spell: String,
+    at: [f32; 2],
 }
 
 /// Adds the run's actions and probes to the World's script hooks.
@@ -90,6 +99,24 @@ pub fn register(world: &mut World) {
             ]
             .into_iter()
             .collect())
+        },
+    );
+    world.add_script_action(
+        "cast_at",
+        "Lands a spell's toy at `{\"spell\": name, \"at\": [x, y]}`, free of mana and cooldown: `fire_missile`'s blast, a `lightning` strike, `force_push`'s wave from the wizard, a `black_hole` or an `iron_block`.",
+        |world, args| {
+            let cast = CastAt::deserialize(args).map_err(|e| e.to_string())?;
+            pit::cast_at(world, &cast.spell, cast.at.into())
+        },
+    );
+    world.add_script_probe(
+        "pit_fire",
+        "The small balls' fire: `{burning, burnt}`, those alight now and those burned out.",
+        |world, _| {
+            let (burning, burnt) = pit::fire(world);
+            Ok([("burning", burning), ("burnt", burnt)]
+                .into_iter()
+                .collect())
         },
     );
     world.add_script_probe(
