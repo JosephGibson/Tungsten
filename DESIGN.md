@@ -703,7 +703,7 @@ Not scoped without an explicit decision:
 
 - Networking, multiplayer
 - Scripting
-- Editor tooling past the in-game level editor
+- Editor tooling past the in-game level editor (`D-267`)
 - Asset preprocessing / build pipeline
 - 3D rendering
 - WASM / browser support
