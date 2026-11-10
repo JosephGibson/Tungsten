@@ -20,7 +20,17 @@
 //! marker, and a drag moves it by whole cells, one `move` at the release;
 //! Delete or Backspace deletes the pick, Ctrl+D copies it a cell right,
 //! Ctrl+Z and Ctrl+Y (or Ctrl+Shift+Z) undo and redo the current room's
-//! batches in the World's `RoomJournal`.
+//! batches in the World's `RoomJournal`. The keys 1 to 4 pick the primary
+//! button's tool: select, place (the palette's prefab at the cell's
+//! top-left), paint (a stroke of the palette's tile, one batch at the
+//! release, a `paint` per target layer) and erase (the same with `erase`);
+//! `[` and `]` step the palette through the prefabs or, painting, the
+//! room's tileset, and L the target layer through each layer, then all.
+//! `engine_editor_secondary` (the right button) is the eyedropper: the
+//! prefab of the object under the cursor, or the topmost tile at the cell
+//! (the last of the room's layers holding one) and its layer. After each
+//! edit the window shows the room's findings, core's level rules and,
+//! with the kit, its routes', as `tungsten check` runs them.
 //!
 //! Every edit goes through `World::apply_room_batch` (or its undo or redo),
 //! checked, applied whole, patched live and journaled. Before it, a room
@@ -36,6 +46,7 @@
 use std::path::{Path, PathBuf};
 
 use glam::Vec2;
+use serde_json::json;
 use tungsten_core::assets::{Room, RoomCommand, RoomJournal, RoomRegistry, TilemapInstance};
 use tungsten_core::input::{ActionMap, InputState, KeyCode, Modifiers, MouseButton, RawInput};
 use tungsten_core::save::{SaveId, SaveState};
@@ -51,8 +62,10 @@ use crate::debug_views::{
 
 /// The editor's toggle, F10 by default.
 pub(crate) const TOGGLE: &str = "engine_toggle_level_editor";
-/// The editor's primary button: pick, drag.
+/// The editor's primary button: the tool's.
 pub(crate) const PRIMARY: &str = "engine_editor_primary";
+/// The editor's secondary button: the eyedropper.
+pub(crate) const SECONDARY: &str = "engine_editor_secondary";
 
 /// The window's columns: the field, then its value.
 const COLUMNS: &[Column] = &[
@@ -130,6 +143,39 @@ impl Live {
     }
 }
 
+/// The primary button's tool, keys 1 to 4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Tool {
+    /// Pick, drag to move.
+    Select,
+    /// Place the palette's prefab.
+    Place,
+    /// Paint the palette's tile.
+    Paint,
+    /// Erase cells to empty.
+    Erase,
+}
+
+impl Tool {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Select => "select",
+            Self::Place => "place",
+            Self::Paint => "paint",
+            Self::Erase => "erase",
+        }
+    }
+}
+
+/// A paint or erase stroke under way: its room and the cells it crossed,
+/// in order, each once.
+#[derive(Debug, Clone, PartialEq)]
+struct Stroke {
+    room: String,
+    cells: Vec<[u32; 2]>,
+    last: [i64; 2],
+}
+
 /// What an edit asks the World for.
 #[derive(Debug, Clone)]
 enum Edit {
@@ -161,6 +207,16 @@ pub(crate) struct LevelEditor {
     pub(crate) selection: Option<String>,
     /// The last edit or error, the window's header.
     pub(crate) status: String,
+    pub(crate) tool: Tool,
+    /// The palette's prefab and tile, by ID and sprite; the first of each
+    /// while unset.
+    pub(crate) prefab: Option<String>,
+    pub(crate) tile: Option<String>,
+    /// The target layer, by name; every layer while unset.
+    pub(crate) layer: Option<String>,
+    /// The current room's findings after the last edit.
+    pub(crate) findings: Vec<String>,
+    stroke: Option<Stroke>,
     view: Option<View>,
     drag: Option<Drag>,
     pan: Option<Pan>,
@@ -192,6 +248,12 @@ impl LevelEditor {
             current: None,
             selection: None,
             status: String::new(),
+            tool: Tool::Select,
+            prefab: None,
+            tile: None,
+            layer: None,
+            findings: Vec::new(),
+            stroke: None,
             view: None,
             drag: None,
             pan: None,
@@ -214,6 +276,7 @@ impl LevelEditor {
     fn close(&mut self, world: &mut World) {
         self.open = false;
         self.drag = None;
+        self.stroke = None;
         self.pan = None;
         if let Some(time) = world.get_resource_mut::<Time>() {
             time.set_editing(false);
@@ -282,7 +345,14 @@ impl LevelEditor {
         self.keys(world, &frame, &rooms, game);
         self.wheel_and_pan(&frame, blocked, game);
         if let Some(at) = at {
-            self.primary(world, &frame, &rooms, camera, at, blocked);
+            match self.tool {
+                Tool::Select => self.select(world, &frame, &rooms, camera, at, blocked),
+                Tool::Place => self.place(world, &frame, &rooms, at, blocked),
+                Tool::Paint | Tool::Erase => self.stroke(world, &frame, &rooms, at, blocked),
+            }
+            if frame.secondary.pressed && !blocked {
+                self.eyedropper(world, &rooms, camera, at);
+            }
         }
         self.draw(world, &rooms, self.drawn(game));
         if self.view.is_some() {
@@ -297,7 +367,7 @@ impl LevelEditor {
     }
 
     /// The keys, raw while open: Home, the arrows, Delete and Backspace,
-    /// Ctrl+D, Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z.
+    /// Ctrl+D, Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z, 1 to 4, `[`, `]` and L.
     fn keys(&mut self, world: &mut World, frame: &Input, rooms: &[Live], game: CameraState) {
         for &(code, modifiers, repeat) in &frame.keys {
             let control = modifiers.control();
@@ -327,6 +397,13 @@ impl LevelEditor {
                 KeyCode::KeyZ if control && modifiers.shift() => self.history(world, Edit::Redo),
                 KeyCode::KeyZ if control => self.history(world, Edit::Undo),
                 KeyCode::KeyY if control => self.history(world, Edit::Redo),
+                KeyCode::Digit1 if !control => self.tool = Tool::Select,
+                KeyCode::Digit2 if !control => self.tool = Tool::Place,
+                KeyCode::Digit3 if !control => self.tool = Tool::Paint,
+                KeyCode::Digit4 if !control => self.tool = Tool::Erase,
+                KeyCode::BracketLeft if !control => self.palette(world, rooms, -1),
+                KeyCode::BracketRight if !control => self.palette(world, rooms, 1),
+                KeyCode::KeyL if !control => self.next_layer(world),
                 _ => {}
             }
         }
@@ -362,9 +439,10 @@ impl LevelEditor {
         }
     }
 
-    /// The primary button: a press picks, or on nothing clears the pick; a
-    /// drag moves the pick by whole cells, one `move` at the release.
-    fn primary(
+    /// Select's primary button: a press picks, or on nothing clears the
+    /// pick; a drag moves the pick by whole cells, one `move` at the
+    /// release.
+    fn select(
         &mut self,
         world: &mut World,
         frame: &Input,
@@ -413,6 +491,242 @@ impl LevelEditor {
         if !frame.primary.held && !frame.primary.released {
             self.drag = None;
         }
+    }
+
+    /// Place's primary button: a press places the palette's prefab at the
+    /// cell under the cursor, `at` its top-left, as `<prefab>_<n>`, and
+    /// picks it.
+    fn place(&mut self, world: &mut World, frame: &Input, rooms: &[Live], at: Vec2, blocked: bool) {
+        if !frame.primary.pressed || blocked {
+            return;
+        }
+        let Some((room, [col, row])) = cell_under(rooms, at) else {
+            "no live room under the cursor".clone_into(&mut self.status);
+            return;
+        };
+        let Some(prefab) = self.prefab_or_first(world) else {
+            "no prefab to place".clone_into(&mut self.status);
+            return;
+        };
+        let Some(document) = world
+            .get_resource::<RoomRegistry>()
+            .and_then(|rooms| rooms.room(&room))
+        else {
+            return;
+        };
+        let id = free_id(document, &id_of(&prefab));
+        let batch = parse(
+            &json!([{ "place": { "objects": { "id": id, "prefab": prefab, "at": [col, row] } } }])
+                .to_string(),
+        );
+        self.current = Some(room.clone());
+        if self.edit(
+            world,
+            &room,
+            Edit::Apply(batch),
+            &format!("placed {id} at {col}, {row}"),
+        ) {
+            self.selection = Some(id);
+        }
+    }
+
+    /// Paint's and erase's primary button: a press starts a stroke in the
+    /// room under the cursor, the cells it crosses gather while it is held,
+    /// and the release applies them as one batch, a `paint` or an `erase`
+    /// per target layer.
+    fn stroke(
+        &mut self,
+        world: &mut World,
+        frame: &Input,
+        rooms: &[Live],
+        at: Vec2,
+        blocked: bool,
+    ) {
+        if frame.primary.pressed
+            && !blocked
+            && let Some((room, cell)) = cell_under(rooms, at)
+        {
+            self.current = Some(room.clone());
+            self.stroke = Some(Stroke {
+                room,
+                cells: vec![cell],
+                last: [i64::from(cell[0]), i64::from(cell[1])],
+            });
+        }
+        if let Some(stroke) = &mut self.stroke
+            && let Some(live) = rooms.iter().find(|live| live.id == stroke.room)
+        {
+            let cell = ((at - live.origin) / live.cell).floor();
+            let to = [cell.x as i64, cell.y as i64];
+            let size = [
+                (live.size.x / live.cell.x) as i64,
+                (live.size.y / live.cell.y) as i64,
+            ];
+            for [col, row] in line(stroke.last, to) {
+                let inside = (0..size[0]).contains(&col) && (0..size[1]).contains(&row);
+                let cell = [col as u32, row as u32];
+                if inside && !stroke.cells.contains(&cell) {
+                    stroke.cells.push(cell);
+                }
+            }
+            stroke.last = to;
+        }
+        if frame.primary.released
+            && let Some(stroke) = self.stroke.take()
+        {
+            self.apply_stroke(world, &stroke);
+        }
+        if !frame.primary.held && !frame.primary.released {
+            self.stroke = None;
+        }
+    }
+
+    fn apply_stroke(&mut self, world: &mut World, stroke: &Stroke) {
+        let Some(document) = world
+            .get_resource::<RoomRegistry>()
+            .and_then(|rooms| rooms.room(&stroke.room))
+        else {
+            return;
+        };
+        let layers: Vec<String> = match self.layer.as_deref() {
+            Some(layer) if document.layers.iter().any(|known| known.name == layer) => {
+                vec![layer.to_owned()]
+            }
+            _ => document
+                .layers
+                .iter()
+                .map(|layer| layer.name.clone())
+                .collect(),
+        };
+        let erase = self.tool == Tool::Erase;
+        let tile = if erase {
+            None
+        } else {
+            let Some(tile) = self.tile_or_first(world, &stroke.room) else {
+                "no tile to paint: the room names no tileset".clone_into(&mut self.status);
+                return;
+            };
+            Some(tile)
+        };
+        let commands: Vec<serde_json::Value> = layers
+            .iter()
+            .map(|layer| match &tile {
+                None => json!({ "erase": { "layer": layer, "cells": stroke.cells } }),
+                Some(tile) => {
+                    json!({ "paint": { "layer": layer, "cells": stroke.cells, "tile": tile } })
+                }
+            })
+            .collect();
+        let cells = stroke.cells.len();
+        let what = match &tile {
+            None => format!("erased {cells} cell{}", plural(cells)),
+            Some(tile) => format!("painted {cells} cell{} {tile}", plural(cells)),
+        };
+        let batch = parse(&serde_json::Value::Array(commands).to_string());
+        self.edit(world, &stroke.room, Edit::Apply(batch), &what);
+    }
+
+    /// The eyedropper: the prefab of the object under the cursor, else the
+    /// topmost tile at the cell and its layer.
+    fn eyedropper(&mut self, world: &World, rooms: &[Live], camera: CameraState, at: Vec2) {
+        let registry = world.get_resource::<RoomRegistry>();
+        if let Some((room, id)) = pick(world, rooms, camera, at)
+            && let Some(object) = registry
+                .and_then(|registry| registry.room(&room))
+                .and_then(|document| document.objects.iter().find(|object| object.id == id))
+        {
+            self.status = format!("took {} from {id}", object.prefab);
+            self.prefab = Some(object.prefab.clone());
+            return;
+        }
+        let Some((room, [col, row])) = cell_under(rooms, at) else {
+            return;
+        };
+        let maps = world.get_resource::<tungsten_core::assets::TilemapRegistry>();
+        let (Some(document), Some(map)) = (
+            registry.and_then(|registry| registry.room(&room)),
+            maps.and_then(|maps| maps.get(&room)),
+        ) else {
+            return;
+        };
+        let topmost = (0..document.layers.len()).rev().find_map(|layer| {
+            let index = map.tile_at(layer, col, row)?;
+            let sprite = usize::try_from(index)
+                .ok()
+                .and_then(|i| map.tileset.get(i))?;
+            Some((sprite.clone(), document.layers[layer].name.clone()))
+        });
+        match topmost {
+            Some((sprite, layer)) => {
+                self.status = format!("took {sprite} from layer {layer}");
+                self.tile = Some(sprite);
+                self.layer = Some(layer);
+            }
+            None => self.status = format!("cell {col}, {row} holds no tile"),
+        }
+    }
+
+    /// The palette's prefab, the first prefab while unset.
+    fn prefab_or_first(&self, world: &World) -> Option<String> {
+        self.prefab
+            .clone()
+            .or_else(|| prefab_ids(world).into_iter().next())
+    }
+
+    /// The palette's tile, the room's tileset's first while unset.
+    fn tile_or_first(&self, world: &World, room: &str) -> Option<String> {
+        self.tile
+            .clone()
+            .or_else(|| tile_ids(world, room).into_iter().next())
+    }
+
+    /// `[` and `]`: the palette one step back or on, through the tiles of
+    /// the current room's tileset (the first live room's while none is
+    /// current) while painting, else the prefabs.
+    fn palette(&mut self, world: &World, rooms: &[Live], step: i64) {
+        let painting = self.tool == Tool::Paint;
+        let (items, chosen) = if painting {
+            let room = (self.current.as_deref())
+                .or_else(|| rooms.first().map(|room| room.id.as_str()))
+                .unwrap_or_default();
+            (tile_ids(world, room), &mut self.tile)
+        } else {
+            (prefab_ids(world), &mut self.prefab)
+        };
+        if items.is_empty() {
+            return;
+        }
+        let at = chosen
+            .as_deref()
+            .and_then(|item| items.iter().position(|known| known == item))
+            .unwrap_or(0) as i64;
+        let count = items.len() as i64;
+        let next = items[(at + step).rem_euclid(count) as usize].clone();
+        *chosen = Some(next);
+    }
+
+    /// L: the target layer on through the current room's layers, then all.
+    fn next_layer(&mut self, world: &World) {
+        let names: Vec<String> = self
+            .current
+            .as_deref()
+            .and_then(|room| world.get_resource::<RoomRegistry>()?.room(room))
+            .map(|document| {
+                document
+                    .layers
+                    .iter()
+                    .map(|layer| layer.name.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.layer = match self.layer.as_deref() {
+            None => names.first().cloned(),
+            Some(layer) => names
+                .iter()
+                .position(|name| name == layer)
+                .and_then(|at| names.get(at + 1))
+                .cloned(),
+        };
     }
 
     /// Deletes the pick.
@@ -476,6 +790,7 @@ impl LevelEditor {
         match self.try_edit(world, room, edit, what) {
             Ok(done) => {
                 self.status = done;
+                self.findings = findings(world, room);
                 true
             }
             Err(why) => {
@@ -576,6 +891,12 @@ impl LevelEditor {
                         }
                     }
                 }
+                if let Some(stroke) = self.stroke.as_ref().filter(|stroke| stroke.room == live.id) {
+                    for &[col, row] in &stroke.cells {
+                        let min = live.origin + Vec2::new(col as f32, row as f32) * live.cell;
+                        draw.push(Mark::Aabb(min, min + live.cell, PREVIEW));
+                    }
+                }
                 if let Some(compiled) = registry.compiled(&live.id) {
                     for place in compiled.places.values() {
                         place_marks(&mut draw, live.origin, place, radius);
@@ -662,7 +983,23 @@ impl LevelEditor {
             _ => "–".to_owned(),
         };
         rows.push(row("file", file));
-        rows.push(row("tool", "select".to_owned()));
+        let key = match self.tool {
+            Tool::Select => 1,
+            Tool::Place => 2,
+            Tool::Paint => 3,
+            Tool::Erase => 4,
+        };
+        rows.push(row("tool", format!("{key} {}", self.tool.name())));
+        let palette = if self.tool == Tool::Paint {
+            room.and_then(|room| self.tile_or_first(world, room))
+        } else {
+            self.prefab_or_first(world)
+        };
+        rows.push(row("palette", palette.unwrap_or_else(|| "–".to_owned())));
+        rows.push(row(
+            "layer",
+            self.layer.clone().unwrap_or_else(|| "all".to_owned()),
+        ));
         let cell = self
             .cursor
             .as_ref()
@@ -690,12 +1027,23 @@ impl LevelEditor {
                 (journal.undo_len(room), journal.redo_len(room))
             });
         rows.push(row("history", format!("{undo} undo  {redo} redo")));
+        rows.push(row("findings", self.findings.len().to_string()));
+        for finding in self.findings.iter().take(2) {
+            rows.push(Row::data(vec![
+                Cell::new(""),
+                Cell::new(finding.clone()).colored(crate::debug_views::YELLOW),
+            ]));
+        }
         rows.push(Row {
             cells: vec![Cell::new("keys")],
             header: true,
             indent: false,
         });
         for (key, does) in [
+            ("1–4", "select place paint erase"),
+            ("[ ]", "palette"),
+            ("L", "layer, then all"),
+            ("right", "eyedropper"),
             ("drag", "move by cells"),
             ("Del", "delete"),
             ("Ctrl+D", "copy a cell right"),
@@ -747,6 +1095,7 @@ struct Input {
     keys: Vec<(KeyCode, Modifiers, bool)>,
     wheel: f32,
     primary: Button,
+    secondary: Button,
     middle: Button,
 }
 
@@ -786,6 +1135,11 @@ impl Input {
                 pressed: actions.just_pressed(input, PRIMARY),
                 held: actions.is_pressed(input, PRIMARY),
                 released: actions.just_released(input, PRIMARY),
+            },
+            secondary: Button {
+                pressed: actions.just_pressed(input, SECONDARY),
+                held: actions.is_pressed(input, SECONDARY),
+                released: actions.just_released(input, SECONDARY),
             },
             middle: Button {
                 pressed: input.mouse_just_pressed(MouseButton::Middle),
@@ -976,6 +1330,101 @@ fn writable(world: &World, room: &str) -> Result<Option<PathBuf>, String> {
 /// A batch the editor writes itself.
 fn parse(json: &str) -> Vec<RoomCommand> {
     RoomCommand::parse_batch(json).expect("the editor writes batches that read")
+}
+
+/// The room under `at` and its cell there, the current room first.
+fn cell_under(rooms: &[Live], at: Vec2) -> Option<(String, [u32; 2])> {
+    let room = rooms.iter().find(|room| room.holds(at))?;
+    let cell = ((at - room.origin) / room.cell).floor();
+    Some((room.id.clone(), [cell.x as u32, cell.y as u32]))
+}
+
+/// The cells from `from` to `to`, both included, a step at a time.
+fn line(from: [i64; 2], to: [i64; 2]) -> Vec<[i64; 2]> {
+    let steps = (to[0] - from[0]).abs().max((to[1] - from[1]).abs());
+    (0..=steps)
+        .map(|i| {
+            let t = if steps == 0 {
+                0.0
+            } else {
+                i as f64 / steps as f64
+            };
+            let lerp = |a: i64, b: i64| a + ((b - a) as f64 * t).round() as i64;
+            [lerp(from[0], to[0]), lerp(from[1], to[1])]
+        })
+        .collect()
+}
+
+/// The registered prefab IDs, sorted.
+fn prefab_ids(world: &World) -> Vec<String> {
+    let mut ids: Vec<String> = world
+        .get_resource::<tungsten_core::assets::PrefabRegistry>()
+        .map(|prefabs| prefabs.ids().map(str::to_owned).collect())
+        .unwrap_or_default();
+    ids.sort();
+    ids
+}
+
+/// The tiles of room `room`'s tileset, by sprite, in its order.
+fn tile_ids(world: &World, room: &str) -> Vec<String> {
+    let Some(registry) = world.get_resource::<RoomRegistry>() else {
+        return Vec::new();
+    };
+    registry
+        .room(room)
+        .and_then(|document| document.tileset.as_deref())
+        .and_then(|tileset| registry.tileset(tileset))
+        .map(|tileset| {
+            tileset
+                .tiles
+                .iter()
+                .map(|tile| tile.sprite.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Room `room`'s findings: core's level rules (the umbrella's `light`
+/// lighting an object) and, with the kit, each route's reach, as
+/// `tungsten check` runs them.
+fn findings(world: &World, room: &str) -> Vec<String> {
+    #[allow(unused_mut)] // Without the kit, core's alone.
+    let mut found: Vec<String> = world
+        .room_findings(room, &["light"])
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    #[cfg(feature = "kit")]
+    found.extend(
+        tungsten_kit::route_findings(world, room)
+            .iter()
+            .map(ToString::to_string),
+    );
+    found
+}
+
+/// A prefab ID made an ID, `[a-z][a-z0-9_]*`: lower case, any other
+/// character `_`, `o_` before a first character that is no letter.
+fn id_of(prefab: &str) -> String {
+    let mut id: String = prefab
+        .chars()
+        .map(|c| {
+            let c = c.to_ascii_lowercase();
+            if c.is_ascii_lowercase() || c.is_ascii_digit() {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if !id.starts_with(|c: char| c.is_ascii_lowercase()) {
+        id.insert_str(0, "o_");
+    }
+    id
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
 }
 
 /// `id` without a trailing `_<n>`: `crate` for `crate_1`.

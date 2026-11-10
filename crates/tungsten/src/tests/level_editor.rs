@@ -537,3 +537,165 @@ fn the_editor_fits_beside_the_five_views_at_the_owners_scale() {
     harness.step(4);
     harness.assert_fits("the editor beside the five views at 1280×720 on 1.75");
 }
+
+/// The screen point at the middle of cave's cell `[col, row]`.
+fn cell(col: u32, row: u32) -> Vec2 {
+    Vec2::new(col as f32 * 16.0 + 8.0, row as f32 * 16.0 + 8.0)
+}
+
+/// A press at `cells[0]`, a move through the rest and the release, a
+/// frame each.
+fn stroke(harness: &mut UiHarness, cells: &[Vec2]) {
+    harness.pointer_to(cells[0].x, cells[0].y);
+    harness.pointer_down();
+    harness.step(1);
+    for at in &cells[1..] {
+        harness.pointer_to(at.x, at.y);
+        harness.step(1);
+    }
+    harness.pointer_up();
+    harness.step(1);
+}
+
+fn secondary_click(harness: &mut UiHarness, at: Vec2) {
+    harness.pointer_to(at.x, at.y);
+    let input = harness.world_mut().resource_mut::<InputState>();
+    input.mouse_down(MouseButton::Right);
+    harness.step(1);
+    harness
+        .world_mut()
+        .resource_mut::<InputState>()
+        .mouse_up(MouseButton::Right);
+    harness.step(1);
+}
+
+#[test]
+fn place_puts_the_palettes_prefab_at_the_clicked_cells_corner() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    harness.tap_key(KeyCode::Digit2);
+    // The prefabs sorted: ball, crate, lamp, walker.
+    harness.tap_key(KeyCode::BracketRight);
+    harness.tap_key(KeyCode::BracketRight);
+    assert_eq!(state(&harness).prefab.as_deref(), Some("lamp"));
+    drag(&mut harness, cell(3, 19), cell(3, 19));
+    let world = harness.world();
+    assert_eq!(
+        at(world, "cave", "lamp_2"),
+        [3.0, 19.0],
+        "the cell's corner"
+    );
+    assert!(named(world, "cave.lamp_2").is_some(), "spawned");
+    assert_eq!(state(&harness).selection.as_deref(), Some("lamp_2"));
+    assert_eq!(file(&dir), document(world, "cave").to_canonical());
+    assert_eq!(state(&harness).status, "placed lamp_2 at 3, 19");
+    assert!(
+        state(&harness).findings.is_empty(),
+        "it stands on the floor"
+    );
+}
+
+#[test]
+fn the_eyedropper_takes_a_prefab_from_an_object_and_a_tile_and_its_layer_from_a_cell() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    secondary_click(&mut harness, CRATE);
+    assert_eq!(state(&harness).prefab.as_deref(), Some("crate"));
+    secondary_click(&mut harness, cell(2, 21));
+    let editor = state(&harness);
+    assert_eq!(editor.tile.as_deref(), Some("rock"));
+    assert_eq!(
+        editor.layer.as_deref(),
+        Some("solid"),
+        "the last layer holding one"
+    );
+    assert_eq!(editor.status, "took rock from layer solid");
+}
+
+#[test]
+fn a_paint_stroke_is_one_batch_a_paint_per_layer_written_in_place() {
+    let (dir, mut harness) = editor();
+    open(&mut harness);
+    harness.tap_key(KeyCode::Digit3);
+    // The tileset's order: rock, rock_45_br, rock_low_br, rock_high_br,
+    // plank, arch.
+    for _ in 0..4 {
+        harness.tap_key(KeyCode::BracketRight);
+    }
+    assert_eq!(state(&harness).tile.as_deref(), Some("plank"));
+    // Two frames' moves cross three cells, the middle one jumped over.
+    stroke(&mut harness, &[cell(1, 10), cell(3, 10)]);
+    let world = harness.world();
+    assert_eq!(journal(world, "cave"), (1, 0), "one batch");
+    let room = document(world, "cave");
+    for layer in &room.layers {
+        for key in ["1,10", "2,10", "3,10"] {
+            assert_eq!(
+                layer.cells.get(key),
+                Some(&Some("plank".to_owned())),
+                "{} {key}",
+                layer.name
+            );
+        }
+    }
+    let map = world
+        .resource::<tungsten_core::assets::TilemapRegistry>()
+        .get("cave")
+        .unwrap();
+    let plank = map
+        .tileset
+        .iter()
+        .position(|sprite| sprite == "plank")
+        .unwrap();
+    for col in 1..=3 {
+        assert_eq!(map.tile_at(0, col, 10), Some(plank as i32), "in place");
+    }
+    assert_eq!(file(&dir), room.to_canonical());
+    assert_eq!(state(&harness).status, "painted 3 cells plank");
+    // Erase empties them.
+    harness.tap_key(KeyCode::Digit4);
+    stroke(&mut harness, &[cell(1, 10), cell(2, 10), cell(3, 10)]);
+    let world = harness.world();
+    let room = document(world, "cave");
+    for layer in &room.layers {
+        assert_eq!(layer.cells.get("2,10"), Some(&None), "{}", layer.name);
+    }
+    let map = world
+        .resource::<tungsten_core::assets::TilemapRegistry>()
+        .get("cave")
+        .unwrap();
+    assert_eq!(map.tile_at(1, 2, 10), Some(tungsten_core::EMPTY_TILE));
+    assert_eq!(journal(world, "cave"), (2, 0));
+}
+
+#[test]
+fn l_cycles_each_layer_then_all() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    // A click in the room makes it the current one.
+    drag(&mut harness, cell(20, 6), cell(20, 6));
+    assert_eq!(state(&harness).current.as_deref(), Some("cave"));
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        harness.tap_key(KeyCode::KeyL);
+        seen.push(state(&harness).layer.clone());
+    }
+    assert_eq!(
+        seen,
+        [Some("art".to_owned()), Some("solid".to_owned()), None]
+    );
+}
+
+#[test]
+fn a_lamp_placed_in_mid_air_shows_one_finding_and_its_undo_none() {
+    let (_dir, mut harness) = editor();
+    open(&mut harness);
+    harness.tap_key(KeyCode::Digit2);
+    harness.world_mut().resource_mut::<LevelEditor>().prefab = Some("lamp".to_owned());
+    drag(&mut harness, cell(10, 5), cell(10, 5));
+    let findings = state(&harness).findings.clone();
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(findings[0].contains("lamp_2"), "{findings:?}");
+    chord(&mut harness, Modifiers::CONTROL, KeyCode::KeyZ);
+    assert!(state(&harness).findings.is_empty());
+}
