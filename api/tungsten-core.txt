@@ -2011,6 +2011,10 @@ pub tungsten_core::assets::room::GenerateError::Failed
 pub tungsten_core::assets::room::GenerateError::Failed::generator: alloc::string::String
 pub tungsten_core::assets::room::GenerateError::Failed::message: alloc::string::String
 pub tungsten_core::assets::room::GenerateError::Failed::seed: u64
+pub tungsten_core::assets::room::GenerateError::Kept
+pub tungsten_core::assets::room::GenerateError::Kept::object: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Kept::room: alloc::string::String
+pub tungsten_core::assets::room::GenerateError::Kept::source: tungsten_core::assets::room::RoomError
 pub tungsten_core::assets::room::GenerateError::Prefix
 pub tungsten_core::assets::room::GenerateError::Prefix::prefix: alloc::string::String
 pub tungsten_core::assets::room::GenerateError::Room
@@ -2191,6 +2195,47 @@ impl core::marker::Unpin for tungsten_core::assets::room::Support
 impl core::marker::UnsafeUnpin for tungsten_core::assets::room::Support
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::Support
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::Support
+#[non_exhaustive] pub struct tungsten_core::assets::room::AuthoredRoom
+pub tungsten_core::assets::room::AuthoredRoom::document: tungsten_core::assets::room::Room
+pub tungsten_core::assets::room::AuthoredRoom::dropped: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::room::AuthoredRoom::generated: usize
+pub tungsten_core::assets::room::AuthoredRoom::id: alloc::string::String
+pub tungsten_core::assets::room::AuthoredRoom::kept: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::room::AuthoredRoom::origin: glam::f32::vec2::Vec2
+pub tungsten_core::assets::room::AuthoredRoom::replaces: bool
+pub tungsten_core::assets::room::AuthoredRoom::reshaped: bool
+impl core::clone::Clone for tungsten_core::assets::AuthoredRoom
+pub fn tungsten_core::assets::AuthoredRoom::clone(&self) -> tungsten_core::assets::AuthoredRoom
+impl core::cmp::PartialEq for tungsten_core::assets::AuthoredRoom
+pub fn tungsten_core::assets::AuthoredRoom::eq(&self, &tungsten_core::assets::AuthoredRoom) -> bool
+impl core::fmt::Debug for tungsten_core::assets::AuthoredRoom
+pub fn tungsten_core::assets::AuthoredRoom::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::AuthoredRoom
+impl core::marker::Freeze for tungsten_core::assets::AuthoredRoom
+impl core::marker::Send for tungsten_core::assets::AuthoredRoom
+impl core::marker::Sync for tungsten_core::assets::AuthoredRoom
+impl core::marker::Unpin for tungsten_core::assets::AuthoredRoom
+impl core::marker::UnsafeUnpin for tungsten_core::assets::AuthoredRoom
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::AuthoredRoom
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::AuthoredRoom
+pub struct tungsten_core::assets::room::AuthoredRooms
+impl tungsten_core::assets::AuthoredRooms
+pub fn tungsten_core::assets::AuthoredRooms::generation(&self) -> &tungsten_core::Generation
+pub fn tungsten_core::assets::AuthoredRooms::rooms(&self) -> &[tungsten_core::assets::AuthoredRoom]
+impl core::clone::Clone for tungsten_core::assets::AuthoredRooms
+pub fn tungsten_core::assets::AuthoredRooms::clone(&self) -> tungsten_core::assets::AuthoredRooms
+impl core::cmp::PartialEq for tungsten_core::assets::AuthoredRooms
+pub fn tungsten_core::assets::AuthoredRooms::eq(&self, &tungsten_core::assets::AuthoredRooms) -> bool
+impl core::fmt::Debug for tungsten_core::assets::AuthoredRooms
+pub fn tungsten_core::assets::AuthoredRooms::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::AuthoredRooms
+impl core::marker::Freeze for tungsten_core::assets::AuthoredRooms
+impl core::marker::Send for tungsten_core::assets::AuthoredRooms
+impl core::marker::Sync for tungsten_core::assets::AuthoredRooms
+impl core::marker::Unpin for tungsten_core::assets::AuthoredRooms
+impl core::marker::UnsafeUnpin for tungsten_core::assets::AuthoredRooms
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::AuthoredRooms
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::AuthoredRooms
 #[non_exhaustive] pub struct tungsten_core::assets::room::CompiledPlace
 pub tungsten_core::assets::room::CompiledPlace::by: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::room::CompiledPlace::shape: tungsten_core::assets::PlaceShape
@@ -3900,6 +3945,10 @@ pub tungsten_core::assets::GenerateError::Failed
 pub tungsten_core::assets::GenerateError::Failed::generator: alloc::string::String
 pub tungsten_core::assets::GenerateError::Failed::message: alloc::string::String
 pub tungsten_core::assets::GenerateError::Failed::seed: u64
+pub tungsten_core::assets::GenerateError::Kept
+pub tungsten_core::assets::GenerateError::Kept::object: alloc::string::String
+pub tungsten_core::assets::GenerateError::Kept::room: alloc::string::String
+pub tungsten_core::assets::GenerateError::Kept::source: tungsten_core::assets::room::RoomError
 pub tungsten_core::assets::GenerateError::Prefix
 pub tungsten_core::assets::GenerateError::Prefix::prefix: alloc::string::String
 pub tungsten_core::assets::GenerateError::Room
@@ -4701,6 +4750,47 @@ impl core::marker::Unpin for tungsten_core::assets::audio::AudioHandle
 impl core::marker::UnsafeUnpin for tungsten_core::assets::audio::AudioHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::audio::AudioHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::AudioHandle
+#[non_exhaustive] pub struct tungsten_core::assets::AuthoredRoom
+pub tungsten_core::assets::AuthoredRoom::document: tungsten_core::assets::room::Room
+pub tungsten_core::assets::AuthoredRoom::dropped: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::AuthoredRoom::generated: usize
+pub tungsten_core::assets::AuthoredRoom::id: alloc::string::String
+pub tungsten_core::assets::AuthoredRoom::kept: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::AuthoredRoom::origin: glam::f32::vec2::Vec2
+pub tungsten_core::assets::AuthoredRoom::replaces: bool
+pub tungsten_core::assets::AuthoredRoom::reshaped: bool
+impl core::clone::Clone for tungsten_core::assets::AuthoredRoom
+pub fn tungsten_core::assets::AuthoredRoom::clone(&self) -> tungsten_core::assets::AuthoredRoom
+impl core::cmp::PartialEq for tungsten_core::assets::AuthoredRoom
+pub fn tungsten_core::assets::AuthoredRoom::eq(&self, &tungsten_core::assets::AuthoredRoom) -> bool
+impl core::fmt::Debug for tungsten_core::assets::AuthoredRoom
+pub fn tungsten_core::assets::AuthoredRoom::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::AuthoredRoom
+impl core::marker::Freeze for tungsten_core::assets::AuthoredRoom
+impl core::marker::Send for tungsten_core::assets::AuthoredRoom
+impl core::marker::Sync for tungsten_core::assets::AuthoredRoom
+impl core::marker::Unpin for tungsten_core::assets::AuthoredRoom
+impl core::marker::UnsafeUnpin for tungsten_core::assets::AuthoredRoom
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::AuthoredRoom
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::AuthoredRoom
+pub struct tungsten_core::assets::AuthoredRooms
+impl tungsten_core::assets::AuthoredRooms
+pub fn tungsten_core::assets::AuthoredRooms::generation(&self) -> &tungsten_core::Generation
+pub fn tungsten_core::assets::AuthoredRooms::rooms(&self) -> &[tungsten_core::assets::AuthoredRoom]
+impl core::clone::Clone for tungsten_core::assets::AuthoredRooms
+pub fn tungsten_core::assets::AuthoredRooms::clone(&self) -> tungsten_core::assets::AuthoredRooms
+impl core::cmp::PartialEq for tungsten_core::assets::AuthoredRooms
+pub fn tungsten_core::assets::AuthoredRooms::eq(&self, &tungsten_core::assets::AuthoredRooms) -> bool
+impl core::fmt::Debug for tungsten_core::assets::AuthoredRooms
+pub fn tungsten_core::assets::AuthoredRooms::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::AuthoredRooms
+impl core::marker::Freeze for tungsten_core::assets::AuthoredRooms
+impl core::marker::Send for tungsten_core::assets::AuthoredRooms
+impl core::marker::Sync for tungsten_core::assets::AuthoredRooms
+impl core::marker::Unpin for tungsten_core::assets::AuthoredRooms
+impl core::marker::UnsafeUnpin for tungsten_core::assets::AuthoredRooms
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::AuthoredRooms
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::AuthoredRooms
 pub struct tungsten_core::assets::CellChange
 pub tungsten_core::assets::CellChange::col: u32
 pub tungsten_core::assets::CellChange::layer: usize
@@ -9004,6 +9094,10 @@ pub fn tungsten_core::World::patch_room(&mut self, &str, tungsten_core::assets::
 pub fn tungsten_core::World::patch_tileset(&mut self, &str, tungsten_core::assets::room::tileset::Tileset, alloc::vec::Vec<(alloc::string::String, tungsten_core::assets::room::Room)>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
 pub fn tungsten_core::World::undo_room_batch(&mut self, &str) -> core::result::Result<core::option::Option<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
 impl tungsten_core::World
+pub fn tungsten_core::World::author_rooms(&self, &str, u64, &str) -> core::result::Result<tungsten_core::assets::AuthoredRooms, tungsten_core::GenerateError>
+pub fn tungsten_core::World::generate_rooms(&mut self, &str, u64, &str) -> core::result::Result<tungsten_core::GeneratedRooms, tungsten_core::GenerateError>
+pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_core::RoomGenerator)
+impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
@@ -9055,9 +9149,6 @@ pub fn tungsten_core::World::resource_mut<T: 'static>(&mut self) -> &mut T
 pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
-impl tungsten_core::World
-pub fn tungsten_core::World::generate_rooms(&mut self, &str, u64, &str) -> core::result::Result<tungsten_core::GeneratedRooms, tungsten_core::GenerateError>
-pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_core::RoomGenerator)
 impl tungsten_core::World
 pub fn tungsten_core::World::insert_room(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
 pub fn tungsten_core::World::insert_room_with_path(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room, std::path::PathBuf) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
@@ -18911,6 +19002,10 @@ pub tungsten_core::GenerateError::Failed
 pub tungsten_core::GenerateError::Failed::generator: alloc::string::String
 pub tungsten_core::GenerateError::Failed::message: alloc::string::String
 pub tungsten_core::GenerateError::Failed::seed: u64
+pub tungsten_core::GenerateError::Kept
+pub tungsten_core::GenerateError::Kept::object: alloc::string::String
+pub tungsten_core::GenerateError::Kept::room: alloc::string::String
+pub tungsten_core::GenerateError::Kept::source: tungsten_core::assets::room::RoomError
 pub tungsten_core::GenerateError::Prefix
 pub tungsten_core::GenerateError::Prefix::prefix: alloc::string::String
 pub tungsten_core::GenerateError::Room
@@ -25325,6 +25420,10 @@ pub fn tungsten_core::World::patch_room(&mut self, &str, tungsten_core::assets::
 pub fn tungsten_core::World::patch_tileset(&mut self, &str, tungsten_core::assets::room::tileset::Tileset, alloc::vec::Vec<(alloc::string::String, tungsten_core::assets::room::Room)>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
 pub fn tungsten_core::World::undo_room_batch(&mut self, &str) -> core::result::Result<core::option::Option<tungsten_core::assets::room::RoomPatch>, tungsten_core::assets::room::RoomPatchError>
 impl tungsten_core::World
+pub fn tungsten_core::World::author_rooms(&self, &str, u64, &str) -> core::result::Result<tungsten_core::assets::AuthoredRooms, tungsten_core::GenerateError>
+pub fn tungsten_core::World::generate_rooms(&mut self, &str, u64, &str) -> core::result::Result<tungsten_core::GeneratedRooms, tungsten_core::GenerateError>
+pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_core::RoomGenerator)
+impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
@@ -25376,9 +25475,6 @@ pub fn tungsten_core::World::resource_mut<T: 'static>(&mut self) -> &mut T
 pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
-impl tungsten_core::World
-pub fn tungsten_core::World::generate_rooms(&mut self, &str, u64, &str) -> core::result::Result<tungsten_core::GeneratedRooms, tungsten_core::GenerateError>
-pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_core::RoomGenerator)
 impl tungsten_core::World
 pub fn tungsten_core::World::insert_room(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room) -> core::result::Result<(), tungsten_core::assets::room::RoomError>
 pub fn tungsten_core::World::insert_room_with_path(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::room::Room, std::path::PathBuf) -> core::result::Result<(), tungsten_core::assets::room::RoomError>

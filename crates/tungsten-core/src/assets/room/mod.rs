@@ -65,7 +65,8 @@ pub use command::{
 };
 pub use compile::{CompiledPlace, CompiledRoom, PlaceShape, ROOM_OBJECT_LAYER};
 pub use generate::{
-    Generate, GenerateError, GeneratedRooms, Generation, RoomGenerator, RoomGenerators,
+    AuthoredRoom, AuthoredRooms, Generate, GenerateError, GeneratedRooms, Generation,
+    RoomGenerator, RoomGenerators,
 };
 pub use patch::{MapPatch, RoomPatch, RoomPatchError};
 pub use rules::{

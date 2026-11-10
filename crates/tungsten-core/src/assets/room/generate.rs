@@ -10,6 +10,14 @@
 //! the seed, the prefix and a hash of each template read. The same
 //! generator, version, templates, seed and prefix give the same room IDs,
 //! documents and object names, so the same save IDs.
+//!
+//! [`World::author_rooms`] runs a generator for rooms an author keeps as
+//! files, as `tungsten level generate` writes them, registering nothing:
+//! every object of its output carries the generator's ID in `generator`,
+//! and over a registered authored room of the same ID it keeps that room's
+//! objects that do not carry it (placed or detached by hand, or another
+//! generator's), so a regeneration replaces what the generator owns and
+//! keeps the author's edits.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -22,9 +30,10 @@ use thiserror::Error;
 use super::patch::ContextParts;
 use super::spawn::RoomRegistry;
 use super::{
-    CompiledRoom, Room, RoomCommand, RoomError, TILESET_VERSION, Tileset, check_name, hint,
+    CompiledRoom, Room, RoomCommand, RoomError, RoomObject, TILESET_VERSION, Tileset, check_name,
+    hint,
 };
-use crate::assets::TilemapRegistry;
+use crate::assets::{PrefabError, TilemapRegistry};
 use crate::ecs::World;
 use crate::physics::PhysicsLayers;
 use crate::rng::Pcg32;
@@ -183,6 +192,53 @@ impl GeneratedRooms {
     }
 }
 
+/// A generation's rooms as authored rooms, from [`World::author_rooms`]:
+/// its record and each room, nothing registered.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuthoredRooms {
+    generation: Generation,
+    rooms: Vec<AuthoredRoom>,
+}
+
+impl AuthoredRooms {
+    /// What made them.
+    #[must_use]
+    pub fn generation(&self) -> &Generation {
+        &self.generation
+    }
+
+    /// Each room, in the order the generator added them.
+    #[must_use]
+    pub fn rooms(&self) -> &[AuthoredRoom] {
+        &self.rooms
+    }
+}
+
+/// One room of [`AuthoredRooms`]: its document and how it met the
+/// registered room it regenerates, if any.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct AuthoredRoom {
+    /// Its ID, `<prefix>_<local>`.
+    pub id: String,
+    /// Its document: the generator's output, every object marked with the
+    /// generator, then the regenerated room's kept objects in its order.
+    pub document: Room,
+    /// Where the generator would spawn it, in pixels.
+    pub origin: Vec2,
+    /// Whether it regenerates a registered authored room.
+    pub replaces: bool,
+    /// The generated objects it holds.
+    pub generated: usize,
+    /// The regenerated room's objects kept, by ID, in order.
+    pub kept: Vec<String>,
+    /// The generated objects dropped for a kept object's ID.
+    pub dropped: Vec<String>,
+    /// Whether the regenerated room differs from this one outside its
+    /// objects: terrain, layers, places or settings the generator replaced.
+    pub reshaped: bool,
+}
+
 /// Why [`World::generate_rooms`] registered nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
@@ -244,6 +300,17 @@ pub enum GenerateError {
     Room {
         /// The room's ID.
         room: String,
+        /// Why.
+        source: RoomError,
+    },
+    /// An object a regeneration keeps does not fit the room the generator
+    /// gave: its `on` shape gone, its ID an entry's, or its prefab's checks.
+    #[error("regenerated room `{room}`: kept object `{object}`: {source}")]
+    Kept {
+        /// The room's ID.
+        room: String,
+        /// The kept object's ID.
+        object: String,
         /// Why.
         source: RoomError,
     },
@@ -417,6 +484,28 @@ fn template_hash(rooms: &RoomRegistry, id: &str) -> Option<String> {
     entry.generation.is_none().then(|| hash(&entry.document))
 }
 
+/// Why a generated room did not compile: the room's own error, which the
+/// caller names, or the generation's.
+enum Checked {
+    Room(RoomError),
+    Other(GenerateError),
+}
+
+/// The index of `objects[<index>]` at the start of a room error's field.
+fn object_index(field: &str) -> Option<usize> {
+    let rest = field.strip_prefix("objects[")?;
+    rest[..rest.find(']')?].parse().ok()
+}
+
+/// Whether `a` and `b` are the same room but for their objects.
+fn same_outside_objects(a: &Room, b: &Room) -> bool {
+    let bare = |room: &Room| Room {
+        objects: Vec::new(),
+        ..room.clone()
+    };
+    bare(a) == bare(b)
+}
+
 /// A generation prepared whole: every room compiled and checked, nothing
 /// registered.
 pub(crate) struct PreparedGeneration {
@@ -518,6 +607,170 @@ impl World {
             .map(Some)
     }
 
+    /// Runs generator `generator` on `seed` under `prefix` as
+    /// [`generate_rooms`](Self::generate_rooms) does, for rooms an author
+    /// keeps as files, and registers nothing. It differs in three ways:
+    ///
+    /// - An ID a registered authored room holds is that room regenerated; an
+    ///   ID a generated room or a map that is no room's holds is still
+    ///   [`GenerateError::Taken`]. A generation that reads one of its own
+    ///   output rooms as a template is refused, so a regeneration never
+    ///   reads its last output.
+    /// - Every object of every room carries `generator`, whatever template
+    ///   it came from.
+    /// - Over a regenerated room, its objects that do not carry this
+    ///   generator are kept after the output's, in its order; a generated
+    ///   object whose ID a kept one has is dropped. Everything else of the
+    ///   room is the output's.
+    ///
+    /// Each room is checked whole: compiled against its tileset and the
+    /// physics layer names, its objects against the prefabs
+    /// ([`check_map_objects`](Self::check_map_objects)), and every object
+    /// name across the generation taking its own save ID.
+    ///
+    /// # Errors
+    ///
+    /// A [`GenerateError`]; [`GenerateError::Kept`] for a kept object that
+    /// no longer fits.
+    pub fn author_rooms(
+        &self,
+        generator: &str,
+        seed: u64,
+        prefix: &str,
+    ) -> Result<AuthoredRooms, GenerateError> {
+        let version = self
+            .get_resource::<RoomGenerators>()
+            .and_then(|generators| generators.get(generator))
+            .map(RoomGenerator::version)
+            .ok_or_else(|| self.unknown_generator(generator))?;
+        let (templates, output) = self.run_generation(generator, version, seed, prefix)?;
+        let id_of = |local: &str| format!("{prefix}_{local}");
+        let outputs: BTreeSet<String> = output.iter().map(|(local, ..)| id_of(local)).collect();
+        if let Some(template) = templates.keys().find(|id| outputs.contains(*id)) {
+            return Err(GenerateError::Template {
+                generator: generator.to_owned(),
+                seed,
+                template: template.clone(),
+                message: format!(
+                    "`{template}` is one of the generation's own rooms; a regeneration reads a base room instead"
+                ),
+            });
+        }
+        let empty = RoomRegistry::default();
+        let registry = self.get_resource::<RoomRegistry>().unwrap_or(&empty);
+        let maps = self.get_resource::<TilemapRegistry>();
+        let mut names: BTreeMap<SaveId, String> = BTreeMap::new();
+        let mut rooms = Vec::with_capacity(output.len());
+        for (local, mut document, origin) in output {
+            let id = id_of(&local);
+            let regenerated = match registry.rooms.get(&id) {
+                Some(entry) if entry.generation.is_some() => {
+                    return Err(GenerateError::Taken { room: id });
+                }
+                Some(entry) => Some(&entry.document),
+                None if maps.is_some_and(|maps| maps.get(&id).is_some()) => {
+                    return Err(GenerateError::Taken { room: id });
+                }
+                None => None,
+            };
+            for object in &mut document.objects {
+                object.generator = Some(generator.to_owned());
+            }
+            let (mut kept, mut dropped) = (Vec::new(), Vec::new());
+            let mut reshaped = false;
+            if let Some(old) = regenerated {
+                let own: Vec<RoomObject> = (old.objects.iter())
+                    .filter(|object| object.generator.as_deref() != Some(generator))
+                    .cloned()
+                    .collect();
+                document.objects.retain(|object| {
+                    let shared = own.iter().any(|mine| mine.id == object.id);
+                    if shared {
+                        dropped.push(object.id.clone());
+                    }
+                    !shared
+                });
+                kept = own.iter().map(|object| object.id.clone()).collect();
+                document.objects.extend(own);
+                reshaped = !same_outside_objects(old, &document);
+            }
+            let generated = document.objects.len() - kept.len();
+            // An error at an index past the generated objects is a kept
+            // object's.
+            let blame = |source: RoomError, index: Option<usize>| match index {
+                Some(index) if index >= generated => GenerateError::Kept {
+                    room: id.clone(),
+                    object: document.objects[index].id.clone(),
+                    source,
+                },
+                _ => GenerateError::Room {
+                    room: id.clone(),
+                    source,
+                },
+            };
+            // The room's checks find an ID twice at the later entry, a place
+            // after the objects: name a kept object's clash as its own.
+            for (index, object) in document.objects.iter().enumerate().skip(generated) {
+                let entry = if document.shapes.iter().any(|shape| shape.id == object.id) {
+                    "shape"
+                } else if document.places.iter().any(|place| place.id == object.id) {
+                    "place"
+                } else {
+                    continue;
+                };
+                let source = RoomError::new(
+                    format!("objects[{index}].id"),
+                    format!("`{}` is a generated {entry}'s ID", object.id),
+                );
+                return Err(blame(source, Some(index)));
+            }
+            let compiled = self.compile_generated(&id, &document, &mut names).map_err(
+                |failure| match failure {
+                    Checked::Room(source) => {
+                        let index = object_index(&source.field);
+                        blame(source, index)
+                    }
+                    Checked::Other(err) => err,
+                },
+            )?;
+            if let Err(err) = self.check_map_objects(&id, &compiled.map) {
+                let (index, source) = match err {
+                    PrefabError::Object {
+                        object, message, ..
+                    } => {
+                        let index = (object as usize).saturating_sub(1);
+                        (
+                            Some(index),
+                            RoomError::new(format!("objects[{index}]"), message),
+                        )
+                    }
+                    other => (None, RoomError::new("", other.to_string())),
+                };
+                return Err(blame(source, index));
+            }
+            rooms.push(AuthoredRoom {
+                id,
+                document,
+                origin,
+                replaces: regenerated.is_some(),
+                generated,
+                kept,
+                dropped,
+                reshaped,
+            });
+        }
+        Ok(AuthoredRooms {
+            generation: Generation {
+                generator: generator.to_owned(),
+                version,
+                seed,
+                prefix: prefix.to_owned(),
+                templates,
+            },
+            rooms,
+        })
+    }
+
     /// Generation `generator` at `version` on `seed` under `prefix`,
     /// prepared whole: run, compiled and checked, nothing registered.
     pub(crate) fn prepare_generation(
@@ -527,6 +780,52 @@ impl World {
         seed: u64,
         prefix: &str,
     ) -> Result<PreparedGeneration, GenerateError> {
+        let (templates, output) = self.run_generation(generator, version, seed, prefix)?;
+        let empty = RoomRegistry::default();
+        let registry = self.get_resource::<RoomRegistry>().unwrap_or(&empty);
+        let maps = self.get_resource::<TilemapRegistry>();
+        let mut names: BTreeMap<SaveId, String> = BTreeMap::new();
+        let mut rooms = Vec::with_capacity(output.len());
+        for (local, document, origin) in output {
+            let id = format!("{prefix}_{local}");
+            if registry.rooms.contains_key(&id) || maps.is_some_and(|maps| maps.get(&id).is_some())
+            {
+                return Err(GenerateError::Taken { room: id });
+            }
+            let compiled = self.compile_generated(&id, &document, &mut names).map_err(
+                |failure| match failure {
+                    Checked::Room(source) => GenerateError::Room {
+                        room: id.clone(),
+                        source,
+                    },
+                    Checked::Other(err) => err,
+                },
+            )?;
+            rooms.push((id, document, compiled, origin));
+        }
+        Ok(PreparedGeneration {
+            generation: Generation {
+                generator: generator.to_owned(),
+                version,
+                seed,
+                prefix: prefix.to_owned(),
+                templates,
+            },
+            rooms,
+        })
+    }
+
+    /// Runs generator `generator` at `version` on `seed` under `prefix`:
+    /// the templates it read with their hashes, and each room it added as
+    /// `(local, document, origin)`.
+    #[expect(clippy::type_complexity)] // Two lists, read once by each caller.
+    fn run_generation(
+        &self,
+        generator: &str,
+        version: u32,
+        seed: u64,
+        prefix: &str,
+    ) -> Result<(BTreeMap<String, String>, Vec<(String, Room, Vec2)>), GenerateError> {
         if check_name(prefix).is_err() {
             return Err(GenerateError::Prefix {
                 prefix: prefix.to_owned(),
@@ -574,65 +873,55 @@ impl World {
                 seed,
             });
         }
+        let rooms = std::mem::take(&mut generation.rooms);
+        Ok((generation.templates, rooms))
+    }
+
+    /// `document` compiled as room `id` against the tileset it names and
+    /// the World's physics layer names, each of its object names taking a
+    /// save ID no other name in `names` has.
+    fn compile_generated(
+        &self,
+        id: &str,
+        document: &Room,
+        names: &mut BTreeMap<SaveId, String>,
+    ) -> Result<CompiledRoom, Checked> {
         let empty = RoomRegistry::default();
         let registry = self.get_resource::<RoomRegistry>().unwrap_or(&empty);
-        let maps = self.get_resource::<TilemapRegistry>();
         let no_names = PhysicsLayers::default();
         let layers = self.get_resource::<PhysicsLayers>().unwrap_or(&no_names);
         let blank = Tileset {
             version: TILESET_VERSION,
             tiles: Vec::new(),
         };
-        let mut names: BTreeMap<SaveId, String> = BTreeMap::new();
-        let mut rooms = Vec::with_capacity(generation.rooms.len());
-        for (local, document, origin) in std::mem::take(&mut generation.rooms) {
-            let id = generation.id(&local);
-            if registry.rooms.contains_key(&id) || maps.is_some_and(|maps| maps.get(&id).is_some())
+        let tileset = match &document.tileset {
+            None => &blank,
+            Some(name) => registry.tileset(name).ok_or_else(|| {
+                Checked::Room(RoomError::new(
+                    "tileset",
+                    format!("no tileset `{name}`{}", hint(name, registry.tileset_ids())),
+                ))
+            })?,
+        };
+        let compiled = document
+            .compile(id, tileset, layers)
+            .map_err(Checked::Room)?;
+        for object in compiled
+            .map
+            .object_layers
+            .iter()
+            .flat_map(|layer| &layer.objects)
+        {
+            if let Some(other) = names.insert(SaveId::authored(&object.name), object.name.clone())
+                && other != object.name
             {
-                return Err(GenerateError::Taken { room: id });
+                return Err(Checked::Other(GenerateError::Clash {
+                    name: object.name.clone(),
+                    other,
+                }));
             }
-            let room_error = |source: RoomError| GenerateError::Room {
-                room: id.clone(),
-                source,
-            };
-            let tileset = match &document.tileset {
-                None => &blank,
-                Some(name) => registry.tileset(name).ok_or_else(|| {
-                    room_error(RoomError::new(
-                        "tileset",
-                        format!("no tileset `{name}`{}", hint(name, registry.tileset_ids())),
-                    ))
-                })?,
-            };
-            let compiled = document.compile(&id, tileset, layers).map_err(room_error)?;
-            for object in compiled
-                .map
-                .object_layers
-                .iter()
-                .flat_map(|layer| &layer.objects)
-            {
-                if let Some(other) =
-                    names.insert(SaveId::authored(&object.name), object.name.clone())
-                    && other != object.name
-                {
-                    return Err(GenerateError::Clash {
-                        name: object.name.clone(),
-                        other,
-                    });
-                }
-            }
-            rooms.push((id, document, compiled, origin));
         }
-        Ok(PreparedGeneration {
-            generation: Generation {
-                generator: generator.to_owned(),
-                version,
-                seed,
-                prefix: prefix.to_owned(),
-                templates: generation.templates,
-            },
-            rooms,
-        })
+        Ok(compiled)
     }
 
     /// Registers each of `prepared`'s rooms with its generation.

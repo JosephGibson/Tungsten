@@ -6,7 +6,7 @@ use serde_json::json;
 
 use super::*;
 use crate::assets::room::tests::FULL_TILESET;
-use crate::assets::{PrefabData, PrefabRegistry, Room, RoomCommand, TilemapRegistry};
+use crate::assets::{PrefabData, PrefabRegistry, Room, RoomCommand, RoomJournal, TilemapRegistry};
 use crate::save::SaveId;
 
 /// An 8 × 4 template with a floor, a crate and a door on each side.
@@ -576,4 +576,284 @@ fn a_seed_shows_the_same_variants_each_time() {
     let names: std::collections::BTreeSet<&str> =
         first.iter().map(|(_, name)| name.as_str()).collect();
     assert!(names.len() > 1, "{first:?}");
+}
+
+/// An 8 × 4 base room with a floor, a ledge and a crate another generator
+/// made.
+const BASE: &str = r#"{ "version": 1, "cell": [16, 16], "size": [8, 4], "tileset": "cave",
+  "layers": [{ "name": "solid", "kind": "collision" }],
+  "shapes": [{ "id": "floor", "rect": [0, 3, 8, 1], "tile": "rock", "layers": ["solid"] }],
+  "objects": [{ "id": "crate_1", "prefab": "crate", "at": [3, 2], "generator": "other" }] }"#;
+
+/// Two rooms from two templates: `main` from `hall` with a second crate at
+/// a column from the seed, and `side` from `base`.
+struct Pair;
+
+impl RoomGenerator for Pair {
+    fn version(&self) -> u32 {
+        1
+    }
+
+    fn generate(&self, generation: &mut Generate<'_>) -> Result<(), String> {
+        let mut main = generation.template("hall")?;
+        let col = generation.rng().next_u32() % 6 + 1;
+        let place = format!(
+            r#"[{{ "place": {{ "objects": {{ "id": "crate_2", "prefab": "crate", "at": [{col}, 2] }} }} }}]"#
+        );
+        generation.apply("main", &mut main, &batch(&place))?;
+        generation.add("main", main, [0.0, 0.0])?;
+        let side = generation.template("base")?;
+        generation.add("side", side, [128.0, 0.0])
+    }
+}
+
+/// [`world`] with the template `base` and the generator `pair`.
+fn pair_world() -> World {
+    let mut world = world();
+    world
+        .insert_room("base", Room::from_json(BASE).unwrap())
+        .unwrap();
+    world.register_generator("pair", Pair);
+    world
+}
+
+fn marks(room: &AuthoredRoom) -> Vec<(&str, Option<&str>)> {
+    (room.document.objects.iter())
+        .map(|object| (object.id.as_str(), object.generator.as_deref()))
+        .collect()
+}
+
+#[test]
+fn author_rooms_marks_every_object_and_registers_nothing() {
+    let world = pair_world();
+    let before = registered(&world);
+    let journal = world.has_resource::<RoomJournal>();
+    let authored = world.author_rooms("pair", 7, "cave").unwrap();
+    assert_eq!(registered(&world), before, "nothing registered");
+    assert_eq!(world.has_resource::<RoomJournal>(), journal);
+    let generation = authored.generation();
+    assert_eq!(
+        (
+            generation.generator.as_str(),
+            generation.seed,
+            generation.prefix.as_str()
+        ),
+        ("pair", 7, "cave")
+    );
+    assert_eq!(
+        generation.templates.keys().collect::<Vec<_>>(),
+        ["base", "hall"]
+    );
+    let rooms = authored.rooms();
+    assert_eq!(
+        rooms
+            .iter()
+            .map(|room| room.id.as_str())
+            .collect::<Vec<_>>(),
+        ["cave_main", "cave_side"]
+    );
+    assert_eq!(rooms[1].origin, Vec2::new(128.0, 0.0));
+    assert_eq!(
+        marks(&rooms[0]),
+        [("crate_1", Some("pair")), ("crate_2", Some("pair"))]
+    );
+    assert_eq!(
+        marks(&rooms[1]),
+        [("crate_1", Some("pair"))],
+        "the generator owns its output, whatever template it came from"
+    );
+    for room in rooms {
+        assert!(!room.replaces && !room.reshaped, "{}", room.id);
+        assert!(room.kept.is_empty() && room.dropped.is_empty());
+        assert_eq!(room.generated, room.document.objects.len());
+    }
+    // The same rooms as a runtime generation, but for the marks.
+    let mut runtime = pair_world();
+    let generated = runtime.generate_rooms("pair", 7, "cave").unwrap();
+    let registry = runtime.resource::<RoomRegistry>();
+    for (room, (id, _)) in rooms.iter().zip(generated.rooms()) {
+        let mut unmarked = room.document.clone();
+        for object in &mut unmarked.objects {
+            object.generator = None;
+        }
+        let mut theirs = registry.room(id).unwrap().clone();
+        for object in &mut theirs.objects {
+            object.generator = None;
+        }
+        assert_eq!(unmarked, theirs, "{id}");
+    }
+}
+
+#[test]
+fn a_regeneration_keeps_the_authors_objects_in_order() {
+    let mut world = pair_world();
+    let first = world.author_rooms("pair", 7, "cave").unwrap();
+    // The author's edits: a crate placed, the generated `crate_2` detached
+    // by a move, and another generator's object.
+    let mut main = first.rooms()[0].document.clone();
+    let edits = r#"[
+        { "place": { "objects": { "id": "box_1", "prefab": "crate", "at": [5, 2] } } },
+        { "move": { "id": "crate_2", "by": [0, -1] } },
+        { "place": { "objects": { "id": "other_1", "prefab": "crate", "at": [6, 2], "generator": "other" } } }
+    ]"#;
+    let parts = ContextParts::of(&world, "cave_main", &main).unwrap();
+    parts
+        .with("cave_main", |context| main.apply(&batch(edits), context))
+        .unwrap();
+    let detached = main.objects[1].clone();
+    world.insert_room("cave_main", main.clone()).unwrap();
+    let again = world.author_rooms("pair", 8, "cave").unwrap();
+    let room = &again.rooms()[0];
+    assert!(room.replaces);
+    assert_eq!(
+        marks(room),
+        [
+            ("crate_1", Some("pair")),
+            ("crate_2", None),
+            ("box_1", None),
+            ("other_1", Some("other"))
+        ]
+    );
+    assert_eq!(room.kept, ["crate_2", "box_1", "other_1"]);
+    assert_eq!(
+        room.dropped,
+        ["crate_2"],
+        "the generated one, for the kept ID"
+    );
+    assert_eq!(room.generated, 1);
+    assert_eq!(room.document.objects[1], detached, "kept whole");
+    assert!(!room.reshaped, "only objects differ");
+    assert!(!again.rooms()[1].replaces, "`cave_side` is not registered");
+    // A hand edit to the terrain is the generator's to replace, and shows.
+    let mut reshaped = main;
+    reshaped.layers[0]
+        .cells
+        .insert("2,1".to_owned(), Some("rock".to_owned()));
+    world.remove_room("cave_main").unwrap();
+    world.insert_room("cave_main", reshaped).unwrap();
+    let room = &world.author_rooms("pair", 8, "cave").unwrap().rooms()[0].clone();
+    assert!(room.reshaped);
+    assert!(
+        room.document.layers[0].cells.is_empty(),
+        "the output's terrain"
+    );
+}
+
+#[test]
+fn a_kept_object_that_no_longer_fits_refuses_the_generation() {
+    let mut world = pair_world();
+    let mut main = world.author_rooms("pair", 7, "cave").unwrap().rooms()[0]
+        .document
+        .clone();
+    let edits = r#"[
+        { "place": { "shapes": { "id": "ledge", "rect": [4, 1, 2, 1], "tile": "rock", "layers": ["solid"] } } },
+        { "place": { "objects": { "id": "box_1", "prefab": "crate", "at": [4, 0], "on": "ledge" } } }
+    ]"#;
+    let parts = ContextParts::of(&world, "cave_main", &main).unwrap();
+    parts
+        .with("cave_main", |context| main.apply(&batch(edits), context))
+        .unwrap();
+    world.insert_room("cave_main", main).unwrap();
+    let err = world.author_rooms("pair", 7, "cave").unwrap_err();
+    let GenerateError::Kept {
+        room,
+        object,
+        source,
+    } = &err
+    else {
+        panic!("{err}");
+    };
+    assert_eq!((room.as_str(), object.as_str()), ("cave_main", "box_1"));
+    assert_eq!(source.field, "objects[2].on");
+    assert_eq!(
+        err.to_string(),
+        "regenerated room `cave_main`: kept object `box_1`: objects[2].on: no shape `ledge`"
+    );
+}
+
+#[test]
+fn a_kept_object_whose_id_the_output_gives_an_entry_refuses() {
+    let mut world = pair_world();
+    let mut main = world.author_rooms("pair", 7, "cave").unwrap().rooms()[0]
+        .document
+        .clone();
+    // A hand crate named as the template's west door.
+    main.places.retain(|place| place.id != "door_west");
+    let mut crate_object = main.objects[0].clone();
+    crate_object.id = "door_west".to_owned();
+    crate_object.generator = None;
+    main.objects.push(crate_object);
+    world.insert_room("cave_main", main).unwrap();
+    let err = world.author_rooms("pair", 7, "cave").unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "regenerated room `cave_main`: kept object `door_west`: objects[2].id: `door_west` is a generated place's ID"
+    );
+}
+
+#[test]
+fn author_rooms_refuses_a_template_that_is_an_output() {
+    let mut world = pair_world();
+    world
+        .insert_room("loop_r0", Room::from_json(HALL).unwrap())
+        .unwrap();
+    world.register_generator(
+        "feeder",
+        With(|generation: &mut Generate<'_>| {
+            let last = generation.template("loop_r0")?;
+            generation.add("r0", last, [0.0, 0.0])
+        }),
+    );
+    let err = world.author_rooms("feeder", 1, "loop").unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "generator `feeder` at seed 1: template `loop_r0`: `loop_r0` is one of the generation's own rooms; a regeneration reads a base room instead"
+    );
+}
+
+#[test]
+fn author_rooms_still_takes_a_maps_or_a_generated_rooms_id() {
+    let mut world = pair_world();
+    world.generate_rooms("pair", 1, "run").unwrap();
+    assert_eq!(
+        world.author_rooms("pair", 1, "run").unwrap_err(),
+        GenerateError::Taken {
+            room: "run_main".into()
+        },
+        "a generated room is a seed's"
+    );
+    let map = world
+        .resource::<TilemapRegistry>()
+        .get("hall")
+        .unwrap()
+        .clone();
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("map_main".into(), map);
+    assert_eq!(
+        world.author_rooms("pair", 1, "map").unwrap_err(),
+        GenerateError::Taken {
+            room: "map_main".into()
+        },
+        "a map that is no room's"
+    );
+}
+
+#[test]
+fn author_rooms_checks_objects_against_the_prefabs() {
+    let mut world = pair_world();
+    let mut main = world.author_rooms("pair", 7, "cave").unwrap().rooms()[0]
+        .document
+        .clone();
+    let mut gone = main.objects[0].clone();
+    gone.id = "statue_1".to_owned();
+    gone.prefab = "statue".to_owned();
+    gone.generator = None;
+    main.objects.push(gone);
+    world.insert_room("cave_main", main).unwrap();
+    let err = world.author_rooms("pair", 7, "cave").unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "regenerated room `cave_main`: kept object `statue_1`: objects[2]: unknown prefab `statue`"
+    );
 }
