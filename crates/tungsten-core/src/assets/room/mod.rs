@@ -222,6 +222,11 @@ pub struct RoomObject {
     /// The shape it is anchored to, which a `move` of that shape carries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on: Option<String>,
+    /// The `RoomGenerator` that made it, by ID: a hand edit through the
+    /// commands detaches it, and a regeneration replaces only the objects
+    /// that still carry it. The compile ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generator: Option<String>,
 }
 
 /// A named place: a `point`, a `rect` or a `route`.
@@ -372,7 +377,8 @@ impl Room {
     /// exists, names and IDs (`[a-z][a-z0-9_]*`, IDs unique across shapes,
     /// objects and places), each layer's fields for its kind and its cells'
     /// keys, each shape's one geometry and its layers, each object's
-    /// position and anchor, each place's one form, its stops and its link.
+    /// position, anchor and generator, each place's one form, its stops and
+    /// its link.
     /// Geometry against the grid and tiles against the tileset are
     /// [`Room::compile`]'s.
     ///
@@ -598,6 +604,10 @@ impl Room {
             ));
         }
         self.check_point(object.at, &format!("{field}.at"))?;
+        if let Some(generator) = &object.generator {
+            check_name(generator)
+                .map_err(|message| RoomError::new(format!("{field}.generator"), message))?;
+        }
         if let Some(shape) = &object.on
             && !self.shapes.iter().any(|known| known.id == *shape)
         {
@@ -894,6 +904,7 @@ pub fn json_schema() -> Value {
                 ("at", pair(number.clone())),
                 ("set", json!({ "type": "object" })),
                 ("on", id.clone()),
+                ("generator", id.clone()),
             ],
             &["id", "prefab", "at"],
         ),

@@ -1,6 +1,6 @@
-# Level editor (phase-7's step 12, `level-editor`) — draft
+# Level editor (phase-7's step 12, `level-editor`) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** 7.12's third and last plan (the redo's 7.12 row and §5.1; `D-266`'s open "authoring-time generation and the editor"; level-generation's Q1). (a) Authoring-time generation: a room object carries the generator that made it, a hand edit through the commands detaches it, and `tungsten level generate` writes a generation's rooms as room files, regenerating a listed room while keeping the objects its author owns. (b) The in-game editor on the same commands: F10 in a build that watches its assets opens a debug window that stops the game clock and takes the game's input, then selects, moves, places, deletes and duplicates objects and paints and erases cells through `World::apply_room_batch`, undoes and redoes through the World's `RoomJournal`, and writes each edit to the room's file canonically. Its close closes phase 7's Step 12.
 - **non-goals:**
   - Editing places, links, renames and `set` overrides in the editor: they need text input, which 8.1 brings (P8-5); the CLI keeps them (Q1). Multi-select, box select, copy between rooms, a cell grid, a searchable palette (Q10), and a regenerate key in the editor (Q7): Later lines.
@@ -262,5 +262,6 @@ Round 2: gpt-6-astra at xhigh, `--raw --repo`, 2026-11-09, on the plan cut of th
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-10 | Done | `cargo test -p tungsten-core --lib --locked assets::room` → `test result: ok. 83 passed`, the new `a_hand_move_set_or_rename_detaches_and_its_inverse_marks_again`, `a_shapes_move_keeps_the_marks_of_the_objects_on_it`, `a_shape_deleted_or_moved_under_marked_objects_undoes_and_redoes_whole`, `each_verb_then_its_inverse_over_marked_objects_gives_the_text_back`, `a_duplicates_copy_is_unmarked_and_set_generator_marks_and_detaches`, `a_mark_that_is_no_id_fails_naming_its_field`, `the_mark_reads_and_writes_canonically_and_is_skipped_when_absent` and `the_fixture_rooms_write_no_mark` among them (a negative control dropping either inverse's mark restore failed 2 tests); `TUNGSTEN_GUARDS_WRITE=1 … guards_rooms guards_generate` → 2 passed; the `del(.allocated_bytes)` diff → exit 0 for both; `rooms.json` 20,199,492 → 20,314,692 B (+115,200 = 24 × 4,800), `generate.json` 6,618,300 → 6,634,140 B (+15,840 = 24 × 660), allocations unchanged; `cargo test -p example-02-bench --locked guards` → 16 passed; `cargo test -p tungsten-cli --locked schema` → 3 passed; `just api-check` → exit 0; fmt and `cargo clippy -p tungsten-core --all-targets --locked -- -D warnings` → exit 0 | Step 1's list |
 
 ## Follow-ups

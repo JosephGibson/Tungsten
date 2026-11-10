@@ -11,11 +11,21 @@
 //! | `move` | `{"id", "by": [dx, dy]}` or `{"id", "to": [x, y]}`; a shape carries the objects `on` it | the move back |
 //! | `set` | `{"id" \| "layer"?, "path", "value"}`: no `id` for the room's `size`, `tileset`, `post`, `ambient` and `budget`; `set.<key>` one override; `null` removes an optional field | `set` the old value |
 //! | `delete` | `{"id"}` or `{"layer"}`; objects `on` a deleted shape lose `on` | `place` at its index, `on` restored |
-//! | `duplicate` | `{"id", "as", "by"?}` | `delete` |
+//! | `duplicate` | `{"id", "as", "by"?}`; an object's copy carries no `generator` | `delete` |
 //! | `paint` | `{"layer", "rect" \| "cells", "tile"}`: overrides; `"tile": null` removes them | the old overrides |
 //! | `erase` | `{"layer", "rect" \| "cells"}`: empty overrides | the old overrides |
 //! | `link` | `{"id", "to"}`, `null` unlinking | `link` the old target |
 //! | `rename` | `{"id", "to"}`: the room's own references follow | `rename` back |
+//!
+//! An object a generator made carries its ID in `generator`, and a hand
+//! edit detaches it: a `move` of the object, a `set` of any of its paths
+//! but `generator`, and a `rename` of it drop the mark, their inverses
+//! setting it back. `set {"id", "path": "generator", "value"}` marks or
+//! detaches and changes nothing else. A shape's `move` and `delete` leave
+//! the objects on it marked, since the generator owns the shape too. An
+//! inverse that names a marked object ends that object's commands with
+//! `set generator` its mark, so an undo, which applies the inverse as a
+//! batch, gives the marks back with the rest.
 //!
 //! Every command is checked against the room as the earlier ones leave it:
 //! the room's own checks ([`Room::validate`]), the prefab of an object it
@@ -513,13 +523,22 @@ impl Room {
             .ok_or_else(|| self.no_entry("id", &movement.id, None))?;
         match entry {
             Entry::Object(at) => {
-                let old = self.objects[at].at;
-                self.objects[at].at = match (movement.by, movement.to) {
+                let object = &mut self.objects[at];
+                let old = object.at;
+                object.at = match (movement.by, movement.to) {
                     (Some([dx, dy]), _) => [old[0] + dx, old[1] + dy],
                     (_, Some(to)) => to,
                     _ => unreachable!("one of `by` or `to`"),
                 };
-                Ok((vec![move_to(&movement.id, old)], false))
+                let mut inverse = vec![move_to(&movement.id, old)];
+                // A hand move detaches it.
+                inverse.extend(
+                    object
+                        .generator
+                        .take()
+                        .map(|mark| mark_as(&movement.id, mark)),
+                );
+                Ok((inverse, false))
             }
             Entry::Place(at) => {
                 let place = &mut self.places[at];
@@ -576,11 +595,19 @@ impl Room {
                     by: Some([-delta[0], -delta[1]]),
                     to: None,
                 })];
+                // The carry keeps their marks; the inverse's own moves would
+                // detach them, so it sets each mark back after.
                 for object in &mut self.objects {
                     if object.on.as_deref() == Some(movement.id.as_str()) {
                         let old = object.at;
                         object.at = [old[0] + delta[0], old[1] + delta[1]];
                         inverse.push(move_to(&object.id, old));
+                        inverse.extend(
+                            object
+                                .generator
+                                .clone()
+                                .map(|mark| mark_as(&object.id, mark)),
+                        );
                     }
                 }
                 Ok((inverse, true))
@@ -629,7 +656,13 @@ impl Room {
                 if path == "prefab" {
                     check_prefab(context, "value", &self.objects[at].prefab.clone())?;
                 }
-                (old, false)
+                let mut inverse = vec![set_back(set, old)];
+                // A hand set detaches it; `generator` is the mark's own path.
+                if path != GENERATOR {
+                    let mark = self.objects[at].generator.take();
+                    inverse.extend(mark.map(|mark| mark_as(id, mark)));
+                }
+                return Ok((inverse, false));
             }
             Entry::Shape(at) => (edit(&mut self.shapes[at], path, &set.value, false)?, true),
             Entry::Place(at) => (edit(&mut self.places[at], path, &set.value, false)?, false),
@@ -681,6 +714,8 @@ impl Room {
                             index: Some(at),
                             ..PlaceCommand::default()
                         })));
+                        // The objects stay marked; the inverse's `set on`
+                        // would detach them, so it sets each mark back after.
                         for object in &mut self.objects {
                             if object.on.as_deref() == Some(id.as_str()) {
                                 object.on = None;
@@ -690,6 +725,10 @@ impl Room {
                                     path: "on".to_owned(),
                                     value: Value::String(id.clone()),
                                 }));
+                                inverse.extend(
+                                    (object.generator.clone())
+                                        .map(|mark| mark_as(&object.id, mark)),
+                                );
                             }
                         }
                         true
@@ -714,6 +753,8 @@ impl Room {
                 let mut copy = self.objects[at].clone();
                 copy.id.clone_from(&duplicate.as_id);
                 copy.at = [copy.at[0] + by[0], copy.at[1] + by[1]];
+                // A hand copy is the author's, not the generator's.
+                copy.generator = None;
                 check_prefab(context, "id", &copy.prefab)?;
                 self.objects.insert(at + 1, copy);
                 false
@@ -853,7 +894,18 @@ impl Room {
                     }
                 }
             }
-            Entry::Object(at) => new.clone_into(&mut self.objects[at].id),
+            Entry::Object(at) => {
+                let object = &mut self.objects[at];
+                new.clone_into(&mut object.id);
+                // A hand rename detaches it.
+                if let Some(mark) = object.generator.take() {
+                    let back = RoomCommand::Rename(RenameCommand {
+                        id: new.to_owned(),
+                        to: old.to_owned(),
+                    });
+                    return Ok((vec![back, mark_as(old, mark)], false));
+                }
+            }
             Entry::Place(at) => {
                 new.clone_into(&mut self.places[at].id);
                 let (own_old, own_new) = (
@@ -878,6 +930,20 @@ impl Room {
         });
         Ok((vec![inverse], false))
     }
+}
+
+/// The path of an object's mark, [`RoomObject::generator`].
+const GENERATOR: &str = "generator";
+
+/// `set {id, path: "generator", value: mark}`: an inverse's last command for
+/// an object its command detached or left marked.
+fn mark_as(id: &str, mark: String) -> RoomCommand {
+    RoomCommand::Set(SetCommand {
+        id: Some(id.to_owned()),
+        layer: None,
+        path: GENERATOR.to_owned(),
+        value: Value::String(mark),
+    })
 }
 
 /// `move {id, to: at}`.

@@ -2736,6 +2736,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::Ro
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomLayer
 #[non_exhaustive] pub struct tungsten_core::assets::room::RoomObject
 pub tungsten_core::assets::room::RoomObject::at: [f32; 2]
+pub tungsten_core::assets::room::RoomObject::generator: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::room::RoomObject::id: alloc::string::String
 pub tungsten_core::assets::room::RoomObject::on: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::room::RoomObject::prefab: alloc::string::String
@@ -5899,6 +5900,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::room::Ro
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::room::RoomLayer
 #[non_exhaustive] pub struct tungsten_core::assets::RoomObject
 pub tungsten_core::assets::RoomObject::at: [f32; 2]
+pub tungsten_core::assets::RoomObject::generator: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::RoomObject::id: alloc::string::String
 pub tungsten_core::assets::RoomObject::on: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::RoomObject::prefab: alloc::string::String

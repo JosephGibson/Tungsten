@@ -21,7 +21,7 @@ pub(crate) const FULL: &str = r#"{
   ],
   "objects": [
     { "id": "crate_1", "prefab": "crate", "at": [12, 19], "on": "floor" },
-    { "id": "crawler_2", "prefab": "crawler", "at": [22.5, 11], "set": { "health.max": 30 } }
+    { "id": "crawler_2", "prefab": "crawler", "at": [22.5, 11], "set": { "health.max": 30 }, "generator": "caves" }
   ],
   "places": [
     { "id": "player_start", "point": [2, 19] },
@@ -734,5 +734,66 @@ mod spawning {
             Some(second.instance())
         );
         assert!(world.resource::<SaveState>().is_loaded("cave"));
+    }
+}
+
+#[test]
+fn a_mark_that_is_no_id_fails_naming_its_field() {
+    let room = |mark: &str| {
+        format!(
+            r#"{{ "version": 1, "cell": [16, 16], "size": [8, 8],
+                 "objects": [{{ "id": "a", "prefab": "crate", "at": [1, 1] }},
+                             {{ "id": "b", "prefab": "crate", "at": [2, 1], "generator": {mark} }}] }}"#
+        )
+    };
+    let err = error(&room(r#""Chain""#));
+    assert_eq!(err.field, "objects[1].generator");
+    assert!(err.message.contains("[a-z][a-z0-9_]*"), "{err}");
+    assert_eq!(error(&room(r#""""#)).field, "objects[1].generator");
+    assert_eq!(error(&room("3")).field, "objects[1].generator");
+    assert!(Room::from_json(&room(r#""chain""#)).is_ok());
+}
+
+#[test]
+fn the_mark_reads_and_writes_canonically_and_is_skipped_when_absent() {
+    let room = Room::from_json(FULL).unwrap();
+    assert_eq!(room.objects[1].generator.as_deref(), Some("caves"));
+    assert_eq!(room.objects[0].generator, None);
+    let canonical = room.to_canonical();
+    assert!(
+        canonical.contains("\"generator\": \"caves\""),
+        "{canonical}"
+    );
+    assert_eq!(
+        canonical.matches("\"generator\"").count(),
+        1,
+        "absent, not written"
+    );
+    assert_eq!(Room::from_json(&canonical).unwrap(), room);
+}
+
+/// Every fixture room writes the fields it wrote before the mark: no
+/// object of theirs carries one, so their canonical text is unchanged.
+#[test]
+fn the_fixture_rooms_write_no_mark() {
+    for text in [
+        include_str!("../../../../tungsten/tests/fixtures/rooms/rooms/cave.json"),
+        include_str!("../../../../tungsten/tests/fixtures/rooms/rooms/hall.json"),
+    ] {
+        let room = Room::from_json(text).unwrap();
+        let canonical = room.to_canonical();
+        let value: Value = serde_json::from_str(&canonical).unwrap();
+        for object in value["objects"].as_array().into_iter().flatten() {
+            for key in object.as_object().unwrap().keys() {
+                assert!(
+                    ["id", "prefab", "at", "set", "on"].contains(&key.as_str()),
+                    "{key}"
+                );
+            }
+        }
+        assert_eq!(
+            Room::from_json(&canonical).unwrap().to_canonical(),
+            canonical
+        );
     }
 }

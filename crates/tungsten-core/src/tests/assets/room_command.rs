@@ -455,3 +455,223 @@ fn an_undo_that_no_longer_validates_fails_and_changes_nothing() {
     assert_eq!(journal.undo_len("cave"), 1, "the entry stays");
     assert_eq!(journal.redo_len("cave"), 0);
 }
+
+/// `cave` with every object made by the generator `chain`.
+fn marked() -> Room {
+    let mut room = cave();
+    for object in &mut room.objects {
+        object.generator = Some("chain".to_owned());
+    }
+    room
+}
+
+fn mark<'a>(room: &'a Room, id: &str) -> Option<&'a str> {
+    object(room, id).generator.as_deref()
+}
+
+#[test]
+fn a_hand_move_set_or_rename_detaches_and_its_inverse_marks_again() {
+    let (tileset, layers) = world();
+    let context = RoomContext {
+        room: "cave",
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &PREFABS,
+    };
+    for (command, id) in [
+        (
+            json!({ "move": { "id": "crate_1", "by": [1, 0] } }),
+            "crate_1",
+        ),
+        (
+            json!({ "move": { "id": "ball_1", "to": [3, 4] } }),
+            "ball_1",
+        ),
+        (
+            json!({ "set": { "id": "ball_1", "path": "set.rigid_body.shape.radius", "value": 5 } }),
+            "ball_1",
+        ),
+        (
+            json!({ "set": { "id": "crate_1", "path": "on", "value": null } }),
+            "crate_1",
+        ),
+        (
+            json!({ "rename": { "id": "lamp_1", "to": "lamp_9" } }),
+            "lamp_9",
+        ),
+    ] {
+        let mut room = marked();
+        let before = room.to_canonical();
+        let inverse = room.apply(&batch(&json!([command])), &context).unwrap();
+        assert_eq!(mark(&room, id), None, "{command} detaches `{id}`");
+        assert!(
+            room.objects
+                .iter()
+                .filter(|object| object.id != id)
+                .all(|object| object.generator.is_some()),
+            "{command} detaches nothing else"
+        );
+        let text = serde_json::to_string(&inverse).unwrap();
+        room.apply(&RoomCommand::parse_batch(&text).unwrap(), &context)
+            .unwrap();
+        assert_eq!(room.to_canonical(), before, "{command}'s inverse: {text}");
+    }
+}
+
+#[test]
+fn a_shapes_move_keeps_the_marks_of_the_objects_on_it() {
+    let (tileset, layers) = world();
+    let context = RoomContext {
+        room: "cave",
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &PREFABS,
+    };
+    let mut room = marked();
+    room.apply(
+        &batch(&json!([
+            { "move": { "id": "floor", "by": [0, -1] } },
+            { "rename": { "id": "floor", "to": "ground" } }
+        ])),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(object(&room, "crate_1").at, [5.0, 18.0], "carried");
+    assert_eq!(object(&room, "crate_1").on.as_deref(), Some("ground"));
+    assert_eq!(
+        mark(&room, "crate_1"),
+        Some("chain"),
+        "the carry is no hand edit"
+    );
+}
+
+#[test]
+fn a_shape_deleted_or_moved_under_marked_objects_undoes_and_redoes_whole() {
+    let (tileset, layers) = world();
+    let context = RoomContext {
+        room: "cave",
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &PREFABS,
+    };
+    for command in [
+        json!({ "delete": { "id": "floor" } }),
+        json!({ "move": { "id": "floor", "by": [0, -1] } }),
+    ] {
+        let mut room = marked();
+        let mut journal = RoomJournal::new();
+        let before = room.to_canonical();
+        let applied = batch(&json!([command]));
+        let inverse = room.apply(&applied, &context).unwrap();
+        journal.record("cave", applied, inverse);
+        let after = room.to_canonical();
+        assert_eq!(mark(&room, "crate_1"), Some("chain"), "{command}");
+        for _ in 0..2 {
+            assert!(journal.undo("cave", &mut room, &context).unwrap());
+            assert_eq!(room.to_canonical(), before, "{command} undone");
+            assert!(journal.redo("cave", &mut room, &context).unwrap());
+            assert_eq!(room.to_canonical(), after, "{command} redone");
+        }
+    }
+}
+
+#[test]
+fn each_verb_then_its_inverse_over_marked_objects_gives_the_text_back() {
+    let (tileset, layers) = world();
+    let context = RoomContext {
+        room: "cave",
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &PREFABS,
+    };
+    let commands = [
+        json!({ "place": { "objects": { "id": "crate_2", "prefab": "crate", "at": [6, 19], "on": "floor", "generator": "chain" }, "index": 1 } }),
+        json!({ "move": { "id": "floor", "by": [0, -1] } }),
+        json!({ "move": { "id": "crate_1", "to": [7, 19] } }),
+        json!({ "set": { "id": "ball_1", "path": "set.rigid_body.shape.radius", "value": 5 } }),
+        json!({ "set": { "id": "ball_1", "path": "generator", "value": "other" } }),
+        json!({ "delete": { "id": "floor" } }),
+        json!({ "delete": { "id": "crate_1" } }),
+        json!({ "duplicate": { "id": "crate_1", "as": "crate_2", "by": [1.5, 0] } }),
+        json!({ "paint": { "layer": "art", "rect": [15, 18, 3, 2], "tile": "plank" } }),
+        json!({ "erase": { "layer": "solid", "cells": [[1, 20], [2, 20]] } }),
+        json!({ "link": { "id": "exit", "to": null } }),
+        json!({ "rename": { "id": "crate_1", "to": "box" } }),
+        json!({ "rename": { "id": "floor", "to": "ground" } }),
+    ];
+    for command in commands {
+        let mut room = marked();
+        let before = room.to_canonical();
+        let inverse = room.apply(&batch(&json!([command])), &context).unwrap();
+        assert_ne!(room.to_canonical(), before, "{command} changes the room");
+        let text = serde_json::to_string(&inverse).unwrap();
+        room.apply(&RoomCommand::parse_batch(&text).unwrap(), &context)
+            .unwrap();
+        assert_eq!(room.to_canonical(), before, "{command}'s inverse: {text}");
+    }
+    // A batch moving one object twice gives it back once, marked.
+    let mut room = marked();
+    let before = room.to_canonical();
+    let inverse = room
+        .apply(
+            &batch(&json!([
+                { "move": { "id": "crate_1", "by": [1, 0] } },
+                { "move": { "id": "crate_1", "by": [1, 0] } }
+            ])),
+            &context,
+        )
+        .unwrap();
+    room.apply(&inverse, &context).unwrap();
+    assert_eq!(room.to_canonical(), before);
+}
+
+#[test]
+fn a_duplicates_copy_is_unmarked_and_set_generator_marks_and_detaches() {
+    let (tileset, layers) = world();
+    let context = RoomContext {
+        room: "cave",
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &PREFABS,
+    };
+    let mut room = marked();
+    room.apply(
+        &batch(&json!([{ "duplicate": { "id": "crate_1", "as": "crate_2", "by": [1, 0] } }])),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(
+        mark(&room, "crate_1"),
+        Some("chain"),
+        "the original keeps it"
+    );
+    assert_eq!(mark(&room, "crate_2"), None, "the copy is the author's");
+    let at = object(&room, "crate_2").at;
+    room.apply(
+        &batch(&json!([
+            { "set": { "id": "crate_2", "path": "generator", "value": "chain" } },
+            { "set": { "id": "crate_1", "path": "generator", "value": null } }
+        ])),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(mark(&room, "crate_2"), Some("chain"));
+    assert_eq!(
+        object(&room, "crate_2").at,
+        at,
+        "a mark changes nothing else"
+    );
+    assert_eq!(mark(&room, "crate_1"), None);
+    // A mark is an ID.
+    let err = room
+        .apply(
+            &batch(&json!([{ "set": { "id": "crate_2", "path": "generator", "value": "Chain" } }])),
+            &context,
+        )
+        .unwrap_err();
+    assert!(
+        err.to_string()
+            .starts_with("commands[0].set: objects[1].generator: `Chain` is not"),
+        "{err}"
+    );
+}
