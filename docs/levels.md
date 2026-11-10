@@ -1,6 +1,20 @@
 # Levels
 
-How a game's levels are made, changed and checked: room and tileset files, the `tungsten level` command line, a script's level steps and the in-game editor. [Assets](assets.md) lists every field of the two formats; [getting started](getting-started.md) covers the rest of a game. Every surface edits a room through the same commands, so an edit is checked, journaled and undone alike wherever it is made (`D-264`, `D-267`).
+How a game's levels are made, changed and checked: room and tileset files, the `tungsten level` command line, a script's level steps and the in-game editor. [Assets](assets.md) lists every field of the two formats; [getting started](getting-started.md) covers the rest of a game. Every surface edits a room through the same commands, so an edit is checked, journaled and undone alike wherever it is made (`D-264`, `D-267`, `D-268`).
+
+What each surface reaches:
+
+| Edit | The editor | `tungsten level` | A script |
+| --- | --- | --- | --- |
+| Objects: place, move, delete, copy, rename, override | yes | yes | yes |
+| Cells: paint and erase, by cell or by rectangle | yes | yes | yes |
+| Places: a point and an area placed, moved, deleted, linked | yes | yes | yes |
+| Shapes, layers, routes and the room's own fields (size, tileset, post, ambient, budget) | no: the command line's | yes | yes |
+| Undo and redo | yes, 64 a room | yes, every apply | yes, 64 a room |
+| Make a room | opens any listed room; makes none | `new` | no: it stages listed rooms |
+| Write the room's file | at each edit | at each apply | never: a `level` step edits the live room alone |
+| Read an entry back | the panel, the `editor` probe | `query`, `map`, `describe` | the `room` probe |
+| Check the level rules | the findings after each edit | `check`, `apply --check` | no: `tungsten level check` after |
 
 ## A room, its tileset and the manifest
 
