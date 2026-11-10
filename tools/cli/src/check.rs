@@ -194,9 +194,14 @@ fn pass_stderr(command: &mut Command, keep: impl Fn(&str) -> bool) -> anyhow::Re
         .with_context(|| format!("cannot run `{}`", command.get_program().to_string_lossy()))?;
     if let Some(stderr) = child.stderr.take() {
         use std::io::BufRead as _;
-        for line in std::io::BufReader::new(stderr).lines() {
+        // By bytes: a line that is not UTF-8 (a path, a linker's message)
+        // passes with its bad bytes replaced, where reading it as text
+        // would end the relay and close the game's stderr under it.
+        for line in std::io::BufReader::new(stderr).split(b'\n') {
             let Ok(line) = line else { break };
-            if keep(&line) {
+            let line = String::from_utf8_lossy(&line);
+            let line = line.strip_suffix('\r').unwrap_or(&line);
+            if keep(line) {
                 eprintln!("{line}");
             }
         }
