@@ -135,7 +135,7 @@ undo: tungsten level apply yard --undo
 
 Two probes read a room back:
 
-- `room` is the script's `query`. `{ "room": "yard" }` gives the room whole: `live`, `origin`, `cell`, `size`, `tileset`, its `layers`, its `shapes`, `objects` and `places` as the file writes them, and its journal's `undo` and `redo` counts. While the room is live each object also carries `world`, its spawn point in world pixels, and `alive`, whether the entity it spawned as still lives. `{ "room": "yard", "id": "gem_1" }` gives one entry as `{kind, index, entry}`; a `path` picks a field, as `/entry/at`.
+- `room` is the script's `query`. `{ "room": "yard" }` gives the room whole: `live`, `origin`, `cell`, `size`, `tileset`, its `layers`, its `shapes`, `objects` and `places` as the file writes them, and its journal's `undo` and `redo` counts. While the room is live each object also carries `world`, its spawn point in world pixels, and `alive`, whether the entity it spawned as still lives. `{ "room": "yard", "id": "gem_1" }` gives one entry as `{kind, index, entry}`; a `path` picks a field, as `/entry/at`. An ID the room lacks reads `null` under each of the three, so `"path": "/kind", "op": "==", "value": null` asserts an entry is gone; `nearest` beside them is the ID a misspelt one may have meant.
 - `place` reads a live room's place in world pixels: `{ "room": "yard", "id": "start" }` gives a point `[x, y]`, an area `{min, size}` or a route's points.
 
 ```json

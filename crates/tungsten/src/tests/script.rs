@@ -920,7 +920,10 @@ fn the_room_probe_reads_a_live_rooms_entries() {
             ] } },
             { "frame": 6, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_2" }, "path": "/entry/world", "op": "==", "value": [96, 32] } },
             { "frame": 6, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_2" }, "path": "/entry/alive", "op": "==", "value": true } },
-            { "frame": 7, "probe": "room", "args": { "room": "cave", "id": "crate_9" } }
+            { "frame": 7, "probe": "room", "args": { "room": "cave", "id": "crate_9" } },
+            { "frame": 7, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_9" }, "path": "/kind", "op": "==", "value": null } },
+            { "frame": 7, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_9" }, "path": "/entry/at", "op": "==", "value": [2, 2] } },
+            { "frame": 7, "probe": "room", "args": { "room": "cove" } }
         ]),
     ));
     let read = probes(&report, "room");
@@ -962,10 +965,18 @@ fn the_room_probe_reads_a_live_rooms_entries() {
         )
     );
     assert_eq!(read[4], (4, &json!("shape")));
-    assert!(
-        report.asserts.iter().all(|assert| assert.passed),
-        "{report:#?}"
+    // An ID the room lacks reads `null` under each key, with the nearest
+    // ID: a script asserts an entry is gone by `/kind == null`, and a
+    // misspelt ID's assert fails showing what it may have meant.
+    assert_eq!(
+        read[5],
+        (
+            7,
+            &json!({ "kind": null, "index": null, "entry": null, "nearest": "crate_1" })
+        )
     );
+    let passed: Vec<bool> = report.asserts.iter().map(|assert| assert.passed).collect();
+    assert_eq!(passed, [true, true, true, false], "{report:#?}");
     let failed: Vec<&str> = report
         .failed_steps
         .iter()
@@ -973,6 +984,11 @@ fn the_room_probe_reads_a_live_rooms_entries() {
         .collect();
     assert_eq!(
         failed,
-        ["probe `room`: room `cave` has no entry `crate_9`; did you mean `crate_1`?"]
+        ["probe `room`: unknown room `cove`; did you mean `cave`?"]
+    );
+    let misspelt = report.asserts[3].error.as_deref().unwrap_or_default();
+    assert!(
+        misspelt.contains("/entry/at") && misspelt.contains("\"nearest\":\"crate_1\""),
+        "{misspelt}"
     );
 }

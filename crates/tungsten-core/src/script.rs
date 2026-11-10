@@ -1496,7 +1496,7 @@ impl ScriptHooks {
         });
         hooks.add_probe(
             "count",
-            "`{\"component\": name}`: how many entities hold a registered component.",
+            "`{\"component\": name}`: how many entities hold a component registered as itself; one a definition registers (the kit's, such as `health`) has no count: use `entities` or a game probe.",
             probe_count,
         );
         hooks.add_probe(
@@ -1511,7 +1511,7 @@ impl ScriptHooks {
         );
         hooks.add_probe(
             "room",
-            "`{\"room\"}`: a room read back: `live`, `origin`, `cell`, `size`, `tileset`, its `layers`, `shapes`, `objects` (each with `world`, its spawn point in world pixels, and `alive` while live) and `places`, and its journal's `undo` and `redo` counts; `{\"room\", \"id\"}`: one entry as `{kind, index, entry}`.",
+            "`{\"room\"}`: a room read back: `live`, `origin`, `cell`, `size`, `tileset`, its `layers`, `shapes`, `objects` (each with `world`, its spawn point in world pixels, and `alive` while live) and `places`, and its journal's `undo` and `redo` counts; `{\"room\", \"id\"}`: one entry as `{kind, index, entry}`, each `null` for an ID the room lacks (with `nearest`, the ID a misspelt one may have meant), so `/kind == null` asserts an entry is gone.",
             probe_room,
         );
         hooks
@@ -1779,13 +1779,17 @@ fn probe_room(world: &World, args: &Value) -> Result<Value, String> {
                 written(serde_json::to_value(&document.places[at])),
             )
         } else {
-            let ids = (document.shapes.iter().map(|shape| shape.id.as_str()))
+            // An ID the room lacks reads `null` under each key, so a script
+            // asserts an entry is gone (`/kind == null`); `nearest` is the
+            // ID a misspelt one may have meant, which a failed assert on a
+            // deeper path then shows.
+            let mut ids: Vec<&str> = (document.shapes.iter().map(|shape| shape.id.as_str()))
                 .chain(document.objects.iter().map(|entry| entry.id.as_str()))
-                .chain(document.places.iter().map(|place| place.id.as_str()));
-            return Err(format!(
-                "room `{room}` has no entry `{id}`{}",
-                hint(&id, ids)
-            ));
+                .chain(document.places.iter().map(|place| place.id.as_str()))
+                .collect();
+            ids.sort_unstable();
+            let nearest = crate::assets::data::nearest(&id, ids.into_iter());
+            return Ok(json!({ "kind": null, "index": null, "entry": null, "nearest": nearest }));
         };
         let (kind, index, entry) = found;
         return Ok(json!({ "kind": kind, "index": index, "entry": entry }));
@@ -2173,7 +2177,7 @@ pub fn json_schema() -> Value {
         (
             "capture",
             text(
-                "Captures the frame to a `.png` path; with `until`, to a folder of `NNNN.png` frames named by frame.",
+                "Captures the frame to a `.png` path, a relative one from the game's folder; with `until`, to a folder of `NNNN.png` frames named by frame.",
             ),
             json!("shots/room.png"),
         ),
