@@ -12,10 +12,10 @@ use tungsten_core::assets::{
     ParticleConfigRegistry, ParticleRender, Range, TextureHandle, UvRect,
 };
 use tungsten_core::{
-    ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraMode,
-    CameraState, Collider, Config, Easing, Entity, InputState, KeyCode, Particle, ParticleEmitter,
-    ParticleEmitterState, PhysicsConfig, Position, RigidBody, Sprite, Stage, Time, Transform,
-    Tween, TweenChannel, TweenComplete, Velocity, Visibility, With, World, system,
+    ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraState, Collider,
+    Config, Easing, Entity, FollowRig, InputState, KeyCode, Particle, ParticleEmitter,
+    ParticleEmitterState, PhysicsConfig, Position, RigKind, RigidBody, Sprite, Stage, Time,
+    Transform, Tween, TweenChannel, TweenComplete, Velocity, Visibility, With, World, system,
 };
 use tungsten_render::{QuadInstance, TextSection};
 
@@ -453,8 +453,7 @@ fn clock_a_pause_holds_the_game_while_a_fade_pushes_a_state() {
     world.insert(body, RigidBody::dynamic());
     world.insert(body, Transform::from_position(start));
     let camera = world.get_resource_mut::<CameraController>().unwrap();
-    camera.mode = CameraMode::Follow(body);
-    camera.smoothing_factor = 1.0;
+    camera.rig.kind = RigKind::Follow(FollowRig::of(body));
     camera.shake_max_offset = Vec2::new(8.0, 8.0);
     camera.shake_frequency_hz = 7.0;
     camera.shake_trauma = 1.0;
@@ -847,4 +846,165 @@ fn load_manifest_still_registers_no_sprite() {
     let sprites = harness.app.world().resource::<AssetRegistry>();
     assert_eq!(sprites.sprite_names().count(), 0);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn frame_draw_holds_the_composed_post_stack() {
+    use tungsten_core::post::{BloomParams, PostPass, PostStack, PostTail};
+    let bloom = PostPass::Bloom(BloomParams::default());
+    let mut harness = Harness::new(app());
+    let world = harness.world_mut();
+    world.resource_mut::<PostStack>().push(bloom);
+    world
+        .resource_mut::<PostStack>()
+        .push(PostPass::Pixelate(4.0));
+    world
+        .resource_mut::<PostTail>()
+        .0
+        .push(PostPass::Pixelate(2.0));
+    world
+        .resource_mut::<tungsten_core::Settings>()
+        .set_bloom(Some(false));
+    harness.step(1);
+    assert_eq!(
+        harness.draw().unwrap().post,
+        [PostPass::Pixelate(4.0), PostPass::Pixelate(2.0)],
+        "the stack, then the tail, without Bloom"
+    );
+    let world = harness.world_mut();
+    world
+        .resource_mut::<tungsten_core::Settings>()
+        .set_bloom(None);
+    world.resource_mut::<PostTail>().0.clear();
+    harness.step(1);
+    assert_eq!(
+        harness.draw().unwrap().post,
+        [bloom, PostPass::Pixelate(4.0)],
+        "Bloom unset draws"
+    );
+}
+
+/// Each frame's `jump` reading: just pressed, held, just released.
+#[derive(Default)]
+struct JumpFrames(Vec<(bool, bool, bool)>);
+
+fn record_jump(app: &mut App) {
+    app.world_mut().insert_resource(JumpFrames::default());
+    app.add_system(|world| {
+        let input = world.resource::<InputState>();
+        let actions = world.resource::<ActionMap>();
+        let reading = (
+            actions.just_pressed(input, "jump"),
+            actions.is_pressed(input, "jump"),
+            actions.just_released(input, "jump"),
+        );
+        world.resource_mut::<JumpFrames>().0.push(reading);
+    });
+}
+
+#[test]
+fn tap_action_presses_for_one_frame() {
+    let mut app = app();
+    app.world_mut().insert_resource(ActionMap::default_map());
+    record_jump(&mut app);
+    let mut harness = Harness::new(app);
+    harness.step(1);
+    assert_eq!(harness.tap_action("jump"), 2);
+    harness.step(1);
+    assert_eq!(
+        harness.world().resource::<JumpFrames>().0,
+        [
+            (false, false, false),
+            (true, true, false),
+            (false, false, true),
+            (false, false, false)
+        ]
+    );
+}
+
+/// The sound `hum`, a looping second of silence, in the world's registry.
+fn hum(world: &mut World) -> tungsten_core::assets::AudioHandle {
+    use tungsten_core::assets::{SoundData, SoundRegistry};
+    let data = SoundData {
+        samples: vec![0.0; 44_100],
+        sample_rate: 44_100,
+        channels: 1,
+    };
+    let mut sounds = world.remove_resource::<SoundRegistry>().unwrap_or_default();
+    let handle = sounds.register("hum".into(), data, 0.5, true);
+    world.insert_resource(sounds);
+    handle
+}
+
+/// An app that plays `hum` on frames 1 and 3, stops its voice on frame 3,
+/// and moves the master volume and the voice's on frame 2.
+fn playing_app() -> App {
+    /// The voice frame 1 starts.
+    struct Started(Option<tungsten_core::Voice>);
+    let mut app = app();
+    let handle = hum(app.world_mut());
+    app.world_mut().insert_resource(Started(None));
+    app.add_system(move |world| {
+        let frame = world.resource::<Time>().frame();
+        let started = world.resource::<Started>().0;
+        let audio = world.resource_mut::<AudioCommands>();
+        match (frame, started) {
+            (1, _) => {
+                let voice = audio.play_faded(handle, 0.5, true, 0.25);
+                world.resource_mut::<Started>().0 = Some(voice);
+            }
+            (2, Some(voice)) => {
+                audio.set_master_volume(0.5);
+                audio.set_voice_volume(voice, 0.2, 1.0);
+            }
+            (3, Some(voice)) => {
+                audio.stop_voice(voice, 0.75);
+                audio.play(handle);
+            }
+            _ => {}
+        }
+    });
+    app
+}
+
+#[test]
+fn the_audio_log_spans_the_frames_stepped() {
+    let mut harness = Harness::new(playing_app());
+    harness.step(4);
+    assert!(harness.audio().is_empty(), "the last frame's alone");
+    let log = harness.audio_log();
+    assert!(
+        log.iter().any(|c| matches!(c, AudioCommand::Play { .. })),
+        "{log:?}"
+    );
+    assert_eq!(harness.master_volumes(), [0.5]);
+    let first = harness.plays("hum")[0].0;
+    assert_eq!(harness.stops(), [(first, 0.75)]);
+    harness.clear_audio_log();
+    assert!(harness.audio_log().is_empty());
+    harness.step(1);
+    assert!(harness.audio_log().is_empty(), "nothing since");
+}
+
+#[test]
+fn plays_resolve_manifest_ids() {
+    let mut harness = Harness::new(playing_app());
+    harness.step(4);
+    let plays = harness.plays("hum");
+    assert_eq!(plays.len(), 2, "{plays:?}");
+    assert_eq!((plays[0].1, plays[0].2), (true, 0.25), "loop and fade-in");
+    assert_eq!((plays[1].1, plays[1].2), (false, 0.0));
+    let voice = plays[0].0;
+    assert_eq!(harness.voice_volumes(voice), [(0.2, 1.0)]);
+    let unknown = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| harness.plays("drum")));
+    assert!(unknown.is_err(), "an unknown sound panics");
+}
+
+#[test]
+fn a_counting_harness_logs_no_audio() {
+    let mut harness = Harness::new(playing_app());
+    let _ = crate::testing::CounterGuard::measure(&mut harness, 1, 3);
+    assert!(harness.audio_log().is_empty(), "{:?}", harness.audio_log());
+    harness.step(1);
+    assert!(harness.audio_log().is_empty(), "frame 5 plays nothing");
 }

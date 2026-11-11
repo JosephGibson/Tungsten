@@ -1,56 +1,27 @@
 """The game's sounds, synthesized and written as 16-bit mono PCM WAV.
 
-Everything is built from integer xorshift noise, one-pole filters, pulse,
-triangle and sine oscillators and exponential envelopes, so regeneration is
-byte-identical. Each sound is normalized to a -2 dBFS peak. The four music
-loops render one bar past their end and fold that tail onto their start, so
-each repeats at its bar line without a click.
+Everything is built from `synth.py`'s primitives, integer xorshift noise,
+one-pole filters and the loop renderer, with pulse, triangle and sine
+oscillators and exponential envelopes, so regeneration is byte-identical.
+Each sound is normalized to a -2 dBFS peak. The four music loops render one
+bar past their end and fold that tail onto their start, so each repeats at
+its bar line without a click.
 
     python3 -B tools/sounds.py            # write assets/sounds/
     python3 -B tools/sounds.py --out DIR  # write DIR instead
     python3 -B tools/sounds.py --check    # compare assets/sounds/ byte for byte
 """
 import argparse
-import io
 import math
 import pathlib
 import sys
-import wave
 
-RATE = 22050
-PEAK = 10 ** (-2 / 20)
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from synth import (  # noqa: E402
+    RATE, LowPass, Noise, encode, finish, glide, melody, mix, note, render_loop, seam_problem)
+
 SOUNDS = pathlib.Path(__file__).resolve().parent.parent / 'assets' / 'sounds'
-
-
-class Noise:
-    """Deterministic white noise in [-1, 1) from a 32-bit xorshift."""
-
-    def __init__(self, seed):
-        self.state = seed & 0xFFFFFFFF or 1
-
-    def __call__(self):
-        x = self.state
-        x ^= (x << 13) & 0xFFFFFFFF
-        x ^= x >> 17
-        x ^= (x << 5) & 0xFFFFFFFF
-        self.state = x
-        return x / 2147483648.0 - 1.0
-
-
-class LowPass:
-    """One-pole low-pass; `cutoff` may change per sample."""
-
-    def __init__(self):
-        self.y = 0.0
-
-    def __call__(self, x, cutoff):
-        self.y += (1 - math.exp(-math.tau * cutoff / RATE)) * (x - self.y)
-        return self.y
-
-
-def glide(start, end, progress):
-    """Exponential interpolation between two frequencies."""
-    return start * (end / start) ** progress
 
 
 def pulse(phase, duty):
@@ -61,38 +32,6 @@ def pulse(phase, duty):
 def triangle(phase):
     """A triangle wave at `phase` cycles."""
     return 4.0 * abs(phase % 1.0 - 0.5) - 1.0
-
-
-def note(name):
-    """A note's frequency in Hz: `A4` is 440, `C#5` and `Bb3` take accidentals."""
-    letters = {'C': -9, 'D': -7, 'E': -5, 'F': -4, 'G': -2, 'A': 0, 'B': 2}
-    step = letters[name[0]] + {'#': 1, 'b': -1}.get(name[1], 0)
-    octave = int(name[-1])
-    return 440.0 * 2 ** ((step + 12 * (octave - 4)) / 12)
-
-
-def encode(samples, peak=PEAK):
-    """Normalize `samples` to `peak` and encode them as a WAV file."""
-    scale = peak / max(abs(s) for s in samples)
-    frames = b''.join(
-        int(round(s * scale * 32767)).to_bytes(2, 'little', signed=True) for s in samples)
-    out = io.BytesIO()
-    with wave.open(out, 'wb') as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(RATE)
-        wav.writeframes(frames)
-    return out.getvalue()
-
-
-def finish(samples, fade_in=0.003, fade_out=0.015):
-    """Fade a one-shot's ends, then encode it."""
-    n = len(samples)
-    for i in range(min(n, int(fade_in * RATE))):
-        samples[i] *= i / (fade_in * RATE)
-    for i in range(min(n, int(fade_out * RATE))):
-        samples[n - 1 - i] *= i / (fade_out * RATE)
-    return encode(samples)
 
 
 def blip(duration, start, end, duty, decay, seed):
@@ -181,15 +120,6 @@ def hurt():
     return finish(samples, fade_in=0.0005, fade_out=0.03)
 
 
-def mix(length, events):
-    """`events`, each `(start sample, voice)`, summed into `length` samples."""
-    samples = [0.0] * length
-    for start, voice in events:
-        for i, value in enumerate(voice[:max(0, length - start)]):
-            samples[start + i] += value
-    return samples
-
-
 def game_over():
     """The game-over sting: a pulse line falling A4, F4, D4, G#3, then a low
     boom under an A minor chord in triangles that fades over a second."""
@@ -200,23 +130,6 @@ def game_over():
     events += [(4 * step, tone(note(name), 1.1, triangle, 0.7, 0.25, release=0.3))
                for name in ('A2', 'E3', 'A3', 'C4')]
     return finish(mix(4 * step + int(1.5 * RATE), events), fade_out=0.2)
-
-
-def render_loop(beats, beat, events):
-    """A loop `beats` long at `beat` samples each, four to the bar: each event
-    `(start sample, voice)` renders into a buffer a bar longer, whose tail
-    is then folded onto the start. Returns the loop's samples."""
-    length, bar = beats * beat, 4 * beat
-    buffer = [0.0] * (length + bar)
-    for start, voice in events:
-        for i, value in enumerate(voice):
-            if start + i >= len(buffer):
-                break
-            buffer[start + i] += value
-    loop = buffer[:length]
-    for i in range(bar):
-        loop[i] += buffer[length + i]
-    return loop
 
 
 def tone(freq, seconds, wave_fn, decay, level, release=0.02):
@@ -280,18 +193,9 @@ def music_run():
     lead = ('E5 - A5 G5 E5 - D5 E5 '
             'C5 - F5 E5 C5 - A4 C5 '
             'E5 - G5 E5 C5 - D5 E5 '
-            'D5 - B4 G4 B4 - D5 .').split()
-    events = []
-    at = 0
-    while at < len(lead):
-        name, held = lead[at], 1
-        while at + held < len(lead) and lead[at + held] == '-':
-            held += 1
-        if name != '.':
-            voice = tone(note(name), held * eighth / RATE - 0.02,
-                         lambda p: pulse(p, 0.25), 0.6, 0.32)
-            events.append((at * eighth, voice))
-        at += held
+            'D5 - B4 G4 B4 - D5 .')
+    events = melody(lead, eighth, lambda freq, held: tone(
+        freq, held * eighth / RATE - 0.02, lambda p: pulse(p, 0.25), 0.6, 0.32))
     for bar, (root, third, fifth) in enumerate(chords):
         bar_start = bar * 4 * beat
         # The bass: root, root, octave, root, fifth, root, octave, fifth.
@@ -315,7 +219,7 @@ def music_run():
             else:
                 events.append((start, snare(0x5A01 + quarter, 0.45, 0.07)))
             events.append((start + eighth, hat(0x4A71 + quarter, 0.22, 0.02, 0.06)))
-    return render_loop(16, beat, events)
+    return render_loop(4, beat, events)
 
 
 def music_pause():
@@ -347,7 +251,7 @@ def music_pause():
                 'o': lambda: hat(seed, 0.22, 0.16, 2 * sixteenth / RATE),
             }[lane]()
             events.append((start, voice))
-    return render_loop(8, beat, events)
+    return render_loop(2, beat, events)
 
 
 def music_title():
@@ -360,18 +264,9 @@ def music_title():
     lead = ('E5 - G5 C6 B5 - G5 - '
             'D5 - G5 B5 A5 - G5 - '
             'C5 - E5 A5 G5 - E5 - '
-            'F5 - A5 C6 B5 - G5 .').split()
-    events = []
-    at = 0
-    while at < len(lead):
-        name, held = lead[at], 1
-        while at + held < len(lead) and lead[at + held] == '-':
-            held += 1
-        if name != '.':
-            voice = tone(note(name), held * eighth / RATE - 0.02,
-                         lambda p: pulse(p, 0.25), 0.7, 0.3)
-            events.append((at * eighth, voice))
-        at += held
+            'F5 - A5 C6 B5 - G5 .')
+    events = melody(lead, eighth, lambda freq, held: tone(
+        freq, held * eighth / RATE - 0.02, lambda p: pulse(p, 0.25), 0.7, 0.3))
     for bar, (root, third, fifth) in enumerate(chords):
         bar_start = bar * 4 * beat
         # The bass: root, root, fifth, octave in quarters.
@@ -391,7 +286,7 @@ def music_title():
             else:
                 events.append((start, snare(0x5100 + bar * 4 + quarter, 0.25, 0.06)))
             events.append((start + eighth, hat(0x4100 + bar * 4 + quarter, 0.15, 0.02, 0.06)))
-    return render_loop(16, beat, events)
+    return render_loop(4, beat, events)
 
 
 def music_over():
@@ -413,7 +308,7 @@ def music_over():
     for bar in range(2):
         events.append((bar * 4 * beat, kick(0xBEA0 + bar, 0.7)))
         events.append((bar * 4 * beat + beat // 3, kick(0xBEB0 + bar, 0.45)))
-    return render_loop(8, beat, events)
+    return render_loop(2, beat, events)
 
 
 LOOPS = {
@@ -442,28 +337,6 @@ def build_sounds():
     }
 
 
-def samples_of(data):
-    """A WAV file's 16-bit samples."""
-    with wave.open(io.BytesIO(data), 'rb') as wav:
-        frames = wav.readframes(wav.getnframes())
-    return [int.from_bytes(frames[i:i + 2], 'little', signed=True)
-            for i in range(0, len(frames), 2)]
-
-
-def seam_problem(name, data):
-    """Why loop `name` would not repeat cleanly, or None: its length must be
-    its bars exactly, and its jump from the last sample back to the first no
-    larger than the largest jump inside it."""
-    samples = samples_of(data)
-    if len(samples) != LOOPS[name]:
-        return f'{len(samples)} samples, not {LOOPS[name]}'
-    inner = max(abs(b - a) for a, b in zip(samples, samples[1:]))
-    seam = abs(samples[0] - samples[-1])
-    if seam > inner:
-        return f'a seam jump of {seam} past the largest inner jump, {inner}'
-    return None
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--check', action='store_true',
@@ -474,7 +347,7 @@ def main():
     sounds = build_sounds()
     failed = False
     for name, data in sounds.items():
-        if name in LOOPS and (problem := seam_problem(name, data)):
+        if name in LOOPS and (problem := seam_problem(name, data, LOOPS)):
             print(f'{name}: {problem}', file=sys.stderr)
             failed = True
         if args.check:

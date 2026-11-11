@@ -240,7 +240,7 @@ fn bench_physics_step_scenarios(c: &mut Criterion) {
 
     let scenarios: &[Scenario] = &[
         ("dense_pile", build_dense_pile, &[3_000, 10_000, 25_000]),
-        ("dense_pile_awake", build_dense_pile_awake, &[3_000]),
+        ("dense_pile_awake", build_dense_pile_awake, &[3_000, 12_000]),
         (
             "projectile_stream",
             build_projectile_stream,
@@ -377,6 +377,37 @@ fn bench_spatial_grid_query_50k_dense(c: &mut Criterion) {
     group.finish();
 }
 
+/// 12,000 awake circles at rest with no gravity and sleeping off, a gap
+/// apart that keeps them unpaired at example 01's 64 px broadphase cell: a
+/// step is mostly its pair build's walk, about 30 candidates a body for no
+/// pair.
+fn bench_build_pairs_12k_pile(c: &mut Criterion) {
+    const N: usize = 12_000;
+    const COLUMNS: usize = 100;
+    const PITCH: f32 = 18.0;
+
+    let mut world = base_world(Vec2::ZERO);
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::ZERO,
+        sleep_threshold: 0.0,
+        broadphase_cell_size: 64.0,
+        ..PhysicsConfig::default()
+    });
+    for index in 0..N {
+        let at = Vec2::new((index % COLUMNS) as f32, (index / COLUMNS) as f32) * PITCH;
+        spawn_circle(&mut world, at, Vec2::ZERO, 7.5, 0.0);
+    }
+    settle(&mut world, 2);
+
+    let mut group = c.benchmark_group("build_pairs_12k_pile");
+    group.sample_size(20);
+    group.measurement_time(Duration::from_secs(10));
+    group.bench_function("step", |b| {
+        b.iter(|| physics_step(black_box(&mut world)));
+    });
+    group.finish();
+}
+
 /// 12,000 drawn bodies with history, one archetype: the plain copy, the
 /// interpolating sync at `alpha` 0.5 and the fixed step's snapshot (M41).
 fn bench_physics_sync_12k(c: &mut Criterion) {
@@ -414,6 +445,7 @@ criterion_group!(
     bench_position_integration_50k,
     bench_broadphase_rebuild_5k,
     bench_spatial_grid_query_50k_dense,
+    bench_build_pairs_12k_pile,
     bench_physics_step_scenarios,
     bench_physics_sync_12k,
 );

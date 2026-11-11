@@ -59,6 +59,7 @@ pub fn tungsten::app::App::new(tungsten_core::config::Config) -> anyhow::Result<
 pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) + 'static)
 pub fn tungsten::app::App::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
+pub fn tungsten::app::App::register_generator(&mut self, &str, impl tungsten_core::assets::room::generate::RoomGenerator)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
 pub fn tungsten::app::App::register_saved<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
@@ -88,7 +89,9 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
 #[non_exhaustive] pub struct tungsten::app::BootProgress<'a>
 pub tungsten::app::BootProgress::assets: &'a tungsten::asset_loader::BootAssets
 pub tungsten::app::BootProgress::done: usize
+pub tungsten::app::BootProgress::hold: f32
 pub tungsten::app::BootProgress::scale: f32
+pub tungsten::app::BootProgress::secs: f32
 pub tungsten::app::BootProgress::total: usize
 pub tungsten::app::BootProgress::window: [u32; 2]
 impl tungsten::app::BootProgress<'_>
@@ -186,11 +189,13 @@ pub tungsten::asset_loader::LoadUnit::ParticleMeshes
 pub tungsten::asset_loader::LoadUnit::Particles
 pub tungsten::asset_loader::LoadUnit::PhysicsNames
 pub tungsten::asset_loader::LoadUnit::Prefabs
+pub tungsten::asset_loader::LoadUnit::Room(alloc::string::String)
 pub tungsten::asset_loader::LoadUnit::Shaders
 pub tungsten::asset_loader::LoadUnit::Sound(alloc::string::String)
 pub tungsten::asset_loader::LoadUnit::Sprites(std::path::PathBuf)
 pub tungsten::asset_loader::LoadUnit::Themes
 pub tungsten::asset_loader::LoadUnit::Tilemap(alloc::string::String)
+pub tungsten::asset_loader::LoadUnit::Tileset(alloc::string::String)
 impl core::clone::Clone for tungsten::asset_loader::LoadUnit
 pub fn tungsten::asset_loader::LoadUnit::clone(&self) -> tungsten::asset_loader::LoadUnit
 impl core::cmp::Eq for tungsten::asset_loader::LoadUnit
@@ -811,6 +816,7 @@ pub fn tungsten::screens::Confirm::on_yes(self, impl core::ops::function::FnOnce
 impl tungsten::state::GameState for tungsten::screens::Confirm
 pub fn tungsten::screens::Confirm::holds_clock(&self) -> bool
 pub fn tungsten::screens::Confirm::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::Confirm::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::Confirm::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -829,6 +835,7 @@ pub fn tungsten::screens::DataScreen::new(tungsten::state::StateId) -> Self
 impl tungsten::state::GameState for tungsten::screens::DataScreen
 pub fn tungsten::screens::DataScreen::holds_clock(&self) -> bool
 pub fn tungsten::screens::DataScreen::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::DataScreen::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::DataScreen::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -998,6 +1005,25 @@ impl<'a> core::marker::Unpin for tungsten::state::StateContext<'a>
 impl<'a> core::marker::UnsafeUnpin for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateContext<'a>
+pub struct tungsten::state::StateMusic
+impl tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::fade(&self) -> f32
+pub fn tungsten::state::StateMusic::new(impl core::convert::Into<alloc::borrow::Cow<'static, str>>, f32) -> Self
+pub fn tungsten::state::StateMusic::sound(&self) -> &str
+impl core::clone::Clone for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::clone(&self) -> tungsten::state::StateMusic
+impl core::cmp::PartialEq for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::eq(&self, &tungsten::state::StateMusic) -> bool
+impl core::fmt::Debug for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten::state::StateMusic
+impl core::marker::Freeze for tungsten::state::StateMusic
+impl core::marker::Send for tungsten::state::StateMusic
+impl core::marker::Sync for tungsten::state::StateMusic
+impl core::marker::Unpin for tungsten::state::StateMusic
+impl core::marker::UnsafeUnpin for tungsten::state::StateMusic
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateMusic
+impl core::panic::unwind_safe::UnwindSafe for tungsten::state::StateMusic
 pub struct tungsten::state::StateStack
 impl tungsten::state::StateStack
 pub fn tungsten::state::StateStack::active_id(&self) -> core::option::Option<tungsten::state::StateId>
@@ -1029,6 +1055,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateStack
 pub trait tungsten::state::GameState: 'static
 pub fn tungsten::state::GameState::holds_clock(&self) -> bool
 pub fn tungsten::state::GameState::id(&self) -> tungsten::state::StateId
+pub fn tungsten::state::GameState::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::state::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::state::GameState::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::state::GameState::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -1037,6 +1064,7 @@ pub fn tungsten::state::GameState::update(&mut self, &mut tungsten_core::ecs::wo
 impl tungsten::state::GameState for tungsten::screens::Confirm
 pub fn tungsten::screens::Confirm::holds_clock(&self) -> bool
 pub fn tungsten::screens::Confirm::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::Confirm::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::Confirm::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -1045,6 +1073,7 @@ pub fn tungsten::screens::Confirm::update(&mut self, &mut tungsten_core::ecs::wo
 impl tungsten::state::GameState for tungsten::screens::DataScreen
 pub fn tungsten::screens::DataScreen::holds_clock(&self) -> bool
 pub fn tungsten::screens::DataScreen::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::DataScreen::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::DataScreen::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -1245,6 +1274,7 @@ pub tungsten::testing::FrameDraw::debug_lines: alloc::vec::Vec<tungsten_render::
 pub tungsten::testing::FrameDraw::debug_quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
 pub tungsten::testing::FrameDraw::light_ubo: tungsten_render::lighting::LightUbo
 pub tungsten::testing::FrameDraw::mesh_particles: alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleBatch>
+pub tungsten::testing::FrameDraw::post: alloc::vec::Vec<tungsten_core::post::PostPass>
 pub tungsten::testing::FrameDraw::quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
 pub tungsten::testing::FrameDraw::sprites: alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
 pub tungsten::testing::FrameDraw::text: alloc::vec::Vec<tungsten_render::text::TextSection>
@@ -1262,12 +1292,16 @@ pub struct tungsten::testing::Harness
 impl tungsten::testing::Harness
 pub fn tungsten::testing::Harness::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
 pub fn tungsten::testing::Harness::audio(&self) -> &[tungsten_core::audio::AudioCommand]
+pub fn tungsten::testing::Harness::audio_log(&self) -> &[tungsten_core::audio::AudioCommand]
+pub fn tungsten::testing::Harness::clear_audio_log(&mut self)
 pub fn tungsten::testing::Harness::draw(&self) -> core::option::Option<&tungsten::testing::FrameDraw>
 pub fn tungsten::testing::Harness::events<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = &T>
 pub fn tungsten::testing::Harness::exit_requested(&self) -> bool
 pub fn tungsten::testing::Harness::frame(&self) -> u64
 pub fn tungsten::testing::Harness::load_manifest(&mut self, impl core::convert::AsRef<std::path::Path>) -> anyhow::Result<()>
+pub fn tungsten::testing::Harness::master_volumes(&self) -> alloc::vec::Vec<f32>
 pub fn tungsten::testing::Harness::new(tungsten::app::App) -> Self
+pub fn tungsten::testing::Harness::plays(&self, &str) -> alloc::vec::Vec<(tungsten_core::audio::Voice, bool, f32)>
 pub fn tungsten::testing::Harness::press_action(&mut self, &str)
 pub fn tungsten::testing::Harness::register_sprites(&mut self, impl core::convert::AsRef<std::path::Path>) -> anyhow::Result<()>
 pub fn tungsten::testing::Harness::release_action(&mut self, &str)
@@ -1276,6 +1310,9 @@ pub fn tungsten::testing::Harness::run_script(&mut self, &tungsten_core::script:
 pub fn tungsten::testing::Harness::set_cursor(&mut self, f32, f32)
 pub fn tungsten::testing::Harness::set_dt(&mut self, f32)
 pub fn tungsten::testing::Harness::step(&mut self, u32) -> u32
+pub fn tungsten::testing::Harness::stops(&self) -> alloc::vec::Vec<(tungsten_core::audio::Voice, f32)>
+pub fn tungsten::testing::Harness::tap_action(&mut self, &str) -> u32
+pub fn tungsten::testing::Harness::voice_volumes(&self, tungsten_core::audio::Voice) -> alloc::vec::Vec<(f32, f32)>
 pub fn tungsten::testing::Harness::world(&self) -> &tungsten_core::ecs::world::World
 pub fn tungsten::testing::Harness::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
 impl !core::marker::Freeze for tungsten::testing::Harness
@@ -1314,6 +1351,8 @@ pub fn tungsten::testing::UiHarness::pointer_up(&mut self)
 pub fn tungsten::testing::UiHarness::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten::testing::UiHarness::shows(&self, &str) -> bool
 pub fn tungsten::testing::UiHarness::step(&mut self, u32) -> u32
+pub fn tungsten::testing::UiHarness::tap_action(&mut self, &str) -> u32
+pub fn tungsten::testing::UiHarness::tap_key(&mut self, tungsten_core::input::KeyCode) -> u32
 pub fn tungsten::testing::UiHarness::text(&self) -> &tungsten_core::ui::measure::FixedAdvanceMeasure
 pub fn tungsten::testing::UiHarness::tree(&self) -> &tungsten_core::ui::tree::UiTree
 pub fn tungsten::testing::UiHarness::tree_json(&self) -> alloc::string::String
@@ -1546,6 +1585,7 @@ pub fn tungsten::app::App::new(tungsten_core::config::Config) -> anyhow::Result<
 pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) + 'static)
 pub fn tungsten::app::App::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
+pub fn tungsten::app::App::register_generator(&mut self, &str, impl tungsten_core::assets::room::generate::RoomGenerator)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
 pub fn tungsten::app::App::register_saved<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
@@ -1589,7 +1629,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten::sprite_extract::Batches
 #[non_exhaustive] pub struct tungsten::BootProgress<'a>
 pub tungsten::BootProgress::assets: &'a tungsten::asset_loader::BootAssets
 pub tungsten::BootProgress::done: usize
+pub tungsten::BootProgress::hold: f32
 pub tungsten::BootProgress::scale: f32
+pub tungsten::BootProgress::secs: f32
 pub tungsten::BootProgress::total: usize
 pub tungsten::BootProgress::window: [u32; 2]
 impl tungsten::app::BootProgress<'_>
@@ -2101,6 +2143,25 @@ impl<'a> core::marker::Unpin for tungsten::state::StateContext<'a>
 impl<'a> core::marker::UnsafeUnpin for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateContext<'a>
+pub struct tungsten::StateMusic
+impl tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::fade(&self) -> f32
+pub fn tungsten::state::StateMusic::new(impl core::convert::Into<alloc::borrow::Cow<'static, str>>, f32) -> Self
+pub fn tungsten::state::StateMusic::sound(&self) -> &str
+impl core::clone::Clone for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::clone(&self) -> tungsten::state::StateMusic
+impl core::cmp::PartialEq for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::eq(&self, &tungsten::state::StateMusic) -> bool
+impl core::fmt::Debug for tungsten::state::StateMusic
+pub fn tungsten::state::StateMusic::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten::state::StateMusic
+impl core::marker::Freeze for tungsten::state::StateMusic
+impl core::marker::Send for tungsten::state::StateMusic
+impl core::marker::Sync for tungsten::state::StateMusic
+impl core::marker::Unpin for tungsten::state::StateMusic
+impl core::marker::UnsafeUnpin for tungsten::state::StateMusic
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateMusic
+impl core::panic::unwind_safe::UnwindSafe for tungsten::state::StateMusic
 pub struct tungsten::StatePlugin
 impl core::clone::Clone for tungsten::plugins::StatePlugin
 pub fn tungsten::plugins::StatePlugin::clone(&self) -> tungsten::plugins::StatePlugin
@@ -2283,6 +2344,7 @@ pub const tungsten::ENGINE_WHITE: &str
 pub trait tungsten::GameState: 'static
 pub fn tungsten::GameState::holds_clock(&self) -> bool
 pub fn tungsten::GameState::id(&self) -> tungsten::state::StateId
+pub fn tungsten::GameState::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -2291,6 +2353,7 @@ pub fn tungsten::GameState::update(&mut self, &mut tungsten_core::ecs::world::Wo
 impl tungsten::state::GameState for tungsten::screens::Confirm
 pub fn tungsten::screens::Confirm::holds_clock(&self) -> bool
 pub fn tungsten::screens::Confirm::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::Confirm::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::Confirm::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::Confirm::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -2299,6 +2362,7 @@ pub fn tungsten::screens::Confirm::update(&mut self, &mut tungsten_core::ecs::wo
 impl tungsten::state::GameState for tungsten::screens::DataScreen
 pub fn tungsten::screens::DataScreen::holds_clock(&self) -> bool
 pub fn tungsten::screens::DataScreen::id(&self) -> tungsten::state::StateId
+pub fn tungsten::screens::DataScreen::music(&self) -> core::option::Option<tungsten::state::StateMusic>
 pub fn tungsten::screens::DataScreen::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::screens::DataScreen::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
@@ -2320,6 +2384,7 @@ pub fn tungsten::particle_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::request_display_settings(&mut tungsten_core::ecs::world::World, tungsten_core::display::DisplayState) -> core::result::Result<(), tungsten_core::display::DisplayValidationError>
 pub fn tungsten::request_exit(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten_core::config::PostAaMode)
+pub fn tungsten::requested_display(&tungsten_core::ecs::world::World) -> tungsten_core::display::DisplayState
 pub fn tungsten::shake_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::shipped_volume(&tungsten_core::ecs::world::World, core::option::Option<tungsten_core::audio::AudioBus>) -> f32
 pub fn tungsten::spawn_mesh_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, tungsten_core::assets::particle::ParticleMeshAssetId, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)

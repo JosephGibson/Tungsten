@@ -1,0 +1,33 @@
+{
+  "sprite": {
+    "asset_id": "walker"
+  },
+  "tag": "runner",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          6,
+          10
+        ]
+      },
+      "offset": [
+        8,
+        12
+      ],
+      "layers": [
+        "player"
+      ],
+      "mask": [
+        "terrain"
+      ]
+    },
+    "platformer_controller": {
+      "run_speed": 160,
+      "jump_speed": 400,
+      "gravity": 1200
+    }
+  }
+}

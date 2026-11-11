@@ -96,7 +96,8 @@ fn a_report_prints_sorted_by_file_with_the_count() {
         "assets/prefabs/gem.json\tunknown component `x`\n\
          assets/manifest.json\tsprite 'a' references missing file: assets/a.png\n\
          assets/prefabs/gem.json\tsecond\n",
-    );
+    )
+    .findings;
     assert_eq!(
         format_findings(&findings),
         [
@@ -119,7 +120,127 @@ fn no_report_means_the_content_stage_did_not_run() {
     let err = read_report(&report, status).unwrap_err();
     assert!(err.to_string().contains("did not run"), "{err}");
     std::fs::write(&report, "a.json\tbad\n").unwrap();
-    let findings = read_report(&report, status).unwrap();
+    let findings = read_report(&report, status).unwrap().findings;
     assert_eq!(findings.len(), 1);
     assert!(!report.exists(), "the report is removed once read");
+}
+
+#[test]
+fn a_report_reads_notes_apart_from_findings() {
+    let report = parse_report(
+        "#\tgenerator `chain` (version 1): seeds 0+500, 1,500 rooms\n\
+         generator chain\tseeds 3 and 17: chain_r1: lamp_9: objects[0]: floats\n\
+         \tTUNGSTEN_CHECK_SEEDS `x`: expected <first>+<count>, two whole numbers\n\
+         #\tgenerator `maze` (version 2): seeds 0+500, 500 rooms\n",
+    );
+    assert_eq!(
+        report.notes,
+        [
+            "generator `chain` (version 1): seeds 0+500, 1,500 rooms",
+            "generator `maze` (version 2): seeds 0+500, 500 rooms"
+        ]
+    );
+    assert_eq!(report.findings.len(), 2);
+    assert_eq!(report.findings[0].file, "generator chain");
+    assert_eq!(report.findings[1].file, "", "a finding with no file");
+    let seeds = Some(Seeds {
+        first: 0,
+        count: 500,
+    });
+    assert_eq!(
+        report_lines(&report, seeds),
+        [
+            "generator `chain` (version 1): seeds 0+500, 1,500 rooms",
+            "generator `maze` (version 2): seeds 0+500, 500 rooms",
+            ": TUNGSTEN_CHECK_SEEDS `x`: expected <first>+<count>, two whole numbers",
+            "generator chain: seeds 3 and 17: chain_r1: lamp_9: objects[0]: floats",
+        ],
+        "the notes first, then the findings by file"
+    );
+    assert_eq!(
+        summary(&report.findings),
+        "tungsten check: 2 errors in 2 files"
+    );
+}
+
+#[test]
+fn seeds_with_no_note_say_no_generator_ran() {
+    let clean = parse_report("");
+    let seeds = Some(Seeds { first: 7, count: 1 });
+    assert_eq!(
+        report_lines(&clean, seeds),
+        ["no room generator registered"]
+    );
+    assert_eq!(
+        report_lines(&clean, None),
+        Vec::<String>::new(),
+        "none asked for"
+    );
+    let with_note = parse_report("#\tgenerator `chain` (version 1): seeds 7+1, 3 rooms\n");
+    assert_eq!(
+        report_lines(&with_note, seeds),
+        ["generator `chain` (version 1): seeds 7+1, 3 rooms"]
+    );
+    assert_eq!(
+        Seeds { first: 7, count: 1 }.to_string(),
+        "7+1",
+        "the handshake's form"
+    );
+}
+
+#[test]
+fn the_checks_closing_line_is_the_one_dropped() {
+    assert!(names_the_report(
+        "Error: the check found 2 errors, written to '/tmp/tungsten-check-1.txt'"
+    ));
+    assert!(names_the_report(
+        "Error: the check found 1 error, written to '/tmp/tungsten-level-check-9.txt'"
+    ));
+    for kept in [
+        "Error: no manifest",
+        "error: could not compile `game`",
+        "the check found 2 errors, written to 'x'",
+        "Error: the check found a problem",
+    ] {
+        assert!(!names_the_report(kept), "{kept}");
+    }
+}
+
+#[test]
+fn the_games_info_records_are_the_ones_dropped() {
+    for dropped in [
+        "[2026-11-10T10:07:19Z INFO  tungsten::capture] captured frame 58 -> out/a.png",
+        "[2026-11-10T10:07:19Z INFO  tungsten::asset_loader] Packed 10 Nearest sprites",
+    ] {
+        assert!(is_info_record(dropped), "{dropped}");
+    }
+    for kept in [
+        "[2026-11-10T10:07:19Z WARN  tungsten::level_editor] Level editor: no",
+        "[2026-11-10T10:07:19Z ERROR tungsten::app] script 'a.json' did not pass",
+        "Error: script 'a.json' did not pass: 1 assert failed",
+        "thread 'main' panicked at src/main.rs:4:5:",
+        "INFO: not a record",
+        "[INFO] not the engine's",
+        "",
+    ] {
+        assert!(!is_info_record(kept), "{kept}");
+    }
+}
+
+/// A stand-in for the game runs under the check's stage: it writes the
+/// report, prints a line and the closing line to stderr and fails. The
+/// stage hands back its status with the report in place; what it lets
+/// through goes to this test's own stderr.
+#[cfg(unix)]
+#[test]
+fn a_check_run_hands_back_the_games_status_and_report() {
+    let dir = Folder::new();
+    let report = dir.0.join("report.txt");
+    let mut command = Command::new("sh");
+    command.arg("-c").arg(
+        "printf 'x\\n' > \"$TUNGSTEN_CHECK\"; echo 'warning: kept' >&2; echo \"Error: the check found 1 error, written to '$TUNGSTEN_CHECK'\" >&2; exit 1",
+    );
+    let status = content_stage(&dir.0, &report, None, &mut command).unwrap();
+    assert_eq!(status.code(), Some(1));
+    assert_eq!(std::fs::read_to_string(&report).unwrap(), "x\n");
 }

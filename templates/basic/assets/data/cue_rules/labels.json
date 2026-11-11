@@ -1,7 +1,7 @@
 [
   {
     "on": "damaged",
-    "filter": { "all": ["show.damage_numbers"] },
+    "flags": { "all": ["show.damage_numbers"] },
     "do": [{ "label": { "font": "engine_mono" } }]
   }
 ]

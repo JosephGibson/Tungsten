@@ -12,6 +12,7 @@ pub(crate) mod orbit;
 pub(crate) mod oscillator;
 pub(crate) mod path;
 pub(crate) mod platformer;
+pub(crate) mod reach;
 pub(crate) mod slide;
 pub(crate) mod speed_limit;
 pub(crate) mod stay_in_view;

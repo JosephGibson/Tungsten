@@ -1,6 +1,8 @@
 use std::any::{TypeId, type_name};
 use std::collections::HashSet;
+use std::hash::BuildHasherDefault;
 
+use super::archetype::TypeIdHasher;
 use super::bundle::{Bundle, BundleScratch, BundleSink};
 use super::command_buffer::{Command, CommandBuffer, CommandTarget, ReplacedPrefab, SavedPrefab};
 use super::entity::Entity;
@@ -20,7 +22,8 @@ pub struct World {
     event_flushers: Vec<fn(&mut World)>,
     /// Beside each flusher, the fixed steps' view switch for the same queue.
     event_steppers: Vec<fn(&mut World, EventStep)>,
-    event_types: HashSet<TypeId>,
+    /// The registered event types, a set on the `TypeId`s passed through.
+    event_types: HashSet<TypeId, BuildHasherDefault<TypeIdHasher>>,
     /// One deriver per type a spawn from a source takes, in registration
     /// order ([`inherit_from_source`](Self::inherit_from_source)); each
     /// stages its value for the target in `bundle_scratch`.
@@ -109,7 +112,7 @@ impl World {
             resources: ResourceMap::new(),
             event_flushers: Vec::new(),
             event_steppers: Vec::new(),
-            event_types: HashSet::new(),
+            event_types: HashSet::default(),
             source_derivers: Vec::new(),
             source_types: HashSet::new(),
             bundle_scratch: BundleScratch::default(),
@@ -222,19 +225,25 @@ impl World {
     /// Gives `target` what the spawn inheritance derives from `source`, in
     /// one archetype move after its own components, when anything is given:
     /// with a `prefab`, a saved source's spawn also takes the run's next
-    /// save ID and the source's area.
+    /// save ID and the source's area, and shows the sprite variant that ID
+    /// picks.
     fn derive_from(&mut self, source: Entity, target: Entity, prefab: Option<String>) {
         self.bundle_scratch.reset();
         for i in 0..self.source_derivers.len() {
             (self.source_derivers[i])(self, source, target);
         }
+        let mut identity = None;
         if let Some(prefab) = prefab
             && let Some(saved) = crate::save::id::saved_spawn(self, source, prefab)
         {
+            identity = Some(saved.id);
             self.bundle_scratch.put(saved);
         }
         if !self.bundle_scratch.run.is_empty() {
             self.apply_bundle(target);
+        }
+        if let Some(id) = identity {
+            crate::save::id::pick_variant(self, target, id);
         }
     }
 
@@ -247,13 +256,18 @@ impl World {
         for i in 0..self.source_derivers.len() {
             (self.source_derivers[i])(self, source, target);
         }
+        let mut identity = None;
         if let Some(prefab) = prefab
             && let Some(saved) = crate::save::id::replaced_identity(self, source, prefab)
         {
+            identity = Some(saved.id);
             self.bundle_scratch.put(saved);
         }
         if !self.bundle_scratch.run.is_empty() {
             self.apply_bundle(target);
+        }
+        if let Some(id) = identity {
+            crate::save::id::pick_variant(self, target, id);
         }
         self.despawn(source);
     }

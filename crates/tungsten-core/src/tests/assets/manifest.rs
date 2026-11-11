@@ -1496,6 +1496,41 @@ fn a_boot_group_names_existing_ids() {
 }
 
 #[test]
+fn a_boot_hold_parses() {
+    let tmp = tempdir();
+    for (boot, hold) in [
+        (r#"{"hold": 1.5}"#, Some(1.5)),
+        (r#"{"hold": 0}"#, Some(0.0)),
+        ("{}", None),
+    ] {
+        let path = write_manifest(&tmp, &format!(r#"{{"boot": {boot}}}"#));
+        let m = ResolvedManifest::load(&path).unwrap();
+        assert_eq!(m.boot.hold, hold, "{boot}");
+        // A hold alone sets the group, so a second root's would clash.
+        assert_eq!(m.boot.is_empty(), hold.is_none(), "{boot}");
+    }
+}
+
+#[test]
+fn a_negative_or_infinite_boot_hold_fails() {
+    let tmp = tempdir();
+    // 1e39 is past f32's range, so it reads as infinite.
+    for hold in ["-0.5", "1e39"] {
+        let path = write_manifest(&tmp, &format!(r#"{{"boot": {{"hold": {hold}}}}}"#));
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(
+            matches!(err, ManifestError::InvalidBootHold { .. }),
+            "{hold}: {err}"
+        );
+    }
+    let path = write_manifest(&tmp, r#"{"boot": {"hold": "long"}}"#);
+    assert!(matches!(
+        ResolvedManifest::load(&path).unwrap_err(),
+        ManifestError::Parse { .. }
+    ));
+}
+
+#[test]
 fn two_roots_setting_a_boot_group_fail_the_merge() {
     let tmp = tempdir();
     let (a, b) = (tmp.join("a"), tmp.join("b"));
@@ -1565,4 +1600,85 @@ fn sprite_points_parse_and_resolve() {
             "{bad}"
         );
     }
+}
+
+#[test]
+fn rooms_and_tilesets_resolve_their_paths_and_merge() {
+    let tmp = tempdir();
+    let cave = write_file(&tmp, "rooms/cave.json");
+    write_file(&tmp, "tilesets/cave.json");
+    let path = write_manifest(
+        &tmp,
+        r#"{ "rooms": { "cave": { "path": "rooms/cave.json" } },
+             "tilesets": { "cave": { "path": "tilesets/cave.json" } } }"#,
+    );
+    let mut manifest = ResolvedManifest::load(&path).unwrap();
+    assert_eq!(
+        manifest.rooms["cave"].path.canonicalize().unwrap(),
+        cave.canonicalize().unwrap()
+    );
+    assert!(manifest.tilesets.contains_key("cave"));
+    // A room and a tileset may share an ID; two rooms may not.
+    let other = tempdir();
+    write_file(&other, "rooms/hall.json");
+    let second = write_manifest(
+        &other,
+        r#"{ "rooms": { "hall": { "path": "rooms/hall.json" } } }"#,
+    );
+    manifest
+        .merge(ResolvedManifest::load(&second).unwrap())
+        .unwrap();
+    let mut ids: Vec<&String> = manifest.rooms.keys().collect();
+    ids.sort();
+    assert_eq!(ids, ["cave", "hall"]);
+    let err = manifest
+        .merge(ResolvedManifest::load(&second).unwrap())
+        .unwrap_err();
+    assert!(matches!(err, ManifestError::DuplicateId { id } if id == "hall"));
+    let missing = write_manifest(
+        &other,
+        r#"{ "tilesets": { "moss": { "path": "nope.json" } } }"#,
+    );
+    assert!(matches!(
+        ResolvedManifest::load(&missing),
+        Err(ManifestError::MissingTilesetFile { .. })
+    ));
+}
+
+#[test]
+fn an_id_in_both_rooms_and_tilemaps_fails_the_load() {
+    let tmp = tempdir();
+    write_file(&tmp, "rooms/cave.json");
+    write_file(&tmp, "maps/cave.tmj");
+    let path = write_manifest(
+        &tmp,
+        r#"{ "rooms": { "cave": { "path": "rooms/cave.json" } },
+             "tilemaps": { "cave": { "path": "maps/cave.tmj" } } }"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::RoomIsTilemap { id } if id == "cave"),
+        "{err}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "'cave' is both a room and a tilemap; a room's ID is its map's"
+    );
+    // Across roots too.
+    let rooms = tempdir();
+    write_file(&rooms, "rooms/cave.json");
+    let room_root = write_manifest(
+        &rooms,
+        r#"{ "rooms": { "cave": { "path": "rooms/cave.json" } } }"#,
+    );
+    let maps = tempdir();
+    write_file(&maps, "maps/cave.tmj");
+    let map_root = write_manifest(
+        &maps,
+        r#"{ "tilemaps": { "cave": { "path": "maps/cave.tmj" } } }"#,
+    );
+    assert!(matches!(
+        ResolvedManifest::load_and_merge_many(&[room_root, map_root]),
+        Err(ManifestError::RoomIsTilemap { .. })
+    ));
 }

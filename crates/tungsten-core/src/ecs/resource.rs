@@ -1,15 +1,17 @@
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
 
-/// Type-indexed singleton resource storage.
+use super::archetype::TypeIdMap;
+
+/// Type-indexed singleton resource storage. A `TypeId` is a hash already,
+/// so the map passes it through: a system's every resource read keys it.
 pub(crate) struct ResourceMap {
-    resources: HashMap<TypeId, Box<dyn Any>>,
+    resources: TypeIdMap<Box<dyn Any>>,
 }
 
 impl ResourceMap {
     pub fn new() -> Self {
         Self {
-            resources: HashMap::new(),
+            resources: TypeIdMap::default(),
         }
     }
 

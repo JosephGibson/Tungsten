@@ -1000,3 +1000,227 @@ fn routed_just_pressed_reads_what_the_ui_left() {
         .key_down(KeyCode::Space);
     assert!(crate::input::just_pressed(&world, "jump"), "one it left");
 }
+
+const LABELLED_JSON: &str = r#"{
+    "actions": {
+        "jump": [{ "kind": "key", "code": "Space" }],
+        "fire": [{ "kind": "mouse", "button": "left" },
+                 { "kind": "gamepad_button", "button": "RightTrigger" },
+                 { "kind": "key", "code": "KeyF" },
+                 { "kind": "gamepad_axis", "axis": "RightStickX", "direction": "positive" }]
+    },
+    "labels": [["move_left", "Move left"], ["fire", "Fire"], ["jump", "Jump"]]
+}"#;
+
+fn labelled(text: &str) -> Result<ActionMap, ActionMapError> {
+    ActionMap::from_json(text, Path::new("input.json")).map(ActionMap::merged_with_defaults)
+}
+
+fn pad(button: GamepadButton) -> Binding {
+    Binding::GamepadButton { button }
+}
+
+#[test]
+fn labels_keep_file_order() {
+    let map = labelled(LABELLED_JSON).unwrap();
+    let labels: Vec<(&str, &str)> = map
+        .labelled()
+        .iter()
+        .map(|(action, label)| (action.as_str(), label.as_str()))
+        .collect();
+    assert_eq!(
+        labels,
+        [
+            ("move_left", "Move left"),
+            ("fire", "Fire"),
+            ("jump", "Jump")
+        ],
+        "move_left is bound by the defaults alone"
+    );
+    assert_eq!(map.label("fire"), Some("Fire"));
+    assert_eq!(map.label("move_right"), None, "bound, not listed");
+    assert!(
+        labelled(SAMPLE_JSON).unwrap().labelled().is_empty(),
+        "a file without labels lists none"
+    );
+}
+
+#[test]
+fn a_label_for_an_unbound_action_fails() {
+    let text = r#"{ "actions": {}, "labels": [["dash", "Dash"]] }"#;
+    let error = labelled(text).unwrap_err();
+    assert!(error.to_string().contains("'dash'"), "{error}");
+    let twice = r#"{ "labels": [["jump", "Jump"], ["jump", "Hop"]] }"#;
+    let error = labelled(twice).unwrap_err();
+    assert!(error.to_string().contains("twice"), "{error}");
+}
+
+#[test]
+fn a_ui_or_engine_label_fails() {
+    for action in ["ui_accept", "engine_exit"] {
+        let text = format!(r#"{{ "labels": [["{action}", "Menu"]] }}"#);
+        let error = labelled(&text).unwrap_err();
+        assert!(matches!(error, ActionMapError::Parse { .. }), "{error}");
+        assert!(error.to_string().contains(action), "{error}");
+    }
+}
+
+#[test]
+fn the_user_layer_keeps_the_shipped_labels() {
+    let dir = tempdir();
+    let user = dir.join("input.json");
+    std::fs::write(
+        &user,
+        r#"{ "actions": { "jump": [{ "kind": "key", "code": "KeyZ" }] },
+            "labels": [["jump", "Leap"]] }"#,
+    )
+    .unwrap();
+    let map = labelled(LABELLED_JSON)
+        .unwrap()
+        .with_user_layer(Some(&user));
+    assert_eq!(map.bindings("jump"), &[key(KeyCode::KeyZ)]);
+    assert_eq!(
+        map.label("jump"),
+        Some("Jump"),
+        "the player's file names none"
+    );
+    assert_eq!(map.labelled().len(), 3);
+    let fresh = dir.join("fresh.json");
+    let mut map = labelled(LABELLED_JSON)
+        .unwrap()
+        .with_user_layer(Some(&fresh));
+    map.replace_bindings("fire", vec![key(KeyCode::KeyG)]);
+    map.persist().unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&fresh).unwrap()).unwrap();
+    assert!(value.get("labels").is_none(), "a persist writes no labels");
+}
+
+#[test]
+fn binding_at_reads_by_device_and_index() {
+    let map = labelled(LABELLED_JSON).unwrap();
+    let keyboard = BindingDevice::Keyboard;
+    let gamepad = BindingDevice::Gamepad;
+    let stick = Binding::GamepadAxis {
+        axis: GamepadAxis::RightStickX,
+        direction: AxisDirection::Positive,
+    };
+    assert_eq!(
+        map.binding_at("fire", keyboard, 0),
+        Some(Binding::Mouse {
+            button: MouseButton::Left
+        }),
+        "a mouse binding is the keyboard's"
+    );
+    assert_eq!(
+        map.binding_at("fire", keyboard, 1),
+        Some(key(KeyCode::KeyF))
+    );
+    assert_eq!(map.binding_at("fire", keyboard, 2), None);
+    assert_eq!(
+        map.binding_at("fire", gamepad, 0),
+        Some(pad(GamepadButton::RightTrigger))
+    );
+    assert_eq!(map.binding_at("fire", gamepad, 1), Some(stick));
+    assert_eq!(map.binding_at("absent", gamepad, 0), None);
+    assert!(stick.is_gamepad() && !key(KeyCode::KeyF).is_gamepad());
+    assert_eq!(key(KeyCode::KeyF).device(), keyboard);
+}
+
+#[test]
+fn set_binding_at_replaces_or_appends() {
+    let mut map = labelled(LABELLED_JSON).unwrap();
+    let keyboard = BindingDevice::Keyboard;
+    map.set_binding_at("fire", keyboard, 1, key(KeyCode::KeyH));
+    assert_eq!(
+        map.bindings("fire")[2],
+        key(KeyCode::KeyH),
+        "the cell is replaced in its place"
+    );
+    map.set_binding_at("fire", keyboard, 2, key(KeyCode::KeyJ));
+    assert_eq!(map.bindings("fire").last(), Some(&key(KeyCode::KeyJ)));
+    assert_eq!(map.bindings("fire").len(), 5, "an empty cell appends");
+    map.set_binding_at("jump", BindingDevice::Gamepad, 0, pad(GamepadButton::South));
+    assert_eq!(
+        map.bindings("jump"),
+        &[key(KeyCode::Space), pad(GamepadButton::South)]
+    );
+    map.set_binding_at("jump", keyboard, 1, key(KeyCode::Space));
+    assert_eq!(
+        map.bindings("jump"),
+        &[key(KeyCode::Space), pad(GamepadButton::South)],
+        "a binding the action holds is not held twice"
+    );
+}
+
+#[test]
+fn shipped_reads_under_the_user_layer() {
+    let dir = tempdir();
+    let user = dir.join("input.json");
+    std::fs::write(
+        &user,
+        r#"{ "actions": { "jump": [{ "kind": "key", "code": "KeyZ" }] } }"#,
+    )
+    .unwrap();
+    let map = labelled(LABELLED_JSON)
+        .unwrap()
+        .with_user_layer(Some(&user));
+    assert_eq!(map.bindings("jump"), &[key(KeyCode::KeyZ)]);
+    assert_eq!(map.shipped("jump"), &[key(KeyCode::Space)]);
+    assert_eq!(
+        map.shipped("move_left"),
+        ActionMap::default_map().bindings("move_left"),
+        "the defaults under the shipped file"
+    );
+    assert!(map.shipped("absent").is_empty());
+    let mut bare = ActionMap::new();
+    bare.replace_bindings("jump", vec![key(KeyCode::KeyX)]);
+    assert_eq!(
+        bare.shipped("jump"),
+        &[key(KeyCode::KeyX)],
+        "no user layer: the map's own"
+    );
+}
+
+#[test]
+fn reset_returns_to_the_shipped_bindings() {
+    let dir = tempdir();
+    let user = dir.join("input.json");
+    let mut map = labelled(LABELLED_JSON)
+        .unwrap()
+        .with_user_layer(Some(&user));
+    map.replace_bindings("jump", vec![key(KeyCode::KeyZ)]);
+    map.replace_bindings("fire", vec![key(KeyCode::KeyG)]);
+    map.replace_bindings("added", vec![key(KeyCode::KeyK)]);
+    map.reset("jump");
+    assert_eq!(map.bindings("jump"), &[key(KeyCode::Space)]);
+    assert_eq!(map.bindings("fire"), &[key(KeyCode::KeyG)], "one action");
+    map.reset("added");
+    assert!(map.bindings("added").is_empty(), "not shipped: gone");
+    map.reset_all();
+    assert_eq!(map.bindings("fire"), map.shipped("fire"));
+    map.persist().unwrap();
+    let saved = ActionMap::load(&user).unwrap();
+    assert_eq!(saved.iter().count(), 0, "nothing of the player's to save");
+}
+
+#[test]
+fn default_map_binds_the_level_editors_actions() {
+    let map = ActionMap::default_map();
+    assert_eq!(
+        map.bindings("engine_toggle_level_editor"),
+        &[Binding::Key { code: KeyCode::F10 }]
+    );
+    assert_eq!(
+        map.bindings("engine_editor_primary"),
+        &[Binding::Mouse {
+            button: MouseButton::Left
+        }]
+    );
+    assert_eq!(
+        map.bindings("engine_editor_secondary"),
+        &[Binding::Mouse {
+            button: MouseButton::Right
+        }]
+    );
+}

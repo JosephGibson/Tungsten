@@ -1,28 +1,69 @@
-//! The view: the follow clamped to the map at every window and zoom, with
-//! the cursor's mapping its inverse, the zoom actions' range, and the sky
-//! covering the view at the camera's extremes.
+//! The view: the camera prefabs' numbers, the follow clamped to the map at
+//! every window and zoom, with the cursor's mapping its inverse, the zoom
+//! actions' range, and the sky covering the view at the camera's extremes.
 
 use example_01_platformer::features::level::components::Zoom;
 use example_01_platformer::features::level::draw;
+use example_01_platformer::features::level::title::{TITLE_CAMERA, sky_view};
 use example_01_platformer::features::level::{CAMERA_ROWS, MAP_COLS, MAP_ROWS, TILE};
 use example_01_platformer::features::player::{ZOOM_MAX, ZOOM_MIN};
 use glam::Vec2;
 use tungsten::WindowSize;
-use tungsten::core::{AssetRegistry, CameraController, CameraState, Transform};
-use tungsten::kit::CameraTarget;
+use tungsten::core::{
+    AssetRegistry, CameraBounds, CameraController, CameraRig, CameraState, FixedRig, FollowRig,
+    RigBlend, RigKind, Transform,
+};
 
 use super::{mock_sprite, run};
 
 #[test]
+fn the_camera_prefabs_restate_the_map_and_the_sky() {
+    let (run, player) = run();
+    let world = run.world();
+    let view = CAMERA_ROWS * TILE;
+    let map = Vec2::new(MAP_COLS as f32, MAP_ROWS as f32) * TILE;
+    let expected = CameraRig::follow(FollowRig::default())
+        .with_view_height(view)
+        .with_bounds(CameraBounds::new(Vec2::ZERO, map));
+    let rig = *world.get::<CameraRig>(player).expect("the player's rig");
+    assert_eq!(
+        rig.kind, expected.kind,
+        "a snapping follow of the player's point"
+    );
+    assert_eq!(
+        (rig.view_height, rig.bounds, rig.blend),
+        (
+            Some(view),
+            Some(CameraBounds::new(Vec2::ZERO, map)),
+            RigBlend::CUT
+        )
+    );
+    assert_eq!(world.resource::<CameraController>().winner(), Some(player));
+    // The title's: a fixed rig at the sky's corner, the base zoom's height.
+    let mut title = super::harness();
+    title.step(2);
+    let world = title.world_mut();
+    let (corner, size) = sky_view(world);
+    let camera = world
+        .prepare_prefab(TITLE_CAMERA, Vec2::ZERO)
+        .unwrap()
+        .spawn(world);
+    let rig = *world.get::<CameraRig>(camera).unwrap();
+    assert_eq!(rig.kind, RigKind::Fixed(FixedRig::Corner(corner)));
+    assert_eq!((rig.view_height, rig.bounds), (Some(size.y), None));
+    assert_eq!(size.y, view);
+}
+
+#[test]
 fn camera_clamps_both_axes_and_keeps_cursor_inverse_after_resize_and_zoom() {
     let (mut harness, player) = run();
-    // A bare target the camera follows, which no rule kills off the map.
+    // A bare entity the player's rig follows, which no rule kills off the
+    // map.
     let world = harness.world_mut();
-    world.remove_component::<CameraTarget>(player);
-    let probe = world.spawn_with((
-        Transform::from_position(Vec2::splat(40_000.0)),
-        CameraTarget,
-    ));
+    let probe = world.spawn_with((Transform::from_position(Vec2::splat(40_000.0)),));
+    if let RigKind::Follow(follow) = &mut world.get_mut::<CameraRig>(player).unwrap().kind {
+        follow.target = Some(probe);
+    }
     for (width, height) in [(1920, 1080), (960, 720), (2560, 720)] {
         for multiplier in [0.35, 1.0, 3.0] {
             let world = harness.world_mut();
@@ -65,7 +106,7 @@ fn camera_clamps_both_axes_and_keeps_cursor_inverse_after_resize_and_zoom() {
 
 #[test]
 fn zoom_input_reaches_and_clamps_expanded_range() {
-    let (mut harness, _) = run();
+    let (mut harness, player) = run();
     for (action, expected) in [("zoom_out", ZOOM_MIN), ("zoom_in", ZOOM_MAX)] {
         for _ in 0..30 {
             harness.harness_mut().press_action(action);
@@ -77,8 +118,11 @@ fn zoom_input_reaches_and_clamps_expanded_range() {
         assert!((world.resource::<Zoom>().0 - expected).abs() < 1e-3);
         let height = world.resource::<WindowSize>().height as f32;
         let base = height / (CAMERA_ROWS * TILE);
-        let multiplier = world.resource::<CameraController>().zoom_multiplier;
-        assert!((multiplier - base * expected).abs() < 1e-3, "{multiplier}");
+        let zoom = world.resource::<CameraState>().zoom;
+        assert!((zoom - base * expected).abs() < 1e-3, "{zoom}");
+        let rig = world.get::<CameraRig>(player).unwrap();
+        assert_eq!(rig.view_height, Some(CAMERA_ROWS * TILE));
+        assert!((rig.zoom - expected).abs() < 1e-3, "the player's rig");
     }
 }
 

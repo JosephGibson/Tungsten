@@ -13,8 +13,11 @@
 //! fingerprints mean equal maps, so a cursor reads [`TileChanges::Unchanged`]
 //! only for a map that is the one it saw.
 //!
-//! The auto-tiler: a tile with a `style` and no `mask` is that style's
-//! brush, one with a `mask` a variant. A brush cell is an auto cell, which
+//! The auto-tiler: a tile with a `style` and neither a `mask` nor a `slope`
+//! is that style's brush, one with a `mask` a variant, and one with a
+//! `slope` and no `mask` a slope tile, which counts as its style for its
+//! neighbours as an override does and is never picked. A brush cell is an
+//! auto cell, which
 //! holds a variant of its style for its open sides: a side is closed when
 //! the neighbour holds any tile of the style or is off the map, and the mask
 //! sums 1 up, 2 right, 4 down and 8 left for the open ones. One of the mask's
@@ -26,7 +29,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use super::tilemap::{
-    EMPTY_TILE, LayerKind, RegisteredMap, TileIndex, TilemapData, TilemapRegistry,
+    EMPTY_TILE, LayerKind, ObjectLayer, RegisteredMap, TileIndex, TilemapData, TilemapRegistry,
 };
 
 /// The journal entries a map keeps; a cursor older than the oldest reads
@@ -208,6 +211,8 @@ impl Styles {
                 });
             *slot = Some(style);
             match props.mask {
+                // A slope tile: its style to its neighbours, never picked.
+                None if props.slope.is_some() => {}
                 None => {
                     styles.brushes[style].get_or_insert(tile);
                 }
@@ -313,16 +318,16 @@ impl TilemapData {
 }
 
 /// Re-picks the auto cells beside `(col, row)` of `layer` whose open sides
-/// a write there changed, journaling each that changed.
+/// a write there changed, passing each re-picked cell with its old and new
+/// tile to `picked`.
 fn retile_neighbours(
-    map: &mut RegisteredMap,
-    clock: &mut u64,
+    data: &mut TilemapData,
     styles: &Styles,
     layer: usize,
     col: u32,
     row: u32,
+    mut picked: impl FnMut(CellChange, TileIndex, TileIndex),
 ) {
-    let RegisteredMap { data, history, .. } = map;
     let (c, r) = (i64::from(col), i64::from(row));
     for (dc, dr) in [(0, -1), (1, 0), (0, 1), (-1, 0)] {
         let (Ok(col), Ok(row)) = (u32::try_from(c + dc), u32::try_from(r + dr)) else {
@@ -337,13 +342,28 @@ fn retile_neighbours(
             continue;
         };
         data.layers[layer].tiles[index] = new;
-        history.journal(
-            clock,
-            CellChange { layer, col, row },
-            (old, true),
-            (new, true),
-        );
+        picked(CellChange { layer, col, row }, old, new);
     }
+}
+
+/// Writes `tile` at `(col, row)` of `layer` as the registry's `set_tile`
+/// writes it, auto-tiled, with no journal: the map as inserted, which keeps
+/// no history.
+fn write_unjournaled(data: &mut TilemapData, layer: usize, col: u32, row: u32, tile: TileIndex) {
+    data.set_tile(layer, col, row, tile);
+    let styles = Styles::of(data);
+    if styles.is_empty() {
+        return;
+    }
+    let written = checked_cell("set_authored_tile", data, layer, col, row);
+    if styles.is_brush(written) {
+        let index = (row as usize) * (data.width as usize) + (col as usize);
+        let cells = data.layers[layer].tiles.len();
+        data.terrain.set_auto(layer, index, cells, true);
+        let resolved = data.pick(&styles, layer, col, row).unwrap_or(written);
+        data.layers[layer].tiles[index] = resolved;
+    }
+    retile_neighbours(data, &styles, layer, col, row, |_, _, _| {});
 }
 
 impl TilemapRegistry {
@@ -395,8 +415,54 @@ impl TilemapRegistry {
         map.history
             .journal(&mut self.clock, cell, (old, was_auto), new);
         if !styles.is_empty() {
-            retile_neighbours(map, &mut self.clock, &styles, layer, col, row);
+            let RegisteredMap { data, history, .. } = map;
+            let clock = &mut self.clock;
+            retile_neighbours(data, &styles, layer, col, row, |cell, old, new| {
+                history.journal(clock, cell, (old, true), (new, true));
+            });
         }
+        true
+    }
+
+    /// Writes `tile` at `(col, row)` of map `id`'s `layer` as the map's
+    /// source now has it (a room's patch, redo 7.12): as
+    /// [`set_tile`](Self::set_tile) writes it, journaled and auto-tiled,
+    /// and in the map as inserted, so [`revert`](Self::revert) and a later
+    /// save keep it; the cell leaves [`edited_cells`](Self::edited_cells)
+    /// and [`damaged_cells`](Self::damaged_cells), being no play's edit.
+    /// False, with nothing written, for a map the registry lacks.
+    ///
+    /// # Panics
+    ///
+    /// As [`set_tile`](Self::set_tile).
+    #[track_caller]
+    pub fn set_authored_tile(
+        &mut self,
+        id: &str,
+        layer: usize,
+        col: u32,
+        row: u32,
+        tile: TileIndex,
+    ) -> bool {
+        if !self.set_tile(id, layer, col, row, tile) {
+            return false;
+        }
+        let map = self.maps.get_mut(id).expect("set_tile wrote the map");
+        map.history.edits.remove(&(layer, row, col));
+        write_unjournaled(&mut map.inserted, layer, col, row, tile);
+        true
+    }
+
+    /// Replaces map `id`'s object layers, in the map and in its copy as
+    /// inserted, which the next spawn of its area reads its objects from
+    /// (a room's patch, redo 7.12). Objects are outside the fingerprint,
+    /// so nothing is journaled. False for a map the registry lacks.
+    pub fn set_authored_objects(&mut self, id: &str, layers: Vec<ObjectLayer>) -> bool {
+        let Some(map) = self.maps.get_mut(id) else {
+            return false;
+        };
+        map.inserted.object_layers.clone_from(&layers);
+        map.data.object_layers = layers;
         true
     }
 

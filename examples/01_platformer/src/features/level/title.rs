@@ -8,8 +8,8 @@
 
 use glam::Vec2;
 use tungsten::core::{
-    CameraController, CameraState, Entity, Particle, ParticleConfigRegistry, ParticleEmitter,
-    ParticleEmitterState, Time, Transform, World,
+    Entity, Particle, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Time,
+    Transform, World,
 };
 use tungsten::{SceneEntity, WindowSize};
 
@@ -19,14 +19,19 @@ use super::{CAMERA_ROWS, TILE};
 use crate::shell::{self, title::TITLE};
 
 /// The title's sky, while no run is live: its own clock, in real seconds,
-/// the shooting stars it has sent, and the one in flight, with its start
-/// and the clock at its birth.
+/// the shooting stars it has sent, the one in flight, with its start and
+/// the clock at its birth, and the title's camera.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TitleSky {
     pub clock: f32,
     pub meteors: u32,
     pub meteor: Option<(Entity, Vec2, f32)>,
+    pub camera: Option<Entity>,
 }
+
+/// The title's camera, a prefab: a fixed rig holding [`sky_view`]'s corner
+/// at the base zoom's height, the title state's own.
+pub const TITLE_CAMERA: &str = "title_camera";
 
 /// The title's stars: the twinkles' configs by size, small, medium and
 /// large, with the share of the stars each takes; the shooting star's
@@ -136,7 +141,9 @@ fn twinkle_size(i: u32) -> &'static str {
 }
 
 /// `title_sky`, in `Update`: while no run is live the title's sky runs its
-/// clock; the first frame the title is on top with no twinkles it sends
+/// clock; the first frame the title is on top with no camera it spawns the
+/// [`TITLE_CAMERA`] as the title state's, which leaves with it; the first
+/// frame it is on top with no twinkles it sends
 /// [`TWINKLES`] at hashed points over its view's upper half, thinning
 /// toward the treeline, each of a hashed size ([`TWINKLE_SIZES`]) and
 /// starting at a hashed phase, and while it is on top a shooting star every
@@ -153,6 +160,12 @@ pub fn sky(world: &mut World) {
     let mut sky = world.remove_resource::<TitleSky>().unwrap_or_default();
     sky.clock += dt;
     let on_top = shell::top(world) == Some(TITLE);
+    if on_top && !sky.camera.is_some_and(|camera| world.is_alive(camera)) {
+        sky.camera = world
+            .prepare_prefab(TITLE_CAMERA, Vec2::ZERO)
+            .ok()
+            .map(|camera| camera.with((SceneEntity { state_id: TITLE },)).spawn(world));
+    }
     let (corner, size) = sky_view(world);
     if on_top && emitters(world, &twinkle_configs()).is_empty() {
         for i in 0..TWINKLES {
@@ -199,25 +212,5 @@ fn clear(world: &mut World) {
     );
     for entity in gone {
         world.despawn(entity);
-    }
-}
-
-/// `title_view`, after the level's zoom and before the camera's update:
-/// while the title is on top, the camera holds the title's view
-/// ([`sky_view`]) at the base zoom, unbounded.
-pub fn view(world: &mut World) {
-    if !world.has_resource::<TitleSky>() || shell::top(world) != Some(TITLE) {
-        return;
-    }
-    let (corner, size) = sky_view(world);
-    let height = world
-        .get_resource::<WindowSize>()
-        .map_or(720.0, |window| window.height as f32);
-    if let Some(controller) = world.get_resource_mut::<CameraController>() {
-        controller.bounds = None;
-        controller.zoom_multiplier = height / size.y;
-    }
-    if let Some(camera) = world.get_resource_mut::<CameraState>() {
-        camera.position = corner;
     }
 }

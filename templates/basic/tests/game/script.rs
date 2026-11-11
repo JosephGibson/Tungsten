@@ -1,4 +1,6 @@
-//! The sample's script hooks through the engine's script runner (redo 7.2).
+//! The game's script hooks through the engine's script runner (redo 7.2):
+//! the shell's `start_run`, the sample's `reload_run` and `player`, and the
+//! kit's `place` and `tagged` on the player's tag.
 
 use tungsten::core::script::{Report, Script};
 
@@ -16,8 +18,9 @@ fn a_script_starts_a_run_and_holds_the_player_where_it_puts_it() {
         "frames": 90,
         "steps": [
             { "frame": 2, "action": "start_run", "args": { "difficulty": "hard" } },
-            { "frame": 30, "until": 90, "action": "place_player", "args": { "at": [960, 600] } },
+            { "frame": 30, "until": 90, "action": "place", "args": { "tag": "team.player", "at": [960, 600] } },
             { "frame": 90, "probe": "states" },
+            { "frame": 90, "assert": { "probe": "tagged", "args": { "tag": "team.player" }, "path": "/position", "op": "~=", "value": [960, 600], "tolerance": 0.5 } },
             { "frame": 90, "assert": { "probe": "player", "path": "/position", "op": "~=", "value": [960, 600], "tolerance": 0.5 } },
             { "frame": 90, "assert": { "probe": "player", "path": "/health/0", "op": ">", "value": 0 } }
         ]
@@ -41,16 +44,16 @@ fn a_frame_one_sheet_clears_the_title_and_spawns_its_items() {
 }
 
 #[test]
-fn place_player_with_no_run_fails_its_step() {
+fn place_with_no_run_fails_its_step() {
     let report = run(r#"{
         "version": 1,
         "frames": 2,
-        "steps": [{ "frame": 2, "action": "place_player", "args": { "at": [0, 0] } }]
+        "steps": [{ "frame": 2, "action": "place", "args": { "tag": "team.player", "at": [0, 0] } }]
     }"#);
     assert!(!report.passed);
     assert_eq!(
         report.failed_steps[0].error,
-        "action `place_player`: no run"
+        "action `place`: no entity holds `team.player`"
     );
 }
 
@@ -64,7 +67,7 @@ fn reload_run_keeps_the_run() {
         "frames": 60,
         "steps": [
             { "frame": 2, "action": "start_run" },
-            { "frame": 10, "action": "place_player", "args": { "at": [300, 150] } },
+            { "frame": 10, "action": "place", "args": { "tag": "team.player", "at": [300, 150] } },
             { "frame": 20, "action": "reload_run" },
             { "frame": 21, "probe": "states" },
             { "frame": 60, "assert": { "probe": "player", "path": "/position", "op": "~=", "value": [300, 150], "tolerance": 0.5 } },

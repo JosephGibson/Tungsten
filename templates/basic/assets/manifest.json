@@ -43,6 +43,10 @@
     "spark": {
       "path": "sprites/spark.png",
       "filter": "linear"
+    },
+    "boot_dot": {
+      "path": "sprites/boot_dot.png",
+      "filter": "linear"
     }
   },
   "animations": {
@@ -78,56 +82,6 @@
   "font_fallback": [
     "sans"
   ],
-  "shaders": {
-    "damage_flash": {
-      "path": "shaders/damage_flash.wgsl"
-    }
-  },
-  "materials": {
-    "damage_flash": {
-      "shader": "damage_flash",
-      "uniform_defaults": {
-        "vec4": [
-          [
-            1.0,
-            0.2,
-            0.1,
-            1.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ],
-          [
-            0.0,
-            0.0,
-            0.0,
-            0.0
-          ]
-        ],
-        "f32s": [
-          0.0,
-          0.0,
-          0.0,
-          0.0
-        ],
-        "i32s": [
-          0,
-          0,
-          0,
-          0
-        ]
-      }
-    }
-  },
   "sounds": {
     "ui_move": {
       "path": "sounds/ui_move.wav",
@@ -222,6 +176,18 @@
     "enemy_patrol": {
       "path": "prefabs/enemy_patrol.json"
     },
+    "enemy_spawner_0": {
+      "path": "prefabs/enemy_spawner_0.json"
+    },
+    "enemy_spawner_1": {
+      "path": "prefabs/enemy_spawner_1.json"
+    },
+    "enemy_spawner_2": {
+      "path": "prefabs/enemy_spawner_2.json"
+    },
+    "enemy_spawner_3": {
+      "path": "prefabs/enemy_spawner_3.json"
+    },
     "gem": {
       "path": "prefabs/gem.json"
     },
@@ -293,5 +259,6 @@
     "title": {
       "path": "ui/screens/title.json"
     }
-  }
+  },
+  "boot": { "logo": "boot_dot", "hold": 2.0 }
 }

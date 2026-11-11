@@ -5,9 +5,10 @@
 //! clock takes the dt the loop gives it: elapsed wall time capped at 0.1 s
 //! (`D-088`), 1/60 s in smoke runs, or the test harness's dt as given
 //! (`D-110`). The game clock is the real dt times the [scale](Time::scale),
-//! zero while [paused](Time::is_paused) or [held](Time::is_held): the
-//! game's pause and the state stack's hold, kept apart so neither undoes
-//! the other. Systems read [`Time::delta`];
+//! zero while [paused](Time::is_paused), [held](Time::is_held) or
+//! [editing](Time::is_editing): the game's pause, the state stack's hold
+//! and the level editor's stop, kept apart so none undoes another. Systems
+//! read [`Time::delta`];
 //! anything that must run over a pause, such as a screen transition, reads
 //! [`Time::real_delta`].
 //!
@@ -28,12 +29,21 @@
 //! A [`Timer`] is a plain value that a component or resource owns and ticks
 //! with whichever clock its owner picks; there is no timer system.
 
-/// What stops the game clock: the game's pause and the state stack's hold,
-/// kept apart so neither undoes the other (redo 7.17).
+/// What stops the game clock: the game's pause, the state stack's hold
+/// (redo 7.17) and the level editor's stop (redo 7.12), kept apart so none
+/// undoes another.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct ClockStop {
     paused: bool,
     held: bool,
+    editing: bool,
+}
+
+impl ClockStop {
+    /// Whether any of the three stops the clock.
+    fn any(self) -> bool {
+        self.paused || self.held || self.editing
+    }
 }
 
 /// The frame's clocks and the fixed-step accumulator: a `World` resource the
@@ -119,14 +129,14 @@ impl Time {
     /// The app's clock stage calls it once a frame with the loop's dt
     /// (capped, pinned, or the harness's); a world driven by hand calls it in
     /// that stage's place. A negative or non-finite `real_dt` counts as zero.
-    /// The game dt is `real_dt` times the scale, zero while paused or held,
-    /// and saturates at `f32::MAX`.
+    /// The game dt is `real_dt` times the scale, zero while paused, held or
+    /// editing, and saturates at `f32::MAX`.
     ///
     /// The accumulator adds the game dt, saturating at `f32::MAX`, then gives
     /// up one step at a time while it holds a whole step, until the bound's
     /// steps have run or a step no longer changes it. Whole steps still left
     /// are dropped and the remainder kept, so `alpha` stays in `[0, 1)`. A
-    /// paused or held frame adds nothing, runs no step and holds `alpha`.
+    /// stopped frame adds nothing, runs no step and holds `alpha`.
     pub fn advance_frame(&mut self, real_dt: f32) {
         let real_dt = if real_dt.is_finite() && real_dt > 0.0 {
             real_dt
@@ -134,7 +144,7 @@ impl Time {
             0.0
         };
         self.real_delta = real_dt;
-        let stopped = self.stop.paused || self.stop.held;
+        let stopped = self.stop.any();
         self.game_delta = if stopped {
             0.0
         } else {
@@ -269,6 +279,20 @@ impl Time {
     #[must_use]
     pub fn is_held(&self) -> bool {
         self.stop.held
+    }
+
+    /// Stops the game clock, or lets it go, from the next frame on, while
+    /// the level editor is open (redo 7.12): a stop of its own beside the
+    /// game's pause and the stack's hold, so the editor neither undoes nor
+    /// is undone by them.
+    pub fn set_editing(&mut self, editing: bool) {
+        self.stop.editing = editing;
+    }
+
+    /// Whether the level editor stops the game clock.
+    #[must_use]
+    pub fn is_editing(&self) -> bool {
+        self.stop.editing
     }
 
     /// The fixed step in game seconds: 1/60 s, the smoke pin, unless set.

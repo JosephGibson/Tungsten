@@ -1,5 +1,6 @@
-// The kit's hit flash: the manifest's `damage_flash` material, which a
-// `hit_flash` component lays over its entity's sprite.
+// The kit's hit flash (redo 7.11): the engine's stock `damage_flash` material,
+// which a `hit_flash` component lays over its entity's sprite; a manifest
+// that declares its own keeps it.
 // Reads `material.vec4[0]` as the overlay colour and `material.f32s[0]` as
 // the overlay amount. Uniform block shape matches `UniformOverrideBlock` so
 // tween-driven overrides (e.g. one-shot fade) drop straight in.

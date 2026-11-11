@@ -437,6 +437,12 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
                 "`mass` must be finite and > 0 with a finite inverse (got {mass})"
             ));
         }
+        if mass > RigidBody::MAX_MASS {
+            return Err(format!(
+                "`mass` must be at most {:e} (got {mass:e})",
+                RigidBody::MAX_MASS
+            ));
+        }
         let gravity_scale = match fields.gravity_scale {
             Some(_) if !matches!(fields.kind, SceneBodyKind::Dynamic) => {
                 return Err("`gravity_scale` is for dynamic bodies only".to_owned());
@@ -516,6 +522,37 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
             rolling: fields.rolling,
         })
     }
+}
+
+impl PhysicsPlugin {
+    /// A `rigid_body` value as the level rules read it (redo 7.12): its
+    /// body and collider, its layer names' bits resolved through `layers`
+    /// and added as a spawn adds them.
+    pub(crate) fn read_rigid_body(
+        value: &serde_json::Value,
+        layers: Option<&PhysicsLayers>,
+    ) -> Result<(RigidBody, Collider), String> {
+        read_rigid_body(value, layers)
+    }
+}
+
+fn read_rigid_body(
+    value: &serde_json::Value,
+    layers: Option<&PhysicsLayers>,
+) -> Result<(RigidBody, Collider), String> {
+    let def: RigidBodyDef = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+    let bits = |names: &[(usize, String)]| -> Result<u32, String> {
+        names.iter().try_fold(0, |bits, (_, name)| {
+            layers
+                .and_then(|layers| layers.bit(name))
+                .map(|bit| bits | bit)
+                .ok_or_else(|| format!("unknown physics layer `{name}`"))
+        })
+    };
+    let mut body = def.body;
+    body.layers |= bits(&def.layer_names)?;
+    body.mask |= bits(&def.mask_names)?;
+    Ok((body, def.collider))
 }
 
 /// `rigid_body`'s World check: each layer name in the World's

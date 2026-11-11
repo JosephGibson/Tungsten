@@ -14,13 +14,15 @@
 //! does. A circle meets the polygon's nearest point, a vertex beside a
 //! masked leg taking the exposed edge's normal and its distance along it, as
 //! [`aabb_vs_circle_speculative`](crate::physics::aabb_vs_circle_speculative)
-//! does.
+//! does, but where the face meets the leg at a corner the outline leaves
+//! open, which it meets as a vertex.
 //!
 //! The queries meet the same polygon: a ray closed, so a graze hits; a shape
 //! cast open, so a shape touching a side slides along it, as its centre's
 //! path into their sum, a box's the pentagon and a circle's the polygon grown
-//! by its radius, a vertex between two exposed sides rounded and one beside a
-//! masked side square, as `enter_rounded_box` squares a box's; an internal
+//! by its radius, a vertex between two exposed sides or at an open corner
+//! rounded and one beside a masked side square, as `enter_rounded_box`
+//! squares a box's; an internal
 //! side never entered; overlaps with penetration above 0 and the nearest
 //! point of its boundary.
 
@@ -328,9 +330,10 @@ pub(in crate::physics) fn box_contact(
 /// the slope polygon `poly` whose exposed sides are `mask` (`D-064`): from
 /// the polygon's nearest point, a centre inside pushing out through the
 /// nearest exposed side, a masked leg's inside dropping and a vertex beside
-/// one clamped to the exposed edge's normal and its distance along it. A
-/// gap under `margin` is negative. `None` past the margin or when every
-/// side near is masked.
+/// one clamped to the exposed edge's normal and its distance along it,
+/// but an open corner (`Corner::Open`), met as a rounded vertex on the
+/// face's side of the leg's line and not past it. A gap under `margin` is
+/// negative. `None` past the margin or when every side near is masked.
 pub(in crate::physics) fn circle_contact(
     center: Vec2,
     radius: f32,
@@ -378,23 +381,70 @@ pub(in crate::physics) fn circle_contact(
             (i, (i + 1) % poly.len)
         };
         let vertex = poly.points[l];
-        match (exposed(line(j).0, mask), exposed(line(l).0, mask)) {
-            (true, true) => Contact {
-                normal: vertex_normal(center - vertex, distance, line(j).0, line(l).0),
+        let (before, after) = (line(j).0, line(l).0);
+        match corner_of(before, after, mask) {
+            // Past the masked leg's line the centre stands over the
+            // neighbour that covers it, which meets the circle there.
+            Corner::Open(leg) if (center - vertex).dot(leg) > 0.0 => return None,
+            Corner::Rounded | Corner::Open(_) => Contact {
+                normal: vertex_normal(center - vertex, distance, before, after),
                 penetration: radius - distance,
             },
-            (true, false) => Contact {
-                normal: line(j).0,
-                penetration: radius - line(j).1,
-            },
-            (false, true) => Contact {
-                normal: line(l).0,
-                penetration: radius - line(l).1,
-            },
-            (false, false) => return None,
+            Corner::Clamped => {
+                let (normal, signed) = line(if exposed(before, mask) { j } else { l });
+                Contact {
+                    normal,
+                    penetration: radius - signed,
+                }
+            }
+            Corner::Masked => return None,
         }
     };
     (contact.penetration > -margin).then_some(contact)
+}
+
+/// How a circle meets a polygon vertex between sides of outward normals
+/// `before` and `after`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Corner {
+    /// Both sides exposed: the vertex itself, rounded.
+    Rounded,
+    /// The face beside a masked leg of outward normal `.0`, their normals
+    /// more than a right angle apart, with the cell side between them, one
+    /// without a leg, exposed: the outline leaves it exposed while no
+    /// neighbour is solid just past the vertex (`D-229`'s shadow rule), so
+    /// the vertex is a corner of the terrain, rounded on the face's side of
+    /// the leg's line.
+    Open(Vec2),
+    /// One side masked where a neighbour continues the other through the
+    /// vertex: the exposed side's line.
+    Clamped,
+    /// Both sides masked.
+    Masked,
+}
+
+/// The kind of the vertex between sides of outward normals `before` and
+/// `after` under `mask`; a masked side is always a leg, on an axis.
+fn corner_of(before: Vec2, after: Vec2, mask: u8) -> Corner {
+    let (open, leg) = match (exposed(before, mask), exposed(after, mask)) {
+        (true, true) => return Corner::Rounded,
+        (true, false) => (before, after),
+        (false, true) => (after, before),
+        (false, false) => return Corner::Masked,
+    };
+    if open.dot(leg) >= 0.0 {
+        return Corner::Clamped;
+    }
+    let side = if leg.x == 0.0 {
+        Vec2::new(open.x.signum(), 0.0)
+    } else {
+        Vec2::new(0.0, open.y.signum())
+    };
+    if mask & face_of(side) != 0 {
+        Corner::Open(leg)
+    } else {
+        Corner::Clamped
+    }
 }
 
 /// A box of `half` moving from `from` to `to` against the slope polygon
@@ -589,8 +639,9 @@ pub(in crate::physics) fn ray(
 /// enters through an internal side or starts inside the sum, where the
 /// narrow phase found no overlap, so only internal sides lie around it. A
 /// box's sum is the pentagon; a circle's the polygon grown by its radius,
-/// a vertex between two exposed sides rounded by a disc and one beside an
-/// internal side square.
+/// a vertex between two exposed sides rounded by a disc, an open corner
+/// (`Corner::Open`) too on the face's side of its leg's line, and one
+/// beside an internal side square.
 pub(in crate::physics) fn cast(
     shape: Shape,
     origin: Vec2,
@@ -626,12 +677,21 @@ pub(in crate::physics) fn cast(
             } else {
                 None
             };
-            if let Some((j, l, vertex)) = corner
-                && exposed(poly.normals[j], mask)
-                && exposed(poly.normals[l], mask)
-            {
-                let t = crate::physics::query::enter_circle(origin, dir, vertex, radius, false)?;
-                return Some((t, (origin + dir * t - vertex).normalize_or_zero()));
+            if let Some((j, l, vertex)) = corner {
+                let kind = corner_of(poly.normals[j], poly.normals[l], mask);
+                if let Corner::Rounded | Corner::Open(_) = kind {
+                    let t =
+                        crate::physics::query::enter_circle(origin, dir, vertex, radius, false)?;
+                    let offset = origin + dir * t - vertex;
+                    // An entry past an open corner's masked leg enters the
+                    // neighbour that covers it.
+                    if let Corner::Open(leg) = kind
+                        && offset.dot(leg) > 0.0
+                    {
+                        return None;
+                    }
+                    return Some((t, offset.normalize_or_zero()));
+                }
             }
             if t < 0.0 {
                 return None;

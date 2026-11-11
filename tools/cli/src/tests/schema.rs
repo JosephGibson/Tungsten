@@ -14,6 +14,8 @@ fn repo() -> PathBuf {
 fn each_name_has_its_engines_schema() {
     assert_eq!(schema("ui_screen"), Some(screen_file::json_schema()));
     assert_eq!(schema("ui_theme"), Some(theme_file::json_schema()));
+    assert_eq!(schema("room"), Some(room::json_schema()));
+    assert_eq!(schema("tileset"), Some(room::tileset::json_schema()));
     assert_eq!(schema("prefab"), None);
     for name in NAMES {
         let schema = schema(name).unwrap();
@@ -44,5 +46,55 @@ fn the_repositorys_screen_files_are_canonical() {
                 entry.path.display()
             );
         }
+    }
+}
+
+#[test]
+fn schema_prints_room_and_tileset() {
+    let dir = std::env::temp_dir().join(format!("tungsten-schema-rooms-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, title) in [("room", "Tungsten room"), ("tileset", "Tungsten tileset")] {
+        let out = dir.join(format!("{name}.schema.json"));
+        let args = SchemaArgs {
+            name: name.to_owned(),
+            out: Some(out.clone()),
+        };
+        assert!(run(&args).unwrap());
+        let text = std::fs::read_to_string(&out).unwrap();
+        let written: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(written, schema(name).unwrap());
+        assert_eq!(written["title"], title);
+        assert_eq!(
+            written["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+    }
+    assert_eq!(
+        listed(),
+        "ui_screen, ui_theme, room, tileset, batch or script"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn schema_names_batch_and_script() {
+    assert_eq!(schema("batch"), Some(room::batch_schema()));
+    assert_eq!(schema("script"), Some(script::json_schema()));
+    assert_eq!(
+        listed(),
+        "ui_screen, ui_theme, room, tileset, batch or script"
+    );
+    for name in ["batch", "script"] {
+        let schema = schema(name).unwrap();
+        assert_eq!(
+            schema["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+        assert!(schema["description"].is_string(), "{name}");
+    }
+    // The usage's schema line names every format.
+    for name in NAMES {
+        assert!(crate::args::USAGE.contains(name), "{name}");
     }
 }

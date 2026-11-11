@@ -36,10 +36,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::assets::prefab::{PrefabData, PrefabError, PrefabRegistry};
+use crate::assets::prefab::{PrefabData, PrefabError, PrefabRegistry, StoredPrefab};
 use crate::assets::scene::StrictValue;
 use crate::component_registry::MissingAsset;
-use crate::ecs::World;
+use crate::ecs::{TypeIdMap, World};
 
 /// Deserializes a data file's value as its kind's type; on failure, the
 /// field where it stopped and serde's error.
@@ -50,6 +50,7 @@ type Check = Box<dyn Fn(&dyn Any, &World) -> Result<(), MissingAsset>>;
 
 /// One registered kind and its entries.
 struct Kind {
+    name: &'static str,
     type_id: TypeId,
     type_name: &'static str,
     parse: Parse,
@@ -87,10 +88,14 @@ struct Entry {
 /// ```
 #[derive(Default)]
 pub struct DataRegistry {
-    /// Kind name → kind, sorted by name.
-    kinds: BTreeMap<&'static str, Kind>,
-    /// The registered type → its kind.
-    kinds_by_type: HashMap<TypeId, &'static str>,
+    /// The kinds in the order registered: a kind's place is its slot, which
+    /// a reference resolved by its type reads with no name looked up.
+    kinds: Vec<Kind>,
+    /// Kind name → slot, sorted by name.
+    slots: BTreeMap<&'static str, usize>,
+    /// The registered type → its kind's slot, keyed by the `TypeId` passed
+    /// through: every `DataRef` resolved by ID reads it.
+    kinds_by_type: TypeIdMap<usize>,
     /// Each entry loaded from a file: the file → the kind and ID.
     routes: HashMap<PathBuf, (&'static str, String)>,
 }
@@ -151,7 +156,7 @@ impl DataRegistry {
             valid_name(kind),
             "data kind `{kind}` for `{type_name}` must match [a-z][a-z0-9_]*"
         );
-        if let Some(existing) = self.kinds.get(kind) {
+        if let Some(existing) = self.kind(kind) {
             assert!(
                 existing.type_id == type_id,
                 "data kind `{kind}` already holds `{}`; `{type_name}` cannot take it",
@@ -159,7 +164,8 @@ impl DataRegistry {
             );
             return false;
         }
-        if let Some(existing) = self.kinds_by_type.get(&type_id) {
+        if let Some(&slot) = self.kinds_by_type.get(&type_id) {
+            let existing = self.kinds[slot].name;
             panic!(
                 "`{type_name}` is already registered as data kind `{existing}`; it cannot also be `{kind}`"
             );
@@ -176,35 +182,35 @@ impl DataRegistry {
                     (field, err.into_inner())
                 })
         });
-        self.kinds_by_type.insert(type_id, kind);
-        self.kinds.insert(
-            kind,
-            Kind {
-                type_id,
-                type_name,
-                parse,
-                check,
-                entries: BTreeMap::new(),
-            },
-        );
+        let slot = self.kinds.len();
+        self.kinds_by_type.insert(type_id, slot);
+        self.slots.insert(kind, slot);
+        self.kinds.push(Kind {
+            name: kind,
+            type_id,
+            type_name,
+            parse,
+            check,
+            entries: BTreeMap::new(),
+        });
         true
     }
 
     /// Whether kind `kind` is registered.
     #[must_use]
     pub fn contains_kind(&self, kind: &str) -> bool {
-        self.kinds.contains_key(kind)
+        self.slots.contains_key(kind)
     }
 
     /// The registered kinds, sorted.
     pub fn kinds(&self) -> impl Iterator<Item = &'static str> {
-        self.kinds.keys().copied()
+        self.slots.keys().copied()
     }
 
     /// The kind `T` is registered under.
     #[must_use]
     pub fn kind_of<T: 'static>(&self) -> Option<&'static str> {
-        self.kinds_by_type.get(&TypeId::of::<T>()).copied()
+        self.kind_for::<T>().map(|(name, _)| name)
     }
 
     /// The entry `id` of `T`'s kind, as it is now: a later load or reload
@@ -221,8 +227,7 @@ impl DataRegistry {
 
     /// The IDs of kind `kind`, sorted; none for a kind not registered.
     pub fn ids(&self, kind: &str) -> impl Iterator<Item = &str> {
-        self.kinds
-            .get(kind)
+        self.kind(kind)
             .into_iter()
             .flat_map(|kind| kind.entries.keys().map(String::as_str))
     }
@@ -259,23 +264,33 @@ impl DataRegistry {
     /// How many entries are held, over every kind.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.kinds.values().map(|kind| kind.entries.len()).sum()
+        self.kinds.iter().map(|kind| kind.entries.len()).sum()
     }
 
     /// Whether no entry is held.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.kinds.values().all(|kind| kind.entries.is_empty())
+        self.kinds.iter().all(|kind| kind.entries.is_empty())
     }
 
+    /// `T`'s kind, by its slot.
     fn kind_for<T: 'static>(&self) -> Option<(&'static str, &Kind)> {
-        let name = self.kind_of::<T>()?;
-        self.kinds.get(name).map(|kind| (name, kind))
+        let kind = &self.kinds[*self.kinds_by_type.get(&TypeId::of::<T>())?];
+        Some((kind.name, kind))
+    }
+
+    /// The kind named `name`.
+    fn kind(&self, name: &str) -> Option<&Kind> {
+        self.slots.get(name).map(|&slot| &self.kinds[slot])
+    }
+
+    fn kind_mut(&mut self, name: &str) -> Option<&mut Kind> {
+        self.slots.get(name).map(|&slot| &mut self.kinds[slot])
     }
 
     /// Removes entry `id` of `kind` with its file's route.
     fn take_entry(&mut self, kind: &'static str, id: &str) -> Option<Entry> {
-        let entry = self.kinds.get_mut(kind)?.entries.remove(id)?;
+        let entry = self.kind_mut(kind)?.entries.remove(id)?;
         if let Some(path) = &entry.path {
             self.routes.remove(path);
         }
@@ -291,21 +306,22 @@ impl DataRegistry {
         value: Box<dyn Any>,
         path: Option<PathBuf>,
     ) {
-        let Some(slot) = self.kinds.get_mut(kind) else {
+        if self.kind(kind).is_none() {
             return;
-        };
+        }
         if let Some(path) = &path {
             self.routes.insert(path.clone(), (kind, id.clone()));
         }
-        slot.entries.insert(id, Entry { value, path });
+        if let Some(slot) = self.kind_mut(kind) {
+            slot.entries.insert(id, Entry { value, path });
+        }
     }
 
     /// The entry `path` routes to loses the file, keeping its definition.
     fn release_path(&mut self, path: &Path) -> Option<(&'static str, String)> {
         let (kind, id) = self.routes.remove(path)?;
         if let Some(entry) = self
-            .kinds
-            .get_mut(kind)
+            .kind_mut(kind)
             .and_then(|slot| slot.entries.get_mut(&id))
         {
             entry.path = None;
@@ -315,11 +331,10 @@ impl DataRegistry {
 
     /// Gives entry `id` of `kind` the file `path` back.
     fn give_path(&mut self, kind: &'static str, id: &str, path: PathBuf) {
-        if let Some(entry) = self
-            .kinds
-            .get_mut(kind)
-            .and_then(|slot| slot.entries.get_mut(id))
-        {
+        let Some(&slot) = self.slots.get(kind) else {
+            return;
+        };
+        if let Some(entry) = self.kinds[slot].entries.get_mut(id) {
             self.routes.insert(path.clone(), (kind, id.to_owned()));
             entry.path = Some(path);
         }
@@ -331,7 +346,7 @@ impl fmt::Debug for DataRegistry {
         let kinds: BTreeMap<&str, Vec<&str>> = self
             .kinds
             .iter()
-            .map(|(name, kind)| (*name, kind.entries.keys().map(String::as_str).collect()))
+            .map(|kind| (kind.name, kind.entries.keys().map(String::as_str).collect()))
             .collect();
         f.debug_struct("DataRegistry")
             .field("kinds", &kinds)
@@ -555,7 +570,9 @@ impl<T: Serialize> Serialize for DataRef<T> {
 /// ```
 #[derive(Default)]
 pub struct StagedLoad {
-    prefabs: BTreeMap<String, (PrefabData, PathBuf)>,
+    /// Each staged prefab: its data, its file and, for a variant, the
+    /// file's JSON.
+    prefabs: BTreeMap<String, (PrefabData, PathBuf, Option<Value>)>,
     data: BTreeMap<(&'static str, String), StagedData>,
 }
 
@@ -590,9 +607,9 @@ impl StagedLoad {
         path: impl Into<PathBuf>,
     ) -> Result<(), PrefabError> {
         let path = path.into();
-        let data = PrefabData::parse(&path)?;
+        let (data, variant) = PrefabData::parse(&path)?;
         let path = path.canonicalize().unwrap_or(path);
-        self.prefabs.insert(id.into(), (data, path));
+        self.prefabs.insert(id.into(), (data, path, variant));
         Ok(())
     }
 
@@ -621,7 +638,7 @@ impl StagedLoad {
         let file = || path.display().to_string();
         let empty = DataRegistry::new();
         let registry = world.get_resource::<DataRegistry>().unwrap_or(&empty);
-        let Some((&name, slot)) = registry.kinds.get_key_value(kind) else {
+        let Some(slot) = registry.kind(kind) else {
             return Err(DataError::UnknownKind {
                 kind: kind.to_owned(),
                 path: file(),
@@ -645,7 +662,7 @@ impl StagedLoad {
         })?;
         let path = path.canonicalize().unwrap_or(path);
         self.data.insert(
-            (name, id.into()),
+            (slot.name, id.into()),
             StagedData {
                 value,
                 path,
@@ -670,30 +687,35 @@ impl StagedLoad {
     /// Puts every staged entry in place of the World's entry of that ID,
     /// inserting the [`DataRegistry`] and [`PrefabRegistry`] the World lacks;
     /// each staged entry takes its file from whichever entry held it, which
-    /// keeps its definition without a file. Then it checks every entry the
-    /// two registries hold from a file, staged or not, with the staging in
-    /// place: data entries by kind, then ID, through their kind's check,
-    /// then prefabs by ID through the checks [`PrefabData::load`] runs.
-    /// Entries without a file, inserted in code or left by a lost file, are
-    /// taken as given.
+    /// keeps its definition without a file. Then it resolves every variant
+    /// the prefab registry holds from a file over its base (`extends`, in ID
+    /// order), staged or not, so a base's reload reaches its variants. Then
+    /// it checks every entry the two registries hold from a file, staged or
+    /// not, with the staging in place: data entries by kind, then ID,
+    /// through their kind's check, then prefabs by ID through the checks
+    /// [`PrefabData::load`] runs. Entries without a file, inserted in code or
+    /// left by a lost file, are taken as given.
     ///
     /// # Errors
     ///
     /// Before anything changes, [`StagedLoadError::Data`] with
     /// [`DataError::UnknownKind`] or [`DataError::MismatchedKind`] for a
     /// staged entry whose kind the World does not register, or registers for
-    /// another type than the one it was read as. Then the first entry that
-    /// fails its check, as [`StagedLoadError::Data`] with
-    /// [`DataError::MissingAsset`] or [`StagedLoadError::Prefab`] with
-    /// [`PrefabError::Validation`]; every staged entry's previous state comes
-    /// back first: a replaced entry with its file, an added one removed, and
-    /// a file's former holder with its file.
+    /// another type than the one it was read as. Then the first variant that
+    /// does not resolve (its base unknown, with the nearest ID, or a cycle,
+    /// the chain named) or the first entry that fails its check, as
+    /// [`StagedLoadError::Data`] with [`DataError::MissingAsset`] or
+    /// [`StagedLoadError::Prefab`] with [`PrefabError::Validation`]; every
+    /// staged entry's previous state comes back first: a replaced entry with
+    /// its file, an added one removed, a file's former holder with its file,
+    /// and each variant as it was resolved before.
     pub fn commit(self, world: &mut World) -> Result<(), StagedLoadError> {
         if let Some((_, error)) = self.kind_failures(world).next() {
             return Err(error);
         }
-        let undo = self.place(world);
-        let checked = check_file_backed(world, &mut Err);
+        let mut undo = self.place(world);
+        let checked = resolve_variants(world, &mut undo, &mut Err)
+            .and_then(|()| check_file_backed(world, &mut Err));
         if checked.is_err() {
             for step in undo.into_iter().rev() {
                 step.revert(world);
@@ -742,11 +764,13 @@ impl StagedLoad {
             self.data.remove(&key);
             failures.push(error);
         }
-        self.place(world);
-        let _ = check_file_backed(world, &mut |error| {
+        let mut undo = self.place(world);
+        let mut keep = |error| {
             failures.push(error);
             Ok(())
-        });
+        };
+        let _ = resolve_variants(world, &mut undo, &mut keep);
+        let _ = check_file_backed(world, &mut keep);
         failures
     }
 
@@ -768,11 +792,16 @@ impl StagedLoad {
             data.put_entry(kind, id.clone(), value, Some(path));
             undo.push(Undo::Data { kind, id, previous });
         }
-        for (id, (prefab, path)) in self.prefabs {
+        for (id, (prefab, path, variant)) in self.prefabs {
             take_file(world, &path, &mut undo);
             let prefabs = world.resource_mut::<PrefabRegistry>();
             let previous = prefabs.take_entry(&id);
-            prefabs.put_entry(id.clone(), prefab, Some(path));
+            let entry = StoredPrefab {
+                data: prefab,
+                path: Some(path),
+                variant,
+            };
+            prefabs.put_entry(id.clone(), entry);
             undo.push(Undo::Prefab { id, previous });
         }
         undo
@@ -786,7 +815,7 @@ impl StagedLoad {
     ) -> impl Iterator<Item = ((&'static str, String), StagedLoadError)> + 'a {
         let registry = world.get_resource::<DataRegistry>();
         self.data.iter().filter_map(move |((kind, id), staged)| {
-            let slot = registry.and_then(|registry| registry.kinds.get(kind));
+            let slot = registry.and_then(|registry| registry.kind(kind));
             let source = match slot {
                 Some(slot) if slot.type_id == (*staged.value).type_id() => return None,
                 Some(slot) => DataError::MismatchedKind {
@@ -840,8 +869,10 @@ enum Undo {
     /// Prefab `id` was replaced by a staged one, or added.
     Prefab {
         id: String,
-        previous: Option<(PrefabData, Option<PathBuf>)>,
+        previous: Option<StoredPrefab>,
     },
+    /// Variant `id` was resolved again, replacing `previous`.
+    Resolved { id: String, previous: PrefabData },
     /// Entry `id` of `kind` lost `path` to a staged entry.
     DataFile {
         kind: &'static str,
@@ -865,9 +896,14 @@ impl Undo {
             Undo::Prefab { id, previous } => {
                 let prefabs = world.resource_mut::<PrefabRegistry>();
                 prefabs.take_entry(&id);
-                if let Some((prefab, path)) = previous {
-                    prefabs.put_entry(id, prefab, path);
+                if let Some(entry) = previous {
+                    prefabs.put_entry(id, entry);
                 }
+            }
+            Undo::Resolved { id, previous } => {
+                world
+                    .resource_mut::<PrefabRegistry>()
+                    .replace_resolved(&id, previous);
             }
             Undo::DataFile { kind, id, path } => {
                 world
@@ -898,6 +934,39 @@ fn take_file(world: &mut World, path: &Path, undo: &mut Vec<Undo>) {
     }
 }
 
+/// Every file-backed variant resolved again over its base, in ID order, each
+/// replaced data recorded in `undo` and each failure sent to `report`, as
+/// [`check_file_backed`] sends its own; a variant that fails keeps its data.
+fn resolve_variants(
+    world: &mut World,
+    undo: &mut Vec<Undo>,
+    report: &mut dyn FnMut(StagedLoadError) -> Result<(), StagedLoadError>,
+) -> Result<(), StagedLoadError> {
+    let Some(prefabs) = world.get_resource_mut::<PrefabRegistry>() else {
+        return Ok(());
+    };
+    for (id, resolved) in prefabs.resolve_variants() {
+        match resolved {
+            Ok(data) => {
+                if let Some(previous) = prefabs.replace_resolved(&id, data) {
+                    undo.push(Undo::Resolved { id, previous });
+                }
+            }
+            Err(message) => {
+                let path = prefabs
+                    .path_of(&id)
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_default();
+                report(StagedLoadError::Prefab {
+                    id,
+                    source: Box::new(PrefabError::Validation { path, message }),
+                })?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Phase two's check: every file-backed data entry by kind, then ID, then
 /// every file-backed prefab by ID, each failure sent to `report`, which
 /// `commit` stops at (`Err`) and `commit_for_check` keeps (`Ok`).
@@ -906,7 +975,9 @@ fn check_file_backed(
     report: &mut dyn FnMut(StagedLoadError) -> Result<(), StagedLoadError>,
 ) -> Result<(), StagedLoadError> {
     let data = world.resource::<DataRegistry>();
-    for (&kind, slot) in &data.kinds {
+    // By kind name, as the kinds are listed.
+    for (&kind, &slot) in &data.slots {
+        let slot = &data.kinds[slot];
         let Some(check) = &slot.check else {
             continue;
         };
@@ -1122,8 +1193,9 @@ pub(crate) fn did_you_mean(suggestion: Option<&str>) -> String {
     suggestion.map_or_else(String::new, |name| format!("; did you mean `{name}`?"))
 }
 
-/// The candidate nearest `target` by Levenshtein distance over chars, at
-/// most max(1, length / 3) edits away, ties to the first; `candidates` come
+/// The candidate nearest `target` by edits over chars (an insertion, a
+/// deletion, a substitution or a swap of two neighbours each one), at most
+/// max(1, length / 3) edits away, ties to the first; `candidates` come
 /// sorted, so the first is the smallest.
 pub(crate) fn nearest<'a>(
     target: &str,
@@ -1133,7 +1205,7 @@ pub(crate) fn nearest<'a>(
     let bound = (target.len() / 3).max(1);
     let mut best: Option<(usize, &str)> = None;
     for candidate in candidates {
-        let distance = levenshtein(&target, candidate);
+        let distance = edits(&target, candidate);
         if distance == 0 || distance > bound {
             continue;
         }
@@ -1144,16 +1216,25 @@ pub(crate) fn nearest<'a>(
     best.map(|(_, candidate)| candidate)
 }
 
-fn levenshtein(a: &[char], b: &str) -> usize {
+/// The edits from `a` to `b`, a swap of two neighbouring chars counting as
+/// one (the optimal string alignment distance), so `gaurd` is one edit from
+/// `guard` as a dropped letter is.
+fn edits(a: &[char], b: &str) -> usize {
     let b: Vec<char> = b.chars().collect();
+    let mut two_back = vec![0; b.len() + 1];
     let mut previous: Vec<usize> = (0..=b.len()).collect();
     let mut current = vec![0; b.len() + 1];
     for (i, &ca) in a.iter().enumerate() {
         current[0] = i + 1;
         for (j, &cb) in b.iter().enumerate() {
             let substitution = previous[j] + usize::from(ca != cb);
-            current[j + 1] = substitution.min(previous[j + 1] + 1).min(current[j] + 1);
+            let mut least = substitution.min(previous[j + 1] + 1).min(current[j] + 1);
+            if i > 0 && j > 0 && ca == b[j - 1] && a[i - 1] == cb {
+                least = least.min(two_back[j - 1] + 1);
+            }
+            current[j + 1] = least;
         }
+        std::mem::swap(&mut two_back, &mut previous);
         std::mem::swap(&mut previous, &mut current);
     }
     previous[b.len()]

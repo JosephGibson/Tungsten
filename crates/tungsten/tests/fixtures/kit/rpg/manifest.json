@@ -98,6 +98,18 @@
     },
     "fogling": {
       "path": "prefabs/fogling.json"
+    },
+    "wayfarer": {
+      "path": "prefabs/wayfarer.json"
+    },
+    "house": {
+      "path": "prefabs/house.json"
+    },
+    "lookout": {
+      "path": "prefabs/lookout.json"
+    },
+    "vista": {
+      "path": "prefabs/vista.json"
     }
   },
   "data": {

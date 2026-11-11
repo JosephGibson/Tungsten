@@ -6,7 +6,7 @@ use super::{
 };
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use tungsten_core::post::{FadeParams, PostPass, PostStack};
+use tungsten_core::post::{BloomParams, FadeParams, PostPass, PostStack, VignetteParams};
 use tungsten_core::{
     AudioCommand, AudioCommands, CollisionEvent, CommandBuffer, Config, DisplayMode, DisplayState,
     Entity, EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent, Stage, Time, World, system,
@@ -16,6 +16,54 @@ use tungsten_render::{QuadInstance, RenderOutcome, ScreenshotError};
 
 #[derive(Debug, Clone, Copy)]
 struct ExampleEvent;
+
+#[test]
+fn the_app_takes_physics_and_particles_from_its_config() {
+    let config: Config = serde_json::from_str(
+        r#"{ "physics": { "gravity": [0, 900], "broadphase_cell": 64 },
+             "particles": { "budget": 2500 } }"#,
+    )
+    .unwrap();
+    let app = App::new(config).expect("App::new failed");
+    let physics = app
+        .world()
+        .resource::<tungsten_core::physics::PhysicsConfig>();
+    assert_eq!(physics.gravity, glam::Vec2::new(0.0, 900.0));
+    assert_eq!(physics.broadphase_cell_size, 64.0);
+    let engine = tungsten_core::physics::PhysicsConfig::default();
+    assert_eq!(
+        physics.substeps, engine.substeps,
+        "the rest stays the engine's"
+    );
+    assert_eq!(
+        app.world()
+            .resource::<tungsten_core::ParticleBudget>()
+            .global_cap,
+        2500
+    );
+
+    // Without the sections, the engine's defaults.
+    let app = App::new(Config::default()).expect("App::new failed");
+    let physics = app
+        .world()
+        .resource::<tungsten_core::physics::PhysicsConfig>();
+    assert_eq!(
+        (physics.gravity, physics.broadphase_cell_size),
+        (engine.gravity, engine.broadphase_cell_size)
+    );
+    assert_eq!(
+        app.world()
+            .resource::<tungsten_core::ParticleBudget>()
+            .global_cap,
+        10_000
+    );
+
+    // A cell built in code that is not above 0 is refused.
+    let mut bad = Config::default();
+    bad.physics.broadphase_cell = 0.0;
+    let error = App::new(bad).err().expect("refused").to_string();
+    assert!(error.contains("physics.broadphase_cell"), "{error}");
+}
 
 #[test]
 fn register_event_is_idempotent_per_type() {
@@ -294,7 +342,7 @@ fn transition_pass_is_appended_after_user_stack() {
     let mut scratch = PostStack::new();
     scratch.push(PostPass::Pixelate(99.0));
 
-    let composed = compose_post_stack(&user, Some(half_fade()), &mut scratch);
+    let composed = compose_post_stack(&user, &[], true, Some(half_fade()), &mut scratch);
     assert_eq!(
         composed.0,
         [
@@ -307,7 +355,7 @@ fn transition_pass_is_appended_after_user_stack() {
 
     // An empty user stack draws the transition pass alone.
     let empty = PostStack::new();
-    let composed = compose_post_stack(&empty, Some(half_fade()), &mut scratch);
+    let composed = compose_post_stack(&empty, &[], true, Some(half_fade()), &mut scratch);
     assert_eq!(composed.0, [half_fade()]);
 }
 
@@ -317,12 +365,72 @@ fn no_transition_leaves_user_stack_untouched() {
     user.push(PostPass::Pixelate(4.0));
     let mut scratch = PostStack::new();
 
-    let composed = compose_post_stack(&user, None, &mut scratch);
+    let composed = compose_post_stack(&user, &[], true, None, &mut scratch);
     assert!(
         std::ptr::eq(composed, &raw const user),
         "the user's stack is drawn as is"
     );
     assert_eq!(composed.0, [PostPass::Pixelate(4.0)]);
+    assert!(scratch.is_empty());
+}
+
+fn bloom() -> PostPass {
+    PostPass::Bloom(BloomParams::default())
+}
+
+fn vignette() -> PostPass {
+    PostPass::Vignette(VignetteParams::default())
+}
+
+#[test]
+fn bloom_off_drops_bloom_from_the_drawn_stack() {
+    let mut user = PostStack::new();
+    user.push(bloom());
+    user.push(PostPass::Pixelate(4.0));
+    let tail = [bloom(), vignette()];
+    let mut scratch = PostStack::new();
+    let composed = compose_post_stack(&user, &tail, false, Some(half_fade()), &mut scratch);
+    assert_eq!(
+        composed.0,
+        [PostPass::Pixelate(4.0), vignette(), half_fade()],
+        "no Bloom from the stack or the tail"
+    );
+    let composed = compose_post_stack(&user, &[], false, None, &mut scratch);
+    assert_eq!(composed.0, [PostPass::Pixelate(4.0)]);
+    assert_eq!(user.len(), 2, "the user's stack keeps its Bloom");
+    let composed = compose_post_stack(&user, &[], true, None, &mut scratch);
+    assert_eq!(composed.0, [bloom(), PostPass::Pixelate(4.0)], "Bloom on");
+}
+
+#[test]
+fn the_tail_draws_after_the_game_stack_and_before_the_transition() {
+    let mut user = PostStack::new();
+    user.push(PostPass::Pixelate(4.0));
+    let mut scratch = PostStack::new();
+    scratch.push(PostPass::Pixelate(99.0));
+    let composed = compose_post_stack(&user, &[vignette()], true, Some(half_fade()), &mut scratch);
+    assert_eq!(
+        composed.0,
+        [PostPass::Pixelate(4.0), vignette(), half_fade()]
+    );
+    let composed = compose_post_stack(&user, &[vignette()], true, None, &mut scratch);
+    assert_eq!(composed.0, [PostPass::Pixelate(4.0), vignette()]);
+}
+
+#[test]
+fn an_empty_tail_with_bloom_on_draws_the_game_stack_itself() {
+    let mut user = PostStack::new();
+    user.push(bloom());
+    let mut scratch = PostStack::new();
+    let composed = compose_post_stack(&user, &[], true, None, &mut scratch);
+    assert!(std::ptr::eq(composed, &raw const user), "Bloom on");
+    let mut plain = PostStack::new();
+    plain.push(vignette());
+    let composed = compose_post_stack(&plain, &[], false, None, &mut scratch);
+    assert!(
+        std::ptr::eq(composed, &raw const plain),
+        "Bloom off over a stack without Bloom copies nothing either"
+    );
     assert!(scratch.is_empty());
 }
 
@@ -850,7 +958,7 @@ fn run_check_writes_one_line_naming_the_manifest_and_fails_on_a_missing_sprite_f
     let mut app = App::new(Config::default()).unwrap();
     app.set_manifest_roots(vec![root]);
     let report = dir.join("report.txt");
-    let err = app.run_check(&report, &dir).unwrap_err();
+    let err = app.run_check(&report, &dir, &|_| None).unwrap_err();
     assert!(err.to_string().contains("found 1 error,"), "{err}");
     let text = std::fs::read_to_string(&report).unwrap();
     let lines: Vec<&str> = text.lines().collect();
@@ -870,8 +978,99 @@ fn run_check_writes_an_empty_report_and_passes_on_clean_files() {
     // The reload root stands in when no composition roots are set.
     app.enable_hot_reload(&[dir.join("assets")], root);
     let report = dir.join("report.txt");
-    app.run_check(&report, &dir).unwrap();
+    app.run_check(&report, &dir, &|_| None).unwrap();
     assert_eq!(std::fs::read_to_string(&report).unwrap(), "");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Two copies of the rooms fixture's `hall`.
+struct Halls;
+
+impl tungsten_core::assets::RoomGenerator for Halls {
+    fn version(&self) -> u32 {
+        1
+    }
+
+    fn generate(&self, generation: &mut tungsten_core::assets::Generate<'_>) -> Result<(), String> {
+        let hall = generation.template("hall")?;
+        generation.add("a", hall.clone(), [0.0, 0.0])?;
+        generation.add("b", hall, [320.0, 0.0])
+    }
+}
+
+/// The rooms fixture through `run_check`, `Halls` registered when
+/// `generator`, `TUNGSTEN_CHECK_SEEDS` as `seeds` gives it: the result and
+/// the report's text.
+fn check_rooms_fixture(generator: bool, seeds: Option<&str>) -> (anyhow::Result<()>, String) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static RUN: AtomicU32 = AtomicU32::new(0);
+    let dir = crate::asset_loader::room::tests::fixture();
+    let mut app = App::new(Config::default()).unwrap();
+    if generator {
+        app.register_generator("halls", Halls);
+    }
+    app.set_manifest_roots(vec![dir.join("manifest.json")]);
+    let report = std::env::temp_dir().join(format!(
+        "tungsten_app_seeds_{}_{}.txt",
+        std::process::id(),
+        RUN.fetch_add(1, Ordering::SeqCst)
+    ));
+    let env = |name: &str| {
+        (name == "TUNGSTEN_CHECK_SEEDS")
+            .then(|| seeds.map(std::ffi::OsString::from))
+            .flatten()
+    };
+    let result = app.run_check(&report, &dir, &env);
+    let text = std::fs::read_to_string(&report).unwrap();
+    let _ = std::fs::remove_file(&report);
+    (result, text)
+}
+
+#[test]
+fn run_check_reads_the_seeds_variable() {
+    let (result, text) = check_rooms_fixture(true, Some("5+3"));
+    result.unwrap();
+    assert_eq!(
+        text,
+        "#\tgenerator `halls` (version 1): seeds 5+3, 6 rooms\n"
+    );
+    let (result, text) = check_rooms_fixture(true, None);
+    result.unwrap();
+    assert_eq!(
+        text, "#\tgenerator `halls` (version 1): seeds 0+16, 32 rooms\n",
+        "unset: 0+16"
+    );
+    let (result, text) = check_rooms_fixture(true, Some("5-3"));
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("found 1 error,"), "{err}");
+    assert_eq!(
+        text, "\tTUNGSTEN_CHECK_SEEDS `5-3`: expected <first>+<count>, two whole numbers\n",
+        "one finding with no file"
+    );
+}
+
+#[test]
+fn run_check_without_a_generator_writes_what_it_wrote_before() {
+    // The clean rooms fixture: an empty report, whatever the variable says.
+    for seeds in [None, Some("5+3"), Some("garbage")] {
+        let (result, text) = check_rooms_fixture(false, seeds);
+        assert!(result.is_ok(), "{seeds:?}");
+        assert_eq!(text, "", "{seeds:?}");
+    }
+    // A failing check's one line, as before.
+    let (dir, root) = check_folder("seeds", true);
+    let mut app = App::new(Config::default()).unwrap();
+    app.set_manifest_roots(vec![root]);
+    let report = dir.join("report.txt");
+    let env = |name: &str| (name == "TUNGSTEN_CHECK_SEEDS").then(|| "0+500".into());
+    let err = app.run_check(&report, &dir, &env).unwrap_err();
+    assert!(err.to_string().contains("found 1 error,"), "{err}");
+    let text = std::fs::read_to_string(&report).unwrap();
+    assert_eq!(text.lines().count(), 1, "{text}");
+    assert!(
+        text.starts_with("assets/manifest.json\tsprite 'hero' references missing file: "),
+        "{text}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1074,6 +1273,102 @@ fn boot_frames_run_slices_until_the_plan_ends() {
         ]
     );
     assert_eq!(pacer.slice_max(), Duration::from_millis(15));
+}
+
+/// A boot's redraws by a test's clock: `units` of 5 ms each, and `between`
+/// passing between two redraws; each step's units, view, end and idle
+/// milliseconds, and its milliseconds from the first.
+fn boot_steps(
+    pacer: &mut BootPacer,
+    units: u32,
+    between: Duration,
+) -> Vec<(usize, bool, bool, u128, u128)> {
+    use std::cell::Cell;
+    let start = Instant::now();
+    let now = Cell::new(start);
+    let mut clock = || now.get();
+    let mut left = units;
+    let mut run = || {
+        if left == 0 {
+            return None;
+        }
+        left -= 1;
+        now.set(now.get() + Duration::from_millis(5));
+        Some(Ok(()))
+    };
+    let mut steps = Vec::new();
+    loop {
+        let step = pacer.redraw(&mut clock, &mut run).unwrap();
+        let at = now.get().duration_since(start).as_millis();
+        steps.push((step.ran, step.view, step.done, step.idle.as_millis(), at));
+        if step.done {
+            return steps;
+        }
+        assert!(steps.len() < 100, "the boot never ended: {steps:?}");
+        now.set(now.get() + between);
+    }
+}
+
+#[test]
+fn the_boot_holds_until_its_hold_has_passed() {
+    // Four units of 5 ms, 10 ms between redraws, and a 100 ms hold.
+    let mut pacer = BootPacer::holding(Duration::from_millis(100));
+    let steps = boot_steps(&mut pacer, 4, Duration::from_millis(10));
+    assert_eq!(
+        steps,
+        [
+            (0, true, false, 0, 0),
+            (3, false, false, 0, 25),
+            // The plan ends at 40 ms; the boot holds, the view still drawing
+            // once 33 ms have passed since the last, and each redraw idle
+            // until the next view or the hold's end.
+            (1, true, false, 33, 40),
+            (0, false, false, 23, 50),
+            (0, false, false, 13, 60),
+            (0, false, false, 3, 70),
+            (0, true, false, 20, 80),
+            (0, false, false, 10, 90),
+            // The hold has passed: the boot ends.
+            (0, false, true, 0, 100),
+        ]
+    );
+    assert!((pacer.secs() - 0.1).abs() < 1e-6, "{}", pacer.secs());
+    assert!((pacer.hold() - 0.1).abs() < 1e-6);
+}
+
+#[test]
+fn a_load_past_the_hold_ends_the_boot_at_once() {
+    // Twenty units of 5 ms against a 30 ms hold: the redraw that ends the
+    // plan ends the boot, as with no hold.
+    let mut held = BootPacer::holding(Duration::from_millis(30));
+    let steps = boot_steps(&mut held, 20, Duration::ZERO);
+    let unheld = boot_steps(&mut BootPacer::default(), 20, Duration::ZERO);
+    assert_eq!(steps, unheld);
+    assert_eq!(steps.last(), Some(&(2, false, true, 0, 100)));
+    assert!(steps.iter().all(|step| step.3 == 0), "a load has no idle");
+}
+
+#[test]
+fn a_script_run_holds_nothing() {
+    let group = tungsten_core::assets::manifest::BootGroup {
+        hold: Some(1.5),
+        ..Default::default()
+    };
+    let mut app = App::new(Config::default()).unwrap();
+    assert_eq!(app.boot_hold(&group), Duration::from_millis(1500));
+    let script =
+        tungsten_core::script::Script::parse(r#"{"version": 1, "frames": 1, "steps": []}"#)
+            .unwrap();
+    app.script = Some(crate::script::ScriptRunner::new(script, "boot.json", true));
+    assert_eq!(
+        app.boot_hold(&group),
+        Duration::ZERO,
+        "a script run's boot is not watched"
+    );
+    // Its pacer ends the boot on the redraw that ends the plan.
+    let mut pacer = BootPacer::holding(app.boot_hold(&group));
+    let steps = boot_steps(&mut pacer, 4, Duration::from_millis(10));
+    assert_eq!(steps.last(), Some(&(1, false, true, 0, 40)));
 }
 
 #[test]

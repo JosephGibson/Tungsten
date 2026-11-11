@@ -382,6 +382,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
                 position: Vec2::new(0.0, state.camera_y),
                 zoom: params.zoom,
                 rotation: 0.0,
+                ..CameraState::new()
             };
         }
         world.insert_resource(state);

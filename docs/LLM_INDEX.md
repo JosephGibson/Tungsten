@@ -12,7 +12,7 @@ Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tun
 | Frame order, winit loop, smoke (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
 | Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
 | Kit by domain: phases, tags, stats, cues, motion, recipes (`D-155`, `D-172`–`D-177`, `D-238`–`D-247`) | `crates/tungsten-kit/src/`, `tungsten/tests/kit.rs`, `tungsten/tests/kit_recipes/`, `crates/tungsten/tests/fixtures/kit/` |
-| Game clock, `Time`, `Timer`, fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs` |
+| Game clock, `Time`, `Timer`, fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/physics/plugin.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs` |
 | Tuple queries, `With`/`Without`, bundles, `spawn_with`, `RigidBodyBundle` (`D-130`, `D-135`) | `core/ecs/query.rs`, `core/ecs/bundle.rs`, `core/ecs/world.rs`, `core/tests/ecs/query.rs` |
 | Headless harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
 | Config, env overrides, settings (`D-159`) | `core/config.rs`, `core/settings.rs`, `core/display.rs`, `tungsten/settings.rs`, `tungsten.json` |
@@ -20,10 +20,10 @@ Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tun
 | Display apply, fullscreen, vsync, frame cap, monitor (`D-043`, `D-184`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`, `D-159`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
 | Input state, raw stream, gamepads, their `gilrs` backend (`D-220`) and stick response (`D-221`), focus loss, modifiers, pointer leave, `ScaleFactor`, winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
-| Camera follow/zoom/bounds/shake (`D-073`) | `core/camera.rs`, `tungsten/camera.rs` |
+| Camera rigs, blends, bounds, shake (`D-073`, `D-249`) | `core/camera.rs`, `tungsten/camera.rs` |
 | State stack, owned UI roots, scenes, components, `SceneEntity`, transitions, screens (`D-046`, `D-093`, `D-153`) | `tungsten/state.rs`, `tungsten/transition.rs`, `tungsten/screens/`, `core/assets/scene.rs`, `core/component_registry.rs`, `tungsten/asset_loader/scene.rs`, `examples/03_fixtures/src/transition/` |
 | Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |
-| Parallax, camera shake trauma, squash/stretch (`D-073`) | `core/components.rs`, `core/camera.rs`, `tungsten/game_feel.rs`, `tungsten/sprite_extract.rs` |
+| Parallax, squash/stretch (`D-073`) | `core/components.rs`, `tungsten/game_feel.rs`, `tungsten/sprite_extract.rs` |
 | Particles, mesh particles (`D-049`–`D-051`, `D-093`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `render/mesh_particle.rs`, `examples/01_platformer/assets/particles/` |
 | Audio mixer, pan, ducks, reload, decode (`D-027`, `D-028`, `D-034`, `D-231`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/integration/audio_decode.rs` |
 | Telemetry, perf lines (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `tungsten/app.rs`, `docs/perf/profiling-workflow.md` |
@@ -38,7 +38,7 @@ Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tun
 | Manifest load, boot plan, data entries, load path, GPU upload, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`, `D-171`, `D-231`) | `core/assets/manifest.rs`, `core/assets/data.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/` |
 | Hot reload, file watch (`D-031`, `D-053`) | `tungsten/hot_reload.rs`, `tungsten/asset_loader/reload.rs` |
 | Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader/atlas.rs` |
-| Tilemaps, tile collision (`D-032`, `D-033`, `D-228`) | `core/assets/tilemap.rs`, `core/assets/terrain.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step/gather.rs` |
+| Tilemaps, rooms, level editor, tile collision (`D-032`, `D-033`, `D-228`, `D-264`) | `docs/levels.md`, `core/assets/{tilemap.rs,terrain.rs,room/}`, `tungsten/{tilemap_extract.rs,level_editor*}`, `core/physics/step/gather.rs` |
 | Prefabs, spawn inheritance, Tiled objects, tilemap builder (`D-157`, `D-170`) | `core/assets/prefab.rs`, `core/assets/tilemap.rs`, `tungsten/asset_loader/prefab.rs` |
 | UI theme and screen files, nine-slice insets, letter spacing (`D-148`, `D-198`, `D-236`) | `core/ui/theme_file.rs`, `core/ui/screen_file.rs`, `core/assets/manifest.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/asset_loader/reload.rs` |
 
@@ -46,7 +46,7 @@ Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tun
 
 | Task | Open |
 | --- | --- |
-| Contacts, sleep, kinematic bodies, sensors, queries (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`, `D-154`, `D-156`, `D-228`, `D-229`) | `core/physics/step/`, `core/physics/collision.rs`, `core/physics/broadphase.rs`, `core/physics/query.rs` |
+| Contacts, sleep, kinematic bodies, sensors, queries (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`, `D-154`, `D-156`, `D-228`, `D-229`) | `core/physics/step/`, `core/physics/{collision,broadphase,query}.rs` |
 | Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/integration/physics_*.rs`; [validation](validation.md#change-to-check-matrix) routes release-only physics checks |
 
 ## Rendering
@@ -87,7 +87,7 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 | Agent instruction budgets and links (`just ctx`) | `scripts/check-agent-context.py` |
 | Stale `target/` artifacts, a full disk (`just clean-target`) | `scripts/clean-target.py`, `scripts/test-clean-target.py` |
 | Public-API snapshots (`just api`, `D-107`), a free diff of the surface (`D-215`) | `scripts/public-api.sh`, `api/` |
-| Writing or running a large plan | `.claude/skills/tungsten-plan/SKILL.md`, `docs/operating-rules.md` |
+| Writing or running a large plan | `.claude/skills/tungsten-plan/SKILL.md`, `docs/operating-rules.md`, `scripts/preflight.py` |
 | Status, what's next; commit, plan, decision, tier, release rules (`D-215`) | `ROADMAP.md`, `scripts/status.py`, `docs/operating-rules.md`, `docs/plans/roadmap-redo.md`, `.claude/skills/tungsten-next/SKILL.md`, `.githooks/commit-msg` |
 | Releases: checks, hand-off, recovery, player archives, licenses, crash symbols (`D-071`, `D-074`, `D-120`, `D-122`, `D-196`, `D-227`, `D-232`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `licenses/`, `scripts/crash-report.py`, `scripts/test-crash-report.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
 | CI jobs, the Windows test job (`D-070`, `D-121`) | `.github/workflows/ci.yml` |

@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 use tungsten_core::physics::{Collider, PrevPosition, RigidBodyBundle};
-use tungsten_core::{Bundle, CameraController, CameraState, Stage, Time, WindowSize};
+use tungsten_core::{Bundle, CameraState, Stage, Time, WindowSize};
 
 use crate::spawn_child;
 
@@ -100,16 +100,14 @@ fn a_camera_shake_does_not_move_a_clamped_entity() {
         height: 360,
     });
     let mut camera = CameraState::new();
-    let mut controller = CameraController::default();
     let fighter = world.spawn_with((
         StayInView::view(8.0).with_size(Vec2::splat(24.0)),
         Position(Vec2::new(608.0, 100.0)),
     ));
     for shake in [Vec2::ZERO, Vec2::new(-12.0, 5.0), Vec2::new(9.0, -7.0)] {
         camera.position = shake;
-        controller.record_output_position(camera.position, shake);
+        camera.shake = shake;
         world.insert_resource(camera);
-        world.insert_resource(controller);
         run(&mut world, &mut schedule);
         assert_eq!(
             position(&world, fighter),

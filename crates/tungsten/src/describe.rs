@@ -15,7 +15,10 @@
 //! (redo 7.20): the bindings, row providers, mounts and actions its
 //! `UiBindings` holds and the screens it registered by name; `screens`,
 //! each `ui_screens` file's `id`, `file`, `keys` and the names it `uses` by
-//! kind; and `errors`, each `{file, message}` the load found.
+//! kind; `prefabs`, each loaded prefab resolved (redo 7.12), as `{name,
+//! extends, prefab}`: its ID, the base it extends or `null`, and its fields
+//! with a variant's base under them; and `errors`, each `{file, message}`
+//! the load found.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -24,13 +27,13 @@ use serde_json::{Value, json};
 use tungsten_core::assets::ResolvedManifest;
 use tungsten_core::script::ScriptHooks;
 use tungsten_core::ui::{ScreenNames, UiBindings, UiScreenRegistry};
-use tungsten_core::{ComponentRegistry, World};
+use tungsten_core::{ComponentRegistry, PrefabRegistry, World};
 
 use crate::asset_loader::check::check_files;
 use crate::screens::ScreenRegistry;
 
 /// The description's format version; a field added or changed bumps it.
-pub(crate) const DESCRIBE_VERSION: u32 = 2;
+pub(crate) const DESCRIBE_VERSION: u32 = 3;
 
 /// Loads the files `roots` name into `world`, as a check does, and
 /// describes what it then holds; `game_dir` bounds every path.
@@ -74,8 +77,28 @@ pub(crate) fn describe(world: &mut World, roots: &[PathBuf], game_dir: &Path) ->
         "assets": assets(&manifest),
         "ui": ui(world),
         "screens": screens(world, &manifest, game_dir),
+        "prefabs": prefabs(world),
         "errors": errors,
     })
+}
+
+/// Each loaded prefab by ID, resolved: its name, the base it extends and its
+/// fields, `extends` given beside them.
+fn prefabs(world: &World) -> Vec<Value> {
+    let Some(registry) = world.get_resource::<PrefabRegistry>() else {
+        return Vec::new();
+    };
+    registry
+        .ids()
+        .filter_map(|id| {
+            let data = registry.get(id)?;
+            let mut prefab = serde_json::to_value(data).ok()?;
+            if let Value::Object(fields) = &mut prefab {
+                fields.remove("extends");
+            }
+            Some(json!({ "name": id, "extends": data.extends, "prefab": prefab }))
+        })
+        .collect()
 }
 
 /// The names a screen file may use that the game registers, by kind.
@@ -194,6 +217,8 @@ fn assets(manifest: &ResolvedManifest) -> Value {
         "ui_themes": ids(&manifest.ui_themes),
         "ui_screens": ids(&manifest.ui_screens),
         "prefabs": ids(&manifest.prefabs),
+        "tilesets": ids(&manifest.tilesets),
+        "rooms": ids(&manifest.rooms),
         "data": data,
     })
 }

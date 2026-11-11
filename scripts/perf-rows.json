@@ -787,6 +787,135 @@
       "workload_version": 1
     },
     {
+      "name": "rooms",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "rooms",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 120,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "moved",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "painted",
+          "kind": "counter_const"
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "generate",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "generate",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 60,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "rooms",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "spawned",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "removed",
+          "kind": "counter_const"
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "blast",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "blast",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 480,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50",
+            "p95",
+            "p99"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "bodies",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "escaped",
+          "kind": "counter_max",
+          "max": 0
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "e01-pit",
       "package": "example-01-platformer",
       "folder": "examples/01_platformer",
@@ -861,6 +990,321 @@
         },
         {
           "metric": "stage.extract",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "e01-stress",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 30,
+              "action": "fill_pit",
+              "args": {
+                "count": 12000
+              }
+            },
+            {
+              "frame": 630,
+              "action": "wake_foes"
+            },
+            {
+              "frame": 831,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  3300,
+                  3600
+                ]
+              },
+              "until": "end",
+              "every": 100
+            },
+            {
+              "frame": 851,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  4350,
+                  3600
+                ]
+              },
+              "until": "end",
+              "every": 100
+            },
+            {
+              "frame": 871,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  3840,
+                  3540
+                ]
+              },
+              "until": "end",
+              "every": 100
+            },
+            {
+              "frame": 891,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  3550,
+                  3580
+                ]
+              },
+              "until": "end",
+              "every": 100
+            },
+            {
+              "frame": 911,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  4100,
+                  3580
+                ]
+              },
+              "until": "end",
+              "every": 100
+            },
+            {
+              "frame": 841,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  4192,
+                  2240
+                ]
+              },
+              "until": "end",
+              "every": 100
+            },
+            {
+              "frame": 836,
+              "action": "cast_at",
+              "args": {
+                "spell": "lightning",
+                "at": [
+                  4192,
+                  2200
+                ]
+              },
+              "until": "end",
+              "every": 96
+            },
+            {
+              "frame": 884,
+              "action": "cast_at",
+              "args": {
+                "spell": "lightning",
+                "at": [
+                  3700,
+                  3400
+                ]
+              },
+              "until": "end",
+              "every": 96
+            },
+            {
+              "frame": 846,
+              "action": "cast_at",
+              "args": {
+                "spell": "force_push",
+                "at": [
+                  4500,
+                  2280
+                ]
+              },
+              "until": "end",
+              "every": 120
+            },
+            {
+              "frame": 906,
+              "action": "cast_at",
+              "args": {
+                "spell": "force_push",
+                "at": [
+                  3900,
+                  2280
+                ]
+              },
+              "until": "end",
+              "every": 120
+            },
+            {
+              "frame": 855,
+              "action": "cast_at",
+              "args": {
+                "spell": "iron_block",
+                "at": [
+                  3500,
+                  3200
+                ]
+              }
+            },
+            {
+              "frame": 915,
+              "action": "cast_at",
+              "args": {
+                "spell": "iron_block",
+                "at": [
+                  4200,
+                  3200
+                ]
+              }
+            },
+            {
+              "frame": 975,
+              "action": "cast_at",
+              "args": {
+                "spell": "iron_block",
+                "at": [
+                  3840,
+                  3100
+                ]
+              }
+            },
+            {
+              "frame": 1035,
+              "action": "cast_at",
+              "args": {
+                "spell": "iron_block",
+                "at": [
+                  3350,
+                  3150
+                ]
+              }
+            },
+            {
+              "frame": 960,
+              "action": "cast_at",
+              "args": {
+                "spell": "black_hole",
+                "at": [
+                  3840,
+                  3450
+                ]
+              }
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "pit",
+              "path": "/foes_alive",
+              "op": "==",
+              "value": 6
+            },
+            {
+              "probe": "pit",
+              "path": "/foes_awake",
+              "op": ">=",
+              "value": 5
+            },
+            {
+              "probe": "pit",
+              "path": "/balls",
+              "op": ">=",
+              "value": 11000
+            },
+            {
+              "probe": "pit_fire",
+              "path": "/burning",
+              "op": ">=",
+              "value": 10000
+            }
+          ]
+        }
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 810,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "stage.total",
+          "stats": [
+            "p50",
+            "p95",
+            "p99"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.extract",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.fire_spread",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.fire_exposure",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.body_impacts",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.iron_crush",
+          "stats": [
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.iron_friction",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.animation_tick",
           "stats": [
             "p50"
           ]

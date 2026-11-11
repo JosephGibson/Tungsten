@@ -26,16 +26,16 @@ use std::sync::Arc;
 use glam::{Vec2, Vec3};
 use serde_json::{Value, json};
 use tungsten_core::script::{
-    CameraView, CaptureReport, Cursor, Ending, FailedStep, LogReport, Occurrence, ProbeReport,
-    Report, Script, ScriptHooks, ScriptRun, SheetKind, SheetStep, SpawnStep, Unreached, Verb,
-    select,
+    CameraView, CaptureReport, Cursor, Ending, FailedStep, GenerateStep, LevelEdit, LevelStep,
+    LogReport, Occurrence, ProbeReport, Report, Script, ScriptHooks, ScriptRun, SheetKind,
+    SheetStep, SpawnStep, Unreached, Verb, select,
 };
 use tungsten_core::ui::UiTree;
 use tungsten_core::{
     AmbientLight, AnimationRegistry, AnimationState, AssetRegistry, CameraState, ComponentRegistry,
     Entity, InputState, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
-    PrefabRegistry, PrevPosition, Sprite, SpriteAsset, Transform, Velocity, Visibility, World,
-    WorldLabel, WorldLabels,
+    PrefabRegistry, PrevPosition, Sprite, SpriteAsset, TilemapData, TilemapRegistry, Transform,
+    Velocity, Visibility, World, WorldLabel, WorldLabels,
 };
 
 use crate::app::WindowSize;
@@ -125,7 +125,7 @@ pub(crate) fn verdict(report: &Report) -> String {
 }
 
 /// The engine's script hooks: core's probes, then `states`, `log` and
-/// `startup`.
+/// `startup`, and the level editor's `editor` probe and action.
 pub(crate) fn engine_hooks() -> ScriptHooks {
     let mut hooks = ScriptHooks::new();
     hooks.add_probe(
@@ -158,6 +158,7 @@ pub(crate) fn engine_hooks() -> ScriptHooks {
                 .map_or(Value::Null, |timings| json!(timings)))
         },
     );
+    crate::level_editor::register_hooks(&mut hooks);
     hooks
 }
 
@@ -243,6 +244,12 @@ enum Staged {
     Spawn(SpawnStep),
     Scene(String),
     Sheet(SheetStep),
+    /// A room, spawned at the origin (redo 7.12).
+    Room(String),
+    /// A live room's batch or undo (redo 7.12).
+    Level(LevelStep),
+    /// A generation's rooms, each spawned at its origin (redo 7.12).
+    Generate(GenerateStep),
 }
 
 /// A sheet item held at its cell.
@@ -641,6 +648,11 @@ impl ScriptRunner {
             Verb::Action(action) => ScriptHooks::call_action(world, &action.name, &action.args)?,
             Verb::Spawn(spawn) => return self.stage_or_now(world, at, Staged::Spawn(spawn)),
             Verb::Scene(scene) => return self.stage_or_now(world, at, Staged::Scene(scene)),
+            Verb::Room(room) => return self.stage_or_now(world, at, Staged::Room(room)),
+            Verb::Level(level) => return self.stage_or_now(world, at, Staged::Level(level)),
+            Verb::Generate(generate) => {
+                return self.stage_or_now(world, at, Staged::Generate(generate));
+            }
             Verb::Screen(id) => {
                 if let Some(reason) = crate::screens::refusal(world, &id) {
                     return Err(reason);
@@ -775,6 +787,58 @@ impl ScriptRunner {
                     self.camera = Some(CameraView::FitStaged);
                 }
             }
+            Staged::Room(room) => {
+                world
+                    .spawn_room(&room, Vec2::ZERO, &(SceneEntity { state_id: owner },))
+                    .map_err(|err| err.to_string())?;
+                // A staged fit covers the room's whole map.
+                let size = world
+                    .get_resource::<TilemapRegistry>()
+                    .and_then(|maps| maps.get(&room))
+                    .map_or(Vec2::ZERO, TilemapData::pixel_size);
+                self.grow_bounds(Vec2::ZERO, size);
+            }
+            Staged::Generate(GenerateStep {
+                generator,
+                seed,
+                prefix,
+            }) => {
+                let prefix = prefix.unwrap_or_else(|| generator.clone());
+                let generated = world
+                    .generate_rooms(&generator, seed, &prefix)
+                    .map_err(|err| err.to_string())?;
+                for (room, origin) in generated.rooms() {
+                    world
+                        .spawn_room(room, origin, &(SceneEntity { state_id: owner },))
+                        .map_err(|err| err.to_string())?;
+                    let size = world
+                        .get_resource::<TilemapRegistry>()
+                        .and_then(|maps| maps.get(room))
+                        .map_or(Vec2::ZERO, TilemapData::pixel_size);
+                    self.grow_bounds(origin, origin + size);
+                }
+            }
+            // The patch's spawns take the instance's `SceneEntity` through
+            // the spawn inheritance; no file is written.
+            Staged::Level(LevelStep { room, edit }) => match edit {
+                LevelEdit::Apply(batch) => {
+                    world
+                        .apply_room_batch(&room, &batch)
+                        .map_err(|err| err.to_string())?;
+                }
+                LevelEdit::Undo => {
+                    world
+                        .undo_room_batch(&room)
+                        .map_err(|err| err.to_string())?
+                        .ok_or_else(|| format!("room `{room}` has nothing to undo"))?;
+                }
+                LevelEdit::Redo => {
+                    world
+                        .redo_room_batch(&room)
+                        .map_err(|err| err.to_string())?
+                        .ok_or_else(|| format!("room `{room}` has nothing to redo"))?;
+                }
+            },
         }
         Ok(())
     }

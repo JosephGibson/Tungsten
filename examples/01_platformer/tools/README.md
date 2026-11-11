@@ -82,10 +82,10 @@ the family makes. A code session never unlocks; a change to shared code that
 moves a locked file waits for the owner's unlock of each family it moves.
 
 The shell's assets come with its code: Inter and Source Serif 4 with their
-licence files, the shell's screen files (`assets/ui/screens/`), and the
-`damage_flash` shader and material are copied byte for byte from
-`templates/basic/assets/`, with their manifest entries, so `--check`
-also catches drift from the template. The `shell` theme is the template's text in
+licence files and the shell's screen files (`assets/ui/screens/`) are copied
+byte for byte from `templates/basic/assets/`, with their manifest entries, so
+`--check` also catches drift from the template; the kit's hit flash draws
+through the engine's own `damage_flash` material. The `shell` theme is the template's text in
 01's colours (01 (h), `generate.THEME_COLORS`): each of the template's colours
 maps to 01's, darker backgrounds and a vivid purple, so a key the template adds
 still arrives, and a template colour the map lacks stops the generator, named;
@@ -803,8 +803,10 @@ filtering. Its 400-particle budget splits into 300 sparks and 100 dark-gas
 follow the same accretion spiral.
 
 Sound effects are authored in `sfx.py`, not recorded. Each sound is a short
-function built from integer xorshift noise, one-pole filters, sine oscillators
-and exponential envelopes, normalized to a −2 dBFS peak with short fades (or a
+function built from integer xorshift noise and one-pole filters, the template's
+primitives (`templates/basic/tools/synth.py`, which `sfx.py` imports at 01's
+rate, fades and loop tail), with sine oscillators and exponential envelopes,
+normalized to a −2 dBFS peak with short fades (or a
 crossfaded seam for the sustained ice spray), and
 written as 44.1 kHz mono 16-bit PCM WAV with the standard-library `wave` module.
 Regeneration is byte-identical, so `--check` covers the WAVs like any other
@@ -889,10 +891,11 @@ a spray's loop and the pour stop over 0.08 seconds.
 | `ambience_mine` | `ambience_mine.wav` | Wind over the spoil, a creaking timber and a distant clank of iron |
 | `ambience_bridge` | `ambience_bridge.wav` | The river under the arches, wind across the bridge, the ropes' creak |
 
-The music loops are 16-bit mono at 22,050 Hz, on the music bus. Each renders a
-bar past its end and folds that tail onto its start, so it repeats at its bar
-line; generation fails a loop whose length is not its bars exactly or whose seam
-jumps further than any step inside it (`sfx.seam_problem`).
+The music loops are 16-bit mono at 22,050 Hz, on the music bus. Each renders
+two bars past its end and folds that tail onto its start, so it repeats at its
+bar line; generation fails a loop whose length is not its bars exactly or whose
+seam jumps further than any step inside it (`sfx.seam_problem`, the template's
+`synth.seam_problem` over `sfx.LOOPS`).
 
 The six ambience loops (`sfx.AMBIENCE`) are 6 seconds each at 22,050 Hz, on the
 effects bus at volumes 0.15 to 0.2, half their first levels. `sfx.ambience_loop` renders a quarter second

@@ -264,10 +264,20 @@ pub struct SceneTransform {
 #[serde(deny_unknown_fields)]
 pub struct SceneSprite {
     pub asset_id: String,
+    /// The tint the sprite's texture is multiplied by, RGBA from 0 to 255 a
+    /// channel in linear light: the frame encodes it to sRGB, so
+    /// `[70, 120, 64]` on a white texel draws as `[143, 182, 137]`. White,
+    /// no tint, by default.
     #[serde(default = "white")]
     pub color: [u8; 4],
     #[serde(default)]
     pub z_order: i32,
+    /// The sprites a prefab's spawn may show in `asset_id`'s place, by
+    /// manifest ID (redo 7.12, S-58): the pool is `asset_id` and these, one
+    /// picked a spawn ([`SpriteVariants`](crate::components::SpriteVariants)).
+    /// A scene entry's sprite takes none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variants: Vec<String>,
 }
 
 pub(crate) fn default_visible() -> bool {
@@ -333,6 +343,15 @@ impl SceneData {
                 tween
                     .validate()
                     .map_err(|msg| invalid(format!("entities[{i}].tweens[{j}]: {msg}")))?;
+            }
+            if entry
+                .sprite
+                .as_ref()
+                .is_some_and(|sprite| !sprite.variants.is_empty())
+            {
+                return Err(invalid(format!(
+                    "entities[{i}].sprite.variants: a scene entry's sprite takes none; a prefab's does"
+                )));
             }
             for (name, value) in &entry.components {
                 registry

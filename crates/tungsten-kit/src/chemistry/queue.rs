@@ -3,6 +3,7 @@
 //! cells by their keys.
 
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use serde::{Deserialize, Serialize};
 use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
@@ -12,6 +13,54 @@ use crate::chemistry::stimuli::Emission;
 use crate::chemistry::tiles::{Cell, CellSave};
 use crate::damage::effects::Effect;
 use crate::foundation::saved::{Order, order_of};
+
+/// The hasher of the queue's two maps, which every candidate of every
+/// emission probes: a rotate, an xor and a multiply a word (the `Fx` mix),
+/// where the standard one's SipHash cost more than the rest of a probe.
+/// The keys are the World's own entities and cells, no input a player
+/// shapes, and neither map is ever walked, so its order is nothing's.
+#[derive(Default)]
+struct QueueHasher(u64);
+
+impl QueueHasher {
+    #[inline]
+    fn add(&mut self, word: u64) {
+        self.0 = (self.0.rotate_left(5) ^ word).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+}
+
+impl Hasher for QueueHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut word = [0; 8];
+            word[..chunk.len()].copy_from_slice(chunk);
+            self.add(u64::from_le_bytes(word));
+        }
+    }
+
+    fn write_u8(&mut self, n: u8) {
+        self.add(u64::from(n));
+    }
+
+    fn write_u32(&mut self, n: u32) {
+        self.add(u64::from(n));
+    }
+
+    fn write_u64(&mut self, n: u64) {
+        self.add(n);
+    }
+
+    fn write_usize(&mut self, n: usize) {
+        self.add(n as u64);
+    }
+}
+
+/// A map on [`QueueHasher`].
+type QueueMap<K, V> = HashMap<K, V, BuildHasherDefault<QueueHasher>>;
 
 /// What an entry runs on: an entity, or a placement's tile cell.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -153,9 +202,9 @@ pub struct Chemistry {
     slots: Vec<Option<Entry>>,
     free: Vec<usize>,
     /// A stimulus entry's slot by receiver and stimulus.
-    index: HashMap<(Receiver, u32), usize>,
+    index: QueueMap<(Receiver, u32), usize>,
     /// Each entity receiver's entries.
-    counts: HashMap<Entity, u32>,
+    counts: QueueMap<Entity, u32>,
     /// A run's take keys, kept so a warm run allocates nothing.
     keys: Vec<TakeKey>,
     /// The interned stimulus names and status labels, and each one's rank
@@ -189,8 +238,8 @@ impl Default for Chemistry {
         Self {
             slots: Vec::new(),
             free: Vec::new(),
-            index: HashMap::new(),
-            counts: HashMap::new(),
+            index: QueueMap::default(),
+            counts: QueueMap::default(),
             keys: Vec::new(),
             names: Vec::new(),
             ranks: Vec::new(),
@@ -308,45 +357,85 @@ impl Chemistry {
         stimulus: Stimulus,
         age: u64,
     ) {
+        self.stimulate_slot(settings, receiver, id, stimulus, age);
+    }
+
+    /// [`stimulate_id`](Self::stimulate_id), answering the slot of the
+    /// entry it merged into or made: `None` for a stimulus cut, held or
+    /// dropped. The slot stays the pair's while no entry leaves the queue,
+    /// so a pass that only adds may keep it for
+    /// [`stimulate_kept`](Self::stimulate_kept).
+    pub(crate) fn stimulate_slot(
+        &mut self,
+        settings: &Settings,
+        receiver: Receiver,
+        id: u32,
+        stimulus: Stimulus,
+        age: u64,
+    ) -> Option<usize> {
         if stimulus.depth > settings.depth {
             self.cut += 1;
-            return;
+            return None;
         }
         if self.is_held(&receiver) {
-            return;
+            return None;
         }
-        let weighted = f64::from(stimulus.amount) * f64::from(stimulus.status_effect);
         let key = (receiver, id);
         if let Some(&slot) = self.index.get(&key) {
-            let entry = self.slots[slot]
-                .as_mut()
-                .expect("an indexed slot holds its entry");
-            let limit = f64::from(f32::MAX);
-            entry.raw = (entry.raw + f64::from(stimulus.amount)).min(limit);
-            entry.weighted = (entry.weighted + weighted).min(limit);
-            entry.status_effect = entry.status_effect.max(stimulus.status_effect);
-            entry.dot_base = entry.dot_base.max(stimulus.dot_base);
-            entry.depth = entry.depth.min(stimulus.depth);
-            if entry.credit.is_none() {
-                entry.credit = stimulus.credit;
-            }
-            return;
+            self.merge(slot, stimulus);
+            return Some(slot);
         }
         let entry = Entry {
             receiver: key.0.clone(),
             stimulus: id,
             status: None,
             raw: f64::from(stimulus.amount),
-            weighted,
+            weighted: f64::from(stimulus.amount) * f64::from(stimulus.status_effect),
             status_effect: stimulus.status_effect,
             dot_base: stimulus.dot_base,
             depth: stimulus.depth,
             credit: stimulus.credit,
             age,
         };
-        if let Some(slot) = self.insert(settings.bound, entry) {
-            self.index.insert(key, slot);
+        let slot = self.insert(settings.bound, entry)?;
+        self.index.insert(key, slot);
+        Some(slot)
+    }
+
+    /// [`stimulate_id`](Self::stimulate_id) on the pair whose entry
+    /// [`stimulate_slot`](Self::stimulate_slot) answered in `slot`, with
+    /// no entry taken and no receiver held since: the same cut and the same
+    /// merge, without the index's probe. The receiver was not held when
+    /// the slot was answered, so the hold has nothing to refuse.
+    pub(crate) fn stimulate_kept(&mut self, settings: &Settings, slot: usize, stimulus: Stimulus) {
+        if stimulus.depth > settings.depth {
+            self.cut += 1;
+            return;
         }
+        self.merge(slot, stimulus);
+    }
+
+    /// Merges `stimulus` into the stimulus entry in `slot`.
+    fn merge(&mut self, slot: usize, stimulus: Stimulus) {
+        let entry = self.slots[slot]
+            .as_mut()
+            .expect("an indexed slot holds its entry");
+        let limit = f64::from(f32::MAX);
+        let weighted = f64::from(stimulus.amount) * f64::from(stimulus.status_effect);
+        entry.raw = (entry.raw + f64::from(stimulus.amount)).min(limit);
+        entry.weighted = (entry.weighted + weighted).min(limit);
+        entry.status_effect = entry.status_effect.max(stimulus.status_effect);
+        entry.dot_base = entry.dot_base.max(stimulus.dot_base);
+        entry.depth = entry.depth.min(stimulus.depth);
+        if entry.credit.is_none() {
+            entry.credit = stimulus.credit;
+        }
+    }
+
+    /// The entries in the save's order, for a test's comparison.
+    #[cfg(test)]
+    pub(crate) fn entries(&self) -> Vec<Entry> {
+        self.sorted().into_iter().cloned().collect()
     }
 
     /// Whether `receiver` is an entity the kit's despawn holds.

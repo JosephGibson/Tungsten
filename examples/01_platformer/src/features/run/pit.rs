@@ -3,16 +3,18 @@
 //! enemies awake about them, at Normal, every one durable so nothing dies
 //! and the work holds. The frame-time test, the `e01-pit` benchmark row and
 //! the counter guard set it up alike, the script through `fill_pit` and
-//! `wake_foes` ([`script`](super::script)).
+//! `wake_foes` ([`script`](super::script)). The `e01-stress` row then lands
+//! spells on it through `cast_at` ([`cast_at`]).
 
 use glam::Vec2;
 use tungsten::core::{Entity, Position, PrevPosition, Velocity, World};
 use tungsten::kit::{Health, StateMachine, Stats};
 
 use super::Run;
+use crate::features::elements::components::BallBurn;
 use crate::features::enemies::components::{EnemyKind, EnemyState};
 use crate::features::level::{PIT, PIT_DECK, PIT_SHELVES, TILE};
-use crate::features::{enemies, player, toys};
+use crate::features::{enemies, lightning, player, toys};
 use crate::shared::SaveIds;
 use crate::shell::Difficulty;
 
@@ -141,4 +143,41 @@ pub fn counts(world: &World) -> PitCounts {
             })
             .count(),
     }
+}
+
+/// Lands `spell`'s toy at `at` as a cast of the wizard's would, free of its
+/// ability's mana, cooldown and charges, so a script casts as often as its
+/// row asks: `fire_missile` blasts there, `lightning` strikes down onto it,
+/// `force_push` sends its wave from the wizard toward it, and a
+/// `black_hole` or an `iron_block` is placed there, the block refused where
+/// it would not fit.
+pub fn cast_at(world: &mut World, spell: &str, at: Vec2) -> Result<(), String> {
+    let player = world.get_resource::<Run>().ok_or("no run")?.player;
+    let centre = player::centre(world, player).ok_or("no player")?;
+    match spell {
+        "fire_missile" => toys::systems::explode(world, at),
+        "lightning" => {
+            lightning::strike(world, player, at);
+        }
+        "force_push" => toys::wave::cast(world, centre, at - centre),
+        "black_hole" => {
+            toys::place_black_hole(world, at);
+        }
+        "iron_block" => {
+            if !toys::iron_fits(world, at) {
+                return Err(format!("no room for an iron block at {at}"));
+            }
+            toys::place_iron(world, at);
+        }
+        other => return Err(format!("no spell `{other}` to cast at a point")),
+    }
+    Ok(())
+}
+
+/// The small balls burning now, and those that have burned out.
+#[must_use]
+pub fn fire(world: &World) -> (usize, usize) {
+    let burns = || world.query::<&BallBurn>();
+    let burning = burns().filter(|burn| burn.remaining > 0.0).count();
+    (burning, burns().count() - burning)
 }

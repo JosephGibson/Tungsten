@@ -253,6 +253,48 @@ fn reload_prefab_replaces_it_and_a_bad_edit_keeps_the_previous() {
 }
 
 #[test]
+fn reloading_a_base_reaches_its_variants() {
+    let dir = tempdir();
+    let (goblin, red) = (
+        dir.join("prefabs/goblin.json"),
+        dir.join("prefabs/goblin_red.json"),
+    );
+    write(&goblin, r#"{ "tag": "goblin", "visible": false }"#);
+    write(&red, r#"{ "extends": "goblin", "visible": true }"#);
+    let mut app = app_with_assets();
+    let world = app.world_mut();
+    load_prefabs(
+        &manifest(&[("goblin", &goblin), ("goblin_red", &red)], &[]),
+        world,
+    )
+    .unwrap();
+    let summary = |world: &World, id: &str| {
+        let data = world.resource::<PrefabRegistry>().get(id).cloned().unwrap();
+        (data.tag, data.visible)
+    };
+    assert_eq!(
+        summary(world, "goblin_red"),
+        (Some("goblin".to_owned()), true)
+    );
+
+    write(&goblin, r#"{ "tag": "orc", "visible": false }"#);
+    reload_prefab("goblin", &goblin, world).unwrap();
+    assert_eq!(
+        summary(world, "goblin_red"),
+        (Some("orc".to_owned()), true),
+        "the base's reload resolves its variant again"
+    );
+
+    // A variant edited to name no prefab keeps its previous form.
+    write(&red, r#"{ "extends": "gobin", "visible": true }"#);
+    reload_prefab("goblin_red", &red, world).unwrap();
+    assert_eq!(summary(world, "goblin_red"), (Some("orc".to_owned()), true));
+    let entity = world.spawn_prefab("goblin_red", [0.0, 0.0]).unwrap();
+    assert_eq!(world.get::<tungsten_core::Tag>(entity).unwrap().name, "orc");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn a_manifest_reload_adds_maps_and_prefabs_that_name_each_other() {
     // One edit adds the map `arena`, the prefab `arena_map` whose `tilemap`
     // names it, and the map `cave` whose object's class names `arena_map`.

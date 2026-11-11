@@ -313,3 +313,106 @@ fn set_enabled_sets_both() {
         "past the entry, with nothing logged while the trace is off"
     );
 }
+
+// 7.18: the camera's shapes.
+
+/// A camera zone at (200, 0) and a plain zone at (-200, 0), and a base
+/// rig with a dead zone over the origin.
+fn camera_world(shapes: bool) -> (World, Schedule) {
+    let (mut world, schedule) = rig();
+    let mut controller = tungsten_core::CameraController::default();
+    controller.rig = tungsten_core::CameraRig::follow(
+        tungsten_core::FollowRig::default().with_dead_zone(Vec2::new(100.0, 50.0)),
+    );
+    controller.draw_shapes = !shapes;
+    world.insert_resource(controller);
+    world.insert_resource(tungsten_core::CameraState::new());
+    let held = world.spawn_with((Transform::default(),));
+    if let tungsten_core::RigKind::Follow(follow) = &mut world
+        .resource_mut::<tungsten_core::CameraController>()
+        .rig
+        .kind
+    {
+        follow.target = Some(held);
+    }
+    world.spawn_with(
+        RigidBodyBundle::sensor(Position::new(200.0, 0.0), Collider::aabb(Vec2::splat(30.0))).with(
+            (
+                Zone::new(TagFilter::new()),
+                crate::CameraZone::default(),
+                tungsten_core::CameraRig::fixed(tungsten_core::FixedRig::At(Vec2::ZERO)).lowered(),
+            ),
+        ),
+    );
+    world.spawn_with(
+        RigidBodyBundle::sensor(
+            Position::new(-200.0, 0.0),
+            Collider::aabb(Vec2::splat(10.0)),
+        )
+        .with((Zone::new(TagFilter::new()),)),
+    );
+    world.resource_mut::<KitDebug>().set_shapes(shapes);
+    (world, schedule)
+}
+
+/// The boxes drawn in `color`.
+fn boxes(world: &World, color: [f32; 4]) -> Vec<(Vec2, Vec2)> {
+    world
+        .resource::<DebugDraw>()
+        .commands()
+        .iter()
+        .filter(|command| command.color == color)
+        .filter_map(|command| match command.shape {
+            tungsten_core::DebugShape::Aabb { min, max } => Some((min, max)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_kit_asks_for_the_camera_shapes_and_draws_its_zones() {
+    let (mut world, mut schedule) = camera_world(true);
+    frame(&mut world, &mut schedule);
+    assert!(
+        world
+            .resource::<tungsten_core::CameraController>()
+            .draw_shapes,
+        "asked"
+    );
+    assert_eq!(
+        boxes(&world, CAMERA_COLOR),
+        [(Vec2::new(170.0, -30.0), Vec2::new(230.0, 30.0))],
+        "the camera zone's box, in the camera's colour"
+    );
+    assert_eq!(
+        boxes(&world, ZONE_COLOR),
+        [(Vec2::new(-210.0, -10.0), Vec2::new(-190.0, 10.0))],
+        "a plain zone's, as before"
+    );
+    // The camera's update then draws its own at the frame's view.
+    world.resource_mut::<DebugDraw>().clear();
+    tungsten_core::camera::update(&mut world, Vec2::new(1280.0, 720.0), 1.0 / 60.0);
+    assert_eq!(world.resource::<DebugDraw>().commands().len(), 1 + 2);
+}
+
+#[test]
+fn the_camera_draws_nothing_while_off() {
+    let (mut world, mut schedule) = camera_world(false);
+    assert!(
+        world
+            .resource::<tungsten_core::CameraController>()
+            .draw_shapes
+    );
+    assert_eq!(frame(&mut world, &mut schedule), 0);
+    assert!(
+        !world
+            .resource::<tungsten_core::CameraController>()
+            .draw_shapes,
+        "set off each frame"
+    );
+    tungsten_core::camera::update(&mut world, Vec2::new(1280.0, 720.0), 1.0 / 60.0);
+    assert!(
+        world.resource::<DebugDraw>().is_empty(),
+        "the update draws nothing"
+    );
+}

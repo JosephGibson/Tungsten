@@ -2108,6 +2108,121 @@ mod filters {
     }
 }
 
+/// 7.18's `camera` action: a game event that raises or releases rigs.
+struct Looked(Entity);
+
+#[allow(clippy::unnecessary_wraps)]
+fn looked(event: &Looked) -> Option<CueEvent> {
+    Some(CueEvent::of(event.0))
+}
+
+/// The cue rig with time, commands, a trace, a camera controller and the
+/// game event `looked`.
+fn camera_rig() -> (World, Schedule) {
+    let (mut world, _) = rig();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(crate::KitTrace::default());
+    world.insert_resource(tungsten_core::CameraController::default());
+    let mut schedule = Schedule::new();
+    CuesPlugin.build(&mut schedule, &mut world);
+    CuesOnEvent::<Looked>::new("looked", looked).build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// `subject`'s `looked` cue, run in one step.
+fn look(world: &mut World, schedule: &mut Schedule, subject: Entity) {
+    world
+        .resource_mut::<EventQueue<Looked>>()
+        .send(Looked(subject));
+    world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+    schedule.run_stage(tungsten_core::Stage::FixedUpdate, world, |_, _| {});
+    world.flush_events();
+}
+
+/// A lowered fixed rig named `id`.
+fn named_rig(id: &str) -> (tungsten_core::CameraRig, CameraRigId) {
+    let rig = tungsten_core::CameraRig::fixed(tungsten_core::FixedRig::At(Vec2::ZERO));
+    (rig.lowered(), CameraRigId::new(id))
+}
+
+fn rig_live(world: &World, entity: Entity) -> bool {
+    world
+        .get::<tungsten_core::CameraRig>(entity)
+        .unwrap()
+        .is_live()
+}
+
+#[test]
+fn a_camera_action_raises_and_releases_rigs_by_id() {
+    let (mut world, mut schedule) = camera_rig();
+    let cliff = world.spawn_with(named_rig("vista.cliff"));
+    let ledge = world.spawn_with(named_rig("vista.cliff"));
+    let sea = world.spawn_with(named_rig("vista.sea"));
+    let raiser =
+        world.spawn_with((Cues::new().on("looked", [CueAction::raise_camera("vista.cliff")]),));
+    let releaser =
+        world.spawn_with((Cues::new().on("looked", [CueAction::release_camera("vista.cliff")]),));
+    look(&mut world, &mut schedule, raiser);
+    assert!(
+        rig_live(&world, cliff) && rig_live(&world, ledge),
+        "every rig with the ID"
+    );
+    assert!(!rig_live(&world, sea), "not another ID's");
+    look(&mut world, &mut schedule, releaser);
+    assert!(!rig_live(&world, cliff) && !rig_live(&world, ledge));
+    for (action, data) in [
+        (
+            CueAction::raise_camera("vista.cliff"),
+            json!({ "camera": { "raise": "vista.cliff" } }),
+        ),
+        (
+            CueAction::release_camera("vista.cliff"),
+            json!({ "camera": { "release": "vista.cliff" } }),
+        ),
+    ] {
+        assert_eq!(serde_json::to_value(&action).unwrap(), data);
+        assert_eq!(serde_json::from_value::<CueAction>(data).unwrap(), action);
+        assert_eq!(action.name(), "camera");
+    }
+    for bad in [
+        json!({ "camera": {} }),
+        json!({ "camera": { "raise": "a", "release": "b" } }),
+        json!({ "camera": { "raise": "Vista Cliff" } }),
+        json!({ "camera": { "raise": "a", "pan": 1 } }),
+    ] {
+        assert!(
+            serde_json::from_value::<CueAction>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn a_camera_action_skips_an_id_no_rig_holds() {
+    let (mut world, mut schedule) = camera_rig();
+    let sea = world.spawn_with(named_rig("vista.sea"));
+    let raiser =
+        world.spawn_with((Cues::new().on("looked", [CueAction::raise_camera("vista.cliff")]),));
+    look(&mut world, &mut schedule, raiser);
+    assert!(!rig_live(&world, sea));
+    assert!(
+        world.resource::<crate::KitTrace>().iter().any(|entry| {
+            entry.entity == raiser
+                && matches!(
+                    entry.kind,
+                    TraceKind::Skipped {
+                        action: "camera",
+                        why: NO_RIG,
+                        ..
+                    }
+                )
+        }),
+        "a traced skip"
+    );
+}
+
 /// 7.10p's listener: following, panning, a shake's falloff and loops.
 mod listening {
     use super::*;

@@ -1,10 +1,12 @@
 use std::time::Duration;
 
 use crate::app::WindowSize;
+use crate::settings::{apply_focus_mute, request_settings_display, requested_display};
 use crate::telemetry::DisplayTelemetry;
+use tungsten_core::settings::SettingsError;
 use tungsten_core::{
     ActionMap, DisplayMode, DisplayState, DisplayValidationError, InputState, MonitorInfo,
-    Resolution, ScaleFactor, VideoMode, World,
+    RawInput, Resolution, ScaleFactor, Settings, VideoMode, World,
 };
 use winit::window::Window;
 
@@ -58,22 +60,41 @@ pub fn request_display_settings(
     Ok(())
 }
 
-/// Display hotkeys through `ActionMap`; defaults F9/F11.
+/// Display hotkeys through `ActionMap`, defaults F9/F11, and the focus
+/// mute's edge (S-145). With `Settings` (S-120), a toggle writes the display
+/// mode or vsync it gives into them, requests the display they give, as
+/// `apply_settings` does, and saves them, a failed save logged, so the
+/// settings screen shows it and the next start keeps it; without, it
+/// requests the toggled live display. A focus change this frame sends the
+/// master volume again while `Settings::mute_unfocused` is on.
 pub(crate) fn engine_display_input_system(world: &mut World) {
-    let (toggle_vsync, toggle_fullscreen) = {
+    let (toggle_vsync, toggle_fullscreen, focus_changed) = {
         let Some(input) = world.get_resource::<InputState>() else {
             return;
         };
-        let Some(actions) = world.get_resource::<ActionMap>() else {
-            return;
-        };
-        (
-            actions.just_pressed(input, "engine_toggle_vsync"),
-            actions.just_pressed(input, "engine_toggle_fullscreen"),
-        )
+        let focus_changed = input
+            .raw_events()
+            .iter()
+            .any(|event| matches!(event.input, RawInput::Focus(_)));
+        world
+            .get_resource::<ActionMap>()
+            .map_or((false, false, focus_changed), |actions| {
+                (
+                    actions.just_pressed(input, "engine_toggle_vsync"),
+                    actions.just_pressed(input, "engine_toggle_fullscreen"),
+                    focus_changed,
+                )
+            })
     };
 
+    if focus_changed {
+        apply_focus_mute(world);
+    }
     if !toggle_vsync && !toggle_fullscreen {
+        return;
+    }
+    if world.has_resource::<Settings>() {
+        toggle_settings_display(world, toggle_fullscreen, toggle_vsync);
         return;
     }
 
@@ -100,6 +121,30 @@ pub(crate) fn engine_display_input_system(world: &mut World) {
     if let Err(err) = request_display_settings(world, next) {
         log::error!("Display request rejected: {err}");
     }
+}
+
+/// The display keys with `Settings` (S-120): the toggled mode or vsync of
+/// [`requested_display`] written into them, requested and saved.
+fn toggle_settings_display(world: &mut World, fullscreen: bool, vsync: bool) {
+    let current = requested_display(world);
+    let settings = world.resource_mut::<Settings>();
+    if fullscreen {
+        settings.set_display_mode(Some(match current.display_mode {
+            DisplayMode::Windowed => DisplayMode::BorderlessFullscreen,
+            DisplayMode::BorderlessFullscreen | DisplayMode::ExclusiveFullscreen => {
+                DisplayMode::Windowed
+            }
+        }));
+    }
+    if vsync {
+        settings.set_vsync(Some(!current.vsync));
+    }
+    match settings.save() {
+        Ok(()) => {}
+        Err(SettingsError::NoFolder) => log::debug!("Display keys not saved: no user folder"),
+        Err(err) => log::warn!("Display keys not saved: {err}"),
+    }
+    request_settings_display(world);
 }
 
 pub(crate) fn take_pending_display(world: &mut World) -> Option<DisplayState> {

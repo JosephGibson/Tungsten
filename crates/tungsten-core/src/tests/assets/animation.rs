@@ -229,3 +229,54 @@ fn a_frames_sound_reads_from_the_file() {
     assert!(state.despawn_at_end(), "the speed leaves the despawn bit");
     assert_eq!(std::mem::size_of::<AnimationState>(), 40);
 }
+
+#[test]
+fn advancing_in_a_clip_is_advancing_through_the_registry() {
+    // `advance_in` is `advance_entering` with the clip already found: the
+    // same state and the same result, step for step, a paused state and a
+    // finished one-shot included.
+    let mut registry = AnimationRegistry::new();
+    registry.insert("walk".to_string(), test_anim());
+    let mut once = test_anim();
+    once.looping = false;
+    once.frames[2].sound = Some("step".to_string());
+    registry.insert("once".to_string(), once);
+    for id in ["walk", "once"] {
+        let clip = registry.get(id).unwrap();
+        let mut through = AnimationState::new(id).with_speed(1.5);
+        let mut within = through.clone();
+        for step in 0..40 {
+            if step == 12 {
+                through.playing = false;
+                within.playing = false;
+            }
+            if step == 15 {
+                through.playing = true;
+                within.playing = true;
+            }
+            let dt_ms = 7.0 + 13.0 * (step % 5) as f32;
+            assert_eq!(
+                within.advance_in(dt_ms, clip),
+                through.advance_entering(dt_ms, &registry),
+                "{id}, step {step}"
+            );
+            assert_eq!(
+                (within.frame_index, within.accumulated_ms, within.finished),
+                (
+                    through.frame_index,
+                    through.accumulated_ms,
+                    through.finished
+                ),
+                "{id}, step {step}"
+            );
+        }
+    }
+    // A clip without frames advances nothing.
+    let empty = AnimationData {
+        looping: true,
+        frames: Vec::new(),
+    };
+    let mut state = AnimationState::new("empty");
+    assert_eq!(state.advance_in(500.0, &empty), Advanced::default());
+    assert_eq!((state.frame_index, state.accumulated_ms), (0, 0.0));
+}

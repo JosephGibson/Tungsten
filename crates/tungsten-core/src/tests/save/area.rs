@@ -510,3 +510,38 @@ fn an_unnamed_classed_object_spawns_unsaved() {
         Err(AreaError::Name { .. })
     ));
 }
+
+/// `world` with room `cave`: two bats on a grid with no layers.
+fn with_cave(mut world: World) -> World {
+    let room = crate::assets::Room::from_json(
+        r#"{ "version": 1, "cell": [16, 16], "size": [8, 4],
+             "objects": [{ "id": "bat_1", "prefab": "bat", "at": [1, 1] },
+                         { "id": "bat_2", "prefab": "bat", "at": [4, 1] }] }"#,
+    )
+    .unwrap();
+    world.insert_room("cave", room).unwrap();
+    world
+}
+
+#[test]
+fn a_rooms_objects_restore_by_their_names() {
+    let mut a = with_cave(world());
+    a.spawn_room("cave", [0.0, 0.0], &(Scene,)).unwrap();
+    set_health(&mut a, "cave.bat_2", 2.5);
+    let saved = capture_world(&a).unwrap();
+    assert_eq!(
+        value(&saved)["areas"]["cave"]["named"]["cave.bat_2"]["components"],
+        json!({ "health": { "current": 2.5 } }),
+        "saved by its room name, in the room's area"
+    );
+
+    let mut b = with_cave(world());
+    b.spawn();
+    let spawned = b.spawn_room("cave", [64.0, 0.0], &(Scene,)).unwrap();
+    let report = restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(health(&b, "cave.bat_2"), 2.5);
+    assert_eq!(health(&b, "cave.bat_1"), 10.0, "unchanged, from its prefab");
+    assert_eq!(named(&b, "cave.bat_2"), spawned.object("bat_2").unwrap());
+    assert_eq!(text(&capture_world(&b).unwrap()), text(&saved));
+}

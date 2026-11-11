@@ -3,7 +3,9 @@
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, Shape};
-use tungsten_core::{DebugDraw, Entity, Plugin, Schedule, Time, Transform, World, system};
+use tungsten_core::{
+    CameraController, DebugDraw, Entity, Plugin, Schedule, Time, Transform, World, system,
+};
 
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::trace::{KIT_TRACE_STEP, KitTrace};
@@ -21,7 +23,7 @@ use crate::overlap::contact::ContactDamage;
 use crate::overlap::hit::{Hitbox, Hurtbox, placed};
 use crate::overlap::pickup::Pickup;
 use crate::overlap::zone::Zone;
-use crate::present::camera::CameraTarget;
+use crate::present::camera::{CameraTarget, CameraZone};
 use crate::react::cues::CUES;
 
 /// [`KitDebugPlugin`]'s system, in the present phase.
@@ -144,14 +146,17 @@ impl KitDebug {
 /// each ended step for the trace, and registers [`KIT_DEBUG_DRAW`] in the
 /// present phase: while the resource is on and the World has a
 /// `DebugDraw`, it draws a path follower's polyline and current target, a
-/// `DespawnOutside` region, a zone's collider, a spawner's mark, a camera
-/// target's cross, an orbit's circle and centre, a follower's goal, a
+/// `DespawnOutside` region, a zone's collider (a camera zone's in the
+/// camera's colour), a spawner's mark, a camera target's cross, an orbit's
+/// circle and centre, a follower's goal, a
 /// `Wrap`'s and a `StayInView`'s region, an aim's ray (32 px, or to its
 /// target), and each hurtbox's, armed hitbox's (only while it can hit, in a
 /// deep red and a wider line, placed by its entity's facing as it hits),
 /// contact damage's own and pickup's shape at its entity's point, once a
-/// frame before the camera. A press of the resource's key flips its shapes
-/// first. While its trace is on it also logs each new [`KitTrace`] entry
+/// frame before the camera. Each frame, on or off, it sets the
+/// `CameraController`'s `draw_shapes` to its shapes switch, so the camera's
+/// update draws its winner's dead zone, bounds, anchor and lead at the
+/// frame's own view. A press of the resource's key flips its shapes first. While its trace is on it also logs each new [`KitTrace`] entry
 /// once, at `info` under target `tungsten_kit::trace`, which the log
 /// console shows.
 #[derive(Debug, Default, Clone, Copy)]
@@ -264,10 +269,13 @@ fn flip_on_key(world: &mut World) {
 
 fn kit_debug_draw(world: &mut World) {
     flip_on_key(world);
-    if !world
+    let shapes = world
         .get_resource::<KitDebug>()
-        .is_some_and(KitDebug::shapes)
-    {
+        .is_some_and(KitDebug::shapes);
+    if let Some(camera) = world.get_resource_mut::<CameraController>() {
+        camera.draw_shapes = shapes;
+    }
+    if !shapes {
         return;
     }
     let Some(mut draw) = world.remove_resource::<DebugDraw>() else {
@@ -292,9 +300,16 @@ fn kit_debug_draw(world: &mut World) {
         }
         let _ = entity;
     }
-    for (_, collider, position) in world.query::<(&Zone, &Collider, &Position)>() {
+    for (_, collider, position, camera) in
+        world.query::<(&Zone, &Collider, &Position, Option<&CameraZone>)>()
+    {
         let at = position.0 + collider.offset;
-        draw_shape_at(&mut draw, collider.shape, at, ZONE_COLOR, THICKNESS);
+        let color = if camera.is_some() {
+            CAMERA_COLOR
+        } else {
+            ZONE_COLOR
+        };
+        draw_shape_at(&mut draw, collider.shape, at, color, THICKNESS);
     }
     let spawners: Vec<Entity> = world
         .query::<(Entity, &Spawner)>()

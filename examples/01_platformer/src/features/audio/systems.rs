@@ -7,7 +7,7 @@ use tungsten::kit::{CueListener, Health, StateMachine, Tags};
 use super::components::{Ambience, Music};
 use super::{
     AMBIENCE_FADE, COMBAT_IN, COMBAT_OUT, FIRE_CRACKLE, HOLE_HUM, HUM_FADE, MUSIC_COMBAT,
-    MUSIC_EXPLORE, MUSIC_PAUSE, PAUSE_FADE, WISP_HUM,
+    MUSIC_EXPLORE, PAUSE_FADE, WISP_HUM,
 };
 use crate::features::combat::BURNING;
 use crate::features::elements::components::BallBurn;
@@ -23,10 +23,10 @@ use crate::shell::pause::PAUSE;
 use crate::shell::{self};
 
 /// `audio_duck`: when pause comes on top, the exploration loop falls to 0
-/// and pause's loop fades in; when gameplay is back on top, pause's loop
-/// stops and the exploration comes back. A screen over pause keeps the
-/// loop. Game over silences the exploration too, under the music the shell
-/// plays, and the hums and the crackle fall silent until gameplay is back.
+/// under pause's loop, which the shell's pause names; when gameplay is back
+/// on top, the exploration comes back. A screen over pause keeps it down.
+/// Game over silences the exploration too, under its own music, and the
+/// hums and the crackle fall silent until gameplay is back.
 pub fn duck(world: &mut World) {
     let Some(music) = world.get_resource::<Music>().copied() else {
         return;
@@ -37,11 +37,6 @@ pub fn duck(world: &mut World) {
     if on == music.ducked || !(on || off) {
         return;
     }
-    let pause = if paused {
-        shell::play(world, MUSIC_PAUSE, PAUSE_FADE)
-    } else {
-        None
-    };
     let registry = world.resource::<SoundRegistry>();
     let level = registry
         .get_by_id(MUSIC_EXPLORE)
@@ -49,9 +44,6 @@ pub fn duck(world: &mut World) {
     let audio = world.resource_mut::<AudioCommands>();
     if let Some(explore) = music.explore {
         audio.set_voice_volume(explore, if on { 0.0 } else { level }, PAUSE_FADE);
-    }
-    if let Some(looped) = music.pause {
-        audio.stop_voice(looped, PAUSE_FADE);
     }
     let mut hum_level = music.hum_level;
     if let (Some(hum), true) = (music.hum, on) {
@@ -69,7 +61,6 @@ pub fn duck(world: &mut World) {
         crackle_level = 0.0;
     }
     world.insert_resource(Music {
-        pause,
         hum_level,
         holes_level,
         crackle_level,

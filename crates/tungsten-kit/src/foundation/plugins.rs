@@ -36,7 +36,7 @@ use crate::overlap::pickup::PickupPlugin;
 use crate::overlap::projectile::ProjectilePlugin;
 use crate::overlap::zone::ZonePlugin;
 use crate::present::animation::AnimationPlugin;
-use crate::present::camera::CameraTargetPlugin;
+use crate::present::camera::{CameraRigPlugin, CameraTargetPlugin};
 use crate::present::character::CharacterAnimatorPlugin;
 use crate::present::depth::DepthSortPlugin;
 use crate::present::facing::FacingPlugin;
@@ -104,6 +104,7 @@ impl KitPlugins {
             .with(ZonePlugin)
             .with(ActionInputPlugin)
             .with(CameraTargetPlugin)
+            .with(CameraRigPlugin)
             .with(StatsPlugin::new())
             .with(CountersPlugin)
             .with(CooldownPlugin)

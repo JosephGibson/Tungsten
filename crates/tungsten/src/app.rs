@@ -36,10 +36,10 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tungsten_core::assets::{
     FontRegistry, LoadedManifest, ParticleConfigRegistry, ParticleMeshRegistry, ResolvedManifest,
-    ShaderRegistry, SoundRegistry, TilemapRegistry,
+    RoomGenerator, ShaderRegistry, SoundRegistry, TilemapRegistry,
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
-use tungsten_core::post::{PostPass, PostStack};
+use tungsten_core::post::{PostPass, PostStack, PostTail};
 use tungsten_core::save::SaveOptions;
 use tungsten_core::ui::{
     CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
@@ -69,6 +69,8 @@ const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
 /// Names the report file `tungsten check` reads. Set, `App::run` checks the
 /// game's files in place of opening a window (M70).
 const CHECK_ENV: &str = "TUNGSTEN_CHECK";
+/// A check's seeds for the room generators, `<first>+<count>` (redo 7.12).
+const CHECK_SEEDS_ENV: &str = "TUNGSTEN_CHECK_SEEDS";
 /// Names the script a run follows (redo 7.2); `TUNGSTEN_REPORT` names the
 /// report it writes. Both are the command line's, not a promised interface.
 const SCRIPT_ENV: &str = "TUNGSTEN_SCRIPT";
@@ -76,6 +78,12 @@ const REPORT_ENV: &str = "TUNGSTEN_REPORT";
 /// Names the file `tungsten describe` reads. Set, `App::run` describes the
 /// game's World in place of opening a window (redo 7.2).
 const DESCRIBE_ENV: &str = "TUNGSTEN_DESCRIBE";
+/// Names the report file `tungsten level generate` reads. Set, `App::run`
+/// writes a generation's rooms there in place of opening a window (redo
+/// 7.12).
+const GENERATE_ENV: &str = "TUNGSTEN_GENERATE";
+/// The generation that run asks for, `<generator>:<seed>:<prefix>`.
+const GENERATE_RUN_ENV: &str = "TUNGSTEN_GENERATE_RUN";
 
 /// Looks an environment variable up; a parameter, so tests need no
 /// `set_var`.
@@ -172,7 +180,8 @@ fn ms_since(since: Instant) -> f64 {
 }
 
 /// A boot frame's progress (redo 7.9), which a boot view draws: the load's
-/// units done and in all, the boot group's assets, and the window.
+/// units done and in all, the boot group's assets, the window, and the
+/// boot's time and hold.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct BootProgress<'a> {
@@ -186,6 +195,11 @@ pub struct BootProgress<'a> {
     pub window: [u32; 2],
     /// The window's scale factor.
     pub scale: f32,
+    /// Real seconds since the first boot frame (redo 7.11).
+    pub secs: f32,
+    /// The seconds the boot lasts at least, the boot group's `hold`; 0 in a
+    /// script run, whose boot is not watched (`D-225`).
+    pub hold: f32,
 }
 
 impl BootProgress<'_> {
@@ -221,10 +235,18 @@ const BOOT_VIEW_EVERY: Duration = Duration::from_millis(33);
 /// Boot frames' pacing (redo 7.9): the first redraw draws the view before
 /// any unit runs; each later one runs units until `BOOT_SLICE` has passed,
 /// then draws the view when `BOOT_VIEW_EVERY` has passed since the last.
+/// The boot ends once no unit is left and its hold has passed since the
+/// first redraw (redo 7.11); until then the view keeps drawing.
 #[derive(Debug, Default)]
 pub(crate) struct BootPacer {
     /// When the view last drew; `None` before the first redraw.
     viewed: Option<Instant>,
+    /// When the first redraw ran: the first boot frame.
+    first: Option<Instant>,
+    /// The least the boot lasts from its first frame.
+    hold: Duration,
+    /// From the first redraw to the last one's end.
+    elapsed: Duration,
     slice_max: Duration,
 }
 
@@ -235,11 +257,23 @@ pub(crate) struct BootStep {
     pub(crate) ran: usize,
     /// Whether it draws the view.
     pub(crate) view: bool,
-    /// Whether no unit is left: the boot ends.
+    /// Whether no unit is left and the hold has passed: the boot ends.
     pub(crate) done: bool,
+    /// While the plan has ended and the hold runs, the time to the next
+    /// view or the hold's end, which the redraw waits out rather than spin;
+    /// zero otherwise.
+    pub(crate) idle: Duration,
 }
 
 impl BootPacer {
+    /// A pacer whose boot lasts at least `hold` from its first frame.
+    pub(crate) fn holding(hold: Duration) -> Self {
+        Self {
+            hold,
+            ..Self::default()
+        }
+    }
+
     /// One boot redraw by `clock`: `run` runs the next unit, `None` when
     /// none is left.
     pub(crate) fn redraw(
@@ -250,15 +284,17 @@ impl BootPacer {
         let start = clock();
         let Some(viewed) = self.viewed else {
             self.viewed = Some(start);
+            self.first = Some(start);
             return Ok(BootStep {
                 ran: 0,
                 view: true,
                 done: false,
+                idle: Duration::ZERO,
             });
         };
         let mut ran = 0;
         let mut now = start;
-        let done = loop {
+        let loaded = loop {
             match run() {
                 None => break true,
                 Some(result) => result?,
@@ -270,16 +306,40 @@ impl BootPacer {
             }
         };
         self.slice_max = self.slice_max.max(now.duration_since(start));
+        self.elapsed = self
+            .first
+            .map_or(Duration::ZERO, |first| now.duration_since(first));
+        let done = loaded && self.elapsed >= self.hold;
         let view = !done && now.duration_since(viewed) >= BOOT_VIEW_EVERY;
-        if view {
-            self.viewed = Some(now);
-        }
-        Ok(BootStep { ran, view, done })
+        let viewed = if view { now } else { viewed };
+        self.viewed = Some(viewed);
+        let idle = match self.first {
+            Some(first) if loaded && !done => (viewed + BOOT_VIEW_EVERY)
+                .min(first + self.hold)
+                .saturating_duration_since(now),
+            _ => Duration::ZERO,
+        };
+        Ok(BootStep {
+            ran,
+            view,
+            done,
+            idle,
+        })
     }
 
     /// The longest stretch of units one redraw ran.
     pub(crate) fn slice_max(&self) -> Duration {
         self.slice_max
+    }
+
+    /// Real seconds from the first boot frame to the last redraw's end.
+    pub(crate) fn secs(&self) -> f32 {
+        self.elapsed.as_secs_f32()
+    }
+
+    /// The hold, in seconds.
+    pub(crate) fn hold(&self) -> f32 {
+        self.hold.as_secs_f32()
     }
 }
 
@@ -508,8 +568,11 @@ impl App {
         env: Env<'_>,
     ) -> anyhow::Result<Self> {
         let smoke_frames = smoke_frames(env);
-        // A describe run is a check run until `App::run` (redo 7.2).
-        let checking = env_path(env, CHECK_ENV).is_some() || env_path(env, DESCRIBE_ENV).is_some();
+        // A describe or generate run is a check run until `App::run` (redo
+        // 7.2, 7.12).
+        let checking = [CHECK_ENV, DESCRIBE_ENV, GENERATE_ENV]
+            .iter()
+            .any(|name| env_path(env, name).is_some());
         // A script run reads its user folder from `TUNGSTEN_USER_DIR` alone.
         let script_path = env_path(env, SCRIPT_ENV).filter(|_| !checking);
         let invalid = config
@@ -518,6 +581,7 @@ impl App {
             .err()
             .or_else(|| config.time.validate().err())
             .or_else(|| config.audio.validate().err())
+            .or_else(|| config.physics.validate().err())
             .or_else(|| invalid_logging_level(&config.logging.level));
         let user_dirs = match (&invalid, &script_path) {
             (Some(_), _) => None,
@@ -667,12 +731,20 @@ impl App {
         world.insert_resource(ParticleConfigRegistry::new());
         world.insert_resource(ParticleMeshRegistry::new());
         world.insert_resource(ShaderRegistry::new());
-        world.insert_resource(ParticleBudget::default());
+        // `tungsten.json`'s particle budget and physics (redo 7.12), which a
+        // game's plugin may set again after.
+        world.insert_resource(ParticleBudget {
+            global_cap: config.particles.budget,
+        });
         world.insert_resource(ParticleActive::default());
         world.insert_resource(WorldRngSeed::default());
         world.insert_resource(CameraState::new());
         world.insert_resource(CameraController::default());
-        world.insert_resource(PhysicsConfig::default());
+        world.insert_resource(PhysicsConfig {
+            gravity: config.physics.gravity.into(),
+            broadphase_cell_size: config.physics.broadphase_cell,
+            ..PhysicsConfig::default()
+        });
         world.insert_resource(FrameTimings::new());
         world.insert_resource(GpuFrameTimings::default());
         world.insert_resource(resolved_display);
@@ -723,6 +795,11 @@ impl App {
         // M57: the log console on the logger's feed, and the UI inspector.
         world.insert_resource(LogConsole::with_feed(console_feed));
         world.insert_resource(UiInspector::default());
+        // Redo 7.12: the level editor, where the files it writes are
+        // watched.
+        world.insert_resource(crate::level_editor::LevelEditor::new(
+            config.assets.hot_reload_or(cfg!(debug_assertions)),
+        ));
         world.insert_resource(placements);
         world.insert_resource(default_inspect_registry());
         // M48: the components scene entries name, with those the default
@@ -740,6 +817,7 @@ impl App {
         );
         // M26: empty post stack by default — byte-identical to M25 baseline.
         world.insert_resource(tungsten_core::post::PostStack::new());
+        world.insert_resource(PostTail::default());
         // M27: track post-AA state from startup config; pending request seam.
         world.insert_resource(PostAaState {
             mode: config.render.post_aa,
@@ -858,6 +936,18 @@ impl App {
         name: &str,
     ) {
         self.world.register_saved_resource::<T>(name);
+    }
+
+    /// [`World::register_generator`] on the app's world: rooms generated
+    /// from a seed by `generator`, run by `World::generate_rooms`, a script's
+    /// `generate` step and `tungsten check`'s sweep over seeds.
+    ///
+    /// # Panics
+    ///
+    /// When `id` is not `[a-z][a-z0-9_]*` or is already a generator's.
+    #[track_caller]
+    pub fn register_generator(&mut self, id: &str, generator: impl RoomGenerator) {
+        self.world.register_generator(id, generator);
     }
 
     /// Builds `plugin` into the schedule and the world now.
@@ -1070,7 +1160,10 @@ impl App {
     /// World's description there as JSON: its components, script hooks and
     /// asset IDs (redo 7.2). With `TUNGSTEN_SCRIPT` set, it runs that script
     /// in the window and writes `TUNGSTEN_REPORT`, returning an error unless
-    /// the script passed. These variables are the command line's too.
+    /// the script passed. With `TUNGSTEN_GENERATE` set, as `tungsten level
+    /// generate` sets it, it writes the rooms of the generation
+    /// `TUNGSTEN_GENERATE_RUN` names to that file (redo 7.12). These
+    /// variables are the command line's too.
     pub fn run(mut self) -> anyhow::Result<()> {
         let env = |name: &str| std::env::var_os(name);
         if let Some(out) = env_path(&env, DESCRIBE_ENV) {
@@ -1078,10 +1171,15 @@ impl App {
                 .inspect_err(|err| log::error!("No current folder to describe: {err}"))?;
             return self.run_describe(&out, &game_dir);
         }
+        if let Some(report) = env_path(&env, GENERATE_ENV) {
+            let game_dir = std::env::current_dir()
+                .inspect_err(|err| log::error!("No current folder to generate in: {err}"))?;
+            return self.run_generate(&report, &game_dir, &env);
+        }
         if let Some(report) = env_path(&env, CHECK_ENV) {
             let game_dir = std::env::current_dir()
                 .inspect_err(|err| log::error!("No current folder to check: {err}"))?;
-            return self.run_check(&report, &game_dir);
+            return self.run_check(&report, &game_dir, &env);
         }
         let started = self.run_window();
         if self.script.is_some() {
@@ -1144,9 +1242,18 @@ impl App {
 
     /// `tungsten check`'s content stage in the game's own build (M70): the
     /// reload roots' files checked in `game_dir` with this app's World, and
-    /// the report written to `report`, one line per error. Loaders log
-    /// warnings and errors only.
-    pub(crate) fn run_check(mut self, report: &Path, game_dir: &Path) -> anyhow::Result<()> {
+    /// the report written to `report`, one line per error. With a room
+    /// generator registered, each is then swept over the seeds
+    /// `TUNGSTEN_CHECK_SEEDS` names (`<first>+<count>`, `0+16` unset; redo
+    /// 7.12), its findings filed under `generator <id>` and a `#\t<note>`
+    /// line each; an unreadable value is one finding with no file. Loaders
+    /// log warnings and errors only.
+    pub(crate) fn run_check(
+        mut self,
+        report: &Path,
+        game_dir: &Path,
+        env: Env<'_>,
+    ) -> anyhow::Result<()> {
         use std::fmt::Write as _;
 
         log::set_max_level(LevelFilter::Warn);
@@ -1156,16 +1263,94 @@ impl App {
         for error in &errors {
             let _ = writeln!(lines, "{}\t{}", error.file.display(), error.message);
         }
+        let mut found = errors.len();
+        let generators = self
+            .world
+            .get_resource::<tungsten_core::assets::RoomGenerators>()
+            .is_some_and(|generators| !generators.is_empty());
+        if generators {
+            let seeds = match env(CHECK_SEEDS_ENV).filter(|value| !value.is_empty()) {
+                None => Ok(asset_loader::room::CheckSeeds::DEFAULT),
+                Some(value) => asset_loader::room::CheckSeeds::parse(&value.to_string_lossy()),
+            };
+            match seeds {
+                Err(message) => {
+                    let _ = writeln!(lines, "\t{message}");
+                    found += 1;
+                }
+                Ok(seeds) => {
+                    let (mut findings, mut notes) = (Vec::new(), Vec::new());
+                    asset_loader::room::check_generators(
+                        &mut self.world,
+                        seeds,
+                        |file, message| findings.push((file, message)),
+                        |note| notes.push(note),
+                    );
+                    found += findings.len();
+                    for (file, message) in findings {
+                        let _ = writeln!(lines, "{file}\t{message}");
+                    }
+                    for note in notes {
+                        let _ = writeln!(lines, "#\t{note}");
+                    }
+                }
+            }
+        }
         std::fs::write(report, lines).map_err(|err| {
             anyhow::anyhow!(
                 "Failed to write the check report '{}': {err}",
                 report.display()
             )
         })?;
-        match errors.len() {
+        match found {
             0 => Ok(()),
             n => Err(anyhow::anyhow!(
                 "the check found {n} error{}, written to '{}'",
+                if n == 1 { "" } else { "s" },
+                report.display()
+            )),
+        }
+    }
+
+    /// `tungsten level generate`'s engine side (redo 7.12): the reload
+    /// roots' files checked in `game_dir` as [`run_check`](Self::run_check)
+    /// checks them, then, with no error, the generation
+    /// `TUNGSTEN_GENERATE_RUN` names run by `World::author_rooms`, nothing
+    /// registered, and the report written to `report` as JSON
+    /// (`asset_loader::room::generate_report`). Any error is in the report
+    /// and fails the run. Loaders log warnings and errors only.
+    pub(crate) fn run_generate(
+        mut self,
+        report: &Path,
+        game_dir: &Path,
+        env: Env<'_>,
+    ) -> anyhow::Result<()> {
+        log::set_max_level(LevelFilter::Warn);
+        let roots = manifest_reload_roots(&self.manifest_roots, self.manifest_path.as_deref());
+        let errors = asset_loader::check::check_files(&mut self.world, &roots, game_dir)
+            .into_iter()
+            .map(|error| (error.file.to_string_lossy().into_owned(), error.message))
+            .collect();
+        let request = match env(GENERATE_RUN_ENV) {
+            None => Err(format!(
+                "{GENERATE_RUN_ENV} is unset: `tungsten level generate` names the generation"
+            )),
+            Some(value) => asset_loader::room::GenerateRequest::parse(&value.to_string_lossy()),
+        };
+        let value = asset_loader::room::generate_report(&self.world, errors, request);
+        let found = value["errors"].as_array().map_or(0, Vec::len);
+        let mut text = serde_json::to_string_pretty(&value)?;
+        text.push('\n');
+        std::fs::write(report, text).map_err(|err| {
+            anyhow::anyhow!(
+                "Failed to write the generation report '{}': {err}",
+                report.display()
+            )
+        })?;
+        match found {
+            0 => Ok(()),
+            n => Err(anyhow::anyhow!(
+                "the generation found {n} error{}, written to '{}'",
                 if n == 1 { "" } else { "s" },
                 report.display()
             )),
@@ -1214,11 +1399,23 @@ impl App {
         event_loop.exit();
     }
 
+    /// The boot's hold (redo 7.11): the boot group's, none in a script run,
+    /// whose boot is not watched (`D-225`).
+    pub(crate) fn boot_hold(&self, group: &tungsten_core::assets::manifest::BootGroup) -> Duration {
+        match group.hold {
+            Some(hold) if self.script.is_none() => {
+                Duration::try_from_secs_f32(hold).unwrap_or_default()
+            }
+            _ => Duration::ZERO,
+        }
+    }
+
     /// One boot redraw by `clock` (redo 7.9): the pacer's units and view;
-    /// the redraw that ends the plan finishes the boot, so the next is
-    /// frame 1. No stage runs, and nothing counts it as a frame: scripts,
-    /// smoke runs, captures and telemetry start at frame 1. A boot without
-    /// a renderer, which only a test makes, runs no unit.
+    /// the redraw that ends the plan, once the hold has passed, finishes
+    /// the boot, so the next is frame 1. No stage runs, and nothing counts
+    /// it as a frame: scripts, smoke runs, captures and telemetry start at
+    /// frame 1. A boot without a renderer, which only a test makes, runs no
+    /// unit.
     ///
     /// # Errors
     ///
@@ -1238,6 +1435,10 @@ impl App {
             self.finish_boot();
         } else if step.view {
             self.draw_boot_view()?;
+        }
+        // A held boot has nothing to run until its next view or its end.
+        if !step.idle.is_zero() {
+            std::thread::sleep(step.idle);
         }
         Ok(())
     }
@@ -1266,6 +1467,8 @@ impl App {
             assets: &boot.assets,
             window,
             scale,
+            secs: boot.pacer.secs(),
+            hold: boot.pacer.hold(),
         };
         let view = match &self.boot_view {
             Some(view) => view(&self.world, &progress),
@@ -1746,20 +1949,51 @@ impl App {
     }
 }
 
-/// The post stack a frame draws with: the user's stack, or `scratch` holding
-/// its passes with the screen transition's pass last (M31, `D-093`).
+/// The post stack a frame draws with (M31, `D-093`, S-50): the user's
+/// stack itself while `tail` is empty, no transition runs and no Bloom pass
+/// is to be dropped, so such a frame copies nothing; else `scratch` holding
+/// the user's passes, then `tail`'s, then the screen transition's pass, with
+/// every `PostPass::Bloom` left out while `bloom` is off.
 fn compose_post_stack<'a>(
     user: &'a PostStack,
+    tail: &[PostPass],
+    bloom: bool,
     transition_pass: Option<PostPass>,
     scratch: &'a mut PostStack,
 ) -> &'a PostStack {
-    let Some(pass) = transition_pass else {
+    let is_bloom = |pass: &PostPass| matches!(pass, PostPass::Bloom(_));
+    let drops_bloom = !bloom && user.0.iter().any(is_bloom);
+    if tail.is_empty() && transition_pass.is_none() && !drops_bloom {
         return user;
-    };
+    }
     scratch.0.clear();
-    scratch.0.extend_from_slice(&user.0);
-    scratch.0.push(pass);
+    let kept = user
+        .0
+        .iter()
+        .chain(tail)
+        .filter(|pass| bloom || !is_bloom(pass));
+    scratch.0.extend(kept.copied());
+    scratch.0.extend(transition_pass);
     scratch
+}
+
+/// The post stack `world`'s frame draws with: [`compose_post_stack`] over
+/// its `PostStack` (`empty` without one), `PostTail`, `Settings::bloom`
+/// (unset draws Bloom) and the state stack's transition pass.
+fn frame_post_stack<'a>(
+    world: &'a World,
+    empty: &'a PostStack,
+    scratch: &'a mut PostStack,
+) -> &'a PostStack {
+    let user = world.get_resource::<PostStack>().unwrap_or(empty);
+    let tail = world
+        .get_resource::<PostTail>()
+        .map_or(&[][..], |tail| tail.0.as_slice());
+    let bloom = world.get_resource::<Settings>().and_then(Settings::bloom) != Some(false);
+    let transition_pass = world
+        .get_resource::<StateStack>()
+        .and_then(StateStack::transition_pass);
+    compose_post_stack(user, tail, bloom, transition_pass, scratch)
 }
 
 /// Where a frame's real dt comes from: the dt [`Time`]'s real clock advances
@@ -2374,21 +2608,14 @@ impl App {
                 }
             }
 
-            // M26: PostStack is a world resource; default is empty.
+            // M26: PostStack is a world resource; default is empty. M31: a
+            // screen transition draws as the last post-stack slot, after
+            // `PostTail` (S-50), on a copy of the user's stack, so a state's
+            // `on_enter` may clear or rebuild `PostStack` without losing or
+            // leaking the pass.
             let empty_stack = PostStack::default();
-            let post_stack = self
-                .world
-                .get_resource::<PostStack>()
-                .unwrap_or(&empty_stack);
-            // M31: a screen transition draws as the last post-stack slot, on
-            // a copy of the user's stack, so a state's `on_enter` may clear
-            // or rebuild `PostStack` without losing or leaking the pass.
-            let transition_pass = self
-                .world
-                .get_resource::<StateStack>()
-                .and_then(StateStack::transition_pass);
             let post_stack =
-                compose_post_stack(post_stack, transition_pass, &mut self.transition_post_stack);
+                frame_post_stack(&self.world, &empty_stack, &mut self.transition_post_stack);
 
             // M29: upload the per-frame light UBO before any draw records it.
             renderer.update_lights(&extract.light_ubo);
@@ -2563,6 +2790,16 @@ impl App {
         }
     }
 
+    /// The post stack the world's frame draws with ([`frame_post_stack`]),
+    /// copied for the harness's `FrameDraw`.
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) fn drawn_post_stack(&mut self) -> Vec<PostPass> {
+        let empty = PostStack::default();
+        frame_post_stack(&self.world, &empty, &mut self.transition_post_stack)
+            .0
+            .clone()
+    }
+
     /// One frame, from the interval measurement through the perf log, in the
     /// order `DESIGN.md`'s frame loop lists. The window loop runs it on each
     /// redraw with [`FrameClock::Wall`], then paces; a headless caller runs it
@@ -2577,6 +2814,11 @@ impl App {
     ) -> FrameEnd {
         let interval_ms =
             frame_interval_ms(self.prev_frame_start.replace(frame_start), frame_start);
+        // The run's last frame: the level editor closes before its first
+        // stage, so a save taken in it holds no room the editor opened.
+        if self.world.has_resource::<Exiting>() {
+            crate::level_editor::close_for_exit(&mut self.world);
+        }
         self.stage_gamepads();
         self.apply_pending_display_request();
 
@@ -3355,10 +3597,13 @@ impl ApplicationHandler for App {
             _ => BootAssets::default(),
         };
         self.startup_clock.timings.boot = ms_since(boot_start);
+        let hold = plan
+            .as_ref()
+            .map_or(Duration::ZERO, |plan| self.boot_hold(&plan.manifest().boot));
         self.boot = Some(Boot {
             plan,
             assets,
-            pacer: BootPacer::default(),
+            pacer: BootPacer::holding(hold),
             merge_ms,
         });
         if let Some(window) = &self.window {

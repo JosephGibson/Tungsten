@@ -10,7 +10,9 @@ use thiserror::Error;
 
 use super::id::{NameError, SaveId, SaveState, name};
 use super::world::{RestoreError, RestoreReport};
-use crate::assets::{EMPTY_TILE, PrefabError, TileIndex, TilemapInstance, TilemapRegistry};
+use crate::assets::{
+    EMPTY_TILE, PrefabError, PreparedPrefab, TileIndex, TilemapInstance, TilemapRegistry,
+};
 use crate::ecs::{Bundle, Entity, World};
 
 /// One map's tiles in a save: its layers' names at the capture, each
@@ -174,7 +176,8 @@ pub(crate) fn apply_tiles(world: &mut World, plans: Vec<TilePlan>) {
     }
 }
 
-/// Why [`World::spawn_area`] spawned nothing.
+/// Why [`World::spawn_area`] or [`World::spawn_room`] spawned nothing, or
+/// [`World::remove_room`] removed nothing.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum AreaError {
@@ -188,6 +191,30 @@ pub enum AreaError {
         map: String,
         /// Why.
         source: NameError,
+    },
+    /// No room of this ID is registered (redo 7.12).
+    #[error("unknown room `{room}`")]
+    UnknownRoom {
+        /// The room's ID.
+        room: String,
+    },
+    /// The room's last spawned instance still lives: a room is live at most
+    /// once, and is removed only once its instance is gone (redo 7.12).
+    #[error("room `{room}` is live; despawn its instance first")]
+    Live {
+        /// The room's ID.
+        room: String,
+    },
+    /// An entity named in the room's area lives: it saves as changes over
+    /// the spawn its room makes, so the room stays while it does (redo 7.12).
+    #[error(
+        "room `{room}`'s area names `{name}`, which lives; despawn it before removing the room"
+    )]
+    Held {
+        /// The room's ID.
+        room: String,
+        /// The first such entity's name, by name.
+        name: String,
     },
 }
 
@@ -216,6 +243,30 @@ impl World {
     ) -> Result<Vec<Entity>, AreaError> {
         let origin = origin.into();
         let prepared = self.prepare_map_objects_named(map, origin)?;
+        self.check_area_names(map, &prepared)?;
+        self.load_area_map(map);
+        let mut spawned = vec![self.spawn_with((TilemapInstance::new(map, origin),))];
+        for (prefab, object) in prepared {
+            let entity = prefab.spawn(self);
+            if !object.is_empty() {
+                name(self, entity, Some(map), &object).map_err(|source| AreaError::Name {
+                    map: map.to_owned(),
+                    source,
+                })?;
+            }
+            spawned.push(entity);
+        }
+        Ok(spawned)
+    }
+
+    /// [`spawn_area`](Self::spawn_area)'s name checks on `map`'s prepared
+    /// objects: no name a live entity holds, none two objects share, none
+    /// whose ID another name has.
+    pub(crate) fn check_area_names(
+        &self,
+        map: &str,
+        prepared: &[(PreparedPrefab, String)],
+    ) -> Result<(), AreaError> {
         let name_error = |source| AreaError::Name {
             map: map.to_owned(),
             source,
@@ -252,7 +303,13 @@ impl World {
                 }));
             }
         }
+        Ok(())
+    }
 
+    /// [`spawn_area`](Self::spawn_area)'s first change: `map` put back as
+    /// inserted, and the area `map` among the World's loaded areas with
+    /// its map's tiles.
+    pub(crate) fn load_area_map(&mut self, map: &str) {
         if let Some(maps) = self.get_resource_mut::<TilemapRegistry>() {
             maps.revert(map);
         }
@@ -264,15 +321,6 @@ impl World {
             .entry(map.to_owned())
             .or_default()
             .insert(map.to_owned());
-        let mut spawned = vec![self.spawn_with((TilemapInstance::new(map, origin),))];
-        for (prefab, object) in prepared {
-            let entity = prefab.spawn(self);
-            if !object.is_empty() {
-                name(self, entity, Some(map), &object).map_err(name_error)?;
-            }
-            spawned.push(entity);
-        }
-        Ok(spawned)
     }
 }
 

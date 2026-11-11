@@ -50,7 +50,9 @@ pub struct RefCodec<T> {
     pub save: fn(&T, &mut RefWriter<'_>),
     /// Sets the references [`RefReader`] resolved. A restore calls it once
     /// on the value its saved form gave; an area's entry may call it again
-    /// with the references that resolved then, which it adds.
+    /// with the references that resolved then, which it adds after the
+    /// first call's, so a key split across a kept area reads back loaded
+    /// ones first.
     pub load: fn(&mut T, &RefReader<'_>),
     /// The keys the value holds now.
     pub keys: fn(&T) -> Vec<String>,
@@ -95,7 +97,11 @@ impl<'a> RefWriter<'a> {
 }
 
 /// What a [`RefCodec`]'s `load` reads: each key's references that resolved
-/// to live entities, in their saved order.
+/// to live entities, in their saved order. A key whose references are split
+/// between a loaded area and a kept one loads in two calls, each in saved
+/// order: the resolved ones at the restore and the waiting ones at the area's
+/// entry ([`enter_area`](super::enter_area)); a capture between the two
+/// writes the live references, then the waiting ones.
 pub struct RefReader<'a> {
     refs: &'a BTreeMap<String, Vec<Entity>>,
 }

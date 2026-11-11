@@ -5,7 +5,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::hint::black_box;
-use tungsten_core::{CommandBuffer, Entity, EventQueue, World};
+use tungsten_core::{CollisionEvent, CommandBuffer, Entity, EventQueue, World};
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -520,6 +520,100 @@ fn bench_event_queue_flush_10_types(c: &mut Criterion) {
     });
 }
 
+/// A step's 200,000 collision events handed to their queue, by one `send`
+/// each and by one `append`. Each iteration fills the step's buffer first,
+/// as a step's substeps do, and flushes the queue, as a frame does.
+fn bench_event_handover_200k(c: &mut Criterion) {
+    use glam::Vec2;
+
+    const EVENTS: usize = 200_000;
+    let entity = World::new().spawn();
+    let event = CollisionEvent::new(entity, Some(entity), Vec2::X, 0.5).with_speed(120.0);
+    let fill = |events: &mut Vec<CollisionEvent>| {
+        for _ in 0..EVENTS {
+            events.push(black_box(event));
+        }
+    };
+
+    c.bench_function("event_send_200k", |b| {
+        let mut queue = EventQueue::new();
+        let mut events = Vec::new();
+        b.iter(|| {
+            fill(&mut events);
+            for event in events.drain(..) {
+                queue.send(event);
+            }
+            black_box(&mut queue).flush();
+        });
+    });
+    c.bench_function("event_append_200k", |b| {
+        let mut queue = EventQueue::new();
+        let mut events = Vec::new();
+        b.iter(|| {
+            fill(&mut events);
+            queue.append(&mut events);
+            black_box(&mut queue).flush();
+        });
+    });
+}
+
+/// A resource for the `TypeId` lookups below: twenty-four types, as a game
+/// World holds.
+struct Res<const N: usize>(u64);
+
+/// A data kind for [`bench_typeid_lookups`].
+#[derive(serde::Deserialize)]
+struct BenchKind {
+    value: u64,
+}
+
+/// A thousand lookups keyed by `TypeId`, as systems make every frame:
+/// `World::get_resource` over four of a World's resources, and
+/// `DataRef::resolve` by ID, which finds its type's kind before its entry.
+fn bench_typeid_lookups(c: &mut Criterion) {
+    use tungsten_core::{DataRef, DataRegistry};
+
+    let mut world = World::new();
+    macro_rules! resources {
+        ($($n:literal)*) => { $( world.insert_resource(Res::<$n>($n)); )* };
+    }
+    resources!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23);
+    c.bench_function("resource_get_x1000", |b| {
+        b.iter(|| {
+            let mut sum = 0u64;
+            for _ in 0..250 {
+                let world = black_box(&world);
+                sum += world.get_resource::<Res<3>>().map_or(0, |res| res.0);
+                sum += world.get_resource::<Res<11>>().map_or(0, |res| res.0);
+                sum += world.get_resource::<Res<17>>().map_or(0, |res| res.0);
+                sum += world.get_resource::<Res<22>>().map_or(0, |res| res.0);
+            }
+            black_box(sum)
+        });
+    });
+
+    let mut data = DataRegistry::new();
+    data.register::<BenchKind>("bench_kind");
+    for index in 0..64u64 {
+        data.insert(format!("entry_{index}"), BenchKind { value: index });
+    }
+    let refs: Vec<DataRef<BenchKind>> = (0..8)
+        .map(|index| DataRef::by_id(format!("entry_{}", index * 7)))
+        .collect();
+    c.bench_function("data_ref_resolve_x1000", |b| {
+        b.iter(|| {
+            let mut sum = 0u64;
+            for _ in 0..125 {
+                let data = black_box(&data);
+                for reference in &refs {
+                    sum += reference.resolve(data).map_or(0, |kind| kind.value);
+                }
+            }
+            black_box(sum)
+        });
+    });
+}
+
 // D-042 gate: query3 sprite path across matching and excluded archetypes.
 fn bench_sprite_components_query3_2k(c: &mut Criterion) {
     use glam::Vec2;
@@ -642,6 +736,8 @@ criterion_group!(
     bench_naive_query_single,
     bench_naive_query2_via_entities,
     bench_event_queue_flush_10_types,
+    bench_event_handover_200k,
+    bench_typeid_lookups,
     bench_sprite_components_query3_2k,
     bench_high_load_iteration_50k,
 );

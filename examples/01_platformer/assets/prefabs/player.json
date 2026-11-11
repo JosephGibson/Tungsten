@@ -24,7 +24,7 @@
     "effects": ["mana_regen"],
     "abilities": ["fire_missile", "flamethrower", "ice_spray", "force_push", "black_hole", "iron_block", "bowling_ball", "small_balls", "lightning", "gun", "summon", "staff_light", "toxic_flask"],
     "spellbook": {},
-    "camera_target": null,
+    "camera_rig": { "follow": {}, "view_height": 1152, "bounds": { "min": [0, 0], "max": [27520, 4608] } },
     "glow": { "radius": 125, "color": [255, 190, 100, 255], "light": 1.2, "core": 30 }
   }
 }

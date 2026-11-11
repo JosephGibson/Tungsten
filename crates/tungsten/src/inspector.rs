@@ -157,6 +157,7 @@ impl InspectorState {
             corner: self.corner,
             padding: self.padding_px,
             strip: false,
+            tall: false,
             look: look_of!(self),
             shape: Shape {
                 columns: COLUMNS,
@@ -302,59 +303,109 @@ fn sprite_rows(world: &World, entity: Entity) -> Vec<(&'static str, String)> {
     rows
 }
 
-/// Pick smallest sprite/collider AABB containing `world_cursor`. A sprite's
-/// box is its quad where the extract draws it, before the shader's turn
-/// (debug-pass): remapped under a `ParallaxLayer` against the camera at
-/// `camera`, its frame's anchor on its position, mirrored under
-/// `SpriteFlip`. A collider sits at its body's `Transform` when it has one,
-/// else at `Position`.
+/// Pick smallest sprite/collider AABB containing `world_cursor`, each box
+/// as [`sprite_box`] and [`collider_box`] draw it.
 fn pick_entity_under_cursor(world: &World, world_cursor: Vec2, camera: Vec2) -> Option<Entity> {
     let mut best: Option<(Entity, f32)> = None;
 
     if let Some(registry) = world.get_resource::<AssetRegistry>() {
         for (entity, transform, sprite) in world.query::<(Entity, &Transform, &Sprite)>() {
-            let visible = world.get::<Visibility>(entity).is_some_and(|v| v.visible);
-            if !visible {
-                continue;
+            if let Some((min, size)) =
+                sprite_box(world, registry, entity, transform, sprite, camera)
+            {
+                try_hit_aabb(&mut best, entity, world_cursor, min, size);
             }
-            let Some(asset) = registry.sprite(sprite.asset_id) else {
-                continue;
-            };
-            // A negative scale spans the quad back from the point, as the
-            // sprite shader draws it.
-            let span = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale;
-            let mut at = world
-                .get::<ParallaxLayer>(entity)
-                .map_or(transform.position, |layer| {
-                    parallax_world_position(transform.position, layer.scroll_factor, camera)
-                });
-            if let Some(anchor) = asset.anchor {
-                let flip = world.get::<SpriteFlip>(entity).is_some_and(|flip| flip.0);
-                let anchor = if flip {
-                    [asset.width as f32 - anchor[0], anchor[1]]
-                } else {
-                    anchor
-                };
-                at += anchor_offset(anchor, transform.scale, span, transform.rotation);
-            }
-            let min = at + span.min(Vec2::ZERO);
-            try_hit_aabb(&mut best, entity, world_cursor, min, span.abs());
         }
     }
 
-    // Collider fallback catches custom-extract visuals. A body is tested
-    // where the last frame drew it, the `Transform` `physics_sync` wrote:
-    // the pick runs before this frame's steps, so its `alpha` would pair
-    // with positions the steps have yet to move.
+    // Collider fallback catches custom-extract visuals.
     for (entity, collider, position, drawn) in
         world.query::<(Entity, &Collider, &Position, Option<&Transform>)>()
     {
-        let centre = drawn.map_or(position.0, |transform| transform.position) + collider.offset;
-        let half = collider.shape.half_extents().abs();
-        try_hit_aabb(&mut best, entity, world_cursor, centre - half, half * 2.0);
+        let (min, size) = collider_box(collider, *position, drawn);
+        try_hit_aabb(&mut best, entity, world_cursor, min, size);
     }
 
     best.map(|(e, _)| e)
+}
+
+/// The box `entity` is picked by, `(min, size)` in world pixels: its
+/// sprite's quad where the extract draws it ([`sprite_box`]), else its
+/// collider's box where the last frame drew its body ([`collider_box`]);
+/// `None` for neither, or an empty box. The level editor boxes its picks
+/// by it (redo 7.12).
+pub(crate) fn drawn_box(world: &World, entity: Entity, camera: Vec2) -> Option<(Vec2, Vec2)> {
+    let sprite = world
+        .get_resource::<AssetRegistry>()
+        .zip(world.get::<Transform>(entity))
+        .zip(world.get::<Sprite>(entity))
+        .and_then(|((registry, transform), sprite)| {
+            sprite_box(world, registry, entity, transform, sprite, camera)
+        });
+    sprite
+        .or_else(|| {
+            let collider = world.get::<Collider>(entity)?;
+            let position = *world.get::<Position>(entity)?;
+            Some(collider_box(
+                collider,
+                position,
+                world.get::<Transform>(entity),
+            ))
+        })
+        .filter(|(_, size)| size.x > 0.0 && size.y > 0.0)
+}
+
+/// A visible sprite's box, `(min, size)`: its quad where the extract draws
+/// it, before the shader's turn (debug-pass): remapped under a
+/// `ParallaxLayer` against the camera at `camera`, its frame's anchor on
+/// its position, mirrored under `SpriteFlip`. `None` for a hidden sprite or
+/// one whose asset is not registered.
+fn sprite_box(
+    world: &World,
+    registry: &AssetRegistry,
+    entity: Entity,
+    transform: &Transform,
+    sprite: &Sprite,
+    camera: Vec2,
+) -> Option<(Vec2, Vec2)> {
+    let visible = world.get::<Visibility>(entity).is_some_and(|v| v.visible);
+    if !visible {
+        return None;
+    }
+    let asset = registry.sprite(sprite.asset_id)?;
+    // A negative scale spans the quad back from the point, as the sprite
+    // shader draws it.
+    let span = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale;
+    let mut at = world
+        .get::<ParallaxLayer>(entity)
+        .map_or(transform.position, |layer| {
+            parallax_world_position(transform.position, layer.scroll_factor, camera)
+        });
+    if let Some(anchor) = asset.anchor {
+        let flip = world.get::<SpriteFlip>(entity).is_some_and(|flip| flip.0);
+        let anchor = if flip {
+            [asset.width as f32 - anchor[0], anchor[1]]
+        } else {
+            anchor
+        };
+        at += anchor_offset(anchor, transform.scale, span, transform.rotation);
+    }
+    Some((at + span.min(Vec2::ZERO), span.abs()))
+}
+
+/// A collider's box, `(min, size)`, at its body's `Transform` when it has
+/// one, else at `Position`: a body is tested where the last frame drew it,
+/// the `Transform` `physics_sync` wrote, since the pick runs before this
+/// frame's steps, whose `alpha` would pair with positions the steps have
+/// yet to move.
+fn collider_box(
+    collider: &Collider,
+    position: Position,
+    drawn: Option<&Transform>,
+) -> (Vec2, Vec2) {
+    let centre = drawn.map_or(position.0, |transform| transform.position) + collider.offset;
+    let half = collider.shape.half_extents().abs();
+    (centre - half, half * 2.0)
 }
 
 fn try_hit_aabb(

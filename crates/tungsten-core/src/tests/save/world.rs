@@ -533,10 +533,12 @@ fn a_reference_to_an_unsaved_entity_is_dropped_and_reported() {
         report.dropped,
         ["`chase`'s reference `target` to save ID 999: no such entity"]
     );
+    // The chase has no patch, so it loads onto its saved form's
+    // placeholder, not the fresh spawn's target (`RefCodec::load`).
     assert_eq!(
         b.get::<Chase>(lb.bat_2).unwrap().target,
-        lb.bat_1,
-        "the fresh spawn's"
+        Entity::PLACEHOLDER,
+        "the saved form's placeholder"
     );
 }
 
@@ -959,4 +961,971 @@ fn a_replaced_entity_keeps_its_save_identity() {
         .replace_prefab(gone, prepared);
     flush(&mut c);
     assert_eq!((c.entity_count(), charred_of(&c).len()), (count, 1));
+}
+
+#[test]
+fn a_body_resting_on_a_floor_comes_back_where_it_was_saved() {
+    // The crate rests 0.256 px into the floor, past `linear_slop`; the
+    // restore's free spot leaves it there.
+    use crate::assets::{LayerKind, TilemapData, TilemapInstance, TilemapRegistry};
+    use crate::physics::PhysicsConfig;
+
+    // A 20 × 10 map of 16 px cells, its floor row 9 (top at y 144), and the crate.
+    let floored = || {
+        let mut map = TilemapData::new(16, 16, 20, 10);
+        let rock = map.add_tile("rock");
+        let walls = map.add_layer("walls", LayerKind::Collision);
+        for col in 0..20 {
+            map.set_tile(walls, col, 9, rock);
+        }
+        let mut maps = TilemapRegistry::new();
+        maps.insert("room".into(), map);
+        let mut world = world();
+        world.insert_resource(maps);
+        world.spawn_with((TilemapInstance::new("room", Vec2::ZERO),));
+        world.insert_resource(PhysicsConfig {
+            gravity: Vec2::new(0.0, 900.0),
+            ..PhysicsConfig::default()
+        });
+        world.insert_resource(crate::time::Time::new());
+        let body = crate_body(&mut world);
+        (world, body)
+    };
+    let (mut a, body) = floored();
+    for _ in 0..120 {
+        a.resource_mut::<crate::time::Time>()
+            .advance_frame(1.0 / 60.0);
+        crate::physics::physics_step(&mut a);
+    }
+    let rest = a.get::<Position>(body).unwrap().0;
+    let (mut b, body) = floored();
+    let report = restore_world(&mut b, &capture_world(&a).unwrap(), &(Scene,)).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(
+        b.get::<Position>(body).unwrap().0,
+        rest,
+        "rested {} px deep",
+        rest.y + 4.0 - 144.0
+    );
+}
+
+// Evidence for oracle-ecs new-4 (core hardening 2026-11-07, save oracle).
+
+#[test]
+fn oracle_new_4_a_restore_leaves_a_world_that_names_nothing_unsaving() {
+    // A game that saves its resources alone and names no entity: the live
+    // run holds no save state, so the kit's passes keep their query order.
+    let start = || {
+        let mut world = World::new();
+        world.register_saved_resource::<Weather>("weather");
+        world.insert_resource(Weather {
+            raining: false,
+            wind: 0.0,
+        });
+        world
+    };
+    let mut a = start();
+    a.resource_mut::<Weather>().raining = true;
+    let saved = capture_world(&a).unwrap();
+    let mut b = start();
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert_eq!(b.resource::<Weather>(), a.resource::<Weather>());
+    assert_eq!(
+        crate::save::saving(&b),
+        crate::save::saving(&a),
+        "the loaded run saves as the live one does"
+    );
+}
+
+// Evidence for oracle-ecs new-2 (core hardening 2026-11-07, save oracle).
+// new-3's test shares `Marks` and `hero_dog`.
+
+/// A list of references under one key whose codec's `load` extends it, as
+/// the area tests' `Hits` and the kit's hit lists do.
+#[derive(Debug, Clone, PartialEq)]
+struct Marks {
+    key: u32,
+    targets: Vec<Entity>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct MarksForm {
+    key: u32,
+}
+
+impl From<&Marks> for MarksForm {
+    fn from(marks: &Marks) -> Self {
+        Self { key: marks.key }
+    }
+}
+
+impl From<MarksForm> for Marks {
+    fn from(form: MarksForm) -> Self {
+        Self {
+            key: form.key,
+            targets: Vec::new(),
+        }
+    }
+}
+
+fn save_marks(marks: &Marks, out: &mut RefWriter<'_>) {
+    for &target in &marks.targets {
+        out.put("marks", target);
+    }
+}
+
+fn load_marks(marks: &mut Marks, refs: &RefReader<'_>) {
+    marks.targets.extend_from_slice(refs.get("marks"));
+}
+
+fn marks_keys(_: &Marks) -> Vec<String> {
+    vec!["marks".into()]
+}
+
+/// `world()` with `Marks` saved under `marks`.
+fn world_with_marks() -> World {
+    let mut world = world();
+    world.register_saved_with(
+        "marks",
+        SaveOptions::<Marks>::form::<MarksForm>().refs(RefCodec {
+            save: save_marks,
+            load: load_marks,
+            keys: marks_keys,
+        }),
+    );
+    world
+}
+
+/// A run's start for new-2 and new-3: `hero` and `dog`, global, and, when
+/// `cave`, `bat_1` in area `cave`. The hero chases the dog.
+fn hero_dog(world: &mut World, cave: bool) -> (Entity, Entity, Option<Entity>) {
+    let hero = world.spawn_prefab("hero", [16.0, 16.0]).unwrap();
+    let dog = world.spawn_prefab("hero", [32.0, 16.0]).unwrap();
+    world.insert(
+        hero,
+        Chase {
+            target: dog,
+            speed: 2.0,
+        },
+    );
+    name(world, hero, None, "hero").unwrap();
+    name(world, dog, None, "dog").unwrap();
+    let bat = cave.then(|| {
+        let bat = world.spawn_prefab("bat", [100.0, 40.0]).unwrap();
+        name(world, bat, Some("cave"), "bat_1").unwrap();
+        bat
+    });
+    (hero, dog, bat)
+}
+
+#[test]
+fn oracle_new_2_a_named_entitys_list_loads_onto_its_saved_form() {
+    // The bat's level gives it one mark, the hero; the run changes
+    // nothing. The restore leaves the fresh value (no patch) and its codec
+    // extends it with the saved mark.
+    let start = |world: &mut World| {
+        let hero = world.spawn_prefab("hero", [16.0, 16.0]).unwrap();
+        let bat = world.spawn_prefab("bat", [100.0, 40.0]).unwrap();
+        world.insert(
+            bat,
+            Marks {
+                key: 1,
+                targets: vec![hero],
+            },
+        );
+        name(world, hero, None, "hero").unwrap();
+        name(world, bat, Some("cave"), "bat_1").unwrap();
+        (hero, bat)
+    };
+    let mut a = world_with_marks();
+    start(&mut a);
+    let saved = capture_world(&a).unwrap();
+    let mut b = world_with_marks();
+    let (hero, bat) = start(&mut b);
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert_eq!(
+        b.get::<Marks>(bat).unwrap().targets,
+        [hero],
+        "the live World's one mark"
+    );
+}
+
+#[test]
+fn oracle_new_2_a_reference_waiting_on_a_kept_area_leaves_no_fresh_one() {
+    // The hero's chase, the dog at its naming, turns to the bat in area
+    // `cave`; the restoring World has not loaded the cave.
+    let mut a = world();
+    let (hero, _, bat) = hero_dog(&mut a, true);
+    a.get_mut::<Chase>(hero).unwrap().target = bat.unwrap();
+    let first = text(&capture_world(&a).unwrap());
+    let mut b = world();
+    let (hero_b, dog_b, _) = hero_dog(&mut b, false);
+    restore_world(&mut b, &serde_json::from_str(&first).unwrap(), &(Scene,)).unwrap();
+    assert!(b.resource::<SaveState>().is_kept("cave"));
+    let chasing_dog = b.get::<Chase>(hero_b).unwrap().target == dog_b;
+    let second = text(&capture_world(&b).unwrap());
+    assert!(
+        !chasing_dog && second == first,
+        "the hero chases the fresh dog: {chasing_dog}; the capture writes {}",
+        &second[second.find("\"hero\"").unwrap_or(0)..][..120]
+    );
+}
+
+// Evidence for oracle-ecs new-1 (core hardening 2026-11-07, save oracle).
+
+#[test]
+#[ignore = "7.21 step 15: fails until its fix"]
+fn oracle_new_1_a_saved_f64_restores_from_its_text_bit_for_bit() {
+    // A saved resource's f64, written to text and read back as a game's
+    // slot does: serde_json without `float_roundtrip` parses a 17-digit
+    // number best-effort.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct Gauge {
+        pressure: f64,
+    }
+    let mut drifted = Vec::new();
+    let mut rewritten = 0;
+    for n in 0..2_000 {
+        let pressure = f64::from(n) * 0.1 - 100.0;
+        let mut a = World::new();
+        a.register_saved_resource::<Gauge>("gauge");
+        a.insert_resource(Gauge { pressure });
+        let first = text(&capture_world(&a).unwrap());
+        let read: WorldSave = serde_json::from_str(&first).unwrap();
+        rewritten += usize::from(text(&read) != first);
+        let mut b = World::new();
+        b.register_saved_resource::<Gauge>("gauge");
+        restore_world(&mut b, &read, &(Scene,)).unwrap();
+        let back = b.resource::<Gauge>().pressure;
+        if back.to_bits() != pressure.to_bits() {
+            drifted.push((pressure, back));
+        }
+    }
+    assert!(
+        drifted.is_empty() && rewritten == 0,
+        "{} of 2,000 pressures restored off (first {:?}); {rewritten} saves wrote other bytes once read",
+        drifted.len(),
+        &drifted[..drifted.len().min(3)]
+    );
+}
+
+#[test]
+#[ignore = "7.21 step 15: fails until its fix"]
+fn oracle_new_1_a_kept_areas_f32_writes_back_as_it_was_read() {
+    // `bat_1`'s f32 health in area `cave`, which the restoring World has
+    // not loaded: the restore keeps the record as parsed, and the next
+    // capture writes it back.
+    let mut a = world();
+    let la = level(&mut a);
+    let mut differ = Vec::new();
+    for n in 1..200_u16 {
+        a.get_mut::<Health>(la.bat_1).unwrap().current = f32::from(n) * 0.1;
+        let first = text(&capture_world(&a).unwrap());
+        let read: WorldSave = serde_json::from_str(&first).unwrap();
+        let mut b = world();
+        let hero = b.spawn_prefab("hero", [16.0, 16.0]).unwrap();
+        name(&mut b, hero, None, "hero").unwrap();
+        restore_world(&mut b, &read, &(Scene,)).unwrap();
+        assert!(b.resource::<SaveState>().is_kept("cave"));
+        if text(&capture_world(&b).unwrap()) != first {
+            differ.push(f32::from(n) * 0.1);
+        }
+    }
+    assert!(
+        differ.is_empty(),
+        "{} of 199 healths wrote other bytes from a kept area (first {:?})",
+        differ.len(),
+        &differ[..differ.len().min(5)]
+    );
+}
+
+// Evidence for oracle-ecs new-3 (core hardening 2026-11-07, save oracle).
+// It uses new-2's `Marks`, `world_with_marks` and `hero_dog`.
+
+#[test]
+fn oracle_new_3_a_key_split_across_a_kept_area_keeps_its_order() {
+    // The hero marks the bat (area `cave`), then the dog (global). The
+    // restoring World loads the global record alone, then enters the cave.
+    let mut a = world_with_marks();
+    let (hero, dog, bat) = hero_dog(&mut a, true);
+    a.insert(
+        hero,
+        Marks {
+            key: 1,
+            targets: vec![bat.unwrap(), dog],
+        },
+    );
+    let first = text(&capture_world(&a).unwrap());
+    let mut b = world_with_marks();
+    let (hero_b, _, _) = hero_dog(&mut b, false);
+    restore_world(&mut b, &serde_json::from_str(&first).unwrap(), &(Scene,)).unwrap();
+    let kept = text(&capture_world(&b).unwrap());
+    let bat_b = b.spawn_prefab("bat", [100.0, 40.0]).unwrap();
+    name(&mut b, bat_b, Some("cave"), "bat_1").unwrap();
+    crate::save::enter_area(&mut b, "cave", &(Scene,)).unwrap();
+    let ids = |world: &World, entity: Entity| -> Vec<u64> {
+        world
+            .get::<Marks>(entity)
+            .unwrap()
+            .targets
+            .iter()
+            .map(|&target| world.get::<Saved>(target).unwrap().id().0)
+            .collect()
+    };
+    // `D-257`: a split key loads in two calls, each in saved order, the dog
+    // (global) at the restore and the bat at the cave's entry; a capture
+    // between them writes the live reference, then the waiting one.
+    let marks = |text: &str| -> Vec<u64> {
+        let save: serde_json::Value = serde_json::from_str(text).unwrap();
+        save["global"]["named"]["hero"]["refs"]["marks"]["marks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_u64().unwrap())
+            .collect()
+    };
+    let live = ids(&a, hero);
+    let loaded_then_waiting = vec![live[1], live[0]];
+    assert_eq!(marks(&first), live, "the save keeps the live order");
+    assert_eq!(
+        (ids(&b, hero_b), marks(&kept)),
+        (loaded_then_waiting.clone(), loaded_then_waiting),
+        "the marks after the entry, and the window's capture"
+    );
+}
+
+#[test]
+fn a_restored_spawn_shows_its_variant_in_a_churned_world() {
+    use crate::assets::AssetRegistry;
+    use crate::components::Sprite;
+    /// `world()` with the prefab `orb` showing `orb`, `orb_b` or `orb_c`,
+    /// their names interned in `order`.
+    fn orbs(order: [&str; 3]) -> World {
+        let mut world = world();
+        let mut assets = AssetRegistry::new();
+        for name in order {
+            assets.intern_sprite(name);
+        }
+        world.insert_resource(assets);
+        world.resource_mut::<PrefabRegistry>().insert(
+            "orb".into(),
+            prefab(json!({ "tag": "orb",
+                "sprite": { "asset_id": "orb", "variants": ["orb_b", "orb_c"] },
+                "components": { "brain": { "mood": "drift" } } })),
+        );
+        world
+    }
+    /// Each saved orb's save ID with the sprite it shows, by name.
+    fn shown(world: &World) -> Vec<(SaveId, String)> {
+        let assets = world.resource::<AssetRegistry>();
+        let mut shown: Vec<(SaveId, String)> = world
+            .query::<(&Saved, &Sprite)>()
+            .filter(|(saved, _)| saved.prefab() == Some("orb"))
+            .map(|(saved, sprite)| {
+                let name = assets.sprite_name(sprite.asset_id).unwrap();
+                (saved.id(), name.to_owned())
+            })
+            .collect();
+        shown.sort();
+        shown
+    }
+    let mut a = orbs(["orb", "orb_b", "orb_c"]);
+    let la = level(&mut a);
+    for x in 0..9 {
+        let orb = a.prepare_prefab("orb", [x as f32 * 24.0, 40.0]).unwrap();
+        a.resource_mut::<CommandBuffer>()
+            .spawn_prefab_from(la.turret, orb);
+    }
+    flush(&mut a);
+    let before = shown(&a);
+    assert_eq!(before.len(), 9);
+    let names: BTreeSet<&str> = before.iter().map(|(_, name)| name.as_str()).collect();
+    assert!(names.len() > 1, "{before:?}");
+    let saved = capture_world(&a).unwrap();
+    assert!(!text(&saved).contains("orb_b"), "a variant saves nothing");
+    // Other entity indices, the names interned in another order, and the
+    // spawns placed where the save names no position: the save ID picks.
+    let mut b = orbs(["orb_c", "orb", "orb_b"]);
+    churn(&mut b, 40);
+    level(&mut b);
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert_eq!(shown(&b), before);
+}
+
+/// Generated areas (redo 7.12): a save of a generated run as its seed and
+/// its changes, regenerated and matched against the World's generation.
+mod generated {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use super::*;
+    use crate::assets::{
+        Generate, GenerateError, GeneratedRooms, Generation, Room, RoomCommand, RoomGenerator,
+        RoomRegistry, Tileset,
+    };
+    use crate::save::{enter_area, regenerate};
+
+    const TILESET: &str = r#"{ "version": 1, "tiles": [{ "sprite": "rock" }] }"#;
+
+    /// An 8 × 4 template with a floor, a crate and a door on each side.
+    const HALL: &str = r#"{ "version": 1, "cell": [16, 16], "size": [8, 4], "tileset": "cave",
+      "layers": [{ "name": "solid", "kind": "collision" }],
+      "shapes": [{ "id": "floor", "rect": [0, 3, 8, 1], "tile": "rock", "layers": ["solid"] }],
+      "objects": [{ "id": "crate_1", "prefab": "crate", "at": [1, 2] }],
+      "places": [{ "id": "door_west", "point": [0, 2] }, { "id": "door_east", "point": [7, 2] }] }"#;
+
+    type Migrate = fn(&Generation, Option<&Generation>, &mut Value) -> bool;
+
+    /// What each `migrate` call saw: the saved generation, the World's and
+    /// the area's record.
+    type Seen = Rc<RefCell<Vec<(Generation, Option<Generation>, Value)>>>;
+
+    /// Copies of `hall` in a row, 128 px apart, each with a second crate at
+    /// a column from the seed: three rooms at version 1, two from 2.
+    struct Chain {
+        version: u32,
+        reproduces: &'static [u32],
+        migrate: Option<Migrate>,
+        seen: Seen,
+    }
+
+    fn chain(version: u32) -> Chain {
+        Chain {
+            version,
+            reproduces: &[],
+            migrate: None,
+            seen: Seen::default(),
+        }
+    }
+
+    impl RoomGenerator for Chain {
+        fn version(&self) -> u32 {
+            self.version
+        }
+
+        fn reproduces(&self, version: u32) -> bool {
+            version == self.version || self.reproduces.contains(&version)
+        }
+
+        fn generate(&self, generation: &mut Generate<'_>) -> Result<(), String> {
+            let hall = generation.template("hall")?;
+            let rooms = if generation.version() == 1 { 3 } else { 2 };
+            for at in 0..rooms {
+                let local = format!("r{at}");
+                let mut room = hall.clone();
+                let col = generation.rng().next_u32() % 6 + 1;
+                let place = RoomCommand::batch_from_value(&json!([{ "place": { "objects":
+                    { "id": "crate_2", "prefab": "crate", "at": [col, 2] } } }]))
+                .unwrap();
+                generation.apply(&local, &mut room, &place)?;
+                generation.add(&local, room, [at as f32 * 128.0, 0.0])?;
+            }
+            Ok(())
+        }
+
+        fn migrate(&self, from: &Generation, now: Option<&Generation>, area: &mut Value) -> bool {
+            self.seen
+                .borrow_mut()
+                .push((from.clone(), now.cloned(), area.clone()));
+            self.migrate.is_some_and(|migrate| migrate(from, now, area))
+        }
+    }
+
+    /// A migration that keeps the record as it is.
+    fn keep(_: &Generation, _: Option<&Generation>, _: &mut Value) -> bool {
+        true
+    }
+
+    /// A migration doubling each named record's saved `health.current`.
+    fn double_saved_health(_: &Generation, _: Option<&Generation>, area: &mut Value) -> bool {
+        if let Some(named) = area["named"].as_object_mut() {
+            for record in named.values_mut() {
+                let health = &mut record["components"]["health"];
+                if let Some(current) = health["current"].as_f64() {
+                    health["current"] = json!(current * 2.0);
+                }
+            }
+        }
+        true
+    }
+
+    /// A World saving `health` with `options`, the prefab `crate`, the
+    /// cave tileset, the template `hall`, and `chain` registered.
+    fn world_of_with(chain: Chain, options: SaveOptions<Health>) -> World {
+        let mut world = World::new();
+        world.register_component::<Health>("health");
+        world.register_saved_with("health", options);
+        let mut prefabs = PrefabRegistry::new();
+        prefabs.insert(
+            "crate".into(),
+            prefab(json!({ "tag": "crate", "components": {
+                "health": { "current": 3.0, "max": 3.0 } } })),
+        );
+        world.insert_resource(prefabs);
+        let mut rooms = RoomRegistry::new();
+        rooms.insert_tileset("cave", Tileset::from_json(TILESET).unwrap());
+        world.insert_resource(rooms);
+        world
+            .insert_room("hall", Room::from_json(HALL).unwrap())
+            .unwrap();
+        world.register_generator("chain", chain);
+        world
+    }
+
+    fn world_of(chain: Chain) -> World {
+        world_of_with(chain, SaveOptions::new())
+    }
+
+    fn spawn_all(world: &mut World, rooms: &GeneratedRooms) {
+        for (id, origin) in rooms.rooms() {
+            world.spawn_room(id, origin, &(Scene,)).unwrap();
+        }
+    }
+
+    /// `chain` at seed 7, each room spawned at its origin.
+    fn run(world: &mut World) -> GeneratedRooms {
+        let rooms = world.generate_rooms("chain", 7, "chain").unwrap();
+        spawn_all(world, &rooms);
+        rooms
+    }
+
+    /// The live entity named `name`.
+    fn named(world: &World, name: &str) -> Option<Entity> {
+        world
+            .get_resource::<SaveState>()?
+            .named_entity(SaveId::authored(name))
+            .filter(|&entity| world.is_alive(entity))
+    }
+
+    fn health(world: &World, name: &str) -> Option<f32> {
+        named(world, name)
+            .and_then(|entity| world.get::<Health>(entity))
+            .map(|health| health.current)
+    }
+
+    /// The run's play: `chain_r0.crate_1` down to 1, `chain_r1.crate_2`
+    /// broken, `chain_r2.crate_1` down to 2.
+    fn play(world: &mut World) {
+        let first = named(world, "chain_r0.crate_1").unwrap();
+        world.get_mut::<Health>(first).unwrap().current = 1.0;
+        let broken = named(world, "chain_r1.crate_2").unwrap();
+        world.despawn(broken);
+        let last = named(world, "chain_r2.crate_1").unwrap();
+        world.get_mut::<Health>(last).unwrap().current = 2.0;
+    }
+
+    /// The run at version 1 played and captured, as `generated_v1.json`
+    /// holds it.
+    fn v1_save() -> WorldSave {
+        let mut world = world_of(chain(1));
+        run(&mut world);
+        play(&mut world);
+        capture_world(&world).unwrap()
+    }
+
+    /// The save captured once from `v1_save`, committed.
+    fn fixture() -> WorldSave {
+        serde_json::from_str(include_str!("generated_v1.json")).unwrap()
+    }
+
+    /// `save` restored into a new World of `chain`: regenerated, each room
+    /// spawned at its origin, then restored.
+    fn restore(chain: Chain, save: &WorldSave) -> (World, Result<RestoreReport, RestoreError>) {
+        let mut world = world_of(chain);
+        for rooms in regenerate(&mut world, save).unwrap() {
+            spawn_all(&mut world, &rooms);
+        }
+        let restored = restore_world(&mut world, save, &(Scene,));
+        (world, restored)
+    }
+
+    /// Whether `area`'s record names `name`, as a named record or a gone one.
+    fn mentions(area: &Value, name: &str) -> bool {
+        area["named"].get(name).is_some()
+            || area["gone"]
+                .as_array()
+                .is_some_and(|gone| gone.iter().any(|gone| gone == name))
+    }
+
+    /// The `migrate` call that saw `name`'s record.
+    fn call_for(seen: &Seen, name: &str) -> Option<(Generation, Option<Generation>, Value)> {
+        seen.borrow()
+            .iter()
+            .find(|(_, _, area)| mentions(area, name))
+            .cloned()
+    }
+
+    fn room_ids(world: &World) -> Vec<String> {
+        world
+            .resource::<RoomRegistry>()
+            .ids()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn a_capture_writes_each_generated_areas_generation() {
+        let mut world = world_of(chain(1));
+        let rooms = run(&mut world);
+        world
+            .insert_room("lobby", Room::from_json(HALL).unwrap())
+            .unwrap();
+        world.spawn_room("lobby", [0.0, 200.0], &(Scene,)).unwrap();
+        let save = capture_world(&world).unwrap();
+        let generations: Vec<(&str, &Generation)> = save.generations().collect();
+        let areas: Vec<&str> = generations.iter().map(|&(area, _)| area).collect();
+        assert_eq!(areas, ["chain_r0", "chain_r1", "chain_r2"]);
+        for (area, generation) in &generations {
+            assert_eq!(*generation, rooms.generation(), "{area}");
+        }
+        let json = value(&save);
+        assert_eq!(json["generated"]["chain_r1"]["seed"], json!(7));
+        assert!(
+            json["generated"].get("lobby").is_none(),
+            "an authored room's area names none"
+        );
+        assert!(
+            json["areas"]["chain_r1"].get("generated").is_none(),
+            "apart from the areas"
+        );
+        // The fixture, captured once from version 1 over `hall` at a known
+        // hash, names that hash.
+        let fixture = fixture();
+        let (_, saved) = fixture.generations().next().unwrap();
+        assert_eq!((saved.version, saved.seed), (1, 7));
+        assert_eq!(saved.templates["hall"], "81171bda5a44e2c5");
+        assert_eq!(rooms.generation().templates["hall"], "81171bda5a44e2c5");
+    }
+
+    #[test]
+    fn a_generated_run_restores_from_its_seed_and_its_changes() {
+        let save = v1_save();
+        let (world, restored) = restore(chain(1), &save);
+        let report = restored.unwrap();
+        assert!(report.is_clean(), "{report:?}");
+        assert_eq!(health(&world, "chain_r0.crate_1"), Some(1.0));
+        assert_eq!(named(&world, "chain_r1.crate_2"), None, "broken in the run");
+        assert_eq!(health(&world, "chain_r1.crate_1"), Some(3.0), "untouched");
+        assert_eq!(health(&world, "chain_r2.crate_1"), Some(2.0));
+        assert_eq!(
+            text(&capture_world(&world).unwrap()),
+            text(&save),
+            "the restored run captures the same save"
+        );
+        assert_eq!(text(&fixture()), text(&save), "the fixture is such a save");
+    }
+
+    #[test]
+    fn regenerate_registers_the_saves_generations_and_nothing_on_an_error() {
+        let mut a = world_of(chain(1));
+        run(&mut a);
+        let deep = a.generate_rooms("chain", 9, "deep").unwrap();
+        spawn_all(&mut a, &deep);
+        let save = capture_world(&a).unwrap();
+        let mut b = world_of(chain(1));
+        let rooms = regenerate(&mut b, &save).unwrap();
+        let ids: Vec<Vec<&str>> = rooms
+            .iter()
+            .map(|rooms| rooms.rooms().map(|(id, _)| id).collect())
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                ["chain_r0", "chain_r1", "chain_r2"],
+                ["deep_r0", "deep_r1", "deep_r2"]
+            ]
+        );
+        assert_eq!(rooms[1].generation(), deep.generation());
+        assert!(
+            regenerate(&mut b, &save).unwrap().is_empty(),
+            "held under equal records, each is skipped"
+        );
+        // An unknown generator registers nothing, not even the run before it.
+        let mut edited = value(&save);
+        for area in ["deep_r0", "deep_r1", "deep_r2"] {
+            edited["generated"][area]["generator"] = json!("chian");
+        }
+        let edited = from_value(edited);
+        let mut c = world_of(chain(1));
+        let err = regenerate(&mut c, &edited).unwrap_err();
+        assert!(
+            matches!(err, GenerateError::UnknownGenerator { ref generator, .. } if generator == "chian"),
+            "{err:?}"
+        );
+        assert_eq!(room_ids(&c), ["hall"]);
+        // Nor does a run whose rooms the World holds under another record.
+        let mut d = world_of(chain(1));
+        d.generate_rooms("chain", 8, "deep").unwrap();
+        let err = regenerate(&mut d, &save).unwrap_err();
+        assert_eq!(
+            err,
+            GenerateError::Taken {
+                room: "deep_r0".into()
+            }
+        );
+        assert_eq!(room_ids(&d), ["deep_r0", "deep_r1", "deep_r2", "hall"]);
+    }
+
+    #[test]
+    fn a_save_from_before_a_generator_change_is_refused() {
+        let save = fixture();
+        let mut world = world_of(chain(2));
+        let rooms = regenerate(&mut world, &save).unwrap();
+        assert_eq!(rooms[0].generation().version, 2, "it reproduces only 2");
+        spawn_all(&mut world, &rooms[0]);
+        let before = snapshot(&world);
+        let err = restore_world(&mut world, &save, &(Scene,)).unwrap_err();
+        let RestoreError::Generation { area, saved, now } = &err else {
+            panic!("{err:?}");
+        };
+        assert_eq!(area, "chain_r0");
+        assert_eq!(saved.version, 1);
+        assert_eq!(now.as_deref(), Some(rooms[0].generation()));
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "area `chain_r0` was generated by `chain` version 1 at seed 7 under prefix `chain`, template `hall` 81171bda5a44e2c5, and the World's by {}; its generator did not migrate it",
+                rooms[0].generation()
+            )
+        );
+        assert_eq!(snapshot(&world), before, "nothing changed");
+        assert_eq!(health(&world, "chain_r0.crate_1"), Some(3.0));
+    }
+
+    #[test]
+    fn a_generator_that_reproduces_its_old_version_keeps_the_changes() {
+        let reproducing = Chain {
+            reproduces: &[1],
+            ..chain(2)
+        };
+        let (world, restored) = restore(reproducing, &fixture());
+        assert!(restored.unwrap().is_clean());
+        let generation = world.resource::<RoomRegistry>().generation("chain_r2");
+        assert_eq!(generation.map(|generation| generation.version), Some(1));
+        assert_eq!(health(&world, "chain_r0.crate_1"), Some(1.0));
+        assert_eq!(named(&world, "chain_r1.crate_2"), None);
+        assert_eq!(health(&world, "chain_r2.crate_1"), Some(2.0));
+    }
+
+    #[test]
+    fn a_generators_migration_rewrites_the_saved_changes() {
+        let migrating = Chain {
+            migrate: Some(double_saved_health),
+            ..chain(2)
+        };
+        let (world, restored) = restore(migrating, &fixture());
+        assert!(restored.unwrap().is_clean());
+        assert_eq!(health(&world, "chain_r0.crate_1"), Some(2.0), "1, doubled");
+        assert_eq!(named(&world, "chain_r1.crate_2"), None, "still broken");
+        // Each record now stands under version 2's generation, the one
+        // version 2 no longer makes kept.
+        let again = capture_world(&world).unwrap();
+        let versions: Vec<(&str, u32)> = again
+            .generations()
+            .map(|(area, generation)| (area, generation.version))
+            .collect();
+        assert_eq!(
+            versions,
+            [("chain_r0", 2), ("chain_r1", 2), ("chain_r2", 2)]
+        );
+        assert_eq!(
+            value(&again)["areas"]["chain_r2"]["named"]["chain_r2.crate_1"]["components"]["health"]
+                ["current"],
+            json!(4.0)
+        );
+    }
+
+    #[test]
+    fn a_template_change_is_refused_without_a_migration() {
+        let save = fixture();
+        let mut world = world_of(chain(1));
+        let mut hall = Room::from_json(HALL).unwrap();
+        hall.size = [8, 5];
+        world.insert_room("hall", hall).unwrap();
+        let rooms = regenerate(&mut world, &save).unwrap();
+        let now = rooms[0].generation();
+        assert_eq!(now.version, 1);
+        assert_ne!(now.templates["hall"], "81171bda5a44e2c5");
+        spawn_all(&mut world, &rooms[0]);
+        let before = snapshot(&world);
+        let err = restore_world(&mut world, &save, &(Scene,)).unwrap_err();
+        assert!(
+            matches!(&err, RestoreError::Generation { saved, now: Some(now), .. }
+                if saved.version == 1 && now.templates != saved.templates),
+            "{err:?}"
+        );
+        assert_eq!(snapshot(&world), before);
+    }
+
+    #[test]
+    fn a_room_the_new_version_no_longer_makes_reaches_the_migration() {
+        let seen = Seen::default();
+        let migrating = Chain {
+            migrate: Some(keep),
+            seen: seen.clone(),
+            ..chain(2)
+        };
+        let (world, restored) = restore(migrating, &fixture());
+        assert!(restored.unwrap().is_clean());
+        assert!(world.resource::<RoomRegistry>().room("chain_r2").is_none());
+        let (from, now, area) = call_for(&seen, "chain_r2.crate_1").expect("chain_r2's record");
+        assert_eq!(from.version, 1);
+        assert_eq!(
+            now.as_ref().map(|now| (now.version, now.seed)),
+            Some((2, 7)),
+            "the generation of its generator, seed and prefix"
+        );
+        assert!(area.get("generated").is_none(), "the record without it");
+        assert!(world.resource::<SaveState>().is_kept("chain_r2"));
+    }
+
+    #[test]
+    fn a_kept_and_a_loaded_copy_of_one_area_migrate_alike() {
+        let options = || {
+            SaveOptions::<Health>::new()
+                .version(2)
+                .step(1, double_current)
+        };
+        let save = fixture();
+        let (loaded_seen, kept_seen) = (Seen::default(), Seen::default());
+        let migrating = |seen: &Seen| Chain {
+            migrate: Some(keep),
+            seen: seen.clone(),
+            ..chain(2)
+        };
+        let mut loaded = world_of_with(migrating(&loaded_seen), options());
+        for rooms in regenerate(&mut loaded, &save).unwrap() {
+            spawn_all(&mut loaded, &rooms);
+        }
+        restore_world(&mut loaded, &save, &(Scene,)).unwrap();
+        let mut kept = world_of_with(migrating(&kept_seen), options());
+        regenerate(&mut kept, &save).unwrap();
+        kept.spawn_room("chain_r1", [128.0, 0.0], &(Scene,))
+            .unwrap();
+        restore_world(&mut kept, &save, &(Scene,)).unwrap();
+        assert!(kept.resource::<SaveState>().is_kept("chain_r0"));
+        let (_, _, as_loaded) = call_for(&loaded_seen, "chain_r0.crate_1").unwrap();
+        let (_, _, as_kept) = call_for(&kept_seen, "chain_r0.crate_1").unwrap();
+        assert_eq!(as_loaded, as_kept);
+        assert_eq!(
+            as_loaded["named"]["chain_r0.crate_1"]["components"]["health"]["current"],
+            json!(2.0),
+            "at the registry's version: 1 through its step"
+        );
+        kept.spawn_room("chain_r0", [0.0, 0.0], &(Scene,)).unwrap();
+        enter_area(&mut kept, "chain_r0", &(Scene,)).unwrap();
+        assert_eq!(health(&kept, "chain_r0.crate_1"), Some(2.0));
+        assert_eq!(
+            health(&kept, "chain_r0.crate_1"),
+            health(&loaded, "chain_r0.crate_1")
+        );
+    }
+
+    #[test]
+    fn a_migration_takes_the_matched_rooms_generation() {
+        let seen = Seen::default();
+        let migrating = Chain {
+            migrate: Some(keep),
+            seen: seen.clone(),
+            ..chain(1)
+        };
+        let mut world = world_of(migrating);
+        // `chain_r0` and `chain_r2` from another seed, `chain_r1` authored.
+        let other = world.generate_rooms("chain", 8, "chain").unwrap();
+        world.remove_room("chain_r1").unwrap();
+        world
+            .insert_room("chain_r1", Room::from_json(HALL).unwrap())
+            .unwrap();
+        for (id, origin) in other.rooms() {
+            world.spawn_room(id, origin, &(Scene,)).unwrap();
+        }
+        restore_world(&mut world, &fixture(), &(Scene,)).unwrap();
+        let (_, now, _) = call_for(&seen, "chain_r0.crate_1").unwrap();
+        assert_eq!(now.as_ref(), Some(other.generation()), "its room's, seed 8");
+        let (_, now, _) = call_for(&seen, "chain_r1.crate_2").unwrap();
+        assert_eq!(now, None, "an authored room's");
+        assert_eq!(
+            health(&world, "chain_r0.crate_1"),
+            Some(1.0),
+            "kept as saved"
+        );
+        let again = capture_world(&world).unwrap();
+        let areas: Vec<&str> = again.generations().map(|(area, _)| area).collect();
+        assert_eq!(
+            areas,
+            ["chain_r0", "chain_r2"],
+            "the authored one's is gone"
+        );
+    }
+
+    #[test]
+    fn a_save_naming_a_generation_the_world_did_not_regenerate_is_refused() {
+        let mut world = world_of(chain(1));
+        let before = snapshot(&world);
+        let err = restore_world(&mut world, &fixture(), &(Scene,)).unwrap_err();
+        assert!(
+            matches!(&err, RestoreError::Generation { area, now: None, .. } if area == "chain_r0"),
+            "{err:?}"
+        );
+        assert!(
+            err.to_string()
+                .ends_with("and the World's by none; its generator did not migrate it"),
+            "{err}"
+        );
+        assert_eq!(snapshot(&world), before);
+        assert!(!world.has_resource::<SaveState>(), "no save state gained");
+    }
+
+    #[test]
+    fn a_kept_generated_area_enters_with_its_matched_record() {
+        let save = fixture();
+        let mut world = world_of(chain(1));
+        regenerate(&mut world, &save).unwrap();
+        world.spawn_room("chain_r0", [0.0, 0.0], &(Scene,)).unwrap();
+        assert!(
+            restore_world(&mut world, &save, &(Scene,))
+                .unwrap()
+                .is_clean()
+        );
+        let state = world.resource::<SaveState>();
+        assert!(state.is_kept("chain_r1") && state.is_kept("chain_r2"));
+        // A capture before the entry writes the kept records as saved.
+        assert_eq!(text(&capture_world(&world).unwrap()), text(&save));
+        world
+            .spawn_room("chain_r2", [256.0, 0.0], &(Scene,))
+            .unwrap();
+        assert!(
+            enter_area(&mut world, "chain_r2", &(Scene,))
+                .unwrap()
+                .is_clean()
+        );
+        assert_eq!(health(&world, "chain_r2.crate_1"), Some(2.0));
+        assert!(!world.resource::<SaveState>().is_kept("chain_r2"));
+        assert_eq!(text(&capture_world(&world).unwrap()), text(&save));
+    }
+
+    #[test]
+    fn an_area_with_no_generation_restores_as_before() {
+        // The fixture without its records' generations: names decide, a
+        // generated room or not, so even a changed generator restores it.
+        let mut plain = value(&fixture());
+        plain.as_object_mut().unwrap().remove("generated");
+        let plain = from_value(plain);
+        assert_eq!(plain.generations().count(), 0);
+        let mut world = world_of(chain(2));
+        let rooms = world.generate_rooms("chain", 7, "chain").unwrap();
+        spawn_all(&mut world, &rooms);
+        assert!(
+            restore_world(&mut world, &plain, &(Scene,))
+                .unwrap()
+                .is_clean()
+        );
+        assert_eq!(health(&world, "chain_r0.crate_1"), Some(1.0));
+        assert_eq!(named(&world, "chain_r1.crate_2"), None);
+        assert!(world.resource::<SaveState>().is_kept("chain_r2"));
+        // A World with no generated room writes no generation.
+        let mut old = super::world();
+        level(&mut old);
+        assert!(!text(&capture_world(&old).unwrap()).contains("generated"));
+    }
 }

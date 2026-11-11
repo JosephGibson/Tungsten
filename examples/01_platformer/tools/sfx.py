@@ -3,67 +3,30 @@
 Everything is built from integer xorshift noise, one-pole filters, sine
 oscillators and exponential envelopes, so regeneration is byte-identical.
 Each sound is normalized to a -2 dBFS peak; one-shots fade and loops crossfade.
+The primitives are the template's (`templates/basic/tools/synth.py`), at 01's
+rate, fades and loop tail.
 """
-import io
+import functools
 import math
-import wave
+import pathlib
+import sys
+
+# The template's tools, as `generate.py` reads its `TEMPLATE`; no bytecode
+# lands in either folder.
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / 'templates' / 'basic' / 'tools'))
+import synth  # noqa: E402
+from synth import Noise, encode, glide, melody, note, place  # noqa: E402
 
 RATE = 44100
-PEAK = 10 ** (-2 / 20)
+# 01's one-shots run at 44,100 Hz, and fade in over 5 ms and out over 20; a
+# filter takes that rate unless it names its own (`rate=`), the music's
+# drums included, whose cutoffs therefore read halved at 22,050 Hz.
+LowPass = functools.partial(synth.LowPass, rate=RATE)
+finish = functools.partial(synth.finish, fade_in=0.005, fade_out=0.02, rate=RATE)
 # Registered in sounds.json but not synthesized here; generate.py keeps them.
 # None since 01 (j) made the black hole's opening.
 HAND_AUTHORED_SOUNDS = ()
-
-
-class Noise:
-    """Deterministic white noise in [-1, 1) from a 32-bit xorshift."""
-
-    def __init__(self, seed):
-        self.state = seed & 0xFFFFFFFF or 1
-
-    def __call__(self):
-        x = self.state
-        x ^= (x << 13) & 0xFFFFFFFF
-        x ^= x >> 17
-        x ^= (x << 5) & 0xFFFFFFFF
-        self.state = x
-        return x / 2147483648.0 - 1.0
-
-
-class LowPass:
-    """One-pole low-pass at `rate`; `cutoff` may change per sample."""
-
-    def __init__(self, rate=RATE):
-        self.y = 0.0
-        self.rate = rate
-
-    def __call__(self, x, cutoff):
-        self.y += (1 - math.exp(-math.tau * cutoff / self.rate)) * (x - self.y)
-        return self.y
-
-
-def glide(start, end, progress):
-    """Exponential interpolation between two frequencies."""
-    return start * (end / start) ** progress
-
-
-def finish(samples, fade_in=0.005, fade_out=0.02):
-    """Fade the ends, normalize to PEAK and encode as a WAV file."""
-    n = len(samples)
-    for i in range(min(n, int(fade_in * RATE))):
-        samples[i] *= i / (fade_in * RATE)
-    for i in range(min(n, int(fade_out * RATE))):
-        samples[n - 1 - i] *= i / (fade_out * RATE)
-    scale = PEAK / max(abs(s) for s in samples)
-    frames = b''.join(
-        int(round(s * scale * 32767)).to_bytes(2, 'little', signed=True) for s in samples)
-    out = io.BytesIO()
-    with wave.open(out, 'wb') as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(RATE)
-        wav.writeframes(frames)
-    return out.getvalue()
 
 
 def fireball_cast():
@@ -1068,12 +1031,6 @@ def pluck(freq, seconds, level, seed, rate=RATE, damping=0.996, bright=0.5):
     return out
 
 
-def place(buffer, start, voice):
-    """Adds `voice` into `buffer` from `start`, clipped at its end."""
-    for i, value in enumerate(voice[:max(0, len(buffer) - start)]):
-        buffer[start + i] += value
-
-
 def ui_move():
     """A soft wooden tick as focus moves: a short high pluck."""
     samples = pluck(1568.0, 0.06, 1.0, 0x0A11, damping=0.97, bright=0.3)
@@ -1111,17 +1068,11 @@ def game_over():
     return finish(samples, fade_out=0.4)
 
 
-# The music: five loops at 22,050 Hz, each rendered a bar past its end with
-# that tail folded onto its start, so it repeats at its bar line without a
-# click. `--check` holds each one's length and seam (`seam_problem`).
+# The music: five loops at 22,050 Hz, each rendered two bars past its end
+# with that tail folded onto its start, so it repeats at its bar line without
+# a click. `--check` holds each one's length and seam (`seam_problem`).
 MUSIC_RATE = 22050
-
-
-def note(name):
-    """A note's frequency in Hz: `A4` is 440, `C#5` and `Bb3` take accidentals."""
-    letters = {'C': -9, 'D': -7, 'E': -5, 'F': -4, 'G': -2, 'A': 0, 'B': 2}
-    step = letters[name[0]] + {'#': 1, 'b': -1}.get(name[1], 0)
-    return 440.0 * 2 ** ((step + 12 * (int(name[-1]) - 4)) / 12)
+render_loop = functools.partial(synth.render_loop, tail=2)
 
 
 def pad(freq, seconds, level, attack=0.6, release=0.8, rate=MUSIC_RATE):
@@ -1173,35 +1124,6 @@ def brush(seed, level, decay, rate=MUSIC_RATE):
         band = (low(n, 6000) - high(n, 1400))
         out.append(level * band * min(1.0, t / 0.004) * math.exp(-t / decay))
     return out
-
-
-def render_loop(bars, beat, events, beats_per_bar=4):
-    """A loop `bars` long at `beat` samples a beat: each event `(start
-    sample, voice)` renders into a buffer a bar longer, whose tail is then
-    folded onto the start. Returns the loop's samples."""
-    bar = beats_per_bar * beat
-    length = bars * bar
-    buffer = [0.0] * (length + 2 * bar)
-    for start, voice in events:
-        place(buffer, start, voice)
-    loop = buffer[:length]
-    for i in range(2 * bar):
-        loop[i % length] += buffer[length + i]
-    return loop
-
-
-def melody(line, step, voice):
-    """Events for `line`, notes in steps of `step` samples: '-' holds the
-    note before, '.' rests; `voice(freq, steps)` renders one note."""
-    events, at, names = [], 0, line.split()
-    while at < len(names):
-        name, held = names[at], 1
-        while at + held < len(names) and names[at + held] == '-':
-            held += 1
-        if name != '.':
-            events.append((at * step, voice(note(name), held)))
-        at += held
-    return events
 
 
 def music_title():
@@ -1400,20 +1322,6 @@ def music_combat():
     return render_loop(len(chords), beat, events)
 
 
-def encode(samples, rate):
-    """Normalize `samples` to PEAK and encode them as a WAV file at `rate`."""
-    scale = PEAK / max(abs(s) for s in samples)
-    frames = b''.join(
-        int(round(s * scale * 32767)).to_bytes(2, 'little', signed=True) for s in samples)
-    out = io.BytesIO()
-    with wave.open(out, 'wb') as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(rate)
-        wav.writeframes(frames)
-    return out.getvalue()
-
-
 # 01 (d)'s ambience: one loop per area, 6 s at 22,050 Hz, crossfaded across
 # its seam as `wisp_hum` is; and the splinter of a shot passing wood.
 
@@ -1455,7 +1363,7 @@ def ambience_clearing():
     """The clearing at night: crickets in pairs of chirps, a breeze in the
     oaks swelling and falling, an owl's two hoots once a loop."""
     noise, crickets = Noise(0xC1EA), Noise(0xC21C)
-    low, high = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    low, high = LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE)
     chirps = [(start, 4100 + 300 * crickets()) for start in events(0xC3, 22)]
     hoots = (2.1, 2.55)
 
@@ -1475,9 +1383,9 @@ def ambience_aqueduct():
     patter where they strike the floor, fluttering; a heavier plop now and
     then from a spill; and water trickling, drips falling from its leaks."""
     noise, flow_n, patter_n, rng = Noise(0xA0DC), Noise(0xA1DC), Noise(0xA2DC), Noise(0xA3DC)
-    low, high = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
-    flow_lo, flow_hi = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
-    pat_lo, pat_hi, wob = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    low, high = LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE)
+    flow_lo, flow_hi = LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE)
+    pat_lo, pat_hi, wob = LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE)
     drips = [(start, 1700 + 900 * (rng() * 0.5 + 0.5)) for start in events(0xA1, 11)]
     plops = [(start, 260 + 160 * (rng() * 0.5 + 0.5)) for start in events(0xA4, 7)]
 
@@ -1496,7 +1404,7 @@ def ambience_ravine():
     """The falls' roar, deep and steady with slow surges, and a hiss of mist
     over it."""
     noise, hiss = Noise(0x4A71), Noise(0x4A72)
-    low, mid, air = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    low, mid, air = LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE)
 
     def voice(i, t):
         n = noise()
@@ -1512,7 +1420,7 @@ def ambience_hollow():
     """A low rumble under the basalt, slowly wavering, and the sparse crackle
     of embers."""
     noise, sparks = Noise(0x4011), Noise(0x4012)
-    low, lower = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    low, lower = LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE)
     state = {'crack': 0.0}
 
     def voice(i, t):
@@ -1530,7 +1438,7 @@ def ambience_mine():
     """Wind over the spoil in gusts, a timber creaking under its load, and a
     distant clank of iron now and then."""
     noise, jitter = Noise(0x31E0), Noise(0x31E1)
-    low, high = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    low, high = LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE)
     creaks = events(0x32, 3)
     clanks = events(0x33, 4)
 
@@ -1549,7 +1457,7 @@ def ambience_bridge():
     """The river rushing under the arches, wind across the bridge and the
     creak of the troll's ropes."""
     noise, rope = Noise(0xB41D), Noise(0xB41E)
-    low, high, gusts = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    low, high, gusts = LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE), LowPass(rate=AMBIENCE_RATE)
     creaks = events(0xB5, 4)
 
     def voice(i, t):
@@ -2676,21 +2584,8 @@ LOOPS = {
 }
 
 
-def seam_problem(name, data):
-    """Why loop `name` would not repeat cleanly, or None: its length must be
-    its bars exactly, and its jump from the last sample back to the first no
-    larger than the largest jump inside it."""
-    with wave.open(io.BytesIO(data), 'rb') as wav:
-        frames = wav.readframes(wav.getnframes())
-    samples = [int.from_bytes(frames[i:i + 2], 'little', signed=True)
-               for i in range(0, len(frames), 2)]
-    if len(samples) != LOOPS[name]:
-        return f'{len(samples)} samples, not {LOOPS[name]}'
-    inner = max(abs(b - a) for a, b in zip(samples, samples[1:]))
-    seam = abs(samples[0] - samples[-1])
-    if seam > inner:
-        return f'a seam jump of {seam} past the largest inner jump, {inner}'
-    return None
+# Why loop `name` would not repeat cleanly, or None (`synth.seam_problem`).
+seam_problem = functools.partial(synth.seam_problem, loops=LOOPS)
 
 
 def glass_ping(t, start, freq, level):

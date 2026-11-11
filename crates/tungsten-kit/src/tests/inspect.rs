@@ -1,14 +1,16 @@
 use super::*;
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, RigidBodyBundle};
-use tungsten_core::{Bundle, DataRef, InspectRegistry, Schedule, Transform};
+use tungsten_core::{
+    Bundle, CameraBounds, CameraRig, DataRef, FixedRig, InspectRegistry, Schedule, Transform,
+};
 
 use crate::{
-    ActionInput, Aim, CameraTarget, CharacterAnimator, Conversion, Cooldown, Counters, CueAction,
-    Cues, DepthSort, Effect, EffectRequest, Facing, Flags, Follow, Health, HitFlash, Intent,
-    KitDescriptions, KitPlugins, Knockback, Lifetime, LinearMotion, Modifier, Orbit, Oscillator,
-    PathFollower, Penetration, Resist, SpawnChildren, Spawner, SpeedLimit, Stats, StayInView,
-    Steering, TagFilter, Tags, Target, TopDownMover, Wrap, Zone, spawn_child,
+    ActionInput, Aim, CameraRigId, CameraTarget, CharacterAnimator, Conversion, Cooldown, Counters,
+    CueAction, Cues, DepthSort, Effect, EffectRequest, Facing, Flags, Follow, Health, HitFlash,
+    Intent, KitDescriptions, KitPlugins, Knockback, Lifetime, LinearMotion, Modifier, Orbit,
+    Oscillator, PathFollower, Penetration, Resist, SpawnChildren, Spawner, SpeedLimit, Stats,
+    StayInView, Steering, TagFilter, Tags, Target, TopDownMover, Wrap, Zone, spawn_child,
 };
 
 fn world() -> World {
@@ -46,6 +48,8 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
         ("zone", "Zone"),
         ("action_input", "ActionInput"),
         ("camera_target", "CameraTarget"),
+        ("camera_rig", "CameraRig"),
+        ("camera_zone", "CameraZone"),
         ("lifetime", "Lifetime"),
         ("despawn_outside", "DespawnOutside"),
         ("spawner", "Spawner"),
@@ -94,7 +98,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
     for label in ["Intent", "Source", "Parent", "Children", "LocalOffset"] {
         assert!(labels.contains(&label), "{label}");
     }
-    assert_eq!(described.iter().count(), 48);
+    assert_eq!(described.iter().count(), 50);
 }
 
 #[test]
@@ -115,6 +119,12 @@ fn the_rows_print_each_components_state() {
                 TopDownMover::new(120.0),
                 Zone::new(TagFilter::new().all(["team.player"])),
                 CameraTarget,
+                CameraRig::fixed(FixedRig::Corner(Vec2::ZERO))
+                    .with_priority(2)
+                    .with_view_height(360.0)
+                    .with_bounds(CameraBounds::new(Vec2::ZERO, Vec2::new(1280.0, 720.0)))
+                    .lowered(),
+                CameraRigId::new("room.hall"),
             ),
         ),
     );
@@ -145,6 +155,12 @@ fn the_rows_print_each_components_state() {
     assert_eq!(find("TopDownMover", "speed"), "120.0");
     assert_eq!(find("Zone", "filter"), "all: team.player");
     assert_eq!(find("CameraTarget", "camera"), "follows");
+    assert_eq!(find("CameraRig", "kind"), "fixed");
+    assert_eq!(find("CameraRig", "priority"), "2");
+    assert_eq!(find("CameraRig", "live"), "false");
+    assert_eq!(find("CameraRig", "id"), "room.hall");
+    assert_eq!(find("CameraRig", "view"), "360 tall \u{d7}1.00");
+    assert_eq!(find("CameraRig", "bounds"), "0, 0 to 1280, 720");
     assert_eq!(find("Children", "children"), "1");
     let mut stats = Stats::new().with("armor", 2.0);
     stats.add_modifier("armor", "stone", Modifier::Add(1.0));

@@ -7,6 +7,7 @@ pub mod material;
 pub mod particle;
 pub mod prefab;
 pub mod registry;
+pub mod room;
 pub mod scene;
 pub mod shader;
 pub mod terrain;
@@ -21,9 +22,10 @@ pub use data::{DataError, DataRef, DataRegistry, StagedLoad, StagedLoadError};
 pub use manifest::{
     DataEntry, FilterMode, FontEntry, FontFamilyEntry, LoadedManifest, ManifestError,
     ManifestIssue, MaterialEntry, ParticleEntry, ParticleMeshEntry, PrefabEntry, ResolvedDataEntry,
-    ResolvedFont, ResolvedFontFamily, ResolvedManifest, ResolvedMaterial, ResolvedParticle,
-    ResolvedParticleMesh, ResolvedPrefab, ResolvedShader, ResolvedSound, ResolvedTilemap,
-    ResolvedUiTheme, ShaderEntry, SoundEntry, TilemapEntry, UiThemeEntry,
+    ResolvedFile, ResolvedFont, ResolvedFontFamily, ResolvedManifest, ResolvedMaterial,
+    ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab, ResolvedShader, ResolvedSound,
+    ResolvedTilemap, ResolvedUiTheme, RoomEntry, ShaderEntry, SoundEntry, TilemapEntry,
+    TilesetEntry, UiThemeEntry,
 };
 pub use material::{MaterialAssetId, MaterialRegistry, MaterialUniformDefaults};
 pub use particle::{
@@ -33,6 +35,12 @@ pub use particle::{
 };
 pub use prefab::{PrefabData, PrefabError, PrefabRegistry, PreparedPrefab};
 pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, SpriteAssetId, TextureHandle};
+pub use room::{
+    AuthoredRoom, AuthoredRooms, CompiledPlace, CompiledRoom, Generate, GenerateError,
+    GeneratedRooms, Generation, PlaceShape, Room, RoomBudget, RoomCommand, RoomCommandError,
+    RoomContext, RoomError, RoomGenerator, RoomGenerators, RoomJournal, RoomLayer, RoomLayerKind,
+    RoomObject, RoomPlace, RoomRegistry, RoomShape, RouteStop, SpawnedRoom, Tileset, TilesetTile,
+};
 pub use scene::{
     SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,
     SceneTweenRepeat,

@@ -29,16 +29,18 @@ use tungsten_template_basic::shell::{
 
 use super::saves::{gems_left, newer_slot, player_of, set_gems, set_player};
 use super::{
-    act, harness, harness_with, health, heard, player_entity, player_position, plays, press,
-    settle, slot_file, start, start_at, stops, tap, top, user_folder,
+    harness, harness_with, health, player_entity, player_position, press, settle, slot_file, start,
+    start_at, tap, top, user_folder,
 };
 
 fn depth(harness: &UiHarness) -> usize {
     harness.world().resource::<StateStack>().depth()
 }
 
+/// Whether the game clock holds: gameplay holds it while a screen covers
+/// it (`GameState::holds_clock`).
 fn paused(harness: &UiHarness) -> bool {
-    harness.world().resource::<Time>().is_paused()
+    harness.world().resource::<Time>().is_held()
 }
 
 fn read(dir: &Path, slot: &str) -> SaveGame {
@@ -175,10 +177,7 @@ fn pause_closes_once_on_escape_resume_or_state_pause() {
         match way {
             "Escape" => {
                 // Both `ui_cancel` and `state_pause`: one pop.
-                harness.key_down(KeyCode::Escape);
-                harness.step(1);
-                harness.key_up(KeyCode::Escape);
-                harness.step(1);
+                harness.tap_key(KeyCode::Escape);
                 settle(&mut harness);
             }
             "Resume" => press(&mut harness, "Resume"),
@@ -1003,10 +1002,7 @@ fn menu_changes_take_their_times() {
     let dt = 1.0 / 60.0;
     harness.harness_mut().set_dt(dt);
     // A push acts on its first frame: pause opens with no change waiting.
-    harness.harness_mut().press_action("state_pause");
-    harness.step(1);
-    harness.harness_mut().release_action("state_pause");
-    harness.step(1);
+    harness.tap_action("state_pause");
     assert_eq!(top(&harness), Some(PAUSE));
     assert!(tungsten_template_basic::shell::idle(harness.world()));
     // A pop: the card fades out over 0.08 s, then the screen below acts.
@@ -1389,84 +1385,70 @@ fn delete_buttons_and_low_health_use_danger() {
     }
 }
 
-/// The sounds this frame started, by handle.
-fn played(harness: &UiHarness) -> Vec<tungsten::core::AudioHandle> {
-    harness
-        .harness()
-        .audio()
-        .iter()
-        .filter_map(|command| match command {
-            tungsten::core::AudioCommand::Play { handle, .. } => Some(*handle),
-            _ => None,
-        })
-        .collect()
+/// How many times each menu sound played, in `theme::MENU_SOUNDS`' order,
+/// over the audio the harness logged since `clear_audio_log`.
+fn menu_sounds(harness: &UiHarness) -> [usize; 3] {
+    theme::MENU_SOUNDS.map(|name| harness.harness().plays(name).len())
 }
 
 #[test]
 fn menu_sounds_play_on_move_activate_and_back() {
     let mut harness = harness();
-    let sounds = harness.world().resource::<tungsten::core::SoundRegistry>();
-    let [moved, selected, back] =
-        theme::MENU_SOUNDS.map(|name| sounds.get_by_id(name).expect("a manifest sound"));
     let once = |harness: &mut UiHarness, action: &str| {
-        harness.harness_mut().press_action(action);
-        harness.step(1);
-        let heard = played(harness);
-        harness.harness_mut().release_action(action);
-        settle(harness);
-        heard
+        harness.harness_mut().clear_audio_log();
+        tap(harness, action);
+        menu_sounds(harness)
     };
     assert_eq!(
         once(&mut harness, "ui_down"),
-        [moved],
+        [1, 0, 0],
         "a press that moves focus"
     );
     let settings = harness.find("Settings").unwrap();
     assert!(harness.focus(settings));
-    assert_eq!(once(&mut harness, "ui_accept"), [selected], "an activation");
+    assert_eq!(once(&mut harness, "ui_accept"), [0, 1, 0], "an activation");
     assert_eq!(
         top(&harness),
         Some(tungsten_template_basic::shell::settings::SETTINGS)
     );
-    assert_eq!(once(&mut harness, "ui_cancel"), [back], "a cancel");
+    assert_eq!(once(&mut harness, "ui_cancel"), [0, 0, 1], "a cancel");
     assert_eq!(top(&harness), Some(TITLE));
     press(&mut harness, "Settings");
     let leave = harness.find("Back").unwrap();
     assert!(harness.focus(leave));
-    assert_eq!(once(&mut harness, "ui_accept"), [back], "Back is a back");
-    // Focus a screen moves itself makes no sound.
-    press(&mut harness, "New Game");
+    assert_eq!(once(&mut harness, "ui_accept"), [0, 0, 1], "Back is a back");
+    // Focus a screen moves itself makes no sound: New Game's activation
+    // alone, though the picker focuses its first difficulty.
+    let new_game = harness.find("New Game").unwrap();
+    assert!(harness.focus(new_game));
+    assert_eq!(once(&mut harness, "ui_accept"), [0, 1, 0]);
+    harness.harness_mut().clear_audio_log();
     harness.step(1);
-    assert!(played(&harness).is_empty());
+    assert_eq!(menu_sounds(&harness), [0, 0, 0]);
 }
 
 #[test]
 fn the_title_plays_its_song_until_a_run_starts() {
     let mut harness = harness();
     // The title came on the first frame, with its song.
-    let first = harness.harness().audio().to_vec();
-    let song = plays(&harness, &first, theme::TITLE_MUSIC);
+    let song = harness.harness().plays(theme::TITLE_MUSIC);
     assert_eq!(song.len(), 1, "the title's song");
     let (song, looping, fade) = song[0];
     assert!(looping && fade == theme::TITLE_FADE);
-    let shell =
-        |harness: &UiHarness| tungsten_template_basic::shell::transitioning(harness.world());
+    harness.harness_mut().clear_audio_log();
     tungsten_template_basic::shell::start_run(harness.world_mut(), RunStart::default(), None);
-    let mut started = heard(&mut harness, 1);
-    while shell(&harness) {
-        started.extend(heard(&mut harness, 1));
-    }
+    settle(&mut harness);
+    let stopped = harness.harness().stops();
     assert!(
-        stops(&started).contains(&(song, theme::TITLE_FADE)),
-        "a run fades it out"
+        stopped.contains(&(song, theme::TITLE_FADE)),
+        "a run fades it out: {stopped:?}"
     );
     tap(&mut harness, "state_pause");
     press(&mut harness, "Quit to Title");
-    let quit = harness.find("Quit").unwrap();
-    assert!(harness.focus(quit));
-    let back = act(&mut harness, "ui_accept");
+    harness.harness_mut().clear_audio_log();
+    press(&mut harness, "Quit");
     assert_eq!(
-        plays(&harness, &back, theme::TITLE_MUSIC).len(),
+        harness.harness().plays(theme::TITLE_MUSIC).len(),
         1,
         "back again"
     );
@@ -1476,25 +1458,27 @@ fn the_title_plays_its_song_until_a_run_starts() {
 fn game_over_plays_its_sting_and_music_until_the_run_ends() {
     let mut harness = harness();
     start(&mut harness);
+    harness.harness_mut().clear_audio_log();
     let player = player_entity(&harness);
     assert_eq!(damage(harness.world_mut(), player, 99.0), Hit::Killed);
-    let mut over = heard(&mut harness, 1);
-    while tungsten_template_basic::shell::transitioning(harness.world()) {
-        over.extend(heard(&mut harness, 1));
-    }
-    over.extend(heard(&mut harness, 30));
+    harness.step(1);
+    settle(&mut harness);
+    harness.step(30);
     assert_eq!(top(&harness), Some(GAME_OVER));
     let [sting, music] = theme::GAME_OVER_SOUNDS;
-    assert_eq!(plays(&harness, &over, sting).len(), 1, "the sting, once");
-    let music = plays(&harness, &over, music);
+    let audio = harness.harness();
+    assert_eq!(audio.plays(sting).len(), 1, "the sting, once");
+    let music = audio.plays(music);
     assert_eq!(music.len(), 1, "game over's music");
     let (music, looping, fade) = music[0];
     assert!(looping && fade == theme::GAME_OVER_FADE);
-    let quit = harness.find("Quit to Title").unwrap();
-    assert!(harness.focus(quit));
-    let ended = act(&mut harness, "ui_accept");
+    harness.harness_mut().clear_audio_log();
+    press(&mut harness, "Quit to Title");
     assert!(
-        stops(&ended).contains(&(music, theme::GAME_OVER_FADE)),
+        harness
+            .harness()
+            .stops()
+            .contains(&(music, theme::GAME_OVER_FADE)),
         "its music stops with the run"
     );
 }

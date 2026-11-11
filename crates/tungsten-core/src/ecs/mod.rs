@@ -1,4 +1,5 @@
 mod archetype;
+pub(crate) use archetype::TypeIdMap;
 pub mod bundle;
 mod command_buffer;
 mod entity;
@@ -14,3 +15,7 @@ pub use entity::Entity;
 pub use event_queue::{EventCursor, EventQueue, EventRead, ShakeEvent, SquashEvent};
 pub use query::{OptionalColumn, With, Without};
 pub use world::{World, WorldCounters};
+
+#[cfg(test)]
+#[path = "../tests/ecs/oracle.rs"]
+pub(crate) mod oracle;

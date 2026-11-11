@@ -15,7 +15,11 @@
 //! rotation, extract and audio. Render draws nothing: [`Harness::draw`]
 //! holds what the frame would have drawn and [`Harness::audio`] what it would
 //! have played. Input goes in between steps, as winit events do between
-//! redraws. The startup hook does not run and no manifest loads at
+//! redraws; [`Harness::tap_action`] presses for one frame. Every audio
+//! command of the frames stepped also lands in a log, which
+//! [`Harness::plays`], [`Harness::stops`], [`Harness::voice_volumes`] and
+//! [`Harness::master_volumes`] read until [`Harness::clear_audio_log`]. The
+//! startup hook does not run and no manifest loads at
 //! startup, since both need the renderer; [`Harness::load_manifest`] loads
 //! a manifest's headless sections, and the rest seeds through
 //! [`Harness::world_mut`].
@@ -34,11 +38,13 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
+use tungsten_core::assets::SoundRegistry;
 use tungsten_core::assets::{FilterMode, ResolvedManifest, TextureHandle};
+use tungsten_core::post::PostPass;
 use tungsten_core::script::{Ending, Report, Script};
 use tungsten_core::ui::PaintList;
 use tungsten_core::{
-    AssetRegistry, AudioCommand, Binding, EventQueue, InputState, MaterialRegistry, World,
+    AssetRegistry, AudioCommand, Binding, EventQueue, InputState, MaterialRegistry, Voice, World,
 };
 use tungsten_render::{
     DebugLineInstance, LightUbo, MeshParticleBatch, QuadInstance, SpriteBatch, TextSection,
@@ -67,6 +73,9 @@ pub struct Harness {
     dt: f32,
     draw: Option<FrameDraw>,
     audio: Vec<AudioCommand>,
+    /// Every audio command of the frames stepped while not counting, since
+    /// the last [`clear_audio_log`](Self::clear_audio_log).
+    audio_log: Vec<AudioCommand>,
     frames: u64,
     exit_requested: bool,
     /// Whether [`step`](Self::step) only counts the sprite channel
@@ -96,6 +105,7 @@ impl Harness {
             dt: DEFAULT_DT_SECS,
             draw: None,
             audio: Vec::new(),
+            audio_log: Vec::new(),
             frames: 0,
             exit_requested: false,
             count_only: false,
@@ -119,8 +129,9 @@ impl Harness {
     /// UI themes, sounds, tilemaps and particle configs, in the order a
     /// window's startup loads them; each `materials` entry's metadata (its
     /// ID, source manifest, shader ID and uniform defaults) in the
-    /// `MaterialRegistry`, with no upload, so a kit `HitFlash` finds
-    /// `damage_flash` headless; then the prefabs and data entries in two
+    /// `MaterialRegistry`, with no upload, then the stock glow's and, unless
+    /// the manifest declares it, the engine's `damage_flash`, so a kit
+    /// `HitFlash` finds it headless; then the prefabs and data entries in two
     /// phases, every ID checked ([`load_prefabs`](asset_loader::load_prefabs)).
     /// What needs the renderer is skipped: sprites, fonts, shaders and
     /// particle meshes; a prefab's sprite name is interned at its spawn. A
@@ -149,8 +160,10 @@ impl Harness {
                 material.uniform_defaults,
             );
         }
-        // The reserved stock glow after the manifest's, as a load gives it.
+        // The reserved stock glow after the manifest's, then the hit flash,
+        // as a load gives them.
         asset_loader::allocate_engine_glow(&mut materials);
+        asset_loader::allocate_hit_flash(&manifest, &mut materials);
         world.insert_resource(materials);
         asset_loader::load_sounds(&manifest, world)?;
         asset_loader::load_tilemaps(&manifest, world)?;
@@ -276,6 +289,12 @@ impl Harness {
                 self.exit_requested = true;
                 return completed;
             }
+            if let Some(draw) = draw.as_mut() {
+                draw.post = self.app.drawn_post_stack();
+            }
+            if !count_only {
+                self.audio_log.extend(audio.iter().cloned());
+            }
             self.draw = draw;
             self.audio = audio;
             self.sprite_counts = sprite_counts;
@@ -327,6 +346,21 @@ impl Harness {
     pub fn release_action(&mut self, action: &str) {
         let binding = self.first_binding(action);
         input_bridge::release_binding(self.input_mut(), binding);
+    }
+
+    /// Taps `action` (S-119): [`press_action`](Self::press_action), a frame,
+    /// [`release_action`](Self::release_action), a frame; the first frame
+    /// reads it just pressed, the second just released. Returns the frames
+    /// run, as [`step`](Self::step) does.
+    ///
+    /// # Panics
+    ///
+    /// When the action map has no binding for `action`.
+    pub fn tap_action(&mut self, action: &str) -> u32 {
+        self.press_action(action);
+        let pressed = self.step(1);
+        self.release_action(action);
+        pressed + self.step(1)
     }
 
     /// Runs `script` on the harness's frames with the window loop's runner
@@ -413,6 +447,90 @@ impl Harness {
         &self.audio
     }
 
+    /// Every audio command the frames stepped since the last
+    /// [`clear_audio_log`](Self::clear_audio_log) queued, in order (S-44); a
+    /// counting step ([`CounterGuard`]) logs none.
+    #[must_use]
+    pub fn audio_log(&self) -> &[AudioCommand] {
+        &self.audio_log
+    }
+
+    /// Empties the [`audio_log`](Self::audio_log).
+    pub fn clear_audio_log(&mut self) {
+        self.audio_log.clear();
+    }
+
+    /// The logged plays of the manifest's sound `sound_id`, resolved
+    /// through the world's `SoundRegistry`: each play's voice, loop flag and
+    /// fade-in, in order.
+    ///
+    /// # Panics
+    ///
+    /// When the registry has no sound `sound_id`.
+    #[must_use]
+    pub fn plays(&self, sound_id: &str) -> Vec<(Voice, bool, f32)> {
+        let handle = self
+            .world()
+            .get_resource::<SoundRegistry>()
+            .and_then(|sounds| sounds.get_by_id(sound_id))
+            .unwrap_or_else(|| panic!("Harness::plays: no sound '{sound_id}'"));
+        self.audio_log
+            .iter()
+            .filter_map(|command| match command {
+                AudioCommand::Play {
+                    handle: played,
+                    voice,
+                    looping,
+                    fade,
+                    ..
+                } if *played == handle => Some((*voice, *looping, *fade)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The logged voice stops: each stop's voice and fade-out, in order.
+    #[must_use]
+    pub fn stops(&self) -> Vec<(Voice, f32)> {
+        self.audio_log
+            .iter()
+            .filter_map(|command| match command {
+                AudioCommand::StopVoice { voice, fade, .. } => Some((*voice, *fade)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The logged volume changes of `voice`: each one's level and fade, in
+    /// order.
+    #[must_use]
+    pub fn voice_volumes(&self, voice: Voice) -> Vec<(f32, f32)> {
+        self.audio_log
+            .iter()
+            .filter_map(|command| match command {
+                AudioCommand::SetVoiceVolume {
+                    voice: changed,
+                    volume,
+                    fade,
+                    ..
+                } if *changed == voice => Some((*volume, *fade)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The logged master volumes, in order.
+    #[must_use]
+    pub fn master_volumes(&self) -> Vec<f32> {
+        self.audio_log
+            .iter()
+            .filter_map(|command| match command {
+                AudioCommand::SetMasterVolume(volume) => Some(*volume),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Whether the run has ended: a frame stopped at an `engine_exit` press,
     /// or the last frame after [`request_exit`](crate::request_exit) or
     /// [`request_close`](Self::request_close) ran. No frame runs after it.
@@ -472,6 +590,10 @@ pub struct FrameDraw {
     /// (M56): the text runs of the roots `UiTree::prewarm` asked for, on the
     /// frame they were first laid out; `None` on every other frame.
     pub ui_prewarm: Option<PaintList>,
+    /// The post stack the frame drew (S-50): the game's `PostStack`, then
+    /// `PostTail`, then a screen transition's pass, every `PostPass::Bloom`
+    /// left out while `Settings::bloom` is off.
+    pub post: Vec<PostPass>,
 }
 
 impl FrameDraw {
@@ -498,6 +620,7 @@ impl FrameDraw {
             ui: extract.ui.clone(),
             world_labels: extract.world_labels.clone(),
             ui_prewarm: extract.ui_prewarm.clone(),
+            post: Vec::new(),
         }
     }
 }

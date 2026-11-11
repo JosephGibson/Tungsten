@@ -6,7 +6,7 @@ The rows `just perf` measures (`D-078` as redo 7.3 amends it), each owning one c
 just perf list                                   # every row, its kind and repeats
 just perf run ecs                                # one capture
 just perf sitting --quick                        # the working tree against the last tag, CPU rows, informational
-cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the ten benchmarks
+cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the thirteen benchmarks
 TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 ```
 
@@ -14,7 +14,7 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 
 ## Harness
 
-- **Two kinds of row.** The ten benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
+- **Two kinds of row.** The thirteen benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
 - **The bench binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and builds the app through `bench_app`, which the counter guards build alike. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's knobs and presets as JSON and `=config` the resolved configuration, before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays. In an interactive run Tab relaunches the binary on the next benchmark, keeping the preset when it has it.
 - **Determinism.** Every random choice comes from `Pcg32::seeded(seed)` and dt is pinned, so one build replays one workload. No rendered text depends on wall-clock time. A capture's runs share a digest over the window's `physics:` and `bench:` lines.
 - **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest; `boot` writes its own, seeded, under `target/bench-boot/`.
@@ -149,7 +149,7 @@ Owns particle emit, tick and count refresh, and animation playback. Warm-up 180 
 Owns the runtime terrain's share of `physics_step` (redo 7.8): the registry's writes and journal, the tile cache's chunk re-traces and the edited map's proxy rebuild, the pair grid's tile restage and the sensors' re-test of the cells written under them. Warm-up 120 frames. Module: `terrain.rs`.
 
 - **Cave.** A seeded cave of 16 px cells under a sky band an eighth of the map's height: noise smoothed four times, cut by a two-column drain every 64 columns, in a collision layer and a styled art layer of 16 generated variants and a brush, auto-tiled by open sides. Each frame refills the cells it broke 60 frames before, then breaks `edits` floors (solid cells under air), a seeded one in each column of a seeded walk, in both layers, so from the 60th frame on the solid count holds. Circles of 3, 4.5 and 6 px fall on it and through the floors broken under them; one below the map respawns in the sky. Each of the `sensors` sensors is a column the map's height. The art layer draws through the engine's tilemap extract and the bodies through the lean view, the camera fitting the map.
-- **Settling.** Bodies collect in the cave's pits slowly, the awake count falling from 1,200 to about 960 over a `default` capture, while `physics_step` holds: the edited map's proxy rebuild and the tile restage lead it (p50 5.35 ms, p95 5.77 ms on the reference machine, 2026-10-30).
+- **Settling.** Bodies collect in the cave's pits slowly, the awake count falling from 1,200 to about 960 over a `default` capture, while `physics_step` holds: the edited map's proxy rebuild and the tile restage lead it (p50 5.35 ms, p95 5.77 ms on the reference machine, 2026-10-30; 4.26 and 4.49 ms on 2026-11-11, after the CPU stress pass).
 
 | Knob | Default | Range | Scales | Notes |
 | --- | --- | --- | --- | --- |
@@ -213,6 +213,40 @@ Owns chemistry's spread over a saturated field (redo 7.10b): `chemistry`'s run (
 - **Owned:** `system.chemistry`, `system.chemistry_tick` and `system.effect_tick` p50/p95, and `stage.update` p95.
 - **Guards:** `bench.pending <= 16,384` (the queue's bound), `bench.dropped <= 0` and `bench.burning >= 12,000`, its first valid reading rounded down to a thousand: the whole field stays lit.
 
+## `rooms`
+
+Owns a live room's patch (redo 7.12), the path a script's `level` step and a room file's reload share: `World::apply_room_batch` applies a batch to a copy of the room's document, compiles it for the batch's check and again for the patch, checks its objects against the prefabs, compares the cells and writes the changed ones in place, and despawns the moved objects and spawns them again under their names; and, every 120 frames, the room's whole spawn. Warm-up 120 frames. Module: `rooms.rs`.
+
+- **Room.** Built in code (`World::insert_room`): a seeded cave of 16 px cells, a floor four rows deep and two walls, a ramp every 20 columns rising right four rows, 45° and 2:1 in turn, seeded ledges and a one-way bridge line a third of the way down, in an art layer and a collision layer on a styled rock brush with its slope tiles; `bodies` circles of a prefab registered in code, dynamic bodies the step never moves, since the physics plugin builds into a schedule the app never runs, as `saves`'s does. Each frame's batch moves the first `moves` bodies a cell right and paints `paints` seeded art cells; the next frame's moves them back and erases the cells, so from the second frame on every frame patches the same work. Every 120 frames the room's instance and objects despawn at once, freeing their names, and the room spawns again. A moved body's new spawn takes its lean-view sprite from the instance through the spawn inheritance; the art layer draws through the engine's tilemap extract, the camera fitting the room.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `width`, `height` | 120, 68 | 40–512, 24–256 | | Cells of 16 px |
+| `bodies` | 400 | 1–10,000 | yes | |
+| `moves` | 16 | 1–1,000 | yes | Bodies a batch moves a cell, at most `bodies` |
+| `paints` | 32 | 1–1,000 | yes | Art cells a batch paints, or erases on the next |
+
+- **Presets:** `min` (40 × 24 cells, 40 bodies, 4 moves, 8 paints) and `default`.
+- **Counters:** `bench:` `moved` (bodies the frame's patch spawned again), `painted` (cells it wrote in place), `spawned` (entities the frame's whole spawn made, else 0) and `visible`.
+- **Owned:** `stage.update` p50/p95; its first capture is functional only (`D-226`).
+- **Guards:** `bench.moved constant` and `bench.painted constant`.
+
+
+## `generate`
+
+Owns a generated run's churn (redo 7.12, P7-16): `World::generate_rooms` runs a generator registered in code over a template room, each room it adds compiled and registered with its generation, then spawned at its origin with its objects named; the frame after, every room's instance and objects despawn and `World::remove_room` takes each room out with its map and its area before the next seed's run. Warm-up 60 frames. Module: `generate.rs`.
+
+- **Rooms.** The template is built in code (`World::insert_room`): a 24 × 14 hall of 16 px cells, a floor two rows deep and a wall at its left, in an art layer and a collision layer, holding one circle from a prefab registered in code, a dynamic body the step never moves, since the physics plugin builds into a schedule the app never runs, as `rooms`'s does. The generator adds `rooms` copies side by side, SF22's chain, each with `objects` circles at cells the generation's seeded stream picks. Each frame despawns the last run, removes its rooms, generates the next seed's and spawns them, so a frame pays a run's whole churn; runs alternate the prefixes `run_a` and `run_b`, so a removal that left a run's rooms or areas behind would show. The art layer draws through the engine's tilemap extract and the circles through the lean view, the camera fitting the chain.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `rooms` | 8 | 1–64 | | Rooms a generation adds side by side |
+| `objects` | 24 | 1–1,000 | yes | Circles each room holds |
+
+- **Presets:** `min` (2 rooms of 4 circles) and `default`.
+- **Counters:** `bench:` `rooms` (rooms the frame generated and spawned), `spawned` (entities their spawns made), `removed` (rooms it removed) and `visible`.
+- **Owned:** `stage.update` p50/p95.
+- **Guards:** `bench.rooms`, `bench.spawned` and `bench.removed` constant over the window.
 ## `friction` and `slopes`
 
 `friction` owns `physics_step`'s friction and rolling rows; `slopes` its slope tiles' contacts (phase 7's piles). One benchmark, `piles`, whose `mode` knob names its row as `physics`' names `physics-sparse`. Warm-up 120 frames. Module: `piles.rs`.
@@ -236,12 +270,47 @@ Owns chemistry's spread over a saturated field (redo 7.10b): `chemistry`'s run (
 - **Owned:** `physics_step` p50/p95 and `update` p95, each row.
 - **Guards:** `friction`: `bench.sleeping <= 0` and `bench.escaped <= 0`. `slopes`: `bench.recycled >= 60`, at least one a frame over each second, and `bench.inside <= 0`.
 
+## `blast`
+
+Owns `physics_step` over a dense pile's sleep, wake and blasts, with no game system beside it (the CPU stress pass): example 01's full pit as a bench, so a physics change reads apart from 01's own systems. Warm-up 480 frames. Module: `blast.rs`.
+
+- **Pile.** `bodies` circles of `radius` start at rest on a hexagonal lattice in a closed bin of 16 px tiles, `width` cells across with a floor, two walls and a ceiling, under 01's gravity, restitution and broadphase cell. They settle and sleep, one island, inside the warm-up: by frame 400 at `default`.
+- **Blasts.** From window frame 20 a blast lands every `period` frames: `apply_radial_impulse` of `impulse` over `reach` px, centred on the highest body within a body's width of a seeded column, as a projectile meeting the pile there would land it. The first wakes the island whole, and at `period` 20 the pile never sleeps again, so a window holds 20 frames asleep, the wake, and 14 blasts on an awake pile.
+- **Reference machine**, 2026-11-11, after the CPU stress pass (its close sitting's ten runs, `perf-runs/20261111T115945Z-sitting/`): `physics_step` 0.65 ms asleep, 20.8 ms in the wake's frame and 36.6 ms six frames on, about 17.8 ms before the next blast; p50 19.8 to 20.0 ms, p95 31.3 to 31.6 ms, p99 35.5 to 35.8 ms. Before the pass, 2026-11-10: 0.68, 25.2, 48.8 and about 24.3 ms; p50 26.9 to 27.3 ms, p95 40.8 to 41.2 ms, p99 46.3 to 46.7 ms. The step sends about 50,000 collision events a frame while the pile is awake, one a penetrating pair (`D-270`; about 200,000 before it, one a pair a substep).
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `width`, `height` | 98, 144 | 18–512, 24–512 | | Cells of 16 px, the walls', the ceiling's and the floor's included; 96 cells inside is 01's pit |
+| `bodies` | 12,000 | 100–50,000 | yes | 12,000 is 01's full pit |
+| `radius` | 7.5 | 2–16 px | | 01's small ball |
+| `period` | 20 | 1–600 | | Frames between blasts |
+| `reach`, `impulse` | 288, 2,500 | 16–1,024 px, 0–10,000 | | A blast's radius and its impulse at the centre, falling linearly to none at the reach; 01's fire missile |
+| `gravity`, `restitution`, `cell` | 3,600, 0.85, 64 | | | 01's gravity, its small ball's restitution and its broadphase cell |
+
+- **Presets:** `min` (34 × 48 cells, 600 bodies, reach 96, impulse 1,200) and `default`.
+- **Counters:** `bench:` `bodies`, `awake`, `sleeping`, `escaped` (bodies outside the bin), `blasts` (1 on a blast's frame), `pushed` (bodies its impulse reached), `events` (the step's collision events) and `visible`.
+- **Owned:** `physics_step` p50/p95/p99 and `update` p95.
+- **Guards:** `bench.bodies constant` and `bench.escaped <= 0`.
+
 ## `e01-pit`
 
 Example 01's heaviest frame: the full ball pit under the rope bridge with six enemies awake about the player (`features/run/pit.rs`). The script: `start_run` at frame 2, `fill_pit` to 12,000 balls at 30, `wake_foes` at 630, then 180 warm-up frames (warm-up 810 in all) and 300 measured; it ends asserting the `pit` probe (`balls` = 12,000, `foes_alive` = 6, `foes_awake` ≥ 5). 1920×1080, CPU, five repeats.
 
 - **Owned:** `total` p50/p95; `update`, `physics_step` and `extract` p50.
 - **Guard:** the script's report.
+
+## `e01-stress`
+
+Example 01's full pit under a storm of spells (the CPU stress pass): the frames where blasts, a pile's wake, fire, impacts and enemies load the step together. `e01-pit`'s setup and warm-up (`start_run` at frame 2, `fill_pit` to 12,000 at 30, `wake_foes` at 630, warm-up 810), then `cast_at`, which lands a spell's toy at a point free of mana and cooldown, through the 300 measured frames, numbered from 0:
+
+- **Blasts:** a fire missile's on the pile's surface every 20 frames from frame 20, at five points in turn, and one on the deck among the enemies every 100 from frame 30.
+- **Other spells:** lightning onto the deck every 96 frames from 25 and onto the pile every 96 from 73; a force push along the deck, east every 120 from 35 and west every 120 from 95; an iron block dropped onto the pile at 44, 104, 164 and 224; a black hole over the pile at 149.
+
+The window holds the pile asleep for 20 frames, its one island's wake at the first blast and the storm on an awake pile; the fire reaches every ball by about frame 90. It ends asserting the `pit` probe (`foes_alive` = 6, `foes_awake` ≥ 5, `balls` ≥ 11,000, the hole sweeping some up) and the `pit_fire` probe (`burning` ≥ 10,000). 1920×1080, CPU, five repeats.
+
+- **Reference machine**, 2026-11-11, after the CPU stress pass (its close sitting's ten runs, `perf-runs/20261111T115945Z-sitting/`): `total` 5.4 ms asleep and 32.3 to 32.6 ms in the wake's frame; p50 38.7 ms, p95 45.3 to 45.4 ms, p99 47.9 ms. Of the 20 highest frames' 46.6 ms, `physics_step` holds 73.1 %, 01's `fire_spread` 8.8 %, `fire_exposure` 5.6 %, `body_impacts` 1.8 % and `iron_crush` 1.1 %. Before the pass, 2026-11-10: 5.8 and 42.7 ms; p50 55.1 to 55.2 ms, p95 63.2 to 64.1 ms, p99 67.2 to 67.3 ms; of the 20 highest frames' 64.8 ms, `physics_step` 58.9 %, `fire_spread` 18.4 %, `iron_crush` 5.3 % and `fire_exposure` 4.6 %.
+- **Owned:** `total` p50/p95/p99; `update` p50/p95; `extract` p50; `physics_step` p50/p95; `fire_spread`, `fire_exposure`, `body_impacts`, `iron_friction` and `animation_tick` p50; `iron_crush` p95.
+- **Guard:** the script's report. It has no counter guard: `pit`'s pins the full pit's frame and `blast`'s the engine's pile under blasts.
 
 ## `template`
 
@@ -273,8 +342,11 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `terrain` | `guards_terrain` | `terrain` at `min` | `Body` count = `bodies`, `Sensor` count = `sensors`, one map; the warm-up's last frame and the window's last break and refill `edits` cells each and trace 1 to 8 × `edits` chunks; every frame's instances = bodies in view plus visible art tiles |
 | `friction` | `guards_friction` | `piles` at `friction-min` | `Body` count = `bodies`, one paddle, one map; each window frame no body asleep or out of the bin and a circle spinning; instances = bodies and paddles in view plus visible art tiles |
 | `slopes` | `guards_slopes` | `piles` at `slopes-min` | `Body` count = `bodies`, no paddle, one map; each window frame no centre inside a slope cell's polygon and at least 60 returns over the last 60 frames; instances as `friction` |
+| `blast` | `guards_blast` | `blast` at `min` | `Body` count = `bodies`, one map; before window frame 20 no body awake and no collision event; at 20 the blast reaching bodies and leaving no sleeper, then a blast every `period` frames; each window frame no body out of the bin; instances = bodies in view plus visible art tiles |
 | `saves` | `guards_saves` | `saves` at `min` | records = `objects` + 1 + `spawns`; view instances |
 | `spread` | `guards_spread` | `spread` at `min` | the receivers tagged and every one lit; each window frame every one burning, chemistry's queue at most one entry a receiver, nothing dropped; view instances |
+| `rooms` | `guards_rooms` | `rooms` at `min` | `RigidBody` count = `bodies`, one map; each window frame `moves` bodies spawned again and `paints` cells written in place; instances = bodies in view plus visible art tiles |
+| `generate` | `guards_generate` | `generate` at `min` | the template and the generator registered; each window frame `rooms` rooms generated and spawned, `rooms` × (`objects` + 1) entities, `rooms` removed; instances = bodies in view plus visible art tiles; after the frames, `the_generate_row_keeps_only_the_live_runs_rooms_and_areas` finds the template and the live run's rooms alone, the other prefix's areas neither loaded nor kept |
 | `boot` | `guards_boot` | `boot` at `min`, its assets' load run by `LoadPlan::run_headless`, no frame stepped | the plan's units = `bench.units`; every sound the manifests name loaded, no sprite packed (the reading is the load's: its sprite batches read 0, and its bytes, which carry the checkout's canonical path, are not pinned) |
 | `pit` | `example-01-platformer` `guards::the_full_pit_holds_its_counts` | `start_run`, 2,000 balls, 120 settle frames, `wake_foes`, a 60-frame window | the `pit` counts (headless 01 loads no sprite assets, so its batches read 0) |
 | `idle-screen` | `tungsten` `screens::tests::an_idle_screen_lays_out_no_root` | a `Menu` screen pushed and past its entrance, then 60 frames without input | `UiHarness::layout_totals` unchanged over the 60, with no pin file: the zero is the assertion; a focus move then lays out no root and one label's new text exactly one, so the guard sees work (redo 7.17) |
@@ -295,11 +367,11 @@ Each bench guard runs its row's warm-up and a 60-frame window at the configurati
 - **Text-cache RSS:** closed (`D-085`).
 - **Default extract:** open in part. Rewritten (`D-086`), interned (`D-113`) and culled (`D-114`); it still leads `gpu-throughput` (12.15 of 13.68 ms `total` p50 on 2026-10-04), and the bound test costs rows with every sprite in view; Engine findings, `gpu`.
 - **Surface clear and present blit:** closed for the blit (`D-087`); the clear in the first swapchain pass stays, which only `LoadOp::DontCare` (`unsafe`) removes; Engine findings.
-- **Tile collision proxies:** open in part. Kept across steps (`D-203`) and re-traced by 16 × 16 chunk after an edit (runtime-terrain); a frame with an edit still rebuilds the edited map's proxies and restages the pair grid's tiles, which lead `terrain`'s 5.35 ms `physics_step` p50 (2026-10-30); dropping the interior cells, which make no contact, is the measured next step (ROADMAP.md, Later).
+- **Tile collision proxies:** open in part. Kept across steps (`D-203`) and re-traced by 16 × 16 chunk after an edit (runtime-terrain); a frame with an edit still rebuilds the edited map's proxies and restages the pair grid's tiles, which led `terrain`'s 5.35 ms `physics_step` p50 (2026-10-30; 4.26 ms on 2026-11-11, once the support record is compared without a whole sort, `1517795a`); dropping the interior cells, which make no contact, is the measured next step (ROADMAP.md, Later).
 - **Contact wakes rebuild the pair list:** closed (`D-234`): a woken body is repaired into the list; `e01-pit`'s total p95 −7.13 and −6.95 ms and p99 −14.8 and −13.9 ms in its sitting (`perf-runs/20261102T013307Z-sitting/`).
-- **The pair grid's walk:** open. After the physics-tail pass the build's, the repair's and the arrival pass's grid queries, their visits included, hold 18.1 % of the 31.3 ms of `physics_step` in `e01-pit`'s 20 highest frames; a change keeps `D-080`'s visit order (`perf-runs/20261101-physics-tail/close/`).
-- **01's collision-event readers:** open. `body_impacts`, `ball_impacts` and `iron_friction` take 2.10, 0.64 and 0.96 ms a frame over `e01-pit`'s 20 highest frames and 2.37, 2.34 and 1.15 ms over awake ones (the physics-tail close sitting's B1, `perf-runs/20261102T015842Z-sitting/`); each walks the step's collision events.
-- **`CollisionEvent`'s layout:** open. 72 bytes, public API (`D-229`'s speed and `Option<TileHit>`); in `e01-pit`'s 20 highest frames the pair loop's push, the drain and the queue's sends take 0.92, 0.92 and 0.63 ms of the 31.3 ms of `physics_step`; the dropped single-append drain is in `perf-runs/20261101-physics-tail/step-2.patch`.
+- **The pair grid's walk:** open in part. The build, the repair and the arrival pass take a query's cells run by run since the CPU stress pass (`55104ae7`: `physics` `physics_step` p50 −0.69 and −0.66 ms, `blast` −2.35 and −2.38, `perf-runs/20261111T035427Z-sitting/`), in `D-080`'s visit order; a point's and a ray's visitors keep the walk by entries. Before it the three's queries, their visits included, held 18.1 % of the 31.3 ms of `physics_step` in `e01-pit`'s 20 highest frames (`perf-runs/20261101-physics-tail/close/`); their share is not profiled since.
+- **01's collision-event readers:** open in part. Each walks the step's collision events, and one event a pair a step (`D-270`) cut those fourfold: `e01-stress` `fire_spread` p50 13.01 → 5.00 ms, `body_impacts` 2.42 → 0.77, `iron_friction` 1.18 → 0.34 and `iron_crush` p95 4.44 → 1.31 (the CPU stress pass's close sitting, `perf-runs/20261111T115945Z-sitting/`). The readers are 01's, and 7.13 rewrites them.
+- **`CollisionEvent`'s layout:** open. 72 bytes, public API (`D-229`'s speed and `Option<TileHit>`); in `e01-pit`'s 20 highest frames the pair loop's push, the drain and the queue's sends took 0.92, 0.92 and 0.63 ms of the 31.3 ms of `physics_step` (2026-11-01). Since the CPU stress pass the step hands its events over in one append (`EventQueue::append`, `a7a4c7ed`: `blast` `physics_step` p50 −1.75 ms in both pairs) and sends a quarter as many (`D-270`); the layout's cost at that count is not measured.
 - **Bundle insert:** closed (`D-135`).
 - **Archetype count:** open. `ecs` `update` p50 9.14 / 10.52 / 19.15 ms at 64 / 488 / 3,189 archetypes, consistent with each column's first cache lines missing; no candidate without `unsafe`; Engine findings.
 - **String sprite IDs:** closed (`D-113`); animation IDs stay strings (below).
@@ -319,9 +391,13 @@ Each bench guard runs its row's warm-up and a 60-frame window at the configurati
 - **Shape-run cache for text shaping:** open; Session B's list.
 - **Frame cap overshoot:** open. 0.06 ms per frame at a cap of 60, each deadline counting from the frame's own start; a deadline grid would remove it; Session B's list.
 - **The HUD's `fps` row:** closed (M57, `D-165`).
-- **Interned animation IDs:** open. `AnimationState.animation_id` is a `String` looked up per entity per advance; M33's list.
+- **Interned animation IDs:** open in part. `animation_tick` finds a row's clip once and keeps it while the next row names the same one (`4b09dd3b`: `e01-stress` `animation_tick` p50 1.04 → 0.46 ms, 12.4 ns a sprite in the kit's criterion row); `AnimationState.animation_id` stays a `String`, hashed again wherever the clip changes along the rows, and a caller of `advance` outside the tick looks it up each time; M33's list.
 - **`particles`' `unattributed` reading after `D-113`:** open, mechanism not established; M33's list.
 - **A cheaper cull for all-in-view rows and a view test for `extract_mesh_particles`:** open; M33's list.
+- **The arrival pass:** open. Its search and sort were cut bit for bit (`9b2c12f0`: `blast` `physics_step` p95 −3.31 and −3.13 ms); reading a listed body's candidates from the pair list instead of the grid then missed its target twice (`blast` p95 −0.11 and −0.05 ms bit for bit), a listed body's walk and cut costing about 0.5 µs by then. The variants that read faster changed motion, clamping a body against every pair partner in reach (ROADMAP.md, Later; `perf-runs/20261110-cpu-stress/step-6/`).
+- **The pair list kept across frames:** open. On a blasted pile of 12,000, 66 of 112 steady frame starts could keep the list (59 %), under the CPU stress pass's gate of two in three: a budget covers one frame's travel at the speed it was built for, so a body over about 250 px/s outruns it at the next frame's start (the release test `a_blasted_pile_of_12_000_prints_the_frame_starts_that_could_keep_their_pairs`).
+- **A worker pool for the step's pure stages:** open, the owner's decision. The arrival pass's neighbour search and the build's per-querier walks ran in chunks on a caller-owned rayon pool with the determinism test's pinned hash holding at 0, 2, 6 and 12 workers: at six workers `e01-stress` `total` p95 −6.9 and p99 −7.7 ms and `e01-pit` −8.6 and −11.1, measured before the CPU stress pass shrank both stages, so measured again before any decision (`perf-runs/20261110-cpu-stress/threads.txt`). Landing it supersedes `D-131`'s no-worker clause and `D-067`.
+- **Chemistry's emission step:** open; 7.14's C2. `spread` `system.chemistry` p95 10.15 → 5.11 ms after the CPU stress pass (`4d616236`: a cheaper hasher on the queue's maps, a receiver's slot kept through a pass's emissions, one tile check a pass); the rest is a grid query an emission and its merges, on the one step in fifteen where every receiver emits. Spreading the emissions over steps moves the kit's pin.
 
 ## Adding a row
 

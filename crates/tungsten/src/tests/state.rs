@@ -1302,3 +1302,222 @@ fn an_owned_resource_leaves_with_its_state() {
     dispatch(&mut world, 0.0);
     assert!(!world.has_resource::<RunData>(), "the menu's exit took it");
 }
+
+/// A state that names `music`, or none.
+struct MusicState {
+    id: StateId,
+    music: Option<StateMusic>,
+}
+
+impl GameState for MusicState {
+    fn id(&self) -> StateId {
+        self.id
+    }
+    fn on_enter(&mut self, _: &mut StateContext) {}
+    fn on_exit(&mut self, _: &mut StateContext) {}
+    fn update(&mut self, _: &mut World) {}
+    fn music(&self) -> Option<StateMusic> {
+        self.music.clone()
+    }
+}
+
+fn scored(id: StateId, sound: &'static str, fade: f32) -> MusicState {
+    MusicState {
+        id,
+        music: Some(StateMusic::new(sound, fade)),
+    }
+}
+
+fn quiet(id: StateId) -> MusicState {
+    MusicState { id, music: None }
+}
+
+/// A stack's World with audio and three songs: `title` at 0.8, `run` at
+/// 0.6 and `pause` at 0.5, each looping.
+fn music_world() -> World {
+    use tungsten_core::assets::{SoundData, SoundRegistry};
+    let mut world = make_world();
+    let mut sounds = SoundRegistry::new();
+    for (id, level) in [("title", 0.8), ("run", 0.6), ("pause", 0.5)] {
+        let data = SoundData {
+            samples: vec![0.0; 64],
+            sample_rate: 44_100,
+            channels: 1,
+        };
+        sounds.register(id.into(), data, level, true);
+    }
+    world.insert_resource(sounds);
+    world.insert_resource(tungsten_core::AudioCommands::new());
+    world
+}
+
+/// What the music did on a frame, by the sound's ID for a play.
+#[derive(Debug, PartialEq)]
+enum Heard {
+    Play(&'static str, f32, f32),
+    Volume(tungsten_core::Voice, f32, f32),
+    Stop(tungsten_core::Voice, f32),
+}
+
+/// One frame's dispatch and the audio it queued.
+fn heard(world: &mut World) -> Vec<Heard> {
+    use tungsten_core::assets::SoundRegistry;
+    use tungsten_core::{AudioCommand, AudioCommands};
+    dispatch(world, 1.0 / 60.0);
+    let commands = world.resource_mut::<AudioCommands>().drain();
+    let sounds = world.resource::<SoundRegistry>();
+    let name = |handle| {
+        ["title", "run", "pause"]
+            .into_iter()
+            .find(|id| sounds.get_by_id(id) == Some(handle))
+            .expect("a known sound")
+    };
+    commands
+        .into_iter()
+        .map(|command| match command {
+            AudioCommand::Play {
+                handle,
+                volume,
+                looping: true,
+                fade,
+                ..
+            } => Heard::Play(name(handle), volume, fade),
+            AudioCommand::SetVoiceVolume {
+                voice,
+                volume,
+                fade,
+                ..
+            } => Heard::Volume(voice, volume, fade),
+            AudioCommand::StopVoice { voice, fade, .. } => Heard::Stop(voice, fade),
+            other => panic!("unexpected {other:?}"),
+        })
+        .collect()
+}
+
+/// The voice the music state at `index` plays.
+fn voice_of(world: &World, index: usize) -> tungsten_core::Voice {
+    stack(world)
+        .music
+        .iter()
+        .find(|voice| voice.owner == index)
+        .and_then(|voice| voice.voice)
+        .expect("a playing music state")
+}
+
+#[test]
+fn the_top_music_state_is_heard() {
+    let mut world = music_world();
+    stack_mut(&mut world).request_push(scored("menu", "title", 0.5));
+    assert_eq!(heard(&mut world), [Heard::Play("title", 0.8, 0.5)]);
+    let title = voice_of(&world, 0);
+    stack_mut(&mut world).request_push(scored("gameplay", "run", 1.0));
+    assert_eq!(
+        heard(&mut world),
+        [Heard::Volume(title, 0.0, 1.0), Heard::Play("run", 0.6, 1.0)],
+        "the title plays on at 0 under the run, over the run's fade"
+    );
+}
+
+#[test]
+fn a_screen_without_music_keeps_the_song_below() {
+    let mut world = music_world();
+    stack_mut(&mut world).request_push(scored("menu", "title", 0.5));
+    heard(&mut world);
+    stack_mut(&mut world).request_push(quiet("settings"));
+    assert_eq!(heard(&mut world), [], "the title's song plays on");
+    stack_mut(&mut world).request_pop();
+    assert_eq!(heard(&mut world), []);
+}
+
+#[test]
+fn a_covered_music_state_plays_on_at_zero() {
+    let mut world = music_world();
+    stack_mut(&mut world).request_push(scored("gameplay", "run", 1.0));
+    heard(&mut world);
+    let run = voice_of(&world, 0);
+    stack_mut(&mut world).request_push(scored("pause", "pause", 0.25));
+    assert_eq!(
+        heard(&mut world),
+        [
+            Heard::Volume(run, 0.0, 0.25),
+            Heard::Play("pause", 0.5, 0.25)
+        ],
+        "lowered, not stopped"
+    );
+}
+
+#[test]
+fn a_pop_brings_the_covered_song_back() {
+    let mut world = music_world();
+    stack_mut(&mut world).request_push(scored("gameplay", "run", 1.0));
+    heard(&mut world);
+    stack_mut(&mut world).request_push(scored("pause", "pause", 0.25));
+    heard(&mut world);
+    let (run, pause) = (voice_of(&world, 0), voice_of(&world, 1));
+    stack_mut(&mut world).request_pop();
+    assert_eq!(
+        heard(&mut world),
+        [Heard::Stop(pause, 0.25), Heard::Volume(run, 0.6, 1.0)],
+        "the run's song back over its own fade"
+    );
+}
+
+#[test]
+fn an_exit_stops_its_voice_with_its_fade() {
+    let mut world = music_world();
+    stack_mut(&mut world).request_push(scored("menu", "title", 0.5));
+    heard(&mut world);
+    let title = voice_of(&world, 0);
+    stack_mut(&mut world).request_replace(scored("gameplay", "run", 2.0));
+    assert_eq!(
+        heard(&mut world),
+        [Heard::Stop(title, 0.5), Heard::Play("run", 0.6, 2.0)]
+    );
+    stack_mut(&mut world).request_replace(quiet("menu"));
+    let run = voice_of(&world, 0);
+    assert_eq!(heard(&mut world), [Heard::Stop(run, 2.0)]);
+    assert!(stack(&world).music.is_empty());
+}
+
+#[test]
+fn a_reset_stops_every_voice() {
+    let mut world = music_world();
+    stack_mut(&mut world).request_push(scored("gameplay", "run", 1.0));
+    heard(&mut world);
+    stack_mut(&mut world).request_push(scored("pause", "pause", 0.25));
+    heard(&mut world);
+    let (run, pause) = (voice_of(&world, 0), voice_of(&world, 1));
+    let queued =
+        stack_mut(&mut world).request_reset_transition(scored("menu", "title", 0.5), fade(0.0));
+    assert!(queued);
+    assert_eq!(
+        heard(&mut world),
+        [
+            Heard::Stop(pause, 0.25),
+            Heard::Stop(run, 1.0),
+            Heard::Play("title", 0.8, 0.5)
+        ]
+    );
+}
+
+#[test]
+fn an_unknown_sound_warns_once_and_plays_nothing() {
+    let mut world = music_world();
+    for _ in 0..2 {
+        stack_mut(&mut world).request_push(scored("menu", "fanfare", 0.5));
+        assert_eq!(heard(&mut world), [], "nothing plays");
+        stack_mut(&mut world).request_pop();
+        assert_eq!(heard(&mut world), []);
+    }
+    assert_eq!(stack(&world).music_warned, ["fanfare"], "warned once");
+}
+
+#[test]
+fn a_frame_that_changes_nothing_sends_no_audio() {
+    let mut world = music_world();
+    stack_mut(&mut world).request_push(scored("gameplay", "run", 1.0));
+    assert_eq!(heard(&mut world).len(), 1);
+    for _ in 0..3 {
+        assert_eq!(heard(&mut world), []);
+    }
+}

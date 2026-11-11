@@ -3,6 +3,7 @@
 pub mod assets;
 pub mod audio;
 pub mod camera;
+mod canonical;
 pub mod component_registry;
 pub mod components;
 pub mod config;
@@ -28,22 +29,26 @@ pub mod ui;
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
     BlendMode, CellChange, ChangedCells, Curve, DataEntry, DataError, DataRef, DataRegistry,
-    EMPTY_TILE, EmissionKind, FilterMode, FontEntry, FontFamilyEntry, FontRegistry,
-    InitialVelocity, LayerKind, LayerPhysics, Lerp, LoadedManifest, ManifestError, MapCursor,
-    MapObject, MaterialAssetId, MaterialRegistry, MaterialUniformDefaults, ObjectLayer,
-    ParticleActive, ParticleBudget, ParticleConfig, ParticleConfigError, ParticleConfigRegistry,
-    ParticleEntry, ParticleMesh, ParticleMeshAssetId, ParticleMeshEntry, ParticleMeshRegistry,
-    ParticleRender, PrefabData, PrefabEntry, PrefabError, PrefabRegistry, PreparedPrefab, Range,
-    ResolvedDataEntry, ResolvedFont, ResolvedFontFamily, ResolvedManifest, ResolvedMaterial,
-    ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab, ResolvedSound, ResolvedUiTheme,
-    SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,
-    SceneTweenRepeat, Slope, SlopeCorner, SlopeRise, SoundData, SoundEntry, SoundRegistry,
-    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileChanges,
-    TileDamage, TileIndex, TileProps, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry,
-    UiThemeEntry, WorldRngSeed,
+    EMPTY_TILE, EmissionKind, FilterMode, FontEntry, FontFamilyEntry, FontRegistry, Generate,
+    GenerateError, GeneratedRooms, Generation, InitialVelocity, LayerKind, LayerPhysics, Lerp,
+    LoadedManifest, ManifestError, MapCursor, MapObject, MaterialAssetId, MaterialRegistry,
+    MaterialUniformDefaults, ObjectLayer, ParticleActive, ParticleBudget, ParticleConfig,
+    ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
+    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, PrefabData, PrefabEntry, PrefabError,
+    PrefabRegistry, PreparedPrefab, Range, ResolvedDataEntry, ResolvedFont, ResolvedFontFamily,
+    ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab,
+    ResolvedSound, ResolvedUiTheme, Room, RoomCommand, RoomError, RoomGenerator, RoomGenerators,
+    RoomJournal, RoomRegistry, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
+    SceneTween, SceneTweenChannel, SceneTweenRepeat, Slope, SlopeCorner, SlopeRise, SoundData,
+    SoundEntry, SoundRegistry, SpawnedRoom, SpriteAsset, SpriteAssetId, StagedLoad,
+    StagedLoadError, TextureHandle, TileChanges, TileDamage, TileIndex, TileProps, TilemapData,
+    TilemapInstance, TilemapLayer, TilemapRegistry, Tileset, UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioBus, AudioCommand, AudioCommands, MAX_VOICES, Voice};
-pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
+pub use camera::{
+    CameraAim, CameraBounds, CameraController, CameraFrame, CameraRig, CameraState, FixedRig,
+    FollowRig, LeadFrom, RigBlend, RigKind, RigLead,
+};
 pub use component_registry::{
     ComponentError, ComponentRegistry, MissingAsset, PreparedComponent, SpawnContext,
 };
@@ -66,9 +71,9 @@ pub use ecs::{
     PendingEntity, ShakeEvent, SquashEvent, With, Without, World, WorldCounters,
 };
 pub use input::{
-    ActionMap, ActionMapError, AxisDirection, Binding, GamepadAxis, GamepadButton, GamepadId,
-    InputState, KeyCode, Modifiers, MouseButton, RawEvent, RawInput, RoutedInput, STICK_PRESS,
-    STICK_RELEASE, ScrollDirection, StickResponse, WheelDelta,
+    ActionMap, ActionMapError, AxisDirection, Binding, BindingDevice, GamepadAxis, GamepadButton,
+    GamepadId, InputState, KeyCode, Modifiers, MouseButton, RawEvent, RawInput, RoutedInput,
+    STICK_PRESS, STICK_RELEASE, ScrollDirection, StickResponse, WheelDelta,
 };
 pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP, light_at, light_level};

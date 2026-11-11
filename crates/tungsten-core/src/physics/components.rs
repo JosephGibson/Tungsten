@@ -48,7 +48,11 @@ impl Velocity {
 /// and its angle before the last fixed step, which
 /// [`physics_prev_snapshot`](crate::physics::physics_prev_snapshot) copies
 /// and [`physics_sync`](crate::physics::physics_sync) draws `Transform`'s
-/// rotation from, as it does positions. The step spins a dynamic circle that
+/// rotation from, as it does positions. The step keeps the angle in
+/// [0, 2π), so its turns keep their precision: an angle it turns past the
+/// range, or one written outside it, goes whole turns back, and the angle
+/// before moves by the same turns (so it can lie outside [0, 2π)) and the
+/// drawn turn does not sweep back. The step spins a dynamic circle that
 /// [`rolls`](RigidBody::rolls) and has one: its contacts' friction turns it
 /// and rolling resistance slows it. Spawn it with the body ([`RigidBodyBundle::with_spin`]), since
 /// inserting it later moves the entity's archetype and reorders the solve
@@ -56,7 +60,7 @@ impl Velocity {
 /// wake it; [`wake`](crate::physics::wake) does.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Spin {
-    /// Radians, clockwise on screen.
+    /// Radians, clockwise on screen, in [0, 2π) once the step turns it.
     pub angle: f32,
     /// Radians a second.
     pub angular_velocity: f32,
@@ -149,6 +153,7 @@ impl Collider {
 #[non_exhaustive]
 pub enum BodyKind {
     /// Never moves; the immovable side of its contacts with dynamic bodies.
+    /// Its `Velocity`, if it has one, is ignored: it is no surface speed.
     Static,
     /// Moved by gravity times its [`gravity_scale`](RigidBody::gravity_scale),
     /// its `Velocity` and its contacts; sleeps in islands.
@@ -190,6 +195,10 @@ pub enum BodyKind {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RigidBody {
     pub kind: BodyKind,
+    /// The inverse mass: 1 from [`dynamic`](Self::dynamic), 0 from the other
+    /// constructors, at least `1 / MAX_MASS` from
+    /// [`with_mass`](Self::with_mass); a write below that is the writer's to
+    /// keep the solver's impulses finite with ([`MAX_MASS`](Self::MAX_MASS)).
     pub inv_mass: f32,
     pub restitution: f32,
     /// The layers the body is in, one bit per layer;
@@ -227,6 +236,12 @@ impl RigidBody {
     pub const DEFAULT_LAYERS: u32 = 1;
     /// Every layer: every constructor's `mask`.
     pub const ALL_LAYERS: u32 = u32::MAX;
+    /// The largest mass [`with_mass`](Self::with_mass) and `rigid_body.mass`
+    /// take: a contact's impulse is its mass times its closing speed, so at
+    /// 1e12 one at 1e6 px/s stays far from `f32::MAX`, where a mass of 1e36
+    /// meeting a floor at 1,000 px/s made the impulse infinite and the body
+    /// NaN.
+    pub const MAX_MASS: f32 = 1.0e12;
 
     /// Unit-mass dynamic body.
     #[must_use]
@@ -310,12 +325,14 @@ impl RigidBody {
     ///
     /// # Panics
     ///
-    /// When `mass` is not finite and above 0 with a finite inverse.
+    /// When `mass` is not above 0 and at most [`MAX_MASS`](Self::MAX_MASS)
+    /// with a finite inverse.
     #[must_use]
     pub fn with_mass(mut self, mass: f32) -> Self {
         assert!(
-            mass.is_finite() && mass > 0.0 && (1.0 / mass).is_finite(),
-            "mass must be finite and > 0 with a finite inverse (got {mass})"
+            mass > 0.0 && mass <= Self::MAX_MASS && (1.0 / mass).is_finite(),
+            "mass must be in (0, {:e}] with a finite inverse (got {mass})",
+            Self::MAX_MASS
         );
         self.inv_mass = 1.0 / mass;
         self

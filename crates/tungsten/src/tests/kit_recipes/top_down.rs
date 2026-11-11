@@ -34,9 +34,9 @@
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
 use tungsten_core::{
-    AnimationState, AudioCommand, Bundle, CameraController, CameraMode, CameraState, DataRef,
-    Entity, EventCursor, EventQueue, Plugin, SaveData, SaveSlots, Schedule, Sprite, Transform,
-    World, system,
+    AnimationState, AudioCommand, Bundle, CameraController, CameraState, DataRef, Entity,
+    EventCursor, EventQueue, Plugin, SaveData, SaveSlots, Schedule, Sprite, Transform, World,
+    system,
 };
 
 use super::{
@@ -181,14 +181,64 @@ fn the_camera_follows_the_hero() {
         let hero = spawn(&mut harness, "hero", [100.0, 100.0]);
         harness.step(1);
         assert_eq!(
-            harness.world().resource::<CameraController>().mode,
-            CameraMode::Follow(hero)
+            harness.world().resource::<CameraController>().rig.target(),
+            Some(hero)
         );
         let before = harness.world().resource::<CameraState>().position;
         harness.press_action("move_right");
         harness.step(frames_for(0.5, dt));
         let after = harness.world().resource::<CameraState>().position;
         assert!(after.x > before.x, "dt {dt}: the camera moved");
+    }
+}
+
+// 7.18, Step 2: rigs as data.
+
+/// The camera's last frame.
+fn camera_frame(harness: &Harness) -> tungsten_core::CameraFrame {
+    harness.world().resource::<CameraController>().frame()
+}
+
+#[test]
+fn a_roamers_camera_holds_in_its_dead_zone_then_follows() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let roamer = spawn(&mut harness, "roamer", [300.0, 300.0]);
+        harness.step(1);
+        let controller = harness.world().resource::<CameraController>();
+        assert_eq!(controller.winner(), Some(roamer), "dt {dt}: its own rig");
+        let start = camera_frame(&harness);
+        // 540 world units tall in a 720 px window: a view of 960 by 540.
+        assert!(
+            (start.size - Vec2::new(960.0, 540.0)).length() < 1e-3,
+            "dt {dt}"
+        );
+        let anchor = drawn_at(&harness, roamer) + Vec2::splat(10.0);
+        assert!(
+            (start.anchor.unwrap() - anchor).length() < 1e-3,
+            "dt {dt}: its offset"
+        );
+        let zone = start.dead_zone.unwrap();
+        assert!((zone.max - zone.min - Vec2::new(400.0, 240.0)).length() < 1e-3);
+        // Half a second right: still inside the dead zone, the view holds.
+        harness.press_action("move_right");
+        harness.step(frames_for(0.5, dt));
+        let held = camera_frame(&harness);
+        assert!(
+            held.anchor.unwrap().x > anchor.x + 50.0,
+            "dt {dt}: it roamed"
+        );
+        assert_eq!(held.corner, start.corner, "dt {dt}: the view held");
+        // Past the zone's right side the view follows, the anchor on it.
+        harness.step(frames_for(1.5, dt));
+        let moved = camera_frame(&harness);
+        assert!(moved.corner.x > start.corner.x, "dt {dt}: it followed");
+        assert_eq!(moved.corner.y, start.corner.y, "dt {dt}");
+        let zone = moved.dead_zone.unwrap();
+        assert!(
+            (moved.anchor.unwrap().x - zone.max.x).abs() < 1e-2,
+            "dt {dt}: the anchor at the zone's edge"
+        );
     }
 }
 

@@ -5,7 +5,10 @@
 # builds, tests, smoke-runs, describes itself and runs a script there against
 # this checkout's engine, and `tungsten package` archives it; the archive's
 # binary smoke-runs too. Then two entries that leave their manifest's folder
-# and seven seeded errors must fail as they should (RC-A7).
+# must fail, a room must be made, applied to, queried, mapped, described,
+# checked, undone and redone through `tungsten level` (redo 7.12), and two
+# seeded room errors and seven seeded errors must fail as they should
+# (RC-A7).
 #
 # The copy builds into this checkout's target folder with the workspace's
 # profiles (which `new` writes) and .cargo/config.toml, offline, so most
@@ -243,6 +246,182 @@ done
 rm "$copy/outside.png"
 echo "Paths leaving the manifest's folder (../outside.png, an absolute path): OK"
 
+# The room flow (redo 7.12): `tungsten level new` makes a room `yard` and
+# a tileset on the game's own `gem` sprite and lists both in its manifest.
+# `tungsten level` then applies a batch from a file and one from stdin,
+# queries the room, maps it, describes it and checks it clean, and `apply
+# --undo` puts the file back byte for byte, `--redo` and a second `--undo`
+# after it; then two seeded room errors each fail `level check` with its
+# finding. The room, its tileset and the prefab's edit leave before the
+# seeded content errors.
+room="$copy/assets/rooms/yard.json"
+# Runs `tungsten level` in the copy, its output in $out.
+level() {
+  in_copy "$tungsten" level "$@" >"$out" 2>&1
+}
+# Writes stdin to the batch file `level apply` reads.
+batch="$copy_root/batch.json"
+write_batch() {
+  cat >"$batch"
+}
+if ! level new yard --size 20x12 --tile gem \
+  || ! grep -qxF 'wrote assets/tilesets/tiles.json: 1 tile (gem)' "$out" \
+  || ! grep -qxF "listed room \`yard\` and tileset \`tiles\` in assets/manifest.json" "$out" \
+  || [ ! -f "$room" ] || [ ! -f "$copy/assets/tilesets/tiles.json" ]; then
+  echo "error: tungsten level new did not make the room and its tileset:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if level new yard; then
+  echo "error: tungsten level new made a room that is listed already" >&2
+  exit 1
+fi
+write_batch <<<'[{ "place": { "shapes": { "id": "floor", "rect": [0, 10, 20, 2], "tile": "gem", "layers": ["art", "solid"] } } },
+  { "place": { "places": { "id": "start", "point": [2, 9] } } }]'
+if ! level apply yard "$batch" \
+  || [ "$(sed -n 1p "$out")" != "applied 2 commands to assets/rooms/yard.json:" ]; then
+  echo "error: tungsten level apply did not build the new room's floor:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+write_batch <<<'[{ "place": { "objects": { "id": "dummy_1", "prefab": "dummy", "at": [4, 8] } } }]'
+if ! level apply yard "$batch" \
+  || [ "$(sed -n 1p "$out")" != "applied 1 command to assets/rooms/yard.json:" ] \
+  || [ "$(sed -n 2p "$out")" != "  place object \`dummy_1\` (\`dummy\`) at 4, 8" ] \
+  || [ "$(sed -n 3p "$out")" != "undo: tungsten level apply yard --undo" ]; then
+  echo "error: tungsten level apply did not place the dummy:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+placed="$copy_root/yard-placed.json"
+cp "$room" "$placed"
+# The second batch on stdin, as `apply <room> -` reads it.
+if ! level apply yard - <<<'[{ "move": { "id": "dummy_1", "by": [3, 0] } },
+  { "paint": { "layer": "art", "cells": [[8, 4]], "tile": "gem" } }]' \
+  || [ "$(sed -n 1p "$out")" != "applied 2 commands to assets/rooms/yard.json:" ]; then
+  echo "error: tungsten level apply did not move the dummy and paint a cell from stdin:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+applied="$copy_root/yard-applied.json"
+cp "$room" "$applied"
+if ! level query yard dummy_1 || [ "$(head -1 "$out")" != "object dummy_1 (objects[0]):" ]; then
+  echo "error: tungsten level query did not print the dummy:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if ! level query yard dummy_1 --json || ! python3 -I -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1]))["entry"]["at"] == [7, 8] else 1)' "$out"; then
+  echo "error: tungsten level query --json did not put the dummy at [7, 8]:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if ! level query yard --at 8,4 || ! grep -qxF '  art: gem' "$out"; then
+  echo "error: tungsten level query did not find the painted cell:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+# The map shows the dummy at (7, 8), the painted cell and the floor.
+if ! level map yard || ! grep -qxF ' 8 .......a............' "$out" \
+  || ! grep -qxF ' 4 ........+...........' "$out" \
+  || ! grep -qxF '10 ####################' "$out" \
+  || ! grep -qxF '  a dummy_1 (dummy) at 7, 8' "$out"; then
+  echo "error: tungsten level map did not draw the room:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if ! level query yard || ! grep -qF 'dummy_1  dummy  at 7, 8' "$out"; then
+  echo "error: tungsten level query did not list the room's entries:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if ! level describe yard --json || ! python3 -I -c 'import json, sys; room = json.load(open(sys.argv[1]))["rooms"][0]; sys.exit(0 if room["id"] == "yard" and [o["id"] for o in room["objects"]] == ["dummy_1"] else 1)' "$out"; then
+  echo "error: tungsten level describe --json did not list the room and its dummy:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if ! level check yard || [ "$(tail -1 "$out")" != "tungsten level check: no room findings" ]; then
+  echo "error: tungsten level check on the clean room failed:" >&2
+  tail -20 "$out" >&2
+  exit 1
+fi
+if ! level apply yard --undo \
+  || [ "$(sed -n 1p "$out")" != "undid 2 commands on assets/rooms/yard.json:" ] \
+  || ! cmp -s "$room" "$placed"; then
+  echo "error: tungsten level apply --undo did not restore the room byte for byte:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if ! level apply yard --redo \
+  || [ "$(sed -n 1p "$out")" != "redid 2 commands on assets/rooms/yard.json:" ] \
+  || ! cmp -s "$room" "$applied"; then
+  echo "error: tungsten level apply --redo did not apply the undone batch again:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+if ! level apply yard --undo || ! cmp -s "$room" "$placed"; then
+  echo "error: tungsten level apply --undo did not undo the redone batch:" >&2
+  cat "$out" >&2
+  exit 1
+fi
+echo "Room flow (level new, apply from a file and stdin, query, map, describe, check, apply --undo, --redo): OK"
+
+# A seeded room error: the batch ($2) places an object `level check` must
+# fail naming ($3); then the batch is undone. $1 names it.
+seeded_room() {
+  local what=$1 finding=$3
+  write_batch <<<"$2"
+  if ! level apply yard "$batch"; then
+    echo "error: tungsten level apply did not place $what:" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  if level check yard; then
+    echo "error: tungsten level check passed $what" >&2
+    exit 1
+  fi
+  if ! grep -q "^assets/rooms/yard.json: yard: $finding" "$out" \
+    || [ "$(tail -1 "$out")" != "tungsten level check: 1 room finding" ]; then
+    echo "error: tungsten level check did not name $what:" >&2
+    tail -20 "$out" >&2
+    exit 1
+  fi
+  if ! level apply yard --undo; then
+    echo "error: tungsten level apply --undo failed after $what:" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  echo "Seeded room error ($what): OK"
+}
+seeded_room "a player inside the floor" \
+  '[{ "place": { "objects": { "id": "player_1", "prefab": "player", "at": [10, 10] } } }]' \
+  'player_1: objects\[1\]: spawns inside the terrain: its collider overlaps cell '
+edit <<'EOF'
+import json, sys, pathlib
+prefab = pathlib.Path(sys.argv[1]) / "assets/prefabs/gem.json"
+data = json.loads(prefab.read_text())
+data["support"] = "ground"
+prefab.write_text(json.dumps(data, indent=2))
+EOF
+seeded_room "a ground prop in the air" \
+  '[{ "place": { "objects": { "id": "gem_1", "prefab": "gem", "at": [12, 3] } } }]' \
+  'gem_1: objects\[1\]: floats: 0 of [0-9]* bottom columns have ground within 2 px$'
+edit <<'EOF'
+import json, sys, pathlib
+assets = pathlib.Path(sys.argv[1]) / "assets"
+prefab = assets / "prefabs/gem.json"
+data = json.loads(prefab.read_text())
+del data["support"]
+prefab.write_text(json.dumps(data, indent=2))
+manifest = assets / "manifest.json"
+data = json.loads(manifest.read_text())
+del data["tilesets"], data["rooms"]
+manifest.write_text(json.dumps(data, indent=2))
+for name in ["rooms/yard.json", "tilesets/tiles.json"]:
+    (assets / name).unlink()
+for folder in ["rooms", "tilesets"]:
+    (assets / folder).rmdir()
+EOF
+
 # Five content errors, one file each.
 edit <<'EOF'
 import json, sys, pathlib
@@ -298,4 +477,4 @@ if [ "$(grep -c '^tungsten.json: \|^input.json: ' "$out")" != 2 ] ||
   exit 1
 fi
 echo "Two seeded config errors: OK"
-echo "Template check passed: tungsten new's game checks, builds, tests, smoke-runs and packages outside the repository, and check and package fail where they should."
+echo "Template check passed: tungsten new's game checks, builds, tests, smoke-runs and packages outside the repository, edits and checks a room with tungsten level, and check, level check and package fail where they should."

@@ -134,6 +134,12 @@ impl SpatialGrid {
         self.cell_size
     }
 
+    /// Tests: the (proxy, cell) refs staged since the last clear.
+    #[cfg(test)]
+    pub(crate) fn cell_refs(&self) -> usize {
+        self.cell_refs
+    }
+
     /// True when at most `few` records are staged and none covers a cell of
     /// `query`: a query would visit nothing, so a caller can skip the walk.
     pub(crate) fn misses_few(&self, query: &Aabb, few: usize) -> bool {
@@ -174,7 +180,23 @@ impl SpatialGrid {
     /// Collect unique proxies overlapping `query`; generation marks dedupe cells.
     pub fn query(&mut self, query: &Aabb, exclude: Option<ProxyId>, out: &mut Vec<ProxyId>) {
         out.clear();
-        self.for_each_in(query, exclude, |id| out.push(id));
+        if self.single_cell_ids {
+            self.for_each_in(query, exclude, |id| out.push(id));
+        } else {
+            self.query_repeats(query, exclude, out);
+        }
+    }
+
+    /// [`Self::query`] of a grid whose cells repeat ids, by runs, each
+    /// copied before its ids are pushed ([`Run::each_copied`]): a push is
+    /// cheap beside a mispredicted repeat, and the dense query bench's
+    /// boxes, 1.9 cells an entry, read a fifth faster for it. Out of line,
+    /// so a grid of points keeps the walk by entries as its whole query.
+    #[inline(never)]
+    fn query_repeats(&mut self, query: &Aabb, exclude: Option<ProxyId>, out: &mut Vec<ProxyId>) {
+        self.for_each_run_in(query, 0, |mut run| {
+            run.each_copied(exclude, |id| out.push(id));
+        });
     }
 
     /// Visit each unique proxy overlapping `query` once, in the order `query`
@@ -240,6 +262,97 @@ impl SpatialGrid {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// [`Self::for_each_in`]'s walk a [`Run`] at a time, for a visitor too
+    /// large to inline at each entry: each id offset by `base`, a direct
+    /// layout's row of cells or one cell's entries in a hashed slot.
+    /// [`Run::each`] over every run visits what `for_each_in` does, in its
+    /// order. The caller's loop over a run is its own code: its test of an
+    /// id is compiled into that loop whether or not the call that hands the
+    /// run over is inlined.
+    #[inline(always)]
+    pub(crate) fn for_each_run_in(
+        &mut self,
+        query: &Aabb,
+        base: ProxyId,
+        mut visit: impl FnMut(Run<'_>),
+    ) {
+        if self.dirty {
+            self.build();
+        }
+        if self.entry_ids.is_empty() {
+            return;
+        }
+        let generation = if self.single_cell_ids {
+            0
+        } else {
+            self.begin_query()
+        };
+        let (min_cell, max_cell) = self.cell_range(query);
+        let scattered = self.scattered();
+        let mut firsts = [0; RUN_CHUNK];
+        let slot_starts = &self.slot_starts;
+        let entry_ids = &self.entry_ids;
+        let entry_cells = &self.entry_cells;
+        let query_marks = &mut self.query_marks;
+        let layout = self.layout;
+        let (lo, hi) = match layout {
+            Layout::Direct { min, max, .. } => (min_cell.max(min), max_cell.min(max)),
+            Layout::Hashed { .. } => (min_cell, max_cell),
+        };
+        if lo.x > hi.x || lo.y > hi.y {
+            return;
+        }
+        // One loop for both layouts, so `visit` is called from one place
+        // and compiles into it: a direct row's cells are adjacent slots,
+        // one run; a hashed row is walked a cell at a time, a stretch of
+        // the cell's entries at a time.
+        let slot_of = |cell: IVec2, slot_mask: u32| {
+            let slot = (hash_cell(cell) & slot_mask) as usize;
+            (slot_starts[slot] as usize, slot_starts[slot + 1] as usize)
+        };
+        for y in lo.y..=hi.y {
+            let mut x = lo.x;
+            let (mut at, mut end) = match layout {
+                Layout::Direct { min, width, .. } => {
+                    let row = cells_between(min.y, y) * width;
+                    (
+                        slot_starts[row + cells_between(min.x, lo.x)] as usize,
+                        slot_starts[row + cells_between(min.x, hi.x) + 1] as usize,
+                    )
+                }
+                Layout::Hashed { slot_mask } => slot_of(IVec2::new(x, y), slot_mask),
+            };
+            loop {
+                let (from, stop) = match layout {
+                    Layout::Direct { .. } => (at, end),
+                    Layout::Hashed { slot_mask } => loop {
+                        let found = stretch(entry_cells, IVec2::new(x, y), at, end);
+                        if found.0 != found.1 || x == hi.x {
+                            break found;
+                        }
+                        x += 1;
+                        (at, end) = slot_of(IVec2::new(x, y), slot_mask);
+                    },
+                };
+                if from == stop {
+                    break;
+                }
+                visit(Run {
+                    ids: &entry_ids[from..stop],
+                    base,
+                    marks: &mut *query_marks,
+                    generation,
+                    scattered,
+                    firsts: &mut firsts,
+                });
+                if matches!(layout, Layout::Direct { .. }) {
+                    break;
+                }
+                at = stop;
             }
         }
     }
@@ -352,6 +465,112 @@ impl SpatialGrid {
     }
 }
 
+/// One stretch of a query's walk: entries in staging order, a direct
+/// layout's row of cells or the entries of one cell in a hashed slot, with
+/// what [`Self::each`] needs to visit them as the query does.
+pub(crate) struct Run<'a> {
+    ids: &'a [ProxyId],
+    /// Added to each id: the second grid's offset in a walk of two.
+    base: ProxyId,
+    marks: &'a mut Vec<u32>,
+    /// The query's dedupe generation; 0 while no id can repeat.
+    generation: u32,
+    /// The grid's entries cover [`SCATTERED_QUARTER_CELLS`] quarter cells
+    /// or more on average, so a query meets most ids more than once.
+    scattered: bool,
+    /// Scratch of the walk for a copied run's first sightings.
+    firsts: &'a mut [ProxyId; RUN_CHUNK],
+}
+
+/// Entries a [`Run`] takes at a time.
+const RUN_CHUNK: usize = 64;
+
+/// Quarter cells an entry covers on average from which a grid counts as
+/// scattered ([`Run::each`]), 2.5 cells. Measured on the pair passes'
+/// rows: example 01's pile covers 1.7 to 1.9, up to 2.8 in the frame after
+/// a blast, and reads faster tested entry by entry; the pachinko board's
+/// balls in flight, their boxes grown by their travel, cover 2.8 and read
+/// faster copied.
+const SCATTERED_QUARTER_CELLS: usize = 10;
+
+impl Run<'_> {
+    /// Visit the run's ids: skip `exclude` and, when cells can repeat an
+    /// id, the ids the query already visited. Always inlined, with one call
+    /// of `visit`, so the caller's code for an id compiles into this loop.
+    ///
+    /// Which ids a query has met is data a branch predictor learns where
+    /// few repeat, or repeat in a pattern as a pile's do, and cannot where
+    /// most do. A scattered grid's run is therefore copied as
+    /// [`Self::each_copied`] does; any other is tested id by id. Both visit
+    /// the same ids in the same order.
+    #[inline(always)]
+    pub(crate) fn each(&mut self, exclude: Option<ProxyId>, visit: impl FnMut(ProxyId)) {
+        self.walk(self.scattered, exclude, visit);
+    }
+
+    /// [`Self::each`] with a run whose ids can repeat always copied first,
+    /// [`RUN_CHUNK`] entries at a time: each id is written and then kept or
+    /// overwritten by the next, with no branch on whether the query has
+    /// met it, and `visit` runs over the ones kept.
+    #[inline(always)]
+    pub(crate) fn each_copied(&mut self, exclude: Option<ProxyId>, visit: impl FnMut(ProxyId)) {
+        self.walk(true, exclude, visit);
+    }
+
+    #[inline(always)]
+    fn walk(&mut self, copy: bool, exclude: Option<ProxyId>, mut visit: impl FnMut(ProxyId)) {
+        let dedupe = self.generation != 0;
+        let copied = dedupe && copy;
+        for chunk in self.ids.chunks(RUN_CHUNK) {
+            let ids = if copied {
+                let mut kept = 0;
+                for &id in chunk {
+                    let mut first = Some(id + self.base) != exclude;
+                    if first {
+                        let mark = mark_slot(self.marks, id);
+                        first = *mark != self.generation;
+                        *mark = self.generation;
+                    }
+                    self.firsts[kept] = id;
+                    kept += usize::from(first);
+                }
+                &self.firsts[..kept]
+            } else {
+                chunk
+            };
+            for &id in ids {
+                if Some(id + self.base) == exclude {
+                    continue;
+                }
+                if dedupe && !copied {
+                    let mark = mark_slot(self.marks, id);
+                    if *mark == self.generation {
+                        continue;
+                    }
+                    *mark = self.generation;
+                }
+                visit(id + self.base);
+            }
+        }
+    }
+}
+
+/// The next stretch of `cell`'s entries in `from..end` of its hashed slot,
+/// which mixes the cells that alias to it: the next entries whose exact
+/// cell is `cell`, empty when none is left.
+#[inline(always)]
+fn stretch(entry_cells: &[IVec2], cell: IVec2, from: usize, end: usize) -> (usize, usize) {
+    let mut at = from;
+    while at < end && entry_cells[at] != cell {
+        at += 1;
+    }
+    let mut stop = at;
+    while stop < end && entry_cells[stop] == cell {
+        stop += 1;
+    }
+    (at, stop)
+}
+
 /// Visit each unique proxy overlapping `query` in `first` and in `second`,
 /// whose ids are offset by `base`, in the order one grid that staged
 /// `first`'s entries and then `second`'s returns them: both visit cells row
@@ -460,6 +679,123 @@ impl SpatialGrid {
             }
             visit(id + base);
         }
+    }
+}
+
+/// [`for_each_in_both`]'s walk a [`Run`] at a time, as
+/// [`SpatialGrid::for_each_run_in`] is `for_each_in`'s: a cell's `first`
+/// entries, then its `second` ones.
+#[inline(always)]
+pub(crate) fn for_each_run_in_both(
+    first: &mut SpatialGrid,
+    second: &mut SpatialGrid,
+    base: ProxyId,
+    query: &Aabb,
+    mut visit: impl FnMut(Run<'_>),
+) {
+    debug_assert!(
+        (first.cell_size - second.cell_size).abs() <= f32::EPSILON,
+        "both grids need one cell size"
+    );
+    if second.dirty {
+        second.build();
+    }
+    if second.entry_ids.is_empty() {
+        first.for_each_run_in(query, 0, visit);
+        return;
+    }
+    if first.dirty {
+        first.build();
+    }
+    if first.entry_ids.is_empty() {
+        second.for_each_run_in(query, base, visit);
+        return;
+    }
+    let first_generation = if first.single_cell_ids {
+        0
+    } else {
+        first.begin_query()
+    };
+    let second_generation = if second.single_cell_ids {
+        0
+    } else {
+        second.begin_query()
+    };
+    let (min_cell, max_cell) = first.cell_range(query);
+    let scattered = (first.scattered(), second.scattered());
+    let mut firsts = [0; RUN_CHUNK];
+    // Cells outside both grids' staged bounds hold nothing.
+    let lo = min_cell.max(first.bounds_min.min(second.bounds_min));
+    let hi = max_cell.min(first.bounds_max.max(second.bounds_max));
+    for y in lo.y..=hi.y {
+        for x in lo.x..=hi.x {
+            let cell = IVec2::new(x, y);
+            // One call of `visit` for both grids' runs.
+            for second_turn in [false, true] {
+                let (grid, base, generation, scattered) = if second_turn {
+                    (&mut *second, base, second_generation, scattered.1)
+                } else {
+                    (&mut *first, 0, first_generation, scattered.0)
+                };
+                let Some((mut at, end, hashed)) = grid.cell_slot(cell) else {
+                    continue;
+                };
+                loop {
+                    let (from, stop) = if hashed {
+                        stretch(&grid.entry_cells, cell, at, end)
+                    } else {
+                        (at, end)
+                    };
+                    if from == stop {
+                        break;
+                    }
+                    visit(Run {
+                        ids: &grid.entry_ids[from..stop],
+                        base,
+                        marks: &mut grid.query_marks,
+                        generation,
+                        scattered,
+                        firsts: &mut firsts,
+                    });
+                    if !hashed {
+                        break;
+                    }
+                    at = stop;
+                }
+            }
+        }
+    }
+}
+
+impl SpatialGrid {
+    /// Whether the staged entries cover [`SCATTERED_QUARTER_CELLS`]
+    /// quarter cells or more on average.
+    #[inline(always)]
+    fn scattered(&self) -> bool {
+        4 * self.cell_refs >= SCATTERED_QUARTER_CELLS * self.staged.len()
+    }
+
+    /// The entries of `cell`'s slot and whether the slot is a hashed one,
+    /// which other cells share; none for a cell outside a direct layout.
+    #[inline(always)]
+    fn cell_slot(&self, cell: IVec2) -> Option<(usize, usize, bool)> {
+        let (slot, hashed) = match self.layout {
+            Layout::Direct { min, max, width } => {
+                if cell.x < min.x || cell.y < min.y || cell.x > max.x || cell.y > max.y {
+                    return None;
+                }
+                (
+                    cells_between(min.y, cell.y) * width + cells_between(min.x, cell.x),
+                    false,
+                )
+            }
+            Layout::Hashed { slot_mask } => ((hash_cell(cell) & slot_mask) as usize, true),
+        };
+        Some((
+            self.slot_starts[slot] as usize,
+            self.slot_starts[slot + 1] as usize,
+            hashed,
+        ))
     }
 }
 

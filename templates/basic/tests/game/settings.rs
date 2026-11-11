@@ -35,19 +35,6 @@ fn options(harness: &UiHarness) -> GameOptions {
     *harness.world().resource::<GameOptions>()
 }
 
-/// The master volumes the last frame sent.
-fn master_volumes(harness: &UiHarness) -> Vec<f32> {
-    harness
-        .harness()
-        .audio()
-        .iter()
-        .filter_map(|command| match command {
-            AudioCommand::SetMasterVolume(volume) => Some(*volume),
-            _ => None,
-        })
-        .collect()
-}
-
 fn set_focus(harness: &mut UiHarness, focused: bool) {
     harness
         .world_mut()
@@ -121,8 +108,9 @@ fn a_display_revert_keeps_the_focus_mute() {
     set_focus(&mut harness, false);
     // From the focus loss through the countdown's end and its revert.
     for frame in 0..700 {
+        harness.harness_mut().clear_audio_log();
         harness.step(1);
-        let volumes = master_volumes(&harness);
+        let volumes = harness.harness().master_volumes();
         assert!(
             volumes.iter().all(|volume| *volume == 0.0),
             "frame {frame}: {volumes:?}"
@@ -131,9 +119,10 @@ fn a_display_revert_keeps_the_focus_mute() {
     assert_eq!(top(&harness), Some(SETTINGS), "the countdown reverted");
     assert_eq!(settings(&harness).display_mode(), None);
     set_focus(&mut harness, true);
+    harness.harness_mut().clear_audio_log();
     harness.step(1);
     assert_eq!(
-        master_volumes(&harness),
+        harness.harness().master_volumes(),
         [0.8],
         "focus back unmutes, to the shipped volume"
     );
@@ -255,10 +244,7 @@ fn f11_and_f9_are_kept_in_settings_and_survive_a_restart() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     let vsync = harness.world().resource::<DisplayState>().vsync;
     for key in [KeyCode::F11, KeyCode::F9] {
-        harness.key_down(key);
-        harness.step(1);
-        harness.key_up(key);
-        harness.step(1);
+        harness.tap_key(key);
     }
     let fullscreen = Some(DisplayMode::BorderlessFullscreen);
     assert_eq!(settings(&harness).display_mode(), fullscreen, "F11 is kept");
@@ -606,13 +592,11 @@ fn volumes_ship_at_eighty_percent_and_reset_to_it() {
     assert_eq!(settings(&harness).bus_volume(AudioBus::Music), Some(0.85));
     let reset = harness.find("Reset tab").unwrap();
     assert!(harness.focus(reset));
+    harness.harness_mut().clear_audio_log();
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
-    let sent = harness.harness().audio().to_vec();
-    assert!(
-        sent.contains(&AudioCommand::SetMasterVolume(0.8)),
-        "{sent:?}"
-    );
+    let sent = harness.harness().master_volumes();
+    assert!(sent.contains(&0.8), "{sent:?}");
     harness.harness_mut().release_action("ui_accept");
     settle(&mut harness);
     assert_eq!(settings(&harness).master_volume(), None);
@@ -730,9 +714,10 @@ fn volumes_write_settings_and_audio_commands() {
     // From the shipped 80 %, a step of 5.
     let master = harness.find("Master").unwrap();
     assert!(harness.focus(master));
+    harness.harness_mut().clear_audio_log();
     harness.harness_mut().press_action("ui_left");
     harness.step(1);
-    assert_eq!(master_volumes(&harness), [0.75]);
+    assert_eq!(harness.harness().master_volumes(), [0.75]);
     harness.harness_mut().release_action("ui_left");
     harness.step(1);
     assert_eq!(settings(&harness).master_volume(), Some(0.75));
@@ -815,24 +800,24 @@ fn ui_and_text_scale_apply() {
 #[test]
 fn screen_shake_scales_the_camera() {
     let mut harness = harness();
-    let shipped = harness
-        .world()
-        .resource::<CameraController>()
-        .shake_max_offset;
+    let camera = *harness.world().resource::<CameraController>();
+    assert_eq!(camera.shake_scale, 1.0, "the whole shake at 100 %");
     assert_eq!(
-        shipped.to_array(),
+        camera.shake_max_offset.to_array(),
         CAMERA_SHAKE,
-        "the sample's shake, at 100 %"
+        "the sample's shake"
     );
     from_title(&mut harness);
     press(&mut harness, "Gameplay");
     nudge(&mut harness, "Screen shake", "ui_left");
     assert_eq!(options(&harness).screen_shake(), 0.95);
-    let offset = harness
-        .world()
-        .resource::<CameraController>()
-        .shake_max_offset;
-    assert!((offset - shipped * 0.95).length() < 1e-4, "{offset:?}");
+    let camera = *harness.world().resource::<CameraController>();
+    assert_eq!(camera.shake_scale, 0.95, "the option's share");
+    assert_eq!(
+        camera.shake_max_offset.to_array(),
+        CAMERA_SHAKE,
+        "the game's own shake, left as it set it"
+    );
 }
 
 #[test]
@@ -890,12 +875,18 @@ fn mute_when_unfocused_mutes_and_restores() {
         .mute_unfocused = true;
     start(&mut harness);
     set_focus(&mut harness, false);
+    harness.harness_mut().clear_audio_log();
     harness.step(1);
-    assert_eq!(master_volumes(&harness), [0.0]);
+    assert_eq!(harness.harness().master_volumes(), [0.0]);
     assert_eq!(settings(&harness).master_volume(), None, "never written");
     set_focus(&mut harness, true);
+    harness.harness_mut().clear_audio_log();
     harness.step(1);
-    assert_eq!(master_volumes(&harness), [0.8], "the shipped volume");
+    assert_eq!(
+        harness.harness().master_volumes(),
+        [0.8],
+        "the shipped volume"
+    );
 }
 
 #[test]
@@ -910,7 +901,8 @@ fn pause_when_unfocused_off_keeps_playing() {
     harness.step(2);
     settle(&mut harness);
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
-    assert!(!harness.world().resource::<Time>().is_paused());
+    let time = harness.world().resource::<Time>();
+    assert!(!time.is_held() && !time.is_paused(), "the clock runs");
 }
 
 #[test]

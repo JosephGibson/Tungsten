@@ -22,6 +22,7 @@ Start with the document that owns the fact you need. Code and executable checks 
 | Platformer asset/layout authoring | [Authoring guide](../examples/01_platformer/tools/README.md) |
 | The template's sounds, sprites and Windows icon: scripts and provenance | [Template tools](../templates/basic/tools/README.md) |
 | Asset types, manifest sections and coverage exceptions | [Assets](assets.md) |
+| Rooms, `tungsten level`, a script's level steps and the level editor | [Levels](levels.md) |
 | Font inventory and registered IDs | [Fonts](../assets/fonts/README.md) |
 | Test fixture provenance | [GPU fixtures](../examples/02_bench/tests/fixtures/README.md), [audio fixtures](../crates/tungsten-core/tests/fixtures/audio/README.md) |
 | Dated releases and historical paths | [Changelog](../CHANGELOG.md) |

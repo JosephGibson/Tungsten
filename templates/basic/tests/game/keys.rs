@@ -1,13 +1,10 @@
 //! Keybindings: the listed actions, a capture, the device check, a swap,
 //! the resets, the capture's timeout and the HUD's prompt after a rebind.
 
-use std::path::Path;
-
 use tungsten::core::{
     ActionMap, Binding, GamepadButton, GamepadId, InputState, KeyCode, UserFolder,
 };
 use tungsten::testing::UiHarness;
-use tungsten_template_basic::game::BINDABLE_ACTIONS;
 use tungsten_template_basic::sample::hud::Hud;
 use tungsten_template_basic::shell::capturing;
 use tungsten_template_basic::shell::confirm::CONFIRM;
@@ -34,27 +31,24 @@ fn bindings(harness: &UiHarness, action: &str) -> Vec<Binding> {
         .to_vec()
 }
 
-/// Presses `key` for a frame and releases it the next.
-fn key(harness: &mut UiHarness, key: KeyCode) {
-    harness.key_down(key);
-    harness.step(1);
-    harness.key_up(key);
-    harness.step(1);
+/// The shipped bindings for `action`: `input.json` over the defaults,
+/// under the player's layer.
+fn shipped(harness: &UiHarness, action: &str) -> Vec<Binding> {
+    let map = harness.world().resource::<ActionMap>();
+    map.shipped(action).to_vec()
 }
 
-/// The shipped bindings for `action`: `input.json` over the defaults.
-fn shipped(action: &str) -> Vec<Binding> {
-    let map = ActionMap::load(Path::new("input.json")).unwrap();
-    ActionMap::merged_with_defaults(map)
-        .bindings(action)
-        .to_vec()
+/// The actions `input.json`'s `labels` list, with their labels, in order.
+fn labelled(harness: &UiHarness) -> Vec<(String, String)> {
+    harness.world().resource::<ActionMap>().labelled().to_vec()
 }
 
 #[test]
 fn every_bindable_action_is_listed_and_no_ui_or_engine_action() {
     let mut harness = harness();
     keybindings(&mut harness);
-    for (action, label) in BINDABLE_ACTIONS {
+    let listed = labelled(&harness);
+    for (action, label) in &listed {
         assert!(!action.starts_with("ui_") && !action.starts_with("engine_"));
         for column in COLUMNS {
             assert!(
@@ -63,7 +57,7 @@ fn every_bindable_action_is_listed_and_no_ui_or_engine_action() {
             );
         }
     }
-    let labels: Vec<&str> = BINDABLE_ACTIONS.iter().map(|(_, label)| *label).collect();
+    let labels: Vec<&str> = listed.iter().map(|(_, label)| label.as_str()).collect();
     assert_eq!(
         labels,
         [
@@ -75,6 +69,15 @@ fn every_bindable_action_is_listed_and_no_ui_or_engine_action() {
             "Shoot"
         ]
     );
+    // The rows follow `labels`' order down the card.
+    let tops: Vec<f32> = labels
+        .iter()
+        .map(|label| {
+            let cell = harness.named(&format!("{label} Primary")).unwrap();
+            harness.rect(cell).unwrap().min.y
+        })
+        .collect();
+    assert!(tops.windows(2).all(|pair| pair[0] < pair[1]), "{tops:?}");
     let up = harness.named("Move up Primary").unwrap();
     assert_eq!(harness.tree().plain_text(up), "Up");
     let pad = harness.named("Move up Gamepad").unwrap();
@@ -90,7 +93,7 @@ fn rebinding_primary_captures_a_key_and_survives_a_restart() {
     assert!(capturing(harness.world()));
     let cell = harness.named("Move up Primary").unwrap();
     assert!(harness.tree().plain_text(cell).starts_with("Press a key…"));
-    key(&mut harness, KeyCode::KeyI);
+    harness.tap_key(KeyCode::KeyI);
     assert!(!capturing(harness.world()));
     assert_eq!(bindings(&harness, "move_up")[0], KEY(KeyCode::KeyI));
     assert!(
@@ -131,7 +134,7 @@ fn a_conflict_offers_swap_and_swap_exchanges_them() {
     let mut harness = harness();
     keybindings(&mut harness);
     press(&mut harness, "Move up Primary");
-    key(&mut harness, KeyCode::ArrowDown);
+    harness.tap_key(KeyCode::ArrowDown);
     super::settle(&mut harness);
     assert_eq!(top(&harness), Some(CONFIRM));
     assert!(harness.shows("Already used by Move down. Swap?"));
@@ -148,22 +151,26 @@ fn reset_one_and_reset_all_restore_input_json() {
     let mut harness = harness();
     keybindings(&mut harness);
     press(&mut harness, "Move up Primary");
-    key(&mut harness, KeyCode::KeyI);
+    harness.tap_key(KeyCode::KeyI);
     press(&mut harness, "Pause Primary");
-    key(&mut harness, KeyCode::KeyO);
-    assert_ne!(bindings(&harness, "move_up"), shipped("move_up"));
+    harness.tap_key(KeyCode::KeyO);
+    assert_ne!(bindings(&harness, "move_up"), shipped(&harness, "move_up"));
     press(&mut harness, "Reset Move up");
-    assert_eq!(bindings(&harness, "move_up"), shipped("move_up"));
+    assert_eq!(bindings(&harness, "move_up"), shipped(&harness, "move_up"));
     assert_ne!(
         bindings(&harness, "state_pause"),
-        shipped("state_pause"),
+        shipped(&harness, "state_pause"),
         "one row only"
     );
     press(&mut harness, "Move left Alternate");
-    key(&mut harness, KeyCode::KeyJ);
+    harness.tap_key(KeyCode::KeyJ);
     press(&mut harness, "Reset all");
-    for (action, _) in BINDABLE_ACTIONS {
-        assert_eq!(bindings(&harness, action), shipped(action), "{action}");
+    for (action, _) in &labelled(&harness) {
+        assert_eq!(
+            bindings(&harness, action),
+            shipped(&harness, action),
+            "{action}"
+        );
     }
 }
 
@@ -198,7 +205,7 @@ fn the_hud_prompt_follows_a_rebind() {
     let mut harness = harness();
     keybindings(&mut harness);
     press(&mut harness, "Pause Primary");
-    key(&mut harness, KeyCode::KeyO);
+    harness.tap_key(KeyCode::KeyO);
     start(&mut harness);
     harness.step(1);
     let hud = *harness.world().resource::<Hud>();

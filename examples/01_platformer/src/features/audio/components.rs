@@ -4,7 +4,7 @@ use glam::Vec2;
 use tungsten::core::{Entity, Voice};
 
 /// The music playing: the exploration loop, which plays on at 0 under
-/// pause and game over, and pause's loop while pause is on top; the wisps'
+/// pause and game over; the wisps'
 /// shared hum, whose volume follows the nearest wisp, the black holes', the
 /// nearest open hole, and the fires' crackle, the nearest burning thing,
 /// each by the listener's gain; and the combat layer over the exploration
@@ -12,7 +12,6 @@ use tungsten::core::{Entity, Voice};
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Music {
     pub explore: Option<Voice>,
-    pub pause: Option<Voice>,
     pub hum: Option<Voice>,
     /// The hum's volume last set.
     pub hum_level: f32,

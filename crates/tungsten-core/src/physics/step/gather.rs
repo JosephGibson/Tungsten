@@ -10,14 +10,14 @@
 //! outline's runs beside them, which casts meet.
 
 use super::outline::{CHUNK, LayerCells, Run, TileClass, trace_chunk};
-use super::{Layers, NO_SPIN, Proxy, ProxyLayers, SensorBody, SpinState, StepExtra, SweptSensor};
+use super::{
+    Layers, NO_SPIN, Proxy, ProxyLayers, SensorBody, SpinState, StepExtra, SweptSensor, wrap_angle,
+};
 use crate::assets::{
     LayerKind, MapCursor, TileChanges, TileIndex, TilemapData, TilemapInstance, TilemapRegistry,
 };
 use crate::ecs::{Entity, World};
-use crate::physics::collision::FACE_ALL;
-#[cfg(test)]
-use crate::physics::collision::{FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
+use crate::physics::collision::{FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
 use crate::physics::components::{BodyKind, Collider, Position, RigidBody, Shape, Spin, Velocity};
 use crate::physics::query::TileHit;
 use crate::physics::{PhysicsMaterial, PhysicsMaterials};
@@ -166,6 +166,13 @@ pub(super) fn gather_proxies(
             Some(b) => (false, false, 0.0, b.restitution),
             None => (false, false, 0.0, 0.0),
         };
+        // A static body never moves, so its `Velocity` is no surface speed:
+        // only a dynamic or kinematic proxy carries one.
+        let velocity = if is_dynamic || kinematic {
+            velocity
+        } else {
+            Vec2::ZERO
+        };
         let center = position.0 + collider.offset;
         let gravity_scale = match body {
             Some(b) if is_dynamic => b.gravity_scale,
@@ -237,6 +244,7 @@ pub(super) fn gather_proxies(
         layers.of.push(body_layers);
     }
 
+    mask_static_joins(proxies, &layers.of, extra);
     tiles.refresh(world);
     let bodies = proxies.len();
     // The tiles' frictions and rolling resistances follow the bodies'; the
@@ -260,7 +268,7 @@ pub(super) fn gather_proxies(
         let Some(spin) = world.get::<Spin>(turn.entity) else {
             return false;
         };
-        turn.angle = spin.angle;
+        turn.angle = wrap_angle(spin.angle);
         turn.angular_velocity = spin.angular_velocity;
         true
     });
@@ -280,6 +288,127 @@ pub(super) fn gather_proxies(
         tile_ids.extend_from_slice(&tiles.ids);
     }
     kinematics
+}
+
+/// One static box's face for [`mask_static_joins`]: on `axis`'s plane
+/// `plane` (0 x, 1 y), its box below the plane (`high` false: a right or
+/// bottom face) or above it, its span across the axis, and its proxy's
+/// layers, index and face bit.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct StaticFace {
+    axis: u8,
+    plane: f32,
+    layers: (u32, u32),
+    high: bool,
+    start: f32,
+    end: f32,
+    proxy: u32,
+    side: u8,
+}
+
+/// Masks the faces where two static boxes touch, as the outline masks a
+/// tile's internal faces: a static box's face is internal when another
+/// static box in the same layers has its opposite face on the same plane,
+/// exactly, and spanning it whole, so a body sliding over their join meets
+/// no wall. Partial covers, overlaps and static/tile seams keep their faces,
+/// and the query index keeps every entity face (`index_bodies`). The static
+/// boxes are the entity proxies neither dynamic nor kinematic with a box
+/// shape. One sort groups the faces by axis, plane and layers, the low side
+/// first and each side by span start; a sweep each way then keeps, among
+/// the opposite faces starting at or before a face's start, the greatest
+/// end, and masks the face when that end reaches its own: a plane of `k`
+/// faces costs `O(k log k)`.
+fn mask_static_joins(proxies: &mut [Proxy], layers: &[Layers], extra: &mut StepExtra) {
+    let faces = &mut extra.static_faces;
+    faces.clear();
+    for (index, proxy) in proxies.iter().enumerate() {
+        if proxy.is_dynamic || proxy.kinematic {
+            continue;
+        }
+        let Shape::Aabb { half_extents } = proxy.shape else {
+            continue;
+        };
+        let (min, max) = (proxy.center - half_extents, proxy.center + half_extents);
+        let layers = (layers[index].layers, layers[index].mask);
+        let proxy = index as u32;
+        for (axis, plane, high, side, start, end) in [
+            (0, max.x, false, FACE_RIGHT, min.y, max.y),
+            (0, min.x, true, FACE_LEFT, min.y, max.y),
+            (1, max.y, false, FACE_BOTTOM, min.x, max.x),
+            (1, min.y, true, FACE_TOP, min.x, max.x),
+        ] {
+            faces.push(StaticFace {
+                axis,
+                // `+ 0.0` reads a negative zero as zero, so planes group as
+                // `==` compares them.
+                plane: plane + 0.0,
+                layers,
+                high,
+                start,
+                end,
+                proxy,
+                side,
+            });
+        }
+    }
+    if faces.len() < 8 {
+        return;
+    }
+    // A total order, so the unstable sort, which allocates nothing, is
+    // deterministic.
+    faces.sort_unstable_by(|a, b| {
+        a.axis
+            .cmp(&b.axis)
+            .then_with(|| a.plane.total_cmp(&b.plane))
+            .then_with(|| a.layers.cmp(&b.layers))
+            .then_with(|| a.high.cmp(&b.high))
+            .then_with(|| a.start.total_cmp(&b.start))
+            .then_with(|| a.proxy.cmp(&b.proxy))
+    });
+    let same = |a: &StaticFace, b: &StaticFace| {
+        a.axis == b.axis && a.plane.to_bits() == b.plane.to_bits() && a.layers == b.layers
+    };
+    #[cfg(test)]
+    let mut checks = 0;
+    let mut group = 0;
+    while group < faces.len() {
+        let mut split = group;
+        while split < faces.len() && same(&faces[group], &faces[split]) && !faces[split].high {
+            split += 1;
+        }
+        let mut end = split;
+        while end < faces.len() && same(&faces[group], &faces[end]) {
+            end += 1;
+        }
+        // `group..split` the low side's faces, `split..end` the high side's,
+        // each by start: each side's faces against the other's.
+        for (covered, cover) in [(group..split, split..end), (split..end, group..split)] {
+            let mut reach = f32::NEG_INFINITY;
+            let mut next = cover.start;
+            for i in covered {
+                while next < cover.end && faces[next].start <= faces[i].start {
+                    reach = reach.max(faces[next].end);
+                    next += 1;
+                    #[cfg(test)]
+                    {
+                        checks += 1;
+                    }
+                }
+                #[cfg(test)]
+                {
+                    checks += 1;
+                }
+                if reach >= faces[i].end {
+                    proxies[faces[i].proxy as usize].face_mask &= !faces[i].side;
+                }
+            }
+        }
+        group = end;
+    }
+    #[cfg(test)]
+    {
+        extra.static_join_checks += checks;
+    }
 }
 
 /// The static tile proxies of every collision layer, each in its layer's
@@ -392,6 +521,8 @@ struct CachedMap {
     classes: Vec<TileClass>,
     /// Its collision layers, in layer order.
     layers: Vec<CachedLayer>,
+    /// Some edge cell's outer face is masked by an abutting map.
+    edged: bool,
 }
 
 /// A collision layer's cells as the cache's last refresh read them, and
@@ -487,7 +618,43 @@ impl CachedMap {
                     }
                 })
                 .collect(),
+            edged: false,
         }
+    }
+
+    /// The layer at `slot`'s cells as the tracer reads them.
+    fn cells(&self, slot: usize) -> LayerCells<'_> {
+        LayerCells {
+            width: self.width,
+            height: self.height,
+            tiles: &self.layers[slot].tiles,
+            classes: &self.classes,
+        }
+    }
+
+    /// Where `other` abuts this map: the side of this map it lies on and
+    /// the row (across a left or right side) or column (across a top or
+    /// bottom one) of `other` level with this map's first; `None` unless
+    /// their cells are of one size and their grids meet edge to edge.
+    fn abutting(&self, other: &CachedMap) -> Option<(u8, i64)> {
+        if self.tile != other.tile || self.tile.x <= 0.0 || self.tile.y <= 0.0 {
+            return None;
+        }
+        let size = Vec2::new(self.width as f32, self.height as f32) * self.tile;
+        let other_size = Vec2::new(other.width as f32, other.height as f32) * other.tile;
+        let cells = (self.at - other.at) / self.tile;
+        let (side, offset) = if other.at.x == self.at.x + size.x {
+            (FACE_RIGHT, cells.y)
+        } else if other.at.x + other_size.x == self.at.x {
+            (FACE_LEFT, cells.y)
+        } else if other.at.y == self.at.y + size.y {
+            (FACE_BOTTOM, cells.x)
+        } else if other.at.y + other_size.y == self.at.y {
+            (FACE_TOP, cells.x)
+        } else {
+            return None;
+        };
+        (offset.fract() == 0.0 && offset.is_finite()).then_some((side, offset as i64))
     }
 
     /// Whether `instance` on `entity` places this map where it was traced.
@@ -1159,6 +1326,9 @@ impl TileCache {
             }
         }
         let same = !changed && kept.is_empty() && state.maps.iter().map(|map| map.entity).eq(order);
+        if state.maps.len() > 1 || state.maps.iter().any(|map| map.edged) {
+            mask_map_edges(&mut state.maps, &mut arrays.proxies);
+        }
         state.written_ids.sort_unstable();
         state.layered = arrays
             .layers
@@ -1202,6 +1372,79 @@ impl TileCache {
             }
         }
         cached.next().is_none()
+    }
+}
+
+/// Masks each map's edge cells' outer faces that a map abutting it covers
+/// ([`LayerCells::covered_across`]) in a collision layer of the same layers,
+/// and restores those of a map that no longer abuts one: each edge cell's
+/// proxy in `proxies` takes its traced mask less the faces covered across.
+/// The runs, which casts meet, keep the traced masks.
+fn mask_map_edges(maps: &mut [CachedMap], proxies: &mut [Proxy]) {
+    for slot in 0..maps.len() {
+        let map = &maps[slot];
+        let near: Vec<(usize, u8, i64)> = (0..maps.len())
+            .filter(|&other| other != slot)
+            .filter_map(|other| {
+                map.abutting(&maps[other])
+                    .map(|(side, offset)| (other, side, offset))
+            })
+            .collect();
+        if near.is_empty() && !map.edged {
+            continue;
+        }
+        let (width, height) = (map.width, map.height);
+        let mut proxy = map.start;
+        for (layer_slot, layer) in map.layers.iter().enumerate() {
+            let cells = map.cells(layer_slot);
+            for row in 0..height {
+                for col in 0..width {
+                    let at = (row as usize) * (width as usize) + col as usize;
+                    if layer.tiles[at] < 0 {
+                        continue;
+                    }
+                    if row == 0 || col == 0 || row + 1 == height || col + 1 == width {
+                        let mut mask = layer.masks[at];
+                        for &(other, side, offset) in &near {
+                            let on_edge = match side {
+                                FACE_LEFT => col == 0,
+                                FACE_RIGHT => col + 1 == width,
+                                FACE_TOP => row == 0,
+                                _ => row + 1 == height,
+                            };
+                            if !on_edge || mask & side == 0 {
+                                continue;
+                            }
+                            let next = &maps[other];
+                            let (across_col, across_row) = match side {
+                                FACE_LEFT => (i64::from(next.width) - 1, i64::from(row) + offset),
+                                FACE_RIGHT => (0, i64::from(row) + offset),
+                                FACE_TOP => (i64::from(col) + offset, i64::from(next.height) - 1),
+                                _ => (i64::from(col) + offset, 0),
+                            };
+                            let covered =
+                                next.layers.iter().enumerate().any(|(slot, next_layer)| {
+                                    next_layer.layers == layer.layers
+                                        && cells.covered_across(
+                                            col,
+                                            row,
+                                            side,
+                                            &next.cells(slot),
+                                            across_col,
+                                            across_row,
+                                        )
+                                });
+                            if covered {
+                                mask &= !side;
+                            }
+                        }
+                        proxies[proxy].face_mask = mask;
+                    }
+                    proxy += 1;
+                }
+            }
+        }
+        maps[slot].edged = !near.is_empty();
     }
 }
 

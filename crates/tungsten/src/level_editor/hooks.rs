@@ -1,0 +1,253 @@
+//! The level editor's script hooks: the `editor` probe reads its state and
+//! the `editor` action asks it for what its keys and its panel's buttons
+//! do, through the same [`Action`], so a script drives the editor without a
+//! raw key and a test or a capture reaches every control.
+//!
+//! ```json
+//! { "frame": 5, "action": "editor", "args": { "open": true, "tool": "paint", "tile": "rock" } }
+//! { "frame": 9, "action": "editor", "args": { "do": "undo" } }
+//! { "frame": 10, "assert": { "probe": "editor", "path": "/status", "op": "==", "value": "Undid the last edit." } }
+//! ```
+//!
+//! The action's fields apply in this order, each optional: `open`, `room`,
+//! `tool`, `prefab`, `tile`, `layer` (a name, or `null` for every layer),
+//! `select` (an object's or a place's ID, or `null`), `do`, then `prompt`
+//! with its `text`: the prompt opened for the pick, given the text and
+//! committed, or left open without one. A field the editor refuses fails
+//! the step with the editor's own sentence.
+
+use serde::Deserialize;
+use serde_json::{Value, json};
+use tungsten_core::World;
+use tungsten_core::assets::RoomJournal;
+use tungsten_core::script::ScriptHooks;
+
+use super::{Action, Ask, LevelEditor, Tool};
+
+/// What `do` may name, with the action each is.
+const DOES: [(&str, Action); 10] = [
+    ("undo", Action::Undo),
+    ("redo", Action::Redo),
+    ("delete", Action::Delete),
+    ("copy", Action::Copy),
+    ("fit", Action::Fit),
+    ("game_view", Action::GameView),
+    ("grid", Action::Grid),
+    ("palette_next", Action::PaletteStep(1)),
+    ("palette_previous", Action::PaletteStep(-1)),
+    ("layer_next", Action::LayerStep),
+];
+
+/// Adds the `editor` probe and action to `hooks`.
+pub(crate) fn register(hooks: &mut ScriptHooks) {
+    hooks.add_probe(
+        "editor",
+        "The level editor's state: `available`, `open`, `tool`, `room`, `rooms` (the live ones), `opened` (those the editor opened), `layer`, `prefab`, `tile`, `selection`, `status`, `refused`, `hint`, `undo`, `redo`, `findings`, `grid`, `prompt` (`ask`, `id` and `text` while one is open), `view`.",
+        probe,
+    );
+    hooks.add_action(
+        "editor",
+        "Drives the level editor as its keys and buttons do: any of `{\"open\": bool, \"room\": id, \"tool\": \"select\" | \"place\" | \"paint\" | \"erase\" | \"pick\" | \"mark\", \"prefab\": id, \"tile\": sprite, \"layer\": name | null, \"select\": id | null, \"do\": \"undo\" | \"redo\" | \"delete\" | \"copy\" | \"fit\" | \"game_view\" | \"grid\" | \"palette_next\" | \"palette_previous\" | \"layer_next\", \"prompt\": \"rename\" | \"set\" | \"link\", \"text\": string}`, applied in that order.",
+        action,
+    );
+}
+
+fn probe(world: &World, _: &Value) -> Result<Value, String> {
+    let editor = world
+        .get_resource::<LevelEditor>()
+        .ok_or("the World has no level editor")?;
+    let rooms: Vec<String> = super::live_rooms(world, None)
+        .into_iter()
+        .map(|room| room.id)
+        .collect();
+    let (undo, redo) = (editor.current.as_deref())
+        .zip(world.get_resource::<RoomJournal>())
+        .map_or((0, 0), |(room, journal)| {
+            (journal.undo_len(room), journal.redo_len(room))
+        });
+    Ok(json!({
+        "available": editor.available,
+        "open": editor.open,
+        "tool": editor.tool.name(),
+        "room": editor.current,
+        "rooms": rooms,
+        "opened": editor.opened,
+        "layer": editor.layer,
+        "prefab": editor.prefab_or_first(world),
+        "tile": editor
+            .current
+            .as_deref()
+            .and_then(|room| editor.tile_or_first(world, room)),
+        "selection": editor.selection,
+        "status": editor.status,
+        "refused": editor.refused,
+        "hint": editor.hint,
+        "undo": undo,
+        "redo": redo,
+        "findings": editor.findings,
+        "grid": editor.grid,
+        "prompt": editor.prompt.as_ref().map(|prompt| json!({
+            "ask": prompt.ask.name(),
+            "id": prompt.id,
+            "text": prompt.text,
+        })),
+        "view": editor.view.map(|view| json!({
+            "position": [view.position.x, view.position.y],
+            "zoom": view.zoom,
+        })),
+    }))
+}
+
+/// The action's arguments. `layer` and `select` tell an absent key from
+/// `null`, which asks for every layer and for no pick.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[expect(clippy::option_option, reason = "an absent key differs from `null`")]
+struct Args {
+    open: Option<bool>,
+    room: Option<String>,
+    tool: Option<String>,
+    prefab: Option<String>,
+    tile: Option<String>,
+    #[serde(default, deserialize_with = "present")]
+    layer: Option<Option<String>>,
+    #[serde(default, deserialize_with = "present")]
+    select: Option<Option<String>>,
+    #[serde(rename = "do")]
+    does: Option<String>,
+    prompt: Option<String>,
+    text: Option<String>,
+}
+
+/// A present key, `null` included.
+#[expect(clippy::option_option, reason = "an absent key differs from `null`")]
+fn present<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error> {
+    Option::<String>::deserialize(deserializer).map(Some)
+}
+
+fn action(world: &mut World, args: &Value) -> Result<(), String> {
+    let args = Args::deserialize(args).map_err(|err| format!("args: {err}"))?;
+    let mut actions = Vec::new();
+    if let Some(room) = args.room {
+        actions.push(Action::Room(room));
+    }
+    if let Some(name) = args.tool {
+        let tool = Tool::named(&name).ok_or_else(|| {
+            let names: Vec<&str> = Tool::ALL.iter().map(|tool| tool.name()).collect();
+            format!("no tool `{name}`: {}", names.join(", "))
+        })?;
+        actions.push(Action::Tool(tool));
+    }
+    if let Some(prefab) = args.prefab {
+        actions.push(Action::Prefab(prefab));
+    }
+    if let Some(tile) = args.tile {
+        actions.push(Action::Tile(tile));
+    }
+    // A palette pick takes up its tool; a tool named beside it stands.
+    if let Some(tool) = actions.iter().find_map(|action| match action {
+        Action::Tool(tool) => Some(*tool),
+        _ => None,
+    }) {
+        actions.push(Action::Tool(tool));
+    }
+    if let Some(layer) = args.layer {
+        actions.push(Action::Layer(layer));
+    }
+    if let Some(id) = args.select {
+        actions.push(Action::Select(id));
+    }
+    if let Some(name) = args.does {
+        let does = (DOES.iter())
+            .find(|(known, _)| *known == name)
+            .map(|(_, action)| action.clone())
+            .ok_or_else(|| {
+                let names: Vec<&str> = DOES.iter().map(|(name, _)| *name).collect();
+                format!("`do` names no action `{name}`: {}", names.join(", "))
+            })?;
+        actions.push(does);
+    }
+    let ask = match args.prompt {
+        Some(name) => Some(Ask::named(&name).ok_or_else(|| {
+            let names: Vec<&str> = Ask::ALL.iter().map(|ask| ask.name()).collect();
+            format!("no prompt `{name}`: {}", names.join(", "))
+        })?),
+        None if args.text.is_some() => {
+            return Err("`text` is a prompt's: name it with `prompt`".to_owned());
+        }
+        None => None,
+    };
+    let mut editor = world
+        .remove_resource::<LevelEditor>()
+        .ok_or("the World has no level editor")?;
+    let mut result = run(&mut editor, world, args.open, actions);
+    if let (Ok(()), Some(ask)) = (&result, ask) {
+        result = ask_for(&mut editor, world, ask, args.text);
+    }
+    world.insert_resource(editor);
+    result
+}
+
+/// Opens `ask` for the pick and, with `text`, commits it: a script's whole
+/// prompt in one step. A refusal fails the step and leaves no prompt open.
+fn ask_for(
+    editor: &mut LevelEditor,
+    world: &mut World,
+    ask: Ask,
+    text: Option<String>,
+) -> Result<(), String> {
+    if !editor.open {
+        return Err("the level editor is closed: `{\"open\": true}` opens it".to_owned());
+    }
+    editor.refused = false;
+    // A prompt left open by an earlier step ends in `act`, so `text` goes
+    // to this one or to none.
+    editor.act(world, Action::Prompt(ask));
+    if let (Some(text), Some(prompt)) = (text, editor.prompt.as_mut()) {
+        prompt.text = text;
+        editor.commit_prompt(world);
+    }
+    if editor.refused {
+        editor.prompt = None;
+        return Err(editor.status.clone());
+    }
+    Ok(())
+}
+
+/// Opens or closes the editor, then carries out `actions` in order,
+/// stopping at the first the editor refuses, whose sentence is the error.
+fn run(
+    editor: &mut LevelEditor,
+    world: &mut World,
+    open: Option<bool>,
+    actions: Vec<Action>,
+) -> Result<(), String> {
+    match open {
+        Some(true) if !editor.available => {
+            return Err(
+                "the level editor opens only where assets are watched (`assets.hot_reload`)"
+                    .to_owned(),
+            );
+        }
+        Some(true) => editor.open(world),
+        Some(false) => editor.close(world),
+        None => {}
+    }
+    if !actions.is_empty() && !editor.open {
+        return Err("the level editor is closed: `{\"open\": true}` opens it".to_owned());
+    }
+    // A room is current before the first frame, so a script's first step
+    // acts on one.
+    let camera = editor.drawn(editor.game_view(world));
+    editor.keep_current(world, camera);
+    for action in actions {
+        editor.refused = false;
+        editor.act(world, action);
+        if editor.refused {
+            return Err(editor.status.clone());
+        }
+    }
+    Ok(())
+}

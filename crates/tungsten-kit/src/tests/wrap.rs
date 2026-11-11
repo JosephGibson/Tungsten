@@ -1,6 +1,6 @@
 use super::*;
 use serde_json::json;
-use tungsten_core::{CameraController, CameraState, Stage, Time, WindowSize};
+use tungsten_core::{CameraState, Stage, Time, WindowSize};
 
 use crate::spawn_child;
 
@@ -94,10 +94,8 @@ fn the_view_is_the_cameras_without_its_shake_grown_by_the_margin() {
     let shake = Vec2::new(30.0, 0.0);
     let mut camera = CameraState::new();
     camera.position = Vec2::new(100.0, 0.0) + shake;
+    camera.shake = shake;
     world.insert_resource(camera);
-    let mut controller = CameraController::default();
-    controller.record_output_position(camera.position, shake);
-    world.insert_resource(controller);
     // Past the base view's right side, 740, by its margin and one: inside
     // the shaken view, which ends at 770.
     let ship = rock(

@@ -1,0 +1,29 @@
+{
+  "sprite": {
+    "asset_id": "crate"
+  },
+  "tag": "crate",
+  "components": {
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          8
+        ]
+      },
+      "offset": [
+        8,
+        8
+      ],
+      "layers": [
+        "terrain"
+      ],
+      "mask": [
+        "terrain",
+        "player"
+      ]
+    }
+  }
+}

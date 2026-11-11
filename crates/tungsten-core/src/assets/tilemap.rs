@@ -155,7 +155,7 @@ pub enum LayerKind {
 }
 
 /// Row-major tilemap layer.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct TilemapLayer {
     pub name: String,
     #[serde(default)]
@@ -184,8 +184,10 @@ pub struct TileProps {
     /// Its auto-tile style.
     pub style: Option<String>,
     /// A style variant's open sides, 0 to 15 (1 up, 2 right, 4 down, 8
-    /// left); it needs `style`, and a styled tile without one is the
-    /// style's brush.
+    /// left); it needs `style`, and a styled tile without one or a `slope`
+    /// is the style's brush. A styled `slope` tile without one is one of
+    /// its style's slope tiles: its style to its neighbours' sides, never
+    /// picked by the auto-tiler.
     pub mask: Option<u8>,
     /// A variant's draw weight, at least 1; a weight other than 1 needs
     /// `mask`.
@@ -193,6 +195,12 @@ pub struct TileProps {
     /// In a collision layer, the slope its cell is instead of a full box;
     /// a slope tile cannot be one-way.
     pub slope: Option<Slope>,
+    /// Drawn at its sprite's own size, the sprite's bottom-left on its
+    /// cell's bottom-left, as Tiled's image-collection tiles are (S-178).
+    /// Draw-only: out of the map's fingerprint, and a collision layer's cell
+    /// stays one cell. A room's tileset file sets it; the Tiled loader does
+    /// not.
+    pub whole: bool,
 }
 
 /// The default [`TileProps`], which a tile without its own reads.
@@ -205,6 +213,7 @@ static PLAIN_TILE: TileProps = TileProps {
     mask: None,
     weight: 1,
     slope: None,
+    whole: false,
 };
 
 /// A slope tile's shape: how far its sloped face rises across the cell and
@@ -302,16 +311,17 @@ impl Default for TileProps {
 }
 
 impl TileProps {
-    /// Whether the tile is its style's brush: styled, without a `mask`.
+    /// Whether the tile is its style's brush: styled, without a `mask` or a
+    /// `slope`.
     #[must_use]
     pub fn is_brush(&self) -> bool {
-        self.style.is_some() && self.mask.is_none()
+        self.style.is_some() && self.mask.is_none() && self.slope.is_none()
     }
 
     /// The rules [`TilemapData::set_tile_props`] and the loader hold every
     /// tile's properties to, for a tileset of `tiles` entries; the message
     /// names the property.
-    fn check(&self, tiles: usize) -> Result<(), String> {
+    pub(crate) fn check(&self, tiles: usize) -> Result<(), String> {
         if self.material.as_deref() == Some("") {
             return Err("`material` must not be empty".to_owned());
         }
@@ -463,7 +473,7 @@ impl TerrainProps {
 /// reading and bulk writes; tile properties and layer physics are read and
 /// set through their methods ([`tile_props`](Self::tile_props),
 /// [`layer_physics`](Self::layer_physics)).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[non_exhaustive]
 pub struct TilemapData {
     pub tile_width: u32,
@@ -672,6 +682,17 @@ impl TilemapData {
             .ok()
             .and_then(|tile| self.terrain.tiles.get(tile))
             .unwrap_or(&PLAIN_TILE)
+    }
+
+    /// The tileset entries drawn whole ([`TileProps::whole`]), in order:
+    /// what the extract widens its view's cell range by.
+    pub fn whole_tiles(&self) -> impl Iterator<Item = TileIndex> + '_ {
+        self.terrain
+            .tiles
+            .iter()
+            .enumerate()
+            .filter(|(_, props)| props.whole)
+            .map(|(tile, _)| tile as TileIndex)
     }
 
     /// Sets the properties of tileset entry `tile`.
@@ -1374,6 +1395,17 @@ impl TilemapRegistry {
         map.data = map.inserted.clone();
         map.history = MapHistory::start(&map.data, &mut self.clock);
         true
+    }
+
+    /// Removes map `id` and returns it as it stands: its copy as inserted,
+    /// its history and every path naming it go too. The clock stays, so a
+    /// map inserted again under `id` starts past every revision given, and
+    /// a cursor over it reads by its content's fingerprint. Readers skip an
+    /// ID the registry lacks. `None` for a map the registry lacks.
+    pub fn remove(&mut self, id: &str) -> Option<TilemapData> {
+        let map = self.maps.remove(id)?;
+        self.path_to_id.retain(|_, named| named != id);
+        Some(map.data)
     }
 
     /// Insert with source-path reverse lookup.

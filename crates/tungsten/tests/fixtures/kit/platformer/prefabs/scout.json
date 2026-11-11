@@ -1,0 +1,49 @@
+{
+  "tag": "scout",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          10,
+          20
+        ]
+      }
+    },
+    "platformer_controller": {
+      "run_speed": 200,
+      "jump_speed": 600,
+      "gravity": 2000
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right"
+      ],
+      "slots": {
+        "jump": "jump"
+      }
+    },
+    "camera_rig": {
+      "follow": {
+        "lead": {
+          "from": "velocity",
+          "max": 120,
+          "time": 0.4
+        }
+      },
+      "view_height": 360,
+      "bounds": {
+        "min": [
+          -400,
+          -200
+        ],
+        "max": [
+          600,
+          400
+        ]
+      }
+    }
+  }
+}

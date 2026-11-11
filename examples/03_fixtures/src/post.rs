@@ -48,10 +48,10 @@ use tungsten::core::post::{
 };
 use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
-    ActionMap, AssetRegistry, BlendMode, CameraController, CameraMode, CommandBuffer, Config,
-    Curve, Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState, MaterialRegistry,
+    ActionMap, AssetRegistry, BlendMode, CameraController, CommandBuffer, Config, Curve, Easing,
+    EmissionKind, Entity, EventQueue, FollowRig, InitialVelocity, InputState, MaterialRegistry,
     ParallaxLayer, ParticleConfig, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
-    ParticleRender, Pcg32, Range, ShakeEvent, Sprite, SpriteAssetId, SpriteSquashStretch,
+    ParticleRender, Pcg32, Range, RigKind, ShakeEvent, Sprite, SpriteAssetId, SpriteSquashStretch,
     SquashEvent, SquashTrigger, Time, Transform, Visibility, With, World,
 };
 use tungsten::particles::spawn_particle_via;
@@ -609,9 +609,11 @@ fn bullet_trail_system(world: &mut World) {
 /// `shake_amplitude` stays zero — only trauma from impacts moves the camera.
 fn configure_playground_camera(world: &mut World, target: Entity) {
     if let Some(controller) = world.get_resource_mut::<CameraController>() {
-        controller.mode = CameraMode::Follow(target);
-        controller.dead_zone_size = Vec2::new(360.0, 240.0);
-        controller.smoothing_factor = 0.12;
+        controller.rig.kind = RigKind::Follow(
+            FollowRig::of(target)
+                .with_dead_zone(Vec2::new(360.0, 240.0))
+                .with_smoothing(Vec2::splat(0.12)),
+        );
         controller.shake_amplitude = Vec2::ZERO;
         controller.shake_frequency_hz = 22.0;
         controller.shake_trauma = 0.0;

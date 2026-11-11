@@ -540,7 +540,12 @@ fn hooks_register_once_and_run_by_name() {
         [("double", "Doubles the score."), ("fail", "Always fails.")]
     );
     let probes: Vec<&str> = hooks.probes().map(|(name, _)| name).collect();
-    assert_eq!(probes, ["camera", "count", "entities", "frame", "score"]);
+    assert_eq!(
+        probes,
+        [
+            "camera", "count", "entities", "frame", "place", "room", "score"
+        ]
+    );
     assert!(hooks.probes().all(|(_, doc)| !doc.is_empty()));
 
     let message = panic_message(|| {
@@ -633,4 +638,343 @@ fn a_screen_step_parses_and_names_its_field() {
     )
     .unwrap_err();
     assert!(two.message.contains("one verb"), "{two}");
+}
+
+/// A typed action's arguments.
+#[derive(Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Points {
+    #[serde(default)]
+    points: u32,
+}
+
+/// The points the typed `add` action last took.
+struct Took(Option<u32>);
+
+fn typed_world() -> World {
+    let mut world = World::new();
+    world.insert_resource(Took(None));
+    world.add_script_action_typed("add", "Adds `{\"points\"?: n}`.", |world, args: Points| {
+        world.resource_mut::<Took>().0 = Some(args.points);
+        Ok(())
+    });
+    world
+}
+
+#[test]
+fn a_typed_action_takes_null_as_default() {
+    let mut world = typed_world();
+    ScriptHooks::call_action(&mut world, "add", &Value::Null).unwrap();
+    assert_eq!(world.resource::<Took>().0, Some(0), "null: the default");
+    ScriptHooks::call_action(&mut world, "add", &json!({ "points": 3 })).unwrap();
+    assert_eq!(world.resource::<Took>().0, Some(3));
+    let hooks = world.resource::<ScriptHooks>();
+    assert_eq!(
+        hooks.actions().collect::<Vec<_>>(),
+        [("add", "Adds `{\"points\"?: n}`.")]
+    );
+}
+
+#[test]
+fn a_typed_action_returns_the_deserialize_error() {
+    let mut world = typed_world();
+    let error =
+        ScriptHooks::call_action(&mut world, "add", &json!({ "points": "three" })).unwrap_err();
+    assert!(
+        error.starts_with("action `add`: args: invalid type"),
+        "{error}"
+    );
+    let error = ScriptHooks::call_action(&mut world, "add", &json!({ "point": 3 })).unwrap_err();
+    assert!(error.contains("unknown field `point`"), "{error}");
+    assert_eq!(world.resource::<Took>().0, None, "the action never ran");
+}
+
+#[test]
+fn a_generate_step_reads_and_refuses_a_repeat() {
+    let script = Script::parse(
+        r#"{ "version": 1, "frames": 10, "steps": [
+            { "frame": 2, "generate": { "generator": "chain", "seed": 7 } },
+            { "frame": 3, "generate": { "generator": "chain", "seed": 18446744073709551615, "prefix": "deep" } }
+        ] }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        script.steps[0].verb,
+        Verb::Generate(GenerateStep {
+            generator: "chain".into(),
+            seed: 7,
+            prefix: None
+        })
+    );
+    assert_eq!(script.steps[0].verb.name(), "generate");
+    assert!(matches!(&script.steps[1].verb,
+        Verb::Generate(GenerateStep { seed: u64::MAX, prefix: Some(prefix), .. }) if prefix == "deep"));
+    let text = serde_json::to_string(&script).unwrap();
+    assert_eq!(
+        Script::parse(&text).unwrap(),
+        script,
+        "it writes back as it reads"
+    );
+    assert!(!text.contains("prefix\":null"), "{text}");
+    let bad = |steps: &str| {
+        Script::parse(&format!(
+            r#"{{ "version": 1, "frames": 10, "steps": [{steps}] }}"#
+        ))
+        .unwrap_err()
+        .to_string()
+    };
+    assert!(
+        bad(r#"{ "frame": 2, "until": 4, "generate": { "generator": "chain", "seed": 1 } }"#)
+            .contains("`generate` does not repeat; drop `until`"),
+        "a generation runs once"
+    );
+    assert_eq!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "Chain", "seed": 1 } }"#),
+        "steps[0]: `Chain` must match [a-z][a-z0-9_]*"
+    );
+    assert_eq!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain", "seed": 1, "prefix": "a-b" } }"#),
+        "steps[0]: `a-b` must match [a-z][a-z0-9_]*"
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain" } }"#)
+            .contains("missing field `seed`")
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain", "seed": -1 } }"#)
+            .contains("steps[0].generate.seed")
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain", "seed": 1, "rooms": 3 } }"#)
+            .contains("unknown field `rooms`")
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "generate": { "generator": "chain", "seed": 1 }, "room": "cave" }"#)
+            .contains("one verb")
+    );
+}
+
+#[test]
+fn the_room_verb_and_place_probe_parse_and_name_their_fields() {
+    let script = Script::parse(
+        r#"{ "version": 1, "frames": 10, "steps": [
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 5, "probe": "place", "args": { "room": "cave", "id": "start" } }
+        ] }"#,
+    )
+    .unwrap();
+    assert_eq!(script.steps[1].verb, Verb::Room("cave".into()));
+    assert_eq!(script.steps[1].verb.name(), "room");
+    // It writes back as it reads.
+    let text = serde_json::to_string(&script).unwrap();
+    assert_eq!(Script::parse(&text).unwrap(), script);
+    let bad = |steps: &str| {
+        Script::parse(&format!(
+            r#"{{ "version": 1, "frames": 10, "steps": [{steps}] }}"#
+        ))
+        .unwrap_err()
+        .to_string()
+    };
+    assert_eq!(
+        bad(r#"{ "frame": 2, "room": "Cave" }"#),
+        "steps[0]: `Cave` must match [a-z][a-z0-9_]*"
+    );
+    assert!(
+        bad(r#"{ "frame": 2, "until": 4, "room": "cave" }"#).contains("does not repeat"),
+        "a room spawns once"
+    );
+    assert!(bad(r#"{ "frame": 2, "room": "cave", "stage": {} }"#).contains("one verb"));
+
+    // The probe names its arguments and the room it needs live.
+    let mut world = World::new();
+    world.insert_resource(ScriptHooks::new());
+    let read = |args: Value| ScriptHooks::read_probe(&world, "place", &args);
+    assert_eq!(
+        read(json!({ "room": "cave" })),
+        Err("probe `place`: args: missing field `id`".to_owned())
+    );
+    assert_eq!(
+        read(json!({ "room": "cave", "id": "start", "at": 1 })).unwrap_err(),
+        "probe `place`: args: unknown field `at`, expected `room` or `id`"
+    );
+    assert_eq!(
+        read(json!({ "room": "cave", "id": "start" })),
+        Err("probe `place`: the World has no rooms".to_owned())
+    );
+}
+
+#[test]
+fn the_level_verb_parses_apply_and_undo() {
+    let script = Script::parse(
+        r#"{ "version": 1, "frames": 10, "steps": [
+            { "frame": 3, "level": { "room": "cave", "apply": [{ "move": { "id": "ball_1", "by": [1, 0] } }] } },
+            { "frame": 5, "level": { "room": "cave", "undo": true } }
+        ] }"#,
+    )
+    .unwrap();
+    let Verb::Level(apply) = &script.steps[0].verb else {
+        panic!("a level step: {:?}", script.steps[0].verb);
+    };
+    assert_eq!(apply.room, "cave");
+    let batch =
+        RoomCommand::parse_batch(r#"[{ "move": { "id": "ball_1", "by": [1, 0] } }]"#).unwrap();
+    assert_eq!(apply.edit, LevelEdit::Apply(batch));
+    assert_eq!(
+        script.steps[1].verb,
+        Verb::Level(LevelStep {
+            room: "cave".into(),
+            edit: LevelEdit::Undo
+        })
+    );
+    assert_eq!(script.steps[1].verb.name(), "level");
+    // It writes back as it reads.
+    let text = serde_json::to_string(&script).unwrap();
+    assert!(
+        text.contains(r#""level":{"room":"cave","undo":true}"#),
+        "{text}"
+    );
+    assert_eq!(Script::parse(&text).unwrap(), script);
+    let bad = |level: &str| {
+        Script::parse(&format!(
+            r#"{{ "version": 1, "frames": 10, "steps": [{{ "frame": 2, "level": {level} }}] }}"#
+        ))
+        .unwrap_err()
+        .to_string()
+    };
+    assert_eq!(
+        bad(r#"{ "room": "cave" }"#),
+        "steps[0].level: `level` needs `apply`, `undo` or `redo`"
+    );
+    assert_eq!(
+        bad(r#"{ "room": "cave", "apply": [], "undo": true }"#),
+        "steps[0].level: `level` takes one of `apply`, `undo` and `redo`"
+    );
+    assert_eq!(
+        bad(r#"{ "room": "cave", "undo": true, "redo": true }"#),
+        "steps[0].level: `level` takes one of `apply`, `undo` and `redo`"
+    );
+    assert_eq!(
+        bad(r#"{ "room": "cave", "redo": false }"#),
+        "steps[0].level: `redo` is `true` or left out"
+    );
+    // Redo reads and writes as undo does.
+    let redo = Script::parse(
+        r#"{ "version": 1, "frames": 10, "steps": [{ "frame": 2, "level": { "room": "cave", "redo": true } }] }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        redo.steps[0].verb,
+        Verb::Level(LevelStep {
+            room: "cave".into(),
+            edit: LevelEdit::Redo
+        })
+    );
+    let text = serde_json::to_string(&redo).unwrap();
+    assert!(
+        text.contains(r#""level":{"room":"cave","redo":true}"#),
+        "{text}"
+    );
+    assert_eq!(Script::parse(&text).unwrap(), redo);
+    assert_eq!(
+        bad(r#"{ "room": "cave", "undo": false }"#),
+        "steps[0].level: `undo` is `true` or left out"
+    );
+    assert_eq!(
+        bad(r#"{ "room": "cave", "apply": [] }"#),
+        "steps[0].level: `apply` needs at least one command"
+    );
+    assert!(
+        bad(r#"{ "room": "cave", "apply": [{ "move": { "id": "a", "by": [1] } }] }"#)
+            .starts_with("steps[0].level.apply[0].move.by: "),
+        "a command's field is named"
+    );
+    assert_eq!(
+        bad(r#"{ "room": "Cave", "undo": true }"#),
+        "steps[0]: `Cave` must match [a-z][a-z0-9_]*"
+    );
+    assert!(
+        Script::parse(
+            r#"{ "version": 1, "frames": 10, "steps": [
+                { "frame": 2, "until": 4, "level": { "room": "cave", "undo": true } }] }"#
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("does not repeat")
+    );
+}
+
+#[test]
+fn the_script_schema_names_every_verb() {
+    let schema = json_schema();
+    assert_eq!(
+        schema["$schema"],
+        "https://json-schema.org/draft/2020-12/schema"
+    );
+    let step = &schema["$defs"]["step"];
+    let properties = step["properties"].as_object().unwrap();
+    // The model's own keys, as its reader lists them for an unknown one.
+    let err = Script::parse(
+        r#"{ "version": 1, "frames": 2, "steps": [{ "frame": 1, "no_such_key": 1 }] }"#,
+    )
+    .unwrap_err()
+    .to_string();
+    let listed = err.split("expected one of ").nth(1).expect(&err);
+    let mut keys: Vec<&str> = listed.split('`').skip(1).step_by(2).collect();
+    keys.sort_unstable();
+    let mut described: Vec<&str> = properties.keys().map(String::as_str).collect();
+    described.sort_unstable();
+    assert_eq!(described, keys, "the schema's step and the model's");
+    // Every key is described, and each verb's example parses as that verb.
+    let verbs: Vec<&str> = step["oneOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|one| one["required"][0].as_str().unwrap())
+        .collect();
+    assert_eq!(verbs.len(), 19);
+    for (key, property) in properties {
+        assert!(
+            property["description"]
+                .as_str()
+                .is_some_and(|text| !text.is_empty()),
+            "`{key}` is described"
+        );
+    }
+    for verb in verbs {
+        let examples = properties[verb]["examples"].as_array().unwrap();
+        assert!(!examples.is_empty(), "`{verb}` has an example");
+        for example in examples {
+            let script = parse(&json!([{ "frame": 2, verb: example }]))
+                .unwrap_or_else(|err| panic!("`{verb}`'s example {example}: {err}"));
+            assert_eq!(script.steps[0].verb.name(), verb);
+        }
+    }
+    for key in ["version", "frames", "resolution", "steps"] {
+        assert!(
+            schema["properties"][key]["description"].is_string(),
+            "`{key}`"
+        );
+    }
+}
+
+#[test]
+fn the_room_probe_names_its_fields_and_an_unknown_room() {
+    let mut world = World::new();
+    world.insert_resource(ScriptHooks::new());
+    let read = |world: &World, args: Value| ScriptHooks::read_probe(world, "room", &args);
+    assert_eq!(
+        read(&world, json!({ "room": "cave" })),
+        Err("probe `room`: the World has no rooms".to_owned())
+    );
+    world.insert_resource(crate::assets::RoomRegistry::new());
+    assert_eq!(
+        read(&world, json!({ "room": "cave" })),
+        Err("probe `room`: unknown room `cave`".to_owned())
+    );
+    assert!(
+        read(&world, json!({ "rom": "cave" }))
+            .unwrap_err()
+            .starts_with("probe `room`: args: unknown field `rom`"),
+    );
 }

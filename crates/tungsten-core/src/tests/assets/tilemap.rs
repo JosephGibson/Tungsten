@@ -152,6 +152,52 @@ fn registry_insert_and_lookup() {
 }
 
 #[test]
+fn remove_drops_a_map_its_copy_as_inserted_and_its_paths() {
+    use crate::assets::TileChanges;
+    let mut reg = TilemapRegistry::new();
+    reg.insert_with_path("demo".into(), tiny_map(), PathBuf::from("/tmp/demo.tmj"));
+    reg.insert("other".into(), tiny_map());
+    let fresh = reg.cursor("demo").unwrap();
+    assert!(reg.set_tile("demo", 0, 0, 0, 1));
+    let edited = reg.cursor("demo").unwrap();
+    let removed = reg.remove("demo").expect("the map");
+    assert_eq!(removed.tile_at(0, 0, 0), Some(1), "the map as it stood");
+    assert!(reg.get("demo").is_none());
+    assert_eq!(reg.id_for_path(Path::new("/tmp/demo.tmj")), None);
+    assert!(!reg.revert("demo"), "its copy as inserted is gone");
+    assert!(reg.cursor("demo").is_none());
+    assert!(reg.changes_since("demo", &edited).is_none());
+    assert_eq!(reg.edited_cells("demo").count(), 0, "its history is gone");
+    assert_eq!(reg.ids().collect::<Vec<_>>(), ["other"]);
+    // The clock stays: inserted again, the map starts past every revision
+    // given, and a cursor reads it by its content's fingerprint.
+    let clock = reg.clock;
+    reg.insert("demo".into(), tiny_map());
+    assert!(reg.clock > clock);
+    assert!(matches!(
+        reg.changes_since("demo", &fresh),
+        Some(TileChanges::Unchanged)
+    ));
+    assert!(matches!(
+        reg.changes_since("demo", &edited),
+        Some(TileChanges::Replaced)
+    ));
+    assert_eq!(reg.id_for_path(Path::new("/tmp/demo.tmj")), None);
+}
+
+#[test]
+fn remove_of_an_unknown_map_is_none() {
+    let mut reg = TilemapRegistry::new();
+    reg.insert_with_path("demo".into(), tiny_map(), PathBuf::from("/tmp/demo.tmj"));
+    let clock = reg.clock;
+    assert!(reg.remove("dmeo").is_none());
+    assert!(reg.get("demo").is_some());
+    assert_eq!(reg.id_for_path(Path::new("/tmp/demo.tmj")), Some("demo"));
+    assert_eq!(reg.clock, clock);
+    assert!(TilemapRegistry::new().remove("demo").is_none());
+}
+
+#[test]
 fn sparse_tiled_ids_resolve_and_invalid_gids_return_errors() {
     let path = std::env::temp_dir().join(format!(
         "tungsten-sparse-tiles-{}-{}.tmj",
@@ -1109,4 +1155,54 @@ fn a_layer_without_them_reads_as_before() {
     assert_eq!(built.layer_draw(ground), raised);
     built.set_layer_draw(ground, LayerDraw::DEFAULT);
     assert!(built.terrain.draws.is_empty());
+}
+
+#[test]
+fn a_style_holds_one_brush_and_its_slope_tiles() {
+    let styled = |slope: Option<&str>| TileProps {
+        style: Some("rock".into()),
+        slope: slope.map(|text| Slope::parse(text).unwrap()),
+        ..TileProps::default()
+    };
+    let mut map = TilemapData::new(16, 16, 2, 1);
+    let rock = map.add_tile("rock");
+    let ramp = map.add_tile("rock_45_br");
+    let low = map.add_tile("rock_low_br");
+    map.set_tile_props(rock, styled(None));
+    // Two styled slope tiles without a mask: neither is a second brush.
+    map.set_tile_props(ramp, styled(Some("45 br")));
+    map.set_tile_props(low, styled(Some("2:1 low br")));
+    assert!(map.tile_props(rock).is_brush());
+    assert!(!map.tile_props(ramp).is_brush());
+    assert!(!map.tile_props(low).is_brush());
+    // A second plain brush is still refused.
+    let again = map.add_tile("rock_too");
+    let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        map.set_tile_props(again, styled(None));
+    }));
+    assert!(refused.is_err());
+
+    // The Tiled loader reads the same rule.
+    let tile = |id: u32, sprite: &str, slope: Option<&str>| {
+        let mut properties = vec![
+            serde_json::json!({ "name": "sprite_id", "value": sprite }),
+            serde_json::json!({ "name": "style", "value": "rock" }),
+        ];
+        if let Some(slope) = slope {
+            properties.push(serde_json::json!({ "name": "slope", "value": slope }));
+        }
+        serde_json::json!({ "id": id, "properties": properties })
+    };
+    let loaded = load_json(&serde_json::json!({
+        "tilewidth": 16, "tileheight": 16, "width": 1, "height": 1,
+        "tilesets": [{ "firstgid": 1, "tiles": [
+            tile(0, "rock", None),
+            tile(1, "rock_45_br", Some("45 br")),
+            tile(2, "rock_45_bl", Some("45 bl"))
+        ] }],
+        "layers": [{ "type": "tilelayer", "name": "ground", "data": [1] }]
+    }))
+    .unwrap();
+    assert!(loaded.tile_props(0).is_brush());
+    assert!(!loaded.tile_props(1).is_brush() && !loaded.tile_props(2).is_brush());
 }

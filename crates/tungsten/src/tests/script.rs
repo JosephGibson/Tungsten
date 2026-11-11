@@ -599,3 +599,396 @@ fn a_refused_screen_step_fails_with_its_reason() {
         ]
     );
 }
+
+#[test]
+fn a_room_step_spawns_the_room_and_the_place_probe_reads_a_marker() {
+    use tungsten_core::assets::{PrefabData, PrefabRegistry, Room, RoomRegistry, Tileset};
+    let mut app = app();
+    add_owned_probe(app.world_mut());
+    let world = app.world_mut();
+    register_sprite(world, "rock");
+    let crate_prefab: PrefabData = serde_json::from_value(json!({ "tag": "crate" })).unwrap();
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("crate".into(), crate_prefab);
+    let mut rooms = RoomRegistry::new();
+    rooms.insert_tileset(
+        "cave",
+        Tileset::from_json(r#"{ "version": 1, "tiles": [{ "sprite": "rock" }] }"#).unwrap(),
+    );
+    world.insert_resource(rooms);
+    let room = Room::from_json(
+        r#"{ "version": 1, "cell": [16, 16], "size": [10, 4], "tileset": "cave",
+             "layers": [{ "name": "solid", "kind": "collision" }],
+             "shapes": [{ "id": "floor", "rect": [0, 3, 10, 1], "tile": "rock", "layers": ["solid"] }],
+             "objects": [{ "id": "crate_1", "prefab": "crate", "at": [2, 2] }],
+             "places": [{ "id": "start", "point": [1.5, 2] }] }"#,
+    )
+    .unwrap();
+    world.insert_room("cave", room).unwrap();
+    let mut harness = Harness::new(app);
+    let report = harness.run_script(&script(
+        10,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 2, "camera": { "fit": "staged" } },
+            { "frame": 5, "probe": "place", "args": { "room": "cave", "id": "start" } },
+            { "frame": 5, "assert": { "probe": "owned", "args": { "state": "script_stage" }, "op": "==", "value": 2 } },
+            { "frame": 6, "assert": { "probe": "place", "args": { "room": "cave", "id": "start" }, "path": "/0", "op": "==", "value": 24 } }
+        ]),
+    ));
+    assert!(report.passed, "{report:#?}");
+    assert_eq!(
+        probes(&report, "place"),
+        [(5, &json!([24.0, 32.0]))],
+        "the marker in world pixels"
+    );
+    // The room spawned once, its crate named for its room.
+    let world = harness.world();
+    let crates = world
+        .query::<&tungsten_core::Tag>()
+        .filter(|tag| tag.name == "crate")
+        .count();
+    assert_eq!(crates, 1);
+    assert!(world.resource::<RoomRegistry>().live("cave").is_some());
+    // An unknown room fails its step and the run.
+    let mut harness = Harness::new(crate::App::new(Config::default()).unwrap());
+    let report = harness.run_script(&script(
+        4,
+        &json!([{ "frame": 2, "stage": {} }, { "frame": 2, "room": "cove" }]),
+    ));
+    assert!(!report.passed);
+}
+
+/// An app with the sprite `rock`, the prefab `crate`, the cave tileset and
+/// the template `cave`: a floor, a crate and the place `start`.
+fn cave_app() -> crate::App {
+    use tungsten_core::assets::{PrefabData, PrefabRegistry, Room, RoomRegistry, Tileset};
+    let mut app = app();
+    add_owned_probe(app.world_mut());
+    let world = app.world_mut();
+    register_sprite(world, "rock");
+    let crate_prefab: PrefabData = serde_json::from_value(json!({ "tag": "crate" })).unwrap();
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("crate".into(), crate_prefab);
+    let mut rooms = RoomRegistry::new();
+    rooms.insert_tileset(
+        "cave",
+        Tileset::from_json(r#"{ "version": 1, "tiles": [{ "sprite": "rock" }] }"#).unwrap(),
+    );
+    world.insert_resource(rooms);
+    let room = Room::from_json(
+        r#"{ "version": 1, "cell": [16, 16], "size": [10, 4], "tileset": "cave",
+             "layers": [{ "name": "solid", "kind": "collision" }],
+             "shapes": [{ "id": "floor", "rect": [0, 3, 10, 1], "tile": "rock", "layers": ["solid"] }],
+             "objects": [{ "id": "crate_1", "prefab": "crate", "at": [2, 2] }],
+             "places": [{ "id": "start", "point": [1.5, 2] }] }"#,
+    )
+    .unwrap();
+    world.insert_room("cave", room).unwrap();
+    app
+}
+
+/// Two copies of `cave`, 160 px apart; failing at seed 3.
+struct Pair;
+
+impl tungsten_core::assets::RoomGenerator for Pair {
+    fn version(&self) -> u32 {
+        1
+    }
+
+    fn generate(&self, generation: &mut tungsten_core::assets::Generate<'_>) -> Result<(), String> {
+        if generation.seed() == 3 {
+            return Err("no exit fits".to_owned());
+        }
+        let cave = generation.template("cave")?;
+        generation.add("a", cave.clone(), [0.0, 0.0])?;
+        generation.add("b", cave, [160.0, 0.0])
+    }
+}
+
+#[test]
+fn a_generate_step_spawns_each_room_at_its_origin() {
+    use tungsten_core::assets::RoomRegistry;
+    let mut app = cave_app();
+    app.register_generator("pair", Pair);
+    let mut harness = Harness::new(app);
+    let report = harness.run_script(&script(
+        10,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "generate": { "generator": "pair", "seed": 7 } },
+            { "frame": 2, "camera": { "fit": "staged" } },
+            { "frame": 5, "probe": "place", "args": { "room": "pair_b", "id": "start" } },
+            { "frame": 5, "assert": { "probe": "owned", "args": { "state": "script_stage" }, "op": "==", "value": 4 } },
+            { "frame": 6, "generate": { "generator": "pair", "seed": 8, "prefix": "deep" } },
+            { "frame": 8, "probe": "place", "args": { "room": "deep_a", "id": "start" } },
+            { "frame": 8, "assert": { "probe": "owned", "args": { "state": "script_stage" }, "op": "==", "value": 8 } }
+        ]),
+    ));
+    assert!(report.passed, "{report:#?}");
+    assert_eq!(
+        probes(&report, "place"),
+        [(5, &json!([184.0, 32.0])), (8, &json!([24.0, 32.0]))],
+        "each room at its origin: `b` 160 px over"
+    );
+    let rooms = harness.world().resource::<RoomRegistry>();
+    for room in ["pair_a", "pair_b", "deep_a", "deep_b"] {
+        assert!(rooms.live(room).is_some(), "{room}");
+        assert!(rooms.generation(room).is_some(), "{room}");
+    }
+}
+
+#[test]
+fn a_generate_step_that_fails_fails_the_script() {
+    let mut app = cave_app();
+    app.register_generator("pair", Pair);
+    let mut harness = Harness::new(app);
+    let report = harness.run_script(&script(
+        6,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "generate": { "generator": "pair", "seed": 3 } },
+            { "frame": 4, "generate": { "generator": "chain", "seed": 1 } }
+        ]),
+    ));
+    assert!(!report.passed);
+    let failed: Vec<(u32, &str, &str)> = report
+        .failed_steps
+        .iter()
+        .map(|f| (f.frame, f.verb.as_str(), f.error.as_str()))
+        .collect();
+    assert_eq!(
+        failed,
+        [
+            (2, "generate", "generator `pair` at seed 3: no exit fits"),
+            (4, "generate", "no room generator `chain`"),
+        ]
+    );
+    let rooms = harness
+        .world()
+        .resource::<tungsten_core::assets::RoomRegistry>();
+    assert_eq!(
+        rooms.ids().collect::<Vec<_>>(),
+        ["cave"],
+        "nothing registered"
+    );
+}
+
+#[test]
+fn a_level_step_patches_the_live_room_and_undo_restores_it() {
+    use tungsten_core::assets::{
+        PrefabData, PrefabRegistry, Room, RoomJournal, RoomRegistry, Tileset,
+    };
+    use tungsten_core::save::{SaveId, SaveState};
+    let mut app = app();
+    add_owned_probe(app.world_mut());
+    let world = app.world_mut();
+    world.add_script_probe("named_x", "A named entity's x.", |world, args| {
+        let name = args["name"].as_str().ok_or("`name` names an entity")?;
+        let entity = world
+            .get_resource::<SaveState>()
+            .and_then(|state| state.named_entity(SaveId::authored(name)))
+            .filter(|&entity| world.is_alive(entity))
+            .ok_or("no such entity")?;
+        Ok(json!(world.get::<Transform>(entity).unwrap().position.x))
+    });
+    register_sprite(world, "rock");
+    register_sprite(world, "plank");
+    let crate_prefab: PrefabData = serde_json::from_value(json!({ "tag": "crate" })).unwrap();
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("crate".into(), crate_prefab);
+    let mut rooms = RoomRegistry::new();
+    rooms.insert_tileset(
+        "cave",
+        Tileset::from_json(
+            r#"{ "version": 1, "tiles": [{ "sprite": "rock" }, { "sprite": "plank" }] }"#,
+        )
+        .unwrap(),
+    );
+    world.insert_resource(rooms);
+    let room = Room::from_json(
+        r#"{ "version": 1, "cell": [16, 16], "size": [10, 4], "tileset": "cave",
+             "layers": [{ "name": "solid", "kind": "collision" }],
+             "shapes": [{ "id": "floor", "rect": [0, 3, 10, 1], "tile": "rock", "layers": ["solid"] }],
+             "objects": [{ "id": "crate_1", "prefab": "crate", "at": [2, 2] }] }"#,
+    )
+    .unwrap();
+    world.insert_room("cave", room.clone()).unwrap();
+    let mut harness = Harness::new(app);
+    let crate_x = json!({ "name": "cave.crate_1" });
+    let report = harness.run_script(&script(
+        8,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 3, "level": { "room": "cave", "apply": [
+                { "move": { "id": "crate_1", "by": [3, 0] } },
+                { "paint": { "layer": "solid", "cells": [[5, 1]], "tile": "plank" } }
+            ] } },
+            { "frame": 4, "probe": "named_x", "args": crate_x },
+            { "frame": 4, "probe": "owned", "args": { "state": "script_stage" } },
+            { "frame": 5, "level": { "room": "cave", "undo": true } },
+            { "frame": 6, "probe": "named_x", "args": crate_x },
+            { "frame": 7, "level": { "room": "cave", "undo": true } }
+        ]),
+    ));
+    assert_eq!(
+        probes(&report, "named_x"),
+        [(4, &json!(80.0)), (6, &json!(32.0))],
+        "moved by the batch, back by the undo"
+    );
+    assert_eq!(
+        probes(&report, "owned"),
+        [(4, &json!(2))],
+        "the respawned crate takes the instance's state"
+    );
+    let failed: Vec<(u32, &str, &str)> = report
+        .failed_steps
+        .iter()
+        .map(|f| (f.frame, f.verb.as_str(), f.error.as_str()))
+        .collect();
+    assert_eq!(failed, [(7, "level", "room `cave` has nothing to undo")]);
+    let world = harness.world();
+    assert_eq!(
+        world.resource::<RoomRegistry>().room("cave"),
+        Some(&room),
+        "the document as it was"
+    );
+    let map = world.resource::<TilemapRegistry>().get("cave").unwrap();
+    assert_eq!(map.tile_at(0, 5, 1), Some(-1), "the paint undone");
+    let journal = world.resource::<RoomJournal>();
+    assert_eq!((journal.undo_len("cave"), journal.redo_len("cave")), (0, 1));
+}
+
+#[test]
+fn a_level_step_redoes_what_it_undid() {
+    let mut harness = Harness::new(cave_app());
+    let crate_at = json!({ "room": "cave", "id": "crate_1" });
+    let report = harness.run_script(&script(
+        10,
+        &json!([
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 3, "level": { "room": "cave", "apply": [{ "move": { "id": "crate_1", "by": [3, 0] } }] } },
+            { "frame": 4, "level": { "room": "cave", "undo": true } },
+            { "frame": 5, "probe": "room", "args": crate_at, "path": "/entry/at" },
+            { "frame": 6, "level": { "room": "cave", "redo": true } },
+            { "frame": 7, "probe": "room", "args": crate_at, "path": "/entry/at" },
+            { "frame": 7, "probe": "room", "args": { "room": "cave" }, "path": "/undo" },
+            { "frame": 7, "probe": "room", "args": { "room": "cave" }, "path": "/redo" },
+            { "frame": 8, "level": { "room": "cave", "redo": true } }
+        ]),
+    ));
+    assert_eq!(
+        probes(&report, "room"),
+        [
+            (5, &json!([2.0, 2.0])),
+            (7, &json!([5.0, 2.0])),
+            (7, &json!(1)),
+            (7, &json!(0)),
+        ],
+        "back by the undo, moved again by the redo, the journal one batch deep"
+    );
+    let failed: Vec<(u32, &str, &str)> = report
+        .failed_steps
+        .iter()
+        .map(|f| (f.frame, f.verb.as_str(), f.error.as_str()))
+        .collect();
+    assert_eq!(failed, [(8, "level", "room `cave` has nothing to redo")]);
+}
+
+#[test]
+fn the_room_probe_reads_a_live_rooms_entries() {
+    let mut harness = Harness::new(cave_app());
+    let all = json!({ "room": "cave" });
+    let report = harness.run_script(&script(
+        8,
+        &json!([
+            { "frame": 1, "probe": "room", "args": all, "path": "/live" },
+            { "frame": 2, "stage": {} },
+            { "frame": 2, "room": "cave" },
+            { "frame": 4, "probe": "room", "args": all },
+            { "frame": 4, "probe": "room", "args": { "room": "cave", "id": "crate_1" } },
+            { "frame": 4, "probe": "room", "args": { "room": "cave", "id": "start" } },
+            { "frame": 4, "probe": "room", "args": { "room": "cave", "id": "floor" }, "path": "/kind" },
+            { "frame": 5, "level": { "room": "cave", "apply": [
+                { "place": { "objects": { "id": "crate_2", "prefab": "crate", "at": [6, 2] } } }
+            ] } },
+            { "frame": 6, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_2" }, "path": "/entry/world", "op": "==", "value": [96, 32] } },
+            { "frame": 6, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_2" }, "path": "/entry/alive", "op": "==", "value": true } },
+            { "frame": 7, "probe": "room", "args": { "room": "cave", "id": "crate_9" } },
+            { "frame": 7, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_9" }, "path": "/kind", "op": "==", "value": null } },
+            { "frame": 7, "assert": { "probe": "room", "args": { "room": "cave", "id": "crate_9" }, "path": "/entry/at", "op": "==", "value": [2, 2] } },
+            { "frame": 7, "probe": "room", "args": { "room": "cove" } }
+        ]),
+    ));
+    let read = probes(&report, "room");
+    assert_eq!(read[0], (1, &json!(false)), "registered, not live yet");
+    assert_eq!(
+        read[1],
+        (
+            4,
+            &json!({
+                "room": "cave",
+                "live": true,
+                "origin": [0.0, 0.0],
+                "cell": [16, 16],
+                "size": [10, 4],
+                "tileset": "cave",
+                "layers": [{ "name": "solid", "kind": "collision", "cells": 0 }],
+                "shapes": [{ "id": "floor", "rect": [0, 3, 10, 1], "tile": "rock", "layers": ["solid"] }],
+                "objects": [{ "id": "crate_1", "prefab": "crate", "at": [2.0, 2.0], "world": [32.0, 32.0], "alive": true }],
+                "places": [{ "id": "start", "point": [1.5, 2.0] }],
+                "undo": 0,
+                "redo": 0,
+            })
+        )
+    );
+    assert_eq!(
+        read[2],
+        (
+            4,
+            &json!({ "kind": "object", "index": 0, "entry": {
+                "id": "crate_1", "prefab": "crate", "at": [2.0, 2.0], "world": [32.0, 32.0], "alive": true
+            } })
+        )
+    );
+    assert_eq!(
+        read[3],
+        (
+            4,
+            &json!({ "kind": "place", "index": 0, "entry": { "id": "start", "point": [1.5, 2.0] } })
+        )
+    );
+    assert_eq!(read[4], (4, &json!("shape")));
+    // An ID the room lacks reads `null` under each key, with the nearest
+    // ID: a script asserts an entry is gone by `/kind == null`, and a
+    // misspelt ID's assert fails showing what it may have meant.
+    assert_eq!(
+        read[5],
+        (
+            7,
+            &json!({ "kind": null, "index": null, "entry": null, "nearest": "crate_1" })
+        )
+    );
+    let passed: Vec<bool> = report.asserts.iter().map(|assert| assert.passed).collect();
+    assert_eq!(passed, [true, true, true, false], "{report:#?}");
+    let failed: Vec<&str> = report
+        .failed_steps
+        .iter()
+        .map(|f| f.error.as_str())
+        .collect();
+    assert_eq!(
+        failed,
+        ["probe `room`: unknown room `cove`; did you mean `cave`?"]
+    );
+    let misspelt = report.asserts[3].error.as_deref().unwrap_or_default();
+    assert!(
+        misspelt.contains("/entry/at") && misspelt.contains("\"nearest\":\"crate_1\""),
+        "{misspelt}"
+    );
+}

@@ -57,6 +57,29 @@ pub enum ManifestError {
         path: String,
     },
     /// A `data` entry names a file that does not exist (M61).
+    /// A `rooms` entry names a file that does not exist (redo 7.12).
+    #[error("room '{id}' references missing file: {path}")]
+    MissingRoomFile {
+        /// The room's ID.
+        id: String,
+        /// The file the entry resolves to.
+        path: String,
+    },
+    /// A `tilesets` entry names a file that does not exist (redo 7.12).
+    #[error("tileset '{id}' references missing file: {path}")]
+    MissingTilesetFile {
+        /// The tileset's ID.
+        id: String,
+        /// The file the entry resolves to.
+        path: String,
+    },
+    /// An ID both a room and a tilemap take (redo 7.12): a room's ID is its
+    /// map's.
+    #[error("'{id}' is both a room and a tilemap; a room's ID is its map's")]
+    RoomIsTilemap {
+        /// The ID.
+        id: String,
+    },
     #[error("data `{kind}` entry '{id}' references missing file: {path}")]
     MissingDataFile {
         /// The entry's kind.
@@ -87,6 +110,12 @@ pub enum ManifestError {
     /// A second root that sets a boot group (redo 7.9).
     #[error("two manifests set a `boot` group; one root sets it")]
     BootGroupTwice,
+    /// A `boot.hold` that is not finite or is below 0 (redo 7.11).
+    #[error("boot.hold must be finite and at least 0 (got {hold})")]
+    InvalidBootHold {
+        /// The hold it set, in seconds.
+        hold: f32,
+    },
     /// A `boot` field naming an ID its section lacks (redo 7.9).
     #[error("boot.{field} names unknown {section} '{id}'")]
     UnknownBootAsset {
@@ -395,6 +424,14 @@ pub struct RawManifest {
     /// Prefabs: a prefab ID and the prefab file it loads (M51).
     #[serde(default, deserialize_with = "unique_ids")]
     pub prefabs: HashMap<String, PrefabEntry>,
+    /// Tilesets: a tileset ID and the tileset file every room on it shares
+    /// (redo 7.12).
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub tilesets: HashMap<String, TilesetEntry>,
+    /// Rooms: a room ID, which its map takes, and the room file it loads
+    /// (redo 7.12).
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub rooms: HashMap<String, RoomEntry>,
     /// Data entries by kind, then ID, each with the file it loads (M61). A
     /// kind, or an ID within a kind, repeated in one manifest is a parse
     /// error; a plugin registers each kind.
@@ -417,12 +454,13 @@ pub struct RawManifest {
 
 /// The `boot` section (redo 7.9): the assets the window shows while the
 /// rest of the manifest loads, each optional and each an ID its section
-/// declares in the merged graph. Unknown keys fail the parse.
+/// declares in the merged graph, and the seconds the view shows at least
+/// (redo 7.11). Unknown keys fail the parse.
 ///
 /// ```json
-/// "boot": { "logo": "studio_logo", "bar": "load_bar", "font": "sans" }
+/// "boot": { "logo": "studio_logo", "bar": "load_bar", "font": "sans", "hold": 1.5 }
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BootGroup {
     /// A sprite drawn at the window's centre.
@@ -434,13 +472,18 @@ pub struct BootGroup {
     /// A font the progress prints in.
     #[serde(default)]
     pub font: Option<String>,
+    /// The seconds the boot view shows at least, from the first boot frame:
+    /// finite and at least 0, which the load checks; none is 0. A load that
+    /// runs longer ends the boot when it ends.
+    #[serde(default)]
+    pub hold: Option<f32>,
 }
 
 impl BootGroup {
-    /// Whether it names nothing.
+    /// Whether it sets nothing.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.logo.is_none() && self.bar.is_none() && self.font.is_none()
+        self.logo.is_none() && self.bar.is_none() && self.font.is_none() && self.hold.is_none()
     }
 }
 
@@ -876,6 +919,24 @@ pub struct PrefabEntry {
     pub path: String,
 }
 
+/// A `tilesets` entry: the tileset file's path, relative to the manifest
+/// (redo 7.12).
+#[derive(Debug, Clone, Deserialize)]
+#[non_exhaustive]
+pub struct TilesetEntry {
+    /// The tileset file, relative to the manifest.
+    pub path: String,
+}
+
+/// A `rooms` entry: the room file's path, relative to the manifest (redo
+/// 7.12).
+#[derive(Debug, Clone, Deserialize)]
+#[non_exhaustive]
+pub struct RoomEntry {
+    /// The room file, relative to the manifest.
+    pub path: String,
+}
+
 /// A `data` entry: the data file's path, relative to the manifest (M61).
 #[derive(Debug, Clone, Deserialize)]
 #[non_exhaustive]
@@ -947,6 +1008,10 @@ pub struct ResolvedManifest {
     pub ui_screens: HashMap<String, ResolvedUiScreen>,
     /// Prefabs by ID (M51).
     pub prefabs: HashMap<String, ResolvedPrefab>,
+    /// Tilesets by ID (redo 7.12).
+    pub tilesets: HashMap<String, ResolvedFile>,
+    /// Rooms by ID, each its map's ID too (redo 7.12).
+    pub rooms: HashMap<String, ResolvedFile>,
     /// Data entries by kind, then ID (M61).
     pub data: BTreeMap<String, BTreeMap<String, ResolvedDataEntry>>,
     /// Physics layer names and their layers, 0 to 31 (`D-178`).
@@ -1041,6 +1106,22 @@ pub struct ResolvedPrefab {
 
 impl ResolvedPrefab {
     /// A prefab loaded from `path`.
+    #[must_use]
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+/// A room's or a tileset's resolved file (redo 7.12).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ResolvedFile {
+    /// The file, canonical when it resolves.
+    pub path: PathBuf,
+}
+
+impl ResolvedFile {
+    /// An entry loaded from `path`.
     #[must_use]
     pub fn new(path: PathBuf) -> Self {
         Self { path }
@@ -1392,6 +1473,40 @@ impl ResolvedManifest {
                 .insert(id, ResolvedPrefab { path: full_path });
         }
 
+        for (id, entry) in raw.tilesets {
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("tilesets.{id}"),
+                |path| ManifestError::MissingTilesetFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
+            result.tilesets.insert(id, ResolvedFile::new(full_path));
+        }
+
+        for (id, entry) in raw.rooms {
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("rooms.{id}"),
+                |path| ManifestError::MissingRoomFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
+            result.rooms.insert(id, ResolvedFile::new(full_path));
+        }
+
         for (kind, entries) in raw.data {
             let section = result.data.entry(kind.clone()).or_default();
             for (id, entry) in entries {
@@ -1608,6 +1723,7 @@ impl ResolvedManifest {
                     .map(|family| format!("font_fallback.{family}")),
             )
             .chain(self.prefabs.keys().map(|id| format!("prefabs.{id}")))
+            .chain(self.rooms.keys().map(|id| format!("rooms.{id}")))
             .chain(self.data.iter().flat_map(|(kind, entries)| {
                 entries.keys().map(move |id| format!("data.{kind}.{id}"))
             }));
@@ -1639,7 +1755,26 @@ impl ResolvedManifest {
         }
         self.validate_font_refs(sink)?;
         self.validate_shared_files(sink)?;
+        self.validate_rooms(sink)?;
         self.validate_boot(sink)
+    }
+
+    /// No ID is both a room and a tilemap (redo 7.12): a room's map is
+    /// registered under the room's ID. Sorted by ID.
+    fn validate_rooms(&self, sink: &mut Sink<'_>) -> Result<(), ManifestError> {
+        let mut both: Vec<&String> = self
+            .rooms
+            .keys()
+            .filter(|id| self.tilemaps.contains_key(*id))
+            .collect();
+        both.sort();
+        for id in both {
+            sink.report_entry(
+                &format!("rooms.{id}"),
+                ManifestError::RoomIsTilemap { id: id.clone() },
+            )?;
+        }
+        Ok(())
     }
 
     /// Each file backs one prefab or data entry, since an edit routes to
@@ -1766,6 +1901,8 @@ impl ResolvedManifest {
         merge_section(&mut self.ui_themes, other.ui_themes, sink)?;
         merge_section(&mut self.ui_screens, other.ui_screens, sink)?;
         merge_section(&mut self.prefabs, other.prefabs, sink)?;
+        merge_section(&mut self.tilesets, other.tilesets, sink)?;
+        merge_section(&mut self.rooms, other.rooms, sink)?;
         for (kind, entries) in other.data {
             let section = self.data.entry(kind.clone()).or_default();
             for (id, entry) in entries {
@@ -1825,9 +1962,14 @@ impl ResolvedManifest {
     }
 
     /// The boot group's sprites and font must be declared in this graph
-    /// (redo 7.9, `D-089`).
+    /// (redo 7.9, `D-089`), and its hold finite and at least 0 (redo 7.11).
     fn validate_boot(&self, sink: &mut Sink<'_>) -> Result<(), ManifestError> {
         let boot = &self.boot;
+        if let Some(hold) = boot.hold
+            && !(hold.is_finite() && hold >= 0.0)
+        {
+            sink.report(ManifestError::InvalidBootHold { hold })?;
+        }
         for (field, id) in [("logo", &boot.logo), ("bar", &boot.bar)] {
             if let Some(id) = id
                 && !self.sprites.contains_key(id)

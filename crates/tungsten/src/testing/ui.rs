@@ -202,6 +202,29 @@ impl UiHarness {
         self.harness.input_mut().key_up(key);
     }
 
+    /// Taps `key` (S-119): down for a frame, up the next, both
+    /// [`step`](Self::step)ped. Returns the frames run.
+    pub fn tap_key(&mut self, key: KeyCode) -> u32 {
+        self.key_down(key);
+        let pressed = self.step(1);
+        self.key_up(key);
+        pressed + self.step(1)
+    }
+
+    /// Taps `action`'s first binding, as [`Harness::tap_action`] does, with
+    /// both frames [`step`](Self::step)ped, so the tree is laid out after
+    /// each. Returns the frames run.
+    ///
+    /// # Panics
+    ///
+    /// When the action map has no binding for `action`.
+    pub fn tap_action(&mut self, action: &str) -> u32 {
+        self.harness.press_action(action);
+        let pressed = self.step(1);
+        self.harness.release_action(action);
+        pressed + self.step(1)
+    }
+
     /// The shown roots from the front: the last painted first.
     fn shown_roots(&self) -> impl Iterator<Item = WidgetId> + '_ {
         let tree = self.tree();

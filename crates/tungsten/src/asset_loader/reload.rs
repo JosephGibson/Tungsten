@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use tungsten_core::assets::{
     AnimationData, AnimationRegistry, DataRegistry, FilterMode, FontRegistry, LoadedManifest,
     MaterialRegistry, ParticleConfig, ParticleConfigRegistry, ParticleMeshRegistry, PrefabRegistry,
-    ResolvedManifest, SoundData, SoundRegistry, StagedLoad, TextureHandle, TilemapData,
-    TilemapRegistry, UvRect,
+    ResolvedManifest, RoomRegistry, SoundData, SoundRegistry, StagedLoad, TextureHandle,
+    TilemapData, TilemapRegistry, UvRect,
 };
 use tungsten_core::ui::{
     ScreenFile, Theme, ThemeFile, UiScreenRegistry, UiThemeRegistry, UiTree, screen_build,
@@ -362,9 +362,12 @@ pub fn reload_particle(id: &str, path: &Path, world: &mut World) -> anyhow::Resu
 /// as before. The batch's prefab and data files stage in one `StagedLoad`
 /// and commit once, so edits saved together that need each other load
 /// together; a failure keeps every previous entry and its log names the
-/// entry and the way out, a manifest save. A batch whose manifest reloaded
-/// skips that commit, since the manifest's block read every prefab and data
-/// file again. Returns the error lines it logged.
+/// entry and the way out, a manifest save. Its room and tileset files patch
+/// the live rooms together after the prefabs (redo 7.12,
+/// `room::reload_room_files`). A batch whose manifest reloaded skips the
+/// prefabs' commit and the rooms, since the manifest's blocks read every
+/// prefab, data, tileset and room file again. Returns the error lines it
+/// logged.
 pub(crate) fn reload_json_files(
     paths: &[PathBuf],
     world: &mut World,
@@ -377,6 +380,8 @@ pub(crate) fn reload_json_files(
     };
     let mut load = StagedLoad::new();
     let mut staged = Vec::new();
+    let mut tilesets = Vec::new();
+    let mut rooms = Vec::new();
     for path in paths {
         let theme_id = world
             .get_resource::<UiThemePaths>()
@@ -400,6 +405,8 @@ pub(crate) fn reload_json_files(
             .get_resource::<DataRegistry>()
             .and_then(|data| data.entry_for_path(path))
             .map(|(kind, id)| (kind, id.to_owned()));
+        let tileset_id = super::room::tileset_for_path(world, path);
+        let room_id = super::room::room_for_path(world, path);
         if let Some(id) = theme_id {
             if let Err(e) = reload_ui_theme(&id, path, world) {
                 error(format!("Ui theme reload '{id}': {e}"));
@@ -416,8 +423,17 @@ pub(crate) fn reload_json_files(
             if let Err(e) = reload_particle(&id, path, world) {
                 error(format!("Particle reload '{id}': {e}"));
             }
-        } else if manifest_reloaded && (prefab_id.is_some() || data_entry.is_some()) {
-            // The manifest's block read this file again.
+        } else if manifest_reloaded
+            && (prefab_id.is_some()
+                || data_entry.is_some()
+                || tileset_id.is_some()
+                || room_id.is_some())
+        {
+            // The manifest's blocks read this file again.
+        } else if let Some(id) = tileset_id {
+            tilesets.push((id, path.clone()));
+        } else if let Some(id) = room_id {
+            rooms.push((id, path.clone()));
         } else if let Some(id) = prefab_id {
             match load.add_prefab(id.clone(), path.clone()) {
                 Ok(()) => staged.push(format!("prefab '{id}'")),
@@ -434,7 +450,7 @@ pub(crate) fn reload_json_files(
             }
         } else {
             log::debug!(
-                "Hot reload: no animation, particle, prefab, data entry, ui theme or ui screen registered for '{}'",
+                "Hot reload: no animation, particle, prefab, data entry, tileset, room, ui theme or ui screen registered for '{}'",
                 path.display()
             );
         }
@@ -452,6 +468,9 @@ pub(crate) fn reload_json_files(
                 failure(&e)
             )),
         }
+    }
+    if !(tilesets.is_empty() && rooms.is_empty()) {
+        super::room::reload_room_files(&tilesets, &rooms, world, "Hot reload", &mut error);
     }
     errors
 }
@@ -533,9 +552,16 @@ pub(crate) fn reload_new_tilemaps(
     new_manifest: &ResolvedManifest,
     world: &mut World,
 ) -> Vec<String> {
+    // A room's map is the room block's (redo 7.12).
+    let rooms = world.get_resource::<RoomRegistry>();
     let existing: Vec<String> = world
         .get_resource::<TilemapRegistry>()
-        .map(|tr| tr.ids().map(ToString::to_string).collect())
+        .map(|tr| {
+            tr.ids()
+                .filter(|id| rooms.is_none_or(|rooms| rooms.room(id).is_none()))
+                .map(ToString::to_string)
+                .collect()
+        })
         .unwrap_or_default();
 
     for id in &existing {
@@ -936,6 +962,10 @@ pub fn reload_manifest(
     // tilemaps and particle configs their components name, every file read
     // again and committed once; then the new maps' objects.
     reload_prefabs_and_data(&new_manifest, world, &new_maps);
+
+    // Redo 7.12: the tilesets and rooms, after the prefabs their objects
+    // name; the live rooms patched.
+    super::room::reload_rooms_from_manifest(&new_manifest, world);
 
     // Redo 7.9: new sounds load and the rest take their entries; the app
     // restarts the audio on the changed registry once the frame's reloads

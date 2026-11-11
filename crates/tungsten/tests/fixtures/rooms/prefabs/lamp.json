@@ -1,0 +1,18 @@
+{
+  "sprite": {
+    "asset_id": "lamp"
+  },
+  "tag": "lamp",
+  "components": {
+    "light": {
+      "kind": "point",
+      "radius": 48,
+      "color": [
+        1.0,
+        0.85,
+        0.6
+      ]
+    }
+  },
+  "support": "ground"
+}

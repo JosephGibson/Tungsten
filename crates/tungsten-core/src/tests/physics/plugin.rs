@@ -859,3 +859,58 @@ fn swept_is_for_sensors() {
     }
     assert!(std::panic::catch_unwind(|| RigidBody::dynamic().with_swept()).is_err());
 }
+
+#[test]
+fn a_huge_mass_is_refused_at_both_doors_or_stays_finite() {
+    // Physics review a3-5: a mass both doors took (finite, above 0, with a
+    // finite inverse) overflowed the solver's `normal_mass · (vn + bias)`
+    // against a floor, and the body went NaN within 13 steps: 1e36 at
+    // 1,000 px/s, 1e38 at 100. Each door refuses it, or its body stays
+    // finite.
+    let mut failures = Vec::new();
+    for (mass, speed) in [(1.0e36_f32, 1_000.0_f32), (1.0e38, 100.0)] {
+        for door in ["rigid_body", "with_mass"] {
+            let mut world = physics_world();
+            let mut time = Time::new();
+            time.advance_frame(DT);
+            world.insert_resource(time);
+            world.insert_resource(crate::physics::PhysicsConfig::default());
+            let floor = serde_json::json!({ "kind": "static",
+                "shape": { "kind": "aabb", "half_extents": [200.0, 10.0] } });
+            spawn_body(&mut world, Vec2::new(0.0, 100.0), &floor);
+            let value = serde_json::json!({ "kind": "dynamic",
+                "shape": { "kind": "aabb", "half_extents": [8.0, 8.0] },
+                "mass": mass, "velocity": [0.0, speed] });
+            let body = if door == "rigid_body" {
+                let registry = world.resource::<crate::component_registry::ComponentRegistry>();
+                if registry.check("rigid_body", &value).is_err() {
+                    continue;
+                }
+                spawn_body(&mut world, Vec2::new(0.0, 60.0), &value)
+            } else {
+                let Ok(body) = std::panic::catch_unwind(|| RigidBody::dynamic().with_mass(mass))
+                else {
+                    continue;
+                };
+                let at = Position::new(0.0, 60.0);
+                world.spawn_with(
+                    RigidBodyBundle::dynamic(at, Collider::aabb(Vec2::splat(8.0)))
+                        .with_body(body)
+                        .with_velocity(Velocity::new(0.0, speed)),
+                )
+            };
+            for step in 0..30 {
+                physics_step(&mut world);
+                let at = world.get::<Position>(body).unwrap().0;
+                let v = world.get::<Velocity>(body).unwrap().0;
+                if !(at.is_finite() && v.is_finite()) {
+                    failures.push(format!(
+                        "{door}: mass {mass:e} at {speed} px/s: {at}, {v} at step {step}"
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}

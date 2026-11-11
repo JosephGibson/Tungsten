@@ -44,7 +44,34 @@ pub enum Binding {
     },
 }
 
+/// The device a binding is on, for a bindings screen's cells (S-124): a
+/// key, mouse button or wheel binding is the keyboard's, a pad button or
+/// stick direction the gamepad's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BindingDevice {
+    /// Keys, mouse buttons and the wheel.
+    Keyboard,
+    /// Pad buttons and stick directions.
+    Gamepad,
+}
+
 impl Binding {
+    /// Whether this is a pad button or a stick direction (S-124).
+    #[must_use]
+    pub fn is_gamepad(self) -> bool {
+        matches!(self, Self::GamepadButton { .. } | Self::GamepadAxis { .. })
+    }
+
+    /// The device this binding is on.
+    #[must_use]
+    pub fn device(self) -> BindingDevice {
+        if self.is_gamepad() {
+            BindingDevice::Gamepad
+        } else {
+            BindingDevice::Keyboard
+        }
+    }
+
     /// What a prompt shows for this binding (M56): the physical key's US
     /// label (`W`, `Space`, `Esc`, `Left Shift`), `Left Mouse`, `Wheel Up`,
     /// an Xbox-style pad button (`A`, `LB`, `D-Pad Up`) or a stick direction
@@ -137,15 +164,28 @@ fn shorten(label: &str) -> Cow<'static, str> {
 ///
 /// Three layers, per action: the engine defaults, the shipped `input.json`
 /// and, through [`with_user_layer`](Self::with_user_layer), the player's
-/// `input.json` in the user folder (`D-159`).
+/// `input.json` in the user folder (`D-159`). The shipped file may list the
+/// actions a player rebinds, with their labels, in `labels` (S-68):
+///
+/// ```json
+/// { "actions": { "move_up": [{ "kind": "key", "code": "KeyW" }] },
+///   "labels": [["move_up", "Move up"]] }
+/// ```
+///
+/// The kit's `action_input` moves the map out of the `World` and back every
+/// fixed step, so its size is a counter guard's: the labels are boxed and
+/// the source text a boxed `str`, which keeps it as it was before them.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ActionMap {
     #[serde(default)]
     actions: HashMap<String, Vec<Binding>>,
+    /// The rebindable actions and their labels, in file order (S-68).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    labels: Option<Box<Labels>>,
     #[serde(skip)]
     source_path: Option<PathBuf>,
     #[serde(skip)]
-    source_text: Option<String>,
+    source_text: Option<Box<str>>,
     /// The actions before the user layer; a save writes only the difference.
     #[serde(skip)]
     base: Option<HashMap<String, Vec<Binding>>>,
@@ -154,6 +194,11 @@ pub struct ActionMap {
     #[serde(skip)]
     load_warnings: Vec<String>,
 }
+
+/// `input.json`'s `labels`: `[action, label]` pairs in file order.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+struct Labels(Vec<(String, String)>);
 
 #[derive(Debug, Error)]
 pub enum ActionMapError {
@@ -337,6 +382,22 @@ impl ActionMap {
             vec![Binding::Key { code: KeyCode::F9 }],
         );
         actions.insert(
+            "engine_toggle_level_editor".into(),
+            vec![Binding::Key { code: KeyCode::F10 }],
+        );
+        actions.insert(
+            "engine_editor_primary".into(),
+            vec![Binding::Mouse {
+                button: MouseButton::Left,
+            }],
+        );
+        actions.insert(
+            "engine_editor_secondary".into(),
+            vec![Binding::Mouse {
+                button: MouseButton::Right,
+            }],
+        );
+        actions.insert(
             "engine_toggle_fullscreen".into(),
             vec![Binding::Key { code: KeyCode::F11 }],
         );
@@ -441,24 +502,58 @@ impl ActionMap {
     }
 
     /// Parse action map JSON text. A leading byte-order mark is skipped, and
-    /// kept in the text a persist patches.
+    /// kept in the text a persist patches. A `labels` entry naming an action
+    /// bound neither here nor in the [defaults](Self::default_map), a `ui_`
+    /// or `engine_` action, or an action twice fails the parse, so the menus
+    /// cannot be lost to a rebind.
     pub fn from_json(contents: &str, path: &Path) -> Result<Self, ActionMapError> {
         let json = contents.strip_prefix('\u{feff}').unwrap_or(contents);
-        let mut map: Self = serde_json::from_str(json).map_err(|source| ActionMapError::Parse {
+        let parse_error = |source| ActionMapError::Parse {
             path: path.display().to_string(),
             source,
-        })?;
+        };
+        let mut map: Self = serde_json::from_str(json).map_err(parse_error)?;
+        if let Err(reason) = map.check_labels() {
+            return Err(parse_error(serde::de::Error::custom(reason)));
+        }
         map.deduplicate_bindings();
         map.source_path = Some(path.to_path_buf());
-        map.source_text = Some(contents.to_string());
+        map.source_text = Some(contents.into());
         Ok(map)
     }
 
-    /// Merge loaded map over defaults; empty list disables action.
+    /// The `labels` rule [`from_json`](Self::from_json) holds a file to.
+    fn check_labels(&self) -> Result<(), String> {
+        let labels = self.labelled();
+        if labels.is_empty() {
+            return Ok(());
+        }
+        let defaults = Self::default_map();
+        for (at, (action, _)) in labels.iter().enumerate() {
+            if action.starts_with("ui_") || action.starts_with("engine_") {
+                return Err(format!(
+                    "labels: '{action}' is the UI's or the engine's, never rebound"
+                ));
+            }
+            if !self.actions.contains_key(action) && !defaults.actions.contains_key(action) {
+                return Err(format!(
+                    "labels: '{action}' is bound neither in the file nor in the defaults"
+                ));
+            }
+            if labels[..at].iter().any(|(each, _)| each == action) {
+                return Err(format!("labels: '{action}' is listed twice"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Merge loaded map over defaults; empty list disables action. The
+    /// loaded map's labels are kept.
     #[must_use]
     pub fn merged_with_defaults(loaded: Self) -> Self {
         let ActionMap {
             actions,
+            labels,
             source_path,
             source_text,
             ..
@@ -468,6 +563,7 @@ impl ActionMap {
             merged.actions.insert(action, bindings);
         }
         merged.deduplicate_bindings();
+        merged.labels = labels;
         merged.source_path = source_path;
         merged.source_text = source_text;
         merged
@@ -475,7 +571,8 @@ impl ActionMap {
 
     /// Lays the user's bindings at `path` over this map, per action, and
     /// makes `path` where `persist` writes, saving only the actions whose
-    /// bindings differ from this map. `None`: no user layer, and `persist`
+    /// bindings differ from this map, and no labels: this map's stay, and a
+    /// user file's are ignored. `None`: no user layer, and `persist`
     /// returns `MissingSourcePath`. A corrupt user file is renamed to
     /// `input.json.bad`; warnings wait in [`take_load_warnings`](Self::take_load_warnings).
     #[must_use]
@@ -555,7 +652,7 @@ impl ActionMap {
             source: error.into_source(),
         })?;
         self.source_path = Some(path.to_path_buf());
-        self.source_text = Some(rendered);
+        self.source_text = Some(rendered.into_boxed_str());
         Ok(())
     }
 
@@ -569,6 +666,96 @@ impl ActionMap {
         let mut bindings = bindings;
         dedupe_in_place(&mut bindings);
         self.actions.insert(action.into(), bindings);
+    }
+
+    /// The rebindable actions and their labels, in `input.json`'s `labels`
+    /// order (S-68); empty when the file lists none.
+    #[must_use]
+    pub fn labelled(&self) -> &[(String, String)] {
+        self.labels
+            .as_deref()
+            .map_or(&[], |labels| labels.0.as_slice())
+    }
+
+    /// `action`'s label from `labels`, when it is listed.
+    #[must_use]
+    pub fn label(&self, action: &str) -> Option<&str> {
+        self.labelled()
+            .iter()
+            .find(|(each, _)| each == action)
+            .map(|(_, label)| label.as_str())
+    }
+
+    /// The `index`th of `action`'s bindings on `device` (S-124), in their
+    /// order: a bindings screen's cell.
+    #[must_use]
+    pub fn binding_at(&self, action: &str, device: BindingDevice, index: usize) -> Option<Binding> {
+        self.bindings(action)
+            .iter()
+            .filter(|binding| binding.device() == device)
+            .nth(index)
+            .copied()
+    }
+
+    /// Replaces the [`binding_at`](Self::binding_at) cell with `binding`,
+    /// or appends `binding` when the cell is empty; a binding the action
+    /// already holds elsewhere is then dropped there, as
+    /// [`replace_bindings`](Self::replace_bindings) drops duplicates. Call
+    /// `persist` to save.
+    pub fn set_binding_at(
+        &mut self,
+        action: &str,
+        device: BindingDevice,
+        index: usize,
+        binding: Binding,
+    ) {
+        let mut bindings = self.bindings(action).to_vec();
+        let at = bindings
+            .iter()
+            .enumerate()
+            .filter(|(_, each)| each.device() == device)
+            .nth(index)
+            .map(|(at, _)| at);
+        match at {
+            Some(at) => bindings[at] = binding,
+            None => bindings.push(binding),
+        }
+        self.replace_bindings(action, bindings);
+    }
+
+    /// `action`'s bindings under the user layer (S-168): the shipped
+    /// `input.json`'s over the defaults, or, with no user layer set, the
+    /// map's own.
+    #[must_use]
+    pub fn shipped(&self, action: &str) -> &[Binding] {
+        match &self.base {
+            Some(base) => base.get(action).map_or(&[], Vec::as_slice),
+            None => self.bindings(action),
+        }
+    }
+
+    /// Returns `action` to its [`shipped`](Self::shipped) bindings. Call
+    /// `persist` to save.
+    pub fn reset(&mut self, action: &str) {
+        let Some(base) = &self.base else {
+            return;
+        };
+        match base.get(action) {
+            Some(bindings) => {
+                self.actions.insert(action.to_owned(), bindings.clone());
+            }
+            None => {
+                self.actions.remove(action);
+            }
+        }
+    }
+
+    /// Returns every action to its [`shipped`](Self::shipped) bindings, so
+    /// a `persist` writes no player binding. Call `persist` to save.
+    pub fn reset_all(&mut self) {
+        if let Some(base) = &self.base {
+            self.actions.clone_from(base);
+        }
     }
 
     /// Replace bindings and persist immediately.

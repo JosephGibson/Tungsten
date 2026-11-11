@@ -1254,6 +1254,114 @@ fn a_spread_flood_stays_under_its_bound() {
     assert_eq!(left, 0, "unburnt after {runs} runs");
 }
 
+/// What three passes of [`stimuli::spread`] leave in a fresh queue over
+/// `receivers`, a take after each and the stamps begun again before the
+/// third: the entries after each pass and each take, the queue's counts
+/// and the probes the passes skipped. `probe_all` probes the index for every candidate,
+/// as the pass did before it kept slots.
+fn spread_passes(
+    world: &mut World,
+    receivers: &[Entity],
+    probe_all: bool,
+) -> (Vec<Vec<queue::Entry>>, [u64; 3], u64) {
+    let mut queue = Chemistry::default();
+    let [heat, ping, nothing] = ["heat", "ping", "nothing"].map(|name| queue.intern(name));
+    // One receiver takes no entry.
+    queue.hold(receivers[9]);
+    world.insert_resource(queue);
+    // A bound the field passes and a depth one emission passes.
+    let settings = Settings {
+        bound: 40,
+        depth: 3,
+        ..Settings::default()
+    };
+    let emission =
+        |stimulus, at: usize, amount, radius, depth, credit: Option<usize>| stimuli::Emission {
+            stimulus,
+            amount,
+            radius,
+            point: Vec2::new((at % 6) as f32 * 24.0, (at / 6) as f32 * 24.0),
+            from: Some(Receiver::Entity(receivers[at])),
+            credit: credit.map(|at| receivers[at]),
+            depth,
+        };
+    // Each stimulus between runs of the other, one past the depth and one
+    // no rule answers, over the same receivers.
+    let emissions = vec![
+        emission(heat, 7, 1.0, 50.0, 0, Some(7)),
+        emission(heat, 8, 2.5, 50.0, 1, Some(8)),
+        emission(ping, 7, 3.0, 30.0, 0, None),
+        emission(nothing, 7, 9.0, 80.0, 0, None),
+        emission(heat, 14, 0.5, 80.0, 0, Some(14)),
+        emission(heat, 14, 4.0, 80.0, 4, Some(2)),
+        emission(ping, 15, 1.5, 80.0, 2, Some(15)),
+        emission(heat, 21, 1.0, 60.0, 3, None),
+        emission(ping, 20, 1.0, 200.0, 0, None),
+        emission(heat, 28, 2.0, 200.0, 0, Some(28)),
+    ];
+    let mut reach = stimuli::Reach::default();
+    reach.probe_all = probe_all;
+    let mut entries = Vec::new();
+    let mut taken = Vec::new();
+    for pass in 0..3_u64 {
+        reach.clear();
+        // The second pass reaches a few receivers alone, so the rest keep
+        // the first's stamp into the third, which begins the stamps again.
+        let count = if pass == 1 { 3 } else { emissions.len() };
+        let mut emitted = emissions[..count].to_vec();
+        stimuli::spread(
+            world,
+            &settings,
+            &mut emitted,
+            &mut reach,
+            |name| name != "nothing",
+            pass,
+        );
+        entries.push(chemistry(world).entries());
+        // A run's take frees slots the next pass fills with other pairs.
+        let mut queue = world.remove_resource::<Chemistry>().unwrap();
+        queue.take(world, 11, pass, &mut taken);
+        world.insert_resource(queue);
+        entries.push(chemistry(world).entries());
+        if pass == 1 {
+            reach.end_stamps();
+        }
+    }
+    let queue = chemistry(world);
+    let counts = [queue.pending() as u64, queue.dropped(), queue.cut()];
+    (entries, counts, reach.skipped)
+}
+
+#[test]
+fn a_pass_that_keeps_its_slots_queues_what_a_probe_a_candidate_does() {
+    let (mut world, _) = rig();
+    let receivers: Vec<Entity> = (0..36)
+        .map(|i| {
+            let at = Vec2::new((i % 6) as f32 * 24.0, (i / 6) as f32 * 24.0);
+            world.spawn_with((Tags::new(["flammable"]), Transform::from_position(at)))
+        })
+        .collect();
+    let (kept, kept_counts, skipped) = spread_passes(&mut world, &receivers, false);
+    let (probed, probed_counts, none) = spread_passes(&mut world, &receivers, true);
+    assert_eq!(none, 0, "the reference probes every candidate");
+    assert!(skipped > 100, "{skipped} probes skipped");
+    for (at, (kept, probed)) in kept.iter().zip(&probed).enumerate() {
+        assert_eq!(kept, probed, "the entries at {at}");
+    }
+    assert_eq!(kept_counts, probed_counts, "pending, dropped and cut");
+    let [pending, dropped, cut] = kept_counts;
+    assert!(
+        pending > 0 && dropped > 0 && cut > 0,
+        "{pending} pending, {dropped} dropped, {cut} cut"
+    );
+    // The held receiver took no entry, kept slot or not.
+    assert!(
+        kept.iter()
+            .flatten()
+            .all(|entry| entry.receiver != Receiver::Entity(receivers[9]))
+    );
+}
+
 #[test]
 fn impacts_stimulate_by_closing_speed() {
     let seen = Seen::default();

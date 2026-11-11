@@ -24,6 +24,7 @@ mod atlas;
 pub(crate) mod check;
 mod prefab;
 mod reload;
+pub(crate) mod room;
 mod scene;
 
 pub use atlas::{
@@ -74,6 +75,38 @@ pub(crate) fn allocate_engine_glow(materials: &mut MaterialRegistry) -> Material
         GLOW_SHADER.to_string(),
         engine_glow_defaults(),
     )
+}
+
+/// The kit's hit-flash material (redo 7.11, S-149), `HIT_FLASH_MATERIAL`
+/// in `tungsten::kit`, and its shader, compiled in: a load allocates it
+/// after the stock glow unless the manifest declares it.
+const HIT_FLASH: &str = "damage_flash";
+
+/// The engine's `damage_flash` defaults: the overlay colour `vec4[0]` a
+/// red-orange, `[1.0, 0.2, 0.1, 1.0]`, and no amount, which the flash
+/// raises.
+#[must_use]
+pub(crate) fn hit_flash_defaults() -> MaterialUniformDefaults {
+    MaterialUniformDefaults {
+        vec4: [[1.0, 0.2, 0.1, 1.0], [0.0; 4], [0.0; 4], [0.0; 4]],
+        ..MaterialUniformDefaults::default()
+    }
+}
+
+/// Allocates the engine's `damage_flash` in `materials`, after the stock
+/// glow, when `manifest` declares no material of that name; its ID then.
+pub(crate) fn allocate_hit_flash(
+    manifest: &ResolvedManifest,
+    materials: &mut MaterialRegistry,
+) -> Option<MaterialAssetId> {
+    (!manifest.materials.contains_key(HIT_FLASH)).then(|| {
+        materials.allocate(
+            HIT_FLASH,
+            PathBuf::new(),
+            HIT_FLASH.to_string(),
+            hit_flash_defaults(),
+        )
+    })
 }
 
 /// A manifest that names a reserved sprite or material.
@@ -504,6 +537,12 @@ fn load_materials_into(
     if let Err(e) = renderer.upload_material(glow, ENGINE_GLOW, GLOW_SHADER, engine_glow_defaults())
     {
         log::error!("load_materials '{ENGINE_GLOW}': {e}");
+    }
+    // The kit's hit flash, after it, unless the manifest has its own.
+    if let Some(flash) = allocate_hit_flash(manifest, &mut registry)
+        && let Err(e) = renderer.upload_material(flash, HIT_FLASH, HIT_FLASH, hit_flash_defaults())
+    {
+        log::error!("load_materials '{HIT_FLASH}': {e}");
     }
 
     world.insert_resource(registry);
@@ -1028,6 +1067,10 @@ pub enum LoadUnit {
     Particles,
     /// The physics layer names and materials.
     PhysicsNames,
+    /// One tileset (redo 7.12).
+    Tileset(String),
+    /// One room, compiled and its map registered (redo 7.12).
+    Room(String),
     /// The prefabs and data entries, in two phases.
     Prefabs,
     /// Animation frames, tilesets and particle configs against the sprites
@@ -1085,6 +1128,11 @@ impl LoadPlan {
         world.insert_resource(FontRegistry::new());
         world.insert_resource(SoundRegistry::new());
         world.insert_resource(TilemapRegistry::new());
+        // Redo 7.12: a manifest without rooms or tilesets inserts no
+        // registry, so its load allocates nothing new.
+        if room::has_rooms(&manifest) {
+            world.insert_resource(tungsten_core::assets::RoomRegistry::new());
+        }
 
         let files: Vec<Vec<String>> = atlas::sprites_by_file(&manifest)
             .into_iter()
@@ -1118,9 +1166,10 @@ impl LoadPlan {
             LoadUnit::ParticleMeshes,
             LoadUnit::Particles,
             LoadUnit::PhysicsNames,
-            LoadUnit::Prefabs,
-            LoadUnit::CrossChecks,
         ]);
+        units.extend(named(sorted_keys(&manifest.tilesets), LoadUnit::Tileset));
+        units.extend(named(sorted_keys(&manifest.rooms), LoadUnit::Room));
+        units.extend([LoadUnit::Prefabs, LoadUnit::CrossChecks]);
         Self {
             manifest,
             units,
@@ -1278,6 +1327,8 @@ impl LoadPlan {
             LoadUnit::ParticleMeshes => load_particle_meshes_into(manifest, world, target),
             LoadUnit::Particles => load_particles(manifest, world)?,
             LoadUnit::PhysicsNames => load_physics_names(manifest, world),
+            LoadUnit::Tileset(id) => room::load_tileset_unit(manifest, id, world)?,
+            LoadUnit::Room(id) => room::load_room_unit(manifest, id, world)?,
             LoadUnit::Prefabs => load_prefabs(manifest, world)?,
             LoadUnit::CrossChecks => cross_check(manifest, world)?,
         }

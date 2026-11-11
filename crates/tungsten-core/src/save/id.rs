@@ -281,7 +281,23 @@ pub fn name(
             prefab: None,
         },
     );
+    pick_variant(world, entity, id);
     Ok(id)
+}
+
+/// Shows the variant save identity `id` picks on `entity`, when it holds
+/// [`SpriteVariants`](crate::components::SpriteVariants): the naming, the
+/// flush's and a restore's identity pick again, so a saved spawn shows the
+/// same variant after a load with nothing saved (redo 7.12, S-58). The
+/// sprite is written in place: no archetype move.
+pub(crate) fn pick_variant(world: &mut World, entity: Entity, id: SaveId) {
+    let Some(variants) = world.get::<crate::components::SpriteVariants>(entity) else {
+        return;
+    };
+    let chosen = variants.by_save_id(id);
+    if let Some(sprite) = world.get_mut::<crate::components::Sprite>(entity) {
+        sprite.asset_id = chosen;
+    }
 }
 
 /// `entity`'s registered components, serialized: what a capture writes

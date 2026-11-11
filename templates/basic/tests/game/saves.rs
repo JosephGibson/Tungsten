@@ -10,11 +10,12 @@ use tungsten::StateStack;
 use tungsten::core::save::{SaveStamp, Saved, Value};
 use tungsten::core::ui::WidgetKind;
 use tungsten::core::{Entity, Position, SaveData, SaveSlots, Time, UserFolder};
-use tungsten::kit::{Counters, Effects, Health, Hit, damage};
+use tungsten::kit::{Counters, Effects, Flags, Health, Hit, Spawner, damage};
 use tungsten::testing::UiHarness;
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::{
-    AREA, ENEMIES, GEM_STARTS, HAZARD_START, PLAYER_START, SPAWN_GRACE, SampleRun,
+    AREA, DAMAGE_NUMBERS_FLAG, ENEMIES, ENEMY_RETURN_SECS, GEM_STARTS, HAZARD_START, PLAYER_START,
+    SPAWN_GRACE, SampleRun,
 };
 use tungsten_template_basic::save::{self, SaveGame};
 use tungsten_template_basic::shell::confirm::CONFIRM;
@@ -28,8 +29,8 @@ use tungsten_template_basic::shell::{
 };
 
 use super::{
-    harness_with, health, player_entity, player_position, press, settle, slot_file, start, tap,
-    top, user_folder,
+    enemy, harness_with, health, player_entity, player_position, press, settle, slot_file, start,
+    tap, top, user_folder,
 };
 
 /// A save's data as its file holds it, read whole.
@@ -157,8 +158,100 @@ fn older_sample_saves_read_as_older() {
         let state = &states.iter().find(|(name, _)| *name == slot).unwrap().1;
         assert!(matches!(state, SlotState::Older(_)), "{slot}");
     }
-    assert_eq!(<SaveGame as SaveData>::SCHEMA, 4);
+    assert_eq!(<SaveGame as SaveData>::SCHEMA, 5);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_schema_4_save_reads_as_older() {
+    let dir = user_folder("schema-4");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let save = save::capture(harness.world()).expect("a live run");
+    // Schema 4's shape: the World beside each fallen enemy's seconds down,
+    // here the still one's.
+    let mut value = json_of(&save);
+    let still = Value::Array(vec![Value::from(2), Value::from(1.5)]);
+    value["down"] = Value::Array(vec![still]);
+    let stamp = SaveStamp::new(4, "0.116.0", 4_000);
+    SaveSlots::new(Some(dir.join("saves")))
+        .save_stamped("slot_1", &Raw(value), &stamp)
+        .unwrap();
+    let (states, _) = shell::read_slots(harness.world_mut());
+    let state = &states.iter().find(|(name, _)| *name == "slot_1").unwrap().1;
+    assert!(
+        matches!(state, SlotState::Older(_)),
+        "the default step refuses it"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_saved_fallen_enemy_returns_after_its_time_left() {
+    const STILL: usize = 2;
+    let mut harness = super::harness();
+    start(&mut harness);
+    let still = enemy(&harness, STILL).expect("the still enemy stands");
+    assert_eq!(damage(harness.world_mut(), still, 3.0), Hit::Killed);
+    // Down a second and a half, then saved and continued.
+    harness.step(90);
+    assert_eq!(enemy(&harness, STILL), None);
+    let save = save::capture(harness.world()).expect("a live run");
+    shell::start_run(harness.world_mut(), save.into(), None);
+    settle(&mut harness);
+    assert_eq!(top(&harness), Some(game::GAMEPLAY));
+    assert_eq!(enemy(&harness, STILL), None, "still down");
+    let spawner = harness.world().resource::<SampleRun>().spawners[STILL].1;
+    let timer = *harness.world().get::<Spawner>(spawner).unwrap().timer();
+    let down = ENEMY_RETURN_SECS - timer.remaining();
+    // The save's 1.5 s, and the curtain's game time since the load.
+    assert!((1.45..=1.8).contains(&down), "{down} s down");
+    let mut frames = 0;
+    while enemy(&harness, STILL).is_none() {
+        harness.step(1);
+        frames += 1;
+        assert!(frames < 240, "never back");
+    }
+    let expected = timer.remaining() * 60.0;
+    assert!(
+        (frames as f32 - expected).abs() <= 2.0,
+        "back after {frames} frames, {expected} left"
+    );
+    let at = harness
+        .world()
+        .get::<Position>(enemy(&harness, STILL).unwrap());
+    assert_eq!(at.unwrap().0, ENEMIES[STILL].1.into(), "at its place");
+}
+
+#[test]
+fn a_continued_run_keeps_the_current_damage_numbers_option() {
+    let holds = |value: &Value| {
+        let flags = value["world"]["resources"]["flags"].as_array();
+        flags.is_some_and(|names| names.contains(&Value::from(DAMAGE_NUMBERS_FLAG)))
+    };
+    let flagged = |harness: &UiHarness| {
+        let flags = harness.world().resource::<Flags>();
+        flags.has(DAMAGE_NUMBERS_FLAG)
+    };
+    for shown in [false, true] {
+        let mut harness = super::harness();
+        let options = harness.world_mut().resource_mut::<GameOptions>();
+        options.damage_numbers = !shown;
+        start(&mut harness);
+        let save = save::capture(harness.world()).expect("a live run");
+        assert_eq!(holds(&json_of(&save)), !shown, "the save holds the flag");
+        let options = harness.world_mut().resource_mut::<GameOptions>();
+        options.damage_numbers = shown;
+        shell::start_run(harness.world_mut(), save.into(), None);
+        settle(&mut harness);
+        assert_eq!(top(&harness), Some(game::GAMEPLAY));
+        assert_eq!(flagged(&harness), shown, "the option over the save's flags");
+        let dummy = harness.world().resource::<SampleRun>().dummy;
+        assert_eq!(damage(harness.world_mut(), dummy, 1.0), Hit::Hurt);
+        harness.step(1);
+        let draw = harness.harness().draw().unwrap();
+        assert_eq!(!draw.world_labels.is_empty(), shown, "a label: {shown}");
+    }
 }
 
 #[test]
@@ -188,7 +281,7 @@ fn continue_restores_the_run_in_a_churned_world() {
     tap(&mut harness, "state_pause");
     harness.step(1);
     let orbiter = |harness: &UiHarness| {
-        let entity = harness.world().resource::<SampleRun>().enemies[1].entity;
+        let entity = enemy(harness, 1)?;
         harness.world().get::<Position>(entity).map(|at| at.0)
     };
     let bolts = |harness: &UiHarness| -> Vec<[f32; 2]> {
@@ -304,7 +397,7 @@ fn a_continued_run_survives_its_first_two_seconds() {
     let places = [
         [HAZARD_START[0] + 1.0, HAZARD_START[1]],
         [orbiter[0] + 64.0, orbiter[1]],
-        [640.0, 80.0],
+        ENEMIES[3].1,
     ];
     for (n, at) in places.into_iter().enumerate() {
         let save = low_health_save(at);

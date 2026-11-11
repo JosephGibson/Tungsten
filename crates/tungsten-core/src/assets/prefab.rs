@@ -33,6 +33,19 @@
 //! that source as the flush finds it ([`World::inherit_from_source`]), a
 //! state's marker say, each type the spawn lacks, in one more move; a source
 //! an earlier command despawned drops the spawn.
+//!
+//! A prefab file may be a variant of another (S-140): `"extends": "<id>"`
+//! names its base, and its resolved form is the base's resolved fields with
+//! the file's top-level fields over them, `components` merging component by
+//! component, member by member, as a map object's properties merge (objects
+//! recursively, arrays and scalars replaced). The registry keeps each
+//! variant's file JSON, and every load's commit resolves every variant
+//! again, so a base's reload reaches its variants.
+//!
+//! ```json
+//! { "extends": "slime", "sprite": { "asset_id": "slime_red" },
+//!   "components": { "health": { "max": 30 } } }
+//! ```
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -53,7 +66,7 @@ use crate::assets::tilemap::{MapObject, TilemapData, TilemapRegistry};
 use crate::component_registry::{
     ComponentError, ComponentRegistry, PreparedComponent, SpawnContext,
 };
-use crate::components::{Sprite, Tag, Transform, Visibility};
+use crate::components::{Sprite, SpriteVariants, Tag, Transform, Visibility};
 use crate::ecs::{Bundle, CommandBuffer, Entity, PendingEntity, World};
 use crate::tween::Tween;
 
@@ -62,10 +75,22 @@ use crate::tween::Tween;
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct PrefabData {
+    /// The prefab this one is a variant of, by ID (S-140). A load resolves
+    /// it at its commit, its file's fields over the base's; a prefab
+    /// inserted in code is taken as given, `extends` naming nothing to
+    /// resolve.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<String>,
     /// The sprite, by its manifest ID. The spawn interns the name, so a
     /// sprite that a later manifest reload registers draws from then on.
+    /// With `variants`, each spawn shows one of the pool (redo 7.12, S-58):
+    /// by its save identity once it has one, else by its spawn position.
     #[serde(default)]
     pub sprite: Option<SceneSprite>,
+    /// The spawn's `Transform.scale` (redo 7.12, S-129), each axis finite
+    /// and above 0; `[1, 1]` by default.
+    #[serde(default = "one_scale", skip_serializing_if = "is_one_scale")]
+    pub scale: [f32; 2],
     /// `Visibility.visible`, `= true`.
     #[serde(default = "default_visible")]
     pub visible: bool,
@@ -84,6 +109,11 @@ pub struct PrefabData {
         deserialize_with = "strict_components"
     )]
     pub components: BTreeMap<String, Value>,
+    /// How a room judges the prefab's sprite supported (redo 7.12,
+    /// `D-214` generalized): on the ground, hung under a ceiling or against
+    /// a wall. Read only by the level rules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support: Option<crate::assets::room::Support>,
 }
 
 impl PrefabData {
@@ -104,9 +134,10 @@ impl PrefabData {
     ///
     /// A prefab that names other prefabs or data entries loads with them in
     /// one [`StagedLoad`](crate::assets::data::StagedLoad), which checks
-    /// after every file is in place.
+    /// after every file is in place; so does a variant, which its commit
+    /// resolves over its base. This reads the file's own fields.
     pub fn load(path: &Path, world: &World) -> Result<Self, PrefabError> {
-        let data = Self::parse(path)?;
+        let (data, _) = Self::parse(path)?;
         data.validate(world)
             .map_err(|message| PrefabError::Validation {
                 path: path.display().to_string(),
@@ -115,24 +146,51 @@ impl PrefabData {
         Ok(data)
     }
 
-    /// Phase one of a load: reads and parses `path`, with no World check.
-    pub(crate) fn parse(path: &Path) -> Result<Self, PrefabError> {
+    /// Phase one of a load: reads and parses `path`, with no World check;
+    /// for a variant (its file names `extends`), the file's JSON too, which
+    /// the commit resolves over the base.
+    pub(crate) fn parse(path: &Path) -> Result<(Self, Option<Value>), PrefabError> {
         let file = || path.display().to_string();
         let contents = std::fs::read_to_string(path).map_err(|source| PrefabError::Io {
             path: file(),
             source,
         })?;
-        serde_json::from_str(&contents).map_err(|source| PrefabError::Parse {
+        let parse = |source| PrefabError::Parse {
             path: file(),
             source,
-        })
+        };
+        let data: Self = serde_json::from_str(&contents).map_err(parse)?;
+        if data.extends.is_none() {
+            return Ok((data, None));
+        }
+        let json: Value = serde_json::from_str(&contents).map_err(parse)?;
+        Ok((data, Some(json)))
     }
 
-    /// Phase two of a load: the fields' checks, then each component's
-    /// `check_in` against `world`, a missing prefab or data ID with the
-    /// nearest one appended.
+    /// Phase two of a load: the fields' checks, each sprite variant against
+    /// the names the World's `AssetRegistry` holds (as a load-time sprite
+    /// check reads one, an ability's `icon`; the base `asset_id` is interned
+    /// at the spawn, as before), then each component's `check_in` against
+    /// `world`, a missing prefab, data or sprite ID with the nearest one
+    /// appended.
     pub(crate) fn validate(&self, world: &World) -> Result<(), String> {
         self.validate_fields()?;
+        if let Some(sprite) = &self.sprite {
+            let sprites = world.get_resource::<AssetRegistry>();
+            for (i, variant) in sprite.variants.iter().enumerate() {
+                if sprites.is_none_or(|sprites| sprites.sprite_id(variant).is_none()) {
+                    let hint = sprites.and_then(|sprites| {
+                        let mut names: Vec<&str> = sprites.sprite_names().collect();
+                        names.sort_unstable();
+                        data::nearest(variant, names.into_iter())
+                    });
+                    return Err(format!(
+                        "sprite.variants[{i}]: unknown sprite ID `{variant}`{}",
+                        data::did_you_mean(hint)
+                    ));
+                }
+            }
+        }
         let empty = ComponentRegistry::new();
         let registry = world.get_resource::<ComponentRegistry>().unwrap_or(&empty);
         for (name, value) in &self.components {
@@ -149,11 +207,28 @@ impl PrefabData {
         Ok(())
     }
 
-    /// The checks of the prefab's own fields: at most one tween, and each
+    /// The checks of the prefab's own fields: a scale finite and above 0, a
+    /// variant list naming no sprite twice, at most one tween, and each
     /// tween's own. [`load`](Self::load) runs them, and every spawn runs them
     /// again, since data deserialized in code and inserted into the
     /// [`PrefabRegistry`] skips the load.
     fn validate_fields(&self) -> Result<(), String> {
+        let [x, y] = self.scale;
+        if !(x.is_finite() && y.is_finite() && x > 0.0 && y > 0.0) {
+            return Err(format!(
+                "scale: each axis is finite and above 0 (got [{x}, {y}])"
+            ));
+        }
+        if let Some(sprite) = &self.sprite {
+            for (i, variant) in sprite.variants.iter().enumerate() {
+                let earlier = std::iter::once(&sprite.asset_id).chain(&sprite.variants[..i]);
+                if variant.is_empty() || earlier.into_iter().any(|seen| seen == variant) {
+                    return Err(format!(
+                        "sprite.variants[{i}]: `{variant}` is empty or already in the pool"
+                    ));
+                }
+            }
+        }
         if self.tweens.len() > 1 {
             return Err(format!(
                 "tweens: a prefab holds at most one tween (got {})",
@@ -169,6 +244,19 @@ impl PrefabData {
     }
 }
 
+/// A prefab's default scale.
+fn one_scale() -> [f32; 2] {
+    [1.0, 1.0]
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes a reference"
+)]
+fn is_one_scale(scale: &[f32; 2]) -> bool {
+    *scale == [1.0, 1.0]
+}
+
 /// The loaded prefabs by ID, a `World` resource: what
 /// [`World::prepare_prefab`] reads. The umbrella's loader fills it from the
 /// manifest's `prefabs` section. Each file backs one prefab.
@@ -179,6 +267,18 @@ pub struct PrefabRegistry {
     paths: BTreeMap<String, PathBuf>,
     /// The reverse of `paths`: the prefab each file routes to.
     path_to_id: HashMap<PathBuf, String>,
+    /// The file JSON of each prefab whose file extends another, by ID, which
+    /// every load's commit resolves again over its base (S-140); none for a
+    /// prefab that extends nothing.
+    variants: BTreeMap<String, Value>,
+}
+
+/// A prefab's registry entry as a staged load takes and puts it back: its
+/// data, its file and, for a variant, the file's JSON.
+pub(crate) struct StoredPrefab {
+    pub(crate) data: PrefabData,
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) variant: Option<Value>,
 }
 
 impl PrefabRegistry {
@@ -194,6 +294,7 @@ impl PrefabRegistry {
     /// file to it.
     pub fn insert(&mut self, id: String, data: PrefabData) {
         self.drop_path(&id);
+        self.variants.remove(&id);
         self.prefabs.insert(id, data);
     }
 
@@ -204,7 +305,14 @@ impl PrefabRegistry {
     pub fn insert_with_path(&mut self, id: String, data: PrefabData, path: PathBuf) {
         self.drop_path(&id);
         self.release_path(&path);
-        self.put_entry(id, data, Some(path));
+        self.put_entry(
+            id,
+            StoredPrefab {
+                data,
+                path: Some(path),
+                variant: None,
+            },
+        );
     }
 
     /// The prefab `id`.
@@ -222,6 +330,11 @@ impl PrefabRegistry {
     #[must_use]
     pub fn id_for_path(&self, path: &Path) -> Option<&str> {
         self.path_to_id.get(path).map(String::as_str)
+    }
+
+    /// The file prefab `id` was loaded from.
+    pub(crate) fn path_of(&self, id: &str) -> Option<&Path> {
+        self.paths.get(id).map(PathBuf::as_path)
     }
 
     /// How many prefabs are loaded.
@@ -258,24 +371,115 @@ impl PrefabRegistry {
         }
     }
 
-    /// Removes prefab `id` with its file's route.
-    pub(crate) fn take_entry(&mut self, id: &str) -> Option<(PrefabData, Option<PathBuf>)> {
+    /// Removes prefab `id` with its file's route and its variant's JSON.
+    pub(crate) fn take_entry(&mut self, id: &str) -> Option<StoredPrefab> {
         let data = self.prefabs.remove(id)?;
         let path = self.paths.remove(id);
         if let Some(path) = &path {
             self.path_to_id.remove(path);
         }
-        Some((data, path))
+        let variant = self.variants.remove(id);
+        Some(StoredPrefab {
+            data,
+            path,
+            variant,
+        })
     }
 
-    /// Puts `data` as prefab `id`, routing `path` to it; the caller has
+    /// Puts `entry` as prefab `id`, routing its path to it; the caller has
     /// freed the path and the ID's old one.
-    pub(crate) fn put_entry(&mut self, id: String, data: PrefabData, path: Option<PathBuf>) {
+    pub(crate) fn put_entry(&mut self, id: String, entry: StoredPrefab) {
+        let StoredPrefab {
+            data,
+            path,
+            variant,
+        } = entry;
         if let Some(path) = path {
             self.path_to_id.insert(path.clone(), id.clone());
             self.paths.insert(id.clone(), path);
         }
+        match variant {
+            Some(json) => self.variants.insert(id.clone(), json),
+            None => self.variants.remove(&id),
+        };
         self.prefabs.insert(id, data);
+    }
+
+    /// Each file-backed variant resolved again over its base, in ID order:
+    /// its data, or why it does not resolve (a base no prefab holds, with
+    /// the nearest ID; a cycle, the chain named). A variant without its
+    /// file, left by a lost file, is taken as given.
+    pub(crate) fn resolve_variants(&self) -> Vec<(String, Result<PrefabData, String>)> {
+        let mut resolved = BTreeMap::new();
+        self.variants
+            .keys()
+            .filter(|id| self.paths.contains_key(*id))
+            .map(|id| {
+                let result = self
+                    .resolved_json(id, &mut Vec::new(), &mut resolved)
+                    .and_then(|json| {
+                        serde_json::from_value(json)
+                            .map_err(|e| format!("extends: the resolved prefab does not read: {e}"))
+                    });
+                (id.clone(), result)
+            })
+            .collect()
+    }
+
+    /// Prefab `id`'s resolved JSON: a variant's file over its base's
+    /// resolved JSON, anything else its data as it serializes. `chain` holds
+    /// the variants being resolved, outermost first; `resolved` caches each
+    /// variant's.
+    fn resolved_json<'a>(
+        &'a self,
+        id: &'a str,
+        chain: &mut Vec<&'a str>,
+        resolved: &mut BTreeMap<&'a str, Value>,
+    ) -> Result<Value, String> {
+        if let Some(json) = resolved.get(id) {
+            return Ok(json.clone());
+        }
+        let file = (self.paths.contains_key(id))
+            .then(|| self.variants.get(id))
+            .flatten();
+        let Some(file) = file else {
+            let data = self.prefabs.get(id).expect("a resolved base is registered");
+            return serde_json::to_value(data)
+                .map_err(|e| format!("extends: prefab `{id}` does not serialize: {e}"));
+        };
+        if chain.contains(&id) {
+            chain.push(id);
+            let names: Vec<String> = chain.iter().map(|id| format!("`{id}`")).collect();
+            return Err(format!("extends: a cycle: {}", names.join(" \u{2192} ")));
+        }
+        chain.push(id);
+        let base = file
+            .get("extends")
+            .and_then(Value::as_str)
+            .expect("a variant's file names its base");
+        if !self.prefabs.contains_key(base) {
+            let hint = data::nearest(base, self.prefabs.keys().map(String::as_str));
+            let whose = match chain.as_slice() {
+                [_] => String::new(),
+                [.., last] => format!("`{last}` extends "),
+                [] => unreachable!("the chain holds `id`"),
+            };
+            return Err(format!(
+                "extends: {whose}unknown prefab `{base}`{}",
+                data::did_you_mean(hint)
+            ));
+        }
+        let json = overlay(self.resolved_json(base, chain, resolved)?, file);
+        chain.pop();
+        resolved.insert(id, json.clone());
+        Ok(json)
+    }
+
+    /// Puts `data` in place of variant `id`'s, returning the old data.
+    pub(crate) fn replace_resolved(&mut self, id: &str, data: PrefabData) -> Option<PrefabData> {
+        self.prefabs
+            .get_mut(id)
+            .map(|slot| std::mem::replace(slot, data))
     }
 
     /// Every prefab loaded from a file, by ID, with its file.
@@ -411,11 +615,20 @@ impl fmt::Debug for PreparedPrefab {
 struct Built {
     id: String,
     transform: Transform,
-    sprite: Option<SceneSprite>,
+    sprite: Option<BuiltSprite>,
     visible: bool,
     tag: Option<String>,
     tween: Option<Tween>,
     components: Vec<PreparedComponent>,
+}
+
+/// A built spawn's sprite: its `SceneSprite` but the variants, which the
+/// interning reads from the prefab, so a built spawn costs what it did
+/// before them (02's `rooms` row holds a room's built objects).
+struct BuiltSprite {
+    asset_id: String,
+    color: [u8; 4],
+    z_order: i32,
 }
 
 impl Built {
@@ -430,7 +643,8 @@ impl Built {
     ) -> Result<Self, ComponentError> {
         let empty = ComponentRegistry::new();
         let registry = world.get_resource::<ComponentRegistry>().unwrap_or(&empty);
-        let transform = Transform::from_position(position);
+        let mut transform = Transform::from_position(position);
+        transform.scale = Vec2::from(data.scale);
         let at = SpawnContext::new(world, transform);
         let components = components
             .iter()
@@ -439,7 +653,11 @@ impl Built {
         Ok(Self {
             id: id.to_owned(),
             transform,
-            sprite: data.sprite.clone(),
+            sprite: data.sprite.as_ref().map(|sprite| BuiltSprite {
+                asset_id: sprite.asset_id.clone(),
+                color: sprite.color,
+                z_order: sprite.z_order,
+            }),
             visible: data.visible,
             tag: data.tag.clone(),
             tween: data.tweens.first().map(SceneTween::into_tween),
@@ -447,8 +665,18 @@ impl Built {
         })
     }
 
-    /// Interns the sprite's name: the one step that changes the World.
+    /// Interns the sprite's name, and its variants' with it: the one step
+    /// that changes the World. With variants, the sprite is the one its
+    /// spawn position picks until a save identity picks again.
     fn intern(self, world: &mut World) -> PreparedPrefab {
+        let names: Vec<String> = world
+            .get_resource::<PrefabRegistry>()
+            .and_then(|prefabs| prefabs.get(&self.id))
+            .and_then(|data| data.sprite.as_ref())
+            .filter(|sprite| !sprite.variants.is_empty())
+            .map(|sprite| sprite.variants.clone())
+            .unwrap_or_default();
+        let mut variants = None;
         let sprite = self.sprite.map(|sprite| {
             let registry = world
                 .get_resource_mut::<AssetRegistry>()
@@ -458,13 +686,28 @@ impl Built {
                         self.id, sprite.asset_id
                     )
                 });
+            let mut asset_id = registry.intern_sprite(&sprite.asset_id);
+            if !names.is_empty() {
+                let pool: Vec<_> = std::iter::once(asset_id)
+                    .chain(names.iter().map(|name| registry.intern_sprite(name)))
+                    .collect();
+                let pool = SpriteVariants::new(pool);
+                asset_id = pool.by_position(self.transform.position);
+                variants = Some(pool);
+            }
             Sprite {
-                asset_id: registry.intern_sprite(&sprite.asset_id),
+                asset_id,
                 color: sprite.color,
                 z_order: sprite.z_order,
                 material_id: None,
             }
         });
+        // The pool rides the run as an extra, so a prefab without variants
+        // prepares as it did.
+        let mut extras: Vec<Extra> = Vec::new();
+        if let Some(variants) = variants {
+            extras.push(Box::new(move |buffer, at| at.insert(buffer, variants)));
+        }
         PreparedPrefab {
             id: self.id,
             saved: crate::save::saving(world),
@@ -476,7 +719,7 @@ impl Built {
             tag: self.tag.map(Tag::new),
             tween: self.tween,
             components: self.components,
-            extras: Vec::new(),
+            extras,
         }
     }
 }
@@ -661,25 +904,25 @@ impl World {
                 .ok_or_else(|| PrefabError::UnknownMap {
                     map: map.to_owned(),
                 })?;
-            let mut built = Vec::new();
-            for_each_classed_object(self, map, data, |object, prefab, components| {
-                prefab
-                    .validate_fields()
-                    .map_err(|message| format!("prefab `{}`: {message}", object.class))?;
-                let position = origin + object.position;
-                if !within_position_bound(position.x, position.y) {
-                    return Err(format!(
-                        "prefab `{}`: position {position} must be finite and within ±{MAX_POSITION}",
-                        object.class
-                    ));
-                }
-                let next = Built::new(self, &object.class, prefab, components, position)
-                    .map_err(|err| format!("prefab `{}`: {err}", object.class))?;
-                built.push((next, object.name.clone()));
-                Ok(())
-            })?;
-            built
+            build_objects(self, map, data, origin, |_| true)?
         };
+        Ok(built
+            .into_iter()
+            .map(|(next, name)| (next.intern(self), name))
+            .collect())
+    }
+
+    /// [`prepare_map_objects_named`](Self::prepare_map_objects_named) for
+    /// `data`, map `map` as it will be once registered (a room's patch,
+    /// redo 7.12): the objects `keep` admits, in layer and file order.
+    pub(crate) fn prepare_objects_of(
+        &mut self,
+        map: &str,
+        data: &TilemapData,
+        origin: Vec2,
+        keep: impl Fn(&MapObject) -> bool,
+    ) -> Result<Vec<(PreparedPrefab, String)>, PrefabError> {
+        let built = build_objects(self, map, data, origin, keep)?;
         Ok(built
             .into_iter()
             .map(|(next, name)| (next.intern(self), name))
@@ -866,10 +1109,42 @@ fn for_each_classed_object(
     Ok(())
 }
 
+/// Each classed object of `data` that `keep` admits, built at `origin` plus
+/// its position, with its name; its sprite name not yet interned.
+fn build_objects(
+    world: &World,
+    map: &str,
+    data: &TilemapData,
+    origin: Vec2,
+    keep: impl Fn(&MapObject) -> bool,
+) -> Result<Vec<(Built, String)>, PrefabError> {
+    let mut built = Vec::new();
+    for_each_classed_object(world, map, data, |object, prefab, components| {
+        if !keep(object) {
+            return Ok(());
+        }
+        prefab
+            .validate_fields()
+            .map_err(|message| format!("prefab `{}`: {message}", object.class))?;
+        let position = origin + object.position;
+        if !within_position_bound(position.x, position.y) {
+            return Err(format!(
+                "prefab `{}`: position {position} must be finite and within ±{MAX_POSITION}",
+                object.class
+            ));
+        }
+        let next = Built::new(world, &object.class, prefab, components, position)
+            .map_err(|err| format!("prefab `{}`: {err}", object.class))?;
+        built.push((next, object.name.clone()));
+        Ok(())
+    })?;
+    Ok(built)
+}
+
 /// The prefab's `components` with the object's `properties` applied, in
 /// property-name order, so a field property applies after its
 /// component's class property.
-fn apply_properties(
+pub(crate) fn apply_properties(
     components: &BTreeMap<String, Value>,
     properties: &BTreeMap<String, Value>,
 ) -> Result<BTreeMap<String, Value>, String> {
@@ -950,6 +1225,33 @@ fn apply_property(
     // One segment: a class value over the whole component.
     merge(current, value);
     Ok(())
+}
+
+/// A variant's `file` over its base's resolved JSON: each top-level field
+/// replaces the base's, but `components`, which merge component by
+/// component, each [`merge`]d member by member.
+fn overlay(mut base: Value, file: &Value) -> Value {
+    let (Value::Object(target), Value::Object(fields)) = (&mut base, file) else {
+        return file.clone();
+    };
+    for (key, value) in fields {
+        match (target.get_mut(key), value) {
+            (Some(Value::Object(components)), Value::Object(members)) if key == "components" => {
+                for (name, member) in members {
+                    match components.get_mut(name) {
+                        Some(existing) => merge(existing, member),
+                        None => {
+                            components.insert(name.clone(), member.clone());
+                        }
+                    }
+                }
+            }
+            _ => {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    base
 }
 
 /// `value` over `target`: an object merges member by member, recursively,

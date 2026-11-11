@@ -122,6 +122,9 @@
     },
     "frigate": {
       "path": "prefabs/frigate.json"
+    },
+    "pointman": {
+      "path": "prefabs/pointman.json"
     }
   },
   "data": {

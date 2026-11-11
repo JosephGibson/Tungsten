@@ -449,3 +449,39 @@ fn a_hold_zeroes_dt_beside_the_games_pause() {
     time.advance_frame(0.1);
     assert_eq!(time.delta(), 0.1);
 }
+
+#[test]
+fn the_editing_stop_zeroes_dt_beside_the_pause_and_the_hold() {
+    let mut time = Time::new();
+    time.set_editing(true);
+    time.advance_frame(0.1);
+    assert!(time.is_editing() && !time.is_paused() && !time.is_held());
+    assert_eq!((time.delta(), time.real_delta()), (0.0, 0.1));
+    assert_eq!(
+        time.fixed_steps_this_frame(),
+        0,
+        "an editing frame runs no step"
+    );
+    assert!(time.real_elapsed() > time.elapsed(), "real time runs");
+    time.set_editing(false);
+    time.advance_frame(0.1);
+    assert_eq!(time.delta(), 0.1);
+
+    // A pause made under the stop is the game's once the editor closes.
+    time.set_editing(true);
+    time.pause();
+    time.set_editing(false);
+    time.advance_frame(0.1);
+    assert!(time.is_paused());
+    assert_eq!(time.delta(), 0.0);
+    time.resume();
+    // The hold and the stop are apart too.
+    time.set_held(true);
+    time.set_editing(true);
+    time.set_held(false);
+    time.advance_frame(0.1);
+    assert_eq!(time.delta(), 0.0, "still editing");
+    time.set_editing(false);
+    time.advance_frame(0.1);
+    assert_eq!(time.delta(), 0.1);
+}

@@ -1,5 +1,7 @@
+use crate::assets::ParticleBudget;
 use crate::audio::AudioBus;
 use crate::display::{DisplayConfig, DisplayMode, Resolution};
+use crate::physics::PhysicsConfig;
 use crate::settings::{FrameRateCap, Settings, UserFolder};
 use serde::Deserialize;
 use serde_json::Value;
@@ -36,6 +38,8 @@ const LOGGING_LEVEL_EXPECTED: &str = "one of: off, error, warn, info, debug, tra
 const FIXED_STEP_HZ_EXPECTED: &str = "an integer >= 30";
 const MAX_STEPS_PER_FRAME_EXPECTED: &str = "an integer >= 1";
 const VOLUME_EXPECTED: &str = "a number from 0 to 1";
+const GRAVITY_EXPECTED: &str = "two finite numbers, px/s² with y down";
+const BROADPHASE_CELL_EXPECTED: &str = "a finite number of pixels above 0";
 const GAME_ID_MAX_LEN: usize = 64;
 /// The lowest step rate: a longer step than physics' default
 /// `max_step_dt`, 1/30 s, would run physics slow against the game (`D-094`).
@@ -267,6 +271,9 @@ impl FromStr for PostAaMode {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RenderConfig {
+    /// The colour the scene clears to, RGBA from 0 to 1 in linear light,
+    /// which the frame encodes to sRGB: the default,
+    /// `[0.05, 0.05, 0.08, 1.0]`, clears to `[63, 63, 80]`.
     #[serde(default = "default_clear_color")]
     pub clear_color: [f64; 4],
     pub max_frame_latency: Option<u32>,
@@ -631,6 +638,97 @@ pub struct UiConfig {
     pub cursor: Option<UiCursorConfig>,
 }
 
+/// `tungsten.json`'s `physics` (redo 7.12, S-85): the World's gravity and
+/// its broadphase's cell, which `App::new` puts into the World's
+/// `PhysicsConfig`; a game's plugin may set them again after.
+///
+/// ```json
+/// "physics": { "gravity": [0, 900], "broadphase_cell": 32 }
+/// ```
+///
+/// A file without the section, or a field left out, keeps the engine's
+/// default. An unknown key fails the parse.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PhysicsSection {
+    /// `physics.gravity`: every dynamic body's acceleration in px/s², y
+    /// down; `[0, 0]` unless set.
+    pub gravity: [f32; 2],
+    /// `physics.broadphase_cell`: the broadphase grid's cell in pixels; 32
+    /// unless set, finite and above 0.
+    pub broadphase_cell: f32,
+}
+
+impl Default for PhysicsSection {
+    fn default() -> Self {
+        let physics = PhysicsConfig::default();
+        Self {
+            gravity: physics.gravity.to_array(),
+            broadphase_cell: physics.broadphase_cell_size,
+        }
+    }
+}
+
+impl PhysicsSection {
+    /// Checks the gravity is finite and the cell finite and above 0.
+    /// `Config::load` and `App::new` both call this, since a config built
+    /// in code skips the load.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::InvalidValue`] with an empty `path` for field
+    /// `physics.gravity` or `physics.broadphase_cell`.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let [x, y] = self.gravity;
+        if !(x.is_finite() && y.is_finite()) {
+            return Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "physics.gravity",
+                value: format!("[{x}, {y}]"),
+                expected: GRAVITY_EXPECTED,
+            });
+        }
+        let cell = self.broadphase_cell;
+        if !(cell.is_finite() && cell > 0.0) {
+            return Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "physics.broadphase_cell",
+                value: cell.to_string(),
+                expected: BROADPHASE_CELL_EXPECTED,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// `tungsten.json`'s `particles` (redo 7.12, S-85): the cap on live
+/// particles across every emitter, which `App::new` puts into the World's
+/// `ParticleBudget` (`D-014`); a game's plugin may set it again after.
+///
+/// ```json
+/// "particles": { "budget": 4000 }
+/// ```
+///
+/// A file without the section keeps the engine's 10,000. An unknown key
+/// fails the parse.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ParticlesSection {
+    /// `particles.budget`: the most particles alive at once; 10,000 unless
+    /// set.
+    pub budget: u32,
+}
+
+impl Default for ParticlesSection {
+    fn default() -> Self {
+        Self {
+            budget: ParticleBudget::DEFAULT_GLOBAL_CAP,
+        }
+    }
+}
+
 /// Top-level engine configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
@@ -657,6 +755,12 @@ pub struct Config {
     /// The UI's theme, scale and floor (redo 7.17).
     #[serde(default)]
     pub ui: UiConfig,
+    /// The World's gravity and broadphase cell (redo 7.12).
+    #[serde(default)]
+    pub physics: PhysicsSection,
+    /// The cap on live particles (redo 7.12).
+    #[serde(default)]
+    pub particles: ParticlesSection,
     /// What `load` would have logged before any logger exists (`D-119`).
     #[serde(skip)]
     load_warnings: Vec<String>,
@@ -725,6 +829,7 @@ impl Config {
                 parsed.game.validate().map_err(|e| e.with_path(path))?;
                 parsed.time.validate().map_err(|e| e.with_path(path))?;
                 parsed.audio.validate().map_err(|e| e.with_path(path))?;
+                parsed.physics.validate().map_err(|e| e.with_path(path))?;
                 if parsed.logging.level.parse::<log::LevelFilter>().is_err() {
                     return Err(ConfigError::InvalidValue {
                         path: path.display().to_string(),

@@ -1,5 +1,7 @@
-//! The kit's per-entity systems at 1,000 and 10,000 entities, 39 rows, one
-//! fixed step or one frame's present phase per iteration:
+//! The kit's per-entity systems at 1,000 and 10,000 entities, 41 rows, one
+//! fixed step or one frame's present phase per iteration, and one row at a
+//! size of its own, `chemistry_emission` (12,000 receivers emitting in step,
+//! a period of fifteen steps an iteration), outside the bound below:
 //!
 //! - fixed step: `lifetime_tick`, `health_tick`, `action_input`, the
 //!   bodiless `top_down_mover`, `TagFilter::matches`, `stats_apply`,
@@ -28,7 +30,8 @@
 //!   with an entity cue and one rule's kind filter);
 //! - M67's, each at one steady state: `effect_tick` (an infinite effect
 //!   per entity with a modifier and a half-second period, its ticks queued
-//!   for the health plugin's resolve), `effect_resolve` (one request a step
+//!   for the health plugin's resolve), `effect_tick_by_id` (the same effect
+//!   named by ID, an entry among 32), `effect_resolve` (one request a step
 //!   per target at its stack limit under `refresh`), `ailment_tick` (a
 //!   bucket per entity draining under a threshold), `ailment_feed` (one
 //!   typed part a step per entity, below its ladder's `needs`),
@@ -36,7 +39,8 @@
 //!   hitbox, no hit plugin) and `level_tick` (a counter below the next
 //!   level);
 //! - present phase: `oscillator_present` (rotation and scale), `facing`,
-//!   `character_animator` (a clip set, unchanged) and `depth_sort`.
+//!   `character_animator` (a clip set, unchanged), `animation_tick` (every
+//!   sprite on one of two clips) and `depth_sort`.
 //!
 //! The bound, from M64's first measured run: each row's median per entity
 //! at 10,000 is at most twice its median per entity at 1,000, so no row
@@ -50,22 +54,23 @@ use glam::Vec2;
 use tungsten_core::assets::AnimationFrame;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
 use tungsten_core::{
-    ActionMap, AnimationData, AnimationRegistry, Binding, Bundle, CommandBuffer, DataRef,
-    EventQueue, InputState, KeyCode, Plugin, PluginSet, Schedule, Sprite, SpriteAssetId, Stage,
-    StagedLoad, Time, Transform, World,
+    ActionMap, AnimationData, AnimationRegistry, AnimationState, Binding, Bundle, CommandBuffer,
+    DataRef, DataRegistry, EventQueue, InputState, KeyCode, Plugin, PluginSet, Schedule, Sprite,
+    SpriteAssetId, Stage, StagedLoad, Time, Transform, World,
 };
 use tungsten_kit::{
     Abilities, AbilitiesPlugin, Ability, ActionInput, ActionInputPlugin, AilmentBuckets,
-    AilmentThreshold, Aim, AimPlugin, CharacterAnimator, CharacterAnimatorPlugin, Clips,
-    ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownPlugin, Counters,
-    CountersPlugin, CueAction, Cues, CuesPlugin, Curve, DamagePart, DamageRequest, Damaged,
-    DamagedPart, DepthSort, DepthSortPlugin, Effect, EffectRequest, Effects, EffectsPlugin, Expire,
-    Facing, FacingPlugin, Follow, FollowPlugin, Health, HealthPlugin, HitPlugin, HitShape, Hitbox,
-    Hurtbox, Intent, Knockback, KnockbackPlugin, Level, LevelPlugin, Lifetime, LifetimePlugin,
-    LinearMotion, LinearMotionPlugin, Modifier, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin,
-    Payload, Penetration, Pickup, PickupPlugin, PlatformerController, Projectile, ProjectilePlugin,
-    Refresh, Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView,
-    StayInViewPlugin, Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
+    AilmentThreshold, Aim, AimPlugin, AnimationPlugin, CharacterAnimator, CharacterAnimatorPlugin,
+    ChemistryPlugin, Clips, ContactDamage, ContactDamagePlugin, Conversion, Cooldown,
+    CooldownPlugin, Counters, CountersPlugin, CueAction, Cues, CuesPlugin, Curve, DamagePart,
+    DamageRequest, Damaged, DamagedPart, DepthSort, DepthSortPlugin, Effect, EffectRequest,
+    Effects, EffectsPlugin, Expire, Facing, FacingPlugin, Follow, FollowPlugin, Health,
+    HealthPlugin, HitPlugin, HitShape, Hitbox, Hurtbox, Intent, Interaction, Knockback,
+    KnockbackPlugin, Level, LevelPlugin, Lifetime, LifetimePlugin, LinearMotion,
+    LinearMotionPlugin, Modifier, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Payload,
+    Penetration, Pickup, PickupPlugin, PlatformerController, Projectile, ProjectilePlugin, Refresh,
+    Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin,
+    Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
     TopDownMoverPlugin, Trigger, Wrap, WrapPlugin, knock_back,
 };
 
@@ -372,6 +377,25 @@ fn character_animator(c: &mut Criterion) {
                 walker,
                 Facing::new().four_way(),
                 velocity,
+                Sprite::new(SpriteAssetId::new(0)),
+            ));
+        },
+        present_step,
+    );
+}
+
+fn animation_tick(c: &mut Criterion) {
+    // The tick alone: every sprite on one of the animator row's clips,
+    // advancing a sixth of a frame's time each step.
+    row(
+        c,
+        "animation_tick",
+        &AnimationPlugin,
+        clips,
+        |world, i| {
+            let clip = if i % 8 == 0 { "idle" } else { "walk_left" };
+            world.spawn_with((
+                AnimationState::new(clip),
                 Sprite::new(SpriteAssetId::new(0)),
             ));
         },
@@ -978,6 +1002,91 @@ fn effect_tick(c: &mut Criterion) {
     group.finish();
 }
 
+/// `effect_tick` with the effect named by ID, as a game's prefabs name
+/// theirs: each instance's tick resolves its definition in the World's data.
+fn effect_tick_by_id(c: &mut Criterion) {
+    let mut group = c.benchmark_group("effect_tick_by_id");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig_set(effect_set());
+        world.resource_mut::<DataRegistry>().insert(
+            "bench.burn",
+            Effect::new()
+                .with_period(0.5)
+                .with_damage(1.0)
+                .with_modifier("armor", Modifier::Add(1.0)),
+        );
+        // Other entries beside it, as a game's data holds.
+        for index in 0..31 {
+            world
+                .resource_mut::<DataRegistry>()
+                .insert(format!("bench.other_{index}"), Effect::new());
+        }
+        let burn = DataRef::<Effect>::by_id("bench.burn");
+        for _ in 0..n {
+            world.spawn_with((
+                Health::new(1e12),
+                Stats::new().with("armor", 0.0),
+                Effects::new().with(burn.clone()),
+            ));
+        }
+        fixed_step_and_flush(&mut world, &mut schedule);
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step_and_flush(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+/// Chemistry's emission at example 01's scale, the `spread` row's field:
+/// 12,000 receivers 24 px apart, each lit with a status that sends `heat`
+/// within 50 px every quarter second, all in step, and a rule that builds
+/// the status on what `heat` reaches. One iteration is a period of fifteen
+/// steps: the step every receiver emits in and the fourteen between.
+fn chemistry_emission(c: &mut Criterion) {
+    const RECEIVERS: usize = 12_000;
+    const COLUMNS: usize = 120;
+    let (mut world, mut schedule) = rig_set(
+        PluginSet::new()
+            .with(TagsPlugin::new().with_tags(["bench.flammable", "bench.heat"]))
+            .with(HealthPlugin)
+            .with(EffectsPlugin)
+            .with(ChemistryPlugin::new()),
+    );
+    let rule: Interaction = serde_json::from_str(
+        r#"{ "stimulus": "bench.heat", "on": { "all": ["bench.flammable"] },
+             "outputs": [{ "build": { "status": "bench.burning", "amount": 1 } }] }"#,
+    )
+    .unwrap();
+    let data = world.resource_mut::<DataRegistry>();
+    data.insert(
+        "bench.burning",
+        Effect::new()
+            .with_intensity(4.0, 0.5)
+            .with_emit("bench.heat", 1.0, 50.0, 0.25),
+    );
+    data.insert("bench.catches", rule);
+    for index in 0..RECEIVERS {
+        let at = Vec2::new((index % COLUMNS) as f32, (index / COLUMNS) as f32) * 24.0;
+        let receiver = world.spawn_with((Position(at), Tags::new(["bench.flammable"])));
+        EffectRequest::new(receiver, DataRef::by_id("bench.burning")).apply(&mut world);
+    }
+    // Two periods in, the field is saturated and the queue at its steady
+    // length.
+    for _ in 0..30 {
+        fixed_step_and_flush(&mut world, &mut schedule);
+    }
+    let mut group = c.benchmark_group("chemistry_emission");
+    group.sample_size(20);
+    group.bench_function("12000", |b| {
+        b.iter(|| {
+            for _ in 0..15 {
+                fixed_step_and_flush(black_box(&mut world), &mut schedule);
+            }
+        });
+    });
+    group.finish();
+}
+
 fn effect_resolve(c: &mut Criterion) {
     let mut group = c.benchmark_group("effect_resolve");
     for n in SIZES {
@@ -1121,6 +1230,7 @@ criterion_group!(
     aim,
     facing,
     character_animator,
+    animation_tick,
     depth_sort,
     hit_grid,
     hitbox_tick,
@@ -1132,6 +1242,8 @@ criterion_group!(
     damage_resolve_typed,
     shield_tick,
     effect_tick,
+    effect_tick_by_id,
+    chemistry_emission,
     effect_resolve,
     ailment_tick,
     ailment_feed,

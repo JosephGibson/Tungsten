@@ -1,0 +1,39 @@
+{
+  "tag": "roamer",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          10,
+          10
+        ]
+      }
+    },
+    "top_down_mover": {
+      "speed": 240
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ]
+    },
+    "camera_rig": {
+      "follow": {
+        "offset": [
+          10,
+          10
+        ],
+        "dead_zone": [
+          400,
+          240
+        ]
+      },
+      "view_height": 540
+    }
+  }
+}

@@ -652,6 +652,44 @@ impl core::marker::Unpin for tungsten_kit::AnimationPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AnimationPlugin
+pub struct tungsten_kit::prelude::CameraRigId(_)
+impl tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::as_str(&self) -> &str
+pub fn tungsten_kit::CameraRigId::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::clone(&self) -> tungsten_kit::CameraRigId
+impl core::cmp::Eq for tungsten_kit::CameraRigId
+impl core::cmp::PartialEq for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::eq(&self, &tungsten_kit::CameraRigId) -> bool
+impl core::fmt::Debug for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for tungsten_kit::CameraRigId
+impl core::marker::Freeze for tungsten_kit::CameraRigId
+impl core::marker::Send for tungsten_kit::CameraRigId
+impl core::marker::Sync for tungsten_kit::CameraRigId
+impl core::marker::Unpin for tungsten_kit::CameraRigId
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraRigId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraRigId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraRigId
+pub struct tungsten_kit::prelude::CameraRigPlugin
+impl core::clone::Clone for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::clone(&self) -> tungsten_kit::CameraRigPlugin
+impl core::default::Default for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::default() -> tungsten_kit::CameraRigPlugin
+impl core::fmt::Debug for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CameraRigPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CameraRigPlugin
+impl core::marker::Send for tungsten_kit::CameraRigPlugin
+impl core::marker::Sync for tungsten_kit::CameraRigPlugin
+impl core::marker::Unpin for tungsten_kit::CameraRigPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraRigPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraRigPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraRigPlugin
 pub struct tungsten_kit::prelude::CameraTarget
 impl core::clone::Clone for tungsten_kit::CameraTarget
 pub fn tungsten_kit::CameraTarget::clone(&self) -> tungsten_kit::CameraTarget
@@ -694,6 +732,26 @@ impl core::marker::Unpin for tungsten_kit::CameraTargetPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::CameraTargetPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraTargetPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraTargetPlugin
+pub struct tungsten_kit::prelude::CameraZone
+impl tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::inside(&self) -> &[tungsten_core::ecs::entity::Entity]
+impl core::clone::Clone for tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::clone(&self) -> tungsten_kit::CameraZone
+impl core::cmp::Eq for tungsten_kit::CameraZone
+impl core::cmp::PartialEq for tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::eq(&self, &tungsten_kit::CameraZone) -> bool
+impl core::default::Default for tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::default() -> tungsten_kit::CameraZone
+impl core::fmt::Debug for tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::CameraZone
+impl core::marker::Freeze for tungsten_kit::CameraZone
+impl core::marker::Send for tungsten_kit::CameraZone
+impl core::marker::Sync for tungsten_kit::CameraZone
+impl core::marker::Unpin for tungsten_kit::CameraZone
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraZone
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraZone
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraZone
 pub struct tungsten_kit::prelude::Cap
 impl tungsten_kit::Cap
 pub fn tungsten_kit::Cap::group(&self) -> &str
@@ -1156,7 +1214,9 @@ pub fn tungsten_kit::CueAction::label(tungsten_kit::LabelStyle) -> Self
 pub fn tungsten_kit::CueAction::looping(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::name(&self) -> &'static str
 pub fn tungsten_kit::CueAction::prefab(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::raise_camera(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::refill_ability(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::release_camera(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::roll(tungsten_core::assets::data::DataRef<tungsten_kit::WeightedTable>) -> Self
 pub fn tungsten_kit::CueAction::shake(f32) -> Self
 pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
@@ -5173,6 +5233,44 @@ impl core::marker::Unpin for tungsten_kit::AnimationPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AnimationPlugin
+pub struct tungsten_kit::CameraRigId(_)
+impl tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::as_str(&self) -> &str
+pub fn tungsten_kit::CameraRigId::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::clone(&self) -> tungsten_kit::CameraRigId
+impl core::cmp::Eq for tungsten_kit::CameraRigId
+impl core::cmp::PartialEq for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::eq(&self, &tungsten_kit::CameraRigId) -> bool
+impl core::fmt::Debug for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_kit::CameraRigId
+pub fn tungsten_kit::CameraRigId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for tungsten_kit::CameraRigId
+impl core::marker::Freeze for tungsten_kit::CameraRigId
+impl core::marker::Send for tungsten_kit::CameraRigId
+impl core::marker::Sync for tungsten_kit::CameraRigId
+impl core::marker::Unpin for tungsten_kit::CameraRigId
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraRigId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraRigId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraRigId
+pub struct tungsten_kit::CameraRigPlugin
+impl core::clone::Clone for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::clone(&self) -> tungsten_kit::CameraRigPlugin
+impl core::default::Default for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::default() -> tungsten_kit::CameraRigPlugin
+impl core::fmt::Debug for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CameraRigPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CameraRigPlugin
+pub fn tungsten_kit::CameraRigPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CameraRigPlugin
+impl core::marker::Send for tungsten_kit::CameraRigPlugin
+impl core::marker::Sync for tungsten_kit::CameraRigPlugin
+impl core::marker::Unpin for tungsten_kit::CameraRigPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraRigPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraRigPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraRigPlugin
 pub struct tungsten_kit::CameraTarget
 impl core::clone::Clone for tungsten_kit::CameraTarget
 pub fn tungsten_kit::CameraTarget::clone(&self) -> tungsten_kit::CameraTarget
@@ -5215,6 +5313,26 @@ impl core::marker::Unpin for tungsten_kit::CameraTargetPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::CameraTargetPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraTargetPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraTargetPlugin
+pub struct tungsten_kit::CameraZone
+impl tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::inside(&self) -> &[tungsten_core::ecs::entity::Entity]
+impl core::clone::Clone for tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::clone(&self) -> tungsten_kit::CameraZone
+impl core::cmp::Eq for tungsten_kit::CameraZone
+impl core::cmp::PartialEq for tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::eq(&self, &tungsten_kit::CameraZone) -> bool
+impl core::default::Default for tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::default() -> tungsten_kit::CameraZone
+impl core::fmt::Debug for tungsten_kit::CameraZone
+pub fn tungsten_kit::CameraZone::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::CameraZone
+impl core::marker::Freeze for tungsten_kit::CameraZone
+impl core::marker::Send for tungsten_kit::CameraZone
+impl core::marker::Sync for tungsten_kit::CameraZone
+impl core::marker::Unpin for tungsten_kit::CameraZone
+impl core::marker::UnsafeUnpin for tungsten_kit::CameraZone
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraZone
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraZone
 pub struct tungsten_kit::Cap
 impl tungsten_kit::Cap
 pub fn tungsten_kit::Cap::group(&self) -> &str
@@ -5726,7 +5844,9 @@ pub fn tungsten_kit::CueAction::label(tungsten_kit::LabelStyle) -> Self
 pub fn tungsten_kit::CueAction::looping(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::name(&self) -> &'static str
 pub fn tungsten_kit::CueAction::prefab(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::raise_camera(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::refill_ability(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::release_camera(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::roll(tungsten_core::assets::data::DataRef<tungsten_kit::WeightedTable>) -> Self
 pub fn tungsten_kit::CueAction::shake(f32) -> Self
 pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
@@ -9452,7 +9572,9 @@ pub const tungsten_kit::AILMENT_FEED: &str
 pub const tungsten_kit::AILMENT_TICK: &str
 pub const tungsten_kit::AIM: &str
 pub const tungsten_kit::ANIMATION_TICK: &str
+pub const tungsten_kit::CAMERA_RIG: &str
 pub const tungsten_kit::CAMERA_TARGET: &str
+pub const tungsten_kit::CAMERA_ZONE: &str
 pub const tungsten_kit::CHARACTER_ANIMATOR: &str
 pub const tungsten_kit::CHEMISTRY: &str
 pub const tungsten_kit::CHEMISTRY_TICK: &str
@@ -9526,5 +9648,6 @@ pub fn tungsten_kit::kill(&mut tungsten_core::ecs::world::World, tungsten_core::
 pub fn tungsten_kit::knock_back(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_kit::lob_velocity(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::release(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::route_findings(&tungsten_core::ecs::world::World, &str) -> alloc::vec::Vec<tungsten_core::assets::room::rules::RoomFinding>
 pub fn tungsten_kit::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity
 pub fn tungsten_kit::use_ability(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str) -> tungsten_kit::Used

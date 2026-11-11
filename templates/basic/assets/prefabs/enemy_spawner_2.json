@@ -1,0 +1,5 @@
+{
+  "components": {
+    "spawner": { "prefab": "enemy_still", "interval": 4, "alive": 1, "first": 0 }
+  }
+}

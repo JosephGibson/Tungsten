@@ -1004,3 +1004,78 @@ fn a_carried_body_survives_a_load_and_drops_without_its_carrier() {
     assert_eq!(at(&d, crate_d), held, "where the save held it");
     assert_eq!(release(&mut d, porter, Vec2::ZERO), None);
 }
+
+#[test]
+fn a_split_hit_list_never_hits_its_loaded_target_again_before_the_entry() {
+    // `D-257`: a sword in area `north` hit the golem (`north`) and the bat
+    // (`south`) in one activation. Restored with `south` kept, the golem's
+    // hit loads at the restore and the bat's waits for the area's entry, so
+    // the golem standing in the sword's reach in that window is not hit
+    // again; a sword whose save names the bat alone hits it there.
+    use tungsten_core::physics::PrevPosition;
+    let at = |world: &mut World, x: f32, max: f32| -> Entity {
+        world.spawn_with((
+            Position(Vec2::new(x, 0.0)),
+            PrevPosition(Vec2::new(x, 0.0)),
+            crate::Hurtbox::new(HitShape::circle(4.0)),
+            Health::new(max),
+        ))
+    };
+    let sword = |world: &mut World| -> Entity {
+        let sword = world.spawn_with((
+            Position(Vec2::ZERO),
+            PrevPosition(Vec2::ZERO),
+            Hitbox::new(HitShape::circle(8.0), 1.0),
+        ));
+        named(world, sword, Some("north"), "sword")
+    };
+    let golem = |world: &mut World| -> Entity {
+        let golem = at(world, 4.0, 10.0);
+        named(world, golem, Some("north"), "golem")
+    };
+    let bat = |world: &mut World| -> Entity {
+        let bat = at(world, 400.0, 5.0);
+        named(world, bat, Some("south"), "bat")
+    };
+    let saved = |hit_golem: bool| -> WorldSave {
+        let (mut a, _) = rig();
+        let (s, g, b) = (sword(&mut a), golem(&mut a), bat(&mut a));
+        let targets = if hit_golem { vec![g, b] } else { vec![b] };
+        a.get_mut::<Hitbox>(s).unwrap().set_hit_targets(targets);
+        capture_world(&a).unwrap()
+    };
+    // The window: the restore, then five steps of hit detection, `south`
+    // kept; the golem's health after it, and the sword's targets.
+    let window = |save: &WorldSave| -> (f32, Vec<Entity>, World, Entity, Entity) {
+        let (mut world, mut schedule) = rig();
+        let (s, g) = (sword(&mut world), golem(&mut world));
+        restore(&mut world, save);
+        for _ in 0..5 {
+            step(&mut world, &mut schedule);
+        }
+        let health = world.get::<Health>(g).unwrap().current();
+        let targets = world.get::<Hitbox>(s).unwrap().hit_targets().to_vec();
+        (health, targets, world, s, g)
+    };
+
+    let (health, targets, mut world, s, g) = window(&saved(true));
+    assert_eq!(
+        (health, targets),
+        (10.0, vec![g]),
+        "the loaded target, not hit again"
+    );
+    let b = bat(&mut world);
+    enter_area(&mut world, "south", &(Probe,)).unwrap();
+    assert_eq!(
+        world.get::<Hitbox>(s).unwrap().hit_targets(),
+        [g, b],
+        "two calls, each in saved order"
+    );
+
+    let (health, targets, ..) = window(&saved(false));
+    assert_eq!(
+        (health, targets),
+        (9.0, vec![g]),
+        "hit detection runs in the window"
+    );
+}

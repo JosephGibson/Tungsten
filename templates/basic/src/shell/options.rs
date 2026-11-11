@@ -63,11 +63,9 @@ impl GameOptions {
     }
 }
 
-/// The options' store and the camera's shipped shake, read at the first
-/// apply, once every plugin has set the camera.
+/// The options' store.
 struct OptionsStore {
     slots: SaveSlots,
-    shipped_shake: Option<[f32; 2]>,
 }
 
 /// Loads the options into the world: `ShellPlugin`'s build calls it, and
@@ -94,27 +92,17 @@ pub(crate) fn load(world: &mut World) {
             GameOptions::default()
         }
     };
-    let shipped_shake = None;
-    world.insert_resource(OptionsStore {
-        slots,
-        shipped_shake,
-    });
+    world.insert_resource(OptionsStore { slots });
     world.insert_resource(options);
 }
 
-/// Applies the options the engine reads: the camera's shake, the shipped
-/// offset times the option.
+/// Applies the options the engine reads: the camera's shake scale, the
+/// share of the game's own shake that plays.
 pub fn apply(world: &mut World) {
     let shake = world.resource::<GameOptions>().screen_shake;
-    let Some(offset) = world
-        .get_resource::<CameraController>()
-        .map(|c| c.shake_max_offset)
-    else {
-        return;
-    };
-    let store = world.resource_mut::<OptionsStore>();
-    let [x, y] = *store.shipped_shake.get_or_insert(offset.into());
-    world.resource_mut::<CameraController>().shake_max_offset = [x * shake, y * shake].into();
+    if let Some(camera) = world.get_resource_mut::<CameraController>() {
+        camera.shake_scale = shake;
+    }
 }
 
 /// Writes the options; a failure logs.

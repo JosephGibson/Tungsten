@@ -94,10 +94,14 @@ def check_assets(root, errors, notes):
                             sections.append((f"data.{kind}", kind_entries))
                         else:
                             errors.append(f"{manifest.relative_to(root)}: data.{kind}: a data kind must be an object of entries by ID")
-                # The boot group names IDs, not files (redo 7.9).
+                # The boot group names IDs, not files (redo 7.9), and its
+                # hold in seconds (redo 7.11).
                 elif section == "boot":
-                    if not isinstance(entries, dict) or not all(isinstance(value, str) for value in entries.values()):
-                        errors.append(f"{manifest.relative_to(root)}: boot: the boot group names IDs as strings")
+                    named = isinstance(entries, dict) and all(
+                        isinstance(value, (int, float)) and not isinstance(value, bool) if key == "hold" else isinstance(value, str)
+                        for key, value in entries.items())
+                    if not named:
+                        errors.append(f"{manifest.relative_to(root)}: boot: the boot group names IDs as strings and its hold in seconds")
                 # A list section such as `font_fallback` names IDs, not files.
                 elif isinstance(entries, dict):
                     sections.append((section, entries))

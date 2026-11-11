@@ -167,6 +167,12 @@
     },
     "brute": {
       "path": "prefabs/brute.json"
+    },
+    "scout": {
+      "path": "prefabs/scout.json"
+    },
+    "cave": {
+      "path": "prefabs/cave.json"
     }
   },
   "data": {

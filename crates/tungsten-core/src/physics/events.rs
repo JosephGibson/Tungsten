@@ -4,10 +4,13 @@ use crate::ecs::Entity;
 use crate::physics::TileHit;
 use glam::Vec2;
 
-/// A contact the step resolved, sent once it penetrates. `a` is the body the
-/// contact pushed and `normal` the direction it was pushed; against a
-/// kinematic body, `a` is always the dynamic one. `b` is the other body, or
-/// `None` for a tile, whose cell `tile` names. Build one with
+/// A contact the step resolved, sent once a step for its pair (`D-270`): in
+/// the first substep the contact penetrates, or when the safety net clamps
+/// one side on the other. Its fields are that substep's; a pair still
+/// touching sends again in the next step. `a` is the body the contact
+/// pushed and `normal` the direction it was pushed; against a kinematic
+/// body, `a` is always the dynamic one. `b` is the other body, or `None`
+/// for a tile, whose cell `tile` names. Build one with
 /// [`CollisionEvent::new`].
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]

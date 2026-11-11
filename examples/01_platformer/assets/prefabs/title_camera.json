@@ -1,0 +1,5 @@
+{
+  "components": {
+    "camera_rig": { "fixed": { "corner": [0, -3424] }, "view_height": 1152 }
+  }
+}

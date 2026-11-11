@@ -81,7 +81,7 @@ fn every_registry_row_resolves_to_its_row() {
         assert_eq!(cfg.row(), row["name"].as_str().unwrap());
         checked += 1;
     }
-    assert_eq!(checked, 13, "the thirteen bench rows");
+    assert_eq!(checked, 16, "the sixteen bench rows");
 }
 
 #[test]

@@ -5,7 +5,7 @@
 use glam::Vec2;
 use tungsten_core::lighting::{light_from, luma};
 use tungsten_core::physics::ContactBegan;
-use tungsten_core::{Entity, Light, Transform, World};
+use tungsten_core::{Entity, Light, TilemapInstance, Transform, World};
 
 use crate::chemistry::grid::{Candidate, Grid, locate};
 use crate::chemistry::queue::{Chemistry, Receiver, Settings, Stimulus};
@@ -69,14 +69,38 @@ pub(crate) fn emit_from(
     });
 }
 
+/// A candidate's entry in the queue as one pass of [`spread`] found it:
+/// the pass, the stimulus and the entry's slot.
+#[derive(Debug, Clone, Copy, Default)]
+struct Kept {
+    pass: u32,
+    stimulus: u32,
+    slot: u32,
+}
+
 /// A run's kept lists for radius work: the grid of entities, a query's
-/// finds in it, the tile cells in a radius and the map IDs they name.
+/// finds in it, the tile cells in a radius and the map IDs they name; and
+/// each candidate's queue slot within one pass of [`spread`].
 #[derive(Default)]
 pub(crate) struct Reach {
     pub(crate) grid: Grid,
     found: Vec<u32>,
     cells: Vec<Cell>,
     pub(crate) names: MapNames,
+    /// By candidate, the slot [`spread`]'s current pass found its entry
+    /// in: every emission that reaches a receiver after the first merges
+    /// there without a probe of the queue's index. A pass only adds to the
+    /// queue and holds no receiver, so a slot it found stays its pair's.
+    kept: Vec<Kept>,
+    /// [`spread`]'s pass, which stamps `kept`; 0 before the first.
+    pass: u32,
+    /// The index probes a pass skipped.
+    #[cfg(test)]
+    pub(crate) skipped: u64,
+    /// Probes every candidate, as before the slots were kept: a test's
+    /// reference.
+    #[cfg(test)]
+    pub(crate) probe_all: bool,
 }
 
 impl Reach {
@@ -95,17 +119,53 @@ impl Reach {
         radius: f32,
         from: Option<&Receiver>,
     ) {
+        let tiles = world.has_any::<TilemapInstance>();
+        self.gather_in(world, point, radius, from, tiles);
+    }
+
+    /// [`gather`](Self::gather) in a World that holds a placement or none,
+    /// as `tiles` says: one without has no cell, so the caller that asked
+    /// once (`World::has_any`, `D-247`) spares each emission the lookup.
+    fn gather_in(
+        &mut self,
+        world: &World,
+        point: Vec2,
+        radius: f32,
+        from: Option<&Receiver>,
+        tiles: bool,
+    ) {
         self.grid.build(world);
         self.grid.within(point, radius, &mut self.found);
         if let Some(Receiver::Entity(from)) = from {
             let grid = &self.grid;
             self.found.retain(|&index| grid.get(index).entity != *from);
         }
+        if !tiles {
+            self.cells.clear();
+            return;
+        }
         let skip = match from {
             Some(Receiver::Cell(cell)) => Some(cell),
             _ => None,
         };
         cells_within(world, point, radius, skip, &mut self.names, &mut self.cells);
+    }
+
+    /// Begins a pass of [`spread`]: no slot of an earlier pass is kept.
+    fn begin_pass(&mut self) {
+        self.pass = self.pass.wrapping_add(1);
+        if self.pass == 0 {
+            // The stamp came round: no slot an old pass kept may match.
+            self.kept.clear();
+            self.pass = 1;
+        }
+    }
+
+    /// Puts the pass at its last stamp, so a test's next pass begins the
+    /// stamps again.
+    #[cfg(test)]
+    pub(crate) fn end_stamps(&mut self) {
+        self.pass = u32::MAX;
     }
 
     /// The gathered candidates, in the grid's order.
@@ -135,6 +195,11 @@ fn plain(amount: f32, depth: u8, credit: Option<Entity>) -> Stimulus {
 /// tagged entity within its radius but its emitter, in the grid's order,
 /// then each material cell. `answered` says whether some rule answers a
 /// name; an emission no rule answers is dropped before the grid is built.
+///
+/// The pass asks once whether the World holds a placement, and whether a
+/// rule answers a name once a run of emissions that share it; and it keeps
+/// each receiver's slot in the queue from the first emission that reaches
+/// it, so the rest merge there without a probe of the index.
 pub(crate) fn spread(
     world: &mut World,
     settings: &Settings,
@@ -143,28 +208,72 @@ pub(crate) fn spread(
     answered: impl Fn(&str) -> bool,
     run: u64,
 ) {
+    let tiles = world.has_any::<TilemapInstance>();
+    reach.begin_pass();
+    let pass = reach.pass;
+    // The last emission's stimulus and whether a rule answers it.
+    let mut last = None;
     for emission in emissions.drain(..) {
-        let name = world.resource::<Chemistry>().name(emission.stimulus);
-        if !answered(name) {
+        let id = emission.stimulus;
+        let wanted = match last {
+            Some((known, wanted)) if known == id => wanted,
+            _ => {
+                let wanted = answered(world.resource::<Chemistry>().name(id));
+                last = Some((id, wanted));
+                wanted
+            }
+        };
+        if !wanted {
             continue;
         }
-        reach.gather(
+        reach.gather_in(
             world,
             emission.point,
             emission.radius,
             emission.from.as_ref(),
+            tiles,
         );
+        // The finds are in the candidates' order, so the last is the
+        // highest.
+        if let Some(&last) = reach.found.last()
+            && last as usize >= reach.kept.len()
+        {
+            reach.kept.resize(last as usize + 1, Kept::default());
+        }
         let chemistry = world.resource_mut::<Chemistry>();
         let stimulus = plain(emission.amount, emission.depth, emission.credit);
-        for candidate in reach.entities() {
-            if candidate.tagged {
-                let receiver = Receiver::Entity(candidate.entity);
-                chemistry.stimulate_id(settings, receiver, emission.stimulus, stimulus, run);
+        for &index in &reach.found {
+            let candidate = reach.grid.get(index);
+            if !candidate.tagged {
+                continue;
+            }
+            let kept = &mut reach.kept[index as usize];
+            #[cfg(test)]
+            let probe_all = reach.probe_all;
+            #[cfg(not(test))]
+            let probe_all = false;
+            if kept.pass == pass && kept.stimulus == id && !probe_all {
+                chemistry.stimulate_kept(settings, kept.slot as usize, stimulus);
+                #[cfg(test)]
+                {
+                    reach.skipped += 1;
+                }
+                continue;
+            }
+            let receiver = Receiver::Entity(candidate.entity);
+            if let Some(slot) = chemistry.stimulate_slot(settings, receiver, id, stimulus, run)
+                && let Ok(slot) = u32::try_from(slot)
+            {
+                *kept = Kept {
+                    pass,
+                    stimulus: id,
+                    slot,
+                };
             }
         }
         for cell in reach.cells() {
             let receiver = Receiver::Cell(cell.clone());
-            chemistry.stimulate_id(settings, receiver, emission.stimulus, stimulus, run);
+            chemistry.stimulate_id(settings, receiver, id, stimulus, run);
         }
     }
 }

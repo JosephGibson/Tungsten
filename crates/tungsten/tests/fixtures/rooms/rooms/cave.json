@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "cell": [16, 16],
+  "size": [40, 24],
+  "tileset": "cave",
+  "layers": [
+    { "name": "art", "cells": { "16,19": "arch" } },
+    { "name": "solid", "kind": "collision", "layers": ["terrain"], "mask": ["terrain", "player", "enemy"] }
+  ],
+  "shapes": [
+    { "id": "floor", "rect": [0, 20, 40, 4], "tile": "rock", "layers": ["art", "solid"] },
+    { "id": "ramp", "polygon": [[10, 20], [14, 16], [14, 20]], "tile": "rock", "layers": ["art", "solid"] },
+    { "id": "slope", "polygon": [[20, 20], [24, 18], [24, 20]], "tile": "rock", "layers": ["art", "solid"] },
+    { "id": "bridge", "line": [[28, 14], [34, 14]], "tile": "plank", "layers": ["art", "solid"] },
+    { "id": "pit", "rect": [36, 20, 2, 4], "tile": null, "layers": ["art", "solid"] }
+  ],
+  "objects": [
+    { "id": "crate_1", "prefab": "crate", "at": [5, 19], "on": "floor" },
+    { "id": "lamp_1", "prefab": "lamp", "at": [8, 19] },
+    { "id": "ball_1", "prefab": "ball", "at": [30.5, 12] },
+    { "id": "walker_1", "prefab": "walker", "at": [2, 18.5] }
+  ],
+  "places": [
+    { "id": "player_start", "point": [2, 19] },
+    { "id": "arena", "rect": [20, 4, 16, 12] },
+    { "id": "main", "route": ["player_start", [16, 19], "exit"] },
+    { "id": "exit", "point": [39, 19], "to": "hall.west_door" }
+  ],
+  "ambient": [0.2, 0.2, 0.3]
+}

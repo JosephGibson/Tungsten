@@ -470,3 +470,83 @@ fn a_read_knows_its_length_and_marks_every_event_read() {
     assert_eq!(read.next(), Some(&4));
     assert_eq!((read.next(), read.next()), (None, None), "fused");
 }
+
+#[test]
+fn append_sends_a_buffers_events_in_order_and_empties_it() {
+    // One append is one send each, in the buffer's order, after what the
+    // window already holds.
+    let mut queue = EventQueue::new();
+    let mut events = vec![1, 2, 3];
+    queue.append(&mut events);
+    assert!(events.is_empty());
+    queue.send(4);
+    events.extend([5, 6]);
+    queue.append(&mut events);
+    assert!(events.is_empty());
+    assert_eq!(
+        queue.iter_current().copied().collect::<Vec<_>>(),
+        [1, 2, 3, 4, 5, 6]
+    );
+    assert_eq!(queue.sent_since_flush(), 6);
+
+    let mut cursor = EventCursor::new();
+    assert_eq!(cursor.read(&queue).len(), 6);
+    queue.flush();
+    events.push(7);
+    queue.append(&mut events);
+    let read = cursor.read(&queue);
+    assert_eq!(read.missed(), 0);
+    assert_eq!(read.copied().collect::<Vec<_>>(), [7]);
+}
+
+#[test]
+fn append_trades_buffers_with_an_empty_window_and_copies_into_a_filled_one() {
+    let mut queue = EventQueue::new();
+    let mut events = Vec::with_capacity(64);
+    events.extend(0..40);
+    let sent = events.as_ptr();
+    queue.append(&mut events);
+    assert_eq!(queue.current.as_ptr(), sent, "the window is the buffer");
+    assert_eq!(events.capacity(), 0, "the buffer is the window it replaced");
+
+    // A window with events keeps its buffer and takes a copy.
+    events.extend(40..50);
+    let window = queue.current.as_ptr();
+    queue.append(&mut events);
+    assert_eq!(queue.current.as_ptr(), window);
+    assert_eq!(queue.len(), 50);
+}
+
+#[test]
+fn a_senders_buffer_and_the_two_windows_rotate_without_growing() {
+    // A sender that fills its buffer and appends it every frame meets three
+    // buffers in turn, its own and the queue's two windows: from the fourth
+    // frame each has held a frame's events, and none grows again.
+    let mut queue = EventQueue::new();
+    let mut events = Vec::new();
+    for frame in 0..9 {
+        let before = events.capacity();
+        events.extend(0..1_000);
+        if frame >= 3 {
+            assert_eq!(events.capacity(), before, "frame {frame} grew a buffer");
+        }
+        queue.append(&mut events);
+        assert_eq!(queue.iter_current().count(), 1_000);
+        queue.flush();
+    }
+}
+
+#[test]
+fn an_append_in_a_later_fixed_step_is_that_steps_window() {
+    let mut queue = EventQueue::new();
+    queue.set_fixed_view(true);
+    queue.append(&mut vec![1, 2]);
+    assert_eq!(queue.iter().copied().collect::<Vec<_>>(), [1, 2]);
+    queue.end_fixed_step();
+    assert_eq!(queue.iter().count(), 0);
+    queue.append(&mut vec![3]);
+    assert_eq!(queue.iter().copied().collect::<Vec<_>>(), [3]);
+    queue.end_fixed_step();
+    queue.set_fixed_view(false);
+    assert_eq!(queue.iter().copied().collect::<Vec<_>>(), [1, 2, 3]);
+}

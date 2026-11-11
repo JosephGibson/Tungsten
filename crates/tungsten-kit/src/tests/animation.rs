@@ -403,3 +403,44 @@ fn a_frame_sound_takes_the_listeners_gain() {
     assert_eq!(played(&mut world), [0.125]);
     assert!(world.is_alive(far));
 }
+
+#[test]
+fn rows_on_other_clips_and_on_none_each_take_their_own() {
+    // The tick looks a row's clip up once and keeps it for the next row
+    // that names it. Rows that alternate between two clips, one that names
+    // none, and one whose ID is longer than the tick's copy of the last ID
+    // each show their own clip's frames.
+    let (mut world, mut schedule) = setup();
+    let long = "walk_".repeat(12);
+    world
+        .resource_mut::<AnimationRegistry>()
+        .insert(long.clone(), clip(&[(walk(1), 50), (walk(0), 50)], true));
+    let rows: Vec<(Entity, &str)> = [
+        "blink", "walk", "blink", "missing", "walk", &long, &long, "blink",
+    ]
+    .into_iter()
+    .map(|id| {
+        (
+            world.spawn_with((AnimationState::new(id), Sprite::new(walk(9)))),
+            id,
+        )
+    })
+    .collect();
+    let expect = |world: &World, blink, walking, long_shows| {
+        for &(entity, id) in &rows {
+            let want = match id {
+                "blink" => blink,
+                "walk" => walking,
+                "missing" => walk(9),
+                _ => long_shows,
+            };
+            assert_eq!(shown(world, entity), want, "a row on `{id}`");
+        }
+    };
+    frame(&mut world, &mut schedule, 0.0);
+    expect(&world, open(), walk(0), walk(1));
+    frame(&mut world, &mut schedule, 0.06);
+    expect(&world, open(), walk(1), walk(0));
+    frame(&mut world, &mut schedule, 0.06);
+    expect(&world, shut(), walk(0), walk(1));
+}

@@ -1157,3 +1157,98 @@ fn an_absent_ui_section_keeps_the_defaults() {
     let empty: Config = serde_json::from_str(r#"{ "ui": {} }"#).expect("an empty section");
     assert_eq!(empty.ui, UiConfig::default());
 }
+
+#[test]
+fn the_physics_section_sets_gravity_and_the_broadphase_cell() {
+    let (_, loaded) = load_json(
+        "physics-set",
+        r#"{ "physics": { "gravity": [0, 900], "broadphase_cell": 48 } }"#,
+    );
+    let physics = loaded.unwrap().physics;
+    assert_eq!(physics.gravity, [0.0, 900.0]);
+    assert_eq!(physics.broadphase_cell, 48.0);
+    let (_, loaded) = load_json(
+        "physics-gravity",
+        r#"{ "physics": { "gravity": [-10, 5.5] } }"#,
+    );
+    let physics = loaded.unwrap().physics;
+    assert_eq!(
+        (physics.gravity, physics.broadphase_cell),
+        ([-10.0, 5.5], 32.0),
+        "a field left out keeps its default"
+    );
+    let (_, loaded) = load_json("physics-unknown", r#"{ "physics": { "gravty": [0, 1] } }"#);
+    assert!(matches!(loaded, Err(ConfigError::Parse { .. })));
+}
+
+#[test]
+fn the_particles_section_sets_the_budget() {
+    let (_, loaded) = load_json("particles-set", r#"{ "particles": { "budget": 4000 } }"#);
+    assert_eq!(loaded.unwrap().particles.budget, 4000);
+    let (_, loaded) = load_json("particles-none", r#"{ "particles": { "budget": 0 } }"#);
+    assert_eq!(loaded.unwrap().particles.budget, 0, "no particles at all");
+    let (_, loaded) = load_json("particles-negative", r#"{ "particles": { "budget": -1 } }"#);
+    assert!(matches!(loaded, Err(ConfigError::Parse { .. })));
+}
+
+#[test]
+fn absent_sections_keep_the_engine_defaults() {
+    let engine = crate::physics::PhysicsConfig::default();
+    for (tag, json) in [
+        ("sections-none", "{}"),
+        ("sections-empty", r#"{ "physics": {}, "particles": {} }"#),
+    ] {
+        let (_, loaded) = load_json(tag, json);
+        let config = loaded.unwrap();
+        assert_eq!(config.physics.gravity, engine.gravity.to_array(), "{tag}");
+        assert_eq!(
+            config.physics.broadphase_cell, engine.broadphase_cell_size,
+            "{tag}"
+        );
+        assert_eq!(
+            config.particles.budget,
+            crate::assets::ParticleBudget::DEFAULT_GLOBAL_CAP,
+            "{tag}"
+        );
+    }
+    assert_eq!(Config::default().physics, PhysicsSection::default());
+    assert_eq!(Config::default().particles.budget, 10_000);
+    assert!(PhysicsSection::default().validate().is_ok());
+}
+
+#[test]
+fn a_cell_not_above_zero_fails_the_load() {
+    for (tag, json, value) in [
+        ("cell-0", r#"{ "physics": { "broadphase_cell": 0 } }"#, "0"),
+        (
+            "cell-negative",
+            r#"{ "physics": { "broadphase_cell": -8 } }"#,
+            "-8",
+        ),
+    ] {
+        let (file, loaded) = load_json(tag, json);
+        match loaded.unwrap_err() {
+            ConfigError::InvalidValue {
+                path,
+                field,
+                value: got,
+                ..
+            } => {
+                assert_eq!(field, "physics.broadphase_cell", "{tag}");
+                assert_eq!(got, value, "{tag}");
+                assert_eq!(path, file.display().to_string(), "{tag}");
+            }
+            other => panic!("unexpected error for {tag}: {other}"),
+        }
+    }
+    // A section built in code is checked by `validate`, as `App::new` runs it.
+    let physics = PhysicsSection {
+        gravity: [f32::NAN, 0.0],
+        ..PhysicsSection::default()
+    };
+    let message = physics.validate().unwrap_err().to_string();
+    assert!(
+        message.starts_with("invalid physics.gravity='[NaN, 0]'"),
+        "{message}"
+    );
+}

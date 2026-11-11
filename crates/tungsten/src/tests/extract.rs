@@ -6,8 +6,9 @@ use glam::Vec2;
 use std::path::PathBuf;
 use tungsten_core::assets::{LayerKind, TilemapRegistry, UvRect};
 use tungsten_core::{
-    AssetRegistry, Config, FilterMode, Plugin, Schedule, Sprite, SpriteAssetId, TextureHandle,
-    TilemapData, TilemapInstance, TilemapLayer, Transform, Visibility, WorldLabel,
+    AssetRegistry, CameraController, CameraRig, Config, FilterMode, FixedRig, Plugin, Schedule,
+    Sprite, SpriteAssetId, TextureHandle, TilemapData, TilemapInstance, TilemapLayer, Transform,
+    Visibility, WorldLabel,
 };
 use tungsten_render::SpriteInstance;
 
@@ -337,11 +338,8 @@ fn drawn_labels(harness: &Harness) -> Vec<WorldLabelRun> {
 #[test]
 fn world_labels_project_through_the_camera() {
     let mut harness = label_harness();
-    *harness.world_mut().resource_mut::<CameraState>() = CameraState {
-        position: Vec2::new(100.0, 50.0),
-        zoom: 2.0,
-        rotation: 0.0,
-    };
+    harness.world_mut().resource_mut::<CameraController>().rig =
+        CameraRig::fixed(FixedRig::Corner(Vec2::new(100.0, 50.0))).with_zoom(2.0);
     let label = WorldLabel::new("12", Vec2::new(150.0, 80.0), "sans", 14.0)
         .with_offset(Vec2::new(4.0, -10.0))
         .with_pivot(Vec2::new(0.0, 0.5))
@@ -597,10 +595,8 @@ fn a_map_without_z_layers_draws_as_before() {
     // A raised layer out of view takes no place: the sprites keep their
     // depths.
     raise(harness.world_mut(), 0);
-    harness
-        .world_mut()
-        .resource_mut::<tungsten_core::CameraState>()
-        .position = Vec2::new(-5_000.0, 0.0);
+    harness.world_mut().resource_mut::<CameraController>().rig =
+        CameraRig::fixed(FixedRig::Corner(Vec2::new(-5_000.0, 0.0)));
     harness.step(1);
     let draw = harness.draw().expect("a completed frame");
     assert_eq!(

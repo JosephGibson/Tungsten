@@ -3315,12 +3315,15 @@ fn restore_instance(world: &mut World, target: Entity, instance: &EffectInstance
 
 /// Whether `entity` carries a tag that holds `instance`'s effect.
 fn suppressed(world: &World, entity: Entity, instance: &EffectInstance) -> bool {
-    definition(world, &instance.effect).is_some_and(|effect| {
-        !effect.suppressed_by.is_empty()
-            && world
-                .get::<Tags>(entity)
-                .is_some_and(|tags| effect.suppressed_by.iter().any(|tag| tags.has(tag)))
-    })
+    definition(world, &instance.effect).is_some_and(|effect| held(world, entity, effect))
+}
+
+/// Whether `entity` carries a tag that holds `effect`.
+fn held(world: &World, entity: Entity, effect: &Effect) -> bool {
+    !effect.suppressed_by.is_empty()
+        && world
+            .get::<Tags>(entity)
+            .is_some_and(|tags| effect.suppressed_by.iter().any(|tag| tags.has(tag)))
 }
 
 /// Puts `effect`'s modifiers and the instance's lines on `target` under the
@@ -3969,20 +3972,21 @@ impl Ticker {
         if dt > 0.0 {
             let mut i = 0;
             while i < effects.instances.len() {
-                if suppressed(world, entity, &effects.instances[i]) {
-                    let serial = effects.instances[i].serial;
-                    self.note_suppressed(world, entity, serial);
-                    i += 1;
-                    continue;
-                }
-                let ticked = tick_instance(
+                // One resolve of the instance's definition serves the tag
+                // that may hold it and its step.
+                let Some(ticked) = tick_instance(
                     world,
                     entity,
                     &mut effects.instances[i],
                     dt,
                     &mut self.payloads,
                     &mut self.fuel,
-                );
+                ) else {
+                    let serial = effects.instances[i].serial;
+                    self.note_suppressed(world, entity, serial);
+                    i += 1;
+                    continue;
+                };
                 if ticked.landed > 0 {
                     restore_instance(world, entity, &effects.instances[i], ticked.landed);
                 }
@@ -4105,7 +4109,8 @@ fn follow_intensity(world: &mut World, entity: Entity, effects: &mut Effects, i:
 /// emission's clock by the same time, its elapses one emission while the
 /// World holds chemistry; then its fuel's burn and its intensity's decay
 /// over the same time; then its time left, and what its end does, with the
-/// elapses, which a restore lands at once.
+/// elapses, which a restore lands at once. `None`, with the instance as it
+/// was, while `entity` carries a tag that holds its effect.
 fn tick_instance(
     world: &World,
     entity: Entity,
@@ -4113,7 +4118,7 @@ fn tick_instance(
     dt: f32,
     payloads: &mut Vec<Payload>,
     fuel: &mut String,
-) -> Ticked {
+) -> Option<Ticked> {
     let EffectInstance {
         effect: effect_ref,
         source,
@@ -4127,6 +4132,9 @@ fn tick_instance(
         ..
     } = instance;
     let effect = definition(world, effect_ref);
+    if effect.is_some_and(|effect| held(world, entity, effect)) {
+        return None;
+    }
     let elapsed = left.map_or(dt, |left| dt.min(left));
     let mut landed = 0;
     match (effect.and_then(|effect| effect.period), *period_left) {
@@ -4216,12 +4224,14 @@ fn tick_instance(
             ran_out = true;
         }
     }
-    let ticked = |end| Ticked {
-        end,
-        landed,
-        burn,
-        ran_out,
-        worn,
+    let ticked = |end| {
+        Some(Ticked {
+            end,
+            landed,
+            burn,
+            ran_out,
+            worn,
+        })
     };
     let Some(was) = *left else {
         return ticked(Tick::Keep);

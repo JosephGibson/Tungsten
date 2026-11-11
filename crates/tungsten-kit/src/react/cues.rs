@@ -9,6 +9,7 @@ use std::sync::Arc;
 use glam::Vec2;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
+use tungsten_core::camera;
 use tungsten_core::physics::Position;
 use tungsten_core::{
     AudioCommands, AudioHandle, CommandBuffer, DataRef, DataRegistry, Entity, EventCursor,
@@ -39,6 +40,7 @@ use crate::overlap::hit::Struck;
 use crate::overlap::pickup::PickedUp;
 use crate::overlap::projectile::ProjectileExpired;
 use crate::overlap::zone::ZoneEntered;
+use crate::present::camera::CameraRigId;
 use crate::present::character::{CLIPS_FORM, CharacterAnimator, Clips, check_clips};
 use crate::present::labels::{
     CritLabel, LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, PartLabel, TickLabel,
@@ -270,7 +272,8 @@ impl Cues {
 
 /// One reaction to an event: spawn a prefab, roll a loot table, change a
 /// counter or a flag, despawn, apply an effect, use or refill an ability,
-/// or present (a sound, a shake, a squash, a flash, a label, a clip).
+/// or present (a sound, a shake, a squash, a flash, a label, a clip, a
+/// camera rig raised or released).
 /// `counter`, `flag`, `despawn`, `effect` and `ability` act on the event's
 /// subject by default; [`for_other`](Self::for_other) points them at the event's
 /// other entity and [`for_game`](Self::for_game) the first two at the
@@ -297,6 +300,7 @@ impl Cues {
 /// | loop | `{ "loop": { "id": "crackle", "volume": 1.0, "fade": 0.1 } }`, the subject wants the sound looping: one voice per sound ID at its loudest want by the [`CueListener`] |
 /// | stop | `{ "stop": { "id": "crackle", "fade": 0.1 } }`, the subject's want of the loop ends; the last one's voice fades out |
 /// | clip | `{ "clip": "hero_land" }`, a [`Clips`] played once on the subject's [`CharacterAnimator`] over its state's ([`play`](CharacterAnimator::play)) |
+/// | camera | `{ "camera": { "raise": "vista.cliff" } }`, or `"release"`: every camera rig whose [`CameraRigId`](crate::CameraRigId) is the name raised, the latest raised winning a tie, or lowered |
 ///
 /// # Examples
 ///
@@ -385,6 +389,12 @@ pub(crate) enum ActionKind {
     /// A one-shot on the subject's animator, boxed so the action keeps its
     /// size.
     Clip(Box<Clips>),
+    /// Every camera rig with this ID raised, or lowered: a `String` and a
+    /// `bool`, `Prefab`'s size.
+    Camera {
+        id: String,
+        raise: bool,
+    },
 }
 
 /// A counter action's change.
@@ -879,9 +889,52 @@ impl CueAction {
         })
     }
 
+    /// Raises every camera rig whose `CameraRigId` is `id`, through
+    /// `tungsten_core::camera::raise`, so raises a step makes keep their
+    /// order; a traced skip when no rig holds it. Data form
+    /// `{ "camera": { "raise": "vista.cliff" } }`.
+    ///
+    /// ```
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let look = CueAction::raise_camera("vista.cliff");
+    /// assert_eq!(
+    ///     serde_json::to_value(&look).unwrap(),
+    ///     serde_json::json!({ "camera": { "raise": "vista.cliff" } })
+    /// );
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// When `id` is not a dotted name.
+    #[must_use]
+    #[track_caller]
+    pub fn raise_camera(id: impl Into<String>) -> Self {
+        Self::of(ActionKind::Camera {
+            id: checked_rig_id("CueAction::raise_camera", id.into()),
+            raise: true,
+        })
+    }
+
+    /// Lowers every camera rig whose `CameraRigId` is `id`; a traced skip
+    /// when no rig holds it. Data form
+    /// `{ "camera": { "release": "vista.cliff" } }`.
+    ///
+    /// # Panics
+    ///
+    /// When `id` is not a dotted name.
+    #[must_use]
+    #[track_caller]
+    pub fn release_camera(id: impl Into<String>) -> Self {
+        Self::of(ActionKind::Camera {
+            id: checked_rig_id("CueAction::release_camera", id.into()),
+            raise: false,
+        })
+    }
+
     /// The action's data name: `prefab`, `counter`, `flag`, `despawn`,
     /// `sound`, `shake`, `squash`, `flash`, `label`, `roll`, `effect`,
-    /// `ability`, `loop`, `stop` or `clip`.
+    /// `ability`, `loop`, `stop`, `clip` or `camera`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self.kind {
@@ -900,6 +953,7 @@ impl CueAction {
             ActionKind::Loop { .. } => "loop",
             ActionKind::Stop { .. } => "stop",
             ActionKind::Clip(_) => "clip",
+            ActionKind::Camera { .. } => "camera",
         }
     }
 }
@@ -908,6 +962,16 @@ impl fmt::Debug for CueAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.kind.fmt(f)
     }
+}
+
+/// `id` checked as a camera rig's ID.
+#[track_caller]
+fn checked_rig_id(method: &str, id: String) -> String {
+    assert!(
+        valid_tag(&id),
+        "{method}: `{id}` is not a camera rig's ID (`[a-z][a-z0-9_]*` segments joined by dots)"
+    );
+    id
 }
 
 /// `name` checked as a counter or flag name.
@@ -939,6 +1003,44 @@ pub(crate) enum CueActionDef {
     Loop(LoopDef),
     Stop(StopDef),
     Clip(Clips),
+    Camera(CameraActionDef),
+}
+
+/// A `camera` action as data writes it: exactly one of `raise` and
+/// `release`, a rig's dotted ID.
+#[derive(Serialize, Deserialize)]
+#[serde(try_from = "CameraActionFields")]
+pub(crate) struct CameraActionDef {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    raise: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    release: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CameraActionFields {
+    raise: Option<String>,
+    release: Option<String>,
+}
+
+impl TryFrom<CameraActionFields> for CameraActionDef {
+    type Error = String;
+
+    fn try_from(fields: CameraActionFields) -> Result<Self, Self::Error> {
+        let ((Some(id), None) | (None, Some(id))) = (&fields.raise, &fields.release) else {
+            return Err("exactly one of `raise` and `release`".to_string());
+        };
+        if !valid_tag(id) {
+            return Err(format!(
+                "`{id}` is not a camera rig's ID (`[a-z][a-z0-9_]*` segments joined by dots)"
+            ));
+        }
+        Ok(Self {
+            raise: fields.raise,
+            release: fields.release,
+        })
+    }
 }
 
 /// A `shake` action as data writes it: the trauma alone, or an object of
@@ -1487,6 +1589,11 @@ impl TryFrom<CueActionDef> for CueAction {
                 fade: def.fade,
             },
             CueActionDef::Clip(clips) => ActionKind::Clip(Box::new(clips)),
+            CueActionDef::Camera(def) => match (def.raise, def.release) {
+                (Some(id), _) => ActionKind::Camera { id, raise: true },
+                (None, Some(id)) => ActionKind::Camera { id, raise: false },
+                (None, None) => unreachable!("checked at deserialization"),
+            },
         };
         Ok(Self { kind })
     }
@@ -1562,6 +1669,10 @@ impl From<CueAction> for CueActionDef {
             }
             ActionKind::Stop { id, fade } => CueActionDef::Stop(StopDef { id, fade }),
             ActionKind::Clip(clips) => CueActionDef::Clip(*clips),
+            ActionKind::Camera { id, raise } => CueActionDef::Camera(CameraActionDef {
+                raise: raise.then(|| id.clone()),
+                release: (!raise).then_some(id),
+            }),
         }
     }
 }
@@ -3115,6 +3226,7 @@ const NO_STYLE: &str = "the part's types set no label style";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
 const NO_ABILITY: &str = "the entity owns no such ability";
 const NO_ANIMATOR: &str = "the subject has no CharacterAnimator";
+const NO_RIG: &str = "no camera rig holds the ID";
 const NOT_USED: &str = "the ability was not ready, had no charge, no cost or no target";
 const WAITING: &str = "a rule ran for the subject within its min_interval";
 const CAPPED: &str = "a rule ran its cap this step";
@@ -3623,6 +3735,27 @@ impl Reactor {
                 });
             }
             ActionKind::Flash => start_flash(world, subject),
+            ActionKind::Camera { id, raise } => {
+                let rigs: Vec<Entity> = if world.has_any::<CameraRigId>() {
+                    world
+                        .query::<(Entity, &CameraRigId)>()
+                        .filter(|(_, rig)| rig.as_str() == id)
+                        .map(|(entity, _)| entity)
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                if rigs.is_empty() {
+                    return skip(world, NO_RIG);
+                }
+                for rig in rigs {
+                    if *raise {
+                        camera::raise(world, rig);
+                    } else {
+                        camera::lower(world, rig);
+                    }
+                }
+            }
             ActionKind::Clip(clips) => {
                 let Some(animator) = world.get_mut::<CharacterAnimator>(subject) else {
                     return skip(world, NO_ANIMATOR);
@@ -4363,8 +4496,27 @@ fn describe_cues(world: &mut World) {
                 FieldType::Object(CLIPS_FORM),
                 "a clip played once on the subject's character animator over its state's and its rules', from its first frame; the load checks each ID",
             ))
+            .field(FieldDescription::new(
+                "camera",
+                FieldType::Shape("camera_action"),
+                "every camera rig whose `id` is the name raised, the latest raised winning a tie, or lowered; none holding it, a traced skip",
+            ))
             .sample(r#"{ "despawn": {} }"#)
             .roundtrip(round_trip::<CueActionDef>),
+        ComponentDescription::new("camera_action", "A camera rig raised or released by its ID.")
+            .one_of()
+            .field(FieldDescription::new(
+                "raise",
+                FieldType::Text,
+                "the dotted ID of the rigs raised",
+            ))
+            .field(FieldDescription::new(
+                "release",
+                FieldType::Text,
+                "the dotted ID of the rigs lowered",
+            ))
+            .sample(r#"{ "raise": "vista" }"#)
+            .roundtrip(round_trip::<CameraActionDef>),
         ComponentDescription::new("counter_action", "A counter added to or set: exactly one of `add` and `set`.")
             .field(FieldDescription::new(
                 "name",

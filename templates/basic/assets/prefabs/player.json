@@ -16,7 +16,7 @@
     "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
     "knockback": { "seconds": 0.2 },
     "stats": { "pickup_radius": 96, "move_speed": 240, "max_health": 5 },
-    "camera_target": null,
+    "camera_rig": { "follow": { "dead_zone": [640, 360] }, "view_height": 720 },
     "cues": {
       "damaged": [{ "shake": 0.6 }, { "sound": { "id": "hurt" } }],
       "ability_used": [{ "sound": { "id": "shoot" } }]

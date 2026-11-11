@@ -25,6 +25,9 @@ pub(crate) enum Subject {
     /// A screen, opened by its `ui_screens` ID or registered name on the
     /// frame after the `--after` actions (redo 7.20).
     Screen(String),
+    /// A room on an empty stage at frame 2, the camera fitted to its map
+    /// (redo 7.12): `tungsten level render`'s.
+    Room(String),
 }
 
 /// How much of the world an `--at` shot shows.
@@ -119,6 +122,11 @@ pub(crate) fn script(dir: &Path, args: &RenderArgs) -> Value {
             steps.push(json!({ "frame": 1, "camera": camera }));
         }
         Subject::Screen(_) => {}
+        Subject::Room(id) => {
+            steps.push(json!({ "frame": 2, "stage": {} }));
+            steps.push(json!({ "frame": 2, "room": id }));
+            steps.push(json!({ "frame": 2, "camera": { "fit": "staged" } }));
+        }
     }
     if args.overlay != OverlayStep::default() {
         steps.push(json!({ "frame": 1, "overlay": args.overlay }));
@@ -149,7 +157,15 @@ pub(crate) fn script(dir: &Path, args: &RenderArgs) -> Value {
             to
         }
     };
-    let frames = last.max(args.after.len() as u32 + 1).max(opened);
+    let staged = if matches!(args.subject, Subject::Room(_)) {
+        2
+    } else {
+        0
+    };
+    let frames = last
+        .max(args.after.len() as u32 + 1)
+        .max(opened)
+        .max(staged);
     json!({ "version": 1, "frames": frames, "resolution": args.size, "steps": steps })
 }
 
@@ -251,6 +267,29 @@ pub(crate) fn args(
         release: flag("--release"),
         out,
     })
+}
+
+/// `level render`'s options for `room`: `-o`, `--overlay`, `--size`,
+/// `--frame` and `--release`, as `render` takes them.
+pub(crate) fn room_args(
+    room: &str,
+    value: impl Fn(&str) -> Option<String>,
+    flag: impl Fn(&str) -> bool,
+) -> Result<RenderArgs, String> {
+    let mut args = args(
+        |option| match option {
+            "--at" => Some("0,0".to_owned()),
+            "-o" | "--overlay" | "--size" | "--frame" | "--save-script" => value(option),
+            _ => None,
+        },
+        |_| Vec::new(),
+        flag,
+    )?;
+    args.subject = Subject::Room(room.to_owned());
+    if matches!(args.shot, Shot::Frame(frame) if frame < 2) {
+        return Err("`--frame`: the room stages at frame 2, so capture from 2".to_owned());
+    }
+    Ok(args)
 }
 
 fn sheet(items: &str) -> Result<Subject, String> {
