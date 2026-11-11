@@ -15,7 +15,7 @@ use example_01_platformer::features::combat::systems::{
     CHILL_DEEP, FROST_TINT, frost_level, frost_stage, frozen_left,
 };
 use example_01_platformer::features::combat::{
-    CHILLED, FREEZE_NEEDS, FROZEN, Hit, Kind, has_status,
+    CHILLED, FREEZE_BUILDS, FREEZE_NEEDS, FROZEN, Hit, Kind, has_status,
 };
 use example_01_platformer::features::elements::components::{Chill, Frozen, IcePulse};
 use example_01_platformer::features::elements::draw::effects;
@@ -43,10 +43,7 @@ use tungsten::core::{
     Velocity,
 };
 use tungsten::extract_sprites_default;
-use tungsten::kit::{
-    AilmentBuckets, AilmentThreshold, Children, Damaged, Health, KitRng, StateMachine, Stats,
-    damage,
-};
+use tungsten::kit::{Children, Damaged, Effects, KitRng, StateMachine, Stats, damage};
 use tungsten::testing::UiHarness;
 
 use super::kind_body;
@@ -946,30 +943,26 @@ fn move_speed(harness: &UiHarness, entity: Entity) -> f32 {
         .expect("a move speed")
 }
 
-/// `target`'s cold bucket as a share of its freeze's rung.
+/// `target`'s freeze's build as a share of its band.
 fn filled(harness: &UiHarness, target: Entity) -> f32 {
-    let world = harness.world();
-    let fill = world
-        .get::<AilmentBuckets>(target)
-        .map_or(0.0, |buckets| buckets.fill(Kind::Cold.tag()));
-    let threshold = world.get::<AilmentThreshold>(target).unwrap();
-    let max = world.get::<Health>(target).unwrap().max();
-    fill / (FREEZE_NEEDS * (threshold.flat() + threshold.of_max_health() * max))
+    let effects = harness.world().get::<Effects>(target);
+    let built = FREEZE_BUILDS
+        .iter()
+        .find_map(|id| effects.and_then(|effects| effects.intensity(id)))
+        .unwrap_or(0.0);
+    built / FREEZE_NEEDS
 }
 
-fn heard(harness: &UiHarness, sound: Sound) -> usize {
-    harness
-        .harness()
-        .events::<Sounded>()
-        .filter(|sounded| sounded.sound == sound)
-        .count()
-}
+/// A target's freeze's sound, which its cue rule plays.
+const FREEZE_SOUND: &str = "ex10_ice_freeze_sfx";
 
 #[test]
 fn a_chill_slows_and_frosts_more_as_its_bucket_fills() {
     let (mut harness, player) = cold_arena();
     let beetle = creature(&mut harness, EnemyKind::Beetle, 1200.0);
     cold(&mut harness, beetle, 5.0);
+    // Its chill's band lands it a step later.
+    harness.step(1);
     assert!(has_status(harness.world(), beetle, CHILLED), "chilled");
     let mut seen = Vec::new();
     for _ in 0..3 {
@@ -1065,12 +1058,12 @@ fn a_creature_that_freezes_plays_the_freeze_with_its_frost_burst() {
         for _ in 0..6 {
             cold(&mut harness, target, amount);
             if has_status(harness.world(), target, FROZEN) {
-                assert_eq!(heard(&harness, Sound::Froze), 1, "{kind:?}");
+                assert_eq!(plays(&harness, FREEZE_SOUND), 1, "{kind:?}");
                 assert!(super::bursts(&harness, "ex10_ice_frost") >= 1, "{kind:?}");
                 froze = true;
                 break;
             }
-            assert_eq!(heard(&harness, Sound::Froze), 0, "{kind:?}");
+            assert_eq!(plays(&harness, FREEZE_SOUND), 0, "{kind:?}");
         }
         assert!(froze, "{kind:?} froze");
     }
@@ -1104,7 +1097,7 @@ fn a_thaw_cracks_the_cube_first_and_ends_in_glints_and_a_crack() {
     for _ in 0..600 {
         harness.step(1);
         if !has_status(harness.world(), beetle, FROZEN) {
-            assert_eq!(heard(&harness, Sound::Thawed), 1, "its crack");
+            assert_eq!(plays(&harness, "ex10_ice_crack_sfx"), 1, "its crack");
             assert_eq!(super::bursts(&harness, "ex10_thaw_glints"), 1, "its glints");
             thawed = true;
             break;
@@ -1273,8 +1266,10 @@ fn the_flakes_thicken_by_stage() {
         }
     }
     assert_eq!(stages, [1, 2, 3, 4], "each stage's flakes in turn");
-    // The wizard only chills, on the flakes he had.
+    // The wizard only chills, on the flakes he had, its chill's band a
+    // step later.
     cold(&mut harness, player, 10.0);
+    harness.step(1);
     assert!(has_status(harness.world(), player, CHILLED));
     assert_eq!(
         flakes(&harness, player),

@@ -485,13 +485,15 @@ fn a_steam_bursts_own_fire_relights_nothing() {
 }
 
 #[test]
-fn fire_and_cold_in_one_step_leave_one_state_and_no_ending() {
+fn fire_and_cold_in_one_step_leave_both_states_and_no_ending() {
     let (mut harness, _, dummy) = with_dummy();
     let world = harness.world_mut();
     Hit::new(dummy, [(Kind::Fire, 15.0)]).queue(world);
     Hit::new(dummy, [(Kind::Cold, 15.0)]).queue(world);
-    harness.step(1);
-    assert!(has(&harness, dummy, "burning") && !has(&harness, dummy, "chilled"));
+    // Chemistry decides both against the tags as they stand, neither held,
+    // and their bands land them a step later (the plan's §2.2).
+    harness.step(2);
+    assert!(has(&harness, dummy, "burning") && has(&harness, dummy, "chilled"));
     assert!(
         entries(&harness).is_empty(),
         "neither state held when the step began"

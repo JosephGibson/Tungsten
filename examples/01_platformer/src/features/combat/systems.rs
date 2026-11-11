@@ -1,8 +1,9 @@
 //! Combat's systems: the states the step's resolve begins with, the
 //! reactions to the parts that landed and to `shattered`, `frozen`,
-//! `shocked`, `bleeding` and `poisoned`, the blood a blow spills, the
-//! freezes and the thaws heard, Corrosive, the chill's grade, the
-//! statuses' tints on their targets' sprites and their particles.
+//! `shocked` and `bleeding`, the blood a blow spills, the freezes' and the
+//! thaws' bursts, Corrosive, the chill's grade, the statuses' tints on
+//! their targets' sprites and their particles. A status's sound on its
+//! application or end is a cue rule (`cue_rules/statuses.json`, S-56).
 
 use glam::Vec2;
 use tungsten::SceneEntity;
@@ -12,15 +13,14 @@ use tungsten::core::{
     PrevPosition, Sprite, Transform, Visibility, World,
 };
 use tungsten::kit::{
-    AilmentBuckets, AilmentThreshold, DamagedPart, EffectApplied, EffectExpired, EffectRequest,
-    Effects, Follow, Health, ImmunePart, Lifetime, Modifier, Source, Stats, Tags, Target,
-    end_effect,
+    DamagedPart, EffectApplied, EffectExpired, EffectRequest, Effects, Follow, Health, ImmunePart,
+    Lifetime, Modifier, Source, Stats, Tags, Target, end_effect,
 };
 
 use super::components::{StatusEmitter, StatusLook};
 use super::{
-    ARMOURED, BURNING, CHILL_NEEDS, CHILLED, CORRODED, DOUSED, FLESH, FREEZABLE, FREEZE_NEEDS,
-    FROZEN, Kind, POISONED, SHOCKED, has_status,
+    ARMOURED, BURNING, CHILL_BUILD, CHILL_NEEDS, CHILLED, CORRODED, DOUSED, FLESH, FREEZABLE,
+    FREEZE_BUILDS, FREEZE_NEEDS, FROZEN, Kind, POISONED, SHOCKED, STATUS_THRESHOLD, has_status,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::cascade::{self, CascadeKind};
@@ -78,12 +78,11 @@ pub fn states(world: &mut World) {
 /// source's save ID: none when the source has gone, the player's when the
 /// part named none. A blow, a physical part that is not a tick, on a `flesh`
 /// target or the courier spurts blood where it landed, once a target a
-/// step, and `bleeding` applied spurts again; `poisoned` applied gurgles at
-/// its target (e01flask); a target frozen this step
-/// (frozen now, not as the resolve began), in place too, sounds its freeze
-/// with its frost burst. A geyser's fire part on a target neither burning,
+/// step, and `bleeding` applied spurts again; a target frozen this step
+/// (frozen now, not as the resolve began), in place too, bursts in frost,
+/// its sound a cue rule's. A geyser's fire part on a target neither burning,
 /// frozen nor doused sets it burning from the geyser, once a target a step,
-/// since its 12 fire alone falls short of the player's ladder (e01hollow).
+/// since its 12 fire alone falls short of the player's burn build (e01hollow).
 /// Last, Corrosive ([`corrode`]).
 pub fn reactions(
     world: &mut World,
@@ -149,20 +148,14 @@ pub fn reactions(
             }
         }
     }
-    let (mut spurts, mut poisoned) = (Vec::new(), Vec::new());
+    let mut spurts = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<EffectApplied>>() {
         for effect in applied.read(events) {
             match effect.id.as_deref() {
                 Some("shattered") => queued.push((CascadeKind::Shatter, effect.entity, 0.0, mine)),
                 Some("bleeding") => spurts.push(effect.entity),
-                Some("poisoned") => poisoned.push(effect.entity),
                 _ => {}
             }
-        }
-    }
-    for target in poisoned {
-        if let Some(at) = body_centre(world, target) {
-            audio::play(world, Sound::Poisoned, at);
         }
     }
     for (target, geyser) in burns {
@@ -196,7 +189,6 @@ pub fn reactions(
     for (_, target) in froze {
         if let Some(at) = body_centre(world, target) {
             spawn_burst(world, "ex10_ice_frost", at);
-            audio::play(world, Sound::Froze, at);
         }
     }
     for (kind, target, strength, source) in queued {
@@ -398,57 +390,45 @@ fn grade(world: &World, entity: Entity, tags: &Tags) -> f32 {
     }
 }
 
-/// `entity`'s ailment threshold as the kit's ladder reads it: `(flat +
-/// of_max_health × Health::max) × ailment_threshold_mult`. None without one,
-/// or at 0.
-fn threshold_at(world: &World, entity: Entity) -> Option<f32> {
-    let threshold = world.get::<AilmentThreshold>(entity)?;
-    let max = world.get::<Health>(entity).map_or(0.0, Health::max);
-    let mult = world
-        .get::<Stats>(entity)
-        .and_then(|stats| stats.get("ailment_threshold_mult"))
-        .map_or(1.0, |mult| mult.max(0.0));
-    let at = (threshold.flat() + threshold.of_max_health() * max) * mult;
-    (at > 0.0).then_some(at)
+/// The intensity of `entity`'s first build of `ids` it carries, in its
+/// thresholds ([`STATUS_THRESHOLD`]); 0 with none.
+fn built(world: &World, entity: Entity, ids: &[&str]) -> f32 {
+    world.get::<Effects>(entity).map_or(0.0, |effects| {
+        ids.iter()
+            .find_map(|id| effects.intensity(id))
+            .unwrap_or(0.0)
+    })
 }
 
-/// Where `entity`'s cold bucket stands on its climb from the chill's rung
-/// to the freeze's, 0 to 1. The chill empties the bucket as it applies and
-/// the freeze needs [`FREEZE_NEEDS`] of the threshold, so the grade is its
-/// fill over that share of its threshold ([`threshold_at`]). None without
-/// buckets or a threshold.
+/// Where `entity`'s cold stands on its climb from the chill to the freeze,
+/// 0 to 1: its freeze's build ([`FREEZE_BUILDS`], the troll's its own),
+/// which starts once the chill holds, over [`FREEZE_NEEDS`]. None without
+/// effects.
 #[must_use]
 pub fn chill_grade(world: &World, entity: Entity) -> Option<f32> {
-    let at = threshold_at(world, entity)?;
-    let buckets = world.get::<AilmentBuckets>(entity)?;
-    Some((buckets.fill(Kind::Cold.tag()) / (FREEZE_NEEDS * at)).clamp(0.0, 1.0))
+    world.get::<Effects>(entity)?;
+    Some((built(world, entity, &FREEZE_BUILDS) / FREEZE_NEEDS).clamp(0.0, 1.0))
 }
 
 /// The share of the frost's climb a creature has at the chill's rung.
 pub const CHILL_SHARE: f32 = 0.25;
 
 /// The frost a creature that freezes shows, `tags` its own, 0 to 1, from the
-/// first point of cold (01 (j)): its cold bucket's climb to the chill's
-/// rung ([`CHILL_NEEDS`]) over the first [`CHILL_SHARE`], then the chill's
-/// grade to the freeze's over the rest, the chill having emptied the
-/// bucket. 0 for what does not freeze, and once frozen, where the cube
+/// first point of cold (01 (j)): its chill's build's climb to its band
+/// ([`CHILL_NEEDS`]) over the first [`CHILL_SHARE`], then the chill's grade
+/// to the freeze's over the rest, the chill's band having removed its
+/// build. 0 for what does not freeze, and once frozen, where the cube
 /// takes over.
 #[must_use]
 pub fn frost_level(world: &World, entity: Entity, tags: &Tags) -> f32 {
     if !tags.has(FREEZABLE) || tags.has(FROZEN) {
         return 0.0;
     }
-    let (Some(at), Some(buckets)) = (
-        threshold_at(world, entity),
-        world.get::<AilmentBuckets>(entity),
-    ) else {
-        return 0.0;
-    };
-    let fill = buckets.fill(Kind::Cold.tag());
     if tags.has(CHILLED) {
-        CHILL_SHARE + (1.0 - CHILL_SHARE) * (fill / (FREEZE_NEEDS * at)).clamp(0.0, 1.0)
+        let climb = built(world, entity, &FREEZE_BUILDS) / FREEZE_NEEDS;
+        CHILL_SHARE + (1.0 - CHILL_SHARE) * climb.clamp(0.0, 1.0)
     } else {
-        CHILL_SHARE * (fill / (CHILL_NEEDS * at)).clamp(0.0, 1.0)
+        CHILL_SHARE * (built(world, entity, &[CHILL_BUILD]) / CHILL_NEEDS).clamp(0.0, 1.0)
     }
 }
 
@@ -461,19 +441,29 @@ pub fn frost_stage(level: f32) -> Option<u8> {
 }
 
 /// `chill_grades`, in the intent phase before the enemies' states: every
-/// creature with a threshold sheds its [`CHILL_SOURCE`] slow, then a chilled
-/// `freezable` one takes it again at [`GRADE_SLOW`] × its grade, between
-/// the chill's rung and the freeze's. The courier, which takes no freeze,
-/// keeps the chill's flat slow; a schema 10 troll saved past its second
-/// stage sheds that slow at its first step; a diving bat's set speed
-/// outranks the grade, as it outranks the chill's own slow.
+/// creature with a [`STATUS_THRESHOLD`] sheds its [`CHILL_SOURCE`] slow,
+/// then a chilled `freezable` one takes it again at [`GRADE_SLOW`] × its
+/// grade, between the chill and the freeze. The courier, which takes no
+/// freeze, keeps the chill's flat slow; a schema 10 troll saved past its
+/// second stage sheds that slow at its first step; a diving bat's set
+/// speed outranks the grade, as it outranks the chill's own slow.
 pub fn chill_grades(world: &mut World) {
-    let graded: Vec<(Entity, f32)> = world
-        .query::<(Entity, &AilmentThreshold, &Tags)>()
-        .map(|(entity, _, tags)| (entity, grade(world, entity, tags)))
-        .collect();
-    for (entity, grade) in graded {
-        if let Some(stats) = world.get_mut::<Stats>(entity) {
+    // The creatures by the shape `combat_states` scans, so the pit's query
+    // cache grows no new one, into the list kept from the last step.
+    let mut graded = world
+        .get_resource_mut::<Grades>()
+        .map(|grades| std::mem::take(&mut grades.0))
+        .unwrap_or_default();
+    graded.clear();
+    graded.extend(
+        world
+            .query::<(Entity, &Health, &Tags)>()
+            .map(|(entity, _, tags)| (entity, grade(world, entity, tags))),
+    );
+    for &(entity, grade) in &graded {
+        if let Some(stats) = world.get_mut::<Stats>(entity)
+            && stats.get(STATUS_THRESHOLD).is_some()
+        {
             stats.remove_modifiers(CHILL_SOURCE);
             if grade > 0.0 {
                 let slow = Modifier::Pct(-GRADE_SLOW * grade);
@@ -481,7 +471,15 @@ pub fn chill_grades(world: &mut World) {
             }
         }
     }
+    if let Some(grades) = world.get_resource_mut::<Grades>() {
+        grades.0 = graded;
+    }
 }
+
+/// [`chill_grades`]' list between steps, so a warm step allocates none: a
+/// World resource [`CombatPlugin`](super::CombatPlugin) inserts.
+#[derive(Debug, Default)]
+pub struct Grades(Vec<(Entity, f32)>);
 
 /// The game seconds `entity`'s freeze has left: the longest of its effect
 /// instances granting frozen. None while none does, or one never ends.
@@ -509,8 +507,8 @@ pub fn frozen_left(world: &World, entity: Entity) -> Option<f32> {
 pub struct WasFrozen(pub Vec<Entity>);
 
 /// `combat_thaws`, in the react phase: a live target frozen as the last
-/// step ended whose freeze ran out on time this step thaws in glints with
-/// an ice crack; then the frozen are noted for the next step.
+/// step ended whose freeze ran out on time this step thaws in glints, its
+/// ice crack a cue rule's; then the frozen are noted for the next step.
 pub fn thaws(world: &mut World, expired: &mut EventCursor<EffectExpired>) {
     let ran_out: Vec<Entity> = world
         .get_resource::<EventQueue<EffectExpired>>()
@@ -533,7 +531,6 @@ pub fn thaws(world: &mut World, expired: &mut EventCursor<EffectExpired>) {
             && !has_status(world, target, FROZEN);
         if thawed && let Some(at) = body_centre(world, target) {
             spawn_burst(world, "ex10_thaw_glints", at);
-            audio::play(world, Sound::Thawed, at);
         }
     }
     let now: Vec<Entity> = world

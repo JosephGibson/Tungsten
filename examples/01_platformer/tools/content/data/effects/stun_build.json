@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 1,
+    "decay": 0.3333333333
+  },
+  "bands": [
+    {
+      "at": 1,
+      "enter": [
+        {
+          "apply": {
+            "status": "stunned"
+          }
+        },
+        {
+          "remove": "stun_build"
+        }
+      ]
+    }
+  ]
+}

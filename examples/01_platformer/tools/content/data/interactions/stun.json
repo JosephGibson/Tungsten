@@ -1,0 +1,20 @@
+{
+  "stimulus": "damage.shock",
+  "on": {
+    "all": [
+      "status.shocked"
+    ],
+    "none": [
+      "troll"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "stun_build",
+        "scale": 1,
+        "per": "status_threshold"
+      }
+    }
+  ]
+}

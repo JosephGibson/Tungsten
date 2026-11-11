@@ -1,0 +1,74 @@
+[
+  {
+    "on": "effect_applied",
+    "effect": "poisoned",
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_poisoned_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
+    "on": "effect_applied",
+    "effect": "frozen",
+    "fresh": true,
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ice_freeze_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "effect_applied",
+    "effect": "troll_frozen",
+    "fresh": true,
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ice_freeze_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "effect_expired",
+    "effect": "frozen",
+    "ended": false,
+    "filter": {
+      "none": [
+        "status.frozen"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ice_crack_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "effect_expired",
+    "effect": "troll_frozen",
+    "ended": false,
+    "filter": {
+      "none": [
+        "status.frozen"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ice_crack_sfx"
+        }
+      }
+    ]
+  }
+]

@@ -22,9 +22,9 @@
 //! that dies, freezes, is stunned or goes drops what it holds.
 //!
 //! Its prefab holds the rest: regeneration that burning holds, no
-//! knockback, and its own rungs on the cold and shock ladders, a short
+//! knockback, and its own builds of the cold and the shock, a short
 //! freeze and a stun past four times the others' needs; the chill's grade
-//! slows a chilled troll more as its bucket fills, as it does every
+//! slows a chilled troll more as its freeze's build fills, as it does every
 //! freezable creature (`combat::systems::chill_grades`). The black hole
 //! slows it ([`crate::features::toys`]) and its bar shows over its head
 //! ([`super::draw`]).

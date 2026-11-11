@@ -6,7 +6,7 @@
 //! iron crushes small balls and hurts the player with physical damage; a
 //! hard impact bursts a small ball's sparks; moving bodies hurt targets by
 //! their speed and mass; cold puts a fire hazard out for a while. What has
-//! health takes the kit's damage types, effects and ailment ladders
+//! health takes the kit's damage types, effects and chemistry's builds
 //! instead (`combat`).
 //!
 //! The endings, one rule each for any frozen thing, run through the saved

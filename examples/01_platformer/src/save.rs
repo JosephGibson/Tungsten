@@ -46,9 +46,9 @@ use tungsten::core::{
     CommandBuffer, Entity, Position, PrevPosition, SaveData, Transform, Velocity, Visibility, World,
 };
 use tungsten::kit::{
-    Abilities, AilmentBuckets, ContactDamage, ContactTouch, Effects, Health, Hitbox, KitRng,
-    Knockback, Lifetime, LinearMotion, Oscillator, PathFollower, Pickup, PlatformerController,
-    Projectile, Resist, Shield, Source, StateMachine, Stats, Tags, TopDownMover,
+    Abilities, ContactDamage, ContactTouch, Effects, Health, Hitbox, KitRng, Knockback, Lifetime,
+    LinearMotion, Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Resist,
+    Shield, Source, StateMachine, Stats, Tags, TopDownMover,
 };
 
 use crate::features::dummy::{self, components::Dummy};
@@ -330,8 +330,10 @@ impl SaveData for SaveGame {
     /// maximum (`to_22`). Schema 23 gives the map's objects and the player
     /// the save IDs their names derive and marks the map's crates and kegs
     /// (`to_23`). Schema 24 gives the player the stats its crit and blast
-    /// share are now (`to_24`).
-    const SCHEMA: u32 = 24;
+    /// share are now (`to_24`). Schema 25 drops the actors' ailment buckets
+    /// and gives the player and the enemies their status threshold
+    /// (`to_25`).
+    const SCHEMA: u32 = 25;
 
     fn migrate_step(
         from: u32,
@@ -366,6 +368,7 @@ impl SaveData for SaveGame {
             21 => to_22(&mut data),
             22 => to_23(&mut data),
             23 => to_24(&mut data)?,
+            24 => to_25(&mut data)?,
             _ => {
                 return Err(
                     format!("schema {from} has no migration to schema {}", Self::SCHEMA).into(),
@@ -640,6 +643,84 @@ fn to_24(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
         .ok_or("schema 23: the player has no stats")?;
     for (name, stat) in fresh.as_object().into_iter().flatten() {
         stats.entry(name.clone()).or_insert_with(|| stat.clone());
+    }
+    Ok(())
+}
+
+/// Each enemy kind's status threshold, its prefab's `status_threshold` at
+/// schema 25 (the kit ladder's flat thresholds before it), and the
+/// player's: 50, 30 plus a fifth of its health, times the pact's 0.8 where
+/// its saved `max_health` carries the pact. Frozen for the migration.
+const S25_THRESHOLDS: [(&str, f32); 6] = [
+    ("wisp", 16.0),
+    ("crawler", 20.0),
+    ("beetle", 30.0),
+    ("bat", 12.0),
+    ("troll", 40.0),
+    ("goblin", 15.0),
+];
+const S25_PLAYER_THRESHOLD: f32 = 50.0;
+const S25_PACT: &str = "tome.pact";
+const S25_PACT_THRESHOLD: f64 = 0.8;
+
+/// Schema 24 to 25 (7.13a): the kit's ailment ladders became chemistry's
+/// builds in shares of a `status_threshold` stat, so the player, the
+/// dummies and the enemies drop their `buckets`, a build restarting at a
+/// load, and the player's and the enemies' saved stats, restored whole,
+/// take their threshold ([`S25_THRESHOLDS`]), the player's with the
+/// pact's line where its `max_health` has the pact's; a dummy's stats come
+/// from its prefab.
+fn to_25(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let threshold = |base: f32, pact: bool| -> Value {
+        let mut stat: Value = r#"{ "base": 0.0, "min": 0.0, "max": null }"#
+            .parse()
+            .expect("a stat's form");
+        stat["base"] = Value::from(base);
+        if pact {
+            stat["modifiers"] = Value::from(vec![Value::from(vec![
+                Value::from(S25_PACT),
+                [("mul", S25_PACT_THRESHOLD)].into_iter().collect::<Value>(),
+            ])]);
+        }
+        stat
+    };
+    let player = data
+        .pointer_mut("/player")
+        .and_then(Value::as_object_mut)
+        .ok_or("schema 24: no player")?;
+    player.remove("buckets");
+    let stats = player
+        .get_mut("stats")
+        .and_then(Value::as_object_mut)
+        .ok_or("schema 24: the player has no stats")?;
+    let pact = stats
+        .get("max_health")
+        .and_then(|stat| stat.get("modifiers"))
+        .and_then(Value::as_array)
+        .is_some_and(|lines| lines.iter().any(|line| line[0] == S25_PACT));
+    stats
+        .entry("status_threshold")
+        .or_insert_with(|| threshold(S25_PLAYER_THRESHOLD, pact));
+    for dummy in each(data, "/dummies") {
+        if let Some(dummy) = dummy.as_object_mut() {
+            dummy.remove("buckets");
+        }
+    }
+    for enemy in each(data, "/enemies") {
+        let kind = enemy["kind"].as_str().unwrap_or_default().to_owned();
+        let Some(enemy) = enemy.as_object_mut() else {
+            continue;
+        };
+        enemy.remove("buckets");
+        let (_, base) = S25_THRESHOLDS
+            .iter()
+            .find(|(name, _)| *name == kind)
+            .ok_or_else(|| format!("schema 24: an enemy of no kind `{kind}`"))?;
+        if let Some(stats) = enemy.get_mut("stats").and_then(Value::as_object_mut) {
+            stats
+                .entry("status_threshold")
+                .or_insert_with(|| threshold(*base, false));
+        }
     }
     Ok(())
 }
@@ -1313,7 +1394,8 @@ pub fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
 }
 
 /// The player: its body's point and velocity, its controller, health,
-/// stats, effects with their sources, abilities, ailment buckets, tags,
+/// stats, effects with their sources (its statuses' builds among them),
+/// abilities, tags,
 /// the gun's reload while one runs, the tomes held and the pact's shield.
 /// The tags hold what an effect grants, so a save during `casting` loads
 /// with the mana still paused.
@@ -1330,7 +1412,6 @@ pub struct PlayerSave {
     /// Each effect instance's source: its serial and the source's save ID.
     pub sources: Vec<(u64, u64)>,
     pub abilities: Abilities,
-    pub buckets: AilmentBuckets,
     pub tags: Tags,
     /// The seconds the gun's reload has left; none while no reload runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1345,7 +1426,8 @@ pub struct PlayerSave {
 
 /// A training dummy: one the map placed (`map`), found by its save ID, or
 /// a summoned one, spawned; its body, health, resistances, effects with
-/// their sources, ailment buckets and tags, which its statuses grant.
+/// their sources (its statuses' builds among them) and tags, which its
+/// statuses grant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DummySave {
@@ -1357,7 +1439,6 @@ pub struct DummySave {
     pub resist: Resist,
     pub effects: Effects,
     pub sources: Vec<(u64, u64)>,
-    pub buckets: AilmentBuckets,
     pub tags: Tags,
 }
 
@@ -1365,8 +1446,9 @@ pub struct DummySave {
 /// summoned one, spawned; its body, its driver (a walker's controller or a
 /// flyer's mover, and a frozen flyer's mover set aside beside the
 /// controller it falls on), its machine, what it knows and sees, its
-/// health, stats, resistances, effects with their sources, ailment buckets,
-/// tags, abilities, knockback, its hitbox with the targets its activation
+/// health, stats, resistances, effects with their sources (its statuses'
+/// builds among them), tags, abilities, knockback, its hitbox with the
+/// targets its activation
 /// has hit and its touches' times, by save ID, and what a troll holds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1388,7 +1470,6 @@ pub struct EnemySave {
     pub resist: Resist,
     pub effects: Effects,
     pub sources: Vec<(u64, u64)>,
-    pub buckets: AilmentBuckets,
     pub tags: Tags,
     pub abilities: Option<Abilities>,
     pub knockback: Option<Knockback>,
@@ -2113,10 +2194,6 @@ fn capture_dummy(world: &World, id: u64, entity: Entity) -> Option<DummySave> {
         resist: world.get::<Resist>(entity).cloned().unwrap_or_default(),
         effects: world.get::<Effects>(entity).cloned().unwrap_or_default(),
         sources: sources(world, entity),
-        buckets: world
-            .get::<AilmentBuckets>(entity)
-            .cloned()
-            .unwrap_or_default(),
         tags: world.get::<Tags>(entity).cloned().unwrap_or_default(),
     })
 }
@@ -2164,10 +2241,6 @@ fn capture_enemy(world: &World, id: u64, entity: Entity) -> Option<EnemySave> {
         resist: world.get::<Resist>(entity).cloned().unwrap_or_default(),
         effects: world.get::<Effects>(entity).cloned().unwrap_or_default(),
         sources: sources(world, entity),
-        buckets: world
-            .get::<AilmentBuckets>(entity)
-            .cloned()
-            .unwrap_or_default(),
         tags: world.get::<Tags>(entity).cloned().unwrap_or_default(),
         abilities: world.get::<Abilities>(entity).cloned(),
         knockback: world.get::<Knockback>(entity).cloned(),
@@ -2194,10 +2267,6 @@ fn capture_player(world: &World, player: Entity) -> Option<PlayerSave> {
         effects: world.get::<Effects>(player)?.clone(),
         sources: sources(world, player),
         abilities: world.get::<Abilities>(player)?.clone(),
-        buckets: world
-            .get::<AilmentBuckets>(player)
-            .cloned()
-            .unwrap_or_default(),
         tags: world.get::<Tags>(player)?.clone(),
         reload: world.get::<Reload>(player).map(|reload| reload.left),
         tomes: world
@@ -2257,7 +2326,6 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             p.stats.clone(),
             p.effects.clone(),
             p.abilities.clone(),
-            p.buckets.clone(),
             p.tags.clone(),
         ),
     );
@@ -2355,7 +2423,6 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
                 saved.health.clone(),
                 saved.resist.clone(),
                 saved.effects.clone(),
-                saved.buckets.clone(),
                 saved.tags.clone(),
             ),
         );
@@ -2612,7 +2679,6 @@ fn restore_enemy(world: &mut World, entity: Entity, saved: &EnemySave) {
             saved.stats.clone(),
             saved.resist.clone(),
             saved.effects.clone(),
-            saved.buckets.clone(),
             saved.tags.clone(),
         ),
     );

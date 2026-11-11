@@ -38,7 +38,8 @@
     "stats": {
       "max_health": 30,
       "damage": 14,
-      "move_speed": 260
+      "move_speed": 260,
+      "status_threshold": 12
     },
     "hurtbox": {
       "shape": {
@@ -78,9 +79,6 @@
       "bat_dive"
     ],
     "resist": {},
-    "ailment_threshold": {
-      "flat": 12
-    },
     "knockback": {
       "seconds": 0.2
     },

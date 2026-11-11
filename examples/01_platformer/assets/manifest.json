@@ -876,6 +876,9 @@
     "cue_rules": {
       "sounds": {
         "path": "data/cue_rules/sounds.json"
+      },
+      "statuses": {
+        "path": "data/cue_rules/statuses.json"
       }
     },
     "damage_types": {
@@ -884,14 +887,26 @@
       }
     },
     "effects": {
+      "bleed_build": {
+        "path": "data/effects/bleed_build.json"
+      },
       "bleeding": {
         "path": "data/effects/bleeding.json"
+      },
+      "brittle_shatter_build": {
+        "path": "data/effects/brittle_shatter_build.json"
+      },
+      "burn_build": {
+        "path": "data/effects/burn_build.json"
       },
       "burning": {
         "path": "data/effects/burning.json"
       },
       "casting": {
         "path": "data/effects/casting.json"
+      },
+      "chill_build": {
+        "path": "data/effects/chill_build.json"
       },
       "chilled": {
         "path": "data/effects/chilled.json"
@@ -905,6 +920,9 @@
       "dummy_regen": {
         "path": "data/effects/dummy_regen.json"
       },
+      "freeze_build": {
+        "path": "data/effects/freeze_build.json"
+      },
       "frozen": {
         "path": "data/effects/frozen.json"
       },
@@ -917,11 +935,20 @@
       "orb_mana": {
         "path": "data/effects/orb_mana.json"
       },
+      "poison_build": {
+        "path": "data/effects/poison_build.json"
+      },
       "poisoned": {
         "path": "data/effects/poisoned.json"
       },
+      "shatter_build": {
+        "path": "data/effects/shatter_build.json"
+      },
       "shattered": {
         "path": "data/effects/shattered.json"
+      },
+      "shock_build": {
+        "path": "data/effects/shock_build.json"
       },
       "shocked": {
         "path": "data/effects/shocked.json"
@@ -929,11 +956,58 @@
       "staff_lit": {
         "path": "data/effects/staff_lit.json"
       },
+      "stun_build": {
+        "path": "data/effects/stun_build.json"
+      },
       "stunned": {
         "path": "data/effects/stunned.json"
       },
+      "troll_freeze_build": {
+        "path": "data/effects/troll_freeze_build.json"
+      },
+      "troll_frozen": {
+        "path": "data/effects/troll_frozen.json"
+      },
       "troll_regen": {
         "path": "data/effects/troll_regen.json"
+      },
+      "troll_stun_build": {
+        "path": "data/effects/troll_stun_build.json"
+      }
+    },
+    "interactions": {
+      "bleed": {
+        "path": "data/interactions/bleed.json"
+      },
+      "brittle_shatter": {
+        "path": "data/interactions/brittle_shatter.json"
+      },
+      "burn": {
+        "path": "data/interactions/burn.json"
+      },
+      "chill": {
+        "path": "data/interactions/chill.json"
+      },
+      "freeze": {
+        "path": "data/interactions/freeze.json"
+      },
+      "poison": {
+        "path": "data/interactions/poison.json"
+      },
+      "shatter": {
+        "path": "data/interactions/shatter.json"
+      },
+      "shock": {
+        "path": "data/interactions/shock.json"
+      },
+      "stun": {
+        "path": "data/interactions/stun.json"
+      },
+      "troll_freeze": {
+        "path": "data/interactions/troll_freeze.json"
+      },
+      "troll_stun": {
+        "path": "data/interactions/troll_stun.json"
       }
     },
     "lantern_anchors": {

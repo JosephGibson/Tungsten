@@ -2,13 +2,13 @@
 //! `register`, which adds the kit, the shell and the game's features.
 //! `save.rs` holds the rest of it.
 
-use tungsten::kit::KitPlugins;
+use tungsten::kit::{ChemistryPlugin, KitPlugins};
 use tungsten::{App, GameState, StateId};
 
 use crate::features::audio::AudioPlugin;
 use crate::features::combat::CombatPlugin;
 use crate::features::dummy::DummyPlugin;
-use crate::features::elements::ElementsPlugin;
+use crate::features::elements::{CASCADE_BOUND, CASCADE_CAP, ElementsPlugin};
 use crate::features::enemies::{self, EnemiesPlugin};
 use crate::features::gun::GunPlugin;
 use crate::features::level::{CursorPlugin, LevelPlugin};
@@ -44,10 +44,27 @@ pub fn difficulty_note(difficulty: Difficulty) -> String {
     format!("enemy health ×{factor} · enemy damage ×{factor}")
 }
 
-/// Registers the game with `app`: the kit's plugins, the shell, then the
-/// features, the cursor last.
+/// 01's chemistry: its cascade's cap a run and bound (Q4), and no depth
+/// limit to speak of, since its cascade's chains had none and its rules
+/// make no cycle.
+pub const CHEMISTRY_DEPTH: u8 = u8::MAX;
+
+/// The kit's plugins with 01's chemistry in place of the set's own, at its
+/// cascade's settings ([`CHEMISTRY_DEPTH`]).
+#[must_use]
+pub fn kit_plugins() -> tungsten::core::PluginSet {
+    KitPlugins::set().with(
+        ChemistryPlugin::new()
+            .with_cap(CASCADE_CAP)
+            .with_bound(CASCADE_BOUND)
+            .with_depth(CHEMISTRY_DEPTH),
+    )
+}
+
+/// Registers the game with `app`: the kit's plugins ([`kit_plugins`]), the
+/// shell, then the features, the cursor last.
 pub fn register(app: &mut App, info: GameInfo) {
-    app.add_plugins(KitPlugins::set());
+    app.add_plugins(kit_plugins());
     app.add_plugin(ShellPlugin::new(info));
     app.add_plugin(LevelPlugin);
     app.add_plugin(PlayerPlugin);

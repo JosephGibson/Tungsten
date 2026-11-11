@@ -1,0 +1,12 @@
+{
+  "stimulus": "damage.shock",
+  "outputs": [
+    {
+      "build": {
+        "status": "shock_build",
+        "scale": 1,
+        "per": "status_threshold"
+      }
+    }
+  ]
+}

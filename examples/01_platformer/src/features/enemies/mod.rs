@@ -6,7 +6,7 @@
 //! home. Their prefabs hold their kit items: a kinematic body on a mover
 //! (a flyer's top-down mover, a walker's platformer controller), health
 //! with its death policy, stats, a hurtbox, a touch that hurts the player,
-//! resistances, an ailment threshold, knockback, the hit flash they show
+//! resistances, a status threshold, knockback, the hit flash they show
 //! unlit and their cues' sounds.
 //!
 //! 01 adds what the kit has no item for: the sight (two casts, the tiles

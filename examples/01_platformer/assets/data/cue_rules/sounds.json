@@ -698,21 +698,6 @@
     ]
   },
   {
-    "on": "thawed",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_ice_crack_sfx"
-        }
-      }
-    ]
-  },
-  {
     "on": "ball_thudded",
     "filter": {
       "all": [
@@ -1369,22 +1354,6 @@
       {
         "sound": {
           "id": "ex10_stone_knock_sfx",
-          "min_interval": 0.08
-        }
-      }
-    ]
-  },
-  {
-    "on": "poisoned",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_poisoned_sfx",
           "min_interval": 0.08
         }
       }

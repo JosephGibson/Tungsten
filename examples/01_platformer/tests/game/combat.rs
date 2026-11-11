@@ -78,11 +78,11 @@ fn land(harness: &mut UiHarness, target: Entity, kind: Kind, amount: f32) {
         .apply(world);
 }
 
-/// Queues a hit of one `kind` part of `amount` on `target` and steps once,
-/// so the ladder's feed and the effects resolve.
+/// Queues a hit of one `kind` part of `amount` on `target` and steps twice,
+/// so chemistry's build lands and, a step later, its band's effect.
 fn hit(harness: &mut UiHarness, target: Entity, kind: Kind, amount: f32) {
     assert!(Hit::new(target, [(kind, amount)]).queue(harness.world_mut()));
-    harness.step(1);
+    harness.step(2);
 }
 
 #[test]
@@ -269,6 +269,21 @@ fn cold_chills_then_freezes_the_freezable_and_the_player_only_chills() {
 }
 
 #[test]
+fn a_chill_then_half_the_threshold_a_second_later_freezes_the_dummy() {
+    let (mut harness, _, dummy) = with_dummy();
+    // A little past 0.15 of the threshold of 40 chills it, and its chill's
+    // build ends with its band.
+    hit(&mut harness, dummy, Kind::Cold, 6.5);
+    assert!(has(&harness, dummy, "chilled") && !has(&harness, dummy, "frozen"));
+    // A second on, the chill holding, half the threshold freezes it, as the
+    // ladder did from the bucket its chill emptied.
+    harness.step(60);
+    assert!(has(&harness, dummy, "chilled") && !has(&harness, dummy, "frozen"));
+    hit(&mut harness, dummy, Kind::Cold, 20.5);
+    assert!(has(&harness, dummy, "frozen"), "a second later, frozen");
+}
+
+#[test]
 fn shock_shocks_then_stuns() {
     let (mut harness, _, dummy) = with_dummy();
     hit(&mut harness, dummy, Kind::Shock, 13.0);
@@ -297,6 +312,8 @@ fn the_missile_blast_burns_the_dummy_and_spares_the_player() {
         .collect();
     assert_eq!(fire, [20.0], "its whole fire at the centre");
     assert!(health(&harness, dummy) < dummy_before);
+    // Its burn's band lands it a step later.
+    harness.step(1);
     assert!(has(&harness, dummy, "burning"));
     assert_eq!(
         health(&harness, player),

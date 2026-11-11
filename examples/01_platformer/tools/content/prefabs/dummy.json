@@ -57,9 +57,8 @@
       "seconds": 0.15
     },
     "resist": {},
-    "ailment_threshold": {
-      "flat": 20,
-      "of_max_health": 0.05
+    "stats": {
+      "status_threshold": 40
     },
     "effects": [
       "dummy_regen"

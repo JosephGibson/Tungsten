@@ -134,8 +134,6 @@ pub enum Sound {
     Fizzled,
     /// A strike's snap under its thunder.
     Snapped,
-    /// A frozen target thawing.
-    Thawed,
     /// A bowling ball landing hard.
     BallThudded,
     /// The trigger pulled on an empty magazine or during a reload.
@@ -217,8 +215,6 @@ pub enum Sound {
     GeyserErupt,
     /// A rubble stone meeting something hard (e01hollow).
     StoneKnock,
-    /// Poisoned taking a target (e01flask).
-    Poisoned,
     /// The toxic flask tossed, and its burst (e01flask).
     FlaskThrown,
     FlaskBurst,
@@ -228,7 +224,7 @@ pub enum Sound {
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 91] = [
+    pub const ALL: [Sound; 89] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -273,7 +269,6 @@ impl Sound {
         Sound::IronLanded,
         Sound::Fizzled,
         Sound::Snapped,
-        Sound::Thawed,
         Sound::BallThudded,
         Sound::DryFired,
         Sound::Racked,
@@ -316,7 +311,6 @@ impl Sound {
         Sound::GeyserSputter,
         Sound::GeyserErupt,
         Sound::StoneKnock,
-        Sound::Poisoned,
         Sound::FlaskThrown,
         Sound::FlaskBurst,
         Sound::Corroded,
@@ -370,7 +364,6 @@ impl Sound {
             Sound::IronLanded => "iron_landed",
             Sound::Fizzled => "fizzled",
             Sound::Snapped => "snapped",
-            Sound::Thawed => "thawed",
             Sound::BallThudded => "ball_thudded",
             Sound::DryFired => "dry_fired",
             Sound::Racked => "racked",
@@ -413,7 +406,6 @@ impl Sound {
             Sound::GeyserSputter => "geyser_sputtered",
             Sound::GeyserErupt => "geyser_erupted",
             Sound::StoneKnock => "stone_knocked",
-            Sound::Poisoned => "poisoned",
             Sound::FlaskThrown => "flask_thrown",
             Sound::FlaskBurst => "flask_burst",
             Sound::Corroded => "corroded",

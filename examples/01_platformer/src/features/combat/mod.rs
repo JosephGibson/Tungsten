@@ -1,13 +1,15 @@
 //! Combat: 01's damage model on the kit's damage types, `damage` and under
 //! it `damage.physical` (with `damage.physical.bleed`), `damage.fire`,
 //! `damage.cold`, `damage.shock` and `damage.poison`, each with its colour
-//! and its ailment ladder (`data/damage_types/game.json`). A hit starts
-//! from its attack's base amounts, doubles on a crit, then takes the kit's
-//! pipeline: the target's resistances, with shocked's half again on every
-//! type, then its shield and its health. The ladders put burning, chilled,
-//! frozen, shocked, stunned and bleeding on whatever has health, and
-//! poisoned on what is `living`; 01 reads their `status.*` tags for its
-//! looks and its physics.
+//! (`data/damage_types/game.json`). A hit starts from its attack's base
+//! amounts, doubles on a crit, then takes the kit's pipeline: the target's
+//! resistances, with shocked's half again on every type, then its shield
+//! and its health. Its landed parts are chemistry's stimuli: a type's
+//! `interactions` rules build a status a rung (`data/effects/*_build.json`)
+//! in shares of the target's [`STATUS_THRESHOLD`], each build's band
+//! applying its rung's effect, so burning, chilled, frozen, shocked,
+//! stunned and bleeding go on whatever has health, and poisoned on what is
+//! `living`; 01 reads their `status.*` tags for its looks and its physics.
 //!
 //! Combat also floats the damage numbers ([`numbers`]).
 //!
@@ -43,18 +45,25 @@ pub const PLAYER_BLAST_SHARE: f32 = 0.5;
 /// `damage_taken` halves.
 pub const BLAST: &str = "hit.blast";
 /// What the sprays deal a second to a target in their cone, in pulses this
-/// far apart: the frost half the flame's, its ladder's gates half the
-/// others' (`damage.cold` in `data/damage_types/game.json`), so it chills
-/// and freezes as fast.
+/// far apart: the frost half the flame's, its builds' decay half the
+/// others' (`data/effects/chill_build.json`, `freeze_build.json`), so it
+/// chills and freezes as fast.
 pub const COLD_SPRAY_DPS: f32 = 15.0;
 pub const FIRE_SPRAY_DPS: f32 = 30.0;
 pub const SPRAY_PULSE: f32 = 0.1;
-/// The cold ladder's chill rung and freeze rung, their shares of a target's
+/// The cold's chill and freeze, their builds' bands in shares of a target's
 /// threshold: the frost climbs to the chill's before it, and the chill's
 /// grade climbs to the freeze's after it ([`systems::frost_level`],
 /// [`systems::chill_grade`]).
 pub const CHILL_NEEDS: f32 = 0.15;
 pub const FREEZE_NEEDS: f32 = 0.5;
+/// The game stat a target's builds are shares of (`build`'s `per`), its
+/// prefab's: what the kit's ladder called its ailment threshold.
+pub const STATUS_THRESHOLD: &str = "status_threshold";
+/// The cold's builds by their `effects` IDs: the chill's, and the freeze's,
+/// the troll's of its own.
+pub const CHILL_BUILD: &str = "chill_build";
+pub const FREEZE_BUILDS: [&str; 2] = ["freeze_build", "troll_freeze_build"];
 /// The fire missile's blast: its fire at its centre, half of it at the
 /// heat's reach.
 pub const BLAST_FIRE: f32 = 20.0;
@@ -260,6 +269,7 @@ pub struct CombatPlugin;
 
 impl Plugin for CombatPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        world.insert_resource(systems::Grades::default());
         world.resource_mut::<Extracts>().add_sprites(draw::overlays);
         world.resource_mut::<Extracts>().add_sprites(draw::edge);
         ensure_phases(schedule);

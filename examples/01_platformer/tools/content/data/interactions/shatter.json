@@ -1,0 +1,20 @@
+{
+  "stimulus": "damage.physical",
+  "on": {
+    "all": [
+      "status.frozen"
+    ],
+    "none": [
+      "brittle"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "shatter_build",
+        "scale": 1,
+        "per": "status_threshold"
+      }
+    }
+  ]
+}

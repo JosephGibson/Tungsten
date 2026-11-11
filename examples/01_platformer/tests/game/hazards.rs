@@ -214,10 +214,12 @@ fn lava_throws_the_player_up_and_out_and_never_lets_them_sink() {
                 [16.0],
                 "{basin:?} at {x}: the bite"
             );
+            let start = centre(&harness, player);
+            // Its burn's band lands it a step later.
+            harness.step(1);
             let tags = harness.world().get::<Tags>(player).unwrap();
             assert!(tags.has(BURNING), "{basin:?} at {x}: the bite burns");
-            let start = centre(&harness, player);
-            harness.step(8);
+            harness.step(7);
             let at = centre(&harness, player);
             assert!(
                 at.y < start.y - 30.0,
@@ -287,10 +289,12 @@ fn lava_bites_an_enemy_that_falls_in_and_throws_it_up_and_out() {
             }
         }
         assert_eq!(bite, [16.0], "at {x}: the player's bite");
+        let start = enemies::centre(harness.world(), goblin).unwrap();
+        // Its burn's band lands it a step later.
+        harness.step(1);
         let tags = harness.world().get::<Tags>(goblin).unwrap();
         assert!(tags.has(BURNING), "at {x}: the bite burns");
-        let start = enemies::centre(harness.world(), goblin).unwrap();
-        harness.step(8);
+        harness.step(7);
         let thrown = enemies::centre(harness.world(), goblin).unwrap();
         assert!(
             thrown.y < start.y - 30.0,

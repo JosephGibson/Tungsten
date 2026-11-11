@@ -5,7 +5,9 @@
 //! cue rule that plays a registered sound.
 
 use example_01_platformer::features::audio::components::Sound;
-use example_01_platformer::features::combat::{CHILL_NEEDS, FREEZE_NEEDS};
+use example_01_platformer::features::combat::{
+    CHILL_BUILD, CHILL_NEEDS, FREEZE_BUILDS, FREEZE_NEEDS,
+};
 use example_01_platformer::features::enemies::bat::DIVE_SECS;
 use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
 use example_01_platformer::features::enemies::components::{EnemyKind, Variant};
@@ -190,31 +192,17 @@ fn every_restated_constant_matches_its_data() {
     // A black hole's life.
     let hole = json("prefabs/black_hole.json");
     assert_eq!(number(&hole, "/components/black_hole/left"), HOLE_SECS);
-    // The cold ladder's freeze rungs, the freezable's and the troll's, which
-    // the chill's grade climbs to.
-    let types = json("data/damage_types/game.json");
-    let rungs = types["damage.cold"]["ailments"]
-        .as_array()
-        .expect("cold's ladder");
-    let freezes: Vec<&Value> = rungs
-        .iter()
-        .filter(|rung| {
-            rung["requires"]
-                .as_array()
-                .is_some_and(|tags| tags.iter().any(|tag| tag == "freezable"))
-        })
-        .collect();
-    assert_eq!(freezes.len(), 2, "two freeze rungs");
-    for rung in freezes {
-        assert_eq!(number(rung, "/needs"), FREEZE_NEEDS);
+    // The cold's freeze builds, the freezable's and the troll's, whose band
+    // the chill's grade climbs to, each at its intensity's max.
+    for id in FREEZE_BUILDS {
+        let build = json(&format!("data/effects/{id}.json"));
+        assert_eq!(number(&build, "/bands/0/at"), FREEZE_NEEDS, "{id}");
+        assert_eq!(number(&build, "/intensity/max"), FREEZE_NEEDS, "{id}");
     }
-    // Its chill rung, which the frost climbs to before the chill.
-    let chills: Vec<&Value> = rungs
-        .iter()
-        .filter(|rung| rung["effect"] == "chilled")
-        .collect();
-    assert_eq!(chills.len(), 1, "one chill rung");
-    assert_eq!(number(chills[0], "/needs"), CHILL_NEEDS);
+    // Its chill's build, which the frost climbs to before the chill.
+    let chill = json(&format!("data/effects/{CHILL_BUILD}.json"));
+    assert_eq!(number(&chill, "/bands/0/at"), CHILL_NEEDS);
+    assert_eq!(number(&chill, "/intensity/max"), CHILL_NEEDS);
     // The props' bodies and a goblin's rock and bomb.
     assert_eq!(body("crate"), (CRATE_HALF, CRATE_CENTRE));
     assert_eq!(body("keg"), (KEG_HALF, KEG_CENTRE));

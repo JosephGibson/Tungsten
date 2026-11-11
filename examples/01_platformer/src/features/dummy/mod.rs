@@ -4,7 +4,7 @@
 //! `conductive` by its Tiled properties). Its prefab holds its kit items:
 //! a dynamic body, health with no window, so every pulse lands, its death
 //! policy, a hurtbox, knockback, the hit flash it shows unlit, resistances,
-//! an ailment threshold and its regeneration, which burning holds. 01 adds
+//! its status threshold and its regeneration, which burning holds. 01 adds
 //! its friction and the black hole's pull (`toys`), its looks (`combat`)
 //! and its end: one burst by its state. A run keeps its placed dummies'
 //! save IDs, so a save names those no longer alive as gone. The summon

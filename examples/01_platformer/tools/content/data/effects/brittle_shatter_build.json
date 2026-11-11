@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 0.04,
+    "decay": 0.3333333333
+  },
+  "bands": [
+    {
+      "at": 0.04,
+      "enter": [
+        {
+          "apply": {
+            "status": "shattered"
+          }
+        },
+        {
+          "remove": "brittle_shatter_build"
+        }
+      ]
+    }
+  ]
+}

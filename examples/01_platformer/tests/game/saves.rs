@@ -349,12 +349,12 @@ fn lists(kind: &str) -> Lists {
         AnimationState, Collider, ParticleEmitter, ParticleEmitterState, PrevPosition, RigidBody,
         Sprite, Velocity, Visibility,
     };
+    use tungsten::kit::Resist;
     use tungsten::kit::{
         ActionInput, Aim, CharacterAnimator, Children, ContactDamage, Cues, Effects, Facing,
         HitFlash, Hitbox, Hurtbox, Intent, Knockback, LinearMotion, PlatformerController,
         Projectile, Source, Stats,
     };
-    use tungsten::kit::{AilmentBuckets, AilmentThreshold, Resist};
     // The payload's emitter, which a load spawns from the saved source again.
     const EMITTER: &str = "tungsten_kit::overlap::grid::Emitter";
     let body = [name::<Collider>(), name::<RigidBody>()];
@@ -371,7 +371,6 @@ fn lists(kind: &str) -> Lists {
                     name::<Stats>(),
                     name::<Effects>(),
                     name::<Abilities>(),
-                    name::<AilmentBuckets>(),
                     name::<Tags>(),
                     name::<Spellbook>(),
                     name::<Lantern>(),
@@ -394,7 +393,6 @@ fn lists(kind: &str) -> Lists {
                     name::<Cues>(),
                     name::<Glow>(),
                     name::<StaffGlow>(),
-                    name::<AilmentThreshold>(),
                 ],
             ]
             .concat(),
@@ -532,7 +530,6 @@ fn lists(kind: &str) -> Lists {
                     name::<Health>(),
                     name::<Resist>(),
                     name::<Effects>(),
-                    name::<AilmentBuckets>(),
                     name::<Tags>(),
                 ],
             ]
@@ -545,7 +542,7 @@ fn lists(kind: &str) -> Lists {
                     name::<PreviousVelocity>(),
                     name::<Hurtbox>(),
                     name::<Knockback>(),
-                    name::<AilmentThreshold>(),
+                    name::<Stats>(),
                     name::<Cues>(),
                 ],
             ]
@@ -702,7 +699,6 @@ fn lists(kind: &str) -> Lists {
                         name::<Stats>(),
                         name::<Resist>(),
                         name::<Effects>(),
-                        name::<AilmentBuckets>(),
                         name::<Tags>(),
                         name::<Knockback>(),
                         name::<Abilities>(),
@@ -718,7 +714,6 @@ fn lists(kind: &str) -> Lists {
                         name::<Hurtbox>(),
                         name::<ContactDamage>(),
                         name::<HeldTouch>(),
-                        name::<AilmentThreshold>(),
                         name::<Cues>(),
                         name::<Glow>(),
                         name::<Children>(),
@@ -2503,6 +2498,18 @@ fn as_schema_22(old: &mut Value) {
     }
 }
 
+/// What schema 25 makes of an older save: the player's, the dummies' and
+/// the enemies' ailment buckets gone, the stats' new threshold an added
+/// member [`moved_ids`] skips.
+fn as_schema_25(old: &mut Value) {
+    old["player"].as_object_mut().unwrap().remove("buckets");
+    for list in ["dummies", "enemies"] {
+        for entry in old[list].as_array_mut().unwrap() {
+            entry.as_object_mut().unwrap().remove("buckets");
+        }
+    }
+}
+
 /// A capture as the code before schema 23 wrote it, at schema 22: the
 /// map's objects and the player at their spawn order's save IDs, through
 /// [`save::S22_NAMES`], every runtime one after them, past schema 22's
@@ -2988,6 +2995,7 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     as_schema_21(&mut old, &to_22);
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &to);
+    as_schema_25(&mut old);
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
@@ -3197,6 +3205,7 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     as_schema_21(&mut old, &to_22);
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &to);
+    as_schema_25(&mut old);
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
@@ -3498,6 +3507,7 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
     as_schema_21(&mut old, &to_22);
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &to);
+    as_schema_25(&mut old);
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
@@ -3587,6 +3597,7 @@ fn a_schema_12_player_keeps_its_body_where_it_stood() {
     as_schema_21(&mut old, &schema_22_from_18);
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &schema_23_from_18);
+    as_schema_25(&mut old);
     moved_ids(&old, &json(&migrated), "", &schema_23_from_18, &mut moved);
     // Loaded, the body stands where the courier's stood.
     let mut run = super::harness();
@@ -3636,17 +3647,6 @@ fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
             "Easy's kept"
         );
     }
-    let cold = |save: &Value| {
-        save["dummies"][0]["buckets"]["damage.cold"]
-            .as_f64()
-            .unwrap()
-    };
-    assert!(
-        (cold(&new) - cold(&old) * 0.5).abs() < 1e-5,
-        "the dummy's build-up halved: {} of {}",
-        cold(&new),
-        cold(&old)
-    );
     // And nothing else but the save IDs schema 19 moves.
     as_schema_14(&mut old);
     as_schema_15(&mut old, &new);
@@ -3657,6 +3657,7 @@ fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
     as_schema_21(&mut old, &schema_22_from_18);
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &schema_23_from_18);
+    as_schema_25(&mut old);
     moved_ids(&old, &new, "", &schema_23_from_18, &mut moved);
     // Loaded, it plays on with the new values.
     let mut run = super::harness();
@@ -3727,6 +3728,7 @@ fn a_schema_13_save_moves_its_crates_out_of_the_start_wall() {
     as_schema_21(&mut old, &schema_22_from_18);
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &schema_23_from_18);
+    as_schema_25(&mut old);
     moved_ids(&old, &json(&migrated), "", &schema_23_from_18, &mut moved);
     // Loaded, the crates stand in the map a second on.
     let mut run = super::harness();
@@ -4692,6 +4694,48 @@ fn a_schema_20_save_migrates_to_itself() {
         .unwrap()
         .retain(|enemy| !added.contains(&enemy["id"].as_u64().unwrap()));
     assert_eq!(json(&migrated), want, "unchanged");
+}
+
+#[test]
+fn a_schema_24_save_drops_its_buckets_and_takes_its_thresholds() {
+    // A run's capture as schema 24 wrote it: the player under the pact, its
+    // actors holding ailment buckets, and the player's and the enemies'
+    // stats without their status threshold, which schema 25 gives them.
+    let (mut harness, _) = run();
+    harness.step(2);
+    let mut want = json(&capture(&harness));
+    let player = &mut want["player"]["stats"];
+    player["max_health"]["modifiers"] = serde_json::json!([["tome.pact", { "mul": 0.5 }]]);
+    player["status_threshold"]["modifiers"] = serde_json::json!([["tome.pact", { "mul": 0.8 }]]);
+    let want = json(&serde_json::from_value::<SaveGame>(want).unwrap());
+    let mut old = want.clone();
+    let buckets = serde_json::json!({ "damage.cold": 12.5, "damage.fire": 3.0 });
+    let stats = old["player"]["stats"].as_object_mut().unwrap();
+    assert!(stats.remove("status_threshold").is_some());
+    old["player"]["buckets"] = buckets.clone();
+    assert!(
+        !old["dummies"].as_array().unwrap().is_empty(),
+        "the map's dummy"
+    );
+    for dummy in old["dummies"].as_array_mut().unwrap() {
+        dummy["buckets"] = buckets.clone();
+    }
+    assert!(
+        !old["enemies"].as_array().unwrap().is_empty(),
+        "the map's enemies"
+    );
+    for enemy in old["enemies"].as_array_mut().unwrap() {
+        let stats = enemy["stats"].as_object_mut().unwrap();
+        assert!(stats.remove("status_threshold").is_some());
+        enemy["buckets"] = buckets.clone();
+    }
+    let (migrated, dir) = migrate("schema-24", &as_envelope(&old, 24));
+    let _ = std::fs::remove_dir_all(dir);
+    assert_eq!(
+        json(&migrated),
+        want,
+        "its buckets gone, its thresholds back"
+    );
 }
 
 /// Puts one more enemy on `harness`'s map before a run spawns it: a copy of

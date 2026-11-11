@@ -39,7 +39,8 @@
     "stats": {
       "max_health": 40,
       "damage": 8,
-      "move_speed": 110
+      "move_speed": 110,
+      "status_threshold": 15
     },
     "hurtbox": {
       "shape": {
@@ -54,9 +55,6 @@
       ]
     },
     "resist": {},
-    "ailment_threshold": {
-      "flat": 15
-    },
     "knockback": {
       "seconds": 0.2
     },

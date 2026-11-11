@@ -1,0 +1,20 @@
+{
+  "stimulus": "damage.poison",
+  "on": {
+    "all": [
+      "living"
+    ],
+    "none": [
+      "status.frozen"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "poison_build",
+        "scale": 1,
+        "per": "status_threshold"
+      }
+    }
+  ]
+}

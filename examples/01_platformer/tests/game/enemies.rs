@@ -24,7 +24,7 @@ use example_01_platformer::features::audio::components::Music;
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::audio::{COMBAT_IN, COMBAT_OUT, MUSIC_COMBAT};
 use example_01_platformer::features::combat::draw::overlays;
-use example_01_platformer::features::combat::{FREEZE_NEEDS, Hit, Kind};
+use example_01_platformer::features::combat::{FREEZE_NEEDS, Hit, Kind, STATUS_THRESHOLD};
 use example_01_platformer::features::dummy;
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::systems::crush;
@@ -68,8 +68,8 @@ use tungsten::core::{
     Position, PrevPosition, RigidBodyBundle, Time, Velocity,
 };
 use tungsten::kit::{
-    AilmentBuckets, AilmentThreshold, ContactDamage, Damaged, Health, Hitbox, KitRng, Knockback,
-    PlatformerController, StateMachine, TopDownMover,
+    ContactDamage, Damaged, Effects, Health, Hitbox, KitRng, Knockback, PlatformerController,
+    StateMachine, Stats, TopDownMover,
 };
 use tungsten::testing::UiHarness;
 
@@ -562,12 +562,10 @@ fn each_difficulty_scales_enemy_health_and_damage_alone() {
             world.get::<ContactDamage>(wisp).unwrap().damage(),
             10.0 * factor
         );
-        let threshold = world.get::<AilmentThreshold>(wisp).unwrap();
-        assert_eq!(
-            (threshold.flat(), threshold.of_max_health()),
-            (16.0, 0.0),
-            "its threshold unscaled"
-        );
+        let threshold = world
+            .get::<Stats>(wisp)
+            .and_then(|stats| stats.get(STATUS_THRESHOLD));
+        assert_eq!(threshold, Some(16.0), "its threshold unscaled");
         let player = player_entity(&harness);
         let health = world.get::<Health>(player).unwrap();
         assert_eq!(
@@ -746,9 +744,10 @@ fn cold_freezes_the_wisp() {
     let (mut harness, _) = arena();
     let wisp = enemy(&mut harness, EnemyKind::Wisp, Vec2::new(1000.0, 800.0));
     harness.step(2);
+    // Each hit given its band's step.
     for amount in [10.0, 10.0] {
         assert!(Hit::new(wisp, [(Kind::Cold, amount)]).queue(harness.world_mut()));
-        harness.step(1);
+        harness.step(2);
     }
     assert!(
         tagged(&harness, wisp, "status.frozen"),
@@ -1532,11 +1531,11 @@ fn a_snowball_on_a_dummy_chilled_near_its_freeze_rung_freezes_it() {
     harness.harness_mut().set_dt(1.0 / 60.0);
     let dummy = dummy_at(&mut harness, 1400.0);
     harness.step(2);
-    // Chilled, which empties its cold, then 10 of the 20 cold its freeze
-    // rung needs.
+    // Chilled, which ends its chill's build, then 10 of the 20 cold its
+    // freeze's build needs, each hit given its band's step.
     for _ in 0..2 {
         assert!(Hit::new(dummy, [(Kind::Cold, 10.0)]).queue(harness.world_mut()));
-        harness.step(1);
+        harness.step(2);
     }
     assert!(tagged(&harness, dummy, "status.chilled"), "chilled");
     assert!(!tagged(&harness, dummy, "status.frozen"));
@@ -2503,21 +2502,15 @@ fn the_troll_slows_in_stages_and_freezes_past_its_threshold() {
         harness.step(2);
     };
     assert_eq!(move_speed(&harness, troll), troll::MOVE_SPEED);
-    // The chill's 35 %, and the grade's up to 35 % more as the bucket, which
-    // the chill empties, fills on to the freeze's rung.
+    // The chill's 35 %, and the grade's up to 35 % more as its freeze's
+    // build, which starts once it is chilled, fills on to its band.
     let graded = |harness: &UiHarness| -> f32 {
-        let world = harness.world();
-        let fill = world
-            .get::<AilmentBuckets>(troll)
-            .map_or(0.0, |buckets| buckets.fill("damage.cold"));
-        let threshold = world.get::<AilmentThreshold>(troll).unwrap();
-        let max = world.get::<Health>(troll).unwrap().max();
-        let mult = world
-            .get::<tungsten::kit::Stats>(troll)
-            .and_then(|stats| stats.get("ailment_threshold_mult"))
-            .unwrap_or(1.0);
-        let at = (threshold.flat() + threshold.of_max_health() * max) * mult;
-        let grade = (fill / (FREEZE_NEEDS * at)).clamp(0.0, 1.0);
+        let built = harness
+            .world()
+            .get::<Effects>(troll)
+            .and_then(|effects| effects.intensity("troll_freeze_build"))
+            .unwrap_or(0.0);
+        let grade = (built / FREEZE_NEEDS).clamp(0.0, 1.0);
         troll::MOVE_SPEED * (1.0 - 0.35 - 0.35 * grade)
     };
     cold(&mut harness, 7.5);

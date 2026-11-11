@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 0.25,
+    "decay": 0.3333333333
+  },
+  "bands": [
+    {
+      "at": 0.25,
+      "enter": [
+        {
+          "apply": {
+            "status": "burning"
+          }
+        },
+        {
+          "remove": "burn_build"
+        }
+      ]
+    }
+  ]
+}
