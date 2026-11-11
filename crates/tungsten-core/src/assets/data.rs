@@ -39,7 +39,7 @@ use thiserror::Error;
 use crate::assets::prefab::{PrefabData, PrefabError, PrefabRegistry, StoredPrefab};
 use crate::assets::scene::StrictValue;
 use crate::component_registry::MissingAsset;
-use crate::ecs::World;
+use crate::ecs::{TypeIdMap, World};
 
 /// Deserializes a data file's value as its kind's type; on failure, the
 /// field where it stopped and serde's error.
@@ -89,8 +89,9 @@ struct Entry {
 pub struct DataRegistry {
     /// Kind name → kind, sorted by name.
     kinds: BTreeMap<&'static str, Kind>,
-    /// The registered type → its kind.
-    kinds_by_type: HashMap<TypeId, &'static str>,
+    /// The registered type → its kind, keyed by the `TypeId` passed
+    /// through: every `DataRef` resolved by ID reads it.
+    kinds_by_type: TypeIdMap<&'static str>,
     /// Each entry loaded from a file: the file → the kind and ID.
     routes: HashMap<PathBuf, (&'static str, String)>,
 }

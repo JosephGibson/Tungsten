@@ -1,4 +1,5 @@
 mod archetype;
+pub(crate) use archetype::TypeIdMap;
 pub mod bundle;
 mod command_buffer;
 mod entity;

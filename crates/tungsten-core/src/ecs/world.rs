@@ -1,6 +1,8 @@
 use std::any::{TypeId, type_name};
 use std::collections::HashSet;
+use std::hash::BuildHasherDefault;
 
+use super::archetype::TypeIdHasher;
 use super::bundle::{Bundle, BundleScratch, BundleSink};
 use super::command_buffer::{Command, CommandBuffer, CommandTarget, ReplacedPrefab, SavedPrefab};
 use super::entity::Entity;
@@ -20,7 +22,8 @@ pub struct World {
     event_flushers: Vec<fn(&mut World)>,
     /// Beside each flusher, the fixed steps' view switch for the same queue.
     event_steppers: Vec<fn(&mut World, EventStep)>,
-    event_types: HashSet<TypeId>,
+    /// The registered event types, a set on the `TypeId`s passed through.
+    event_types: HashSet<TypeId, BuildHasherDefault<TypeIdHasher>>,
     /// One deriver per type a spawn from a source takes, in registration
     /// order ([`inherit_from_source`](Self::inherit_from_source)); each
     /// stages its value for the target in `bundle_scratch`.
@@ -109,7 +112,7 @@ impl World {
             resources: ResourceMap::new(),
             event_flushers: Vec::new(),
             event_steppers: Vec::new(),
-            event_types: HashSet::new(),
+            event_types: HashSet::default(),
             source_derivers: Vec::new(),
             source_types: HashSet::new(),
             bundle_scratch: BundleScratch::default(),
