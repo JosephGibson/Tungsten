@@ -1,4 +1,4 @@
-//! The kit's per-entity systems at 1,000 and 10,000 entities, 39 rows, one
+//! The kit's per-entity systems at 1,000 and 10,000 entities, 41 rows, one
 //! fixed step or one frame's present phase per iteration:
 //!
 //! - fixed step: `lifetime_tick`, `health_tick`, `action_input`, the
@@ -28,7 +28,8 @@
 //!   with an entity cue and one rule's kind filter);
 //! - M67's, each at one steady state: `effect_tick` (an infinite effect
 //!   per entity with a modifier and a half-second period, its ticks queued
-//!   for the health plugin's resolve), `effect_resolve` (one request a step
+//!   for the health plugin's resolve), `effect_tick_by_id` (the same effect
+//!   named by ID, an entry among 32), `effect_resolve` (one request a step
 //!   per target at its stack limit under `refresh`), `ailment_tick` (a
 //!   bucket per entity draining under a threshold), `ailment_feed` (one
 //!   typed part a step per entity, below its ladder's `needs`),
@@ -36,7 +37,8 @@
 //!   hitbox, no hit plugin) and `level_tick` (a counter below the next
 //!   level);
 //! - present phase: `oscillator_present` (rotation and scale), `facing`,
-//!   `character_animator` (a clip set, unchanged) and `depth_sort`.
+//!   `character_animator` (a clip set, unchanged), `animation_tick` (every
+//!   sprite on one of two clips) and `depth_sort`.
 //!
 //! The bound, from M64's first measured run: each row's median per entity
 //! at 10,000 is at most twice its median per entity at 1,000, so no row
@@ -50,14 +52,14 @@ use glam::Vec2;
 use tungsten_core::assets::AnimationFrame;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
 use tungsten_core::{
-    ActionMap, AnimationData, AnimationRegistry, Binding, Bundle, CommandBuffer, DataRef,
-    DataRegistry, EventQueue, InputState, KeyCode, Plugin, PluginSet, Schedule, Sprite,
+    ActionMap, AnimationData, AnimationRegistry, AnimationState, Binding, Bundle, CommandBuffer,
+    DataRef, DataRegistry, EventQueue, InputState, KeyCode, Plugin, PluginSet, Schedule, Sprite,
     SpriteAssetId, Stage, StagedLoad, Time, Transform, World,
 };
 use tungsten_kit::{
     Abilities, AbilitiesPlugin, Ability, ActionInput, ActionInputPlugin, AilmentBuckets,
-    AilmentThreshold, Aim, AimPlugin, CharacterAnimator, CharacterAnimatorPlugin, Clips,
-    ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownPlugin, Counters,
+    AilmentThreshold, Aim, AimPlugin, AnimationPlugin, CharacterAnimator, CharacterAnimatorPlugin,
+    Clips, ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownPlugin, Counters,
     CountersPlugin, CueAction, Cues, CuesPlugin, Curve, DamagePart, DamageRequest, Damaged,
     DamagedPart, DepthSort, DepthSortPlugin, Effect, EffectRequest, Effects, EffectsPlugin, Expire,
     Facing, FacingPlugin, Follow, FollowPlugin, Health, HealthPlugin, HitPlugin, HitShape, Hitbox,
@@ -372,6 +374,25 @@ fn character_animator(c: &mut Criterion) {
                 walker,
                 Facing::new().four_way(),
                 velocity,
+                Sprite::new(SpriteAssetId::new(0)),
+            ));
+        },
+        present_step,
+    );
+}
+
+fn animation_tick(c: &mut Criterion) {
+    // The tick alone: every sprite on one of the animator row's clips,
+    // advancing a sixth of a frame's time each step.
+    row(
+        c,
+        "animation_tick",
+        &AnimationPlugin,
+        clips,
+        |world, i| {
+            let clip = if i % 8 == 0 { "idle" } else { "walk_left" };
+            world.spawn_with((
+                AnimationState::new(clip),
                 Sprite::new(SpriteAssetId::new(0)),
             ));
         },
@@ -1156,6 +1177,7 @@ criterion_group!(
     aim,
     facing,
     character_animator,
+    animation_tick,
     depth_sort,
     hit_grid,
     hitbox_tick,

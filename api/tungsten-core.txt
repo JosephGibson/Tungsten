@@ -104,6 +104,7 @@ pub tungsten_core::assets::animation::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::animation::AnimationState::advance_entering(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> tungsten_core::assets::animation::Advanced
+pub fn tungsten_core::assets::animation::AnimationState::advance_in(&mut self, f32, &tungsten_core::assets::animation::AnimationData) -> tungsten_core::assets::animation::Advanced
 pub fn tungsten_core::assets::animation::AnimationState::current_sprite(&self, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::animation::AnimationState::despawn_at_end(&self) -> bool
 pub fn tungsten_core::assets::animation::AnimationState::new(impl core::convert::Into<alloc::string::String>) -> Self
@@ -4650,6 +4651,7 @@ pub tungsten_core::assets::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::animation::AnimationState::advance_entering(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> tungsten_core::assets::animation::Advanced
+pub fn tungsten_core::assets::animation::AnimationState::advance_in(&mut self, f32, &tungsten_core::assets::animation::AnimationData) -> tungsten_core::assets::animation::Advanced
 pub fn tungsten_core::assets::animation::AnimationState::current_sprite(&self, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::animation::AnimationState::despawn_at_end(&self) -> bool
 pub fn tungsten_core::assets::animation::AnimationState::new(impl core::convert::Into<alloc::string::String>) -> Self
@@ -20634,6 +20636,7 @@ pub tungsten_core::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::animation::AnimationState::advance_entering(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> tungsten_core::assets::animation::Advanced
+pub fn tungsten_core::assets::animation::AnimationState::advance_in(&mut self, f32, &tungsten_core::assets::animation::AnimationData) -> tungsten_core::assets::animation::Advanced
 pub fn tungsten_core::assets::animation::AnimationState::current_sprite(&self, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::animation::AnimationState::despawn_at_end(&self) -> bool
 pub fn tungsten_core::assets::animation::AnimationState::new(impl core::convert::Into<alloc::string::String>) -> Self

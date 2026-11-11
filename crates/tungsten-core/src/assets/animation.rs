@@ -237,15 +237,22 @@ impl AnimationState {
     /// a loop's wrap into the first frame included, so a clip's first frame
     /// sounds on each wrap, never at the clip's start.
     pub fn advance_entering(&mut self, dt_ms: f32, registry: &AnimationRegistry) -> Advanced {
-        let mut advanced = Advanced::default();
         if !self.playing || self.finished {
-            return advanced;
+            return Advanced::default();
         }
+        match registry.get(&self.animation_id) {
+            Some(clip) => self.advance_in(dt_ms, clip),
+            None => Advanced::default(),
+        }
+    }
 
-        let Some(anim) = registry.get(&self.animation_id) else {
-            return advanced;
-        };
-        if anim.frames.is_empty() {
+    /// [`advance_entering`](Self::advance_entering) in `clip`, the state's
+    /// animation as its caller found it: a pass over many states on one
+    /// clip looks it up once.
+    pub fn advance_in(&mut self, dt_ms: f32, clip: &AnimationData) -> Advanced {
+        let anim = clip;
+        let mut advanced = Advanced::default();
+        if !self.playing || self.finished || anim.frames.is_empty() {
             return advanced;
         }
 

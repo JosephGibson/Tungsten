@@ -5,8 +5,8 @@
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::{
-    AnimationRegistry, AnimationState, AudioCommands, Entity, Plugin, Schedule, SoundRegistry,
-    SpawnContext, Sprite, Time, Transform, World, system,
+    AnimationData, AnimationRegistry, AnimationState, AudioCommands, Entity, Plugin, Schedule,
+    SoundRegistry, SpawnContext, Sprite, Time, Transform, World, system,
 };
 
 use crate::foundation::describe::{
@@ -138,6 +138,44 @@ fn one() -> f32 {
     1.0
 }
 
+/// The clip the pass's last row named, under a copy of its ID kept on the
+/// stack: an ID longer than the copy is looked up every time.
+struct LastClip<'r> {
+    id: [u8; 48],
+    len: usize,
+    clip: Option<&'r AnimationData>,
+}
+
+impl Default for LastClip<'_> {
+    fn default() -> Self {
+        Self {
+            id: [0; 48],
+            // No ID is this long, so the first row looks its clip up.
+            len: usize::MAX,
+            clip: None,
+        }
+    }
+}
+
+impl<'r> LastClip<'r> {
+    /// The clip `id` names in `registry`.
+    fn find(&mut self, registry: &'r AnimationRegistry, id: &str) -> Option<&'r AnimationData> {
+        let bytes = id.as_bytes();
+        if self.id.get(..self.len) == Some(bytes) {
+            return self.clip;
+        }
+        self.clip = registry.get(id);
+        self.len = match self.id.get_mut(..bytes.len()) {
+            Some(copy) => {
+                copy.copy_from_slice(bytes);
+                bytes.len()
+            }
+            None => usize::MAX,
+        };
+        self.clip
+    }
+}
+
 /// Advances every animated sprite at its speed and shows its current frame
 /// (redo 7.9: plays the sound of the last frame each advance entered, and
 /// ends an entity whose one-shot finished with `despawn` set). The registry
@@ -152,24 +190,29 @@ fn animation_tick(world: &mut World) {
     // pins. A frame that sounds or ends a one-shot reads its entities after.
     let mut sounds: Vec<(usize, String)> = Vec::new();
     let mut finishing = false;
+    // A row's clip is looked up once, and not at all while it names the
+    // clip the row before it named: a crowd of one sprite shares its clip.
+    let mut last = LastClip::default();
     for (row, (state, sprite)) in world
         .query_mut::<(&mut AnimationState, &mut Sprite)>()
         .enumerate()
     {
+        let Some(clip) = last.find(&registry, &state.animation_id) else {
+            continue;
+        };
         let was_finished = state.finished;
-        let advanced = state.advance_entering(dt_ms, &registry);
-        if let Some(frame) = advanced.sound_frame
-            && let Some(sound) = registry
-                .get(&state.animation_id)
-                .and_then(|clip| clip.frames[frame].sound.as_ref())
+        let advanced = state.advance_in(dt_ms, clip);
+        if let Some(sound) = advanced
+            .sound_frame
+            .and_then(|frame| clip.frames[frame].sound.as_ref())
         {
             sounds.push((row, sound.clone()));
         }
         finishing |= state.finished && !was_finished && state.despawn_at_end();
-        if let Some(current) = state.current_sprite(&registry)
-            && current != sprite.asset_id
+        if let Some(current) = clip.frames.get(state.frame_index)
+            && current.sprite != sprite.asset_id
         {
-            sprite.asset_id = current;
+            sprite.asset_id = current.sprite;
         }
     }
     world.insert_resource(registry);
