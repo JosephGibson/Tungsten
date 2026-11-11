@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-11-11
+
 Summary: the roadmap redo's Phase 7 steps 7.18, camera rigs (`D-249`); 7.11, the template on the engine's settings, input, music and boot (`D-250`, `D-265`); 7.21, core hardening, fourteen physics and save fixes behind two seeded oracles (`D-251`–`D-263`); 7.12, rooms in our own format, seeded generation and an in-game level editor with the `tungsten level` command line (`D-264`, `D-266`–`D-268`); and a CPU pass ahead of 7.13 (`D-269`, `D-270`) that takes `e01-stress`'s `total` p95 from 63.9 to 45.3 ms and `e01-pit`'s from 47.8 to 36.1 against its base; against 0.116.0 the release sitting reads every row it can compare `ok`. CI's Linux job runs on `ubuntu-24.04` (`D-248`). 7.13 is next. The template's save moves to schema 5 and 01's stays at 24.
 
 ### Added
