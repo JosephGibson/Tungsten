@@ -9407,3 +9407,164 @@ fn oracle_new_2_a_thin_box_never_falls_through_a_solid_cell() {
         );
     }
 }
+
+/// A pile of 600 balls in a walled box, settled, for the blast probes: the
+/// `blast` row's gravity, restitution and broadphase cell.
+fn settled_pile_of_600() -> World {
+    settled_pile_of_600_massing(|_| 1.0)
+}
+
+/// [`settled_pile_of_600`] with each ball's mass from its index.
+fn settled_pile_of_600_massing(mass: fn(usize) -> f32) -> World {
+    let mut world = seed_world();
+    {
+        let config = world.resource_mut::<PhysicsConfig>();
+        config.gravity = Vec2::new(0.0, 3_600.0);
+        config.broadphase_cell_size = 64.0;
+    }
+    for (at, half) in [
+        (Vec2::new(0.0, 520.0), Vec2::new(400.0, 20.0)),
+        (Vec2::new(-210.0, 300.0), Vec2::new(20.0, 240.0)),
+        (Vec2::new(210.0, 300.0), Vec2::new(20.0, 240.0)),
+    ] {
+        spawn_body(
+            &mut world,
+            RigidBody::r#static(),
+            Collider::aabb(half),
+            at,
+            Vec2::ZERO,
+        );
+    }
+    for row in 0..20 {
+        for col in 0..30 {
+            spawn_body(
+                &mut world,
+                RigidBody::dynamic()
+                    .with_restitution(0.85)
+                    .with_mass(mass(row * 30 + col)),
+                Collider::circle(6.0),
+                Vec2::new(-181.25 + 12.5 * col as f32, 493.0 - 12.5 * row as f32),
+                Vec2::ZERO,
+            );
+        }
+    }
+    for _ in 0..240 {
+        physics_step(&mut world);
+        drain_events(&mut world);
+    }
+    world
+}
+
+/// The `blast` row's impulse on the pile's top, at its middle; returns the
+/// bodies that took it.
+fn blast_the_pile(world: &mut World) -> usize {
+    let top = world
+        .query::<(&Position, &Velocity)>()
+        .filter(|(position, _)| position.0.x.abs() <= 12.0)
+        .map(|(position, _)| position.0.y)
+        .fold(f32::INFINITY, f32::min);
+    apply_radial_impulse(
+        world,
+        Vec2::new(0.0, top),
+        288.0,
+        2_500.0,
+        &crate::physics::SpatialFilter::new(),
+    )
+}
+
+/// The arrival pass's counts: bodies listed, clamps, candidates walked,
+/// candidates past the cut, searches for another body's pair, pairs built.
+fn arrival_probe(world: &World) -> [usize; 6] {
+    let arrival = &world.resource::<PhysicsBuffers>().arrival;
+    [
+        arrival.listed,
+        arrival.clamps,
+        arrival.walked,
+        arrival.survivors,
+        arrival.searches,
+        arrival.built,
+    ]
+}
+
+#[test]
+fn a_blasted_pile_prints_the_arrival_passes_counts() {
+    // The probe of the arrival pass's search costs: the `blast` row's
+    // radial impulse on the top of a settled pile of 600, then twelve
+    // frames. A listed body walks whole cells, so it walks several
+    // candidates a pair built.
+    let mut world = settled_pile_of_600();
+    let before = arrival_probe(&world);
+    let took = blast_the_pile(&mut world);
+    assert!(took > 50, "the blast reached {took} balls");
+    for _ in 0..12 {
+        physics_step(&mut world);
+        drain_events(&mut world);
+    }
+    let after = arrival_probe(&world);
+    let [listed, clamps, walked, survivors, searches, built] =
+        std::array::from_fn(|i| after[i] - before[i]);
+    println!(
+        "arrival probe: took {took}, listed {listed}, clamps {clamps}, walked {walked}, \
+         past the cut {survivors}, searches {searches}, pairs built {built}, \
+         {:.1} walked a pair built",
+        walked as f64 / built.max(1) as f64
+    );
+    assert!(listed > 0 && built > 0, "the blast lists bodies");
+    assert!(walked >= survivors && survivors >= built);
+    assert!(searches <= survivors);
+}
+
+#[test]
+fn an_inverse_masss_rank_orders_as_total_cmp_does_reversed() {
+    // The arrival pass orders a round's pairs by this rank where it once
+    // compared the inverse masses themselves.
+    let values = [
+        0.0,
+        -0.0,
+        f32::MIN_POSITIVE,
+        1.0e-3,
+        0.5,
+        1.0,
+        1.000_000_1,
+        1.0e9,
+        f32::INFINITY,
+        f32::NAN,
+        -1.0,
+        f32::NEG_INFINITY,
+    ];
+    for a in values {
+        for b in values {
+            assert_eq!(
+                arrival::inv_rank(a).cmp(&arrival::inv_rank(b)),
+                b.total_cmp(&a),
+                "{a} against {b}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_blasted_piles_arrival_rounds_keep_the_stable_sorts_order() {
+    // A large round is ordered by class, or in place when its pairs have
+    // too many depths and target masses for that; a small one in place.
+    // The pass checks each against a stable sort (`arrival::sort_pairs`),
+    // so this test only brings every path up: a pile of one mass, and one
+    // of twenty.
+    let sorts = |mut world: World| {
+        blast_the_pile(&mut world);
+        for _ in 0..12 {
+            physics_step(&mut world);
+            drain_events(&mut world);
+        }
+        world.resource::<PhysicsBuffers>().extra.arrival_reach.sorts
+    };
+    let [small, by_class, _] = sorts(settled_pile_of_600());
+    assert!(
+        small > 0 && by_class > 0,
+        "{small} small, {by_class} by class"
+    );
+    let [_, _, in_place] = sorts(settled_pile_of_600_massing(|index| {
+        1.0 + 0.25 * (index % 20) as f32
+    }));
+    assert!(in_place > 0, "no large round of many masses");
+}

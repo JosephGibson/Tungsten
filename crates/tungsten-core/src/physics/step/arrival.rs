@@ -33,6 +33,10 @@ const ARRIVAL_MOVED: u8 = 1 << 2;
 /// A listed body and one neighbour its new velocity reaches (D-092).
 #[derive(Debug, Clone, Copy)]
 struct ArrivalPair {
+    /// The halves of what orders the pair in its round ([`Self::order`]),
+    /// which keep the pair at 28 bytes.
+    order_hi: u32,
+    order_lo: u32,
     x: u32,
     y: u32,
     /// Points from `y` to `x`.
@@ -40,13 +44,37 @@ struct ArrivalPair {
     /// Closing speed that brings the pair to touching within the substep; 0
     /// once it overlaps by more than the slop.
     allowance: f32,
-    /// Push depth of the pair's mover.
-    depth: u8,
-    /// Inverse mass of the pair's target; 0 for a static or sleeping one.
-    target_inv: f32,
+}
+
+/// [`ArrivalPair::order`]'s lowest bit: `y` was the pair's mover when the
+/// pair was built. Under the place, which no two pairs share, it orders
+/// nothing.
+const ORDER_Y_MOVED: u64 = 1;
+/// Bits of `order` for the pair's place among the round's pairs as built,
+/// above the mover's bit; [`sort_pairs`] sets them.
+const ORDER_PLACE_BITS: u32 = 28;
+/// Bits of `order` below the target's inverse mass rank.
+const ORDER_RANK_SHIFT: u32 = ORDER_PLACE_BITS + 1;
+/// Bits of `order` below the mover's push depth.
+const ORDER_DEPTH_SHIFT: u32 = ORDER_RANK_SHIFT + 32;
+
+/// `inv`'s rank among inverse masses, larger first: `f32::total_cmp`'s
+/// order, inverted, as an unsigned integer. Equal ranks are equal bits.
+pub(super) fn inv_rank(inv: f32) -> u32 {
+    let bits = inv.to_bits() as i32;
+    let ascending = (bits ^ (((bits >> 31) as u32) >> 1) as i32) as u32 ^ (1 << 31);
+    !ascending
 }
 
 impl ArrivalPair {
+    /// What [`sort_pairs`] orders the pair by, from the high bits down: its
+    /// mover's push depth, its target's inverse mass rank (heavier later),
+    /// its place among the round's pairs as built or its class there, and
+    /// [`ORDER_Y_MOVED`].
+    fn order(&self) -> u64 {
+        (u64::from(self.order_hi) << 32) | u64::from(self.order_lo)
+    }
+
     /// Closing speed beyond the allowance; negative when the pair closes too
     /// fast.
     fn closing(&self, proxies: &[Proxy]) -> f32 {
@@ -57,13 +85,166 @@ impl ArrivalPair {
     /// The pair's mover, the member whose own velocity closes it faster, its
     /// target, and the direction the mover travels to close it.
     fn mover(&self, proxies: &[Proxy]) -> (usize, usize, Vec2) {
-        let toward_y = -proxies[self.x as usize].velocity.dot(self.normal);
-        let toward_x = proxies[self.y as usize].velocity.dot(self.normal);
-        if toward_x > toward_y {
+        let x_velocity = proxies[self.x as usize].velocity;
+        let y_velocity = proxies[self.y as usize].velocity;
+        if y_moves(x_velocity, y_velocity, self.normal) {
             (self.y as usize, self.x as usize, self.normal)
         } else {
             (self.x as usize, self.y as usize, -self.normal)
         }
+    }
+
+    /// The mover and the target as the pair was built ([`Self::mover`]
+    /// then). The depth pass and the order read them, before any clamp of
+    /// the round changes a velocity; the backward sweep asks again.
+    fn built_ends(&self) -> (usize, usize) {
+        if self.order() & ORDER_Y_MOVED != 0 {
+            (self.y as usize, self.x as usize)
+        } else {
+            (self.x as usize, self.y as usize)
+        }
+    }
+}
+
+/// Whether `y`, not `x`, is the mover of a pair with `normal` from `y` to
+/// `x`: its own velocity closes the pair faster.
+fn y_moves(x_velocity: Vec2, y_velocity: Vec2, normal: Vec2) -> bool {
+    let toward_y = -x_velocity.dot(normal);
+    let toward_x = y_velocity.dot(normal);
+    toward_x > toward_y
+}
+
+/// The place bits of [`ArrivalPair::order`], in its low half.
+const ORDER_PLACE_MASK: u32 = ((1 << ORDER_PLACE_BITS) - 1) << 1;
+/// Distinct depths and target masses [`distribute_pairs`] orders a round's
+/// pairs by; a pile of like bodies has up to ten, five depths of movable
+/// and immovable targets.
+const ORDER_CLASSES: usize = 16;
+/// A round of at most this many pairs is sorted in place.
+const ORDER_SMALL: usize = 128;
+
+/// Order a round's pairs pushers first, walls last: by mover depth, then
+/// lighter targets first, and the pairs of one depth and target mass in the
+/// order built, as a stable sort leaves them.
+fn sort_pairs(pairs: &mut [ArrivalPair], depth: &[u8], reach: &mut ArrivalReach) {
+    for pair in pairs.iter_mut() {
+        let (mover, _) = pair.built_ends();
+        pair.order_hi |= (u64::from(depth[mover]) << (ORDER_DEPTH_SHIFT - 32)) as u32;
+    }
+    // Tests: every path gives the stable sort's order.
+    #[cfg(test)]
+    let stable: Vec<(u32, u32)> = {
+        let mut stable = pairs.to_vec();
+        stable.sort_by_key(|pair| pair.order() >> ORDER_RANK_SHIFT);
+        stable.iter().map(|pair| (pair.x, pair.y)).collect()
+    };
+    let path = if pairs.len() > ORDER_SMALL && distribute_pairs(pairs, &mut reach.unsorted) {
+        1
+    } else if pairs.len() < 1 << ORDER_PLACE_BITS {
+        // No two pairs share an `order` with its place in it, so the
+        // unstable sort gives the stable one's order with no buffer.
+        for (place, pair) in pairs.iter_mut().enumerate() {
+            pair.order_lo = (pair.order_lo & !ORDER_PLACE_MASK) | ((place as u32) << 1);
+        }
+        pairs.sort_unstable_by_key(ArrivalPair::order);
+        usize::from(pairs.len() > ORDER_SMALL) * 2
+    } else {
+        pairs.sort_by_key(|pair| pair.order() >> ORDER_RANK_SHIFT);
+        2
+    };
+    #[cfg(test)]
+    {
+        reach.sorts[path] += 1;
+        assert!(
+            pairs.iter().map(|pair| (pair.x, pair.y)).eq(stable),
+            "an arrival round's pairs left the stable sort's order"
+        );
+    }
+    #[cfg(not(test))]
+    let _ = path;
+}
+
+/// [`sort_pairs`]' order for a round with at most [`ORDER_CLASSES`] distinct
+/// depths and target masses, in two passes: count each class, then copy the
+/// pairs out and back, each to its class's next place. False, with the
+/// pairs in the order built, when the round has more classes.
+fn distribute_pairs(pairs: &mut [ArrivalPair], scratch: &mut Vec<ArrivalPair>) -> bool {
+    let mut keys = [0u64; ORDER_CLASSES];
+    let mut counts = [0usize; ORDER_CLASSES];
+    let mut classes = 0;
+    for pair in pairs.iter_mut() {
+        let key = pair.order() >> ORDER_RANK_SHIFT;
+        let class = match keys[..classes].iter().position(|&known| known == key) {
+            Some(class) => class,
+            None if classes == ORDER_CLASSES => return false,
+            None => {
+                keys[classes] = key;
+                classes += 1;
+                classes - 1
+            }
+        };
+        counts[class] += 1;
+        // The place bits carry the pair's class to the second pass.
+        pair.order_lo = (pair.order_lo & !ORDER_PLACE_MASK) | ((class as u32) << 1);
+    }
+    let mut next = [0usize; ORDER_CLASSES];
+    for class in 0..classes {
+        next[class] = (0..classes)
+            .filter(|&other| keys[other] < keys[class])
+            .map(|other| counts[other])
+            .sum();
+    }
+    scratch.clear();
+    scratch.extend_from_slice(pairs);
+    for pair in scratch.iter() {
+        let class = ((pair.order_lo & ORDER_PLACE_MASK) >> 1) as usize;
+        pairs[next[class]] = *pair;
+        next[class] += 1;
+    }
+    true
+}
+
+/// What the arrival pass's candidate cut reads of a proxy, in place of the
+/// 80-byte [`Proxy`]: a listed body walks whole cells, several candidates
+/// for each neighbour in reach.
+#[derive(Debug, Clone, Copy, Default)]
+struct Reach {
+    /// Where the proxy was when the substep began ([`arrival_center`]).
+    center: Vec2,
+    half: Vec2,
+    velocity: Vec2,
+    /// The pass that filled the entry ([`ArrivalReach::pass`]).
+    stamp: u32,
+}
+
+/// The arrival pass's scratch beside [`ArrivalScratch`], kept in the boxed
+/// step state.
+#[derive(Debug, Default)]
+pub(super) struct ArrivalReach {
+    /// Each proxy's entry for the cut, filled when a pass first meets it.
+    of: Vec<Reach>,
+    /// The running pass's stamp, never 0.
+    pass: u32,
+    /// Where each body of the round's pairs begin in the pairs, by its
+    /// place in the round.
+    from: Vec<u32>,
+    /// A large round's pairs as built, while they are put in order.
+    unsorted: Vec<ArrivalPair>,
+    /// Tests: the rounds ordered in place as small, by class, and as large
+    /// rounds of too many classes.
+    #[cfg(test)]
+    pub(super) sorts: [usize; 3],
+}
+
+impl ArrivalReach {
+    /// Begin a pass over `len` proxies: no entry is filled.
+    fn begin(&mut self, len: usize) {
+        if self.of.len() != len || self.pass == u32::MAX {
+            self.of.clear();
+            self.of.resize(len, Reach::default());
+            self.pass = 0;
+        }
+        self.pass += 1;
     }
 }
 
@@ -96,6 +277,16 @@ pub(super) struct ArrivalScratch {
     pub(super) listed: usize,
     #[cfg(test)]
     pub(super) clamps: usize,
+    /// Candidates the listed bodies walked, those the cut let through, the
+    /// searches for a pair another listed body built, and the pairs built.
+    #[cfg(test)]
+    pub(super) walked: usize,
+    #[cfg(test)]
+    pub(super) survivors: usize,
+    #[cfg(test)]
+    pub(super) searches: usize,
+    #[cfg(test)]
+    pub(super) built: usize,
 }
 
 impl ArrivalScratch {
@@ -131,14 +322,13 @@ fn arrival_inv(proxy: &Proxy) -> f32 {
     }
 }
 
-/// Whether the round's `pairs` hold the one that the body listed at `listed`
-/// built with `body`. Each body pushes its pairs, itself first, as it is
-/// reached in list order, so its own pairs follow one another there.
-fn built_pair(pairs: &[ArrivalPair], slot: &[u32], listed: u32, body: u32) -> bool {
-    let from = pairs.partition_point(|pair| slot[pair.x as usize] < listed);
-    pairs[from..]
+/// Whether the round's `pairs` hold the one that the body at `place` in the
+/// round built with `body`. Each body pushes its pairs, itself first, as it
+/// is reached in list order, so they are the run from its entry of `from`
+/// to the next body's.
+fn built_pair(pairs: &[ArrivalPair], from: &[u32], place: usize, body: u32) -> bool {
+    pairs[from[place] as usize..from[place + 1] as usize]
         .iter()
-        .take_while(|pair| slot[pair.x as usize] == listed)
         .any(|pair| pair.y == body)
 }
 
@@ -200,6 +390,7 @@ pub(super) fn arrival_pass(
     oversize: &[u32],
     candidates: &mut Vec<ProxyId>,
     arrival: &mut ArrivalScratch,
+    reach: &mut ArrivalReach,
     mut touches: Option<&mut Vec<TouchObs>>,
 ) {
     let mut touch = |pair: &ArrivalPair, proxies: &[Proxy]| {
@@ -229,12 +420,23 @@ pub(super) fn arrival_pass(
         listed,
         #[cfg(test)]
         clamps,
+        #[cfg(test)]
+        walked,
+        #[cfg(test)]
+        survivors,
+        #[cfg(test)]
+        searches,
+        #[cfg(test)]
+        built,
     } = arrival;
     let inv_h = 1.0 / sub_dt;
     let slack = 4.0 * config.linear_slop;
     let threshold = ARRIVAL_SLOPS * config.linear_slop * inv_h;
     let threshold_sq = threshold * threshold;
     let tight = ARRIVAL_TIGHT * inv_h;
+    let layered = layers.layered;
+    reach.begin(proxies.len());
+    let pass = reach.pass;
 
     for (at, &index) in list.iter().enumerate() {
         slot[index as usize] = at as u32;
@@ -252,9 +454,21 @@ pub(super) fn arrival_pass(
             *listed += round_end - round_start;
         }
 
+        // The cut's entries follow the velocities the earlier rounds' clamps
+        // changed.
+        if round_start > 0 {
+            for &index in touched.iter() {
+                if state[index as usize] & ARRIVAL_MOVED != 0 {
+                    reach.of[index as usize].velocity = proxies[index as usize].velocity;
+                }
+            }
+        }
+
         // The neighbours each body of this round can reach.
         pairs.clear();
+        reach.from.clear();
         for (at, &body) in list[..round_end].iter().enumerate().skip(round_start) {
+            reach.from.push(pairs.len() as u32);
             let body = body as usize;
             let velocity = proxies[body].velocity;
             let center = proxies[body].prev_center;
@@ -275,53 +489,98 @@ pub(super) fn arrival_pass(
             // An oversize proxy is in no grid (D-081): every one is a
             // candidate.
             candidates.extend(oversize.iter().filter(|&&id| id as usize != body));
-            for &other_id in candidates.iter() {
-                let other = other_id as usize;
-                // The body passes a neighbour its layers do not meet.
-                if !layers.meet(body, other) {
-                    continue;
+            #[cfg(test)]
+            {
+                *walked += candidates.len();
+            }
+            // A cell holds far more neighbours than the margin admits:
+            // bounding boxes farther apart than it are dropped before the
+            // square root and the narrow phase, and so is a neighbour the
+            // body's layers do not meet. Which candidates stay is data the
+            // branch predictor cannot learn, so the cut marks a bit for
+            // each of 64 and the rest runs over the bits set, in order.
+            for chunk in candidates.chunks(64) {
+                let mut keep = 0u64;
+                for (bit, &other_id) in chunk.iter().enumerate() {
+                    let other = other_id as usize;
+                    let entry = &mut reach.of[other];
+                    if entry.stamp != pass {
+                        let target = &proxies[other];
+                        *entry = Reach {
+                            center: arrival_center(target),
+                            half: target.half_extents(),
+                            velocity: target.velocity,
+                            stamp: pass,
+                        };
+                    }
+                    let relative = velocity - entry.velocity;
+                    let apart =
+                        ((entry.center - center).abs() - half - entry.half).max_element() - slack;
+                    let cut = ((apart > 0.0)
+                        & (apart * apart > relative.length_squared() * sub_dt * sub_dt))
+                        | (layered && !layers.of[body].meets(layers.of[other]));
+                    keep |= u64::from(!cut) << bit;
                 }
-                let target = &proxies[other];
-                let target_center = arrival_center(target);
-                let relative = velocity - target.velocity;
-                // A cell holds far more neighbours than the margin admits:
-                // bounding boxes farther apart than it are dropped before
-                // the square root and the narrow phase.
-                let apart = ((target_center - center).abs() - half - target.half_extents())
-                    .max_element()
-                    - slack;
-                if apart > 0.0 && apart * apart > relative.length_squared() * sub_dt * sub_dt {
-                    continue;
-                }
-                // Two bodies of one round share a pair: the one listed first
-                // has it, when its own reach found this one; a slower body's
-                // smaller box can miss it. The search for that pair comes
-                // after the cheap cuts.
-                if state[other] & ARRIVAL_LISTED != 0
-                    && (round_start..at).contains(&(slot[other] as usize))
-                    && built_pair(pairs, slot, slot[other], body as u32)
+                #[cfg(test)]
                 {
-                    continue;
+                    *survivors += keep.count_ones() as usize;
                 }
-                let margin = relative.length() * sub_dt + slack;
-                let Some(contact) =
-                    narrow_phase_at(&proxies[body], center, target, target_center, margin)
-                else {
-                    continue;
-                };
-                let separation = config.linear_slop - contact.penetration;
-                pairs.push(ArrivalPair {
-                    x: body as u32,
-                    y: other_id,
-                    normal: contact.normal,
-                    allowance: if separation > 0.0 {
-                        separation * inv_h
-                    } else {
-                        0.0
-                    },
-                    depth: 0,
-                    target_inv: 0.0,
-                });
+                while keep != 0 {
+                    let other_id = chunk[keep.trailing_zeros() as usize];
+                    keep &= keep - 1;
+                    let other = other_id as usize;
+                    let entry = &reach.of[other];
+                    let target_center = entry.center;
+                    let target_velocity = entry.velocity;
+                    let relative = velocity - target_velocity;
+                    // Two bodies of one round share a pair: the one listed
+                    // first has it, when its own reach found this one; a
+                    // slower body's smaller box can miss it. The search for
+                    // that pair comes after the cheap cuts.
+                    if state[other] & ARRIVAL_LISTED != 0
+                        && (round_start..at).contains(&(slot[other] as usize))
+                    {
+                        #[cfg(test)]
+                        {
+                            *searches += 1;
+                        }
+                        let place = slot[other] as usize - round_start;
+                        if built_pair(pairs, &reach.from, place, body as u32) {
+                            continue;
+                        }
+                    }
+                    let margin = relative.length() * sub_dt + slack;
+                    let target = &proxies[other];
+                    let Some(contact) =
+                        narrow_phase_at(&proxies[body], center, target, target_center, margin)
+                    else {
+                        continue;
+                    };
+                    let separation = config.linear_slop - contact.penetration;
+                    // No clamp runs before the round's pairs are ordered, so
+                    // the mover and its target's inverse mass are settled
+                    // here.
+                    let y_moved = y_moves(velocity, target_velocity, contact.normal);
+                    let target_inv = arrival_inv(if y_moved { &proxies[body] } else { target });
+                    let order = (u64::from(inv_rank(target_inv)) << ORDER_RANK_SHIFT)
+                        | if y_moved { ORDER_Y_MOVED } else { 0 };
+                    pairs.push(ArrivalPair {
+                        order_hi: (order >> 32) as u32,
+                        order_lo: order as u32,
+                        x: body as u32,
+                        y: other_id,
+                        normal: contact.normal,
+                        allowance: if separation > 0.0 {
+                            separation * inv_h
+                        } else {
+                            0.0
+                        },
+                    });
+                    #[cfg(test)]
+                    {
+                        *built += 1;
+                    }
+                }
             }
         }
         round_start = round_end;
@@ -338,7 +597,7 @@ pub(super) fn arrival_pass(
         for _ in 0..ARRIVAL_ROUNDS {
             let mut changed = false;
             for pair in pairs.iter() {
-                let (mover, target, _) = pair.mover(proxies);
+                let (mover, target) = pair.built_ends();
                 let next = depth[mover] + 1;
                 if depth[target] < next && next as usize <= ARRIVAL_ROUNDS {
                     depth[target] = next;
@@ -349,17 +608,8 @@ pub(super) fn arrival_pass(
                 break;
             }
         }
-        for pair in pairs.iter_mut() {
-            let (mover, target, _) = pair.mover(proxies);
-            pair.depth = depth[mover];
-            pair.target_inv = arrival_inv(&proxies[target]);
-        }
-        // Stable: pairs of one depth and target mass keep query order.
-        pairs.sort_by(|p, q| {
-            p.depth
-                .cmp(&q.depth)
-                .then(q.target_inv.total_cmp(&p.target_inv))
-        });
+        // Pairs of one depth and target mass keep query order.
+        sort_pairs(pairs, depth, reach);
 
         // Forward: each pair arrives, mass-weighted like the solver.
         for pair in pairs.iter() {

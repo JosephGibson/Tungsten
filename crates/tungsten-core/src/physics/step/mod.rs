@@ -156,7 +156,7 @@ pub(super) mod slope;
 mod solver;
 mod sweep;
 
-use arrival::{ARRIVAL_SLOPS, ArrivalScratch, arrival_pass};
+use arrival::{ARRIVAL_SLOPS, ArrivalReach, ArrivalScratch, arrival_pass};
 pub(super) use gather::{GridCell, TileRun};
 use gather::{TileCache, entity_key, gather_proxies, key_entity};
 use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses};
@@ -459,6 +459,8 @@ struct StepExtra {
     /// The moving proxies the last pair build left out of the pair grid as
     /// oversize (`pairs::OVERSIZE_CELLS`), in proxy order.
     oversize: Vec<u32>,
+    /// The arrival pass's entries for its candidate cut and its pair runs.
+    arrival_reach: ArrivalReach,
     /// Each proxy's pair box as the pair tests read it
     /// (`pairs::box_bounds`), set with its `PhysicsBuffers::pair_aabbs` box.
     pair_bounds: Vec<Vec4>,
@@ -1663,6 +1665,7 @@ fn substep(
             &extra.oversize,
             candidates,
             arrival,
+            &mut extra.arrival_reach,
             (record_on || push_on).then_some(&mut extra.touches),
         );
     }

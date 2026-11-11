@@ -1,6 +1,6 @@
-# CPU stress pass (cpu-stress) — draft
+# CPU stress pass (cpu-stress) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** lower `total` p95 and p99 in the frames that load many systems at once (01's full pit under blasts, a pile's wake, fire, impacts and enemies), measured on `e01-stress` and `e01-pit`, and take the cheap general speed-ups the measurement found on the other CPU rows; single-threaded, in `tungsten-core`, `tungsten-kit` and the umbrella crate
 - **non-goals:** 7.14's list (it stays after 7.13; this pass only marks what it closes, §2.6); any change to example 01 beyond the hooks its row has; a worker thread in any landed change (`D-067`, `D-131`); collision once a frame, a staggered or partial island wake, the resting query index (C1), the extract (C6), the flush's batching and chemistry's emission phase, each dropped at the gate with its reason (§2.1)
 - **files to touch:** by step, nothing outside these lists
@@ -302,6 +302,7 @@ gpt-6-astra through `critique --raw --repo`, 2026-11-10, round 1 at xhigh, on th
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-10 | done, after its one revision | Probe (`a_blasted_pile_prints_the_arrival_passes_counts`, twelve frames after the blast), the same before and after: listed 10,303, clamps 26,250, walked 951,224, past the cut 80,613, searches 30,931, pairs built 38,109, 25.0 walked a pair built (the plan expected about ten; a listed body walks 92 at 64 px cells). First sitting, §2.3 as written: `blast` `system.physics_step` p95 40.78 → 38.77 and 40.71 → 38.76 ms (−2.01, −1.95, missed), p99 46.36 → 43.58 and 46.46 → 43.64 (−2.78, −2.81). A profile of its 20 highest frames read why: the unstable sort on unique keys cost 1.33 ms where the stable one, on a few distinct keys, cost 0.49, and the cut's branch mispredicted on each candidate kept. Revision: a round over 128 pairs is put in order in two passes over its depth and mass classes (16 at most, else the unstable sort, which smaller rounds keep), and the cut marks 64 candidates at a time in a bit mask; tests hold every path to a stable sort's order. Revision sitting: p95 40.89 → 37.58 and 40.91 → 37.78 ms (−3.31, −3.13), p99 46.39 → 42.23 and 46.60 → 42.15 (−4.15, −4.45), `improved` in both pairs; `physics` and `friction` `unchanged`; "First-run digests match" on the three rows in both pairs; no row `regressed`. `just physics-release` → exit 0, 16 passed, both hashes unchanged; `cargo test -p tungsten-core --locked` → exit 0, 1,747 passed; `just check` → exit 0. Pins: `blast.json` `allocations` 1,393 → 1,365 and `allocated_bytes` 6,705,420 → 6,505,864; `friction.json` 1,992 → 1,988 and 3,801,516 → 3,777,632; the other guards and `pit.json` unmoved. The arrival pair keeps its 28 bytes (at 32, `physics.json`'s `allocated_bytes` rose 512). | `perf-runs/20261111T005202Z-sitting/` (missed), `perf-runs/20261111T013009Z-sitting/`, `perf-runs/20261110-cpu-stress/step-1/` (the folds by function and by line) |
 
 ## Follow-ups
 
