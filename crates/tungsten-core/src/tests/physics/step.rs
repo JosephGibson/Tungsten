@@ -9893,3 +9893,152 @@ fn a_pair_the_safety_net_clamps_and_the_pair_loop_meets_sends_one_event_a_step()
         assert_eq!(overlap(&mut buffers), 2);
     }
 }
+
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "release-scale step test; run with --release"
+)]
+fn a_blasted_pile_of_12_000_prints_the_frame_starts_that_could_keep_their_pairs() {
+    // The gate of the pair list kept across frames: the `blast` row's pile,
+    // 12,000 balls on its lattice in a bin, asleep, then a blast every 20
+    // frames. A shadow of each body's budget carries its travel from frame
+    // to frame as a kept list would: a frame start keeps the list when at
+    // most one awake body in four has outrun its budget, as the repair's
+    // rule has it, and those bodies alone take a fresh one.
+    const BODIES: usize = 12_000;
+    const COLUMNS: usize = 98;
+    const PITCH: f32 = 15.5;
+    let mut world = seed_world();
+    {
+        let config = world.resource_mut::<PhysicsConfig>();
+        config.gravity = Vec2::new(0.0, 3_600.0);
+        config.broadphase_cell_size = 64.0;
+    }
+    let (width, height) = (1_536.0, 2_272.0);
+    for (at, half) in [
+        (
+            Vec2::new(width * 0.5, height + 200.0),
+            Vec2::new(width, 200.0),
+        ),
+        (Vec2::new(width * 0.5, -200.0), Vec2::new(width, 200.0)),
+        (Vec2::new(-200.0, height * 0.5), Vec2::new(200.0, height)),
+        (
+            Vec2::new(width + 200.0, height * 0.5),
+            Vec2::new(200.0, height),
+        ),
+    ] {
+        spawn_static(&mut world, Collider::aabb(half), at);
+    }
+    let mut rng = crate::Pcg32::seeded(0xB1A5_7000);
+    let balls: Vec<Entity> = (0..BODIES)
+        .map(|index| {
+            let (column, row) = (index % COLUMNS, index / COLUMNS);
+            let shift = if row % 2 == 1 { 0.5 * PITCH } else { 0.0 };
+            let at = Vec2::new(
+                0.5 + 7.5 + shift + column as f32 * PITCH,
+                height - 0.5 - 7.5 - row as f32 * PITCH * 0.866_025_4,
+            ) + Vec2::new(rng.next_range(-0.2, 0.2), rng.next_range(-0.2, 0.2));
+            spawn_body(
+                &mut world,
+                RigidBody::dynamic().with_restitution(0.85),
+                Collider::circle(7.5),
+                at,
+                Vec2::ZERO,
+            )
+        })
+        .collect();
+    for _ in 0..480 {
+        physics_step(&mut world);
+        drain_events(&mut world);
+    }
+    let config = *world.resource::<PhysicsConfig>();
+    let sub_dt = 1.0 / 60.0 / config.substeps as f32;
+    let slack = 2.0 * config.linear_slop;
+    // Each ball's proxy, and its carried budget: radius and travel.
+    let proxy_of: Vec<usize> = {
+        let buffers = world.resource::<PhysicsBuffers>();
+        balls
+            .iter()
+            .map(|&ball| {
+                buffers
+                    .proxies
+                    .iter()
+                    .position(|proxy| proxy.entity == Some(ball))
+                    .unwrap()
+            })
+            .collect()
+    };
+    let mut carried = vec![(0.0_f32, f32::INFINITY); BODIES];
+    let mut blast_rng = crate::Pcg32::seeded(7);
+    let (mut steady, mut steady_kept, mut all_kept, mut frames) = (0, 0, 0, 0);
+    // The row's window: 300 frames, a blast every 20.
+    for frame in 0..300 {
+        if frame % 20 == 0 {
+            let x = blast_rng.next_range(300.0, width - 300.0);
+            let top = balls
+                .iter()
+                .map(|&ball| world.get::<Position>(ball).unwrap().0)
+                .filter(|at| (at.x - x).abs() <= 15.0)
+                .map(|at| at.y)
+                .fold(f32::INFINITY, f32::min);
+            apply_radial_impulse(
+                &mut world,
+                Vec2::new(x, top),
+                288.0,
+                2_500.0,
+                &crate::physics::SpatialFilter::new(),
+            );
+        }
+        // The frame's start: who is awake, and who has outrun its budget.
+        let (mut awake, mut tripped) = (0, Vec::new());
+        {
+            let buffers = world.resource::<PhysicsBuffers>();
+            for (index, &ball) in balls.iter().enumerate() {
+                let asleep = buffers
+                    .sleep
+                    .get(entity_key(ball))
+                    .is_some_and(|entry| entry.sleeping);
+                if asleep {
+                    continue;
+                }
+                awake += 1;
+                let speed = world.get::<Velocity>(ball).unwrap().0.length();
+                let (radius, travel) = carried[index];
+                if travel + speed * sub_dt + slack > radius {
+                    tripped.push(index);
+                }
+            }
+        }
+        let kept = awake > 0 && tripped.len() * 4 <= awake;
+        physics_step(&mut world);
+        drain_events(&mut world);
+        let buffers = world.resource::<PhysicsBuffers>();
+        if kept {
+            for (index, &proxy) in proxy_of.iter().enumerate() {
+                carried[index].1 += buffers.pair_budgets[proxy].travel;
+            }
+            for index in tripped {
+                let budget = buffers.pair_budgets[proxy_of[index]];
+                carried[index] = (budget.radius, budget.travel);
+            }
+        } else {
+            for (index, &proxy) in proxy_of.iter().enumerate() {
+                let budget = buffers.pair_budgets[proxy];
+                carried[index] = (budget.radius, budget.travel);
+            }
+        }
+        frames += 1;
+        all_kept += usize::from(kept);
+        // The eight frames before each blast, the row's steady ones.
+        if frame >= 20 && frame % 20 >= 12 {
+            steady += 1;
+            steady_kept += usize::from(kept);
+        }
+    }
+    println!(
+        "pair list probe: {steady_kept} of {steady} steady frame starts keep the list, \
+         {all_kept} of {frames} in all"
+    );
+    assert!(steady > 0);
+}
