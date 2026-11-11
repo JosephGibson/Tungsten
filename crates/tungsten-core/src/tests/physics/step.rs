@@ -6968,6 +6968,7 @@ fn collision_events_carry_their_builds_speed() {
         candidates,
         events,
         tiles,
+        extra,
         ..
     } = &mut buffers;
     speculative_pass(
@@ -6979,6 +6980,7 @@ fn collision_events_carry_their_builds_speed() {
         static_grid,
         candidates,
         events,
+        &mut extra.sent.found,
         tiles,
         None,
     );
@@ -9671,4 +9673,223 @@ fn seeds_by_proxy_index_equal_the_keyed_carry_through_every_change() {
     run(&mut world, 20);
     let (kept_after, rekeyed) = counts(&world);
     assert!(kept_after >= kept + 40 && rekeyed == 3);
+}
+
+/// A step's collision events and the distinct pairs among them, a tile side
+/// told by its cell.
+fn events_and_pairs(events: &[CollisionEvent]) -> (usize, usize) {
+    let mut pairs: Vec<_> = events
+        .iter()
+        .map(|event| {
+            let b = event.b.map(Entity::id);
+            let cell = event.tile.map(|tile| (tile.layer, tile.col, tile.row));
+            (event.a.id(), b, cell)
+        })
+        .collect();
+    pairs.sort_unstable();
+    pairs.dedup();
+    (events.len(), pairs.len())
+}
+
+#[test]
+fn a_resting_pile_prints_its_events_and_their_pairs() {
+    // The probe of the step's event volume: a pile of 600 at rest and
+    // awake, one step. Its contacts rest inside the slop, so each one
+    // penetrates in every substep, and before D-270 sent an event in each:
+    // 2,400 events of 600 pairs.
+    let mut world = settled_pile_of_600_massing(|_| 1.0);
+    world.resource_mut::<PhysicsConfig>().sleep_threshold = 0.0;
+    for _ in 0..30 {
+        physics_step(&mut world);
+        drain_events(&mut world);
+    }
+    physics_step(&mut world);
+    let (events, pairs) = events_and_pairs(&drain_events(&mut world));
+    println!(
+        "event probe: {events} events of {pairs} pairs in one step, {:.2} a pair",
+        events as f64 / pairs.max(1) as f64
+    );
+    assert!(pairs >= 500, "the pile rests on {pairs} pairs");
+    assert_eq!(events, pairs, "a pair sends one event a step");
+}
+
+/// Buffers gathered from `world` for substeps run by hand, as one step's:
+/// the frame's first pair build still to come.
+fn buffers_for_one_step(world: &World) -> PhysicsBuffers {
+    let mut buffers = PhysicsBuffers::default();
+    gather_proxies(
+        world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+        &mut buffers.extra,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
+    buffers.pairs_invalidated = true;
+    buffers.static_grid.begin_frame();
+    buffers
+}
+
+#[test]
+fn a_pair_whose_contact_leaves_and_returns_sends_one_event_a_step() {
+    // D-270: a ball overlapping a partner sends their event in the substep
+    // its contact first penetrates, and no other in the step: not while the
+    // contact stays, not when it leaves and returns, and not after the
+    // pair leaves the list at a rebuild or at the ball's repair and comes
+    // back. The partner is a static circle, which the record finds by its
+    // proxies, and then a dynamic one, which it finds by its place in the
+    // list. A new step sends again.
+    let config = PhysicsConfig {
+        gravity: Vec2::ZERO,
+        ..PhysicsConfig::default()
+    };
+    let (sub_dt, dt) = (1.0 / 240.0, 1.0 / 60.0);
+    for dynamic_partner in [false, true] {
+        let mut world = seed_world();
+        let ball = spawn_ball(&mut world, Vec2::ZERO);
+        let partner = if dynamic_partner {
+            spawn_ball(&mut world, Vec2::new(18.0, 0.0))
+        } else {
+            spawn_static(&mut world, Collider::circle(10.0), Vec2::new(18.0, 0.0))
+        };
+        // Four more awake bodies far off, so that one tripped ball is a
+        // repair's and no rebuild's.
+        for index in 0..4 {
+            spawn_ball(&mut world, Vec2::new(500.0 + 40.0 * index as f32, 300.0));
+        }
+        let mut buffers = buffers_for_one_step(&world);
+        let index_of = |buffers: &PhysicsBuffers, entity| {
+            buffers
+                .proxies
+                .iter()
+                .position(|proxy| proxy.entity == Some(entity))
+                .unwrap()
+        };
+        let (ball, partner) = (index_of(&buffers, ball), index_of(&buffers, partner));
+        // Put the pair where it overlaps by 2 px, or far apart, at rest.
+        let place = |buffers: &mut PhysicsBuffers, apart: bool| {
+            let x = if apart { -60.0 } else { 0.0 };
+            for (index, at) in [(ball, Vec2::new(x, 0.0)), (partner, Vec2::new(18.0, 0.0))] {
+                buffers.proxies[index].center = at;
+                buffers.proxies[index].velocity = Vec2::ZERO;
+            }
+        };
+        let step = |buffers: &mut PhysicsBuffers| {
+            substep(&config, sub_dt, dt, buffers, false);
+            buffers.events.len()
+        };
+
+        assert_eq!(step(&mut buffers), 1, "the first penetrating substep");
+        place(&mut buffers, false);
+        assert_eq!(step(&mut buffers), 1, "the contact stays");
+        place(&mut buffers, true);
+        assert_eq!(step(&mut buffers), 1);
+        assert!(buffers.contacts.is_empty(), "the contact left");
+        place(&mut buffers, false);
+        assert_eq!(step(&mut buffers), 1, "the contact returned");
+
+        // A rebuild: the pair leaves the list and comes back.
+        let builds = buffers.pair_builds;
+        place(&mut buffers, false);
+        buffers.pairs_invalidated = true;
+        assert_eq!(step(&mut buffers), 1, "after a rebuild");
+        assert_eq!(buffers.pair_builds, builds + 1);
+
+        // A repair: the ball outruns its budget along the partner's side.
+        let repairs = buffers.pair_repairs;
+        place(&mut buffers, false);
+        buffers.proxies[ball].velocity = Vec2::new(0.0, 2_400.0);
+        assert_eq!(step(&mut buffers), 1, "after the ball's repair");
+        assert_eq!(buffers.pair_repairs, repairs + 1);
+        assert_eq!(buffers.pair_builds, builds + 1);
+
+        // The next step's first penetrating substep sends again.
+        buffers.extra.sent.begin_step(buffers.proxies.len());
+        place(&mut buffers, false);
+        assert_eq!(step(&mut buffers), 2, "a new step");
+        assert_eq!(step(&mut buffers), 2);
+    }
+}
+
+#[test]
+fn a_pair_the_safety_net_clamps_and_the_pair_loop_meets_sends_one_event_a_step() {
+    // D-270: the safety net's clamp and the pair loop send the same pair's
+    // event, whichever comes first in the step, once. A ball and a static
+    // wall: the net clamps the ball's move through the wall and the loop
+    // then finds the two overlapping, and the other way round.
+    let config = PhysicsConfig {
+        gravity: Vec2::ZERO,
+        ..PhysicsConfig::default()
+    };
+    let (sub_dt, dt) = (1.0 / 240.0, 1.0 / 60.0);
+    for net_first in [true, false] {
+        let mut world = seed_world();
+        spawn_static(
+            &mut world,
+            Collider::aabb(Vec2::new(2.0, 50.0)),
+            Vec2::new(50.0, 0.0),
+        );
+        spawn_ball(&mut world, Vec2::ZERO);
+        let mut buffers = buffers_for_one_step(&world);
+        build_pairs(&config, sub_dt, dt, &mut buffers);
+        let ball = buffers.proxies.iter().position(|p| p.is_dynamic).unwrap();
+        // The ball's move from the origin through the wall, for the net.
+        let clamp = |buffers: &mut PhysicsBuffers| {
+            let proxy = &mut buffers.proxies[ball];
+            proxy.prev_center = Vec2::ZERO;
+            proxy.center = Vec2::new(100.0, 0.0);
+            proxy.velocity = Vec2::new(6_000.0, 0.0);
+            let PhysicsBuffers {
+                proxies,
+                bodies,
+                layers,
+                grid,
+                static_grid,
+                candidates,
+                events,
+                tiles,
+                extra,
+                ..
+            } = buffers;
+            speculative_pass(
+                &config,
+                proxies,
+                *bodies,
+                layers,
+                grid,
+                static_grid,
+                candidates,
+                events,
+                &mut extra.sent.found,
+                tiles,
+                None,
+            );
+            events.len()
+        };
+        // The ball at rest 1 px into the wall's near face, for the loop.
+        let overlap = |buffers: &mut PhysicsBuffers| {
+            let proxy = &mut buffers.proxies[ball];
+            proxy.center = Vec2::new(39.0, 0.0);
+            proxy.prev_center = proxy.center;
+            proxy.velocity = Vec2::ZERO;
+            buffers.pairs_invalidated = true;
+            substep(&config, sub_dt, dt, buffers, false);
+            buffers.events.len()
+        };
+        if net_first {
+            assert_eq!(clamp(&mut buffers), 1, "the clamp sends");
+            assert_eq!(overlap(&mut buffers), 1, "the loop meets a pair that sent");
+            assert_eq!(clamp(&mut buffers), 1, "a second clamp");
+        } else {
+            assert_eq!(overlap(&mut buffers), 1, "the loop sends");
+            assert_eq!(clamp(&mut buffers), 1, "the net clamps a pair that sent");
+            assert_eq!(overlap(&mut buffers), 1);
+        }
+        buffers.extra.sent.begin_step(buffers.proxies.len());
+        assert_eq!(clamp(&mut buffers), 2, "a new step's clamp");
+        assert_eq!(overlap(&mut buffers), 2);
+    }
 }

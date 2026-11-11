@@ -276,7 +276,7 @@ Owns `physics_step` over a dense pile's sleep, wake and blasts, with no game sys
 
 - **Pile.** `bodies` circles of `radius` start at rest on a hexagonal lattice in a closed bin of 16 px tiles, `width` cells across with a floor, two walls and a ceiling, under 01's gravity, restitution and broadphase cell. They settle and sleep, one island, inside the warm-up: by frame 400 at `default`.
 - **Blasts.** From window frame 20 a blast lands every `period` frames: `apply_radial_impulse` of `impulse` over `reach` px, centred on the highest body within a body's width of a seeded column, as a projectile meeting the pile there would land it. The first wakes the island whole, and at `period` 20 the pile never sleeps again, so a window holds 20 frames asleep, the wake, and 14 blasts on an awake pile.
-- **Reference machine**, 2026-11-10, three runs: `physics_step` 0.68 ms asleep, 25.2 ms in the wake's frame and 48.8 ms six frames on, about 24.3 ms between blasts; p50 26.9 to 27.3 ms, p95 40.8 to 41.2 ms, p99 46.3 to 46.7 ms. The step sends about 200,000 collision events a frame while the pile is awake.
+- **Reference machine**, 2026-11-10, three runs: `physics_step` 0.68 ms asleep, 25.2 ms in the wake's frame and 48.8 ms six frames on, about 24.3 ms between blasts; p50 26.9 to 27.3 ms, p95 40.8 to 41.2 ms, p99 46.3 to 46.7 ms. The step sends about 50,000 collision events a frame while the pile is awake, one a penetrating pair (`D-270`; about 200,000 before it, one a pair a substep).
 
 | Knob | Default | Range | Scales | Notes |
 | --- | --- | --- | --- | --- |

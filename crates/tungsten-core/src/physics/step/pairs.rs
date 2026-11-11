@@ -187,6 +187,158 @@ fn hash_pair(key: u128) -> u64 {
     h ^ (h >> 32)
 }
 
+/// A set of proxy pairs, either way round: open addressing, grown as it
+/// fills, kept across steps so a steady world allocates nothing for it.
+#[derive(Debug, Default)]
+pub(super) struct PairSet {
+    /// A pair's lower index in the high half, its higher in the low one;
+    /// [`Self::EMPTY`] for a free slot, which no pair makes.
+    slots: Vec<u64>,
+    len: usize,
+}
+
+impl PairSet {
+    const EMPTY: u64 = u64::MAX;
+
+    fn key(a: u32, b: u32) -> u64 {
+        let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+        (u64::from(lo) << 32) | u64::from(hi)
+    }
+
+    fn slot(&self, key: u64) -> usize {
+        let hash = key.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        ((hash ^ (hash >> 32)) & (self.slots.len() as u64 - 1)) as usize
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Empty the set and give it room for `pairs` of them, so that a step
+    /// which records no more than that grows nothing.
+    pub(super) fn reset(&mut self, pairs: usize) {
+        let capacity = (pairs * 2).next_power_of_two().max(64);
+        if self.slots.len() < capacity {
+            self.slots.clear();
+            self.slots.resize(capacity, Self::EMPTY);
+        } else if self.len > 0 {
+            self.slots.fill(Self::EMPTY);
+        }
+        self.len = 0;
+    }
+
+    pub(super) fn contains(&self, a: u32, b: u32) -> bool {
+        if self.len == 0 {
+            return false;
+        }
+        let key = Self::key(a, b);
+        let mut at = self.slot(key);
+        loop {
+            if self.slots[at] == key {
+                return true;
+            }
+            if self.slots[at] == Self::EMPTY {
+                return false;
+            }
+            at = (at + 1) & (self.slots.len() - 1);
+        }
+    }
+
+    /// Add the pair; false when the set held it.
+    pub(super) fn insert(&mut self, a: u32, b: u32) -> bool {
+        if (self.len + 1) * 2 > self.slots.len() {
+            self.grow();
+        }
+        let key = Self::key(a, b);
+        let mut at = self.slot(key);
+        loop {
+            if self.slots[at] == key {
+                return false;
+            }
+            if self.slots[at] == Self::EMPTY {
+                self.slots[at] = key;
+                self.len += 1;
+                return true;
+            }
+            at = (at + 1) & (self.slots.len() - 1);
+        }
+    }
+
+    /// Double the slots, 64 at least, and place the pairs again.
+    fn grow(&mut self) {
+        let capacity = (self.slots.len() * 2).max(64);
+        let old = std::mem::replace(&mut self.slots, vec![Self::EMPTY; capacity]);
+        for key in old {
+            if key != Self::EMPTY {
+                let mut at = self.slot(key);
+                while self.slots[at] != Self::EMPTY {
+                    at = (at + 1) & (capacity - 1);
+                }
+                self.slots[at] = key;
+            }
+        }
+    }
+}
+
+/// The step's record of the pairs that sent their `CollisionEvent` (D-270):
+/// a pair sends one a step, the first time the pair loop finds its contact
+/// penetrating or the safety net clamps it. The record lasts the step,
+/// through its pair builds and repairs, whether or not the contact stays,
+/// where the carried impulses forget a contact absent for a substep.
+#[derive(Debug, Default)]
+pub(super) struct SentRecord {
+    /// One flag a pair of the pair list, beside it: the pair sent.
+    pub(super) pairs: Vec<bool>,
+    /// The pairs that sent and that a later producer has to find by their
+    /// proxies: every pair with a side the safety net clamps against, a
+    /// static body or a tile, which it may meet outside the pair list, and
+    /// every pair that left the list at a repair or a rebuild, which may
+    /// come back.
+    pub(super) found: PairSet,
+}
+
+impl SentRecord {
+    /// A new step over `proxies` proxies: no pair sent. The pairs to find
+    /// by their proxies are a few a body at a boundary, so room for one a
+    /// proxy holds a step's without growing.
+    pub(super) fn begin_step(&mut self, proxies: usize) {
+        self.pairs.fill(false);
+        self.found.reset(proxies);
+    }
+
+    /// The pair at `index` of the list, `(a, b)`, finds its contact
+    /// penetrating: whether it sends its event now. `net_side` says the
+    /// safety net clamps against `b`, so it may have sent the pair's.
+    #[inline]
+    pub(super) fn send(&mut self, index: usize, a: u32, b: u32, net_side: bool) -> bool {
+        if std::mem::replace(&mut self.pairs[index], true) {
+            return false;
+        }
+        !net_side || self.found.insert(a, b)
+    }
+
+    /// Before a build clears the list: the pairs that sent are found by
+    /// their proxies from here on.
+    fn leave(&mut self, pairs: &[(u32, u32)]) {
+        for (&(a, b), &sent) in pairs.iter().zip(&self.pairs) {
+            if sent {
+                self.found.insert(a, b);
+            }
+        }
+    }
+
+    /// After a build: each pair's flag, from the pairs that sent.
+    fn enter(&mut self, pairs: &[(u32, u32)]) {
+        self.pairs.clear();
+        if self.found.is_empty() {
+            self.pairs.resize(pairs.len(), false);
+        } else {
+            self.pairs
+                .extend(pairs.iter().map(|&(a, b)| self.found.contains(a, b)));
+        }
+    }
+}
+
 /// One synchronized contact in an [`ImpulseCarry`] run.
 #[derive(Debug, Clone, Copy, Default)]
 struct Carried {
@@ -568,12 +720,14 @@ pub(super) fn build_pairs(
         oversize,
         carry,
         tangents,
+        sent,
         ..
     } = &mut **extra;
     let bodies = *bodies;
     // The frame's first build checks that the carry's indices still name
     // the proxies they were taken from: the counts and the tiles here, each
     // entity proxy's key in the pass below.
+    sent.leave(pairs);
     let check_carry = *pairs_invalidated || carry.keys.len() != proxies.len();
     let mut same = carry.same_counts(proxies.len(), bodies, tiles.version());
     let carried_keys = if check_carry && same {
@@ -704,6 +858,7 @@ pub(super) fn build_pairs(
         );
     }
     *pairs_invalidated = false;
+    sent.enter(pairs);
     buffers.pair_impulses.clear();
     buffers.pair_impulses.resize(pairs.len(), 0.0);
     buffers.seed_pair_impulses = true;
@@ -825,6 +980,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         repair_tangents,
         removed_tangents,
         pair_bounds,
+        sent,
         ..
     } = &mut **extra;
     let friction_on = !frictions.is_empty();
@@ -852,19 +1008,28 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
             if friction_on {
                 pair_tangents[kept] = tangent;
             }
+            sent.pairs[kept] = sent.pairs[index];
             kept += 1;
-        } else if impulse != 0.0 || tangent != 0.0 {
-            let key = pair_key(proxies[a as usize].key, proxies[b as usize].key);
-            if impulse != 0.0 {
-                removed_impulses.push((key, impulse));
+        } else {
+            // A removed pair that sent its event is found by its proxies
+            // when a member's query brings it back (D-270).
+            if sent.pairs[index] {
+                sent.found.insert(a, b);
             }
-            if tangent != 0.0 {
-                removed_tangents.push((key, tangent));
+            if impulse != 0.0 || tangent != 0.0 {
+                let key = pair_key(proxies[a as usize].key, proxies[b as usize].key);
+                if impulse != 0.0 {
+                    removed_impulses.push((key, impulse));
+                }
+                if tangent != 0.0 {
+                    removed_tangents.push((key, tangent));
+                }
             }
         }
     }
     pairs.truncate(kept);
     pair_impulses.truncate(kept);
+    sent.pairs.truncate(kept);
     repair_impulses.reset(removed_impulses.len());
     for &(key, impulse) in removed_impulses.iter() {
         repair_impulses.insert(key, impulse);
@@ -928,6 +1093,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         let member_key = proxies[member as usize].key;
         let mut admit = |a: u32, b: u32, other: u32| {
             pairs.push((a, b));
+            sent.pairs.push(sent.found.contains(a, b));
             let key = pair_key(member_key, proxies[other as usize].key);
             pair_impulses.push(if carried {
                 repair_impulses.get(key)

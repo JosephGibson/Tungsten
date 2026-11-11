@@ -2,7 +2,7 @@
 //! that answers it once a frame's queries outnumber the statics (D-080).
 
 use super::gather::TileCache;
-use super::pairs::PairGrid;
+use super::pairs::{PairGrid, PairSet};
 use super::solver::one_way_holds;
 use super::{Proxy, ProxyLayers, TouchObs, tile_hit};
 use crate::physics::PhysicsConfig;
@@ -122,6 +122,7 @@ pub(super) fn speculative_pass(
     static_grid: &mut SweepGrid,
     candidates: &mut Vec<ProxyId>,
     events: &mut Vec<CollisionEvent>,
+    sent: &mut PairSet,
     tiles: &TileCache,
     mut touches: Option<&mut Vec<TouchObs>>,
 ) {
@@ -258,7 +259,11 @@ pub(super) fn speculative_pass(
             });
         }
 
-        if let Some(a_entity) = proxies[a_idx].entity {
+        // The clamp sends the pair's event unless the pair sent one this
+        // step, from the pair loop or from an earlier clamp (D-270).
+        if sent.insert(a_idx as u32, b_idx as u32)
+            && let Some(a_entity) = proxies[a_idx].entity
+        {
             events.push(CollisionEvent {
                 a: a_entity,
                 b: proxies[b_idx].entity,

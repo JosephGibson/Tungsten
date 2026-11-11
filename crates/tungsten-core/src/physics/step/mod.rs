@@ -160,7 +160,8 @@ use arrival::{ARRIVAL_SLOPS, ArrivalReach, ArrivalScratch, arrival_pass};
 pub(super) use gather::{GridCell, TileRun};
 use gather::{TileCache, entity_key, gather_proxies, key_entity};
 use pairs::{
-    ImpulseCarry, ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses,
+    ImpulseCarry, ImpulseMap, PairBudget, PairGrid, SentRecord, pair_key, refresh_pairs,
+    sync_impulses,
 };
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
 use solver::{
@@ -508,6 +509,8 @@ struct StepExtra {
     /// The last synchronized contacts' impulses by proxy index, which seed
     /// the contacts of the first substep after a pair build (D-269).
     carry: ImpulseCarry,
+    /// The pairs that sent their collision event this step (D-270).
+    sent: SentRecord,
     /// Each proxy's pair box as the pair tests read it
     /// (`pairs::box_bounds`), set with its `PhysicsBuffers::pair_aabbs` box.
     pair_bounds: Vec<Vec4>,
@@ -1085,6 +1088,7 @@ pub fn physics_step(world: &mut World) {
         .extend(0..buffers.proxies.len() as u32);
     buffers.kept.clear();
     buffers.events.clear();
+    buffers.extra.sent.begin_step(buffers.proxies.len());
 
     for step in 0..substeps {
         let time_left = (dt - step as f32 * sub_dt).max(sub_dt);
@@ -1549,7 +1553,13 @@ fn substep(
             }
         }
         if contact.penetration > 0.0 {
+            // A pair sends its event once a step, in the first substep its
+            // contact penetrates, unless the safety net's clamp sent it
+            // (D-270).
+            let net_side = !proxies[b_idx].is_dynamic && !proxies[b_idx].kinematic;
+            let send = extra.sent.send(pair_index, a_u, b_u, net_side);
             if proxies[a_idx].kinematic || proxies[b_idx].kinematic {
+                let events = send.then_some(&mut *events);
                 kinematic_touch(proxies, events, kept, a_idx, b_idx, &contact, approach);
                 continue;
             }
@@ -1563,7 +1573,7 @@ fn substep(
             {
                 uf_union(island_parent, a_u, b_u);
             }
-            if let Some(a_entity) = proxies[a_idx].entity {
+            if send && let Some(a_entity) = proxies[a_idx].entity {
                 events.push(CollisionEvent {
                     a: a_entity,
                     b: proxies[b_idx].entity,
@@ -1798,6 +1808,7 @@ fn substep(
         static_grid,
         candidates,
         events,
+        &mut extra.sent.found,
         tiles,
         record_on.then_some(&mut extra.touches),
     );
@@ -2161,7 +2172,7 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
 #[inline(never)]
 fn kinematic_touch(
     proxies: &mut [Proxy],
-    events: &mut Vec<CollisionEvent>,
+    events: Option<&mut Vec<CollisionEvent>>,
     kept: &mut Vec<u32>,
     a_idx: usize,
     b_idx: usize,
@@ -2177,7 +2188,7 @@ fn kinematic_touch(
         proxies[pushed].kept_awake = true;
         kept.push(pushed as u32);
     }
-    if let Some(entity) = proxies[pushed].entity {
+    if let (Some(events), Some(entity)) = (events, proxies[pushed].entity) {
         events.push(CollisionEvent {
             a: entity,
             b: proxies[kinematic].entity,
