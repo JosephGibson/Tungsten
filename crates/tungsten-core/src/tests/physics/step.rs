@@ -1,6 +1,6 @@
 use super::pairs::{
-    EMPTY_PAIR, PAIR_AWAKE, PAIR_MARGIN_SLOPS, bounds_overlap, box_bounds, build_pairs,
-    collect_tripped, gravity_allowance, query_bounds,
+    PAIR_AWAKE, PAIR_MARGIN_SLOPS, bounds_overlap, box_bounds, build_pairs, collect_tripped,
+    gravity_allowance, query_bounds,
 };
 use super::*;
 use crate::assets::tilemap::TerrainProps;
@@ -1707,7 +1707,7 @@ fn persistent_pairs_match_fresh_contacts_on_randomized_piles_bullets_and_wakes()
         settle_to_sleep(&mut world, &[bottom, top]);
         let buffers = world.get_resource_mut::<PhysicsBuffers>().unwrap();
         buffers.check_pair_contacts = true;
-        buffers.reference_impulses = Some(buffers.impulses.clone());
+        buffers.check_warm_starts();
         // Cover differing substep counts and cell boundaries, mixed shape
         // pairs, sleepers and fast bullets in the same evolving snapshot.
         let config = world.get_resource_mut::<PhysicsConfig>().unwrap();
@@ -2371,7 +2371,7 @@ fn dropped_on_a_sleeping_pile(diluted: bool) -> (PhysicsConfig, PhysicsBuffers) 
     buffers.pairs_invalidated = true;
     buffers.static_grid.begin_frame();
     buffers.check_pair_contacts = true;
-    buffers.reference_impulses = Some(buffers.impulses.clone());
+    buffers.check_warm_starts();
     (config, buffers)
 }
 
@@ -2769,8 +2769,8 @@ fn warm_start_forgets_disappearing_contacts_and_syncs_empty_final_substep() {
         "exercise reordered pair-cache boundary"
     );
     sync_impulses(&mut buffers);
-    assert_eq!(buffers.impulses.get(key), 0.0);
-    assert!(buffers.impulses.keys.iter().all(|key| *key == EMPTY_PAIR));
+    assert_eq!(buffers.extra.carry.by_key().0.get(key), 0.0);
+    assert!(buffers.extra.carry.is_empty());
     assert!(!buffers.impulses_dirty);
 }
 
@@ -3552,7 +3552,7 @@ fn persistent_pairs_match_fresh_contacts_with_kinematic_bodies() {
         settle_to_sleep(&mut world, &[bottom, top]);
         let buffers = world.get_resource_mut::<PhysicsBuffers>().unwrap();
         buffers.check_pair_contacts = true;
-        buffers.reference_impulses = Some(buffers.impulses.clone());
+        buffers.check_warm_starts();
         let config = world.get_resource_mut::<PhysicsConfig>().unwrap();
         config.substeps = [1, 2, 4, 8][seed as usize % 4];
         config.broadphase_cell_size = [8.0, 16.0, 32.0][seed as usize % 3];
@@ -8335,7 +8335,7 @@ fn oversize_bodies_keep_every_contact_and_warm_start() {
     physics_step(&mut world);
     let buffers = world.resource_mut::<PhysicsBuffers>();
     buffers.check_pair_contacts = true;
-    buffers.reference_impulses = Some(buffers.impulses.clone());
+    buffers.check_warm_starts();
     let (body, ball) = (RigidBody::dynamic(), Collider::circle(4.0));
     let fast = [
         spawn_body(
@@ -9567,4 +9567,108 @@ fn a_blasted_piles_arrival_rounds_keep_the_stable_sorts_order() {
         1.0 + 0.25 * (index % 20) as f32
     }));
     assert!(in_place > 0, "no large round of many masses");
+}
+
+#[test]
+fn seeds_by_proxy_index_equal_the_keyed_carry_through_every_change() {
+    // D-269: a build's first substep seeds each contact from the last
+    // synchronized contacts by proxy index while the proxies are the ones
+    // those were taken from, and by key in the frame they changed. The
+    // reference model compares every seed, normal and tangent, with a map
+    // by key; here over a heap of boxes and balls with friction on a tile
+    // floor, while nothing changes, when a body leaves and another comes
+    // (every later index shifts), and when a tile is cut (the tiles'
+    // version moves).
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    const W: u32 = 40;
+    let tiles = (0..W * 4)
+        .map(|at| {
+            let (row, col) = (at / W, at % W);
+            if row >= 2 || col == 0 || col == W - 1 {
+                0
+            } else {
+                -1
+            }
+        })
+        .collect();
+    world.resource_mut::<TilemapRegistry>().insert(
+        "floor".into(),
+        TilemapData {
+            tile_width: 16,
+            tile_height: 16,
+            width: W,
+            height: 4,
+            tileset: vec!["solid".into()],
+            object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
+            layers: vec![TilemapLayer {
+                name: "collision".into(),
+                kind: LayerKind::Collision,
+                tiles,
+            }],
+        },
+    );
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("floor", Vec2::new(0.0, 200.0)));
+    let body = |world: &mut World, index: usize| {
+        let at = Vec2::new(
+            200.0 + 13.0 * (index % 12) as f32,
+            210.0 - 13.0 * (index / 12) as f32,
+        );
+        let collider = if index.is_multiple_of(3) {
+            Collider::circle(6.0)
+        } else {
+            Collider::aabb(Vec2::splat(6.0))
+        };
+        // Thrown sideways, so the heap slides and rubs as it lands.
+        let thrown = Vec2::new(if index.is_multiple_of(2) { 90.0 } else { -90.0 }, 0.0);
+        let friction = RigidBody::dynamic().with_friction(0.6);
+        spawn_body(world, friction, collider, at, thrown)
+    };
+    let mut bodies: Vec<Entity> = (0..60).map(|index| body(&mut world, index)).collect();
+    physics_step(&mut world);
+    world.resource_mut::<PhysicsBuffers>().check_warm_starts();
+    let counts = |world: &World| {
+        let carry = &world.resource::<PhysicsBuffers>().extra.carry;
+        (carry.kept, carry.rekeyed)
+    };
+    // Steps the world; returns the most tangent impulses a step carried.
+    let run = |world: &mut World, steps: usize| {
+        let mut tangents = 0;
+        for _ in 0..steps {
+            physics_step(world);
+            drain_events(world);
+            let carry = &world.resource::<PhysicsBuffers>().extra.carry;
+            tangents = tangents.max(carry.tangents());
+        }
+        tangents
+    };
+
+    // The first frame took the proxies' keys; from there nothing changes.
+    assert_eq!(counts(&world).1, 1);
+    let tangents = run(&mut world, 40);
+    let (kept, rekeyed) = counts(&world);
+    assert!(kept >= 40 && rekeyed == 1, "{kept} kept, {rekeyed} rekeyed");
+    assert!(tangents > 0, "the heap carried no tangent impulse");
+
+    // A body leaves the heap's middle and another lands on it.
+    world.despawn(bodies.remove(17));
+    bodies.push(body(&mut world, 64));
+    run(&mut world, 1);
+    assert_eq!(counts(&world).1, 2, "the changed bodies were not seen");
+    run(&mut world, 20);
+    assert_eq!(counts(&world).1, 2);
+
+    // A tile under no body is cut: the tile proxies after it shift.
+    assert!(
+        world
+            .resource_mut::<TilemapRegistry>()
+            .set_tile("floor", 0, 3, 2, EMPTY_TILE)
+    );
+    run(&mut world, 1);
+    assert_eq!(counts(&world).1, 3, "the changed tiles were not seen");
+    run(&mut world, 20);
+    let (kept_after, rekeyed) = counts(&world);
+    assert!(kept_after >= kept + 40 && rekeyed == 3);
 }

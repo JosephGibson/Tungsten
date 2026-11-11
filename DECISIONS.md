@@ -630,6 +630,7 @@ Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID
 ## D-076 — Warm-start impulses follow persistent pair indices
 **Amended by D-081:** a pair repair carries impulses by pair key through a scratch map, without a keyed-map synchronization.
 **Amended by D-229:** the impulses carried only; a contact's tangent impulse is carried beside its normal one, by pair index within a step and by key across steps, rebuilds and repairs; rolling rows start cold; the rest stands.
+**Amended by D-269:** the carry across steps and rebuilds only; the last synchronized contacts' impulses are kept by proxy index and seed by it while the gathered proxies are the ones they were taken from, and move to the keyed map in the frame the proxies changed; the values, the pair-index array within a build and the rest stand.
 **Date:** 2026-09-28
 **Decision:** While a D-075 pair list is reused, carry each solved normal impulse in a parallel array indexed by the pair's position. The first substep after a pair build seeds admitted contacts from the persistent keyed map; subsequent substeps use the array directly. Clear each pair's cached value before admission, then write back only live solved contacts, so a contact absent for even one substep returns with zero impulse.
 
@@ -3579,6 +3580,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 **Amended by D-239:** the slope casts only; a path whose last entry is a masked side within a rounding behind an exposed side's entry enters through the exposed side at the later `t`, and the safety net's sweep takes the cell's mask; the rest stands.
 **Amended by D-255:** the slope contacts and casts for circles only; a circle takes a slope cell's exposed side's line beside a masked leg only where a neighbour continues the side through the vertex, and at an open corner, where an axis side between the two normals is exposed by the shadow rule, meets the rounded vertex on the exposed side's side of the leg's line and nothing past it, in contacts and casts alike; boxes, sweeps and rays stand, and so does the rest.
 **Amended by D-263:** rolling circles only; `Spin::angle` stays in [0, 2π), the gather and the writeback taking it whole turns in and `prev_angle` moved by the same turns, so a spinner's rate holds however long it turns and its drawn rotation never sweeps back; the rest stand.
+**Amended by D-269:** the tangent carry across steps and rebuilds only; a contact's tangent impulse rides its normal one's entry by proxy index, and by key in the frame the proxies changed; a repair still carries it by key; the rest stands.
 **Date:** 2026-10-31
 **Decision:** Redo 7.8's second plan (phase 7's Step 5): the physics `D-228` left open, as far as its steps landed. Every default keeps today's worlds: friction 0, no spin, no slope, no swept sensor, so the physics hashes and the kit's pin hold.
 
@@ -4220,3 +4222,14 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Pins: the views' `views-closed` and `views-open`, 02's guards, 01's `pit`, the physics hashes and the schedule snapshots hold; the API snapshots carry the new names.
 - Known limits: a save the game captures while the editor holds a room it opened includes that room's area; the prompt types a US layout's characters (`docs/known-issues.md`).
 - Open: shapes, layers, routes and the room's own settings in the editor; multi-select, box select, copy between rooms and a searchable palette; an overlay for `tungsten level render`; the prompt on core's text input (Later).
+
+## D-269 — Warm starts carried by proxy index while the proxies stay, by key in the frame they change
+**Date:** 2026-11-11
+**Decision:** The cpu-stress pass's Step 3. The last synchronized contacts' normal and tangent impulses are kept by proxy index (`step/pairs.rs`'s `ImpulseCarry`): each contact with a positive normal impulse or a tangent impulse, in a run under its lower proxy index, which a seed scans for its higher one. `sync_impulses` fills it by a counting sort where `D-076` synchronized the keyed map, at frame end and before a mid-frame rebuild, an empty final substep included. The frame's first pair build compares the entity proxies' count, the tile cache's version and each entity proxy's key with those the carry's indices mean. While they hold, a build's first substep seeds each contact from the carry by index. In a frame they changed, the build moves the entries to the keyed maps under the keys they were taken with and that substep seeds by key, as before. The values are `D-076`'s and `D-229`'s bit for bit, an absent pair reading 0, and a repair still carries its removed pairs by key (`D-081`). `ContactConstraint` holds no key and no static flag, 48 bytes from 80; the contact record and the push record take a pair's key from its two proxies.
+
+**Why:** Every build seeded each contact through `ImpulseMap::get`, a hash and two reads into a table of megabytes, and every frame rebuilt that table: 3.53 of 41.3 ms of `physics_step` in `e01-stress`'s 20 highest frames and 3.2 ms of every awake frame of a 12,000-body pile (the pass's profile, `perf-runs/20261110-cpu-stress/`). A gathered body keeps its index from frame to frame unless a body is spawned, despawned or changes archetype, so the key was paid for on frames that had no use for it. The step's sitting (`perf-runs/20261111T043155Z-sitting/`): `blast` `physics_step` p50 24.47 → 22.05 and 24.59 → 22.05 ms, p95 35.47 → 33.04 and 35.64 → 33.05, `improved`; `physics` and `friction` `unchanged`; digests equal.
+
+**Consequences:**
+- Amends `D-076` and `D-229` as their marker lines say. `D-063`'s previous-contact rule, `D-075`'s pair list, `D-081`'s repair and pair order stand.
+- Pins: the determinism and containment hashes, `KIT_RECIPES_HASH`, 02's guards and 01's `pit` hold.
+- Tests: the reference model compares every warm start, a seed's tangent included, with a map by key, through an unchanged heap, a body leaving and one coming, and a cut tile.

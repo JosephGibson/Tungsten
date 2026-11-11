@@ -159,7 +159,9 @@ mod sweep;
 use arrival::{ARRIVAL_SLOPS, ArrivalReach, ArrivalScratch, arrival_pass};
 pub(super) use gather::{GridCell, TileRun};
 use gather::{TileCache, entity_key, gather_proxies, key_entity};
-use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses};
+use pairs::{
+    ImpulseCarry, ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses,
+};
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
 use solver::{
     apply_impulse as apply_contact_impulse, apply_restitution, apply_tangent, narrow_phase,
@@ -327,15 +329,52 @@ struct ContactConstraint {
     /// Accumulated normal impulse, warm-started and clamped >= 0.
     impulse: f32,
     restitution: f32,
-    /// One side is immovable; solved with the stiffer static softness.
-    vs_static: bool,
     /// Effective inverse masses captured at contact build; a sleeping side is
     /// frozen at 0 so the solver treats it as static for this substep (D-065).
+    /// With either at 0 one side is immovable, and the contact is solved
+    /// with the stiffer static softness.
     inv_a: f32,
     inv_b: f32,
-    key: u128,
     /// Index in the current broadphase pair list (D-076).
-    pair_index: usize,
+    pair_index: u32,
+    /// Tests: the pair's key, for the oracles that follow a contact across
+    /// steps. The step itself carries impulses by proxy index (D-269) and
+    /// asks for a key only where a keyed record needs one.
+    #[cfg(test)]
+    key: u128,
+}
+
+/// A contact is 48 bytes, twelve words, outside tests, where it also holds
+/// its key: the solve walks the contacts several times a substep.
+#[cfg(not(test))]
+const _: () = assert!(std::mem::size_of::<ContactConstraint>() == 48);
+
+#[cfg(test)]
+impl PhysicsBuffers {
+    /// Tests: compare every warm start from here on with the reference
+    /// model, which starts from the impulses the step carries now.
+    fn check_warm_starts(&mut self) {
+        let (normals, tangents) = self.extra.carry.by_key();
+        self.reference_impulses = Some(normals);
+        self.reference_tangents = tangents;
+    }
+}
+
+impl ContactConstraint {
+    /// One side is immovable.
+    #[inline]
+    fn vs_static(&self) -> bool {
+        self.inv_a == 0.0 || self.inv_b == 0.0
+    }
+}
+
+/// A contact's pair key, from its two proxies' keys: the keyed records ask
+/// for it, the contact holds none.
+fn contact_key(proxies: &[Proxy], contact: &ContactConstraint) -> u128 {
+    pair_key(
+        proxies[contact.a as usize].key,
+        proxies[contact.b as usize].key,
+    )
 }
 
 /// Physics scratch buffers reused across substeps/frames.
@@ -387,6 +426,10 @@ pub struct PhysicsBuffers {
     /// D-063 reference model, rebuilt every substep in regression tests only.
     #[cfg(test)]
     reference_impulses: Option<ImpulseMap>,
+    /// The reference model's tangent impulses, kept while it runs: every
+    /// tangent a build's first substep seeds is compared with it.
+    #[cfg(test)]
+    reference_tangents: ImpulseMap,
     /// The random-scene oracle's probe, which reads the pair list after each
     /// refresh and the contacts after each substep (`step_oracle.rs`).
     #[cfg(test)]
@@ -420,13 +463,14 @@ pub struct PhysicsBuffers {
     grid: PairGrid,
     static_grid: SweepGrid,
     contacts: Vec<ContactConstraint>,
-    /// Last synchronized contacts, keyed across frames and pair rebuilds.
+    /// The last synchronized contacts by pair key, filled only by a pair
+    /// build that found the proxies changed (`StepExtra::carry`, D-269).
     impulses: ImpulseMap,
     /// Direct warm starts while D-075 pair indices remain stable.
     pair_impulses: Vec<f32>,
-    /// First substep after a build seeds contacts from the keyed map.
+    /// First substep after a build seeds contacts from the carry.
     seed_pair_impulses: bool,
-    /// Contacts have changed since the last keyed-map synchronization.
+    /// Contacts have changed since the last synchronization of the carry.
     impulses_dirty: bool,
     /// Persistent per-body sleep state (D-065), parallel to `proxies` after
     /// `sleep_frame_start`.
@@ -461,6 +505,9 @@ struct StepExtra {
     oversize: Vec<u32>,
     /// The arrival pass's entries for its candidate cut and its pair runs.
     arrival_reach: ArrivalReach,
+    /// The last synchronized contacts' impulses by proxy index, which seed
+    /// the contacts of the first substep after a pair build (D-269).
+    carry: ImpulseCarry,
     /// Each proxy's pair box as the pair tests read it
     /// (`pairs::box_bounds`), set with its `PhysicsBuffers::pair_aabbs` box.
     pair_bounds: Vec<Vec4>,
@@ -477,7 +524,8 @@ struct StepExtra {
     /// `pair_impulses` carries normal ones; kept only in a frame with
     /// friction.
     pair_tangents: Vec<f32>,
-    /// Nonzero tangent impulses by pair key, across frames and pair builds.
+    /// Nonzero tangent impulses by pair key, filled as
+    /// `PhysicsBuffers::impulses` is.
     tangents: ImpulseMap,
     /// Nonzero carried tangents of the pairs a repair removes, by pair key.
     repair_tangents: ImpulseMap,
@@ -1309,6 +1357,8 @@ fn substep(
         impulses_dirty,
         #[cfg(test)]
         reference_impulses,
+        #[cfg(test)]
+        reference_tangents,
         sleep,
         island_parent,
         kept,
@@ -1328,6 +1378,9 @@ fn substep(
     let spins_on = !extra.spin_of.is_empty();
     let record_on = extra.record_on;
     let seed_impulses = std::mem::take(seed_pair_impulses);
+    // A seed reads the carry by proxy index, or the keyed maps when the
+    // build found the proxies changed (D-269).
+    let seed_keyed = extra.carry.keyed();
 
     // Narrow phase once per substep; solver iterations reuse these contacts.
     // Speculative admission (D-064): pairs separated by less than one substep
@@ -1359,12 +1412,20 @@ fn substep(
         // slack of its top face; one the pair carried last substep keeps the
         // narrow phase's quarter cell, so a pressed body does not sink
         // through.
-        if proxies[b_idx].face_mask & FACE_ONE_WAY != 0 {
-            let held = if seed_impulses {
-                impulses.get(pair_key(proxies[a_idx].key, proxies[b_idx].key))
+        // The pair's normal and tangent impulses from the substep before,
+        // or, in the first substep after a build, from the carry.
+        let carried = |proxies: &[Proxy], extra: &StepExtra| {
+            if !seed_impulses {
+                (cached_impulse, cached_tangent)
+            } else if seed_keyed {
+                let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
+                (impulses.get(key), extra.tangents.get(key))
             } else {
-                cached_impulse
-            };
+                extra.carry.get(a_u, b_u)
+            }
+        };
+        if proxies[b_idx].face_mask & FACE_ONE_WAY != 0 {
+            let held = carried(proxies, extra).0;
             let (a, b) = (&proxies[a_idx], &proxies[b_idx]);
             if held <= 0.0
                 && !one_way_holds(a, a.center, b, b.center, contact.normal, speculative_slack)
@@ -1423,13 +1484,10 @@ fn substep(
         if inv_mass_sum <= 0.0 {
             continue;
         }
-        let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
         let approach = (proxies[a_idx].velocity - proxies[b_idx].velocity).dot(contact.normal);
-        let impulse = if seed_impulses {
-            impulses.get(key)
-        } else {
-            cached_impulse
-        };
+        let (impulse, seeded_tangent) = carried(proxies, extra);
+        #[cfg(test)]
+        let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
         #[cfg(test)]
         if let Some(reference) = reference_impulses.as_ref() {
             assert_eq!(
@@ -1447,15 +1505,16 @@ fn substep(
             approach,
             impulse,
             restitution: proxies[a_idx].restitution.max(proxies[b_idx].restitution),
-            vs_static: inv_a == 0.0 || inv_b == 0.0,
             inv_a,
             inv_b,
+            pair_index: pair_index as u32,
+            #[cfg(test)]
             key,
-            pair_index,
         });
         // The record carries the largest closing speed of a pair in reach
         // since its last touch.
         if record_on {
+            let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
             let carried = extra.record.closing.get(key);
             extra.contact_closing.push(carried.max(-approach));
         }
@@ -1484,12 +1543,16 @@ fn substep(
                     spin_b,
                     mu,
                     tangent_mass: 1.0 / inv_tangent,
-                    impulse: if seed_impulses {
-                        extra.tangents.get(key)
-                    } else {
-                        cached_tangent
-                    },
+                    impulse: seeded_tangent,
                 });
+                #[cfg(test)]
+                if seed_impulses && reference_impulses.is_some() {
+                    assert_eq!(
+                        seeded_tangent.to_bits(),
+                        reference_tangents.get(key).to_bits(),
+                        "tangent warm-start diverged"
+                    );
+                }
             }
         }
         if (spin_a != NO_SPIN || spin_b != NO_SPIN) && !extra.rollings.is_empty() {
@@ -1545,7 +1608,7 @@ fn substep(
     // The push record samples its pairs' closing speeds at the build.
     let push_on = !extra.push.reaction.is_empty();
     if push_on {
-        extra.push.build(contacts);
+        extra.push.build(proxies, contacts);
     }
 
     // Integrate velocities (gravity), then warm start from stored impulses.
@@ -1725,16 +1788,19 @@ fn substep(
                 *closing = 0.0;
             }
         }
-        extra.record.carry(contacts, &extra.contact_closing);
+        extra
+            .record
+            .carry(proxies, contacts, &extra.contact_closing);
     }
 
     // Direct indexed carry between substeps; synchronize the keyed map only
     // at frame end or when a pair rebuild invalidates these indices.
     for contact in contacts.iter() {
-        pair_impulses[contact.pair_index] = contact.impulse;
+        pair_impulses[contact.pair_index as usize] = contact.impulse;
     }
     for friction in &extra.friction {
-        extra.pair_tangents[contacts[friction.contact as usize].pair_index] = friction.impulse;
+        let pair = contacts[friction.contact as usize].pair_index as usize;
+        extra.pair_tangents[pair] = friction.impulse;
     }
     *impulses_dirty = true;
     #[cfg(test)]
@@ -1742,6 +1808,10 @@ fn substep(
         reference.reset(contacts.len());
         for contact in contacts.iter().filter(|c| c.impulse > 0.0) {
             reference.insert(contact.key, contact.impulse);
+        }
+        reference_tangents.reset(extra.friction.len());
+        for friction in extra.friction.iter().filter(|row| row.impulse != 0.0) {
+            reference_tangents.insert(contacts[friction.contact as usize].key, friction.impulse);
         }
     }
 
@@ -2405,7 +2475,7 @@ impl ContactRecord {
 
     /// The closing speeds the next substep carries: each contact's still in
     /// reach, the nonzero ones.
-    fn carry(&mut self, contacts: &[ContactConstraint], closing: &[f32]) {
+    fn carry(&mut self, proxies: &[Proxy], contacts: &[ContactConstraint], closing: &[f32]) {
         let carried = closing.iter().filter(|&&speed| speed > 0.0).count();
         if carried == 0 {
             self.next_closing.clear();
@@ -2413,7 +2483,8 @@ impl ContactRecord {
             self.next_closing.reset(carried);
             for (contact, &speed) in contacts.iter().zip(closing) {
                 if speed > 0.0 {
-                    self.next_closing.insert(contact.key, speed);
+                    self.next_closing
+                        .insert(contact_key(proxies, contact), speed);
                 }
             }
         }
@@ -2673,7 +2744,7 @@ impl PushRecord {
 
     /// The build: each contact of a dynamic body and a kinematic body with
     /// a mass comes within reach at its closing speed.
-    fn build(&mut self, contacts: &[ContactConstraint]) {
+    fn build(&mut self, proxies: &[Proxy], contacts: &[ContactConstraint]) {
         self.contacts.clear();
         for pair in &mut self.pairs {
             pair.in_reach = false;
@@ -2681,7 +2752,7 @@ impl PushRecord {
         for (index, contact) in contacts.iter().enumerate() {
             if self.reaction[contact.a as usize] > 0.0 || self.reaction[contact.b as usize] > 0.0 {
                 self.contacts.push(index as u32);
-                let at = self.pair(contact.key);
+                let at = self.pair(contact_key(proxies, contact));
                 let pair = &mut self.pairs[at];
                 pair.in_reach = true;
                 pair.closing = pair.closing.max(-contact.approach);
@@ -2722,11 +2793,12 @@ impl PushRecord {
             } else {
                 (b, a, contact.normal)
             };
-            let place = self.pair(contact.key);
+            let key = contact_key(proxies, contact);
+            let place = self.pair(key);
             let pair = &mut self.pairs[place];
             pair.closing = pair.closing.max(-approach);
             if contact.penetration > 0.0 || contact.impulse > 0.0 {
-                let sides = Self::sides(proxies, contact.key, body, kinematic);
+                let sides = Self::sides(proxies, key, body, kinematic);
                 self.touch(place, sides, into);
             }
         }

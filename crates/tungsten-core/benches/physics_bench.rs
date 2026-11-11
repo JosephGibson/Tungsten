@@ -240,7 +240,7 @@ fn bench_physics_step_scenarios(c: &mut Criterion) {
 
     let scenarios: &[Scenario] = &[
         ("dense_pile", build_dense_pile, &[3_000, 10_000, 25_000]),
-        ("dense_pile_awake", build_dense_pile_awake, &[3_000]),
+        ("dense_pile_awake", build_dense_pile_awake, &[3_000, 12_000]),
         (
             "projectile_stream",
             build_projectile_stream,

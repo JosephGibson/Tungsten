@@ -187,6 +187,219 @@ fn hash_pair(key: u128) -> u64 {
     h ^ (h >> 32)
 }
 
+/// One synchronized contact in an [`ImpulseCarry`] run.
+#[derive(Debug, Clone, Copy, Default)]
+struct Carried {
+    /// The contact's higher proxy index.
+    other: u32,
+    /// Its normal impulse, 0 unless positive, and its tangent impulse, as
+    /// the keyed maps read an absent pair.
+    normal: f32,
+    tangent: f32,
+}
+
+/// The last synchronized contacts' impulses by proxy index (D-076's carry,
+/// D-269): each contact with a positive normal impulse or a tangent impulse,
+/// in a run under its lower proxy index, which a seed scans for its higher
+/// one. A proxy keeps its index while the gathered bodies and the tiles stay
+/// as they were, which the frame's first pair build checks key by key; when
+/// they changed, the entries move to the keyed maps under the keys they were
+/// taken with, and that build seeds from those.
+#[derive(Debug, Default)]
+pub(super) struct ImpulseCarry {
+    /// `starts[lo]..starts[lo + 1]` bounds proxy `lo`'s run in `entries`.
+    starts: Vec<u32>,
+    entries: Vec<Carried>,
+    /// Each proxy's key as of the frame's first pair build, which the
+    /// entries' indices mean; with the entity proxies' count and the tile
+    /// cache's version then.
+    keys: Vec<u64>,
+    bodies: usize,
+    tile_version: u64,
+    /// The proxies changed and no synchronization followed yet: the entries
+    /// are in the keyed maps, and seeds read those.
+    keyed: bool,
+    /// Tests: the pair builds that found the proxies as they were, and
+    /// those that moved the entries to the keyed maps.
+    #[cfg(test)]
+    pub(super) kept: usize,
+    #[cfg(test)]
+    pub(super) rekeyed: usize,
+}
+
+impl ImpulseCarry {
+    /// Take `contacts`' impulses, and `friction`'s for the contacts it
+    /// rides, as the carry of `proxies` proxies: a counting sort by lower
+    /// index that keeps contact order within a run.
+    fn take(
+        &mut self,
+        proxies: usize,
+        contacts: &[super::ContactConstraint],
+        friction: &[super::FrictionConstraint],
+    ) {
+        self.keyed = false;
+        self.starts.clear();
+        self.starts.resize(proxies + 1, 0);
+        // Friction rows are in contact order: one cursor follows them.
+        let tangent_of = |row: &mut usize, index: usize| match friction.get(*row) {
+            Some(friction) if friction.contact as usize == index => {
+                *row += 1;
+                friction.impulse
+            }
+            _ => 0.0,
+        };
+        let mut row = 0;
+        let mut carried = 0;
+        for (index, contact) in contacts.iter().enumerate() {
+            let tangent = tangent_of(&mut row, index);
+            if contact.impulse > 0.0 || tangent != 0.0 {
+                self.starts[contact.a.min(contact.b) as usize] += 1;
+                carried += 1;
+            }
+        }
+        // Counts become each run's end, which the fill walks back to its
+        // start.
+        let mut end = 0;
+        for count in &mut self.starts {
+            end += *count;
+            *count = end;
+        }
+        self.entries.clear();
+        self.entries.resize(carried, Carried::default());
+        let mut row = friction.len();
+        for (index, contact) in contacts.iter().enumerate().rev() {
+            let tangent = match row.checked_sub(1).map(|last| &friction[last]) {
+                Some(friction) if friction.contact as usize == index => {
+                    row -= 1;
+                    friction.impulse
+                }
+                _ => 0.0,
+            };
+            if contact.impulse > 0.0 || tangent != 0.0 {
+                let start = &mut self.starts[contact.a.min(contact.b) as usize];
+                *start -= 1;
+                self.entries[*start as usize] = Carried {
+                    other: contact.a.max(contact.b),
+                    normal: if contact.impulse > 0.0 {
+                        contact.impulse
+                    } else {
+                        0.0
+                    },
+                    tangent: if tangent == 0.0 { 0.0 } else { tangent },
+                };
+            }
+        }
+    }
+
+    /// The carried normal and tangent impulses of the pair of proxies `a`
+    /// and `b`, zeros when it carried none.
+    #[inline]
+    pub(super) fn get(&self, a: u32, b: u32) -> (f32, f32) {
+        let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+        let Some(&[start, end]) = self.starts.get(lo as usize..lo as usize + 2).map(|run| {
+            let run: &[u32; 2] = run.try_into().expect("two bounds");
+            run
+        }) else {
+            return (0.0, 0.0);
+        };
+        for entry in &self.entries[start as usize..end as usize] {
+            if entry.other == hi {
+                return (entry.normal, entry.tangent);
+            }
+        }
+        (0.0, 0.0)
+    }
+
+    /// Whether seeds read the keyed maps: the proxies changed since the
+    /// entries were taken.
+    pub(super) fn keyed(&self) -> bool {
+        self.keyed
+    }
+
+    /// Tests: no contact carried an impulse.
+    #[cfg(test)]
+    pub(super) fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Whether `proxies` and `tiles` are what the entries' indices mean,
+    /// but for the entity proxies' keys, which the pair build compares in
+    /// its own pass over them.
+    fn same_counts(&self, proxies: usize, bodies: usize, tile_version: u64) -> bool {
+        self.keys.len() == proxies && self.bodies == bodies && self.tile_version == tile_version
+    }
+
+    /// The proxies changed: move the entries to `impulses` and `tangents`
+    /// under the keys they were taken with, as a synchronization by key
+    /// leaves them, and take `proxies`' keys for the next ones.
+    fn rekey(
+        &mut self,
+        proxies: &[super::Proxy],
+        bodies: usize,
+        tile_version: u64,
+        impulses: &mut ImpulseMap,
+        tangents: &mut ImpulseMap,
+    ) {
+        impulses.reset(self.entries.len());
+        let any_tangent = self.entries.iter().any(|entry| entry.tangent != 0.0);
+        if any_tangent {
+            tangents.reset(self.entries.len());
+        } else {
+            tangents.clear();
+        }
+        for (lo, bounds) in self.starts.windows(2).enumerate() {
+            for entry in &self.entries[bounds[0] as usize..bounds[1] as usize] {
+                let key = pair_key(self.keys[lo], self.keys[entry.other as usize]);
+                if entry.normal > 0.0 {
+                    impulses.insert(key, entry.normal);
+                }
+                if entry.tangent != 0.0 {
+                    tangents.insert(key, entry.tangent);
+                }
+            }
+        }
+        self.keys.clear();
+        self.keys.extend(proxies.iter().map(|proxy| proxy.key));
+        self.bodies = bodies;
+        self.tile_version = tile_version;
+        self.keyed = true;
+        #[cfg(test)]
+        {
+            self.rekeyed += 1;
+        }
+    }
+
+    /// Tests: the entries' normal and tangent impulses by pair key, as the
+    /// keyed maps held them.
+    #[cfg(test)]
+    pub(super) fn by_key(&self) -> (ImpulseMap, ImpulseMap) {
+        let (mut normals, mut tangents) = (ImpulseMap::default(), ImpulseMap::default());
+        normals.reset(self.entries.len());
+        tangents.reset(self.entries.len());
+        for (lo, bounds) in self.starts.windows(2).enumerate() {
+            for entry in &self.entries[bounds[0] as usize..bounds[1] as usize] {
+                let key = pair_key(self.keys[lo], self.keys[entry.other as usize]);
+                if entry.normal > 0.0 {
+                    normals.insert(key, entry.normal);
+                }
+                if entry.tangent != 0.0 {
+                    tangents.insert(key, entry.tangent);
+                }
+            }
+        }
+        (normals, tangents)
+    }
+
+    /// Tests: the entries that carry a tangent impulse.
+    #[cfg(test)]
+    pub(super) fn tangents(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.tangent != 0.0)
+            .count()
+    }
+}
+
 /// Order-independent pair key; the impulse is a scalar along the contact
 /// normal, so orientation does not matter.
 pub(super) fn pair_key(a: u64, b: u64) -> u128 {
@@ -328,7 +541,8 @@ pub(super) fn build_pairs(
     buffers: &mut PhysicsBuffers,
 ) {
     // Rebuilds can reorder/reverse pairs or introduce new ones. Transfer only
-    // the immediately preceding substep's live impulses by key.
+    // the immediately preceding substep's live impulses, by proxy index
+    // (D-269).
     sync_impulses(buffers);
     let PhysicsBuffers {
         proxies,
@@ -343,6 +557,7 @@ pub(super) fn build_pairs(
         repaired,
         pairs,
         pairs_invalidated,
+        impulses,
         extra,
         ..
     } = buffers;
@@ -351,9 +566,21 @@ pub(super) fn build_pairs(
         pair_bounds,
         tile_bounds,
         oversize,
+        carry,
+        tangents,
         ..
     } = &mut **extra;
     let bodies = *bodies;
+    // The frame's first build checks that the carry's indices still name
+    // the proxies they were taken from: the counts and the tiles here, each
+    // entity proxy's key in the pass below.
+    let check_carry = *pairs_invalidated || carry.keys.len() != proxies.len();
+    let mut same = carry.same_counts(proxies.len(), bodies, tiles.version());
+    let carried_keys = if check_carry && same {
+        &carry.keys[..bodies]
+    } else {
+        &[]
+    };
     if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
         grid.bodies.set_cell_size(config.broadphase_cell_size);
     }
@@ -371,6 +598,9 @@ pub(super) fn build_pairs(
     let gravity_allowance = gravity_allowance(config, sub_dt, time_left);
     let mut moving = 0;
     for (id, proxy) in proxies[..bodies].iter().enumerate() {
+        if let Some(&key) = carried_keys.get(id) {
+            same &= key == proxy.key;
+        }
         static_grid.statics += usize::from(!proxy.is_dynamic && !proxy.kinematic);
         let awake = proxy.moves();
         moving += usize::from(awake);
@@ -402,6 +632,16 @@ pub(super) fn build_pairs(
         } else {
             pair_flags.push(if awake { PAIR_AWAKE } else { 0 });
             grid.bodies.insert(id as ProxyId, &aabb);
+        }
+    }
+    if check_carry {
+        if same {
+            #[cfg(test)]
+            {
+                carry.kept += 1;
+            }
+        } else {
+            carry.rekey(proxies, bodies, tiles.version(), impulses, tangents);
         }
     }
     // The tiles: static, never awake, grown by the static radius; staged
@@ -769,29 +1009,15 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
 }
 
 /// Preserve D-063's immediately-previous-contact semantics, including empty
-/// final substeps. The common case pays one map rebuild per frame (D-076).
+/// final substeps: the last substep's contacts become the carry, by proxy
+/// index (D-076, D-269). The common case pays one counting sort a frame.
 pub(super) fn sync_impulses(buffers: &mut PhysicsBuffers) {
     if !buffers.impulses_dirty {
         return;
     }
-    buffers.impulses.reset(buffers.contacts.len());
-    for contact in &buffers.contacts {
-        if contact.impulse > 0.0 {
-            buffers.impulses.insert(contact.key, contact.impulse);
-        }
-    }
-    // The tangents of the same contacts, in a frame with friction.
     let extra = &mut *buffers.extra;
-    if extra.friction.is_empty() {
-        extra.tangents.clear();
-    } else {
-        extra.tangents.reset(extra.friction.len());
-        for friction in &extra.friction {
-            if friction.impulse != 0.0 {
-                let key = buffers.contacts[friction.contact as usize].key;
-                extra.tangents.insert(key, friction.impulse);
-            }
-        }
-    }
+    extra
+        .carry
+        .take(buffers.proxies.len(), &buffers.contacts, &extra.friction);
     buffers.impulses_dirty = false;
 }

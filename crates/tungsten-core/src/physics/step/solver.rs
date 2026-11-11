@@ -70,7 +70,11 @@ pub(super) fn solve_contacts(
             // Within slop: allow approach to close the band, never push.
             (s * inv_h, 1.0, 0.0)
         } else if use_bias {
-            let softness = if contact.vs_static { soft_static } else { soft };
+            let softness = if contact.vs_static() {
+                soft_static
+            } else {
+                soft
+            };
             (
                 (softness.bias_rate * s).max(-config.max_push_speed),
                 softness.mass_scale,
