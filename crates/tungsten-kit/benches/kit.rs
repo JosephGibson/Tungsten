@@ -1,5 +1,7 @@
 //! The kit's per-entity systems at 1,000 and 10,000 entities, 41 rows, one
-//! fixed step or one frame's present phase per iteration:
+//! fixed step or one frame's present phase per iteration, and one row at a
+//! size of its own, `chemistry_emission` (12,000 receivers emitting in step,
+//! a period of fifteen steps an iteration), outside the bound below:
 //!
 //! - fixed step: `lifetime_tick`, `health_tick`, `action_input`, the
 //!   bodiless `top_down_mover`, `TagFilter::matches`, `stats_apply`,
@@ -59,15 +61,16 @@ use tungsten_core::{
 use tungsten_kit::{
     Abilities, AbilitiesPlugin, Ability, ActionInput, ActionInputPlugin, AilmentBuckets,
     AilmentThreshold, Aim, AimPlugin, AnimationPlugin, CharacterAnimator, CharacterAnimatorPlugin,
-    Clips, ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownPlugin, Counters,
-    CountersPlugin, CueAction, Cues, CuesPlugin, Curve, DamagePart, DamageRequest, Damaged,
-    DamagedPart, DepthSort, DepthSortPlugin, Effect, EffectRequest, Effects, EffectsPlugin, Expire,
-    Facing, FacingPlugin, Follow, FollowPlugin, Health, HealthPlugin, HitPlugin, HitShape, Hitbox,
-    Hurtbox, Intent, Knockback, KnockbackPlugin, Level, LevelPlugin, Lifetime, LifetimePlugin,
-    LinearMotion, LinearMotionPlugin, Modifier, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin,
-    Payload, Penetration, Pickup, PickupPlugin, PlatformerController, Projectile, ProjectilePlugin,
-    Refresh, Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView,
-    StayInViewPlugin, Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
+    ChemistryPlugin, Clips, ContactDamage, ContactDamagePlugin, Conversion, Cooldown,
+    CooldownPlugin, Counters, CountersPlugin, CueAction, Cues, CuesPlugin, Curve, DamagePart,
+    DamageRequest, Damaged, DamagedPart, DepthSort, DepthSortPlugin, Effect, EffectRequest,
+    Effects, EffectsPlugin, Expire, Facing, FacingPlugin, Follow, FollowPlugin, Health,
+    HealthPlugin, HitPlugin, HitShape, Hitbox, Hurtbox, Intent, Interaction, Knockback,
+    KnockbackPlugin, Level, LevelPlugin, Lifetime, LifetimePlugin, LinearMotion,
+    LinearMotionPlugin, Modifier, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Payload,
+    Penetration, Pickup, PickupPlugin, PlatformerController, Projectile, ProjectilePlugin, Refresh,
+    Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin,
+    Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
     TopDownMoverPlugin, Trigger, Wrap, WrapPlugin, knock_back,
 };
 
@@ -1034,6 +1037,56 @@ fn effect_tick_by_id(c: &mut Criterion) {
     group.finish();
 }
 
+/// Chemistry's emission at example 01's scale, the `spread` row's field:
+/// 12,000 receivers 24 px apart, each lit with a status that sends `heat`
+/// within 50 px every quarter second, all in step, and a rule that builds
+/// the status on what `heat` reaches. One iteration is a period of fifteen
+/// steps: the step every receiver emits in and the fourteen between.
+fn chemistry_emission(c: &mut Criterion) {
+    const RECEIVERS: usize = 12_000;
+    const COLUMNS: usize = 120;
+    let (mut world, mut schedule) = rig_set(
+        PluginSet::new()
+            .with(TagsPlugin::new().with_tags(["bench.flammable", "bench.heat"]))
+            .with(HealthPlugin)
+            .with(EffectsPlugin)
+            .with(ChemistryPlugin::new()),
+    );
+    let rule: Interaction = serde_json::from_str(
+        r#"{ "stimulus": "bench.heat", "on": { "all": ["bench.flammable"] },
+             "outputs": [{ "build": { "status": "bench.burning", "amount": 1 } }] }"#,
+    )
+    .unwrap();
+    let data = world.resource_mut::<DataRegistry>();
+    data.insert(
+        "bench.burning",
+        Effect::new()
+            .with_intensity(4.0, 0.5)
+            .with_emit("bench.heat", 1.0, 50.0, 0.25),
+    );
+    data.insert("bench.catches", rule);
+    for index in 0..RECEIVERS {
+        let at = Vec2::new((index % COLUMNS) as f32, (index / COLUMNS) as f32) * 24.0;
+        let receiver = world.spawn_with((Position(at), Tags::new(["bench.flammable"])));
+        EffectRequest::new(receiver, DataRef::by_id("bench.burning")).apply(&mut world);
+    }
+    // Two periods in, the field is saturated and the queue at its steady
+    // length.
+    for _ in 0..30 {
+        fixed_step_and_flush(&mut world, &mut schedule);
+    }
+    let mut group = c.benchmark_group("chemistry_emission");
+    group.sample_size(20);
+    group.bench_function("12000", |b| {
+        b.iter(|| {
+            for _ in 0..15 {
+                fixed_step_and_flush(black_box(&mut world), &mut schedule);
+            }
+        });
+    });
+    group.finish();
+}
+
 fn effect_resolve(c: &mut Criterion) {
     let mut group = c.benchmark_group("effect_resolve");
     for n in SIZES {
@@ -1190,6 +1243,7 @@ criterion_group!(
     shield_tick,
     effect_tick,
     effect_tick_by_id,
+    chemistry_emission,
     effect_resolve,
     ailment_tick,
     ailment_feed,
