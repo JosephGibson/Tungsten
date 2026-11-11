@@ -10042,3 +10042,132 @@ fn a_blasted_pile_of_12_000_prints_the_frame_starts_that_could_keep_their_pairs(
     );
     assert!(steady > 0);
 }
+
+#[test]
+fn a_tile_cut_under_a_sleeping_pile_prints_the_supports_sorted() {
+    // The probe of the support record's comparison (D-254): a pile asleep
+    // on a floor of 600 tiles, and one tile cut a frame far from it. A cut
+    // shifts every later tile's place; the record once sorted every
+    // support to compare them (1,199 at the first cut, then 598, 597, ...)
+    // and now sorts the stretch between the entries that stayed, the cut
+    // tile alone.
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    const W: u32 = 300;
+    world.resource_mut::<TilemapRegistry>().insert(
+        "floor".into(),
+        TilemapData {
+            tile_width: 16,
+            tile_height: 16,
+            width: W,
+            height: 2,
+            tileset: vec!["solid".into()],
+            object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
+            layers: vec![TilemapLayer {
+                name: "collision".into(),
+                kind: LayerKind::Collision,
+                tiles: vec![0; (W * 2) as usize],
+            }],
+        },
+    );
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("floor", Vec2::new(0.0, 200.0)));
+    let pile: Vec<Entity> = (0..12)
+        .map(|index| {
+            let at = Vec2::new(
+                40.0 + 21.0 * (index % 6) as f32,
+                189.0 - 21.0 * (index / 6) as f32,
+            );
+            spawn_ball(&mut world, at)
+        })
+        .collect();
+    settle_to_sleep(&mut world, &pile);
+    let supports = world.resource::<PhysicsBuffers>().sleep.supports();
+    assert_eq!(supports, 600, "one support a tile");
+
+    let mut sorted = Vec::new();
+    for frame in 0..8 {
+        let before = world.resource::<PhysicsBuffers>().sleep.sorted;
+        assert!(world.resource_mut::<TilemapRegistry>().set_tile(
+            "floor",
+            0,
+            200 + frame,
+            0,
+            EMPTY_TILE
+        ));
+        physics_step(&mut world);
+        drain_events(&mut world);
+        let buffers = world.resource::<PhysicsBuffers>();
+        sorted.push(buffers.sleep.sorted - before);
+        assert_eq!(buffers.sleep.supports(), 599 - frame as usize);
+        assert!(
+            pile.iter().all(|&ball| buffers.is_sleeping(ball)),
+            "a far cut woke the pile at frame {frame}"
+        );
+    }
+    println!("support probe: {supports} supports, sorted a frame {sorted:?}");
+    assert!(sorted.iter().all(|&count| count == 1), "{sorted:?}");
+}
+
+#[test]
+fn supports_that_go_and_come_wake_the_sleepers_beside_them_alone() {
+    // The comparison's stretches, held to its outcome: tiles cut and put
+    // back at both ends of a floor and under a pile asleep on it. A change
+    // far from the pile leaves it asleep, whatever else changed that
+    // frame; one under it wakes it.
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    const W: u32 = 60;
+    world.resource_mut::<TilemapRegistry>().insert(
+        "floor".into(),
+        TilemapData {
+            tile_width: 16,
+            tile_height: 16,
+            width: W,
+            height: 2,
+            tileset: vec!["solid".into()],
+            object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
+            layers: vec![TilemapLayer {
+                name: "collision".into(),
+                kind: LayerKind::Collision,
+                tiles: vec![0; (W * 2) as usize],
+            }],
+        },
+    );
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("floor", Vec2::new(0.0, 200.0)));
+    // The pile rests on columns 28 to 31.
+    let pile: Vec<Entity> = (0..3)
+        .map(|index| spawn_ball(&mut world, Vec2::new(460.0 + 21.0 * index as f32, 189.0)))
+        .collect();
+    let asleep = |world: &World| {
+        let buffers = world.resource::<PhysicsBuffers>();
+        pile.iter().all(|&ball| buffers.is_sleeping(ball))
+    };
+    let edit = |world: &mut World, cells: &[(u32, u32, bool)]| {
+        for &(col, row, solid) in cells {
+            let tile = if solid { 0 } else { EMPTY_TILE };
+            world
+                .resource_mut::<TilemapRegistry>()
+                .set_tile("floor", 0, col, row, tile);
+        }
+        physics_step(world);
+        drain_events(world);
+    };
+    settle_to_sleep(&mut world, &pile);
+
+    // Far cuts at both ends in one frame, then one put back while another
+    // goes: the stretch between them holds every support, the pile's too.
+    edit(&mut world, &[(1, 0, false), (58, 1, false)]);
+    assert!(asleep(&world), "cuts at both ends woke the pile");
+    edit(&mut world, &[(1, 0, true), (57, 0, false)]);
+    assert!(asleep(&world), "a tile put back and one cut woke the pile");
+    edit(&mut world, &[]);
+    assert!(asleep(&world));
+
+    // A cut under the pile wakes it, among far ones.
+    edit(&mut world, &[(2, 1, false), (29, 0, false), (55, 1, false)]);
+    assert!(!asleep(&world), "a cut under the pile left it asleep");
+}

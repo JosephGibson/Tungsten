@@ -74,13 +74,17 @@ pub(super) struct SleepTable {
     moved_supports: Vec<(usize, Support, bool)>,
     /// Scratch: the old and new boxes of the supports that changed.
     changed_supports: Vec<Aabb>,
-    /// The sorted comparison when supports appear or go: `sorted_old` is
-    /// scratch, `sorted_new` holds `supports` sorted, or is empty once
-    /// `supports` changes without it.
-    sorted_old: Vec<Support>,
-    sorted_new: Vec<Support>,
+    /// Scratch of the comparison when supports appear or go: the old list's
+    /// entries that found no partner beside them in the new one, sorted
+    /// (the new list's go in `moved_supports`); and this frame's supports
+    /// in proxy order, which become `supports`.
+    unpaired: Vec<Support>,
+    next_supports: Vec<Support>,
     #[cfg(test)]
     pub(super) rebuilds: usize,
+    /// Tests: the supports the comparison has sorted.
+    #[cfg(test)]
+    pub(super) sorted: usize,
 }
 
 /// A proxy sleepers can rest on that holds no sleep entry: a static entity,
@@ -152,6 +156,10 @@ impl Support {
         }
     }
 }
+
+/// Entries the comparison of two support lists looks ahead for the partner
+/// of one that differs: more than a brush cuts from one row of tiles.
+const SUPPORT_LOOK_AHEAD: usize = 64;
 
 /// A total order on a support for the sorted comparison: key, kind, then
 /// the box's bits, a kinematic one's left out, then the layers and the
@@ -316,6 +324,12 @@ impl SleepTable {
         }
     }
 
+    /// Tests: the supports on record.
+    #[cfg(test)]
+    pub(super) fn supports(&self) -> usize {
+        self.supports.len()
+    }
+
     pub(super) fn sleeping_count(&self) -> usize {
         self.entries.iter().filter(|entry| entry.sleeping).count()
     }
@@ -351,50 +365,117 @@ impl SleepTable {
             count += 1;
         }
         if same_keys && count == self.supports.len() {
-            if self.moved_supports.iter().any(|&(_, _, wakes)| wakes) {
-                self.sorted_new.clear();
-            }
             for &(index, new, wakes) in &self.moved_supports {
                 if wakes {
                     self.changed_supports.push(self.supports[index].aabb);
                     self.changed_supports.push(new.aabb);
-                } else if let Ok(sorted) = self
-                    .sorted_new
-                    .binary_search_by(|support| support_order(support, &new))
-                {
-                    // A kinematic box is no part of the order, so the
-                    // sorted copy keeps its place and takes the new box.
-                    self.sorted_new[sorted].aabb = new.aabb;
                 }
                 self.supports[index] = new;
             }
             return;
         }
         // A support appeared or went: every entry in only one of the two
-        // sorted lists changed. `sorted_new` is empty or holds `supports`
-        // sorted, last frame's, so it becomes the old side without a sort.
-        if self.sorted_new.is_empty() {
-            self.sorted_new.extend_from_slice(&self.supports);
-            self.sorted_new.sort_unstable_by(support_order);
-        }
-        std::mem::swap(&mut self.sorted_old, &mut self.sorted_new);
-        self.record_supports(proxies, layers);
-        self.sorted_new.extend_from_slice(&self.supports);
-        self.sorted_new.sort_unstable_by(support_order);
+        // lists, taken as multisets, changed. Both are in proxy order, and
+        // a cut or a placed tile shifts the entries after it without
+        // changing them, so the lists are walked side by side: equal
+        // entries pair off, and where the two differ a short look ahead
+        // finds the entry the other list still holds and leaves the ones
+        // skipped unpaired. Whatever order the lists are in, pairing equal
+        // entries off both sides leaves the same difference, so the
+        // unpaired ones, a few, are sorted and compared as the whole lists
+        // once were.
+        self.next_supports.clear();
+        self.next_supports.extend(
+            proxies
+                .iter()
+                .zip(layers)
+                .filter(|(proxy, _)| is_support(proxy))
+                .map(|(proxy, &proxy_layers)| Support::of(proxy, proxy_layers)),
+        );
+        let (old, new) = (&self.supports[..], &self.next_supports[..]);
+        // Tests: the boxes the two whole lists give, sorted and compared.
+        #[cfg(test)]
+        let whole = {
+            let (mut old, mut new) = (old.to_vec(), new.to_vec());
+            old.sort_unstable_by(support_order);
+            new.sort_unstable_by(support_order);
+            let (mut boxes, mut i, mut j) = (Vec::new(), 0, 0);
+            while i < old.len() || j < new.len() {
+                let order = match (old.get(i), new.get(j)) {
+                    (Some(old), Some(new)) => support_order(old, new),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    _ => std::cmp::Ordering::Greater,
+                };
+                if order.is_lt() {
+                    boxes.push(old[i].aabb);
+                }
+                if order.is_gt() {
+                    boxes.push(new[j].aabb);
+                }
+                i += usize::from(order.is_le());
+                j += usize::from(order.is_ge());
+            }
+            boxes
+        };
+        let same = |a: &Support, b: &Support| a.key == b.key && support_order(a, b).is_eq();
+        self.unpaired.clear();
+        self.moved_supports.clear();
         let (mut i, mut j) = (0, 0);
-        while i < self.sorted_old.len() || j < self.sorted_new.len() {
-            let order = match (self.sorted_old.get(i), self.sorted_new.get(j)) {
-                (Some(old), Some(new)) => support_order(old, new),
+        while i < old.len() && j < new.len() {
+            if same(&old[i], &new[j]) {
+                i += 1;
+                j += 1;
+                continue;
+            }
+            // The new list holds this old entry a little further on: the
+            // new entries before it are unpaired. Or the old list holds
+            // this new entry further on: the old ones before it are.
+            let ahead = |list: &[Support], from: usize, entry: &Support| {
+                list[from..]
+                    .iter()
+                    .take(SUPPORT_LOOK_AHEAD)
+                    .position(|other| same(other, entry))
+            };
+            if let Some(skipped) = ahead(new, j + 1, &old[i]) {
+                let next = j + 1 + skipped;
+                self.moved_supports
+                    .extend(new[j..next].iter().map(|&support| (0, support, false)));
+                (i, j) = (i + 1, next + 1);
+            } else if let Some(skipped) = ahead(old, i + 1, &new[j]) {
+                let next = i + 1 + skipped;
+                self.unpaired.extend_from_slice(&old[i..next]);
+                (i, j) = (next + 1, j + 1);
+            } else {
+                self.unpaired.push(old[i]);
+                self.moved_supports.push((0, new[j], false));
+                (i, j) = (i + 1, j + 1);
+            }
+        }
+        self.unpaired.extend_from_slice(&old[i..]);
+        self.moved_supports
+            .extend(new[j..].iter().map(|&support| (0, support, false)));
+        self.unpaired.sort_unstable_by(support_order);
+        self.moved_supports
+            .sort_unstable_by(|a, b| support_order(&a.1, &b.1));
+        #[cfg(test)]
+        {
+            self.sorted += self.unpaired.len() + self.moved_supports.len();
+        }
+        let (old, new) = (&self.unpaired, &self.moved_supports);
+        let (mut i, mut j) = (0, 0);
+        while i < old.len() || j < new.len() {
+            let order = match (old.get(i), new.get(j)) {
+                (Some(old), Some(new)) => support_order(old, &new.1),
                 (Some(_), None) => std::cmp::Ordering::Less,
                 _ => std::cmp::Ordering::Greater,
             };
             match order {
                 std::cmp::Ordering::Less => {
-                    self.changed_supports.push(self.sorted_old[i].aabb);
+                    self.changed_supports.push(old[i].aabb);
                     i += 1;
                 }
                 std::cmp::Ordering::Greater => {
-                    self.changed_supports.push(self.sorted_new[j].aabb);
+                    self.changed_supports.push(new[j].1.aabb);
                     j += 1;
                 }
                 std::cmp::Ordering::Equal => {
@@ -403,11 +484,32 @@ impl SleepTable {
                 }
             }
         }
+        #[cfg(test)]
+        {
+            let bits = |boxes: &[Aabb]| -> Vec<[u32; 4]> {
+                boxes
+                    .iter()
+                    .map(|aabb| {
+                        [
+                            aabb.center.x.to_bits(),
+                            aabb.center.y.to_bits(),
+                            aabb.half_extents.x.to_bits(),
+                            aabb.half_extents.y.to_bits(),
+                        ]
+                    })
+                    .collect()
+            };
+            assert_eq!(
+                bits(&self.changed_supports),
+                bits(&whole),
+                "the support lists' difference left the whole lists'"
+            );
+        }
+        std::mem::swap(&mut self.supports, &mut self.next_supports);
     }
 
     /// Records this frame's supports, in proxy order.
     fn record_supports(&mut self, proxies: &[Proxy], layers: &[Layers]) {
-        self.sorted_new.clear();
         self.supports.clear();
         self.supports.extend(
             proxies
