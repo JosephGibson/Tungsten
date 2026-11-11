@@ -8974,6 +8974,7 @@ pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_chang
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_committed(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::event::UiValue>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_committed_key(&self, tungsten_core::ui::id::UiKey) -> core::option::Option<tungsten_core::ui::event::UiValue>
 impl<T> tungsten_core::EventQueue<T>
+pub fn tungsten_core::EventQueue<T>::append(&mut self, &mut alloc::vec::Vec<T>)
 pub fn tungsten_core::EventQueue<T>::flush(&mut self)
 pub fn tungsten_core::EventQueue<T>::is_empty(&self) -> bool
 pub fn tungsten_core::EventQueue<T>::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = &T>
@@ -21544,6 +21545,7 @@ pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_chang
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_committed(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::event::UiValue>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_committed_key(&self, tungsten_core::ui::id::UiKey) -> core::option::Option<tungsten_core::ui::event::UiValue>
 impl<T> tungsten_core::EventQueue<T>
+pub fn tungsten_core::EventQueue<T>::append(&mut self, &mut alloc::vec::Vec<T>)
 pub fn tungsten_core::EventQueue<T>::flush(&mut self)
 pub fn tungsten_core::EventQueue<T>::is_empty(&self) -> bool
 pub fn tungsten_core::EventQueue<T>::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = &T>

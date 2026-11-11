@@ -5,7 +5,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::hint::black_box;
-use tungsten_core::{CommandBuffer, Entity, EventQueue, World};
+use tungsten_core::{CollisionEvent, CommandBuffer, Entity, EventQueue, World};
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -520,6 +520,43 @@ fn bench_event_queue_flush_10_types(c: &mut Criterion) {
     });
 }
 
+/// A step's 200,000 collision events handed to their queue, by one `send`
+/// each and by one `append`. Each iteration fills the step's buffer first,
+/// as a step's substeps do, and flushes the queue, as a frame does.
+fn bench_event_handover_200k(c: &mut Criterion) {
+    use glam::Vec2;
+
+    const EVENTS: usize = 200_000;
+    let entity = World::new().spawn();
+    let event = CollisionEvent::new(entity, Some(entity), Vec2::X, 0.5).with_speed(120.0);
+    let fill = |events: &mut Vec<CollisionEvent>| {
+        for _ in 0..EVENTS {
+            events.push(black_box(event));
+        }
+    };
+
+    c.bench_function("event_send_200k", |b| {
+        let mut queue = EventQueue::new();
+        let mut events = Vec::new();
+        b.iter(|| {
+            fill(&mut events);
+            for event in events.drain(..) {
+                queue.send(event);
+            }
+            black_box(&mut queue).flush();
+        });
+    });
+    c.bench_function("event_append_200k", |b| {
+        let mut queue = EventQueue::new();
+        let mut events = Vec::new();
+        b.iter(|| {
+            fill(&mut events);
+            queue.append(&mut events);
+            black_box(&mut queue).flush();
+        });
+    });
+}
+
 // D-042 gate: query3 sprite path across matching and excluded archetypes.
 fn bench_sprite_components_query3_2k(c: &mut Criterion) {
     use glam::Vec2;
@@ -642,6 +679,7 @@ criterion_group!(
     bench_naive_query_single,
     bench_naive_query2_via_entities,
     bench_event_queue_flush_10_types,
+    bench_event_handover_200k,
     bench_sprite_components_query3_2k,
     bench_high_load_iteration_50k,
 );

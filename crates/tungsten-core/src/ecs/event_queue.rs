@@ -95,6 +95,20 @@ impl<T> EventQueue<T> {
         self.current.push(event);
     }
 
+    /// Move `events` to the end of the current window, in their order, as
+    /// one [`send`](Self::send) each would; `events` is left empty. A
+    /// sender that gathers a frame's events in a buffer of its own hands
+    /// them over at once: while the window is empty the two buffers trade
+    /// places and no event is copied, so `events` comes back with the
+    /// capacity of a window the queue filled earlier.
+    pub fn append(&mut self, events: &mut Vec<T>) {
+        if self.current.is_empty() {
+            std::mem::swap(&mut self.current, events);
+        } else {
+            self.current.append(events);
+        }
+    }
+
     /// Iterate previous frame first, then current. In a frame's first fixed
     /// step, the held frames' events before both; in a later step, only the
     /// events sent since the step before it ended.

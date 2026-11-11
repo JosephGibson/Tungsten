@@ -1136,58 +1136,29 @@ pub fn physics_step(world: &mut World) {
         sleep_frame_end(world, &config, dt, &mut buffers);
     }
 
-    // Events accumulated across the frame's substeps drain once, in substep
-    // order; the drain preserves the event buffer allocation.
-    if !buffers.events.is_empty() {
-        if let Some(sink) = world.get_resource_mut::<EventQueue<CollisionEvent>>() {
-            for event in buffers.events.drain(..) {
-                sink.send(event);
-            }
-        } else {
-            buffers.events.clear();
-        }
-    }
+    // Events accumulated across the frame's substeps are handed over once,
+    // in substep order: the queue takes the buffer and gives back one it
+    // filled in an earlier frame, so no event is copied.
+    hand_over(world, &mut buffers.events);
     // Begins and ends follow the collision events.
-    let extra = &mut *buffers.extra;
-    if !extra.began.is_empty() {
-        if let Some(sink) = world.get_resource_mut::<EventQueue<ContactBegan>>() {
-            for event in extra.began.drain(..) {
-                sink.send(event);
-            }
-        } else {
-            extra.began.clear();
-        }
-    }
-    if !extra.ended.is_empty() {
-        if let Some(sink) = world.get_resource_mut::<EventQueue<ContactEnded>>() {
-            for event in extra.ended.drain(..) {
-                sink.send(event);
-            }
-        } else {
-            extra.ended.clear();
-        }
-    }
-    if !buffers.sensor_events.is_empty() {
-        if let Some(sink) = world.get_resource_mut::<EventQueue<SensorEntered>>() {
-            for event in buffers.sensor_events.drain(..) {
-                sink.send(event);
-            }
-        } else {
-            buffers.sensor_events.clear();
-        }
-    }
-    let exits = &mut buffers.extra.sensor_exits;
-    if !exits.is_empty() {
-        if let Some(sink) = world.get_resource_mut::<EventQueue<SensorExited>>() {
-            for event in exits.drain(..) {
-                sink.send(event);
-            }
-        } else {
-            exits.clear();
-        }
-    }
+    hand_over(world, &mut buffers.extra.began);
+    hand_over(world, &mut buffers.extra.ended);
+    hand_over(world, &mut buffers.sensor_events);
+    hand_over(world, &mut buffers.extra.sensor_exits);
 
     world.insert_resource(buffers);
+}
+
+/// Hand the step's `events` to their queue in one append, or drop them in a
+/// World without one; `events` is left empty with a buffer to fill again.
+fn hand_over<T: 'static>(world: &mut World, events: &mut Vec<T>) {
+    if events.is_empty() {
+        return;
+    }
+    match world.get_resource_mut::<EventQueue<T>>() {
+        Some(queue) => queue.append(events),
+        None => events.clear(),
+    }
 }
 
 /// The step's substep count (D-064): `PhysicsConfig::substeps`, or, in a
