@@ -222,6 +222,8 @@ pub struct Chemistry {
     pub(crate) run: u64,
     /// An add was dropped this run, warned once.
     pub(crate) dropped_now: bool,
+    /// A game's stimulus was refused this run, warned once.
+    pub(crate) refused_now: bool,
     /// The entries meet the World's [`Settings`]: unset in a queue a load
     /// restored (the saved form holds no flag), whose first run cuts and
     /// drops what passes them.
@@ -250,6 +252,7 @@ impl Default for Chemistry {
             ran: 0,
             run: 0,
             dropped_now: false,
+            refused_now: false,
             checked: true,
             emitted: Vec::new(),
             light_left: None,
@@ -335,7 +338,7 @@ impl Chemistry {
     /// Queues `stimulus` named `name` on `receiver` for run `age`: merged
     /// into its entry when the pair has one; else a new entry, unless the
     /// depth passes the limit (cut), the receiver is held, or the queue is
-    /// at its bound (dropped).
+    /// at its bound (dropped). Whether it reached an entry.
     pub(crate) fn stimulate(
         &mut self,
         settings: &Settings,
@@ -343,9 +346,10 @@ impl Chemistry {
         name: &str,
         stimulus: Stimulus,
         age: u64,
-    ) {
+    ) -> bool {
         let id = self.intern(name);
-        self.stimulate_id(settings, receiver, id, stimulus, age);
+        self.stimulate_slot(settings, receiver, id, stimulus, age)
+            .is_some()
     }
 
     /// [`stimulate`](Self::stimulate) by an interned name.

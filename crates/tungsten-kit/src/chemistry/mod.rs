@@ -2,8 +2,9 @@
 //! receives them through the `interactions` kind's rules, a saved, bounded
 //! and capped queue and a fixed list of outputs. A landed hit stimulates by
 //! each of its damage types, a status or an output by an emission to the
-//! receivers in a radius, a body by its impact and a receiver by the light
-//! at its point; a status's end and a band's entry run their own outputs.
+//! receivers in a radius, a body by its impact, a receiver by the light
+//! at its point and a game's own detection by [`stimulate`]; a status's end
+//! and a band's entry run their own outputs.
 
 #[path = "become.rs"]
 pub(crate) mod becoming;
@@ -41,7 +42,10 @@ pub use tiles::TileStatuses;
 use becoming::{BECAME, Became};
 use outputs::{Handler, Handlers, run_outputs};
 use queue::{CHEMISTRY_QUEUE, Entry, Receiver, Settings, StatusList, Stimulus, queue_saved};
-use rules::{INTERACTIONS, answered, answers, any_rule, register_interactions, snapshot, winner};
+use rules::{
+    INTERACTIONS, answered, answers, any_rule, check_stimulus, register_interactions, snapshot,
+    winner,
+};
 use stimuli::{Emission, LightSampler, Reach, impacts, spread};
 use tiles::{TILE_STATUSES, tile_saved};
 
@@ -63,6 +67,98 @@ pub const CHEMISTRY_TICK: &str = "chemistry_tick";
 const GONE: &str = "the receiver is gone or despawning";
 const NO_RULE: &str = "no rule passes";
 
+/// Queues `amount` of `stimulus`, a damage type or a declared tag, on
+/// `receiver` for chemistry's next run, at depth 0 and credited to
+/// `credit`: a game's own detection sending what the kit cannot detect,
+/// such as a spray's ray on a body, which takes no landed part without
+/// health. It merges with that run's entries as a landed part's type does,
+/// one entry per stimulus and receiver, and is queued only while some rule
+/// names it or an ancestor of it, under the queue's bound and hold.
+///
+/// Refused, with one warning a run, for a stimulus neither a damage type
+/// nor a declared tag, an amount not finite or below 0, and a receiver gone
+/// or despawning; a World without [`ChemistryPlugin`], which runs none,
+/// warns at each call. Whether it reached an entry: `false` when refused,
+/// answered by no rule, held or dropped.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_core::{DataRegistry, Plugin, Schedule, World};
+/// use tungsten_kit::{Chemistry, ChemistryPlugin, Interaction, TagsPlugin, stimulate};
+///
+/// let mut world = World::new();
+/// let mut schedule = Schedule::new();
+/// TagsPlugin::new().with_tags(["heat"]).build(&mut schedule, &mut world);
+/// ChemistryPlugin::new().build(&mut schedule, &mut world);
+/// let rule: Interaction =
+///     serde_json::from_str(r#"{ "stimulus": "heat", "outputs": [] }"#).unwrap();
+/// world.resource_mut::<DataRegistry>().insert("warms", rule);
+/// let stone = world.spawn();
+/// assert!(stimulate(&mut world, stone, "heat", 1.0, None));
+/// assert!(stimulate(&mut world, stone, "heat", 2.0, None), "merged");
+/// assert_eq!(world.resource::<Chemistry>().pending(), 1);
+/// assert!(!stimulate(&mut world, stone, "cold", 1.0, None), "undeclared");
+/// ```
+pub fn stimulate(
+    world: &mut World,
+    receiver: Entity,
+    stimulus: &str,
+    amount: f32,
+    credit: Option<Entity>,
+) -> bool {
+    let refused = if !world.has_resource::<Chemistry>() {
+        Some(format!(
+            "`{stimulus}` refused: the World has no ChemistryPlugin"
+        ))
+    } else if check_stimulus(world, "stimulus", stimulus).is_err() {
+        Some(format!(
+            "`{stimulus}` refused: it is neither a damage type nor a declared tag"
+        ))
+    } else if !(amount.is_finite() && amount >= 0.0) {
+        Some(format!(
+            "`{stimulus}` refused: its amount {amount} is not finite and at least 0"
+        ))
+    } else if !world.is_alive(receiver) || world.has::<Despawning>(receiver) {
+        Some(format!(
+            "`{stimulus}` refused: its receiver {receiver:?} is gone or despawning"
+        ))
+    } else {
+        None
+    };
+    if let Some(why) = refused {
+        match world.get_resource_mut::<Chemistry>() {
+            Some(chemistry) if chemistry.refused_now => {}
+            Some(chemistry) => {
+                chemistry.refused_now = true;
+                log::warn!("chemistry: {why}; later refusals this run go unwarned");
+            }
+            None => log::warn!("chemistry: {why}"),
+        }
+        return false;
+    }
+    if !answers(world, stimulus) {
+        return false;
+    }
+    let settings = Settings::of(world);
+    let chemistry = world.resource_mut::<Chemistry>();
+    let run = chemistry.run;
+    let stimulus_in = Stimulus {
+        amount,
+        status_effect: 1.0,
+        dot_base: 0.0,
+        depth: 0,
+        credit,
+    };
+    chemistry.stimulate(
+        &settings,
+        Receiver::Entity(receiver),
+        stimulus,
+        stimulus_in,
+        run,
+    )
+}
+
 /// Registers chemistry: the `interactions` kind, the saved queue
 /// ([`Chemistry`]), [`CHEMISTRY`], which reads the step's stimuli and runs
 /// the queue, and [`CHEMISTRY_TICK`], which samples the light and turns on
@@ -76,7 +172,8 @@ const NO_RULE: &str = "no rule passes";
 /// (a tile credits none); every emission since the last run, a status's
 /// `emit` or an `emit` output's, one on each tagged receiver within its
 /// radius but the emitter (a body measured to its surface, else its point,
-/// through a grid of 64 px cells built once a run with radius work). Each
+/// through a grid of 64 px cells built once a run with radius work); and a
+/// game's own since the last run, sent by [`stimulate`]. Each
 /// is queued when some rule names its name or an ancestor of it, one entry
 /// per stimulus and receiver: a merge sums the
 /// raw amounts, which a rule's `min` reads, and apart each hit's amount
@@ -475,6 +572,7 @@ impl Runner {
         }
         let chemistry = world.resource_mut::<Chemistry>();
         chemistry.count_ran(count);
+        chemistry.refused_now = false;
         let warn = std::mem::take(&mut chemistry.dropped_now);
         if warn {
             log::warn!(
@@ -705,7 +803,7 @@ fn describe_chemistry(world: &mut World) {
         ))
         .sample(r#"{ "remove": "burning" }"#)
         .roundtrip(round_trip::<Output>),
-        ComponentDescription::new("build_output", "A status built by a fixed amount or by the entry's hits.")
+        ComponentDescription::new("build_output", "A status built by a fixed amount or by the entry's hits, relative to a stat of the receiver's.")
             .field(FieldDescription::new(
                 "status",
                 FieldType::Data(crate::damage::effects::EFFECTS),
@@ -724,6 +822,14 @@ fn describe_chemistry(world: &mut World) {
                     "scale",
                     amount(),
                     "times the entry's hits, each at its own status effect; 1 when neither is given",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "per",
+                    FieldType::Text,
+                    "a stat, `[a-z][a-z0-9_]*`, the build is relative to: its amount over the receiver's value of it, whole on a receiver without it, refused at a value not finite and above 0",
                 )
                 .default("null"),
             )

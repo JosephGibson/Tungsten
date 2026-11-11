@@ -1,6 +1,6 @@
-# 01's elements on chemistry (example-01-new-systems) — draft
+# 01's elements on chemistry (example-01-new-systems) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Example 01's elements on chemistry: its targets' ailments and its bodies' fire and cold as statuses; every decision of what a stimulus does to a thing as an `interactions` rule; the cascade's endings and M81's props and kegs decided through the kit's queue, their outputs the kit's where its semantics are 01's and 01's own code as named handlers where they are not; its status looks on the kit's looks; then the kit's ailment ladders, buckets and `ailment_threshold` removed, since nothing reads them once 01 leaves them (the redo's 7.13 row, phase 7's P7-4 note).
 - **non-goals:**
   - The other 7.13 plans (phase 7's §2.8): 01's saves on the engine (7.13b); the kit's impacts and body walls, 01's hits, foes and drops, with S-4's blasts on the kit's `blast` once 01's hits carry their crit, spell power and blast share there (7.13c); the lightning's chain on `conduct` (S-5) and the sprays' and the force push's cones (S-15), with 01's spells (7.13d); 01's level, sounds and shell (7.13e); its art tools (7.13f); the evaluation and the owner's acceptance (7.13g).
@@ -313,6 +313,7 @@ Round 2: the same reviewer at xhigh, 2026-11-11, reading the plan with this sect
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-11 | landed | Demo base first, on `4088eab4`: `tungsten run --script` exit 0, `pit_fire` {burning, burnt} 641/575 at 300, 244/196 at 600, 0/440 at 900 (`pit` balls 1,251, 440, 440; the hole takes the rest). C1 exit 0; C2 (`-p example-01-platformer -p tungsten-kit -p tungsten`) exit 0; C5 exit 0 and 0; `cargo test -p tungsten-kit --locked` exit 0, 1,143 passed, among them `a_build_is_relative_to_its_receivers_per_stat`, `a_games_stimulus_reaches_its_rule_as_a_part_does`, `a_build_crossing_two_bands_in_one_run_enters_both`; `cargo test -p tungsten --locked --lib -- kit_recipes:: kit_tests::` exit 0, 271 passed, the kit's pin held; `just api`, `just api-check` exit 0 (`stimulate` at the root and in the prelude, `build_output`'s `per`); `just docs-ratchet` exit 0, no rise; `git diff --quiet HEAD -- examples templates` exit 0. The census held (`per` is text: 50, 86, 179), so `tests/describe.rs` is unchanged. Deviations: `per`'s load check is a stat name's, as `fuel`'s is, neither checked against the declared stats (that reaches `foundation/stats.rs`, outside the list); `stimulate` also refuses an amount not finite or below 0, queues only what a rule answers, as a part's type, and answers whether it reached an entry | `perf-runs/20261111-example-01-new-systems/demo.json`, `demo-base.json` |
 
 ## Follow-ups
 

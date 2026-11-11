@@ -2652,3 +2652,151 @@ fn a_capped_spawn_output_culls_the_oldest() {
         "the cells' spawns"
     );
 }
+
+#[test]
+fn a_build_is_relative_to_its_receivers_per_stat() {
+    let (mut world, mut schedule) = rig();
+    rule(
+        &mut world,
+        "burns",
+        json!({
+            "stimulus": "elemental.fire",
+            "outputs": [{ "build": { "status": "burning", "amount": 4, "per": "toughness" } }]
+        }),
+    );
+    let tough = world.spawn_with((Health::new(1000.0), Stats::new().with("toughness", 40.0)));
+    let plain = receiver(&mut world, &[]);
+    let broken = world.spawn_with((Health::new(1000.0), Stats::new().with("toughness", 0.0)));
+    for entity in [tough, plain, broken] {
+        hit(&mut world, entity, "elemental.fire", 1.0);
+    }
+    step(&mut world, &mut schedule);
+    assert_eq!(intensity(&world, tough, "burning"), Some(0.1), "a fortieth");
+    assert_eq!(
+        intensity(&world, plain, "burning"),
+        Some(4.0),
+        "whole without the stat"
+    );
+    assert_eq!(intensity(&world, broken, "burning"), None, "refused at 0");
+    assert!(skips(&world, broken).contains(&("build", outputs::BAD_PER)));
+    // The load refuses a name that is not a stat's.
+    let bad = json!({
+        "stimulus": "elemental.fire",
+        "outputs": [{ "build": { "status": "burning", "per": "Tough ness" } }]
+    });
+    assert!(serde_json::from_value::<Interaction>(bad).is_err());
+}
+
+/// What a handler saw of each reaction: its receiver, stimulus, amount,
+/// credit and depth.
+type Stimuli = Rc<RefCell<Vec<(Entity, String, f32, Option<Entity>, u8)>>>;
+
+#[test]
+fn a_games_stimulus_reaches_its_rule_as_a_part_does() {
+    let stimuli = Stimuli::default();
+    let saw = Rc::clone(&stimuli);
+    let (mut world, mut schedule) = rig_with(&ChemistryPlugin::new().with_handler(
+        "seen",
+        move |_, reaction: &Reaction| {
+            saw.borrow_mut().push((
+                reaction.receiver().unwrap_or(Entity::PLACEHOLDER),
+                reaction.stimulus().to_owned(),
+                reaction.amount(),
+                reaction.credit(),
+                reaction.depth(),
+            ));
+        },
+    ));
+    let seen = json!([{ "handler": "seen" }]);
+    rule(
+        &mut world,
+        "warms",
+        json!({ "stimulus": "heat", "outputs": seen }),
+    );
+    rule(
+        &mut world,
+        "burns",
+        json!({ "stimulus": "elemental.fire", "outputs": seen }),
+    );
+    // A body without health, credited, at depth 0.
+    let wizard = world.spawn();
+    let stone = world.spawn_with((Tags::new(["material.stone"]),));
+    assert!(stimulate(&mut world, stone, "heat", 2.0, Some(wizard)));
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        stimuli.borrow().as_slice(),
+        [(stone, "heat".to_owned(), 2.0, Some(wizard), 0)]
+    );
+    // A damage type merges with a landed part of it on the same receiver:
+    // one entry, the amounts summed, the first credit kept.
+    stimuli.borrow_mut().clear();
+    let ran = chemistry(&world).ran();
+    let target = receiver(&mut world, &[]);
+    assert!(stimulate(
+        &mut world,
+        target,
+        "elemental.fire",
+        1.5,
+        Some(wizard)
+    ));
+    hit(&mut world, target, "elemental.fire", 3.0);
+    step(&mut world, &mut schedule);
+    assert_eq!(chemistry(&world).ran() - ran, 1, "one entry");
+    assert_eq!(
+        stimuli.borrow().as_slice(),
+        [(target, "elemental.fire".to_owned(), 4.5, Some(wizard), 0)]
+    );
+    // Refused: an undeclared stimulus, an amount below 0 or not finite, a
+    // gone receiver, and a World without chemistry; one no rule answers is
+    // not queued.
+    assert!(!stimulate(&mut world, stone, "frost", 1.0, None));
+    assert!(world.resource::<Chemistry>().refused_now, "warned once");
+    assert!(!stimulate(&mut world, stone, "heat", -1.0, None));
+    assert!(!stimulate(&mut world, stone, "heat", f32::NAN, None));
+    let gone = world.spawn();
+    world.despawn(gone);
+    assert!(!stimulate(&mut world, gone, "heat", 1.0, None));
+    assert!(!stimulate(&mut World::new(), stone, "heat", 1.0, None));
+    assert!(
+        !stimulate(&mut world, stone, "ping", 1.0, None),
+        "unanswered"
+    );
+    assert_eq!(chemistry(&world).pending(), 0);
+    step(&mut world, &mut schedule);
+    assert!(
+        !world.resource::<Chemistry>().refused_now,
+        "cleared by the run"
+    );
+}
+
+#[test]
+fn a_build_crossing_two_bands_in_one_run_enters_both() {
+    let calls = Rc::new(Calls::default());
+    let (mut world, mut schedule) =
+        rig_with(&ChemistryPlugin::new().with_handler("entered", counting(&calls, "entered")));
+    let ladder: Effect = serde_json::from_value(json!({
+        "intensity": { "max": 5, "decay": 0 },
+        "bands": [
+            { "at": 1, "enter": [{ "handler": "entered" }] },
+            { "at": 2, "enter": [{ "handler": "entered" }] }
+        ]
+    }))
+    .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("ladder", ladder);
+    rule(
+        &mut world,
+        "climbs",
+        json!({ "stimulus": "heat", "outputs": [{ "build": { "status": "ladder", "amount": 3 } }] }),
+    );
+    let stone = world.spawn();
+    assert!(stimulate(&mut world, stone, "heat", 1.0, None));
+    step(&mut world, &mut schedule);
+    assert_eq!(intensity(&world, stone, "ladder"), Some(3.0));
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        calls.0.borrow().as_slice(),
+        ["entered:ladder#enter.0", "entered:ladder#enter.1"]
+    );
+}

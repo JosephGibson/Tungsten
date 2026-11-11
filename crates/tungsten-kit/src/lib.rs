@@ -170,11 +170,12 @@
 //!   and [`ChemistryPlugin`]: the `interactions` kind's rules from a
 //!   stimulus (a landed hit's damage type, a status's or an output's
 //!   emission in a radius, a body's impact, the light at a point, or a
-//!   game's tag) on a receiver's tags to a fixed list of outputs (build,
-//!   apply, remove or consume a status, damage, spawn, emit, a game's
-//!   handler), through a saved, bounded and capped queue; a status's
-//!   `on_end` and a band's `enter` run their own, and a hit's
-//!   damage-over-time base fixes a status's rate.
+//!   game's tag, sent by [`stimulate`]) on a receiver's tags to a fixed
+//!   list of outputs (build, by a fixed amount or the hits and relative to
+//!   a stat of the receiver's, apply, remove or consume a status, damage,
+//!   spawn, emit, a game's handler), through a saved, bounded and capped
+//!   queue; a status's `on_end` and a band's `enter` run their own, and a
+//!   hit's damage-over-time base fixes a status's rate.
 //! - **React.** [`Cues`], [`CueAction`], [`CueEvent`], [`CuesOnEvent`] and
 //!   [`CuesPlugin`]: the one way to react to events in data, an entity's
 //!   `cues` and the shared `cue_rules` kind, whose `effect` action applies
@@ -245,7 +246,7 @@ mod transform;
 
 pub use chemistry::{
     CHEMISTRY, CHEMISTRY_TICK, Chemistry, ChemistryPlugin, Interaction, Output, Reaction, TileCell,
-    TileStatuses,
+    TileStatuses, stimulate,
 };
 pub use damage::ailments::{
     AILMENT_FEED, AILMENT_TICK, AilmentBuckets, AilmentRung, AilmentThreshold,
@@ -387,7 +388,7 @@ pub mod prelude {
         TriggerZone, Used, WallContact, WeightedTable, WorldBounds, WorldCue, Wrap, WrapPlugin,
         Zone, ZoneEntered, ZonePlugin, carried_by, carry, cursor_to_world, damage,
         despawn_recursive, end_effect, ensure_phases, face_toward, float_label, heal, kill,
-        knock_back, release, spawn_child, use_ability,
+        knock_back, release, spawn_child, stimulate, use_ability,
     };
 }
 

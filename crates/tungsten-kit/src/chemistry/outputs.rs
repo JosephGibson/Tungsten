@@ -18,6 +18,7 @@ use crate::chemistry::tiles::{self, Cell, NOT_A_TILE};
 use crate::damage::effects::{Effect, EffectRequest, StatModifierDef, consume, end_effect_at};
 use crate::damage::pipeline::DamageRequest;
 use crate::foundation::lines::Line;
+use crate::foundation::stats::{Stats, valid_stat};
 use crate::foundation::tags::valid_tag;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::cap::admit;
@@ -32,13 +33,15 @@ const NO_STATUS: &str = "the receiver carries no such status";
 const NO_HANDLER: &str = "no handler of that name is registered";
 const NO_SPAWN: &str = "the prefab did not prepare";
 const NOT_AN_ENTITY: &str = "the receiver is a tile cell, not an entity";
+pub(crate) const BAD_PER: &str =
+    "the receiver's `per` stat is not finite and above 0: the build is refused";
 
 /// One output of a rule, a status's `on_end` or a band's `enter`, run on
 /// the receiver. Data form, an object of one field:
 ///
 /// | Output | Data | Does |
 /// | --- | --- | --- |
-/// | build | `{ "build": { "status": "burning", "amount": 1 } }` or `{ "scale": 0.5 }` | builds a status by a fixed amount at the entry's largest status effect, or by `scale` times the entry's hits, each at its own status effect (1 by default) |
+/// | build | `{ "build": { "status": "burning", "amount": 1 } }` or `{ "scale": 0.5 }`, either with `"per": "toughness"` | builds a status by a fixed amount at the entry's largest status effect, or by `scale` times the entry's hits, each at its own status effect (1 by default); `per` divides it by the receiver's stat of that name, as its `Stats` reads it, a receiver without the stat building whole and a value not finite and above 0 refusing the build |
 /// | apply | `{ "apply": { "status": "burning", "dot": 0.25, "lines": [..] } }` | applies a status at the entry's largest status effect; `dot` fixes its damage-over-time rate at `dot` times the hit's base a second, `lines` go on its instance |
 /// | remove | `{ "remove": "burning" }` | ends the status's instance |
 /// | consume | `{ "consume": { "status": "burning", "amount": 1 } }` | takes intensity off; at 0 it has run out |
@@ -111,7 +114,8 @@ impl Output {
 }
 
 /// A `build` as data writes it: a fixed amount, or a scale on the entry's
-/// hits (1 when neither is given).
+/// hits (1 when neither is given), over the receiver's `per` stat when it
+/// names one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, try_from = "BuildFields")]
 pub(crate) struct BuildDef {
@@ -120,6 +124,8 @@ pub(crate) struct BuildDef {
     amount: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     scale: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    per: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -130,6 +136,8 @@ struct BuildFields {
     amount: Option<f32>,
     #[serde(default)]
     scale: Option<f32>,
+    #[serde(default)]
+    per: Option<String>,
 }
 
 impl TryFrom<BuildFields> for BuildDef {
@@ -146,10 +154,18 @@ impl TryFrom<BuildFields> for BuildDef {
         if fields.amount.is_some() && fields.scale.is_some() {
             return Err("a build takes `amount` or `scale`, not both".into());
         }
+        if let Some(per) = &fields.per
+            && !valid_stat(per)
+        {
+            return Err(format!(
+                "per: `{per}` is not a stat name (`[a-z][a-z0-9_]*`)"
+            ));
+        }
         Ok(Self {
             status: fields.status,
             amount: fields.amount,
             scale: fields.scale,
+            per: fields.per,
         })
     }
 }
@@ -519,6 +535,28 @@ fn build_of(def: &BuildDef, reaction: &Reaction) -> (f32, f32) {
     }
 }
 
+/// `amount` over `receiver`'s `per` stat, as its `Stats` reads it: whole
+/// with no `per` or on a receiver without the stat, refused at a value not
+/// finite and above 0.
+fn per_receiver(
+    world: &World,
+    receiver: Entity,
+    per: Option<&str>,
+    amount: f32,
+) -> Result<f32, &'static str> {
+    let Some(stat) = per else {
+        return Ok(amount);
+    };
+    match world
+        .get::<Stats>(receiver)
+        .and_then(|stats| stats.get(stat))
+    {
+        None => Ok(amount),
+        Some(value) if value.is_finite() && value > 0.0 => Ok((amount / value).min(f32::MAX)),
+        Some(_) => Err(BAD_PER),
+    }
+}
+
 /// One output, not a handler, on the entity `receiver`.
 fn on_entity(
     world: &mut World,
@@ -532,6 +570,7 @@ fn on_entity(
         Kind::Build(_) | Kind::Apply(_) if dead => Err(DEAD),
         Kind::Build(def) => {
             let (amount, status_effect) = build_of(def, reaction);
+            let amount = per_receiver(world, receiver, def.per.as_deref(), amount)?;
             let request = EffectRequest::new(receiver, def.status.clone())
                 .with_amount(amount)
                 .with_status_effect(status_effect);

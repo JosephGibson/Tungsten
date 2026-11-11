@@ -442,10 +442,11 @@ shape blink: A lifetime's blink: hidden for the second half of each period over 
   field last: f32 (> 0) — the seconds before the end it blinks over
   field rate: [x, y] = [5.0, 5.0] — periods a second at the blink's start and at the end, each above 0, rising linearly between
   sample: { "last": 2 }
-shape build_output: A status built by a fixed amount or by the entry's hits.
+shape build_output: A status built by a fixed amount or by the entry's hits, relative to a stat of the receiver's.
   field status: effects ID or entry — the status; the load checks it
   field amount: f32 (>= 0) = null — a fixed build, at the entry's largest status effect
   field scale: f32 (>= 0) = null — times the entry's hits, each at its own status effect; 1 when neither is given
+  field per: text = null — a stat, `[a-z][a-z0-9_]*`, the build is relative to: its amount over the receiver's value of it, whole on a receiver without it, refused at a value not finite and above 0
   sample: { "status": "burning" }
 shape camera_action: A camera rig raised or released by its ID.
   exactly one of its fields
