@@ -50,6 +50,7 @@ type Check = Box<dyn Fn(&dyn Any, &World) -> Result<(), MissingAsset>>;
 
 /// One registered kind and its entries.
 struct Kind {
+    name: &'static str,
     type_id: TypeId,
     type_name: &'static str,
     parse: Parse,
@@ -87,11 +88,14 @@ struct Entry {
 /// ```
 #[derive(Default)]
 pub struct DataRegistry {
-    /// Kind name → kind, sorted by name.
-    kinds: BTreeMap<&'static str, Kind>,
-    /// The registered type → its kind, keyed by the `TypeId` passed
+    /// The kinds in the order registered: a kind's place is its slot, which
+    /// a reference resolved by its type reads with no name looked up.
+    kinds: Vec<Kind>,
+    /// Kind name → slot, sorted by name.
+    slots: BTreeMap<&'static str, usize>,
+    /// The registered type → its kind's slot, keyed by the `TypeId` passed
     /// through: every `DataRef` resolved by ID reads it.
-    kinds_by_type: TypeIdMap<&'static str>,
+    kinds_by_type: TypeIdMap<usize>,
     /// Each entry loaded from a file: the file → the kind and ID.
     routes: HashMap<PathBuf, (&'static str, String)>,
 }
@@ -152,7 +156,7 @@ impl DataRegistry {
             valid_name(kind),
             "data kind `{kind}` for `{type_name}` must match [a-z][a-z0-9_]*"
         );
-        if let Some(existing) = self.kinds.get(kind) {
+        if let Some(existing) = self.kind(kind) {
             assert!(
                 existing.type_id == type_id,
                 "data kind `{kind}` already holds `{}`; `{type_name}` cannot take it",
@@ -160,7 +164,8 @@ impl DataRegistry {
             );
             return false;
         }
-        if let Some(existing) = self.kinds_by_type.get(&type_id) {
+        if let Some(&slot) = self.kinds_by_type.get(&type_id) {
+            let existing = self.kinds[slot].name;
             panic!(
                 "`{type_name}` is already registered as data kind `{existing}`; it cannot also be `{kind}`"
             );
@@ -177,35 +182,35 @@ impl DataRegistry {
                     (field, err.into_inner())
                 })
         });
-        self.kinds_by_type.insert(type_id, kind);
-        self.kinds.insert(
-            kind,
-            Kind {
-                type_id,
-                type_name,
-                parse,
-                check,
-                entries: BTreeMap::new(),
-            },
-        );
+        let slot = self.kinds.len();
+        self.kinds_by_type.insert(type_id, slot);
+        self.slots.insert(kind, slot);
+        self.kinds.push(Kind {
+            name: kind,
+            type_id,
+            type_name,
+            parse,
+            check,
+            entries: BTreeMap::new(),
+        });
         true
     }
 
     /// Whether kind `kind` is registered.
     #[must_use]
     pub fn contains_kind(&self, kind: &str) -> bool {
-        self.kinds.contains_key(kind)
+        self.slots.contains_key(kind)
     }
 
     /// The registered kinds, sorted.
     pub fn kinds(&self) -> impl Iterator<Item = &'static str> {
-        self.kinds.keys().copied()
+        self.slots.keys().copied()
     }
 
     /// The kind `T` is registered under.
     #[must_use]
     pub fn kind_of<T: 'static>(&self) -> Option<&'static str> {
-        self.kinds_by_type.get(&TypeId::of::<T>()).copied()
+        self.kind_for::<T>().map(|(name, _)| name)
     }
 
     /// The entry `id` of `T`'s kind, as it is now: a later load or reload
@@ -222,8 +227,7 @@ impl DataRegistry {
 
     /// The IDs of kind `kind`, sorted; none for a kind not registered.
     pub fn ids(&self, kind: &str) -> impl Iterator<Item = &str> {
-        self.kinds
-            .get(kind)
+        self.kind(kind)
             .into_iter()
             .flat_map(|kind| kind.entries.keys().map(String::as_str))
     }
@@ -260,23 +264,33 @@ impl DataRegistry {
     /// How many entries are held, over every kind.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.kinds.values().map(|kind| kind.entries.len()).sum()
+        self.kinds.iter().map(|kind| kind.entries.len()).sum()
     }
 
     /// Whether no entry is held.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.kinds.values().all(|kind| kind.entries.is_empty())
+        self.kinds.iter().all(|kind| kind.entries.is_empty())
     }
 
+    /// `T`'s kind, by its slot.
     fn kind_for<T: 'static>(&self) -> Option<(&'static str, &Kind)> {
-        let name = self.kind_of::<T>()?;
-        self.kinds.get(name).map(|kind| (name, kind))
+        let kind = &self.kinds[*self.kinds_by_type.get(&TypeId::of::<T>())?];
+        Some((kind.name, kind))
+    }
+
+    /// The kind named `name`.
+    fn kind(&self, name: &str) -> Option<&Kind> {
+        self.slots.get(name).map(|&slot| &self.kinds[slot])
+    }
+
+    fn kind_mut(&mut self, name: &str) -> Option<&mut Kind> {
+        self.slots.get(name).map(|&slot| &mut self.kinds[slot])
     }
 
     /// Removes entry `id` of `kind` with its file's route.
     fn take_entry(&mut self, kind: &'static str, id: &str) -> Option<Entry> {
-        let entry = self.kinds.get_mut(kind)?.entries.remove(id)?;
+        let entry = self.kind_mut(kind)?.entries.remove(id)?;
         if let Some(path) = &entry.path {
             self.routes.remove(path);
         }
@@ -292,21 +306,22 @@ impl DataRegistry {
         value: Box<dyn Any>,
         path: Option<PathBuf>,
     ) {
-        let Some(slot) = self.kinds.get_mut(kind) else {
+        if self.kind(kind).is_none() {
             return;
-        };
+        }
         if let Some(path) = &path {
             self.routes.insert(path.clone(), (kind, id.clone()));
         }
-        slot.entries.insert(id, Entry { value, path });
+        if let Some(slot) = self.kind_mut(kind) {
+            slot.entries.insert(id, Entry { value, path });
+        }
     }
 
     /// The entry `path` routes to loses the file, keeping its definition.
     fn release_path(&mut self, path: &Path) -> Option<(&'static str, String)> {
         let (kind, id) = self.routes.remove(path)?;
         if let Some(entry) = self
-            .kinds
-            .get_mut(kind)
+            .kind_mut(kind)
             .and_then(|slot| slot.entries.get_mut(&id))
         {
             entry.path = None;
@@ -316,11 +331,10 @@ impl DataRegistry {
 
     /// Gives entry `id` of `kind` the file `path` back.
     fn give_path(&mut self, kind: &'static str, id: &str, path: PathBuf) {
-        if let Some(entry) = self
-            .kinds
-            .get_mut(kind)
-            .and_then(|slot| slot.entries.get_mut(id))
-        {
+        let Some(&slot) = self.slots.get(kind) else {
+            return;
+        };
+        if let Some(entry) = self.kinds[slot].entries.get_mut(id) {
             self.routes.insert(path.clone(), (kind, id.to_owned()));
             entry.path = Some(path);
         }
@@ -332,7 +346,7 @@ impl fmt::Debug for DataRegistry {
         let kinds: BTreeMap<&str, Vec<&str>> = self
             .kinds
             .iter()
-            .map(|(name, kind)| (*name, kind.entries.keys().map(String::as_str).collect()))
+            .map(|kind| (kind.name, kind.entries.keys().map(String::as_str).collect()))
             .collect();
         f.debug_struct("DataRegistry")
             .field("kinds", &kinds)
@@ -624,7 +638,7 @@ impl StagedLoad {
         let file = || path.display().to_string();
         let empty = DataRegistry::new();
         let registry = world.get_resource::<DataRegistry>().unwrap_or(&empty);
-        let Some((&name, slot)) = registry.kinds.get_key_value(kind) else {
+        let Some(slot) = registry.kind(kind) else {
             return Err(DataError::UnknownKind {
                 kind: kind.to_owned(),
                 path: file(),
@@ -648,7 +662,7 @@ impl StagedLoad {
         })?;
         let path = path.canonicalize().unwrap_or(path);
         self.data.insert(
-            (name, id.into()),
+            (slot.name, id.into()),
             StagedData {
                 value,
                 path,
@@ -801,7 +815,7 @@ impl StagedLoad {
     ) -> impl Iterator<Item = ((&'static str, String), StagedLoadError)> + 'a {
         let registry = world.get_resource::<DataRegistry>();
         self.data.iter().filter_map(move |((kind, id), staged)| {
-            let slot = registry.and_then(|registry| registry.kinds.get(kind));
+            let slot = registry.and_then(|registry| registry.kind(kind));
             let source = match slot {
                 Some(slot) if slot.type_id == (*staged.value).type_id() => return None,
                 Some(slot) => DataError::MismatchedKind {
@@ -961,7 +975,9 @@ fn check_file_backed(
     report: &mut dyn FnMut(StagedLoadError) -> Result<(), StagedLoadError>,
 ) -> Result<(), StagedLoadError> {
     let data = world.resource::<DataRegistry>();
-    for (&kind, slot) in &data.kinds {
+    // By kind name, as the kinds are listed.
+    for (&kind, &slot) in &data.slots {
+        let slot = &data.kinds[slot];
         let Some(check) = &slot.check else {
             continue;
         };

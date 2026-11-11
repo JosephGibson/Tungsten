@@ -51,8 +51,8 @@ use tungsten_core::assets::AnimationFrame;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
 use tungsten_core::{
     ActionMap, AnimationData, AnimationRegistry, Binding, Bundle, CommandBuffer, DataRef,
-    EventQueue, InputState, KeyCode, Plugin, PluginSet, Schedule, Sprite, SpriteAssetId, Stage,
-    StagedLoad, Time, Transform, World,
+    DataRegistry, EventQueue, InputState, KeyCode, Plugin, PluginSet, Schedule, Sprite,
+    SpriteAssetId, Stage, StagedLoad, Time, Transform, World,
 };
 use tungsten_kit::{
     Abilities, AbilitiesPlugin, Ability, ActionInput, ActionInputPlugin, AilmentBuckets,
@@ -978,6 +978,41 @@ fn effect_tick(c: &mut Criterion) {
     group.finish();
 }
 
+/// `effect_tick` with the effect named by ID, as a game's prefabs name
+/// theirs: each instance's tick resolves its definition in the World's data.
+fn effect_tick_by_id(c: &mut Criterion) {
+    let mut group = c.benchmark_group("effect_tick_by_id");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig_set(effect_set());
+        world.resource_mut::<DataRegistry>().insert(
+            "bench.burn",
+            Effect::new()
+                .with_period(0.5)
+                .with_damage(1.0)
+                .with_modifier("armor", Modifier::Add(1.0)),
+        );
+        // Other entries beside it, as a game's data holds.
+        for index in 0..31 {
+            world
+                .resource_mut::<DataRegistry>()
+                .insert(format!("bench.other_{index}"), Effect::new());
+        }
+        let burn = DataRef::<Effect>::by_id("bench.burn");
+        for _ in 0..n {
+            world.spawn_with((
+                Health::new(1e12),
+                Stats::new().with("armor", 0.0),
+                Effects::new().with(burn.clone()),
+            ));
+        }
+        fixed_step_and_flush(&mut world, &mut schedule);
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step_and_flush(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
 fn effect_resolve(c: &mut Criterion) {
     let mut group = c.benchmark_group("effect_resolve");
     for n in SIZES {
@@ -1132,6 +1167,7 @@ criterion_group!(
     damage_resolve_typed,
     shield_tick,
     effect_tick,
+    effect_tick_by_id,
     effect_resolve,
     ailment_tick,
     ailment_feed,
