@@ -528,3 +528,124 @@ fn a_two_grid_walk_returns_one_grids_order() {
         assert!(met > 1_000, "the queries met too little: {met}");
     }
 }
+
+#[test]
+fn a_walk_by_runs_visits_what_the_walk_by_entries_does() {
+    // The pair passes walk the grid a run at a time (`Run::each`): the same
+    // ids in the same order as the walk by entries (`D-080`'s rule), with
+    // exclusion, in either layout, for points, for boxes few of which
+    // repeat and for boxes most of which do, the scattered grid whose runs
+    // are copied before they are visited, and with every run copied.
+    use crate::Pcg32;
+    for (seed, hashed, half) in [
+        (1_u64, false, 0.0..0.0),
+        (2, true, 0.0..0.0),
+        (3, false, 1.0..8.0),
+        (4, true, 1.0..8.0),
+        (5, false, 10.0..70.0),
+        (6, true, 10.0..70.0),
+    ] {
+        let mut rng = Pcg32::seeded(0x0052_554E + seed);
+        let mut grid = SpatialGrid::new(32.0);
+        for id in 0..400u32 {
+            let half = if half.is_empty() {
+                Vec2::ZERO
+            } else {
+                Vec2::new(
+                    rng.next_range(half.start, half.end),
+                    rng.next_range(half.start, half.end),
+                )
+            };
+            let center = Vec2::new(rng.next_range(-300.0, 500.0), rng.next_range(-400.0, 200.0));
+            grid.insert(id, &Aabb::new(center, half));
+        }
+        if hashed {
+            force_hashed(&mut grid);
+        }
+        let (mut by_entries, mut by_runs) = (Vec::new(), Vec::new());
+        let mut met = 0;
+        for probe_index in 0..300u32 {
+            let probe = Aabb::new(
+                Vec2::new(rng.next_range(-400.0, 600.0), rng.next_range(-500.0, 300.0)),
+                Vec2::new(rng.next_range(0.0, 150.0), rng.next_range(0.0, 150.0)),
+            );
+            let exclude = (probe_index % 3 == 0).then_some(probe_index);
+            by_entries.clear();
+            grid.for_each_in(&probe, exclude, |id| by_entries.push(id));
+            by_runs.clear();
+            grid.for_each_run_in(&probe, 0, |mut run| {
+                run.each(exclude, |id| by_runs.push(id));
+            });
+            assert_eq!(by_runs, by_entries, "seed {seed}, {probe:?}");
+            by_runs.clear();
+            grid.for_each_run_in(&probe, 0, |mut run| {
+                run.each_copied(exclude, |id| by_runs.push(id));
+            });
+            assert_eq!(by_runs, by_entries, "seed {seed}, copied, {probe:?}");
+            met += by_runs.len();
+        }
+        assert_eq!(is_direct(&grid), !hashed, "seed {seed}'s layout");
+        assert_eq!(grid.single_cell_ids, half.is_empty(), "seed {seed}");
+        assert_eq!(grid.scattered(), half.end > 8.0, "seed {seed}");
+        assert!(met > 1_000, "seed {seed}: the probes met {met}");
+    }
+}
+
+#[test]
+fn a_two_grid_walk_by_runs_visits_what_its_walk_by_entries_does() {
+    // As above for the pair grid's walk of two grids, the second's ids
+    // offset: a cell's runs of the first grid, then of the second.
+    use crate::Pcg32;
+    for (seed, hashed) in [(1_u64, false), (2, true), (3, false), (4, true)] {
+        let mut rng = Pcg32::seeded(0x0032_5255 + seed);
+        let (firsts, seconds) = (60_u32, 160_u32);
+        let mut first = SpatialGrid::new(16.0);
+        let mut second = SpatialGrid::new(16.0);
+        for id in 0..firsts + seconds {
+            // The first grid's boxes cover many cells, the second's few.
+            let half = if id < firsts {
+                rng.next_range(8.0, 40.0)
+            } else {
+                rng.next_range(0.5, 3.0)
+            };
+            let b = aabb(
+                rng.next_range(-200.0, 200.0),
+                rng.next_range(-120.0, 120.0),
+                half,
+                half,
+            );
+            if id < firsts {
+                first.insert(id, &b);
+            } else {
+                second.insert(id - firsts, &b);
+            }
+        }
+        if hashed {
+            second.insert(seconds, &aabb(4.0e6, -4.0e6, 0.0, 0.0));
+        }
+        let (mut by_entries, mut by_runs) = (Vec::new(), Vec::new());
+        let mut met = 0;
+        for at in 0..300 {
+            let query = aabb(
+                rng.next_range(-220.0, 220.0),
+                rng.next_range(-140.0, 140.0),
+                rng.next_range(0.0, 60.0),
+                rng.next_range(0.0, 60.0),
+            );
+            let exclude = (at % 4 == 0).then(|| rng.next_u32() % (firsts + seconds));
+            by_entries.clear();
+            for_each_in_both(&mut first, &mut second, firsts, &query, exclude, |id| {
+                by_entries.push(id);
+            });
+            by_runs.clear();
+            for_each_run_in_both(&mut first, &mut second, firsts, &query, |mut run| {
+                run.each(exclude, |id| by_runs.push(id));
+            });
+            assert_eq!(by_runs, by_entries, "seed {seed}, query {at}: {query:?}");
+            met += by_runs.len();
+        }
+        assert!(first.scattered() && !second.scattered(), "seed {seed}");
+        assert_eq!(is_direct(&second), !hashed, "seed {seed}'s layout");
+        assert!(met > 1_000, "the queries met too little: {met}");
+    }
+}

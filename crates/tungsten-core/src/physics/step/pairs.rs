@@ -5,7 +5,7 @@
 use super::PhysicsBuffers;
 use super::gather::TileCache;
 use crate::physics::PhysicsConfig;
-use crate::physics::broadphase::{ProxyId, SpatialGrid, for_each_in_both};
+use crate::physics::broadphase::{ProxyId, Run, SpatialGrid, for_each_run_in_both};
 use crate::physics::collision::Aabb;
 use glam::{Vec2, Vec4};
 
@@ -40,34 +40,33 @@ impl PairGrid {
         self.bodies.cell_size()
     }
 
-    /// Visit each proxy overlapping `query`, as one grid would: the entity
-    /// grid's walk when it holds the tiles too, else both grids' walk.
+    /// Walk the proxies overlapping `query` a [`Run`] at a time, as one
+    /// grid would: the entity grid's walk when it holds the tiles too, else
+    /// both grids' walk. The pair passes loop over each run themselves
+    /// ([`Run::each`]), so their tests of a candidate compile into that
+    /// loop wherever the walk hands a run over.
     #[inline(always)]
-    pub(super) fn for_each_in(
-        &mut self,
-        query: &Aabb,
-        exclude: Option<ProxyId>,
-        visit: impl FnMut(ProxyId),
-    ) {
+    pub(super) fn for_each_run_in(&mut self, query: &Aabb, visit: impl FnMut(Run<'_>)) {
         if !self.split {
-            self.bodies.for_each_in(query, exclude, visit);
+            self.bodies.for_each_run_in(query, 0, visit);
             return;
         }
-        for_each_in_both(
+        for_each_run_in_both(
             &mut self.bodies,
             &mut self.tiles,
             self.tile_base,
             query,
-            exclude,
             visit,
         );
     }
 
-    /// Collect the proxies overlapping `query`, in [`Self::for_each_in`]'s
-    /// order.
+    /// Collect the proxies overlapping `query`, in
+    /// [`Self::for_each_run_in`]'s order.
     pub(super) fn query(&mut self, query: &Aabb, exclude: Option<ProxyId>, out: &mut Vec<ProxyId>) {
         out.clear();
-        self.for_each_in(query, exclude, |id| out.push(id));
+        self.for_each_run_in(query, |mut run| {
+            run.each(exclude, |id| out.push(id));
+        });
     }
 
     /// Stage `tiles`' proxies at `cell_size`, each box grown by `radius`,
@@ -443,37 +442,26 @@ pub(super) fn build_pairs(
         }
         let query = query_bounds(aabb);
         if pair_flags[a_idx] & PAIR_OVERSIZE != 0 {
-            // No cell holds it and no other querier meets it: one pass over
-            // every proxy in proxy order, each pair stored as a build stores
-            // it, a pair of two oversize proxies by the lower one.
-            for (b_idx, &bounds) in pair_bounds.iter().enumerate() {
-                let b_flags = pair_flags[b_idx];
-                let lower_awake = b_flags & PAIR_AWAKE != 0 && b_idx < a_idx;
-                if b_idx == a_idx
-                    || (lower_awake && b_flags & PAIR_OVERSIZE != 0)
-                    || !bounds_overlap(query, bounds)
-                    || !layers.meet(a_idx, b_idx)
-                {
-                    continue;
-                }
-                pairs.push(if lower_awake {
-                    (b_idx as u32, a_idx as u32)
-                } else {
-                    (a_idx as u32, b_idx as u32)
-                });
-            }
+            oversize_pairs(a_idx, query, pair_bounds, pair_flags, layers, pairs);
             continue;
         }
-        grid.for_each_in(aabb, Some(a_idx as ProxyId), |b_id| {
-            let b_idx = b_id as usize;
-            // An awake candidate at or below this index runs its own query.
-            if pair_flags[b_idx] & PAIR_AWAKE != 0 && b_idx <= a_idx {
-                return;
-            }
-            if bounds_overlap(query, pair_bounds[b_idx]) && layers.meet(a_idx, b_idx) {
-                pairs.push((a_idx as u32, b_id));
-            }
-        });
+        grid.for_each_run_in(
+            aabb,
+            #[inline(always)]
+            |mut run| {
+                run.each(Some(a_idx as ProxyId), |b_id| {
+                    let b_idx = b_id as usize;
+                    // An awake candidate at or below this index runs its own
+                    // query.
+                    if pair_flags[b_idx] & PAIR_AWAKE != 0 && b_idx <= a_idx {
+                        return;
+                    }
+                    if bounds_overlap(query, pair_bounds[b_idx]) && layers.meet(a_idx, b_idx) {
+                        pairs.push((a_idx as u32, b_id));
+                    }
+                });
+            },
+        );
     }
     *pairs_invalidated = false;
     buffers.pair_impulses.clear();
@@ -488,6 +476,39 @@ pub(super) fn build_pairs(
     #[cfg(test)]
     {
         buffers.pair_builds += 1;
+    }
+}
+
+/// A build's pairs of the oversize proxy `a_idx` (D-081). No cell holds it
+/// and no other querier meets it: one pass over every proxy in proxy order,
+/// each pair stored as a build stores it, a pair of two oversize proxies by
+/// the lower one. Out of line and cold, so the build's loop over the grid's
+/// queriers carries none of it.
+#[cold]
+#[inline(never)]
+fn oversize_pairs(
+    a_idx: usize,
+    query: Vec4,
+    pair_bounds: &[Vec4],
+    pair_flags: &[u8],
+    layers: &super::ProxyLayers,
+    pairs: &mut Vec<(u32, u32)>,
+) {
+    for (b_idx, &bounds) in pair_bounds.iter().enumerate() {
+        let b_flags = pair_flags[b_idx];
+        let lower_awake = b_flags & PAIR_AWAKE != 0 && b_idx < a_idx;
+        if b_idx == a_idx
+            || (lower_awake && b_flags & PAIR_OVERSIZE != 0)
+            || !bounds_overlap(query, bounds)
+            || !layers.meet(a_idx, b_idx)
+        {
+            continue;
+        }
+        pairs.push(if lower_awake {
+            (b_idx as u32, a_idx as u32)
+        } else {
+            (a_idx as u32, b_idx as u32)
+        });
     }
 }
 
@@ -683,35 +704,48 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         };
         // Only the members query, so this is not the build's initiator rule:
         // an untripped awake body of lower index must still be paired here.
-        grid.for_each_in(aabb, Some(member), |other| {
-            let flags = pair_flags[other as usize];
-            if flags & PAIR_REPAIRED != 0
-                || !bounds_overlap(query, pair_bounds[other as usize])
-                || !layers.meet(member as usize, other as usize)
-            {
-                return;
-            }
-            if flags & PAIR_AWAKE != 0 && other < member {
-                admit(other, member, other);
-            } else {
-                admit(member, other, other);
-            }
-        });
-        repair_grid.for_each_in(aabb, Some(member), |other| {
-            // A pair between two members is added by the lower one.
-            let member_too = pair_flags[other as usize] & PAIR_TRIPPED != 0;
-            if (member_too && other < member)
-                || !bounds_overlap(query, pair_bounds[other as usize])
-                || !layers.meet(member as usize, other as usize)
-            {
-                return;
-            }
-            if other < member {
-                admit(other, member, other);
-            } else {
-                admit(member, other, other);
-            }
-        });
+        grid.for_each_run_in(
+            aabb,
+            #[inline(always)]
+            |mut run| {
+                run.each(Some(member), |other| {
+                    let flags = pair_flags[other as usize];
+                    if flags & PAIR_REPAIRED != 0
+                        || !bounds_overlap(query, pair_bounds[other as usize])
+                        || !layers.meet(member as usize, other as usize)
+                    {
+                        return;
+                    }
+                    if flags & PAIR_AWAKE != 0 && other < member {
+                        admit(other, member, other);
+                    } else {
+                        admit(member, other, other);
+                    }
+                });
+            },
+        );
+        repair_grid.for_each_run_in(
+            aabb,
+            0,
+            #[inline(always)]
+            |mut run| {
+                run.each(Some(member), |other| {
+                    // A pair between two members is added by the lower one.
+                    let member_too = pair_flags[other as usize] & PAIR_TRIPPED != 0;
+                    if (member_too && other < member)
+                        || !bounds_overlap(query, pair_bounds[other as usize])
+                        || !layers.meet(member as usize, other as usize)
+                    {
+                        return;
+                    }
+                    if other < member {
+                        admit(other, member, other);
+                    } else {
+                        admit(member, other, other);
+                    }
+                });
+            },
+        );
         // The oversize proxies are in no grid and never members here.
         for &other in oversize.iter() {
             if bounds_overlap(query, pair_bounds[other as usize])

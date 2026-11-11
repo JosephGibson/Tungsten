@@ -478,13 +478,26 @@ pub(super) fn arrival_pass(
             // As in a pair repair: the pair grid holds a repaired proxy under
             // the cells of its old AABB, so those come from the repair grid.
             candidates.clear();
-            grid.for_each_in(&aabb, Some(body as ProxyId), |id| {
-                if pair_flags[id as usize] & PAIR_REPAIRED == 0 {
-                    candidates.push(id);
-                }
-            });
+            grid.for_each_run_in(
+                &aabb,
+                #[inline(always)]
+                |mut run| {
+                    run.each(Some(body as ProxyId), |id| {
+                        if pair_flags[id as usize] & PAIR_REPAIRED == 0 {
+                            candidates.push(id);
+                        }
+                    });
+                },
+            );
             if !repaired.is_empty() {
-                repair_grid.for_each_in(&aabb, Some(body as ProxyId), |id| candidates.push(id));
+                repair_grid.for_each_run_in(
+                    &aabb,
+                    0,
+                    #[inline(always)]
+                    |mut run| {
+                        run.each(Some(body as ProxyId), |id| candidates.push(id));
+                    },
+                );
             }
             // An oversize proxy is in no grid (D-081): every one is a
             // candidate.
