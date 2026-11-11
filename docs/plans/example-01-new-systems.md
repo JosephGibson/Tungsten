@@ -1,0 +1,325 @@
+# 01's elements on chemistry (example-01-new-systems) — draft
+
+- **status:** draft
+- **goal:** Example 01's elements on chemistry: its targets' ailments and its bodies' fire and cold as statuses; every decision of what a stimulus does to a thing as an `interactions` rule; the cascade's endings and M81's props and kegs decided through the kit's queue, their outputs the kit's where its semantics are 01's and 01's own code as named handlers where they are not; its status looks on the kit's looks; then the kit's ailment ladders, buckets and `ailment_threshold` removed, since nothing reads them once 01 leaves them (the redo's 7.13 row, phase 7's P7-4 note).
+- **non-goals:**
+  - The other 7.13 plans (phase 7's §2.8): 01's saves on the engine (7.13b); the kit's impacts and body walls, 01's hits, foes and drops, with S-4's blasts on the kit's `blast` once 01's hits carry their crit, spell power and blast share there (7.13c); the lightning's chain on `conduct` (S-5) and the sprays' and the force push's cones (S-15), with 01's spells (7.13d); 01's level, sounds and shell (7.13e); its art tools (7.13f); the evaluation and the owner's acceptance (7.13g).
+  - Kit changes past Step 1's two additions and Step 8's removal (§2.1): any other gap is a handler, 01's own detection sending a stimulus, or a site left with its row's rest moved.
+  - Retuning 01: its tests are the spec (§2.2), and no number its data restates changes.
+  - New 01 content, new art, a benchmark row (Q8), a sitting as evidence (`D-226`).
+- **files to touch:** by step, §3's Files lines; nothing outside them but §6's admitted files. In short: Step 1 the kit's chemistry, its tests, `api/`, `DESIGN.md`; Steps 2–7 `examples/01_platformer/` (`src/`, `tests/game/`, `tools/content/`, the generated `assets/` copies, `assets/manifest.json`, `tools/outputs.json`, its `README.md`; Steps 5 and 6 one generator file each; Step 4 `docs/known-issues.md`); Step 8 the kit's damage, chemistry and foundation modules, its tests and benches, the umbrella's kit tests, recipes and fixtures, `templates/basic/AGENTS.md` and `templates/basic/tests/game/sample.rs`, `api/`, `DESIGN.md`, `docs/getting-started.md`, `docs/known-issues.md`, `DECISIONS.md`, `docs/DECISION_INDEX.md`; Step 9 this plan (deleted), `docs/plans/phase-7.md`, `ROADMAP.md`, `docs/known-issues.md`.
+- **ordered steps:** (1) builds relative to the receiver and a game's own stimulus, in the kit; (2) 01's targets' ailments as statuses; (3) 01's bodies' fire and cold as statuses; (4) the endings, thermal shock, shatter and steam, decided by rules; (5) props, fuses and detonations as chemistry data; (6) the lava front and the hazard douse; (7) the looks; (8) the ladders, buckets and `ailment_threshold` removed; (9) close.
+- **done-when:** every step's done-when passes, quoted in the evidence log; `just check` passes and the demo (§3's Step 9) works; P7-4, S-7, S-51, S-56 and S-121 read `landed <sha>` in phase 7's §2.2 and S-1 `Later` with its balls' looks in Later (Q13); the plan deleted with its citations and `example-01-new-systems` out of Now.
+
+Item `example-01-new-systems` in [ROADMAP.md](../../ROADMAP.md), phase 7's 7.13a (§2.8, [phase 7](phase-7.md)), from the redo's 7.13 row and phase 7's Step 13. Written 2026-11-11 at `64a186c6`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md) and the [operating rules](../operating-rules.md); this plan records only where it differs.
+
+## Context digest
+
+- 7.13 runs as seven plans (phase 7's §2.8, Q10); this is the first. Its rows: P7-4 (01's elements onto interactions, the ladders, buckets and `ailment_threshold` removed), S-1 (status looks), S-7 (looks animated by hand), S-51 (a lit fuse's emitters), S-56 (reactions to an effect applied or run out) and S-121 (a shake's share by hand). Round 1's critique moved S-4 to 7.13c and S-5 to 7.13d (§7).
+- It stands on 7.10's statuses (`D-240`), chemistry (`D-241`), looks and cue filters (`D-242`) and the cpu-stress pass's lookups (`D-269`, `D-270`). 01 uses none of them yet (A14).
+- The kit's outputs differ from 01's where it matters to play: a blast's damage falls off and skips its receiver, a kit request takes no spell power or crit roll, a removed status runs its `on_end`, steam douses before it blasts, a chain is seeded with one target (A28–A33). So 01 moves its decisions, state and queue onto chemistry, and keeps those outputs as named handlers, each a seam (§2.1).
+- 01's records hold `Effects` and `AilmentBuckets` until the statuses replace them; its capture moves onto the engine in 7.13b (`D-230`). Until then 01's records carry what this plan's statuses must keep across a save, and chemistry's queue is not saved for 01 (§2.9).
+- Rules: tests are the spec (§2.2); the contact record stays off (A18, `D-233`); `D-226` for perf; code sessions at xhigh; the generator's two edits draw nothing (Q10, Q11).
+- Later items expect: 7.13b to save chemistry's queue, tile statuses and `became` for 01; 7.13c to put 01's blasts on the kit's once its hits carry 01's preparation; 7.13d the lightning's chain on `conduct`; 7.13g's "a status with an interaction" task in 01, which its data now allows; 7.14 measuring 01 on chemistry.
+
+## 1. Audit
+
+Read at `64a186c6` (code unchanged since `5de680d8`). Paths under `examples/01_platformer/` are written `src/…`, `tests/…`, `tools/…`; `E/` is `src/features/elements/`, `K/` is `crates/tungsten-kit/src/`.
+
+| # | Finding | Evidence |
+| --- | --- | --- |
+| A1 | `ElementsPlugin`: `fire_tick`, `frozen_tick`, `douse_tick` (tick); seven contact systems then `cascade_run` (overlap); `iron_thaw` (react); `ice_pulses` (present); `fire_particles`, `impact_sparks`, `doused_look` (post-update); the extract `draw::effects` | `E/mod.rs:130-181` |
+| A2 | Bodies keep their own element state, having no health: `BallBurn`, `Chill`, `Frozen`, `IcePulse`; M81's `Fuel`, `Keg`, `Bomb`; the lava's `Lava`; a hazard's `Doused` | `E/components.rs:10,28,39,45`; `src/features/props/components.rs:70,81,95`; `src/features/level/lava.rs:54-69`; `src/features/level/components.rs:35` |
+| A3 | A small ball burns 10 s and never relights; `fire_spread` lights its contacts (swept crossings too) and the balls within 15.5 px, one hop a step in save-ID order | `E/systems.rs:74,88,103`; `E/mod.rs:32`; `tests/game/burning.rs` (6 tests) |
+| A4 | The cold spray chills bodies by `dt / FREEZE_TIME`; a full coat freezes for 5 s; a body the spray did not reach this step thaws at 0.15 a second; frozen iron slides on less friction | `src/features/toys/systems.rs:1254-1259`; `E/systems.rs:866,899,909,928`; `E/mod.rs:35-37`; `src/features/toys/mod.rs:89` |
+| A5 | Targets climb five ladders, eleven rungs, each `needs` and `window` with `requires` and `blocked_by`, none with a `chance`; their effects carry no `scale` curve; nine prefabs carry `ailment_threshold` (the player 30 + 0.2 of its max health, the dummy 20 + 0.05 of its 400; bat 12, beetle 30, crawler 20, goblin 15, both trolls 40, wisp 16) | `assets/data/damage_types/game.json`; `assets/data/effects/*.json`; `tools/content/prefabs/*.json` |
+| A6 | The ladder: each non-periodic landed part fills its type's bucket and climbs the rungs top down, counting the tags its own earlier parts granted that run; the first rung that passes applies its effect and empties the bucket; a bucket drains `threshold / window` a second | `K/damage/ailments.rs:52-60,509-565,619-660` |
+| A7 | 01 reads its buckets: `chill_grades` writes the deep chill's slow in stages and the frost stage the overlays draw | `src/features/combat/systems.rs:404-470`; `src/features/combat/draw.rs:112` |
+| A8 | The cascade: kinds `explosion`, `shatter`, `steam`, `jump`, `detonation`; 48 due entries a run, 16,384 waiting, no depth (a chain moves a ring a step); one entry per kind and target; ordered by due run, distance from the origin, target; credited to the player or a live source; saved whole | `E/cascade.rs:60-134,166-220,340-371,519-543`; `E/mod.rs:53-54`; `src/save.rs:123` |
+| A9 | The endings: thermal shock (fire on a frozen thing; reach by kind, iron 160, a target 128, a prop 96, a scrap 64, a ball 48; an eighth of it in fire and physical in `hit.blast`, push 900; iron into sixteen scraps, other bodies despawned), shatter (a hard impact, a fall, a blow), steam (cold on a burning thing; 5 fire and physical, push 700, reach 128 or 96; chains through a burning pile; relights nothing) | `E/cascade.rs:572-825`; `E/mod.rs:41-51`; `tests/game/cascades.rs` (14 tests) |
+| A10 | 01's targets' reactions: a fire part, or an immune fire part, on a target frozen when the resolve began; a cold part, or an immune cold part, on a burning one; `shattered` applied | `src/features/combat/systems.rs:108-161` |
+| A11 | Kegs and bombs: a 1.5 s fuse, blasts of 192 and 128, set off by a 1,050 px/s landing, a shot, lightning, heat, a blast or lava; a frozen keg never blows; cold, steam and a black hole put a fuse out and leave the keg; crates burn 8 s on `Fuel`, spread after 2 s to props within 4 px of their box, break by a hit; the fuse's sparks and smoke follow its tip by hand | `src/features/props/mod.rs:107-118,515-614`; `src/features/props/systems.rs:57,178-217,434`; `E/mod.rs:220`; `tests/game/props.rs` (20 tests) |
+| A12 | Lightning: a strike's 40 shock within 40 px, then jumps through the cascade, every conductor the strike hit excluded from the chain | `src/features/lightning/mod.rs:268,414`; `E/cascade.rs:257,560`; `tests/game/lightning.rs:275` |
+| A13 | The lava front: a basin's cold crusts at 0.5 for 6 s, the surface solid, its touches and glow off; `lava_take` sets off kegs and removes other bodies; the lava-frost children are `tools/level.py`'s, not `tools/content/` | `src/features/level/lava.rs:106-371`; `tools/level.py:215-235`; `tests/game/hazards.rs` (17 tests) |
+| A14 | 01 uses no chemistry: no `interactions`, no status fields, no looks; `KitPlugins::set()` already installs `ChemistryPlugin` and `LooksPlugin` | `src/game.rs:50`; `K/foundation/plugins.rs:131-133`; `assets/manifest.json`'s `data` (17 effects, one damage type entry, one cue rule) |
+| A15 | Saves: schema 24, a step per schema; bodies' element state in its records (a ball's items 8 and 9, `blocks[]`, `props[]`, `planks[]`, `hazards[]`, `basins[]`); targets' `Effects` cloned with `buckets`; `Stats` restored whole; every component on a saved entity classed by a test | `src/save.rs:334-377,1322-1389,1493,1621-1646,1708,1740`; `tests/game/saves.rs:859` |
+| A16 | Chemistry: rules (`stimulus`, `on`, `min`, `outputs`; the most specific alone); outputs `build`, `apply`, `remove`, `consume`, `damage`, `spawn`, `emit`, `set_tile`, `become`, `blast`, `handler`; statuses (`intensity`, `bands` with `enter` and `look`, `fuel`, `emit`, `on_end`) and effects' `on_expire`; the plugin's cap 256, bound 16,384, depth 8 and handlers | `K/chemistry/rules.rs:15-20,54`; `K/chemistry/outputs.rs:39-51`; `K/damage/effects.rs:252-310`; `K/chemistry/mod.rs:158-232`; `K/chemistry/queue.rs:99-102` |
+| A17 | A body without `Health` takes no damage-type stimulus, since one comes from a landed part, but takes emits, blasts and impacts; `damage` and `set_tile` outputs do nothing on it; game code has no call that queues a stimulus | `K/damage/pipeline.rs:1323-1331`; `K/chemistry/mod.rs:387`; `K/chemistry/grid.rs:103-111`; `K/chemistry/queue.rs:339` (crate-private) |
+| A18 | Chemistry runs every step once any `interactions` entry exists; a rule answering `stimulus.impact` registers `ContactBegan`, the contact record `D-233` priced at 18 ms of 01's pit's `physics_step` | `K/chemistry/mod.rs:293-330` |
+| A19 | Chemistry's queue saves its receivers by reference through the save registry, which 01's records do not use | `K/chemistry/queue.rs:630-660`; `K/chemistry/mod.rs:257`; `src/save.rs:1763,2238` |
+| A20 | A build's amount scales by its source's `status_effect`; nothing reads the receiver; `Stats::WELL_KNOWN` is a pinned array of 11 | `K/damage/effects.rs:3532`; `K/foundation/stats.rs:496` |
+| A21 | The Pact halves the player's `max_health` (`Mul(0.5)`), so its threshold falls from 50 to 40; enemies' thresholds are flat, so difficulty leaves them | `src/features/tomes/systems.rs:64-78`; `tools/content/prefabs/player.json:23` |
+| A22 | The ladders' surface and users outside 01: the kit's module, `damage_types`' `ailments`, the feed and drain in the kit's schedules, the kit's and umbrella's tests, two genres' fixtures, the benches, `api/` (182 and 4 lines), docs, the template's catalogue line and schedule snapshot | `K/damage/ailments.rs` (823 lines); `K/damage/kinds.rs:65-67,119-129,436-457`; `K/damage/effects.rs:4347-4350`; `K/chemistry/mod.rs:277,287`; `K/lib.rs:166-168,250-252,364`; `K/tests/ailments.rs` (11 tests), `K/tests/kinds.rs:428,483`, `K/tests/chemistry.rs:241`, `K/tests/inspect.rs:93`; `crates/tungsten/src/tests/kit.rs:48,3003,4089-4101,4164,4249`; `crates/tungsten/src/tests/kit_recipes/top_down.rs:1526,1594,1747`, `shooter.rs:597,822`; `crates/tungsten/tests/fixtures/kit/{top_down,shooter}/`; `crates/tungsten-kit/benches/kit.rs:958-975,1120,1138,1248`; `DESIGN.md:618-638`; `docs/getting-started.md:245`; `docs/known-issues.md:102`; `templates/basic/AGENTS.md:35`; `templates/basic/tests/game/sample.rs:95` |
+| A23 | Pins: the kit's hash `0xa2de_8a8e_2368_07d3` folds each entity's buckets; the describe census 50 components, 86 shapes, 179 numeric fields; inspect 50; coverage 50 and 11; `UNSAVED_COMPONENTS` holds `ailment_threshold`; the LLM index 12,278 and the template's `AGENTS.md` 12,281 of 12,288 bytes | `crates/tungsten/src/tests/kit_recipes/determinism.rs:39,135-139,479-500`; `K/tests/describe.rs:131-135,425,440-442`; `K/tests/inspect.rs:101`; `crates/tungsten/src/tests/kit_recipes/coverage.rs:85-86,113`; `K/foundation/saved.rs:26`; `scripts/check-agent-context.py:25,27` |
+| A24 | 01's pit guard is exact: 59,979 allocations, 68,099,612 bytes, 298 archetype moves, 295 spawned, 243 despawned, 12 events; a rise in a cost counter needs a fix or its cause in the plan | `tests/game/guards/pit.json`; `tests/game/guards.rs:16-45`; `crates/tungsten/src/testing/guard.rs:209-240` |
+| A25 | 445 tests, about 200 touching the elements: burning 6, cascades 14, ice 25, lightning 14, props 20, hazards 17, combat 20, brick 14, about 54 of enemies' 102, 26 of saves' 59, 19 of spells' 24 | `tests/game/*.rs` |
+| A26 | `e01-stress` pours 12,000 balls and lands a fire missile on the pit every 100 frames; `e01-pit`'s p95 is 36.1 ms and `e01-stress`'s 45.3 since the cpu-stress pass | `scripts/perf-rows.json:1004-1060`; `ROADMAP.md`'s Now |
+| A27 | 01's README's feature table names `kit::AilmentThreshold`, the ladders, and "none" for crates and kegs, a keg's blast and conduction | `README.md:142-158` |
+| A28 | 01's blast lands its parts whole on every target in reach, the push alone falling off, through `Hit::request`, which adds a spell's spell power and the kit's crit roll; the kit's blast scales its damage by its falloff, leaves its receiver out, and builds plain requests | `E/cascade.rs:605-626`; `src/features/combat/mod.rs:196-238`; `K/chemistry/blast.rs:140-200` |
+| A29 | Removing an effect queues its `on_end`; `on_expire` applies its effect on a timed end only | `K/damage/effects.rs:270,2775-2793` |
+| A30 | Steam ends every target's burn and douses it before its blast's fire lands, and puts props out | `E/cascade.rs:783-835` |
+| A31 | The kit's chain starts with one target in its chain; 01's test needs both struck conductors excluded | `K/intent/ability.rs:3176-3190`; `tests/game/lightning.rs:275-300` |
+| A32 | A crate's spread reaches props within 4 px of its box; a status's `emit` measures from its holder's centre to a receiver's surface | `src/features/props/systems.rs:178-192`; `K/chemistry/stimuli.rs:51`; `K/chemistry/grid.rs:45`; `tests/game/props.rs:113` |
+| A33 | Three save tests pin a reaction waiting at the save: a mid-chain cascade, a keg chain mid-chain and a mid-conduction save | `tests/game/saves.rs:1762,1887,1937` |
+
+## 2. Design
+
+### 2.1 What moves, what stays
+
+- **To data:** each element state as a status (an effect with `intensity` where a fill or a coat is read, a plain timed effect where only time is); each decision of what a stimulus does to a receiver as an `interactions` rule; the cascade's queue, order, credit and cap for its endings and detonations as the kit's queue.
+- **Stimuli by receiver:** targets answer the damage types their landed parts carry; bodies, which take no landed part (A17), answer 01's own tags `heat` (lights, and shocks a frozen body), `kindle` (lights only), `cold`, `shatter`, `douse` and `jolt` (sets a keg off), declared in its tags kind. 01's passes send these with `stimulate`, so a blast's fire reaches a target once, as its part, and a body by 01's stimulus.
+- **01's detection, sending stimuli:** where the kit has no cheap pass for what 01 detects (contacts and swept crossings from `CollisionEvent`, the sprays' rays on bodies until 7.13d's cones, a hard impact or landing until 7.13c's impacts, a crate's box, lava's surface, an immune part), 01's pass stays and calls Step 1's `stimulate`, and the rules decide. No 01 rule answers `stimulus.impact` or `stimulus.light` (A18).
+- **01's outputs as handlers:** where the kit's output differs from 01's in what play shows (A28–A31), the rule's `handler` output runs 01's Rust, registered on 01's `ChemistryPlugin` (`with_handler`): a blast (`blast` and `blast_hit`, whole parts through `Hit::request`, the push falling off, the receiver's own share), steam's douse of everything in reach before its blast, iron's sixteen scraps, a body's removal, the lava's surface made solid and back, a hazard's touch switched (`ContactDamage::set_on`). Each is listed in the evidence row and §Follow-ups as a seam; 7.13c takes the blasts onto the kit's once its hits carry 01's preparation, and 7.13d the chain.
+- **01's chemistry:** 01 swaps the set's plugin for its own (`KitPlugins::set().without::<ChemistryPlugin>().with(ChemistryPlugin::new()…)`, `K/foundation/plugins.rs:60-76`) at its cascade's cap 48 and bound 16,384 and a depth of 255, since its cascade had none (Q4), with its handlers.
+- **The lightning's chain** stays the cascade's `jump` entries until 7.13d (A31): the cascade keeps that kind alone after Step 5, and its jumps send `jolt` to the kegs and bombs they strike, as `set_off` did.
+- **Kit changes:** Step 1's two additions and Step 8's removal. Any other gap is a handler, 01's detection with a stimulus, or the site stays, its row's rest moved by phase 7's §2.1 or written to Later.
+
+### 2.2 Tests are the spec
+
+- Each step keeps all 445 of 01's tests passing with their asserted outcomes. A test's body changes only where it reads, spawns or calls what the step removes, ported to the kit's equivalent (a status's instance for a component, its intensity for a fill or a coat, `stimulate` for a queued entry), each port counted in the evidence row.
+- An asserted value moves only where the step's Moves names the test, and then by at most one fixed step in time (a band's `enter`, an `on_end` and a stimulus's reaction run at chemistry's next run, a step after the ladder's rung or the cascade's entry did) or 1 % in an amount; each such move is listed with its old and new value. Order assertions over the cascade's queue are rewritten to the kit's order (age, depth, receiver), keeping what they test: a chain past the cap finishes over steps in a stable order.
+- Step 2 names four more kinds of Move, the ladder's per-part climb that a merged queue cannot keep (§2.3, Q14): a second part of a type in one resolve after an earlier one passes a rung (the feed sent it toward the next rung; chemistry merges it into the first rung's build); a part of another type in one resolve after a part whose rung grants a tag (the feed counted the grant, A6; chemistry reads the tags as they stand); a fill carried across a change of state between rungs (a flesh target's physical fill when it freezes); and a first rung's effect refreshed while its exposure lasts where its class has no later rung (the ladder let it run out and applied it again at the next part). A test that pins any is named with its old and new outcome; no other ladder outcome moves.
+- Any other changed outcome stops the step (§6). No test is deleted but one whose subject the step deletes, rewritten to the kit's equivalent where one exists, each named.
+- New tests only where a done-when names them (the owner's rule for examples); the kit's additions take kit tests.
+
+### 2.3 Targets: the ladders as statuses (Step 2)
+
+- **Thresholds:** 01 declares a game stat `status_threshold` and each actor's prefab carries it at today's threshold (the player 50, the dummy 40, the bat 12, the beetle 30, the crawler 20, the goblin 15, both trolls 40, the wisp 16, A5); the Pact adds `Mul(0.8)` on it from its own source, so the player's falls to 40 with its health (A21). Every build names it: `{ "build": { "status": "<build>", "scale": 1, "per": "status_threshold" } }`, so intensity is in threshold units, as a rung's `needs` was.
+- **A build a rung:** each rung is a build status of its own, its `max` and one band at the rung's `needs`, `decay` 1 / its ladder's window (a third a second; a sixth for cold), the drain's, the band's `enter` applying the rung's effect and removing the build, which empties it as the rung emptied its bucket. The rule that builds it carries the rung's `requires` in `on.all` and its `blocked_by` in `on.none` but for the rung's own effect's tag, so while that effect holds the next rung's rule, which requires it and is more specific, wins; a class with no next rung refreshes the effect as its build fills again (§2.2). A completed rung's progress is its effect, not a fill, so a pause between rungs keeps it, as the emptied bucket did (round 2's finding 1):
+
+| Stimulus | Build, at | `on.all` | `on.none` | Enters |
+| --- | --- | --- | --- | --- |
+| `damage.physical` | bleed, 0.4 | `flesh` | `status.frozen` | `bleeding` |
+| `damage.physical` | shatter, 0.8 | `status.frozen` | `brittle` | `shattered` |
+| `damage.physical` | brittle shatter, 0.04 | `brittle`, `status.frozen` | — | `shattered` |
+| `damage.fire` | burn, 0.25 | — | `status.frozen`, `status.doused` | `burning` |
+| `damage.cold` | chill, 0.15 | — | `status.burning` | `chilled` |
+| `damage.cold` | freeze, 0.5 | `freezable`, `status.chilled` | `status.burning`, `troll` | `frozen` |
+| `damage.cold` | troll's freeze, 0.5 | `troll`, `freezable`, `status.chilled` | `status.burning` | the 3 s freeze (an effect file, today inline) |
+| `damage.shock` | shock, 0.3 | — | — | `shocked` |
+| `damage.shock` | stun, 1 | `status.shocked` | `troll` | `stunned` |
+| `damage.shock` | troll's stun, 3 | `troll`, `status.shocked` | — | `stunned` |
+| `damage.poison` | poison, 0.1 | `living` | `status.frozen` | `poisoned` |
+
+- Chemistry skips periodic parts as the feed did (`K/chemistry/mod.rs:387`). What builds cannot keep of the feed's per-part climb are §2.2's four Moves.
+- **01's reads:** `chill_grades`, `frost_level` and `frost_stage` read the chill and freeze builds' intensities (`Effects::intensity`, `K/damage/effects.rs:2394`) where they read the bucket; `combat_reactions` keeps queueing its cascade until Step 4.
+- **S-56:** bleeding's spurt, poisoned's gurgle, a freeze's frost burst and sound and a thaw's glints and crack become cue rules on `effect_applied` and `effect_expired` with `effect`, `fresh` and `ended` (`K/react/cues.rs:2424-2455,3012-3030`), and their code in `combat` goes.
+
+### 2.4 Bodies: fire and cold as statuses (Step 3)
+
+- **The burn:** a status granting `status.burning` for 10 s, applied with a lasting `kindled` that grants `spent`, both in one application, so a ball is never without both marks between its burnout and an output's run (round 2's finding 3; `on_end` and `on_expire` both wait on a queue, `K/damage/effects.rs:2842-2849`). The rules `heat` and `kindle` on a small ball not burning, frozen or `spent` apply them, as does 01's spread pass. The black hole puts a burning ball out by removing its burn; `kindled` stays.
+- **The spread** (Q3): `fire_spread`'s contacts and its 15.5 px grid stay 01's pass, one hop a step, applying the burn outside the queue (`EffectRequest`), as does the hole's douse of balls. A burning front in `e01-stress`'s 12,000 balls would pass the queue's cap of 48 a run, which 01 keeps for its endings' cost (§2.1), so the spread would slow; the seam goes to §Follow-ups.
+- **The coat:** a `chill` status with `intensity { "max": 1, "decay": 0.15 }` (`THAW_RATE`) and one band at 1 that enters a 5 s `ice` status granting `status.frozen` and removes `chill`. The sprays send `cold` once a step to each body their rays meet (the queue's merge would sum a ray's each), built through a rule on bodies (iron, balls, scraps, crates, kegs, planks; never a stone) by `dt · (1 / FREEZE_TIME + THAW_RATE)`, so a held spray freezes in 1.5 s while the kit's decay runs as today's thaw did not (A4). Frozen iron's friction reads `status.frozen`.
+- **Records:** the save's fields stay; capture writes a ball's item 8 from its burn's time left (0 when `kindled` and out) and item 9 from its coat or `1 +` its ice's time left, and `blocks[]`, `props[]` and `planks[]` likewise; restore applies the statuses back.
+
+### 2.5 The endings decided by rules (Step 4)
+
+- **Thermal shock:** `heat` on a frozen body and `damage.fire` on a frozen target, one rule a kind by its tags (iron, scrap, ball, prop, target): `remove` the ice or `frozen`, then the handler `thermal_shock` with its kind's reach: 01's blast, whole parts in `hit.blast` through `Hit::request` with the 900 push falling off, its receiver's own share, its bursts and shake, and the body's end (iron's sixteen scraps, `shatter_iron`; a ball or scrap removed). Each blast handler sends each body in reach the stimulus whose rule is today's branch for it (`E/cascade.rs:650-664`): `heat` to a frozen body (its thermal shock), a small ball (lit) and a crate (lit); `jolt` to a keg or bomb (set off at once).
+- **Shatter:** 01's tag `shatter`, sent by the impact pass (a frozen body against a still one or one of mass 8 or more at 600 px/s), a frozen target's hard landing, the gun's shot, the troll's blow; for a target, the shatter builds' band (Step 2) sends it. Its rule runs the handler `shatter`, the ending's bursts and the body's end.
+- **Steam:** `cold` on a burning body and `damage.cold` on a burning target: `remove` the burn, then the handler `steam`: 01's douse of every target and prop in reach before its blast, the blast of 5 fire and physical with the 700 push over 128 (96 from a small ball), `cold` sent to the burning balls in reach (the chain), no `heat`, so it relights nothing (`tests/game/cascades.rs:456`).
+- **01's senders:** `combat_reactions` sends `damage.fire` for an immune fire part on a frozen target and `damage.cold` for an immune cold part on a burning one, periodic parts left out as today (A10); `thermal_shatter`'s callers (the missile's explosion until 7.13c, the fire spray, lava heat) send `heat` to the frozen bodies in reach.
+- The cascade's three kinds go; it keeps `jump` and, until Step 5, `detonation`. Credits ride the stimulus (`stimulate`'s credit, a landed part's source) into each handler, as `Credit` did (`E/cascade.rs:519-537`).
+
+### 2.6 Props as chemistry data (Step 5)
+
+- **Fuses:** a `lit` status of 1.5 s whose source is its lighter and whose `on_expire` (a timed end alone, A29) applies an instant `detonate` effect, whose landing's `on_end` runs the handler `detonate` (192 for a keg, 128 for a bomb, 01's blast, or the keg's shatter where it froze meanwhile, as `detonate` does today, `E/cascade.rs:704-726`); cold, steam and the hole `remove` `lit`, which runs no `on_expire`, so the keg stays whole (`src/features/props/mod.rs:578-600`). `heat` or `kindle` on a keg `none` of `status.frozen`, `status.doused` and `status.lit` applies `lit`, as `light` does (`src/features/props/mod.rs:512-545`); `jolt` on a keg or bomb `none` of `status.frozen`, lit or not, sets it off at once, `remove` of `lit` and the handler `detonate`, as `set_off` does for a lit one (round 2's finding 4): 01's landing pass sends `jolt` at 1,050 px/s, and the gun, the jumps, lava and the blast handlers send it. Every spawned bomb starts `lit`. `jolt` on a frozen keg runs its shatter.
+- **Crates and planks:** a burn status with the kit's `fuel` draining a `fuel` stat the prefab carries (8 s for a crate, 4 for a plank), so a douse keeps what is left; burning out runs the handler that collapses it. The spread stays `props_heat`'s pass over a box grown by 4 px (A32), sending `kindle` after 2 s alight, as does a burning ball's touch within 2 px, since `light` refuses a frozen prop (`src/features/props/mod.rs:512-545`) where a blast, the fire spray and lava send `heat`, which shocks it. Breaking stays 01's `crate_hits` until 7.13c.
+- **S-51:** the `lit` status's look puts `fuse_sparks` and `fuse_smoke` at the sprite point `fuse`, which the generator writes for each fuse frame (Q11); `fuse_emitters` goes.
+- The cascade's `detonation` kind goes. Records: `props[]`' `fuse`, `fuel`, `lighter` and `doused` from and to the statuses.
+
+### 2.7 The lava and the hazards (Step 6)
+
+- A basin's cold is a status built by the spray's `cold` on its surface, its band at 0.5 entering a 6 s `crust`; the crust's start and end run the handlers `harden` and `melt` (`src/features/level/lava.rs:170,188`). `lava_take`'s contacts send `heat`: a keg is set off and a frozen prop shocked by their rules; other bodies are removed by a handler.
+- The lava-frost children (`tools/level.py:215-235`) go: thermal shock's rule is their fire on frozen things (Q10).
+- A fire hazard's douse: `cold` on it applies a 4 s `doused` granting `status.doused`; its start and end switch the touch and the glow off and on (`ContactDamage::set_on`, `K/overlap/contact.rs:612`). Records: `basins[]`' `cold` and `crust`, `hazards[]`' `doused`.
+
+### 2.8 The looks (Step 7)
+
+- **S-1:** each status draws through its `look` and its bands' looks (tint, an overlay of 01's clip with its material, a glow, particles at a sprite point, a light, a sound loop, `K/present/looks.rs:46-77`), with 01's own clips, configs and materials, so the art is the same files: the targets', props', iron's and a keg's looks. A look is entities a holder (`D-242`), and the pit burns thousands of balls at once (A26), so the small balls' flames, embers, char and ice shells stay 01's extract over the statuses, with `fire_particles`' pool of 128 emitters (`E/mod.rs:88`), and S-1 reads `Later` with that rest (Q13). `src/features/props/draw.rs` and `src/features/combat/draw.rs`' status parts and their look systems go. Known traps: a tint is linear and 01's tints may be written for sRGB; every particle spawns at z 0, under its sprite.
+- **S-7:** the cold pulse's glow and ring, the growing and fading rings, the force push's crescent and a scrap's tumble are tweened sprites ended by a `Lifetime`, spawned by the handlers or 01's code.
+- **S-121:** a keg's detonation, the missile's explosion and iron's landing shake through a cue's `shake` with `near` and `far` from the `CueListener` (`K/react/cues.rs:603-627`), and `blast_trauma` goes.
+- A before-and-after `tungsten render` sheet of each status look on its holder, stills for what holds and a 1–2 s loop at 20 fps for what moves, is linked for the owner's review at 7.13g.
+
+### 2.9 Saves
+
+- Records keep their fields where a status stands in for a component (§2.4–§2.7). Three migrations: schema 25 (Step 2) drops the actors' `buckets` (a build restarts at a load) and adds `status_threshold` to each saved actor's `stats` at its kind's value, with the Pact's line where the saved `max_health` carries the Pact's; schema 26 (Step 4) drops the cascade's `explosion`, `shatter` and `steam` entries; schema 27 (Step 5) its `detonation` entries.
+- Chemistry's queue is not in 01's records (A19), so a save between a reaction's stimulus and its run drops it. Two tests pin one (`tests/game/saves.rs:1887`, a mid-chain save, at Step 4; `:1937`, a keg chain, at Step 5): each step rewrites its test to the interim behaviour, a named Move, and `docs/known-issues.md` takes one row naming 7.13b, which saves the queue and restores both. `:1762`, a save mid-conduction, holds: the jumps stay in the cascade.
+
+### 2.10 The ladders' removal (Step 8)
+
+- The kit: `damage/ailments.rs` and its tests; `damage_types`' `ailments` field, its check and `ladder` and `ladder_of`; the feed's and drain's schedule edges (`EFFECT_RESOLVE` and chemistry after `AILMENT_FEED`, `CHEMISTRY_TICK` after `AILMENT_TICK`); the re-exports and the prelude; `ailment_threshold` out of `UNSAVED_COMPONENTS`; the `ailment_threshold_mult` stat's doc; the benches' two groups.
+- The umbrella: `kit.rs`' schedule string, its owner arms, its effect edges (12 pairs to 8) and its ladder test, rewritten as a build's test at three frame rates; the top-down and shooter recipes' ladder tests and fixtures (cold, fire and toxic; acid and corruption; four prefabs' `ailment_threshold`) as builds with `per` and bands, so each genre still shows an ailment; the determinism hash rewritten without buckets and moved once, `reacted()` reading the golem's cold build and the corrupted mainframe.
+- Pins named: the census (components 50 → 49, shapes 86 → 85, the numeric fields 179 less the rung's and threshold's), inspect, coverage, the template's schedule snapshot and catalogue line, `api/`.
+- Docs: `DESIGN.md`'s damage and effects sections, `docs/getting-started.md:245`, `docs/known-issues.md:102`, the template's `AGENTS.md:35`, 01's README; the decision (§2.12).
+
+### 2.11 Perf and the guards
+
+- 01's pit guard moves at the steps that change 01's per-frame work, from Step 2 (chemistry runs every step once 01 has a rule, A18). Each move rewrites it with `TUNGSTEN_GUARDS_WRITE=1` and records each counter's old and new value and its cause, decomposed by probing the step's changes apart where more than one could move it; a rise with no cause named stops the step (A24).
+- The contact record stays off (C6). No sitting is evidence (`D-226`); a quick sitting, `just perf sitting --quick --rows e01-pit,e01-stress` against v0.117.0 (`--allow-background` when NoMachine runs, said so), after Steps 3 and 5 and at the close is information, its verdicts and `total` p95 quoted, and a `regressed` `total` takes its profile and cause into the evidence and §Follow-ups.
+- 02's rows and guards hold but where Step 8 names a move (`spread` builds `EffectsPlugin`, whose ailment systems go).
+
+### 2.12 Records
+
+- One decision at Step 8 through the `tungsten-decision` skill, the next free ID (271 at writing): 01's elements on chemistry; builds relative to the receiver (`per`) and a game's own stimulus (`stimulate`); the ladders, buckets and `ailment_threshold` removed, their saves migrated; the queue's one cap kept for 01, with its mass effects and its blasts outside the kit's outputs, as seams. It amends `D-176`, `D-177`, `D-200` and `D-241` as the skill's marker lines say.
+- Phase 7: at the close, P7-4, S-7, S-51, S-56 and S-121 `landed <sha>`; S-1 `Later`, its note naming what landed and its Later line; the evidence row "13 (7.13), part a". 01's README's table rows (A27) change with the steps that make them wrong.
+
+## 3. Steps
+
+**Common checks** (C1–C7; each step names the ones it runs):
+
+- C1 `cargo fmt --all -- --check` → exit 0.
+- C2 `cargo clippy -p example-01-platformer --all-targets --locked -- -D warnings` → exit 0; with `-p tungsten-kit -p tungsten` for Steps 1 and 8.
+- C3 `cargo test -p example-01-platformer --locked` → exit 0, by §2.2.
+- C4 the content: `python3 -m venv "$SCRATCH/level-venv" && "$SCRATCH/level-venv/bin/pip" install -r examples/01_platformer/tools/requirements.txt` once (a failed install stops the step, §6); then `PATH="$SCRATCH/level-venv/bin:$PATH" python3 -B examples/01_platformer/tools/generate.py --family content` (and `--family level` or `--family props` where the step names it) and `PATH="$SCRATCH/level-venv/bin:$PATH" just level-check` → exit 0. `$SCRATCH` is the session's scratchpad; the venv is deleted at the close with `shutil.rmtree`.
+- C5 `python3 -B scripts/check-repo.py` → exit 0; `git diff --check` → exit 0.
+- C6 `rg -q 'stimulus\.(impact|light)' examples/01_platformer/tools/content examples/01_platformer/assets/data; test $? -eq 1` → exit 0.
+- C7 the pit guard by §2.11: `cargo test -p example-01-platformer --locked --test game -- guards::` → exit 0 on its pin, rewritten only as §2.11 says.
+
+### Step 1: Builds relative to the receiver and a game's own stimulus
+
+- **Files:** `crates/tungsten-kit/src/chemistry/{mod.rs,outputs.rs,queue.rs}`, `crates/tungsten-kit/src/lib.rs`, `crates/tungsten-kit/src/tests/{chemistry.rs,describe.rs}`, `api/tungsten-kit.txt`, `api/tungsten-kit-components.txt`, `DESIGN.md`, this plan (`status: in progress`).
+- **Change:**
+  - First, before any edit: the demo's script (Step 9) run on the unchanged tree, its report kept in the scratchpad for Step 9's comparison.
+  - `build`'s `per`: the receiver's stat of that name, as its `Stats` reads it, divides the build's amount; a receiver without the stat builds whole; a value not finite or at most 0 refuses the build, traced as skipped; the load checks the name against the declared stats, as `fuel`'s is.
+  - `tungsten_kit::stimulate(world, receiver, stimulus, amount, credit)`: queues a damage type or a declared tag on an entity at depth 0 for chemistry's next run, merged with that run's entries as a landed part's is, through `Chemistry::stimulate` (`K/chemistry/queue.rs:339`); a World without the plugin, an undeclared stimulus or a gone receiver is refused with one warning a run.
+  - Tests: a build per a stat of 40 lands a fortieth, one without the stat lands whole, a stat of 0 refuses; a stimulus reaches its rule as a part does, at depth 0, credited, on a body without `Health`, and merges with a landed part of the same type and receiver; a build that crosses two bands in one run enters both.
+- **Done-when:** C1, C2 (`-p tungsten-kit -p tungsten`), C5; `cargo test -p tungsten-kit --locked` → exit 0, the new tests among the passed; `cargo test -p tungsten --locked --lib -- kit_recipes:: kit_tests::` → exit 0 (the kit's pin held); `just api` then `just api-check` → exit 0; `just docs-ratchet` → exit 0; `git diff --quiet HEAD -- examples templates` → exit 0; the demo's base report's path in the evidence row.
+- **Commit:** `feat(kit): builds relative to the receiver and a game's own stimulus`
+- **Moves:** `api/`; the census's counts where `per` adds a described field, named.
+
+### Step 2: 01's targets' ailments as statuses
+
+- **Files:** in `examples/01_platformer/`: `tools/content/data/damage_types/game.json`, `tools/content/data/effects/` (the builds and the troll's freeze), `tools/content/data/interactions/` (new), `tools/content/data/stats/game.json`, `tools/content/data/tags/game.json`, `tools/content/data/cue_rules/`, `tools/content/prefabs/{player,dummy,bat,beetle,crawler,goblin,troll,troll_armoured,wisp}.json`, their `assets/` copies, `assets/manifest.json`, `tools/outputs.json`; `src/game.rs`; `src/features/combat/{mod.rs,systems.rs,draw.rs,components.rs}`; `src/features/tomes/systems.rs`; `src/features/enemies/troll.rs`; `src/features/elements/mod.rs`; `src/save.rs`; `tests/game/{combat,ice,enemies,cascades,saves,data,dummy,tomes,player,presentation}.rs`; `tests/game/guards/pit.json`; `README.md`.
+- **Change:** §2.3 and §2.9's schema 25; 01's `ChemistryPlugin` swapped in with its cap, bound, depth and (from Step 4) handlers (§2.1); the README's ailments, dummy and enemies rows.
+- **Done-when:** C1–C7; `rg -q 'AilmentBuckets|AilmentThreshold|ailment_threshold_mult' examples/01_platformer/src examples/01_platformer/tests; test $? -eq 1` → exit 0; `rg -q '"ailments"|"ailment_threshold"' examples/01_platformer/tools/content examples/01_platformer/assets; test $? -eq 1` → exit 0; among C3's passed, `tests/game/combat.rs`' `cold_chills_then_freezes_the_freezable_and_the_player_only_chills`, `tests/game/enemies.rs`' `the_troll_slows_in_stages_and_freezes_past_its_threshold` and `a_steady_ice_spray_freezes_the_troll`, `tests/game/data.rs`' `every_restated_constant_matches_its_data`, `tests/game/saves.rs`' migration tests, one of them loading a schema 24 save whose actors hold buckets (added if none does), and one new `tests/game/combat.rs` test: a freezable dummy takes 0.15 of its threshold in cold, a second later 0.5 more, and freezes, as the ladder does (round 2's finding 1).
+- **Commit:** `refactor(example-01): targets' ailments as statuses on chemistry`
+- **Moves:** the pit guard (§2.11); the schema 24 → 25; reads of buckets ported to builds' intensities; a rung's effect a step later and §2.2's two ladder Moves, each test named.
+
+### Step 3: 01's bodies' fire and cold as statuses
+
+- **Files:** `src/features/elements/{mod.rs,components.rs,systems.rs,cascade.rs,draw.rs}`; `src/features/toys/{mod.rs,systems.rs,components.rs}`; `src/features/props/{mod.rs,systems.rs,draw.rs}`; `src/features/lightning/mod.rs`; `src/features/gun/systems.rs`; `src/features/enemies/{troll.rs,systems.rs}`; `src/features/level/lava.rs`; `src/features/run/{pit.rs,script.rs}`; `src/features/audio/systems.rs`; `src/save.rs`; `tools/content/data/{effects,interactions,tags}/` and their `assets/` copies, `assets/manifest.json`, `tools/outputs.json`; `tests/game/{burning,ice,cascades,brick,spells,gun,props,saves,lightning,hazards,enemies,presentation,ball_pit,audio,combat}.rs`; `tests/game/guards/pit.json`.
+- **Change:** §2.4: `BallBurn`, `Chill` and `Frozen` go for the burn, `spent`, `chill` and `ice` statuses; the ignite and coat rules; the spread and the hole's douse of balls 01's pass applying the statuses; the sprays send `cold`; every reader (the cascade, lightning's stop, the gun, the troll's blow, lava, the pit's probes, the crackle, the draws) reads the statuses; the records map them.
+- **Done-when:** C1–C7; `rg -q 'struct (BallBurn|Chill|Frozen)\b' examples/01_platformer/src; test $? -eq 1` → exit 0; among C3's passed, all six of `tests/game/burning.rs`, `tests/game/ice.rs`' `freezing_uses_fixed_exposure_at_30_60_and_144_hz_and_stops_when_paused`, `tests/game/cascades.rs`' `frozen_things_thaw_after_five_seconds`, `tests/game/spells.rs`' `black_hole_leaves_burning_balls_inside_its_radius_spent`, and the save tests of balls and blocks, their records' fields unchanged; the quick sitting (§2.11) quoted.
+- **Commit:** `refactor(example-01): bodies' fire and cold as statuses`
+- **Moves:** the pit guard; reads of the three components ported.
+
+### Step 4: The endings decided by rules
+
+- **Files:** `src/features/elements/{cascade.rs,systems.rs,mod.rs}`; `src/features/combat/systems.rs`; `src/features/toys/systems.rs`; `src/features/gun/systems.rs`; `src/features/enemies/troll.rs`; `src/features/props/{mod.rs,systems.rs}`; `src/features/level/lava.rs`; `src/game.rs` (handlers); `src/save.rs`; `tools/content/data/{effects,interactions,tags}/` and their copies, `assets/manifest.json`, `tools/outputs.json`; `tests/game/{cascades,ice,brick,enemies,props,spells,combat,saves,gun,hazards}.rs`; `tests/game/guards/pit.json`; `docs/known-issues.md`; `README.md`.
+- **Change:** §2.5: thermal shock, shatter and steam as rules whose outputs are `remove` and the handlers `thermal_shock`, `shatter` and `steam`; 01's senders; the cascade's three kinds go; schema 26 and `tests/game/saves.rs:1887`'s interim rewrite with its known-issues row (§2.9).
+- **Done-when:** C1–C7; `rg -q 'CascadeKind::(Explosion|Shatter|Steam)\b' examples/01_platformer/src; test $? -eq 1` → exit 0; among C3's passed, all fourteen of `tests/game/cascades.rs` (its order tests rewritten by §2.2), `tests/game/ice.rs`' `fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps`, `tests/game/enemies.rs`' `a_frozen_wisp_blows_apart_under_a_fire_missile` and `a_frozen_beetle_shatters_at_a_light_blow`, `tests/game/combat.rs`' `cold_on_a_burning_frost_crawler_bursts_into_steam`; `rg -n '7\.13b' docs/known-issues.md` → one row.
+- **Commit:** `refactor(example-01): thermal shock, shatter and steam decided by rules`
+- **Moves:** the pit guard; the schema 25 → 26; the cascade's order assertions (§2.2); `tests/game/saves.rs:1887` (§2.9); a reaction a step later where named.
+
+### Step 5: Props, fuses and detonations as chemistry data
+
+- **Files:** `src/features/props/{mod.rs,components.rs,systems.rs,draw.rs}`; `src/features/elements/{cascade.rs,systems.rs}`; `src/features/lightning/mod.rs`; `src/features/toys/systems.rs`; `src/features/level/lava.rs`; `src/features/enemies/goblin.rs`; `src/game.rs`; `src/save.rs`; `tools/content/prefabs/{crate,keg,goblin_bomb,plank}.json`, `tools/content/data/{effects,interactions,stats,tags}/` and their copies, `assets/manifest.json`, `tools/outputs.json`; the generator file that writes the props' sprites' manifest entries (`tools/props.py` or `tools/generate.py`, named in the evidence; Q11); `tests/game/{props,hazards,enemies,saves,presentation,spells}.rs`; `tests/game/guards/pit.json`; `docs/known-issues.md`; `README.md`.
+- **Change:** §2.6; `Fuel`, `Keg`'s and `Bomb`'s fuses and the cascade's `detonation` kind go; `fuse_emitters` goes for the `lit` look at `fuse`; schema 27 and `tests/game/saves.rs:1937`'s interim rewrite, added to Step 4's known-issues row (§2.9); the README's crates and kegs and blast rows.
+- **Done-when:** C1–C7, C4 with `--family props`; `rg -q 'struct Fuel\b|"fuse_emitters"|CascadeKind::Detonation' examples/01_platformer/src; test $? -eq 1` → exit 0; `git diff --quiet HEAD -- examples/01_platformer/tools/locks.json` → exit 0, and `just level-check`'s comparison keeps the props family's PNGs byte-equal; among C3's passed, all twenty of `tests/game/props.rs`, `tests/game/hazards.rs`' `lava_takes_what_falls_in_and_sets_off_a_keg`, `tests/game/enemies.rs`' `a_keg_a_troll_threw_that_blows_credits_it`, `tests/game/saves.rs`' `burning_planks_save_through_json_and_load_back`, and one new `tests/game/props.rs` test: a lit keg shot goes off at once, and a lit keg doused stays whole (round 1's finding 3, round 2's 4); the quick sitting quoted.
+- **Commit:** `refactor(example-01): props, fuses and detonations as chemistry data`
+- **Moves:** the pit guard; the schema 26 → 27; `tests/game/saves.rs:1937` (§2.9); the manifest's props' sprite entries (the `fuse` points).
+
+### Step 6: The lava front and the hazard douse
+
+- **Files:** `src/features/level/{lava.rs,components.rs,systems.rs,mod.rs}`; `src/features/elements/{systems.rs,mod.rs}`; `src/features/toys/systems.rs`; `src/game.rs`; `src/save.rs`; `tools/level.py`; `tools/content/data/{effects,interactions,tags}/` and their copies, the level family's prefabs in `assets/prefabs/`, `assets/manifest.json`, `tools/outputs.json`; `tests/game/{hazards,cascades,enemies,saves,burning}.rs`; `tests/game/guards/pit.json`; `README.md`.
+- **Change:** §2.7; `Lava`'s cold and crust and `Doused` go for statuses, `doused_look`'s glow and emitters with the douse's handlers; the lava-frost children out of `tools/level.py`.
+- **Done-when:** C1–C7, C4 with `--family level`; `rg -q 'lava_frost_' examples/01_platformer/tools/level.py; test $? -eq 1` → exit 0; `rg -q 'lava_frost_[0-9]' examples/01_platformer/assets/manifest.json; test $? -eq 1` → exit 0; `rg -q 'struct Doused\b|fn doused_look' examples/01_platformer/src; test $? -eq 1` → exit 0; among C3's passed, all seventeen of `tests/game/hazards.rs`, `tests/game/cascades.rs`' `cold_douses_a_fire_hazard_for_a_while`, `tests/game/enemies.rs`' `a_frozen_wisp_blows_apart_in_the_lava`.
+- **Commit:** `refactor(example-01): the lava front and the hazard douse as statuses`
+- **Moves:** the pit guard; the level family's prefabs (the three lava-frost children gone).
+
+### Step 7: The looks
+
+- **Files:** `src/features/elements/{draw.rs,systems.rs,mod.rs,components.rs}`; `src/features/props/{draw.rs,systems.rs}`; `src/features/combat/{draw.rs,systems.rs,components.rs,mod.rs}`; `src/features/toys/{systems.rs,wave.rs,draw.rs,components.rs}`; `src/features/level/{lava.rs,systems.rs}`; `src/features/lightning/mod.rs`; `src/features/audio/systems.rs`; `tools/content/data/{effects,cue_rules,world_cues}/` and the prefabs the looks spawn, their copies, `assets/manifest.json`, `tools/outputs.json`; `tests/game/{presentation,burning,ice,props,combat,hazards,brick}.rs`; `tests/game/guards/pit.json`; `README.md`.
+- **Change:** §2.8: S-1, S-7 and S-121; the before-and-after sheet.
+- **Done-when:** C1–C7; `rg -q '"(status_tints|status_particles|ice_pulses)"|fn blast_trauma\b' examples/01_platformer/src; test $? -eq 1` → exit 0; among C3's passed, `tests/game/burning.rs`' `extraction_shows_flames_on_the_surface_embers_beneath_and_charcoal_after_burnout` and all of `tests/game/presentation.rs`; the sheet's PNGs under `perf-runs/<date>-example-01-new-systems/looks/`, its path in the evidence row.
+- **Commit:** `refactor(example-01): status looks on the kit's looks`
+- **Moves:** the pit guard (the kit's look discovery, `World::has_any`-gated, `D-247`).
+
+### Step 8: The ladders, buckets and `ailment_threshold` removed
+
+- **Files:** `crates/tungsten-kit/src/damage/{ailments.rs (deleted),mod.rs,kinds.rs,effects.rs}`, `crates/tungsten-kit/src/chemistry/mod.rs`, `crates/tungsten-kit/src/foundation/{saved.rs,phases.rs,stats.rs}`, `crates/tungsten-kit/src/lib.rs`, `crates/tungsten-kit/src/tests/{ailments.rs (deleted),kinds.rs,chemistry.rs,inspect.rs,describe.rs,saved.rs}`, `crates/tungsten-kit/benches/kit.rs`; `crates/tungsten/src/tests/{kit.rs,saves.rs}`, `crates/tungsten/src/tests/kit_recipes/{determinism.rs,top_down.rs,shooter.rs,coverage.rs}`, `crates/tungsten/tests/fixtures/kit/top_down/{data/damage_types/fantasy.json,data/stats.json,data/effects/,data/interactions/,prefabs/golem.json,prefabs/ghoul.json}`, `crates/tungsten/tests/fixtures/kit/shooter/{data/damage_types/scifi.json,data/stats.json,data/effects/,data/interactions/,prefabs/mainframe.json,prefabs/carrier.json}`; `templates/basic/AGENTS.md`, `templates/basic/tests/game/sample.rs`; `api/tungsten-kit.txt`, `api/tungsten-kit-components.txt`; `DESIGN.md`, `docs/getting-started.md`, `docs/known-issues.md`, `DECISIONS.md`, `docs/DECISION_INDEX.md`; `examples/01_platformer/README.md`; `examples/02_bench/src/tests/guards/spread.json` only if its pin moves (§2.11).
+- **Change:** §2.10 and §2.12's decision.
+- **Done-when:** C1, C2 (`-p tungsten-kit -p tungsten`), C3, C5; `rg -q 'AilmentRung|AilmentThreshold|AilmentBuckets|AILMENT_FEED|AILMENT_TICK|ailment_threshold|"ailments"' crates templates examples api; test $? -eq 1` → exit 0; `cargo test -p tungsten-kit --locked` → exit 0; `cargo test -p tungsten --locked` → exit 0, the kit's pin moved once with its cause; `cargo test -p tungsten-template-basic --locked` → exit 0 and `git diff --stat HEAD -- templates/basic/tests` naming only `sample.rs`; `cargo test -p example-02-bench --locked` → exit 0; `just bench-build` → exit 0; `just api` then `just api-check` → exit 0; `just docs-ratchet` → exit 0; `just ctx` → exit 0; `rg -n '^## D-27[1] — ' DECISIONS.md` → one heading (or the ID the skill took) with its index row.
+- **Commit:** `refactor(kit)!: ailment ladders, buckets and thresholds removed`
+- **Moves:** the kit's pin (once); the census, inspect and coverage counts; the template's two lines; `api/`; 01's pit guard (the feed's and drain's systems leave 01's schedule).
+
+### Step 9: Close
+
+- **Files:** this plan (deleted), `docs/plans/phase-7.md` (§2.2's statuses, the evidence row), `ROADMAP.md` (the item out of Now; phase 7's line naming 7.13b next; Later lines for §Follow-ups' seams), `docs/known-issues.md`.
+- **Change:** the checks and the demo; follow-ups to known issues or Later; the plan deleted with its citations; the venv deleted.
+- **Done-when:** `just check` → exit 0; `just physics-release` → exit 0, the hashes unchanged; `just smoke` → every section passed; `just repo-check`, `just ctx`, `just api-check`, `just docs-ratchet` and `git diff --check` → exit 0; `rg -n '^\| (P7-4|S-7|S-51|S-56|S-121) \| [^|]+ \| 7\.13 \| landed ' docs/plans/phase-7.md` → five rows, and `rg -n '^\| S-1 \| [^|]+ \| (7\.13|Later) \| (landed |Later )' docs/plans/phase-7.md` → one row (`Later` with its balls' rest, Q13); the demo: from `examples/01_platformer`, `tungsten run --script "$SCRATCH/demo.json"` (the CLI's `target/debug/tungsten`; the script starts a run, `fill_pit` 2,000, lands `cast_at`'s fire missile in the pit, an iron block and a lightning strike beside it and a black hole at the fire's edge, reads `pit_fire` and `pit` at frames 300, 600 and 900 and asserts `pit_fire`'s `burnt` above 0) → exit 0, its report's `pit_fire` counts within 5 % of Step 1's base report; the quick sitting quoted.
+- **Ends with:** the commits, the evidence, what the owner should try (a burning pile and a black hole, frozen iron under the fire missile, a keg chain, chain lightning through iron and kegs, the lava under the ice spray, each status's look on a goblin), and the next prompt (7.13b's plan).
+
+## 4. Open questions
+
+| # | Question | Default |
+| --- | --- | --- |
+| Q1 | The prompt named one plan for 7.13 | Seven (phase 7's §2.8, `64a186c6`); this one under the prompt's name with 7.13a's rows |
+| Q2 | Per-target thresholds once `ailment_threshold` goes: a twelfth well-known stat, rules per kind, or a field on `build` | `build`'s `per` naming a game stat: `Stats::WELL_KNOWN` stays 11 (A20), the data names its divisor, and the fixtures port as 01 does |
+| Q3 | The balls' spread and the hole's douse through the queue, or 01's pass | 01's pass applying the statuses: one cap serves cheap spread and costly endings alike, and 48 keeps the endings' cost (§2.4); the seam in §Follow-ups |
+| Q4 | 01's chemistry settings | Cap 48 and bound 16,384, its cascade's (`E/mod.rs:53-54`); depth 255, since its chains had no depth and its rules make no cycle |
+| Q5 | Old saves' buckets and pending cascade entries | Dropped by schemas 25 to 27: a build restarts, a pending reaction is lost; 7.13b saves the queue |
+| Q6 | A band's `enter` runs at chemistry's next run, a step after the rung | Accepted within §2.2's one step, each moved test named |
+| Q7 | The kit's blast for 01's (A28) | Not here: 01's blasts stay handlers until 7.13c moves its hits onto the kit's requests (S-47) and S-4 onto the blast with them |
+| Q8 | A benchmark row for this plan | None: it adds no system; `e01-pit` and `e01-stress` measure it, and 7.14 measures 01 on chemistry |
+| Q9 | The template | Only Step 8's catalogue line and schedule snapshot; its other files byte-equal |
+| Q10 | The lava-frost children are `tools/level.py`'s, edited in a code session | Allowed: level data with no drawing; the level family is not lockable (`tools/generate.py:1004`) |
+| Q11 | The fuse points written by the generator in a code session | Allowed: manifest data; the props family's PNGs are locked and stay byte-equal |
+| Q12 | New statuses', tags' and handlers' names | The run's, in 01's data style, each listed in its step's row |
+| Q13 | The small balls' looks on the kit's looks | No: a look is entities a holder, and the pit burns thousands; they stay 01's extract over the statuses, one Later line (a look drawn by the extract for holders past a count), S-1 `Later` with what landed |
+| Q14 | The ladders' per-part climb under chemistry's merge (round 1's finding 1, round 2's 1 and 2) | A build a rung with the next rung's rule requiring the last's effect (§2.3), which keeps a completed rung through a pause; what a merged queue cannot keep are §2.2's four named Moves; a kit option that climbs a step's parts in turn with their pending grants is a Later line if a test or play shows one matters |
+
+## 5. Invariants
+
+- **May move:** 01's pit guard (Steps 2–8, each move's counters and cause in the evidence log); 01's save schema (25 at Step 2, 26 at Step 4, 27 at Step 5); the kit's pin once (Step 8); the census, inspect and coverage counts (Steps 1, 8); `api/` (Steps 1, 8); the template's two lines (Step 8); 01's test bodies' reads (§2.2); the manifest's props' sprite entries (Step 5) and the level family's prefabs (Step 6).
+- **Must not move:** 01's tests' asserted outcomes beyond §2.2; the physics hashes; 02's row digests and guards but Step 8's named `spread`; the template's other files and tests; `DamageRequest` 152 bytes, `Command` 24, `Payload` 32, `Occurrence` 64; 01's locked art (`tools/locks.json`); the contact record off in 01 (C6).
+
+## 6. Stop conditions
+
+- A done-when check fails: restore the step's files from the last commit, mark the step skipped, and continue with the steps that don't depend on it (Steps 2–7 each stand on the ones before; Step 8 on Step 2's alone, since nothing else leaves the ladders, so it runs if Step 2 landed).
+- A 01 test's outcome moves past §2.2's tolerance or outside its step's Moves.
+- A gap that would need a third kit change: a handler, a stimulus from 01's detection, or the site stays with its row's rest moved; never the change.
+- A file outside the step's list: a pin, name or count the step's own change forces is admitted with its reason (the owner's rule of 2026-11-08); inside `examples/01_platformer/`, a file the step's own removal reaches by a removed name or type joins it, named in its evidence row; reach into engine, kit or template code outside the list stops it.
+- The pit guard's counters rise with no cause named (§2.11).
+- The Pillow venv fails to install: Steps 2–7 stop.
+
+## 7. Critique
+
+Round 1: the `critique` skill with `--repo`, `gpt-6-astra` at xhigh, 2026-11-11, reading the plan at `64a186c6` plus its uncommitted draft. Footer: `384.1 s, tokens in 1613077 (cached 1474688), out 11790 (reasoning 5994), commands 26, output 381.2 KB (largest 45.9 KB), usage 5h 0% → 34%, week 5% → 10%`. Nine findings, all accepted; they changed the endings' mechanism, the row split (S-4 to 7.13c, S-5 to 7.13d) and the step count, so a second round runs.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 1 | [HIGH] Merged stimuli cannot keep the ladder's per-part climb | The feed climbs each part in turn with its run's pending grants (`K/damage/ailments.rs:523-565`); chemistry merges a step's parts (`K/chemistry/queue.rs:419-433`) | accepted | §2.3: one build a ladder and class with cumulative bands, which a merged build crosses as the parts would; the carried fill and a part's excess are named Moves (§2.2, Q14) |
+| 2 | [HIGH] The kit's blast changes damage falloff and who is hit | 01's `blast_hit` lands whole parts, only the push falling off (`E/cascade.rs:605-626`); the kit's scales damage and skips its receiver (`K/chemistry/blast.rs:140-200`) | accepted | §2.1, §2.5: 01's blasts stay handlers; S-4 to 7.13c (Q7, A28) |
+| 3 | [HIGH] Putting out a fuse would set it off | Removal queues `on_end` (`K/damage/effects.rs:2775-2793`); `put_out` leaves the keg whole (`src/features/props/mod.rs:578-600`) | accepted | §2.6: the fuse's `on_expire` applies an instant `detonate`, whose handler shatters a keg frozen meanwhile; removal runs no `on_expire` (A29) |
+| 4 | [HIGH] Steam does not douse its neighbours | 01's steam douses every target and prop in reach before its blast (`E/cascade.rs:783-835`) | accepted | §2.5: the `steam` handler keeps the douse before its blast (A30) |
+| 5 | [HIGH] `conduct` cannot keep the strike's exclusion set | The kit's chain starts with one target (`K/intent/ability.rs:3186`); 01's test needs both struck excluded (`tests/game/lightning.rs:275-300`) | accepted | §2.1: the jumps stay the cascade's until 7.13d; S-5 to 7.13d (A31) |
+| 6 | [HIGH] Migrated damage skips spell power and crits | `Hit::request` scales a spell by `SPELL_POWER` and rolls the kit's crit (`src/features/combat/mod.rs:196-238`); the kit's blast and chain build plain requests | accepted | §2.1: every 01 blast stays a handler through `Hit::request`; the chain stays 01's (A28) |
+| 7 | [HIGH] A 4 px emit cannot keep crate-to-crate spread | `props_heat` grows the crate's box (`src/features/props/systems.rs:178-192`); an emit measures from the centre (`K/chemistry/stimuli.rs:51`, `K/chemistry/grid.rs:45`) | accepted | §2.6: the spread stays `props_heat`'s pass, sending `heat` (A32) |
+| 8 | [MEDIUM] The immune-part bridge leaves out cold | `combat_reactions` steams a burning, cold-immune target (`src/features/combat/systems.rs:138-150`) | accepted | §2.5: immune cold parts sent as `damage.cold` too, periodic parts left out (A10) |
+| 9 | [MEDIUM] A third save test pins a waiting reaction | `a_keg_chain_saved_mid_chain_finishes_the_same_after_a_load` (`tests/game/saves.rs:1937`) | accepted | §2.9: it and `:1887` are named interim Moves with one known-issues row; `:1762` holds, the jumps staying (A33) |
+
+Round 2: the same reviewer at xhigh, 2026-11-11, reading the plan with this section and the log cut and a focus note on round 1's changes. Footer: `369.0 s, tokens in 981867 (cached 911104), out 10962 (reasoning 6494), commands 23, output 329.9 KB (largest 76.1 KB), usage 5h 34% → 56%, week 10% → 13%`. Five findings, all accepted, four of them gaps round 1's fixes opened; no third round, so what stays open is Q14's default.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 2.1 | [HIGH] Cumulative bands forget a completed rung while its effect holds | `chilled` lasts 3 s (`tools/content/data/effects/chilled.json`) while a cumulative build decays a sixth a second; the ladder empties at a rung and freezes on the next 0.5 while chilled (`K/damage/ailments.rs:576-600`) | accepted | §2.3 back to a build a rung, the next rung's rule requiring the last's effect; a new Step 2 test of the paused case |
+| 2.2 | [HIGH] Grants from earlier parts of another type in one resolve are lost | The feed's `has` counts the run's pending grants (`K/damage/ailments.rs:590-597`); chemistry's `winner` reads the tags as they stand (`K/chemistry/mod.rs:558-562`) | accepted | A named Move (§2.2) and Q14's default; no kit change here |
+| 2.3 | [HIGH] A burnt-out ball waits for `spent` on a queue | `on_expire` and `on_end` both queue (`K/damage/effects.rs:2842-2849`) | accepted | §2.4: a lasting `kindled` granting `spent` applied with the burn at ignition |
+| 2.4 | [HIGH] Blocking set-offs on `status.lit` keeps a shot from setting off a lit keg | `set_off` takes a lit keg and every bomb spawns lit (`src/features/props/mod.rs:490-560`) | accepted | §2.6: `heat` lights an unlit keg, `jolt` sets one off lit or not; a new Step 5 test |
+| 2.5 | [MEDIUM] A blast's heat and a crate's heat need different outcomes | The blast sets kegs off and lights crates (`E/cascade.rs:650-664`); a crate's spread only lights (`src/features/props/systems.rs:270-280`) | accepted | §2.5: each blast handler sends today's branch's stimulus a receiver, `jolt` to kegs and bombs; §2.6: `kindle` for the light-only sources (a crate's spread, a burning ball's touch), which leave a frozen prop alone, found checking this finding |
+
+## Evidence log
+
+| Step | Date | Verdict | Key numbers | Paths |
+| --- | --- | --- | --- | --- |
+
+## Follow-ups
+
+- **F1.** One cap a run serves chemistry's cheap reactions (a spread, a douse) and its costly ones (blasts): a burning front past it slows, so 01's balls spread outside the queue (Q3). Later, once a second game meets it: a cap per stimulus, or an emit outside the cap.
+- **F2.** A cone's segments reach no body without a hurtbox, so 01's sprays keep their rays for bodies; 7.13d meets it with S-15.
+- **F3.** A status look is entities a holder, so 01's small balls keep their extract's flames and ice (Q13): a Later line at the close.
+- **F4.** The kit's blast scales its damage by falloff, leaves its receiver out and builds plain requests with no crit or spell power (A28): 01's blasts stay handlers until 7.13c, whose S-4 and S-47 meet it.
+- **F5.** A chain seeded by one target cannot keep an area strike's exclusions (A31): 7.13d meets it with S-5.
+- **F6.** A status's `emit` measures from its holder's centre, so a box-shaped spread stays a game's pass (A32).
+- **F7.** Chemistry decides a step's parts on a receiver as one merged entry against the tags as they stand, so the ladder's per-part climb with its pending grants is §2.2's four Moves (Q14): a Later line if a test or play shows one matters.
