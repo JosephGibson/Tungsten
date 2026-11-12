@@ -2,14 +2,14 @@
 //! `register`, which adds the kit, the shell and the game's features.
 //! `save.rs` holds the rest of it.
 
-use tungsten::kit::{ChemistryPlugin, KitPlugins};
+use tungsten::kit::{ChemistryPlugin, KitPlugins, add_hit_prep};
 use tungsten::{App, GameState, StateId};
 
 use crate::features::audio::AudioPlugin;
 use crate::features::combat::CombatPlugin;
 use crate::features::dummy::DummyPlugin;
 use crate::features::elements::{CASCADE_BOUND, CASCADE_CAP, ElementsPlugin, cascade, systems};
-use crate::features::enemies::{self, EnemiesPlugin};
+use crate::features::enemies::{self, EnemiesPlugin, armour};
 use crate::features::gun::GunPlugin;
 use crate::features::level::{CursorPlugin, LevelPlugin, lava};
 use crate::features::lightning::LightningPlugin;
@@ -80,10 +80,13 @@ pub fn kit_plugins() -> tungsten::core::PluginSet {
     )
 }
 
-/// Registers the game with `app`: the kit's plugins ([`kit_plugins`]), the
-/// shell, then the features, the cursor last.
+/// Registers the game with `app`: the kit's plugins ([`kit_plugins`]) and
+/// 01's `armour` hit preparation, the shell, then the features, the cursor
+/// last.
 pub fn register(app: &mut App, info: GameInfo) {
     app.add_plugins(kit_plugins());
+    // Before the manifest loads, whose blasts and impacts name it.
+    add_hit_prep(app.world_mut(), armour::PREPARE, armour::prepare);
     app.add_plugin(ShellPlugin::new(info));
     app.add_plugin(LevelPlugin);
     app.add_plugin(PlayerPlugin);

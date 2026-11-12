@@ -20,7 +20,8 @@
 //! them, since a full pit's 12,000 as records would pass the save's bound;
 //! 7.14's prefab table takes them over. Schema 29 makes the run's spawns
 //! records, so `migrate_step` refuses every older save, which reads as an
-//! older version's (`D-204`).
+//! older version's (`D-204`); schema 30 moves arcane power's `spell_power`
+//! onto the kit's `damage_dealt`, and migrates a schema-29 save.
 //!
 //! A save names another entity by its save ID, never by its entity.
 //! Presentation is not saved: particles, lights, glows, flames, overlays
@@ -30,7 +31,9 @@
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
-use tungsten::core::save::{RestoreError, WorldSave, capture_world, check_world, restore_world};
+use tungsten::core::save::{
+    RestoreError, Value, WorldSave, capture_world, check_world, restore_world,
+};
 use tungsten::core::{CameraController, DataRef, Entity, Position, SaveData, Velocity, World};
 use tungsten::kit::{ContactDamage, EffectRequest, Health, Stats};
 
@@ -74,10 +77,89 @@ pub struct SaveGame {
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and add its step to
     /// `migrate_step`. Schema 28 moved the run onto the engine's saves and
-    /// 29 its spawns onto the World save's records: the default
-    /// `migrate_step` refuses every older schema, whose slot reads as an
-    /// older version's (`D-204`).
-    const SCHEMA: u32 = 29;
+    /// 29 its spawns onto the World save's records: `migrate_step` refuses
+    /// every older schema, whose slot reads as an older version's
+    /// (`D-204`). Schema 30 moved arcane power's `spell_power` onto a
+    /// `damage_dealt` line ([`to_30`]).
+    const SCHEMA: u32 = 30;
+
+    fn migrate_step(
+        from: u32,
+        mut data: Value,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        match from {
+            29 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 29: the save has no world")?;
+                to_30(world);
+                Ok(data)
+            }
+            _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
+        }
+    }
+}
+
+/// The arcane tome's source on the player's stats, frozen for the
+/// migration.
+const S29_ARCANE: &str = "tome.arcane";
+
+/// Schema 29 to 30 over a save's `world`: every saved `stats`, a record's
+/// or a patch's, loses its `spell_power`, and one whose `spell_power`
+/// carried the arcane tome's modifier takes the `damage_dealt` stat at base
+/// 1 with the tome's line of 2 on the `hit.spell` context, as the tome
+/// gives it now.
+fn to_30(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            if let Some(Value::Object(stats)) = object.get_mut("stats")
+                && let Some(power) = stats.remove("spell_power")
+            {
+                let arcane = power
+                    .get("modifiers")
+                    .and_then(Value::as_array)
+                    .is_some_and(|modifiers| {
+                        modifiers.iter().any(|modifier| {
+                            modifier.get(0).and_then(Value::as_str) == Some(S29_ARCANE)
+                        })
+                    });
+                if arcane {
+                    let line = Value::from(vec![
+                        Value::from(S29_ARCANE),
+                        Value::from_iter([
+                            (
+                                "modifier".to_owned(),
+                                Value::from_iter([("mul".to_owned(), Value::from(2.0))]),
+                            ),
+                            (
+                                "with".to_owned(),
+                                Value::from_iter([(
+                                    "all".to_owned(),
+                                    Value::from(vec![Value::from("hit.spell")]),
+                                )]),
+                            ),
+                        ]),
+                    ]);
+                    let dealt = Value::from_iter([
+                        ("base".to_owned(), Value::from(1.0)),
+                        ("min".to_owned(), Value::from(0.0)),
+                        ("max".to_owned(), Value::Null),
+                        ("lines".to_owned(), Value::from(vec![line])),
+                    ]);
+                    stats.insert("damage_dealt".to_owned(), dealt);
+                }
+            }
+            for inner in object.values_mut() {
+                to_30(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                to_30(item);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// The dummies the map's `dummies` layer places.

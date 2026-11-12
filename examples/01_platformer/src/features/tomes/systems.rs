@@ -5,7 +5,9 @@ use tungsten::SceneEntity;
 use tungsten::core::{
     AnimationState, AssetRegistry, Entity, Sprite, Time, Transform, Visibility, World,
 };
-use tungsten::kit::{Health, Lifetime, Modifier, PlatformerController, Shield, Stats};
+use tungsten::kit::{
+    Health, Lifetime, Line, Modifier, PlatformerController, Shield, Stats, TagFilter,
+};
 
 use super::components::{TomeKind, Tomes};
 use super::{
@@ -15,7 +17,7 @@ use super::{
 };
 use crate::features::audio;
 use crate::features::audio::components::Sound;
-use crate::features::combat::{SPELL_POWER, STATUS_THRESHOLD};
+use crate::features::combat::{SPELL, STATUS_THRESHOLD};
 use crate::features::run::Run;
 use crate::features::spells::SPELL_COST;
 use crate::features::spells::hud;
@@ -73,8 +75,10 @@ pub fn take(world: &mut World, taken: &mut Option<u64>) {
 /// shield of [`PACT_SHIELD`] that recharges [`PACT_RECHARGE`] a second
 /// [`PACT_DELAY`] seconds after a hit. Bounding: an air jump past the
 /// controller's free one costs [`BOUND_COST`] mana, with no cap. Arcane
-/// power: [`SPELL_COST`] and [`SPELL_POWER`] at a base of 1 where the
-/// player lacks them, an older save's, each times [`ARCANE_FACTOR`].
+/// power: [`SPELL_COST`] at a base of 1 where the player lacks it, an older
+/// save's, times [`ARCANE_FACTOR`], and a line on its `damage_dealt`, at a
+/// base of 1 where it lacks the stat, of [`ARCANE_FACTOR`] on the hits in
+/// the [`SPELL`] context.
 fn apply(world: &mut World, player: Entity, kind: TomeKind) {
     match kind {
         TomeKind::Pact => {
@@ -93,12 +97,15 @@ fn apply(world: &mut World, player: Entity, kind: TomeKind) {
         }
         TomeKind::Arcane => {
             if let Some(stats) = world.get_mut::<Stats>(player) {
-                for stat in [SPELL_COST, SPELL_POWER] {
+                for stat in [SPELL_COST, Stats::DAMAGE_DEALT] {
                     if stats.base(stat).is_none() {
                         stats.set_base(stat, 1.0);
                     }
-                    stats.add_modifier(stat, ARCANE_SOURCE, Modifier::Mul(ARCANE_FACTOR));
                 }
+                stats.add_modifier(SPELL_COST, ARCANE_SOURCE, Modifier::Mul(ARCANE_FACTOR));
+                let spells = TagFilter::new().all([SPELL]);
+                let line = Line::new(Modifier::Mul(ARCANE_FACTOR)).with(spells);
+                stats.add_line(Stats::DAMAGE_DEALT, ARCANE_SOURCE, line);
             }
         }
     }

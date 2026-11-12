@@ -90,25 +90,6 @@ fn every_restated_constant_matches_its_data() {
         let hurtbox: Hurtbox = serde_json::from_value(hurtbox).expect("a hurtbox");
         assert_eq!(hurtbox, file.hurtbox, "{prefab}");
     }
-    for kind in EnemyKind::ALL {
-        let info = kind.info();
-        // Its knockback's resist, which the pushes read (the kit's has no
-        // getter): 0 unless the prefab sets one.
-        let prefab = json(&format!("prefabs/{}.json", info.prefab));
-        let resist = prefab
-            .pointer("/components/knockback/resist")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.0) as f32;
-        assert_eq!(resist, info.resist, "{kind:?}");
-    }
-    // The armoured troll's knockback's resist, its kind's table entry.
-    let info = EnemyKind::Troll.info();
-    let prefab = json(&format!("prefabs/{armoured}.json"));
-    let resist = prefab
-        .pointer("/components/knockback/resist")
-        .and_then(Value::as_f64)
-        .unwrap_or(0.0) as f32;
-    assert_eq!(resist, info.resist, "the armoured troll's knockback");
     // The toys' sizes and the iron's and its scraps' masses.
     assert_eq!(body("iron_block").0, IRON_HALF);
     let iron = json("prefabs/iron_block.json");

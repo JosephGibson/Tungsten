@@ -752,9 +752,9 @@ pub fn ring(world: &mut World, at: Vec2, size: f32, kind: Ring) {
 /// measured from each body's centre: each dynamic body over its mass, and
 /// each live enemy through the kit's `knock_back` by its kind's pull, the
 /// hole's own response, so both gravity spells move each kind alike, the
-/// kit taking the knockback's resist. A kind that stands firm (the troll)
-/// takes nothing (`enemies::stands_firm`). The holes' own pull stays its
-/// own (`toys_pull`): a knockback each step would lock a walker's input.
+/// kit taking the knockback's resist, so a kind that resists whole (the
+/// troll) stands firm. The holes' own pull stays its own (`toys_pull`): a
+/// knockback each step would lock a walker's input.
 pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
     let away = |centre: Vec2| -> Option<Vec2> {
         let offset = centre - at;
@@ -777,7 +777,7 @@ pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
     }
     let mut thrown: Vec<(Option<SaveId>, Entity, Vec2)> = world
         .query::<(Entity, &Enemy, &Health)>()
-        .filter(|(entity, _, health)| !health.is_dead() && !enemies::stands_firm(world, *entity))
+        .filter(|(_, _, health)| !health.is_dead())
         .filter_map(|(entity, enemy, _)| {
             let push = away(body_centre(world, entity)?)? * enemy.kind.info().pull;
             Some((crate::shared::save_id(world, entity), entity, push))

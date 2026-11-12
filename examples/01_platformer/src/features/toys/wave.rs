@@ -13,7 +13,7 @@ use tungsten::core::{
     AnimationState, AssetRegistry, BodyKind, Collider, Entity, Position, RigidBody, Shape, Sprite,
     Time, Transform, Velocity, Visibility, World,
 };
-use tungsten::kit::{Health, Lifetime, PlatformerController, knock_back};
+use tungsten::kit::{Health, Knockback, Lifetime, PlatformerController, knock_back};
 use tungsten::physics::{SpatialFilter, cast_ray, wake};
 
 use super::components::Wave;
@@ -143,9 +143,10 @@ fn extent(collider: &Collider) -> f32 {
 /// `toys_waves`, in the move phase: each wave's front moves on by the step,
 /// and what it meets it pushes, once: a dynamic body over its mass, woken;
 /// a live enemy through the kit's `knock_back` by its kind's weight, a
-/// walker's input locked for [`WAVE_LOCK`]; a kind that stands firm (the
-/// troll), which `knock_back` would leave standing, launched on its
-/// controller past its resist. A wave ends at [`WAVE_SECS`] with its look.
+/// walker's input locked for [`WAVE_LOCK`]; one whose knockback resists
+/// whole (the troll's, `Knockback::resist`), which `knock_back` would leave
+/// standing, launched on its controller past its resist. A wave ends at
+/// [`WAVE_SECS`] with its look.
 pub fn waves(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     if dt <= 0.0 {
@@ -199,7 +200,10 @@ pub fn waves(world: &mut World) {
             .collect();
         for (enemy, push) in thrown {
             wave.crossed.push(enemy);
-            if enemies::stands_firm(world, enemy) {
+            let firm = world
+                .get::<Knockback>(enemy)
+                .is_some_and(|knockback| knockback.resist() >= 1.0);
+            if firm {
                 if let Some(controller) = world.get_mut::<PlatformerController>(enemy) {
                     controller.launch(push);
                     controller.lock_input(WAVE_LOCK);

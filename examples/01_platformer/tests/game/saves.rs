@@ -3336,3 +3336,121 @@ fn an_enemy_added_to_the_map_needs_no_schema_bump() {
     differences(&json(&capture(&plain)), &saved, "", &mut differ);
     assert!(differ.is_empty(), "the save, loaded whole: {differ:?}");
 }
+
+/// Each saved `stats` under `value` holding arcane power's `damage_dealt`,
+/// in schema 29's shape: the tome's `spell_power` in its place.
+fn arcane_as_schema_29(value: &mut serde_json::Value) -> usize {
+    let mut rewritten = 0;
+    match value {
+        serde_json::Value::Object(object) => {
+            if let Some(serde_json::Value::Object(stats)) = object.get_mut("stats")
+                && stats.remove("damage_dealt").is_some()
+            {
+                stats.insert(
+                    "spell_power".to_owned(),
+                    serde_json::json!({
+                        "base": 1.0, "min": 0.0, "max": null,
+                        "modifiers": [["tome.arcane", { "mul": 2.0 }]]
+                    }),
+                );
+                rewritten += 1;
+            }
+            for inner in object.values_mut() {
+                rewritten += arcane_as_schema_29(inner);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                rewritten += arcane_as_schema_29(item);
+            }
+        }
+        _ => {}
+    }
+    rewritten
+}
+
+#[test]
+fn a_schema_29_save_keeps_its_arcane_power() {
+    use example_01_platformer::features::tomes::TomeKind;
+    use example_01_platformer::features::{gun, lightning};
+    use tungsten::kit::{Read, TagSet};
+
+    use super::combat::dummy_at;
+    use super::tomes::{first_part, take};
+
+    // What a strike and a shot deal a fresh dummy at x 900, from the
+    // player on the sky's ground at x 300.
+    let strike = |harness: &mut UiHarness, player: Entity| {
+        let dummy = dummy_at(harness, 900.0);
+        harness.step(2);
+        let at = super::body(harness, dummy);
+        first_part(harness, dummy, 120, |harness| {
+            lightning::strike(harness.world_mut(), player, at);
+        })
+    };
+    let shot = |harness: &mut UiHarness, _: Entity| {
+        let dummy = dummy_at(harness, 900.0);
+        harness.step(2);
+        let at = super::body(harness, dummy);
+        first_part(harness, dummy, 120, |harness| {
+            aim_at(harness, at);
+            harness.harness_mut().press_action(gun::SHOOT);
+        })
+    };
+    let plain = |measure: &dyn Fn(&mut UiHarness, Entity) -> f32| {
+        let (mut harness, player) = run();
+        ground(&mut harness, TOP);
+        stand(&mut harness, player, 300.0, TOP);
+        harness.step(2);
+        pin_camera(&mut harness, CORNER);
+        measure(&mut harness, player)
+    };
+    // A run whose player holds the tome, written as schema 29 wrote it and
+    // loaded through its slot, which migrates it.
+    let loaded = |measure: &dyn Fn(&mut UiHarness, Entity) -> f32, tag: &str| {
+        let dir = user_folder(tag);
+        let mut harness = harness_with(UserFolder::At(dir.clone()));
+        start(&mut harness);
+        let player = player_entity(&harness);
+        ground(&mut harness, TOP);
+        stand(&mut harness, player, 300.0, TOP);
+        harness.step(2);
+        take(&mut harness, player, TomeKind::Arcane);
+        let mut older = json(&capture(&harness));
+        assert_eq!(arcane_as_schema_29(&mut older), 1, "the player's stats");
+        let stamp = tungsten::core::SaveStamp::new(29, "0.117.0", 1_760_400_000_000);
+        let slots = harness_slots(&harness);
+        slots
+            .save_stamped("slot_1", &older, &stamp)
+            .expect("a schema 29 save is written");
+        let save = slots
+            .load::<SaveGame>("slot_1")
+            .expect("a schema 29 save migrates");
+        load(&mut harness, save);
+        harness.world_mut().resource_mut::<Time>().resume();
+        let player = player_entity(&harness);
+        let stats = harness.world().get::<Stats>(player).unwrap();
+        assert_eq!(stats.base("spell_power"), None, "spell_power gone");
+        let spell = [TagSet::Name("hit.spell")];
+        let read = |sets| stats.read(Stats::DAMAGE_DEALT, &Read::new(sets));
+        assert_eq!((read(&spell), read(&[])), (Some(2.0), Some(1.0)));
+        ground(&mut harness, TOP);
+        stand(&mut harness, player, 300.0, TOP);
+        harness.step(2);
+        pin_camera(&mut harness, CORNER);
+        let dealt = measure(&mut harness, player);
+        let _ = std::fs::remove_dir_all(dir);
+        dealt
+    };
+    let (strike_plain, strike_loaded) = (plain(&strike), loaded(&strike, "arcane-29-strike"));
+    let (shot_plain, shot_loaded) = (plain(&shot), loaded(&shot, "arcane-29-shot"));
+    assert!(strike_plain > 0.0 && shot_plain > 0.0);
+    assert!(
+        (strike_loaded - 2.0 * strike_plain).abs() < 1e-3,
+        "the strike doubled: {strike_loaded} for {strike_plain}"
+    );
+    assert!(
+        (shot_loaded / shot_plain - 1.0).abs() < 0.01,
+        "the shot as it was: {shot_loaded} for {shot_plain}"
+    );
+}

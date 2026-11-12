@@ -8,9 +8,6 @@
   "spell_cost": {
     "min": 0
   },
-  "spell_power": {
-    "min": 0
-  },
   "status_threshold": {
     "min": 0
   },

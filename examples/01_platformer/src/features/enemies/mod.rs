@@ -134,9 +134,8 @@ pub fn walk_on_rock(world: &mut World, enemy: Entity) {
 /// mirrored as it faces; Q49), its mass for impacts and the walkers'
 /// shove, its sight's reach, its alert's seconds, the black hole's hold on
 /// it, which a blast's push takes too, the force push's wave's weight on
-/// it (`toys::wave`), its knockback's resist as its prefab sets it (the
-/// kit's `Knockback` has no getter), its art, and its recovery's seconds
-/// after an attack.
+/// it (`toys::wave`), its art, and its recovery's seconds after an attack;
+/// its knockback's resist is its prefab's alone (`Knockback::resist`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KindInfo {
     pub prefab: &'static str,
@@ -146,7 +145,6 @@ pub struct KindInfo {
     pub alert: f32,
     pub pull: f32,
     pub wave: f32,
-    pub resist: f32,
     pub icon: &'static str,
     pub ice: &'static str,
     pub flyer: bool,
@@ -166,7 +164,6 @@ impl EnemyKind {
                 alert: 0.5,
                 pull: 0.6,
                 wave: 3.5,
-                resist: 0.0,
                 icon: "ex10_icon_wisp",
                 ice: "ex10_status_ice_wisp",
                 recover: RECOVER_SECS,
@@ -180,7 +177,6 @@ impl EnemyKind {
                 alert: 0.4,
                 pull: 0.15,
                 wave: 1.0,
-                resist: 0.0,
                 icon: "ex10_icon_crawler",
                 ice: "ex10_status_ice_crawler",
                 recover: RECOVER_SECS,
@@ -194,7 +190,6 @@ impl EnemyKind {
                 alert: 0.5,
                 pull: 0.05,
                 wave: 0.53,
-                resist: 0.5,
                 icon: "ex10_icon_beetle",
                 ice: "ex10_status_ice_beetle",
                 recover: RECOVER_SECS,
@@ -208,7 +203,6 @@ impl EnemyKind {
                 alert: 0.4,
                 pull: 0.7,
                 wave: 4.0,
-                resist: 0.0,
                 icon: "ex10_icon_bat",
                 ice: "ex10_status_ice_bat",
                 recover: RECOVER_SECS,
@@ -222,7 +216,6 @@ impl EnemyKind {
                 alert: 0.8,
                 pull: 0.01,
                 wave: 0.14,
-                resist: 1.0,
                 icon: "ex10_icon_troll",
                 ice: "ex10_status_ice_troll",
                 recover: troll::RECOVER,
@@ -236,7 +229,6 @@ impl EnemyKind {
                 alert: 0.4,
                 pull: 0.12,
                 wave: 0.86,
-                resist: 0.0,
                 icon: "ex10_icon_goblin",
                 ice: "ex10_status_ice_goblin",
                 recover: goblin::RECOVER,
@@ -618,16 +610,6 @@ pub fn gone(world: &World) -> Vec<u64> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-/// Whether `entity` is an enemy whose kind resists knockback whole (the
-/// troll): 01 gives it no push, since the kit's `knock_back` would launch
-/// its controller at zero and lock its input.
-#[must_use]
-pub fn stands_firm(world: &World, entity: Entity) -> bool {
-    world
-        .get::<Enemy>(entity)
-        .is_some_and(|enemy| enemy.kind.info().resist >= 1.0)
 }
 
 /// An enemy's body centre.

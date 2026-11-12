@@ -14,9 +14,9 @@
 //! Combat also floats the damage numbers ([`numbers`]).
 //!
 //! The frame rule: every request is built and queued in the intent, move or
-//! overlap phase, so the step's resolve takes it. The kit's queues are not
-//! saved, so a request queued after the resolve would not survive a save
-//! between two frames.
+//! overlap phase, so the step's resolve takes it. The kit saves its queued
+//! requests (`damage_requests`) with the World, so one queued after the
+//! resolve waits for the next step's, a save between two frames included.
 
 pub mod components;
 pub mod draw;
@@ -26,12 +26,12 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
-    DAMAGE_RESOLVE, DamagePart, DamageRequest, Penetration, Phase, Stats, Tags, ensure_phases,
+    DAMAGE_RESOLVE, DamagePart, DamageRequest, Penetration, Phase, Tags, ensure_phases,
 };
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
-use crate::features::enemies::{self, armour};
+use crate::features::enemies::armour;
 
 /// The share of the player's hits that crit, and a crit's factor on every
 /// part (Q8): the player's `crit_chance` and `crit_multiplier` in
@@ -44,6 +44,9 @@ pub const PLAYER_BLAST_SHARE: f32 = 0.5;
 /// The context a blast's or a steam burst's hit carries, which the player's
 /// `damage_taken` halves.
 pub const BLAST: &str = "hit.blast";
+/// The context a spell's own hit carries, which the caster's
+/// `damage_dealt` reads: arcane power doubles it (`tomes`).
+pub const SPELL: &str = "hit.spell";
 /// What the sprays deal a second to a target in their cone, in pulses this
 /// far apart: the frost half the flame's, its builds' decay half the
 /// others' (`data/effects/chill_build.json`, `freeze_build.json`), so it
@@ -118,12 +121,14 @@ impl Kind {
 /// stats, so a hit from the player crits on one draw under [`CRIT_CHANCE`],
 /// doubling every part ([`CRIT_FACTOR`]); a blast's or a steam burst's
 /// carries [`BLAST`] in its context, which the player's `damage_taken`
-/// takes [`PLAYER_BLAST_SHARE`] of; one landing
-/// on an armoured creature's rear half, or one made whole, takes physical
-/// penetration 1, so its armour's physical resistance takes nothing; and one on a kind
-/// that resists knockback whole carries no push (`enemies::stands_firm`).
-/// A spell's own hit ([`Hit::spell`]) takes its source's [`SPELL_POWER`]
-/// too, which arcane power doubles; the build-up follows the damage.
+/// takes [`PLAYER_BLAST_SHARE`] of; a spell's own ([`Hit::spell`]) carries
+/// [`SPELL`], which its source's `damage_dealt` reads at the resolve, so
+/// arcane power doubles it and the build-up follows the damage; one made
+/// whole takes physical penetration 1, and one landing on an armoured
+/// creature's rear half takes it from the `armour` hit preparation
+/// ([`armour::prepare`]), the rule the kit's blasts and impacts name, so
+/// its armour's physical resistance takes nothing; its push goes to the
+/// kit's `knock_back`, which a whole resist stands firm against.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hit {
     target: Entity,
@@ -135,10 +140,6 @@ pub struct Hit {
     whole: bool,
     spell: bool,
 }
-
-/// The stat a spell's own hit is multiplied by, its source's: 1 without
-/// it, 2 under the tome of arcane power.
-pub const SPELL_POWER: &str = "spell_power";
 
 impl Hit {
     /// A hit on `target` of `parts`, from nobody.
@@ -194,54 +195,46 @@ impl Hit {
     }
 
     /// The hit, a spell's own: the missile's blast, a spray's pulse, the
-    /// strike or a jump of its chain, which its source's [`SPELL_POWER`]
-    /// multiplies.
+    /// strike or a jump of its chain, in the [`SPELL`] context, which its
+    /// source's `damage_dealt` reads.
     #[must_use]
     pub fn spell(mut self) -> Self {
         self.spell = true;
         self
     }
 
-    /// The kit's request: the base amounts, a spell's times its source's
-    /// [`SPELL_POWER`], its crit rolled by the kit from its source's stats
-    /// (one draw, for the player's), a blast's in the [`BLAST`] context,
-    /// with physical penetration 1 when whole or on armour's rear half, and
-    /// its push unless the target stands firm.
+    /// The kit's request: the base amounts, its crit rolled by the kit from
+    /// its source's stats (one draw, for the player's), a blast's in the
+    /// [`BLAST`] context and a spell's in the [`SPELL`] one, its point and
+    /// its push, with physical penetration 1 when whole, else the `armour`
+    /// preparation's on armour's rear half.
     pub fn request(&self, world: &mut World) -> DamageRequest {
-        let mut factor = 1.0;
-        if self.spell
-            && let Some(power) = self
-                .source
-                .and_then(|source| world.get::<Stats>(source))
-                .and_then(|stats| stats.get(SPELL_POWER))
-        {
-            factor *= power.max(0.0);
-        }
         let parts = self.parts.iter().map(|&(kind, amount)| {
-            DamagePart::new((amount * factor).max(0.0)).with_tags(Tags::new([kind.tag()]))
+            DamagePart::new(amount.max(0.0)).with_tags(Tags::new([kind.tag()]))
         });
         let mut request = DamageRequest::from_parts(self.target, parts);
         if let Some(source) = self.source {
             request = request.with_source(source);
         }
         request = request.roll_crit(world);
-        if self.blast {
-            request = request.with_context(Tags::new([BLAST]));
+        let context: Vec<&str> = [(self.blast, BLAST), (self.spell, SPELL)]
+            .into_iter()
+            .filter_map(|(on, tag)| on.then_some(tag))
+            .collect();
+        if !context.is_empty() {
+            request = request.with_context(Tags::new(context));
         }
         if let Some(at) = self.at {
             request = request.with_position(at);
         }
-        if let Some(push) = self.push
-            && !enemies::stands_firm(world, self.target)
-        {
+        if let Some(push) = self.push {
             request = request.with_knockback(push);
         }
-        let rear = self
-            .at
-            .is_some_and(|at| armour::rear(world, self.target, at));
-        if self.whole || rear {
+        if self.whole {
             let pen = Penetration::new().with_points(Kind::Physical.tag(), 1.0);
             request = request.with_penetration(pen);
+        } else {
+            armour::prepare(world, &mut request);
         }
         request
     }

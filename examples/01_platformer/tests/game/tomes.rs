@@ -379,7 +379,7 @@ fn a_bound_sounds_bounded_and_bursts_its_sparks_never_the_air_jump() {
 }
 
 /// The player in `harness` takes `kind` from beside it.
-fn take(harness: &mut UiHarness, player: Entity, kind: TomeKind) {
+pub(super) fn take(harness: &mut UiHarness, player: Entity, kind: TomeKind) {
     let eye = centre(harness, player);
     book(harness, kind, eye + Vec2::new(30.0, 0.0));
     harness.step(1);
@@ -428,7 +428,7 @@ fn arcane_power_doubles_the_ten_slots_costs_and_the_huds_payable_follows() {
 
 /// The first part `dummy` takes after `act`, within `frames` frames: its
 /// amount with a crit's ×2 taken out, none of a tick's.
-fn first_part(
+pub(super) fn first_part(
     harness: &mut UiHarness,
     dummy: Entity,
     frames: u32,

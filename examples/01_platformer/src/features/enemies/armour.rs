@@ -1,16 +1,22 @@
 //! Armour (e01flask, Q3, Q6): an `armoured` creature's front, the half its
 //! heading faces, turns bullets as iron does while it lives, unfrozen and
-//! uncorroded (`gun::systems`); its rear half takes every hit 01 builds
-//! whole (`combat::Hit`). The beetle and the armoured troll wear it, each
-//! with its own resistances; Corrosive takes them for good
-//! (`combat::systems::corrode`).
+//! uncorroded (`gun::systems`); its rear half takes a hit whole: every hit
+//! 01 builds (`combat::Hit`) and every kit blast and impact naming the
+//! `armour` hit preparation ([`prepare`]). The beetle and the armoured
+//! troll wear it, each with its own resistances; Corrosive takes them for
+//! good (`combat::systems::corrode`).
 
 use glam::Vec2;
 use tungsten::core::{Entity, World};
+use tungsten::kit::{DamageRequest, Penetration};
 
 use super::centre;
 use super::components::Enemy;
-use crate::features::combat::{ARMOURED, has_status};
+use crate::features::combat::{ARMOURED, Kind, has_status};
+
+/// The hit preparation [`prepare`] is registered as (`game::register`),
+/// which the kit's blasts and impacts name in their `prepare`.
+pub const PREPARE: &str = "armour";
 
 /// Whether `entity` wears armour.
 #[must_use]
@@ -33,4 +39,19 @@ pub fn front(world: &World, target: Entity, point: Vec2) -> bool {
 #[must_use]
 pub fn rear(world: &World, target: Entity, point: Vec2) -> bool {
     armoured(world, target) && !front(world, target, point)
+}
+
+/// The `armour` hit preparation (`tungsten::kit::add_hit_prep`): a hit whose
+/// point lies on an armoured target's rear half takes physical penetration
+/// 1, so the armour's physical resistance takes nothing; a hit without a
+/// point, or on its front, as it is.
+pub fn prepare(world: &World, hit: &mut DamageRequest) {
+    let rear = hit
+        .position()
+        .is_some_and(|at| rear(world, hit.target(), at));
+    if rear {
+        let pen = Penetration::new().with_points(Kind::Physical.tag(), 1.0);
+        let taken = std::mem::replace(hit, DamageRequest::new(hit.target(), 0.0));
+        *hit = taken.with_penetration(pen);
+    }
 }
