@@ -273,6 +273,8 @@ component pickup: Collected once by the first entity whose hurtbox it meets and 
   field offset: [x, y] = [0.0, 0.0] — from the entity's point, each axis within ±16384
   field filter: tag filter = {} — what collects it, by the collector's tags; the load checks its tags
   field magnet: f32 (>= 0) = 0.0 — world pixels per second toward the nearest collector whose `pickup_radius` stat reaches it; 0 none
+  field fall: f32 (>= 0) = 0.0 — world pixels per second a bodiless pickup falls at, while no magnet pulls it, onto the first tile or static body under it; 0 none
+  field fall_layers: list of a physics layer: its number, 0 to 31, or its physics_layers name = null — the physics layers whose tiles and static bodies it lands on; every layer when left out
   events: PickedUp
   genres: platformer, top_down, rpg
   sample: { "shape": { "circle": 6 } }

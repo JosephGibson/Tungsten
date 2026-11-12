@@ -182,8 +182,9 @@ pub fn centre_of(world: &World, entity: Entity) -> Option<Vec2> {
 }
 
 /// Where prefab `id`'s centre sits from its point: its `rigid_body`'s
-/// `offset`, else its sprite's drawn centre at scale 1 with no turn or
-/// flip, as a spawn places it, else none; read from its registry entry.
+/// `offset`, else its sprite's drawn centre at the prefab's `scale` with no
+/// turn or flip, as a spawn places it, else none; read from its registry
+/// entry.
 pub(crate) fn prefab_centre(world: &World, id: &str) -> Vec2 {
     let Some(data) = world
         .get_resource::<PrefabRegistry>()
@@ -204,7 +205,12 @@ pub(crate) fn prefab_centre(world: &World, id: &str) -> Vec2 {
             assets.sprite(assets.sprite_id(&sprite.asset_id)?)
         })
         .map_or(Vec2::ZERO, |asset| {
-            sprite_centre(asset, &Transform::default(), false)
+            // At the prefab's own scale, as its spawn draws it.
+            let scaled = Transform {
+                scale: Vec2::from(data.scale),
+                ..Transform::default()
+            };
+            sprite_centre(asset, &scaled, false)
         })
 }
 

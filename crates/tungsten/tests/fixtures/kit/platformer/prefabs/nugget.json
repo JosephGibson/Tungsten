@@ -1,0 +1,27 @@
+{
+  "tag": "nugget",
+  "components": {
+    "pickup": {
+      "shape": {
+        "circle": 4
+      },
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      },
+      "fall": 120
+    },
+    "cues": {
+      "picked_up": [
+        {
+          "counter": {
+            "name": "coins",
+            "add": 1,
+            "target": "other"
+          }
+        }
+      ]
+    }
+  }
+}

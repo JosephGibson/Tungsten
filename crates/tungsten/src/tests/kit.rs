@@ -4031,7 +4031,7 @@ fn a_magnet_pulls_a_pickup_to_the_nearest_collector_within_its_pickup_radius() {
 }
 
 #[test]
-fn a_magnet_leaves_a_body_or_a_child_with_one_warning() {
+fn a_magnet_draws_a_body_and_warns_once_for_a_child() {
     let mut harness = Harness::new(kit_app());
     collector(&mut harness, Vec2::ZERO, Some(500.0));
     let pickup = Pickup::new(HitShape::circle(6.0))
@@ -4046,12 +4046,26 @@ fn a_magnet_leaves_a_body_or_a_child_with_one_warning() {
     );
     let parent = spawn_at(&mut harness, 0.0, 100.0, (Visibility::default(),));
     let child = spawn_child(harness.world_mut(), parent, Vec2::ZERO, (pickup,));
-    harness.step(30);
-    assert_eq!(
-        body_at(&harness, body),
-        Vec2::new(100.0, 0.0),
-        "the body holds"
-    );
+    // The body drawn in at 120 px/s, never past the collector, until it
+    // takes it; the child holds, warned of once.
+    let mut last = 100.0_f32;
+    let mut collected = false;
+    for _ in 0..120 {
+        harness.step(1);
+        if !harness.world().is_alive(body)
+            || harness
+                .world()
+                .get::<Pickup>(body)
+                .is_none_or(Pickup::is_collected)
+        {
+            collected = true;
+            break;
+        }
+        let x = body_at(&harness, body).x;
+        assert!(x <= last && x >= -1e-3, "drawn in, never past: {x}");
+        last = x;
+    }
+    assert!(collected, "the collector takes it, at {last}");
     assert_eq!(
         position(&harness, child),
         Vec2::new(0.0, 100.0),

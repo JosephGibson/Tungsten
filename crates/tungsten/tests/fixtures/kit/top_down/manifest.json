@@ -144,6 +144,9 @@
     "wisp": {
       "path": "prefabs/wisp.json"
     },
+    "crystal": {
+      "path": "prefabs/crystal.json"
+    },
     "trooper": {
       "path": "prefabs/trooper.json"
     },

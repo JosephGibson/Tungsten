@@ -28,7 +28,7 @@
 //! carrying crates over their heads, which drop them at rest when killed
 //! or frozen; and a brute with a health bar, and a mark while alerted, as
 //! 01's troll; 7.13c's boulder rolled into a goblin, credited to its
-//! roller.
+//! roller, and a nugget that falls to the ground for the climber.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2640,5 +2640,34 @@ fn a_rolled_boulder_hurts_a_goblin_credited_to_its_roller() {
                 None => assert!(hits.is_empty(), "dt {dt}: too slow: {hits:?}"),
             }
         }
+    }
+}
+
+#[test]
+fn a_nugget_dropped_in_the_air_falls_to_the_ground_and_a_climber_takes_it() {
+    for dt in DTS {
+        // Dropped 136 px over the ground, whose top is at y 290, at 120 px/s
+        // it rests the skin above it.
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let nugget = spawn(&mut harness, "nugget", [100.0, 150.0]);
+        harness.step(frames_for(2.0, dt));
+        let y = body_at(&harness, nugget).y;
+        assert!(
+            (y - (290.0 - 4.0 - 0.01)).abs() < 1e-3,
+            "dt {dt}: on the ground at {y}"
+        );
+        let climber = spawn(&mut harness, "climber", [100.0, 270.0]);
+        harness.step(frames_for(0.25, dt));
+        assert!(!harness.world().is_alive(nugget), "dt {dt}: taken");
+        assert_eq!(
+            harness
+                .world()
+                .get::<Counters>(climber)
+                .unwrap()
+                .get("coins"),
+            1,
+            "dt {dt}"
+        );
     }
 }

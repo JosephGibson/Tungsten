@@ -117,6 +117,9 @@
     "wisp": {
       "path": "prefabs/wisp.json"
     },
+    "nugget": {
+      "path": "prefabs/nugget.json"
+    },
     "lamp": {
       "path": "prefabs/lamp.json"
     },

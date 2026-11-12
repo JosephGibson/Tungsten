@@ -31,7 +31,8 @@
 //! keeps one slime, across a save and a load, and a brazier whose phases a
 //! timed state machine cycles; 7.13c's barrel bomb, whose blast hurts it
 //! too, at its centre and as it goes off, a crate knocked into a ranger,
-//! credited to its brawler, and a stone bolt ending at a rolling ball.
+//! credited to its brawler, a stone bolt ending at a rolling ball, and a
+//! crystal on a dynamic body drawn in by the ranger's magnet.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3538,6 +3539,25 @@ fn a_stone_bolt_ends_at_a_rolling_ball() {
             ended.wall.and_then(|wall| wall.entity),
             Some(ball),
             "dt {dt}: at the rolling ball, past the other"
+        );
+    }
+}
+
+#[test]
+fn a_crystal_on_a_dynamic_body_is_drawn_to_the_ranger() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let ranger = spawn(&mut harness, "ranger", [0.0, 0.0]);
+        let crystal = spawn(&mut harness, "crystal", [80.0, 0.0]);
+        harness.step(2);
+        let x = body_at(&harness, crystal).x;
+        assert!(x < 80.0 && x > 0.0, "dt {dt}: drawn in: {x}");
+        harness.step(frames_for(0.5, dt));
+        assert!(!harness.world().is_alive(crystal), "dt {dt}: collected");
+        assert_eq!(
+            harness.world().get::<Counters>(ranger).unwrap().get("xp"),
+            1,
+            "dt {dt}"
         );
     }
 }

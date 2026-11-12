@@ -3010,12 +3010,16 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PickedUp
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PickedUp
 pub struct tungsten_kit::prelude::Pickup
 impl tungsten_kit::Pickup
+pub fn tungsten_kit::Pickup::fall(&self) -> f32
+pub fn tungsten_kit::Pickup::fall_layers(&self) -> u32
 pub fn tungsten_kit::Pickup::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::Pickup::is_collected(&self) -> bool
 pub fn tungsten_kit::Pickup::magnet(&self) -> f32
 pub fn tungsten_kit::Pickup::new(tungsten_kit::HitShape) -> Self
 pub fn tungsten_kit::Pickup::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Pickup::shape(&self) -> tungsten_kit::HitShape
+pub fn tungsten_kit::Pickup::with_fall(self, f32) -> Self
+pub fn tungsten_kit::Pickup::with_fall_layers(self, u32) -> Self
 pub fn tungsten_kit::Pickup::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::Pickup::with_magnet(self, f32) -> Self
 pub fn tungsten_kit::Pickup::with_offset(self, glam::f32::vec2::Vec2) -> Self
@@ -7969,12 +7973,16 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PickedUp
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PickedUp
 pub struct tungsten_kit::Pickup
 impl tungsten_kit::Pickup
+pub fn tungsten_kit::Pickup::fall(&self) -> f32
+pub fn tungsten_kit::Pickup::fall_layers(&self) -> u32
 pub fn tungsten_kit::Pickup::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::Pickup::is_collected(&self) -> bool
 pub fn tungsten_kit::Pickup::magnet(&self) -> f32
 pub fn tungsten_kit::Pickup::new(tungsten_kit::HitShape) -> Self
 pub fn tungsten_kit::Pickup::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Pickup::shape(&self) -> tungsten_kit::HitShape
+pub fn tungsten_kit::Pickup::with_fall(self, f32) -> Self
+pub fn tungsten_kit::Pickup::with_fall_layers(self, u32) -> Self
 pub fn tungsten_kit::Pickup::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::Pickup::with_magnet(self, f32) -> Self
 pub fn tungsten_kit::Pickup::with_offset(self, glam::f32::vec2::Vec2) -> Self

@@ -2685,3 +2685,42 @@ fn an_id_backed_look_reads_before_a_tick_and_after_a_reload() {
 fn the_payload_keeps_its_size() {
     assert_eq!(std::mem::size_of::<Payload>(), 32);
 }
+
+// 7.13c: a scaled prefab's centred spawn, by its drawn centre.
+
+#[test]
+fn a_scaled_prefab_spawns_by_its_scaled_centre() {
+    let (mut world, mut schedule) = rig();
+    sprite(&mut world, "missile", [64, 64], None);
+    prefab(
+        &mut world,
+        "missile",
+        json!({ "tag": "missile", "sprite": { "asset_id": "missile" }, "scale": [0.625, 0.625] }),
+    );
+    assert_eq!(
+        crate::motion::drive::prefab_centre(&world, "missile"),
+        Vec2::new(20.0, 20.0),
+        "its 64 px sprite at 0.625"
+    );
+    let cast = insert(
+        &mut world,
+        "cast",
+        Ability::new().with_payload(spawn_of("missile", true, 0.0)),
+    );
+    let caster = world.spawn_with((
+        Position(Vec2::new(100.0, 100.0)),
+        Abilities::new().with(cast),
+        Intent::default(),
+    ));
+    assert_eq!(use_ability(&mut world, caster, "cast"), Used::Used);
+    steps(&mut world, &mut schedule, 1);
+    let missile = tagged(&world, "missile")[0];
+    assert_eq!(
+        (
+            world.get::<Transform>(missile).unwrap().position,
+            centre_of(&world, missile).unwrap()
+        ),
+        (Vec2::new(80.0, 80.0), Vec2::new(100.0, 100.0)),
+        "its drawn centre on the caster's"
+    );
+}
