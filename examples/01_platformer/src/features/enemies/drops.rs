@@ -7,25 +7,26 @@
 //! kill, and moved clear of the rock there, and
 //! [`collect`] queues its effect on the player in the overlap phase, so the
 //! step's own resolve takes it. A dropped orb out of the magnet's reach
-//! falls at [`ORB_FALL`] onto the tiles, walls or lava under it ([`fall`]).
-//! The map's `pickups` layer places health orbs that never fade or fall
+//! falls by its pickup's `fall` onto the tiles, walls, lava or crust under
+//! it, and blinks over its last seconds by its lifetime's `blink`, both its
+//! prefab's; an older save's orb takes its fall back ([`restored`]). The
+//! map's `pickups` layer places health orbs that never fade or fall
 //! ([`start`]); one taken stays gone through a save.
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
+use tungsten::core::save::Value;
 use tungsten::core::{
-    DataRef, Entity, EventCursor, EventQueue, Position, Shape, Time, Visibility, With, Without,
-    World,
+    DataRef, Entity, EventCursor, EventQueue, PhysicsLayers, Position, PrefabRegistry, Shape, With,
+    Without, World,
 };
-use tungsten::kit::{Damaged, EffectRequest, Lifetime, PickedUp, Pickup, Source, Stats};
-use tungsten::physics::{SpatialFilter, cast_shape, overlap};
+use tungsten::kit::{Damaged, EffectRequest, Lifetime, PickedUp, Pickup, Source};
+use tungsten::physics::{SpatialFilter, overlap};
 
 use super::WALL_LAYERS;
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::{LAVA_LAYER, TILE};
-use crate::features::player;
-use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 use crate::shared::{Joined, Saved, spawn_burst};
 
@@ -40,17 +41,12 @@ pub struct PlacedOrbs(pub Vec<u64>);
 #[derive(Debug, Clone, Default)]
 pub struct Fallen(pub Vec<(Entity, Vec2)>);
 
-/// An orb's seconds before it fades, and the last of them it blinks over,
-/// this many times a second.
+/// An orb's seconds before it fades: its prefab's lifetime.
 pub const ORB_SECS: f32 = 20.0;
-pub const BLINK_SECS: f32 = 3.0;
-pub const BLINK_HZ: f32 = 5.0;
 /// An orb's centre from its point, its sprite's top-left: the 24 px orb's
 /// middle, and its box's half size.
 pub const ORB_CENTRE: Vec2 = Vec2::new(12.0, 12.0);
 pub const ORB_HALF: Vec2 = Vec2::new(12.0, 12.0);
-/// How fast a dropped orb out of the magnet's reach falls, px/s.
-pub const ORB_FALL: f32 = 120.0;
 /// A dropped orb's way out of the rock it landed in: so far at a time, up
 /// to a tile up, then down.
 const CLEAR_STEP: f32 = 4.0;
@@ -101,7 +97,8 @@ pub struct Orb {
 }
 
 /// At a run's start, after the map spawned: the orbs it placed, which never
-/// fade, recorded by save ID.
+/// fade or fall, their lifetime gone and their pickup's fall 0, recorded by
+/// save ID.
 pub fn start(world: &mut World) {
     let mut placed: Vec<(u64, Entity)> = world
         .query_filtered::<(Entity, &Saved), With<Orb>>()
@@ -110,6 +107,9 @@ pub fn start(world: &mut World) {
     placed.sort_unstable_by_key(|(id, _)| *id);
     for &(_, orb) in &placed {
         world.remove_component::<Lifetime>(orb);
+        if let Some(pickup) = world.get_mut::<Pickup>(orb) {
+            *pickup = pickup.clone().with_fall(0.0);
+        }
         world.insert(orb, Joined);
     }
     world.insert_resource(PlacedOrbs(placed.into_iter().map(|(id, _)| id).collect()));
@@ -233,59 +233,6 @@ pub fn adopt(world: &mut World) {
     }
 }
 
-/// `orb_fall`, in the move phase after the kit's magnet: each dropped orb
-/// no magnet reaches, the player's body centre farther than its
-/// `pickup_radius` from the orb's, falls at [`ORB_FALL`], at most onto the
-/// first tile, wall or lava surface under its box; nothing else holds it
-/// up, so it passes enemies, the player and loose bodies. Nothing new is
-/// saved: a loaded orb falls from where it was.
-pub fn fall(world: &mut World) {
-    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
-    if dt <= 0.0 {
-        return;
-    }
-    let placed = world
-        .get_resource::<PlacedOrbs>()
-        .map(|placed| placed.0.clone())
-        .unwrap_or_default();
-    let pull = world.get_resource::<Run>().and_then(|run| {
-        let radius = world.get::<Stats>(run.player)?.get(Stats::PICKUP_RADIUS)?;
-        Some((player::centre(world, run.player)?, radius))
-    });
-    let falling: Vec<(Entity, Vec2)> = world
-        .query::<(Entity, &Orb, &Pickup, &Position, Option<&Saved>)>()
-        .filter(|(_, _, pickup, _, id)| {
-            !pickup.is_collected() && !id.is_some_and(|id| placed.contains(&id.id().0))
-        })
-        .map(|(entity, _, _, at, _)| (entity, at.0 + ORB_CENTRE))
-        .filter(|&(_, centre)| !pull.is_some_and(|(at, radius)| centre.distance(at) <= radius))
-        .collect();
-    let shape = Shape::Aabb {
-        half_extents: ORB_HALF,
-    };
-    let most = ORB_FALL * dt;
-    let filters = rock();
-    for (orb, centre) in falling {
-        let drop = filters
-            .iter()
-            .filter_map(|filter| cast_shape(world, shape, centre, Vec2::Y, most, filter))
-            .map(|hit| hit.distance)
-            .fold(most, f32::min);
-        if let (true, Some(position)) = (drop > 0.0, world.get_mut::<Position>(orb)) {
-            position.0.y += drop;
-        }
-    }
-}
-
-/// `orb_blink`, in the present phase: a dropped orb blinks over its last
-/// [`BLINK_SECS`], faster as it runs out; a placed one never fades.
-pub fn blink(world: &mut World) {
-    for (_, lifetime, visibility) in world.query_mut::<(&Orb, &Lifetime, &mut Visibility)>() {
-        let left = lifetime.timer().remaining();
-        visibility.visible = left > BLINK_SECS || (left * BLINK_HZ).fract() < 0.6;
-    }
-}
-
 /// `orb_collect`, in the overlap phase after the kit's pickup: each orb
 /// collected queues its kind's effect on its collector, from the orb, and
 /// bursts in its colour where it was; its cue plays the potion's sound.
@@ -311,18 +258,63 @@ pub fn collect(world: &mut World, cursor: &mut EventCursor<PickedUp>) {
     }
 }
 
-/// Spawns an orb of `kind` with its sprite's top-left at `corner` and
-/// `left` seconds before it fades, at once, a spawn of its prefab the
-/// engine saves whole ([`PreparedPrefab::saved`]): a test's.
+/// What a restored dropped orb's spawn gave it beyond its saved state: an
+/// older save's, whose pickup has no fall, takes its prefab's fall and fall
+/// layers, read from the prefab's data, so it falls as a fresh drop does.
+pub fn restored(world: &mut World, orb: Entity) {
+    let (Some(kind), Some(pickup)) = (
+        world.get::<Orb>(orb).map(|orb| orb.kind),
+        world.get::<Pickup>(orb),
+    ) else {
+        return;
+    };
+    if pickup.fall() > 0.0 {
+        return;
+    }
+    let Some(data) = world
+        .get_resource::<PrefabRegistry>()
+        .and_then(|prefabs| prefabs.get(kind.prefab()))
+        .and_then(|data| data.components.get("pickup"))
+    else {
+        return;
+    };
+    let fall = data.get("fall").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+    if fall <= 0.0 {
+        return;
+    }
+    let mut falling = pickup.clone().with_fall(fall);
+    if let Some(list) = data.get("fall_layers").and_then(Value::as_array) {
+        falling = falling.with_fall_layers(layer_mask(world, list));
+    }
+    if let Some(pickup) = world.get_mut::<Pickup>(orb) {
+        *pickup = falling;
+    }
+}
+
+/// A prefab's layer list as a mask, one bit per layer: each entry a layer
+/// number or the manifest's `physics_layers` name for one.
+fn layer_mask(world: &World, list: &[Value]) -> u32 {
+    let names = world.get_resource::<PhysicsLayers>();
+    list.iter()
+        .filter_map(|entry| match entry {
+            Value::String(name) => names?.bit(name),
+            number => 1_u32.checked_shl(u32::try_from(number.as_u64()?).ok()?),
+        })
+        .fold(0, |mask, bit| mask | bit)
+}
+
+/// Spawns an orb of `kind` with its sprite's top-left at `corner`, at once,
+/// a spawn of its prefab the engine saves whole
+/// ([`PreparedPrefab::saved`]), fading and blinking as its prefab's: a
+/// test's.
 ///
 /// [`PreparedPrefab::saved`]: tungsten::core::PreparedPrefab::saved
-pub fn spawn(world: &mut World, kind: OrbKind, corner: Vec2, left: f32) -> Option<Entity> {
+pub fn spawn(world: &mut World, kind: OrbKind, corner: Vec2) -> Option<Entity> {
     let orb = world
         .prepare_prefab(kind.prefab(), corner.to_array())
         .ok()?
         .saved(world, Some(crate::features::level::MAP))
         .with((Joined, SceneEntity { state_id: GAMEPLAY }))
         .spawn(world);
-    world.insert(orb, Lifetime::new(left.max(0.0)));
     Some(orb)
 }

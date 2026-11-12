@@ -33,7 +33,7 @@ use example_01_platformer::features::elements::components::{ColdFace, Flame};
 use example_01_platformer::features::enemies::components::{
     Enemy, EnemyKind, EnemyState, Throw, Throws,
 };
-use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind};
+use example_01_platformer::features::enemies::drops::{self, Orb, OrbKind};
 use example_01_platformer::features::enemies::{self, snowball};
 use example_01_platformer::features::gun;
 use example_01_platformer::features::gun::components::{Bullet, Reload};
@@ -67,7 +67,8 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     Abilities, Chemistry, ContactDamage, ContactTouch, DamageRequest, Damaged, Effects, Health,
-    Hitbox, Modifier, Oscillator, PathFollower, Projectile, Shield, StateMachine, Stats, Tags,
+    Hitbox, Modifier, Oscillator, PathFollower, Pickup, Projectile, Shield, StateMachine, Stats,
+    Tags,
 };
 use tungsten::testing::UiHarness;
 
@@ -202,12 +203,7 @@ fn busy(harness: &mut UiHarness) {
     elements::chill(harness.world_mut(), far, 0.5, Vec2::new(1090.0, TOP - 60.0));
     // A mana orb past the player's reach.
     let world = harness.world_mut();
-    drops::spawn(
-        world,
-        OrbKind::Mana,
-        Vec2::new(1400.0, TOP - 60.0),
-        ORB_SECS,
-    );
+    drops::spawn(world, OrbKind::Mana, Vec2::new(1400.0, TOP - 60.0));
     // A crate alight and a keg on its fuse, both the player's, and a
     // goblin's bomb and rock in flight, east of the hole's reach, which
     // puts a fire out, over the sky's ground.
@@ -3532,4 +3528,88 @@ fn older_foes_still_disarm() {
     {
         assert!(!touch.is_on(), "left off while it lies dead");
     }
+}
+
+/// Each saved `pickup` among `value`'s records without its `fall` and
+/// `fall_layers`, as a save from before the orbs fell by the kit's pickup;
+/// how many had a fall.
+fn strip_fall(value: &mut serde_json::Value) -> usize {
+    let mut stripped = 0;
+    match value {
+        serde_json::Value::Object(object) => {
+            if let Some(serde_json::Value::Object(pickup)) = object.get_mut("pickup") {
+                pickup.remove("fall_layers");
+                if pickup.remove("fall").is_some() {
+                    stripped += 1;
+                }
+            }
+            for inner in object.values_mut() {
+                stripped += strip_fall(inner);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                stripped += strip_fall(item);
+            }
+        }
+        _ => {}
+    }
+    stripped
+}
+
+fn point(harness: &UiHarness, entity: Entity) -> Vec2 {
+    harness.world().get::<Position>(entity).expect("a point").0
+}
+
+#[test]
+fn older_orbs_still_fall() {
+    let (mut harness, player) = grounded();
+    // A dropped orb in the air past the player's reach, and the placed orb
+    // farthest from the player, which floats.
+    let orb = drops::spawn(
+        harness.world_mut(),
+        OrbKind::Mana,
+        Vec2::new(1400.0, TOP - 200.0),
+    )
+    .expect("an orb");
+    harness.step(1);
+    let me = centre(&harness, player);
+    let placed = placed_orbs(&harness)
+        .into_iter()
+        .map(|(_, orb)| orb)
+        .max_by(|&a, &b| {
+            let far = |orb| point(&harness, orb).distance(me);
+            far(a).total_cmp(&far(b))
+        })
+        .expect("the map's placed orbs");
+    let ids = (id_of(&harness, orb), id_of(&harness, placed));
+    let (aloft, float) = (point(&harness, orb), point(&harness, placed));
+    let mut older = json(&capture(&harness));
+    assert_eq!(strip_fall(&mut older["world"]), 1, "the dropped orb's fall");
+    let read: SaveGame = serde_json::from_value(older).expect("the save reads");
+    // The run as it was: the orb lands on the ground, the placed one floats.
+    harness.step(150);
+    let landed = point(&harness, orb);
+    assert!(
+        landed.y - aloft.y > 150.0 && (landed.y + 24.0 - TOP).abs() < 0.1,
+        "it fell onto the ground: {aloft} to {landed}"
+    );
+    assert_eq!(point(&harness, placed), float, "the placed orb floats");
+    let mut loaded = reloaded(read, false);
+    let (orb, placed) = (by_id(&loaded, ids.0), by_id(&loaded, ids.1));
+    let world = loaded.world();
+    assert_eq!(
+        world.get::<Pickup>(orb).unwrap().fall(),
+        120.0,
+        "its prefab's"
+    );
+    assert_eq!(
+        world.get::<Pickup>(placed).unwrap().fall(),
+        0.0,
+        "none for the map's"
+    );
+    assert_eq!(point(&loaded, orb), aloft, "in the air");
+    loaded.step(150);
+    assert_eq!(point(&loaded, orb), landed, "it lands as the run's did");
+    assert_eq!(point(&loaded, placed), float, "the placed orb stays put");
 }

@@ -2831,7 +2831,7 @@ fn an_orb_passes_enemies_and_fades_after_its_lifetime() {
     harness.step(2);
     let corner = at(&harness, crawler) - Vec2::splat(12.0);
     let world = harness.world_mut();
-    let orb = drops::spawn(world, OrbKind::Health, corner, ORB_SECS).expect("an orb");
+    let orb = drops::spawn(world, OrbKind::Health, corner).expect("an orb");
     harness.step(60);
     assert!(harness.world().is_alive(orb), "the crawler passes it by");
     let mut frames = 60;

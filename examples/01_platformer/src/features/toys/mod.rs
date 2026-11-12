@@ -120,10 +120,10 @@ pub const HOLD_SWIRL: f32 = 0.55;
 /// hole's centre go, at most this many a hole a step.
 pub const BROOM_REACH: f32 = 24.0;
 pub const BROOM_MOST: usize = 12;
-/// The fire missile: its speed, its fall, its reach, its body's radius,
-/// its drawn size, and at most so many at once.
+/// The fire missile: its speed, its reach, its body's radius, its drawn
+/// size (its prefab's `scale`, 40 / 64), and at most so many at once; its
+/// fall is its prefab's `linear_motion`, which its spell's payload keeps.
 pub const MISSILE_SPEED: f32 = 900.0;
-pub const MISSILE_GRAVITY: f32 = 360.0;
 pub const MISSILE_RANGE: f32 = MISSILE_SPEED * 2.1;
 pub const MISSILE_RADIUS: f32 = 10.0;
 pub const MISSILE_SIZE: f32 = 40.0;
@@ -556,23 +556,15 @@ pub fn fire_missile(world: &mut World, centre: Vec2, velocity: Vec2) -> Option<E
 }
 
 /// Makes `missile`, which an ability's spawn payload landed from its
-/// caster's point, the top-left of the caster's art, one of the toys
-/// ([`Joined`], its save ID the flush's): the fall the payload's motion
-/// leaves out, drawn at its size, shown, and moved so its centre sits
-/// `centre` from where it landed, as the caster's centre sits from the
-/// caster's point.
+/// caster's point, the top-left of the caster's art, with its prefab's
+/// fall and size, one of the toys ([`Joined`], its save ID the flush's):
+/// shown, and moved so its centre sits `centre` from where it landed, as
+/// the caster's centre sits from the caster's point.
 pub fn adopt_missile(world: &mut World, missile: Entity, centre: Vec2) {
     world.insert(missile, Joined);
     world.insert(missile, PreviousVelocity::default());
     let shift = centre - Vec2::splat(MISSILE_SIZE * 0.5);
     systems::shift(world, missile, shift);
-    if let Some(motion) = world.get_mut::<LinearMotion>(missile) {
-        *motion =
-            LinearMotion::new(motion.velocity()).with_acceleration(Vec2::new(0.0, MISSILE_GRAVITY));
-    }
-    if let Some(transform) = world.get_mut::<Transform>(missile) {
-        transform.scale = Vec2::splat(MISSILE_SIZE / 64.0);
-    }
     systems::show(world, missile);
 }
 

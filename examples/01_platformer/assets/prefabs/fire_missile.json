@@ -3,6 +3,10 @@
     "asset_id": "ex10_fire_missile_0",
     "z_order": 14
   },
+  "scale": [
+    0.625,
+    0.625
+  ],
   "visible": false,
   "components": {
     "fire_missile": null,

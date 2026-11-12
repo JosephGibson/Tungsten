@@ -42,6 +42,7 @@ use crate::features::elements::components::ColdFace;
 use crate::features::elements::systems::{coat_of, freeze_for, light, show_douse};
 use crate::features::elements::{COAT, burn_left, ice_left};
 use crate::features::enemies::components::{Enemy, Held, Holding, Throws};
+use crate::features::enemies::drops::{self, Orb};
 use crate::features::enemies::{self, troll};
 use crate::features::level::components::Hazard;
 use crate::features::level::geyser::{self, Geyser};
@@ -506,7 +507,8 @@ fn spawn_balls(world: &mut World, save: &SaveGame) -> Vec<Entity> {
 /// state, read off the restored state and never by applying it again: a
 /// record's `PreviousVelocity`, a dummy's and every enemy's body, an
 /// enemy's hold on rock, a scrap's, a crate's, a rock's, a stone's and a
-/// plank's look; a crusted basin's body layers, mask, touch and glow, a
+/// plank's look; what an older save's records lack of their prefabs, an
+/// enemy's disarm and a dropped orb's fall; a crusted basin's body layers, mask, touch and glow, a
 /// doused hazard's touch, glow and trail, a geyser's touch on in an
 /// eruption and held aside else, from `touches`, the run's, where the save
 /// holds none; a troll's hold lifted again; the taken tomes' books off the
@@ -536,6 +538,8 @@ fn rebuild(world: &mut World, touches: &[(Entity, Option<ContactDamage>)]) {
             dummy::restored(world, entity);
         } else if props::is_prop(world, entity) {
             props::restored(world, entity);
+        } else if world.has::<Orb>(entity) {
+            drops::restored(world, entity);
         }
     }
     let foes: Vec<Entity> = world

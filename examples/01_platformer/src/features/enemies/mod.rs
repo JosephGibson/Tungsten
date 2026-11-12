@@ -43,7 +43,7 @@ use tungsten::core::{
     World, system,
 };
 use tungsten::kit::{
-    ANIMATION_TICK, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line, Modifier, PICKUP_MAGNET, PICKUP_TICK,
+    ANIMATION_TICK, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line, Modifier, PICKUP_TICK,
     PLATFORMER_CONTROLLER, Phase, PickedUp, Stats, TOP_DOWN_MOVER, TagFilter, WorldSource,
     WorldSources, ensure_phases,
 };
@@ -288,8 +288,6 @@ impl Plugin for EnemiesPlugin {
             .after(TOP_DOWN_MOVER)
             .after(KNOCKBACK);
         schedule.add(Stage::FixedUpdate, Phase::Move.join(holds));
-        let fall = system("orb_fall", drops::fall).after(PICKUP_MAGNET);
-        schedule.add(Stage::FixedUpdate, Phase::Move.join(fall));
         let mut picked = EventCursor::<PickedUp>::new();
         let collect = system("orb_collect", move |world: &mut World| {
             drops::collect(world, &mut picked);
@@ -318,10 +316,6 @@ impl Plugin for EnemiesPlugin {
         schedule.add(
             Stage::PostUpdate,
             Phase::Present.join(system("beetle_dust", beetle::dust)),
-        );
-        schedule.add(
-            Stage::PostUpdate,
-            Phase::Present.join(system("orb_blink", drops::blink)),
         );
         let boxes = system("enemy_debug_boxes", draw::debug_boxes).before(KIT_DEBUG_DRAW);
         schedule.add(Stage::PostUpdate, Phase::Present.join(boxes));
