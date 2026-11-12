@@ -1,12 +1,18 @@
-//! The cascades: a saved queue of the element endings and the lightning's
-//! conduction, which `cascade_run` works through in the overlap phase,
+//! The cascades: a saved queue of the lightning's conduction and the kegs'
+//! detonations, which `cascade_run` works through in the overlap phase,
 //! after 01's contact systems and before the kit's resolve, so every hit an
-//! entry deals takes the step's resolve. An explosion is thermal shock,
-//! fire on a frozen thing; a shatter, a hard hit on one; a steam burst,
-//! cold on a burning thing; a jump, a strike's conduction from one
-//! conductive thing to the next; a detonation, a powder keg blowing. Each
-//! waits for its run: one queued while a run executes is due on the next,
-//! so a chain rolls one ring a step whatever the frame rate.
+//! entry deals takes the step's resolve. A jump is a strike's conduction
+//! from one conductive thing to the next; a detonation, a powder keg
+//! blowing. Each waits for its run: one queued while a run executes is due
+//! on the next, so a chain rolls one ring a step whatever the frame rate.
+//!
+//! The element endings are chemistry's (7.13a): thermal shock (`heat` on a
+//! frozen body, `damage.fire` on a frozen target), shatter (`crack` on a
+//! frozen thing) and steam (`cold` on a burning body, `damage.cold` on a
+//! burning target) are `interactions` rules whose handlers here run 01's
+//! blast, douse and end; `heat` on what is not frozen runs `light`. A
+//! handler's stimuli go to chemistry's next run, so a chain still rolls a
+//! ring a step, through the kit's queue, its cap 01's [`CASCADE_CAP`].
 //!
 //! A run takes at most [`CASCADE_CAP`] due entries, by their due run, then
 //! their distance from their chain's origin, then their target's save ID.
@@ -29,13 +35,13 @@ use tungsten::core::{
     BodyKind, Collider, DataRef, Entity, EventQueue, Position, RigidBody, ShakeEvent, Shape,
     Velocity, World,
 };
-use tungsten::kit::{EffectRequest, Health, end_effect};
+use tungsten::kit::{Chemistry, EffectRequest, Health, Reaction, end_effect, stimulate};
 use tungsten::physics::wake;
 
-use super::systems::{ice_pulse, shatter_iron};
+use super::systems::{ice_pulse, ignite, shatter_iron};
 use super::{
-    BALL_BLAST, BLAST_PUSH, CASCADE_BOUND, CASCADE_CAP, IRON_BLAST, SCRAP_BLAST, SMALL_STEAM_REACH,
-    STEAM_PART, STEAM_PUSH, TARGET_BLAST,
+    BALL_BLAST, BLAST_PUSH, CASCADE_BOUND, CASCADE_CAP, COLD, CRACK, HEAT, IRON_BLAST, SCRAP_BLAST,
+    SMALL_STEAM_REACH, STEAM_PART, STEAM_PUSH, STEAM_REACH, TARGET_BLAST,
 };
 use super::{is_burning, is_frozen};
 use crate::features::audio::{self, components::Sound};
@@ -58,25 +64,15 @@ const LARGEST_HALF: f32 = 60.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CascadeKind {
-    /// Thermal shock: fire and physical parts to the targets in reach, its
-    /// small balls lit, its frozen bodies queued to explode, its bodies
-    /// pushed, the frozen thing ended.
-    Explosion,
-    /// A hard hit's shards: the frozen thing ended, no explosion.
-    Shatter,
-    /// Cold on fire: the targets in reach put out and doused, its burning
-    /// small balls queued to burst, then its fire and physical parts and its
-    /// push; a small ball that bursts is gone.
-    Steam,
     /// A strike's conduction: its strength in shock to its receiver, then,
     /// unless the receiver is frozen or the chain has made its last jump,
     /// the next jump queued to the nearest conductive thing not yet in the
     /// chain.
     Jump,
     /// A powder keg blowing: it goes, a frozen one shattering instead; its
-    /// fire and physical parts to the targets in reach, its small balls and
-    /// crates lit, its kegs set off, its frozen bodies queued to explode and
-    /// its bodies pushed. It runs once a keg a run, and never on one gone.
+    /// fire and physical parts to the targets in reach, its small balls,
+    /// crates and frozen bodies sent `heat`, its kegs set off and its
+    /// bodies pushed. It runs once a keg a run, and never on one gone.
     Detonation,
 }
 
@@ -125,6 +121,15 @@ pub struct Cascades {
     /// The kegs this step's run has blown, in turn: the run's, never saved.
     #[serde(skip)]
     pub detonated: Vec<Entity>,
+    /// The things this step's thermal shocks and steam bursts happened to,
+    /// which a dummy's end reads: the step's, never saved.
+    #[serde(skip)]
+    pub reacted: Vec<Entity>,
+    /// Where each body's `heat` came from, which its thermal shock throws
+    /// iron's scraps away from: kept until its handler reads it, or the
+    /// kit's queue empties.
+    #[serde(skip)]
+    pub heat_from: HashMap<Entity, Vec2>,
     /// The kinds waiting on each target, kept beside the entries.
     #[serde(skip)]
     keys: HashSet<(CascadeKind, u64)>,
@@ -291,6 +296,152 @@ pub fn queue_jump(world: &mut World, jump: Jump, runs: u64) -> bool {
     true
 }
 
+/// Sends `heat` to `body` from `from`, credited to `credit`: thermal shock
+/// on a frozen body, a light on the rest ([`light_handler`]), at chemistry's
+/// next run; `from` is kept for a frozen iron's scraps.
+pub fn heat(world: &mut World, body: Entity, from: Vec2, credit: Option<Entity>) {
+    if let Some(cascades) = world.get_resource_mut::<Cascades>() {
+        cascades.heat_from.entry(body).or_insert(from);
+    }
+    stimulate(world, body, HEAT, 1.0, credit);
+}
+
+/// Sends `crack` to `thing`, credited to the run's player: a hard hit's
+/// shards on a frozen thing ([`shatter_handler`]), at chemistry's next run.
+pub fn shatter_at(world: &mut World, thing: Entity) {
+    let credit = world.get_resource::<Run>().map(|run| run.player);
+    stimulate(world, thing, CRACK, 1.0, credit);
+}
+
+/// The run's player, or the live entity `credit` names: what a handler's
+/// hits and endings credit, none for a gone one.
+fn live_credit(world: &World, credit: Option<Entity>) -> Option<Entity> {
+    let credit = credit?;
+    let player = world.get_resource::<Run>().map(|run| run.player);
+    let live = world.is_alive(credit)
+        && world
+            .get::<Health>(credit)
+            .is_some_and(|health| !health.is_dead());
+    (player == Some(credit) || live).then_some(credit)
+}
+
+/// The save ID of `credit`, which a keg's lighter keeps.
+fn credit_id(world: &World, credit: Option<Entity>) -> Option<u64> {
+    credit
+        .and_then(|entity| world.get::<SaveId>(entity))
+        .map(|id| id.0)
+}
+
+/// The handlers' bin of the step's bodies and targets, built at its first
+/// handler a step: a World resource, never saved.
+#[derive(Default)]
+struct HandlerBin(Option<(u64, Bin)>);
+
+/// Runs `then` with the step's bin, built at the step's first handler.
+fn with_bin(world: &mut World, then: impl FnOnce(&mut World, &Bin)) {
+    let step = world.get_resource::<Cascades>().map_or(0, |c| c.step);
+    if !world.has_resource::<HandlerBin>() {
+        world.insert_resource(HandlerBin::default());
+    }
+    let cached = world
+        .resource_mut::<HandlerBin>()
+        .0
+        .take()
+        .filter(|(built, _)| *built == step);
+    let bin = cached.map_or_else(|| Bin::build(world, &[]), |(_, bin)| bin);
+    then(world, &bin);
+    world.resource_mut::<HandlerBin>().0 = Some((step, bin));
+}
+
+/// Notes `thing` among the step's reactions, which a dummy's end reads.
+fn react_on(world: &mut World, thing: Entity) {
+    if let Some(cascades) = world.get_resource_mut::<Cascades>() {
+        cascades.reacted.push(thing);
+    }
+}
+
+/// Chemistry's `thermal_shock` handler: fire on a frozen thing explodes
+/// it, ended (a target's `frozen`; iron into its scraps, thrown away from
+/// where its heat came from; a ball or a scrap gone), then its [`blast`]
+/// of its kind's reach, crediting the stimulus's live credit, its bursts
+/// and its sound.
+pub fn thermal_shock_handler(world: &mut World, reaction: &Reaction) {
+    let Some(thing) = reaction.receiver() else {
+        return;
+    };
+    let Some(at) = body_centre(world, thing) else {
+        return;
+    };
+    let reach = blast_reach(world, thing);
+    let credit = live_credit(world, reaction.credit());
+    let from = world
+        .get_resource_mut::<Cascades>()
+        .and_then(|cascades| cascades.heat_from.remove(&thing))
+        .filter(|from| from.distance(at) > 1e-3);
+    react_on(world, thing);
+    end_frozen(world, thing, from);
+    let lighter = credit_id(world, credit);
+    with_bin(world, |world, bin| {
+        blast(world, bin, at, credit, lighter, reach)
+    });
+    spawn_burst(world, "ex10_frost_blast", at);
+    spawn_burst(world, "ex10_fireball_blast", at);
+    audio::play(world, Sound::FrostBlasted, at);
+}
+
+/// Chemistry's `shatter` handler: a hard hit's shards on a frozen thing.
+pub fn shatter_handler(world: &mut World, reaction: &Reaction) {
+    let Some(thing) = reaction.receiver() else {
+        return;
+    };
+    let at = body_centre(world, thing).unwrap_or(Vec2::ZERO);
+    shatter(world, Some(thing), at);
+}
+
+/// Chemistry's `steam` handler: cold on a burning thing bursts into steam
+/// of its reach (a small ball's [`SMALL_STEAM_REACH`], else
+/// [`STEAM_REACH`]), crediting the stimulus's live credit ([`steam`]).
+pub fn steam_handler(world: &mut World, reaction: &Reaction) {
+    let Some(thing) = reaction.receiver() else {
+        return;
+    };
+    let reach = if world.has::<SmallBall>(thing) {
+        SMALL_STEAM_REACH
+    } else {
+        STEAM_REACH
+    };
+    let credit = live_credit(world, reaction.credit());
+    steam_at(world, thing, reach, credit);
+}
+
+/// A steam burst from the burning `thing` at once, of `reach`, crediting
+/// `credit` ([`steam`]): a rule's, or a burning prop's, whose fire is its
+/// `Fuel`'s.
+pub fn steam_at(world: &mut World, thing: Entity, reach: f32, credit: Option<Entity>) {
+    let Some(at) = body_centre(world, thing) else {
+        return;
+    };
+    react_on(world, thing);
+    with_bin(world, |world, bin| {
+        steam(world, bin, Some(thing), at, credit, reach)
+    });
+}
+
+/// Chemistry's `light` handler, `heat` on what is not frozen: a small ball
+/// that never burned lights; a crate catches, its lighter the stimulus's
+/// credit; the rest take nothing.
+pub fn light_handler(world: &mut World, reaction: &Reaction) {
+    let Some(body) = reaction.receiver() else {
+        return;
+    };
+    if world.has::<SmallBall>(body) {
+        ignite(world, body);
+    } else if world.has::<Crate>(body) {
+        let lighter = credit_id(world, live_credit(world, reaction.credit()));
+        props::light(world, body, lighter);
+    }
+}
+
 /// A frozen body's explosion's reach: an ice ball's, iron's, a scrap's or a
 /// prop's.
 #[must_use]
@@ -308,31 +459,11 @@ pub fn blast_reach(world: &World, body: Entity) -> f32 {
     }
 }
 
-/// Queues thermal shock on the frozen `thing` at `at`, its chain begun at
-/// `origin`, crediting the run's player.
-pub fn thermal_shock(world: &mut World, thing: Entity, at: Vec2, origin: Vec2) -> bool {
-    let source = player_credit(world);
-    thermal_shock_from(world, thing, at, origin, source)
-}
-
-/// [`thermal_shock`], crediting the save ID `source`: an ending's own.
-pub fn thermal_shock_from(
-    world: &mut World,
-    thing: Entity,
-    at: Vec2,
-    origin: Vec2,
-    source: Option<u64>,
-) -> bool {
-    let reach = blast_reach(world, thing);
-    queue_from(
-        world,
-        CascadeKind::Explosion,
-        Some(thing),
-        at,
-        origin,
-        reach,
-        source,
-    )
+/// Sends thermal shock's `heat` to the frozen `thing` from `from`,
+/// crediting the run's player.
+pub fn thermal_shock(world: &mut World, thing: Entity, from: Vec2) {
+    let credit = world.get_resource::<Run>().map(|run| run.player);
+    heat(world, thing, from, credit);
 }
 
 /// The order entries run in: their due run, their distance from their
@@ -359,7 +490,17 @@ pub fn run(world: &mut World) {
     cascades.step += 1;
     cascades.steamed.clear();
     cascades.detonated.clear();
+    cascades.reacted.clear();
     let step = cascades.step;
+    let idle = world
+        .get_resource::<Chemistry>()
+        .is_none_or(|chemistry| chemistry.pending() == 0);
+    let Some(cascades) = world.get_resource_mut::<Cascades>() else {
+        return;
+    };
+    if idle && !cascades.heat_from.is_empty() {
+        cascades.heat_from.clear();
+    }
     if !cascades.entries.iter().any(|entry| entry.due <= step) {
         return;
     }
@@ -554,13 +695,10 @@ fn execute(world: &mut World, bin: &Bin, entry: &Entry) {
         id: entry.source,
     };
     match entry.kind {
-        CascadeKind::Explosion => explode(world, bin, target, at, origin, credit, entry.strength),
-        CascadeKind::Shatter => shatter(world, target, at),
-        CascadeKind::Steam => steam(world, bin, target, at, origin, credit, entry.strength),
         CascadeKind::Jump => {
             crate::features::lightning::conduct(world, target, at, origin, credit.source, entry);
         }
-        CascadeKind::Detonation => detonate(world, bin, target, at, origin, credit, entry.strength),
+        CascadeKind::Detonation => detonate(world, bin, target, at, credit, entry.strength),
     }
 }
 
@@ -602,7 +740,8 @@ fn shove(world: &mut World, entity: Entity, at: Vec2, reach: f32, speed: f32, di
 }
 
 /// A hit from the blast at `at` of `parts` fire and physical on `target`,
-/// pushed by `speed` falling to 0 at `reach`, half on the player.
+/// pushed by `speed` falling to 0 at `reach`, half on the player: landed
+/// at once, as a run's hits once took the step's resolve.
 fn blast_hit(
     world: &mut World,
     target: Entity,
@@ -623,15 +762,22 @@ fn blast_hit(
     if let Some(source) = source {
         hit = hit.from(source);
     }
-    hit.queue(world);
+    hit.request(world).apply(world);
 }
 
-/// A blast at `at` of `reach`, an explosion's or a detonation's, in the
-/// chain begun at `origin`: the targets in reach take fire and physical
-/// parts of an eighth of the reach each with its push, from the credit's
-/// source; its small balls and crates light and its kegs go off, crediting
-/// its ID, as its frozen bodies' own explosions do; its bodies are pushed.
-fn blast(world: &mut World, bin: &Bin, at: Vec2, origin: Vec2, credit: Credit, reach: f32) {
+/// A blast at `at` of `reach`, a thermal shock's or a detonation's: the
+/// targets in reach take fire and physical parts of an eighth of the reach
+/// each with its push, from `credit`, at once; its frozen bodies, small
+/// balls and crates are sent `heat` (each its rule: thermal shock, or a
+/// light), its kegs go off, crediting `lighter`; its bodies are pushed.
+fn blast(
+    world: &mut World,
+    bin: &Bin,
+    at: Vec2,
+    credit: Option<Entity>,
+    lighter: Option<u64>,
+    reach: f32,
+) {
     let parts = reach / 8.0;
     for (item, distance) in bin.near(world, at, reach) {
         if !world.is_alive(item.entity) {
@@ -644,47 +790,23 @@ fn blast(world: &mut World, bin: &Bin, at: Vec2, origin: Vec2, credit: Credit, r
                 at,
                 parts,
                 (BLAST_PUSH, reach, distance),
-                credit.source,
+                credit,
             );
             continue;
         }
         if is_frozen(world, item.entity) {
-            thermal_shock_from(world, item.entity, item.centre, origin, credit.id);
+            heat(world, item.entity, at, credit);
         } else {
             match item.what {
-                What::SmallBall => super::systems::ignite(world, item.entity),
-                What::Crate => {
-                    props::light(world, item.entity, credit.id);
-                }
+                What::SmallBall | What::Crate => heat(world, item.entity, at, credit),
                 What::Keg | What::Bomb => {
-                    props::set_off(world, item.entity, Some(origin), credit.id);
+                    props::set_off(world, item.entity, Some(at), lighter);
                 }
                 _ => {}
             }
         }
         shove(world, item.entity, at, reach, BLAST_PUSH, distance);
     }
-}
-
-/// Thermal shock at `at`, of `reach`: the frozen thing ends, then its
-/// [`blast`].
-fn explode(
-    world: &mut World,
-    bin: &Bin,
-    thing: Option<Entity>,
-    at: Vec2,
-    origin: Vec2,
-    credit: Credit,
-    reach: f32,
-) {
-    if let Some(thing) = thing {
-        let from = (origin.distance(at) > 1e-3).then_some(origin);
-        end_frozen(world, thing, from);
-    }
-    blast(world, bin, at, origin, credit, reach);
-    spawn_burst(world, "ex10_frost_blast", at);
-    spawn_burst(world, "ex10_fireball_blast", at);
-    audio::play(world, Sound::FrostBlasted, at);
 }
 
 /// The bursts of a keg's detonation: the missile's four and its staves.
@@ -706,7 +828,6 @@ fn detonate(
     bin: &Bin,
     keg: Option<Entity>,
     at: Vec2,
-    origin: Vec2,
     credit: Credit,
     reach: f32,
 ) {
@@ -728,7 +849,7 @@ fn detonate(
         return;
     }
     despawn_tree(world, keg);
-    blast(world, bin, at, origin, credit, reach);
+    blast(world, bin, at, credit.source, credit.id, reach);
     for burst in DETONATION_BURSTS {
         if count == 1 {
             spawn_key_burst(world, burst, at);
@@ -763,17 +884,16 @@ fn shatter(world: &mut World, thing: Option<Entity>, at: Vec2) {
 
 /// A steam burst at `at`, of `reach`: a small ball that bursts is gone; the
 /// targets in reach are put out and doused at once, so its own fire cannot
-/// light them again; the burning small balls in reach queue their own
-/// bursts, crediting its ID; the crates and kegs in reach are put out and
-/// doused; then the targets take its fire and physical parts with its
-/// push, and the bodies are pushed.
+/// light them again; the burning small balls in reach are sent `cold`,
+/// their own bursts at chemistry's next run, crediting it; the crates and
+/// kegs in reach are put out and doused; then the targets take its fire
+/// and physical parts with its push, at once, and the bodies are pushed.
 fn steam(
     world: &mut World,
     bin: &Bin,
     thing: Option<Entity>,
     at: Vec2,
-    origin: Vec2,
-    credit: Credit,
+    credit: Option<Entity>,
     reach: f32,
 ) {
     if let Some(thing) = thing.filter(|&thing| world.has::<SmallBall>(thing)) {
@@ -804,20 +924,12 @@ fn steam(
                     at,
                     STEAM_PART,
                     (STEAM_PUSH, reach, distance),
-                    credit.source,
+                    credit,
                 );
             }
             What::SmallBall => {
                 if is_burning(world, item.entity) {
-                    queue_from(
-                        world,
-                        CascadeKind::Steam,
-                        Some(item.entity),
-                        item.centre,
-                        origin,
-                        SMALL_STEAM_REACH,
-                        credit.id,
-                    );
+                    stimulate(world, item.entity, COLD, 1.0, credit);
                 }
                 shove(world, item.entity, at, reach, STEAM_PUSH, distance);
             }

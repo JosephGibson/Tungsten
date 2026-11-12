@@ -16,7 +16,7 @@ use tungsten::kit::{
 };
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
-use super::cascade::{self, CascadeKind};
+use super::cascade;
 use super::components::{ColdFace, FireEmitter, Flame, IcePulse};
 use super::{
     BALL_BURN, BASE_SMASH, BODY_HIT_SPEED, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, COAT, COLD,
@@ -530,14 +530,14 @@ pub fn fire_contacts(world: &mut World) {
     let player = cascade::player_credit(world);
     for (_, prop, at) in props {
         if is_frozen(world, prop) {
-            cascade::thermal_shock(world, prop, at, at);
+            cascade::thermal_shock(world, prop, at);
         } else {
             props::light(world, prop, player);
         }
     }
     for (_, ball, at) in touched {
         if is_frozen(world, ball) {
-            cascade::thermal_shock(world, ball, at, at);
+            cascade::thermal_shock(world, ball, at);
             continue;
         }
         if world.has::<SmallBall>(ball) {
@@ -850,9 +850,7 @@ pub fn crush(world: &mut World) {
         .collect();
     shattered.sort_by_key(|(id, _)| *id);
     for &(_, entity) in &shattered {
-        if let Some(at) = body_centre(world, entity) {
-            cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
-        }
+        cascade::shatter_at(world, entity);
     }
     let positions: Vec<Vec2> = smashed
         .iter()
@@ -984,8 +982,8 @@ pub fn thermal_shatter(world: &mut World, at: Vec2, radius: f32) {
         })
         .collect();
     targets.sort_by_key(|(id, ..)| *id);
-    for (_, entity, body) in targets {
-        cascade::thermal_shock(world, entity, body, at);
+    for (_, entity, _) in targets {
+        cascade::thermal_shock(world, entity, at);
     }
 }
 
@@ -1368,9 +1366,7 @@ pub fn body_impacts(world: &mut World) {
         .collect();
     shatters.sort_by_key(|(id, _)| *id);
     for (_, entity) in shatters {
-        if let Some(at) = body_centre(world, entity) {
-            cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
-        }
+        cascade::shatter_at(world, entity);
     }
     for (keg, credit) in blown.into_values() {
         props::set_off(world, keg, None, credit);

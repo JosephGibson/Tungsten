@@ -1,0 +1,13 @@
+{
+  "stimulus": "heat",
+  "on": {
+    "none": [
+      "status.frozen"
+    ]
+  },
+  "outputs": [
+    {
+      "handler": "light"
+    }
+  ]
+}

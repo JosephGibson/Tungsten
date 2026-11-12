@@ -65,7 +65,7 @@ use tungsten::core::{
     Velocity, World,
 };
 use tungsten::kit::{
-    Abilities, ContactDamage, DamageRequest, Damaged, Effects, Health, Hitbox, Modifier,
+    Abilities, Chemistry, ContactDamage, DamageRequest, Damaged, Effects, Health, Hitbox, Modifier,
     Oscillator, PathFollower, Shield, StateMachine, Stats, Tags,
 };
 use tungsten::testing::UiHarness;
@@ -1133,9 +1133,19 @@ fn divergence(churned: bool) {
         .unwrap();
     super::combat::apply(&mut uninterrupted, dummy, "shocked", Some(player));
     uninterrupted.step(2);
+    // Interim (the plan's §2.9): the chain's endings wait in chemistry's
+    // queue, which 01's save holds from 7.13b, so the save waits for the
+    // chain to run out; 7.13b saves it mid-chain again.
+    let pending = |harness: &UiHarness| harness.world().resource::<Chemistry>().pending();
+    for _ in 0..60 {
+        if pending(&uninterrupted) == 0 {
+            break;
+        }
+        uninterrupted.step(1);
+    }
     let saved = capture(&uninterrupted);
     assert_eq!(saved.area.as_deref(), Some("Lantern clearing"));
-    assert!(!saved.cascades.entries.is_empty(), "mid-chain");
+    assert_eq!(pending(&uninterrupted), 0, "the chain ran out");
     let shocked = |save: &SaveGame| {
         save.dummies
             .iter()
@@ -1812,26 +1822,10 @@ fn a_reaction_toasts_nothing() {
     // A freeze, a shatter, a steam burst and a shock.
     elements::freeze_iron(harness.world_mut(), balls[0]);
     harness.step(2);
-    let at = super::body(&harness, balls[0]);
-    cascade::queue(
-        harness.world_mut(),
-        CascadeKind::Shatter,
-        Some(balls[0]),
-        at,
-        at,
-        0.0,
-    );
+    cascade::shatter_at(harness.world_mut(), balls[0]);
     harness.step(2);
     elements::ignite(harness.world_mut(), balls[1]);
-    let at = super::body(&harness, balls[1]);
-    cascade::queue(
-        harness.world_mut(),
-        CascadeKind::Steam,
-        Some(balls[1]),
-        at,
-        at,
-        elements::SMALL_STEAM_REACH,
-    );
+    tungsten::kit::stimulate(harness.world_mut(), balls[1], elements::COLD, 1.0, None);
     harness.step(2);
     super::combat::apply(&mut harness, dummy, "shocked", None);
     harness.step(2);
@@ -1889,18 +1883,25 @@ fn a_bullet_in_flight_loads_and_lands() {
 }
 
 #[test]
-fn a_save_mid_chain_resumes_the_same_queue_in_save_id_order() {
+fn a_save_mid_chain_keeps_its_pile_and_drops_its_waiting_endings() {
+    // Interim (the plan's §2.9, a known issue): the chain's endings wait in
+    // chemistry's queue, which 01's save holds from 7.13b, so a save
+    // mid-chain keeps the pile as it stood and loads with the chain
+    // stopped; 7.13b resumes the same queue, in save-ID order, as this test
+    // pinned before.
     let (mut harness, _) = grounded();
     let pile = ice_pile(&mut harness, 900.0, 48);
     harness.step(2);
     let edge = super::body(&harness, pile[0]);
     elements::thermal_shatter(harness.world_mut(), edge, 72.0);
     harness.step(2);
+    let pending = |harness: &UiHarness| harness.world().resource::<Chemistry>().pending();
+    assert!(pending(&harness) > 0, "mid-chain");
     let saved = capture(&harness);
-    assert!(!saved.cascades.entries.is_empty(), "mid-chain");
     let mut fresh = super::harness();
     load(&mut fresh, saved.clone());
-    assert_eq!(json(&capture(&fresh)), json(&saved), "the queue whole");
+    assert_eq!(json(&capture(&fresh)), json(&saved), "the pile whole");
+    assert_eq!(pending(&fresh), 0, "the waiting endings dropped");
     scaffold(&mut fresh);
     pin_camera(&mut fresh, CORNER);
     fresh.world_mut().resource_mut::<Time>().resume();
@@ -1911,22 +1912,19 @@ fn a_save_mid_chain_resumes_the_same_queue_in_save_id_order() {
             .map(|(_, id)| id.0)
             .collect()
     };
-    // The first run after the load works from the saved queue and the
-    // saved points alone: the same entries run, in save-ID order past ties.
-    assert_eq!(queue(&harness), queue(&fresh));
-    harness.step(1);
-    fresh.step(1);
-    assert_eq!(live(&harness), live(&fresh), "the same balls went");
-    assert_eq!(queue(&harness), queue(&fresh), "and the same queued next");
-    // After it, the solver's warm starts, which no save holds, move the
-    // pile a hair apart; each chain still runs out.
+    let at_save = live(&harness);
     harness.step(40);
     fresh.step(40);
+    assert_eq!(pending(&harness), 0, "the chain ran out");
+    assert!(live(&harness).len() < at_save.len(), "it took more");
+    // The solver's warm starts, which no save holds, settle the loaded pile
+    // a hair apart, but its chain stopped at the load.
     assert!(
-        queue(&harness).is_empty() && queue(&fresh).is_empty(),
-        "both chains ran out"
+        live(&fresh).len() > live(&harness).len(),
+        "the loaded chain stopped: {} left, {} uninterrupted",
+        live(&fresh).len(),
+        live(&harness).len()
     );
-    assert!(live(&harness).len() < pile.len() && live(&fresh).len() < pile.len());
 }
 
 /// The live kegs, by save ID.
@@ -2520,6 +2518,16 @@ fn as_schema_25(old: &mut Value) {
     }
 }
 
+/// What schema 26 makes of an older save: the cascade's explosions,
+/// shatters and steam bursts gone, chemistry's rules now.
+fn as_schema_26(old: &mut Value) {
+    if let Some(entries) = old["cascades"]["entries"].as_array_mut() {
+        entries.retain(|entry| {
+            !["explosion", "shatter", "steam"].contains(&entry["kind"].as_str().unwrap_or(""))
+        });
+    }
+}
+
 /// A capture as the code before schema 23 wrote it, at schema 22: the
 /// map's objects and the player at their spawn order's save IDs, through
 /// [`save::S22_NAMES`], every runtime one after them, past schema 22's
@@ -3006,6 +3014,7 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &to);
     as_schema_25(&mut old);
+    as_schema_26(&mut old);
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
@@ -3216,6 +3225,7 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &to);
     as_schema_25(&mut old);
+    as_schema_26(&mut old);
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
@@ -3518,6 +3528,7 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &to);
     as_schema_25(&mut old);
+    as_schema_26(&mut old);
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
@@ -3537,9 +3548,9 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
         "/bullets/*/id",
         "/bullets/*/source",
         "/balls/*/0",
-        "/cascades/entries/*/target",
-        "/cascades/entries/*/source",
     ];
+    // Schema 26 drops the fixture's one cascade entry, an ending chemistry
+    // now runs, so no cascade ID moves.
     assert_eq!(fields, expected.into_iter().map(starred).collect());
     assert_eq!(migrated.black_holes.len(), 2, "both holes");
     let goblins: Vec<u64> = (save::S11_PICKUPS..save::S11_PICKUPS + save::SHIFT_12)
@@ -3608,6 +3619,7 @@ fn a_schema_12_player_keeps_its_body_where_it_stood() {
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &schema_23_from_18);
     as_schema_25(&mut old);
+    as_schema_26(&mut old);
     moved_ids(&old, &json(&migrated), "", &schema_23_from_18, &mut moved);
     // Loaded, the body stands where the courier's stood.
     let mut run = super::harness();
@@ -3668,6 +3680,7 @@ fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &schema_23_from_18);
     as_schema_25(&mut old);
+    as_schema_26(&mut old);
     moved_ids(&old, &new, "", &schema_23_from_18, &mut moved);
     // Loaded, it plays on with the new values.
     let mut run = super::harness();
@@ -3739,6 +3752,7 @@ fn a_schema_13_save_moves_its_crates_out_of_the_start_wall() {
     as_schema_22(&mut old);
     sorted_as_23(&mut old, &schema_23_from_18);
     as_schema_25(&mut old);
+    as_schema_26(&mut old);
     moved_ids(&old, &json(&migrated), "", &schema_23_from_18, &mut moved);
     // Loaded, the crates stand in the map a second on.
     let mut run = super::harness();

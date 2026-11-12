@@ -21,7 +21,7 @@ use super::{
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{CORRODED, FROZEN, Hit, Kind, has_status};
-use crate::features::elements::cascade::{self, CascadeKind};
+use crate::features::elements::cascade;
 use crate::features::elements::is_frozen;
 use crate::features::enemies::armour;
 use crate::features::player::{self, Gesture};
@@ -672,8 +672,7 @@ fn splinter(world: &mut World, contact: Contact, along: Vec2) {
 /// shooter; the shot ends.
 fn keg(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
     if is_frozen(world, contact.body) {
-        let at = contact.point - contact.normal * BULLET_RADIUS;
-        cascade::queue(world, CascadeKind::Shatter, Some(contact.body), at, at, 0.0);
+        cascade::shatter_at(world, contact.body);
     } else {
         let shooter = world
             .get::<Source>(bullet)
@@ -688,8 +687,7 @@ fn keg(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
 /// the kick along the shot over its mass; the shot ends.
 fn kick(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent: bool) {
     if is_frozen(world, contact.body) {
-        let at = contact.point - contact.normal * BULLET_RADIUS;
-        cascade::queue(world, CascadeKind::Shatter, Some(contact.body), at, at, 0.0);
+        cascade::shatter_at(world, contact.body);
     } else {
         let inverse = world
             .get::<RigidBody>(contact.body)

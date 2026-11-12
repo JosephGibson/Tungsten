@@ -14,7 +14,7 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     DamagedPart, EffectApplied, EffectExpired, EffectRequest, Effects, Follow, Health, ImmunePart,
-    Lifetime, Modifier, Source, Stats, Tags, Target, end_effect,
+    Lifetime, Modifier, Source, Stats, Tags, Target, end_effect, stimulate,
 };
 
 use super::components::{StatusEmitter, StatusLook};
@@ -23,8 +23,6 @@ use super::{
     FREEZE_BUILDS, FREEZE_NEEDS, FROZEN, Kind, POISONED, SHOCKED, STATUS_THRESHOLD, has_status,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::elements::cascade::{self, CascadeKind};
-use crate::features::elements::{STEAM_REACH, TARGET_BLAST};
 use crate::features::enemies::components::{Enemy, EnemyKind};
 use crate::features::level::geyser::Geyser;
 use crate::features::level::systems::drawn_time;
@@ -68,15 +66,13 @@ pub fn states(world: &mut World) {
     world.insert_resource(states);
 }
 
-/// `combat_reactions`, in the react phase: a fire part on a target that
-/// was frozen queues thermal shock's explosion at it, and a cold part on
-/// one that was burning a steam burst, dead or alive, each landed or
-/// dropped by the target's immunity (the kit's `ImmunePart`: a frozen wisp,
-/// which takes no fire, or a burning frost crawler, which takes no cold);
-/// `shattered` applied queues its shatter. Each queued entry runs from
-/// the next step, an explosion or a steam burst crediting its part's
-/// source's save ID: none when the source has gone, the player's when the
-/// part named none. A blow, a physical part that is not a tick, on a `flesh`
+/// `combat_reactions`, in the react phase: a landed part is chemistry's own
+/// stimulus (thermal shock and steam are its rules, a frozen target's fire
+/// and a burning one's cold), so a part the target's immunity dropped (the
+/// kit's `ImmunePart`: a frozen wisp, which takes no fire, or a burning
+/// frost crawler, which takes no cold) is sent on as its type to a target
+/// that was frozen, or burning, as the resolve began, credited to its
+/// source, for chemistry's next run. A blow, a physical part that is not a tick, on a `flesh`
 /// target or the courier spurts blood where it landed, once a target a
 /// step, and `bleeding` applied spurts again; a target frozen this step
 /// (frozen now, not as the resolve began), in place too, bursts in frost,
@@ -95,13 +91,7 @@ pub fn reactions(
         .cloned()
         .unwrap_or_default();
     let player = world.get_resource::<Run>().map(|run| run.player);
-    let mine = cascade::player_credit(world);
-    let credit = |world: &World, source: Option<Entity>| match source {
-        Some(source) if world.is_alive(source) => world.get::<SaveId>(source).map(|id| id.0),
-        Some(_) => None,
-        None => mine,
-    };
-    let mut queued: Vec<(CascadeKind, Entity, f32, Option<u64>)> = Vec::new();
+    let mut sent: Vec<(Entity, &'static str, f32, Option<Entity>)> = Vec::new();
     let mut blows: Vec<(Entity, Option<Vec2>)> = Vec::new();
     let mut burns: Vec<(Entity, Entity)> = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<DamagedPart>>() {
@@ -110,14 +100,6 @@ pub fn reactions(
                 continue;
             }
             let fire = part.kinds.has(world, Kind::Fire.tag());
-            let cold = part.kinds.has(world, Kind::Cold.tag());
-            let source = credit(world, part.source);
-            if fire && states.frozen.contains(&part.entity) {
-                queued.push((CascadeKind::Explosion, part.entity, TARGET_BLAST, source));
-            }
-            if cold && states.burning.contains(&part.entity) {
-                queued.push((CascadeKind::Steam, part.entity, STEAM_REACH, source));
-            }
             if let Some(geyser) = part.source.filter(|&s| world.has::<Geyser>(s))
                 && fire
                 && part.amount > 0.0
@@ -139,22 +121,21 @@ pub fn reactions(
             if part.periodic {
                 continue;
             }
-            let source = credit(world, part.source);
+            let source = part.source.or(player);
+            let amount = part.amount.max(0.0);
             if part.kinds.has(world, Kind::Fire.tag()) && states.frozen.contains(&part.entity) {
-                queued.push((CascadeKind::Explosion, part.entity, TARGET_BLAST, source));
+                sent.push((part.entity, Kind::Fire.tag(), amount, source));
             }
             if part.kinds.has(world, Kind::Cold.tag()) && states.burning.contains(&part.entity) {
-                queued.push((CascadeKind::Steam, part.entity, STEAM_REACH, source));
+                sent.push((part.entity, Kind::Cold.tag(), amount, source));
             }
         }
     }
     let mut spurts = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<EffectApplied>>() {
         for effect in applied.read(events) {
-            match effect.id.as_deref() {
-                Some("shattered") => queued.push((CascadeKind::Shatter, effect.entity, 0.0, mine)),
-                Some("bleeding") => spurts.push(effect.entity),
-                _ => {}
+            if effect.id.as_deref() == Some("bleeding") {
+                spurts.push(effect.entity);
             }
         }
     }
@@ -191,11 +172,8 @@ pub fn reactions(
             spawn_burst(world, "ex10_ice_frost", at);
         }
     }
-    for (kind, target, strength, source) in queued {
-        let Some(at) = body_centre(world, target) else {
-            continue;
-        };
-        cascade::queue_from(world, kind, Some(target), at, at, strength, source);
+    for (target, stimulus, amount, source) in sent {
+        stimulate(world, target, stimulus, amount, source);
     }
     corrode(world);
 }

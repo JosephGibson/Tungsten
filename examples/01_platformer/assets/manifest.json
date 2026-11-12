@@ -1003,8 +1003,14 @@
       "coat": {
         "path": "data/interactions/coat.json"
       },
+      "crack": {
+        "path": "data/interactions/crack.json"
+      },
       "freeze": {
         "path": "data/interactions/freeze.json"
+      },
+      "light": {
+        "path": "data/interactions/light.json"
       },
       "poison": {
         "path": "data/interactions/poison.json"
@@ -1015,8 +1021,20 @@
       "shock": {
         "path": "data/interactions/shock.json"
       },
+      "steam": {
+        "path": "data/interactions/steam.json"
+      },
+      "steam_target": {
+        "path": "data/interactions/steam_target.json"
+      },
       "stun": {
         "path": "data/interactions/stun.json"
+      },
+      "thermal_shock": {
+        "path": "data/interactions/thermal_shock.json"
+      },
+      "thermal_shock_target": {
+        "path": "data/interactions/thermal_shock_target.json"
       },
       "troll_freeze": {
         "path": "data/interactions/troll_freeze.json"

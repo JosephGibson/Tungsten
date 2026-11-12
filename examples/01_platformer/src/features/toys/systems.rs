@@ -13,7 +13,7 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     Children, EffectInstance, Effects, Health, LinearMotion, Modifier, PlatformerController,
-    Projectile, ProjectileExpired, Stats, Tags, TopDownMover, knock_back,
+    Projectile, ProjectileExpired, Stats, Tags, TopDownMover, knock_back, stimulate,
 };
 use tungsten::physics::wake;
 
@@ -34,11 +34,9 @@ use crate::features::combat::{
     self, BLAST_FIRE, COLD_SPRAY_DPS, FIRE_SPRAY_DPS, FROZEN, Kind, SPRAY_PULSE, has_status,
 };
 use crate::features::dummy::components::Dummy;
-use crate::features::elements::cascade::{self, CascadeKind};
+use crate::features::elements::cascade;
 use crate::features::elements::components::Flame;
-use crate::features::elements::{
-    self, FIRE_CENTRE, FIRE_HALF, SMALL_STEAM_REACH, STEAM_REACH, freeze_amount,
-};
+use crate::features::elements::{self, FIRE_CENTRE, FIRE_HALF, STEAM_REACH, freeze_amount};
 use crate::features::elements::{BALL_BURN, COAT, is_burning, is_frozen};
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
@@ -1236,19 +1234,12 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
         Element::Cold => {
             for (hit, contact) in met {
                 if is_burning(world, hit) && world.has::<SmallBall>(hit) {
-                    let at = body_centre(world, hit).unwrap_or(contact);
-                    cascade::queue(
-                        world,
-                        CascadeKind::Steam,
-                        Some(hit),
-                        at,
-                        at,
-                        SMALL_STEAM_REACH,
-                    );
+                    // Cold on a burning ball: its steam rule's burst.
+                    stimulate(world, hit, elements::COLD, dt / FREEZE_TIME, Some(caster));
                 } else if props::burning(world, hit) {
-                    let at = body_centre(world, hit).unwrap_or(contact);
+                    // A prop's fire is its fuel's, no status: its steam at once.
                     props::put_out(world, hit);
-                    cascade::queue(world, CascadeKind::Steam, Some(hit), at, at, STEAM_REACH);
+                    cascade::steam_at(world, hit, STEAM_REACH, Some(caster));
                 } else if world.has::<IronBlock>(hit)
                     || world.has::<IronScrap>(hit)
                     || world.has::<Ball>(hit)
@@ -1262,8 +1253,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
             let lighter = world.get::<SaveId>(caster).map(|id| id.0);
             for (hit, contact) in met {
                 if is_frozen(world, hit) {
-                    let at = body_centre(world, hit).unwrap_or(contact);
-                    cascade::thermal_shock(world, hit, at, at);
+                    cascade::heat(world, hit, contact, Some(caster));
                 } else if world.has::<SmallBall>(hit) {
                     elements::ignite(world, hit);
                 } else if props::is_prop(world, hit) {

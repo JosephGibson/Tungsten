@@ -1,0 +1,13 @@
+{
+  "stimulus": "crack",
+  "on": {
+    "all": [
+      "status.frozen"
+    ]
+  },
+  "outputs": [
+    {
+      "handler": "shatter"
+    }
+  ]
+}

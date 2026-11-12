@@ -334,8 +334,9 @@ impl SaveData for SaveGame {
     /// (`to_23`). Schema 24 gives the player the stats its crit and blast
     /// share are now (`to_24`). Schema 25 drops the actors' ailment buckets
     /// and gives the player and the enemies their status threshold
-    /// (`to_25`).
-    const SCHEMA: u32 = 25;
+    /// (`to_25`). Schema 26 drops the cascade's explosions, shatters and
+    /// steam bursts, which chemistry's rules now run (`to_26`).
+    const SCHEMA: u32 = 26;
 
     fn migrate_step(
         from: u32,
@@ -371,6 +372,7 @@ impl SaveData for SaveGame {
             22 => to_23(&mut data),
             23 => to_24(&mut data)?,
             24 => to_25(&mut data)?,
+            25 => to_26(&mut data),
             _ => {
                 return Err(
                     format!("schema {from} has no migration to schema {}", Self::SCHEMA).into(),
@@ -725,6 +727,28 @@ fn to_25(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
         }
     }
     Ok(())
+}
+
+/// The cascade kinds schema 26 drops: chemistry's rules now (7.13a).
+/// Frozen for the migration.
+const S26_DROPPED: [&str; 3] = ["explosion", "shatter", "steam"];
+
+/// Schema 25 to 26 (7.13a): thermal shock, shatter and steam became
+/// chemistry's rules, whose queue 01's save does not hold (7.13b saves it),
+/// so a save's waiting explosions, shatters and steam bursts are dropped:
+/// a pending ending is lost at the load (Q5); its jumps and detonations
+/// stay.
+fn to_26(data: &mut Value) {
+    if let Some(entries) = data
+        .pointer_mut("/cascades/entries")
+        .and_then(Value::as_array_mut)
+    {
+        entries.retain(|entry| {
+            !entry["kind"]
+                .as_str()
+                .is_some_and(|kind| S26_DROPPED.contains(&kind))
+        });
+    }
 }
 
 /// Maps `id` through `to`, when it is a save ID.

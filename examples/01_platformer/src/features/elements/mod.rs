@@ -49,6 +49,15 @@ pub const SPENT: &str = "spent";
 /// 01's own stimulus a cold spray sends a body it meets, which chemistry's
 /// `coat` rule builds the coat by.
 pub const COLD: &str = "cold";
+/// 01's own stimuli for its bodies: `heat`, which explodes a frozen one
+/// (thermal shock) and lights the rest, and `crack`, a hard hit's shards
+/// on a frozen thing; chemistry's rules decide each. `crack` sorts before
+/// the damage types, so the kit's order (by name among one receiver's
+/// entries of an age and a depth) decides a blow's crack before its own
+/// hit's parts, as the cascade ended a frozen thing before the hit that
+/// shattered it could build on it.
+pub const HEAT: &str = "heat";
+pub const CRACK: &str = "crack";
 /// Seconds of cold a body takes to freeze through, and its chill's thaw a
 /// second; a frozen body thaws after [`FROZEN_SECS`] (Q17).
 pub const FREEZE_TIME: f32 = 1.5;

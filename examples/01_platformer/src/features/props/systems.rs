@@ -239,7 +239,7 @@ pub fn heat(world: &mut World) {
             .any(|&(centre, half)| overlaps(prop.centre, prop.half, centre, half));
         if in_lava {
             if frozen {
-                cascade::thermal_shock(world, prop.entity, prop.centre, prop.centre);
+                cascade::thermal_shock(world, prop.entity, prop.centre);
                 continue;
             }
             light(world, prop.entity, player);

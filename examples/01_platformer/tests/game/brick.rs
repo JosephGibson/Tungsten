@@ -34,8 +34,8 @@ use tungsten::kit::{Abilities, Health, Knockback, StateMachine, Stats};
 use tungsten::testing::UiHarness;
 
 use super::{
-    aim_at, ball, body, bursts, calm, cascades, choose, contact, floor, ground, kick, mana,
-    pin_camera, player_entity, run, teleport,
+    aim_at, ball, body, bursts, calm, choose, contact, floor, ground, kick, mana, pin_camera,
+    player_entity, run, teleport,
 };
 use super::{kind_body, player_half};
 
@@ -114,7 +114,8 @@ fn surface_blasts_throw_scraps_away_from_the_contact_and_keep_parent_velocity() 
         kick(&mut harness, iron, inherited);
         elements::freeze_iron(harness.world_mut(), iron);
         elements::thermal_shatter(harness.world_mut(), centre - direction * IRON_HALF.x, 72.0);
-        cascades(&mut harness);
+        // The endings are chemistry's, which runs with the step.
+        harness.step(1);
         let world = harness.world();
         let kicks: Vec<Vec2> = world
             .query::<(&IronScrap, &Velocity)>()
@@ -181,7 +182,10 @@ fn frozen_iron_breaks_only_under_a_fast_head_on_iron_impact() {
             elements::freeze_iron(harness.world_mut(), target);
         }
         crush(harness.world_mut());
-        cascades(&mut harness);
+        // What the crush left the striker, before the step moves it.
+        let kept = harness.world().get::<Velocity>(striker).unwrap().0;
+        // The endings are chemistry's, which runs with the step.
+        harness.step(1);
         let world = harness.world();
         assert_eq!(
             !world.is_alive(target),
@@ -191,10 +195,7 @@ fn frozen_iron_breaks_only_under_a_fast_head_on_iron_impact() {
         assert!(world.is_alive(striker));
         assert_eq!(scraps(&harness).len(), if breaks { 16 } else { 0 });
         if breaks {
-            assert_eq!(
-                world.get::<Velocity>(striker).unwrap().0,
-                velocity * SMASH_KEEP
-            );
+            assert_eq!(kept, velocity * SMASH_KEEP);
         }
     }
 }
@@ -220,7 +221,8 @@ fn frozen_iron_shatters_once_from_solver_contacts_in_either_pair_order() {
         }
         crush(harness.world_mut());
         crush(harness.world_mut());
-        cascades(&mut harness);
+        // The endings are chemistry's, which runs with the step.
+        harness.step(1);
         assert!(!harness.world().is_alive(target));
         assert!(harness.world().is_alive(striker));
         assert_eq!(scraps(&harness).len(), 16);

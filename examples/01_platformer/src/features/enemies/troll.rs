@@ -43,7 +43,7 @@ use super::{ARRIVED, WALK_SHOVE_MOST, centre, hop};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
-use crate::features::elements::cascade::{self, CascadeKind};
+use crate::features::elements::cascade;
 use crate::features::props::components::{Crate, Keg};
 use crate::features::toys::components::{BowlingBall, IronBlock};
 use crate::features::toys::systems::falloff;
@@ -339,7 +339,7 @@ fn blow(
         let body = !world.has::<Health>(entity);
         let frozen = (body || live) && has_status(world, entity, FROZEN);
         if frozen {
-            cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
+            cascade::shatter_at(world, entity);
             continue;
         }
         let Some(body) = world.get::<RigidBody>(entity).copied() else {

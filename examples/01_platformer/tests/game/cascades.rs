@@ -7,26 +7,29 @@
 //! relights nothing; and fire and cold in one step leave one state.
 
 use example_01_platformer::features::combat::{Hit, Kind};
-use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
+use example_01_platformer::features::elements::cascade::{self, Cascades};
 use example_01_platformer::features::elements::{
-    self, CASCADE_BOUND, CASCADE_CAP, FROZEN_SECS, burn_left, is_frozen,
+    self, CASCADE_BOUND, CASCADE_CAP, COLD, FROZEN_SECS, burn_left, is_frozen,
 };
 use example_01_platformer::features::level::components::{Doused, Hazard};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::IronScrap;
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shared::{BURST_CAP, SaveId};
+use example_01_platformer::shared::{BURST_CAP, SaveId, surface_distance};
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    DataRef, DataRegistry, Entity, EventQueue, Position, PrevPosition, Transform,
+    BodyKind, DataRef, DataRegistry, Entity, EventQueue, PhysicsConfig, Position, PrevPosition,
+    RigidBody, Transform,
 };
-use tungsten::kit::{ContactDamage, DamageRequest, DamagedPart, Effect, KitRng};
+use tungsten::kit::{
+    Chemistry, ContactDamage, DamageRequest, DamagedPart, Effect, KitRng, stimulate,
+};
 use tungsten::testing::UiHarness;
 
 use super::combat::{CRIT_SEED, PLAIN_SEED, TOP, apply, dummy_at, has, health, with_dummy};
-use super::{aim_at, ball, body, bursts, cascades, ground, kick, pin_camera, run, stand};
+use super::{aim_at, ball, body, bursts, ground, kick, pin_camera, run, stand};
 
 /// A pile of `columns` × `rows` small balls on the sky's ground, 16 px
 /// apart, from `x`, frozen when `frozen`, else lit.
@@ -68,18 +71,18 @@ fn entries(harness: &UiHarness) -> Vec<cascade::Entry> {
     harness.world().resource::<Cascades>().entries.clone()
 }
 
+/// The entries chemistry's queue holds, the endings among them.
+fn pending(harness: &UiHarness) -> usize {
+    harness.world().resource::<Chemistry>().pending()
+}
+
 #[test]
 fn explosions_chain_through_a_frozen_pile() {
     let (mut harness, _) = sky();
     let balls = pile(&mut harness, 1000.0, 8, 4, true);
     let first = body(&harness, balls[0]);
     // Fire on the first ice ball: thermal shock, ring after ring.
-    assert!(cascade::thermal_shock(
-        harness.world_mut(),
-        balls[0],
-        first,
-        first
-    ));
+    cascade::thermal_shock(harness.world_mut(), balls[0], first);
     let mut left = Vec::new();
     for _ in 0..60 {
         harness.step(1);
@@ -90,7 +93,7 @@ fn explosions_chain_through_a_frozen_pile() {
         left[0] < balls.len(),
         "the first explosion's ring: {left:?}"
     );
-    assert!(entries(&harness).is_empty());
+    assert!(entries(&harness).is_empty() && pending(&harness) == 0);
 }
 
 #[test]
@@ -102,15 +105,8 @@ fn a_steam_chain_pops_a_burning_pile() {
             .iter()
             .all(|&b| burn_left(harness.world(), b).is_some())
     );
-    let first = body(&harness, balls[0]);
-    assert!(cascade::queue(
-        harness.world_mut(),
-        CascadeKind::Steam,
-        Some(balls[0]),
-        first,
-        first,
-        elements::SMALL_STEAM_REACH,
-    ));
+    // Cold on the first burning ball: its steam rule's burst, in turn.
+    assert!(stimulate(harness.world_mut(), balls[0], COLD, 1.0, None));
     harness.step(60);
     assert_eq!(live(&harness, &balls), 0, "each burning ball burst in turn");
     assert!(bursts(&harness, "ex10_steam_burst") <= BURST_CAP);
@@ -132,23 +128,26 @@ fn chain_order() -> Vec<Vec<u64>> {
     let balls = pile(&mut harness, 1000.0, 12, 6, true);
     let centre = Vec2::new(1088.0, TOP - 40.0);
     elements::thermal_shatter(harness.world_mut(), centre, 72.0);
-    let queued = entries(&harness);
-    assert!(
-        queued.len() > CASCADE_CAP,
-        "{} in the first ring",
-        queued.len()
-    );
-    // The first run takes the cap's worth nearest the origin, then by save ID.
-    let mut order: Vec<(f32, u64)> = queued
+    let queued = pending(&harness);
+    assert!(queued > CASCADE_CAP, "{queued} in the first ring");
+    // The first run takes the cap's worth in the kit's order: all of one
+    // age and depth, by the receivers' save IDs (the plan's §2.2).
+    let world = harness.world();
+    let mut first_ring: Vec<u64> = balls
         .iter()
-        .map(|e| (Vec2::from(e.at).distance(centre), e.target.unwrap()))
+        .filter(|&&ball| {
+            let shape = world.get::<tungsten::core::Collider>(ball).unwrap().shape;
+            surface_distance(centre, body(&harness, ball), shape) <= 72.0
+        })
+        .map(|&ball| world.get::<SaveId>(ball).unwrap().0)
         .collect();
-    order.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-    let expected: Vec<u64> = order.iter().take(CASCADE_CAP).map(|&(_, id)| id).collect();
+    first_ring.sort_unstable();
+    assert_eq!(first_ring.len(), queued, "the first ring, queued");
+    let expected: Vec<u64> = first_ring.into_iter().take(CASCADE_CAP).collect();
     let mut runs = Vec::new();
     let mut before = ids(&harness, &balls);
     for run in 0..40 {
-        cascades(&mut harness);
+        harness.step(1);
         let after = ids(&harness, &balls);
         let took: Vec<u64> = before
             .iter()
@@ -161,11 +160,11 @@ fn chain_order() -> Vec<Vec<u64>> {
             took_sorted.sort_unstable();
             let mut wanted = expected.clone();
             wanted.sort_unstable();
-            assert_eq!(took_sorted, wanted, "the nearest first");
+            assert_eq!(took_sorted, wanted, "the lowest save IDs first");
         }
         runs.push(took);
         before = after;
-        if entries(&harness).is_empty() {
+        if pending(&harness) == 0 {
             break;
         }
     }
@@ -187,6 +186,9 @@ fn a_chain_past_the_cap_finishes_over_steps_in_its_stable_order() {
 fn a_full_pits_chain_stays_under_the_bound() {
     let (mut harness, _) = run();
     let world = harness.world_mut();
+    // Chemistry runs with the step, so the pile hangs still, no gravity,
+    // its ice outlasting the chain, its balls kinematic.
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::ZERO;
     let live = toys::ball_count(world);
     let mut balls = Vec::with_capacity(BALL_CAP);
     for i in 0..BALL_CAP - live {
@@ -195,18 +197,21 @@ fn a_full_pits_chain_stays_under_the_bound() {
             100.0 + (i / 150) as f32 * 15.0,
         );
         let small = toys::spawn_ball(world, at, true);
-        elements::freeze_iron(world, small);
+        elements::systems::freeze_for(world, small, 600.0);
+        // Kinematic, so the blasts' shoves leave it where the chain finds it.
+        world.get_mut::<RigidBody>(small).unwrap().kind = BodyKind::Kinematic;
         balls.push(small);
     }
     let first = Vec2::new(100.0, 100.0);
-    assert!(cascade::thermal_shock(world, balls[0], first, first));
+    cascade::thermal_shock(world, balls[0], first);
     let (mut peak, mut runs) = (0, 0);
-    while !world.resource::<Cascades>().entries.is_empty() && runs < 2000 {
-        cascade::run(world);
-        peak = peak.max(world.resource::<Cascades>().entries.len());
+    while pending(&harness) > 0 && runs < 2000 {
+        harness.step(1);
+        peak = peak.max(pending(&harness));
         runs += 1;
     }
-    let dropped = world.resource::<Cascades>().dropped;
+    let world = harness.world();
+    let dropped = world.resource::<Chemistry>().dropped();
     let left = balls.iter().filter(|&&b| world.is_alive(b)).count();
     println!(
         "full pit chain: {} balls, {runs} runs, queue peak {peak}, dropped {dropped}, {left} left",
@@ -381,7 +386,7 @@ fn thermal_shock_hurts_the_player_at_half() {
     harness.step(1);
     elements::freeze_iron(harness.world_mut(), iron);
     let at = body(&harness, iron);
-    assert!(cascade::thermal_shock(harness.world_mut(), iron, at, at));
+    cascade::thermal_shock(harness.world_mut(), iron, at);
     harness.step(1);
     let world = harness.world();
     let mut parts: Vec<f32> = world
@@ -404,16 +409,12 @@ fn lethal_fire_on_a_frozen_dummy_explodes_as_its_one_burst() {
     let (mut harness, _, dummy) = with_dummy();
     apply(&mut harness, dummy, "frozen", None);
     DamageRequest::new(dummy, 395.0).apply(harness.world_mut());
-    let id = harness.world().get::<SaveId>(dummy).unwrap().0;
     Hit::new(dummy, [(Kind::Fire, 10.0)]).queue(harness.world_mut());
     harness.step(1);
     assert_eq!(health(&harness, dummy), 0.0, "killed");
-    let world = harness.world();
-    assert!(
-        world
-            .resource::<Cascades>()
-            .waits(CascadeKind::Explosion, id)
-    );
+    // Its thermal shock ran in the killing step's resolve, a step earlier
+    // than the cascade's.
+    assert_eq!(bursts(&harness, "ex10_frost_blast"), 1, "exploded");
     assert_eq!(
         bursts(&harness, "ex10_ice_shatter") + bursts(&harness, "ex10_poof"),
         0
@@ -431,16 +432,12 @@ fn lethal_cold_on_a_burning_dummy_steams_as_its_one_burst() {
     let (mut harness, _, dummy) = with_dummy();
     apply(&mut harness, dummy, "burning", None);
     DamageRequest::new(dummy, 395.0).apply(harness.world_mut());
-    let id = harness.world().get::<SaveId>(dummy).unwrap().0;
     Hit::new(dummy, [(Kind::Cold, 10.0)]).queue(harness.world_mut());
     harness.step(1);
     assert_eq!(health(&harness, dummy), 0.0, "killed");
-    assert!(
-        harness
-            .world()
-            .resource::<Cascades>()
-            .waits(CascadeKind::Steam, id)
-    );
+    // Its steam ran in the killing step's resolve, a step earlier than the
+    // cascade's.
+    assert_eq!(bursts(&harness, "ex10_steam_burst"), 1, "steamed");
     assert_eq!(
         bursts(&harness, "ex10_burn_out") + bursts(&harness, "ex10_poof"),
         0
@@ -468,12 +465,16 @@ fn a_steam_bursts_own_fire_relights_nothing() {
     for dummy in [near, far] {
         Hit::new(dummy, [(Kind::Cold, 5.0)]).queue(harness.world_mut());
     }
+    // Both bursts ran in the step's resolve, a step earlier than the
+    // cascade's.
+    // In the kit's order the near one's burst comes first, putting the far
+    // one out and dousing it before its own cold is decided (the plan's
+    // §2.2): one burst, both put out.
     harness.step(1);
-    let waiting: Vec<CascadeKind> = entries(&harness).iter().map(|e| e.kind).collect();
     assert_eq!(
-        waiting,
-        [CascadeKind::Steam, CascadeKind::Steam],
-        "overlapping bursts"
+        bursts(&harness, "ex10_steam_burst"),
+        1,
+        "the near one's burst"
     );
     harness.step(3);
     for dummy in [near, far] {
@@ -495,16 +496,16 @@ fn fire_and_cold_in_one_step_leave_both_states_and_no_ending() {
     // and their bands land them a step later (the plan's §2.2).
     harness.step(2);
     assert!(has(&harness, dummy, "burning") && has(&harness, dummy, "chilled"));
-    assert!(
-        entries(&harness).is_empty(),
+    assert_eq!(
+        bursts(&harness, "ex10_steam_burst"),
+        0,
         "neither state held when the step began"
     );
     Hit::new(dummy, [(Kind::Cold, 15.0)]).queue(harness.world_mut());
     harness.step(1);
-    let waiting: Vec<CascadeKind> = entries(&harness).iter().map(|e| e.kind).collect();
     assert_eq!(
-        waiting,
-        [CascadeKind::Steam],
+        bursts(&harness, "ex10_steam_burst"),
+        1,
         "the next step's cold meets the burning"
     );
 }

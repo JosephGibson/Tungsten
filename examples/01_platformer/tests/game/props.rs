@@ -422,15 +422,18 @@ fn a_detonations_credit_passes_through_the_endings_it_sets_off() {
         !alive(&harness, keg) && !alive(&harness, second),
         "both blew"
     );
-    for kind in [CascadeKind::Explosion, CascadeKind::Detonation] {
-        assert!(entries.iter().any(|&(k, _)| k == kind), "{kind:?} queued");
-    }
-    // A hard landing's shatter deals no hit; every blast credits the lighter.
     assert!(
         entries
             .iter()
-            .filter(|&&(kind, _)| kind != CascadeKind::Shatter)
-            .all(|&(_, source)| source == Some(credit)),
+            .any(|&(kind, _)| kind == CascadeKind::Detonation),
+        "a detonation queued"
+    );
+    // The frozen things' thermal shocks are chemistry's rules now, each
+    // credited by its stimulus: the frozen ball's went.
+    assert!(!alive(&harness, small), "the frozen ball exploded");
+    // Every detonation credits the lighter.
+    assert!(
+        entries.iter().all(|&(_, source)| source == Some(credit)),
         "every blast credits the lighter: {entries:?}"
     );
     for target in [frozen, wisp] {

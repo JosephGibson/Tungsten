@@ -40,10 +40,9 @@ use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, TilemapData};
 use tungsten::core::{
-    AssetRegistry, AudioCommand, AudioCommands, CameraState, Collider, DataRef, Entity, Particle,
-    ParticleBudget, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
-    RigidBody, Shape, SoundRegistry, Sprite, TilemapInstance, TilemapRegistry, Time, Transform,
-    Velocity,
+    AssetRegistry, AudioCommand, CameraState, Collider, DataRef, Entity, Particle, ParticleBudget,
+    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position, RigidBody, Shape,
+    SoundRegistry, Sprite, TilemapInstance, TilemapRegistry, Time, Transform, Velocity,
 };
 use tungsten::extract_sprites_default;
 use tungsten::kit::{
@@ -53,8 +52,8 @@ use tungsten::testing::UiHarness;
 
 use super::kind_body;
 use super::{
-    aim_at, body, cascades, centre, choose, contact, floor, ground, kick, mock_sprite, pin_camera,
-    run, stand, steps_this_frame, teleport,
+    aim_at, body, centre, choose, contact, floor, ground, kick, mock_sprite, pin_camera, run,
+    stand, steps_this_frame, teleport,
 };
 
 fn block(harness: &mut UiHarness, at: Vec2) -> Entity {
@@ -203,13 +202,15 @@ fn thermal_contact_uses_surface_distance_and_leaves_warm_and_distant_iron_intact
     elements::freeze_iron(harness.world_mut(), edge);
     elements::freeze_iron(harness.world_mut(), distant);
     toys::explode(harness.world_mut(), o);
-    cascades(&mut harness);
+    // The endings are chemistry's, which runs with the step.
+    harness.step(1);
     assert!(!harness.world().is_alive(edge));
     assert!(harness.world().is_alive(distant));
     assert!(harness.world().is_alive(warm));
     assert_eq!(scraps(&harness).len(), SCRAP_COUNT);
     toys::explode(harness.world_mut(), o);
-    cascades(&mut harness);
+    // The endings are chemistry's, which runs with the step.
+    harness.step(1);
     assert_eq!(
         scraps(&harness).len(),
         SCRAP_COUNT,
@@ -234,7 +235,8 @@ fn frozen_iron_slides_with_reduced_friction_and_scraps_can_refreeze() {
     assert!((vx(&harness, warm) + 100.0 - IRON_FRICTION * dt).abs() < 0.001);
     assert!((vx(&harness, cold) + 100.0 - FROZEN_FRICTION * dt).abs() < 0.001);
     toys::explode(harness.world_mut(), o + Vec2::new(400.0, 0.0));
-    cascades(&mut harness);
+    // The endings are chemistry's, which runs with the step.
+    harness.step(1);
     let scrap = scraps(&harness)[0];
     elements::freeze_iron(harness.world_mut(), scrap);
     assert_eq!(freeze_amount(harness.world(), scrap), 1.0);
@@ -243,7 +245,8 @@ fn frozen_iron_slides_with_reduced_friction_and_scraps_can_refreeze() {
         world.get::<Position>(scrap).unwrap().0 + Vec2::splat(16.0)
     };
     toys::explode(harness.world_mut(), at);
-    cascades(&mut harness);
+    // The endings are chemistry's, which runs with the step.
+    harness.step(1);
     assert!(!harness.world().is_alive(scrap));
     assert_eq!(scraps(&harness).len(), SCRAP_COUNT - 1);
 }
@@ -255,7 +258,8 @@ fn scrap_friction_is_one_sixteenth_of_full_iron_with_the_same_frozen_reduction()
     let iron = block(&mut harness, o);
     elements::freeze_iron(harness.world_mut(), iron);
     elements::thermal_shatter(harness.world_mut(), o, BLAST_RADIUS);
-    cascades(&mut harness);
+    // The endings are chemistry's, which runs with the step.
+    harness.step(1);
     let pieces = scraps(&harness);
     let (warm, cold) = (pieces[0], pieces[1]);
     elements::freeze_iron(harness.world_mut(), cold);
@@ -899,11 +903,11 @@ fn simultaneous_freezes_and_thermal_fractures_share_audio_but_keep_individual_cu
         Vec2::new(550.0, TOP - 2.0 * IRON_HALF.y),
         BLAST_RADIUS,
     );
-    cascades(&mut harness);
+    // The endings are chemistry's, which runs with the step, their crack's
+    // cue in it, a step earlier than the cascade's.
+    harness.step(1);
     assert_eq!(harness.world().query::<&IronScrap>().count(), 32);
     assert_eq!(pulses(&harness, true), 2);
-    harness.world_mut().resource_mut::<AudioCommands>().drain();
-    harness.step(1);
     assert_eq!(plays(&harness, SHATTER), 1, "the fractures share one crack");
     release(&mut harness);
     harness.step(120);
