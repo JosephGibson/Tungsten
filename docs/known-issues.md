@@ -127,6 +127,8 @@ Carried from the review, as of `0.27.0`.
 
 Carried findings from the dated passes listed above; later entries name their milestone or investigation. Those dates describe recorded evidence, not a fresh verification of every entry.
 
+- example-01-new-systems' follow-ups (0.118): `just perf sitting --quick` runs 810 warm-up and 150 frames, 960 in all, while `e01-stress`'s script steps to frame 975, so the row reads invalid in a quick sitting on any tree; a full sitting measures it (7.13a's F11).
+
 - level-generation's follow-ups (0.117): 02's `generate` row has no smoke rows either, as `rooms`'s below, `scripts/smoke-examples.sh` and `scripts/test-smoke-examples.sh` being outside its step's list; its first capture is functional only (`D-226`), so its first sitting is its evidence.
 - level-format's follow-ups (0.117): 02's `rooms` row has no smoke rows, its `min` and `default` in `scripts/smoke-examples.sh` with their expected runs in `scripts/test-smoke-examples.sh` (`docs/perf/benchmarks.md`'s step 4 of adding a row), since neither file was in its step's list; its first capture is functional only (`D-226`), so the row's first sitting is its evidence.
 - Redo 7.2's follow-ups (0.113): the template's `AGENTS.md` lists `tests/game/`'s modules without `script` and says a new game deletes `src/sample/` with `tests/game/sample.rs` alone; `tests/game/script.rs`, the sample's hook tests, goes with them, as `docs/getting-started.md` says. `AGENTS.md` has 1 byte of room, so the line waits for 7.16.
