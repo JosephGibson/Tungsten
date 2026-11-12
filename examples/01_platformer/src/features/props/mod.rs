@@ -46,7 +46,7 @@ use crate::features::level::components::SceneTime;
 use crate::features::run::Run;
 use crate::features::toys::components::ScrapTumble;
 use crate::features::toys::{self, components::IronBlock};
-use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
+use crate::shared::{SaveId, Saved, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
 use components::{Bomb, Crate, Keg, MapProp, Plank, PropFire, PropKind, Rock, Stone};
 
 /// The props' prefabs, by their manifest IDs.
@@ -298,7 +298,7 @@ pub fn fits(world: &World, kind: PropKind, at: Vec2) -> bool {
 /// plank its first art and its fuel whole, which a break sets.
 pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     let prop = toys::spawn_toy(world, prefab(kind), at - centre(kind), 1.0);
-    let variant = art(world.get::<SaveId>(prop));
+    let variant = art(crate::shared::save_id(world, prop));
     if kind == PropKind::Rock {
         world.insert(prop, Rock { variant });
         systems::show_rock(world, prop, variant);
@@ -323,7 +323,7 @@ pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
 /// `variant`.
 pub fn restore(world: &mut World, kind: PropKind, at: Vec2, id: SaveId, variant: usize) -> Entity {
     let prop = toys::spawn_toy(world, prefab(kind), at, 1.0);
-    world.insert(prop, id);
+    world.insert(prop, Saved::kept(id));
     match kind {
         PropKind::Crate => {
             world.insert(prop, Crate { variant });
@@ -367,8 +367,8 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
     audio::play(world, Sound::CrateBroke, at);
     despawn_tree(world, crate_);
     let mut planks: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &Plank, &SaveId)>()
-        .map(|(entity, _, id)| (*id, entity))
+        .query::<(Entity, &Plank, &Saved)>()
+        .map(|(entity, _, id)| (id.id(), entity))
         .collect();
     planks.sort_by_key(|(id, _)| *id);
     let surplus = (planks.len() + PLANK_ROWS.len()).saturating_sub(PLANK_CAP);
@@ -419,8 +419,8 @@ pub fn crumble_plank(world: &mut World, plank: Entity) {
 /// save ID, crumbles first. The thrower credits it through `Throws`.
 pub fn lob_rock(world: &mut World, at: Vec2, velocity: Vec2) -> Entity {
     let mut rocks: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &Rock, &SaveId)>()
-        .map(|(entity, _, id)| (*id, entity))
+        .query::<(Entity, &Rock, &Saved)>()
+        .map(|(entity, _, id)| (id.id(), entity))
         .collect();
     rocks.sort_by_key(|(id, _)| *id);
     let surplus = (rocks.len() + 1).saturating_sub(ROCK_CAP);
@@ -448,7 +448,7 @@ pub fn crumble(world: &mut World, rock: Entity) {
 /// counted from 57, past the map's, so the map's crates and stones keep
 /// the art they were drawn and placed with.
 #[must_use]
-pub fn art(id: Option<&SaveId>) -> usize {
+pub fn art(id: Option<SaveId>) -> usize {
     id.map_or(0, |id| ((id.0 + 1) % 2) as usize)
 }
 
@@ -460,7 +460,7 @@ pub fn place(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
         .into_iter()
         .filter(|&entity| self::kind(world, entity) == Some(kind))
         .filter(|&entity| !world.has::<MapProp>(entity))
-        .filter_map(|entity| Some((*world.get::<SaveId>(entity)?, entity)))
+        .filter_map(|entity| Some((crate::shared::save_id(world, entity)?, entity)))
         .collect();
     live.sort_by_key(|(id, _)| *id);
     let surplus = (live.len() + 1).saturating_sub(cap(kind));
@@ -529,7 +529,7 @@ fn source(world: &World, prop: Entity, id: &str) -> Option<Entity> {
 pub fn lighter(world: &World, prop: Entity) -> Option<u64> {
     source(world, prop, PROP_BURN)
         .or_else(|| source(world, prop, LIT))
-        .and_then(|lighter| world.get::<SaveId>(lighter))
+        .and_then(|lighter| crate::shared::save_id(world, lighter))
         .map(|id| id.0)
 }
 
@@ -541,7 +541,7 @@ pub fn fire(world: &World, prop: Entity) -> Option<PropFire> {
         left: fuel_left(world, prop),
         lit: alight(world, prop),
         lighter: source(world, prop, PROP_BURN)
-            .and_then(|lighter| world.get::<SaveId>(lighter))
+            .and_then(|lighter| crate::shared::save_id(world, lighter))
             .map(|id| id.0),
         doused: doused_left(world, prop),
     })
@@ -610,18 +610,18 @@ fn douse(world: &mut World, prop: Entity, seconds: f32) {
 fn credit_of(world: &World, lighter: Option<u64>) -> Option<Entity> {
     let id = lighter?;
     if let Some(player) = world.get_resource::<Run>().map(|run| run.player)
-        && world.get::<SaveId>(player).is_some_and(|own| own.0 == id)
+        && crate::shared::save_id(world, player).is_some_and(|own| own.0 == id)
     {
         return Some(player);
     }
     world
-        .query::<(Entity, &SaveId, &Health)>()
-        .find(|(_, own, _)| own.0 == id)
+        .query::<(Entity, &Saved, &Health)>()
+        .find(|(_, own, _)| own.id().0 == id)
         .map(|(entity, ..)| entity)
         .or_else(|| {
             world
-                .query::<(Entity, &SaveId)>()
-                .find(|(_, own)| own.0 == id)
+                .query::<(Entity, &Saved)>()
+                .find(|(_, own)| own.id().0 == id)
                 .map(|(entity, _)| entity)
         })
 }

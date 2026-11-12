@@ -20,7 +20,7 @@ use crate::features::toys::flask::FLASK_CAP;
 use crate::features::toys::{self, BALL_CAP, MISSILE_CAP};
 use crate::features::{dummy, enemies, props};
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, just_pressed, pressed, spawn_key_burst};
+use crate::shared::{Saved, just_pressed, pressed, spawn_key_burst};
 use crate::shell;
 
 /// The run's player while it lives.
@@ -361,7 +361,7 @@ pub fn held(world: &mut World) {
 /// along the aim, its centre moved to the caster's centre's place.
 pub fn adopt(world: &mut World) {
     let fresh: Vec<Entity> = world
-        .query_filtered::<Entity, (With<FireMissile>, Without<SaveId>)>()
+        .query_filtered::<Entity, (With<FireMissile>, Without<Saved>)>()
         .collect();
     let centre = player::body(world).centre;
     for missile in fresh {

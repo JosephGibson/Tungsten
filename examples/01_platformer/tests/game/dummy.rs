@@ -40,7 +40,11 @@ fn the_clearing_holds_a_dummy_with_its_three_tags() {
         (at.y - (36.0 * 64.0 - 28.0)).abs() < 2.0,
         "standing on the clearing's turf: {at}"
     );
-    let id = |entity: Entity| harness.world().get::<SaveId>(entity).unwrap().0;
+    let id = |entity: Entity| {
+        example_01_platformer::shared::save_id(harness.world(), entity)
+            .unwrap()
+            .0
+    };
     assert_eq!(
         [id(dummy), id(player)],
         [

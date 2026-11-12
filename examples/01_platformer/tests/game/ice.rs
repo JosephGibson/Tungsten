@@ -34,8 +34,7 @@ use example_01_platformer::features::toys::{
     self, BLAST_RADIUS, FROZEN_FRICTION, IRON_FRICTION, IRON_HALF, IRON_MASS, MISSILE_SPEED,
     SCRAP_COUNT, SCRAP_HALF, SPRAY_RANGE,
 };
-use example_01_platformer::shared::BURST_CAP;
-use example_01_platformer::shared::SaveIds;
+use example_01_platformer::shared::{BURST_CAP, take_id};
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, TilemapData};
@@ -933,7 +932,7 @@ fn cold_arena() -> (UiHarness, Entity) {
 fn creature(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
     let centre = Vec2::new(x, GROUND - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let enemy =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);
@@ -1302,7 +1301,7 @@ fn a_left_facing_troll_s_frost_and_cube_fit_its_hurtbox() {
         let kind = EnemyKind::Troll;
         let centre = Vec2::new(1200.0, GROUND - kind_body(kind).half.y - 0.5);
         let world = harness.world_mut();
-        let id = world.resource_mut::<SaveIds>().take();
+        let id = take_id(world);
         let troll =
             enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
         enemies::scale(world, troll, Difficulty::Normal);

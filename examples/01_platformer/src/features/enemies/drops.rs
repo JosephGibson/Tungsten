@@ -27,7 +27,7 @@ use crate::features::level::{LAVA_LAYER, TILE};
 use crate::features::player;
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds, spawn_burst};
+use crate::shared::{SaveId, Saved, spawn_burst};
 
 /// The orbs the map placed this run, by save ID, sorted: a World resource a
 /// run's start inserts, which a save's `gone` reads.
@@ -104,8 +104,8 @@ pub struct Orb {
 /// fade, recorded by save ID.
 pub fn start(world: &mut World) {
     let mut placed: Vec<(u64, Entity)> = world
-        .query_filtered::<(Entity, &SaveId), With<Orb>>()
-        .map(|(entity, id)| (id.0, entity))
+        .query_filtered::<(Entity, &Saved), With<Orb>>()
+        .map(|(entity, id)| (id.id().0, entity))
         .collect();
     placed.sort_unstable_by_key(|(id, _)| *id);
     for &(_, orb) in &placed {
@@ -119,9 +119,9 @@ pub fn start(world: &mut World) {
 #[must_use]
 pub fn gone(world: &World) -> Vec<u64> {
     let live: Vec<u64> = world
-        .query_filtered::<(&SaveId, &Pickup), With<Orb>>()
+        .query_filtered::<(&Saved, &Pickup), With<Orb>>()
         .filter(|(_, pickup)| !pickup.is_collected())
-        .map(|(id, _)| id.0)
+        .map(|(id, _)| id.id().0)
         .collect();
     world
         .get_resource::<PlacedOrbs>()
@@ -202,11 +202,11 @@ pub fn fallen(world: &mut World, cursor: &mut EventCursor<Damaged>) {
 pub fn adopt(world: &mut World) {
     let fallen = world.remove_resource::<Fallen>().unwrap_or_default();
     let fresh: Vec<Entity> = world
-        .query_filtered::<Entity, (With<Orb>, Without<SaveId>)>()
+        .query_filtered::<Entity, (With<Orb>, Without<Saved>)>()
         .collect();
     for orb in fresh {
-        let id = world.resource_mut::<SaveIds>().take();
-        world.insert_bundle(orb, (id, SceneEntity { state_id: GAMEPLAY }));
+        let id = crate::shared::take_id(world);
+        world.insert_bundle(orb, (Saved::kept(id), SceneEntity { state_id: GAMEPLAY }));
         let (Some(kind), Some(point)) = (
             world.get::<Orb>(orb).map(|orb| orb.kind),
             world.get::<Position>(orb).map(|at| at.0 + ORB_CENTRE),
@@ -252,9 +252,9 @@ pub fn fall(world: &mut World) {
         Some((player::centre(world, run.player)?, radius))
     });
     let falling: Vec<(Entity, Vec2)> = world
-        .query::<(Entity, &Orb, &Pickup, &Position, Option<&SaveId>)>()
+        .query::<(Entity, &Orb, &Pickup, &Position, Option<&Saved>)>()
         .filter(|(_, _, pickup, _, id)| {
-            !pickup.is_collected() && !id.is_some_and(|id| placed.contains(&id.0))
+            !pickup.is_collected() && !id.is_some_and(|id| placed.contains(&id.id().0))
         })
         .map(|(entity, _, _, at, _)| (entity, at.0 + ORB_CENTRE))
         .filter(|&(_, centre)| !pull.is_some_and(|(at, radius)| centre.distance(at) <= radius))
@@ -323,7 +323,7 @@ pub fn spawn(
     let orb = world
         .prepare_prefab(kind.prefab(), corner.to_array())
         .ok()?
-        .with((id, SceneEntity { state_id: GAMEPLAY }))
+        .with((Saved::kept(id), SceneEntity { state_id: GAMEPLAY }))
         .spawn(world);
     world.insert(orb, Lifetime::new(left.max(0.0)));
     Some(orb)

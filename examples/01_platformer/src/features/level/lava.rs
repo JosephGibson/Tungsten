@@ -247,7 +247,7 @@ pub fn take(world: &mut World) {
                     .is_some_and(|rigid| rigid.kind == BodyKind::Dynamic)
                     && !world.has::<Health>(body)
             })
-            .map(|body| (world.get::<SaveId>(body).copied(), body))
+            .map(|body| (crate::shared::save_id(world, body), body))
             .collect();
         bodies.sort_unstable_by_key(|&(id, body)| (id, body.id()));
         bodies.dedup();
@@ -263,7 +263,7 @@ pub fn take(world: &mut World) {
                     .is_some_and(|health| !health.is_dead())
                     && is_frozen(world, target)
             })
-            .map(|target| (world.get::<SaveId>(target).copied(), target))
+            .map(|target| (crate::shared::save_id(world, target), target))
             .collect();
         frozen.sort_unstable_by_key(|&(id, target)| (id, target.id()));
         frozen.dedup();

@@ -13,7 +13,7 @@ use example_01_platformer::features::gun::{
 };
 use example_01_platformer::features::spells::hud::Hud;
 use example_01_platformer::features::toys::{self, IRON_HALF};
-use example_01_platformer::shared::SaveId;
+use example_01_platformer::shared::{SaveId, Saved};
 use glam::Vec2;
 use tungsten::core::{Entity, EventQueue, RigidBody, Velocity};
 use tungsten::kit::{
@@ -61,8 +61,8 @@ fn shot(harness: &mut UiHarness, centre: Vec2, velocity: Vec2) -> SaveId {
 fn bullet(harness: &UiHarness, id: SaveId) -> Option<Entity> {
     harness
         .world()
-        .query::<(Entity, &Bullet, &SaveId)>()
-        .find(|&(_, _, own)| *own == id)
+        .query::<(Entity, &Bullet, &Saved)>()
+        .find(|&(_, _, own)| own.id() == id)
         .map(|(entity, ..)| entity)
 }
 

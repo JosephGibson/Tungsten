@@ -33,7 +33,7 @@ use crate::features::enemies::components::Enemy;
 use crate::features::enemies::drops::Orb;
 use crate::features::player;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, burst_cleanup};
+use crate::shared::{SaveId, Saved, burst_cleanup};
 use components::SceneTime;
 
 /// The level's tilemap, by its manifest ID.
@@ -288,7 +288,7 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
             assert!(!name.is_empty(), "a saved map object has no name");
             let id = SaveId::authored(name);
             assert!(taken.insert(id), "the map's `{name}` takes a taken save ID");
-            world.insert(entity, id);
+            world.insert(entity, Saved::kept(id));
         }
         world.insert(entity, SceneEntity { state_id: GAMEPLAY });
     }

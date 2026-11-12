@@ -24,7 +24,7 @@ use example_01_platformer::features::toys::{
     self, BALL_RADIUS, IRON_HALF, IRON_MASS, IRON_PULL, SCRAP_HALF, SCRAP_MASS, SCRAP_PULL,
     SMALL_BALL_RADIUS,
 };
-use example_01_platformer::shared::SaveIds;
+use example_01_platformer::shared::take_id;
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::{
@@ -47,7 +47,7 @@ const TOP: f32 = 1000.0;
 fn standing(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
     let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let enemy =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);

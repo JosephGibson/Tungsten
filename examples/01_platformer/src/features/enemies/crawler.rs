@@ -20,7 +20,7 @@ use super::{ARRIVED, centre, snowball, troll};
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::Glow;
 use crate::features::player::components::Lantern;
-use crate::shared::{SaveId, spawn_burst};
+use crate::shared::spawn_burst;
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.5;
@@ -360,7 +360,7 @@ fn flick(world: &mut World, crawler: Entity) {
         .map_or(Vec2::ZERO, |config| config.gravity);
     let time = (from.distance(target) * SNOWBALL_PACE).clamp(SNOWBALL_LEAST, SNOWBALL_MOST);
     let velocity = troll::ballistic(from, target, time, gravity);
-    let thrower = world.get::<SaveId>(crawler).map(|id| id.0);
+    let thrower = crate::shared::save_id(world, crawler).map(|id| id.0);
     let factor = troll::factor(world, crawler);
     snowball::throw(world, from, velocity, thrower, factor);
     if let Some(brain) = world.get_mut::<Brain>(crawler) {

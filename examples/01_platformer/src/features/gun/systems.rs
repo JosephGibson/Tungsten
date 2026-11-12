@@ -33,7 +33,7 @@ use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock};
 use crate::features::toys::systems::shift;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds, despawn_tree, just_pressed, pressed, spawn_burst};
+use crate::shared::{Saved, despawn_tree, just_pressed, pressed, spawn_burst};
 
 /// `gun_shoot`, in the intent phase after the kit's ability tick: a
 /// reload running counts down, and at its end every round comes back with
@@ -154,11 +154,11 @@ pub fn muzzles(world: &mut World) {
 /// and shown.
 pub fn adopt(world: &mut World) {
     let fresh: Vec<Entity> = world
-        .query_filtered::<Entity, (With<Bullet>, Without<SaveId>)>()
+        .query_filtered::<Entity, (With<Bullet>, Without<Saved>)>()
         .collect();
     for bullet in fresh {
-        let id = world.resource_mut::<SaveIds>().take();
-        world.insert(bullet, id);
+        let id = crate::shared::take_id(world);
+        world.insert(bullet, Saved::kept(id));
         let centre = player::body(world).centre;
         shift(world, bullet, centre - BULLET_CENTRE);
         let velocity = world
@@ -241,7 +241,7 @@ fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
         &Position,
         &PrevPosition,
         &Collider,
-        &SaveId,
+        &Saved,
         Option<&IronBlock>,
         Option<&Ball>,
     )>() {
@@ -263,7 +263,7 @@ fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
         }
         swept.push(Swept {
             body,
-            id: id.0,
+            id: id.id().0,
             what,
             start,
             end,
@@ -277,7 +277,7 @@ fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
         Option<&PrevPosition>,
         &Hurtbox,
         &Health,
-        &SaveId,
+        &Saved,
     )>() {
         if health.is_dead() || !armour::armoured(world, body) {
             continue;
@@ -285,7 +285,7 @@ fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
         let start = prev.map_or(at.0, |prev| prev.0);
         swept.push(Swept {
             body,
-            id: id.0,
+            id: id.id().0,
             what: What::Armour,
             start: start + hurtbox.offset(),
             end: at.0 + hurtbox.offset(),
@@ -489,10 +489,10 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
         Some((pass.entity, pass.position + BULLET_CENTRE, pass.wall.normal))
     });
     let mut bullets: Vec<(u64, Entity, Vec2, Vec2)> = world
-        .query::<(Entity, &Bullet, &SaveId)>()
+        .query::<(Entity, &Bullet, &Saved)>()
         .filter_map(|(entity, bullet, id)| {
             let (from, to) = bullet.segment?;
-            Some((id.0, entity, from, to))
+            Some((id.id().0, entity, from, to))
         })
         .collect();
     if bullets.is_empty() {
@@ -676,7 +676,7 @@ fn keg(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
     } else {
         let shooter = world
             .get::<Source>(bullet)
-            .and_then(|source| world.get::<SaveId>(source.entity()))
+            .and_then(|source| crate::shared::save_id(world, source.entity()))
             .map(|id| id.0);
         props::set_off(world, contact.body, shooter);
     }

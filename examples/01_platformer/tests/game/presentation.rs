@@ -16,7 +16,7 @@ use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
 use example_01_platformer::features::player::systems::{JUMP_PUFF, LANDING_DUST};
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shared::{BURST_CAP, Burst, spawn_burst};
+use example_01_platformer::shared::{BURST_CAP, Burst, Saved, spawn_burst, take_id};
 use example_01_platformer::shell::options::GameOptions;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, ResolvedManifest, TilemapData, TilemapLayer};
@@ -48,7 +48,6 @@ use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{OpeningOf, Ring, ShockRing};
 use example_01_platformer::features::toys::{self, components::BlackHole};
 use example_01_platformer::save::{self, SaveGame};
-use example_01_platformer::shared::{SaveId, SaveIds};
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
 use tungsten::PhysicsDebugOverlay;
 use tungsten::core::Shape;
@@ -1004,7 +1003,7 @@ fn crawler(harness: &mut UiHarness, x: f32) -> Entity {
     let kind = EnemyKind::Crawler;
     let centre = Vec2::new(x, SKY_TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let crawler =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, crawler, Difficulty::Normal);
@@ -1048,7 +1047,7 @@ const SKY_TOP: f32 = 1000.0;
 fn standing(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
     let centre = Vec2::new(x, SKY_TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let enemy =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);
@@ -1259,8 +1258,10 @@ fn an_alert_shows_its_mark_and_stings_once() {
     fresh.world_mut().resource_mut::<Time>().resume();
     let restored = fresh
         .world()
-        .query::<(Entity, &SaveId)>()
-        .find(|(_, id)| Some(**id) == harness.world().get::<SaveId>(spotter).copied())
+        .query::<(Entity, &Saved)>()
+        .find(|(_, id)| {
+            Some(id.id()) == example_01_platformer::shared::save_id(harness.world(), spotter)
+        })
         .map(|(entity, _)| entity)
         .expect("the spotter loaded");
     let mut more: u32 = 0;

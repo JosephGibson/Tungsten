@@ -51,7 +51,7 @@ use crate::features::props::{
 };
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, surface_distance};
+use crate::shared::{SaveId, Saved, body_centre, despawn_tree, spawn_burst, surface_distance};
 
 /// The light a missile leaves where it ends, and its fades.
 const FLARE_COLOR: Vec3 = Vec3::new(1.0, 0.56, 0.22);
@@ -90,10 +90,10 @@ pub fn tick(world: &mut World) {
     }
     let mut closed = Vec::new();
     let mut collapsed: Vec<(Option<SaveId>, Entity)> = Vec::new();
-    for (entity, hole, id) in world.query_mut::<(Entity, &mut BlackHole, Option<&SaveId>)>() {
+    for (entity, hole, id) in world.query_mut::<(Entity, &mut BlackHole, Option<&Saved>)>() {
         hole.left -= dt;
         if hole.left <= 0.0 {
-            collapsed.push((id.copied(), entity));
+            collapsed.push((id.map(Saved::id), entity));
         }
     }
     for ball in world.query_mut::<&mut SmallBall>() {
@@ -134,8 +134,8 @@ pub fn collapse(world: &mut World, hole: Entity) {
 /// every eighth it takes puffs.
 pub fn broom(world: &mut World) {
     let mut holes: Vec<(SaveId, Vec2)> = world
-        .query::<(&BlackHole, &Transform, &SaveId)>()
-        .map(|(_, at, id)| (*id, at.position))
+        .query::<(&BlackHole, &Transform, &Saved)>()
+        .map(|(_, at, id)| (id.id(), at.position))
         .collect();
     if holes.is_empty() {
         return;
@@ -143,13 +143,13 @@ pub fn broom(world: &mut World) {
     holes.sort_by_key(|(id, _)| *id);
     let reach = BROOM_REACH * BROOM_REACH;
     let near: Vec<(SaveId, Entity, Vec2)> = world
-        .query::<(Entity, &SmallBall, &Position, &Collider, &SaveId)>()
+        .query::<(Entity, &SmallBall, &Position, &Collider, &Saved)>()
         .filter_map(|(entity, _, p, collider, id)| {
             let centre = p.0 + collider.offset;
             holes
                 .iter()
                 .any(|(_, hole)| hole.distance_squared(centre) <= reach)
-                .then_some((*id, entity, centre))
+                .then_some((id.id(), entity, centre))
         })
         .collect();
     let mut taken: Vec<(Entity, Vec2)> = Vec::new();
@@ -600,7 +600,7 @@ pub(crate) fn flare(world: &mut World, at: Vec2, blast: bool) {
     let mut light = Light::point(FLARE_COLOR, FLARE_RADIUS * if blast { 2.0 } else { 1.0 });
     light.intensity = FLARE_INTENSITY;
     let secs = if blast { BLAST_FLARE_SECS } else { FLARE_SECS };
-    let phase = world.resource::<crate::shared::SaveIds>().peek() as f32;
+    let phase = crate::shared::next_id(world) as f32;
     world.spawn_with((
         Transform::from_position(at),
         light,
@@ -662,9 +662,9 @@ pub fn explode(world: &mut World, at: Vec2) {
         queue.send(ShakeEvent { trauma_add: trauma });
     }
     let mut lit: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &SmallBall, &Position, &Collider, &SaveId)>()
+        .query::<(Entity, &SmallBall, &Position, &Collider, &Saved)>()
         .filter(|(_, _, p, c, _)| (p.0 + c.offset).distance_squared(at) <= BLAST_RADIUS.powi(2))
-        .map(|(entity, .., id)| (*id, entity))
+        .map(|(entity, .., id)| (id.id(), entity))
         .collect();
     lit.sort_by_key(|(id, _)| *id);
     for (_, ball) in lit {
@@ -689,7 +689,7 @@ fn heat_props(world: &mut World, at: Vec2) {
             };
             surface_distance(at, centre, collider.shape) <= BLAST_RADIUS
         })
-        .map(|prop| (world.get::<SaveId>(prop).copied(), prop))
+        .map(|prop| (crate::shared::save_id(world, prop), prop))
         .collect();
     near.sort_by_key(|(id, _)| *id);
     let player = cascade::player_credit(world);
@@ -715,7 +715,7 @@ fn burn_targets(world: &mut World, at: Vec2) {
         .filter_map(|(entity, _, p, collider)| {
             let distance = surface_distance(at, p.0 + collider.offset, collider.shape);
             (distance <= BLAST_RADIUS)
-                .then(|| (world.get::<SaveId>(entity).copied(), entity, distance))
+                .then(|| (crate::shared::save_id(world, entity), entity, distance))
         })
         .collect();
     targets.sort_by_key(|(id, ..)| *id);
@@ -780,7 +780,7 @@ pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
         .filter(|(entity, _, health)| !health.is_dead() && !enemies::stands_firm(world, *entity))
         .filter_map(|(entity, enemy, _)| {
             let push = away(body_centre(world, entity)?)? * enemy.kind.info().pull;
-            Some((world.get::<SaveId>(entity).copied(), entity, push))
+            Some((crate::shared::save_id(world, entity), entity, push))
         })
         .collect();
     thrown.sort_by_key(|(id, ..)| *id);
@@ -985,7 +985,7 @@ pub fn traced_near(world: &World, caster: Entity, centre: Vec2, radius: f32) -> 
                 entity,
                 centre: body,
                 shape: collider.shape,
-                id: world.get::<SaveId>(entity).copied(),
+                id: crate::shared::save_id(world, entity),
             })
         })
         .collect()
@@ -1250,7 +1250,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
             }
         }
         Element::Fire => {
-            let lighter = world.get::<SaveId>(caster).map(|id| id.0);
+            let lighter = crate::shared::save_id(world, caster).map(|id| id.0);
             for (hit, contact) in met {
                 if is_frozen(world, hit) {
                     cascade::heat(world, hit, contact, Some(caster));
@@ -1279,7 +1279,7 @@ fn start_spray(
         Element::Cold => COLD_EMITTERS,
         Element::Fire => FIRE_EMITTERS,
     };
-    let seed = world.resource::<crate::shared::SaveIds>().peek();
+    let seed = crate::shared::next_id(world);
     let emitters = names.map(|name| {
         let config = world
             .get_resource::<ParticleConfigRegistry>()?
@@ -1575,7 +1575,7 @@ pub fn ball_look(world: &mut World) {
     let time = drawn_time(world);
     for (_, id, sprite, flame, hue, effects, tags) in world.query_mut::<(
         &Ball,
-        Option<&SaveId>,
+        Option<&Saved>,
         &mut Sprite,
         Option<&Flame>,
         Option<&BallHue>,
@@ -1607,7 +1607,7 @@ pub fn ball_look(world: &mut World) {
                 .unwrap_or(0.0)
         };
         sprite.color = match (flame, hue) {
-            (Some(_), _) => elements::ember_tint(*id, left(), time),
+            (Some(_), _) => elements::ember_tint(id.id(), left(), time),
             (None, Some(hue)) => rainbow_rgba(hue.hue),
             (None, None) => [255; 4],
         };

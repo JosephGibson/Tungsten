@@ -47,7 +47,9 @@ use crate::features::toys::{
     SCRAP_COUNT, SCRAP_HALF, SMALL_BALL_RADIUS,
 };
 use crate::game::GAMEPLAY;
-use crate::shared::{BURST_CAP, SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
+use crate::shared::{
+    BURST_CAP, SaveId, Saved, body_centre, despawn_tree, spawn_burst, spawn_key_burst,
+};
 
 /// Two touching small balls' centres, with the solver's resting slack.
 const CONTACT_DISTANCE: f32 = 2.0 * SMALL_BALL_RADIUS + 0.5;
@@ -197,7 +199,7 @@ pub fn spread_fire(world: &mut World) {
     }
     let mut targets: Vec<(Option<SaveId>, Entity)> = targets
         .into_iter()
-        .map(|entity| (world.get::<SaveId>(entity).copied(), entity))
+        .map(|entity| (crate::shared::save_id(world, entity), entity))
         .collect();
     targets.sort_by_key(|(id, _)| *id);
     for (_, entity) in targets {
@@ -352,7 +354,7 @@ pub fn fire_particles(world: &mut World) {
             let rise = collider.shape.half_extents().y;
             // A pair sits 6 px over its source: here, the box's top.
             let top = at.position + collider.offset - Vec2::new(0.0, rise - 6.0);
-            Some((world.get::<SaveId>(prop).copied(), top))
+            Some((crate::shared::save_id(world, prop), top))
         })
         .collect();
     crates.sort_by_key(|(id, _)| *id);
@@ -495,7 +497,7 @@ pub fn fire_contacts(world: &mut World) {
                 })
                 .min_by(f32::total_cmp)?;
             Some((
-                world.get::<SaveId>(ball).copied(),
+                crate::shared::save_id(world, ball),
                 ball,
                 start.lerp(end, hit),
             ))
@@ -518,7 +520,7 @@ pub fn fire_contacts(world: &mut World) {
                 })
                 .min_by(f32::total_cmp)?;
             Some((
-                world.get::<SaveId>(prop).copied(),
+                crate::shared::save_id(world, prop),
                 prop,
                 start.lerp(end, hit),
             ))
@@ -582,7 +584,7 @@ pub fn ball_impacts(world: &mut World) {
                 let Some(this) = this.filter(|&this| world.has::<BowlingBall>(this)) else {
                     continue;
                 };
-                let id = world.get::<SaveId>(this).copied();
+                let id = crate::shared::save_id(world, this);
                 if thud.is_none_or(|(first, _)| id < first)
                     && let Some(centre) = body_centre(world, this)
                 {
@@ -692,11 +694,11 @@ pub fn crush(world: &mut World) {
             &Position,
             &Collider,
             &PreviousVelocity,
-            &SaveId,
+            &Saved,
         )>()
         .filter(|(.., velocity, _)| velocity.0.length() >= CRUSH_SPEED)
         .map(|(entity, _, at, collider, velocity, id)| {
-            (*id, entity, at.0 + collider.offset, velocity.0)
+            (id.id(), entity, at.0 + collider.offset, velocity.0)
         })
         .collect();
     if blocks.is_empty() {
@@ -756,7 +758,7 @@ pub fn crush(world: &mut World) {
             .filter_map(|(entity, _, p, c)| {
                 let speed = speed_into(entity, p.0 + c.offset, small_half)?;
                 (!smashed.contains(&entity)).then_some(())?;
-                Some((entity, speed, world.get::<SaveId>(entity).copied()))
+                Some((entity, speed, crate::shared::save_id(world, entity)))
             })
             .collect();
         // Most head-on first; the save ID breaks ties, so a pile breaks the
@@ -846,7 +848,7 @@ pub fn crush(world: &mut World) {
     }
     let mut shattered: Vec<(Option<SaveId>, Entity)> = shattered
         .into_iter()
-        .map(|entity| (world.get::<SaveId>(entity).copied(), entity))
+        .map(|entity| (crate::shared::save_id(world, entity), entity))
         .collect();
     shattered.sort_by_key(|(id, _)| *id);
     for &(_, entity) in &shattered {
@@ -978,7 +980,7 @@ pub fn thermal_shatter(world: &mut World, at: Vec2, radius: f32) {
                     .max(Vec2::ZERO)
                     .length(),
             };
-            (distance <= radius).then(|| (world.get::<SaveId>(entity).copied(), entity, body))
+            (distance <= radius).then(|| (crate::shared::save_id(world, entity), entity, body))
         })
         .collect();
     targets.sort_by_key(|(id, ..)| *id);
@@ -1023,8 +1025,8 @@ fn thrown_mass(world: &World, entity: Entity) -> f32 {
 /// The live entity of save ID `id`.
 fn live_by_id(world: &World, id: u64) -> Option<Entity> {
     world
-        .query::<(Entity, &SaveId, &Health)>()
-        .find(|(_, own, health)| own.0 == id && !health.is_dead())
+        .query::<(Entity, &Saved, &Health)>()
+        .find(|(_, own, health)| own.id().0 == id && !health.is_dead())
         .map(|(entity, ..)| entity)
 }
 
@@ -1060,7 +1062,7 @@ fn target_hits(world: &World, player: Option<Entity>) -> Vec<(Entity, Entity, f3
         .query::<(Entity, &Health, &Position, &Collider)>()
         .filter(|(_, health, ..)| !health.is_dead())
         .map(|(entity, _, at, collider)| {
-            let id = world.get::<SaveId>(entity).map(|id| id.0);
+            let id = crate::shared::save_id(world, entity).map(|id| id.0);
             (entity, at.0 + collider.offset, collider.shape, id)
         })
         .collect();
@@ -1139,7 +1141,7 @@ fn touches(world: &World, entity: Entity, centre: Vec2, shape: Shape, spared: u6
         .query::<(Entity, &Position, &Collider, &RigidBody)>()
         .any(|(other, at, collider, _)| {
             other != entity
-                && world.get::<SaveId>(other).is_none_or(|id| id.0 != spared)
+                && crate::shared::save_id(world, other).is_none_or(|id| id.0 != spared)
                 && gap(centre, shape, at.0 + collider.offset, collider.shape) <= margin
         })
 }
@@ -1159,10 +1161,15 @@ fn touches(world: &World, entity: Entity, centre: Vec2, shape: Shape, spared: u6
 /// one crate, the lowest save ID's velocity counts.
 fn crate_hits(world: &World) -> Vec<(Entity, Vec2)> {
     let mut crates: Vec<(Option<SaveId>, Entity, Vec2, Shape)> = world
-        .query::<(Entity, &Crate, &Position, &Collider, Option<&SaveId>)>()
+        .query::<(Entity, &Crate, &Position, &Collider, Option<&Saved>)>()
         .filter(|(entity, ..)| !is_frozen(world, *entity))
         .map(|(entity, _, at, collider, id)| {
-            (id.copied(), entity, at.0 + collider.offset, collider.shape)
+            (
+                id.map(Saved::id),
+                entity,
+                at.0 + collider.offset,
+                collider.shape,
+            )
         })
         .collect();
     if crates.is_empty() {
@@ -1188,7 +1195,7 @@ fn crate_hits(world: &World) -> Vec<(Entity, Vec2)> {
             let speed = before.length();
             let heavy = speed / body.inv_mass >= CRATE_BREAK - BREAK_SLACK;
             (speed >= BREAK_FLOOR && heavy).then(|| {
-                let id = world.get::<SaveId>(entity).copied();
+                let id = crate::shared::save_id(world, entity);
                 (id, entity, at.0 + collider.offset, collider.shape, before)
             })
         })
@@ -1294,7 +1301,7 @@ pub fn body_impacts(world: &mut World) {
             let Some(this) = this else { continue };
             let still = other.is_none_or(|other| !moves(world, other));
             if still && closing >= IRON_LAND_SPEED && world.has::<IronBlock>(this) {
-                let id = world.get::<SaveId>(this).copied();
+                let id = crate::shared::save_id(world, this);
                 if let (false, Some(centre)) = (hard.contains_key(&id), body_centre(world, this)) {
                     hard.insert(id, centre - pushed * IRON_HALF.y);
                 }
@@ -1313,14 +1320,14 @@ pub fn body_impacts(world: &mut World) {
                 && let Some(centre) = body_centre(world, this)
             {
                 clacks
-                    .entry(world.get::<SaveId>(this).copied())
+                    .entry(crate::shared::save_id(world, this))
                     .or_insert(centre);
             }
             if world.has::<Stone>(this)
                 && let Some(centre) = body_centre(world, this)
             {
                 knocks
-                    .entry(world.get::<SaveId>(this).copied())
+                    .entry(crate::shared::save_id(world, this))
                     .or_insert(centre);
             }
             // What met it weighs in full unless it is a lighter dynamic body.
@@ -1335,7 +1342,7 @@ pub fn body_impacts(world: &mut World) {
                 let credit = thrower(Some(this))
                     .or_else(|| thrower(other))
                     .or_else(|| cascade::player_credit(world));
-                let id = world.get::<SaveId>(this).copied();
+                let id = crate::shared::save_id(world, this);
                 blown.entry(id).or_insert((this, credit));
             }
             let target = Some(this) != player
@@ -1345,7 +1352,7 @@ pub fn body_impacts(world: &mut World) {
             if !target {
                 continue;
             }
-            let id = world.get::<SaveId>(this).copied();
+            let id = crate::shared::save_id(world, this);
             if still && closing >= SHATTER_SPEED && has_status(world, this, FROZEN) {
                 let best = landings.entry(id).or_insert((this, closing));
                 best.1 = best.1.max(closing);
@@ -1354,15 +1361,15 @@ pub fn body_impacts(world: &mut World) {
     }
     for (body, target, closing) in target_hits(world, player) {
         let key = (
-            world.get::<SaveId>(target).copied(),
-            world.get::<SaveId>(body).copied(),
+            crate::shared::save_id(world, target),
+            crate::shared::save_id(world, body),
         );
         let best = hits.entry(key).or_insert((body, target, closing));
         best.2 = best.2.max(closing);
     }
     let mut shatters: Vec<(Option<SaveId>, Entity)> = shatters
         .into_iter()
-        .map(|entity| (world.get::<SaveId>(entity).copied(), entity))
+        .map(|entity| (crate::shared::save_id(world, entity), entity))
         .collect();
     shatters.sort_by_key(|(id, _)| *id);
     for (_, entity) in shatters {
@@ -1651,13 +1658,13 @@ pub fn douse(world: &mut World) {
         .filter(|(_, _, tags, ..)| tags.has(BURNING))
         .map(|(entity, _, _, p, c)| (entity, p.0 + c.offset))
         .filter(|(_, p)| inside(*p))
-        .map(|(entity, p)| (world.get::<SaveId>(entity).copied(), entity, p))
+        .map(|(entity, p)| (crate::shared::save_id(world, entity), entity, p))
         .collect();
     let mut wet: Vec<(Option<SaveId>, Entity, Vec2)> = props::all(world)
         .into_iter()
         .filter_map(|entity| Some((entity, body_centre(world, entity)?)))
         .filter(|(_, p)| inside(*p))
-        .map(|(entity, p)| (world.get::<SaveId>(entity).copied(), entity, p))
+        .map(|(entity, p)| (crate::shared::save_id(world, entity), entity, p))
         .collect();
     wet.sort_by_key(|(id, ..)| *id);
     for (id, prop, p) in wet {

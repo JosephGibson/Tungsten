@@ -28,7 +28,7 @@ use tungsten::{Extracts, Plugin, SceneEntity};
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::TILE;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds, body_centre, despawn_tree, spawn_burst};
+use crate::shared::{SaveId, Saved, body_centre, despawn_tree, spawn_burst};
 use components::{
     Ball, BallHue, BallSpawner, BlackHole, BowlingBall, Element, FireMissile, HoleHold, IronBlock,
     IronScrap, OpeningOf, PreviousVelocity, Ring, ShockRing, SmallBall, Spray,
@@ -242,15 +242,10 @@ impl Plugin for ToysPlugin {
     }
 }
 
-/// The run's next save ID.
-pub(crate) fn next_id(world: &mut World) -> SaveId {
-    world.resource_mut::<SaveIds>().take()
-}
-
 /// A toy's prefab at `at`, owned by gameplay, with the run's next save ID
 /// and its art at `scale`, spawned at once: a toy's or a prop's.
 pub(crate) fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
-    let id = next_id(world);
+    let id = crate::shared::take_id(world);
     let transform = Transform {
         position: at,
         rotation: 0.0,
@@ -261,7 +256,7 @@ pub(crate) fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -
         .expect("the manifest's prefabs load with it")
         .with((
             transform,
-            id,
+            Saved::kept(id),
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
@@ -314,7 +309,7 @@ pub fn place_small_balls(world: &mut World, at: Vec2, dt: f32) -> u32 {
         let angle = phase as f32 * GOLDEN_ANGLE;
         let centre = at + Vec2::new(angle.cos(), angle.sin()) * BALL_JITTER;
         let point = centre - SMALL_BALL_CENTRE;
-        let id = next_id(world);
+        let id = crate::shared::take_id(world);
         let transform = Transform {
             position: point,
             rotation: 0.0,
@@ -325,7 +320,7 @@ pub fn place_small_balls(world: &mut World, at: Vec2, dt: f32) -> u32 {
             .expect("the manifest's prefabs load with it")
             .with((
                 transform,
-                id,
+                Saved::kept(id),
                 BallHue::from_seed(phase),
                 PreviousVelocity::default(),
                 SceneEntity { state_id: GAMEPLAY },
@@ -365,7 +360,7 @@ pub fn spawn_ball(world: &mut World, at: Vec2, small: bool) -> Entity {
         spawn_toy(world, BOWLING_BALL, at - BALL_CENTRE, BALL_SCALE)
     };
     if small {
-        let phase = world.get::<SaveId>(ball).map_or(0, |id| id.0 as u32);
+        let phase = crate::shared::save_id(world, ball).map_or(0, |id| id.0 as u32);
         world.insert(ball, BallHue::from_seed(phase));
     }
     ball
@@ -417,8 +412,8 @@ pub fn iron_fits(world: &World, at: Vec2) -> bool {
 /// oldest goes in a poof, as a summon's oldest does.
 pub fn place_iron(world: &mut World, at: Vec2) -> Entity {
     let mut blocks: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &IronBlock, &SaveId)>()
-        .map(|(entity, _, id)| (*id, entity))
+        .query::<(Entity, &IronBlock, &Saved)>()
+        .map(|(entity, _, id)| (id.id(), entity))
         .collect();
     blocks.sort_by_key(|(id, _)| *id);
     let surplus = (blocks.len() + 1).saturating_sub(IRON_CAP);
@@ -501,8 +496,8 @@ pub fn restore_hole(world: &mut World, at: Vec2) -> Entity {
 /// collapses first.
 pub fn place_black_hole(world: &mut World, at: Vec2) -> Entity {
     let mut open: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &BlackHole, &SaveId)>()
-        .map(|(entity, _, id)| (*id, entity))
+        .query::<(Entity, &BlackHole, &Saved)>()
+        .map(|(entity, _, id)| (id.id(), entity))
         .collect();
     open.sort_by_key(|(id, _)| *id);
     let surplus = (open.len() + 1).saturating_sub(HOLE_CAP);
@@ -546,8 +541,8 @@ pub fn fire_missile(world: &mut World, centre: Vec2, velocity: Vec2) -> Option<E
 /// at its size, shown, and moved so its centre sits `centre` from where
 /// it landed, as the caster's centre sits from the caster's point.
 pub fn adopt_missile(world: &mut World, missile: Entity, centre: Vec2) {
-    let id = next_id(world);
-    world.insert(missile, id);
+    let id = crate::shared::take_id(world);
+    world.insert(missile, Saved::kept(id));
     world.insert(missile, PreviousVelocity::default());
     let shift = centre - Vec2::splat(MISSILE_SIZE * 0.5);
     systems::shift(world, missile, shift);

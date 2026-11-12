@@ -41,7 +41,7 @@ use super::{ARRIVED, centre, troll};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, Hit, Kind, has_status};
 use crate::features::props;
-use crate::shared::{SaveId, spawn_burst};
+use crate::shared::{Saved, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -139,7 +139,7 @@ pub fn patrol(world: &mut World, goblin: Entity) {
         }
     }
     let dt = world.resource::<Time>().delta();
-    let id = world.get::<SaveId>(goblin).map_or(0, |id| id.0);
+    let id = crate::shared::save_id(world, goblin).map_or(0, |id| id.0);
     let every = FIDGET_EVERY + 0.4 * (id % 3) as f32;
     let t = elapsed(world, goblin);
     // The fidget's cycle now and a step before, each counted from its start.
@@ -434,7 +434,7 @@ pub fn stab(world: &mut World, goblin: Entity) {
     };
     let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
     let mut near: Vec<(u64, Entity, Vec2)> = world
-        .query::<(Entity, &SaveId, &Position, &Collider, &Health)>()
+        .query::<(Entity, &Saved, &Position, &Collider, &Health)>()
         .filter(|&(entity, .., health)| entity != goblin && !health.is_dead())
         .filter(|&(entity, ..)| {
             !world
@@ -443,7 +443,7 @@ pub fn stab(world: &mut World, goblin: Entity) {
         })
         .filter_map(|(entity, id, position, collider, _)| {
             let at = position.0 + collider.offset;
-            troll::meets(at, collider.shape, box_at, STAB_HALF).then_some((id.0, entity, at))
+            troll::meets(at, collider.shape, box_at, STAB_HALF).then_some((id.id().0, entity, at))
         })
         .collect();
     near.sort_unstable_by_key(|&(id, ..)| id);
@@ -482,7 +482,7 @@ pub fn throw(world: &mut World, goblin: Entity) -> Option<Entity> {
         .unwrap_or(Strike::Rock);
     let (_, target) = player(world)?;
     let from = hand(world, goblin)?;
-    let thrower = world.get::<SaveId>(goblin).map(|id| id.0);
+    let thrower = crate::shared::save_id(world, goblin).map(|id| id.0);
     let gravity = world
         .get_resource::<PhysicsConfig>()
         .map_or(Vec2::ZERO, |config| config.gravity);

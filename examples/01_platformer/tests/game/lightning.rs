@@ -25,7 +25,7 @@ use example_01_platformer::features::lightning::{
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, IRON_HALF};
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shared::{SaveId, SaveIds};
+use example_01_platformer::shared::take_id;
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
@@ -70,7 +70,9 @@ fn irons(harness: &mut UiHarness, count: usize) -> Vec<Entity> {
 }
 
 fn id(harness: &UiHarness, entity: Entity) -> u64 {
-    harness.world().get::<SaveId>(entity).expect("a save ID").0
+    example_01_platformer::shared::save_id(harness.world(), entity)
+        .expect("a save ID")
+        .0
 }
 
 fn ids(harness: &UiHarness, entities: &[Entity]) -> Vec<Option<u64>> {
@@ -582,7 +584,7 @@ fn a_jumps_arc_crackles_on_new_paths_and_goes_after_its_life() {
 /// An enemy of `kind`, its mind taken away, its body's centre at `centre`.
 fn still_enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let enemy =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     world.remove_component::<StateMachine<EnemyState>>(enemy);

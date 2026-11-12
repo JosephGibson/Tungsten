@@ -51,7 +51,7 @@ use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock, IronScrap, SmallBall};
 use crate::features::toys::systems::{blast_trauma, flare};
 use crate::shared::{
-    SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst, surface_distance,
+    Saved, body_centre, despawn_tree, spawn_burst, spawn_key_burst, surface_distance,
 };
 
 /// The cells a run bins its bodies and targets into, in world pixels.
@@ -133,7 +133,7 @@ pub struct Cascades {
 pub fn player_credit(world: &World) -> Option<u64> {
     world
         .get_resource::<Run>()
-        .and_then(|run| world.get::<SaveId>(run.player))
+        .and_then(|run| crate::shared::save_id(world, run.player))
         .map(|id| id.0)
 }
 
@@ -155,7 +155,7 @@ pub struct Jump {
 /// step's run, so a strike's first jump waits for the next step. False when
 /// its strike's jump to the receiver waits already, or past the bound.
 pub fn queue_jump(world: &mut World, jump: Jump, runs: u64) -> bool {
-    let Some(target) = world.get::<SaveId>(jump.receiver).map(|id| id.0) else {
+    let Some(target) = crate::shared::save_id(world, jump.receiver).map(|id| id.0) else {
         return false;
     };
     let at = body_centre(world, jump.receiver).unwrap_or(jump.from);
@@ -496,7 +496,7 @@ impl Bin {
             Entity,
             &Position,
             &Collider,
-            &SaveId,
+            &Saved,
             Option<&SmallBall>,
             Option<&Ball>,
             Option<&IronBlock>,
@@ -532,7 +532,7 @@ impl Bin {
                 entity,
                 centre: at.0 + collider.offset,
                 shape: collider.shape,
-                id: id.0,
+                id: id.id().0,
                 what,
             });
         }
@@ -577,7 +577,7 @@ impl Bin {
 fn credited(world: &World, bin: &Bin, id: Option<u64>) -> Option<Entity> {
     let id = id?;
     if let Some(player) = world.get_resource::<Run>().map(|run| run.player)
-        && world.get::<SaveId>(player).map(|own| own.0) == Some(id)
+        && crate::shared::save_id(world, player).map(|own| own.0) == Some(id)
     {
         return Some(player);
     }

@@ -50,7 +50,7 @@ use crate::features::props::{
 };
 use crate::features::toys::components::{BowlingBall, IronBlock};
 use crate::features::toys::systems::falloff;
-use crate::shared::{SaveId, body_centre, spawn_burst};
+use crate::shared::{SaveId, Saved, body_centre, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -152,10 +152,10 @@ pub fn nearest_liftable(world: &World, troll: Entity) -> Option<Entity> {
     let at = centre(world, troll)?;
     // The reach first, then what may be lifted (P6).
     world
-        .query::<(Entity, &SaveId, &Position, &Collider)>()
+        .query::<(Entity, &Saved, &Position, &Collider)>()
         .filter_map(|(entity, id, position, collider)| {
             let distance = (position.0 + collider.offset).distance(at);
-            (distance <= PICKUP_REACH && entity != troll).then_some((distance, id.0, entity))
+            (distance <= PICKUP_REACH && entity != troll).then_some((distance, id.id().0, entity))
         })
         .filter(|&(.., entity)| liftable(world, entity))
         .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)))
@@ -292,7 +292,7 @@ pub fn throw(world: &mut World, troll: Entity) -> Option<Entity> {
     release(world, object, velocity);
     let throw = Throw {
         body: object,
-        thrower: world.get::<SaveId>(troll).map_or(0, |id| id.0),
+        thrower: crate::shared::save_id(world, troll).map_or(0, |id| id.0),
         factor: factor(world, troll),
         left: THROW_SECS,
     };
@@ -375,10 +375,10 @@ pub fn slam(world: &mut World, troll: Entity) {
         .and_then(|stats| stats.get(Stats::DAMAGE))
         .unwrap_or(40.0);
     let mut near: Vec<(u64, Entity, Vec2)> = world
-        .query::<(Entity, &SaveId, &Position, &Collider)>()
+        .query::<(Entity, &Saved, &Position, &Collider)>()
         .filter_map(|(entity, id, position, collider)| {
             let at = position.0 + collider.offset;
-            (at.distance(point) <= SLAM_REACH && entity != troll).then_some((id.0, entity, at))
+            (at.distance(point) <= SLAM_REACH && entity != troll).then_some((id.id().0, entity, at))
         })
         .collect();
     near.sort_unstable_by_key(|&(id, ..)| id);
@@ -422,11 +422,14 @@ pub fn swipe(world: &mut World, troll: Entity) {
     };
     let heading = world.get::<Enemy>(troll).map_or(1.0, |mine| mine.heading);
     let mut near: Vec<(u64, Entity, Vec2)> = world
-        .query::<(Entity, &SaveId, &Position, &Collider)>()
+        .query::<(Entity, &Saved, &Position, &Collider)>()
         .filter_map(|(entity, id, position, collider)| {
             let at = position.0 + collider.offset;
-            (entity != troll && meets(at, collider.shape, box_at, SWIPE_HALF))
-                .then_some((id.0, entity, at))
+            (entity != troll && meets(at, collider.shape, box_at, SWIPE_HALF)).then_some((
+                id.id().0,
+                entity,
+                at,
+            ))
         })
         .collect();
     near.sort_unstable_by_key(|&(id, ..)| id);
@@ -444,7 +447,7 @@ pub fn swipe(world: &mut World, troll: Entity) {
 pub fn holds(world: &mut World) {
     let mut held: Vec<(Option<SaveId>, Entity, Entity)> = world
         .query::<(Entity, &Held)>()
-        .map(|(entity, hold)| (world.get::<SaveId>(entity).copied(), entity, hold.by))
+        .map(|(entity, hold)| (crate::shared::save_id(world, entity), entity, hold.by))
         .collect();
     held.sort_unstable_by_key(|&(id, ..)| id);
     for (_, object, troll) in held {

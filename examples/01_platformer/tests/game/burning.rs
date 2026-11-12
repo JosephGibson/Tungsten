@@ -17,7 +17,6 @@ use example_01_platformer::features::level::components::{Hazard, SceneTime};
 use example_01_platformer::features::toys::components::Ball;
 use example_01_platformer::features::toys::systems::ball_look;
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shared::SaveId;
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
@@ -319,7 +318,7 @@ fn extraction_shows_flames_on_the_surface_embers_beneath_and_charcoal_after_burn
     assert_eq!(drawn[0].size, [FLAME_SIZE; 2]);
     assert!(effects(harness.world()).iter().any(|b| b.texture.0 == 952));
     ball_look(harness.world_mut());
-    let id = *harness.world().get::<SaveId>(e).unwrap();
+    let id = example_01_platformer::shared::save_id(harness.world(), e).unwrap();
     let time = example_01_platformer::features::level::systems::drawn_time(harness.world());
     let tint = harness.world().get::<Sprite>(e).unwrap().color;
     assert_eq!(

@@ -12,7 +12,6 @@ use super::components::{Area, AreaLight, Glow, GlowPart, GlowParts, SceneTime, Z
 use super::{AMBIENT, AMBIENT_INDOOR, AREA_FADE, LIGHT_EASE, MOONLIGHT_INTENSITY, TILE};
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::SaveId;
 use crate::shell::options::GameOptions;
 
 /// The halo's sprite and material, and the hot core's.
@@ -122,7 +121,7 @@ pub fn glows(world: &mut World) {
 /// low bits, which keep the clock's in an `f32` at an authored ID's size,
 /// or by its column when it has none.
 fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
-    let phase = world.get::<SaveId>(owner).map_or_else(
+    let phase = crate::shared::save_id(world, owner).map_or_else(
         || {
             world
                 .get::<Transform>(owner)

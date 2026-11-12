@@ -125,7 +125,7 @@ pub fn fire(
     velocity: Vec2,
     source: Option<tungsten::core::Entity>,
 ) -> Option<SaveId> {
-    let id = world.resource_mut::<crate::shared::SaveIds>().take();
+    let id = crate::shared::take_id(world);
     let bullet = BulletShot {
         id,
         centre,
@@ -164,7 +164,7 @@ pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core:
         transform,
         Position(at),
         PrevPosition(at),
-        shot.id,
+        crate::shared::Saved::kept(shot.id),
         shot.motion,
         Bullet {
             ricochets: shot.ricochets,

@@ -31,7 +31,7 @@ use example_01_platformer::features::toys::{
     self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS,
     PUSH_SPEED, RING_CAP,
 };
-use example_01_platformer::shared::{BURST_CAP, Burst, SaveIds};
+use example_01_platformer::shared::{BURST_CAP, Burst, take_id};
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::{
@@ -525,10 +525,10 @@ fn props_of(harness: &UiHarness, kind: PropKind) -> Vec<Entity> {
         .query::<(
             Entity,
             &tungsten::core::Position,
-            &example_01_platformer::shared::SaveId,
+            &example_01_platformer::shared::Saved,
         )>()
         .filter(|&(entity, ..)| props::kind(world, entity) == Some(kind))
-        .map(|(entity, _, id)| (id.0, entity))
+        .map(|(entity, _, id)| (id.id().0, entity))
         .collect();
     live.sort_unstable_by_key(|&(id, _)| id);
     live.into_iter().map(|(_, entity)| entity).collect()
@@ -961,7 +961,7 @@ fn flask_range() -> (UiHarness, Entity) {
 /// difficulty, still: its state machine taken off.
 fn still_foe(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
     enemies::scale(world, foe, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(foe);

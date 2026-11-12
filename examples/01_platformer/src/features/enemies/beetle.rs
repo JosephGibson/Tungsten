@@ -24,7 +24,7 @@ use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
 use super::troll::meets;
 use super::{ARRIVED, centre};
 use crate::features::audio::{self, components::Sound};
-use crate::shared::{SaveId, body_centre, spawn_burst};
+use crate::shared::{body_centre, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -193,7 +193,7 @@ fn plough(world: &mut World, beetle: Entity, heading: f32) {
                 return None;
             }
             let kick = (PLOUGH_KICK * body.inv_mass).min(PLOUGH_MOST);
-            Some((world.get::<SaveId>(entity)?.0, entity, kick))
+            Some((crate::shared::save_id(world, entity)?.0, entity, kick))
         })
         .collect();
     bodies.sort_unstable_by_key(|&(id, ..)| id);

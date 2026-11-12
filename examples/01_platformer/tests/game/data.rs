@@ -26,7 +26,7 @@ use example_01_platformer::features::toys::{
     BALL_RADIUS, HOLE_SECS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SCRAP_MASS,
     SMALL_BALL_RADIUS,
 };
-use example_01_platformer::shared::{Body, SaveIds, body_centre};
+use example_01_platformer::shared::{Body, body_centre, take_id};
 use glam::Vec2;
 use serde_json::Value;
 use tungsten::core::{Collider, DataRegistry, Shape};
@@ -271,7 +271,7 @@ fn a_body_moved_in_its_data_file_moves_the_spawned_body() {
         .resource_mut::<DataRegistry>()
         .insert("goblin", moved.clone());
     let corner = Vec2::new(600.0, 500.0);
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let goblin = enemies::spawn(world, EnemyKind::Goblin, corner, id).expect("its prefab");
     let collider = world.get::<Collider>(goblin).expect("a collider");
     assert_eq!(collider.offset, Vec2::new(30.0, 37.0));

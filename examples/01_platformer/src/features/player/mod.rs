@@ -23,7 +23,7 @@ use crate::features::combat::{BLAST, CRIT_CHANCE, CRIT_FACTOR, PLAYER_BLAST_SHAR
 use crate::features::level::GLOWS;
 use crate::features::level::components::Glow;
 use crate::game::GAMEPLAY;
-use crate::shared::{self, BODIES, Body, Bursts, SaveId};
+use crate::shared::{self, BODIES, Body, Bursts, SaveId, Saved};
 use components::{Lantern, LanternAnchors, Moves, StaffGlow};
 
 /// The player's prefab, by its manifest ID.
@@ -169,7 +169,7 @@ pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
         .expect("the manifest's prefabs load with it")
         .with((
             SceneEntity { state_id: GAMEPLAY },
-            id,
+            Saved::kept(id),
             Lantern::default(),
             Moves::default(),
         ))

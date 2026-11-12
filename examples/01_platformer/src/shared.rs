@@ -17,30 +17,13 @@ use tungsten::kit::{Aim, Children, Hurtbox};
 
 use crate::game::GAMEPLAY;
 
-/// A saved entity's stable identity: a save names entities by it, never by
-/// `Entity`, which the ECS reuses. The map's objects and the player take
-/// theirs from their names ([`SaveId::authored`]), at or above
-/// [`AUTHORED`]; anything spawned later takes the run's next
-/// ([`SaveIds`]), below it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct SaveId(pub u64);
-
-/// The bit every authored save ID sets and no runtime one reaches.
-pub const AUTHORED: u64 = 1 << 31;
-
-impl SaveId {
-    /// The save ID of the object named `name`: the name's 32-bit FNV-1a
-    /// hash with [`AUTHORED`] set, so the map's order moves no save.
-    #[must_use]
-    pub fn authored(name: &str) -> Self {
-        let mut hash: u32 = 0x811c_9dc5;
-        for byte in name.bytes() {
-            hash ^= u32::from(byte);
-            hash = hash.wrapping_mul(0x0100_0193);
-        }
-        Self(u64::from(hash) | AUTHORED)
-    }
-}
+/// A saved entity's stable identity is core's [`SaveId`] in a [`Saved`]
+/// component, a kept identity (`Saved::kept`) that 01's own records save:
+/// a save names entities by it, never by `Entity`, which the ECS reuses.
+/// The map's objects and the player take theirs from their names
+/// ([`SaveId::authored`]), at or above [`AUTHORED`]; anything spawned later
+/// takes the run's next ([`take_id`]), below it.
+pub use tungsten::core::save::{AUTHORED, SaveId, Saved};
 
 /// The run's next save ID, a `World` resource: what spawns during a run
 /// takes the next, counting from 0 below [`AUTHORED`].
@@ -73,6 +56,32 @@ impl SaveIds {
         self.next += 1;
         id
     }
+}
+
+/// Takes the run's next save ID, for a spawn of the run.
+///
+/// # Panics
+///
+/// Without a run's counter, or once it runs out.
+pub fn take_id(world: &mut World) -> SaveId {
+    world.resource_mut::<SaveIds>().take()
+}
+
+/// The save ID the run's next spawn takes.
+///
+/// # Panics
+///
+/// Without a run's counter.
+#[must_use]
+pub fn next_id(world: &World) -> u64 {
+    world.resource::<SaveIds>().peek()
+}
+
+/// `entity`'s save ID, its [`Saved`] identity's; none for an entity no
+/// save names.
+#[must_use]
+pub fn save_id(world: &World, entity: Entity) -> Option<SaveId> {
+    world.get::<Saved>(entity).map(Saved::id)
 }
 
 /// `entity`'s body centre: its `Position` plus its collider's offset, the

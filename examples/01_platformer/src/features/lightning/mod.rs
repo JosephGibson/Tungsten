@@ -34,7 +34,7 @@ use crate::features::props::{self, components::Keg};
 use crate::features::run::Run;
 use crate::features::toys::components::{IronBlock, IronScrap};
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, body_centre, spawn_burst, surface_distance};
+use crate::shared::{SaveId, Saved, body_centre, spawn_burst, surface_distance};
 use components::{Arc, Bolt, Scorch, StrikeLight};
 
 /// A strike's shock and its reach from where it lands.
@@ -133,7 +133,7 @@ fn conductors(world: &World, spared: Option<Entity>) -> Vec<(Entity, Vec2, u64)>
     world
         .query::<(
             Entity,
-            &SaveId,
+            &Saved,
             Option<&IronBlock>,
             Option<&IronScrap>,
             Option<&Keg>,
@@ -145,7 +145,7 @@ fn conductors(world: &World, spared: Option<Entity>) -> Vec<(Entity, Vec2, u64)>
             let metal = iron.is_some() || scrap.is_some() || keg.is_some();
             Some(entity) != spared && conducts(metal, enemy.is_some(), health, tags)
         })
-        .filter_map(|(entity, id, ..)| Some((entity, body_centre(world, entity)?, id.0)))
+        .filter_map(|(entity, id, ..)| Some((entity, body_centre(world, entity)?, id.id().0)))
         .collect()
 }
 
@@ -273,10 +273,10 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
             world.get::<Health>(entity).is_some_and(|h| !h.is_dead()) || conductive(world, entity)
         })
         .filter(|&(entity, _)| gap(world, landing, entity).is_some_and(|gap| gap <= STRIKE_REACH))
-        .map(|(entity, _)| (world.get::<SaveId>(entity).copied(), entity))
+        .map(|(entity, _)| (crate::shared::save_id(world, entity), entity))
         .collect();
     struck.sort_by_key(|(id, _)| *id);
-    let credit = world.get::<SaveId>(caster).map(|id| id.0);
+    let credit = crate::shared::save_id(world, caster).map(|id| id.0);
     for &(_, target) in &struck {
         if world.get::<Health>(target).is_some_and(|h| !h.is_dead()) {
             Hit::new(target, [(Kind::Shock, STRIKE_SHOCK)])
@@ -453,7 +453,7 @@ pub fn conduct(
         return;
     }
     let mut chain = entry.chain.clone();
-    if let Some(id) = world.get::<SaveId>(receiver) {
+    if let Some(id) = crate::shared::save_id(world, receiver) {
         chain.push(id.0);
     }
     let player = world.get_resource::<Run>().map(|run| run.player);

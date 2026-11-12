@@ -59,7 +59,7 @@ use example_01_platformer::features::toys::components::{PreviousVelocity, ScrapT
 use example_01_platformer::features::{player as courier, toys};
 use example_01_platformer::game;
 use example_01_platformer::save;
-use example_01_platformer::shared::{SaveId, SaveIds, body_centre};
+use example_01_platformer::shared::{SaveId, Saved, body_centre, take_id};
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
 use glam::Vec2;
 use tungsten::SceneEntity;
@@ -96,7 +96,7 @@ fn arena() -> (UiHarness, Entity) {
 /// save ID the run's next.
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let entity =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
@@ -222,8 +222,8 @@ fn shoot(harness: &mut UiHarness, centre: Vec2, along: Vec2) -> SaveId {
 fn bullet(harness: &UiHarness, id: SaveId) -> Option<Entity> {
     harness
         .world()
-        .query::<(Entity, &Bullet, &SaveId)>()
-        .find(|&(_, _, own)| *own == id)
+        .query::<(Entity, &Bullet, &Saved)>()
+        .find(|&(_, _, own)| own.id() == id)
         .map(|(entity, ..)| entity)
 }
 
@@ -257,7 +257,7 @@ fn troll_at(harness: &mut UiHarness, x: f32, difficulty: Difficulty) -> Entity {
     let kind = EnemyKind::Troll;
     let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let troll =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, troll, difficulty);
@@ -360,13 +360,15 @@ fn reload(saved: save::SaveGame) -> UiHarness {
 fn by_id(harness: &UiHarness, id: u64) -> Option<Entity> {
     harness
         .world()
-        .query::<(Entity, &SaveId)>()
-        .find(|&(_, own)| own.0 == id)
+        .query::<(Entity, &Saved)>()
+        .find(|&(_, own)| own.id().0 == id)
         .map(|(entity, _)| entity)
 }
 
 fn id_of(harness: &UiHarness, entity: Entity) -> u64 {
-    harness.world().get::<SaveId>(entity).expect("a save ID").0
+    example_01_platformer::shared::save_id(harness.world(), entity)
+        .expect("a save ID")
+        .0
 }
 
 fn move_speed(harness: &UiHarness, entity: Entity) -> f32 {
@@ -2690,8 +2692,10 @@ fn orbs(harness: &UiHarness, kind: OrbKind) -> Vec<Entity> {
     let world = harness.world();
     let placed = &world.resource::<PlacedOrbs>().0;
     world
-        .query::<(Entity, &Orb, Option<&SaveId>)>()
-        .filter(|(_, orb, id)| orb.kind == kind && !id.is_some_and(|id| placed.contains(&id.0)))
+        .query::<(Entity, &Orb, Option<&Saved>)>()
+        .filter(|(_, orb, id)| {
+            orb.kind == kind && !id.is_some_and(|id| placed.contains(&id.id().0))
+        })
         .map(|(entity, ..)| entity)
         .collect()
 }
@@ -2719,7 +2723,10 @@ fn a_killed_enemy_rolls_its_drops_and_an_orb_heals_or_restores_mana() {
         let dropped = orbs(&harness, kind);
         assert_eq!(dropped.len(), 1, "{kind:?}: its roll dropped one");
         let orb = dropped[0];
-        assert!(harness.world().get::<SaveId>(orb).is_some(), "adopted");
+        assert!(
+            example_01_platformer::shared::save_id(harness.world(), orb).is_some(),
+            "adopted"
+        );
         // Within the player's reach, the magnet draws it in.
         let near = body(&harness, orb).x - 70.0;
         stand(&mut harness, player, near, TOP);
@@ -2752,7 +2759,7 @@ fn adopted(harness: &mut UiHarness, kind: OrbKind, frames: u32) -> Option<Entity
     until(harness, frames, |h| {
         found = orbs(h, kind)
             .into_iter()
-            .find(|&orb| h.world().get::<SaveId>(orb).is_some());
+            .find(|&orb| example_01_platformer::shared::save_id(h.world(), orb).is_some());
         found.is_some()
     });
     found
@@ -2822,7 +2829,7 @@ fn an_orb_passes_enemies_and_fades_after_its_lifetime() {
     harness.step(2);
     let corner = at(&harness, crawler) - Vec2::splat(12.0);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let orb = drops::spawn(world, OrbKind::Health, corner, id, ORB_SECS).expect("an orb");
     harness.step(60);
     assert!(harness.world().is_alive(orb), "the crawler passes it by");
@@ -2928,8 +2935,8 @@ fn a_killed_map_enemy_stays_dead_through_a_load() {
     let (mut harness, _) = run();
     let world = harness.world();
     let mut placed: Vec<(u64, Entity)> = world
-        .query::<(Entity, &Enemy, &SaveId)>()
-        .map(|(entity, _, id)| (id.0, entity))
+        .query::<(Entity, &Enemy, &Saved)>()
+        .map(|(entity, _, id)| (id.id().0, entity))
         .collect();
     placed.sort_unstable_by_key(|&(id, _)| id);
     assert_eq!(placed.len() as u64, save::MAP_ENEMIES, "the map's enemies");
@@ -2945,8 +2952,8 @@ fn a_killed_map_enemy_stays_dead_through_a_load() {
     fresh.step(2);
     let live: Vec<u64> = fresh
         .world()
-        .query::<(&Enemy, &SaveId)>()
-        .map(|(_, id)| id.0)
+        .query::<(&Enemy, &Saved)>()
+        .map(|(_, id)| id.id().0)
         .collect();
     assert!(!live.contains(&dead_id), "it stays dead");
     assert_eq!(live.len() as u64, save::MAP_ENEMIES - 1);
@@ -3203,8 +3210,8 @@ fn an_enemy_thrown_out_of_the_level_is_gone_and_stays_gone_through_a_load() {
     let (mut harness, _) = run();
     let world = harness.world();
     let (enemy, id) = world
-        .query::<(Entity, &Enemy, &SaveId)>()
-        .map(|(entity, _, id)| (entity, id.0))
+        .query::<(Entity, &Enemy, &Saved)>()
+        .map(|(entity, _, id)| (entity, id.id().0))
         .min_by_key(|&(_, id)| id)
         .expect("a placed enemy");
     let out = example_01_platformer::features::level::WORLD_MAX + Vec2::new(400.0, 400.0);
@@ -3266,12 +3273,12 @@ fn a_kill_plays_the_death_sound_not_the_hit() {
 fn thrown(harness: &UiHarness) -> Vec<(u64, Entity, bool)> {
     let world = harness.world();
     let mut thrown: Vec<(u64, Entity, bool)> = world
-        .query::<(Entity, &Rock, &SaveId)>()
-        .map(|(entity, _, id)| (id.0, entity, false))
+        .query::<(Entity, &Rock, &Saved)>()
+        .map(|(entity, _, id)| (id.id().0, entity, false))
         .chain(
             world
-                .query::<(Entity, &Bomb, &SaveId)>()
-                .map(|(entity, _, id)| (id.0, entity, true)),
+                .query::<(Entity, &Bomb, &Saved)>()
+                .map(|(entity, _, id)| (id.id().0, entity, true)),
         )
         .collect();
     thrown.sort_unstable_by_key(|&(id, ..)| id);
@@ -3530,7 +3537,7 @@ fn a_rock_from_a_goblin_killed_in_flight_still_lands_at_its_factor() {
     let kind = EnemyKind::Goblin;
     let centre = Vec2::new(620.0, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let goblin =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, goblin, Difficulty::Hard);
@@ -4293,7 +4300,7 @@ fn armoured_troll_at(harness: &mut UiHarness, x: f32) -> Entity {
     let kind = EnemyKind::Troll;
     let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let corner = centre - kind_body(kind).centre;
     let troll = enemies::spawn_as(world, kind, Variant::Armoured, corner, id).expect("its prefab");
     enemies::scale(world, troll, Difficulty::Normal);
@@ -4324,9 +4331,9 @@ fn the_bridge_troll_is_the_armoured_troll() {
     let (harness, _) = run();
     let world = harness.world();
     let mut trolls: Vec<(u64, Entity, Variant)> = world
-        .query::<(Entity, &Enemy, &SaveId)>()
+        .query::<(Entity, &Enemy, &Saved)>()
         .filter(|(_, enemy, _)| enemy.kind == EnemyKind::Troll)
-        .map(|(entity, enemy, id)| (id.0, entity, enemy.variant))
+        .map(|(entity, enemy, id)| (id.id().0, entity, enemy.variant))
         .collect();
     trolls.sort_unstable_by_key(|&(id, ..)| id);
     let armoured: Vec<u64> = trolls
@@ -4407,9 +4414,9 @@ fn a_summoned_armoured_troll_the_last_summon_type_saves_and_loads_armoured() {
     harness.step(2);
     let (id, troll) = harness
         .world()
-        .query::<(Entity, &Enemy, &SaveId)>()
+        .query::<(Entity, &Enemy, &Saved)>()
         .find(|(_, enemy, _)| enemy.variant == Variant::Armoured && enemy.kind == EnemyKind::Troll)
-        .map(|(entity, _, id)| (id.0, entity))
+        .map(|(entity, _, id)| (id.id().0, entity))
         .expect("an armoured troll summoned");
     assert!(tagged(&harness, troll, "armoured") && armour_table(&harness, troll));
     assert!(

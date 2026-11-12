@@ -13,7 +13,7 @@ use super::systems::{burn_left, flame_look};
 use crate::features::combat::FROZEN;
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{CORE, CORE_MATERIAL, drawn_time};
-use crate::shared::SaveId;
+use crate::shared::Saved;
 
 /// A burning ball's flame frames: their art is drawn in 2 × 2 pixel
 /// blocks, so a [`FLAME_SIZE`] quad samples it exactly.
@@ -78,10 +78,10 @@ fn flames(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     let time = drawn_time(world);
     let reach = Vec2::splat(FLAME_SIZE);
     let lit: Vec<_> = world
-        .query::<(Entity, &Flame, &SaveId, &Transform, &Collider)>()
+        .query::<(Entity, &Flame, &Saved, &Transform, &Collider)>()
         .filter_map(|(ball, flame, id, at, collider)| {
             let left = burn_left(world, ball)?;
-            let look = flame_look(*id, left, flame.exposed, time)?;
+            let look = flame_look(id.id(), left, flame.exposed, time)?;
             let centre = at.position + collider.offset;
             ((centre + reach).cmpge(min).all() && (centre - reach).cmple(max).all())
                 .then_some((centre, look))

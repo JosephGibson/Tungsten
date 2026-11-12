@@ -24,7 +24,7 @@ use crate::features::enemies::troll;
 use crate::features::level::GRAVITY;
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, despawn_tree, spawn_burst, surface_distance};
+use crate::shared::{SaveId, Saved, despawn_tree, spawn_burst, surface_distance};
 
 /// Its prefab, its radius, its centre from its sprite's top-left and the
 /// most that fly at once, past which a toss is refused.
@@ -53,8 +53,8 @@ const BURST_Z: i32 = 14;
 #[must_use]
 pub fn flying(world: &World) -> Vec<(SaveId, Entity)> {
     let mut flasks: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &ToxicFlask, &SaveId)>()
-        .map(|(entity, _, id)| (*id, entity))
+        .query::<(Entity, &ToxicFlask, &Saved)>()
+        .map(|(entity, _, id)| (id.id(), entity))
         .collect();
     flasks.sort_unstable_by_key(|&(id, _)| id);
     flasks
@@ -176,7 +176,7 @@ fn splash(world: &mut World, at: Vec2) {
         .filter_map(|(entity, _, _, p, collider)| {
             let distance = surface_distance(at, p.0 + collider.offset, collider.shape);
             (distance <= SPLASH_RADIUS)
-                .then(|| (world.get::<SaveId>(entity).copied(), entity, distance))
+                .then(|| (crate::shared::save_id(world, entity), entity, distance))
         })
         .collect();
     targets.sort_by_key(|(id, ..)| *id);

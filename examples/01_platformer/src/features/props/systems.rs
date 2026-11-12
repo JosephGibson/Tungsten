@@ -24,7 +24,7 @@ use crate::features::level::systems::drawn_time;
 use crate::features::run::Run;
 use crate::features::toys::components::{ScrapTumble, SmallBall};
 use crate::features::toys::systems::frost_tint;
-use crate::shared::SaveId;
+use crate::shared::{SaveId, Saved};
 
 /// A crate's boards at the end of its burn, which its tint nears as it
 /// burns.
@@ -77,26 +77,26 @@ struct Body {
 
 /// The crates, kegs and planks, in save-ID order.
 fn bodies(world: &World) -> Vec<Body> {
-    let body = |entity: Entity, at: &Position, collider: &Collider, id: Option<&SaveId>| {
+    let body = |entity: Entity, at: &Position, collider: &Collider, id: Option<&Saved>| {
         let half = collider.shape.half_extents();
         Body {
-            id: id.copied(),
+            id: id.map(Saved::id),
             entity,
             centre: at.0 + collider.offset,
             half,
         }
     };
     let mut bodies: Vec<Body> = world
-        .query::<(Entity, &Crate, &Position, &Collider, Option<&SaveId>)>()
+        .query::<(Entity, &Crate, &Position, &Collider, Option<&Saved>)>()
         .map(|(entity, _, at, collider, id)| body(entity, at, collider, id))
         .chain(
             world
-                .query::<(Entity, &Keg, &Position, &Collider, Option<&SaveId>)>()
+                .query::<(Entity, &Keg, &Position, &Collider, Option<&Saved>)>()
                 .map(|(entity, _, at, collider, id)| body(entity, at, collider, id)),
         )
         .chain(
             world
-                .query::<(Entity, &Plank, &Position, &Collider, Option<&SaveId>)>()
+                .query::<(Entity, &Plank, &Position, &Collider, Option<&Saved>)>()
                 .map(|(entity, _, at, collider, id)| body(entity, at, collider, id)),
         )
         .collect();
@@ -136,7 +136,7 @@ fn near(world: &World, centre: Vec2, half: Vec2, reach: f32) -> Vec<(Option<Save
     let mut near: Vec<(Option<SaveId>, Entity)> = met
         .into_iter()
         .flatten()
-        .map(|entity| (world.get::<SaveId>(entity).copied(), entity))
+        .map(|entity| (crate::shared::save_id(world, entity), entity))
         .collect();
     near.sort_by_key(|(id, _)| *id);
     near

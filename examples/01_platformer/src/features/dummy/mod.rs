@@ -21,7 +21,7 @@ use tungsten::{Plugin, SceneEntity};
 
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
-use crate::shared::{self, BODIES, Body, SaveId, SaveIds, despawn_tree, spawn_key_burst};
+use crate::shared::{self, BODIES, Body, Saved, despawn_tree, spawn_key_burst};
 use components::{Dummy, PlacedDummies};
 
 /// The dummy's prefab, by its manifest ID.
@@ -52,12 +52,12 @@ impl Plugin for DummyPlugin {
 /// with the run's next save ID and its body from its data
 /// ([`shared::fit_body`]), at once: a summon's or a load's.
 pub fn spawn(world: &mut World, at: Vec2) -> Entity {
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = shared::take_id(world);
     let dummy = world
         .prepare_prefab(DUMMY_PREFAB, at.to_array())
         .expect("the manifest's prefabs load with it")
         .with((
-            id,
+            Saved::kept(id),
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
@@ -93,13 +93,13 @@ pub fn fits(world: &World, at: Vec2) -> bool {
 /// Summons a dummy of `prefab` with its body's centre at `at`, with a
 /// poof; past [`SUMMON_CAP`] summoned live, the oldest goes, with its own.
 pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = shared::take_id(world);
     let corner = at - body(world).centre;
     let dummy = world
         .prepare_prefab(prefab, corner.to_array())
         .ok()?
         .with((
-            id,
+            Saved::kept(id),
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
@@ -130,8 +130,8 @@ pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
 /// velocity before a step, which an impact reads.
 pub fn start(world: &mut World) {
     let placed: Vec<(Entity, u64)> = world
-        .query::<(Entity, &Dummy, &SaveId)>()
-        .map(|(entity, _, id)| (entity, id.0))
+        .query::<(Entity, &Dummy, &Saved)>()
+        .map(|(entity, _, id)| (entity, id.id().0))
         .collect();
     for &(entity, _) in &placed {
         shared::fit_body(world, entity, DUMMY_PREFAB);
@@ -147,9 +147,9 @@ pub fn start(world: &mut World) {
 #[must_use]
 pub fn live(world: &World) -> Vec<(u64, Entity)> {
     let mut live: Vec<(u64, Entity)> = world
-        .query::<(Entity, &Dummy, &SaveId, &Health)>()
+        .query::<(Entity, &Dummy, &Saved, &Health)>()
         .filter(|(.., health)| !health.is_dead())
-        .map(|(entity, _, id, _)| (id.0, entity))
+        .map(|(entity, _, id, _)| (id.id().0, entity))
         .collect();
     live.sort_unstable_by_key(|(id, _)| *id);
     live

@@ -164,7 +164,7 @@ pub fn reactions(
         .filter(|(entity, health, tags)| {
             tags.has(FROZEN) && !health.is_dead() && !states.frozen.contains(entity)
         })
-        .map(|(entity, ..)| (world.get::<SaveId>(entity).copied(), entity))
+        .map(|(entity, ..)| (crate::shared::save_id(world, entity), entity))
         .collect();
     froze.sort_by_key(|(id, _)| *id);
     for (_, target) in froze {
@@ -197,7 +197,7 @@ pub fn corrode(world: &mut World) {
                 && tags.has(SHOCKED)
                 && !tags.has(CORRODED)
         })
-        .map(|(entity, ..)| (world.get::<SaveId>(entity).copied(), entity))
+        .map(|(entity, ..)| (crate::shared::save_id(world, entity), entity))
         .collect();
     corroding.sort_by_key(|(id, _)| *id);
     for (_, target) in corroding {

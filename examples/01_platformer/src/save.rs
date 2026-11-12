@@ -27,9 +27,10 @@
 //! player the save IDs their names derive, so a change to the map moves
 //! none, and marks the map's own crates and kegs.
 //!
-//! Every saved entity carries a [`SaveId`]: the map's objects a save names
-//! (its lava basins, decks, dummies, enemies, placed orbs and geysers) and
-//! the player take theirs from their names, which a load derives again,
+//! Every saved entity carries a [`SaveId`] in a kept [`Saved`]: the map's
+//! objects a save names (its lava basins, decks, dummies, enemies, placed
+//! orbs and geysers) and the player take theirs from their names, which a
+//! load derives again,
 //! and whatever spawns later takes the run's next, which the save keeps: a
 //! fresh run's iron, crates, kegs and stones, set at the map's markers, the
 //! first. A save names
@@ -80,7 +81,7 @@ use crate::features::toys::components::{
 };
 use crate::features::toys::{self, MISSILE_SIZE};
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds};
+use crate::shared::{SaveId, SaveIds, Saved};
 use crate::shell::{self, RunMeta};
 
 /// A save: the shell's run data and the game's, each list in save-ID order.
@@ -1901,29 +1902,29 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     let meta = shell::run_meta(world)?;
     let run = world.get_resource::<Run>()?;
     let player = capture_player(world, run.player)?;
-    let id_of = |entity: Entity| world.get::<SaveId>(entity).map(|id| id.0);
+    let id_of = |entity: Entity| crate::shared::save_id(world, entity).map(|id| id.0);
     let mut platforms: Vec<PlatformSave> = world
-        .query_filtered::<(&SaveId, &Position, &PathFollower), tungsten::core::Without<Elevator>>()
+        .query_filtered::<(&Saved, &Position, &PathFollower), tungsten::core::Without<Elevator>>()
         .map(|(id, at, follower)| PlatformSave {
-            id: id.0,
+            id: id.id().0,
             position: at.0.to_array(),
             follower: follower.clone(),
         })
         .collect();
     platforms.sort_by_key(|platform| platform.id);
     let mut basins: Vec<BasinSave> = world
-        .query::<(Entity, &SaveId, &Lava)>()
+        .query::<(Entity, &Saved, &Lava)>()
         .map(|(basin, id, _)| BasinSave {
-            id: id.0,
+            id: id.id().0,
             cold: lava::cold_of(world, basin),
             crust: lava::crust_left(world, basin),
         })
         .collect();
     basins.sort_by_key(|basin| basin.id);
     let mut geysers: Vec<GeyserSave> = world
-        .query::<(&SaveId, &Geyser)>()
+        .query::<(&Saved, &Geyser)>()
         .map(|(id, state)| GeyserSave {
-            id: id.0,
+            id: id.id().0,
             phase: state.phase,
             left: state.left,
             cold: state.cold,
@@ -1932,9 +1933,9 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .collect();
     geysers.sort_by_key(|geyser| geyser.id);
     let mut elevators: Vec<ElevatorSave> = world
-        .query::<(&SaveId, &Position, &Elevator, Option<&PathFollower>)>()
+        .query::<(&Saved, &Position, &Elevator, Option<&PathFollower>)>()
         .map(|(id, at, lift, follower)| ElevatorSave {
-            id: id.0,
+            id: id.id().0,
             position: at.0.to_array(),
             stop: lift.stop,
             board: lift.board,
@@ -1946,9 +1947,9 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .collect();
     elevators.sort_by_key(|lift| lift.id);
     let mut hazards: Vec<HazardSave> = world
-        .query::<(Entity, &SaveId, &Position, &Oscillator)>()
+        .query::<(Entity, &Saved, &Position, &Oscillator)>()
         .map(|(hazard, id, at, oscillator)| HazardSave {
-            id: id.0,
+            id: id.id().0,
             position: at.0.to_array(),
             oscillator: oscillator.clone(),
             doused: crate::features::elements::systems::doused_left(world, hazard),
@@ -1958,7 +1959,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     let mut balls: Vec<BallSave> = world
         .query::<(
             Entity,
-            &SaveId,
+            &Saved,
             &Ball,
             &Position,
             &Velocity,
@@ -1966,7 +1967,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
             Option<&BallHue>,
         )>()
         .map(|(entity, id, _, at, velocity, small, hue)| BallSave {
-            id: id.0,
+            id: id.id().0,
             small: small.is_some(),
             position: at.0.to_array(),
             velocity: velocity.0.to_array(),
@@ -1979,7 +1980,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     let mut blocks: Vec<BlockSave> = world
         .query::<(
             Entity,
-            &SaveId,
+            &Saved,
             &Position,
             &Velocity,
             Option<&IronBlock>,
@@ -1989,7 +1990,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .map(|(entity, id, at, velocity, _, scrap)| {
             let frozen = ice_left(world, entity);
             BlockSave {
-                id: id.0,
+                id: id.id().0,
                 scrap: scrap.map(|scrap| scrap.variant),
                 position: at.0.to_array(),
                 velocity: velocity.0.to_array(),
@@ -2000,9 +2001,9 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .collect();
     blocks.sort_by_key(|block| block.id);
     let mut black_holes: Vec<HoleSave> = world
-        .query::<(&SaveId, &Transform, &BlackHole)>()
+        .query::<(&Saved, &Transform, &BlackHole)>()
         .map(|(id, at, hole)| HoleSave {
-            id: id.0,
+            id: id.id().0,
             position: at.position.to_array(),
             left: hole.left,
         })
@@ -2010,7 +2011,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     black_holes.sort_by_key(|hole| hole.id);
     let mut missiles: Vec<MissileSave> = world
         .query::<(
-            &SaveId,
+            &Saved,
             &FireMissile,
             &Position,
             &Projectile,
@@ -2018,7 +2019,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
             Option<&Source>,
         )>()
         .map(|(id, _, at, projectile, motion, source)| MissileSave {
-            id: id.0,
+            id: id.id().0,
             position: at.0.to_array(),
             projectile: projectile.clone(),
             motion: motion.clone(),
@@ -2028,7 +2029,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     missiles.sort_by_key(|missile| missile.id);
     let mut flasks: Vec<FlaskSave> = world
         .query::<(
-            &SaveId,
+            &Saved,
             &ToxicFlask,
             &Position,
             &Projectile,
@@ -2036,7 +2037,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
             Option<&Source>,
         )>()
         .map(|(id, _, at, projectile, motion, source)| FlaskSave {
-            id: id.0,
+            id: id.id().0,
             position: at.0.to_array(),
             projectile: projectile.clone(),
             motion: motion.clone(),
@@ -2046,7 +2047,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     flasks.sort_by_key(|flask| flask.id);
     let mut bullets: Vec<BulletSave> = world
         .query::<(
-            &SaveId,
+            &Saved,
             &Bullet,
             &Position,
             &Projectile,
@@ -2055,7 +2056,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         )>()
         .filter(|(.., projectile, _, _)| !projectile.is_spent())
         .map(|(id, bullet, at, projectile, motion, source)| BulletSave {
-            id: id.0,
+            id: id.id().0,
             position: at.0.to_array(),
             projectile: projectile.clone(),
             motion: motion.clone(),
@@ -2071,10 +2072,10 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .collect();
     props.sort_by_key(|prop| prop.id);
     let mut planks: Vec<PlankSave> = world
-        .query::<(Entity, &Plank, &SaveId)>()
+        .query::<(Entity, &Plank, &Saved)>()
         .filter_map(|(entity, plank, id)| {
             Some(PlankSave {
-                id: id.0,
+                id: id.id().0,
                 variant: plank.variant,
                 position: world.get::<Position>(entity)?.0.to_array(),
                 velocity: world.get::<Velocity>(entity)?.0.to_array(),
@@ -2086,9 +2087,9 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .collect();
     planks.sort_by_key(|plank| plank.id);
     let mut stones: Vec<StoneSave> = world
-        .query::<(Entity, &Stone, &SaveId, &Position, &Velocity)>()
+        .query::<(Entity, &Stone, &Saved, &Position, &Velocity)>()
         .map(|(_, stone, id, at, velocity)| StoneSave {
-            id: id.0,
+            id: id.id().0,
             size: stone.size,
             variant: stone.variant,
             position: at.0.to_array(),
@@ -2126,7 +2127,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
                 .iter()
                 .filter_map(|throw| {
                     Some(ThrowSave {
-                        body: world.get::<SaveId>(throw.body)?.0,
+                        body: crate::shared::save_id(world, throw.body)?.0,
                         thrower: throw.thrower,
                         factor: throw.factor,
                         left: throw.left,
@@ -2137,10 +2138,10 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .unwrap_or_default();
     throws.sort_by_key(|throw| throw.body);
     let mut orbs: Vec<OrbSave> = world
-        .query::<(&Orb, &SaveId, &Position, &Lifetime, &Pickup)>()
+        .query::<(&Orb, &Saved, &Position, &Lifetime, &Pickup)>()
         .filter(|(.., pickup)| !pickup.is_collected())
         .map(|(orb, id, at, lifetime, _)| OrbSave {
-            id: id.0,
+            id: id.id().0,
             kind: orb.kind,
             position: at.0.to_array(),
             left: lifetime.timer().remaining(),
@@ -2153,7 +2154,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     gone.sort_unstable();
     Some(SaveGame {
         meta,
-        next_id: world.resource::<SaveIds>().peek(),
+        next_id: crate::shared::next_id(world),
         rng: world.get_resource::<KitRng>().cloned().unwrap_or_default(),
         area: run.area.clone(),
         spell: world
@@ -2204,7 +2205,7 @@ fn capture_prop(world: &World, entity: Entity) -> Option<PropSave> {
         .map(|own| own.variant)
         .or_else(|| world.get::<Rock>(entity).map(|own| own.variant));
     Some(PropSave {
-        id: world.get::<SaveId>(entity)?.0,
+        id: crate::shared::save_id(world, entity)?.0,
         kind: props::kind(world, entity)?,
         map: world.has::<MapProp>(entity),
         variant: variant.unwrap_or(0),
@@ -2232,7 +2233,7 @@ fn sources(world: &World, entity: Entity) -> Vec<(u64, u64)> {
             effects
                 .instances()
                 .filter_map(|instance| {
-                    let source = world.get::<SaveId>(instance.source()?)?;
+                    let source = crate::shared::save_id(world, instance.source()?)?;
                     Some((instance.serial(), source.0))
                 })
                 .collect()
@@ -2256,7 +2257,7 @@ fn capture_dummy(world: &World, id: u64, entity: Entity) -> Option<DummySave> {
 
 /// A live enemy's part.
 fn capture_enemy(world: &World, id: u64, entity: Entity) -> Option<EnemySave> {
-    let id_of = |entity: Entity| world.get::<SaveId>(entity).map(|id| id.0);
+    let id_of = |entity: Entity| crate::shared::save_id(world, entity).map(|id| id.0);
     let hitbox = world.get::<Hitbox>(entity).cloned();
     let hit = hitbox.as_ref().map_or_else(Vec::new, |hitbox| {
         hitbox
@@ -2314,7 +2315,7 @@ fn capture_player(world: &World, player: Entity) -> Option<PlayerSave> {
         return None;
     }
     Some(PlayerSave {
-        id: world.get::<SaveId>(player)?.0,
+        id: crate::shared::save_id(world, player)?.0,
         position: world.get::<Position>(player)?.0.to_array(),
         velocity: world.get::<Velocity>(player)?.0.to_array(),
         controller: world.get::<PlatformerController>(player)?.clone(),
@@ -2362,8 +2363,8 @@ pub fn summary(save: &SaveGame) -> String {
 /// sliding there.
 pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     let mut by_id: std::collections::HashMap<u64, Entity> = world
-        .query::<(Entity, &SaveId)>()
-        .map(|(entity, id)| (id.0, entity))
+        .query::<(Entity, &Saved)>()
+        .map(|(entity, id)| (id.id().0, entity))
         .collect();
     for id in &save.gone {
         if let Some(entity) = by_id.remove(id) {
@@ -2375,7 +2376,7 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     world.insert_bundle(
         player,
         (
-            SaveId(p.id),
+            Saved::kept(SaveId(p.id)),
             Velocity(Vec2::from(p.velocity)),
             p.controller.clone(),
             p.health.clone(),
@@ -2469,7 +2470,7 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         world.insert_bundle(
             entity,
             (
-                SaveId(saved.id),
+                Saved::kept(SaveId(saved.id)),
                 Velocity(Vec2::from(saved.velocity)),
                 saved.health.clone(),
                 saved.resist.clone(),
@@ -2497,7 +2498,10 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         let entity = toys::restore_ball(world, ball.small, Vec2::from(ball.position));
         world.insert_bundle(
             entity,
-            (SaveId(ball.id), Velocity(Vec2::from(ball.velocity))),
+            (
+                Saved::kept(SaveId(ball.id)),
+                Velocity(Vec2::from(ball.velocity)),
+            ),
         );
         if let Some(hue) = ball.hue {
             world.insert(entity, hue);
@@ -2517,7 +2521,10 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         };
         world.insert_bundle(
             entity,
-            (SaveId(block.id), Velocity(Vec2::from(block.velocity))),
+            (
+                Saved::kept(SaveId(block.id)),
+                Velocity(Vec2::from(block.velocity)),
+            ),
         );
         set_chill(world, entity, block.chill);
         set_frozen(world, entity, block.frozen);
@@ -2544,7 +2551,7 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         world.insert_bundle(
             ball,
             (
-                SaveId(saved.id),
+                Saved::kept(SaveId(saved.id)),
                 Velocity(Vec2::from(saved.velocity)),
                 flying,
             ),
@@ -2561,7 +2568,10 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     }
     for hole in &save.black_holes {
         let entity = toys::restore_hole(world, Vec2::from(hole.position));
-        world.insert_bundle(entity, (SaveId(hole.id), BlackHole { left: hole.left }));
+        world.insert_bundle(
+            entity,
+            (Saved::kept(SaveId(hole.id)), BlackHole { left: hole.left }),
+        );
     }
     for missile in &save.missiles {
         restore_missile(
@@ -2586,8 +2596,8 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         gun::spawn(world, shot, source);
     }
     let by_id: std::collections::HashMap<u64, Entity> = world
-        .query::<(Entity, &SaveId)>()
-        .map(|(entity, id)| (id.0, entity))
+        .query::<(Entity, &Saved)>()
+        .map(|(entity, id)| (id.id().0, entity))
         .collect();
     relight(world, save, &by_id);
     let named = std::iter::once((player, &p.sources))
@@ -2701,7 +2711,7 @@ fn restore_enemy(world: &mut World, entity: Entity, saved: &EnemySave) {
     world.insert_bundle(
         entity,
         (
-            SaveId(saved.id),
+            Saved::kept(SaveId(saved.id)),
             Velocity(Vec2::from(saved.velocity)),
             saved.machine.clone(),
             saved.enemy,
@@ -2812,7 +2822,7 @@ fn restore_flask(world: &mut World, flask: &FlaskSave, source: Option<Entity>) {
         Transform::from_position(at),
         Position(at),
         PrevPosition(at),
-        SaveId(flask.id),
+        Saved::kept(SaveId(flask.id)),
         flask.projectile.clone(),
         flask.motion.clone(),
         toys::components::PreviousVelocity::default(),
@@ -2843,7 +2853,7 @@ fn restore_missile(world: &mut World, missile: &MissileSave, source: Option<Enti
         transform,
         Position(at),
         PrevPosition(at),
-        SaveId(missile.id),
+        Saved::kept(SaveId(missile.id)),
         missile.projectile.clone(),
         missile.motion.clone(),
         toys::components::PreviousVelocity::default(),

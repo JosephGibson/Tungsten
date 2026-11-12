@@ -50,7 +50,7 @@ use crate::features::combat;
 use crate::features::level::LAVA_LAYER;
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
-use crate::shared::{self, BODIES, Body, SaveId, SaveIds, despawn_tree, spawn_key_burst};
+use crate::shared::{self, BODIES, Body, SaveId, Saved, despawn_tree, spawn_key_burst};
 use crate::shell::Difficulty;
 use components::{
     Brain, Enemy, EnemyKind, EnemyState, PlacedEnemies, Shown, Sight, Spotted, Throws, Variant,
@@ -419,7 +419,7 @@ pub fn spawn_as(
         .prepare_prefab(prefab(kind, variant), corner.to_array())
         .ok()?
         .with((
-            id,
+            Saved::kept(id),
             Brain::default(),
             Sight::default(),
             tungsten::kit::StateMachine::new(EnemyState::Patrol),
@@ -478,7 +478,7 @@ pub fn summon(world: &mut World, kind: EnemyKind, at: Vec2) -> Option<Entity> {
 pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2) -> Option<Entity> {
     let difficulty =
         crate::shell::run_meta(world).map_or(Difficulty::Normal, |meta| meta.difficulty);
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = shared::take_id(world);
     let corner = at - body(world, kind).centre;
     let enemy = spawn_as(world, kind, variant, corner, id)?;
     scale(world, enemy, difficulty);
@@ -504,8 +504,8 @@ pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2)
 /// ([`home`]) and its state machine, and gives it the difficulty's factor.
 pub fn start(world: &mut World, difficulty: Difficulty) {
     let placed: Vec<(Entity, u64, EnemyKind)> = world
-        .query::<(Entity, &Enemy, &SaveId)>()
-        .map(|(entity, enemy, id)| (entity, id.0, enemy.kind))
+        .query::<(Entity, &Enemy, &Saved)>()
+        .map(|(entity, enemy, id)| (entity, id.id().0, enemy.kind))
         .collect();
     for &(entity, _, kind) in &placed {
         shared::fit_body(world, entity, kind.info().prefab);
@@ -540,9 +540,9 @@ pub fn start(world: &mut World, difficulty: Difficulty) {
 #[must_use]
 pub fn live(world: &World) -> Vec<(u64, Entity)> {
     let mut live: Vec<(u64, Entity)> = world
-        .query::<(Entity, &Enemy, &SaveId, &Health)>()
+        .query::<(Entity, &Enemy, &Saved, &Health)>()
         .filter(|(.., health)| !health.is_dead())
-        .map(|(entity, _, id, _)| (id.0, entity))
+        .map(|(entity, _, id, _)| (id.id().0, entity))
         .collect();
     live.sort_unstable_by_key(|(id, _)| *id);
     live

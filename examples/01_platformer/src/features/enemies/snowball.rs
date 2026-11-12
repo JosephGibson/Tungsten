@@ -21,7 +21,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{Hit, Kind};
 use crate::features::toys;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst};
+use crate::shared::{Saved, body_centre, despawn_tree, spawn_burst};
 
 /// Its prefab, its body's radius and its centre from its sprite's top-left.
 pub const SNOWBALL_PREFAB: &str = "snowball";
@@ -57,8 +57,8 @@ pub fn spawn(world: &mut World, corner: Vec2) -> Entity {
 #[must_use]
 pub fn flying(world: &World) -> Vec<(u64, Entity)> {
     let mut balls: Vec<(u64, Entity)> = world
-        .query::<(Entity, &Snowball, &SaveId)>()
-        .map(|(entity, _, id)| (id.0, entity))
+        .query::<(Entity, &Snowball, &Saved)>()
+        .map(|(entity, _, id)| (id.id().0, entity))
         .collect();
     balls.sort_unstable_by_key(|&(id, _)| id);
     balls
@@ -108,8 +108,8 @@ fn gap(centre: Vec2, radius: f32, at: Vec2, shape: Shape) -> f32 {
 /// The live entity of save ID `id`.
 fn live(world: &World, id: u64) -> Option<Entity> {
     world
-        .query::<(Entity, &SaveId, &Health)>()
-        .find(|(_, own, health)| own.0 == id && !health.is_dead())
+        .query::<(Entity, &Saved, &Health)>()
+        .find(|(_, own, health)| own.id().0 == id && !health.is_dead())
         .map(|(entity, ..)| entity)
 }
 
@@ -129,14 +129,16 @@ pub fn snowballs(world: &mut World) {
         return;
     }
     let mut targets: Vec<(u64, Entity, Vec2, Shape)> = world
-        .query::<(Entity, &SaveId, &Health, &Position, &Collider)>()
+        .query::<(Entity, &Saved, &Health, &Position, &Collider)>()
         .filter(|&(entity, _, health, ..)| {
             !health.is_dead()
                 && !world
                     .get::<Tags>(entity)
                     .is_some_and(|tags| tags.has("team.enemy"))
         })
-        .map(|(entity, id, _, at, collider)| (id.0, entity, at.0 + collider.offset, collider.shape))
+        .map(|(entity, id, _, at, collider)| {
+            (id.id().0, entity, at.0 + collider.offset, collider.shape)
+        })
         .collect();
     targets.sort_unstable_by_key(|&(id, ..)| id);
     for (_, ball) in balls {

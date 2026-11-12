@@ -30,7 +30,7 @@ use example_01_platformer::features::props::{
 };
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, SMALL_BALL_RADIUS};
-use example_01_platformer::shared::{SaveId, SaveIds};
+use example_01_platformer::shared::take_id;
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::{
@@ -74,7 +74,9 @@ fn alive(harness: &UiHarness, entity: Entity) -> bool {
 }
 
 fn id_of(world: &World, entity: Entity) -> u64 {
-    world.get::<SaveId>(entity).expect("a save ID").0
+    example_01_platformer::shared::save_id(world, entity)
+        .expect("a save ID")
+        .0
 }
 
 /// The sounds of `sound` this frame.
@@ -397,7 +399,7 @@ fn a_frozen_keg_shatters_in_fire_and_never_blows() {
 /// An enemy of `kind` with its body's centre at `centre`.
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let entity =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);

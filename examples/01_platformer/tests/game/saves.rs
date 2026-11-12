@@ -56,7 +56,7 @@ use example_01_platformer::features::toys::components::{
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game;
 use example_01_platformer::save::{self, HoleSave, MAP_ENEMIES, SaveGame};
-use example_01_platformer::shared::{AUTHORED, SaveId, SaveIds};
+use example_01_platformer::shared::{AUTHORED, SaveId, Saved, take_id};
 use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, SlotState};
 use glam::Vec2;
@@ -135,8 +135,8 @@ fn scaffold(harness: &mut UiHarness) {
 fn light(harness: &mut UiHarness, count: usize) {
     let mut balls: Vec<(f32, u64, Entity)> = harness
         .world()
-        .query::<(Entity, &SmallBall, &Position, &SaveId)>()
-        .map(|(e, _, at, id)| (at.0.y, id.0, e))
+        .query::<(Entity, &SmallBall, &Position, &Saved)>()
+        .map(|(e, _, at, id)| (at.0.y, id.id().0, e))
         .collect();
     balls.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
     for (_, _, ball) in balls.into_iter().take(count) {
@@ -202,7 +202,7 @@ fn busy(harness: &mut UiHarness) {
     elements::chill(harness.world_mut(), far, 0.5, Vec2::new(1090.0, TOP - 60.0));
     // A mana orb past the player's reach.
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     drops::spawn(
         world,
         OrbKind::Mana,
@@ -214,7 +214,7 @@ fn busy(harness: &mut UiHarness) {
     // goblin's bomb and rock in flight, east of the hole's reach, which
     // puts a fire out, over the sky's ground.
     let player = player_entity(harness);
-    let me = harness.world().get::<SaveId>(player).map(|id| id.0);
+    let me = example_01_platformer::shared::save_id(harness.world(), player).map(|id| id.0);
     let world = harness.world_mut();
     let crate_ = props::spawn(
         world,
@@ -268,8 +268,8 @@ fn busy(harness: &mut UiHarness) {
 fn platform_points(harness: &UiHarness) -> Vec<[f32; 2]> {
     let mut points: Vec<(u64, [f32; 2])> = harness
         .world()
-        .query_filtered::<(&SaveId, &Position, &PathFollower), tungsten::core::Without<Elevator>>()
-        .map(|(id, at, _)| (id.0, at.0.to_array()))
+        .query_filtered::<(&Saved, &Position, &PathFollower), tungsten::core::Without<Elevator>>()
+        .map(|(id, at, _)| (id.id().0, at.0.to_array()))
         .collect();
     points.sort_by_key(|&(id, _)| id);
     points.into_iter().map(|(_, at)| at).collect()
@@ -373,7 +373,7 @@ fn lists(kind: &str) -> Lists {
     // The payload's emitter, which a load spawns from the saved source again.
     const EMITTER: &str = "tungsten_kit::overlap::grid::Emitter";
     let body = [name::<Collider>(), name::<RigidBody>()];
-    let at = [name::<SaveId>(), name::<Position>(), name::<PrevPosition>()];
+    let at = [name::<Saved>(), name::<Position>(), name::<PrevPosition>()];
     let drawn = [name::<Transform>(), name::<Sprite>(), name::<Visibility>()];
     match kind {
         "player" => Lists {
@@ -534,7 +534,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
         },
         "black hole" => Lists {
-            saved: names([name::<SaveId>(), name::<Transform>(), name::<BlackHole>()]),
+            saved: names([name::<Saved>(), name::<Transform>(), name::<BlackHole>()]),
             rebuilt: names([
                 name::<SceneEntity>(),
                 name::<PreviousVelocity>(),
@@ -777,7 +777,7 @@ fn lists(kind: &str) -> Lists {
         // The lava basins, which the map spawns again whole but their chill
         // and crust, a crust's sprites drawn again.
         "basin" => Lists {
-            saved: names([name::<SaveId>(), name::<Lava>()]),
+            saved: names([name::<Saved>(), name::<Lava>()]),
             rebuilt: [
                 &body[..],
                 &[
@@ -805,7 +805,7 @@ fn lists(kind: &str) -> Lists {
         "geyser" => {
             use example_01_platformer::features::level::geyser::Geyser;
             Lists {
-                saved: names([name::<SaveId>(), name::<Geyser>()]),
+                saved: names([name::<Saved>(), name::<Geyser>()]),
                 rebuilt: names([
                     name::<SceneEntity>(),
                     name::<ContactDamage>(),
@@ -896,7 +896,7 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
     assert_eq!(world.query::<&BlackHole>().count(), 1);
     assert!(world.query::<&FireMissile>().count() > 0);
     let mut seen: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-    for (entity, _) in world.query::<(Entity, &SaveId)>() {
+    for (entity, _) in world.query::<(Entity, &Saved)>() {
         let kind = kind(world, entity);
         let lists = lists(kind);
         for (_, ty) in world.component_types(entity) {
@@ -1064,15 +1064,19 @@ fn outcome(harness: &UiHarness) -> Outcome {
     let world = harness.world();
     let player = player_entity(harness);
     let mut points = BTreeMap::new();
-    for (entity, id) in world.query::<(Entity, &SaveId)>() {
+    for (entity, id) in world.query::<(Entity, &Saved)>() {
         let at = world
             .get::<Position>(entity)
             .map(|p| p.0)
             .or_else(|| world.get::<Transform>(entity).map(|t| t.position))
             .unwrap_or_default();
-        points.insert(id.0, (kind(world, entity), at));
+        points.insert(id.id().0, (kind(world, entity), at));
     }
-    let id = |entity: Entity| world.get::<SaveId>(entity).unwrap().0;
+    let id = |entity: Entity| {
+        example_01_platformer::shared::save_id(world, entity)
+            .unwrap()
+            .0
+    };
     let abilities = world.get::<Abilities>(player).unwrap();
     Outcome {
         points,
@@ -1265,7 +1269,7 @@ fn a_loaded_run_keeps_with_the_uninterrupted_one_in_a_churned_world() {
 /// save ID the run's next.
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = take_id(world);
     let entity =
         enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
@@ -1276,14 +1280,16 @@ fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
 fn by_id(harness: &UiHarness, id: u64) -> Entity {
     harness
         .world()
-        .query::<(Entity, &SaveId)>()
-        .find(|&(_, own)| own.0 == id)
+        .query::<(Entity, &Saved)>()
+        .find(|&(_, own)| own.id().0 == id)
         .map(|(entity, _)| entity)
         .expect("a live entity of that save ID")
 }
 
 fn id_of(harness: &UiHarness, entity: Entity) -> u64 {
-    harness.world().get::<SaveId>(entity).expect("a save ID").0
+    example_01_platformer::shared::save_id(harness.world(), entity)
+        .expect("a save ID")
+        .0
 }
 
 fn state(harness: &UiHarness, enemy: Entity) -> EnemyState {
@@ -1789,7 +1795,11 @@ fn burning_frozen_and_shocked_dummies_load_with_their_sources() {
         4,
         "the clearing's and the three"
     );
-    let id = |entity: Entity| harness.world().get::<SaveId>(entity).unwrap().0;
+    let id = |entity: Entity| {
+        example_01_platformer::shared::save_id(harness.world(), entity)
+            .unwrap()
+            .0
+    };
     for &(dummy, effect) in &dummies {
         assert!(
             !dummy_placed(&harness, id(dummy)),
@@ -1812,8 +1822,8 @@ fn burning_frozen_and_shocked_dummies_load_with_their_sources() {
         let wanted = id(dummy);
         let (entity, _) = fresh
             .world()
-            .query::<(Entity, &SaveId)>()
-            .find(|(_, id)| id.0 == wanted)
+            .query::<(Entity, &Saved)>()
+            .find(|(_, id)| id.id().0 == wanted)
             .expect("the dummy loads");
         let effects = fresh.world().get::<Effects>(entity).unwrap();
         let instance = effects
@@ -1922,7 +1932,7 @@ fn a_bullet_in_flight_loads_and_lands() {
     let dummy = super::combat::dummy_at(&mut harness, 1400.0);
     harness.step(2);
     let y = super::body(&harness, dummy).y;
-    let id = *harness.world().get::<SaveId>(dummy).unwrap();
+    let id = example_01_platformer::shared::save_id(harness.world(), dummy).unwrap();
     gun::fire(
         harness.world_mut(),
         Vec2::new(700.0, y),
@@ -1946,8 +1956,8 @@ fn a_bullet_in_flight_loads_and_lands() {
             harness.step(1);
             let world = harness.world();
             let target = world
-                .query::<(Entity, &Dummy, &SaveId)>()
-                .find(|&(_, _, own)| *own == id)
+                .query::<(Entity, &Dummy, &Saved)>()
+                .find(|&(_, _, own)| own.id() == id)
                 .map(|(entity, ..)| entity)
                 .expect("the test's dummy, not the map's");
             hits.extend(
@@ -1992,8 +2002,8 @@ fn a_save_mid_chain_keeps_its_pile_and_drops_its_waiting_endings() {
     let live = |harness: &UiHarness| -> BTreeSet<u64> {
         harness
             .world()
-            .query::<(&SmallBall, &SaveId)>()
-            .map(|(_, id)| id.0)
+            .query::<(&SmallBall, &Saved)>()
+            .map(|(_, id)| id.id().0)
             .collect()
     };
     let at_save = live(&harness);
@@ -2015,8 +2025,8 @@ fn a_save_mid_chain_keeps_its_pile_and_drops_its_waiting_endings() {
 fn kegs(harness: &UiHarness) -> BTreeSet<u64> {
     harness
         .world()
-        .query::<(&Keg, &SaveId)>()
-        .map(|(_, id)| id.0)
+        .query::<(&Keg, &Saved)>()
+        .map(|(_, id)| id.id().0)
         .collect()
 }
 
@@ -3023,9 +3033,9 @@ fn placed_orbs(harness: &UiHarness) -> Vec<(u64, Entity)> {
     let world = harness.world();
     let placed = &world.resource::<drops::PlacedOrbs>().0;
     let mut orbs: Vec<(u64, Entity)> = world
-        .query::<(Entity, &Orb, &SaveId)>()
-        .filter(|(_, _, id)| placed.contains(&id.0))
-        .map(|(entity, _, id)| (id.0, entity))
+        .query::<(Entity, &Orb, &Saved)>()
+        .filter(|(_, _, id)| placed.contains(&id.id().0))
+        .map(|(entity, _, id)| (id.id().0, entity))
         .collect();
     orbs.sort_unstable_by_key(|(id, _)| *id);
     orbs
@@ -3149,7 +3159,9 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     let player = player_entity(&run);
     let world = run.world();
     assert_eq!(
-        world.get::<SaveId>(player).unwrap().0,
+        example_01_platformer::shared::save_id(world, player)
+            .unwrap()
+            .0,
         schema_23_id(schema_22_from_18(schema_12_id(save::S10_PLAYER)))
     );
     let live: BTreeSet<u64> = enemies::live(world).into_iter().map(|(id, _)| id).collect();
@@ -3193,19 +3205,19 @@ fn map_ids(harness: &UiHarness) -> [Vec<u64>; 5] {
     let placed = &world.resource::<drops::PlacedOrbs>().0;
     [
         ids(world
-            .query::<(&Lava, &SaveId)>()
-            .map(|(_, id)| id.0)
+            .query::<(&Lava, &Saved)>()
+            .map(|(_, id)| id.id().0)
             .collect()),
         ids(world
-            .query::<(Entity, &SaveId)>()
+            .query::<(Entity, &Saved)>()
             .filter(|(entity, _)| {
                 world.has::<PathFollower>(*entity) || world.has::<Elevator>(*entity)
             })
-            .map(|(_, id)| id.0)
+            .map(|(_, id)| id.id().0)
             .collect()),
         ids(world
-            .query::<(&Dummy, &SaveId)>()
-            .map(|(_, id)| id.0)
+            .query::<(&Dummy, &Saved)>()
+            .map(|(_, id)| id.id().0)
             .collect()),
         ids(enemies::live(world).into_iter().map(|(id, _)| id).collect()),
         ids(placed.clone()),
@@ -3237,8 +3249,8 @@ fn deck_top(harness: &UiHarness, deck: Entity) -> f32 {
 fn basin(harness: &UiHarness, id: u64) -> Entity {
     harness
         .world()
-        .query::<(Entity, &Lava, &SaveId)>()
-        .find(|(_, _, own)| own.0 == id)
+        .query::<(Entity, &Lava, &Saved)>()
+        .find(|(_, _, own)| own.id().0 == id)
         .map(|(entity, ..)| entity)
         .expect("the basin")
 }
@@ -3586,8 +3598,8 @@ fn three_open_black_holes_load_back_to_themselves() {
 fn holes(harness: &UiHarness) -> Vec<(u64, [f32; 2], f32)> {
     let mut open: Vec<(u64, [f32; 2], f32)> = harness
         .world()
-        .query::<(&SaveId, &Transform, &BlackHole)>()
-        .map(|(id, at, hole)| (id.0, at.position.to_array(), hole.left))
+        .query::<(&Saved, &Transform, &BlackHole)>()
+        .map(|(id, at, hole)| (id.id().0, at.position.to_array(), hole.left))
         .collect();
     open.sort_by_key(|&(id, ..)| id);
     open
@@ -4050,8 +4062,8 @@ fn a_schema_10_trolls_deep_chill_goes_at_its_first_step() {
     let id = schema_23_from_18(schema_12_id(id));
     let troll = fresh
         .world()
-        .query::<(Entity, &Enemy, &SaveId)>()
-        .find(|(_, _, own)| own.0 == id)
+        .query::<(Entity, &Enemy, &Saved)>()
+        .find(|(_, _, own)| own.id().0 == id)
         .map(|(entity, ..)| entity)
         .expect("the troll loaded");
     let speed = |h: &UiHarness| h.world().get::<Stats>(troll).unwrap().get("move_speed");
@@ -4246,10 +4258,10 @@ fn burning_planks_save_through_json_and_load_back() {
     let planks = |harness: &UiHarness| {
         let world = harness.world();
         let mut planks: Vec<(u64, usize, PropFire)> = world
-            .query::<(Entity, &SaveId, &Plank)>()
+            .query::<(Entity, &Saved, &Plank)>()
             .map(|(entity, id, plank)| {
                 let fire = props::fire(world, entity).expect("a plank's fire");
-                (id.0, plank.variant, fire)
+                (id.id().0, plank.variant, fire)
             })
             .collect();
         planks.sort_by_key(|(id, ..)| *id);
@@ -4298,10 +4310,10 @@ fn three_stones_of_three_sizes_save_through_json_and_load_back() {
     let stones = |harness: &UiHarness| {
         let mut stones: Vec<Rubble> = harness
             .world()
-            .query::<(&SaveId, &Stone, &Position, &Velocity)>()
+            .query::<(&Saved, &Stone, &Position, &Velocity)>()
             .map(|(id, stone, at, velocity)| {
                 let (at, velocity) = (at.0.to_array(), velocity.0.to_array());
-                (id.0, stone.size, stone.variant, at, velocity)
+                (id.id().0, stone.size, stone.variant, at, velocity)
             })
             .collect();
         stones.sort_by_key(|(id, ..)| *id);
@@ -4445,8 +4457,8 @@ fn to_16_sets_bodies_inside_the_tomes_supports_on_their_tops() {
 fn geysers(harness: &UiHarness) -> Vec<(u64, Entity)> {
     let mut geysers: Vec<(u64, Entity)> = harness
         .world()
-        .query::<(Entity, &Geyser, &SaveId)>()
-        .map(|(entity, _, id)| (id.0, entity))
+        .query::<(Entity, &Geyser, &Saved)>()
+        .map(|(entity, _, id)| (id.id().0, entity))
         .collect();
     geysers.sort_unstable_by_key(|(id, _)| map_order(*id));
     geysers
@@ -4482,8 +4494,8 @@ fn the_maps_geysers_and_the_player_take_the_save_ids_their_names_derive() {
 fn geyser_states(harness: &UiHarness) -> Vec<(u64, GeyserPhase, f32, f32)> {
     let mut states: Vec<(u64, GeyserPhase, f32, f32)> = harness
         .world()
-        .query::<(&SaveId, &Geyser)>()
-        .map(|(id, geyser)| (id.0, geyser.phase, geyser.left, geyser.choked))
+        .query::<(&Saved, &Geyser)>()
+        .map(|(id, geyser)| (id.id().0, geyser.phase, geyser.left, geyser.choked))
         .collect();
     states.sort_by_key(|&(id, ..)| id);
     states
@@ -4748,7 +4760,7 @@ type Flask = (
 /// The flasks in flight, by save ID.
 fn flasks(harness: &UiHarness) -> Vec<Flask> {
     let world = harness.world();
-    let id = |entity: Entity| world.get::<SaveId>(entity).map(|id| id.0);
+    let id = |entity: Entity| example_01_platformer::shared::save_id(world, entity).map(|id| id.0);
     let mut flying: Vec<Flask> = toys::flask::flying(world)
         .into_iter()
         .map(|(own, flask)| {

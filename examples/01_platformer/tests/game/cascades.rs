@@ -16,7 +16,7 @@ use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::IronScrap;
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shared::{BURST_CAP, SaveId, surface_distance};
+use example_01_platformer::shared::{BURST_CAP, surface_distance};
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
@@ -117,7 +117,11 @@ fn ids(harness: &UiHarness, balls: &[Entity]) -> Vec<u64> {
     balls
         .iter()
         .filter(|&&b| harness.world().is_alive(b))
-        .map(|&b| harness.world().get::<SaveId>(b).unwrap().0)
+        .map(|&b| {
+            example_01_platformer::shared::save_id(harness.world(), b)
+                .unwrap()
+                .0
+        })
         .collect()
 }
 
@@ -139,7 +143,11 @@ fn chain_order() -> Vec<Vec<u64>> {
             let shape = world.get::<tungsten::core::Collider>(ball).unwrap().shape;
             surface_distance(centre, body(&harness, ball), shape) <= 72.0
         })
-        .map(|&ball| world.get::<SaveId>(ball).unwrap().0)
+        .map(|&ball| {
+            example_01_platformer::shared::save_id(world, ball)
+                .unwrap()
+                .0
+        })
         .collect();
     first_ring.sort_unstable();
     assert_eq!(first_ring.len(), queued, "the first ring, queued");
