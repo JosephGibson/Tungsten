@@ -3150,6 +3150,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PlatformerControl
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PlatformerControllerPlugin
 pub struct tungsten_kit::prelude::Projectile
 impl tungsten_kit::Projectile
+pub fn tungsten_kit::Projectile::body_walls(&self) -> u32
 pub fn tungsten_kit::Projectile::bounce_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::bounces(&self) -> u32
 pub fn tungsten_kit::Projectile::hits(&self) -> u32
@@ -3158,13 +3159,16 @@ pub fn tungsten_kit::Projectile::new() -> Self
 pub fn tungsten_kit::Projectile::pass_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::pierce(&self) -> u32
 pub fn tungsten_kit::Projectile::range(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Projectile::shape(&self) -> core::option::Option<(tungsten_kit::HitShape, glam::f32::vec2::Vec2)>
 pub fn tungsten_kit::Projectile::travelled(&self) -> f32
+pub fn tungsten_kit::Projectile::with_body_walls(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_bounce_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_bounces(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_end(self, tungsten_kit::Blast) -> Self
 pub fn tungsten_kit::Projectile::with_pass_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_pierce(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_range(self, f32) -> Self
+pub fn tungsten_kit::Projectile::with_shape(self, tungsten_kit::HitShape, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_kit::Projectile
 pub fn tungsten_kit::Projectile::clone(&self) -> tungsten_kit::Projectile
 impl core::cmp::PartialEq for tungsten_kit::Projectile
@@ -6943,6 +6947,92 @@ impl core::marker::Unpin for tungsten_kit::ImmunePart
 impl core::marker::UnsafeUnpin for tungsten_kit::ImmunePart
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ImmunePart
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ImmunePart
+pub struct tungsten_kit::ImpactDamage
+impl tungsten_kit::ImpactDamage
+pub fn tungsten_kit::ImpactDamage::amount(&self, f32, f32) -> f32
+pub fn tungsten_kit::ImpactDamage::credit(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::ImpactDamage::landing_now(self) -> Self
+pub fn tungsten_kit::ImpactDamage::mass(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::ImpactDamage::new() -> Self
+pub fn tungsten_kit::ImpactDamage::scale(&self) -> f32
+pub fn tungsten_kit::ImpactDamage::set_credit(&mut self, core::option::Option<tungsten_core::ecs::entity::Entity>)
+pub fn tungsten_kit::ImpactDamage::set_filter(&mut self, tungsten_kit::TagFilter)
+pub fn tungsten_kit::ImpactDamage::set_scale(&mut self, f32)
+pub fn tungsten_kit::ImpactDamage::with_amount(self, f32) -> Self
+pub fn tungsten_kit::ImpactDamage::with_extra(self, tungsten_kit::TagFilter, &str, f32) -> Self
+pub fn tungsten_kit::ImpactDamage::with_filter(self, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::ImpactDamage::with_floor(self, f32) -> Self
+pub fn tungsten_kit::ImpactDamage::with_kind(self, &str) -> Self
+pub fn tungsten_kit::ImpactDamage::with_margin(self, f32) -> Self
+pub fn tungsten_kit::ImpactDamage::with_mass(self, f32) -> Self
+pub fn tungsten_kit::ImpactDamage::with_most(self, f32) -> Self
+pub fn tungsten_kit::ImpactDamage::with_per_mass(self, f32) -> Self
+pub fn tungsten_kit::ImpactDamage::with_prepare(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::ImpactDamage::with_push_along(self, f32) -> Self
+pub fn tungsten_kit::ImpactDamage::with_push_away(self, f32, core::option::Option<f32>) -> Self
+pub fn tungsten_kit::ImpactDamage::with_scale(self, f32) -> Self
+pub fn tungsten_kit::ImpactDamage::with_speed(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::ImpactDamage
+pub fn tungsten_kit::ImpactDamage::clone(&self) -> tungsten_kit::ImpactDamage
+impl core::cmp::PartialEq for tungsten_kit::ImpactDamage
+pub fn tungsten_kit::ImpactDamage::eq(&self, &tungsten_kit::ImpactDamage) -> bool
+impl core::default::Default for tungsten_kit::ImpactDamage
+pub fn tungsten_kit::ImpactDamage::default() -> Self
+impl core::fmt::Debug for tungsten_kit::ImpactDamage
+pub fn tungsten_kit::ImpactDamage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::ImpactDamage
+impl serde_core::ser::Serialize for tungsten_kit::ImpactDamage
+pub fn tungsten_kit::ImpactDamage::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::ImpactDamage
+pub fn tungsten_kit::ImpactDamage::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::ImpactDamage
+pub fn tungsten_kit::ImpactDamage::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::ImpactDamage
+impl core::marker::Send for tungsten_kit::ImpactDamage
+impl core::marker::Sync for tungsten_kit::ImpactDamage
+impl core::marker::Unpin for tungsten_kit::ImpactDamage
+impl core::marker::UnsafeUnpin for tungsten_kit::ImpactDamage
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ImpactDamage
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ImpactDamage
+pub struct tungsten_kit::ImpactDamagePlugin
+impl core::clone::Clone for tungsten_kit::ImpactDamagePlugin
+pub fn tungsten_kit::ImpactDamagePlugin::clone(&self) -> tungsten_kit::ImpactDamagePlugin
+impl core::default::Default for tungsten_kit::ImpactDamagePlugin
+pub fn tungsten_kit::ImpactDamagePlugin::default() -> tungsten_kit::ImpactDamagePlugin
+impl core::fmt::Debug for tungsten_kit::ImpactDamagePlugin
+pub fn tungsten_kit::ImpactDamagePlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ImpactDamagePlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::ImpactDamagePlugin
+pub fn tungsten_kit::ImpactDamagePlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::ImpactDamagePlugin
+impl core::marker::Send for tungsten_kit::ImpactDamagePlugin
+impl core::marker::Sync for tungsten_kit::ImpactDamagePlugin
+impl core::marker::Unpin for tungsten_kit::ImpactDamagePlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::ImpactDamagePlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ImpactDamagePlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ImpactDamagePlugin
+#[non_exhaustive] pub struct tungsten_kit::Impacted
+pub tungsten_kit::Impacted::hitter: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::Impacted::outcome: core::option::Option<tungsten_kit::Hit>
+pub tungsten_kit::Impacted::target: tungsten_core::ecs::entity::Entity
+impl tungsten_kit::Impacted
+pub fn tungsten_kit::Impacted::new(tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, core::option::Option<tungsten_kit::Hit>) -> Self
+impl core::clone::Clone for tungsten_kit::Impacted
+pub fn tungsten_kit::Impacted::clone(&self) -> tungsten_kit::Impacted
+impl core::cmp::Eq for tungsten_kit::Impacted
+impl core::cmp::PartialEq for tungsten_kit::Impacted
+pub fn tungsten_kit::Impacted::eq(&self, &tungsten_kit::Impacted) -> bool
+impl core::fmt::Debug for tungsten_kit::Impacted
+pub fn tungsten_kit::Impacted::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::Impacted
+impl core::marker::StructuralPartialEq for tungsten_kit::Impacted
+impl core::marker::Freeze for tungsten_kit::Impacted
+impl core::marker::Send for tungsten_kit::Impacted
+impl core::marker::Sync for tungsten_kit::Impacted
+impl core::marker::Unpin for tungsten_kit::Impacted
+impl core::marker::UnsafeUnpin for tungsten_kit::Impacted
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Impacted
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Impacted
 pub struct tungsten_kit::Intent
 impl tungsten_kit::Intent
 pub fn tungsten_kit::Intent::aim(&self) -> core::option::Option<glam::f32::vec2::Vec2>
@@ -8019,6 +8109,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PlatformerControl
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PlatformerControllerPlugin
 pub struct tungsten_kit::Projectile
 impl tungsten_kit::Projectile
+pub fn tungsten_kit::Projectile::body_walls(&self) -> u32
 pub fn tungsten_kit::Projectile::bounce_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::bounces(&self) -> u32
 pub fn tungsten_kit::Projectile::hits(&self) -> u32
@@ -8027,13 +8118,16 @@ pub fn tungsten_kit::Projectile::new() -> Self
 pub fn tungsten_kit::Projectile::pass_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::pierce(&self) -> u32
 pub fn tungsten_kit::Projectile::range(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Projectile::shape(&self) -> core::option::Option<(tungsten_kit::HitShape, glam::f32::vec2::Vec2)>
 pub fn tungsten_kit::Projectile::travelled(&self) -> f32
+pub fn tungsten_kit::Projectile::with_body_walls(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_bounce_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_bounces(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_end(self, tungsten_kit::Blast) -> Self
 pub fn tungsten_kit::Projectile::with_pass_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_pierce(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_range(self, f32) -> Self
+pub fn tungsten_kit::Projectile::with_shape(self, tungsten_kit::HitShape, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_kit::Projectile
 pub fn tungsten_kit::Projectile::clone(&self) -> tungsten_kit::Projectile
 impl core::cmp::PartialEq for tungsten_kit::Projectile
@@ -9453,6 +9547,8 @@ pub const tungsten_kit::HITBOX_TICK: &str
 pub const tungsten_kit::HIT_FLASH_MATERIAL: &str
 pub const tungsten_kit::HIT_FLASH_TICK: &str
 pub const tungsten_kit::HIT_GRID: &str
+pub const tungsten_kit::IMPACT_DAMAGE: &str
+pub const tungsten_kit::IMPACT_RECORD: &str
 pub const tungsten_kit::KIT_DEBUG_DRAW: &str
 pub const tungsten_kit::KIT_DESPAWN: &str
 pub const tungsten_kit::KIT_INTENT: &str
@@ -9509,6 +9605,7 @@ pub fn tungsten_kit::lob_velocity(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, 
 pub fn tungsten_kit::release(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::route_findings(&tungsten_core::ecs::world::World, &str) -> alloc::vec::Vec<tungsten_core::assets::room::rules::RoomFinding>
 pub fn tungsten_kit::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::step_velocity(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::stimulate(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str, f32, core::option::Option<tungsten_core::ecs::entity::Entity>) -> bool
 pub fn tungsten_kit::use_ability(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str) -> tungsten_kit::Used
 pub type tungsten_kit::HitPrep = fn(&tungsten_core::ecs::world::World, &mut tungsten_kit::DamageRequest)

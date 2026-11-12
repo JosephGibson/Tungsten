@@ -4,8 +4,8 @@
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::physics::{
-    BodyKind, Collider, Position, RigidBody, Shape, SpatialFilter, SpatialHit, Velocity,
-    cast_shape, overlap,
+    BodyKind, Collider, Position, PrevPosition, RigidBody, Shape, SpatialFilter, SpatialHit,
+    Velocity, cast_shape, overlap,
 };
 use tungsten_core::{
     Entity, EventQueue, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, Transform,
@@ -19,6 +19,7 @@ use crate::foundation::describe::{
     describe, describe_shape, round_trip,
 };
 use crate::foundation::inspect::register_rows;
+use crate::foundation::layers::{LayerRef, check_layers, layer_bits, layer_list};
 use crate::foundation::optional_positive;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::saved::order_of;
@@ -33,7 +34,7 @@ use crate::overlap::grid::{
     Blow, HitGrid, Sweep, ensure_emitter, first_contact, reflect, spares, strike, sweep_of,
     wall_contact,
 };
-use crate::overlap::hit::{Hitbox, Struck, after_grid, ensure_grid};
+use crate::overlap::hit::{HitShape, Hitbox, Struck, after_grid, ensure_grid, optional_offset};
 
 /// [`ProjectilePlugin`]'s system, in the overlap phase.
 pub const PROJECTILE_TICK: &str = "projectile_tick";
@@ -75,9 +76,13 @@ const PROJECTILE_END: &str = "projectile_end";
 /// Walls are tiles of collision layers, in their layer's physics layers
 /// (layer 0 by default, [`LayerPhysics`](tungsten_core::LayerPhysics)), and
 /// static colliders, in their [`RigidBody::layers`] (layer 0 without a body);
-/// kinematic and dynamic bodies are never walls, their hurtboxes are what
-/// it hits. A wall is in the masks when one of its layers is, and passing
-/// comes first. In a step the sweep meets walls in order: each one passed
+/// kinematic and dynamic bodies are walls only in its `body_walls`, met over
+/// their step's move from their `PrevPosition` and turning it in their own
+/// frame, and never its [`Source`](crate::Source)'s; otherwise their
+/// hurtboxes are what it hits. A wall is in the masks when one of its
+/// layers is, and passing comes first. Without a hitbox it sweeps its own
+/// `shape` at its `offset`, its walls and its end measured from it, else
+/// its point. In a step the sweep meets walls in order: each one passed
 /// sends [`ProjectilePassed`] and the sweep goes on, and the first one not
 /// passed turns it, sending [`ProjectileBounced`], or ends it; hits before
 /// that wall land first, and a pierce count and a pass are independent. A
@@ -88,12 +93,15 @@ const PROJECTILE_END: &str = "projectile_end";
 /// dynamic body or a child is skipped, with one warning.
 ///
 /// Scene name `projectile`: `{ "pierce": 1, "range": 600, "bounces": 0,
-/// "bounce_layers": [0, 2], "pass_layers": [3], "end": { "blast": {
-/// "radius": 64, "damage": 20 } } }`, each optional: `pierce` and
+/// "bounce_layers": [0, "armour"], "pass_layers": [3], "body_walls":
+/// ["crates"], "shape": { "circle": 5 }, "offset": [8, 8], "end": { "blast":
+/// { "radius": 64, "damage": 20 } } }`, each optional: `pierce` and
 /// `bounces` 0, `range` none, `bounce_layers` every layer, `pass_layers`
-/// none, as lists of layer numbers 0 to 31, and `end` none; the load checks
-/// the blast's damage types and context tags. It is data: a game's save
-/// can hold it, its end, hits, distance and bounces included.
+/// and `body_walls` none, as lists of layer numbers 0 to 31 or
+/// `physics_layers` names, no shape, and `end` none; the load checks the
+/// layer names and the blast's damage types and context tags. It is data:
+/// a game's save can hold it, its end, shape, body walls, hits, distance
+/// and bounces included.
 ///
 /// # Examples
 ///
@@ -119,6 +127,10 @@ pub struct Projectile {
     bounce_layers: u32,
     /// The layers whose walls it passes.
     pass_layers: u32,
+    /// The layers whose moving bodies are walls to it.
+    body_walls: u32,
+    /// Its sweep's own shape and offset, which a hitbox's replace.
+    shape: Option<(HitShape, Vec2)>,
     /// What it sets off at its own end; taken when it goes off.
     end: Option<ProjectileEnd>,
     /// The targets it has hit.
@@ -140,6 +152,8 @@ impl Default for Projectile {
             bounces: 0,
             bounce_layers: RigidBody::ALL_LAYERS,
             pass_layers: 0,
+            body_walls: 0,
+            shape: None,
             end: None,
             hits: 0,
             travelled: 0.0,
@@ -165,6 +179,16 @@ struct ProjectileFields {
     bounce_layers: u32,
     #[serde(default, skip_serializing_if = "is_no_layer")]
     pass_layers: u32,
+    #[serde(default, skip_serializing_if = "is_no_layer")]
+    body_walls: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shape: Option<HitShape>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     end: Option<ProjectileEnd>,
     #[serde(default)]
@@ -214,6 +238,8 @@ impl TryFrom<ProjectileFields> for Projectile {
             bounces: fields.bounces,
             bounce_layers: fields.bounce_layers,
             pass_layers: fields.pass_layers,
+            body_walls: fields.body_walls,
+            shape: own_shape(fields.shape, fields.offset)?,
             end: fields.end,
             hits: fields.hits,
             travelled: fields.travelled,
@@ -231,12 +257,30 @@ impl From<Projectile> for ProjectileFields {
             bounces: projectile.bounces,
             bounce_layers: projectile.bounce_layers,
             pass_layers: projectile.pass_layers,
+            body_walls: projectile.body_walls,
+            shape: projectile.shape.map(|(shape, _)| shape),
+            offset: projectile
+                .shape
+                .map(|(_, offset)| offset)
+                .filter(|&offset| offset != Vec2::ZERO),
             end: projectile.end,
             hits: projectile.hits,
             travelled: projectile.travelled,
             bounced: projectile.bounced,
             spent: projectile.spent,
         }
+    }
+}
+
+/// A projectile's own sweep shape and its offset, which comes only with it.
+fn own_shape(
+    shape: Option<HitShape>,
+    offset: Option<Vec2>,
+) -> Result<Option<(HitShape, Vec2)>, String> {
+    match (shape, offset) {
+        (Some(shape), offset) => Ok(Some((shape, offset.unwrap_or(Vec2::ZERO)))),
+        (None, None) => Ok(None),
+        (None, Some(_)) => Err("an `offset` comes only with its own `shape`".to_string()),
     }
 }
 
@@ -304,6 +348,25 @@ impl Projectile {
         self
     }
 
+    /// The projectile, meeting the dynamic and kinematic bodies in `layers`
+    /// (one bit per physics layer) as walls over their step's move, but its
+    /// [`Source`](crate::Source)'s. None by default: every moving body
+    /// passes.
+    #[must_use]
+    pub fn with_body_walls(mut self, layers: u32) -> Self {
+        self.body_walls = layers;
+        self
+    }
+
+    /// The projectile, sweeping `shape` at `offset` from its point when it
+    /// has no hitbox: its walls, body walls and end's blast measured from
+    /// it, as from a hitbox's. A point by default.
+    #[must_use]
+    pub fn with_shape(mut self, shape: HitShape, offset: Vec2) -> Self {
+        self.shape = Some((shape, offset));
+        self
+    }
+
     /// The targets it passes before the next ends it.
     #[must_use]
     pub fn pierce(&self) -> u32 {
@@ -332,6 +395,19 @@ impl Projectile {
     #[must_use]
     pub fn pass_layers(&self) -> u32 {
         self.pass_layers
+    }
+
+    /// The physics layers whose moving bodies are walls to it, one bit per
+    /// layer.
+    #[must_use]
+    pub fn body_walls(&self) -> u32 {
+        self.body_walls
+    }
+
+    /// Its own sweep shape and offset, when it has one.
+    #[must_use]
+    pub fn shape(&self) -> Option<(HitShape, Vec2)> {
+        self.shape
     }
 
     /// The targets it has hit.
@@ -486,39 +562,16 @@ impl ProjectileEnd {
     }
 }
 
-/// One layer number in `projectile.bounce_layers` or
-/// `projectile.pass_layers`: 0 to 31.
-#[derive(Clone, Copy, Serialize, Deserialize)]
-#[serde(try_from = "u32", into = "u32")]
-struct SceneLayer(u32);
+/// `components.projectile` as a scene writes it, its own shape's offset
+/// checked.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(try_from = "ProjectileScene", into = "ProjectileScene")]
+struct ProjectileDef(ProjectileScene);
 
-impl TryFrom<u32> for SceneLayer {
-    type Error = String;
-
-    fn try_from(layer: u32) -> Result<Self, String> {
-        if layer < u32::BITS {
-            Ok(Self(layer))
-        } else {
-            Err(format!("a layer must be 0 to 31 (got {layer})"))
-        }
-    }
-}
-
-impl From<SceneLayer> for u32 {
-    fn from(layer: SceneLayer) -> Self {
-        layer.0
-    }
-}
-
-/// The mask of `layers`, one bit per layer.
-fn mask_of(layers: &[SceneLayer]) -> u32 {
-    layers.iter().fold(0, |mask, layer| mask | 1 << layer.0)
-}
-
-/// `components.projectile` as a scene writes it.
-#[derive(Serialize, Deserialize)]
+/// [`ProjectileDef`]'s fields as written.
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ProjectileDef {
+struct ProjectileScene {
     #[serde(default)]
     pierce: u32,
     #[serde(
@@ -530,26 +583,71 @@ struct ProjectileDef {
     #[serde(default)]
     bounces: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    bounce_layers: Option<Vec<SceneLayer>>,
+    bounce_layers: Option<Vec<LayerRef>>,
     #[serde(default)]
-    pass_layers: Vec<SceneLayer>,
+    pass_layers: Vec<LayerRef>,
+    #[serde(default)]
+    body_walls: Vec<LayerRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shape: Option<HitShape>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     end: Option<ProjectileEnd>,
 }
 
-impl From<ProjectileDef> for Projectile {
+impl TryFrom<ProjectileScene> for ProjectileDef {
+    type Error = String;
+
+    fn try_from(scene: ProjectileScene) -> Result<Self, String> {
+        own_shape(scene.shape, scene.offset)?;
+        Ok(Self(scene))
+    }
+}
+
+impl From<ProjectileDef> for ProjectileScene {
     fn from(def: ProjectileDef) -> Self {
+        def.0
+    }
+}
+
+impl ProjectileDef {
+    /// The load's check: its layer names and its end's blast.
+    fn check(&self, world: &World) -> Result<(), MissingAsset> {
+        let scene = &self.0;
+        check_layers(
+            "bounce_layers",
+            scene.bounce_layers.as_deref().unwrap_or_default(),
+            world,
+        )?;
+        check_layers("pass_layers", &scene.pass_layers, world)?;
+        check_layers("body_walls", &scene.body_walls, world)?;
+        scene.end.as_ref().map_or(Ok(()), |end| end.check(world))
+    }
+
+    /// The projectile it writes, its layer names read in `world`.
+    fn into_projectile(self, world: &World) -> Projectile {
+        let scene = self.0;
         let mut projectile = Projectile::new()
-            .with_pierce(def.pierce)
-            .with_bounces(def.bounces)
+            .with_pierce(scene.pierce)
+            .with_bounces(scene.bounces)
             .with_bounce_layers(
-                def.bounce_layers
+                scene
+                    .bounce_layers
                     .as_deref()
-                    .map_or(RigidBody::ALL_LAYERS, mask_of),
+                    .map_or(RigidBody::ALL_LAYERS, |layers| layer_bits(layers, world)),
             )
-            .with_pass_layers(mask_of(&def.pass_layers));
-        projectile.end = def.end;
-        match def.range {
+            .with_pass_layers(layer_bits(&scene.pass_layers, world))
+            .with_body_walls(layer_bits(&scene.body_walls, world));
+        projectile.shape = scene
+            .shape
+            .map(|shape| (shape, scene.offset.unwrap_or(Vec2::ZERO)));
+        projectile.end = scene.end;
+        match scene.range {
             Some(range) => projectile.with_range(range),
             None => projectile,
         }
@@ -626,10 +724,7 @@ impl Plugin for ProjectilePlugin {
             .field(
                 FieldDescription::new(
                     "bounce_layers",
-                    FieldType::List(Box::new(FieldType::U32 {
-                        min: None,
-                        max: Some(31),
-                    })),
+                    layer_list(),
                     "physics layers whose walls it turns at while it has bounces left, a tile in its collision layer's; a wall outside them ends it; every layer when left out",
                 )
                 .default("null"),
@@ -637,13 +732,34 @@ impl Plugin for ProjectilePlugin {
             .field(
                 FieldDescription::new(
                     "pass_layers",
-                    FieldType::List(Box::new(FieldType::U32 {
-                        min: None,
-                        max: Some(31),
-                    })),
+                    layer_list(),
                     "physics layers whose walls it passes as if open, before the bounce layers",
                 )
                 .default("[]"),
+            )
+            .field(
+                FieldDescription::new(
+                    "body_walls",
+                    layer_list(),
+                    "physics layers whose dynamic and kinematic bodies are walls to it, met over their step's move, turning it in their frame; never its source's",
+                )
+                .default("[]"),
+            )
+            .field(
+                FieldDescription::new(
+                    "shape",
+                    FieldType::Shape("hit_shape"),
+                    "its sweep's own circle or box without a hitbox, its walls and end measured from it; a point when left out",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "offset",
+                    FieldType::Vec2,
+                    "its own shape's offset from its point, with `shape` only; [0, 0] when left out",
+                )
+                .default("null"),
             )
             .field(
                 FieldDescription::new(
@@ -684,10 +800,8 @@ impl Plugin for ProjectilePlugin {
         world.register_event::<Struck>();
         world.register_component_with_assets(
             PROJECTILE,
-            |def: &ProjectileDef, world: &World| {
-                def.end.as_ref().map_or(Ok(()), |end| end.check(world))
-            },
-            |def: ProjectileDef, _: &SpawnContext<'_>| (Projectile::from(def),),
+            |def: &ProjectileDef, world: &World| def.check(world),
+            |def: ProjectileDef, at: &SpawnContext<'_>| (def.into_projectile(at.world()),),
         );
         ensure_emitter(world);
         ensure_grid(schedule);
@@ -705,8 +819,9 @@ impl Plugin for ProjectilePlugin {
 /// How a projectile's step ends before its full sweep.
 #[derive(Debug, Clone, Copy)]
 enum Stop {
-    /// A wall it does not pass.
-    Wall(WallContact),
+    /// A wall it does not pass, and the wall's velocity: a body wall's
+    /// frame, zero for a tile or a static collider.
+    Wall(WallContact, Vec2),
     /// Its range.
     Range,
 }
@@ -762,11 +877,16 @@ impl ProjectileRunner {
     /// its bounce or its full travel.
     fn fly(&mut self, world: &mut World, grid: &HitGrid, entity: Entity) {
         self.passed.clear();
-        let (shape, offset) = world
-            .get::<Hitbox>(entity)
-            .map_or((Shape::Circle { radius: 0.0 }, Vec2::ZERO), |hitbox| {
-                (hitbox.shape().shape(), hitbox.offset())
-            });
+        let (shape, offset) = match world.get::<Hitbox>(entity) {
+            Some(hitbox) => (hitbox.shape().shape(), hitbox.offset()),
+            None => world
+                .get::<Projectile>(entity)
+                .and_then(|projectile| projectile.shape)
+                .map_or(
+                    (Shape::Circle { radius: 0.0 }, Vec2::ZERO),
+                    |(shape, offset)| (shape.shape(), offset),
+                ),
+        };
         let Some(sweep) = sweep_of(world, entity, shape, offset) else {
             return;
         };
@@ -775,9 +895,9 @@ impl ProjectileRunner {
         let mut stop = None;
         if length > 0.0 {
             let pass = world.get::<Projectile>(entity).unwrap().pass_layers;
-            if let Some((t, wall)) = self.wall(world, entity, &sweep, length, pass) {
+            if let Some((t, wall, frame)) = self.wall(world, entity, &sweep, length, pass) {
                 until = t;
-                stop = Some(Stop::Wall(wall));
+                stop = Some(Stop::Wall(wall, frame));
             }
             let projectile = world.get::<Projectile>(entity).unwrap();
             if let Some(range) = projectile.range {
@@ -794,10 +914,10 @@ impl ProjectileRunner {
             return finish(world, entity, &sweep, offset, length, t, None);
         }
         match stop {
-            Some(Stop::Wall(wall)) if turns(world, entity, wall.layers) => {
-                bounce(world, entity, &sweep, offset, length, until, wall);
+            Some(Stop::Wall(wall, frame)) if turns(world, entity, wall.layers) => {
+                bounce(world, entity, &sweep, offset, length, until, wall, frame);
             }
-            Some(Stop::Wall(wall)) => {
+            Some(Stop::Wall(wall, _)) => {
                 finish(world, entity, &sweep, offset, length, until, Some(wall));
             }
             Some(Stop::Range) => finish(world, entity, &sweep, offset, length, until, None),
@@ -806,12 +926,14 @@ impl ProjectileRunner {
     }
 
     /// The first wall the sweep meets outside `pass`, the projectile's pass
-    /// layers: a tile in none of them by a cast, or a static collider by an
-    /// overlap of the sweep's bounds and the swept test; the earlier of the
-    /// two, with its contact. The walls in `pass` it meets at or before that
-    /// one, or over the whole sweep, go to `passed` in sweep order; one it
-    /// starts inside is behind it, and of tiles only where it enters them
-    /// from open space, a cast over the tiles in a pass layer.
+    /// layers: a tile in none of them by a cast, or a static collider, or a
+    /// moving body in its body walls but its source's over that body's own
+    /// move, by an overlap of the sweep's bounds and the swept test; the
+    /// earliest, with its contact and the wall's velocity. The walls in
+    /// `pass` it meets at or before that one, or over the whole sweep, go to
+    /// `passed` in sweep order; one it starts inside is behind it, and of
+    /// tiles only where it enters them from open space, a cast over the
+    /// tiles in a pass layer.
     fn wall(
         &mut self,
         world: &World,
@@ -819,7 +941,7 @@ impl ProjectileRunner {
         sweep: &Sweep,
         length: f32,
         pass: u32,
-    ) -> Option<(f32, WallContact)> {
+    ) -> Option<(f32, WallContact, Vec2)> {
         let motion = sweep.end - sweep.start;
         let tiles = SpatialFilter::new().with_bodies(false);
         let tile_contact = |hit: SpatialHit| {
@@ -829,8 +951,9 @@ impl ProjectileRunner {
             )
         };
         let stops = tiles.without_layers(pass);
-        let mut first =
-            cast_shape(world, sweep.shape, sweep.start, motion, length, &stops).map(tile_contact);
+        let mut first = cast_shape(world, sweep.shape, sweep.start, motion, length, &stops)
+            .map(tile_contact)
+            .map(|(t, wall)| (t, wall, Vec2::ZERO));
         if pass != 0 {
             let passable = tiles.with_mask(pass);
             overlap(world, sweep.shape, sweep.start, &passable, &mut self.walls);
@@ -847,48 +970,66 @@ impl ProjectileRunner {
         };
         let bodies = SpatialFilter::new().with_tiles(false).excluding(entity);
         overlap(world, around, (min + max) * 0.5, &bodies, &mut self.walls);
+        let body_walls = world
+            .get::<Projectile>(entity)
+            .map_or(0, |projectile| projectile.body_walls);
+        let source = world.get::<Source>(entity).map(|source| source.entity());
         for &wall in &self.walls {
             let Some(wall) = wall else {
                 continue;
             };
-            let still = world
-                .get::<RigidBody>(wall)
-                .is_none_or(|body| body.kind == BodyKind::Static);
-            let (Some(collider), Some(position), true) = (
-                world.get::<Collider>(wall),
-                world.get::<Position>(wall),
-                still,
-            ) else {
+            let body = world.get::<RigidBody>(wall);
+            let moving = body.is_some_and(|body| body.kind != BodyKind::Static);
+            let layers = body.map_or(RigidBody::DEFAULT_LAYERS, |body| body.layers);
+            if moving && (layers & body_walls == 0 || Some(wall) == source) {
+                continue;
+            }
+            let (Some(collider), Some(position)) =
+                (world.get::<Collider>(wall), world.get::<Position>(wall))
+            else {
                 continue;
             };
             let at = position.0 + collider.offset;
+            // A body wall over its step's move, in its frame; a static one
+            // where it stands.
+            let (from, frame) = if moving {
+                (
+                    world
+                        .get::<PrevPosition>(wall)
+                        .map_or(at, |prev| prev.0 + collider.offset),
+                    world.get::<Velocity>(wall).map_or(Vec2::ZERO, |v| v.0),
+                )
+            } else {
+                (at, Vec2::ZERO)
+            };
             let face = Sweep {
                 shape: collider.shape,
-                start: at,
+                start: from,
                 end: at,
             };
-            let layers = world
-                .get::<RigidBody>(wall)
-                .map_or(RigidBody::DEFAULT_LAYERS, |body| body.layers);
             if layers & pass != 0 {
                 let still = Sweep {
                     end: sweep.start,
                     ..*sweep
                 };
-                if first_contact(&still, &face).is_none()
+                let standing = Sweep {
+                    end: face.start,
+                    ..face
+                };
+                if first_contact(&still, &standing).is_none()
                     && let Some((t, normal)) = wall_contact(sweep, &face)
                 {
                     self.passed
                         .push((t, WallContact::new(Some(wall), normal, layers)));
                 }
             } else if let Some((t, normal)) = wall_contact(sweep, &face)
-                && first.is_none_or(|(earliest, _)| t < earliest)
+                && first.is_none_or(|(earliest, ..)| t < earliest)
             {
-                first = Some((t, WallContact::new(Some(wall), normal, layers)));
+                first = Some((t, WallContact::new(Some(wall), normal, layers), frame));
             }
         }
         if !self.passed.is_empty() {
-            let until = first.map_or(1.0, |(t, _)| t);
+            let until = first.map_or(1.0, |(t, ..)| t);
             self.passed.retain(|&(t, _)| t <= until);
             self.passed.sort_by(|a, b| a.0.total_cmp(&b.0));
         }
@@ -1006,6 +1147,7 @@ fn place(world: &mut World, entity: Entity, point: Vec2) {
 /// Turns `entity` at `wall`: placed at the contact, each velocity its
 /// movers keep reflected about the wall's normal, the rest of the step's
 /// travel dropped, and [`ProjectileBounced`] sent.
+#[allow(clippy::too_many_arguments)]
 fn bounce(
     world: &mut World,
     entity: Entity,
@@ -1014,20 +1156,29 @@ fn bounce(
     length: f32,
     t: f32,
     wall: WallContact,
+    frame: Vec2,
 ) {
     let point = sweep.at(t) - offset;
     let normal = wall.normal;
+    // Reflected in the wall's frame: a static wall's is at rest.
+    let turn = |velocity: Vec2| {
+        if frame == Vec2::ZERO {
+            reflect(velocity, normal)
+        } else {
+            reflect(velocity - frame, normal) + frame
+        }
+    };
     place(world, entity, point);
     if let Some(motion) = world.get_mut::<LinearMotion>(entity) {
-        let turned = reflect(motion.velocity(), normal);
+        let turned = turn(motion.velocity());
         motion.set_velocity(turned);
     }
     if let Some(steering) = world.get_mut::<Steering>(entity) {
         let velocity = steering.velocity_mut();
-        *velocity = reflect(*velocity, normal);
+        *velocity = turn(*velocity);
     }
     if let Some(velocity) = world.get_mut::<Velocity>(entity) {
-        velocity.0 = reflect(velocity.0, normal);
+        velocity.0 = turn(velocity.0);
     }
     let projectile = world.get_mut::<Projectile>(entity).unwrap();
     projectile.bounced = projectile.bounced.saturating_add(1);

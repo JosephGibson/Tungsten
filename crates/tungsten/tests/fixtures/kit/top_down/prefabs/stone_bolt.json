@@ -1,0 +1,19 @@
+{
+  "tag": "stone_bolt",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        600,
+        0
+      ]
+    },
+    "lifetime": {
+      "seconds": 2
+    },
+    "projectile": {
+      "body_walls": [
+        2
+      ]
+    }
+  }
+}

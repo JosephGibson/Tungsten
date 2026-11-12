@@ -292,7 +292,7 @@ fn the_wall_masks_default_to_every_layer_and_none_and_round_trip() {
         );
     }
     let def: ProjectileDef = serde_json::from_value(good).unwrap();
-    let read = Projectile::from(def);
+    let read = def.into_projectile(&world);
     assert_eq!(
         (read.bounce_layers(), read.pass_layers()),
         (0b101, (1 << 3) | (1 << 31))
@@ -1017,4 +1017,227 @@ fn a_projectile_takes_an_end_from_rust() {
         );
         assert!((world.get::<crate::Health>(near).unwrap().current() - 94.0).abs() < 1e-4);
     }
+}
+
+// 7.13c: a projectile's own shape, bodies as walls and named layers.
+
+/// A kinematic box of half extents (5, 50) at (`x`, 40) in `layers`,
+/// moving at `vx` px/s.
+fn paddle(world: &mut World, x: f32, layers: u32, vx: f32) -> Entity {
+    use tungsten_core::physics::{RigidBodyBundle, Velocity};
+
+    let wall = world.spawn_with(RigidBodyBundle::kinematic(
+        Position::new(x, 40.0),
+        Collider::aabb(Vec2::new(5.0, 50.0)),
+    ));
+    world.get_mut::<RigidBody>(wall).unwrap().layers = layers;
+    world.get_mut::<Velocity>(wall).unwrap().0 = Vec2::new(vx, 0.0);
+    wall
+}
+
+/// A projectile at (`x`, 40) flying +x at 600 px/s, with `hitbox` or none.
+fn shot(world: &mut World, x: f32, projectile: Projectile, hitbox: Option<Hitbox>) -> Entity {
+    use tungsten_core::physics::PrevPosition;
+
+    let at = Vec2::new(x, 40.0);
+    let entity = world.spawn_with((
+        Position(at),
+        PrevPosition(at),
+        crate::LinearMotion::new(Vec2::new(600.0, 0.0)),
+        projectile,
+    ));
+    if let Some(hitbox) = hitbox {
+        world.insert(entity, hitbox);
+    }
+    entity
+}
+
+/// Where `shot` ended, at the end of `meetings`.
+fn ended_at(world: &mut World, schedule: &mut Schedule, bolt: Entity) -> Option<f32> {
+    meetings(world, schedule, bolt, 1.0 / 60.0)
+        .iter()
+        .find(|meeting| meeting.0 == "expired")
+        .map(|meeting| meeting.1)
+}
+
+#[test]
+fn a_projectile_sweeps_its_own_shape() {
+    let round = HitShape::circle(5.0);
+    let offset = Vec2::new(8.0, 8.0);
+    // A slab whose face is at x 95, then a paddle in its body walls: the
+    // shape's centre meets each 5 px short of it, its point 13 px short.
+    for body in [false, true] {
+        let ends: Vec<Option<f32>> = (0..3)
+            .map(|lane| {
+                let (mut world, mut schedule) = wall_rig();
+                if body {
+                    paddle(&mut world, 100.0, 1 << 2, 0.0);
+                } else {
+                    slab(&mut world, 100.0, 1);
+                }
+                let projectile = Projectile::new().with_body_walls(1 << 2);
+                let bolt = match lane {
+                    0 => shot(&mut world, 0.0, projectile.with_shape(round, offset), None),
+                    1 => shot(
+                        &mut world,
+                        0.0,
+                        projectile,
+                        Some(Hitbox::new(round, 0.0).with_offset(offset)),
+                    ),
+                    _ => shot(&mut world, 0.0, projectile, None),
+                };
+                ended_at(&mut world, &mut schedule, bolt)
+            })
+            .collect();
+        let close = |got: Option<f32>, want: f32| got.is_some_and(|x| (x - want).abs() < 1e-3);
+        assert!(close(ends[0], 82.0), "body {body}: its shape: {ends:?}");
+        assert!(
+            close(ends[1], 82.0),
+            "body {body}: a hitbox of it: {ends:?}"
+        );
+        assert!(close(ends[2], 95.0), "body {body}: a point: {ends:?}");
+    }
+    // Its end's blast at the shape's centre: 10 at 1 - 30 / 50 on a
+    // bystander 30 px below where the centre stopped, (90, 48).
+    let (mut world, mut schedule) = blast_rig(true);
+    slab(&mut world, 100.0, 1);
+    let near = bystander(&mut world, Vec2::new(90.0, 78.0));
+    let blasting = Projectile::new()
+        .with_shape(round, offset)
+        .with_end(crate::Blast::new(50.0).with_damage(10.0));
+    shot(&mut world, 0.0, blasting, None);
+    for _ in 0..30 {
+        blast_step(&mut world, &mut schedule);
+    }
+    let health = world.get::<crate::Health>(near).unwrap().current();
+    assert!((health - 96.0).abs() < 1e-3, "{health}");
+}
+
+#[test]
+fn a_projectile_ends_at_a_body_in_its_body_walls() {
+    // A bolt bouncing once at bodies in layer 2: a paddle closing at
+    // 100 px/s turns it in its own frame, to 800 px/s; a body in layer 3
+    // and its own source's in layer 2 pass.
+    for walls in [1 << 2, 0] {
+        let (mut world, mut schedule) = wall_rig();
+        let owner = paddle(&mut world, 30.0, 1 << 2, 0.0);
+        paddle(&mut world, 60.0, 1 << 3, 0.0);
+        let bat = paddle(&mut world, 120.0, 1 << 2, -100.0);
+        let bolt = flier(
+            &mut world,
+            0.0,
+            600.0,
+            Projectile::new().with_bounces(1).with_body_walls(walls),
+        );
+        world.insert(bolt, crate::Source::new(owner));
+        let got = meetings(&mut world, &mut schedule, bolt, 1.0 / 60.0);
+        let velocity = world.get::<crate::LinearMotion>(bolt).unwrap().velocity();
+        if walls == 0 {
+            assert!(got.is_empty(), "every body passes: {got:?}");
+            assert_eq!(velocity, Vec2::new(600.0, 0.0));
+            continue;
+        }
+        assert_eq!(got.len(), 1, "{got:?}");
+        let (kind, _, wall) = got[0];
+        assert_eq!(
+            (
+                kind,
+                wall.map(|wall| (wall.entity, wall.normal, wall.layers))
+            ),
+            ("bounced", Some((Some(bat), Vec2::NEG_X, 1 << 2)))
+        );
+        assert!(
+            (velocity - Vec2::new(-800.0, 0.0)).length() < 1e-2,
+            "in the paddle's frame: {velocity}"
+        );
+    }
+}
+
+#[test]
+fn body_walls_keep_their_order_with_hits_and_passes() {
+    // A hedge it passes, a target it pierces, then a body in its body walls
+    // that ends it: in sweep order.
+    let (mut world, mut schedule) = wall_rig();
+    let hedge = slab(&mut world, 60.0, 1 << 3);
+    let target = world.spawn_with((
+        Position::new(120.0, 40.0),
+        tungsten_core::physics::PrevPosition(Vec2::new(120.0, 40.0)),
+        Hurtbox::new(HitShape::circle(4.0)),
+        crate::Health::new(100.0),
+    ));
+    let body = paddle(&mut world, 180.0, 1 << 2, 0.0);
+    let bolt = flier(
+        &mut world,
+        0.0,
+        1200.0,
+        Projectile::new()
+            .with_pierce(1)
+            .with_pass_layers(1 << 3)
+            .with_body_walls(1 << 2),
+    );
+    let got = meetings(&mut world, &mut schedule, bolt, 1.0 / 60.0);
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert_eq!(
+        (got[0].0, got[0].2.unwrap().entity),
+        ("passed", Some(hedge))
+    );
+    assert_eq!(
+        (got[1].0, got[1].2.and_then(|wall| wall.entity)),
+        ("expired", Some(body))
+    );
+    assert!((got[1].1 - 173.0).abs() < 1e-3, "at its face: {got:?}");
+    let struck: Vec<Entity> = world
+        .resource::<EventQueue<Struck>>()
+        .iter()
+        .map(|event| event.target)
+        .collect();
+    assert_eq!(struck, [target], "the target between them");
+    assert_eq!(world.get::<Projectile>(bolt).unwrap().hits(), 1);
+}
+
+#[test]
+fn projectile_layers_take_names() {
+    use tungsten_core::physics::PhysicsLayers;
+
+    let mut world = World::new();
+    world.insert_resource(PhysicsLayers::new([
+        ("armour".to_string(), 2),
+        ("hedge".to_string(), 3),
+        ("crates".to_string(), 5),
+    ]));
+    let mut schedule = Schedule::new();
+    ProjectilePlugin.build(&mut schedule, &mut world);
+    let components = world.resource::<ComponentRegistry>();
+    let good = json!({
+        "bounce_layers": ["armour", 0], "pass_layers": ["hedge"], "body_walls": ["crates", 1]
+    });
+    assert!(components.check_in(PROJECTILE, &good, &world).is_ok());
+    let err = format!(
+        "{:?}",
+        components
+            .check_in(PROJECTILE, &json!({ "body_walls": ["glass"] }), &world)
+            .unwrap_err()
+    );
+    assert!(err.contains("glass") && err.contains("body_walls"), "{err}");
+    assert!(
+        components
+            .check_in(PROJECTILE, &json!({ "offset": [8, 8] }), &world)
+            .is_err(),
+        "an offset without its shape"
+    );
+    let def: ProjectileDef = serde_json::from_value(good).unwrap();
+    let read = def.into_projectile(&world);
+    assert_eq!(
+        (read.bounce_layers(), read.pass_layers(), read.body_walls()),
+        (0b101, 1 << 3, (1 << 5) | (1 << 1))
+    );
+    // A save keeps the masks, its body walls and its shape, and leaves
+    // each out at its default.
+    let shaped = read.with_shape(HitShape::circle(5.0), Vec2::new(8.0, 8.0));
+    let saved = serde_json::to_value(&shaped).unwrap();
+    assert_eq!(saved["body_walls"], json!(0b10_0010));
+    assert_eq!(saved["offset"], json!([8.0, 8.0]));
+    assert_eq!(serde_json::from_value::<Projectile>(saved).unwrap(), shaped);
+    let plain = serde_json::to_value(Projectile::new()).unwrap();
+    assert!(plain.get("body_walls").is_none() && plain.get("shape").is_none());
 }

@@ -319,6 +319,9 @@ pub use motion::wrap::{WRAP, Wrap, WrapPlugin};
 pub use overlap::cone::Cone;
 pub use overlap::contact::{CONTACT_DAMAGE, ContactDamage, ContactDamagePlugin, ContactTouch};
 pub use overlap::hit::{HIT_GRID, HITBOX_TICK, HitPlugin, HitShape, Hitbox, Hurtbox, Struck};
+pub use overlap::impact::{
+    IMPACT_DAMAGE, IMPACT_RECORD, ImpactDamage, ImpactDamagePlugin, Impacted, step_velocity,
+};
 pub use overlap::pickup::{PICKUP_MAGNET, PICKUP_TICK, PickedUp, Pickup, PickupPlugin};
 pub use overlap::projectile::{
     PROJECTILE_TICK, Projectile, ProjectileBounced, ProjectileExpired, ProjectilePassed,

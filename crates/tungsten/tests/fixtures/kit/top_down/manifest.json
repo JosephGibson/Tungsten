@@ -168,6 +168,15 @@
     "barrel_bomb": {
       "path": "prefabs/barrel_bomb.json"
     },
+    "hurled_crate": {
+      "path": "prefabs/hurled_crate.json"
+    },
+    "rolling_ball": {
+      "path": "prefabs/rolling_ball.json"
+    },
+    "stone_bolt": {
+      "path": "prefabs/stone_bolt.json"
+    },
     "blast_dummy": {
       "path": "prefabs/blast_dummy.json"
     },

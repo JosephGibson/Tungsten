@@ -30,7 +30,8 @@
 //! drawn on a key, a ghoul guard its death policy disarms, a nest that
 //! keeps one slime, across a save and a load, and a brazier whose phases a
 //! timed state machine cycles; 7.13c's barrel bomb, whose blast hurts it
-//! too, at its centre and as it goes off.
+//! too, at its centre and as it goes off, a crate knocked into a ranger,
+//! credited to its brawler, and a stone bolt ending at a rolling ball.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3463,6 +3464,80 @@ fn a_barrel_bombs_blast_hurts_it_lands_at_its_centre_and_at_once() {
             (health(barrel) - (30.0 - 12.0)).abs() < 1e-3,
             "dt {dt}: the barrel its own 12: {}",
             health(barrel)
+        );
+    }
+}
+
+// 7.13c, Step 2: a crate knocked into a ranger, credited to its brawler,
+// and a stone bolt ending at a rolling ball.
+
+#[test]
+fn a_knocked_crate_hurts_a_ranger_credited_to_its_brawler() {
+    use crate::kit::ImpactDamage;
+    use tungsten_core::physics::Velocity;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let brawler = harness.world_mut().spawn();
+        let ranger = spawn(&mut harness, "ranger", [300.0, 100.0]);
+        let crate_ = spawn(&mut harness, "hurled_crate", [250.0, 100.0]);
+        let world = harness.world_mut();
+        world.get_mut::<Velocity>(crate_).unwrap().0 = Vec2::new(900.0, 0.0);
+        world
+            .get_mut::<ImpactDamage>(crate_)
+            .unwrap()
+            .set_credit(Some(brawler));
+        let mut hits = Vec::new();
+        for _ in 0..frames_for(0.3, dt) {
+            harness.step(1);
+            hits.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|hit| hit.entity == ranger)
+                    .map(|hit| (hit.amount, hit.source)),
+            );
+        }
+        // 0.002 a unit of its mass of 4 a px/s past 400.
+        assert_eq!(hits.len(), 1, "dt {dt}: {hits:?}");
+        assert!((hits[0].0 - 4.0).abs() < 1e-3, "dt {dt}: {hits:?}");
+        assert_eq!(hits[0].1, Some(brawler), "dt {dt}");
+    }
+}
+
+#[test]
+fn a_stone_bolt_ends_at_a_rolling_ball() {
+    use tungsten_core::physics::{RigidBody, Velocity};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // A ball in layer 0 the bolt passes, then one in its body walls
+        // rolling at it.
+        let bystander = spawn(&mut harness, "rolling_ball", [160.0, 100.0]);
+        harness
+            .world_mut()
+            .get_mut::<RigidBody>(bystander)
+            .unwrap()
+            .layers = 1;
+        let ball = spawn(&mut harness, "rolling_ball", [300.0, 100.0]);
+        harness.world_mut().get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(-200.0, 0.0);
+        let bolt = spawn(&mut harness, "stone_bolt", [100.0, 100.0]);
+        let mut ended = None;
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            if let Some(expired) = harness
+                .events::<ProjectileExpired>()
+                .find(|expired| expired.entity == bolt)
+                .copied()
+            {
+                ended = Some(expired);
+                break;
+            }
+        }
+        let ended = ended.unwrap_or_else(|| panic!("dt {dt}: the bolt ends"));
+        assert_eq!(
+            ended.wall.and_then(|wall| wall.entity),
+            Some(ball),
+            "dt {dt}: at the rolling ball, past the other"
         );
     }
 }

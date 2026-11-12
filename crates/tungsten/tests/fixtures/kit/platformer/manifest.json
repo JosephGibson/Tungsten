@@ -135,6 +135,12 @@
     "powder_keg": {
       "path": "prefabs/powder_keg.json"
     },
+    "boulder": {
+      "path": "prefabs/boulder.json"
+    },
+    "goblin": {
+      "path": "prefabs/goblin.json"
+    },
     "lander": {
       "path": "prefabs/lander.json"
     },

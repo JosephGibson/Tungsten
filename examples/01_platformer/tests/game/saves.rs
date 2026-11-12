@@ -413,7 +413,7 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
         .collect();
     assert_eq!(
         unnamed,
-        BTreeSet::from(["became", "carried", "spawned"]),
+        BTreeSet::from(["became", "carried", "impact_damage", "spawned"]),
         "the census asks the registry of every type it saves"
     );
     types

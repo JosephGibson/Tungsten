@@ -83,6 +83,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
         ("contact_damage", "ContactDamage"),
         ("projectile", "Projectile"),
         ("pickup", "Pickup"),
+        ("impact_damage", "ImpactDamage"),
         ("resist", "Resist"),
         ("shield", "Shield"),
         ("penetration", "Penetration"),
@@ -97,7 +98,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
     for label in ["Intent", "Source", "Parent", "Children", "LocalOffset"] {
         assert!(labels.contains(&label), "{label}");
     }
-    assert_eq!(described.iter().count(), 49);
+    assert_eq!(described.iter().count(), 50);
 }
 
 #[test]

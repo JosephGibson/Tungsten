@@ -1,0 +1,19 @@
+{
+  "tag": "boulder",
+  "components": {
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 12
+      },
+      "mass": 8,
+      "rolls": true
+    },
+    "impact_damage": {
+      "speed": 300,
+      "per_mass": 1,
+      "most": 20
+    }
+  }
+}

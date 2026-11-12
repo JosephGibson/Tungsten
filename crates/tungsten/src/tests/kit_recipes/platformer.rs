@@ -27,7 +27,8 @@
 //! rider, sounding as it leaves and reaches each end; two porters
 //! carrying crates over their heads, which drop them at rest when killed
 //! or frozen; and a brute with a health bar, and a mark while alerted, as
-//! 01's troll.
+//! 01's troll; 7.13c's boulder rolled into a goblin, credited to its
+//! roller.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2602,5 +2603,42 @@ fn a_caves_zone_bounds_the_view_and_its_bounds_ride_the_blend() {
             "dt {dt}"
         );
         assert!((now.corner.y - 40.0).abs() < 1e-3, "dt {dt}: {now:?}");
+    }
+}
+
+// 7.13c, Step 2: a boulder rolled into a goblin, credited to its roller.
+
+#[test]
+fn a_rolled_boulder_hurts_a_goblin_credited_to_its_roller() {
+    use crate::kit::{Damaged, ImpactDamage};
+
+    for (speed, want) in [(600.0, Some(20.0)), (200.0, None)] {
+        for dt in DTS {
+            let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+            let roller = harness.world_mut().spawn();
+            let goblin = spawn(&mut harness, "goblin", [160.0, 100.0]);
+            let boulder = spawn(&mut harness, "boulder", [100.0, 100.0]);
+            let world = harness.world_mut();
+            world.get_mut::<Velocity>(boulder).unwrap().0 = Vec2::new(speed, 0.0);
+            world
+                .get_mut::<ImpactDamage>(boulder)
+                .unwrap()
+                .set_credit(Some(roller));
+            let mut hits = Vec::new();
+            for _ in 0..frames_for(0.5, dt) {
+                harness.step(1);
+                hits.extend(
+                    harness
+                        .events::<Damaged>()
+                        .filter(|hit| hit.entity == goblin)
+                        .map(|hit| (hit.amount, hit.source)),
+                );
+            }
+            match want {
+                // From 300 px/s, a unit of mass a px/s past it, at most 20.
+                Some(want) => assert_eq!(hits, [(want, Some(roller))], "dt {dt}"),
+                None => assert!(hits.is_empty(), "dt {dt}: too slow: {hits:?}"),
+            }
+        }
     }
 }
