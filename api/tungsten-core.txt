@@ -1812,6 +1812,8 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::Pre
 pub struct tungsten_core::assets::prefab::PreparedPrefab
 impl tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
+pub fn tungsten_core::assets::prefab::PreparedPrefab::save_id(&self) -> core::option::Option<tungsten_core::SaveId>
+pub fn tungsten_core::assets::prefab::PreparedPrefab::saved(self, &mut tungsten_core::World, core::option::Option<&str>) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
 pub fn tungsten_core::assets::prefab::PreparedPrefab::unsaved(self) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
@@ -5537,6 +5539,8 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::Pre
 pub struct tungsten_core::assets::PreparedPrefab
 impl tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
+pub fn tungsten_core::assets::prefab::PreparedPrefab::save_id(&self) -> core::option::Option<tungsten_core::SaveId>
+pub fn tungsten_core::assets::prefab::PreparedPrefab::saved(self, &mut tungsten_core::World, core::option::Option<&str>) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
 pub fn tungsten_core::assets::prefab::PreparedPrefab::unsaved(self) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
@@ -12250,6 +12254,7 @@ pub struct tungsten_core::save::Saved
 impl tungsten_core::Saved
 pub fn tungsten_core::Saved::area(&self) -> core::option::Option<&str>
 pub fn tungsten_core::Saved::id(&self) -> tungsten_core::SaveId
+pub fn tungsten_core::Saved::kept(tungsten_core::SaveId) -> Self
 pub fn tungsten_core::Saved::prefab(&self) -> core::option::Option<&str>
 impl core::clone::Clone for tungsten_core::Saved
 pub fn tungsten_core::Saved::clone(&self) -> tungsten_core::Saved
@@ -12339,6 +12344,7 @@ pub fn tungsten_core::save::order_key(&tungsten_core::World, tungsten_core::Enti
 pub fn tungsten_core::save::regenerate(&mut tungsten_core::World, &tungsten_core::save::WorldSave) -> core::result::Result<alloc::vec::Vec<tungsten_core::GeneratedRooms>, tungsten_core::GenerateError>
 pub fn tungsten_core::save::restore_world<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &tungsten_core::save::WorldSave, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::saving(&tungsten_core::World) -> bool
+pub fn tungsten_core::save::take_id(&mut tungsten_core::World) -> core::option::Option<tungsten_core::SaveId>
 pub type tungsten_core::save::MigrationStep = fn(serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String>
 pub type tungsten_core::save::Refs = alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_core::SaveId>>
 pub mod tungsten_core::schedule
@@ -22980,6 +22986,8 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry
 pub struct tungsten_core::PreparedPrefab
 impl tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
+pub fn tungsten_core::assets::prefab::PreparedPrefab::save_id(&self) -> core::option::Option<tungsten_core::SaveId>
+pub fn tungsten_core::assets::prefab::PreparedPrefab::saved(self, &mut tungsten_core::World, core::option::Option<&str>) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
 pub fn tungsten_core::assets::prefab::PreparedPrefab::unsaved(self) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
@@ -23662,6 +23670,7 @@ pub struct tungsten_core::Saved
 impl tungsten_core::Saved
 pub fn tungsten_core::Saved::area(&self) -> core::option::Option<&str>
 pub fn tungsten_core::Saved::id(&self) -> tungsten_core::SaveId
+pub fn tungsten_core::Saved::kept(tungsten_core::SaveId) -> Self
 pub fn tungsten_core::Saved::prefab(&self) -> core::option::Option<&str>
 impl core::clone::Clone for tungsten_core::Saved
 pub fn tungsten_core::Saved::clone(&self) -> tungsten_core::Saved

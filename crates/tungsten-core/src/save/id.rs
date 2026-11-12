@@ -3,8 +3,12 @@
 //!
 //! An entity a game names takes [`SaveId::authored`] from its name; a run's
 //! spawn from a saved source takes the run's next ID, counted below
-//! [`AUTHORED`]. A World where nothing was named holds no [`SaveState`], and
-//! nothing in it pays for saves.
+//! [`AUTHORED`]. A game that saves an entity itself gives it a kept identity
+//! ([`Saved::kept`]), and a spawn it prepares saved
+//! ([`PreparedPrefab::saved`](crate::assets::PreparedPrefab::saved)) takes
+//! the run's next ID at once, from the counter the flush uses
+//! ([`take_id`]). A World where nothing was named holds no [`SaveState`],
+//! and nothing in it pays for saves.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -55,6 +59,23 @@ pub struct Saved {
 }
 
 impl Saved {
+    /// A kept identity: save ID `id` with no area and no prefab, which no
+    /// naming made. A capture writes no record of its holder, while
+    /// references to it are written by `id`, a restore's second pass
+    /// resolves them to it and the kit orders its work by `id`
+    /// ([`order_key`]): the game saves and restores the holder itself,
+    /// spawning it back with `Saved::kept(id)` before
+    /// [`restore_world`](super::restore_world). In a World without save
+    /// state it changes nothing: [`saving`] stays false.
+    #[must_use]
+    pub fn kept(id: SaveId) -> Self {
+        Self {
+            id,
+            area: None,
+            prefab: None,
+        }
+    }
+
     /// Its save ID.
     #[must_use]
     pub fn id(&self) -> SaveId {
@@ -67,7 +88,8 @@ impl Saved {
         self.area.as_deref()
     }
 
-    /// The prefab a run's spawn came from; `None` for a named entity.
+    /// The prefab a run's spawn came from; `None` for a named entity or a
+    /// kept identity.
     #[must_use]
     pub fn prefab(&self) -> Option<&str> {
         self.prefab.as_deref()
@@ -344,6 +366,13 @@ pub(crate) fn replaced_identity(world: &World, source: Entity, prefab: String) -
         area: saved.area.clone(),
         prefab: Some(prefab),
     })
+}
+
+/// Takes the run's next save ID, from the counter the flush's spawns take
+/// theirs from: for an entity the game saves itself ([`Saved::kept`]).
+/// `None` without save state, or once the count reaches [`AUTHORED`].
+pub fn take_id(world: &mut World) -> Option<SaveId> {
+    world.get_resource_mut::<SaveState>()?.take_id()
 }
 
 /// Whether the World has save state: whether anything was ever named in it.

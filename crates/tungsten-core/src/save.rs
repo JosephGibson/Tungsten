@@ -6,9 +6,10 @@
 //! { "envelope": 1, "slot": "autosave", "schema": 2, "engine_version": "0.73.0", "saved_at_ms": 1760400000000, "data": { "…": "the game's type" } }
 //! ```
 //!
-//! Saves of the World itself: the entities a game names ([`name`]) and a
-//! run's spawns from them carry a [`SaveId`], and the components and
-//! resources a [`SaveRegistry`] holds are what a save writes.
+//! Saves of the World itself: the entities a game names ([`name`]), a run's
+//! spawns from them and the entities a game keeps itself ([`Saved::kept`])
+//! carry a [`SaveId`], and the components and resources a [`SaveRegistry`]
+//! holds are what a save writes.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -27,7 +28,7 @@ pub(crate) mod registry;
 pub(crate) mod world;
 
 pub use area::{AreaError, enter_area};
-pub use id::{AUTHORED, NameError, SaveId, SaveState, Saved, name, order_key, saving};
+pub use id::{AUTHORED, NameError, SaveId, SaveState, Saved, name, order_key, saving, take_id};
 pub use registry::{
     MigrationStep, RefCodec, RefReader, RefWriter, Refs, SaveOptions, SaveRegistry,
 };

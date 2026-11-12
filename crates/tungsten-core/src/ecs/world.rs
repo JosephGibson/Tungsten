@@ -226,7 +226,7 @@ impl World {
     /// one archetype move after its own components, when anything is given:
     /// with a `prefab`, a saved source's spawn also takes the run's next
     /// save ID and the source's area, and shows the sprite variant that ID
-    /// picks.
+    /// picks, unless its own run gave it an identity, which it keeps.
     fn derive_from(&mut self, source: Entity, target: Entity, prefab: Option<String>) {
         self.bundle_scratch.reset();
         for i in 0..self.source_derivers.len() {
@@ -234,6 +234,7 @@ impl World {
         }
         let mut identity = None;
         if let Some(prefab) = prefab
+            && !self.has::<crate::save::Saved>(target)
             && let Some(saved) = crate::save::id::saved_spawn(self, source, prefab)
         {
             identity = Some(saved.id);

@@ -32,7 +32,9 @@
 //! as a spawner's, then takes what the World's spawn inheritance gives from
 //! that source as the flush finds it ([`World::inherit_from_source`]), a
 //! state's marker say, each type the spawn lacks, in one more move; a source
-//! an earlier command despawned drops the spawn.
+//! an earlier command despawned drops the spawn. A spawn prepared saved
+//! ([`PreparedPrefab::saved`]) takes the run's next save ID at once and
+//! gives it in its own move, with or without a source.
 //!
 //! A prefab file may be a variant of another (S-140): `"extends": "<id>"`
 //! names its base, and its resolved form is the base's resolved fields with
@@ -49,6 +51,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use glam::Vec2;
@@ -57,7 +60,7 @@ use serde_json::{Map, Value};
 use thiserror::Error;
 
 use crate::assets::data;
-use crate::assets::registry::AssetRegistry;
+use crate::assets::registry::{AssetRegistry, SpriteAssetId};
 use crate::assets::scene::{
     MAX_POSITION, SceneSprite, SceneTween, default_visible, strict_components,
     within_position_bound,
@@ -68,6 +71,7 @@ use crate::component_registry::{
 };
 use crate::components::{Sprite, SpriteVariants, Tag, Transform, Visibility};
 use crate::ecs::{Bundle, CommandBuffer, Entity, PendingEntity, World};
+use crate::save::{SaveId, Saved};
 use crate::tween::Tween;
 
 /// One prefab file: a scene entry's fields without `transform`.
@@ -521,6 +525,10 @@ pub struct PreparedPrefab {
     /// Whether a spawn from a saved source takes a save ID: prepared in a
     /// World with save state, and not [`unsaved`](Self::unsaved).
     saved: bool,
+    /// The save ID [`saved`](Self::saved) took, plus one: a run's IDs stay
+    /// below bit 31, and 32 bits fit the struct's padding, so a room's
+    /// prepared objects cost what they did.
+    taken: Option<NonZeroU32>,
     transform: Transform,
     sprite: Option<Sprite>,
     visibility: Visibility,
@@ -555,6 +563,48 @@ impl PreparedPrefab {
     pub fn unsaved(mut self) -> Self {
         self.saved = false;
         self
+    }
+
+    /// Takes the run's next save ID now ([`take_id`](crate::save::take_id)),
+    /// while the World saves: the spawn is one of its prefab in `area`
+    /// (`None` for a global one), a [`Saved`] with the prefab's ID, given in
+    /// the spawn's one archetype move by [`spawn`](Self::spawn) or
+    /// [`CommandBuffer::spawn_prefab`], and a spawn from a source keeps it.
+    /// A capture writes it whole, as a spawn from a saved source, which a
+    /// restore spawns from its prefab in a World that has loaded `area`.
+    /// It shows the sprite variant its ID picks. Without save state, or with
+    /// an ID already taken, it does nothing.
+    #[must_use]
+    pub fn saved(mut self, world: &mut World, area: Option<&str>) -> Self {
+        if self.taken.is_some() {
+            return self;
+        }
+        let Some(id) = crate::save::take_id(world) else {
+            return self;
+        };
+        let taken = u32::try_from(id.0 + 1).ok().and_then(NonZeroU32::new);
+        debug_assert!(taken.is_some(), "a run's save IDs stay below bit 31");
+        self.taken = taken;
+        if let Some(sprite) = &mut self.sprite
+            && let Some(variant) = variant_of(world, &self.id, id)
+        {
+            sprite.asset_id = variant;
+        }
+        let saved = Saved {
+            id,
+            area: area.map(str::to_owned),
+            prefab: Some(self.id.clone()),
+        };
+        self.extras
+            .push(Box::new(move |buffer, at| at.insert(buffer, saved)));
+        self
+    }
+
+    /// The save ID [`saved`](Self::saved) took; `None` before, or without
+    /// save state.
+    #[must_use]
+    pub fn save_id(&self) -> Option<SaveId> {
+        self.taken.map(|taken| SaveId(u64::from(taken.get()) - 1))
     }
 
     /// Spawns it now, in one archetype move, and returns the entity.
@@ -600,6 +650,25 @@ impl PreparedPrefab {
             extra(buffer, at);
         }
     }
+}
+
+/// The variant prefab `prefab`'s spawn shows under save identity `id`,
+/// when its sprite names variants, which the preparing interned.
+fn variant_of(world: &World, prefab: &str, id: SaveId) -> Option<SpriteAssetId> {
+    let sprite = world
+        .get_resource::<PrefabRegistry>()?
+        .get(prefab)?
+        .sprite
+        .as_ref()?;
+    if sprite.variants.is_empty() {
+        return None;
+    }
+    let index = crate::components::variant_by_save_id(id, sprite.variants.len() + 1);
+    let name = match index {
+        0 => &sprite.asset_id,
+        _ => &sprite.variants[index - 1],
+    };
+    world.get_resource::<AssetRegistry>()?.sprite_id(name)
 }
 
 impl fmt::Debug for PreparedPrefab {
@@ -711,6 +780,7 @@ impl Built {
         PreparedPrefab {
             id: self.id,
             saved: crate::save::saving(world),
+            taken: None,
             transform: self.transform,
             sprite,
             visibility: Visibility {
@@ -990,7 +1060,9 @@ impl CommandBuffer {
     /// spawn: nothing of it remains. A source with a save identity
     /// ([`Saved`](crate::save::Saved)) gives the spawn the run's next save
     /// ID, its area and the prefab's ID in the same move, unless the prefab
-    /// was prepared [`unsaved`](PreparedPrefab::unsaved).
+    /// was prepared [`unsaved`](PreparedPrefab::unsaved) or its own run gave
+    /// it an identity, as [`saved`](PreparedPrefab::saved) does, which it
+    /// keeps.
     ///
     /// ```
     /// use serde_json::json;

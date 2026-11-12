@@ -324,3 +324,58 @@ fn a_loaded_run_resolves_its_steps_hits_as_the_uninterrupted_run() {
         assert_eq!(health(&b), health(&a), "{name}");
     }
 }
+
+/// A golem burning from a mage the game keeps itself: a kept identity.
+fn kept_burning(world: &mut World, id: Option<save::SaveId>) -> [Entity; 2] {
+    let golem = world.spawn_with((at(50.0).0, Health::new(20.0)));
+    named(world, golem, "golem");
+    let id = id.unwrap_or_else(|| save::take_id(world).unwrap());
+    let mage = world.spawn_with((at(0.0).0, save::Saved::kept(id)));
+    [mage, golem]
+}
+
+#[test]
+fn an_effect_from_a_kept_source_keeps_it_after_a_restore_that_spawned_it_back() {
+    let mut a = harness(0);
+    let [mage_a, golem_a] = kept_burning(a.world_mut(), None);
+    let id = a.world().get::<save::Saved>(mage_a).unwrap().id();
+    let burn = DataRef::inline(
+        Effect::new()
+            .with_duration(2.0)
+            .with_period(0.5)
+            .with_damage(1.0),
+    );
+    EffectRequest::new(golem_a, burn)
+        .with_source(mage_a)
+        .apply(a.world_mut());
+    a.step(20);
+    let saved = capture(&a);
+    assert_eq!(saved.dropped_refs(), 0, "the source by its ID");
+
+    let mut b = harness(100);
+    let [mage_b, golem_b] = kept_burning(b.world_mut(), Some(id));
+    assert_ne!(mage_b, mage_a, "another entity holds the ID");
+    restore(&mut b, &saved);
+    let source = |harness: &Harness, golem: Entity| {
+        harness.world().get::<Effects>(golem).and_then(|effects| {
+            effects
+                .instances()
+                .next()
+                .and_then(crate::kit::EffectInstance::source)
+        })
+    };
+    assert_eq!(source(&b, golem_b), Some(mage_b));
+    for frame in 0..120 {
+        a.step(1);
+        b.step(1);
+        assert_eq!(health(&a, golem_a), health(&b, golem_b), "frame {frame}");
+        let sources = |harness: &Harness, mage: Entity| {
+            harness
+                .events::<Damaged>()
+                .map(|damaged| damaged.source == Some(mage))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sources(&a, mage_a), sources(&b, mage_b), "frame {frame}");
+    }
+    assert!(health(&b, golem_b) < 20.0);
+}

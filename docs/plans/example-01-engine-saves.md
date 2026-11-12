@@ -1,6 +1,6 @@
-# 01's saves on the engine (example-01-engine-saves) — draft
+# 01's saves on the engine (example-01-engine-saves) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Example 01's capture and restore through the engine's save registry (`D-230`): its entities on the engine's identities, its named entities as patches over their fresh spawn, its run's spawns as the engine's records, its state as registered components and resources, so the save registry also saves chemistry's queue, tile statuses and `became` for it; its small and bowling balls a table of its own until 7.14's C5; its map's iron, crates, kegs and stones as named map objects (phase 7's §2.8, 7.13b: P7-8's, S-101's and S-125's 01 parts, saves-and-seams' Q2 and F1, known issues 34 and 35).
 - **non-goals:**
   - The other 7.13 plans (phase 7's §2.8): the kit's impacts and 01's hits, foes and drops (7.13c), spells, toys and gun (7.13d), level, sounds and shell, S-144's name re-read among them (7.13e), art tools (7.13f), the evaluation (7.13g).
@@ -236,5 +236,6 @@ Round 2: the same critic, 2026-11-12, `--raw --repo --effort xhigh` on the plan 
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-12 | landed | `cargo test -p tungsten-core save::` exit 0, 85 passed, 3 ignored, among them `save::id::tests::a_kept_identity_orders_by_its_id_and_gives_a_world_no_save_state`, `save::world::tests::a_kept_identitys_holder_has_no_record_and_resolves_after_a_restore_that_spawned_it_back` and `a_prepared_saved_spawn_is_captured_whole_and_restored_from_its_prefab`; `cargo test -p tungsten-core assets::prefab::` exit 0, 41 passed, among them `take_id_and_the_flush_count_on_one_counter` and `a_prepared_saved_spawn_takes_the_next_id_now_and_gives_it_in_its_one_move`; `cargo test -p tungsten saves_tests::` exit 0, 6 passed, `an_effect_from_a_kept_source_keeps_it_after_a_restore_that_spawned_it_back` among them; `cargo test -p tungsten-kit` exit 0, 982 and 145 passed, the determinism pin held; `cargo test -p example-02-bench guards_` exit 0, 16 passed; `cargo test -p tungsten views_guard_` exit 0, 2 passed; 01's `cargo test --test game -- guards::` exit 0, no pin rewritten; `just api` then `git diff --stat api/` → `api/tungsten-core.txt` alone (+9); `just api-check`, `just docs-ratchet` (872, 218, 65; no rise) and `cargo fmt --all -- --check` exit 0; `just lint` exit 101 on a redundant closure in the new umbrella test, fixed, then exit 0, `saves_tests::` rerun 6 passed. `D-272`. Deviations: the taken ID rides as `Option<NonZeroU32>` in `PreparedPrefab`'s padding (216 bytes before and after, measured), since `guards_rooms` holds a `Vec` of them; `saved` on a spawn that has an ID does nothing; `replace_prefab` still gives its replacement the replaced entity's identity | — |
 
 ## Follow-ups

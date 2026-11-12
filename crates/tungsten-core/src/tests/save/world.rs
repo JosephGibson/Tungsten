@@ -1929,3 +1929,98 @@ mod generated {
         assert!(!text(&capture_world(&old).unwrap()).contains("generated"));
     }
 }
+
+#[test]
+fn a_kept_identitys_holder_has_no_record_and_resolves_after_a_restore_that_spawned_it_back() {
+    use crate::save::take_id;
+
+    let mut a = world();
+    let la = level(&mut a);
+    let pet_a = a.spawn_with((Health {
+        current: 4.0,
+        max: 4.0,
+        shield: None,
+    },));
+    let id = take_id(&mut a).unwrap();
+    a.insert(pet_a, Saved::kept(id));
+    a.get_mut::<Chase>(la.bat_2).unwrap().target = pet_a;
+    let saved = capture_world(&a).unwrap();
+    assert_eq!(saved.dropped_refs(), 0, "referenced by its ID");
+    let json = value(&saved);
+    assert_eq!(
+        json["areas"]["cave"]["named"]["bat_2"]["refs"]["chase"]["target"],
+        json!([id.0])
+    );
+    assert_eq!(json["global"]["spawns"], json!([]), "no record of it");
+    assert_eq!(json["areas"]["cave"]["spawns"], json!([]));
+    assert!(
+        !text(&saved).contains(r#""max":4.0"#),
+        "its holder's components are the game's to save"
+    );
+
+    let mut b = world();
+    churn(&mut b, 40);
+    let lb = level(&mut b);
+    let pet_b = b.spawn_with((Saved::kept(id),));
+    let report = restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(b.get::<Chase>(lb.bat_2).unwrap().target, pet_b);
+    assert_eq!(b.resource::<SaveState>().next_id(), 1);
+
+    let mut c = world();
+    let lc = level(&mut c);
+    let report = restore_world(&mut c, &saved, &(Scene,)).unwrap();
+    assert_eq!(
+        report.dropped,
+        [format!(
+            "`chase`'s reference `target` to save ID {}: no such entity",
+            id.0
+        )],
+        "not spawned back first, it cannot resolve"
+    );
+    assert_ne!(c.get::<Chase>(lc.bat_2).unwrap().target, lc.bat_1);
+}
+
+#[test]
+fn a_prepared_saved_spawn_is_captured_whole_and_restored_from_its_prefab() {
+    let mut a = world();
+    level(&mut a);
+    let bolt = a
+        .prepare_prefab("bolt", [60.0, 40.0])
+        .unwrap()
+        .saved(&mut a, Some("cave"));
+    let id = bolt.save_id().unwrap();
+    let bolt = bolt.spawn(&mut a);
+    a.get_mut::<Health>(bolt).unwrap().current = 0.5;
+    let saved = capture_world(&a).unwrap();
+    let json = value(&saved);
+    let records = json["areas"]["cave"]["spawns"].as_array().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["id"], json!(id.0));
+    assert_eq!(records[0]["prefab"], json!("bolt"));
+    assert_eq!(
+        records[0]["components"],
+        json!({ "brain": { "mood": "wild", "timer": 0.0, "seen": [] },
+                "health": { "current": 0.5, "max": 1.0 } }),
+        "whole"
+    );
+    assert_eq!(json["next_id"], json!(1));
+
+    let mut b = world();
+    churn(&mut b, 40);
+    level(&mut b);
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    let restored = spawns(&b);
+    assert_eq!(restored.len(), 1);
+    let (restored_id, bolt) = restored[0];
+    assert_eq!(restored_id, id);
+    let tagged = b.get::<Saved>(bolt).unwrap();
+    assert_eq!(
+        (tagged.area(), tagged.prefab()),
+        (Some("cave"), Some("bolt"))
+    );
+    assert_eq!(b.get::<Health>(bolt).unwrap().current, 0.5);
+    assert_eq!(b.get::<Tag>(bolt).unwrap().name, "bolt", "from its prefab");
+    assert!(b.has::<Scene>(bolt));
+    assert_eq!(b.resource::<SaveState>().next_id(), 1);
+}
