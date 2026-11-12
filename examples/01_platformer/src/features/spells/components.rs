@@ -138,7 +138,8 @@ impl School {
 /// resource a run's start inserts, saved.
 ///
 /// [`SUMMONS`]: super::SUMMONS
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Summon {
     pub selected: usize,
 }

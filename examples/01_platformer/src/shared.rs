@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use glam::Vec2;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::{
     ActionMap, Collider, DataRegistry, Entity, InputState, Particle, ParticleConfigRegistry,
@@ -18,63 +18,32 @@ use tungsten::kit::{Aim, Children, Hurtbox};
 use crate::game::GAMEPLAY;
 
 /// A saved entity's stable identity is core's [`SaveId`] in a [`Saved`]
-/// component, a kept identity (`Saved::kept`) that 01's own records save:
-/// a save names entities by it, never by `Entity`, which the ECS reuses.
-/// The map's objects and the player take theirs from their names
-/// ([`SaveId::authored`]), at or above [`AUTHORED`]; anything spawned later
-/// takes the run's next ([`take_id`]), below it.
+/// component: a save names entities by it, never by `Entity`, which the ECS
+/// reuses. The map's objects and the player take theirs from their names
+/// ([`SaveId::authored`]), at or above [`AUTHORED`], when the run's start
+/// names them; anything spawned later takes the run's next ([`take_id`]),
+/// below it, from the counter the engine's flush counts its spawns on: a
+/// kept identity (`Saved::kept`) that 01's own records save, or a spawn the
+/// engine saves whole.
 pub use tungsten::core::save::{AUTHORED, SaveId, Saved};
 
-/// The run's next save ID, a `World` resource: what spawns during a run
-/// takes the next, counting from 0 below [`AUTHORED`].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SaveIds {
-    next: u64,
-}
-
-impl SaveIds {
-    /// A counter whose next ID is `next`, as a save holds it.
-    #[must_use]
-    pub fn starting_at(next: u64) -> Self {
-        Self { next }
-    }
-
-    /// The ID the next spawn takes.
-    #[must_use]
-    pub fn peek(&self) -> u64 {
-        self.next
-    }
-
-    /// Takes the next ID.
-    ///
-    /// # Panics
-    ///
-    /// When the count reaches [`AUTHORED`], where the map's IDs start.
-    pub fn take(&mut self) -> SaveId {
-        assert!(self.next < AUTHORED, "the run's save IDs ran out");
-        let id = SaveId(self.next);
-        self.next += 1;
-        id
-    }
-}
-
-/// Takes the run's next save ID, for a spawn of the run.
+/// Takes the run's next save ID, for a spawn of the run, from the counter
+/// the engine's flush takes its spawns' IDs from.
 ///
 /// # Panics
 ///
-/// Without a run's counter, or once it runs out.
+/// Without a run, whose start names the player and gives the World its save
+/// state, or once the IDs run out.
 pub fn take_id(world: &mut World) -> SaveId {
-    world.resource_mut::<SaveIds>().take()
+    tungsten::core::save::take_id(world).expect("a run's save state: its start names the player")
 }
 
-/// The save ID the run's next spawn takes.
-///
-/// # Panics
-///
-/// Without a run's counter.
+/// The save ID the run's next spawn takes; 0 without a run.
 #[must_use]
 pub fn next_id(world: &World) -> u64 {
-    world.resource::<SaveIds>().peek()
+    world
+        .get_resource::<tungsten::core::save::SaveState>()
+        .map_or(0, tungsten::core::save::SaveState::next_id)
 }
 
 /// `entity`'s save ID, its [`Saved`] identity's; none for an entity no
@@ -83,6 +52,12 @@ pub fn next_id(world: &World) -> u64 {
 pub fn save_id(world: &World, entity: Entity) -> Option<SaveId> {
     world.get::<Saved>(entity).map(Saved::id)
 }
+
+/// A spawn of the kit's that 01 took in, a bullet, a fire missile or a
+/// rolled orb, or one 01 made in its place: its adopt system's work done,
+/// at its spawn or at a load. Rebuilt, not saved.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Joined;
 
 /// `entity`'s body centre: its `Position` plus its collider's offset, the
 /// point itself for an entity with no collider. None without a position.

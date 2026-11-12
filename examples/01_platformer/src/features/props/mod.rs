@@ -580,6 +580,30 @@ pub fn set_fuse(
     }
 }
 
+/// Credits `prop`'s fire to `fire` and its lit fuse to `fuse` where its
+/// status names no source yet, applying nothing: a load's, once the lighter
+/// is back.
+pub fn credit(world: &mut World, prop: Entity, fire: Option<Entity>, fuse: Option<Entity>) {
+    let Some(effects) = world.get_mut::<Effects>(prop) else {
+        return;
+    };
+    let unset: Vec<(u64, Entity)> = effects
+        .instances()
+        .filter(|instance| instance.source().is_none())
+        .filter_map(|instance| {
+            let lighter = match instance.effect().id() {
+                Some(PROP_BURN) => fire,
+                Some(LIT) => fuse,
+                _ => None,
+            };
+            Some((instance.serial(), lighter?))
+        })
+        .collect();
+    for (serial, lighter) in unset {
+        effects.set_source(serial, Some(lighter));
+    }
+}
+
 /// Sets `prop`'s fire going, sourced to `lighter`.
 fn burn(world: &mut World, prop: Entity, lighter: Option<Entity>) {
     let mut request = EffectRequest::new(prop, DataRef::by_id(PROP_BURN));

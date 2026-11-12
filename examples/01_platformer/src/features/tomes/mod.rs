@@ -73,6 +73,7 @@ impl Plugin for TomesPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<Tome>("tome");
+        world.register_saved::<Tomes>("tomes");
         ensure_phases(schedule);
         let mut taken = None;
         let take = system("tomes_take", move |world: &mut World| {

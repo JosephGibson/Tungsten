@@ -37,7 +37,9 @@ use tungsten::core::{
 use tungsten::kit::{Health, PlatformerController, Stats};
 use tungsten::physics::wake;
 
-use super::components::{Brain, Enemy, EnemyKind, EnemyState, Held, Strike, Throw, Throws};
+use super::components::{
+    Brain, Enemy, EnemyKind, EnemyState, Held, Holding, Strike, Throw, Throws,
+};
 use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
 use super::{ARRIVED, WALK_SHOVE_MOST, centre, hop};
 use crate::features::audio::{self, components::Sound};
@@ -163,7 +165,8 @@ pub fn nearest_liftable(world: &World, troll: Entity) -> Option<Entity> {
 }
 
 /// `troll` lifts `object` over its head: its body a sensor until the throw
-/// or the drop. Whether it did: a troll holds one thing at a time.
+/// or the drop, the troll's [`Holding`] naming it. Whether it did: a troll
+/// holds one thing at a time.
 pub fn pick_up(world: &mut World, troll: Entity, object: Entity) -> bool {
     if held(world, troll).is_some() || world.has::<Held>(object) {
         return false;
@@ -175,6 +178,7 @@ pub fn pick_up(world: &mut World, troll: Entity, object: Entity) -> bool {
         throws.0.retain(|throw| throw.body != object);
     }
     world.insert(object, Held { by: troll, body });
+    world.insert(troll, Holding(object));
     if let Some(own) = world.get_mut::<RigidBody>(object) {
         *own = RigidBody::sensor();
     }
@@ -218,6 +222,12 @@ fn release(world: &mut World, object: Entity, velocity: Vec2) {
         return;
     };
     world.remove_component::<Held>(object);
+    if world
+        .get::<Holding>(hold.by)
+        .is_some_and(|holding| holding.0 == object)
+    {
+        world.remove_component::<Holding>(hold.by);
+    }
     if let Some(body) = world.get_mut::<RigidBody>(object) {
         *body = hold.body;
     }

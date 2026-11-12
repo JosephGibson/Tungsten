@@ -22,6 +22,7 @@ pub mod draw;
 pub mod systems;
 
 use glam::Vec2;
+use tungsten::core::save::SaveOptions;
 use tungsten::core::{Entity, Schedule, Stage, World, system};
 use tungsten::kit::{PROJECTILE_TICK, Phase, ensure_phases};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
@@ -177,6 +178,12 @@ const CONTACTS: [&str; 7] = [
 impl Plugin for ElementsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
+        world.register_saved_resource_with(
+            "cascades",
+            SaveOptions::<cascade::Cascades>::form::<cascade::CascadesForm>()
+                .refs(cascade::cascades_refs())
+                .capture_as(cascade::cascades_saved),
+        );
         ensure_phases(schedule);
         let fixed = [
             Phase::Overlap.join(system(CONTACTS[0], systems::fire_contacts)),

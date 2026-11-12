@@ -2,8 +2,9 @@
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
+use tungsten::core::save::RefCodec;
 use tungsten::core::{Entity, RigidBody};
-use tungsten::kit::{ContactDamage, TopDownMover};
+use tungsten::kit::TopDownMover;
 
 /// One of the six enemies, which its prefab names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -174,23 +175,53 @@ pub enum EnemyState {
 
 /// A frozen flyer's own mover, set aside while it falls on a borrowed
 /// controller and given back at the thaw. Saved.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Displaced(pub TopDownMover);
-
-/// A frozen enemy's touch, set aside so it hurts nothing by touch and given
-/// back at the thaw with its targets' times. The save holds those times; a
-/// load gives the touch back to the prefab's, and the next hold sets it
-/// aside again.
-#[derive(Debug, Clone, PartialEq)]
-pub struct HeldTouch(pub ContactDamage);
 
 /// What a troll holds over its head: the troll, and the object's own body,
 /// which it gets back at the throw or the drop; while held, its body is a
-/// sensor. Rebuilt at a load from the troll's save.
+/// sensor. Rebuilt at a load from the troll's [`Holding`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Held {
     pub by: Entity,
     pub body: RigidBody,
+}
+
+/// The troll's side of a hold, the object it holds over its head: on the
+/// troll from the lift to the throw or the drop, saved by reference, so a
+/// load lifts the object again.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Holding(pub Entity);
+
+/// [`Holding`]'s saved form: nothing but its reference.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HoldingForm {}
+
+impl From<&Holding> for HoldingForm {
+    fn from(_: &Holding) -> Self {
+        Self {}
+    }
+}
+
+impl From<HoldingForm> for Holding {
+    fn from(_: HoldingForm) -> Self {
+        Self(Entity::PLACEHOLDER)
+    }
+}
+
+/// [`Holding`]'s reference: the object, under `held`.
+#[must_use]
+pub fn holding_refs() -> RefCodec<Holding> {
+    RefCodec {
+        save: |holding, out| out.put("held", holding.0),
+        load: |holding, refs| {
+            if let Some(object) = refs.first("held") {
+                holding.0 = object;
+            }
+        },
+        keys: |_| vec!["held".to_owned()],
+    }
 }
 
 /// A thrown body whose impacts its thrower is credited with: the body, the
@@ -204,9 +235,84 @@ pub struct Throw {
     pub left: f32,
 }
 
-/// The throws in flight, in throw order: a World resource. Saved.
+/// The throws in flight, in throw order: a World resource. Saved, each
+/// body by reference ([`throws_refs`]).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Throws(pub Vec<Throw>);
+
+/// A throw's saved form: all but its body, which its reference holds.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThrowForm {
+    pub thrower: u64,
+    pub factor: f32,
+    pub left: f32,
+}
+
+/// [`Throws`]' saved form, in throw order.
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ThrowsForm(pub Vec<ThrowForm>);
+
+impl From<&Throws> for ThrowsForm {
+    fn from(throws: &Throws) -> Self {
+        Self(
+            throws
+                .0
+                .iter()
+                .map(|throw| ThrowForm {
+                    thrower: throw.thrower,
+                    factor: throw.factor,
+                    left: throw.left,
+                })
+                .collect(),
+        )
+    }
+}
+
+impl From<ThrowsForm> for Throws {
+    fn from(form: ThrowsForm) -> Self {
+        Self(
+            form.0
+                .into_iter()
+                .map(|throw| Throw {
+                    body: Entity::PLACEHOLDER,
+                    thrower: throw.thrower,
+                    factor: throw.factor,
+                    left: throw.left,
+                })
+                .collect(),
+        )
+    }
+}
+
+/// [`Throws`]' references: each throw's body under its place in throw
+/// order; a throw whose body did not load goes.
+#[must_use]
+pub fn throws_refs() -> RefCodec<Throws> {
+    RefCodec {
+        save: |throws, out| {
+            for (i, throw) in throws.0.iter().enumerate() {
+                out.put(&i.to_string(), throw.body);
+            }
+        },
+        load: |throws, refs| {
+            let mut i = 0;
+            throws.0.retain_mut(|throw| {
+                let body = refs.first(&i.to_string());
+                i += 1;
+                match body {
+                    Some(body) => {
+                        throw.body = body;
+                        true
+                    }
+                    None => false,
+                }
+            });
+        },
+        keys: |throws| (0..throws.0.len()).map(|i| i.to_string()).collect(),
+    }
+}
 
 /// A crawler's snowball in flight (e01foes): its thrower's save ID, the
 /// thrower's damage factor at the throw, and the seconds before it bursts

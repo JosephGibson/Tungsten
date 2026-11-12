@@ -13,7 +13,7 @@ use tungsten::kit::{
 use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{
-    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Shown, Sight, Spotted, Variant,
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, Shown, Sight, Spotted, Variant,
 };
 use super::{
     ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
@@ -653,9 +653,9 @@ pub fn cooldowns(world: &mut World) {
 /// tell with the recovery, so the attack never lands; a freeze holds it,
 /// so the tell resumes at the thaw with the time it had left. A frozen
 /// flyer falls on a borrowed controller, its own mover set aside until the
-/// thaw; a frozen bat shatters once it lands. A frozen enemy's touch is set
-/// aside until the thaw too, so a frozen crawler chills nothing and a
-/// thrown one hurts by the throw.
+/// thaw; a frozen bat shatters once it lands. A frozen enemy's touch is
+/// switched off until the thaw too, so a frozen crawler chills nothing and
+/// a thrown one hurts by the throw.
 pub fn hold(world: &mut World) {
     let player = player(world).map(|(_, at)| at);
     for enemy in enemies(world) {
@@ -702,15 +702,13 @@ fn swap_driver(world: &mut World, enemy: Entity, frozen: bool) {
     }
 }
 
-/// An enemy's touch for its state: frozen, set aside; thawed, back with
-/// its targets' times.
+/// An enemy's touch for its state: frozen, switched off, its targets'
+/// times kept; thawed, on again with them.
 fn swap_touch(world: &mut World, enemy: Entity, frozen: bool) {
-    if frozen {
-        if let Some(touch) = world.remove_component::<ContactDamage>(enemy) {
-            world.insert(enemy, HeldTouch(touch));
-        }
-    } else if let Some(HeldTouch(touch)) = world.remove_component::<HeldTouch>(enemy) {
-        world.insert(enemy, touch);
+    if let Some(touch) = world.get_mut::<ContactDamage>(enemy)
+        && touch.is_on() == frozen
+    {
+        touch.set_on(!frozen);
     }
 }
 
@@ -729,7 +727,6 @@ pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
         .collect();
     for enemy in killed {
         world.remove_component::<ContactDamage>(enemy);
-        world.remove_component::<HeldTouch>(enemy);
         world.remove_component::<Hitbox>(enemy);
         end(world, enemy);
     }

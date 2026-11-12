@@ -27,7 +27,7 @@ use crate::features::level::{LAVA_LAYER, TILE};
 use crate::features::player;
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, Saved, spawn_burst};
+use crate::shared::{Joined, Saved, spawn_burst};
 
 /// The orbs the map placed this run, by save ID, sorted: a World resource a
 /// run's start inserts, which a save's `gone` reads.
@@ -110,6 +110,7 @@ pub fn start(world: &mut World) {
     placed.sort_unstable_by_key(|(id, _)| *id);
     for &(_, orb) in &placed {
         world.remove_component::<Lifetime>(orb);
+        world.insert(orb, Joined);
     }
     world.insert_resource(PlacedOrbs(placed.into_iter().map(|(id, _)| id).collect()));
 }
@@ -194,7 +195,8 @@ pub fn fallen(world: &mut World, cursor: &mut EventCursor<Damaged>) {
 }
 
 /// `orb_adopt`, in `PreUpdate` before the shell's save: each orb a roll
-/// landed at the last flush joins the run, its save ID its own, centred on
+/// landed at the last flush joins the run ([`Joined`]), its save ID the
+/// flush's, centred on
 /// the body of the enemy that dropped it (its `Source`, at its kill as
 /// [`fallen`] recorded it), else at its cue's point, and moved clear of the
 /// rock there ([`clear`]); it pops out with its sound and its kind's
@@ -202,11 +204,10 @@ pub fn fallen(world: &mut World, cursor: &mut EventCursor<Damaged>) {
 pub fn adopt(world: &mut World) {
     let fallen = world.remove_resource::<Fallen>().unwrap_or_default();
     let fresh: Vec<Entity> = world
-        .query_filtered::<Entity, (With<Orb>, Without<Saved>)>()
+        .query_filtered::<Entity, (With<Orb>, Without<Joined>)>()
         .collect();
     for orb in fresh {
-        let id = crate::shared::take_id(world);
-        world.insert_bundle(orb, (Saved::kept(id), SceneEntity { state_id: GAMEPLAY }));
+        world.insert_bundle(orb, (Joined, SceneEntity { state_id: GAMEPLAY }));
         let (Some(kind), Some(point)) = (
             world.get::<Orb>(orb).map(|orb| orb.kind),
             world.get::<Position>(orb).map(|at| at.0 + ORB_CENTRE),
@@ -310,20 +311,17 @@ pub fn collect(world: &mut World, cursor: &mut EventCursor<PickedUp>) {
     }
 }
 
-/// Spawns an orb of `kind` with its sprite's top-left at `corner`, with the
-/// save ID `id` and `left` seconds before it fades, at once: a load's or a
-/// test's.
-pub fn spawn(
-    world: &mut World,
-    kind: OrbKind,
-    corner: Vec2,
-    id: SaveId,
-    left: f32,
-) -> Option<Entity> {
+/// Spawns an orb of `kind` with its sprite's top-left at `corner` and
+/// `left` seconds before it fades, at once, a spawn of its prefab the
+/// engine saves whole ([`PreparedPrefab::saved`]): a test's.
+///
+/// [`PreparedPrefab::saved`]: tungsten::core::PreparedPrefab::saved
+pub fn spawn(world: &mut World, kind: OrbKind, corner: Vec2, left: f32) -> Option<Entity> {
     let orb = world
         .prepare_prefab(kind.prefab(), corner.to_array())
         .ok()?
-        .with((Saved::kept(id), SceneEntity { state_id: GAMEPLAY }))
+        .saved(world, Some(crate::features::level::MAP))
+        .with((Joined, SceneEntity { state_id: GAMEPLAY }))
         .spawn(world);
     world.insert(orb, Lifetime::new(left.max(0.0)));
     Some(orb)

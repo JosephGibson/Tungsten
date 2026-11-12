@@ -33,7 +33,7 @@ use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock};
 use crate::features::toys::systems::shift;
 use crate::game::GAMEPLAY;
-use crate::shared::{Saved, despawn_tree, just_pressed, pressed, spawn_burst};
+use crate::shared::{Joined, Saved, despawn_tree, just_pressed, pressed, spawn_burst};
 
 /// `gun_shoot`, in the intent phase after the kit's ability tick: a
 /// reload running counts down, and at its end every round comes back with
@@ -148,17 +148,16 @@ pub fn muzzles(world: &mut World) {
 }
 
 /// `bullet_adopt`, in `PreUpdate` before the shell's save: each bullet the
-/// gun's spawn payload landed at the last flush joins the run, its save ID
-/// its own, its centre moved from the payload's point off the courier's
-/// to the same place off its centre, its tracer turned along its flight
-/// and shown.
+/// gun's spawn payload landed at the last flush joins the run ([`Joined`]),
+/// its save ID the flush's, its centre moved from the payload's point off
+/// the courier's to the same place off its centre, its tracer turned along
+/// its flight and shown.
 pub fn adopt(world: &mut World) {
     let fresh: Vec<Entity> = world
-        .query_filtered::<Entity, (With<Bullet>, Without<Saved>)>()
+        .query_filtered::<Entity, (With<Bullet>, Without<Joined>)>()
         .collect();
     for bullet in fresh {
-        let id = crate::shared::take_id(world);
-        world.insert(bullet, Saved::kept(id));
+        world.insert(bullet, Joined);
         let centre = player::body(world).centre;
         shift(world, bullet, centre - BULLET_CENTRE);
         let velocity = world

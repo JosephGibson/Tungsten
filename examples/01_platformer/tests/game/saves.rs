@@ -1,28 +1,25 @@
 //! Saves: a capture loads back to itself; every component a saved entity
-//! carries is saved, rebuilt from its prefab or the map, or presentation;
-//! a cast in the step that asks for an autosave saves its cost and its
-//! missile; a save during `casting` loads with the mana still paused; a
-//! loaded run keeps with the run it was saved from, in a fresh harness and
-//! in a churned world; statused dummies load with their effects' sources;
-//! a save mid-conduction resumes its chain; a bullet in flight loads and
-//! lands; a reaction toasts nothing; the template sample's
-//! schemas and 01's older ones are refused; an enemy's hit, pending transition, touch and frozen
-//! flight load as they were, and a loaded run with enemies mid-attack and
-//! mid-search keeps with the uninterrupted one; a keg chain saved mid-chain
-//! keeps its kegs and loads with its waiting blasts dropped (an interim,
-//! a known issue); a schema 11 save's IDs move past the map's goblins;
-//! a schema 12 player keeps his body where it stood on the wizard's frame;
-//! a schema 13 save drops its hints and takes 01 (i)'s tuning, its
-//! player's health keeping its share; a schema 13 save's crates leave the
-//! start's new wall, and a schema 14 save's bodies in the wall or past the
-//! boundary stand on the clearing's floor, those with no room dropped
-//! (01 (k)); a run holding tomes loads them with their books gone, a
-//! schema 15 save loads with none and every book, and its bodies inside
-//! the books' new supports stand on them (01 (l)); and a full pit saves
-//! within 2 MiB with the map's enemies alive.
+//! carries is saved (the registry names it, or 01's records hold it),
+//! rebuilt from its prefab or the map, or presentation; a cast in the step
+//! that asks for an autosave saves its cost and its missile; a save during
+//! `casting` loads with the mana still paused; a loaded run keeps with the
+//! run it was saved from, in a fresh harness and in a churned world, saved
+//! mid-chain; statused dummies load with their effects' sources; a save
+//! mid-conduction, mid-chain or mid-keg-chain resumes its chain; a frozen
+//! block's waiting thermal shock and a kept block's waiting freeze run as
+//! they would have; a lava touch keeps its time; a moved player saves the
+//! same again and the camera frames it; a save the engine refuses loads as
+//! a new run with nothing staged; the recorded spawns are the kit's; a
+//! bullet in flight loads and lands; a reaction toasts nothing; every
+//! schema before the engine's saves is refused; an enemy's hit, pending
+//! transition, touch and frozen flight load as they were, and a loaded run
+//! with enemies mid-attack and mid-search keeps with the uninterrupted one;
+//! a run holding tomes loads them with their books gone; and a full pit
+//! saves within 2 MiB with the map's enemies alive.
 
 use std::any::type_name as name;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::time::Instant;
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
@@ -31,10 +28,10 @@ use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
 use example_01_platformer::features::elements::components::{ColdFace, Flame};
 use example_01_platformer::features::enemies::components::{
-    Enemy, EnemyKind, EnemyState, Throw, Throws, Variant,
+    Enemy, EnemyKind, EnemyState, Throw, Throws,
 };
 use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind};
-use example_01_platformer::features::enemies::{self, crawler, snowball, troll, wisp};
+use example_01_platformer::features::enemies::{self, snowball};
 use example_01_platformer::features::gun;
 use example_01_platformer::features::gun::components::{Bullet, Reload};
 use example_01_platformer::features::level;
@@ -43,11 +40,11 @@ use example_01_platformer::features::level::geyser::{self, Geyser, GeyserPhase};
 use example_01_platformer::features::level::lava::{self, Lava};
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::{Player, StaffGlow};
-use example_01_platformer::features::player::{MAX_HEALTH, PICKUP_RADIUS};
 use example_01_platformer::features::props::components::{
     Bomb, Crate, Keg, PropKind, Rock, Stone, StoneSize,
 };
 use example_01_platformer::features::props::{self, CRATE_HALF, KEG_HALF, STONE_HALVES};
+use example_01_platformer::features::run::Run;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::tomes::{Tome, TomeKind, Tomes};
 use example_01_platformer::features::toys::components::{
@@ -55,15 +52,15 @@ use example_01_platformer::features::toys::components::{
 };
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game;
-use example_01_platformer::save::{self, HoleSave, MAP_ENEMIES, SaveGame};
-use example_01_platformer::shared::{AUTHORED, SaveId, Saved, take_id};
+use example_01_platformer::save::{self, MAP_ENEMIES, SaveGame};
+use example_01_platformer::shared::{Joined, SaveId, Saved, take_id};
 use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, SlotState};
 use glam::Vec2;
-use tungsten::core::save::Value;
+use tungsten::core::save::{SaveRegistry, Value};
 use tungsten::core::{
-    CameraRig, Entity, Position, SaveData, SaveSlots, TilemapRegistry, Time, Transform, UserFolder,
-    Velocity, World,
+    CameraRig, Entity, Position, PrevPosition, SaveData, SaveSlots, TilemapRegistry, Time,
+    Transform, UserFolder, Velocity, World,
 };
 use tungsten::kit::{
     Abilities, Chemistry, ContactDamage, ContactTouch, DamageRequest, Damaged, Effects, Health,
@@ -71,11 +68,11 @@ use tungsten::kit::{
 };
 use tungsten::testing::UiHarness;
 
-use super::{actor_body, body_offset, kind_body, player_half};
 use super::{
     aim_at, calm, centre, choose, floor, ground, harness, harness_with, mana, pin_camera,
     player_entity, run, settle, stand, start, steps_this_frame, teleport, top, user_folder,
 };
+use super::{kind_body, player_half};
 
 /// The sky's ground and the camera's corner over it.
 const TOP: f32 = 1000.0;
@@ -202,12 +199,10 @@ fn busy(harness: &mut UiHarness) {
     elements::chill(harness.world_mut(), far, 0.5, Vec2::new(1090.0, TOP - 60.0));
     // A mana orb past the player's reach.
     let world = harness.world_mut();
-    let id = take_id(world);
     drops::spawn(
         world,
         OrbKind::Mana,
         Vec2::new(1400.0, TOP - 60.0),
-        id,
         ORB_SECS,
     );
     // A crate alight and a keg on its fuse, both the player's, and a
@@ -342,27 +337,96 @@ fn names<const N: usize>(types: [&'static str; N]) -> Vec<&'static str> {
     types.to_vec()
 }
 
-/// What a kind of saved entity carries: the components a save holds, those
-/// its prefab or the map rebuilds, and those that are only presentation.
+/// What a kind of saved entity carries past what the save registry names:
+/// the components 01's records hold for one of its own spawns (a kept
+/// identity, whose holder the engine writes no record of), those its
+/// prefab, the map or a load gives it again, and those that only draw it.
+/// A named entity's or an engine record's component is saved when the
+/// registry names it ([`registered`]).
 struct Lists {
-    saved: Vec<&'static str>,
+    recorded: Vec<&'static str>,
     rebuilt: Vec<&'static str>,
     presentation: Vec<&'static str>,
+}
+
+/// The payload's emitter, which a spawn from a source derives at the flush:
+/// 01's records spawn their projectiles from the saved source again; an
+/// engine record loads without it (the plan's §2.6).
+const EMITTER: &str = "tungsten_kit::overlap::grid::Emitter";
+
+/// The components an engine record's load does not give back.
+fn lost(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "missile" | "bullet" | "flask" => &[EMITTER],
+        _ => &[],
+    }
+}
+
+/// Each of `types` the registry saves as a component, by type name, and
+/// the names it saves them under.
+macro_rules! registered {
+    ($registry:expr; $($ty:ty),* $(,)?) => {{
+        let mut types = BTreeSet::new();
+        let mut names = BTreeSet::new();
+        $(
+            if let Some(saved) = $registry.component_name::<$ty>() {
+                types.insert(name::<$ty>());
+                names.insert(saved.to_owned());
+            }
+        )*
+        (types, names)
+    }};
+}
+
+/// The component types the registry saves, by type name: every one 01's
+/// saved entities could carry. It names three more, the kit's own
+/// `became`, `carried` and `spawned`, whose types no game can name.
+fn registered(world: &World) -> BTreeSet<&'static str> {
+    use example_01_platformer::features::enemies::components::{
+        Brain, Displaced, EnemyState, Holding, Sight,
+    };
+    use example_01_platformer::features::player::components::Lantern;
+    use example_01_platformer::features::spells::components::Spellbook;
+    use tungsten::core::{Collider, PrevPosition, RigidBody, Spin, Visibility};
+    use tungsten::kit::{
+        Aim, Cooldown, Counters, Delivery, Facing, Flags, Follow, Hurtbox, Knockback, Level,
+        Lifetime, LinearMotion, Orbit, Pickup, PlatformerController, Projectile, Resist, Source,
+        Spawner, Steering, TopDownMover,
+    };
+    let registry = world.resource::<SaveRegistry>();
+    let (types, names) = registered!(registry;
+        Transform, Visibility, Position, PrevPosition, Velocity, Spin, Collider, RigidBody,
+        Abilities, Aim, ContactDamage, Cooldown, Counters, Delivery, Effects, Facing, Flags,
+        Follow, Health, Hitbox, Hurtbox, Knockback, Level, Lifetime, LinearMotion, Orbit,
+        Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Resist, Shield,
+        Source, Spawner, Stats, Steering, Tags, TopDownMover, Tomes, Elevator, Geyser, Lava,
+        Spellbook, Lantern, Bullet, Reload, Enemy, Brain, Sight, StateMachine<EnemyState>,
+        Displaced, Orb, Holding,
+    );
+    let unnamed: BTreeSet<&str> = registry
+        .component_names()
+        .filter(|saved| !names.contains(*saved))
+        .collect();
+    assert_eq!(
+        unnamed,
+        BTreeSet::from(["became", "carried", "spawned"]),
+        "the census asks the registry of every type it saves"
+    );
+    types
 }
 
 fn lists(kind: &str) -> Lists {
     use example_01_platformer::features::level::components::{Glow, GlowParts, Hazard};
     use example_01_platformer::features::level::elevator::{CableLook, ElevatorDef};
     use example_01_platformer::features::level::lava::CrustLook;
-    use example_01_platformer::features::player::components::{Lantern, Moves};
-    use example_01_platformer::features::spells::components::Spellbook;
+    use example_01_platformer::features::player::components::Moves;
     use example_01_platformer::features::toys::components::{
         BallHue, BowlingBall, PreviousVelocity, ScrapTumble, SmallBall,
     };
     use tungsten::SceneEntity;
     use tungsten::core::{
-        AnimationState, Collider, ParticleEmitter, ParticleEmitterState, PrevPosition, RigidBody,
-        Sprite, Velocity, Visibility,
+        AnimationState, Collider, ParticleEmitter, ParticleEmitterState, RigidBody, Sprite,
+        Velocity, Visibility,
     };
     use tungsten::kit::Resist;
     use tungsten::kit::{
@@ -370,31 +434,12 @@ fn lists(kind: &str) -> Lists {
         HitFlash, Hitbox, Hurtbox, Intent, Knockback, LinearMotion, PlatformerController,
         Projectile, Source, Stats,
     };
-    // The payload's emitter, which a load spawns from the saved source again.
-    const EMITTER: &str = "tungsten_kit::overlap::grid::Emitter";
     let body = [name::<Collider>(), name::<RigidBody>()];
-    let at = [name::<Saved>(), name::<Position>(), name::<PrevPosition>()];
+    let at = [name::<Saved>(), name::<Position>()];
     let drawn = [name::<Transform>(), name::<Sprite>(), name::<Visibility>()];
     match kind {
         "player" => Lists {
-            saved: [
-                &at[..],
-                &[
-                    name::<Velocity>(),
-                    name::<PlatformerController>(),
-                    name::<Health>(),
-                    name::<Stats>(),
-                    name::<Effects>(),
-                    name::<Abilities>(),
-                    name::<Tags>(),
-                    name::<Spellbook>(),
-                    name::<Lantern>(),
-                    name::<Reload>(),
-                    name::<Tomes>(),
-                    name::<Shield>(),
-                ],
-            ]
-            .concat(),
+            recorded: Vec::new(),
             rebuilt: [
                 &body[..],
                 &[
@@ -426,30 +471,20 @@ fn lists(kind: &str) -> Lists {
             .concat(),
         },
         "platform" => Lists {
-            saved: [&at[..], &[name::<PathFollower>()]].concat(),
-            rebuilt: [&body[..], &[name::<SceneEntity>(), name::<Velocity>()]].concat(),
+            recorded: Vec::new(),
+            rebuilt: [&body[..], &[name::<SceneEntity>()]].concat(),
             presentation: drawn.to_vec(),
         },
         "elevator" => Lists {
-            saved: [&at[..], &[name::<Elevator>(), name::<PathFollower>()]].concat(),
-            rebuilt: [
-                &body[..],
-                &[
-                    name::<SceneEntity>(),
-                    name::<Velocity>(),
-                    name::<ElevatorDef>(),
-                ],
-            ]
-            .concat(),
+            recorded: Vec::new(),
+            rebuilt: [&body[..], &[name::<SceneEntity>(), name::<ElevatorDef>()]].concat(),
             presentation: [&drawn[..], &[name::<CableLook>()]].concat(),
         },
         "hazard" => Lists {
-            saved: [&at[..], &[name::<Oscillator>()]].concat(),
+            recorded: Vec::new(),
             rebuilt: names([
                 name::<SceneEntity>(),
                 name::<Hazard>(),
-                name::<ContactDamage>(),
-                name::<Aim>(),
                 name::<Glow>(),
                 name::<Children>(),
             ]),
@@ -465,7 +500,7 @@ fn lists(kind: &str) -> Lists {
             .concat(),
         },
         "ball" => Lists {
-            saved: [
+            recorded: [
                 &at[..],
                 &[
                     name::<Velocity>(),
@@ -490,7 +525,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<AnimationState>(), name::<ColdFace>()]].concat(),
         },
         "block" => Lists {
-            saved: [
+            recorded: [
                 &at[..],
                 &[name::<Velocity>(), name::<Effects>(), name::<Tags>()],
             ]
@@ -512,7 +547,7 @@ fn lists(kind: &str) -> Lists {
             ]),
         },
         "scrap" => Lists {
-            saved: [
+            recorded: [
                 &at[..],
                 &[
                     name::<Velocity>(),
@@ -534,7 +569,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
         },
         "black hole" => Lists {
-            saved: names([name::<Saved>(), name::<Transform>(), name::<BlackHole>()]),
+            recorded: names([name::<Saved>(), name::<Transform>(), name::<BlackHole>()]),
             rebuilt: names([
                 name::<SceneEntity>(),
                 name::<PreviousVelocity>(),
@@ -544,7 +579,7 @@ fn lists(kind: &str) -> Lists {
             presentation: names([name::<Visibility>(), name::<ParticleEmitterState>()]),
         },
         "dummy" => Lists {
-            saved: [
+            recorded: [
                 &at[..],
                 &[
                     name::<Velocity>(),
@@ -571,7 +606,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<HitFlash>()]].concat(),
         },
         "missile" => Lists {
-            saved: [
+            recorded: [
                 &at[..],
                 &[
                     name::<Projectile>(),
@@ -583,6 +618,7 @@ fn lists(kind: &str) -> Lists {
             .concat(),
             rebuilt: names([
                 name::<FireMissile>(),
+                name::<Joined>(),
                 name::<SceneEntity>(),
                 name::<PreviousVelocity>(),
                 name::<Glow>(),
@@ -591,7 +627,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<AnimationState>(), name::<GlowParts>()]].concat(),
         },
         "flask" => Lists {
-            saved: [
+            recorded: [
                 &at[..],
                 &[
                     name::<Projectile>(),
@@ -609,7 +645,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<AnimationState>()]].concat(),
         },
         "bullet" => Lists {
-            saved: [
+            recorded: [
                 &at[..],
                 &[
                     name::<Projectile>(),
@@ -620,7 +656,7 @@ fn lists(kind: &str) -> Lists {
                 ],
             ]
             .concat(),
-            rebuilt: names([name::<SceneEntity>(), name::<Hitbox>()]),
+            rebuilt: names([name::<SceneEntity>(), name::<Joined>(), name::<Hitbox>()]),
             presentation: drawn.to_vec(),
         },
         // The crates, kegs, bombs and rocks: a crate's or a rock's art, a
@@ -631,7 +667,7 @@ fn lists(kind: &str) -> Lists {
         "crate" | "keg" | "bomb" | "rock" => {
             use example_01_platformer::features::props::components::MapProp;
             Lists {
-                saved: [
+                recorded: [
                     &at[..],
                     &[
                         name::<Velocity>(),
@@ -660,7 +696,7 @@ fn lists(kind: &str) -> Lists {
         }
         // A rubble stone: its size and art, saved whole; it takes no frost.
         "stone" => Lists {
-            saved: [&at[..], &[name::<Velocity>(), name::<Stone>()]].concat(),
+            recorded: [&at[..], &[name::<Velocity>(), name::<Stone>()]].concat(),
             rebuilt: [
                 &body[..],
                 &[name::<SceneEntity>(), name::<PreviousVelocity>()],
@@ -674,7 +710,7 @@ fn lists(kind: &str) -> Lists {
         "plank" => {
             use example_01_platformer::features::props::components::Plank;
             Lists {
-                saved: [
+                recorded: [
                     &at[..],
                     &[
                         name::<Velocity>(),
@@ -697,7 +733,7 @@ fn lists(kind: &str) -> Lists {
             use example_01_platformer::features::enemies::components::Snowball;
             use tungsten::core::AnimationState;
             Lists {
-                saved: [&at[..], &[name::<Velocity>(), name::<Snowball>()]].concat(),
+                recorded: [&at[..], &[name::<Velocity>(), name::<Snowball>()]].concat(),
                 rebuilt: [
                     &body[..],
                     &[name::<SceneEntity>(), name::<PreviousVelocity>()],
@@ -708,11 +744,11 @@ fn lists(kind: &str) -> Lists {
         }
         "wisp" | "crawler" | "beetle" | "bat" | "troll" | "goblin" => {
             use example_01_platformer::features::enemies::components::{
-                Brain, Displaced, EnemyState, HeldTouch, Scared, Shown, Sight,
+                Brain, Displaced, EnemyState, Scared, Shown, Sight,
             };
             use tungsten::kit::{Abilities, StateMachine, TopDownMover};
             Lists {
-                saved: [
+                recorded: [
                     &at[..],
                     &[
                         name::<Velocity>(),
@@ -741,7 +777,6 @@ fn lists(kind: &str) -> Lists {
                         name::<PreviousVelocity>(),
                         name::<Hurtbox>(),
                         name::<ContactDamage>(),
-                        name::<HeldTouch>(),
                         name::<Cues>(),
                         name::<Glow>(),
                         name::<Children>(),
@@ -764,9 +799,10 @@ fn lists(kind: &str) -> Lists {
         "orb" => {
             use tungsten::kit::{Lifetime, Pickup};
             Lists {
-                saved: [&at[..], &[name::<Orb>(), name::<Lifetime>()]].concat(),
+                recorded: [&at[..], &[name::<Orb>(), name::<Lifetime>()]].concat(),
                 rebuilt: names([
                     name::<SceneEntity>(),
+                    name::<Joined>(),
                     name::<Pickup>(),
                     name::<Cues>(),
                     name::<Glow>(),
@@ -777,15 +813,12 @@ fn lists(kind: &str) -> Lists {
         // The lava basins, which the map spawns again whole but their chill
         // and crust, a crust's sprites drawn again.
         "basin" => Lists {
-            saved: names([name::<Saved>(), name::<Lava>()]),
+            recorded: Vec::new(),
             rebuilt: [
                 &body[..],
                 &[
                     name::<SceneEntity>(),
-                    name::<Position>(),
-                    name::<PrevPosition>(),
                     name::<Hazard>(),
-                    name::<ContactDamage>(),
                     name::<Cues>(),
                     name::<Glow>(),
                     name::<Children>(),
@@ -802,18 +835,11 @@ fn lists(kind: &str) -> Lists {
         // The geysers (e01hollow), which the map spawns again whole but
         // their cycle and choke, its touch on again in an eruption and its
         // plume and embers hung again.
-        "geyser" => {
-            use example_01_platformer::features::level::geyser::Geyser;
-            Lists {
-                saved: names([name::<Saved>(), name::<Geyser>()]),
-                rebuilt: names([
-                    name::<SceneEntity>(),
-                    name::<ContactDamage>(),
-                    name::<Children>(),
-                ]),
-                presentation: drawn.to_vec(),
-            }
-        }
+        "geyser" => Lists {
+            recorded: Vec::new(),
+            rebuilt: names([name::<SceneEntity>(), name::<Children>()]),
+            presentation: drawn.to_vec(),
+        },
         other => panic!("{other}: a saved entity of no known kind"),
     }
 }
@@ -895,19 +921,36 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
     assert!(world.query::<&Flame>().count() > 0);
     assert_eq!(world.query::<&BlackHole>().count(), 1);
     assert!(world.query::<&FireMissile>().count() > 0);
+    let registered = registered(world);
     let mut seen: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-    for (entity, _) in world.query::<(Entity, &Saved)>() {
+    let mut wrong = BTreeSet::new();
+    for (entity, saved) in world.query::<(Entity, &Saved)>() {
         let kind = kind(world, entity);
         let lists = lists(kind);
+        // A named entity or an engine record saves what the registry
+        // names; one of 01's own spawns, what its record holds.
+        let engine = saved.prefab().is_some() || saved.id().is_authored();
         for (_, ty) in world.component_types(entity) {
-            let homes = [&lists.saved, &lists.rebuilt, &lists.presentation]
-                .iter()
-                .filter(|list| list.contains(&ty))
-                .count();
-            assert_eq!(homes, 1, "{kind}: {ty} is in {homes} lists, not one");
+            let count = |homes: &[&[&str]]| homes.iter().filter(|list| list.contains(&ty)).count();
+            // The identity, and its point's last step, which every restore
+            // writes with the point, are saved with the entity; so is what
+            // the registry names on a named entity or an engine record.
+            let structural = ty == name::<Saved>() || ty == name::<PrevPosition>();
+            let homes = if structural || (engine && registered.contains(ty)) {
+                1
+            } else if engine {
+                count(&[&lists.rebuilt, &lists.presentation, lost(kind)])
+            } else {
+                count(&[&lists.recorded, &lists.rebuilt, &lists.presentation])
+            };
+            if homes != 1 {
+                let who = if engine { "the engine's" } else { "01's own" };
+                wrong.insert(format!("{kind} ({who}): {ty} is in {homes} lists, not one"));
+            }
             seen.entry(kind).or_default().insert(ty);
         }
     }
+    assert!(wrong.is_empty(), "{wrong:#?}");
     let kinds: Vec<&str> = seen.keys().copied().collect();
     assert_eq!(
         kinds,
@@ -1166,16 +1209,9 @@ fn divergence(churned: bool) {
         .unwrap();
     super::combat::apply(&mut uninterrupted, dummy, "shocked", Some(player));
     uninterrupted.step(2);
-    // Interim (the plan's §2.9): the chain's endings wait in chemistry's
-    // queue, which 01's save holds from 7.13b, so the save waits for the
-    // chain to run out; 7.13b saves it mid-chain again.
+    // Saved mid-chain: its endings wait in chemistry's queue, which the
+    // save holds.
     let pending = |harness: &UiHarness| harness.world().resource::<Chemistry>().pending();
-    for _ in 0..60 {
-        if pending(&uninterrupted) == 0 {
-            break;
-        }
-        uninterrupted.step(1);
-    }
     let shocked = uninterrupted
         .world()
         .query::<(&Dummy, &Tags)>()
@@ -1183,7 +1219,7 @@ fn divergence(churned: bool) {
     assert!(shocked, "the dummy shocked");
     let saved = capture(&uninterrupted);
     assert_eq!(saved.area.as_deref(), Some("Lantern clearing"));
-    assert_eq!(pending(&uninterrupted), 0, "the chain ran out");
+    assert!(pending(&uninterrupted) > 0, "mid-chain");
     let mut loaded = harness();
     if churned {
         let world = loaded.world_mut();
@@ -1192,7 +1228,8 @@ fn divergence(churned: bool) {
             world.despawn(entity);
         }
     }
-    load(&mut loaded, saved);
+    load(&mut loaded, saved.clone());
+    assert_eq!(json(&capture(&loaded)), json(&saved), "the run whole");
     scaffold(&mut loaded);
     pin_camera(&mut loaded, CORNER);
     loaded.world_mut().resource_mut::<Time>().resume();
@@ -1977,12 +2014,7 @@ fn a_bullet_in_flight_loads_and_lands() {
 }
 
 #[test]
-fn a_save_mid_chain_keeps_its_pile_and_drops_its_waiting_endings() {
-    // Interim (the plan's §2.9, a known issue): the chain's endings wait in
-    // chemistry's queue, which 01's save holds from 7.13b, so a save
-    // mid-chain keeps the pile as it stood and loads with the chain
-    // stopped; 7.13b resumes the same queue, in save-ID order, as this test
-    // pinned before.
+fn a_save_mid_chain_resumes_the_same_chain() {
     let (mut harness, _) = grounded();
     let pile = ice_pile(&mut harness, 900.0, 48);
     harness.step(2);
@@ -1990,12 +2022,20 @@ fn a_save_mid_chain_keeps_its_pile_and_drops_its_waiting_endings() {
     elements::thermal_shatter(harness.world_mut(), edge, 72.0);
     harness.step(2);
     let pending = |harness: &UiHarness| harness.world().resource::<Chemistry>().pending();
+    let ran = |harness: &UiHarness| harness.world().resource::<Chemistry>().ran();
     assert!(pending(&harness) > 0, "mid-chain");
     let saved = capture(&harness);
     let mut fresh = super::harness();
     load(&mut fresh, saved.clone());
-    assert_eq!(json(&capture(&fresh)), json(&saved), "the pile whole");
-    assert_eq!(pending(&fresh), 0, "the waiting endings dropped");
+    assert_eq!(
+        json(&capture(&fresh)),
+        json(&saved),
+        "the pile and the chain whole"
+    );
+    assert_eq!(
+        (pending(&fresh), ran(&fresh)),
+        (pending(&harness), ran(&harness))
+    );
     scaffold(&mut fresh);
     pin_camera(&mut fresh, CORNER);
     fresh.world_mut().resource_mut::<Time>().resume();
@@ -2006,19 +2046,32 @@ fn a_save_mid_chain_keeps_its_pile_and_drops_its_waiting_endings() {
             .map(|(_, id)| id.id().0)
             .collect()
     };
+    // The first run after the load works from the saved queues and the
+    // saved points alone: the same entries run, in save-ID order.
     let at_save = live(&harness);
+    harness.step(1);
+    fresh.step(1);
+    assert_eq!(live(&harness), live(&fresh), "the same balls went");
+    assert_eq!(
+        queue(&harness),
+        queue(&fresh),
+        "the same cascades queued next"
+    );
+    assert_eq!(
+        (pending(&fresh), ran(&fresh)),
+        (pending(&harness), ran(&harness))
+    );
+    // After it, the solver's warm starts, which no save holds, move the
+    // pile a hair apart; each chain runs on to its end.
     harness.step(40);
     fresh.step(40);
-    assert_eq!(pending(&harness), 0, "the chain ran out");
-    assert!(live(&harness).len() < at_save.len(), "it took more");
-    // The solver's warm starts, which no save holds, settle the loaded pile
-    // a hair apart, but its chain stopped at the load.
-    assert!(
-        live(&fresh).len() > live(&harness).len(),
-        "the loaded chain stopped: {} left, {} uninterrupted",
-        live(&fresh).len(),
-        live(&harness).len()
+    assert_eq!(
+        (pending(&harness), pending(&fresh)),
+        (0, 0),
+        "both chains ran out"
     );
+    assert!(live(&harness).len() < at_save.len(), "the chain took more");
+    assert_eq!(live(&harness), live(&fresh), "the same endings");
 }
 
 /// The live kegs, by save ID.
@@ -2031,13 +2084,10 @@ fn kegs(harness: &UiHarness) -> BTreeSet<u64> {
 }
 
 #[test]
-fn a_keg_chain_saved_mid_chain_keeps_its_kegs_and_drops_its_waiting_blasts() {
-    // Interim (the plan's §2.9, a known issue): a keg's blast waits in
-    // chemistry's queue, its `jolt`, between the blast that sets it off and
-    // its run, and 01's save holds that queue from 7.13b, so a save
-    // mid-chain keeps the kegs standing and loads with the chain stopped;
-    // 7.13b resumes the same chain, the same kegs gone, as this test pinned
-    // before.
+fn a_keg_chain_saved_mid_chain_resumes_with_the_same_kegs_gone() {
+    // A keg's blast waits in chemistry's queue, its `jolt`, between the
+    // blast that sets it off and its run: a save mid-chain loads with it
+    // waiting, and the chain runs on to its end.
     let (mut harness, player) = grounded();
     let world = harness.world_mut();
     let row: Vec<Entity> = (0..6)
@@ -2065,28 +2115,357 @@ fn a_keg_chain_saved_mid_chain_keeps_its_kegs_and_drops_its_waiting_blasts() {
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("a save reads");
     let mut fresh = super::harness();
     load(&mut fresh, read);
-    assert_eq!(pending(&fresh), 0, "the waiting blasts dropped");
+    assert_eq!(
+        json(&capture(&fresh)),
+        json(&saved),
+        "the row and its blast whole"
+    );
+    assert_eq!(pending(&fresh), pending(&harness), "the waiting blast kept");
     scaffold(&mut fresh);
     pin_camera(&mut fresh, CORNER);
     fresh.world_mut().resource_mut::<Time>().resume();
     let standing = kegs(&fresh);
     assert_eq!(standing, kegs(&harness), "the kegs as they stood");
     assert_eq!(ids.intersection(&standing).count(), 4, "four of the row");
-    harness.step(30);
-    fresh.step(30);
+    for frame in 0..30 {
+        harness.step(1);
+        fresh.step(1);
+        assert_eq!(
+            kegs(&fresh),
+            kegs(&harness),
+            "frame {frame}: the same kegs stand"
+        );
+    }
     assert!(ids.is_disjoint(&kegs(&harness)), "the chain ran to its end");
-    assert_eq!(kegs(&fresh), standing, "the loaded chain stopped");
     assert!(
         pending(&harness) == 0 && pending(&fresh) == 0,
         "both queues empty"
     );
 }
 
+/// Chemistry's waiting entries and the entries its runs took.
+fn queue_counts(harness: &UiHarness) -> (usize, u64) {
+    let chemistry = harness.world().resource::<Chemistry>();
+    (chemistry.pending(), chemistry.ran())
+}
+
+/// Whether `entity` is frozen through.
+fn frozen(harness: &UiHarness, entity: Entity) -> bool {
+    harness
+        .world()
+        .get::<Tags>(entity)
+        .is_some_and(|tags| tags.has("status.frozen"))
+}
+
+/// The live scraps' velocities, by save ID.
+fn scrap_throws(harness: &UiHarness) -> BTreeMap<u64, Vec2> {
+    harness
+        .world()
+        .query::<(&IronScrap, &Saved, &Velocity)>()
+        .map(|(_, id, velocity)| (id.id().0, velocity.0))
+        .collect()
+}
+
+/// An iron block of the run's on the sky's ground at `x`, settled.
+fn iron_at(harness: &mut UiHarness, x: f32) -> Entity {
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(x, TOP - IRON_HALF.y - 0.5));
+    harness.step(10);
+    iron
+}
+
 #[test]
-fn schemas_one_to_six_are_refused() {
-    // The template sample's 1 to 3, and 01 (a) to (c)'s 4 to 6, whose map
-    // 01 (d) replaced: every save ID and place moved.
-    for from in 1..=6 {
+fn a_frozen_blocks_waiting_thermal_shock_throws_its_scraps_as_the_uninterrupted_run() {
+    let (mut harness, _) = grounded();
+    let iron = iron_at(&mut harness, 950.0);
+    elements::freeze_iron(harness.world_mut(), iron);
+    harness.step(2);
+    // Heat from the block's left: its shock waits for the next run, and
+    // `Cascades` keeps the point its scraps fly away from.
+    let heat = super::body(&harness, iron) - Vec2::new(IRON_HALF.x + 20.0, 0.0);
+    elements::thermal_shatter(harness.world_mut(), heat, 72.0);
+    assert!(queue_counts(&harness).0 > 0, "the shock waits");
+    assert_eq!(harness.world().resource::<Cascades>().heat_from.len(), 1);
+    let saved = capture(&harness);
+    let mut fresh = super::harness();
+    load(&mut fresh, saved.clone());
+    assert_eq!(
+        json(&capture(&fresh)),
+        json(&saved),
+        "the shock and its point whole"
+    );
+    scaffold(&mut fresh);
+    pin_camera(&mut fresh, CORNER);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    for _ in 0..5 {
+        if !scrap_throws(&harness).is_empty() {
+            break;
+        }
+        harness.step(1);
+        fresh.step(1);
+    }
+    let (a, b) = (scrap_throws(&harness), scrap_throws(&fresh));
+    assert_eq!(a.len(), 16, "the block shattered");
+    assert_eq!(a.keys().collect::<Vec<_>>(), b.keys().collect::<Vec<_>>());
+    for (id, thrown) in &a {
+        assert!(
+            thrown.distance(b[id]) <= 1e-3,
+            "scrap {id}: {thrown} and {}",
+            b[id]
+        );
+    }
+    let east = a.values().map(|v| v.x).sum::<f32>() / a.len() as f32;
+    assert!(east > 0.0, "thrown away from the heat on the left: {east}");
+}
+
+#[test]
+fn a_kept_block_saved_at_its_freeze_band_loads_with_one_freeze_waiting() {
+    let (mut harness, _) = grounded();
+    let iron = iron_at(&mut harness, 950.0);
+    let face = super::body(&harness, iron) - Vec2::new(IRON_HALF.x, 0.0);
+    elements::chill(harness.world_mut(), iron, 1.0, face);
+    // The run builds the coat to its band, whose freeze waits for the next.
+    harness.step(1);
+    assert!(!frozen(&harness, iron), "not yet");
+    assert_eq!(queue_counts(&harness).0, 1, "the band's freeze waits");
+    let saved = capture(&harness);
+    let mut fresh = super::harness();
+    load(&mut fresh, saved.clone());
+    // The coat put back reaches the band again; the saved queue replaces
+    // what that queued.
+    assert_eq!(queue_counts(&fresh), queue_counts(&harness), "one freeze");
+    assert_eq!(json(&capture(&fresh)), json(&saved));
+    scaffold(&mut fresh);
+    pin_camera(&mut fresh, CORNER);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    let loaded = fresh
+        .world()
+        .query::<(Entity, &IronBlock, &Saved)>()
+        .find(|(_, _, id)| id.id().0 == id_of(&harness, iron))
+        .map(|(entity, ..)| entity)
+        .expect("the block");
+    harness.step(1);
+    fresh.step(1);
+    assert!(
+        frozen(&harness, iron) && frozen(&fresh, loaded),
+        "both froze"
+    );
+    assert_eq!(queue_counts(&fresh), queue_counts(&harness));
+}
+
+/// The player's health and the hits it took this frame.
+fn hurt(harness: &UiHarness) -> (f32, Vec<f32>) {
+    let player = player_entity(harness);
+    let hits = harness
+        .harness()
+        .events::<Damaged>()
+        .filter(|hit| hit.entity == player && !hit.periodic)
+        .map(|hit| hit.amount)
+        .collect();
+    let health = harness.world().get::<Health>(player).unwrap().current();
+    (health, hits)
+}
+
+#[test]
+fn a_hazards_touch_on_the_player_at_a_save_bites_no_sooner_after_the_load() {
+    // The map places no fire hazard (known issues, since 0.97); a lava
+    // basin's touch is the same kit contact, whose times the engine now
+    // saves with the basin. The player takes every bite, no window of its
+    // own, so a touch that forgot its last would bite at the load's first
+    // step.
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.step(10);
+    let health = harness.world_mut().get_mut::<Health>(player).unwrap();
+    *health = health.clone().with_invulnerability(0.0);
+    let lake = basin(&harness, SaveId::authored("lava_lake_west").0);
+    let x = harness.world().get::<Transform>(lake).unwrap().position.x + 96.0;
+    let surface = harness.world().get::<Transform>(lake).unwrap().position.y + 6.0;
+    stand(&mut harness, player, x, surface);
+    harness.step(1);
+    assert_eq!(hurt(&harness).1, [16.0], "the lava's bite");
+    let saved = capture(&harness);
+    let mut fresh = super::harness();
+    fresh.harness_mut().set_dt(1.0 / 60.0);
+    load(&mut fresh, saved.clone());
+    calm(&mut fresh);
+    assert_eq!(json(&capture(&fresh)), json(&saved));
+    fresh.world_mut().resource_mut::<Time>().resume();
+    let loaded = player_entity(&fresh);
+    // Back on the lava each step: both bite at the touch's next interval
+    // (0.1 s), not before. The push differs at the load's first step,
+    // which finds no contacts after a load, as a deck's rider does.
+    let mut bites = Vec::new();
+    for frame in 0..12 {
+        stand(&mut harness, player, x, surface);
+        stand(&mut fresh, loaded, x, surface);
+        harness.step(1);
+        fresh.step(1);
+        assert_eq!(hurt(&fresh), hurt(&harness), "frame {frame}");
+        if !hurt(&harness).1.is_empty() {
+            bites.push(frame);
+        }
+    }
+    assert!(
+        bites.first().is_some_and(|&first| first >= 4),
+        "the next bite waits out the interval: {bites:?}"
+    );
+}
+
+/// A New Game at Normal started as `load` starts a save, its clock held.
+fn new_run_held(harness: &mut UiHarness) {
+    harness.world_mut().resource_mut::<Time>().pause();
+    let start = RunStart {
+        difficulty: Difficulty::Normal,
+        save: None,
+    };
+    game_shell::start_run(harness.world_mut(), start, None);
+    settle(harness);
+    harness.step(1);
+    assert_eq!(top(harness), Some(game::GAMEPLAY));
+}
+
+/// Each saved entity's kind, by save ID.
+fn identities(harness: &UiHarness) -> BTreeMap<u64, &'static str> {
+    let world = harness.world();
+    world
+        .query::<(Entity, &Saved)>()
+        .map(|(entity, saved)| (saved.id().0, kind(world, entity)))
+        .collect()
+}
+
+#[test]
+fn a_save_the_engine_refuses_loads_as_a_fresh_run_with_nothing_staged() {
+    let (mut harness, _) = grounded();
+    busy(&mut harness);
+    let saved = capture(&harness);
+    assert!(!saved.balls.is_empty() && !saved.blocks.is_empty());
+    let mut newer = json(&saved);
+    newer["world"]["versions"]["components"]["health"] = serde_json::json!(99);
+    let newer: SaveGame = serde_json::from_value(newer).expect("a save reads");
+    let mut failed = super::harness();
+    load(&mut failed, newer);
+    let mut fresh = super::harness();
+    new_run_held(&mut fresh);
+    assert_eq!(identities(&failed), identities(&fresh), "nothing staged");
+    let counts = |harness: &UiHarness| {
+        let chemistry = harness.world().resource::<Chemistry>();
+        (
+            chemistry.pending(),
+            chemistry.ran(),
+            chemistry.dropped(),
+            chemistry.cut(),
+        )
+    };
+    assert_eq!(counts(&failed), counts(&fresh), "a fresh run's queue");
+    assert_eq!(queue(&failed), queue(&fresh), "and its cascades");
+    let next = example_01_platformer::shared::next_id(failed.world());
+    assert!(
+        !identities(&failed).contains_key(&next),
+        "the next ID is free"
+    );
+    assert_eq!(
+        super::body(&failed, player_entity(&failed)),
+        super::body(&fresh, player_entity(&fresh)),
+        "the player at the map's spawn"
+    );
+    assert_eq!(failed.world().resource::<Run>().area, None, "no area");
+}
+
+#[test]
+fn a_moved_player_saves_and_loads_to_itself_and_the_camera_frames_it() {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    let spawn = super::body(&harness, player);
+    // Far along the meadow from the map's spawn, on its ground.
+    let at = spawn + Vec2::new(1600.0, 0.0);
+    teleport(&mut harness, player, at);
+    harness.step(120);
+    let standing = super::body(&harness, player);
+    assert!(standing.distance(spawn) > 1000.0, "{standing} from {spawn}");
+    let saved = capture(&harness);
+    let mut fresh = super::harness();
+    load(&mut fresh, saved.clone());
+    calm(&mut fresh);
+    assert_eq!(
+        json(&capture(&fresh)),
+        json(&saved),
+        "saved again, the same"
+    );
+    let loaded = player_entity(&fresh);
+    assert_eq!(super::body(&fresh, loaded), standing);
+    let view = fresh
+        .world()
+        .resource::<tungsten::core::CameraController>()
+        .frame();
+    let inside =
+        |point: Vec2| point.cmpge(view.corner).all() && point.cmple(view.corner + view.size).all();
+    assert!(
+        inside(standing),
+        "the camera frames the saved point: {view:?}"
+    );
+    assert!(!inside(spawn), "not the map's spawn: {view:?}");
+}
+
+#[test]
+fn a_captures_recorded_spawns_are_the_kits_from_a_saved_source() {
+    let (mut harness, _) = grounded();
+    busy(&mut harness);
+    let saved = json(&capture(&harness));
+    let world = &saved["world"];
+    let prefabs: BTreeSet<&str> = std::iter::once(&world["global"])
+        .chain(
+            world["areas"]
+                .as_object()
+                .into_iter()
+                .flat_map(|areas| areas.values()),
+        )
+        .filter_map(|area| area["spawns"].as_array())
+        .flatten()
+        .filter_map(|spawn| spawn["prefab"].as_str())
+        .collect();
+    let kits = BTreeSet::from([
+        gun::BULLET_PREFAB,
+        toys::FIRE_MISSILE_PREFAB,
+        OrbKind::Health.prefab(),
+        OrbKind::Mana.prefab(),
+    ]);
+    assert!(prefabs.is_subset(&kits), "{prefabs:?}");
+    assert!(
+        prefabs.contains(gun::BULLET_PREFAB) && prefabs.contains(toys::FIRE_MISSILE_PREFAB),
+        "{prefabs:?}"
+    );
+}
+
+/// The harness's save slots.
+fn harness_slots(harness: &UiHarness) -> SaveSlots {
+    let dir = harness
+        .world()
+        .resource::<SaveSlots>()
+        .dir()
+        .map(Path::to_path_buf);
+    SaveSlots::new(dir)
+}
+
+/// Writes each `(slot, schema)` of `older` as an older build's save, as it
+/// wrote one, its data a stand-in, at `at` Unix milliseconds.
+fn write_older(harness: &UiHarness, older: &[(&str, u32)], at: u64) {
+    let slots = harness_slots(harness);
+    for &(slot, schema) in older {
+        let stamp = tungsten::core::SaveStamp::new(schema, "0.117.0", at);
+        let stand_in = serde_json::json!({ "player": [0.0, 0.0] });
+        slots
+            .save_stamped(slot, &stand_in, &stamp)
+            .expect("an older save is written");
+    }
+}
+
+#[test]
+fn every_schema_before_the_engines_saves_is_refused() {
+    // The template sample's 1 to 3, 01 (a) to (c)'s 4 to 6, whose map 01 (d)
+    // replaced, and 7 to 27, whose run 01's own records held: schema 28
+    // moves it onto the engine's saves.
+    for from in 1..SaveGame::SCHEMA {
         assert!(
             SaveGame::migrate(from, Value::Null).is_err(),
             "schema {from}"
@@ -2095,28 +2474,8 @@ fn schemas_one_to_six_are_refused() {
     // An older save on disk reads as an older version's, never loads.
     let dir = user_folder("schemas");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
-    let saves = harness
-        .world()
-        .resource::<SaveSlots>()
-        .dir()
-        .expect("a user folder")
-        .to_path_buf();
-    std::fs::create_dir_all(&saves).unwrap();
-    let older = [
-        ("slot_1", 1),
-        ("slot_2", 2),
-        ("slot_3", 3),
-        ("slot_4", 4),
-        ("slot_5", 5),
-        ("slot_6", 6),
-    ];
-    for (slot, schema) in older {
-        let envelope = serde_json::json!({
-            "envelope": 1, "slot": slot, "schema": schema, "engine_version": "0.92.0",
-            "saved_at_ms": 1_760_400_000_000_u64, "data": { "player": [0.0, 0.0] }
-        });
-        std::fs::write(saves.join(format!("{slot}.json")), envelope.to_string()).unwrap();
-    }
+    let older = [("slot_1", 1), ("slot_2", 6), ("slot_3", 7), ("slot_4", 27)];
+    write_older(&harness, &older, 1_760_400_000_000);
     let (slots, _) = game_shell::read_slots(harness.world_mut());
     for (slot, _) in older {
         let state = slots.iter().find(|(s, _)| *s == slot).map(|(_, s)| s);
@@ -2126,29 +2485,18 @@ fn schemas_one_to_six_are_refused() {
 }
 
 #[test]
-fn schema_6_autosaves_get_an_autosave() {
-    // An upgrader from 0.96: three autosaves of schema 6, which this build
-    // refuses, read as an older version's and give way to the run's, the
-    // oldest first.
-    let dir = user_folder("schema-6-autosaves");
+fn older_autosaves_get_an_autosave() {
+    // An upgrader: three autosaves of schema 27, which this build refuses,
+    // read as an older version's and give way to the run's, the oldest
+    // first.
+    let dir = user_folder("older-autosaves");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
-    let saves = harness
-        .world()
-        .resource::<SaveSlots>()
-        .dir()
-        .expect("a user folder")
-        .to_path_buf();
-    std::fs::create_dir_all(&saves).unwrap();
     for (slot, at) in game_shell::AUTOSAVES.into_iter().zip([3_u64, 1, 2]) {
-        let envelope = serde_json::json!({
-            "envelope": 1, "slot": slot, "schema": 6, "engine_version": "0.96.0",
-            "saved_at_ms": 1_760_400_000_000_u64 + at, "data": { "player": [0.0, 0.0] }
-        });
-        std::fs::write(saves.join(format!("{slot}.json")), envelope.to_string()).unwrap();
+        write_older(&harness, &[(slot, 27)], 1_760_400_000_000 + at);
     }
     start(&mut harness);
     harness.step(5);
-    let slots = SaveSlots::new(Some(saves));
+    let slots = harness_slots(&harness);
     let written: Vec<_> = game_shell::AUTOSAVES
         .into_iter()
         .filter(|slot| slots.load::<SaveGame>(slot).is_ok())
@@ -2181,820 +2529,6 @@ fn a_guttered_staff_light_loads_guttered() {
     fresh.step(2);
     let lantern = *fresh.world().get::<Lantern>(player_entity(&fresh)).unwrap();
     assert!(lantern.guttered && !lantern.lit(), "{lantern:?}");
-}
-
-#[test]
-fn schema_7_autosaves_migrate_and_rotate() {
-    // A 0.97 upgrader's three autosaves: schema 7, the player's abilities
-    // without the staff light, its lantern on.
-    let (mut source, player) = run();
-    let lantern = example_01_platformer::features::player::components::Lantern {
-        on: false,
-        guttered: false,
-    };
-    source.world_mut().insert(player, lantern);
-    source.step(12);
-    let mut data = serde_json::to_value(capture(&source)).unwrap();
-    as_schema_18(&mut data);
-    let entries = data
-        .pointer_mut("/player/abilities/entries")
-        .and_then(serde_json::Value::as_array_mut)
-        .unwrap();
-    entries.retain(|entry| entry["name"] != "staff_light");
-    assert_eq!(entries.len(), 11, "0.97's eleven");
-    data["lantern"] = true.into();
-    let dir = user_folder("schema-7-autosaves");
-    let mut harness = harness_with(UserFolder::At(dir.clone()));
-    let saves = harness
-        .world()
-        .resource::<SaveSlots>()
-        .dir()
-        .expect("a user folder")
-        .to_path_buf();
-    std::fs::create_dir_all(&saves).unwrap();
-    for (slot, at) in game_shell::AUTOSAVES.into_iter().zip([3_u64, 1, 2]) {
-        let envelope = serde_json::json!({
-            "envelope": 1, "slot": slot, "schema": 7, "engine_version": "0.97.0",
-            "saved_at_ms": 1_760_400_000_000_u64 + at, "data": data.clone()
-        });
-        std::fs::write(saves.join(format!("{slot}.json")), envelope.to_string()).unwrap();
-    }
-    // Each migrates: ready, with the staff light.
-    let slots = SaveSlots::new(Some(saves.clone()));
-    for slot in game_shell::AUTOSAVES {
-        let migrated = slots.load::<SaveGame>(slot).expect("schema 7 migrates");
-        let names: Vec<&str> = migrated.player.abilities.names().collect();
-        assert!(names.ends_with(&["staff_light", "toxic_flask"]), "{slot}");
-    }
-    let (states, _) = game_shell::read_slots(harness.world_mut());
-    for slot in game_shell::AUTOSAVES {
-        let state = states.iter().find(|(s, _)| *s == slot).map(|(_, s)| s);
-        assert!(matches!(state, Some(SlotState::Ready(..))), "{slot}");
-    }
-    // The run's first autosave takes the oldest.
-    start(&mut harness);
-    harness.step(5);
-    let schemas: Vec<u64> = game_shell::AUTOSAVES
-        .into_iter()
-        .map(|slot| {
-            let text = std::fs::read_to_string(saves.join(format!("{slot}.json"))).unwrap();
-            let envelope: serde_json::Value = serde_json::from_str(&text).unwrap();
-            envelope["schema"].as_u64().unwrap()
-        })
-        .collect();
-    let now = u64::from(SaveGame::SCHEMA);
-    assert_eq!(schemas, [7, now, 7], "autosave_2, the oldest, rotated");
-    // A migrated save loads with its light, which relights at once.
-    let migrated = slots.load::<SaveGame>("autosave_1").unwrap();
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    fresh.world_mut().resource_mut::<Time>().resume();
-    fresh.step(2);
-    let player = player_entity(&fresh);
-    let lantern = fresh
-        .world()
-        .get::<example_01_platformer::features::player::components::Lantern>(player)
-        .copied()
-        .unwrap();
-    assert!(lantern.lit(), "{lantern:?}");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-/// Walks `old` and `new` together, pushing the path of each number that
-/// differs, which must be a save ID that `to` moves where `new` has it;
-/// anything else must be equal. Members `new` adds are skipped.
-fn moved_ids(
-    old: &Value,
-    new: &Value,
-    path: &str,
-    to: &dyn Fn(u64) -> u64,
-    moved: &mut Vec<String>,
-) {
-    match (old, new) {
-        (Value::Object(old), Value::Object(new)) => {
-            for (key, value) in old {
-                let next = new.get(key).unwrap_or_else(|| panic!("{path}/{key} kept"));
-                moved_ids(value, next, &format!("{path}/{key}"), to, moved);
-            }
-        }
-        (Value::Array(old), Value::Array(new)) => {
-            assert_eq!(old.len(), new.len(), "{path}: as many");
-            for (i, (value, next)) in old.iter().zip(new).enumerate() {
-                moved_ids(value, next, &format!("{path}/{i}"), to, moved);
-            }
-        }
-        _ if old == new => {}
-        // An `f32` written out and read back may print a digit apart.
-        (Value::Number(a), Value::Number(b))
-            if a.is_f64() && a.as_f64().map(|v| v as f32) == b.as_f64().map(|v| v as f32) => {}
-        _ => {
-            let id = old
-                .as_u64()
-                .unwrap_or_else(|| panic!("{path}: {old} became {new}"));
-            assert_eq!(new.as_u64(), Some(to(id)), "{path}: {id}");
-            moved.push(path.to_owned());
-        }
-    }
-}
-
-/// Puts each list of `old` that holds a map object in the order its IDs
-/// take through `to`, as schema 23's migration leaves a save's lists, so
-/// [`moved_ids`] walks each entry beside its migrated self.
-fn sorted_as_23(old: &mut Value, to: &dyn Fn(u64) -> u64) {
-    let key = |entry: &Value, field: &str| entry[field].as_u64().map(to);
-    for list in [
-        "platforms",
-        "hazards",
-        "basins",
-        "elevators",
-        "geysers",
-        "dummies",
-        "enemies",
-    ] {
-        if let Some(entries) = old.get_mut(list).and_then(Value::as_array_mut) {
-            entries.sort_by_key(|entry| key(entry, "id"));
-        }
-    }
-    if let Some(throws) = old.get_mut("throws").and_then(Value::as_array_mut) {
-        throws.sort_by_key(|throw| key(throw, "body"));
-    }
-    if let Some(gone) = old.get_mut("gone").and_then(Value::as_array_mut) {
-        gone.sort_by_key(|id| id.as_u64().map(to));
-    }
-}
-
-/// A schema 9 save ID as schema 10 numbers it, written out: the lake's lava
-/// as its west pool's and the shelf's, the decks, the dummy, the enemies,
-/// and the placed orbs, the player's and every later one past the new
-/// beetle.
-fn schema_10_id(id: u64) -> u64 {
-    match id {
-        839 => 0,
-        840 => 2,
-        841..=845 => id - 838,
-        859 => 8,
-        860..=877 => id - 851,
-        878.. => id - 850,
-        _ => panic!("{id}: no schema 9 save names it"),
-    }
-}
-
-/// A schema 11 save ID as schema 12 numbers it: from the first placed
-/// orb's on, past the map's seven goblins.
-fn schema_12_id(id: u64) -> u64 {
-    if id >= save::S11_PICKUPS {
-        id + save::SHIFT_12
-    } else {
-        id
-    }
-}
-
-/// A schema 18 save ID as schema 19 numbers it (e01hollow): from the first
-/// placed orb's on past the map's three new enemies, and from the player's
-/// on past its three geysers too.
-fn schema_19_id(id: u64) -> u64 {
-    if id >= save::S18_PLAYER {
-        id + save::SHIFT_19
-    } else if id >= save::S18_PICKUPS {
-        id + save::SHIFT_19_PICKUPS
-    } else {
-        id
-    }
-}
-
-/// A schema 19 save ID as schema 18 numbered it, for what schema 18 had:
-/// [`schema_19_id`] undone.
-fn schema_18_id(id: u64) -> u64 {
-    if id >= save::S18_PLAYER + save::SHIFT_19 {
-        id - save::SHIFT_19
-    } else if id >= save::S18_PICKUPS + save::SHIFT_19_PICKUPS {
-        id - save::SHIFT_19_PICKUPS
-    } else {
-        id
-    }
-}
-
-/// A schema 21 save ID as schema 22 numbers it: from the first placed
-/// orb's on past the map's seven new enemies.
-fn schema_22_id(id: u64) -> u64 {
-    if id >= save::S21_PICKUPS {
-        id + save::SHIFT_22
-    } else {
-        id
-    }
-}
-
-/// A schema 18 save ID as schema 22 numbers it: [`schema_19_id`], which
-/// schemas 20 and 21 keep, then [`schema_22_id`].
-fn schema_22_from_18(id: u64) -> u64 {
-    schema_22_id(schema_19_id(id))
-}
-
-/// A schema 22 save ID as schema 23 numbers it: the map's objects and the
-/// player, 0 to 56, at the IDs their names derive, every runtime one kept.
-fn schema_23_id(id: u64) -> u64 {
-    usize::try_from(id)
-        .ok()
-        .and_then(|at| save::S22_NAMES.get(at))
-        .map_or(id, |name| SaveId::authored(name).0)
-}
-
-/// A schema 18 save ID as schema 23 numbers it.
-fn schema_23_from_18(id: u64) -> u64 {
-    schema_23_id(schema_22_from_18(id))
-}
-
-/// Schema 22's first runtime save ID, the player's next.
-const S22_RUNTIME: u64 = save::S22_NAMES.len() as u64;
-
-/// `path` with every index starred: a tuple's place too, where only an ID
-/// can have moved.
-fn starred(path: &str) -> String {
-    path.split('/')
-        .map(|part| {
-            if part.parse::<usize>().is_ok() {
-                "*"
-            } else {
-                part
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-/// `fixture`'s envelope written to slot 1 of a user folder of its own, and
-/// read back through the migration.
-fn migrate(tag: &str, fixture: &str) -> (SaveGame, std::path::PathBuf) {
-    let dir = user_folder(tag);
-    let harness = harness_with(UserFolder::At(dir.clone()));
-    let saves = harness
-        .world()
-        .resource::<SaveSlots>()
-        .dir()
-        .expect("a user folder")
-        .to_path_buf();
-    std::fs::create_dir_all(&saves).unwrap();
-    std::fs::write(saves.join("slot_1.json"), fixture).unwrap();
-    let migrated = SaveSlots::new(Some(saves))
-        .load::<SaveGame>("slot_1")
-        .expect("the fixture migrates");
-    (migrated, dir)
-}
-
-/// Drops schema 9's ping-pong deck, the elevator's, from `old`'s platforms:
-/// the migration drops it.
-fn without_old_lift(old: &mut Value) {
-    let platforms = old["platforms"].as_array_mut().unwrap();
-    let before = platforms.len();
-    platforms.retain(|platform| platform["id"].as_u64() != Some(845));
-    assert_eq!(platforms.len() + 1, before, "the elevator's old deck saved");
-}
-
-/// What schema 11 makes of an older save: its one black hole the list's
-/// only one, or an empty list, and the gun's rounds kept to its nine.
-fn as_schema_11(old: &mut Value) {
-    let hole = old
-        .as_object_mut()
-        .unwrap()
-        .remove("black_hole")
-        .unwrap_or(Value::Null);
-    old["black_holes"] = Value::Array(if hole.is_null() {
-        Vec::new()
-    } else {
-        vec![hole]
-    });
-    let entries = old["player"]["abilities"]["entries"]
-        .as_array_mut()
-        .unwrap();
-    for entry in entries.iter_mut().filter(|entry| entry["name"] == "gun") {
-        if let Some(charges) = entry["charges"].as_u64() {
-            entry["charges"] = Value::from(charges.min(u64::from(gun::MAGAZINE)));
-        }
-    }
-}
-
-/// What schema 12 writes of an older save's balls: each array's trailing
-/// `null`s left off.
-fn as_schema_12(old: &mut Value) {
-    for ball in old["balls"].as_array_mut().unwrap() {
-        let record = ball.as_array_mut().unwrap();
-        while record.len() > 6 && record.last().is_some_and(Value::is_null) {
-            record.pop();
-        }
-    }
-}
-
-/// What schema 13 makes of an older save's player: its point, the sprite's
-/// corner, moved to the wizard's frame, so the body stays where it stood.
-fn as_schema_13(old: &mut Value) {
-    let at = &mut old["player"]["position"];
-    let corner = Vec2::new(
-        at[0].as_f64().unwrap() as f32,
-        at[1].as_f64().unwrap() as f32,
-    ) + save::S12_BODY_OFFSET
-        - body_offset();
-    *at = Value::from(vec![corner.x, corner.y]);
-}
-
-/// What schema 14 makes of an older save: its hints gone; the player's
-/// maximum the same at every difficulty, its health keeping its share; its
-/// reach, each crawler's damage and each troll's walk at their new bases,
-/// their modifiers kept; and each saved cold build-up halved with the cold
-/// ladder's gates.
-fn as_schema_14(old: &mut Value) {
-    old.as_object_mut().unwrap().remove("hints");
-    let full = f64::from(MAX_HEALTH);
-    let player = &mut old["player"];
-    let current = player["health"]["current"].as_f64().unwrap();
-    let max = player["health"]["max"].as_f64().unwrap();
-    player["health"]["current"] = Value::from((current / max * full).clamp(0.0, full));
-    player["health"]["max"] = Value::from(full);
-    player["stats"]["max_health"]["base"] = Value::from(full);
-    player["stats"]["pickup_radius"]["base"] = Value::from(f64::from(PICKUP_RADIUS));
-    let halve = |buckets: &mut Value| {
-        if let Some(fill) = buckets.get_mut("damage.cold") {
-            *fill = Value::from(fill.as_f64().unwrap() * 0.5);
-        }
-    };
-    halve(&mut player["buckets"]);
-    for dummy in old["dummies"].as_array_mut().unwrap() {
-        halve(&mut dummy["buckets"]);
-    }
-    for enemy in old["enemies"].as_array_mut().unwrap() {
-        if enemy["kind"] == "crawler" {
-            enemy["stats"]["damage"]["base"] = Value::from(f64::from(crawler::DAMAGE));
-        }
-        if enemy["kind"] == "troll" {
-            enemy["stats"]["move_speed"]["base"] = Value::from(f64::from(troll::MOVE_SPEED));
-        }
-        halve(&mut enemy["buckets"]);
-    }
-}
-
-/// What schema 17 makes of an older save (e01foes): each crawler's
-/// `move_speed` base at its run's.
-fn as_schema_17(old: &mut Value) {
-    for enemy in old["enemies"].as_array_mut().unwrap() {
-        if enemy["kind"] == "crawler" {
-            enemy["stats"]["move_speed"]["base"] = Value::from(f64::from(crawler::MOVE_SPEED));
-        }
-    }
-}
-
-/// What schema 19 makes of an older save's bat c (e01hollow): its home at
-/// its new roost under the lowered lintel, and its body there too when its
-/// box met the lintel's row. Bat c is the map's bat homed at the roost's x.
-fn as_schema_19(old: &mut Value) {
-    let [low, high] = save::S19_LINTEL;
-    let roost = save::S19_BAT_C_HOME;
-    let info = kind_body(EnemyKind::Bat);
-    for enemy in old["enemies"].as_array_mut().unwrap() {
-        let bat_c = enemy["kind"] == "bat"
-            && enemy["enemy"]["home"][0].as_f64() == Some(f64::from(roost.x));
-        if !bat_c {
-            continue;
-        }
-        enemy["enemy"]["home"] = serde_json::json!([roost.x, roost.y]);
-        let at = &enemy["position"];
-        let centre = Vec2::new(
-            at[0].as_f64().unwrap() as f32,
-            at[1].as_f64().unwrap() as f32,
-        ) + info.centre;
-        let (min, max) = (centre - info.half, centre + info.half);
-        if min.x < high.x && max.x > low.x && min.y < high.y && max.y > low.y {
-            let corner = roost - info.centre;
-            enemy["position"] = serde_json::json!([corner.x, corner.y]);
-            enemy["velocity"] = serde_json::json!([0.0, 0.0]);
-        }
-    }
-}
-
-/// What schema 20 makes of an older save (e01flask): its slot from the
-/// flask's on one place up, and the flask's ability, ready, last.
-fn as_schema_20(old: &mut Value) {
-    let slot = old["spell"].as_u64().unwrap();
-    if slot >= save::S20_FLASK_SLOT {
-        old["spell"] = Value::from(slot + 1);
-    }
-    let entries = old["player"]["abilities"]["entries"]
-        .as_array_mut()
-        .unwrap();
-    if !entries.iter().any(|entry| entry["name"] == "toxic_flask") {
-        entries.push(serde_json::json!({
-            "name": "toxic_flask", "ability": "toxic_flask", "cooldown_left": 0.0,
-            "charges": null, "refill_left": 0.0, "interval_left": 0.0
-        }));
-    }
-}
-
-/// What schema 22 makes of an older save: each wisp's `max_health` base
-/// at its new maximum, its health and maximum keeping their share.
-fn as_schema_22(old: &mut Value) {
-    let full = f64::from(wisp::MAX_HEALTH);
-    for enemy in old["enemies"].as_array_mut().unwrap() {
-        if enemy["kind"] != "wisp" {
-            continue;
-        }
-        let base = enemy["stats"]["max_health"]["base"].as_f64().unwrap();
-        for key in ["current", "max"] {
-            let value = enemy["health"][key].as_f64().unwrap();
-            enemy["health"][key] = Value::from(value * full / base);
-        }
-        enemy["stats"]["max_health"]["base"] = Value::from(full);
-    }
-}
-
-/// What schema 25 makes of an older save: the player's, the dummies' and
-/// the enemies' ailment buckets gone, the stats' new threshold an added
-/// member [`moved_ids`] skips.
-fn as_schema_25(old: &mut Value) {
-    old["player"].as_object_mut().unwrap().remove("buckets");
-    for list in ["dummies", "enemies"] {
-        for entry in old[list].as_array_mut().unwrap() {
-            entry.as_object_mut().unwrap().remove("buckets");
-        }
-    }
-}
-
-/// What schema 26 makes of an older save: the cascade's explosions,
-/// shatters and steam bursts gone, chemistry's rules now.
-fn as_schema_26(old: &mut Value) {
-    if let Some(entries) = old["cascades"]["entries"].as_array_mut() {
-        entries.retain(|entry| {
-            !["explosion", "shatter", "steam"].contains(&entry["kind"].as_str().unwrap_or(""))
-        });
-    }
-}
-
-/// A capture as the code before schema 23 wrote it, at schema 22: the
-/// map's objects and the player at their spawn order's save IDs, through
-/// [`save::S22_NAMES`], every runtime one after them, past schema 22's
-/// player's, and no prop marked the map's, so a relabel test still tests
-/// the migration it names.
-fn as_schema_22_capture(data: &mut Value) {
-    save::map_ids(data, &|id| {
-        let named = save::S22_NAMES
-            .iter()
-            .position(|name| SaveId::authored(name).0 == id);
-        match named {
-            Some(at) => at as u64,
-            None => {
-                assert!(id < AUTHORED, "{id}: no schema 22 name");
-                id + S22_RUNTIME
-            }
-        }
-    });
-    for prop in data["props"].as_array_mut().unwrap() {
-        prop.as_object_mut().unwrap().remove("map");
-    }
-}
-
-/// `data`, a capture, as [`as_schema_22_capture`] and the migration leave
-/// it: every runtime save ID past schema 22's player's.
-fn runtime_past_s22(data: &mut Value) {
-    save::map_ids(data, &|id| {
-        if id < AUTHORED { id + S22_RUNTIME } else { id }
-    });
-}
-
-/// A wisp's health before schema 22.
-const S21_WISP_HEALTH: f64 = 40.0;
-
-/// A capture as the code before schema 22 wrote it, at schema 21: without
-/// the map's seven new enemies, wherever a list names them, every later
-/// save ID back by [`save::SHIFT_22`] and each wisp at its old health, so a
-/// relabel test still tests the migration it names.
-fn as_schema_21_capture(data: &mut Value) {
-    as_schema_22_capture(data);
-    let new = save::S21_PICKUPS..save::S21_PICKUPS + save::SHIFT_22;
-    let named = |id: Option<u64>| id.is_some_and(|id| new.contains(&id));
-    data["enemies"]
-        .as_array_mut()
-        .unwrap()
-        .retain(|enemy| !named(enemy["id"].as_u64()));
-    data["gone"]
-        .as_array_mut()
-        .unwrap()
-        .retain(|id| !named(id.as_u64()));
-    save::map_ids(data, &|id| {
-        if id >= new.end {
-            id - save::SHIFT_22
-        } else {
-            id
-        }
-    });
-    let full = f64::from(wisp::MAX_HEALTH);
-    for enemy in data["enemies"].as_array_mut().unwrap() {
-        if enemy["kind"] != "wisp" {
-            continue;
-        }
-        for key in ["current", "max"] {
-            let value = enemy["health"][key].as_f64().unwrap();
-            enemy["health"][key] = Value::from(value * S21_WISP_HEALTH / full);
-        }
-        enemy["stats"]["max_health"]["base"] = Value::from(S21_WISP_HEALTH);
-    }
-}
-
-/// A capture as the 0.110 release wrote it, at schema 19 (e01flask): as
-/// schema 21 wrote it ([`as_schema_21_capture`]), its slot one place back
-/// from the force push's on, which must not be the flask's, and no toxic
-/// flask among the player's abilities, so a relabel test still tests the
-/// migration it names.
-fn as_0_110(data: &mut Value) {
-    as_schema_21_capture(data);
-    let slot = data["spell"].as_u64().unwrap();
-    assert_ne!(slot, save::S20_FLASK_SLOT, "a slot 0.110 had");
-    if slot > save::S20_FLASK_SLOT {
-        data["spell"] = Value::from(slot - 1);
-    }
-    data["player"]["abilities"]["entries"]
-        .as_array_mut()
-        .unwrap()
-        .retain(|entry| entry["name"] != "toxic_flask");
-    // Nothing living or armoured, a plain bridge troll with its armour's
-    // bases off and its modifiers kept, and no flasks.
-    for list in ["dummies", "enemies"] {
-        for entry in data[list].as_array_mut().unwrap() {
-            entry["tags"]
-                .as_array_mut()
-                .unwrap()
-                .retain(|tag| tag != "living" && tag != "armoured");
-            let bridge = entry["id"].as_u64() == Some(save::S21_BRIDGE_TROLL)
-                && entry["kind"] == "troll"
-                && entry["map"] == true;
-            if !bridge {
-                continue;
-            }
-            entry["enemy"].as_object_mut().unwrap().remove("variant");
-            let resist = entry["resist"].as_object_mut().unwrap();
-            for (tag, _) in save::S21_ARMOUR {
-                match resist.get_mut(tag) {
-                    Some(Value::Object(factor)) => {
-                        factor.remove("base");
-                    }
-                    _ => {
-                        resist.remove(tag);
-                    }
-                }
-            }
-        }
-    }
-    data.as_object_mut().unwrap().remove("flasks");
-}
-
-/// What schema 21 makes of an older save (e01flask): `living` on its
-/// dummies and every enemy but a wisp, `armoured` on its beetles, each tag
-/// list in order, and the map's troll that `to` numbers the bridge's the
-/// armoured troll, armour's table its bases.
-fn as_schema_21(old: &mut Value, to: &dyn Fn(u64) -> u64) {
-    let add = |entry: &mut Value, tag: &str| {
-        let tags = entry["tags"].as_array_mut().unwrap();
-        if !tags.iter().any(|held| held == tag) {
-            tags.push(Value::from(tag));
-            tags.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
-        }
-    };
-    for dummy in old["dummies"].as_array_mut().unwrap() {
-        add(dummy, "living");
-    }
-    for enemy in old["enemies"].as_array_mut().unwrap() {
-        if enemy["kind"] != "wisp" {
-            add(enemy, "living");
-        }
-        if enemy["kind"] == "beetle" {
-            add(enemy, "armoured");
-        }
-        let bridge = enemy["id"].as_u64().map(to) == Some(save::S21_BRIDGE_TROLL)
-            && enemy["kind"] == "troll"
-            && enemy["map"] == true;
-        if !bridge {
-            continue;
-        }
-        enemy["enemy"]["variant"] = Value::from("armoured");
-        add(enemy, "armoured");
-        let resist = enemy["resist"].as_object_mut().unwrap();
-        for (tag, base) in save::S21_ARMOUR {
-            match resist.get_mut(tag) {
-                Some(Value::Object(factor)) => {
-                    factor.insert("base".to_string(), Value::from(base));
-                }
-                _ => {
-                    resist.insert(tag.to_string(), Value::from(base));
-                }
-            }
-        }
-    }
-}
-
-/// A capture as the 0.109 code wrote it, at schema 18 (e01hollow): as 0.110
-/// wrote it ([`as_0_110`]), then without the map's three new enemies, its
-/// geysers and its stones, wherever a list names them, every other save ID
-/// back by [`schema_18_id`], and bat c's home and body a row up at its
-/// 0.110 roost, so a relabel test still tests the migration it names.
-fn as_schema_18(data: &mut Value) {
-    as_0_110(data);
-    let enemies = save::S18_PICKUPS..save::S18_PICKUPS + save::SHIFT_19_PICKUPS;
-    let geysers = save::S18_PLAYER + save::SHIFT_19_PICKUPS..save::S18_PLAYER + save::SHIFT_19;
-    let new = |id: Option<u64>| id.is_some_and(|id| enemies.contains(&id) || geysers.contains(&id));
-    data["enemies"]
-        .as_array_mut()
-        .unwrap()
-        .retain(|enemy| !new(enemy["id"].as_u64()));
-    data["gone"]
-        .as_array_mut()
-        .unwrap()
-        .retain(|id| !new(id.as_u64()));
-    let fields = data.as_object_mut().unwrap();
-    fields.remove("geysers");
-    fields.remove("stones");
-    save::map_ids(data, &schema_18_id);
-    let roost = save::S19_BAT_C_HOME;
-    let row = Vec2::new(0.0, 64.0);
-    let corner = roost - kind_body(EnemyKind::Bat).centre;
-    for enemy in data["enemies"].as_array_mut().unwrap() {
-        if enemy["id"].as_u64() != Some(save::S18_BAT_C) || enemy["kind"] != "bat" {
-            continue;
-        }
-        let old = roost - row;
-        enemy["enemy"]["home"] = serde_json::json!([old.x, old.y]);
-        if enemy["position"] == serde_json::json!([corner.x, corner.y]) {
-            let up = corner - row;
-            enemy["position"] = serde_json::json!([up.x, up.y]);
-        }
-    }
-}
-
-/// What schema 15 makes of an older save's props in the start's new wall
-/// (01 (k)): each one whose box met the wall stands where the migration set
-/// it, at rest. `a_schema_13_save_moves_its_crates_out_of_the_start_wall`
-/// holds where that is.
-fn as_schema_15(old: &mut Value, new: &Value) {
-    let [wall, face] = save::S15_WALL;
-    let moved = new["props"].as_array().unwrap();
-    for (prop, to) in old["props"].as_array_mut().unwrap().iter_mut().zip(moved) {
-        let kind: PropKind = serde_json::from_value(prop["kind"].clone()).unwrap();
-        let at = &prop["position"];
-        let point = Vec2::new(
-            at[0].as_f64().unwrap() as f32,
-            at[1].as_f64().unwrap() as f32,
-        );
-        let (min, max) = (
-            point + props::centre(kind) - props::half(kind),
-            point + props::centre(kind) + props::half(kind),
-        );
-        if min.x < face.x && max.x > wall.x && min.y < face.y && max.y > wall.y {
-            prop["position"] = to["position"].clone();
-            prop["velocity"] = serde_json::json!([0.0, 0.0]);
-        }
-    }
-}
-
-/// Each saved body's box in `save`, min and max, by save ID: the player,
-/// the dummies, the enemies, the balls, the blocks and scraps, the props
-/// and the orbs.
-fn saved_boxes(save: &SaveGame) -> Vec<(u64, Vec2, Vec2)> {
-    let boxed = |id: u64, point: [f32; 2], centre: Vec2, half: Vec2| {
-        let middle = Vec2::from(point) + centre;
-        (id, middle - half, middle + half)
-    };
-    let player = &save.player;
-    let mut out = vec![boxed(
-        player.id,
-        player.position,
-        body_offset(),
-        player_half(),
-    )];
-    out.extend(save.dummies.iter().map(|dummy| {
-        boxed(
-            dummy.id,
-            dummy.position,
-            actor_body("dummy").centre,
-            actor_body("dummy").half,
-        )
-    }));
-    out.extend(save.enemies.iter().map(|enemy| {
-        let body = kind_body(enemy.kind);
-        boxed(enemy.id, enemy.position, body.centre, body.half)
-    }));
-    out.extend(save.balls.iter().map(|ball| {
-        if ball.small {
-            let half = Vec2::splat(toys::SMALL_BALL_RADIUS);
-            boxed(ball.id, ball.position, toys::SMALL_BALL_CENTRE, half)
-        } else {
-            let half = Vec2::splat(toys::BALL_RADIUS);
-            boxed(ball.id, ball.position, toys::BALL_CENTRE, half)
-        }
-    }));
-    out.extend(save.blocks.iter().map(|block| match block.scrap {
-        Some(_) => boxed(
-            block.id,
-            block.position,
-            toys::SCRAP_HALF + Vec2::ONE,
-            toys::SCRAP_HALF,
-        ),
-        None => boxed(
-            block.id,
-            block.position,
-            IRON_HALF + Vec2::splat(4.0),
-            IRON_HALF,
-        ),
-    }));
-    out.extend(save.props.iter().map(|prop| {
-        boxed(
-            prop.id,
-            prop.position,
-            props::centre(prop.kind),
-            props::half(prop.kind),
-        )
-    }));
-    out.extend(
-        save.orbs
-            .iter()
-            .map(|orb| boxed(orb.id, orb.position, drops::ORB_CENTRE, drops::ORB_HALF)),
-    );
-    out
-}
-
-/// Whether body `id` of `save` stands at rest on the clearing's floor
-/// between the wall's face and the terrace's, its box meeting no other
-/// saved body's: where schema 15 sets a body out of the start's wall.
-fn on_the_floor_clear(save: &SaveGame, id: u64) -> Result<(), String> {
-    let boxes = saved_boxes(save);
-    let &(_, min, max) = boxes
-        .iter()
-        .find(|(own, ..)| *own == id)
-        .ok_or(format!("{id} saved"))?;
-    if min.x < save::S15_SPAN[0] || max.x > save::S15_SPAN[1] {
-        return Err(format!("{id} at x {} to {}", min.x, max.x));
-    }
-    if (max.y - (save::S15_FLOOR - 0.5)).abs() > 1e-3 {
-        return Err(format!("{id}'s foot at {}", max.y));
-    }
-    for &(other, a, b) in &boxes {
-        if other != id && min.x < b.x && max.x > a.x && min.y < b.y && max.y > a.y {
-            return Err(format!("{id} meets {other}"));
-        }
-    }
-    Ok(())
-}
-
-/// `data`, a capture's JSON, as a schema 14 save's envelope: the two
-/// schemas keep the same shape.
-fn as_schema_14_envelope(data: &Value) -> String {
-    as_envelope(data, 14)
-}
-
-/// `data`, a capture's JSON, as a save's envelope at `schema`.
-fn as_envelope(data: &Value, schema: u32) -> String {
-    let envelope = serde_json::json!({
-        "envelope": 1, "slot": "slot_1", "schema": schema, "engine_version": "0.105.0",
-        "saved_at_ms": 1_792_900_000_000_u64, "data": data
-    });
-    serde_json::to_string(&envelope).unwrap()
-}
-
-/// Sets aside what a capture of a migrated save adds: the map's new enemies
-/// (`added`), the elevator at rest and the basins at rest, which a save
-/// from before schema 10 has none of, the shoves and steps 01 gives the
-/// controllers at a load, which a save from before 0.105 has none of, and
-/// the geysers at their offsets, which a save from before schema 19 has
-/// none of, with no stones.
-fn without_new(save: &mut Value, added: &[u64]) {
-    let unset = |controller: Option<&mut Value>| {
-        if let Some(fields) = controller.and_then(Value::as_object_mut) {
-            fields.remove("shove");
-            fields.remove("step_height");
-            fields.remove("mask");
-        }
-    };
-    unset(save["player"].get_mut("controller"));
-    let enemies = save["enemies"].as_array_mut().unwrap();
-    enemies.retain(|enemy| !added.contains(&enemy["id"].as_u64().unwrap()));
-    for enemy in enemies.iter_mut() {
-        unset(enemy.get_mut("controller"));
-    }
-    let lifts = save["elevators"].as_array().unwrap();
-    assert_eq!(lifts.len(), 1, "the elevator");
-    assert_eq!(lifts[0]["stop"], "bottom", "at rest");
-    assert!(lifts[0]["follower"].is_null(), "at rest");
-    save["elevators"] = Value::Array(Vec::new());
-    for basin in save["basins"].as_array().unwrap() {
-        assert_eq!(basin["cold"].as_f64(), Some(0.0), "unchilled");
-        assert!(basin["crust"].is_null(), "uncrusted");
-    }
-    save["basins"] = Value::Array(Vec::new());
-    let mut geysers = save["geysers"].as_array().unwrap().clone();
-    geysers.sort_by_key(|saved| saved["id"].as_u64().and_then(map_order));
-    let offsets: Vec<(GeyserPhase, f32)> = [0.0, 1.3, 2.6].map(geyser::at_offset).into();
-    assert_eq!(geysers.len(), offsets.len(), "the map's geysers");
-    for (saved, (phase, left)) in geysers.iter().zip(offsets) {
-        let saved_phase: GeyserPhase = serde_json::from_value(saved["phase"].clone()).unwrap();
-        assert_eq!(saved_phase, phase, "at its offset");
-        assert!((saved["left"].as_f64().unwrap() as f32 - left).abs() < 1e-3);
-    }
-    save["geysers"] = Value::Array(Vec::new());
-    assert!(save.get("stones").is_none(), "no stones");
 }
 
 /// The paths where `a` and `b` differ, at most 20; fractions within a
@@ -3085,145 +2619,6 @@ fn placed_health_orbs_never_fade_and_one_taken_stays_gone_through_a_load() {
     assert_eq!(left, expected, "the taken one gone, the rest there");
 }
 
-#[test]
-fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
-    // 0.98's save, captured from its build with every saved ID field in
-    // use above its player's: summoned trolls holding and throwing iron, a
-    // bat's hit, touches, sources, a waiting explosion and jump.
-    const FIXTURE: &str = include_str!("fixtures/schema8.json");
-    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-    let mut old = envelope["data"].clone();
-    let from = old["player"]["id"].as_u64().unwrap();
-    assert_eq!((envelope["schema"].as_u64(), from), (Some(8), 873));
-    let (migrated, dir) = migrate("schema-8", FIXTURE);
-    // Every ID field moved, by schema 9's shift, schema 10's remap and
-    // schema 12's shift, the elevator's old deck dropped, and nothing else.
-    without_old_lift(&mut old);
-    as_schema_11(&mut old);
-    as_schema_12(&mut old);
-    as_schema_13(&mut old);
-    as_schema_14(&mut old);
-    as_schema_17(&mut old);
-    as_schema_19(&mut old);
-    as_schema_20(&mut old);
-    let to_22 = |id: u64| {
-        schema_22_from_18(schema_12_id(schema_10_id(if id >= from {
-            id + save::SHIFT_9
-        } else {
-            id
-        })))
-    };
-    let to = |id: u64| schema_23_id(to_22(id));
-    let mut moved = Vec::new();
-    as_schema_21(&mut old, &to_22);
-    as_schema_22(&mut old);
-    sorted_as_23(&mut old, &to);
-    as_schema_25(&mut old);
-    as_schema_26(&mut old);
-    moved_ids(&old, &json(&migrated), "", &to, &mut moved);
-    let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
-    let expected = [
-        "/next_id",
-        "/player/id",
-        "/platforms/*/id",
-        "/gone/*",
-        "/player/sources/*/1",
-        "/dummies/*/id",
-        "/dummies/*/sources/*/1",
-        "/enemies/*/id",
-        "/enemies/*/sources/*/1",
-        "/enemies/*/hit/*",
-        "/enemies/*/touches/*/0",
-        "/enemies/*/held",
-        "/throws/*/body",
-        "/throws/*/thrower",
-        "/missiles/*/id",
-        "/missiles/*/source",
-        "/bullets/*/id",
-        "/bullets/*/source",
-        "/orbs/*/id",
-        "/black_holes/*/id",
-        "/blocks/*/id",
-        "/balls/*/0",
-        "/cascades/entries/*/target",
-        "/cascades/entries/*/source",
-        "/cascades/entries/*/chain/*",
-    ];
-    assert_eq!(fields, expected.into_iter().map(starred).collect());
-    // Loaded: the player under its moved ID, the gone bat gone, the map
-    // enemies since added alive, five in schema 9, the beetle in 10, the
-    // goblins in 12, the hollow's three in 19 and the seven in 22, and
-    // every other saved thing as it was saved.
-    let mut run = super::harness();
-    load(&mut run, migrated.clone());
-    let player = player_entity(&run);
-    let world = run.world();
-    assert_eq!(
-        example_01_platformer::shared::save_id(world, player)
-            .unwrap()
-            .0,
-        schema_23_id(schema_22_from_18(schema_12_id(save::S10_PLAYER)))
-    );
-    let live: BTreeSet<u64> = enemies::live(world).into_iter().map(|(id, _)| id).collect();
-    let added: Vec<u64> = (save::S10_ENEMIES + 13..save::S10_ENEMIES + MAP_ENEMIES)
-        .map(schema_23_id)
-        .collect();
-    assert_eq!(added.len(), 23);
-    assert!(added.iter().all(|id| live.contains(id)), "{live:?}");
-    assert!(!live.contains(&to(863)), "the gone bat");
-    assert_eq!(
-        placed_orbs(&run).len() as u64,
-        save::MAP_PICKUPS,
-        "every orb there"
-    );
-    let mut again = json(&capture(&run));
-    without_new(&mut again, &added);
-    // A recapture names the build that took it, the fixture 0.98's.
-    let migrated = json(&migrated);
-    assert_eq!(
-        again["meta"]["game_version"].as_str(),
-        Some(env!("CARGO_PKG_VERSION"))
-    );
-    again["meta"]["game_version"] = migrated["meta"]["game_version"].clone();
-    let mut differ = Vec::new();
-    differences(&again, &migrated, "", &mut differ);
-    assert!(
-        differ.is_empty(),
-        "the migrated save, reloaded whole: {differ:?}"
-    );
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-/// The map's objects a save names, by save ID: the basins, the decks with
-/// the elevator's, the dummy, the enemies and the placed orbs.
-fn map_ids(harness: &UiHarness) -> [Vec<u64>; 5] {
-    let world = harness.world();
-    let ids = |mut ids: Vec<u64>| {
-        ids.sort_unstable();
-        ids
-    };
-    let placed = &world.resource::<drops::PlacedOrbs>().0;
-    [
-        ids(world
-            .query::<(&Lava, &Saved)>()
-            .map(|(_, id)| id.id().0)
-            .collect()),
-        ids(world
-            .query::<(Entity, &Saved)>()
-            .filter(|(entity, _)| {
-                world.has::<PathFollower>(*entity) || world.has::<Elevator>(*entity)
-            })
-            .map(|(_, id)| id.id().0)
-            .collect()),
-        ids(world
-            .query::<(&Dummy, &Saved)>()
-            .map(|(_, id)| id.id().0)
-            .collect()),
-        ids(enemies::live(world).into_iter().map(|(id, _)| id).collect()),
-        ids(placed.clone()),
-    ]
-}
-
 /// The elevator's deck and its state.
 fn elevator(harness: &UiHarness) -> (Entity, Elevator) {
     harness
@@ -3256,154 +2651,11 @@ fn basin(harness: &UiHarness, id: u64) -> Entity {
 }
 
 #[test]
-fn schema_9_saves_migrate_to_the_new_save_ids() {
-    // 0.99's save (step 1's fixture): the first map wisp killed, the first
-    // placed orb taken, the decks mid-path, a summoned beetle and dummy,
-    // iron blocks, balls and a missile in flight.
-    const FIXTURE: &str = include_str!("fixtures/schema9.json");
-    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-    let mut old = envelope["data"].clone();
-    let from = old["player"]["id"].as_u64().unwrap();
-    assert_eq!((envelope["schema"].as_u64(), from), (Some(9), 886));
-    // A new run numbers the map as the migrations' frozen layouts have it:
-    // schema 10's, its orbs and its player past schema 12's goblins, each
-    // through schema 23's names.
-    let (fresh, player) = run();
-    let span = |start: u64, count: u64| {
-        let mut ids: Vec<u64> = (start..start + count).map(schema_23_id).collect();
-        ids.sort_unstable();
-        ids
-    };
-    assert_eq!(
-        map_ids(&fresh),
-        [
-            span(save::S10_LAKE, 3),
-            span(save::S10_DECKS, 5),
-            span(save::S10_DUMMY, 1),
-            span(save::S10_ENEMIES, MAP_ENEMIES),
-            span(
-                schema_22_from_18(schema_12_id(save::S10_PICKUPS)),
-                save::MAP_PICKUPS
-            ),
-        ]
-    );
-    assert_eq!(
-        id_of(&fresh, player),
-        schema_23_id(schema_22_from_18(schema_12_id(save::S10_PLAYER)))
-    );
-    let (lift, _) = elevator(&fresh);
-    assert_eq!(
-        id_of(&fresh, lift),
-        schema_23_id(schema_10_id(845)),
-        "the elevator's deck"
-    );
-    let x = |id: u64| {
-        fresh
-            .world()
-            .get::<Position>(basin(&fresh, id))
-            .unwrap()
-            .0
-            .x
-    };
-    assert_eq!(
-        [
-            x(schema_23_id(save::S10_LAKE)),
-            x(schema_23_id(save::S10_SHELF))
-        ],
-        [230.0 * 64.0, 260.0 * 64.0],
-        "the lake's west pool and the shelf's"
-    );
-    drop(fresh);
-    let (migrated, dir) = migrate("schema-9", FIXTURE);
-    // Every ID field moved by the remap and schema 12's shift, the
-    // elevator's old deck dropped, and nothing else.
-    without_old_lift(&mut old);
-    as_schema_11(&mut old);
-    as_schema_12(&mut old);
-    as_schema_13(&mut old);
-    as_schema_14(&mut old);
-    as_schema_17(&mut old);
-    as_schema_19(&mut old);
-    as_schema_20(&mut old);
-    let to_22 = |id: u64| schema_22_from_18(schema_12_id(schema_10_id(id)));
-    let to = |id: u64| schema_23_id(to_22(id));
-    let mut moved = Vec::new();
-    as_schema_21(&mut old, &to_22);
-    as_schema_22(&mut old);
-    sorted_as_23(&mut old, &to);
-    as_schema_25(&mut old);
-    as_schema_26(&mut old);
-    moved_ids(&old, &json(&migrated), "", &to, &mut moved);
-    let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
-    let expected = [
-        "/next_id",
-        "/player/id",
-        "/platforms/*/id",
-        "/dummies/*/id",
-        "/enemies/*/id",
-        "/missiles/*/id",
-        "/blocks/*/id",
-        "/balls/*/0",
-        "/gone/*",
-    ];
-    assert_eq!(fields, expected.into_iter().map(starred).collect());
-    assert!(migrated.elevators.is_empty() && migrated.basins.is_empty());
-    // Loaded: the elevator at rest at the bottom, the gone wisp and the
-    // taken orb gone, the new beetle and goblins alive, and the rest as it
-    // was saved.
-    let mut run = super::harness();
-    load(&mut run, migrated.clone());
-    let (deck, lift) = elevator(&run);
-    assert_eq!(lift.stop, Stop::Bottom);
-    assert!(run.world().get::<PathFollower>(deck).is_none(), "at rest");
-    assert_eq!(run.world().get::<Position>(deck).unwrap().0, lift.bottom);
-    let live: BTreeSet<u64> = enemies::live(run.world())
-        .into_iter()
-        .map(|(id, _)| id)
-        .collect();
-    let wisp = schema_23_id(schema_10_id(866));
-    assert!(!live.contains(&wisp), "the gone wisp");
-    // Schema 10's last enemy; the goblins follow it.
-    let beetle = save::S11_PICKUPS - 1;
-    let world = run.world();
-    assert_eq!(
-        world
-            .get::<Enemy>(by_id(&run, schema_23_id(beetle)))
-            .unwrap()
-            .kind,
-        EnemyKind::Beetle,
-        "the new beetle"
-    );
-    let orbs: Vec<u64> = placed_orbs(&run).into_iter().map(|(id, _)| id).collect();
-    assert_eq!(
-        orbs,
-        span(
-            schema_22_from_18(schema_12_id(save::S10_PICKUPS)) + 1,
-            save::MAP_PICKUPS - 1
-        )
-    );
-    let mut again = json(&capture(&run));
-    let added: Vec<u64> = (beetle..save::S10_ENEMIES + MAP_ENEMIES)
-        .map(schema_23_id)
-        .collect();
-    without_new(&mut again, &added);
-    let migrated = json(&migrated);
-    again["meta"]["game_version"] = migrated["meta"]["game_version"].clone();
-    let mut differ = Vec::new();
-    differences(&again, &migrated, "", &mut differ);
-    assert!(
-        differ.is_empty(),
-        "the migrated save, reloaded whole: {differ:?}"
-    );
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
 fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     let (mut harness, player) = run();
     calm(&mut harness);
     harness.harness_mut().set_dt(1.0 / 60.0);
-    let lake = basin(&harness, schema_23_id(save::S10_LAKE));
+    let lake = basin(&harness, SaveId::authored("lava_lake_west").0);
     lava::harden(harness.world_mut(), lake, 4.0);
     // The player boards the elevator; the save is taken halfway up.
     let (deck, lift) = elevator(&harness);
@@ -3418,7 +2670,7 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
         }
     }
     assert_eq!(elevator(&harness).1.stop, Stop::Rising, "halfway up");
-    let shelf = basin(&harness, schema_23_id(save::S10_SHELF));
+    let shelf = basin(&harness, SaveId::authored("lava_shelf").0);
     lava::set_cold(harness.world_mut(), shelf, 0.2);
     let world = harness.world();
     assert!(lava::crust_left(world, lake).is_some_and(|left| left > 1.0 && left < 4.0));
@@ -3436,7 +2688,7 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     // Calmed as the saved run was: the map's geysers, which it took off.
     calm(&mut fresh);
     assert_eq!(json(&capture(&fresh)), json(&saved));
-    let lake = basin(&fresh, schema_23_id(save::S10_LAKE));
+    let lake = basin(&fresh, SaveId::authored("lava_lake_west").0);
     let world = fresh.world();
     assert!(
         world
@@ -3448,6 +2700,27 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
         world.get::<tungsten::core::RigidBody>(lake).unwrap().layers,
         1
     );
+    // What the crust's handler set beside its status, read off the restored
+    // crust: the body's layers and mask, the touch and the glow, as the
+    // uninterrupted run's.
+    let crust = |world: &World, basin: Entity| {
+        use example_01_platformer::features::level::components::Glow;
+        let body = world.get::<tungsten::core::RigidBody>(basin).unwrap();
+        (
+            body.layers,
+            body.mask,
+            world.get::<ContactDamage>(basin).unwrap().is_on(),
+            world.get::<Glow>(basin).map(|glow| glow.hidden),
+        )
+    };
+    let uninterrupted = basin(&harness, SaveId::authored("lava_lake_west").0);
+    assert_eq!(crust(world, lake), crust(harness.world(), uninterrupted));
+    let (layers, mask, on, hidden) = crust(world, lake);
+    assert_eq!(
+        (layers, mask, on),
+        (1, tungsten::core::RigidBody::ALL_LAYERS, false)
+    );
+    assert_ne!(hidden, Some(false), "a glow, where it has one, out");
     // With the clock running, the deck holds through the rider's first
     // step, which finds no ground after a load, then carries the rider on
     // to the top, its feet on the deck all the way.
@@ -3481,67 +2754,6 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
             .is_some_and(tungsten::kit::ContactDamage::is_on),
         "its touch back"
     );
-}
-
-#[test]
-fn a_player_saved_under_a_new_lava_surface_loads_on_its_bank() {
-    const FIXTURE: &str = include_str!("fixtures/schema9.json");
-    let tile = 64.0;
-    // Schema 9's player, by its body's middle column and its feet: on the
-    // lake's old beds, its west pool now the stone's and its east pool the
-    // east bank's; on the old bed where the stone now stands; on the old
-    // ground of the lake's widened west columns; on the shelf's old bed; and
-    // on the old ground of its widened east column. Each moves to the
-    // middle column of its nearest bank or the stone, on its top.
-    let cases = [
-        (233.0, 67.0, 235.0, 63.0),
-        (239.0, 67.0, 240.5, 63.0),
-        (234.5, 67.0, 235.0, 63.0),
-        (230.6, 63.0, 229.5, 63.0),
-        (261.0, 58.0, 259.5, 57.0),
-        (262.6, 57.0, 263.5, 57.0),
-    ];
-    for (i, (column, feet, bank, row)) in cases.into_iter().enumerate() {
-        let mut envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-        let middle = Vec2::new(column * tile, feet * tile - player_half().y - 0.5);
-        let corner = middle - save::S12_BODY_OFFSET;
-        envelope["data"]["player"]["position"] = serde_json::json!([corner.x, corner.y]);
-        let fixture = serde_json::to_string(&envelope).unwrap();
-        let (migrated, dir) = migrate(&format!("under-lava-{i}"), &fixture);
-        let spot = Vec2::new(bank * tile, row * tile - player_half().y - 0.5);
-        let at = Vec2::from(migrated.player.position) + body_offset();
-        assert!(at.distance(spot) < 0.01, "{column},{feet}: moved to {at}");
-        // Loaded with the clock running, the player stands there a second,
-        // unhurt (an orb its reach draws in may heal it).
-        let mut harness = super::harness();
-        harness.harness_mut().set_dt(1.0 / 60.0);
-        load(&mut harness, migrated);
-        calm(&mut harness);
-        harness.world_mut().resource_mut::<Time>().resume();
-        let player = player_entity(&harness);
-        let mut hurt = false;
-        for _ in 0..60 {
-            harness.step(1);
-            hurt |= harness
-                .harness()
-                .events::<Damaged>()
-                .any(|hit| hit.entity == player);
-        }
-        let now = centre(&harness, player);
-        assert!(
-            now.distance(spot) < 1.0,
-            "{column},{feet}: standing at {now}, not {spot}"
-        );
-        let world = harness.world();
-        assert!(
-            world
-                .get::<tungsten::kit::PlatformerController>(player)
-                .unwrap()
-                .grounded()
-        );
-        assert!(!hurt, "{column},{feet}: unhurt");
-        let _ = std::fs::remove_dir_all(dir);
-    }
 }
 
 #[test]
@@ -3605,562 +2817,6 @@ fn holes(harness: &UiHarness) -> Vec<(u64, [f32; 2], f32)> {
     open
 }
 
-#[test]
-fn schema_10_saves_migrate_their_black_hole_into_the_list() {
-    // 0.100's save (step 1's fixture): one hole open, a missile in flight.
-    const FIXTURE: &str = include_str!("fixtures/schema10.json");
-    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-    assert_eq!(envelope["schema"].as_u64(), Some(10));
-    let mut hole: HoleSave =
-        serde_json::from_value(envelope["data"]["black_hole"].clone()).unwrap();
-    let (migrated, dir) = migrate("schema-10", FIXTURE);
-    hole.id = schema_22_from_18(schema_12_id(hole.id));
-    assert_eq!(
-        migrated.black_holes,
-        [hole],
-        "its place and time left, its ID past the goblins"
-    );
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn schema_11_saves_move_their_ids_past_the_map_goblins() {
-    // 0.101's save (step 1's fixture): a busy run on the sky's ground, two
-    // holes open and an explosion waiting, credited to the player.
-    const FIXTURE: &str = include_str!("fixtures/schema11.json");
-    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-    let mut old = envelope["data"].clone();
-    assert_eq!(envelope["schema"].as_u64(), Some(11));
-    as_schema_12(&mut old);
-    as_schema_13(&mut old);
-    as_schema_14(&mut old);
-    as_schema_17(&mut old);
-    as_schema_19(&mut old);
-    as_schema_20(&mut old);
-    let (migrated, dir) = migrate("schema-11", FIXTURE);
-    // Every ID from the first placed orb's on moved past the goblins, and
-    // past the hollow's new enemies and geysers, every one under it kept,
-    // and nothing else.
-    let mut moved = Vec::new();
-    let to_22 = |id: u64| schema_22_from_18(schema_12_id(id));
-    let to = |id: u64| schema_23_id(to_22(id));
-    as_schema_21(&mut old, &to_22);
-    as_schema_22(&mut old);
-    sorted_as_23(&mut old, &to);
-    as_schema_25(&mut old);
-    as_schema_26(&mut old);
-    moved_ids(&old, &json(&migrated), "", &to, &mut moved);
-    let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
-    let expected = [
-        "/next_id",
-        "/player/id",
-        "/player/sources/*/1",
-        "/platforms/*/id",
-        "/basins/*/id",
-        "/elevators/*/id",
-        "/dummies/*/id",
-        "/enemies/*/id",
-        "/orbs/*/id",
-        "/blocks/*/id",
-        "/black_holes/*/id",
-        "/missiles/*/id",
-        "/missiles/*/source",
-        "/bullets/*/id",
-        "/bullets/*/source",
-        "/balls/*/0",
-    ];
-    // Schema 26 drops the fixture's one cascade entry, an ending chemistry
-    // now runs, so no cascade ID moves.
-    assert_eq!(fields, expected.into_iter().map(starred).collect());
-    assert_eq!(migrated.black_holes.len(), 2, "both holes");
-    let goblins: Vec<u64> = (save::S11_PICKUPS..save::S11_PICKUPS + save::SHIFT_12)
-        .map(schema_23_id)
-        .collect();
-    assert!(
-        !migrated.gone.iter().any(|id| goblins.contains(id)),
-        "{:?}",
-        migrated.gone
-    );
-    assert!(
-        migrated
-            .enemies
-            .iter()
-            .all(|enemy| !goblins.contains(&enemy.id))
-    );
-    assert!(migrated.props.is_empty());
-    // Its iron, runtime spawns from its player's on, past every shift and
-    // kept by schema 23: iron 42 at 62 and iron 37 at 57, the first ID past
-    // schema 22's player's; with no props, nothing the map's.
-    let blocks: Vec<u64> = migrated.blocks.iter().map(|block| block.id).collect();
-    assert!(blocks.contains(&62), "{blocks:?}");
-    assert_eq!(blocks.first(), Some(&S22_RUNTIME));
-    // Loaded, the map's goblins stand at their homes.
-    let mut run = super::harness();
-    load(&mut run, migrated);
-    for id in goblins {
-        let goblin = by_id(&run, id);
-        let enemy = *run.world().get::<Enemy>(goblin).unwrap();
-        assert_eq!(enemy.kind, EnemyKind::Goblin, "{id}");
-        let at = super::body(&run, goblin);
-        assert!(at.distance(enemy.home()) < 1.0, "{id} at {at}");
-    }
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn a_schema_12_player_keeps_its_body_where_it_stood() {
-    // 0.102's save (step 1's fixture): the busy run on the sky's ground,
-    // its player's point the corner of the courier's 64 px frame.
-    const FIXTURE: &str = include_str!("fixtures/schema12.json");
-    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-    assert_eq!(envelope["schema"].as_u64(), Some(12));
-    let mut old = envelope["data"].clone();
-    let at = &old["player"]["position"];
-    let corner = Vec2::new(
-        at[0].as_f64().unwrap() as f32,
-        at[1].as_f64().unwrap() as f32,
-    );
-    let (migrated, dir) = migrate("schema-12", FIXTURE);
-    // Its point moved to the wizard's frame, and nothing else.
-    let moved_to = Vec2::from(migrated.player.position);
-    assert!(
-        moved_to.distance(corner + Vec2::new(-16.0, -32.0)) < 1e-3,
-        "{corner} became {moved_to}"
-    );
-    as_schema_13(&mut old);
-    as_schema_14(&mut old);
-    as_schema_15(&mut old, &json(&migrated));
-    as_schema_17(&mut old);
-    as_schema_19(&mut old);
-    as_schema_20(&mut old);
-    // Only the save IDs schema 19 moves.
-    let mut moved = Vec::new();
-    as_schema_21(&mut old, &schema_22_from_18);
-    as_schema_22(&mut old);
-    sorted_as_23(&mut old, &schema_23_from_18);
-    as_schema_25(&mut old);
-    as_schema_26(&mut old);
-    moved_ids(&old, &json(&migrated), "", &schema_23_from_18, &mut moved);
-    // Loaded, the body stands where the courier's stood.
-    let mut run = super::harness();
-    load(&mut run, migrated);
-    let player = player_entity(&run);
-    let body = centre(&run, player);
-    let stood = corner + Vec2::new(32.0, 33.0);
-    assert!(body.distance(stood) < 0.01, "{body} against {stood}");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
-    // 0.103's save (step 1's fixture): an Easy run, its player hurt to 120
-    // of 150, a freeze's hint seen and the map's dummy part chilled.
-    const FIXTURE: &str = include_str!("fixtures/schema13.json");
-    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-    assert_eq!(envelope["schema"].as_u64(), Some(13));
-    let mut old = envelope["data"].clone();
-    let (migrated, dir) = migrate("schema-13", FIXTURE);
-    let new = json(&migrated);
-    assert!(new.get("hints").is_none(), "its hints gone");
-    let player = &new["player"];
-    let health = (
-        player["health"]["current"].as_f64(),
-        player["health"]["max"].as_f64(),
-    );
-    assert_eq!(health, (Some(80.0), Some(100.0)), "its share of 100");
-    assert_eq!(player["stats"]["max_health"]["base"].as_f64(), Some(100.0));
-    assert_eq!(
-        player["stats"]["pickup_radius"]["base"].as_f64(),
-        Some(192.0)
-    );
-    let crawlers: Vec<&Value> = new["enemies"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|enemy| enemy["kind"] == "crawler")
-        .collect();
-    assert!(!crawlers.is_empty());
-    for enemy in crawlers {
-        let damage = &enemy["stats"]["damage"];
-        assert_eq!(damage["base"].as_f64(), Some(15.0));
-        assert_eq!(
-            damage["modifiers"],
-            serde_json::json!([["difficulty", { "mul": 0.75 }]]),
-            "Easy's kept"
-        );
-    }
-    // And nothing else but the save IDs schema 19 moves.
-    as_schema_14(&mut old);
-    as_schema_15(&mut old, &new);
-    as_schema_17(&mut old);
-    as_schema_19(&mut old);
-    as_schema_20(&mut old);
-    let mut moved = Vec::new();
-    as_schema_21(&mut old, &schema_22_from_18);
-    as_schema_22(&mut old);
-    sorted_as_23(&mut old, &schema_23_from_18);
-    as_schema_25(&mut old);
-    as_schema_26(&mut old);
-    moved_ids(&old, &new, "", &schema_23_from_18, &mut moved);
-    // Loaded, it plays on with the new values.
-    let mut run = super::harness();
-    load(&mut run, migrated);
-    run.harness_mut().set_dt(1.0 / 60.0);
-    run.world_mut().resource_mut::<Time>().resume();
-    run.step(2);
-    let world = run.world();
-    let player = player_entity(&run);
-    let health = world.get::<Health>(player).unwrap();
-    assert_eq!((health.current(), health.max()), (80.0, 100.0));
-    let reach = world.get::<Stats>(player).unwrap().get("pickup_radius");
-    assert_eq!(reach, Some(192.0));
-    let of_kind = |kind: EnemyKind| {
-        world
-            .query::<(Entity, &Enemy)>()
-            .find(|(_, enemy)| enemy.kind == kind)
-            .map(|(entity, _)| entity)
-            .unwrap_or_else(|| panic!("a placed {kind:?}"))
-    };
-    let touch = world
-        .get::<ContactDamage>(of_kind(EnemyKind::Crawler))
-        .unwrap()
-        .damage();
-    assert_eq!(touch, 15.0 * 0.75, "a crawler's touch at Easy");
-    let wisp = world.get::<Health>(of_kind(EnemyKind::Wisp)).unwrap().max();
-    assert_eq!(wisp, 30.0 * 0.75, "a wisp's health at Easy");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn a_schema_13_save_moves_its_crates_out_of_the_start_wall() {
-    // 0.103's save: a fresh run's three crates stacked at the clearing's
-    // west end, inside the start's wall since 01 (k), the keg beside them
-    // clear of it.
-    const FIXTURE: &str = include_str!("fixtures/schema13.json");
-    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-    let mut old = envelope["data"].clone();
-    let [wall, face] = save::S15_WALL;
-    let crates: Vec<u64> = old["props"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|prop| prop["kind"] == "crate")
-        .filter(|prop| {
-            let x = prop["position"][0].as_f64().unwrap() as f32 + CRATE_HALF.x + 4.0;
-            let y = prop["position"][1].as_f64().unwrap() as f32 + CRATE_HALF.y + 4.0;
-            x - CRATE_HALF.x < face.x && x + CRATE_HALF.x > wall.x && y - CRATE_HALF.y < face.y
-        })
-        .map(|prop| prop["id"].as_u64().unwrap())
-        .collect();
-    assert_eq!(crates.len(), 3, "the fixture's three crates in the wall");
-    let (migrated, dir) = migrate("schema-13-wall", FIXTURE);
-    // Each on the clearing's floor right of the wall, at rest, meeting no
-    // other saved body, and nothing else moved.
-    let crates: Vec<u64> = crates.into_iter().map(schema_22_from_18).collect();
-    for &id in &crates {
-        on_the_floor_clear(&migrated, id).unwrap();
-        let prop = migrated.props.iter().find(|prop| prop.id == id).unwrap();
-        assert_eq!(prop.velocity, [0.0, 0.0], "{id} at rest");
-    }
-    as_schema_14(&mut old);
-    as_schema_15(&mut old, &json(&migrated));
-    as_schema_17(&mut old);
-    as_schema_19(&mut old);
-    as_schema_20(&mut old);
-    let mut moved = Vec::new();
-    as_schema_21(&mut old, &schema_22_from_18);
-    as_schema_22(&mut old);
-    sorted_as_23(&mut old, &schema_23_from_18);
-    as_schema_25(&mut old);
-    as_schema_26(&mut old);
-    moved_ids(&old, &json(&migrated), "", &schema_23_from_18, &mut moved);
-    // Loaded, the crates stand in the map a second on.
-    let mut run = super::harness();
-    load(&mut run, migrated);
-    run.harness_mut().set_dt(1.0 / 60.0);
-    run.world_mut().resource_mut::<Time>().resume();
-    run.step(60);
-    for &id in &crates {
-        let at = run.world().get::<Position>(by_id(&run, id)).unwrap().0 + props::CRATE_CENTRE;
-        assert!(
-            (save::S15_SPAN[0]..save::S15_SPAN[1]).contains(&at.x)
-                && (at.y - (save::S15_FLOOR - CRATE_HALF.y)).abs() < 2.0,
-            "{id} at {at}"
-        );
-    }
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn to_15_sets_bodies_from_the_wall_and_the_boundary_on_the_floor() {
-    let (harness, _) = run();
-    let mut fresh = json(&capture(&harness));
-    as_schema_18(&mut fresh);
-    let corner =
-        |centre: Vec2, offset: Vec2| serde_json::json!([centre.x - offset.x, centre.y - offset.y]);
-    // A crate in mid-air inside the wall at row 25, a small ball past the
-    // boundary and the player inside the wall: each on the floor, clear.
-    let mut data = fresh.clone();
-    data["player"]["position"] = corner(Vec2::new(40.0, 30.0 * 64.0), body_offset());
-    let id = data["next_id"].as_u64().unwrap();
-    let mut flying = data["props"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|prop| prop["kind"] == "crate")
-        .unwrap()
-        .clone();
-    flying["id"] = Value::from(id);
-    flying["position"] = corner(Vec2::new(64.0, 25.5 * 64.0), props::CRATE_CENTRE);
-    flying["velocity"] = serde_json::json!([300.0, -200.0]);
-    data["props"].as_array_mut().unwrap().push(flying);
-    let at = corner(Vec2::new(-60.0, 1500.0), toys::SMALL_BALL_CENTRE);
-    data["balls"]
-        .as_array_mut()
-        .unwrap()
-        .push(serde_json::json!([id + 1, true, at[0], at[1], -50.0, 0.0]));
-    data["next_id"] = Value::from(id + 2);
-    let (migrated, dir) = migrate("schema-14-wall", &as_schema_14_envelope(&data));
-    for body in [
-        migrated.player.id,
-        schema_22_from_18(id),
-        schema_22_from_18(id + 1),
-    ] {
-        on_the_floor_clear(&migrated, body).unwrap();
-    }
-    assert_eq!(migrated.player.velocity, [0.0, 0.0]);
-    let _ = std::fs::remove_dir_all(dir);
-    // Three iron blocks on the floor from x 132, 8 px apart: the player out
-    // of the wall stands at the first clear spot past them.
-    let mut data = fresh.clone();
-    data["player"]["position"] = corner(Vec2::new(40.0, 30.0 * 64.0), body_offset());
-    let id = data["next_id"].as_u64().unwrap();
-    for (k, x) in [192.0_f32, 320.0, 448.0].into_iter().enumerate() {
-        let at = corner(
-            Vec2::new(x, save::S15_FLOOR - 0.5 - IRON_HALF.y),
-            IRON_HALF + Vec2::splat(4.0),
-        );
-        data["blocks"]
-            .as_array_mut()
-            .unwrap()
-            .push(serde_json::json!({
-                "id": id + k as u64, "scrap": null, "position": at, "velocity": [0.0, 0.0],
-                "chill": null, "frozen": null
-            }));
-    }
-    data["next_id"] = Value::from(id + 3);
-    let (migrated, dir) = migrate("schema-14-iron", &as_schema_14_envelope(&data));
-    let centre = Vec2::from(migrated.player.position) + body_offset();
-    let past = 448.0 + IRON_HALF.x + player_half().x;
-    assert!(
-        centre.distance(Vec2::new(past, save::S15_FLOOR - 0.5 - player_half().y)) < 1e-3,
-        "the player at {centre}"
-    );
-    on_the_floor_clear(&migrated, migrated.player.id).unwrap();
-    let _ = std::fs::remove_dir_all(dir);
-    // The floor full, the player in the sky: the map's dummy and a keg in
-    // the wall have no room, so both go, the dummy's ID into `gone`, and
-    // the loaded run has no dummy at the clearing's west end.
-    let mut data = fresh;
-    data["player"]["position"] = corner(Vec2::new(2000.0, 900.0), body_offset());
-    let mut keg = data["props"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|prop| prop["kind"] == "keg")
-        .unwrap()
-        .clone();
-    let crate_ = data["props"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|prop| prop["kind"] == "crate")
-        .unwrap()
-        .clone();
-    let id = data["next_id"].as_u64().unwrap();
-    let mut filled = Vec::new();
-    let lefts = (0..7)
-        .map(|k| save::S15_SPAN[0] + 56.0 * k as f32)
-        .chain((0..5).map(|k| save::S15_DECK[1] + 56.0 * k as f32));
-    for (k, left) in lefts.enumerate() {
-        let mut one = crate_.clone();
-        one["id"] = Value::from(id + k as u64);
-        one["position"] = corner(
-            Vec2::new(left + CRATE_HALF.x, save::S15_FLOOR - 0.5 - CRATE_HALF.y),
-            props::CRATE_CENTRE,
-        );
-        filled.push(one);
-    }
-    keg["id"] = Value::from(id + 12);
-    keg["position"] = corner(Vec2::new(64.0, 30.0 * 64.0), props::KEG_CENTRE);
-    filled.push(keg);
-    data["props"] = Value::Array(filled);
-    // A bowling ball closes the gap before the deck.
-    let at = corner(
-        Vec2::new(535.0, save::S15_FLOOR - 0.5 - toys::BALL_RADIUS),
-        toys::BALL_CENTRE,
-    );
-    data["balls"] = serde_json::json!([[id + 13, false, at[0], at[1], 0.0, 0.0]]);
-    data["next_id"] = Value::from(id + 14);
-    let dummy = data["dummies"][0]["id"].as_u64().unwrap();
-    assert_eq!(data["dummies"][0]["map"], true, "the map's dummy");
-    data["dummies"][0]["position"] =
-        corner(Vec2::new(64.0, 26.0 * 64.0), actor_body("dummy").centre);
-    let (migrated, dir) = migrate("schema-14-full", &as_schema_14_envelope(&data));
-    let dummy = schema_23_from_18(dummy);
-    assert!(
-        migrated.dummies.iter().all(|saved| saved.id != dummy),
-        "the dummy dropped"
-    );
-    assert!(migrated.gone.contains(&dummy), "its ID gone");
-    assert!(
-        migrated
-            .props
-            .iter()
-            .all(|prop| prop.id != schema_22_from_18(id + 12)),
-        "the keg dropped"
-    );
-    assert_eq!(migrated.props.len(), 12, "the floor's crates kept");
-    let mut run = super::harness();
-    load(&mut run, migrated);
-    let west: Vec<Vec2> = run
-        .world()
-        .query::<(&Dummy, &Position)>()
-        .map(|(_, at)| at.0 + actor_body("dummy").centre)
-        .filter(|at| at.x < 20.0 * 64.0)
-        .collect();
-    assert!(
-        west.is_empty(),
-        "a dummy at the clearing's west end: {west:?}"
-    );
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn a_schema_10_trolls_deep_chill_goes_at_its_first_step() {
-    // 0.100's save (step 1's fixture), its placed troll past the old second
-    // stage: a `deep_chill` slow on its speed, and no chill.
-    const FIXTURE: &str = include_str!("fixtures/schema10.json");
-    let mut envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-    let troll = envelope["data"]["enemies"]
-        .as_array_mut()
-        .unwrap()
-        .iter_mut()
-        .find(|enemy| enemy["kind"] == "troll")
-        .expect("a placed troll");
-    let id = troll["id"].as_u64().unwrap();
-    let effects = troll["effects"]["instances"].as_array().unwrap();
-    assert!(
-        effects.iter().all(|effect| effect["effect"] != "chilled"),
-        "no chill"
-    );
-    troll["stats"]["move_speed"]["modifiers"] =
-        serde_json::json!([["deep_chill", { "pct": -0.35 }]]);
-    let (migrated, dir) = migrate("schema-10-deep-chill", &envelope.to_string());
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    let id = schema_23_from_18(schema_12_id(id));
-    let troll = fresh
-        .world()
-        .query::<(Entity, &Enemy, &Saved)>()
-        .find(|(_, _, own)| own.id().0 == id)
-        .map(|(entity, ..)| entity)
-        .expect("the troll loaded");
-    let speed = |h: &UiHarness| h.world().get::<Stats>(troll).unwrap().get("move_speed");
-    let slowed = speed(&fresh).unwrap();
-    assert!(
-        (slowed - troll::MOVE_SPEED * 0.65).abs() < 1e-3,
-        "its saved slow: {slowed}"
-    );
-    fresh.harness_mut().set_dt(1.0 / 60.0);
-    fresh.world_mut().resource_mut::<Time>().resume();
-    fresh.step(1);
-    assert_eq!(
-        speed(&fresh),
-        Some(troll::MOVE_SPEED),
-        "whole after its first step"
-    );
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn schema_10_saves_keep_at_most_nine_rounds() {
-    // 0.100's save (step 1's fixture), its gun's magazine set to 12, to 10
-    // and to 0 with a reload running.
-    const FIXTURE: &str = include_str!("fixtures/schema10.json");
-    for (charges, reload, kept) in [(12, None, 9), (10, None, 9), (0, Some(1.0), 0)] {
-        let mut envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-        let player = &mut envelope["data"]["player"];
-        let gun = player["abilities"]["entries"]
-            .as_array_mut()
-            .unwrap()
-            .iter_mut()
-            .find(|entry| entry["name"] == "gun")
-            .expect("the gun");
-        gun["charges"] = charges.into();
-        if let Some(left) = reload {
-            player["reload"] = Value::from(left);
-        }
-        let (migrated, dir) = migrate(&format!("schema-10-gun-{charges}"), &envelope.to_string());
-        assert_eq!(
-            migrated.player.abilities.charges("gun"),
-            Some(kept),
-            "{charges}"
-        );
-        assert_eq!(migrated.player.reload, reload, "{charges}: its reload kept");
-        if reload.is_some() {
-            // Loaded, the reload runs on to a whole magazine.
-            let mut fresh = super::harness();
-            load(&mut fresh, migrated);
-            fresh.world_mut().resource_mut::<Time>().resume();
-            fresh.step(90);
-            let player = player_entity(&fresh);
-            assert_eq!(
-                gun::rounds(fresh.world(), player),
-                Some((9, 9)),
-                "nine at its end"
-            );
-        }
-        let _ = std::fs::remove_dir_all(dir);
-    }
-}
-
-#[test]
-fn a_wizard_loaded_from_an_older_save_still_shoves() {
-    let (mut harness, _) = grounded();
-    harness.step(5);
-    // A 0.104 save: its controller has no shove or step fields.
-    let mut older = json(&capture(&harness));
-    let controller = older["player"]["controller"]
-        .as_object_mut()
-        .expect("the player's controller");
-    assert!(
-        controller.remove("shove").is_some(),
-        "a 0.105 save holds it"
-    );
-    assert!(controller.remove("step_height").is_none(), "he has no step");
-    let read: SaveGame = serde_json::from_value(older).expect("an older save reads");
-    let mut loaded = reloaded(read, false);
-    loaded.harness_mut().set_dt(1.0 / 60.0);
-    let player = player_entity(&loaded);
-    let at = centre(&loaded, player);
-    let ball = toys::spawn_ball(
-        loaded.world_mut(),
-        Vec2::new(at.x + player_half().x + 40.0, TOP - 7.5),
-        true,
-    );
-    loaded.step(2);
-    let start = super::body(&loaded, ball);
-    loaded.harness_mut().press_action("move_right");
-    loaded.step(30);
-    loaded.harness_mut().release_action("move_right");
-    let end = super::body(&loaded, ball);
-    assert!(
-        end.x - start.x > 100.0,
-        "the ball went ahead: {start} {end}"
-    );
-}
-
 /// The kinds of the books on the map, in [`TomeKind::ALL`]'s order.
 fn books(harness: &UiHarness) -> Vec<TomeKind> {
     let mut kinds: Vec<TomeKind> = harness
@@ -4220,26 +2876,6 @@ fn a_run_holding_two_tomes_and_a_half_shield_loads_them_back_with_their_books_go
         "its wait too"
     );
     assert_eq!(health(&fresh), health(&harness));
-}
-
-#[test]
-fn a_schema_15_save_loads_with_no_tome_and_every_book_on_the_map() {
-    let (harness, _) = run();
-    // The 0.108 code's save: a capture without the new fields, numbered 15.
-    let mut data = json(&capture(&harness));
-    as_schema_18(&mut data);
-    assert!(
-        data["player"].get("tomes").is_none(),
-        "none held, none written"
-    );
-    let (migrated, dir) = migrate("schema-15", &as_envelope(&data, 15));
-    assert!(migrated.player.tomes.is_empty());
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    let player = player_entity(&fresh);
-    assert!(fresh.world().get::<Tomes>(player).is_none());
-    assert_eq!(books(&fresh), TomeKind::ALL);
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
@@ -4337,156 +2973,43 @@ fn three_stones_of_three_sizes_save_through_json_and_load_back() {
     );
 }
 
-#[test]
-fn a_schema_17_save_loads() {
-    let (harness, _) = run();
-    // The 0.110 code's save: a capture without the planks, numbered 17.
-    let mut data = json(&capture(&harness));
-    as_schema_18(&mut data);
-    if let Some(fields) = data.as_object_mut() {
-        fields.remove("planks");
-    }
-    let (migrated, dir) = migrate("schema-17", &as_envelope(&data, 17));
-    assert!(migrated.planks.is_empty());
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn a_schema_16_save_loads_its_crawlers_at_their_new_run() {
-    let (harness, _) = run();
-    // The 0.109 code's save: a capture without the new fields, numbered
-    // 16, its crawlers' run at 0.109's 160.
-    let mut data = json(&capture(&harness));
-    as_schema_18(&mut data);
-    let mut crawlers = 0;
-    for enemy in data["enemies"].as_array_mut().unwrap() {
-        if enemy["kind"] == "crawler" {
-            enemy["stats"]["move_speed"]["base"] = Value::from(160.0);
-            crawlers += 1;
-        }
-    }
-    assert!(crawlers >= 1, "the map's crawlers");
-    let (migrated, dir) = migrate("schema-16", &as_envelope(&data, 16));
-    let runs: Vec<Option<f32>> = migrated
-        .enemies
-        .iter()
-        .filter(|enemy| enemy.kind == EnemyKind::Crawler)
-        .map(|enemy| enemy.stats.base(Stats::MOVE_SPEED))
-        .collect();
-    assert_eq!(runs, vec![Some(crawler::MOVE_SPEED); crawlers]);
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    let loaded: Vec<Option<f32>> = fresh
-        .world()
-        .query::<(&Enemy, &Stats)>()
-        .filter(|(enemy, _)| enemy.kind == EnemyKind::Crawler)
-        .map(|(_, stats)| stats.get(Stats::MOVE_SPEED))
-        .collect();
-    // With the map's four crawlers schema 22 adds, at home, which a schema
-    // 16 save names none of.
-    assert_eq!(
-        loaded,
-        vec![Some(crawler::MOVE_SPEED); crawlers + 4],
-        "at 210"
-    );
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn to_16_sets_bodies_inside_the_tomes_supports_on_their_tops() {
-    let (harness, _) = run();
-    let mut data = json(&capture(&harness));
-    as_schema_18(&mut data);
-    let corner =
-        |centre: Vec2, offset: Vec2| serde_json::json!([centre.x - offset.x, centre.y - offset.y]);
-    let middle = |[low, high]: [Vec2; 2]| (low + high) * 0.5;
-    let [pact, bound, arcane] = save::S16_SUPPORTS;
-    // The player inside `pact_shelf`, a falling bowling ball inside
-    // `bound_shelf` and a dropped orb inside `arcane_ledge`.
-    data["player"]["position"] = corner(middle(pact), body_offset());
-    let id = data["next_id"].as_u64().unwrap();
-    let at = corner(middle(bound), toys::BALL_CENTRE);
-    data["balls"]
-        .as_array_mut()
-        .unwrap()
-        .push(serde_json::json!([id, false, at[0], at[1], 0.0, 300.0]));
-    let at = corner(middle(arcane), drops::ORB_CENTRE);
-    data["orbs"]
-        .as_array_mut()
-        .unwrap()
-        .push(serde_json::json!({
-            "id": id + 1, "kind": "health", "position": at, "left": 10.0
-        }));
-    data["next_id"] = Value::from(id + 2);
-    let (migrated, dir) = migrate("schema-15-supports", &as_envelope(&data, 15));
-    let boxes = saved_boxes(&migrated);
-    let (ball, orb) = (schema_22_from_18(id), schema_22_from_18(id + 1));
-    for (body, [low, high]) in [(migrated.player.id, pact), (ball, bound), (orb, arcane)] {
-        let &(_, min, max) = boxes
-            .iter()
-            .find(|(own, ..)| *own == body)
-            .unwrap_or_else(|| panic!("{body} kept"));
-        assert!(
-            (max.y - (low.y - 0.5)).abs() < 1e-3,
-            "{body} rests on its support's top: {max}"
-        );
-        assert!(
-            min.x >= low.x && max.x <= high.x,
-            "{body} over its support: {min}..{max}"
-        );
-        for &(other, a, b) in &boxes {
-            assert!(
-                other == body || !(min.x < b.x && max.x > a.x && min.y < b.y && max.y > a.y),
-                "{body} meets {other}"
-            );
-        }
-    }
-    assert_eq!(migrated.player.velocity, [0.0, 0.0]);
-    let ball = migrated
-        .balls
-        .iter()
-        .find(|saved| saved.id == ball)
-        .unwrap();
-    assert_eq!(ball.velocity, [0.0, 0.0], "at rest");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
 /// The map's geysers, with their save IDs, in the map's order.
 fn geysers(harness: &UiHarness) -> Vec<(u64, Entity)> {
-    let mut geysers: Vec<(u64, Entity)> = harness
-        .world()
-        .query::<(Entity, &Geyser, &Saved)>()
-        .map(|(entity, _, id)| (id.id().0, entity))
-        .collect();
-    geysers.sort_unstable_by_key(|(id, _)| map_order(*id));
-    geysers
-}
-
-/// Where the map object of save ID `id` stood in schema 22's spawn order,
-/// which is the map's.
-fn map_order(id: u64) -> Option<usize> {
-    save::S22_NAMES
-        .iter()
-        .position(|name| SaveId::authored(name).0 == id)
+    ["geyser_floor_west", "geyser_floor_east", "geyser_shelf"]
+        .map(|name| {
+            let id = SaveId::authored(name).0;
+            (id, by_id(harness, id))
+        })
+        .into()
 }
 
 #[test]
-fn the_maps_geysers_and_the_player_take_the_save_ids_their_names_derive() {
+fn the_maps_saved_objects_and_the_player_are_named_with_the_save_ids_their_names_derive() {
     let (harness, player) = run();
-    let ids: Vec<u64> = geysers(&harness).into_iter().map(|(id, _)| id).collect();
-    let placed = &harness.world().resource::<drops::PlacedOrbs>().0;
-    let last_orb = save::S21_PICKUPS + save::SHIFT_22 + save::MAP_PICKUPS - 1;
-    assert!(placed.contains(&schema_23_id(last_orb)), "{placed:?}");
-    let named: Vec<u64> = (last_orb + 1..last_orb + 1 + save::MAP_GEYSERS)
-        .map(schema_23_id)
-        .collect();
-    assert_eq!(ids, named, "in the map's order");
-    let geyser = |name: &str| SaveId::authored(name).0;
-    assert!(ids.contains(&geyser("geyser_shelf")), "{ids:?}");
-    assert_eq!(id_of(&harness, player), SaveId::authored("player").0);
-    assert_eq!(id_of(&harness, player), schema_23_from_18(save::S18_PLAYER));
+    let world = harness.world();
+    let state = world.resource::<tungsten::core::save::SaveState>();
+    let names = &world.resource::<level::SavedNames>().0;
+    for (entity, name) in names {
+        let id = SaveId::authored(name);
+        let saved = world.get::<Saved>(*entity).expect("a saved map object");
+        assert_eq!(saved.id(), id, "{name}");
+        assert_eq!(saved.area(), Some(level::MAP), "{name}");
+        assert_eq!(state.name_of(id), Some(name.as_str()), "{name}, named");
+    }
+    let count = |kind: fn(&World, Entity) -> bool| {
+        names
+            .iter()
+            .filter(|(entity, _)| kind(world, *entity))
+            .count() as u64
+    };
+    assert_eq!(count(|w, e| w.has::<Geyser>(e)), save::MAP_GEYSERS);
+    assert_eq!(count(|w, e| w.has::<Enemy>(e)), MAP_ENEMIES);
+    assert_eq!(count(|w, e| w.has::<Orb>(e)), save::MAP_PICKUPS);
+    assert_eq!(count(|w, e| w.has::<Dummy>(e)), save::MAP_DUMMIES);
+    let id = SaveId::authored("player");
+    assert_eq!(id_of(&harness, player), id.0);
+    assert_eq!(state.name_of(id), Some("player"));
+    assert_eq!(world.get::<Saved>(player).unwrap().area(), None, "global");
 }
 
 /// The geysers' states by save ID: each one's ID, phase, the phase's
@@ -4556,7 +3079,7 @@ fn a_geyser_saved_mid_eruption_and_one_saved_choked_load_back_to_finish_as_they_
 }
 
 #[test]
-fn a_fresh_run_sets_nine_stones_down_and_a_run_from_a_schema_18_save_none() {
+fn a_fresh_run_sets_nine_stones_down() {
     let (mut harness, _) = run();
     harness.step(30);
     let world = harness.world();
@@ -4574,153 +3097,6 @@ fn a_fresh_run_sets_nine_stones_down_and_a_run_from_a_schema_18_save_none() {
         sizes,
         BTreeMap::from([("large", 3), ("medium", 3), ("small", 3)])
     );
-    let mut data = json(&capture(&harness));
-    assert_eq!(data["stones"].as_array().map(Vec::len), Some(9));
-    as_schema_18(&mut data);
-    let (migrated, dir) = migrate("schema-18-stones", &as_envelope(&data, 18));
-    assert!(migrated.stones.is_empty());
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    assert_eq!(fresh.world().query::<&Stone>().count(), 0, "none");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn a_schema_18_capture_migrates_to_itself_without_the_new_objects() {
-    let (mut harness, _) = run();
-    harness.step(10);
-    let data = json(&capture(&harness));
-    let mut old = data.clone();
-    as_schema_18(&mut old);
-    let (migrated, dir) = migrate("schema-18", &as_envelope(&old, 18));
-    let new: Vec<u64> = (save::S18_PICKUPS..save::S18_PICKUPS + save::SHIFT_19_PICKUPS)
-        .map(schema_23_id)
-        .collect();
-    let added: Vec<u64> = (save::S21_PICKUPS..save::S21_PICKUPS + save::SHIFT_22)
-        .map(schema_23_id)
-        .collect();
-    let mut want = data.clone();
-    runtime_past_s22(&mut want);
-    want["enemies"].as_array_mut().unwrap().retain(|enemy| {
-        let id = enemy["id"].as_u64().unwrap();
-        !new.contains(&id) && !added.contains(&id)
-    });
-    want["geysers"] = Value::Array(Vec::new());
-    want.as_object_mut().unwrap().remove("stones");
-    let mut differ = Vec::new();
-    differences(&json(&migrated), &want, "", &mut differ);
-    assert!(differ.is_empty(), "the capture again: {differ:?}");
-    // Loaded: the new enemies at home, schema 22's too, bat c on its new
-    // roost and the geysers at their offsets.
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    let bat_c = schema_23_from_18(save::S18_BAT_C);
-    for id in new.into_iter().chain(added).chain([bat_c]) {
-        let enemy = by_id(&fresh, id);
-        let home = fresh.world().get::<Enemy>(enemy).unwrap().home();
-        let at = super::body(&fresh, enemy);
-        assert!(at.distance(home) < 1.0, "{id} at {at}, home {home}");
-    }
-    let bat = by_id(&fresh, bat_c);
-    assert_eq!(
-        fresh.world().get::<Enemy>(bat).unwrap().home(),
-        save::S19_BAT_C_HOME
-    );
-    let phases: Vec<GeyserPhase> = geysers(&fresh)
-        .into_iter()
-        .map(|(_, entity)| fresh.world().get::<Geyser>(entity).unwrap().phase)
-        .collect();
-    assert_eq!(phases, [0.0, 1.3, 2.6].map(|t| geyser::at_offset(t).0));
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn the_schema_11_fixtures_bat_c_migrates_to_its_new_roost() {
-    const FIXTURE: &str = include_str!("fixtures/schema11.json");
-    let (migrated, dir) = migrate("schema-11-bat-c", FIXTURE);
-    let bat = migrated
-        .enemies
-        .iter()
-        .find(|enemy| enemy.id == schema_23_from_18(save::S18_BAT_C))
-        .expect("bat c saved");
-    assert_eq!(bat.kind, EnemyKind::Bat);
-    assert_eq!(Vec2::from(bat.enemy.home), save::S19_BAT_C_HOME);
-    assert_eq!(bat.position, [13408.0, 3724.8], "its body clear of the row");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn a_schema_18_save_with_a_ball_in_the_lintels_new_row_loads_it_under_the_row() {
-    let (harness, _) = run();
-    let mut data = json(&capture(&harness));
-    as_schema_18(&mut data);
-    let [low, high] = save::S19_LINTEL;
-    let id = data["next_id"].as_u64().unwrap();
-    let centre = Vec2::new(209.0 * 64.0, (low.y + high.y) * 0.5);
-    let at = centre - toys::BALL_CENTRE;
-    data["balls"]
-        .as_array_mut()
-        .unwrap()
-        .push(serde_json::json!([id, false, at.x, at.y, 0.0, 120.0]));
-    data["next_id"] = Value::from(id + 1);
-    let (migrated, dir) = migrate("schema-18-lintel", &as_envelope(&data, 18));
-    let ball = migrated
-        .balls
-        .iter()
-        .find(|ball| ball.id == schema_22_from_18(id))
-        .expect("the ball kept");
-    let set = Vec2::from(ball.position) + toys::BALL_CENTRE;
-    assert!(
-        (set.y - toys::BALL_RADIUS - (high.y + 0.5)).abs() < 1e-3,
-        "its top under the row: {set}"
-    );
-    assert_eq!(
-        (set.x, ball.velocity),
-        (centre.x, [0.0, 0.0]),
-        "its x kept, at rest"
-    );
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    let body = super::body(&fresh, by_id(&fresh, schema_22_from_18(id)));
-    assert!(body.y - toys::BALL_RADIUS > high.y, "under the row: {body}");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn a_schema_19_save_moves_its_slot_past_the_flask_and_casts_it() {
-    let (mut harness, _) = run();
-    harness.step(2);
-    let mut loaded = None;
-    for (now, then) in [(7_u64, 6_u64), (3, 3)] {
-        let mut data = json(&capture(&harness));
-        data["spell"] = Value::from(now);
-        as_0_110(&mut data);
-        assert_eq!(data["spell"], Value::from(then), "0.110's slot");
-        let tag = format!("schema-19-slot-{then}");
-        let (migrated, dir) = migrate(&tag, &as_envelope(&data, 19));
-        assert_eq!(migrated.spell as u64, now, "from {then}");
-        let names: Vec<&str> = migrated.player.abilities.names().collect();
-        assert_eq!(names.last(), Some(&"toxic_flask"), "{names:?}");
-        let _ = std::fs::remove_dir_all(dir);
-        loaded = Some(migrated);
-    }
-    assert_eq!(
-        example_01_platformer::features::spells::SLOTS[7],
-        Some(Spell::IronBlock)
-    );
-    let mut fresh = super::harness();
-    load(&mut fresh, loaded.unwrap());
-    fresh.world_mut().resource_mut::<Time>().resume();
-    fresh.step(2);
-    let player = player_entity(&fresh);
-    let at = super::centre(&fresh, player) + Vec2::new(300.0, 0.0);
-    pin_camera(&mut fresh, at - Vec2::new(640.0, 360.0));
-    aim_at(&mut fresh, at);
-    choose(&mut fresh, Spell::ToxicFlask);
-    fresh.harness_mut().press_action("cast");
-    fresh.step(1);
-    fresh.harness_mut().release_action("cast");
-    assert_eq!(toys::flask::count(fresh.world()), 1, "a flask flies");
 }
 
 /// Steps until a flask's burst shows, at most 120 frames: the frames it
@@ -4806,139 +3182,6 @@ fn a_flask_in_flight_saves_loads_and_bursts_where_it_would_have() {
     assert!(at.distance(loaded_at) < 0.5, "{at} and {loaded_at}");
 }
 
-#[test]
-fn a_schema_19_save_loads_living_armoured_and_an_armoured_bridge_troll() {
-    let (mut harness, _) = run();
-    harness.step(2);
-    let bridge_troll = schema_23_id(save::S21_BRIDGE_TROLL);
-    let troll = by_id(&harness, bridge_troll);
-    tungsten::kit::damage(harness.world_mut(), troll, 100.0);
-    harness.step(1);
-    let mut data = json(&capture(&harness));
-    as_0_110(&mut data);
-    let old = data.clone();
-    let (migrated, dir) = migrate("schema-19-armour", &as_envelope(&data, 19));
-    let _ = std::fs::remove_dir_all(dir);
-    for enemy in &migrated.enemies {
-        let living = enemy.kind != EnemyKind::Wisp;
-        assert_eq!(
-            enemy.tags.has("living"),
-            living,
-            "{:?} {}",
-            enemy.kind,
-            enemy.id
-        );
-        let armoured = enemy.kind == EnemyKind::Beetle || enemy.id == bridge_troll;
-        assert_eq!(
-            enemy.tags.has("armoured"),
-            armoured,
-            "{:?} {}",
-            enemy.kind,
-            enemy.id
-        );
-    }
-    assert!(
-        migrated
-            .dummies
-            .iter()
-            .all(|dummy| dummy.tags.has("living"))
-    );
-    let bridge = migrated
-        .enemies
-        .iter()
-        .find(|enemy| enemy.id == bridge_troll)
-        .unwrap();
-    assert_eq!(bridge.enemy.variant, Variant::Armoured);
-    let saved_health = old["enemies"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|enemy| enemy["id"] == save::S21_BRIDGE_TROLL)
-        .unwrap()["health"]["current"]
-        .as_f64()
-        .unwrap() as f32;
-    assert!(saved_health < 600.0, "hurt before the save");
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    let loaded = by_id(&fresh, bridge_troll);
-    let world = fresh.world();
-    assert_eq!(
-        world.get::<Enemy>(loaded).unwrap().variant,
-        Variant::Armoured
-    );
-    assert_eq!(world.get::<Health>(loaded).unwrap().current(), saved_health);
-    let resist = world.get::<tungsten::kit::Resist>(loaded).unwrap();
-    for (tag, base) in save::S21_ARMOUR {
-        assert_eq!(f64::from(resist.factor(&Tags::new([tag]))), base, "{tag}");
-    }
-}
-
-#[test]
-fn a_schema_20_save_migrates_to_itself() {
-    let (mut harness, _) = grounded();
-    busy(&mut harness);
-    let data = json(&capture(&harness));
-    assert!(data.get("flasks").is_some(), "a flask in flight");
-    let mut old = data.clone();
-    as_schema_21_capture(&mut old);
-    let (migrated, dir) = migrate("schema-20-self", &as_envelope(&old, 20));
-    let _ = std::fs::remove_dir_all(dir);
-    // The capture again but for schema 22's new enemies, which it lacks,
-    // its runtime IDs past schema 22's player's.
-    let added: Vec<u64> = (save::S21_PICKUPS..save::S21_PICKUPS + save::SHIFT_22)
-        .map(schema_23_id)
-        .collect();
-    let mut want = data.clone();
-    runtime_past_s22(&mut want);
-    want["enemies"]
-        .as_array_mut()
-        .unwrap()
-        .retain(|enemy| !added.contains(&enemy["id"].as_u64().unwrap()));
-    assert_eq!(json(&migrated), want, "unchanged");
-}
-
-#[test]
-fn a_schema_24_save_drops_its_buckets_and_takes_its_thresholds() {
-    // A run's capture as schema 24 wrote it: the player under the pact, its
-    // actors holding ailment buckets, and the player's and the enemies'
-    // stats without their status threshold, which schema 25 gives them.
-    let (mut harness, _) = run();
-    harness.step(2);
-    let mut want = json(&capture(&harness));
-    let player = &mut want["player"]["stats"];
-    player["max_health"]["modifiers"] = serde_json::json!([["tome.pact", { "mul": 0.5 }]]);
-    player["status_threshold"]["modifiers"] = serde_json::json!([["tome.pact", { "mul": 0.8 }]]);
-    let want = json(&serde_json::from_value::<SaveGame>(want).unwrap());
-    let mut old = want.clone();
-    let buckets = serde_json::json!({ "damage.cold": 12.5, "damage.fire": 3.0 });
-    let stats = old["player"]["stats"].as_object_mut().unwrap();
-    assert!(stats.remove("status_threshold").is_some());
-    old["player"]["buckets"] = buckets.clone();
-    assert!(
-        !old["dummies"].as_array().unwrap().is_empty(),
-        "the map's dummy"
-    );
-    for dummy in old["dummies"].as_array_mut().unwrap() {
-        dummy["buckets"] = buckets.clone();
-    }
-    assert!(
-        !old["enemies"].as_array().unwrap().is_empty(),
-        "the map's enemies"
-    );
-    for enemy in old["enemies"].as_array_mut().unwrap() {
-        let stats = enemy["stats"].as_object_mut().unwrap();
-        assert!(stats.remove("status_threshold").is_some());
-        enemy["buckets"] = buckets.clone();
-    }
-    let (migrated, dir) = migrate("schema-24", &as_envelope(&old, 24));
-    let _ = std::fs::remove_dir_all(dir);
-    assert_eq!(
-        json(&migrated),
-        want,
-        "its buckets gone, its thresholds back"
-    );
-}
-
 /// Puts one more enemy on `harness`'s map before a run spawns it: a copy of
 /// the meadow goblin named `name`, four tiles east of it.
 fn with_one_more_enemy(harness: &mut UiHarness, name: &str) {
@@ -4991,8 +3234,12 @@ fn an_enemy_added_to_the_map_needs_no_schema_bump() {
     harness.step(3);
     assert!(!harness.world().is_alive(killed), "killed");
     let saved = json(&capture(&harness));
-    let envelope = as_envelope(&saved, SaveGame::SCHEMA);
-    let (read, dir) = migrate("added-enemy", &envelope);
+    // Written to a slot and read back, as Continue reads one.
+    let dir = user_folder("added-enemy");
+    let slots = SaveSlots::new(Some(dir.clone()));
+    let written: SaveGame = serde_json::from_value(saved.clone()).expect("the save reads");
+    slots.save("slot_1", &written).expect("the slot is written");
+    let read: SaveGame = slots.load("slot_1").expect("the slot loads");
     let _ = std::fs::remove_dir_all(dir);
     let mut differ = Vec::new();
     differences(&json(&read), &saved, "", &mut differ);
@@ -5040,28 +3287,4 @@ fn an_enemy_added_to_the_map_needs_no_schema_bump() {
     let mut differ = Vec::new();
     differences(&json(&capture(&plain)), &saved, "", &mut differ);
     assert!(differ.is_empty(), "the save, loaded whole: {differ:?}");
-}
-
-#[test]
-fn a_migrated_schema_22_capture_keeps_its_maps_crates_outside_the_summons_caps() {
-    let (harness, _) = run();
-    let mut data = json(&capture(&harness));
-    as_schema_22_capture(&mut data);
-    let map: Vec<u64> = data["props"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|prop| prop["kind"] == "crate" || prop["kind"] == "keg")
-        .map(|prop| prop["id"].as_u64().unwrap())
-        .collect();
-    assert_eq!(
-        map,
-        save::S22_MAP_PROPS.collect::<Vec<u64>>(),
-        "schema 22's"
-    );
-    let (migrated, dir) = migrate("schema-22-crates", &as_envelope(&data, 22));
-    let _ = std::fs::remove_dir_all(dir);
-    let mut fresh = super::harness();
-    load(&mut fresh, migrated);
-    super::props::summons_spare_the_maps_crates(&mut fresh);
 }

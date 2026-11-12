@@ -101,6 +101,7 @@ impl Plugin for PlayerPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<components::Player>("player");
+        world.register_saved::<components::Lantern>("lantern");
         world.register_data_kind::<LanternAnchors>("lantern_anchors");
         world.register_data_kind::<Body>(BODIES);
         ensure_phases(schedule);

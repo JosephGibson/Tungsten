@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use glam::Vec2;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tungsten::core::AnimationState;
 
 use super::Gesture;
@@ -21,7 +21,8 @@ pub struct Player;
 /// [`RELIGHT_MANA`]. Its glow follows the orb in each frame's art.
 ///
 /// [`RELIGHT_MANA`]: super::RELIGHT_MANA
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Lantern {
     pub on: bool,
     /// It guttered out for want of mana and waits for the relight.

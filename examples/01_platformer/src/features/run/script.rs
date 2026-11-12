@@ -1,14 +1,21 @@
-//! The run's script hooks (redo 7.2): `place_player` for a script to call,
-//! `player` and `area` for it to read, as the template's sample registers
-//! its own, the shell `start_run`; `fill_pit`, `wake_foes` and `pit` set up
-//! and read the full pit ([`pit`](super::pit), redo 7.3), and `cast_at` and
-//! `pit_fire` land spells on it and read its fire for the `e01-stress` row.
+//! The run's script hooks (redo 7.2): `place_player` and `reload_run` for a
+//! script to call, `player` and `area` for it to read, as the template's
+//! sample registers its own, the shell `start_run`; `fill_pit`, `wake_foes`
+//! and `pit` set up and read the full pit ([`pit`](super::pit), redo 7.3),
+//! and `cast_at` and `pit_fire` land spells on it and read its fire for the
+//! `e01-stress` row.
 
 use serde::Deserialize;
 use tungsten::core::{Position, PrevPosition, Velocity, World};
 use tungsten::kit::Health;
 
 use super::{Run, pit};
+use crate::shell;
+
+/// `reload_run`'s arguments: none.
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NoArgs {}
 
 /// `place_player`'s arguments.
 #[derive(Deserialize)]
@@ -51,6 +58,15 @@ pub fn register(world: &mut World) {
             if let Some(velocity) = world.get_mut::<Velocity>(player) {
                 velocity.0 = Default::default();
             }
+            Ok(())
+        },
+    );
+    world.add_script_action_typed(
+        "reload_run",
+        "Saves the run in memory and continues it as Continue does, with no user folder.",
+        |world, NoArgs {}| {
+            let save = crate::save::capture(world).ok_or("no run to save")?;
+            shell::start_run(world, save.into(), None);
             Ok(())
         },
     );

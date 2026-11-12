@@ -28,7 +28,7 @@ use tungsten::{Extracts, Plugin, SceneEntity};
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::TILE;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, Saved, body_centre, despawn_tree, spawn_burst};
+use crate::shared::{Joined, SaveId, Saved, body_centre, despawn_tree, spawn_burst};
 use components::{
     Ball, BallHue, BallSpawner, BlackHole, BowlingBall, Element, FireMissile, HoleHold, IronBlock,
     IronScrap, OpeningOf, PreviousVelocity, Ring, ShockRing, SmallBall, Spray,
@@ -528,6 +528,7 @@ pub fn fire_missile(world: &mut World, centre: Vec2, velocity: Vec2) -> Option<E
     }
     let at = centre - Vec2::splat(MISSILE_SIZE * 0.5);
     let missile = spawn_toy(world, FIRE_MISSILE_PREFAB, at, MISSILE_SIZE / 64.0);
+    world.insert(missile, Joined);
     if let Some(motion) = world.get_mut::<LinearMotion>(missile) {
         motion.set_velocity(velocity);
     }
@@ -536,13 +537,13 @@ pub fn fire_missile(world: &mut World, centre: Vec2, velocity: Vec2) -> Option<E
 }
 
 /// Makes `missile`, which an ability's spawn payload landed from its
-/// caster's point, the top-left of the caster's art, one of the toys: the
-/// run's next save ID and the fall the payload's motion leaves out, drawn
-/// at its size, shown, and moved so its centre sits `centre` from where
-/// it landed, as the caster's centre sits from the caster's point.
+/// caster's point, the top-left of the caster's art, one of the toys
+/// ([`Joined`], its save ID the flush's): the fall the payload's motion
+/// leaves out, drawn at its size, shown, and moved so its centre sits
+/// `centre` from where it landed, as the caster's centre sits from the
+/// caster's point.
 pub fn adopt_missile(world: &mut World, missile: Entity, centre: Vec2) {
-    let id = crate::shared::take_id(world);
-    world.insert(missile, Saved::kept(id));
+    world.insert(missile, Joined);
     world.insert(missile, PreviousVelocity::default());
     let shift = centre - Vec2::splat(MISSILE_SIZE * 0.5);
     systems::shift(world, missile, shift);

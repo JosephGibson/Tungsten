@@ -1514,6 +1514,13 @@ pub fn douse_for(world: &mut World, hazard: Entity, seconds: f32) {
     show_doused(world, hazard, true);
 }
 
+/// Shows the fire hazard `hazard` out or burning as its douse has it,
+/// which a save does not hold beside the status: a load's.
+pub fn show_douse(world: &mut World, hazard: Entity) {
+    let doused = is_doused(world, hazard);
+    show_doused(world, hazard, doused);
+}
+
 /// Whether the fire hazard `hazard` is out: its `status.doused`.
 #[must_use]
 pub fn is_doused(world: &World, hazard: Entity) -> bool {

@@ -89,6 +89,50 @@ pub struct Elevator {
     pub speed: f32,
 }
 
+/// [`Elevator`]'s saved form: its points as arrays.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ElevatorForm {
+    pub stop: Stop,
+    pub board: Option<f32>,
+    pub idle: f32,
+    pub ridden: bool,
+    pub held: bool,
+    pub bottom: [f32; 2],
+    pub top: [f32; 2],
+    pub speed: f32,
+}
+
+impl From<&Elevator> for ElevatorForm {
+    fn from(lift: &Elevator) -> Self {
+        Self {
+            stop: lift.stop,
+            board: lift.board,
+            idle: lift.idle,
+            ridden: lift.ridden,
+            held: lift.held,
+            bottom: lift.bottom.to_array(),
+            top: lift.top.to_array(),
+            speed: lift.speed,
+        }
+    }
+}
+
+impl From<ElevatorForm> for Elevator {
+    fn from(form: ElevatorForm) -> Self {
+        Self {
+            stop: form.stop,
+            board: form.board,
+            idle: form.idle,
+            ridden: form.ridden,
+            held: form.held,
+            bottom: Vec2::from(form.bottom),
+            top: Vec2::from(form.top),
+            speed: form.speed,
+        }
+    }
+}
+
 /// The cable's sprite, which its look keeps: not saved.
 #[derive(Debug, Clone, Copy)]
 pub struct CableLook(Entity);

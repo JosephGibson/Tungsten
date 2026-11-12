@@ -171,6 +171,8 @@ pub struct SpellsPlugin;
 impl Plugin for SpellsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_component::<Spellbook>("spellbook");
+        world.register_saved::<Spellbook>("spellbook");
+        world.register_saved_resource::<components::Summon>("summon");
         ensure_phases(schedule);
         let cast = system("spells_cast", systems::cast).after(ABILITY_TICK);
         schedule.add(Stage::FixedUpdate, Phase::Intent.join(cast));

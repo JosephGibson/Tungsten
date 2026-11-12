@@ -120,7 +120,7 @@ pub struct Tome {
 
 /// The tomes the player holds, in the order taken: on the player from its
 /// first take, saved.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tomes(pub Vec<TomeKind>);
 
 impl Tomes {

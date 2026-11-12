@@ -37,6 +37,7 @@ pub mod troll;
 pub mod wisp;
 
 use glam::Vec2;
+use tungsten::core::save::SaveOptions;
 use tungsten::core::{Entity, EventCursor, Position, Schedule, Shape, Stage, World, system};
 use tungsten::kit::{
     ANIMATION_TICK, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line, Modifier, PICKUP_MAGNET, PICKUP_TICK,
@@ -265,6 +266,21 @@ impl Plugin for EnemiesPlugin {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<Enemy>("enemy");
         world.register_component::<drops::Orb>("orb");
+        world.register_saved::<Enemy>("enemy");
+        world.register_saved::<Brain>("brain");
+        world.register_saved::<Sight>("sight");
+        world.register_saved::<tungsten::kit::StateMachine<EnemyState>>("enemy_state");
+        world.register_saved::<components::Displaced>("displaced");
+        world.register_saved::<drops::Orb>("orb");
+        world.register_saved_with(
+            "troll_hold",
+            SaveOptions::<components::Holding>::form::<components::HoldingForm>()
+                .refs(components::holding_refs()),
+        );
+        world.register_saved_resource_with(
+            "throws",
+            SaveOptions::<Throws>::form::<components::ThrowsForm>().refs(components::throws_refs()),
+        );
         world.register_data_kind::<Body>(BODIES);
         world.register_event::<Spotted>();
         world.insert_resource(Throws::default());

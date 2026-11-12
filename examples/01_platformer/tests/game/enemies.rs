@@ -2752,14 +2752,14 @@ fn a_killed_enemy_rolls_its_drops_and_an_orb_heals_or_restores_mana() {
     }
 }
 
-/// The orb a roll dropped of `kind` once adopted, its save ID its own, at
-/// most `frames` frames on.
+/// The orb a roll dropped of `kind` once its adopt system took it in
+/// (`Joined`), at most `frames` frames on.
 fn adopted(harness: &mut UiHarness, kind: OrbKind, frames: u32) -> Option<Entity> {
     let mut found = None;
     until(harness, frames, |h| {
         found = orbs(h, kind)
             .into_iter()
-            .find(|&orb| example_01_platformer::shared::save_id(h.world(), orb).is_some());
+            .find(|&orb| h.world().has::<example_01_platformer::shared::Joined>(orb));
         found.is_some()
     });
     found
@@ -2829,8 +2829,7 @@ fn an_orb_passes_enemies_and_fades_after_its_lifetime() {
     harness.step(2);
     let corner = at(&harness, crawler) - Vec2::splat(12.0);
     let world = harness.world_mut();
-    let id = take_id(world);
-    let orb = drops::spawn(world, OrbKind::Health, corner, id, ORB_SECS).expect("an orb");
+    let orb = drops::spawn(world, OrbKind::Health, corner, ORB_SECS).expect("an orb");
     harness.step(60);
     assert!(harness.world().is_alive(orb), "the crawler passes it by");
     let mut frames = 60;

@@ -27,9 +27,11 @@
 //! still credits the goblin; a gone lighter credits none.
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry as Slot;
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
+use tungsten::core::save::RefCodec;
 use tungsten::core::{
     BodyKind, Collider, DataRef, Entity, EventQueue, Position, RigidBody, ShakeEvent, Shape,
     Velocity, World,
@@ -120,11 +122,133 @@ pub struct Cascades {
     /// which a dummy's end reads: the step's, never saved.
     #[serde(skip)]
     pub reacted: Vec<Entity>,
-    /// Where each body's `heat` came from, which its thermal shock throws
-    /// iron's scraps away from: kept until its handler reads it, or the
-    /// kit's queue empties.
+    /// Where each body's `heat` came from, with the order it came in,
+    /// which its thermal shock throws iron's scraps away from: kept until
+    /// its handler reads it, or the kit's queue empties. Saved in that
+    /// order, each body by reference ([`cascades_refs`]).
     #[serde(skip)]
-    pub heat_from: HashMap<Entity, Vec2>,
+    pub heat_from: HashMap<Entity, (u64, Vec2)>,
+    /// The order the next body's `heat` takes.
+    #[serde(skip)]
+    pub heat_next: u64,
+    /// A load's heat points, in order, waiting for their bodies.
+    #[serde(skip)]
+    pub heat_loaded: Vec<Vec2>,
+}
+
+/// [`Cascades`]' saved form: its counters, its entries and each heated
+/// body's point, in the order its heat came.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CascadesForm {
+    pub step: u64,
+    pub strike: u64,
+    pub entries: Vec<Entry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub heat: Vec<[f32; 2]>,
+}
+
+/// The heated bodies in the order their heat came, with their points.
+fn heat_order(cascades: &Cascades) -> Vec<(Entity, Vec2)> {
+    let mut heat: Vec<(u64, Entity, Vec2)> = cascades
+        .heat_from
+        .iter()
+        .map(|(&body, &(order, from))| (order, body, from))
+        .collect();
+    heat.sort_unstable_by_key(|&(order, ..)| order);
+    heat.into_iter()
+        .map(|(_, body, from)| (body, from))
+        .collect()
+}
+
+impl From<&Cascades> for CascadesForm {
+    fn from(cascades: &Cascades) -> Self {
+        Self {
+            step: cascades.step,
+            strike: cascades.strike,
+            entries: cascades.entries.clone(),
+            heat: heat_order(cascades)
+                .into_iter()
+                .map(|(_, from)| from.to_array())
+                .collect(),
+        }
+    }
+}
+
+impl From<CascadesForm> for Cascades {
+    fn from(form: CascadesForm) -> Self {
+        Self {
+            step: form.step,
+            strike: form.strike,
+            entries: form.entries,
+            heat_loaded: form.heat.into_iter().map(Vec2::from).collect(),
+            ..Self::default()
+        }
+    }
+}
+
+/// [`Cascades`] as a save holds it: its heat on bodies with a save ID
+/// alone. A body the chain despawned has no queue entry left that reads
+/// its point (the kit keeps such an entry dead, `D-274`), and its reference
+/// would drop, so a capture leaves it out; `None` when every heated body
+/// has an ID.
+#[must_use]
+pub fn cascades_saved(world: &World, _: Option<Entity>, cascades: &Cascades) -> Option<Cascades> {
+    let saved = |body: &Entity| world.has::<Saved>(*body);
+    if cascades.heat_from.keys().all(saved) {
+        return None;
+    }
+    Some(Cascades {
+        step: cascades.step,
+        strike: cascades.strike,
+        entries: cascades.entries.clone(),
+        heat_from: cascades
+            .heat_from
+            .iter()
+            .filter(|(body, _)| saved(body))
+            .map(|(&body, &heat)| (body, heat))
+            .collect(),
+        heat_next: cascades.heat_next,
+        ..Cascades::default()
+    })
+}
+
+/// [`Cascades`]' references: each heated body under its place in the
+/// order; a body that did not load drops its point.
+#[must_use]
+pub fn cascades_refs() -> RefCodec<Cascades> {
+    RefCodec {
+        save: |cascades, out| {
+            for (i, (body, _)) in heat_order(cascades).into_iter().enumerate() {
+                out.put(&i.to_string(), body);
+            }
+        },
+        load: |cascades, refs| {
+            for (i, from) in std::mem::take(&mut cascades.heat_loaded)
+                .into_iter()
+                .enumerate()
+            {
+                if let Some(body) = refs.first(&i.to_string()) {
+                    cascades.note_heat(body, from);
+                }
+            }
+        },
+        keys: |cascades| {
+            (0..cascades.heat_from.len())
+                .map(|i| i.to_string())
+                .collect()
+        },
+    }
+}
+
+impl Cascades {
+    /// Keeps where `body`'s heat came from, unless its earlier heat waits.
+    fn note_heat(&mut self, body: Entity, from: Vec2) {
+        if let Slot::Vacant(slot) = self.heat_from.entry(body) {
+            slot.insert((self.heat_next, from));
+            self.heat_next += 1;
+        }
+    }
 }
 
 /// The run's player's save ID, which the spells, the gun and a fire nobody
@@ -196,7 +320,7 @@ pub fn queue_jump(world: &mut World, jump: Jump, runs: u64) -> bool {
 /// next run; `from` is kept for a frozen iron's scraps.
 pub fn heat(world: &mut World, body: Entity, from: Vec2, credit: Option<Entity>) {
     if let Some(cascades) = world.get_resource_mut::<Cascades>() {
-        cascades.heat_from.entry(body).or_insert(from);
+        cascades.note_heat(body, from);
     }
     stimulate(world, body, HEAT, 1.0, credit);
 }
@@ -265,6 +389,7 @@ pub fn thermal_shock_handler(world: &mut World, reaction: &Reaction) {
     let from = world
         .get_resource_mut::<Cascades>()
         .and_then(|cascades| cascades.heat_from.remove(&thing))
+        .map(|(_, from)| from)
         .filter(|from| from.distance(at) > 1e-3);
     react_on(world, thing);
     end_frozen(world, thing, from);
@@ -423,6 +548,7 @@ pub fn run(world: &mut World) {
     };
     if idle && !cascades.heat_from.is_empty() {
         cascades.heat_from.clear();
+        cascades.heat_next = 0;
     }
     if !cascades.entries.iter().any(|entry| entry.due <= step) {
         return;

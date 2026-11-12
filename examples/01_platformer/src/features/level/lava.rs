@@ -21,6 +21,7 @@
 //! goes in steam and embers, with one sizzle a basin a step.
 
 use glam::Vec2;
+use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
 use tungsten::core::{
     AssetRegistry, BodyKind, Collider, DataRef, Entity, RigidBody, Shape, Sprite, Time, Transform,
@@ -56,7 +57,7 @@ const CRUST_Z: i32 = -9;
 /// A lava basin, whose chill and crust are its statuses: [`LAVA_CHILL`],
 /// seconds of cold spray on it draining as fast when unsprayed, and
 /// [`CRUST`], the seconds its crust has left.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Lava;
 
 /// A basin's statuses (7.13a): its chill, an intensity the spray builds
@@ -186,6 +187,13 @@ pub fn harden(world: &mut World, basin: Entity, left: f32) {
     EffectRequest::new(basin, DataRef::by_id(CRUST))
         .with_scale(left)
         .apply(world);
+    show_crust(world, basin);
+}
+
+/// What `basin`'s crust sets beside its status, which a save does not
+/// hold: its touch switched off, its surface in the tiles' layer meeting
+/// every body, its glow out. A crust's, and a load's for a crusted basin.
+pub fn show_crust(world: &mut World, basin: Entity) {
     if let Some(touch) = world.get_mut::<ContactDamage>(basin) {
         touch.set_on(false);
     }

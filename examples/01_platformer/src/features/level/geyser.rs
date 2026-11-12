@@ -88,6 +88,66 @@ pub struct Geyser {
     pub started: bool,
 }
 
+/// [`Geyser`]'s saved form: its cycle and its choke. Its touch, held aside
+/// outside an eruption, is the run's: a load gives it back ([`restored`]).
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeyserForm {
+    pub offset: f32,
+    pub phase: GeyserPhase,
+    pub left: f32,
+    pub cold: f32,
+    pub choked: f32,
+    pub started: bool,
+}
+
+impl From<&Geyser> for GeyserForm {
+    fn from(geyser: &Geyser) -> Self {
+        Self {
+            offset: geyser.offset,
+            phase: geyser.phase,
+            left: geyser.left,
+            cold: geyser.cold,
+            choked: geyser.choked,
+            started: geyser.started,
+        }
+    }
+}
+
+impl From<GeyserForm> for Geyser {
+    fn from(form: GeyserForm) -> Self {
+        Self {
+            offset: form.offset,
+            phase: form.phase,
+            left: form.left,
+            cold: form.cold,
+            sprayed: false,
+            choked: form.choked,
+            touch: None,
+            started: form.started,
+        }
+    }
+}
+
+/// After a load: `geyser`'s touch, which the save does not hold while held
+/// aside, back from `touch`, the run's, when it has none; then on in an
+/// eruption and held aside else, as its restored cycle has it.
+pub fn restored(world: &mut World, geyser: Entity, touch: Option<ContactDamage>) {
+    let Some(state) = world.get_mut::<Geyser>(geyser) else {
+        return;
+    };
+    let (phase, left, choked) = (state.phase, state.left, state.choked);
+    if state.touch.is_none() {
+        state.touch = touch;
+    }
+    if world.has::<ContactDamage>(geyser)
+        && let Some(state) = world.get_mut::<Geyser>(geyser)
+    {
+        state.touch = None;
+    }
+    set(world, geyser, phase, left, choked);
+}
+
 /// The phase and its seconds left `offset` seconds into a cycle.
 #[must_use]
 pub fn at_offset(offset: f32) -> (GeyserPhase, f32) {

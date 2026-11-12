@@ -19,6 +19,7 @@ use std::collections::HashSet;
 
 use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
+use tungsten::core::save::SaveOptions;
 use tungsten::core::{
     AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, Light, ParticleBudget,
     PhysicsConfig, Position, RigidBodyBundle, Schedule, Stage, TilemapInstance, TilemapRegistry,
@@ -186,6 +187,15 @@ impl Plugin for LevelPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<components::AmbientEmitter>("ambient_emitter");
+        world.register_saved_with(
+            "elevator",
+            SaveOptions::<elevator::Elevator>::form::<elevator::ElevatorForm>(),
+        );
+        world.register_saved_with(
+            "geyser",
+            SaveOptions::<geyser::Geyser>::form::<geyser::GeyserForm>(),
+        );
+        world.register_saved::<lava::Lava>("lava");
         world.register_component::<components::Hazard>("hazard");
         world.register_component::<components::Area>("area");
         world.register_component::<components::Glow>("glow");
@@ -283,15 +293,18 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         .spawn_map_objects(MAP, Vec2::ZERO)
         .expect("the level's objects load with the manifest");
     let mut taken = HashSet::from([SaveId::authored(player::SAVE_NAME)]);
+    let mut named = Vec::new();
     for (&entity, name) in objects.iter().zip(&names) {
         if saved(world, entity) {
             assert!(!name.is_empty(), "a saved map object has no name");
             let id = SaveId::authored(name);
             assert!(taken.insert(id), "the map's `{name}` takes a taken save ID");
             world.insert(entity, Saved::kept(id));
+            named.push((entity, name.clone()));
         }
         world.insert(entity, SceneEntity { state_id: GAMEPLAY });
     }
+    world.insert_resource(SavedNames(named));
     let [min, max] = BOUNDARY;
     world.spawn_with(
         RigidBodyBundle::r#static(
@@ -348,6 +361,31 @@ fn object_names(world: &World) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The map's saved objects with their names, in spawn order: a World
+/// resource from [`spawn`] to [`despawn`], which [`name_saved`] reads.
+#[derive(Debug, Clone, Default)]
+pub struct SavedNames(pub Vec<(Entity, String)>);
+
+/// Names each of the map's saved objects for the engine's saves by its
+/// name in area [`MAP`], once the run's setup is done, so its baseline is
+/// its set-up state: its kept identity, the same save ID, which the run's
+/// start reads, gives way to the name's.
+pub fn name_saved(world: &mut World) {
+    let named = world
+        .get_resource::<SavedNames>()
+        .map(|names| names.0.clone())
+        .unwrap_or_default();
+    for (entity, name) in named {
+        if !world.is_alive(entity) {
+            continue;
+        }
+        world.remove_component::<Saved>(entity);
+        if let Err(err) = tungsten::core::save::name(world, entity, Some(MAP), &name) {
+            log::warn!("{err}");
+        }
+    }
+}
+
 /// Whether a save names the map object `entity`, which then takes a save
 /// ID: a lava basin, a deck, a dummy, an enemy, a placed orb or a geyser,
 /// the layers `tools/level.py` holds to unique names. Props, slabs, iron,
@@ -368,6 +406,7 @@ fn saved(world: &World, entity: Entity) -> bool {
 /// stack.
 pub fn despawn(world: &mut World) {
     world.remove_resource::<SceneTime>();
+    world.remove_resource::<SavedNames>();
     world.remove_resource::<components::Cover>();
     world.remove_resource::<components::AreaLight>();
     world.insert_resource(AmbientLight::default());

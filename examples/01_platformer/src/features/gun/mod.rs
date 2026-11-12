@@ -75,6 +75,11 @@ pub struct GunPlugin;
 impl Plugin for GunPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_component::<Bullet>("bullet");
+        world.register_saved_with(
+            "bullet",
+            tungsten::core::save::SaveOptions::<Bullet>::form::<components::BulletForm>(),
+        );
+        world.register_saved::<components::Reload>("reload");
         ensure_phases(schedule);
         let shoot = system("gun_shoot", systems::shoot).after(ABILITY_TICK);
         schedule.add(Stage::FixedUpdate, Phase::Intent.join(shoot));
@@ -165,6 +170,7 @@ pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core:
         Position(at),
         PrevPosition(at),
         crate::shared::Saved::kept(shot.id),
+        crate::shared::Joined,
         shot.motion,
         Bullet {
             ricochets: shot.ricochets,
