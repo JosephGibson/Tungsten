@@ -44,7 +44,6 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
-use crate::features::elements::components::Frozen;
 use crate::features::props::components::{Crate, Keg};
 use crate::features::toys::components::{BowlingBall, IronBlock};
 use crate::features::toys::systems::falloff;
@@ -336,7 +335,9 @@ fn blow(
                 .from(troll)
                 .queue(world);
         }
-        let frozen = world.has::<Frozen>(entity) || (live && has_status(world, entity, FROZEN));
+        // A body by its ice, a target while it lives.
+        let body = !world.has::<Health>(entity);
+        let frozen = (body || live) && has_status(world, entity, FROZEN);
         if frozen {
             cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
             continue;

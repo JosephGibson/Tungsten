@@ -8,7 +8,7 @@ use tungsten::{App, GameState, StateId};
 use crate::features::audio::AudioPlugin;
 use crate::features::combat::CombatPlugin;
 use crate::features::dummy::DummyPlugin;
-use crate::features::elements::{CASCADE_BOUND, CASCADE_CAP, ElementsPlugin};
+use crate::features::elements::{CASCADE_BOUND, CASCADE_CAP, ElementsPlugin, systems};
 use crate::features::enemies::{self, EnemiesPlugin};
 use crate::features::gun::GunPlugin;
 use crate::features::level::{CursorPlugin, LevelPlugin};
@@ -50,14 +50,16 @@ pub fn difficulty_note(difficulty: Difficulty) -> String {
 pub const CHEMISTRY_DEPTH: u8 = u8::MAX;
 
 /// The kit's plugins with 01's chemistry in place of the set's own, at its
-/// cascade's settings ([`CHEMISTRY_DEPTH`]).
+/// cascade's settings ([`CHEMISTRY_DEPTH`]), with its handlers: `freeze`,
+/// a coat's band freezing its body for its seconds.
 #[must_use]
 pub fn kit_plugins() -> tungsten::core::PluginSet {
     KitPlugins::set().with(
         ChemistryPlugin::new()
             .with_cap(CASCADE_CAP)
             .with_bound(CASCADE_BOUND)
-            .with_depth(CHEMISTRY_DEPTH),
+            .with_depth(CHEMISTRY_DEPTH)
+            .with_handler("freeze", systems::freeze_handler),
     )
 }
 

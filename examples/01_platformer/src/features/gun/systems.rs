@@ -22,7 +22,7 @@ use super::{
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{CORRODED, FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, CascadeKind};
-use crate::features::elements::components::Frozen;
+use crate::features::elements::is_frozen;
 use crate::features::enemies::armour;
 use crate::features::player::{self, Gesture};
 use crate::features::props::{
@@ -268,7 +268,7 @@ fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
             start,
             end,
             shape: collider.shape,
-            stops: what != What::Crate || world.has::<Frozen>(body),
+            stops: what != What::Crate || is_frozen(world, body),
         });
     }
     for (body, at, prev, hurtbox, health, id) in world.query::<(
@@ -671,7 +671,7 @@ fn splinter(world: &mut World, contact: Contact, along: Vec2) {
 /// A shot's keg: a frozen one shatters, another goes off, credited to the
 /// shooter; the shot ends.
 fn keg(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
-    if world.has::<Frozen>(contact.body) {
+    if is_frozen(world, contact.body) {
         let at = contact.point - contact.normal * BULLET_RADIUS;
         cascade::queue(world, CascadeKind::Shatter, Some(contact.body), at, at, 0.0);
     } else {
@@ -687,7 +687,7 @@ fn keg(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
 /// A shot's ball, or a frozen crate: a frozen one shatters, another takes
 /// the kick along the shot over its mass; the shot ends.
 fn kick(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent: bool) {
-    if world.has::<Frozen>(contact.body) {
+    if is_frozen(world, contact.body) {
         let at = contact.point - contact.normal * BULLET_RADIUS;
         cascade::queue(world, CascadeKind::Shatter, Some(contact.body), at, at, 0.0);
     } else {

@@ -14,7 +14,7 @@ use example_01_platformer::features::audio::HOLE_HUM;
 use example_01_platformer::features::audio::components::Music;
 use example_01_platformer::features::combat::Kind;
 use example_01_platformer::features::elements;
-use example_01_platformer::features::elements::components::BallBurn;
+use example_01_platformer::features::elements::burn_left;
 use example_01_platformer::features::elements::systems::douse;
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
@@ -89,12 +89,7 @@ fn fireball_contact_explodes_and_ignites_small_balls() {
     }
     assert!(!harness.world().is_alive(missile));
     assert_eq!(rings(&harness, Ring::Fireball), 1, "one blast");
-    assert!(
-        harness
-            .world()
-            .get::<BallBurn>(target)
-            .is_some_and(|b| b.remaining > 0.0)
-    );
+    assert!(burn_left(harness.world(), target).is_some_and(|left| left > 0.0));
 }
 
 #[test]
@@ -116,7 +111,7 @@ fn black_hole_leaves_burning_balls_inside_its_radius_spent() {
     elements::ignite(harness.world_mut(), outside);
     douse(harness.world_mut());
     elements::ignite(harness.world_mut(), inside);
-    let burn = |e| harness.world().get::<BallBurn>(e).unwrap().remaining;
+    let burn = |e| burn_left(harness.world(), e).unwrap();
     assert_eq!(burn(inside), 0.0);
     assert!(burn(outside) > 0.0);
 }

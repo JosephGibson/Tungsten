@@ -8,7 +8,7 @@ use tungsten::core::{
     AssetRegistry, Collider, Entity, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
     Position, Shape, Sprite, Time, Transform, Velocity, World,
 };
-use tungsten::kit::ContactDamage;
+use tungsten::kit::{ContactDamage, Effects, Tags};
 use tungsten::physics::{SpatialFilter, overlap};
 
 use super::components::{Bomb, Crate, Fuel, FuseEmitter, Keg, Plank, Rock, StoneSize};
@@ -16,10 +16,11 @@ use super::{
     BOMB_CENTRE, BOMB_RADIUS, BURN_SECS, FUSE_SECS, PLANK_BURN_SECS, ROCK_RADIUS, SPREAD_AFTER,
     SPREAD_REACH, TOUCH_REACH, burn_down, burning, collapse, light, set_off,
 };
+use crate::features::combat::FROZEN;
 use crate::features::combat::systems::{EMBER_TINTS, flicker};
 use crate::features::elements::cascade;
-use crate::features::elements::components::{BallBurn, Chill, Frozen};
 use crate::features::elements::systems::ignite;
+use crate::features::elements::{COAT, is_burning, is_frozen};
 use crate::features::level::lava::Lava;
 use crate::features::level::systems::drawn_time;
 use crate::features::toys::components::{ScrapTumble, SmallBall};
@@ -232,7 +233,7 @@ pub fn heat(world: &mut World) {
         if !world.is_alive(prop.entity) {
             continue;
         }
-        let frozen = world.has::<Frozen>(prop.entity);
+        let frozen = is_frozen(world, prop.entity);
         let in_lava = basins
             .iter()
             .any(|&(centre, half)| overlaps(prop.centre, prop.half, centre, half));
@@ -248,11 +249,7 @@ pub fn heat(world: &mut World) {
         }
         let caught = near(world, prop.centre, prop.half, TOUCH_REACH)
             .into_iter()
-            .any(|(_, entity)| {
-                world
-                    .get::<BallBurn>(entity)
-                    .is_some_and(|burn| burn.remaining > 0.0)
-            });
+            .any(|(_, entity)| world.has::<SmallBall>(entity) && is_burning(world, entity));
         if caught {
             light(world, prop.entity, player);
         }
@@ -328,12 +325,15 @@ fn mix(a: [u8; 4], b: [u8; 4], share: f32) -> [u8; 4] {
     })
 }
 
-/// How frozen a prop is, 0 to 1.
-fn frost(frozen: Option<&Frozen>, chill: Option<&Chill>) -> f32 {
-    if frozen.is_some() {
+/// How frozen a prop is, 0 to 1, by its tags and effects: 1 frozen, else
+/// its coat.
+fn frost(tags: Option<&Tags>, effects: Option<&Effects>) -> f32 {
+    if tags.is_some_and(|tags| tags.has(FROZEN)) {
         1.0
     } else {
-        chill.map_or(0.0, |chill| chill.amount)
+        effects
+            .and_then(|effects| effects.intensity(COAT))
+            .unwrap_or(0.0)
     }
 }
 
@@ -367,28 +367,28 @@ fn wood_tint(fuel: &Fuel, whole: f32, frost: f32, time: f32) -> [u8; 4] {
 /// fuse's last half; a bomb its spark's two frames in turn.
 pub fn look(world: &mut World) {
     let time = drawn_time(world);
-    for (_, fuel, sprite, frozen, chill) in
-        world.query_mut::<(&Crate, &Fuel, &mut Sprite, Option<&Frozen>, Option<&Chill>)>()
+    for (_, fuel, sprite, tags, effects) in
+        world.query_mut::<(&Crate, &Fuel, &mut Sprite, Option<&Tags>, Option<&Effects>)>()
     {
-        sprite.color = wood_tint(fuel, BURN_SECS, frost(frozen, chill), time);
+        sprite.color = wood_tint(fuel, BURN_SECS, frost(tags, effects), time);
     }
-    for (_, fuel, sprite, transform, tumble, frozen, chill) in world.query_mut::<(
+    for (_, fuel, sprite, transform, tumble, tags, effects) in world.query_mut::<(
         &Plank,
         &Fuel,
         &mut Sprite,
         &mut Transform,
         Option<&ScrapTumble>,
-        Option<&Frozen>,
-        Option<&Chill>,
+        Option<&Tags>,
+        Option<&Effects>,
     )>() {
-        sprite.color = wood_tint(fuel, PLANK_BURN_SECS, frost(frozen, chill), time);
+        sprite.color = wood_tint(fuel, PLANK_BURN_SECS, frost(tags, effects), time);
         if let Some(tumble) = tumble {
             transform.rotation = tumble.rotation(time);
         }
     }
     let kegs: Vec<(Entity, Option<f32>, f32)> = world
-        .query::<(Entity, &Keg, Option<&Frozen>, Option<&Chill>)>()
-        .map(|(entity, keg, frozen, chill)| (entity, keg.fuse, frost(frozen, chill)))
+        .query::<(Entity, &Keg, Option<&Tags>, Option<&Effects>)>()
+        .map(|(entity, keg, tags, effects)| (entity, keg.fuse, frost(tags, effects)))
         .collect();
     for (keg, fuse, frost) in kegs {
         let name = match fuse {

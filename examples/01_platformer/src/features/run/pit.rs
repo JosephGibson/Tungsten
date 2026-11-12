@@ -11,12 +11,14 @@ use tungsten::core::{Entity, Position, PrevPosition, Velocity, World};
 use tungsten::kit::{Health, StateMachine, Stats};
 
 use super::Run;
-use crate::features::elements::components::BallBurn;
+use crate::features::combat::BURNING;
+use crate::features::elements::components::Flame;
 use crate::features::enemies::components::{EnemyKind, EnemyState};
 use crate::features::level::{PIT, PIT_DECK, PIT_SHELVES, TILE};
 use crate::features::{enemies, lightning, player, toys};
 use crate::shared::SaveIds;
 use crate::shell::Difficulty;
+use tungsten::kit::Tags;
 
 /// The participants' max health: every attack lands, the troll's slam on
 /// enemies too, but nothing dies.
@@ -174,10 +176,13 @@ pub fn cast_at(world: &mut World, spell: &str, at: Vec2) -> Result<(), String> {
     Ok(())
 }
 
-/// The small balls burning now, and those that have burned out.
+/// The small balls burning now, and those that have burned out: each lit
+/// ball's flame, burning while it carries `status.burning`.
 #[must_use]
 pub fn fire(world: &World) -> (usize, usize) {
-    let burns = || world.query::<&BallBurn>();
-    let burning = burns().filter(|burn| burn.remaining > 0.0).count();
-    (burning, burns().count() - burning)
+    let lit = || world.query::<(&Flame, Option<&Tags>)>();
+    let burning = lit()
+        .filter(|(_, tags)| tags.is_some_and(|tags| tags.has(BURNING)))
+        .count();
+    (burning, lit().count() - burning)
 }

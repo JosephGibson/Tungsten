@@ -887,6 +887,9 @@
       }
     },
     "effects": {
+      "ball_burn": {
+        "path": "data/effects/ball_burn.json"
+      },
       "bleed_build": {
         "path": "data/effects/bleed_build.json"
       },
@@ -904,6 +907,9 @@
       },
       "casting": {
         "path": "data/effects/casting.json"
+      },
+      "chill": {
+        "path": "data/effects/chill.json"
       },
       "chill_build": {
         "path": "data/effects/chill_build.json"
@@ -925,6 +931,12 @@
       },
       "frozen": {
         "path": "data/effects/frozen.json"
+      },
+      "ice": {
+        "path": "data/effects/ice.json"
+      },
+      "kindled": {
+        "path": "data/effects/kindled.json"
       },
       "mana_regen": {
         "path": "data/effects/mana_regen.json"
@@ -987,6 +999,9 @@
       },
       "chill": {
         "path": "data/interactions/chill.json"
+      },
+      "coat": {
+        "path": "data/interactions/coat.json"
       },
       "freeze": {
         "path": "data/interactions/freeze.json"

@@ -3,12 +3,14 @@
 //! the cold pulses' rings.
 
 use glam::Vec2;
-use tungsten::core::{AssetRegistry, Collider, Transform, World};
+use tungsten::core::{AssetRegistry, Collider, Entity, Transform, World};
+use tungsten::kit::Tags;
 use tungsten::render::SpriteBatch;
 
 use super::FLAME_SIZE;
-use super::components::{BallBurn, Frozen, IcePulse};
-use super::systems::flame_look;
+use super::components::{Flame, IcePulse};
+use super::systems::{burn_left, flame_look};
+use crate::features::combat::FROZEN;
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{CORE, CORE_MATERIAL, drawn_time};
 use crate::shared::SaveId;
@@ -49,11 +51,12 @@ fn shells(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     };
     let (min, max) = view(world);
     let mut batches = Vec::new();
-    for (_, _, at) in world.query::<(
-        &Frozen,
-        &crate::features::toys::components::Ball,
-        &Transform,
-    )>() {
+    for (tags, _, at) in
+        world.query::<(&Tags, &crate::features::toys::components::Ball, &Transform)>()
+    {
+        if !tags.has(FROZEN) {
+            continue;
+        }
         let size = Vec2::splat(64.0) * at.scale;
         if (at.position + size).cmplt(min).any() || at.position.cmpgt(max).any() {
             continue;
@@ -75,9 +78,10 @@ fn flames(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     let time = drawn_time(world);
     let reach = Vec2::splat(FLAME_SIZE);
     let lit: Vec<_> = world
-        .query::<(&BallBurn, &SaveId, &Transform, &Collider)>()
-        .filter_map(|(burn, id, at, collider)| {
-            let look = flame_look(*id, *burn, time)?;
+        .query::<(Entity, &Flame, &SaveId, &Transform, &Collider)>()
+        .filter_map(|(ball, flame, id, at, collider)| {
+            let left = burn_left(world, ball)?;
+            let look = flame_look(*id, left, flame.exposed, time)?;
             let centre = at.position + collider.offset;
             ((centre + reach).cmpge(min).all() && (centre - reach).cmple(max).all())
                 .then_some((centre, look))

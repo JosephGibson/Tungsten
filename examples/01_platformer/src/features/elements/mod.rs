@@ -1,8 +1,10 @@
 //! The element rules of 01's bodies, its balls, iron and scraps, which
-//! have no health and keep compact components of their own (Q1): small
-//! balls burn for ten seconds, spreading by contact and nearness, and never
-//! light again once spent; cold chills iron and balls until they freeze,
-//! for five seconds; the black hole puts out what burns in its reach; fast
+//! have no health, on the kit's statuses (7.13a): small balls burn for ten
+//! seconds (`ball_burn`, with a lasting `kindled` that marks them `spent`),
+//! spreading by contact and nearness, and never light again once spent;
+//! cold builds a coat on iron and balls (`chill`, an intensity the kit
+//! wears down, through chemistry's `cold` rule) until they freeze, for
+//! five seconds (`ice`); the black hole puts out what burns in its reach; fast
 //! iron crushes small balls and hurts the player with physical damage; a
 //! hard impact bursts a small ball's sparks; moving bodies hurt targets by
 //! their speed and mass; cold puts a fire hazard out for a while. What has
@@ -25,11 +27,28 @@ use tungsten::kit::{PROJECTILE_TICK, Phase, ensure_phases};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
+use crate::features::combat::{BURNING, FROZEN, has_status};
 use crate::shared::SaveId;
-use components::{BallBurn, Chill, Frozen};
 
 /// A small ball's burn, game seconds.
 pub const BURN_SECS: f32 = 10.0;
+/// The bodies' statuses by their `effects` IDs: a small ball's burn,
+/// granting `status.burning` for [`BURN_SECS`], and its lasting `kindled`,
+/// granting [`SPENT`]; a body's coat of frost, an intensity to 1 that wears
+/// at [`THAW_RATE`] a second, and its freeze, granting `status.frozen` for
+/// [`FROZEN_SECS`]. The burn and the ice last 1 s scaled by their
+/// request's scale, their seconds (a line through 0 and 16 on the
+/// duration, which the kit's f64 arithmetic keeps exact), so a load gives
+/// one back the seconds it saved, to the bit.
+pub const BALL_BURN: &str = "ball_burn";
+pub const KINDLED: &str = "kindled";
+pub const COAT: &str = "chill";
+pub const ICE: &str = "ice";
+/// The tag a ball that has burned carries for good.
+pub const SPENT: &str = "spent";
+/// 01's own stimulus a cold spray sends a body it meets, which chemistry's
+/// `coat` rule builds the coat by.
+pub const COLD: &str = "cold";
 /// Seconds of cold a body takes to freeze through, and its chill's thaw a
 /// second; a frozen body thaws after [`FROZEN_SECS`] (Q17).
 pub const FREEZE_TIME: f32 = 1.5;
@@ -115,12 +134,13 @@ pub const SMASH_KEEP: f32 = 0.9;
 pub const FIRE_HALF: Vec2 = Vec2::new(18.0, 24.0);
 pub const FIRE_CENTRE: Vec2 = Vec2::new(32.0, 32.0);
 
-/// The element rules as a plugin. In the fixed step: the burns', the
-/// freezes' and the doused hazards' clocks first; after the physics step,
+/// The element rules as a plugin. In the fixed step: the doused hazards'
+/// clocks first (the kit times the burns and the freezes); after the
+/// physics step,
 /// the fires against the balls, the impact bursts, the crushes, the bodies'
 /// impacts, the spread and the burning surface and the black hole's
 /// dousing, then the cascades' run, last of 01's contact systems and
-/// before the kit's resolve; then the chills' thaw. Before the frame's
+/// before the kit's resolve. Before the frame's
 /// particles, the burning surface's emitters, the impact sparks' colours
 /// and the doused hazards' looks; in the present phase the cold pulses;
 /// and the flames, pulses and ice shells drawn after the sprites.
@@ -142,8 +162,6 @@ impl Plugin for ElementsPlugin {
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         ensure_phases(schedule);
         let fixed = [
-            Phase::Tick.join(system("fire_tick", systems::tick_fire)),
-            Phase::Tick.join(system("frozen_tick", systems::tick_frozen)),
             Phase::Tick.join(system("douse_tick", systems::tick_doused)),
             Phase::Overlap.join(system(CONTACTS[0], systems::fire_contacts)),
             Phase::Overlap.join(system(CONTACTS[1], systems::ball_impacts)),
@@ -152,7 +170,6 @@ impl Plugin for ElementsPlugin {
             Phase::Overlap.join(system(CONTACTS[4], systems::spread_fire)),
             Phase::Overlap.join(system(CONTACTS[5], systems::flame_exposure)),
             Phase::Overlap.join(system(CONTACTS[6], systems::douse)),
-            Phase::React.join(system("iron_thaw", systems::thaw)),
         ];
         for desc in fixed {
             schedule.add(Stage::FixedUpdate, desc);
@@ -185,8 +202,9 @@ pub fn ignite(world: &mut World, ball: Entity) {
     systems::ignite(world, ball);
 }
 
-/// Chills a body, iron or a ball, by `amount`, at `contact` where the cold
-/// met it: frozen at a full coating, with its cue.
+/// Chills a body, iron or a ball, by `amount` of its coat this step, at
+/// `contact` where the cold met it: chemistry's `cold`, frozen at a full
+/// coat, with its cue.
 pub fn chill(world: &mut World, body: Entity, amount: f32, contact: Vec2) {
     systems::chill(world, body, amount, contact);
 }
@@ -194,6 +212,25 @@ pub fn chill(world: &mut World, body: Entity, amount: f32, contact: Vec2) {
 /// Freezes a body, iron or a ball, through at once, for [`FROZEN_SECS`].
 pub fn freeze_iron(world: &mut World, body: Entity) {
     systems::freeze_iron(world, body);
+}
+
+/// Whether `body` is frozen: it carries `status.frozen`.
+#[must_use]
+pub fn is_frozen(world: &World, body: Entity) -> bool {
+    has_status(world, body, FROZEN)
+}
+
+/// Whether `ball` burns: it carries `status.burning`.
+#[must_use]
+pub fn is_burning(world: &World, ball: Entity) -> bool {
+    has_status(world, ball, BURNING)
+}
+
+/// The game seconds `ball`'s burn has left: its `ball_burn`'s, 0 once it
+/// is spent, `None` for one never lit.
+#[must_use]
+pub fn burn_left(world: &World, ball: Entity) -> Option<f32> {
+    systems::burn_left(world, ball)
 }
 
 /// What a body of `mass` closing on a target at `closing` px/s hurts it by:
@@ -221,14 +258,20 @@ pub fn blows_keg(mass: f32, closing: f32) -> bool {
     mass >= LIGHT_MASS && closing * (mass / SHATTER_MASS).min(1.0) >= KEG_SPEED
 }
 
-/// How frozen a body is, 0 to 1.
+/// How frozen a body is, 0 to 1: 1 frozen, else its coat.
 #[must_use]
 pub fn freeze_amount(world: &World, body: Entity) -> f32 {
-    if world.has::<Frozen>(body) {
+    if is_frozen(world, body) {
         1.0
     } else {
-        world.get::<Chill>(body).map_or(0.0, |chill| chill.amount)
+        systems::coat_of(world, body)
     }
+}
+
+/// The game seconds `body`'s freeze has left: its `ice`'s; `None` unfrozen.
+#[must_use]
+pub fn ice_left(world: &World, body: Entity) -> Option<f32> {
+    systems::status_left(world, body, ICE)
 }
 
 /// A blast's heat at `at`: each frozen body whose surface lies within
@@ -247,8 +290,9 @@ pub fn ice_pulse(world: &mut World, at: Vec2, size: f32, shatter: bool) {
     systems::ice_pulse(world, at, size, shatter);
 }
 
-/// A burning or spent ball's tint at level time `time`, by its save ID.
+/// A burning or spent ball's tint at level time `time`, by its save ID,
+/// its burn's seconds `left`.
 #[must_use]
-pub fn ember_tint(id: SaveId, burn: BallBurn, time: f32) -> [u8; 4] {
-    systems::ember_tint(id, burn, time)
+pub fn ember_tint(id: SaveId, left: f32, time: f32) -> [u8; 4] {
+    systems::ember_tint(id, left, time)
 }

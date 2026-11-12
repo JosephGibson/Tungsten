@@ -10,7 +10,7 @@ use super::{
     MUSIC_EXPLORE, PAUSE_FADE, WISP_HUM,
 };
 use crate::features::combat::BURNING;
-use crate::features::elements::components::BallBurn;
+use crate::features::elements::components::Flame;
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, EnemyState, Sight};
 use crate::features::level::systems::current_area;
@@ -163,9 +163,9 @@ fn fires(world: &World) -> impl Iterator<Item = Vec2> + '_ {
         .filter(|(_, fuel)| fuel.lit)
         .map(|(entity, _)| entity);
     let balls = world
-        .query::<(Entity, &BallBurn)>()
-        .filter(|(_, burn)| burn.remaining > 0.0)
-        .map(|(entity, _)| entity);
+        .query::<(Entity, &Flame, &Tags)>()
+        .filter(|(_, _, tags)| tags.has(BURNING))
+        .map(|(entity, ..)| entity);
     let targets = world
         .query::<(Entity, &Health, &Tags)>()
         .filter(|(_, health, tags)| !health.is_dead() && tags.has(BURNING))

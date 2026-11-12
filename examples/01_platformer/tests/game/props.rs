@@ -16,7 +16,7 @@ use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::Kind;
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades};
-use example_01_platformer::features::elements::components::{BallBurn, Frozen};
+use example_01_platformer::features::elements::is_frozen;
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::EnemyKind;
 use example_01_platformer::features::gun;
@@ -133,8 +133,8 @@ fn a_crate_set_alight_burns_down_and_falls_in() {
     assert!(
         harness
             .world()
-            .get::<BallBurn>(small)
-            .is_some_and(|burn| burn.remaining > 0.0),
+            .get::<tungsten::kit::Tags>(small)
+            .is_some_and(|tags| tags.has("status.burning")),
         "the ball by its box at once"
     );
     assert!(!fuel(&harness, near).lit, "its neighbour not yet");
@@ -343,7 +343,7 @@ fn a_frozen_keg_shatters_in_fire_and_never_blows() {
     let keg = prop(&mut harness, PropKind::Keg, 600.0);
     harness.step(2);
     elements::freeze_iron(harness.world_mut(), keg);
-    assert!(harness.world().has::<Frozen>(keg), "frozen through");
+    assert!(is_frozen(harness.world(), keg), "frozen through");
     let world = harness.world_mut();
     assert!(!props::light(world, keg, None), "its fuse never lights");
     assert!(
@@ -910,7 +910,7 @@ fn the_flamethrower_held_on_a_stone_lights_nothing() {
     assert!(!came && lit == 0, "nothing catches");
     let world = harness.world();
     assert!(world.is_alive(rubble), "the stone stays");
-    assert!(!world.has::<Fuel>(rubble) && !world.has::<Frozen>(rubble));
+    assert!(!world.has::<Fuel>(rubble) && !is_frozen(world, rubble));
 }
 
 #[test]

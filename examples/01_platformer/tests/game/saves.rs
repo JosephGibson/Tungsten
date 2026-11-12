@@ -28,7 +28,7 @@ use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::dummy::components::Dummy;
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
-use example_01_platformer::features::elements::components::{BallBurn, Frozen};
+use example_01_platformer::features::elements::components::{ColdFace, Flame};
 use example_01_platformer::features::enemies::components::{
     Enemy, EnemyKind, EnemyState, Throw, Throws, Variant,
 };
@@ -335,7 +335,6 @@ struct Lists {
 }
 
 fn lists(kind: &str) -> Lists {
-    use example_01_platformer::features::elements::components::Chill;
     use example_01_platformer::features::level::components::{Glow, GlowParts, Hazard};
     use example_01_platformer::features::level::elevator::{CableLook, ElevatorDef};
     use example_01_platformer::features::level::lava::CrustLook;
@@ -457,7 +456,9 @@ fn lists(kind: &str) -> Lists {
                     name::<SmallBall>(),
                     name::<BowlingBall>(),
                     name::<BallHue>(),
-                    name::<BallBurn>(),
+                    name::<Flame>(),
+                    name::<Effects>(),
+                    name::<Tags>(),
                 ],
             ]
             .concat(),
@@ -470,12 +471,12 @@ fn lists(kind: &str) -> Lists {
                 ],
             ]
             .concat(),
-            presentation: [&drawn[..], &[name::<AnimationState>()]].concat(),
+            presentation: [&drawn[..], &[name::<AnimationState>(), name::<ColdFace>()]].concat(),
         },
         "block" => Lists {
             saved: [
                 &at[..],
-                &[name::<Velocity>(), name::<Chill>(), name::<Frozen>()],
+                &[name::<Velocity>(), name::<Effects>(), name::<Tags>()],
             ]
             .concat(),
             rebuilt: [
@@ -488,7 +489,11 @@ fn lists(kind: &str) -> Lists {
                 ],
             ]
             .concat(),
-            presentation: names([name::<Transform>(), name::<Visibility>()]),
+            presentation: names([
+                name::<Transform>(),
+                name::<Visibility>(),
+                name::<ColdFace>(),
+            ]),
         },
         "scrap" => Lists {
             saved: [
@@ -496,8 +501,8 @@ fn lists(kind: &str) -> Lists {
                 &[
                     name::<Velocity>(),
                     name::<IronScrap>(),
-                    name::<Chill>(),
-                    name::<Frozen>(),
+                    name::<Effects>(),
+                    name::<Tags>(),
                 ],
             ]
             .concat(),
@@ -510,7 +515,7 @@ fn lists(kind: &str) -> Lists {
                 ],
             ]
             .concat(),
-            presentation: [&drawn[..], &[name::<ScrapTumble>()]].concat(),
+            presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
         },
         "black hole" => Lists {
             saved: names([name::<SaveId>(), name::<Transform>(), name::<BlackHole>()]),
@@ -618,8 +623,8 @@ fn lists(kind: &str) -> Lists {
                         name::<Keg>(),
                         name::<Bomb>(),
                         name::<Rock>(),
-                        name::<Chill>(),
-                        name::<Frozen>(),
+                        name::<Effects>(),
+                        name::<Tags>(),
                     ],
                 ]
                 .concat(),
@@ -628,7 +633,7 @@ fn lists(kind: &str) -> Lists {
                     &[name::<SceneEntity>(), name::<PreviousVelocity>()],
                 ]
                 .concat(),
-                presentation: drawn.to_vec(),
+                presentation: [&drawn[..], &[name::<ColdFace>()]].concat(),
             }
         }
         // A rubble stone: its size and art, saved whole; it takes no frost.
@@ -652,8 +657,8 @@ fn lists(kind: &str) -> Lists {
                         name::<Velocity>(),
                         name::<Plank>(),
                         name::<Fuel>(),
-                        name::<Chill>(),
-                        name::<Frozen>(),
+                        name::<Effects>(),
+                        name::<Tags>(),
                     ],
                 ]
                 .concat(),
@@ -662,7 +667,7 @@ fn lists(kind: &str) -> Lists {
                     &[name::<SceneEntity>(), name::<PreviousVelocity>()],
                 ]
                 .concat(),
-                presentation: [&drawn[..], &[name::<ScrapTumble>()]].concat(),
+                presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
             }
         }
         "snowball" => {
@@ -859,8 +864,12 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
         world.query::<&SmallBall>().count() >= 500,
         "the pit holds 500"
     );
-    assert!(world.query::<&Frozen>().count() + world.query::<&IronScrap>().count() > 0);
-    assert!(world.query::<&BallBurn>().count() > 0);
+    let frozen = world
+        .query::<&Tags>()
+        .filter(|tags| tags.has("status.frozen"))
+        .count();
+    assert!(frozen + world.query::<&IronScrap>().count() > 0);
+    assert!(world.query::<&Flame>().count() > 0);
     assert_eq!(world.query::<&BlackHole>().count(), 1);
     assert!(world.query::<&FireMissile>().count() > 0);
     let mut seen: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
@@ -1039,12 +1048,13 @@ fn outcome(harness: &UiHarness) -> Outcome {
     Outcome {
         points,
         burning: world
-            .query::<(Entity, &BallBurn)>()
-            .filter(|(_, burn)| burn.remaining > 0.0)
-            .map(|(e, _)| id(e))
+            .query::<(Entity, &Flame, &Tags)>()
+            .filter(|(_, _, tags)| tags.has("status.burning"))
+            .map(|(e, ..)| id(e))
             .collect(),
         frozen: world
-            .query::<(Entity, &Frozen)>()
+            .query::<(Entity, &Tags)>()
+            .filter(|(e, tags)| tags.has("status.frozen") && world.get::<Health>(*e).is_none())
             .map(|(e, _)| id(e))
             .collect(),
         statuses: world

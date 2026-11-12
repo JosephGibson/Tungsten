@@ -5,13 +5,13 @@
 //! stays bounded and drains; and the flames draw on the surface only,
 //! embers below and char after.
 
-use example_01_platformer::features::elements::components::{BallBurn, FireEmitter};
+use example_01_platformer::features::elements::components::{FireEmitter, Flame};
 use example_01_platformer::features::elements::draw::{FLAME_FRAMES, effects};
 use example_01_platformer::features::elements::systems::{
-    fire_contacts, fire_particles, flame_exposure, spread_fire, tick_fire,
+    fire_contacts, fire_particles, flame_exposure, spread_fire,
 };
 use example_01_platformer::features::elements::{
-    self, BURN_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP, FLAME_SIZE,
+    self, BALL_BURN, BURN_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP, FLAME_SIZE, burn_left,
 };
 use example_01_platformer::features::level::components::{Hazard, SceneTime};
 use example_01_platformer::features::toys::components::Ball;
@@ -21,9 +21,10 @@ use example_01_platformer::shared::SaveId;
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AssetRegistry, CameraState, Collider, Entity, Particle, ParticleBudget, Position, PrevPosition,
-    Sprite, Time, Transform,
+    AssetRegistry, CameraState, Collider, DataRef, Entity, Particle, ParticleBudget, Position,
+    PrevPosition, Sprite, Transform,
 };
+use tungsten::kit::end_effect;
 use tungsten::testing::UiHarness;
 
 use super::{ball, contact, floor, mock_sprite, run};
@@ -51,8 +52,19 @@ fn fire(harness: &mut UiHarness, centre: Vec2) -> Entity {
     ))
 }
 
-fn burn(harness: &UiHarness, e: Entity) -> Option<BallBurn> {
-    harness.world().get::<BallBurn>(e).copied()
+/// A ball's burn's seconds left, 0 once spent; none for one never lit.
+fn burn(harness: &UiHarness, e: Entity) -> Option<f32> {
+    burn_left(harness.world(), e)
+}
+
+/// Burns every lit ball out at once: its burn ends and its `kindled` stays,
+/// as the kit's effect clock leaves it, which runs with the step alone.
+fn burn_out(harness: &mut UiHarness) {
+    let world = harness.world_mut();
+    let lit: Vec<Entity> = world.query::<(Entity, &Flame)>().map(|(e, _)| e).collect();
+    for ball in lit {
+        end_effect(world, ball, &DataRef::by_id(BALL_BURN));
+    }
 }
 
 #[test]
@@ -79,7 +91,7 @@ fn fire_ignites_small_balls_including_swept_crossings_and_still_destroys_normal_
     fire_contacts(harness.world_mut());
     for e in [small, crossing] {
         assert!(harness.world().is_alive(e));
-        assert_eq!(burn(&harness, e).unwrap().remaining, BURN_SECS);
+        assert_eq!(burn(&harness, e).unwrap(), BURN_SECS);
     }
     assert!(
         !harness.world().is_alive(bowling),
@@ -114,7 +126,7 @@ fn contact_spread_is_symmetric_and_only_uses_current_events() {
         }
         harness.step(1);
         // Lit after this step's tick, at its full burn.
-        assert_eq!(burn(&harness, target).unwrap().remaining, BURN_SECS);
+        assert_eq!(burn(&harness, target).unwrap(), BURN_SECS);
         assert!(burn(&harness, stale).is_none());
         assert!(
             burn(&harness, bowling).is_none(),
@@ -149,17 +161,14 @@ fn burns_last_ten_seconds_without_refresh_and_spent_balls_never_reignite() {
     let o = Vec2::new(600.0, 400.0);
     let spent = ball(&mut harness, o, true);
     elements::ignite(harness.world_mut(), spent);
-    harness
-        .world_mut()
-        .resource_mut::<Time>()
-        .advance_frame(0.25);
+    // The kit's clock runs with the step: 39 quarters of a second.
     for _ in 0..39 {
-        tick_fire(harness.world_mut());
+        harness.step(15);
         elements::ignite(harness.world_mut(), spent);
     }
-    assert!((burn(&harness, spent).unwrap().remaining - 0.25).abs() < 1e-4);
-    tick_fire(harness.world_mut());
-    assert_eq!(burn(&harness, spent).unwrap().remaining, 0.0);
+    assert!((burn(&harness, spent).unwrap() - 0.25).abs() < 1e-4);
+    harness.step(15);
+    assert_eq!(burn(&harness, spent).unwrap(), 0.0);
     assert!(harness.world().is_alive(spent));
     let cold = ball(&mut harness, o + Vec2::new(15.0, 0.0), true);
     spread_fire(harness.world_mut());
@@ -171,8 +180,8 @@ fn burns_last_ten_seconds_without_refresh_and_spent_balls_never_reignite() {
     fire(&mut harness, o);
     fire_contacts(harness.world_mut());
     spread_fire(harness.world_mut());
-    assert_eq!(burn(&harness, spent).unwrap().remaining, 0.0);
-    assert_eq!(burn(&harness, cold).unwrap().remaining, BURN_SECS);
+    assert_eq!(burn(&harness, spent).unwrap(), 0.0);
+    assert_eq!(burn(&harness, cold).unwrap(), BURN_SECS);
 }
 
 /// The particles the burning pool's emitters own.
@@ -262,11 +271,7 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
     }
     assert!(fed, "the pool takes its share of the budget");
     // Burnout: every pair goes, and its particles drain.
-    harness
-        .world_mut()
-        .resource_mut::<Time>()
-        .advance_frame(10.0);
-    tick_fire(harness.world_mut());
+    burn_out(&mut harness);
     fire_particles(harness.world_mut());
     assert!(pool(&harness).is_empty());
     harness.step(90);
@@ -326,11 +331,7 @@ fn extraction_shows_flames_on_the_surface_embers_beneath_and_charcoal_after_burn
     flame_exposure(harness.world_mut());
     assert!(tongues(&harness).is_empty());
     harness.world_mut().despawn(cover);
-    harness
-        .world_mut()
-        .resource_mut::<Time>()
-        .advance_frame(10.0);
-    tick_fire(harness.world_mut());
+    burn_out(&mut harness);
     let batches = effects(harness.world());
     assert!(batches.iter().all(|b| !matches!(b.texture.0, 951 | 952)));
     ball_look(harness.world_mut());

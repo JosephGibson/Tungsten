@@ -12,7 +12,7 @@ use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::{BURNING, has_status};
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades, Entry};
-use example_01_platformer::features::elements::components::{BallBurn, Frozen};
+use example_01_platformer::features::elements::{burn_left, is_frozen};
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
 use example_01_platformer::features::level::TILE;
@@ -248,7 +248,7 @@ fn conduction_stops_at_ice() {
     );
     let world = harness.world();
     assert!(
-        world.is_alive(line[3]) && world.has::<Frozen>(line[3]),
+        world.is_alive(line[3]) && is_frozen(world, line[3]),
         "shock starts no ending"
     );
     // A frozen start passes nothing on either.
@@ -317,9 +317,7 @@ fn a_strike_lights_nothing() {
     assert!(health(&harness, dummy) < 400.0, "the shock landed");
     assert!(!has_status(world, dummy, BURNING), "shock never burns");
     assert!(
-        balls
-            .iter()
-            .all(|&ball| world.get::<BallBurn>(ball).is_none()),
+        balls.iter().all(|&ball| burn_left(world, ball).is_none()),
         "no ball lit"
     );
 }

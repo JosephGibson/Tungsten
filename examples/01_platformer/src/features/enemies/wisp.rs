@@ -10,13 +10,14 @@ use tungsten::SceneEntity;
 use tungsten::core::{
     Entity, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position, World,
 };
-use tungsten::kit::{HealRequest, Health, StateMachine, TopDownMover, spawn_child};
+use tungsten::kit::{HealRequest, Health, StateMachine, Tags, TopDownMover, spawn_child};
 
 use super::components::{Enemy, EnemyKind, EnemyState, Shown};
 use super::systems::{elapsed, face, go, player, rest, sees};
 use super::{ARRIVED, centre};
 use crate::features::audio::{self, components::Sound};
-use crate::features::elements::components::BallBurn;
+use crate::features::combat::BURNING;
+use crate::features::elements::components::Flame;
 use crate::features::toys::components::{Ball, SmallBall};
 use crate::game::GAMEPLAY;
 
@@ -67,9 +68,9 @@ fn nearest_fire(world: &World, at: Vec2) -> Option<Vec2> {
 /// The burning balls' centres.
 fn burning(world: &World) -> impl Iterator<Item = Vec2> + '_ {
     world
-        .query::<(&Ball, &BallBurn, &Position, Option<&SmallBall>)>()
-        .filter(|(_, burn, ..)| burn.remaining > 0.0)
-        .map(|(_, _, at, small)| {
+        .query::<(&Ball, &Flame, &Tags, &Position, Option<&SmallBall>)>()
+        .filter(|(_, _, tags, ..)| tags.has(BURNING))
+        .map(|(_, _, _, at, small)| {
             let centre = if small.is_some() {
                 crate::features::toys::SMALL_BALL_CENTRE
             } else {

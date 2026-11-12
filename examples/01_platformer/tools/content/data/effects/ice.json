@@ -1,0 +1,21 @@
+{
+  "duration": 1,
+  "grant": [
+    "status.frozen"
+  ],
+  "scale": {
+    "curve": [
+      [
+        0,
+        0
+      ],
+      [
+        16,
+        16
+      ]
+    ],
+    "into": [
+      "duration"
+    ]
+  }
+}

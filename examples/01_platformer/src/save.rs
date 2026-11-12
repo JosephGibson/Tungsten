@@ -43,17 +43,19 @@ use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
 use tungsten::core::save::Value;
 use tungsten::core::{
-    CommandBuffer, Entity, Position, PrevPosition, SaveData, Transform, Velocity, Visibility, World,
+    CommandBuffer, DataRef, Entity, Position, PrevPosition, SaveData, Transform, Velocity,
+    Visibility, World,
 };
 use tungsten::kit::{
-    Abilities, ContactDamage, ContactTouch, Effects, Health, Hitbox, KitRng, Knockback, Lifetime,
-    LinearMotion, Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Resist,
-    Shield, Source, StateMachine, Stats, Tags, TopDownMover,
+    Abilities, ContactDamage, ContactTouch, EffectRequest, Effects, Health, Hitbox, KitRng,
+    Knockback, Lifetime, LinearMotion, Oscillator, PathFollower, Pickup, PlatformerController,
+    Projectile, Resist, Shield, Source, StateMachine, Stats, Tags, TopDownMover,
 };
 
 use crate::features::dummy::{self, components::Dummy};
 use crate::features::elements::cascade::Cascades;
-use crate::features::elements::components::{BallBurn, Chill, Frozen};
+use crate::features::elements::systems::{coat_of, freeze_for, light};
+use crate::features::elements::{COAT, burn_left, ice_left};
 use crate::features::enemies::components::{
     Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Sight, Snowball, Throw, Throws,
 };
@@ -1577,7 +1579,8 @@ pub struct BallSave {
     pub position: [f32; 2],
     pub velocity: [f32; 2],
     pub hue: Option<BallHue>,
-    pub burn: Option<BallBurn>,
+    /// Its burn's seconds left, 0 once spent; none for one never lit.
+    pub burn: Option<f32>,
     pub ice: Option<f32>,
 }
 
@@ -1603,10 +1606,7 @@ impl From<BallRecord> for BallSave {
             position: [x, y],
             velocity: [vx, vy],
             hue: hue.zip(speed).map(|(hue, speed)| BallHue { hue, speed }),
-            burn: burn.map(|remaining| BallBurn {
-                remaining,
-                exposed: true,
-            }),
+            burn,
             ice,
         }
     }
@@ -1626,7 +1626,7 @@ impl From<BallSave> for BallRecord {
             vy,
             hue.map(|(hue, _)| hue),
             hue.map(|(_, speed)| speed),
-            ball.burn.map(|burn| burn.remaining),
+            ball.burn,
             ball.ice,
         )
     }
@@ -1697,26 +1697,43 @@ impl<'de> serde::de::Visitor<'de> for BallVisitor {
     }
 }
 
-/// A body's ice as a save writes it: 1 plus the seconds its freeze has
-/// left, else its chill.
-fn ice_of(chill: Option<&Chill>, frozen: Option<&Frozen>) -> Option<f32> {
-    frozen
-        .map(|frozen| 1.0 + frozen.left.max(0.0))
-        .or_else(|| chill.map(|chill| chill.amount))
+/// A body's coat as a save writes it, its `chill`'s intensity; none
+/// without one.
+fn chill_of(world: &World, entity: Entity) -> Option<f32> {
+    let coat = coat_of(world, entity);
+    (coat > 0.0).then_some(coat)
+}
+
+/// A body's ice as a save writes it: 1 plus the seconds its freeze (its
+/// `ice`) has left, else its coat.
+fn ice_of(world: &World, entity: Entity) -> Option<f32> {
+    ice_left(world, entity)
+        .map(|left| 1.0 + left.max(0.0))
+        .or_else(|| chill_of(world, entity))
+}
+
+/// Puts a saved coat back on `entity`, as its `chill`'s intensity.
+fn set_chill(world: &mut World, entity: Entity, amount: Option<f32>) {
+    if let Some(amount) = amount.filter(|&amount| amount > 0.0) {
+        EffectRequest::new(entity, DataRef::by_id(COAT))
+            .with_amount(amount)
+            .apply(world);
+    }
+}
+
+/// Puts a saved freeze back on `entity`: its `ice` for the seconds `left`
+/// had.
+fn set_frozen(world: &mut World, entity: Entity, left: Option<f32>) {
+    if let Some(left) = left {
+        freeze_for(world, entity, left.max(0.0));
+    }
 }
 
 /// Puts a saved ice back on `entity`.
 fn set_ice(world: &mut World, entity: Entity, ice: Option<f32>) {
     match ice {
-        Some(ice) if ice >= 1.0 => world.insert(entity, Frozen { left: ice - 1.0 }),
-        Some(amount) => world.insert(
-            entity,
-            Chill {
-                amount,
-                held: false,
-            },
-        ),
-        None => {}
+        Some(ice) if ice >= 1.0 => set_frozen(world, entity, Some(ice - 1.0)),
+        amount => set_chill(world, entity, amount),
     }
 }
 
@@ -1908,37 +1925,38 @@ pub fn capture(world: &World) -> Option<SaveGame> {
             &Velocity,
             Option<&SmallBall>,
             Option<&BallHue>,
-            Option<&BallBurn>,
         )>()
-        .map(|(entity, id, _, at, velocity, small, hue, burn)| BallSave {
+        .map(|(entity, id, _, at, velocity, small, hue)| BallSave {
             id: id.0,
             small: small.is_some(),
             position: at.0.to_array(),
             velocity: velocity.0.to_array(),
             hue: hue.copied(),
-            burn: burn.copied(),
-            ice: ice_of(world.get::<Chill>(entity), world.get::<Frozen>(entity)),
+            burn: burn_left(world, entity),
+            ice: ice_of(world, entity),
         })
         .collect();
     balls.sort_by_key(|ball| ball.id);
     let mut blocks: Vec<BlockSave> = world
         .query::<(
+            Entity,
             &SaveId,
             &Position,
             &Velocity,
             Option<&IronBlock>,
             Option<&IronScrap>,
-            Option<&Chill>,
-            Option<&Frozen>,
         )>()
-        .filter(|(_, _, _, block, scrap, ..)| block.is_some() || scrap.is_some())
-        .map(|(id, at, velocity, _, scrap, chill, frozen)| BlockSave {
-            id: id.0,
-            scrap: scrap.map(|scrap| scrap.variant),
-            position: at.0.to_array(),
-            velocity: velocity.0.to_array(),
-            chill: chill.map(|chill| chill.amount),
-            frozen: frozen.map(|frozen| frozen.left),
+        .filter(|(_, _, _, _, block, scrap)| block.is_some() || scrap.is_some())
+        .map(|(entity, id, at, velocity, _, scrap)| {
+            let frozen = ice_left(world, entity);
+            BlockSave {
+                id: id.0,
+                scrap: scrap.map(|scrap| scrap.variant),
+                position: at.0.to_array(),
+                velocity: velocity.0.to_array(),
+                chill: chill_of(world, entity).filter(|_| frozen.is_none()),
+                frozen,
+            }
         })
         .collect();
     blocks.sort_by_key(|block| block.id);
@@ -2021,8 +2039,8 @@ pub fn capture(world: &World) -> Option<SaveGame> {
                 variant: plank.variant,
                 position: world.get::<Position>(entity)?.0.to_array(),
                 velocity: world.get::<Velocity>(entity)?.0.to_array(),
-                chill: world.get::<Chill>(entity).map(|chill| chill.amount),
-                frozen: world.get::<Frozen>(entity).map(|frozen| frozen.left),
+                chill: chill_of(world, entity).filter(|_| ice_left(world, entity).is_none()),
+                frozen: ice_left(world, entity),
                 fuel: *fuel,
             })
         })
@@ -2154,8 +2172,8 @@ fn capture_prop(world: &World, entity: Entity) -> Option<PropSave> {
         variant: variant.unwrap_or(0),
         position: world.get::<Position>(entity)?.0.to_array(),
         velocity: world.get::<Velocity>(entity)?.0.to_array(),
-        chill: world.get::<Chill>(entity).map(|chill| chill.amount),
-        frozen: world.get::<Frozen>(entity).map(|frozen| frozen.left),
+        chill: chill_of(world, entity).filter(|_| ice_left(world, entity).is_none()),
+        frozen: ice_left(world, entity),
         fuel: world.get::<Fuel>(entity).copied(),
         fuse: keg
             .and_then(|keg| keg.fuse)
@@ -2451,8 +2469,10 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         if let Some(hue) = ball.hue {
             world.insert(entity, hue);
         }
-        if let Some(burn) = ball.burn {
-            world.insert(entity, burn);
+        // A burn with seconds left lights on for them; a spent one keeps
+        // its `kindled` alone.
+        if let Some(left) = ball.burn {
+            light(world, entity, left.max(0.0));
         }
         set_ice(world, entity, ball.ice);
     }
@@ -2466,18 +2486,8 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             entity,
             (SaveId(block.id), Velocity(Vec2::from(block.velocity))),
         );
-        if let Some(amount) = block.chill {
-            world.insert(
-                entity,
-                Chill {
-                    amount,
-                    held: false,
-                },
-            );
-        }
-        if let Some(left) = block.frozen {
-            world.insert(entity, Frozen { left });
-        }
+        set_chill(world, entity, block.chill);
+        set_frozen(world, entity, block.frozen);
     }
     for prop in &save.props {
         restore_prop(world, prop);
@@ -2606,18 +2616,8 @@ fn restore_prop(world: &mut World, saved: &PropSave) {
     if saved.map {
         world.insert(entity, MapProp);
     }
-    if let Some(amount) = saved.chill {
-        world.insert(
-            entity,
-            Chill {
-                amount,
-                held: false,
-            },
-        );
-    }
-    if let Some(left) = saved.frozen {
-        world.insert(entity, Frozen { left });
-    }
+    set_chill(world, entity, saved.chill);
+    set_frozen(world, entity, saved.frozen);
     if let Some(fuel) = saved.fuel {
         world.insert(entity, fuel);
     }
@@ -2647,18 +2647,8 @@ fn restore_plank(world: &mut World, saved: &PlankSave) {
     let at = Vec2::from(saved.position);
     let entity = props::restore(world, PropKind::Plank, at, SaveId(saved.id), saved.variant);
     world.insert_bundle(entity, (Velocity(Vec2::from(saved.velocity)), saved.fuel));
-    if let Some(amount) = saved.chill {
-        world.insert(
-            entity,
-            Chill {
-                amount,
-                held: false,
-            },
-        );
-    }
-    if let Some(left) = saved.frozen {
-        world.insert(entity, Frozen { left });
-    }
+    set_chill(world, entity, saved.chill);
+    set_frozen(world, entity, saved.frozen);
 }
 
 /// Puts a saved enemy's state over `entity`: its point, its driver or

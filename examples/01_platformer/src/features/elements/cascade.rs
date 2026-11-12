@@ -32,12 +32,12 @@ use tungsten::core::{
 use tungsten::kit::{EffectRequest, Health, end_effect};
 use tungsten::physics::wake;
 
-use super::components::{BallBurn, Frozen};
 use super::systems::{ice_pulse, shatter_iron};
 use super::{
     BALL_BLAST, BLAST_PUSH, CASCADE_BOUND, CASCADE_CAP, IRON_BLAST, SCRAP_BLAST, SMALL_STEAM_REACH,
     STEAM_PART, STEAM_PUSH, TARGET_BLAST,
 };
+use super::{is_burning, is_frozen};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{self, BURNING, Kind, has_status};
 use crate::features::props::components::{Bomb, Crate, Keg, Rock, Stone};
@@ -572,7 +572,7 @@ fn execute(world: &mut World, bin: &Bin, entry: &Entry) {
 fn end_frozen(world: &mut World, thing: Entity, from: Option<Vec2>) {
     if world.has::<Health>(thing) {
         end_effect(world, thing, &DataRef::by_id("frozen"));
-    } else if world.has::<Frozen>(thing) {
+    } else if is_frozen(world, thing) {
         if world.has::<IronBlock>(thing) {
             shatter_iron(world, thing, from);
         } else {
@@ -648,7 +648,7 @@ fn blast(world: &mut World, bin: &Bin, at: Vec2, origin: Vec2, credit: Credit, r
             );
             continue;
         }
-        if world.has::<Frozen>(item.entity) {
+        if is_frozen(world, item.entity) {
             thermal_shock_from(world, item.entity, item.centre, origin, credit.id);
         } else {
             match item.what {
@@ -723,7 +723,7 @@ fn detonate(
     }
     cascades.detonated.push(keg);
     let count = cascades.detonated.len();
-    if world.has::<Frozen>(keg) {
+    if is_frozen(world, keg) {
         shatter(world, Some(keg), at);
         return;
     }
@@ -751,8 +751,7 @@ fn detonate(
 /// A hard hit's shards at `at`: the frozen thing ends; frozen iron's
 /// scraps bring their own burst.
 fn shatter(world: &mut World, thing: Option<Entity>, at: Vec2) {
-    let iron =
-        thing.is_some_and(|thing| world.has::<IronBlock>(thing) && world.has::<Frozen>(thing));
+    let iron = thing.is_some_and(|thing| world.has::<IronBlock>(thing) && is_frozen(world, thing));
     if let Some(thing) = thing {
         end_frozen(world, thing, None);
     }
@@ -809,10 +808,7 @@ fn steam(
                 );
             }
             What::SmallBall => {
-                let burning = world
-                    .get::<BallBurn>(item.entity)
-                    .is_some_and(|burn| burn.remaining > 0.0);
-                if burning {
+                if is_burning(world, item.entity) {
                     queue_from(
                         world,
                         CascadeKind::Steam,

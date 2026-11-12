@@ -4,7 +4,7 @@
 use example_01_platformer::features::audio::components::{Music, Sound};
 use example_01_platformer::features::audio::{self, FIRE_CRACKLE, LISTEN_FULL, LISTEN_SILENT};
 use example_01_platformer::features::dummy;
-use example_01_platformer::features::elements::components::BallBurn;
+use example_01_platformer::features::elements::systems::light;
 use example_01_platformer::features::props::components::PropKind;
 use example_01_platformer::features::props::{self, CRATE_HALF};
 use example_01_platformer::save::{self, SaveGame};
@@ -118,13 +118,7 @@ fn a_burning_dummy_ball_or_player_each_raise_the_crackle() {
         |harness, player| {
             let at = centre(harness, player) + Vec2::new(150.0, -40.0);
             let small = ball(harness, at, true);
-            harness.world_mut().insert(
-                small,
-                BallBurn {
-                    remaining: 6.0,
-                    exposed: true,
-                },
-            );
+            light(harness.world_mut(), small, 6.0);
             small
         },
         |harness, player| {

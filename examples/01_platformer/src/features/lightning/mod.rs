@@ -28,7 +28,6 @@ use tungsten::{Extracts, Plugin, SceneEntity};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, Cascades, Entry, Jump};
-use crate::features::elements::components::Frozen;
 use crate::features::enemies::{self, components::Enemy};
 use crate::features::level::{WORLD_MAX, WORLD_MIN};
 use crate::features::props::{self, components::Keg};
@@ -116,7 +115,7 @@ fn conducts(iron: bool, enemy: bool, health: Option<&Health>, tags: Option<&Tags
 /// Whether `entity` is frozen: a frozen body, or a target carrying frozen.
 #[must_use]
 pub fn frozen(world: &World, entity: Entity) -> bool {
-    world.has::<Frozen>(entity) || has_status(world, entity, FROZEN)
+    has_status(world, entity, FROZEN)
 }
 
 /// Whether `entity` takes no shock: its resistance to it 0, which stops a

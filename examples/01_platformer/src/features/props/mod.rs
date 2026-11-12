@@ -38,7 +38,7 @@ use tungsten::{Extracts, Plugin};
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::DOUSE_SECS;
 use crate::features::elements::cascade::{self, CascadeKind};
-use crate::features::elements::components::Frozen;
+use crate::features::elements::is_frozen;
 use crate::features::level::components::SceneTime;
 use crate::features::toys::components::ScrapTumble;
 use crate::features::toys::{self, components::IronBlock};
@@ -513,7 +513,7 @@ pub fn spawn_bomb(world: &mut World, at: Vec2, lighter: Option<u64>) -> Entity {
 /// [`FUSE_SECS`] with its hiss. Neither lights while frozen, doused or
 /// alight, nor a crate burnt out. Whether it lit.
 pub fn light(world: &mut World, prop: Entity, lighter: Option<u64>) -> bool {
-    if world.has::<Frozen>(prop) {
+    if is_frozen(world, prop) {
         return false;
     }
     let Some(at) = body_centre(world, prop) else {
@@ -546,7 +546,7 @@ pub fn light(world: &mut World, prop: Entity, lighter: Option<u64>) -> bool {
 /// its fuse spent and its detonation queued, due at the step's run when
 /// queued before it. A frozen keg never blows. Whether it queued.
 pub fn set_off(world: &mut World, keg: Entity, origin: Option<Vec2>, lighter: Option<u64>) -> bool {
-    if world.has::<Frozen>(keg) {
+    if is_frozen(world, keg) {
         return false;
     }
     let Some(at) = body_centre(world, keg) else {

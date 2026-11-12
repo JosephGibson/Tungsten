@@ -12,8 +12,8 @@ use tungsten::core::{
     With, World,
 };
 use tungsten::kit::{
-    Children, Health, LinearMotion, Modifier, PlatformerController, Projectile, ProjectileExpired,
-    Stats, TopDownMover, knock_back,
+    Children, EffectInstance, Effects, Health, LinearMotion, Modifier, PlatformerController,
+    Projectile, ProjectileExpired, Stats, Tags, TopDownMover, knock_back,
 };
 use tungsten::physics::wake;
 
@@ -35,10 +35,11 @@ use crate::features::combat::{
 };
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
-use crate::features::elements::components::{BallBurn, Frozen};
+use crate::features::elements::components::Flame;
 use crate::features::elements::{
     self, FIRE_CENTRE, FIRE_HALF, SMALL_STEAM_REACH, STEAM_REACH, freeze_amount,
 };
+use crate::features::elements::{BALL_BURN, COAT, is_burning, is_frozen};
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
 use crate::features::level::components::{Doused, Hazard};
@@ -695,7 +696,7 @@ fn heat_props(world: &mut World, at: Vec2) {
     near.sort_by_key(|(id, _)| *id);
     let player = cascade::player_credit(world);
     for (_, prop) in near {
-        if world.has::<Frozen>(prop) {
+        if is_frozen(world, prop) {
             continue;
         }
         if world.has::<Crate>(prop) {
@@ -897,7 +898,7 @@ pub fn friction(world: &mut World) {
         })
         .collect();
     for iron in supported {
-        let base = if world.has::<Frozen>(iron) || has_status(world, iron, FROZEN) {
+        let base = if has_status(world, iron, FROZEN) {
             FROZEN_FRICTION
         } else if let Some(kind) = props::kind(world, iron) {
             if props::rolls(kind) {
@@ -1234,10 +1235,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     match element {
         Element::Cold => {
             for (hit, contact) in met {
-                let burning = world
-                    .get::<BallBurn>(hit)
-                    .is_some_and(|burn| burn.remaining > 0.0);
-                if burning && world.has::<SmallBall>(hit) {
+                if is_burning(world, hit) && world.has::<SmallBall>(hit) {
                     let at = body_centre(world, hit).unwrap_or(contact);
                     cascade::queue(
                         world,
@@ -1263,7 +1261,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
         Element::Fire => {
             let lighter = world.get::<SaveId>(caster).map(|id| id.0);
             for (hit, contact) in met {
-                if world.has::<Frozen>(hit) {
+                if is_frozen(world, hit) {
                     let at = body_centre(world, hit).unwrap_or(contact);
                     cascade::thermal_shock(world, hit, at, at);
                 } else if world.has::<SmallBall>(hit) {
@@ -1585,28 +1583,41 @@ fn orient_newborns(world: &mut World) {
 /// own colours.
 pub fn ball_look(world: &mut World) {
     let time = drawn_time(world);
-    for (_, id, sprite, burn, hue, frozen, chill) in world.query_mut::<(
+    for (_, id, sprite, flame, hue, effects, tags) in world.query_mut::<(
         &Ball,
         Option<&SaveId>,
         &mut Sprite,
-        Option<&BallBurn>,
+        Option<&Flame>,
         Option<&BallHue>,
-        Option<&Frozen>,
-        Option<&crate::features::elements::components::Chill>,
+        Option<&Effects>,
+        Option<&Tags>,
     )>() {
         // `freeze_amount` from the row; the frost wins, as it wrote last.
-        let frost = if frozen.is_some() {
+        let frost = if tags.is_some_and(|tags| tags.has(FROZEN)) {
             1.0
         } else {
-            chill.map_or(0.0, |chill| chill.amount)
+            effects
+                .and_then(|effects| effects.intensity(COAT))
+                .unwrap_or(0.0)
         };
         if frost > 0.0 {
             sprite.color = frost_tint(frost);
             continue;
         }
         let Some(id) = id else { continue };
-        sprite.color = match (burn, hue) {
-            (Some(burn), _) => elements::ember_tint(*id, *burn, time),
+        // A lit ball's burn's seconds left, 0 once spent.
+        let left = || {
+            effects
+                .and_then(|effects| {
+                    effects
+                        .instances()
+                        .find(|instance| instance.effect().id() == Some(BALL_BURN))
+                })
+                .and_then(EffectInstance::left)
+                .unwrap_or(0.0)
+        };
+        sprite.color = match (flame, hue) {
+            (Some(_), _) => elements::ember_tint(*id, left(), time),
             (None, Some(hue)) => rainbow_rgba(hue.hue),
             (None, None) => [255; 4],
         };

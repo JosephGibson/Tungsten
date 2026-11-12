@@ -17,9 +17,12 @@ use example_01_platformer::features::combat::systems::{
 use example_01_platformer::features::combat::{
     CHILLED, FREEZE_BUILDS, FREEZE_NEEDS, FROZEN, Hit, Kind, has_status,
 };
-use example_01_platformer::features::elements::components::{Chill, Frozen, IcePulse};
+use example_01_platformer::features::elements::components::IcePulse;
 use example_01_platformer::features::elements::draw::effects;
-use example_01_platformer::features::elements::{self, FREEZE_TIME, freeze_amount};
+use example_01_platformer::features::elements::systems::coat_of;
+use example_01_platformer::features::elements::{
+    self, COAT, FREEZE_TIME, freeze_amount, is_frozen,
+};
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
 use example_01_platformer::features::level::WORLD_MAX;
@@ -37,13 +40,15 @@ use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, TilemapData};
 use tungsten::core::{
-    AssetRegistry, AudioCommand, AudioCommands, CameraState, Collider, Entity, Particle,
+    AssetRegistry, AudioCommand, AudioCommands, CameraState, Collider, DataRef, Entity, Particle,
     ParticleBudget, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
     RigidBody, Shape, SoundRegistry, Sprite, TilemapInstance, TilemapRegistry, Time, Transform,
     Velocity,
 };
 use tungsten::extract_sprites_default;
-use tungsten::kit::{Children, Damaged, Effects, KitRng, StateMachine, Stats, damage};
+use tungsten::kit::{
+    Children, Damaged, EffectRequest, Effects, KitRng, StateMachine, Stats, damage,
+};
 use tungsten::testing::UiHarness;
 
 use super::kind_body;
@@ -104,13 +109,9 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
     // Its art pieces land with the step's spawns.
     harness.step(1);
     assert_eq!(harness.world().get::<Children>(iron).unwrap().len(), 8);
-    harness.world_mut().insert(
-        iron,
-        Chill {
-            amount: 0.5,
-            held: true,
-        },
-    );
+    EffectRequest::new(iron, DataRef::by_id(COAT))
+        .with_amount(0.5)
+        .apply(harness.world_mut());
     iron_look(harness.world_mut());
     assert!(
         drawn(&mut harness, true)
@@ -119,7 +120,7 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
     );
     assert!(drawn(&mut harness, false).iter().all(|i| i.color[3] == 127));
     elements::freeze_iron(harness.world_mut(), iron);
-    assert!(!harness.world().has::<Chill>(iron));
+    assert_eq!(coat_of(harness.world(), iron), 0.0);
     iron_look(harness.world_mut());
     assert_eq!(
         drawn(&mut harness, true).len() + drawn(&mut harness, false).len(),
@@ -348,7 +349,7 @@ fn sprays(harness: &UiHarness) -> usize {
 }
 
 fn frozen(harness: &UiHarness, iron: Entity) -> bool {
-    harness.world().has::<Frozen>(iron)
+    is_frozen(harness.world(), iron)
 }
 
 /// The particles of `emitters`.
@@ -446,7 +447,8 @@ fn holding_f_gradually_freezes_iron_with_particles_and_a_single_audio_loop() {
         "partial frost is not brittle yet"
     );
     assert!(particles(&harness, &beam.emitters) > 50);
-    harness.step(44);
+    // Its band's ice holds a step after its coat fills.
+    harness.step(45);
     assert!(!frozen(&harness, near));
     harness.step(1);
     assert!(frozen(&harness, near));
@@ -550,7 +552,8 @@ fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
     let brick = block(&mut harness, at);
     let eye = centre(&harness, player);
     spray_at(&mut harness, Vec2::new(600.0, eye.y));
-    harness.step((FREEZE_TIME * 60.0) as u32);
+    // Its band's ice holds a step after its coat fills.
+    harness.step((FREEZE_TIME * 60.0) as u32 + 1);
     assert!(frozen(&harness, brick));
     release(&mut harness);
     harness.step(1);
@@ -598,7 +601,7 @@ fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
                 .cmple(IRON_HALF - SCRAP_HALF + 0.01)
                 .all()
         );
-        assert!(!world.has::<Frozen>(e));
+        assert!(!is_frozen(world, e));
     }
 }
 
@@ -706,12 +709,14 @@ fn spray_aim_tracks_the_caster_and_partial_frost_thaws_when_aim_moves_away() {
         beam.start.x
     );
     harness.step(89);
-    assert!(frozen(&harness, left));
     assert!(!frozen(&harness, right));
     assert!((freeze_amount(harness.world(), right) - 0.275).abs() < 0.001);
+    // Its band's ice holds a step after its coat fills.
+    harness.step(1);
+    assert!(frozen(&harness, left));
     release(&mut harness);
     harness.step(120);
-    assert!(!harness.world().has::<Chill>(right));
+    assert_eq!(coat_of(harness.world(), right), 0.0);
     assert!(frozen(&harness, left), "completed freezing persists");
 }
 
@@ -769,7 +774,9 @@ fn freezing_uses_fixed_exposure_at_30_60_and_144_hz_and_stops_when_paused() {
         harness.step(fps);
         assert_eq!(freeze_amount(harness.world(), target), amount);
         harness.world_mut().resource_mut::<Time>().resume();
-        harness.step(fps / 2 + 1);
+        // Its band's ice holds a fixed step after its coat fills: that
+        // step's frames at this rate.
+        harness.step(fps / 2 + 1 + fps.div_ceil(60));
         assert!(frozen(&harness, target), "{fps} Hz did not complete");
     }
 }
@@ -782,7 +789,8 @@ fn cone_frosts_iron_beside_the_centerline_and_spray_particles_follow_aim() {
     // The aim passes over the block; the cone's lower edge meets it.
     let up = 24f32.to_radians();
     spray_at(&mut harness, eye + Vec2::new(up.cos(), -up.sin()) * 400.0);
-    harness.step(90);
+    // Its band's ice holds a step after its coat fills.
+    harness.step(91);
     assert!(frozen(&harness, side), "the side of the cone frosts iron");
     let beam = spray(&harness).unwrap();
     let world = harness.world();
@@ -870,7 +878,8 @@ fn simultaneous_freezes_and_thermal_fractures_share_audio_but_keep_individual_cu
     let up = 20f32.to_radians();
     spray_at(&mut harness, eye + Vec2::new(up.cos(), -up.sin()) * 400.0);
     let mut freezes = 0;
-    for _ in 0..90 {
+    // Their bands' ice holds a step after their coats fill.
+    for _ in 0..91 {
         harness.step(1);
         freezes += plays(&harness, FREEZE);
     }

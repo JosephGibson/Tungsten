@@ -30,7 +30,7 @@ use super::components::{Glow, Hazard};
 use super::{LAVA_LAYER, TILE};
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::cascade;
-use crate::features::elements::components::Frozen;
+use crate::features::elements::is_frozen;
 use crate::features::props::{
     self,
     components::{Bomb, Keg},
@@ -243,7 +243,7 @@ pub fn take(world: &mut World) {
         bodies.dedup();
         let mut took = false;
         for (_, body) in bodies {
-            let frozen = world.has::<Frozen>(body);
+            let frozen = is_frozen(world, body);
             let lighter = world
                 .get::<Keg>(body)
                 .map(|keg| keg.lighter)

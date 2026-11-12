@@ -6,24 +6,28 @@ use std::f32::consts::TAU;
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::{
-    BodyKind, Collider, CollisionEvent, Entity, EventQueue, Particle, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, RigidBody, Shape, Sprite, Time,
-    Transform, Velocity, With, World,
+    BodyKind, Collider, CollisionEvent, DataRef, Entity, EventQueue, Particle,
+    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position, PrevPosition,
+    RigidBody, Shape, Sprite, Time, Transform, Velocity, With, World,
 };
-use tungsten::kit::{Children, ContactDamage, Health, Hit, Tags};
+use tungsten::kit::{
+    Children, ContactDamage, EffectRequest, Effects, Health, Hit, Reaction, Tags, end_effect,
+    stimulate,
+};
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::cascade::{self, CascadeKind};
-use super::components::{BallBurn, Chill, FireEmitter, Frozen, IcePulse};
+use super::components::{ColdFace, FireEmitter, Flame, IcePulse};
 use super::{
-    BASE_SMASH, BODY_HIT_SPEED, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, CRATE_BREAK, CRUSH_HIT,
-    CRUSH_SPEED, DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP,
-    FIRE_HALF, FROZEN_SECS, IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN, IMPACT_SPEED, LANDING_SHARE,
-    SHATTER_MASS, SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, THAW_RATE,
-    blows_keg, body_hit, freeze_amount,
+    BALL_BURN, BASE_SMASH, BODY_HIT_SPEED, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, COAT, COLD,
+    CRATE_BREAK, CRUSH_HIT, CRUSH_SPEED, DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL,
+    FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF, FROZEN_SECS, ICE, IMPACT_BURSTS_PER_STEP,
+    IMPACT_COOLDOWN, IMPACT_SPEED, KINDLED, LANDING_SHARE, SHATTER_MASS, SHATTER_SPEED, SMASH_CAP,
+    SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, SPENT, THAW_RATE, blows_keg, body_hit, is_burning,
+    is_frozen,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{self, FLESH, FROZEN, Kind, has_status};
+use crate::features::combat::{self, BURNING, FLESH, FROZEN, Kind, has_status};
 use crate::features::enemies::components::{Enemy, Throws};
 use crate::features::enemies::{beetle, goblin};
 use crate::features::level::components::{Doused, Glow, Hazard};
@@ -70,26 +74,55 @@ const SCRAP_EJECT_LIFT: f32 = 180.0;
 const CONTACT_MARGIN: f32 = 3.0;
 
 /// Lights `ball` when it is a small ball that never burned and is not
-/// frozen.
+/// frozen ([`light`]).
 pub fn ignite(world: &mut World, ball: Entity) {
-    if world.has::<SmallBall>(ball) && !world.has::<BallBurn>(ball) && !world.has::<Frozen>(ball) {
-        world.insert(
-            ball,
-            BallBurn {
-                remaining: BURN_SECS,
-                exposed: true,
-            },
-        );
+    let lit = has_status(world, ball, BURNING) || has_status(world, ball, SPENT);
+    if world.has::<SmallBall>(ball) && !lit && !is_frozen(world, ball) {
+        light(world, ball, BURN_SECS);
     }
 }
 
-/// `fire_tick`, in the tick phase: each burn runs down by the step, kept at
-/// 0 once spent.
-pub fn tick_fire(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    for burn in world.query_mut::<&mut BallBurn>() {
-        burn.remaining = (burn.remaining - dt).max(0.0);
+/// Puts `seconds` of burn on `ball` with its lasting `kindled` at once, so
+/// a ball is never without both marks between its burnout and anything
+/// that reads them, and its flame, exposed until `flame_exposure` says: a
+/// lighting's [`BURN_SECS`], or a load's of a ball that burned on (its
+/// burn's `scale` takes the seconds). 0 is a load's spent ball: its
+/// `kindled` alone.
+pub fn light(world: &mut World, ball: Entity, seconds: f32) {
+    if seconds > 0.0 {
+        EffectRequest::new(ball, DataRef::by_id(BALL_BURN))
+            .with_scale(seconds)
+            .apply(world);
     }
+    EffectRequest::new(ball, DataRef::by_id(KINDLED)).apply(world);
+    world.insert(ball, Flame { exposed: true });
+}
+
+/// The game seconds `entity`'s instance of the status `id` has left; `None`
+/// without one, or for one that never ends.
+#[must_use]
+pub fn status_left(world: &World, entity: Entity, id: &str) -> Option<f32> {
+    world
+        .get::<Effects>(entity)?
+        .instances()
+        .find(|instance| instance.effect().id() == Some(id))?
+        .left()
+}
+
+/// The game seconds `ball`'s burn has left, 0 once spent, `None` for one
+/// never lit.
+#[must_use]
+pub fn burn_left(world: &World, ball: Entity) -> Option<f32> {
+    status_left(world, ball, BALL_BURN).or_else(|| has_status(world, ball, SPENT).then_some(0.0))
+}
+
+/// `body`'s coat of frost, its `chill`'s intensity; 0 without one.
+#[must_use]
+pub fn coat_of(world: &World, body: Entity) -> f32 {
+    world
+        .get::<Effects>(body)
+        .and_then(|effects| effects.intensity(COAT))
+        .unwrap_or(0.0)
 }
 
 fn cell(at: Vec2, size: f32) -> (i32, i32) {
@@ -102,9 +135,9 @@ fn cell(at: Vec2, size: f32) -> (i32, i32) {
 /// step's, so fire spreads one hop a step.
 pub fn spread_fire(world: &mut World) {
     let sources: HashSet<Entity> = world
-        .query::<(Entity, &BallBurn)>()
-        .filter(|(_, burn)| burn.remaining > 0.0)
-        .map(|(entity, _)| entity)
+        .query::<(Entity, &Flame, &Tags)>()
+        .filter(|(_, _, tags)| tags.has(BURNING))
+        .map(|(entity, ..)| entity)
         .collect();
     if sources.is_empty() {
         return;
@@ -137,11 +170,11 @@ pub fn spread_fire(world: &mut World) {
             min - Vec2::splat(CONTACT_DISTANCE),
             max + Vec2::splat(CONTACT_DISTANCE),
         );
-        for (entity, _, at, collider, burn) in
-            world.query::<(Entity, &SmallBall, &Position, &Collider, Option<&BallBurn>)>()
+        for (entity, _, at, collider, flame) in
+            world.query::<(Entity, &SmallBall, &Position, &Collider, Option<&Flame>)>()
         {
             let p = at.0 + collider.offset;
-            if burn.is_some() || p.cmplt(min).any() || p.cmpgt(max).any() {
+            if flame.is_some() || p.cmplt(min).any() || p.cmpgt(max).any() {
                 continue;
             }
             cells
@@ -178,9 +211,9 @@ pub fn spread_fire(world: &mut World) {
 /// uphill stays exposed.
 pub fn flame_exposure(world: &mut World) {
     let burning: Vec<(Entity, Vec2)> = world
-        .query::<(Entity, &BallBurn)>()
-        .filter(|(_, burn)| burn.remaining > 0.0)
-        .filter_map(|(entity, _)| Some((entity, body_centre(world, entity)?)))
+        .query::<(Entity, &Flame, &Tags)>()
+        .filter(|(_, _, tags)| tags.has(BURNING))
+        .filter_map(|(entity, ..)| Some((entity, body_centre(world, entity)?)))
         .collect();
     let Some((min, max)) = burning
         .iter()
@@ -219,8 +252,8 @@ pub fn flame_exposure(world: &mut World) {
             left |= dx < 0.0;
             right |= dx > 0.0;
         }
-        if let Some(burn) = world.get_mut::<BallBurn>(entity) {
-            burn.exposed = !(over || (left && right));
+        if let Some(flame) = world.get_mut::<Flame>(entity) {
+            flame.exposed = !(over || (left && right));
         }
     }
 }
@@ -238,12 +271,12 @@ fn variation(id: SaveId) -> [f32; 4] {
     ]
 }
 
-/// How strongly a fire burns, 0 to 1: it grows over its kindling and fades
-/// over its last seconds.
-fn strength(burn: BallBurn) -> f32 {
-    let age = BURN_SECS - burn.remaining;
+/// How strongly a fire with `left` seconds burns, 0 to 1: it grows over its
+/// kindling and fades over its last seconds.
+fn strength(left: f32) -> f32 {
+    let age = BURN_SECS - left;
     let kindle = KINDLE_FROM + (1.0 - KINDLE_FROM) * (age / KINDLE_SECS).min(1.0);
-    kindle * (burn.remaining / DYING_SECS).min(1.0)
+    kindle * (left / DYING_SECS).min(1.0)
 }
 
 fn rgba(color: Vec3, alpha: f32) -> [u8; 4] {
@@ -256,18 +289,18 @@ fn rgba(color: Vec3, alpha: f32) -> [u8; 4] {
     ]
 }
 
-/// A burning or spent ball's tint at level time `time`: embers pulsing
-/// between deep red and orange at its own rate, darkening to char over its
-/// last seconds.
+/// A burning or spent ball's tint at level time `time`, its burn's seconds
+/// `left`: embers pulsing between deep red and orange at its own rate,
+/// darkening to char over its last seconds.
 #[must_use]
-pub fn ember_tint(id: SaveId, burn: BallBurn, time: f32) -> [u8; 4] {
-    if burn.remaining <= 0.0 {
+pub fn ember_tint(id: SaveId, left: f32, time: f32) -> [u8; 4] {
+    if left <= 0.0 {
         return rgba(CHAR, 1.0);
     }
     let [phase, rate, _, _] = variation(id);
     let pulse = 0.5 + 0.5 * (time * (2.0 + 3.0 * rate) + phase * TAU).sin();
     let hot = EMBER_DIM.lerp(EMBER_HOT, pulse);
-    rgba(CHAR.lerp(hot, (burn.remaining / DYING_SECS).min(1.0)), 1.0)
+    rgba(CHAR.lerp(hot, (left / DYING_SECS).min(1.0)), 1.0)
 }
 
 /// How an exposed burning ball's flame draws: its frame, a mirror, the
@@ -281,18 +314,18 @@ pub struct FlameLook {
     pub glow: [u8; 4],
 }
 
-/// The flame of the ball `id` at level time `time`; `None` for a buried or
-/// spent one.
+/// The flame of the ball `id` at level time `time`, its burn's seconds
+/// `left` and whether it is `exposed`; `None` for a buried or spent one.
 #[must_use]
-pub fn flame_look(id: SaveId, burn: BallBurn, time: f32) -> Option<FlameLook> {
-    if burn.remaining <= 0.0 || !burn.exposed {
+pub fn flame_look(id: SaveId, left: f32, exposed: bool, time: f32) -> Option<FlameLook> {
+    if left <= 0.0 || !exposed {
         return None;
     }
     let [phase, rate, mirror, tint] = variation(id);
     let fps = 10.0 + 8.0 * rate;
     let frames = super::draw::FLAME_FRAMES.len();
     let frame = (time * fps + phase * frames as f32) as usize % frames;
-    let strength = strength(burn);
+    let strength = strength(left);
     Some(FlameLook {
         frame,
         mirror: mirror < 0.5,
@@ -324,9 +357,9 @@ pub fn fire_particles(world: &mut World) {
         .collect();
     crates.sort_by_key(|(id, _)| *id);
     let burning: Vec<(Vec2, bool)> = world
-        .query::<(Entity, &BallBurn, &Transform, &Collider)>()
-        .filter(|(_, burn, ..)| burn.remaining > 0.0)
-        .map(|(_, burn, at, collider)| (at.position + collider.offset, burn.exposed))
+        .query::<(Entity, &Flame, &Tags, &Transform, &Collider)>()
+        .filter(|(_, _, tags, ..)| tags.has(BURNING))
+        .map(|(_, flame, _, at, collider)| (at.position + collider.offset, flame.exposed))
         .collect();
     let sources: Vec<Vec2> = if burning.iter().any(|&(_, exposed)| exposed) {
         burning.iter().filter(|b| b.1).map(|b| b.0).collect()
@@ -496,14 +529,14 @@ pub fn fire_contacts(world: &mut World) {
     touched.sort_by_key(|(id, ..)| *id);
     let player = cascade::player_credit(world);
     for (_, prop, at) in props {
-        if world.has::<Frozen>(prop) {
+        if is_frozen(world, prop) {
             cascade::thermal_shock(world, prop, at, at);
         } else {
             props::light(world, prop, player);
         }
     }
     for (_, ball, at) in touched {
-        if world.has::<Frozen>(ball) {
+        if is_frozen(world, ball) {
             cascade::thermal_shock(world, ball, at, at);
             continue;
         }
@@ -681,7 +714,7 @@ pub fn crush(world: &mut World) {
                 if !world.has::<IronBlock>(block) {
                     continue;
                 }
-                let frozen = world.has::<Frozen>(target) && is_iron(world, target);
+                let frozen = is_frozen(world, target) && is_iron(world, target);
                 if !world.has::<SmallBall>(target)
                     && !world.has::<Player>(target)
                     && !frozen
@@ -736,8 +769,10 @@ pub fn crush(world: &mut World) {
         let mut keep = !struck.is_empty();
         smashed.extend(struck.into_iter().map(|(entity, ..)| entity));
         let frozen_hits: Vec<Entity> = world
-            .query::<(Entity, &Frozen, &Position, &Collider)>()
-            .filter(|(entity, ..)| *entity != block && is_iron(world, *entity))
+            .query::<(Entity, &Tags, &Position, &Collider)>()
+            .filter(|(entity, tags, ..)| {
+                tags.has(FROZEN) && *entity != block && is_iron(world, *entity)
+            })
             .filter_map(|(entity, _, p, c)| {
                 let half = if world.has::<IronBlock>(entity) {
                     IRON_HALF
@@ -854,100 +889,88 @@ fn freezes(world: &World, entity: Entity) -> bool {
 /// Whether a body burns: a small ball on fire, a crate on fire or a keg's
 /// lit fuse, which take no frost.
 fn burns(world: &World, entity: Entity) -> bool {
-    world
-        .get::<BallBurn>(entity)
-        .is_some_and(|burn| burn.remaining > 0.0)
-        || props::burning(world, entity)
+    is_burning(world, entity) || props::burning(world, entity)
 }
 
-/// Chills a body, iron, a ball, a crate or a keg, by `amount` this step,
-/// frozen at a full coating with its frost burst at `contact` and its cue;
-/// a burning one and a stone take no frost.
+/// Chills a body, iron, a ball, a crate or a keg, by `amount` of its coat
+/// this step: chemistry's `cold`, which its `coat` rule builds the coat by,
+/// with the step's thaw ([`THAW_RATE`]) on top of a coat it already has,
+/// as the kit wears that down every step where the cold once held it. A
+/// coat this fills freezes at chemistry's next run (its band's `freeze`
+/// handler), its crystals at `contact`, which it keeps ([`ColdFace`]); a
+/// frozen or a burning one and a stone take none.
 pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
-    if !freezes(world, iron) || world.has::<Frozen>(iron) || burns(world, iron) {
+    if !freezes(world, iron) || is_frozen(world, iron) || burns(world, iron) {
         return;
     }
-    let total = freeze_amount(world, iron) + amount;
-    if total >= 1.0 - 1e-5 {
-        freeze_iron(world, iron);
-        let at = body_centre(world, iron).unwrap_or(contact);
-        let size = if world.has::<IronBlock>(iron) {
-            128.0
-        } else if props::is_prop(world, iron) {
-            64.0
-        } else if world.has::<SmallBall>(iron) {
-            16.0
-        } else {
-            32.0
-        };
-        // Crystals on the face the cold met, where the iron cannot hide them.
-        spawn_burst(world, "ex10_ice_frost", contact);
-        ice_pulse(world, at, size, false);
+    let worn = world
+        .get::<Effects>(iron)
+        .is_some_and(|effects| effects.intensity(COAT).is_some());
+    let thaw = if worn {
+        THAW_RATE * world.resource::<Time>().delta()
     } else {
-        world.insert(
-            iron,
-            Chill {
-                amount: total,
-                held: true,
-            },
-        );
-    }
+        0.0
+    };
+    let credit = world.get_resource::<Run>().map(|run| run.player);
+    stimulate(world, iron, COLD, amount + thaw, credit);
+    world.insert(iron, ColdFace(contact));
 }
 
-/// Freezes a body through: its chill gives way to [`Frozen`] for
-/// [`FROZEN_SECS`] and it wakes. A burning body and a stone do not freeze.
+/// Freezes a body through at once: its coat gives way to `ice` and it
+/// wakes. A burning body and a stone do not freeze.
 pub fn freeze_iron(world: &mut World, iron: Entity) {
-    if freezes(world, iron) && !world.has::<Frozen>(iron) && !burns(world, iron) {
-        world.insert(iron, Frozen { left: FROZEN_SECS });
-        world.remove_component::<Chill>(iron);
+    if freezes(world, iron) && !is_frozen(world, iron) && !burns(world, iron) {
+        freeze_for(world, iron, FROZEN_SECS);
         wake(world, iron);
     }
 }
 
-/// `frozen_tick`, in the tick phase: each frozen body's clock runs down by
-/// the step, and at 0 it thaws.
-pub fn tick_frozen(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    if dt <= 0.0 {
+/// Chemistry's `freeze` handler, the coat's band's `enter`: the coat's
+/// body freezes through ([`freeze_iron`]), for [`FROZEN_SECS`], as the
+/// kit's `apply` takes no seconds, with its frost burst on the face the
+/// cold last met ([`ColdFace`]) and its cue.
+pub fn freeze_handler(world: &mut World, reaction: &Reaction) {
+    let Some(body) = reaction.receiver() else {
+        return;
+    };
+    if !freezes(world, body) || is_frozen(world, body) || burns(world, body) {
         return;
     }
-    let mut thawed = Vec::new();
-    for (entity, frozen) in world.query_mut::<(Entity, &mut Frozen)>() {
-        frozen.left -= dt;
-        if frozen.left <= 1e-5 {
-            thawed.push(entity);
-        }
-    }
-    for entity in thawed {
-        world.remove_component::<Frozen>(entity);
-    }
+    freeze_iron(world, body);
+    let Some(at) = body_centre(world, body) else {
+        return;
+    };
+    let contact = world.get::<ColdFace>(body).map_or(at, |face| face.0);
+    let size = if world.has::<IronBlock>(body) {
+        128.0
+    } else if props::is_prop(world, body) {
+        64.0
+    } else if world.has::<SmallBall>(body) {
+        16.0
+    } else {
+        32.0
+    };
+    // Crystals on the face the cold met, where the iron cannot hide them.
+    spawn_burst(world, "ex10_ice_frost", contact);
+    ice_pulse(world, at, size, false);
 }
 
-/// `iron_thaw`, in the react phase: iron the cold did not reach this step
-/// thaws by the step, its chill gone at 0.
-pub fn thaw(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    let mut thawed = Vec::new();
-    for (entity, chill) in world.query_mut::<(Entity, &mut Chill)>() {
-        if !chill.held {
-            chill.amount = (chill.amount - THAW_RATE * dt).max(0.0);
-        }
-        chill.held = false;
-        if chill.amount <= 0.0 {
-            thawed.push(entity);
-        }
-    }
-    for entity in thawed {
-        world.remove_component::<Chill>(entity);
-    }
+/// Puts `seconds` of `ice` on `body` at once, its coat gone: a freeze's
+/// [`FROZEN_SECS`], or a load's of a body that froze on (its ice's `scale`
+/// takes the seconds).
+pub fn freeze_for(world: &mut World, body: Entity, seconds: f32) {
+    end_effect(world, body, &DataRef::by_id(COAT));
+    EffectRequest::new(body, DataRef::by_id(ICE))
+        .with_scale(seconds)
+        .apply(world);
 }
 
 /// A blast's heat at `at`: each frozen body whose surface lies within
 /// `radius` of it queues thermal shock, its chain begun at `at`.
 pub fn thermal_shatter(world: &mut World, at: Vec2, radius: f32) {
     let mut targets: Vec<(Option<SaveId>, Entity, Vec2)> = world
-        .query::<(Entity, &Frozen, &Position, &Collider)>()
-        .filter(|(entity, ..)| is_body(world, *entity))
+        .query::<(Entity, &Tags, &Position, &Collider)>()
+        .filter(|(entity, tags, ..)| tags.has(FROZEN) && is_body(world, *entity))
         .filter_map(|(entity, _, p, collider)| {
             let body = p.0 + collider.offset;
             let offset = at - body;
@@ -1139,7 +1162,7 @@ fn touches(world: &World, entity: Entity, centre: Vec2, shape: Shape, spared: u6
 fn crate_hits(world: &World) -> Vec<(Entity, Vec2)> {
     let mut crates: Vec<(Option<SaveId>, Entity, Vec2, Shape)> = world
         .query::<(Entity, &Crate, &Position, &Collider, Option<&SaveId>)>()
-        .filter(|(entity, ..)| !world.has::<Frozen>(*entity))
+        .filter(|(entity, ..)| !is_frozen(world, *entity))
         .map(|(entity, _, at, collider, id)| {
             (id.copied(), entity, at.0 + collider.offset, collider.shape)
         })
@@ -1281,7 +1304,7 @@ pub fn body_impacts(world: &mut World) {
             let heavy = other
                 .is_some_and(|other| moves(world, other) && mass(world, other) >= SHATTER_MASS);
             if closing >= SHATTER_SPEED
-                && world.has::<Frozen>(this)
+                && is_frozen(world, this)
                 && is_body(world, this)
                 && (still || heavy)
                 && !shatters.contains(&this)
@@ -1306,7 +1329,7 @@ pub fn body_impacts(world: &mut World) {
             let weight = other
                 .filter(|&other| moves(world, other))
                 .map_or(f32::INFINITY, |other| mass(world, other));
-            if world.has::<Keg>(this) && !world.has::<Frozen>(this) && blows_keg(weight, closing) {
+            if world.has::<Keg>(this) && !is_frozen(world, this) && blows_keg(weight, closing) {
                 let thrower = |body: Option<Entity>| {
                     body.and_then(|body| throws.and_then(|throws| throws.of(body)))
                         .map(|throw| throw.thrower)
@@ -1646,9 +1669,9 @@ pub fn douse(world: &mut World) {
             .any(|h| h.distance_squared(p) < HOLE_RADIUS * HOLE_RADIUS)
     };
     let mut doused: Vec<(Option<SaveId>, Entity, Vec2)> = world
-        .query::<(Entity, &BallBurn, &Position, &Collider)>()
-        .filter(|(_, burn, ..)| burn.remaining > 0.0)
-        .map(|(entity, _, p, c)| (entity, p.0 + c.offset))
+        .query::<(Entity, &Flame, &Tags, &Position, &Collider)>()
+        .filter(|(_, _, tags, ..)| tags.has(BURNING))
+        .map(|(entity, _, _, p, c)| (entity, p.0 + c.offset))
         .filter(|(_, p)| inside(*p))
         .map(|(entity, p)| (world.get::<SaveId>(entity).copied(), entity, p))
         .collect();
@@ -1668,9 +1691,10 @@ pub fn douse(world: &mut World) {
         return;
     }
     doused.sort_by_key(|(id, ..)| *id);
+    // A ball keeps its `kindled`, so it stays spent.
     for &(_, ball, _) in &doused {
-        if let Some(burn) = world.get_mut::<BallBurn>(ball) {
-            burn.remaining = 0.0;
+        if world.has::<SmallBall>(ball) {
+            end_effect(world, ball, &DataRef::by_id(BALL_BURN));
         }
     }
     let stride = doused.len().div_ceil(DOUSE_BURSTS_PER_STEP);

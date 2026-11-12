@@ -10,10 +10,11 @@ use tungsten::render::SpriteBatch;
 
 use super::components::{Crate, Fuel, Keg, Plank};
 use super::{BURN_SECS, PLANK_CENTRE};
-use crate::features::elements::components::Frozen;
+use crate::features::combat::FROZEN;
 use crate::features::elements::draw::FLAME_FRAMES;
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{HALO, HALO_MATERIAL, drawn_time};
+use tungsten::kit::Tags;
 
 /// A prop's frame: its art's side.
 const FRAME: f32 = 64.0;
@@ -117,11 +118,13 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
         }
     }
     let cubes = world
-        .query::<(&Crate, &Frozen, &Transform)>()
+        .query::<(&Crate, &Tags, &Transform)>()
+        .filter(|(_, tags, _)| tags.has(FROZEN))
         .map(|(_, _, at)| (CRATE_ICE, at.position))
         .chain(
             world
-                .query::<(&Keg, &Frozen, &Transform)>()
+                .query::<(&Keg, &Tags, &Transform)>()
+                .filter(|(_, tags, _)| tags.has(FROZEN))
                 .map(|(_, _, at)| (KEG_ICE, at.position)),
         )
         .filter(|&(_, origin)| shown(origin, 0.0));

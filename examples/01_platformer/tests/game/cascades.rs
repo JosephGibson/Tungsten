@@ -8,8 +8,9 @@
 
 use example_01_platformer::features::combat::{Hit, Kind};
 use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
-use example_01_platformer::features::elements::components::{BallBurn, Frozen};
-use example_01_platformer::features::elements::{self, CASCADE_BOUND, CASCADE_CAP, FROZEN_SECS};
+use example_01_platformer::features::elements::{
+    self, CASCADE_BOUND, CASCADE_CAP, FROZEN_SECS, burn_left, is_frozen,
+};
 use example_01_platformer::features::level::components::{Doused, Hazard};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::IronScrap;
@@ -99,7 +100,7 @@ fn a_steam_chain_pops_a_burning_pile() {
     assert!(
         balls
             .iter()
-            .all(|&b| harness.world().get::<BallBurn>(b).is_some())
+            .all(|&b| burn_left(harness.world(), b).is_some())
     );
     let first = body(&harness, balls[0]);
     assert!(cascade::queue(
@@ -243,7 +244,7 @@ fn a_hard_impact_or_a_fall_shatters_a_frozen_body() {
     assert!(!world.is_alive(iron), "the bowling ball shattered it");
     assert_eq!(world.query::<&IronScrap>().count(), 16);
     assert!(
-        world.is_alive(other) && world.has::<Frozen>(other),
+        world.is_alive(other) && is_frozen(world, other),
         "small balls break no ice"
     );
     assert!(!world.is_alive(ice), "the fall shattered it");
@@ -259,9 +260,9 @@ fn frozen_things_thaw_after_five_seconds() {
     }
     let steps = (FROZEN_SECS * 60.0) as u32;
     harness.step(steps - 6);
-    assert!(harness.world().has::<Frozen>(iron) && harness.world().has::<Frozen>(small));
+    assert!(is_frozen(harness.world(), iron) && is_frozen(harness.world(), small));
     harness.step(12);
-    assert!(!harness.world().has::<Frozen>(iron) && !harness.world().has::<Frozen>(small));
+    assert!(!is_frozen(harness.world(), iron) && !is_frozen(harness.world(), small));
 }
 
 #[test]
