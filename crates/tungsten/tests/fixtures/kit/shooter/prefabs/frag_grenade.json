@@ -1,0 +1,28 @@
+{
+  "tag": "frag_grenade",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        0,
+        0
+      ],
+      "acceleration": [
+        0,
+        600
+      ]
+    },
+    "lifetime": {
+      "seconds": 2
+    },
+    "projectile": {
+      "end": {
+        "blast": {
+          "radius": 64,
+          "damage": 20,
+          "far": 0.5,
+          "spare": "source"
+        }
+      }
+    }
+  }
+}

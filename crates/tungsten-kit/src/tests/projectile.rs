@@ -975,3 +975,46 @@ fn an_end_blast_goes_off_with_no_rule_and_an_empty_queue() {
     let plain = serde_json::to_value(Projectile::new()).unwrap();
     assert!(plain.get("end").is_none());
 }
+
+// 7.13c: a projectile's end from Rust.
+
+#[test]
+fn a_projectile_takes_an_end_from_rust() {
+    let built = Projectile::new()
+        .with_range(30.0)
+        .with_end(crate::Blast::new(50.0).with_damage(10.0));
+    assert_eq!(
+        built,
+        blasting(Projectile::new().with_range(30.0)),
+        "the data form's end"
+    );
+    // It goes off as data's does: 10 at 1 − 20 / 50 at the next resolve,
+    // credited to the bolt; with `land` `now`, in its own step.
+    for now in [false, true] {
+        let (mut world, mut schedule) = blast_rig(true);
+        let near = bystander(&mut world, Vec2::new(30.0, 20.0));
+        let mut end = crate::Blast::new(50.0).with_damage(10.0);
+        if now {
+            end = end.landing_now();
+        }
+        let shot = bolt(&mut world, Projectile::new().with_range(30.0).with_end(end));
+        let mut landed_at = None;
+        for step in 0..6 {
+            let (expired, parts) = blast_step(&mut world, &mut schedule);
+            if !expired.is_empty() {
+                assert_eq!(expired[0].entity, shot);
+            }
+            if let [hit] = parts_on(&parts, near).as_slice() {
+                assert!((hit.0 - 6.0).abs() < 1e-4, "{hit:?}");
+                assert_eq!(hit.1, Some(shot));
+                landed_at = Some(step);
+            }
+        }
+        assert_eq!(
+            landed_at,
+            Some(if now { 2 } else { 3 }),
+            "now: {now}, the step it ended is 2"
+        );
+        assert!((world.get::<crate::Health>(near).unwrap().current() - 94.0).abs() < 1e-4);
+    }
+}

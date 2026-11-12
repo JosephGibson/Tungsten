@@ -14,7 +14,6 @@ use tungsten_core::{
 
 use super::tiles::Cell;
 use super::*;
-use crate::HealthPlugin;
 use crate::damage::defense::Resist;
 use crate::damage::effects::{Effect, EffectRequest, Effects, EffectsPlugin, end_effect};
 use crate::damage::kinds::DamageTypes;
@@ -23,6 +22,7 @@ use crate::foundation::curve::Curve;
 use crate::foundation::stats::{Stats, StatsPlugin};
 use crate::foundation::tags::TagsPlugin;
 use crate::foundation::trace::KitTrace;
+use crate::{Blast, HealthPlugin, blast};
 
 const STEP: f32 = 1.0 / 60.0;
 
@@ -2978,4 +2978,384 @@ fn a_loaded_queue_without_references_counts_its_dead_entries() {
     step(&mut b, &mut schedule_b);
     assert_eq!(queue_counts(&b), (0, 2), "taken, skipped and counted");
     assert_eq!(queue_counts(&b), queue_counts(&a));
+}
+
+// 7.13c: a blast a game shapes and sets off.
+
+/// A bodiless target with health 1000 and a knockback at `at`.
+fn struck(world: &mut World, at: Vec2) -> Entity {
+    world.spawn_with((
+        Health::new(1000.0),
+        crate::Knockback::new(1.0),
+        Transform::from_position(at),
+    ))
+}
+
+/// The health `entity` has lost from 1000.
+fn lost(world: &World, entity: Entity) -> f32 {
+    1000.0 - world.get::<Health>(entity).unwrap().current()
+}
+
+/// The push `entity`'s knockback runs.
+fn pushed(world: &World, entity: Entity) -> Vec2 {
+    world.get::<crate::Knockback>(entity).unwrap().push()
+}
+
+#[test]
+fn a_blast_falls_off_to_its_far_share() {
+    let shares: [(f32, [f32; 3]); 3] = [
+        (0.0, [1.0, 0.5, 0.0]),
+        (0.5, [1.0, 0.75, 0.5]),
+        (1.0, [1.0, 1.0, 1.0]),
+    ];
+    let distances = [0.0_f32, 50.0, 100.0];
+    for (far, want) in shares {
+        let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+        // Bodiless targets 0, 50 and 100 px out; bodies of mass 1 whose
+        // surfaces lie as far, straight up.
+        let targets = distances.map(|d| struck(&mut world, Vec2::new(d, 0.0)));
+        let bodies = distances.map(|d| {
+            world.spawn_with(RigidBodyBundle::dynamic(
+                Position::new(0.0, -(d + 10.0)),
+                Collider::circle(10.0),
+            ))
+        });
+        step(&mut world, &mut schedule);
+        let bang = Blast::new(100.0)
+            .with_damage(100.0)
+            .with_far(far)
+            .with_push(600.0)
+            .with_impulse(300.0)
+            .landing_now();
+        blast(&mut world, Vec2::ZERO, &bang, None, None);
+        for ((target, body), (share, d)) in targets
+            .into_iter()
+            .zip(bodies)
+            .zip(want.into_iter().zip(distances))
+        {
+            let falloff = 1.0 - d / 100.0;
+            assert!(
+                (lost(&world, target) - 100.0 * share).abs() < 1e-3,
+                "far {far}, {d} px: {}",
+                lost(&world, target)
+            );
+            assert!(
+                (pushed(&world, target).length() - 600.0 * falloff).abs() < 1e-3,
+                "far {far}, {d} px: its push {}",
+                pushed(&world, target)
+            );
+            let velocity = world.get::<Velocity>(body).unwrap().0;
+            assert!(
+                (velocity - Vec2::new(0.0, -300.0 * falloff)).length() < 1e-3,
+                "far {far}, {d} px: its impulse {velocity}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_blast_spares_filters_and_hurts_its_receiver_when_asked() {
+    let (mut world, _) = rig();
+    let keg = struck(&mut world, Vec2::ZERO);
+    let thrower = struck(&mut world, Vec2::new(20.0, 0.0));
+    let beast = struck(&mut world, Vec2::new(-20.0, 0.0));
+    world.insert(beast, Tags::new(["creature"]));
+    let flat = || {
+        Blast::new(60.0)
+            .with_damage(10.0)
+            .with_far(1.0)
+            .landing_now()
+    };
+    let lost_by = |world: &World| [keg, thrower, beast].map(|entity| lost(world, entity));
+    blast(&mut world, Vec2::ZERO, &flat(), Some(thrower), Some(keg));
+    assert_eq!(lost_by(&world), [0.0, 10.0, 10.0], "its receiver spared");
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat().with_receiver(true),
+        Some(thrower),
+        Some(keg),
+    );
+    assert_eq!(
+        lost_by(&world),
+        [10.0, 20.0, 20.0],
+        "its receiver hurt, at distance 0"
+    );
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat().sparing_source(),
+        Some(thrower),
+        Some(keg),
+    );
+    assert_eq!(lost_by(&world), [10.0, 20.0, 30.0], "its credit spared");
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat().with_filter(crate::TagFilter::new().all(["creature"])),
+        Some(thrower),
+        Some(keg),
+    );
+    assert_eq!(lost_by(&world), [10.0, 20.0, 40.0], "the creature alone");
+    // A credit that is gone credits nobody, and spares nobody.
+    world.despawn(thrower);
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat().sparing_source(),
+        Some(thrower),
+        Some(keg),
+    );
+    let sources: Vec<Option<Entity>> = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .filter(|hit| hit.entity == beast)
+        .map(|hit| hit.source)
+        .collect();
+    assert_eq!(sources.last(), Some(&None));
+    assert_eq!(lost(&world, beast), 50.0);
+}
+
+/// The first seed whose first draws are `rolls`, each under 0.5 or not.
+fn seed_rolling(rolls: &[bool]) -> u64 {
+    (0..10_000)
+        .find(|&seed| {
+            let mut rng = crate::KitRng::seeded(seed);
+            rolls.iter().all(|&crit| (rng.unit() < 0.5) == crit)
+        })
+        .unwrap()
+}
+
+/// Three targets whose save order is not their index order: `x1` saved
+/// first at a higher index than `x2`, saved second, and `x3` unsaved;
+/// returned in save order, with a source that crits half its hits at 2.
+fn save_ordered(world: &mut World) -> ([Entity; 3], Entity) {
+    let kept = |world: &mut World, at: Vec2| {
+        let id = tungsten_core::save::take_id(world).unwrap();
+        let entity = struck(world, at);
+        world.insert(entity, tungsten_core::save::Saved::kept(id));
+        entity
+    };
+    let anchor = world.spawn();
+    tungsten_core::save::name(world, anchor, None, "anchor").unwrap();
+    let x0 = world.spawn();
+    let x1 = kept(world, Vec2::new(10.0, 0.0));
+    world.despawn(x0);
+    let x2 = kept(world, Vec2::new(-10.0, 0.0));
+    assert!(x2.id() < x1.id(), "the later ID at the lower index");
+    let x3 = struck(world, Vec2::new(0.0, 10.0));
+    let source = world.spawn_with((Stats::new()
+        .with(Stats::CRIT_CHANCE, 0.5)
+        .with(Stats::CRIT_MULTIPLIER, 2.0),));
+    ([x1, x2, x3], source)
+}
+
+#[test]
+fn a_blast_lands_now_in_save_id_order() {
+    let rolls = [true, false, true];
+    let (mut world, mut schedule) = rig();
+    let (targets, source) = save_ordered(&mut world);
+    world.insert_resource(crate::KitRng::seeded(seed_rolling(&rolls)));
+    let flat = Blast::new(60.0).with_damage(10.0).with_far(1.0);
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat.clone().landing_now(),
+        Some(source),
+        None,
+    );
+    assert_eq!(
+        targets.map(|target| lost(&world, target)),
+        [20.0, 10.0, 20.0],
+        "landed at its return, crits drawn in save order"
+    );
+    let order: Vec<(Entity, bool)> = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .map(|hit| (hit.entity, hit.crit))
+        .collect();
+    assert_eq!(
+        order,
+        [(targets[0], true), (targets[1], false), (targets[2], true)]
+    );
+    // Queued: the crits drawn as it goes off, the hits at the next resolve.
+    world.insert_resource(crate::KitRng::seeded(seed_rolling(&rolls)));
+    blast(&mut world, Vec2::ZERO, &flat, Some(source), None);
+    assert_eq!(world.resource::<crate::KitRng>().draws(), 3);
+    assert_eq!(
+        targets.map(|target| lost(&world, target)),
+        [20.0, 10.0, 20.0]
+    );
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        targets.map(|target| lost(&world, target)),
+        [40.0, 20.0, 40.0],
+        "at the step's resolve, as drawn"
+    );
+}
+
+#[test]
+fn a_hurt_body_takes_a_blasts_push_once() {
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+    // Two dynamic bodies of mass 1, their surfaces 50 px out: one with
+    // health and a knockback, one without.
+    let hurt = world.spawn_with(RigidBodyBundle::dynamic(
+        Position::new(60.0, 0.0),
+        Collider::circle(10.0),
+    ));
+    world.insert(hurt, Health::new(1000.0));
+    world.insert(hurt, crate::Knockback::new(1.0));
+    let bare = world.spawn_with(RigidBodyBundle::dynamic(
+        Position::new(-60.0, 0.0),
+        Collider::circle(10.0),
+    ));
+    step(&mut world, &mut schedule);
+    let velocity = |world: &World, entity| world.get::<Velocity>(entity).unwrap().0;
+    let bang = Blast::new(100.0)
+        .with_damage(10.0)
+        .with_push(600.0)
+        .with_impulse(300.0)
+        .landing_now();
+    blast(&mut world, Vec2::ZERO, &bang, None, None);
+    assert!(
+        (velocity(&world, hurt) - Vec2::new(300.0, 0.0)).length() < 1e-3,
+        "its knockback alone: {}",
+        velocity(&world, hurt)
+    );
+    assert!(
+        (velocity(&world, bare) - Vec2::new(-150.0, 0.0)).length() < 1e-3,
+        "the impulse: {}",
+        velocity(&world, bare)
+    );
+    // A blast that deals nothing hurts nobody: the impulse moves both.
+    world.get_mut::<Velocity>(hurt).unwrap().0 = Vec2::ZERO;
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &Blast::new(100.0).with_impulse(300.0),
+        None,
+        None,
+    );
+    assert!(
+        (velocity(&world, hurt) - Vec2::new(150.0, 0.0)).length() < 1e-3,
+        "{}",
+        velocity(&world, hurt)
+    );
+}
+
+#[test]
+fn a_blast_from_rust_is_its_data_form() {
+    let built = Blast::new(96.0)
+        .with_part("elemental.fire", 8.0)
+        .with_part("elemental.cold", 4.0)
+        .with_context(["team.enemy"])
+        .with_push(600.0)
+        .with_impulse(300.0)
+        .with_far(0.5)
+        .with_receiver(true)
+        .sparing_source()
+        .with_filter(crate::TagFilter::new().all(["creature"]))
+        .at_centre()
+        .landing_now()
+        .with_stimulus(false)
+        .with_prepare("armour");
+    let data = json!({
+        "radius": 96, "damage": { "elemental.cold": 4, "elemental.fire": 8 },
+        "context": ["team.enemy"], "push": 600, "impulse": 300, "far": 0.5,
+        "receiver": true, "spare": "source", "filter": { "all": ["creature"] },
+        "point": "centre", "land": "now", "stimulus": false, "prepare": "armour"
+    });
+    let read: Blast = serde_json::from_value(data).unwrap();
+    assert_eq!(built, read);
+    let again: Blast = serde_json::from_value(serde_json::to_value(&built).unwrap()).unwrap();
+    assert_eq!(again, built, "its saved form round-trips");
+    assert_eq!(
+        serde_json::from_value::<Blast>(json!({ "radius": 60 })).unwrap(),
+        Blast::new(60.0),
+        "the defaults"
+    );
+    assert_eq!(
+        Blast::new(10.0).with_damage(3.0),
+        serde_json::from_value::<Blast>(json!({ "radius": 10, "damage": 3 })).unwrap()
+    );
+    for (bad, why) in [
+        (json!({ "radius": 60, "far": 1.5 }), "far"),
+        (json!({ "radius": 60, "spare": "target" }), "spare"),
+        (json!({ "radius": 60, "land": "later" }), "land"),
+        (json!({ "radius": 60, "prepare": "Armour" }), "prepare"),
+    ] {
+        assert!(serde_json::from_value::<Blast>(bad).is_err(), "{why}");
+    }
+}
+
+/// A preparation that adds a whole physical penetration to a hit whose
+/// fields are set and whose crit is not decided yet.
+fn armour_prep(_: &World, hit: &mut DamageRequest) {
+    if hit.position().is_some() && hit.context().has("team.enemy") && !hit.is_crit() {
+        let taken = std::mem::replace(hit, DamageRequest::new(hit.target(), 0.0));
+        *hit = taken.with_penetration(crate::Penetration::new().with_points("elemental.fire", 1.0));
+    }
+}
+
+#[test]
+fn a_named_preparation_runs_on_each_blast_hit() {
+    let (mut world, mut schedule) = rig();
+    crate::add_hit_prep(&mut world, "armour", armour_prep);
+    let guarded = |world: &mut World, at: Vec2| {
+        let entity = struck(world, at);
+        world.insert(entity, Resist::new().with_factor("elemental.fire", 0.5));
+        entity
+    };
+    let near = guarded(&mut world, Vec2::new(10.0, 0.0));
+    let far = guarded(&mut world, Vec2::new(-30.0, 0.0));
+    let sure = world.spawn_with((Stats::new()
+        .with(Stats::CRIT_CHANCE, 1.0)
+        .with(Stats::CRIT_MULTIPLIER, 2.0),));
+    let fire = || {
+        Blast::new(60.0)
+            .with_part("elemental.fire", 10.0)
+            .with_far(1.0)
+            .with_context(["team.enemy"])
+            .at_centre()
+            .landing_now()
+    };
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &fire().with_prepare("armour"),
+        Some(sure),
+        None,
+    );
+    assert_eq!(
+        [near, far].map(|target| lost(&world, target)),
+        [20.0, 20.0],
+        "each hit: its fire whole, its crit's 2 after the preparation"
+    );
+    blast(&mut world, Vec2::ZERO, &fire(), Some(sure), None);
+    assert_eq!(
+        [near, far].map(|target| lost(&world, target)),
+        [30.0, 30.0],
+        "without one: halved"
+    );
+    // A Rust blast naming no registered preparation is refused.
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &fire().with_prepare("missing"),
+        Some(sure),
+        None,
+    );
+    assert_eq!([near, far].map(|target| lost(&world, target)), [30.0, 30.0]);
+    // The load refuses an unknown name, and takes a known one.
+    let named = |name: &str| -> Interaction {
+        serde_json::from_value(json!({
+            "stimulus": "heat",
+            "outputs": [{ "blast": { "radius": 60, "prepare": name } }]
+        }))
+        .unwrap()
+    };
+    let err = format!("{:?}", named("missing").check(&world).unwrap_err());
+    assert!(err.contains("missing") && err.contains("prepare"), "{err}");
+    assert!(named("armour").check(&world).is_ok());
+    let _ = &mut schedule;
 }

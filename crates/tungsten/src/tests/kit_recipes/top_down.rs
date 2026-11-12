@@ -29,7 +29,8 @@
 //! mirrored as it turns; a watchman facing the point it heard, hit shapes
 //! drawn on a key, a ghoul guard its death policy disarms, a nest that
 //! keeps one slime, across a save and a load, and a brazier whose phases a
-//! timed state machine cycles.
+//! timed state machine cycles; 7.13c's barrel bomb, whose blast hurts it
+//! too, at its centre and as it goes off.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3414,5 +3415,54 @@ fn an_alerted_ghoul_wears_its_mark() {
             .remove("state.alerted");
         harness.step(1);
         assert!(marks(&harness).is_empty(), "dt {dt}: gone with the tag");
+    }
+}
+
+// 7.13c, Step 1: a barrel bomb's blast, which hurts the barrel too, lands
+// at its centre and resolves as it goes off.
+
+#[test]
+fn a_barrel_bombs_blast_hurts_it_lands_at_its_centre_and_at_once() {
+    use crate::kit::EffectExpired;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // Its fuse runs 0.5 s; its end blasts 12 within 64 px, pushing 300,
+        // the barrel itself among its targets at distance 0.
+        let barrel = spawn(&mut harness, "barrel_bomb", [300.0, 300.0]);
+        let target = spawn(&mut harness, "blast_dummy", [300.0, 252.0]);
+        let mut ended = None;
+        let mut hurt = None;
+        for frame in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            if harness
+                .events::<EffectExpired>()
+                .any(|expired| expired.entity == barrel)
+            {
+                ended.get_or_insert(frame);
+            }
+            if let Some(hit) = harness.events::<Damaged>().find(|hit| hit.entity == target) {
+                hurt.get_or_insert((frame, hit.position));
+            }
+        }
+        let (frame, position) = hurt.unwrap_or_else(|| panic!("dt {dt}: the target hurt"));
+        assert_eq!(Some(frame), ended, "dt {dt}: in the frame its fuse ends");
+        assert_eq!(
+            position,
+            Some(Vec2::new(300.0, 300.0)),
+            "dt {dt}: at its centre"
+        );
+        let world = harness.world();
+        let health = |entity| world.get::<Health>(entity).unwrap().current();
+        assert!(
+            (health(target) - (50.0 - 3.0)).abs() < 1e-3,
+            "dt {dt}: {}",
+            health(target)
+        );
+        assert!(
+            (health(barrel) - (30.0 - 12.0)).abs() < 1e-3,
+            "dt {dt}: the barrel its own 12: {}",
+            health(barrel)
+        );
     }
 }

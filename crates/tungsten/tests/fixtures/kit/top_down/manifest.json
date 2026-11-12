@@ -165,6 +165,9 @@
     "powder_bomb": {
       "path": "prefabs/powder_bomb.json"
     },
+    "barrel_bomb": {
+      "path": "prefabs/barrel_bomb.json"
+    },
     "blast_dummy": {
       "path": "prefabs/blast_dummy.json"
     },
@@ -311,6 +314,9 @@
       },
       "fuse": {
         "path": "data/effects/fuse.json"
+      },
+      "short_fuse": {
+        "path": "data/effects/short_fuse.json"
       },
       "chill_build": {
         "path": "data/effects/chill_build.json"

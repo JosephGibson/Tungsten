@@ -564,7 +564,7 @@ impl Runner {
             .is_some_and(|blasts| !blasts.0.is_empty())
         {
             let mut blasts = world.remove_resource::<blast::Blasts>().unwrap();
-            blast::detonate(world, &settings, &mut blasts.0, &mut self.reach, run + 1);
+            blast::detonate(world, &settings, &mut blasts.0, &mut self.reach);
             world.insert_resource(blasts);
         }
         let chemistry = world.resource_mut::<Chemistry>();
@@ -958,7 +958,7 @@ fn describe_chemistry(world: &mut World) {
             .roundtrip(round_trip::<becoming::RevertDef>),
         ComponentDescription::new(
             "blast_output",
-            "A blast at the receiver's point or a cell's centre, each effect falling off linearly to 0 at its radius.",
+            "A blast at the receiver's point or a cell's centre, its damage falling off linearly to its far share at its radius, its push, impulse and stimulus to 0.",
         )
         .field(FieldDescription::new(
             "radius",
@@ -992,12 +992,79 @@ fn describe_chemistry(world: &mut World) {
             FieldDescription::new(
                 "impulse",
                 amount(),
-                "a physics impulse at its centre on dynamic bodies and kinematic ones with a mass",
+                "a physics impulse at its centre on dynamic bodies and kinematic ones with a mass, but those it hurts, which take its push alone",
             )
             .default("0.0"),
         )
+        .field(
+            FieldDescription::new(
+                "far",
+                FieldType::F32 {
+                    min: Bound::Inclusive(0.0),
+                    max: Bound::Inclusive(1.0),
+                },
+                "the damage's share at the radius, `1 − (1 − far) d / r`; 1 deals the same everywhere within it",
+            )
+            .default("0.0"),
+        )
+        .field(
+            FieldDescription::new(
+                "receiver",
+                FieldType::Bool,
+                "its receiver is a target too, at distance 0",
+            )
+            .default("false"),
+        )
+        .field(
+            FieldDescription::new(
+                "spare",
+                FieldType::Enum(&["source"]),
+                "`source`: its credit takes no hit and no impulse",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "filter",
+                FieldType::Filter,
+                "the tags a target passes to take a hit",
+            )
+            .default("{}"),
+        )
+        .field(
+            FieldDescription::new(
+                "point",
+                FieldType::Enum(&["centre"]),
+                "`centre`: each hit lands at its centre, where its cue spawns; no point when left out",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "land",
+                FieldType::Enum(&["queue", "now"]),
+                "`now` resolves its hits as it goes off, in its targets' save order; `queue` at the next resolve",
+            )
+            .default("\"queue\""),
+        )
+        .field(
+            FieldDescription::new(
+                "stimulus",
+                FieldType::Bool,
+                "it sends `stimulus.blast`",
+            )
+            .default("true"),
+        )
+        .field(
+            FieldDescription::new(
+                "prepare",
+                FieldType::Text,
+                "a game's hit preparation by name, run on each hit before its crit's roll; the load refuses one no game registered",
+            )
+            .default("null"),
+        )
         .sample(r#"{ "radius": 60 }"#)
-        .roundtrip(round_trip::<blast::BlastDef>),
+        .roundtrip(round_trip::<blast::Blast>),
     ];
     for shape in shapes {
         describe_shape(world, shape);

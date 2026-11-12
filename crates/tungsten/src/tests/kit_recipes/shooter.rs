@@ -13,7 +13,8 @@
 //! at their cap with a blip; 7.10g's missile, turning back right side up,
 //! a stray drone killed past the world's bounds, a sentry whose patrol
 //! waits at each end, two turrets cycling half a second apart, a charger
-//! whose ring grows over its tell, and a frigate's health bar.
+//! whose ring grows over its tell, and a frigate's health bar; 7.13c's
+//! frag grenade, sparing its thrower, about half its damage at its edge.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1949,6 +1950,51 @@ fn the_pointmans_camera_leads_its_aim_by_96_px() {
         assert!(
             (led - Vec2::new(0.0, -96.0)).length() < 1.0,
             "dt {dt}: up at the turret: {led}"
+        );
+    }
+}
+
+// 7.13c, Step 1: a frag grenade's blast, about half its damage at its edge
+// and its thrower spared.
+
+#[test]
+fn a_frag_grenade_spares_its_thrower_and_keeps_half_at_its_edge() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // The floor's top at y 8; the grenade dropped onto it, thrown by a
+        // sandbag beside where it lands.
+        spawn(&mut harness, "floor", [300.0, 16.0]);
+        let thrower = spawn(&mut harness, "sandbag", [320.0, 0.0]);
+        let near = spawn(&mut harness, "sandbag", [340.0, 0.0]);
+        let edge = spawn(&mut harness, "sandbag", [362.0, 8.0]);
+        let grenade = spawn(&mut harness, "frag_grenade", [300.0, -40.0]);
+        harness.world_mut().insert(grenade, Source::new(thrower));
+        let mut landed = None;
+        for _ in 0..frames_for(1.5, dt) {
+            harness.step(1);
+            if let Some(expired) = harness.events::<ProjectileExpired>().next().copied() {
+                landed = Some(expired.position);
+                break;
+            }
+        }
+        let at = landed.unwrap_or_else(|| panic!("dt {dt}: the grenade lands"));
+        assert!((at.y - 8.0).abs() < 1e-3, "dt {dt}: on the floor: {at}");
+        // Its blast at the next resolve: 20 by 1 - 0.5 d / 64.
+        harness.step(2);
+        let world = harness.world();
+        let lost = |entity| 40.0 - world.get::<Health>(entity).unwrap().current();
+        let share = |x: f32, y: f32| 1.0 - 0.5 * (Vec2::new(x, y) - at).length() / 64.0;
+        assert_eq!(lost(thrower), 0.0, "dt {dt}: its thrower spared");
+        for (entity, x, y) in [(near, 340.0, 0.0), (edge, 362.0, 8.0)] {
+            assert!(
+                (lost(entity) - 20.0 * share(x, y)).abs() < 1e-3,
+                "dt {dt}: at {x}: {}",
+                lost(entity)
+            );
+        }
+        assert!(
+            (0.5..0.52).contains(&share(362.0, 8.0)),
+            "dt {dt}: about half at its edge"
         );
     }
 }

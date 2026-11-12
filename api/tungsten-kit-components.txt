@@ -418,12 +418,20 @@ shape become_revert: A replacement turned back after a while.
   field after: f32 (> 0) — game seconds until it turns back
   field to: prefab ID — the prefab it turns into; data names it, since a named entity's save holds no prefab
   sample: { "after": 3, "to": "lamp" }
-shape blast_output: A blast at the receiver's point or a cell's centre, each effect falling off linearly to 0 at its radius.
+shape blast_output: A blast at the receiver's point or a cell's centre, its damage falling off linearly to its far share at its radius, its push, impulse and stimulus to 0.
   field radius: f32 (> 0) — px to a target's surface, or to its point without a body
   field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 = null — at its centre, on each entity with health but the receiver, from the credit, at the next step's resolve
   field context: list of text = [] — the tags its hits carry as their context, such as a game's `hit.blast`
   field push: f32 (>= 0) = 0.0 — a knockback at its centre, in px/s, away from it
-  field impulse: f32 (>= 0) = 0.0 — a physics impulse at its centre on dynamic bodies and kinematic ones with a mass
+  field impulse: f32 (>= 0) = 0.0 — a physics impulse at its centre on dynamic bodies and kinematic ones with a mass, but those it hurts, which take its push alone
+  field far: f32 (>= 0, <= 1) = 0.0 — the damage's share at the radius, `1 − (1 − far) d / r`; 1 deals the same everywhere within it
+  field receiver: bool = false — its receiver is a target too, at distance 0
+  field spare: one of source = null — `source`: its credit takes no hit and no impulse
+  field filter: tag filter = {} — the tags a target passes to take a hit
+  field point: one of centre = null — `centre`: each hit lands at its centre, where its cue spawns; no point when left out
+  field land: one of queue | now = "queue" — `now` resolves its hits as it goes off, in its targets' save order; `queue` at the next resolve
+  field stimulus: bool = true — it sends `stimulus.blast`
+  field prepare: text = null — a game's hit preparation by name, run on each hit before its crit's roll; the load refuses one no game registered
   sample: { "radius": 60 }
 shape blink: A lifetime's blink: hidden for the second half of each period over its last seconds.
   field last: f32 (> 0) — the seconds before the end it blinks over

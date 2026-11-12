@@ -9,7 +9,7 @@ use tungsten_core::physics::Position;
 use tungsten_core::{CommandBuffer, DataRef, Entity, MissingAsset, Transform, World};
 
 use crate::chemistry::becoming::BecomeDef;
-use crate::chemistry::blast::BlastDef;
+use crate::chemistry::blast::Blast;
 use crate::chemistry::grid::locate;
 use crate::chemistry::queue::Receiver;
 use crate::chemistry::rules::check_stimulus;
@@ -50,7 +50,7 @@ pub(crate) const BAD_PER: &str =
 /// | emit | `{ "emit": { "stimulus": "heat", "amount": 1, "radius": 40 } }` | sends a stimulus once from the receiver's point to every receiver within the radius but itself, at the next run |
 /// | set_tile | `{ "set_tile": { "tile": "ash", "revert": 5 } }` | on a tile cell, writes the first tileset entry with that sprite through the registry, every placement of the map showing it; `revert` writes the old tile back after that many seconds |
 /// | become | `{ "become": { "prefab": "lamp_doused", "revert": { "after": 3, "to": "lamp" } } }` | replaces the receiver by a prefab at its point under its save identity, keeping its source, its statuses not carried; `revert` turns it into `to` after `after` seconds, under the same identity |
-/// | blast | `{ "blast": { "radius": 80, "damage": { "elemental.fire": 8 }, "context": ["hit.blast"], "push": 600, "impulse": 300 } }` | once the run's reactions are done, each entity with health within the radius but the receiver takes the damage and a knockback away from the centre, dynamic bodies the impulse, and each receiver and cell within it `stimulus.blast`, each by `1 − d / r`, one reaction deeper |
+/// | blast | `{ "blast": { "radius": 80, "damage": { "elemental.fire": 8 }, "context": ["hit.blast"], "push": 600, "impulse": 300 } }`, with [`Blast`](crate::Blast)'s other fields | once the run's reactions are done, each entity with health within the radius but the receiver takes the damage and a knockback away from the centre, the bodies it does not hurt the impulse, and each receiver and cell within it `stimulus.blast`, each by `1 − d / r` (the damage to its `far` share), one reaction deeper |
 /// | handler | `{ "handler": "douse" }` | runs a game's Rust handler ([`ChemistryPlugin::with_handler`](crate::ChemistryPlugin::with_handler)) |
 ///
 /// On a dead receiver `build` and `apply` are refused, as effects refuse the
@@ -87,7 +87,7 @@ enum Kind {
     Emit(EmitDef),
     SetTile(SetTileDef),
     Become(BecomeDef),
-    Blast(BlastDef),
+    Blast(Blast),
     Handler(String),
 }
 

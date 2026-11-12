@@ -241,6 +241,7 @@ mod present;
 mod react;
 mod transform;
 
+pub use chemistry::blast::{Blast, blast};
 pub use chemistry::{
     CHEMISTRY, CHEMISTRY_TICK, Chemistry, ChemistryPlugin, Interaction, Output, Reaction, TileCell,
     TileStatuses, stimulate,
@@ -256,7 +257,8 @@ pub use damage::health::{
 };
 pub use damage::kinds::{Conversion, DamageKinds, Penetration};
 pub use damage::pipeline::{
-    DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest, Healed, Side, heal,
+    DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest, Healed, HitPrep, Side, add_hit_prep,
+    heal,
 };
 pub use foundation::curve::Curve;
 pub use foundation::debug::{KIT_DEBUG_DRAW, KitDebug, KitDebugPlugin};

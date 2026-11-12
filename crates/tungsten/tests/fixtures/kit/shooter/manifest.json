@@ -78,6 +78,9 @@
     "grenade": {
       "path": "prefabs/grenade.json"
     },
+    "frag_grenade": {
+      "path": "prefabs/frag_grenade.json"
+    },
     "cryo_trooper": {
       "path": "prefabs/cryo_trooper.json"
     },

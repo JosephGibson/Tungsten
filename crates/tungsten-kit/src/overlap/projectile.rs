@@ -12,7 +12,7 @@ use tungsten_core::{
     World, system,
 };
 
-use crate::chemistry::blast::{BlastDef, Blasts};
+use crate::chemistry::blast::{Blast, Blasts};
 use crate::chemistry::queue::Receiver;
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
@@ -63,13 +63,14 @@ const PROJECTILE_END: &str = "projectile_end";
 ///   were open. None by default.
 /// - `end`: what it sets off at each of its own ends, a hit past its
 ///   pierce, a wall it neither passes nor turns at, or its range: a
-///   `blast`, in the chemistry output's form, at its hitbox's centre there
-///   (its point without a hitbox), which neither hurts nor pushes it and
-///   is credited to its [`Source`](crate::Source), else to itself, for
-///   [`ChemistryPlugin`](crate::ChemistryPlugin)'s run that step; a World
-///   without that plugin traces the end's blast as skipped. A
-///   [`Lifetime`](crate::Lifetime)'s despawn is no end of its own and sets
-///   off nothing. None by default.
+///   [`Blast`](crate::Blast), in the chemistry output's form, at its
+///   hitbox's centre there (its point without a hitbox), which neither
+///   hurts nor pushes it and is credited to its [`Source`](crate::Source),
+///   else to itself, for [`ChemistryPlugin`](crate::ChemistryPlugin)'s run
+///   that step; a World without that plugin traces the end's blast as
+///   skipped. A [`Lifetime`](crate::Lifetime)'s despawn is no end of its
+///   own and sets off nothing. None by default; Rust gives one with
+///   [`with_end`](Self::with_end).
 ///
 /// Walls are tiles of collision layers, in their layer's physics layers
 /// (layer 0 by default, [`LayerPhysics`](tungsten_core::LayerPhysics)), and
@@ -295,6 +296,14 @@ impl Projectile {
         self
     }
 
+    /// The projectile, setting `blast` off at each of its own ends: the
+    /// Rust form of data's `end`.
+    #[must_use]
+    pub fn with_end(mut self, blast: Blast) -> Self {
+        self.end = Some(ProjectileEnd::Blast(Box::new(blast)));
+        self
+    }
+
     /// The targets it passes before the next ends it.
     #[must_use]
     pub fn pierce(&self) -> u32 {
@@ -465,7 +474,7 @@ impl ProjectilePassed {
 #[serde(rename_all = "snake_case")]
 enum ProjectileEnd {
     /// A blast at its hitbox's centre where it ended.
-    Blast(Box<BlastDef>),
+    Blast(Box<Blast>),
 }
 
 impl ProjectileEnd {
@@ -1077,7 +1086,7 @@ fn finish(
 /// which it neither hurts nor pushes, credited to its [`Source`], else to
 /// itself, at depth 0; traced as skipped in a World without chemistry's
 /// blasts.
-fn set_off(world: &mut World, entity: Entity, blast: &BlastDef, centre: Vec2) {
+fn set_off(world: &mut World, entity: Entity, blast: &Blast, centre: Vec2) {
     if !world.has_resource::<Blasts>() {
         trace(world, entity, || TraceKind::Skipped {
             event: "expired",

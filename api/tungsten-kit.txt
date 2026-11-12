@@ -3161,6 +3161,7 @@ pub fn tungsten_kit::Projectile::range(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Projectile::travelled(&self) -> f32
 pub fn tungsten_kit::Projectile::with_bounce_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_bounces(self, u32) -> Self
+pub fn tungsten_kit::Projectile::with_end(self, tungsten_kit::Blast) -> Self
 pub fn tungsten_kit::Projectile::with_pass_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_pierce(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_range(self, f32) -> Self
@@ -3664,6 +3665,7 @@ pub const tungsten_kit::Stats::COST: &'static str
 pub const tungsten_kit::Stats::CRIT_CHANCE: &'static str
 pub const tungsten_kit::Stats::CRIT_MULTIPLIER: &'static str
 pub const tungsten_kit::Stats::DAMAGE: &'static str
+pub const tungsten_kit::Stats::DAMAGE_DEALT: &'static str
 pub const tungsten_kit::Stats::DAMAGE_TAKEN: &'static str
 pub const tungsten_kit::Stats::MAX_HEALTH: &'static str
 pub const tungsten_kit::Stats::MOVE_SPEED: &'static str
@@ -3671,7 +3673,7 @@ pub const tungsten_kit::Stats::PICKUP_RADIUS: &'static str
 pub const tungsten_kit::Stats::PROJECTILE_SPEED: &'static str
 pub const tungsten_kit::Stats::SKILL_LEVEL: &'static str
 pub const tungsten_kit::Stats::STATUS_EFFECT: &'static str
-pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 11]
+pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 12]
 pub fn tungsten_kit::Stats::add_line(&mut self, &str, &str, tungsten_kit::Line)
 pub fn tungsten_kit::Stats::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier) -> bool
 pub fn tungsten_kit::Stats::base(&self, &str) -> core::option::Option<f32>
@@ -5054,6 +5056,40 @@ impl core::marker::Unpin for tungsten_kit::AnimationPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AnimationPlugin
+pub struct tungsten_kit::Blast
+impl tungsten_kit::Blast
+pub fn tungsten_kit::Blast::at_centre(self) -> Self
+pub fn tungsten_kit::Blast::landing_now(self) -> Self
+pub fn tungsten_kit::Blast::new(f32) -> Self
+pub fn tungsten_kit::Blast::radius(&self) -> f32
+pub fn tungsten_kit::Blast::sparing_source(self) -> Self
+pub fn tungsten_kit::Blast::with_context(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn tungsten_kit::Blast::with_damage(self, f32) -> Self
+pub fn tungsten_kit::Blast::with_far(self, f32) -> Self
+pub fn tungsten_kit::Blast::with_filter(self, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::Blast::with_impulse(self, f32) -> Self
+pub fn tungsten_kit::Blast::with_part(self, &str, f32) -> Self
+pub fn tungsten_kit::Blast::with_prepare(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Blast::with_push(self, f32) -> Self
+pub fn tungsten_kit::Blast::with_receiver(self, bool) -> Self
+pub fn tungsten_kit::Blast::with_stimulus(self, bool) -> Self
+impl core::clone::Clone for tungsten_kit::Blast
+pub fn tungsten_kit::Blast::clone(&self) -> tungsten_kit::Blast
+impl core::cmp::PartialEq for tungsten_kit::Blast
+pub fn tungsten_kit::Blast::eq(&self, &Self) -> bool
+impl core::fmt::Debug for tungsten_kit::Blast
+pub fn tungsten_kit::Blast::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for tungsten_kit::Blast
+pub fn tungsten_kit::Blast::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Blast
+pub fn tungsten_kit::Blast::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Blast
+impl core::marker::Send for tungsten_kit::Blast
+impl core::marker::Sync for tungsten_kit::Blast
+impl core::marker::Unpin for tungsten_kit::Blast
+impl core::marker::UnsafeUnpin for tungsten_kit::Blast
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Blast
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Blast
 pub struct tungsten_kit::CameraRigId(_)
 impl tungsten_kit::CameraRigId
 pub fn tungsten_kit::CameraRigId::as_str(&self) -> &str
@@ -7994,6 +8030,7 @@ pub fn tungsten_kit::Projectile::range(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Projectile::travelled(&self) -> f32
 pub fn tungsten_kit::Projectile::with_bounce_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_bounces(self, u32) -> Self
+pub fn tungsten_kit::Projectile::with_end(self, tungsten_kit::Blast) -> Self
 pub fn tungsten_kit::Projectile::with_pass_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_pierce(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_range(self, f32) -> Self
@@ -8675,6 +8712,7 @@ pub const tungsten_kit::Stats::COST: &'static str
 pub const tungsten_kit::Stats::CRIT_CHANCE: &'static str
 pub const tungsten_kit::Stats::CRIT_MULTIPLIER: &'static str
 pub const tungsten_kit::Stats::DAMAGE: &'static str
+pub const tungsten_kit::Stats::DAMAGE_DEALT: &'static str
 pub const tungsten_kit::Stats::DAMAGE_TAKEN: &'static str
 pub const tungsten_kit::Stats::MAX_HEALTH: &'static str
 pub const tungsten_kit::Stats::MOVE_SPEED: &'static str
@@ -8682,7 +8720,7 @@ pub const tungsten_kit::Stats::PICKUP_RADIUS: &'static str
 pub const tungsten_kit::Stats::PROJECTILE_SPEED: &'static str
 pub const tungsten_kit::Stats::SKILL_LEVEL: &'static str
 pub const tungsten_kit::Stats::STATUS_EFFECT: &'static str
-pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 11]
+pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 12]
 pub fn tungsten_kit::Stats::add_line(&mut self, &str, &str, tungsten_kit::Line)
 pub fn tungsten_kit::Stats::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier) -> bool
 pub fn tungsten_kit::Stats::base(&self, &str) -> core::option::Option<f32>
@@ -9452,6 +9490,8 @@ pub const tungsten_kit::TRANSFORM_PROPAGATE_LATE: &str
 pub const tungsten_kit::UNSAVED_COMPONENTS: &[(&str, &str)]
 pub const tungsten_kit::WRAP: &str
 pub const tungsten_kit::ZONE_TICK: &str
+pub fn tungsten_kit::add_hit_prep(&mut tungsten_core::ecs::world::World, impl core::convert::Into<alloc::string::String>, tungsten_kit::HitPrep)
+pub fn tungsten_kit::blast(&mut tungsten_core::ecs::world::World, glam::f32::vec2::Vec2, &tungsten_kit::Blast, core::option::Option<tungsten_core::ecs::entity::Entity>, core::option::Option<tungsten_core::ecs::entity::Entity>)
 pub fn tungsten_kit::carried_by(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::carry(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, tungsten_kit::Hold) -> bool
 pub fn tungsten_kit::centre_of(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<glam::f32::vec2::Vec2>
@@ -9471,3 +9511,4 @@ pub fn tungsten_kit::route_findings(&tungsten_core::ecs::world::World, &str) -> 
 pub fn tungsten_kit::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity
 pub fn tungsten_kit::stimulate(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str, f32, core::option::Option<tungsten_core::ecs::entity::Entity>) -> bool
 pub fn tungsten_kit::use_ability(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str) -> tungsten_kit::Used
+pub type tungsten_kit::HitPrep = fn(&tungsten_core::ecs::world::World, &mut tungsten_kit::DamageRequest)

@@ -479,6 +479,11 @@ impl Stats {
     /// context: `damage_taken` lines scoped by a hit's tags shape what it
     /// takes.
     pub const DAMAGE_TAKEN: &'static str = "damage_taken";
+    /// What a source's hits are multiplied by, from 0, read in the hit's
+    /// context at the resolve: `damage_dealt` lines scoped by a hit's tags
+    /// shape what it deals, before the conversion and the target's
+    /// defences; a periodic hit takes none.
+    pub const DAMAGE_DEALT: &'static str = "damage_dealt";
     /// A skill's level at a use: its owner's level plus `add` lines in its
     /// context, from 1 to 40 (a sheet's stat, read through
     /// [`sums`](Self::sums)).
@@ -493,7 +498,7 @@ impl Stats {
     /// resolve, unless it names its own.
     pub const STATUS_EFFECT: &'static str = "status_effect";
     /// The stats every game knows without declaring them.
-    pub const WELL_KNOWN: [&'static str; 11] = [
+    pub const WELL_KNOWN: [&'static str; 12] = [
         Self::MOVE_SPEED,
         Self::MAX_HEALTH,
         Self::DAMAGE,
@@ -504,6 +509,7 @@ impl Stats {
         Self::CRIT_CHANCE,
         Self::CRIT_MULTIPLIER,
         Self::DAMAGE_TAKEN,
+        Self::DAMAGE_DEALT,
         Self::STATUS_EFFECT,
     ];
 

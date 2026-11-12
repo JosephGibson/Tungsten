@@ -76,7 +76,7 @@ fn the_well_known_stats_clamp_to_their_floors() {
     stats.add_modifier(Stats::MAX_HEALTH, "curse", Modifier::Mul(0.0));
     assert_eq!(stats.get(Stats::MOVE_SPEED), Some(0.0));
     assert_eq!(stats.get(Stats::MAX_HEALTH), Some(1.0), "no modifier kills");
-    assert_eq!(Stats::WELL_KNOWN.len(), 11);
+    assert_eq!(Stats::WELL_KNOWN.len(), 12);
     let names: Vec<&str> = stats.iter().map(|(name, _)| name).collect();
     assert_eq!(names, ["max_health", "move_speed"]);
 }
