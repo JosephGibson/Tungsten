@@ -1,33 +1,32 @@
-//! The cascades: a saved queue of the lightning's conduction and the kegs'
-//! detonations, which `cascade_run` works through in the overlap phase,
-//! after 01's contact systems and before the kit's resolve, so every hit an
-//! entry deals takes the step's resolve. A jump is a strike's conduction
-//! from one conductive thing to the next; a detonation, a powder keg
-//! blowing. Each waits for its run: one queued while a run executes is due
-//! on the next, so a chain rolls one ring a step whatever the frame rate.
+//! The cascades: a saved queue of the lightning's conduction, which
+//! `cascade_run` works through in the overlap phase, after 01's contact
+//! systems and before the kit's resolve, so every hit an entry deals takes
+//! the step's resolve. A jump is a strike's conduction from one conductive
+//! thing to the next. Each waits for its run: one queued while a run
+//! executes is due on the next, so a chain rolls one ring a step whatever
+//! the frame rate.
 //!
-//! The element endings are chemistry's (7.13a): thermal shock (`heat` on a
-//! frozen body, `damage.fire` on a frozen target), shatter (`crack` on a
-//! frozen thing) and steam (`cold` on a burning body, `damage.cold` on a
-//! burning target) are `interactions` rules whose handlers here run 01's
-//! blast, douse and end; `heat` on what is not frozen runs `light`. A
+//! The element endings and the kegs are chemistry's (7.13a): thermal shock
+//! (`heat` on a frozen body, `damage.fire` on a frozen target), shatter
+//! (`crack` on a frozen thing) and steam (`cold` on a burning body,
+//! `damage.cold` on a burning target) are `interactions` rules whose
+//! handlers here run 01's blast, douse and end; `heat` on what is not
+//! frozen, and `kindle`, run `light`; a keg's or a bomb's fuse running out
+//! (its `lit` status's end) and a `jolt` run `detonate`. A
 //! handler's stimuli go to chemistry's next run, so a chain still rolls a
 //! ring a step, through the kit's queue, its cap 01's [`CASCADE_CAP`].
 //!
-//! A run takes at most [`CASCADE_CAP`] due entries, by their due run, then
+//! A run takes at most [`CASCADE_CAP`] due jumps, by their due run, then
 //! their distance from their chain's origin, then their target's save ID.
-//! A kind waits once a target, a jump once a strike's target, so the queue
-//! holds at most one entry a kind per live saved entity and six jumps a
-//! strike; past [`CASCADE_BOUND`] an add is dropped, counted and warned of
-//! once a step.
+//! A jump waits once a strike's target, so the queue holds at most six
+//! jumps a strike; past [`CASCADE_BOUND`] an add is dropped and counted.
 //!
-//! Each entry credits a save ID: the run's player's for the spells, the
-//! gun and what nobody lit, or whoever lit a keg. A run resolves it to the
-//! player or a live target, and every ending an entry sets off credits
-//! the same ID, so a goblin's bomb that shocks a frozen body still credits
-//! the goblin; a gone lighter credits none.
+//! Each jump credits a save ID, the run's player's, which a run resolves
+//! to the player. A handler credits its stimulus's live credit: the
+//! player, or a live target, so a goblin's bomb that shocks a frozen body
+//! still credits the goblin; a gone lighter credits none.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -45,9 +44,9 @@ use super::{
 };
 use super::{is_burning, is_frozen};
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{self, BURNING, Kind, has_status};
+use crate::features::combat::{self, BURNING, DOUSED, Kind, has_status};
 use crate::features::props::components::{Bomb, Crate, Keg, Rock, Stone};
-use crate::features::props::{self, PROP_BLAST};
+use crate::features::props::{self, BOMB_BLAST, KEG_BLAST, PROP_BLAST};
 use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock, IronScrap, SmallBall};
 use crate::features::toys::systems::{blast_trauma, flare};
@@ -69,11 +68,6 @@ pub enum CascadeKind {
     /// the next jump queued to the nearest conductive thing not yet in the
     /// chain.
     Jump,
-    /// A powder keg blowing: it goes, a frozen one shattering instead; its
-    /// fire and physical parts to the targets in reach, its small balls,
-    /// crates and frozen bodies sent `heat`, its kegs set off and its
-    /// bodies pushed. It runs once a keg a run, and never on one gone.
-    Detonation,
 }
 
 /// One waiting cascade: its kind, the thing it happens to by save ID (a
@@ -118,7 +112,8 @@ pub struct Cascades {
     /// the step's, never saved.
     #[serde(skip)]
     pub steamed: Vec<Entity>,
-    /// The kegs this step's run has blown, in turn: the run's, never saved.
+    /// The kegs and bombs this step's `detonate` handlers have blown, in
+    /// turn: the step's, never saved.
     #[serde(skip)]
     pub detonated: Vec<Entity>,
     /// The things this step's thermal shocks and steam bursts happened to,
@@ -130,39 +125,6 @@ pub struct Cascades {
     /// kit's queue empties.
     #[serde(skip)]
     pub heat_from: HashMap<Entity, Vec2>,
-    /// The kinds waiting on each target, kept beside the entries.
-    #[serde(skip)]
-    keys: HashSet<(CascadeKind, u64)>,
-    /// The run of the last warning about the bound.
-    #[serde(skip)]
-    warned: u64,
-}
-
-impl Cascades {
-    /// The keys of the waiting entries but the jumps, rebuilt after a load.
-    fn index(&mut self) {
-        let keyed = self
-            .entries
-            .iter()
-            .filter(|entry| entry.target.is_some() && entry.kind != CascadeKind::Jump)
-            .count();
-        if self.keys.len() != keyed {
-            self.keys = self
-                .entries
-                .iter()
-                .filter(|entry| entry.kind != CascadeKind::Jump)
-                .filter_map(|entry| Some((entry.kind, entry.target?)))
-                .collect();
-        }
-    }
-
-    /// Whether `kind` waits on the save ID `target`.
-    #[must_use]
-    pub fn waits(&self, kind: CascadeKind, target: u64) -> bool {
-        self.entries
-            .iter()
-            .any(|entry| entry.kind == kind && entry.target == Some(target))
-    }
 }
 
 /// The run's player's save ID, which the spells, the gun and a fire nobody
@@ -173,73 +135,6 @@ pub fn player_credit(world: &World) -> Option<u64> {
         .get_resource::<Run>()
         .and_then(|run| world.get::<SaveId>(run.player))
         .map(|id| id.0)
-}
-
-/// Queues a cascade of `kind` at `at`, on `target`, from the chain begun at
-/// `origin`, its reach `strength`, crediting the run's player; due on the
-/// next run. False when `kind` waits on the target already, or past
-/// [`CASCADE_BOUND`].
-pub fn queue(
-    world: &mut World,
-    kind: CascadeKind,
-    target: Option<Entity>,
-    at: Vec2,
-    origin: Vec2,
-    strength: f32,
-) -> bool {
-    let source = player_credit(world);
-    queue_from(world, kind, target, at, origin, strength, source)
-}
-
-/// [`queue`], crediting the save ID `source`: a keg's lighter, or the
-/// entry whose run sets it off.
-pub fn queue_from(
-    world: &mut World,
-    kind: CascadeKind,
-    target: Option<Entity>,
-    at: Vec2,
-    origin: Vec2,
-    strength: f32,
-    source: Option<u64>,
-) -> bool {
-    let target = target
-        .and_then(|entity| world.get::<SaveId>(entity))
-        .map(|id| id.0);
-    let Some(cascades) = world.get_resource_mut::<Cascades>() else {
-        return false;
-    };
-    cascades.index();
-    if let Some(target) = target
-        && cascades.keys.contains(&(kind, target))
-    {
-        return false;
-    }
-    if cascades.entries.len() >= CASCADE_BOUND {
-        cascades.dropped += 1;
-        let run = cascades.step + 1;
-        if cascades.warned != run {
-            cascades.warned = run;
-            log::warn!("cascades: past {CASCADE_BOUND} waiting, an add is dropped");
-        }
-        return false;
-    }
-    if let Some(target) = target {
-        cascades.keys.insert((kind, target));
-    }
-    let due = cascades.step + 1;
-    cascades.entries.push(Entry {
-        kind,
-        target,
-        at: at.to_array(),
-        origin: origin.to_array(),
-        source,
-        strength,
-        due,
-        strike: None,
-        jumps: 0,
-        chain: Vec::new(),
-    });
-    true
 }
 
 /// One jump of a strike's conduction to queue: its receiver, where it
@@ -325,13 +220,6 @@ fn live_credit(world: &World, credit: Option<Entity>) -> Option<Entity> {
     (player == Some(credit) || live).then_some(credit)
 }
 
-/// The save ID of `credit`, which a keg's lighter keeps.
-fn credit_id(world: &World, credit: Option<Entity>) -> Option<u64> {
-    credit
-        .and_then(|entity| world.get::<SaveId>(entity))
-        .map(|id| id.0)
-}
-
 /// The handlers' bin of the step's bodies and targets, built at its first
 /// handler a step: a World resource, never saved.
 #[derive(Default)]
@@ -380,10 +268,7 @@ pub fn thermal_shock_handler(world: &mut World, reaction: &Reaction) {
         .filter(|from| from.distance(at) > 1e-3);
     react_on(world, thing);
     end_frozen(world, thing, from);
-    let lighter = credit_id(world, credit);
-    with_bin(world, |world, bin| {
-        blast(world, bin, at, credit, lighter, reach)
-    });
+    with_bin(world, |world, bin| blast(world, bin, at, credit, reach));
     spawn_burst(world, "ex10_frost_blast", at);
     spawn_burst(world, "ex10_fireball_blast", at);
     audio::play(world, Sound::FrostBlasted, at);
@@ -415,8 +300,8 @@ pub fn steam_handler(world: &mut World, reaction: &Reaction) {
 }
 
 /// A steam burst from the burning `thing` at once, of `reach`, crediting
-/// `credit` ([`steam`]): a rule's, or a burning prop's, whose fire is its
-/// `Fuel`'s.
+/// `credit` ([`steam`]): a rule's, or the cold spray's on a burning prop,
+/// which it puts out at once.
 pub fn steam_at(world: &mut World, thing: Entity, reach: f32, credit: Option<Entity>) {
     let Some(at) = body_centre(world, thing) else {
         return;
@@ -427,8 +312,9 @@ pub fn steam_at(world: &mut World, thing: Entity, reach: f32, credit: Option<Ent
     });
 }
 
-/// Chemistry's `light` handler, `heat` on what is not frozen: a small ball
-/// that never burned lights; a crate catches, its lighter the stimulus's
+/// Chemistry's `light` handler, `heat` on what is not frozen and `kindle`:
+/// a small ball that never burned lights; a crate or a plank catches and a
+/// keg's fuse starts ([`props::light_by`]), its lighter the stimulus's live
 /// credit; the rest take nothing.
 pub fn light_handler(world: &mut World, reaction: &Reaction) {
     let Some(body) = reaction.receiver() else {
@@ -436,10 +322,47 @@ pub fn light_handler(world: &mut World, reaction: &Reaction) {
     };
     if world.has::<SmallBall>(body) {
         ignite(world, body);
-    } else if world.has::<Crate>(body) {
-        let lighter = credit_id(world, live_credit(world, reaction.credit()));
-        props::light(world, body, lighter);
+    } else if props::is_prop(world, body) {
+        let lighter = live_credit(world, reaction.credit());
+        props::light_by(world, body, lighter);
     }
+}
+
+/// Chemistry's `fuse_out` handler, a keg's or a bomb's `lit` status ending:
+/// a fuse run out sets it off ([`detonate_handler`]) in the step it ran
+/// out, as its clock did; one put out leaves it whole, the douse that put
+/// it out already on it (`props::put_out`).
+pub fn fuse_out_handler(world: &mut World, reaction: &Reaction) {
+    let Some(keg) = reaction.receiver() else {
+        return;
+    };
+    if !has_status(world, keg, DOUSED) {
+        detonate_handler(world, reaction);
+    }
+}
+
+/// Chemistry's `detonate` handler: a keg's or a bomb's fuse ran out
+/// ([`fuse_out_handler`]) or a `jolt` set it off: its [`detonate`] of its
+/// kind's reach, [`KEG_BLAST`] or [`BOMB_BLAST`], crediting the stimulus's
+/// live credit, whoever lit it.
+pub fn detonate_handler(world: &mut World, reaction: &Reaction) {
+    let Some(keg) = reaction.receiver() else {
+        return;
+    };
+    let reach = if world.has::<Keg>(keg) {
+        KEG_BLAST
+    } else if world.has::<Bomb>(keg) {
+        BOMB_BLAST
+    } else {
+        return;
+    };
+    let Some(at) = body_centre(world, keg) else {
+        return;
+    };
+    let credit = live_credit(world, reaction.credit());
+    with_bin(world, |world, bin| {
+        detonate(world, bin, keg, at, credit, reach);
+    });
 }
 
 /// A frozen body's explosion's reach: an ice ball's, iron's, a scrap's or a
@@ -481,8 +404,8 @@ fn order(a: &Entry, b: &Entry) -> std::cmp::Ordering {
 }
 
 /// `cascade_run`: counts the run, then runs at most [`CASCADE_CAP`] of the
-/// due entries in order, its bin holding their targets and the targets
-/// they credit; with none due it returns after the count.
+/// due jumps in order, its bin holding their targets and the targets they
+/// credit; with none due it returns after the count.
 pub fn run(world: &mut World) {
     let Some(cascades) = world.get_resource_mut::<Cascades>() else {
         return;
@@ -504,7 +427,6 @@ pub fn run(world: &mut World) {
     if !cascades.entries.iter().any(|entry| entry.due <= step) {
         return;
     }
-    cascades.index();
     let (mut due, waiting): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut cascades.entries)
         .into_iter()
         .partition(|entry| entry.due <= step);
@@ -512,11 +434,6 @@ pub fn run(world: &mut World) {
     let later = due.split_off(CASCADE_CAP.min(due.len()));
     cascades.entries = waiting;
     cascades.entries.extend(later);
-    for entry in &due {
-        if let Some(target) = entry.target.filter(|_| entry.kind != CascadeKind::Jump) {
-            cascades.keys.remove(&(entry.kind, target));
-        }
-    }
     let mut wanted: Vec<u64> = due
         .iter()
         .flat_map(|entry| [entry.target, entry.source])
@@ -672,14 +589,6 @@ fn credited(world: &World, bin: &Bin, id: Option<u64>) -> Option<Entity> {
     })
 }
 
-/// What an entry credits: the entity its hits come from, and the save ID
-/// the endings it sets off credit in turn.
-#[derive(Debug, Clone, Copy)]
-struct Credit {
-    source: Option<Entity>,
-    id: Option<u64>,
-}
-
 /// Runs one entry.
 fn execute(world: &mut World, bin: &Bin, entry: &Entry) {
     let target = entry
@@ -690,15 +599,11 @@ fn execute(world: &mut World, bin: &Bin, entry: &Entry) {
         .and_then(|entity| body_centre(world, entity))
         .unwrap_or_else(|| Vec2::from(entry.at));
     let origin = Vec2::from(entry.origin);
-    let credit = Credit {
-        source: credited(world, bin, entry.source),
-        id: entry.source,
-    };
+    let source = credited(world, bin, entry.source);
     match entry.kind {
         CascadeKind::Jump => {
-            crate::features::lightning::conduct(world, target, at, origin, credit.source, entry);
+            crate::features::lightning::conduct(world, target, at, origin, source, entry);
         }
-        CascadeKind::Detonation => detonate(world, bin, target, at, credit, entry.strength),
     }
 }
 
@@ -769,15 +674,9 @@ fn blast_hit(
 /// targets in reach take fire and physical parts of an eighth of the reach
 /// each with its push, from `credit`, at once; its frozen bodies, small
 /// balls and crates are sent `heat` (each its rule: thermal shock, or a
-/// light), its kegs go off, crediting `lighter`; its bodies are pushed.
-fn blast(
-    world: &mut World,
-    bin: &Bin,
-    at: Vec2,
-    credit: Option<Entity>,
-    lighter: Option<u64>,
-    reach: f32,
-) {
+/// light), its kegs and bombs `jolt`, crediting `credit`; its bodies are
+/// pushed.
+fn blast(world: &mut World, bin: &Bin, at: Vec2, credit: Option<Entity>, reach: f32) {
     let parts = reach / 8.0;
     for (item, distance) in bin.near(world, at, reach) {
         if !world.is_alive(item.entity) {
@@ -800,7 +699,7 @@ fn blast(
             match item.what {
                 What::SmallBall | What::Crate => heat(world, item.entity, at, credit),
                 What::Keg | What::Bomb => {
-                    props::set_off(world, item.entity, Some(at), lighter);
+                    props::jolt(world, item.entity, credit);
                 }
                 _ => {}
             }
@@ -818,24 +717,23 @@ const DETONATION_BURSTS: [&str; 5] = [
     "ex10_keg_staves",
 ];
 
-/// A keg's or a bomb's detonation at `at`, of `reach`: once a keg a run,
-/// and never on one gone. A frozen keg shatters instead; else it goes and
-/// its [`blast`] runs, its bursts key ones for the run's first detonation,
-/// the missile's flare for the run's first two, the camera's shake by the
-/// view's distance and its boom.
+/// A keg's or a bomb's detonation at `at`, of `reach`, crediting
+/// `credit`: once a keg a step, and never on one gone. A frozen keg
+/// shatters instead; else it goes and its [`blast`] runs, its bursts key
+/// ones for the step's first detonation, the missile's flare for the
+/// step's first two, the camera's shake by the view's distance and its
+/// boom.
 fn detonate(
     world: &mut World,
     bin: &Bin,
-    keg: Option<Entity>,
+    keg: Entity,
     at: Vec2,
-    credit: Credit,
+    credit: Option<Entity>,
     reach: f32,
 ) {
-    let Some(keg) =
-        keg.filter(|&keg| world.is_alive(keg) && (world.has::<Keg>(keg) || world.has::<Bomb>(keg)))
-    else {
+    if !world.is_alive(keg) || !(world.has::<Keg>(keg) || world.has::<Bomb>(keg)) {
         return;
-    };
+    }
     let Some(cascades) = world.get_resource_mut::<Cascades>() else {
         return;
     };
@@ -849,7 +747,7 @@ fn detonate(
         return;
     }
     despawn_tree(world, keg);
-    blast(world, bin, at, credit.source, credit.id, reach);
+    blast(world, bin, at, credit, reach);
     for burst in DETONATION_BURSTS {
         if count == 1 {
             spawn_key_burst(world, burst, at);

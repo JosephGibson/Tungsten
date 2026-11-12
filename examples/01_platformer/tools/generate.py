@@ -64,6 +64,12 @@ CONTENT=TOOLS/'content'
 # The accepted families' files' hashes (`D-223`): `--lock` and `--unlock` write
 # it; every run and `--check` hold the locked families to it.
 LOCKS=TOOLS/'locks.json'
+# Named sprite points, in source pixels from the frame's top-left, which a
+# status look's particles follow (7.13a): a keg's fuse tip, the cord shorter
+# in each lit frame, and a goblin's bomb's, which the bomb's turn carries.
+SPRITE_POINTS={'powder_keg':{'fuse':[38,1]},
+    **{f'powder_keg_lit_{i}':{'fuse':tip} for i,tip in enumerate([[38,1],[40,3],[41,6],[39,8]])},
+    **{f'goblin_bomb_{i}':{'fuse':[10.5,.5]} for i in range(2)}}
 
 
 def particle_configs():
@@ -1068,6 +1074,7 @@ def sprite_files(made):
             for key,suffix,img in [('normal_map','n',normal),('emissive_mask','e',emissive)]:
                 path=f'sprites/{name}_{suffix}.png';entry[key]=path
                 made.files['assets/'+path]=png(img)
+        if name in SPRITE_POINTS:entry['points']=SPRITE_POINTS[name]
         made.entries[('sprites','ex10_'+name)]=entry
     for name,data in sorted(made.animations.items()):
         path=f'animations/{name}.json';made.files['assets/'+path]=json_bytes(data)

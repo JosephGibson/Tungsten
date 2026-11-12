@@ -58,6 +58,12 @@ pub const COLD: &str = "cold";
 /// shattered it could build on it.
 pub const HEAT: &str = "heat";
 pub const CRACK: &str = "crack";
+/// 01's own stimuli for its props (7.13a): `kindle`, a fire's spread,
+/// which lights what is not frozen and leaves a frozen prop be, as `heat`
+/// would not; and `jolt`, which sets a keg or a bomb off at once, lit or
+/// not, and shatters one frozen meanwhile.
+pub const KINDLE: &str = "kindle";
+pub const JOLT: &str = "jolt";
 /// Seconds of cold a body takes to freeze through, and its chill's thaw a
 /// second; a frozen body thaws after [`FROZEN_SECS`] (Q17).
 pub const FREEZE_TIME: f32 = 1.5;

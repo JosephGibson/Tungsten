@@ -2,7 +2,8 @@
 //! in; cold and a black hole put one out with its fuel kept; a lit keg
 //! blows after its fuse and its neighbours follow in waves; a bullet, a
 //! hard landing and lightning each set a keg off, a blow by its weight, a
-//! small ball's never and a short fall's not; a frozen keg shatters in
+//! small ball's never and a short fall's not; a lit keg shot goes off at
+//! once and a lit keg put out stays whole; a frozen keg shatters in
 //! fire and never blows; a detonation's credit passes through the endings
 //! it sets off; two kegs blowing in one step blow once each; and a bomb
 //! rolls with its fuse turning on it, while a goblin's rock stays a body
@@ -15,16 +16,13 @@
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::Kind;
 use example_01_platformer::features::elements;
-use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades};
 use example_01_platformer::features::elements::is_frozen;
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::EnemyKind;
 use example_01_platformer::features::gun;
 use example_01_platformer::features::level;
 use example_01_platformer::features::lightning;
-use example_01_platformer::features::props::components::{
-    Fuel, FuseEmitter, MapProp, PropKind, StoneSize,
-};
+use example_01_platformer::features::props::components::{MapProp, PropFire, PropKind, StoneSize};
 use example_01_platformer::features::props::systems::bomb_tip;
 use example_01_platformer::features::props::{
     self, BOMB_RADIUS, BURN_SECS, CRATE_HALF, KEG_BLAST, KEG_HALF, ROCK_CAP, ROCK_RADIUS,
@@ -35,7 +33,10 @@ use example_01_platformer::features::toys::{self, SMALL_BALL_RADIUS};
 use example_01_platformer::shared::{SaveId, SaveIds};
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
-use tungsten::core::{Collider, Entity, Position, RigidBody, Shape, Transform, Velocity, World};
+use tungsten::core::{
+    Collider, Entity, ParticleConfigRegistry, ParticleEmitter, Position, RigidBody, Shape,
+    Transform, Velocity, World,
+};
 use tungsten::kit::{DamagedPart, ImmunePart, Stats};
 use tungsten::testing::UiHarness;
 
@@ -64,8 +65,8 @@ fn prop(harness: &mut UiHarness, kind: PropKind, x: f32) -> Entity {
     props::spawn(harness.world_mut(), kind, Vec2::new(x, TOP - half.y))
 }
 
-fn fuel(harness: &UiHarness, crate_: Entity) -> Fuel {
-    *harness.world().get::<Fuel>(crate_).expect("a crate's fuel")
+fn fuel(harness: &UiHarness, crate_: Entity) -> PropFire {
+    props::fire(harness.world(), crate_).expect("a crate's fuel")
 }
 
 fn alive(harness: &UiHarness, entity: Entity) -> bool {
@@ -295,6 +296,40 @@ fn a_bullet_a_hard_landing_and_lightning_each_set_a_keg_off() {
 }
 
 #[test]
+fn a_lit_keg_shot_goes_off_at_once_and_a_lit_keg_doused_stays_whole() {
+    // Round 1's finding 3 and round 2's 4: a `jolt` sets a lit keg off
+    // before its fuse runs out, and a fuse put out ends with the keg whole.
+    let (mut harness, _) = sky(300.0);
+    let shot = prop(&mut harness, PropKind::Keg, 700.0);
+    let doused = prop(&mut harness, PropKind::Keg, 1700.0);
+    harness.step(2);
+    let world = harness.world_mut();
+    assert!(props::light(world, shot, None) && props::light(world, doused, None));
+    let target = body(&harness, shot);
+    aim_at(&mut harness, target);
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
+    let mut frames = 1;
+    while alive(&harness, shot) && frames < 90 {
+        harness.step(1);
+        frames += 1;
+    }
+    assert!(frames < 30, "the shot set it off at once: {frames} frames");
+    assert!(
+        props::put_out(harness.world_mut(), doused),
+        "its fuse burned"
+    );
+    let mut booms = 0;
+    for _ in 0..180 {
+        harness.step(1);
+        booms += sounds(&harness, Sound::KegBlasted);
+    }
+    assert!(alive(&harness, doused), "put out, it stays whole");
+    assert_eq!(booms, 0, "its fuse's end never came");
+}
+
+#[test]
 fn a_keg_blows_from_a_blow_as_hard_as_its_weight_asks() {
     // Q46: by the other body's mass.
     assert!(!elements::blows_keg(1.0, 10_000.0), "a small ball never");
@@ -346,10 +381,7 @@ fn a_frozen_keg_shatters_in_fire_and_never_blows() {
     assert!(is_frozen(harness.world(), keg), "frozen through");
     let world = harness.world_mut();
     assert!(!props::light(world, keg, None), "its fuse never lights");
-    assert!(
-        !props::set_off(world, keg, None, None),
-        "nor does it go off"
-    );
+    assert!(!props::set_off(world, keg, None), "nor does it go off");
     let at = body(&harness, keg);
     let mut blasts = (0, 0);
     let gone = spray_until(&mut harness, Spell::Flamethrower, at, 30, |h| {
@@ -400,7 +432,7 @@ fn a_detonations_credit_passes_through_the_endings_it_sets_off() {
     apply(&mut harness, frozen, "frozen", None);
     apply(&mut harness, wisp, "frozen", None);
     let mut hits: Vec<(Entity, Option<Entity>, bool)> = Vec::new();
-    let mut entries: Vec<(CascadeKind, Option<u64>)> = Vec::new();
+    let mut booms = 0;
     for _ in 0..12 {
         harness.step(1);
         let landed = harness.harness().events::<DamagedPart>();
@@ -415,27 +447,19 @@ fn a_detonations_credit_passes_through_the_endings_it_sets_off() {
                 .filter(|part| !part.periodic)
                 .map(|part| (part.entity, part.source, part.crit)),
         );
-        let queue = harness.world().resource::<Cascades>();
-        entries.extend(queue.entries.iter().map(|entry| (entry.kind, entry.source)));
+        booms += sounds(&harness, Sound::KegBlasted);
     }
     assert!(
         !alive(&harness, keg) && !alive(&harness, second),
         "both blew"
     );
-    assert!(
-        entries
-            .iter()
-            .any(|&(kind, _)| kind == CascadeKind::Detonation),
-        "a detonation queued"
-    );
+    // The kegs' blasts are chemistry's `detonate` handler's (7.13a), each
+    // with its boom.
+    assert_eq!(booms, 2, "both detonated");
     // The frozen things' thermal shocks are chemistry's rules now, each
     // credited by its stimulus: the frozen ball's went.
     assert!(!alive(&harness, small), "the frozen ball exploded");
-    // Every detonation credits the lighter.
-    assert!(
-        entries.iter().all(|&(_, source)| source == Some(credit)),
-        "every blast credits the lighter: {entries:?}"
-    );
+    // Every blast credits the lighter: every hit below is from it.
     for target in [frozen, wisp] {
         assert!(
             hits.iter().any(|&(entity, ..)| entity == target),
@@ -497,9 +521,12 @@ fn a_bomb_rolls_with_its_fuse_and_a_rock_stays_a_body_that_rolls() {
         .min(std::f32::consts::TAU - (turned - rolled).abs());
     assert!(off < 0.25, "turned {turned} for a roll of {rolled}");
     let tip = bomb_tip(at.position, at.rotation);
+    // Its `lit` status's look's sparks and its prefab's smoke (7.13a).
+    let registry = world.resource::<ParticleConfigRegistry>();
+    let fuse = ["ex10_fuse_sparks", "ex10_fuse_smoke"].map(|name| registry.id_for_name(name));
     let emitters: Vec<Vec2> = world
-        .query::<(&FuseEmitter, &Transform)>()
-        .filter(|(emitter, _)| emitter.prop == bomb)
+        .query::<(&ParticleEmitter, &Transform)>()
+        .filter(|(emitter, _)| fuse.contains(&Some(emitter.config)))
         .map(|(_, at)| at.position)
         .collect();
     assert_eq!(emitters.len(), 2, "its sparks and its smoke");
@@ -913,7 +940,7 @@ fn the_flamethrower_held_on_a_stone_lights_nothing() {
     assert!(!came && lit == 0, "nothing catches");
     let world = harness.world();
     assert!(world.is_alive(rubble), "the stone stays");
-    assert!(!world.has::<Fuel>(rubble) && !is_frozen(world, rubble));
+    assert!(props::fire(world, rubble).is_none() && !is_frozen(world, rubble));
 }
 
 #[test]

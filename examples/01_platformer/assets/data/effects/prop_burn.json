@@ -1,0 +1,14 @@
+{
+  "grant": [
+    "status.burning"
+  ],
+  "fuel": {
+    "stat": "fuel",
+    "rate": 1
+  },
+  "on_end": [
+    {
+      "handler": "burn_out"
+    }
+  ]
+}

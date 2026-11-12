@@ -1,0 +1,16 @@
+{
+  "stimulus": "kindle",
+  "on": {
+    "none": [
+      "status.frozen",
+      "status.doused",
+      "status.burning",
+      "status.lit"
+    ]
+  },
+  "outputs": [
+    {
+      "handler": "light"
+    }
+  ]
+}

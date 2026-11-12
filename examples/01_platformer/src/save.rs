@@ -71,7 +71,7 @@ use crate::features::player::STAFF_LIGHT;
 use crate::features::player::components::Lantern;
 use crate::features::props::{
     self,
-    components::{Bomb, Crate, Fuel, Keg, MapProp, Plank, PropKind, Rock, Stone, StoneSize},
+    components::{Bomb, Crate, Keg, MapProp, Plank, PropFire, PropKind, Rock, Stone, StoneSize},
 };
 use crate::features::run::Run;
 use crate::features::spells::components::{Spell, Spellbook, Summon};
@@ -335,8 +335,10 @@ impl SaveData for SaveGame {
     /// share are now (`to_24`). Schema 25 drops the actors' ailment buckets
     /// and gives the player and the enemies their status threshold
     /// (`to_25`). Schema 26 drops the cascade's explosions, shatters and
-    /// steam bursts, which chemistry's rules now run (`to_26`).
-    const SCHEMA: u32 = 26;
+    /// steam bursts, which chemistry's rules now run (`to_26`). Schema 27
+    /// drops its detonations, the kegs' fuses and blasts chemistry's too
+    /// (`to_27`).
+    const SCHEMA: u32 = 27;
 
     fn migrate_step(
         from: u32,
@@ -373,6 +375,7 @@ impl SaveData for SaveGame {
             23 => to_24(&mut data)?,
             24 => to_25(&mut data)?,
             25 => to_26(&mut data),
+            26 => to_27(&mut data),
             _ => {
                 return Err(
                     format!("schema {from} has no migration to schema {}", Self::SCHEMA).into(),
@@ -737,7 +740,7 @@ const S26_DROPPED: [&str; 3] = ["explosion", "shatter", "steam"];
 /// chemistry's rules, whose queue 01's save does not hold (7.13b saves it),
 /// so a save's waiting explosions, shatters and steam bursts are dropped:
 /// a pending ending is lost at the load (Q5); its jumps and detonations
-/// stay.
+/// stay, until schema 27.
 fn to_26(data: &mut Value) {
     if let Some(entries) = data
         .pointer_mut("/cascades/entries")
@@ -748,6 +751,19 @@ fn to_26(data: &mut Value) {
                 .as_str()
                 .is_some_and(|kind| S26_DROPPED.contains(&kind))
         });
+    }
+}
+
+/// Schema 26 to 27 (7.13a): a keg's or a bomb's fuse and blast became
+/// chemistry's statuses and rules, so a save's waiting detonations are
+/// dropped as schema 26 drops its endings (Q5); the props' fires, fuses
+/// and douses keep their fields, the statuses' now.
+fn to_27(data: &mut Value) {
+    if let Some(entries) = data
+        .pointer_mut("/cascades/entries")
+        .and_then(Value::as_array_mut)
+    {
+        entries.retain(|entry| entry["kind"].as_str() != Some("detonation"));
     }
 }
 
@@ -1822,9 +1838,9 @@ pub struct BulletSave {
 /// A crate, a keg, or a goblin's bomb or rock: its kind, whether the map
 /// set it down ([`MapProp`]), a crate's or a rock's art, its body, its
 /// frost and the seconds its freeze has left, a crate's fire, a keg's or a
-/// bomb's lit fuse and the save ID its fire or blast credits, and the
-/// seconds a douse keeps a keg from lighting. A thrown rock's credit is its
-/// throw's (`throws`).
+/// bomb's lit fuse and the save ID its blast credits, and the seconds a
+/// douse keeps a keg from lighting: the fire, the fuse and the douse their
+/// statuses' (7.13a). A thrown rock's credit is its throw's (`throws`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PropSave {
@@ -1836,7 +1852,7 @@ pub struct PropSave {
     pub velocity: [f32; 2],
     pub chill: Option<f32>,
     pub frozen: Option<f32>,
-    pub fuel: Option<Fuel>,
+    pub fuel: Option<PropFire>,
     pub fuse: Option<f32>,
     pub lighter: Option<u64>,
     pub doused: f32,
@@ -1866,7 +1882,7 @@ pub struct PlankSave {
     pub velocity: [f32; 2],
     pub chill: Option<f32>,
     pub frozen: Option<f32>,
-    pub fuel: Fuel,
+    pub fuel: PropFire,
 }
 
 /// A rubble stone: its size, its art's variant and its body.
@@ -2056,8 +2072,8 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .collect();
     props.sort_by_key(|prop| prop.id);
     let mut planks: Vec<PlankSave> = world
-        .query::<(Entity, &Plank, &SaveId, &Fuel)>()
-        .filter_map(|(entity, plank, id, fuel)| {
+        .query::<(Entity, &Plank, &SaveId)>()
+        .filter_map(|(entity, plank, id)| {
             Some(PlankSave {
                 id: id.0,
                 variant: plank.variant,
@@ -2065,7 +2081,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
                 velocity: world.get::<Velocity>(entity)?.0.to_array(),
                 chill: chill_of(world, entity).filter(|_| ice_left(world, entity).is_none()),
                 frozen: ice_left(world, entity),
-                fuel: *fuel,
+                fuel: props::fire(world, entity)?,
             })
         })
         .collect();
@@ -2183,8 +2199,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
 
 /// A crate's, a keg's, a bomb's or a rock's part.
 fn capture_prop(world: &World, entity: Entity) -> Option<PropSave> {
-    let keg = world.get::<Keg>(entity);
-    let bomb = world.get::<Bomb>(entity);
+    let fused = world.has::<Keg>(entity) || world.has::<Bomb>(entity);
     let variant = world
         .get::<Crate>(entity)
         .map(|own| own.variant)
@@ -2198,14 +2213,14 @@ fn capture_prop(world: &World, entity: Entity) -> Option<PropSave> {
         velocity: world.get::<Velocity>(entity)?.0.to_array(),
         chill: chill_of(world, entity).filter(|_| ice_left(world, entity).is_none()),
         frozen: ice_left(world, entity),
-        fuel: world.get::<Fuel>(entity).copied(),
-        fuse: keg
-            .and_then(|keg| keg.fuse)
-            .or_else(|| bomb.and_then(|bomb| bomb.fuse)),
-        lighter: keg
-            .and_then(|keg| keg.lighter)
-            .or_else(|| bomb.and_then(|bomb| bomb.lighter)),
-        doused: keg.map_or(0.0, |keg| keg.doused),
+        fuel: props::fire(world, entity),
+        fuse: props::fuse_left(world, entity),
+        lighter: props::lighter(world, entity).filter(|_| fused),
+        doused: if world.has::<Keg>(entity) {
+            props::doused_left(world, entity)
+        } else {
+            0.0
+        },
     })
 }
 
@@ -2580,6 +2595,7 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         .query::<(Entity, &SaveId)>()
         .map(|(entity, id)| (id.0, entity))
         .collect();
+    relight(world, save, &by_id);
     let named = std::iter::once((player, &p.sources))
         .chain(
             save.dummies
@@ -2632,7 +2648,8 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
 
 /// A saved crate, keg, bomb or rock, spawned at once at its saved point
 /// with its state over its prefab's: before the load names its held and
-/// thrown bodies by save ID.
+/// thrown bodies by save ID. Its fire, fuse and douse wait for every
+/// entity to be back ([`relight`]).
 fn restore_prop(world: &mut World, saved: &PropSave) {
     let at = Vec2::from(saved.position);
     let entity = props::restore(world, saved.kind, at, SaveId(saved.id), saved.variant);
@@ -2642,37 +2659,44 @@ fn restore_prop(world: &mut World, saved: &PropSave) {
     }
     set_chill(world, entity, saved.chill);
     set_frozen(world, entity, saved.frozen);
-    if let Some(fuel) = saved.fuel {
-        world.insert(entity, fuel);
-    }
-    match saved.kind {
-        PropKind::Crate | PropKind::Rock | PropKind::Plank | PropKind::Stone(_) => {}
-        PropKind::Keg => world.insert(
-            entity,
-            Keg {
-                fuse: saved.fuse,
-                lighter: saved.lighter,
-                doused: saved.doused,
-            },
-        ),
-        PropKind::Bomb => world.insert(
-            entity,
-            Bomb {
-                fuse: saved.fuse,
-                lighter: saved.lighter,
-            },
-        ),
-    }
 }
 
 /// A saved plank, spawned at once at its saved point with its state over
-/// its prefab's, at rest from its tumble.
+/// its prefab's, at rest from its tumble; its fire waits as a prop's does.
 fn restore_plank(world: &mut World, saved: &PlankSave) {
     let at = Vec2::from(saved.position);
     let entity = props::restore(world, PropKind::Plank, at, SaveId(saved.id), saved.variant);
-    world.insert_bundle(entity, (Velocity(Vec2::from(saved.velocity)), saved.fuel));
+    world.insert(entity, Velocity(Vec2::from(saved.velocity)));
     set_chill(world, entity, saved.chill);
     set_frozen(world, entity, saved.frozen);
+}
+
+/// The saved props' and planks' fires, fuses and douses put back quietly,
+/// once every entity is: each status sourced to its lighter by save ID.
+fn relight(world: &mut World, save: &SaveGame, by_id: &std::collections::HashMap<u64, Entity>) {
+    let lighter = |id: Option<u64>| id.and_then(|id| by_id.get(&id).copied());
+    for saved in &save.props {
+        let Some(&entity) = by_id.get(&saved.id) else {
+            continue;
+        };
+        if let Some(fire) = &saved.fuel {
+            props::set_fire(world, entity, fire, lighter(fire.lighter));
+        }
+        if matches!(saved.kind, PropKind::Keg | PropKind::Bomb) {
+            props::set_fuse(
+                world,
+                entity,
+                saved.fuse,
+                lighter(saved.lighter),
+                saved.doused,
+            );
+        }
+    }
+    for saved in &save.planks {
+        if let Some(&entity) = by_id.get(&saved.id) {
+            props::set_fire(world, entity, &saved.fuel, lighter(saved.fuel.lighter));
+        }
+    }
 }
 
 /// Puts a saved enemy's state over `entity`: its point, its driver or

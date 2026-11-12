@@ -5,6 +5,9 @@
   },
   "components": {
     "plank": {},
+    "stats": {
+      "fuel": 4
+    },
     "rigid_body": {
       "kind": "dynamic",
       "shape": {

@@ -1,0 +1,13 @@
+{
+  "stimulus": "jolt",
+  "on": {
+    "all": [
+      "status.frozen"
+    ]
+  },
+  "outputs": [
+    {
+      "handler": "shatter"
+    }
+  ]
+}

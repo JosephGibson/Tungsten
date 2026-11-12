@@ -35,7 +35,7 @@ use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::props::{
     self, BURNING_IMPACT,
-    components::{Crate, Fuel, Keg, Rock, Stone},
+    components::{Crate, Keg, Rock, Stone},
 };
 use crate::features::run::Run;
 use crate::features::toys::components::{
@@ -345,14 +345,14 @@ pub fn flame_look(id: SaveId, left: f32, exposed: bool, time: f32) -> Option<Fla
 /// the pool drifts along the crest. A pile with no exposed ball feeds it
 /// from all.
 pub fn fire_particles(world: &mut World) {
-    let mut crates: Vec<(Option<SaveId>, Vec2)> = world
-        .query::<(&Fuel, &Transform, &Collider, Option<&SaveId>)>()
-        .filter(|(fuel, ..)| fuel.lit)
-        .map(|(_, at, collider, id)| {
+    let mut crates: Vec<(Option<SaveId>, Vec2)> = props::fires(world)
+        .filter_map(|prop| {
+            let at = world.get::<Transform>(prop)?;
+            let collider = world.get::<Collider>(prop)?;
             let rise = collider.shape.half_extents().y;
             // A pair sits 6 px over its source: here, the box's top.
             let top = at.position + collider.offset - Vec2::new(0.0, rise - 6.0);
-            (id.copied(), top)
+            Some((world.get::<SaveId>(prop).copied(), top))
         })
         .collect();
     crates.sort_by_key(|(id, _)| *id);
@@ -1369,7 +1369,7 @@ pub fn body_impacts(world: &mut World) {
         cascade::shatter_at(world, entity);
     }
     for (keg, credit) in blown.into_values() {
-        props::set_off(world, keg, None, credit);
+        props::set_off(world, keg, credit);
     }
     let mut landed: Vec<Entity> = Vec::new();
     let mut kills: Vec<Entity> = Vec::new();
@@ -1394,10 +1394,7 @@ pub fn body_impacts(world: &mut World) {
             continue;
         }
         let at = body_centre(world, target).unwrap_or_default();
-        let fire = world
-            .get::<Fuel>(body)
-            .is_some_and(|fuel| fuel.lit)
-            .then_some((Kind::Fire, BURNING_IMPACT));
+        let fire = props::alight(world, body).then_some((Kind::Fire, BURNING_IMPACT));
         let hit = match throw {
             Some(throw) => {
                 landed.push(body);

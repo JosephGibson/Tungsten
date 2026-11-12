@@ -14,7 +14,7 @@ use crate::features::elements::components::Flame;
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, EnemyState, Sight};
 use crate::features::level::systems::current_area;
-use crate::features::props::components::Fuel;
+use crate::features::props;
 use crate::features::toys;
 use crate::game::GAMEPLAY;
 use crate::shared::body_centre;
@@ -154,14 +154,11 @@ pub fn holes(world: &mut World) {
     });
 }
 
-/// Every burning thing's centre: lit fuel (the crates), the small balls
-/// with fire left, and the live targets tagged burning (the player, the
-/// dummy and the enemies).
+/// Every burning thing's centre: the crates and planks alight, the small
+/// balls with fire left, and the live targets tagged burning (the player,
+/// the dummy and the enemies).
 fn fires(world: &World) -> impl Iterator<Item = Vec2> + '_ {
-    let fuel = world
-        .query::<(Entity, &Fuel)>()
-        .filter(|(_, fuel)| fuel.lit)
-        .map(|(entity, _)| entity);
+    let fuel = props::fires(world);
     let balls = world
         .query::<(Entity, &Flame, &Tags)>()
         .filter(|(_, _, tags)| tags.has(BURNING))

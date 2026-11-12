@@ -5,6 +5,9 @@
   },
   "components": {
     "crate": {},
+    "stats": {
+      "fuel": 8
+    },
     "rigid_body": {
       "kind": "dynamic",
       "shape": {

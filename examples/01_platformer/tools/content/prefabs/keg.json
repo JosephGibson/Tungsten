@@ -4,7 +4,22 @@
     "z_order": 12
   },
   "components": {
-    "keg": {},
+    "keg": null,
+    "looks": [
+      {
+        "when": {
+          "all": [
+            "status.lit"
+          ]
+        },
+        "look": {
+          "particles": {
+            "config": "ex10_fuse_smoke",
+            "at": "fuse"
+          }
+        }
+      }
+    ],
     "rigid_body": {
       "kind": "dynamic",
       "shape": {

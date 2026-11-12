@@ -1,0 +1,13 @@
+{
+  "stimulus": "jolt",
+  "on": {
+    "none": [
+      "status.frozen"
+    ]
+  },
+  "outputs": [
+    {
+      "handler": "detonate"
+    }
+  ]
+}

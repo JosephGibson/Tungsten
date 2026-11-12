@@ -678,7 +678,7 @@ fn keg(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
             .get::<Source>(bullet)
             .and_then(|source| world.get::<SaveId>(source.entity()))
             .map(|id| id.0);
-        props::set_off(world, contact.body, None, shooter);
+        props::set_off(world, contact.body, shooter);
     }
     end_at(world, bullet, contact.point, spent);
 }

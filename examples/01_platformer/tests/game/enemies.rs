@@ -50,7 +50,7 @@ use example_01_platformer::features::gun::{self, SHOT_DAMAGE};
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Lantern;
-use example_01_platformer::features::props::components::{Bomb, Keg, PropKind, Rock};
+use example_01_platformer::features::props::components::{Bomb, PropKind, Rock};
 use example_01_platformer::features::props::{self, CRATE_HALF};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS, Summoned};
@@ -3957,7 +3957,7 @@ fn a_chasing_troll_lifts_an_unlit_keg_and_throws_it_but_leaves_a_lit_one() {
             last = body(&harness, keg);
             lifted |= world.get::<Held>(keg).is_some_and(|hold| hold.by == troll);
             thrown |= world.resource::<Throws>().of(keg).is_some();
-            lighted |= !lit && world.get::<Keg>(keg).is_some_and(|own| own.fuse.is_some());
+            lighted |= !lit && props::burning(world, keg);
         }
         if lit {
             assert!(!lifted, "it leaves a lit keg");

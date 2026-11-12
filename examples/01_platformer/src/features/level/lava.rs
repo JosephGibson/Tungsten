@@ -210,10 +210,11 @@ fn melt(world: &mut World, basin: Entity) {
 /// `lava_take`, in the overlap phase after `props_heat` and before the
 /// cascades' run: each basin with its touch, no crust, takes the dynamic
 /// bodies with no health its burn box overlaps, in save-ID order. A keg or
-/// a bomb not frozen goes off, credited to its lighter, else the player; a
-/// frozen prop is left to the heat's thermal shock; every other body goes,
-/// in steam and embers at its centre. A basin that took anything sizzles
-/// once, at its surface's middle.
+/// a bomb not frozen is sent `jolt`, which sets it off at chemistry's run,
+/// credited to its lighter, else the player; a frozen prop is left to the
+/// heat's thermal shock; every other body goes, in steam and embers at its
+/// centre. A basin that took anything sizzles once, at its surface's
+/// middle.
 pub fn take(world: &mut World) {
     let basins: Vec<(Entity, Vec2, Vec2)> = world
         .query::<(Entity, &Lava, &Transform, &ContactDamage)>()
@@ -244,14 +245,11 @@ pub fn take(world: &mut World) {
         let mut took = false;
         for (_, body) in bodies {
             let frozen = is_frozen(world, body);
-            let lighter = world
-                .get::<Keg>(body)
-                .map(|keg| keg.lighter)
-                .or_else(|| world.get::<Bomb>(body).map(|bomb| bomb.lighter));
-            if let Some(lighter) = lighter {
+            if world.has::<Keg>(body) || world.has::<Bomb>(body) {
                 if !frozen {
-                    let credit = lighter.or_else(|| cascade::player_credit(world));
-                    took |= props::set_off(world, body, None, credit);
+                    let credit =
+                        props::lighter(world, body).or_else(|| cascade::player_credit(world));
+                    took |= props::set_off(world, body, credit);
                 }
                 continue;
             }

@@ -1,19 +1,21 @@
 //! The props (01 (g)): pine crates and red powder kegs, dynamic boxes the
-//! spells, the gun and the troll meet as they meet iron. A crate catches
-//! fire, burns for [`BURN_SECS`] and falls in; once it has burned
-//! [`SPREAD_AFTER`] it lights the crates and kegs within [`SPREAD_REACH`] of
-//! its box, and at once the small balls within [`TOUCH_REACH`]. Cold, steam
-//! and a black hole put it out, its fuel kept, and keep it from lighting
-//! for [`DOUSE_SECS`]. Whatever lights a crate lights a keg's fuse; after
-//! [`FUSE_SECS`], or at once on a hard impact, a bullet, lightning or a
-//! blast, the keg blows through the saved cascade queue
-//! (`CascadeKind::Detonation`), crediting whoever lit it. A frozen crate or
-//! keg never lights: fire on it is thermal shock. The summon slot places
-//! them, [`CRATE_CAP`] crates and [`KEG_CAP`] kegs at most, the map's own
-//! besides ([`MapProp`]). A goblin's bomb is a lit keg in small: thrown on the world's
-//! gravity, it rolls, its fuse turning with it, blows at [`BOMB_BLAST`]
-//! after [`FUSE_SECS`], credited to its goblin, and fizzles out at once
-//! when snuffed. A goblin's rock is a stone body that bounces and rolls and
+//! spells, the gun and the troll meet as they meet iron. Their fire and
+//! fuses are chemistry's statuses (7.13a). A crate catches fire, its
+//! [`PROP_BURN`] burning its `fuel` stat for [`BURN_SECS`], and falls in;
+//! once it has burned [`SPREAD_AFTER`] it sends `kindle` to the crates and
+//! kegs within [`SPREAD_REACH`] of its box, and lights at once the small
+//! balls within [`TOUCH_REACH`]. Cold, steam and a black hole put it out,
+//! its fuel kept, and keep it from lighting for [`DOUSE_SECS`], its
+//! [`PROP_DOUSED`]. Whatever lights a crate lights a keg's fuse, its
+//! [`LIT`] status of [`FUSE_SECS`], whose end sets it off unless a douse
+//! put it out; a `jolt` sets it off at once: a hard impact, a bullet,
+//! lightning, a blast or the lava. Either runs 01's `detonate` handler,
+//! crediting whoever lit it. A frozen crate or keg never lights: fire on it is thermal shock. The
+//! summon slot places them, [`CRATE_CAP`] crates and [`KEG_CAP`] kegs at
+//! most, the map's own besides ([`MapProp`]). A goblin's bomb is a lit keg
+//! in small: thrown on the world's gravity, it rolls, its fuse turning
+//! with it, blows at [`BOMB_BLAST`] after [`FUSE_SECS`], credited to its
+//! goblin, and fizzles out at once when snuffed. A goblin's rock is a stone body that bounces and rolls and
 //! stays, [`ROCK_CAP`] at most, the oldest crumbling. A crate hit hard
 //! enough breaks into five planks ([`break_crate`], e01sfx), which burn as
 //! it does for at most [`PLANK_BURN_SECS`] and fall in quietly,
@@ -28,22 +30,24 @@ pub mod systems;
 
 use glam::Vec2;
 use tungsten::core::{
-    BodyKind, Entity, RigidBody, Schedule, Shape, Stage, Velocity, World, system,
+    BodyKind, DataRef, Entity, RigidBody, Schedule, Shape, Stage, Velocity, World, system,
 };
-use tungsten::kit::{Phase, ensure_phases};
+use tungsten::kit::{
+    EffectRequest, Effects, Health, Phase, Reaction, Stats, end_effect, ensure_phases, stimulate,
+};
 use tungsten::physics::{SpatialFilter, overlap};
-use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
 use crate::features::audio::{self, components::Sound};
-use crate::features::elements::DOUSE_SECS;
-use crate::features::elements::cascade::{self, CascadeKind};
-use crate::features::elements::is_frozen;
+use crate::features::combat::{BURNING, DOUSED, has_status};
+use crate::features::elements::systems::status_left;
+use crate::features::elements::{DOUSE_SECS, JOLT, is_frozen};
 use crate::features::level::components::SceneTime;
+use crate::features::run::Run;
 use crate::features::toys::components::ScrapTumble;
 use crate::features::toys::{self, components::IronBlock};
 use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
-use components::{Bomb, Crate, Fuel, Keg, MapProp, Plank, PropKind, Rock, Stone};
+use components::{Bomb, Crate, Keg, MapProp, Plank, PropFire, PropKind, Rock, Stone};
 
 /// The props' prefabs, by their manifest IDs.
 pub const CRATE_PREFAB: &str = "crate";
@@ -110,6 +114,18 @@ pub const SPREAD_REACH: f32 = 4.0;
 pub const TOUCH_REACH: f32 = 2.0;
 /// A keg's fuse, game seconds, a bomb's too, and their blasts' reaches.
 pub const FUSE_SECS: f32 = 1.5;
+/// The props' statuses and stat (7.13a): a crate's or a plank's fire,
+/// burning its `fuel` stat and granting `status.burning`; a keg's or a
+/// bomb's lit fuse, granting [`STATUS_LIT`], whose end sets it off unless
+/// a douse put it out (its `fuse_out` handler); and a douse, granting
+/// `status.doused`, which keeps either from lighting. The fuse and the douse last 1 s scaled by their
+/// request's seconds, so a load gives one back the seconds it saved, to
+/// the bit.
+pub const PROP_BURN: &str = "prop_burn";
+pub const LIT: &str = "lit";
+pub const PROP_DOUSED: &str = "prop_doused";
+pub const FUEL: &str = "fuel";
+pub const STATUS_LIT: &str = "status.lit";
 pub const KEG_BLAST: f32 = 192.0;
 pub const BOMB_BLAST: f32 = 128.0;
 /// A frozen crate's or keg's thermal shock reach.
@@ -125,12 +141,12 @@ pub const CRATE_PULL: f32 = 0.5;
 pub const KEG_PULL: f32 = 0.4;
 
 /// The props as a plugin: the `crate`, `keg`, `goblin_bomb` and `rock`
-/// components their prefabs name; in the fixed step, the fires', the
-/// fuses' and the douses' clocks and the round props' roll in the tick
-/// phase, and after the physics step, before the cascades' run, the heat
-/// between them, the burning balls and the lava; in the present phase their
-/// looks, and before the frame's particles a lit fuse's emitters; and their
-/// glows, chars, flames and ice drawn after the sprites.
+/// components their prefabs name; in the fixed step, the round props' roll
+/// in the tick phase, and after the physics step, before the cascades' run,
+/// the heat between them, the burning balls and the lava; in the present
+/// phase their looks; and their glows, chars, flames and ice drawn after
+/// the sprites. Their fires', fuses' and douses' clocks are their statuses',
+/// a lit fuse's sparks and smoke its status's look and its prefab's.
 pub struct PropsPlugin;
 
 impl Plugin for PropsPlugin {
@@ -144,19 +160,12 @@ impl Plugin for PropsPlugin {
         world.register_component::<Stone>("stone");
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         ensure_phases(schedule);
-        let tick = system("props_tick", systems::tick);
-        schedule.add(Stage::FixedUpdate, Phase::Tick.join(tick));
         let roll = system("props_roll", systems::roll);
         schedule.add(Stage::FixedUpdate, Phase::Tick.join(roll));
         let heat = system("props_heat", systems::heat).before("cascade_run");
         schedule.add(Stage::FixedUpdate, Phase::Overlap.join(heat));
         let look = system("props_look", systems::look);
         schedule.add(Stage::PostUpdate, Phase::Present.join(look));
-        // Before the frame's emission, which they place.
-        let fuses = system("fuse_emitters", systems::fuses)
-            .after(PHYSICS_SYNC)
-            .before(PARTICLE_COUNT_REFRESH);
-        schedule.add(Stage::PostUpdate, fuses);
     }
 }
 
@@ -285,8 +294,8 @@ pub fn fits(world: &World, kind: PropKind, at: Vec2) -> bool {
 
 /// Spawns a prop of `kind` with its body's centre at `at`, at once and
 /// quietly, with the run's next save ID: a crate's, a rock's or a stone's
-/// art by the ID's parity ([`art`]), a crate's fuel whole; a plank its
-/// first art and its fuel whole, which a break sets.
+/// art by the ID's parity ([`art`]), a crate's fuel its prefab's whole; a
+/// plank its first art and its fuel whole, which a break sets.
 pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     let prop = toys::spawn_toy(world, prefab(kind), at - centre(kind), 1.0);
     let variant = art(world.get::<SaveId>(prop));
@@ -296,15 +305,6 @@ pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     }
     if kind == PropKind::Crate {
         world.insert(prop, Crate { variant });
-        world.insert(
-            prop,
-            Fuel {
-                left: BURN_SECS,
-                lit: false,
-                lighter: None,
-                doused: 0.0,
-            },
-        );
         systems::show_variant(world, prop, variant);
     }
     if let PropKind::Stone(size) = kind {
@@ -313,15 +313,6 @@ pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     }
     if kind == PropKind::Plank {
         world.insert(prop, Plank { variant: 0 });
-        world.insert(
-            prop,
-            Fuel {
-                left: PLANK_BURN_SECS,
-                lit: false,
-                lighter: None,
-                doused: 0.0,
-            },
-        );
     }
     prop
 }
@@ -369,7 +360,8 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
         return;
     };
     let velocity = world.get::<Velocity>(crate_).map_or(Vec2::ZERO, |v| v.0);
-    let fuel = world.get::<Fuel>(crate_).copied();
+    let fire = fire(world, crate_);
+    let lighter = source(world, crate_, PROP_BURN);
     let born_at = world.get_resource::<SceneTime>().map_or(0.0, |time| time.0);
     spawn_key_burst(world, "ex10_plank_splinters", at);
     audio::play(world, Sound::CrateBroke, at);
@@ -402,13 +394,14 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
             initial_angle: 0.0,
             total_turn: side * (1 + row % 2) as f32 * std::f32::consts::PI,
         };
-        let burn = Fuel {
-            left: fuel.map_or(PLANK_BURN_SECS, |fuel| fuel.left.min(PLANK_BURN_SECS)),
-            lit: fuel.is_some_and(|fuel| fuel.lit),
-            lighter: fuel.and_then(|fuel| fuel.lighter),
-            doused: fuel.map_or(0.0, |fuel| fuel.doused),
-        };
-        world.insert_bundle(plank, (tumble, burn));
+        world.insert(plank, tumble);
+        if let Some(fire) = fire {
+            let burn = PropFire {
+                left: fire.left.min(PLANK_BURN_SECS),
+                ..fire
+            };
+            set_fire(world, plank, &burn, lighter);
+        }
     }
 }
 
@@ -480,14 +473,166 @@ pub fn place(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     spawn(world, kind, at)
 }
 
-/// Whether `prop` burns: a crate on fire, or a keg's or a bomb's lit fuse.
+/// Whether `prop` burns: a crate or a plank on fire, or a keg's or a
+/// bomb's lit fuse.
 #[must_use]
 pub fn burning(world: &World, prop: Entity) -> bool {
-    world.get::<Fuel>(prop).is_some_and(|fuel| fuel.lit)
-        || world.get::<Keg>(prop).is_some_and(|keg| keg.fuse.is_some())
-        || world
-            .get::<Bomb>(prop)
-            .is_some_and(|bomb| bomb.fuse.is_some())
+    has_status(world, prop, BURNING) || has_status(world, prop, STATUS_LIT)
+}
+
+/// Whether `prop` is a crate or a plank on fire: its [`PROP_BURN`].
+#[must_use]
+pub fn alight(world: &World, prop: Entity) -> bool {
+    has_fuel(world, prop) && has_status(world, prop, BURNING)
+}
+
+/// Whether `prop` carries a `fuel` stat: a crate or a plank.
+fn has_fuel(world: &World, prop: Entity) -> bool {
+    world
+        .get::<Stats>(prop)
+        .is_some_and(|stats| stats.base(FUEL).is_some())
+}
+
+/// The game seconds of fire `prop` has left, its `fuel` stat's base; 0
+/// without one.
+#[must_use]
+pub fn fuel_left(world: &World, prop: Entity) -> f32 {
+    world
+        .get::<Stats>(prop)
+        .and_then(|stats| stats.base(FUEL))
+        .unwrap_or(0.0)
+}
+
+/// The game seconds `prop`'s lit fuse has left; `None` unlit.
+#[must_use]
+pub fn fuse_left(world: &World, prop: Entity) -> Option<f32> {
+    status_left(world, prop, LIT)
+}
+
+/// The game seconds `prop`'s douse keeps it from lighting; 0 for none.
+#[must_use]
+pub fn doused_left(world: &World, prop: Entity) -> f32 {
+    status_left(world, prop, PROP_DOUSED).unwrap_or(0.0)
+}
+
+/// The source of `prop`'s instance of the status `id`: who lit it.
+fn source(world: &World, prop: Entity, id: &str) -> Option<Entity> {
+    world
+        .get::<Effects>(prop)?
+        .instances()
+        .find(|instance| instance.effect().id() == Some(id))?
+        .source()
+}
+
+/// The save ID `prop`'s fire or lit fuse credits, its status's source's.
+#[must_use]
+pub fn lighter(world: &World, prop: Entity) -> Option<u64> {
+    source(world, prop, PROP_BURN)
+        .or_else(|| source(world, prop, LIT))
+        .and_then(|lighter| world.get::<SaveId>(lighter))
+        .map(|id| id.0)
+}
+
+/// A crate's or a plank's fire as a save writes it; `None` for another
+/// prop.
+#[must_use]
+pub fn fire(world: &World, prop: Entity) -> Option<PropFire> {
+    has_fuel(world, prop).then(|| PropFire {
+        left: fuel_left(world, prop),
+        lit: alight(world, prop),
+        lighter: source(world, prop, PROP_BURN)
+            .and_then(|lighter| world.get::<SaveId>(lighter))
+            .map(|id| id.0),
+        doused: doused_left(world, prop),
+    })
+}
+
+/// Puts `fire` on the crate or plank `prop` at once and quietly, a load's
+/// or a break's: its fuel left, its burn sourced to `lighter` when it
+/// burns, and its douse's seconds.
+pub fn set_fire(world: &mut World, prop: Entity, fire: &PropFire, lighter: Option<Entity>) {
+    if let Some(stats) = world.get_mut::<Stats>(prop) {
+        stats.set_base(FUEL, fire.left);
+    }
+    if fire.lit {
+        burn(world, prop, lighter);
+    }
+    if fire.doused > 0.0 {
+        douse(world, prop, fire.doused);
+    }
+}
+
+/// Puts a saved fuse with `fuse` seconds left, sourced to `lighter`, and
+/// a douse of `doused` seconds on the keg or bomb `prop`, at once and
+/// quietly: a load's.
+pub fn set_fuse(
+    world: &mut World,
+    prop: Entity,
+    fuse: Option<f32>,
+    lighter: Option<Entity>,
+    doused: f32,
+) {
+    if let Some(left) = fuse {
+        light_fuse(world, prop, left, lighter);
+    }
+    if doused > 0.0 {
+        douse(world, prop, doused);
+    }
+}
+
+/// Sets `prop`'s fire going, sourced to `lighter`.
+fn burn(world: &mut World, prop: Entity, lighter: Option<Entity>) {
+    let mut request = EffectRequest::new(prop, DataRef::by_id(PROP_BURN));
+    if let Some(lighter) = lighter {
+        request = request.with_source(lighter);
+    }
+    request.apply(world);
+}
+
+/// Lights `prop`'s fuse with `seconds` left, sourced to `lighter`.
+fn light_fuse(world: &mut World, prop: Entity, seconds: f32, lighter: Option<Entity>) {
+    let mut request = EffectRequest::new(prop, DataRef::by_id(LIT)).with_scale(seconds);
+    if let Some(lighter) = lighter {
+        request = request.with_source(lighter);
+    }
+    request.apply(world);
+}
+
+/// Keeps `prop` from lighting for `seconds`.
+fn douse(world: &mut World, prop: Entity, seconds: f32) {
+    EffectRequest::new(prop, DataRef::by_id(PROP_DOUSED))
+        .with_scale(seconds)
+        .apply(world);
+}
+
+/// The entity of the save ID `lighter`: the run's player, a target, or
+/// anything else saved.
+fn credit_of(world: &World, lighter: Option<u64>) -> Option<Entity> {
+    let id = lighter?;
+    if let Some(player) = world.get_resource::<Run>().map(|run| run.player)
+        && world.get::<SaveId>(player).is_some_and(|own| own.0 == id)
+    {
+        return Some(player);
+    }
+    world
+        .query::<(Entity, &SaveId, &Health)>()
+        .find(|(_, own, _)| own.0 == id)
+        .map(|(entity, ..)| entity)
+        .or_else(|| {
+            world
+                .query::<(Entity, &SaveId)>()
+                .find(|(_, own)| own.0 == id)
+                .map(|(entity, _)| entity)
+        })
+}
+
+/// The burning crates and planks.
+pub fn fires(world: &World) -> impl Iterator<Item = Entity> + '_ {
+    world
+        .query::<(Entity, &Crate)>()
+        .map(|(entity, _)| entity)
+        .chain(world.query::<(Entity, &Plank)>().map(|(entity, _)| entity))
+        .filter(|&prop| has_status(world, prop, BURNING))
 }
 
 /// Spawns a goblin's bomb with its centre at `at`, lit for [`FUSE_SECS`]
@@ -495,86 +640,75 @@ pub fn burning(world: &World, prop: Entity) -> bool {
 /// ID: a throw's, which sets its velocity.
 pub fn spawn_bomb(world: &mut World, at: Vec2, lighter: Option<u64>) -> Entity {
     let bomb = toys::spawn_toy(world, BOMB_PREFAB, at - BOMB_CENTRE, 1.0);
-    world.insert(
-        bomb,
-        Bomb {
-            fuse: Some(FUSE_SECS),
-            lighter,
-        },
-    );
+    let lighter = credit_of(world, lighter);
+    light_fuse(world, bomb, FUSE_SECS, lighter);
     if let Some(at) = body_centre(world, bomb) {
         audio::play(world, Sound::FuseLit, at);
     }
     bomb
 }
 
-/// Lights `prop`, its fire credited to the save ID `lighter`: a crate
+/// Lights `prop`, its fire credited to the save ID `lighter`
+/// ([`light_by`]).
+pub fn light(world: &mut World, prop: Entity, lighter: Option<u64>) -> bool {
+    let lighter = credit_of(world, lighter);
+    light_by(world, prop, lighter)
+}
+
+/// Lights `prop`, its fire sourced to `lighter`: a crate or a plank
 /// catches with its burst and its sound, a keg's fuse starts for
 /// [`FUSE_SECS`] with its hiss. Neither lights while frozen, doused or
 /// alight, nor a crate burnt out. Whether it lit.
-pub fn light(world: &mut World, prop: Entity, lighter: Option<u64>) -> bool {
-    if is_frozen(world, prop) {
+pub fn light_by(world: &mut World, prop: Entity, lighter: Option<Entity>) -> bool {
+    if is_frozen(world, prop) || has_status(world, prop, DOUSED) {
         return false;
     }
     let Some(at) = body_centre(world, prop) else {
         return false;
     };
-    if let Some(fuel) = world.get_mut::<Fuel>(prop) {
-        if fuel.lit || fuel.doused > 0.0 || fuel.left <= 0.0 {
+    if has_fuel(world, prop) {
+        if has_status(world, prop, BURNING) || fuel_left(world, prop) <= 0.0 {
             return false;
         }
-        fuel.lit = true;
-        fuel.lighter = lighter;
+        burn(world, prop, lighter);
         spawn_burst(world, "ex10_crate_ignite", at);
         audio::play(world, Sound::CrateIgnited, at);
         return true;
     }
-    if let Some(keg) = world.get_mut::<Keg>(prop) {
-        if keg.fuse.is_some() || keg.doused > 0.0 {
+    if world.has::<Keg>(prop) {
+        if has_status(world, prop, STATUS_LIT) {
             return false;
         }
-        keg.fuse = Some(FUSE_SECS);
-        keg.lighter = lighter;
+        light_fuse(world, prop, FUSE_SECS, lighter);
         audio::play(world, Sound::FuseLit, at);
         return true;
     }
     false
 }
 
-/// Sets `keg`, a keg or a bomb, off at once, its blast credited to the save
-/// ID `lighter`, in the chain begun at `origin` (its own centre when none):
-/// its fuse spent and its detonation queued, due at the step's run when
-/// queued before it. A frozen keg never blows. Whether it queued.
-pub fn set_off(world: &mut World, keg: Entity, origin: Option<Vec2>, lighter: Option<u64>) -> bool {
-    if is_frozen(world, keg) {
-        return false;
-    }
-    let Some(at) = body_centre(world, keg) else {
-        return false;
-    };
-    let reach = if let Some(state) = world.get_mut::<Keg>(keg) {
-        state.fuse = None;
-        KEG_BLAST
-    } else if let Some(state) = world.get_mut::<Bomb>(keg) {
-        state.fuse = None;
-        BOMB_BLAST
-    } else {
-        return false;
-    };
-    cascade::queue_from(
-        world,
-        CascadeKind::Detonation,
-        Some(keg),
-        at,
-        origin.unwrap_or(at),
-        reach,
-        lighter,
-    )
+/// Sets `keg`, a keg or a bomb, off, its blast credited to the save ID
+/// `lighter` ([`jolt`]).
+pub fn set_off(world: &mut World, keg: Entity, lighter: Option<u64>) -> bool {
+    let credit = credit_of(world, lighter);
+    jolt(world, keg, credit)
 }
 
-/// Puts `prop` out, as cold, steam or a black hole does: a crate's fire,
-/// its fuel left kept, or a keg's lit fuse, either kept from lighting for
-/// [`DOUSE_SECS`]; a bomb fizzles out at once. Whether it burned.
+/// Sends `jolt` to `keg`, a keg or a bomb, credited to `credit`: at
+/// chemistry's run it goes off at once, lit or not, doused or not, its
+/// `detonate` handler run; one frozen meanwhile shatters. A frozen keg
+/// takes none. Whether it was sent.
+pub fn jolt(world: &mut World, keg: Entity, credit: Option<Entity>) -> bool {
+    if is_frozen(world, keg) || !(world.has::<Keg>(keg) || world.has::<Bomb>(keg)) {
+        return false;
+    }
+    stimulate(world, keg, JOLT, 1.0, credit)
+}
+
+/// Puts `prop` out, as cold, steam or a black hole does: a crate's or a
+/// plank's fire ends, its fuel left kept, or a keg's lit fuse, whose end
+/// then finds the keg doused and leaves it whole; either is kept from
+/// lighting for [`DOUSE_SECS`]. A bomb fizzles out at once. Whether it
+/// burned.
 pub fn put_out(world: &mut World, prop: Entity) -> bool {
     if world.has::<Bomb>(prop) {
         if let Some(at) = body_centre(world, prop) {
@@ -584,20 +718,32 @@ pub fn put_out(world: &mut World, prop: Entity) -> bool {
         despawn_tree(world, prop);
         return true;
     }
-    if let Some(fuel) = world.get_mut::<Fuel>(prop) {
-        let burned = fuel.lit;
-        fuel.lit = false;
-        fuel.doused = DOUSE_SECS;
-        return burned;
+    let burned = if has_fuel(world, prop) {
+        end_effect(world, prop, &DataRef::by_id(PROP_BURN))
+    } else if world.has::<Keg>(prop) {
+        end_effect(world, prop, &DataRef::by_id(LIT))
+    } else {
+        return false;
+    };
+    douse(world, prop, DOUSE_SECS);
+    burned
+}
+
+/// Chemistry's `burn_out` handler, a crate's or a plank's fire ending: one
+/// whose fuel ran out falls in ([`collapse`]), a plank quietly
+/// ([`burn_down`]); one put out keeps its fuel and stands.
+pub fn burn_out_handler(world: &mut World, reaction: &Reaction) {
+    let Some(prop) = reaction.receiver() else {
+        return;
+    };
+    if !has_fuel(world, prop) || fuel_left(world, prop) > 0.0 {
+        return;
     }
-    if let Some(keg) = world.get_mut::<Keg>(prop) {
-        let burned = keg.fuse.is_some();
-        keg.fuse = None;
-        keg.lighter = None;
-        keg.doused = DOUSE_SECS;
-        return burned;
+    if world.has::<Plank>(prop) {
+        burn_down(world, prop);
+    } else {
+        collapse(world, prop);
     }
-    false
 }
 
 /// A plank burnt out falls in where it is, quietly: its embers, a key

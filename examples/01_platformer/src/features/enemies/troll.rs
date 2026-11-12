@@ -44,7 +44,10 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade;
-use crate::features::props::components::{Crate, Keg};
+use crate::features::props::{
+    self,
+    components::{Crate, Keg},
+};
 use crate::features::toys::components::{BowlingBall, IronBlock};
 use crate::features::toys::systems::falloff;
 use crate::shared::{SaveId, body_centre, spawn_burst};
@@ -130,9 +133,7 @@ fn liftable(world: &World, entity: Entity) -> bool {
         && world
             .get::<Health>(entity)
             .is_some_and(|health| !health.is_dead());
-    let unlit = world
-        .get::<Keg>(entity)
-        .is_some_and(|keg| keg.fuse.is_none());
+    let unlit = world.has::<Keg>(entity) && !props::burning(world, entity);
     let thing = world.has::<IronBlock>(entity)
         || world.has::<BowlingBall>(entity)
         || world.has::<Crate>(entity)

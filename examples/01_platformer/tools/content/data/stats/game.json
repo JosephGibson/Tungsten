@@ -13,5 +13,8 @@
   },
   "status_threshold": {
     "min": 0
+  },
+  "fuel": {
+    "min": 0
   }
 }

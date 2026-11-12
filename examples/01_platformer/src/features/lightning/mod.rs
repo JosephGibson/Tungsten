@@ -286,7 +286,7 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
                 .queue(world);
         }
         if world.has::<Keg>(target) {
-            props::set_off(world, target, None, credit);
+            props::set_off(world, target, credit);
         }
     }
     let number = world.get_resource_mut::<Cascades>().map_or(0, |cascades| {
@@ -443,7 +443,7 @@ pub fn conduct(
         hit.queue(world);
     }
     if world.has::<Keg>(receiver) {
-        props::set_off(world, receiver, None, entry.source);
+        props::set_off(world, receiver, entry.source);
     }
     if frozen(world, receiver)
         || shock_proof(world, receiver)

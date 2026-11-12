@@ -700,7 +700,7 @@ fn heat_props(world: &mut World, at: Vec2) {
         if world.has::<Crate>(prop) {
             props::light(world, prop, player);
         } else {
-            props::set_off(world, prop, None, player);
+            props::set_off(world, prop, player);
         }
     }
 }

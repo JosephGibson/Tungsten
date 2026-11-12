@@ -14,7 +14,7 @@ use crate::features::gun::GunPlugin;
 use crate::features::level::{CursorPlugin, LevelPlugin};
 use crate::features::lightning::LightningPlugin;
 use crate::features::player::PlayerPlugin;
-use crate::features::props::PropsPlugin;
+use crate::features::props::{self, PropsPlugin};
 use crate::features::run::{GameplayState, RunPlugin};
 use crate::features::spells::SpellsPlugin;
 use crate::features::tomes::TomesPlugin;
@@ -53,8 +53,10 @@ pub const CHEMISTRY_DEPTH: u8 = u8::MAX;
 /// cascade's settings ([`CHEMISTRY_DEPTH`]), with its handlers, 01's own
 /// outputs where the kit's differ (the plan's §2.1): `freeze`, a coat's
 /// band freezing its body for its seconds; `thermal_shock`, `shatter` and
-/// `steam`, the endings' blasts, douses and ends; `light`, a ball or a
-/// crate catching.
+/// `steam`, the endings' blasts, douses and ends; `light`, a ball, a crate,
+/// a plank or a keg's fuse catching; `detonate`, a keg or a bomb blowing,
+/// and `fuse_out`, its fuse's end setting it off unless put out;
+/// `burn_out`, a crate or a plank burnt out falling in.
 #[must_use]
 pub fn kit_plugins() -> tungsten::core::PluginSet {
     KitPlugins::set().with(
@@ -66,7 +68,10 @@ pub fn kit_plugins() -> tungsten::core::PluginSet {
             .with_handler("thermal_shock", cascade::thermal_shock_handler)
             .with_handler("shatter", cascade::shatter_handler)
             .with_handler("steam", cascade::steam_handler)
-            .with_handler("light", cascade::light_handler),
+            .with_handler("light", cascade::light_handler)
+            .with_handler("detonate", cascade::detonate_handler)
+            .with_handler("fuse_out", cascade::fuse_out_handler)
+            .with_handler("burn_out", props::burn_out_handler),
     )
 }
 

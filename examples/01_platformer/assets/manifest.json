@@ -938,6 +938,9 @@
       "kindled": {
         "path": "data/effects/kindled.json"
       },
+      "lit": {
+        "path": "data/effects/lit.json"
+      },
       "mana_regen": {
         "path": "data/effects/mana_regen.json"
       },
@@ -952,6 +955,12 @@
       },
       "poisoned": {
         "path": "data/effects/poisoned.json"
+      },
+      "prop_burn": {
+        "path": "data/effects/prop_burn.json"
+      },
+      "prop_doused": {
+        "path": "data/effects/prop_doused.json"
       },
       "shatter_build": {
         "path": "data/effects/shatter_build.json"
@@ -1008,6 +1017,15 @@
       },
       "freeze": {
         "path": "data/interactions/freeze.json"
+      },
+      "jolt": {
+        "path": "data/interactions/jolt.json"
+      },
+      "jolt_frozen": {
+        "path": "data/interactions/jolt_frozen.json"
+      },
+      "kindle": {
+        "path": "data/interactions/kindle.json"
       },
       "light": {
         "path": "data/interactions/light.json"
@@ -8838,11 +8856,23 @@
     },
     "ex10_goblin_bomb_0": {
       "filter": "nearest",
-      "path": "sprites/goblin_bomb_0.png"
+      "path": "sprites/goblin_bomb_0.png",
+      "points": {
+        "fuse": [
+          10.5,
+          0.5
+        ]
+      }
     },
     "ex10_goblin_bomb_1": {
       "filter": "nearest",
-      "path": "sprites/goblin_bomb_1.png"
+      "path": "sprites/goblin_bomb_1.png",
+      "points": {
+        "fuse": [
+          10.5,
+          0.5
+        ]
+      }
     },
     "ex10_goblin_dash_0": {
       "filter": "nearest",
@@ -13792,31 +13822,61 @@
       "emissive_mask": "sprites/powder_keg_e.png",
       "filter": "nearest",
       "normal_map": "sprites/powder_keg_n.png",
-      "path": "sprites/powder_keg.png"
+      "path": "sprites/powder_keg.png",
+      "points": {
+        "fuse": [
+          38,
+          1
+        ]
+      }
     },
     "ex10_powder_keg_lit_0": {
       "emissive_mask": "sprites/powder_keg_lit_0_e.png",
       "filter": "nearest",
       "normal_map": "sprites/powder_keg_lit_0_n.png",
-      "path": "sprites/powder_keg_lit_0.png"
+      "path": "sprites/powder_keg_lit_0.png",
+      "points": {
+        "fuse": [
+          38,
+          1
+        ]
+      }
     },
     "ex10_powder_keg_lit_1": {
       "emissive_mask": "sprites/powder_keg_lit_1_e.png",
       "filter": "nearest",
       "normal_map": "sprites/powder_keg_lit_1_n.png",
-      "path": "sprites/powder_keg_lit_1.png"
+      "path": "sprites/powder_keg_lit_1.png",
+      "points": {
+        "fuse": [
+          40,
+          3
+        ]
+      }
     },
     "ex10_powder_keg_lit_2": {
       "emissive_mask": "sprites/powder_keg_lit_2_e.png",
       "filter": "nearest",
       "normal_map": "sprites/powder_keg_lit_2_n.png",
-      "path": "sprites/powder_keg_lit_2.png"
+      "path": "sprites/powder_keg_lit_2.png",
+      "points": {
+        "fuse": [
+          41,
+          6
+        ]
+      }
     },
     "ex10_powder_keg_lit_3": {
       "emissive_mask": "sprites/powder_keg_lit_3_e.png",
       "filter": "nearest",
       "normal_map": "sprites/powder_keg_lit_3_n.png",
-      "path": "sprites/powder_keg_lit_3.png"
+      "path": "sprites/powder_keg_lit_3.png",
+      "points": {
+        "fuse": [
+          39,
+          8
+        ]
+      }
     },
     "ex10_push_dust_0": {
       "filter": "nearest",

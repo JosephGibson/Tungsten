@@ -9,7 +9,8 @@
 //! schemas and 01's older ones are refused; an enemy's hit, pending transition, touch and frozen
 //! flight load as they were, and a loaded run with enemies mid-attack and
 //! mid-search keeps with the uninterrupted one; a keg chain saved mid-chain
-//! finishes the same; a schema 11 save's IDs move past the map's goblins;
+//! keeps its kegs and loads with its waiting blasts dropped (an interim,
+//! a known issue); a schema 11 save's IDs move past the map's goblins;
 //! a schema 12 player keeps his body where it stood on the wizard's frame;
 //! a schema 13 save drops its hints and takes 01 (i)'s tuning, its
 //! player's health keeping its share; a schema 13 save's crates leave the
@@ -608,10 +609,12 @@ fn lists(kind: &str) -> Lists {
             presentation: drawn.to_vec(),
         },
         // The crates, kegs, bombs and rocks: a crate's or a rock's art, a
-        // crate's fire, a keg's or a bomb's fuse, each saved whole, and
-        // whether the map set it down; a rock's throw is the throws'.
+        // crate's fire (its fuel stat and its statuses), a keg's or a bomb's
+        // fuse (its status), each saved whole, and whether the map set it
+        // down; a rock's throw is the throws'; a keg's or a bomb's looks
+        // by its tags are its prefab's.
         "crate" | "keg" | "bomb" | "rock" => {
-            use example_01_platformer::features::props::components::{Fuel, MapProp};
+            use example_01_platformer::features::props::components::MapProp;
             Lists {
                 saved: [
                     &at[..],
@@ -619,7 +622,7 @@ fn lists(kind: &str) -> Lists {
                         name::<Velocity>(),
                         name::<MapProp>(),
                         name::<Crate>(),
-                        name::<Fuel>(),
+                        name::<Stats>(),
                         name::<Keg>(),
                         name::<Bomb>(),
                         name::<Rock>(),
@@ -630,7 +633,11 @@ fn lists(kind: &str) -> Lists {
                 .concat(),
                 rebuilt: [
                     &body[..],
-                    &[name::<SceneEntity>(), name::<PreviousVelocity>()],
+                    &[
+                        name::<SceneEntity>(),
+                        name::<PreviousVelocity>(),
+                        name::<tungsten::kit::Looks>(),
+                    ],
                 ]
                 .concat(),
                 presentation: [&drawn[..], &[name::<ColdFace>()]].concat(),
@@ -646,17 +653,18 @@ fn lists(kind: &str) -> Lists {
             .concat(),
             presentation: drawn.to_vec(),
         },
-        // A broken crate's planks: its art, its fire and its frost, each
-        // saved whole; their tumble is presentation.
+        // A broken crate's planks: its art, its fire (its fuel stat and its
+        // statuses) and its frost, each saved whole; their tumble is
+        // presentation.
         "plank" => {
-            use example_01_platformer::features::props::components::{Fuel, Plank};
+            use example_01_platformer::features::props::components::Plank;
             Lists {
                 saved: [
                     &at[..],
                     &[
                         name::<Velocity>(),
                         name::<Plank>(),
-                        name::<Fuel>(),
+                        name::<Stats>(),
                         name::<Effects>(),
                         name::<Tags>(),
                     ],
@@ -1937,7 +1945,13 @@ fn kegs(harness: &UiHarness) -> BTreeSet<u64> {
 }
 
 #[test]
-fn a_keg_chain_saved_mid_chain_finishes_the_same_after_a_load() {
+fn a_keg_chain_saved_mid_chain_keeps_its_kegs_and_drops_its_waiting_blasts() {
+    // Interim (the plan's §2.9, a known issue): a keg's blast waits in
+    // chemistry's queue, its `jolt`, between the blast that sets it off and
+    // its run, and 01's save holds that queue from 7.13b, so a save
+    // mid-chain keeps the kegs standing and loads with the chain stopped;
+    // 7.13b resumes the same chain, the same kegs gone, as this test pinned
+    // before.
     let (mut harness, player) = grounded();
     let world = harness.world_mut();
     let row: Vec<Entity> = (0..6)
@@ -1949,8 +1963,8 @@ fn a_keg_chain_saved_mid_chain_finishes_the_same_after_a_load() {
     harness.step(2);
     let ids: BTreeSet<u64> = row.iter().map(|&keg| id_of(&harness, keg)).collect();
     let me = id_of(&harness, player);
-    assert!(props::set_off(harness.world_mut(), row[0], None, Some(me)));
-    // Saved after the second wave: two gone, the third's detonation waiting.
+    assert!(props::set_off(harness.world_mut(), row[0], Some(me)));
+    // Saved after the second wave: two gone, the third's blast waiting.
     let blown = |harness: &UiHarness| ids.difference(&kegs(harness)).count();
     for _ in 0..10 {
         if blown(&harness) >= 2 {
@@ -1959,27 +1973,25 @@ fn a_keg_chain_saved_mid_chain_finishes_the_same_after_a_load() {
         harness.step(1);
     }
     assert_eq!(blown(&harness), 2, "two waves");
+    let pending = |harness: &UiHarness| harness.world().resource::<Chemistry>().pending();
+    assert!(pending(&harness) > 0, "mid-chain");
     let saved = capture(&harness);
-    let waiting = |harness: &UiHarness| harness.world().resource::<Cascades>().entries.clone();
-    assert!(
-        waiting(&harness)
-            .iter()
-            .any(|entry| entry.kind == CascadeKind::Detonation),
-        "mid-chain"
-    );
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("a save reads");
     let mut fresh = super::harness();
     load(&mut fresh, read);
-    assert_eq!(waiting(&fresh), waiting(&harness), "the queue's entries");
+    assert_eq!(pending(&fresh), 0, "the waiting blasts dropped");
     scaffold(&mut fresh);
     pin_camera(&mut fresh, CORNER);
     fresh.world_mut().resource_mut::<Time>().resume();
+    let standing = kegs(&fresh);
+    assert_eq!(standing, kegs(&harness), "the kegs as they stood");
+    assert_eq!(ids.intersection(&standing).count(), 4, "four of the row");
     harness.step(30);
     fresh.step(30);
-    assert_eq!(kegs(&harness), kegs(&fresh), "the same kegs gone");
     assert!(ids.is_disjoint(&kegs(&harness)), "the chain ran to its end");
+    assert_eq!(kegs(&fresh), standing, "the loaded chain stopped");
     assert!(
-        queue(&harness).is_empty() && queue(&fresh).is_empty(),
+        pending(&harness) == 0 && pending(&fresh) == 0,
         "both queues empty"
     );
 }
@@ -4117,7 +4129,7 @@ fn a_schema_15_save_loads_with_no_tome_and_every_book_on_the_map() {
 
 #[test]
 fn burning_planks_save_through_json_and_load_back() {
-    use example_01_platformer::features::props::components::{Fuel, Plank};
+    use example_01_platformer::features::props::components::{Plank, PropFire};
     let (mut harness, _) = grounded();
     let world = harness.world_mut();
     let crate_ = props::spawn(
@@ -4136,13 +4148,16 @@ fn burning_planks_save_through_json_and_load_back() {
     let loaded: SaveGame = serde_json::from_value(json(&saved)).expect("a save loads");
     let mut fresh = super::harness();
     load(&mut fresh, loaded);
-    let mut back: Vec<(u64, usize, Fuel)> = fresh
-        .world()
-        .query::<(&SaveId, &Plank, &Fuel)>()
-        .map(|(id, plank, fuel)| (id.0, plank.variant, *fuel))
+    let world = fresh.world();
+    let mut back: Vec<(u64, usize, PropFire)> = world
+        .query::<(Entity, &SaveId, &Plank)>()
+        .map(|(entity, id, plank)| {
+            let fire = props::fire(world, entity).expect("a plank's fire");
+            (id.0, plank.variant, fire)
+        })
         .collect();
     back.sort_by_key(|(id, ..)| *id);
-    let kept: Vec<(u64, usize, Fuel)> = saved
+    let kept: Vec<(u64, usize, PropFire)> = saved
         .planks
         .iter()
         .map(|plank| (plank.id, plank.variant, plank.fuel))
