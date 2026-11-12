@@ -211,24 +211,19 @@ def build_objects(source, images, lit):
         hazards.append(obj(cls, start[0] - FIRE_CENTRE[0], start[1] - FIRE_CENTRE[1], name=h.get('name', '')))
     # The lava basins after the fires: a surface the player stands on, a
     # touch from just over it to the bed that burns and throws, a sizzle at
-    # each touch, and the lake's light. A child of each touches what is
-    # frozen with fire, which blows it apart whether it takes fire or not (a
-    # frozen wisp).
+    # each touch, and the lake's light. What is frozen in it blows apart by
+    # thermal shock's rule, the `heat` 01's `lava_take` sends (7.13a).
     for i, basin in enumerate(source.get('lava', [])):
         width = (basin['right'] - basin['left']) * tile
         depth = (lava_bed(source, basin) - basin['row']) * tile - LAVA_TOP + LAVA_REACH
         box = dict(shape=dict(aabb=[width / 2, depth / 2]),
                    offset=[width / 2, LAVA_TOP - LAVA_REACH + depth / 2])
-        frost = f'ex10_lava_frost_{i}'
-        prefabs[frost] = dict(components=dict(contact_damage=dict(
-            box, damage={'damage.fire': HAZARD_DAMAGE}, filter=dict(all=['status.frozen']))))
         bite = dict(box, damage={'damage.fire': LAVA_DAMAGE}, filter=dict(any=['team.enemy', 'team.player']),
                     knockback=LAVA_KNOCKBACK, interval=LAVA_INTERVAL, push_always=True)
         surface = dict(kind='static', shape=dict(kind='aabb', half_extents=[width / 2, LAVA_SURFACE / 2]),
                        offset=[width / 2, LAVA_TOP + LAVA_SURFACE / 2], layers=[LAVA_LAYER], mask=[])
         components = dict(hazard=dict(fire=False, lava=True), contact_damage=bite, rigid_body=surface,
-                          cues=dict(hit=[dict(sound=dict(id='ex10_lava_sizzle_sfx', min_interval=0.3))]),
-                          spawn_children=[dict(prefab=frost, offset=[0, 0])])
+                          cues=dict(hit=[dict(sound=dict(id='ex10_lava_sizzle_sfx', min_interval=0.3))]))
         if basin.get('light'):
             components['glow'] = dict(LAVA_GLOW, offset=[width / 2, LAVA_TOP])
         cls = f'ex10_lava_{i}'

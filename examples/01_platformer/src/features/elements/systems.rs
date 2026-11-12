@@ -21,16 +21,16 @@ use super::components::{ColdFace, FireEmitter, Flame, IcePulse};
 use super::{
     BALL_BURN, BASE_SMASH, BODY_HIT_SPEED, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, COAT, COLD,
     CRATE_BREAK, CRUSH_HIT, CRUSH_SPEED, DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL,
-    FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF, FROZEN_SECS, ICE, IMPACT_BURSTS_PER_STEP,
-    IMPACT_COOLDOWN, IMPACT_SPEED, KINDLED, LANDING_SHARE, SHATTER_MASS, SHATTER_SPEED, SMASH_CAP,
-    SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, SPENT, THAW_RATE, blows_keg, body_hit, is_burning,
-    is_frozen,
+    FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF, FROZEN_SECS, HAZARD_DOUSED, ICE,
+    IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN, IMPACT_SPEED, KINDLED, LANDING_SHARE, SHATTER_MASS,
+    SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, SPENT, THAW_RATE,
+    blows_keg, body_hit, is_burning, is_frozen,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{self, BURNING, FLESH, FROZEN, Kind, has_status};
+use crate::features::combat::{self, BURNING, DOUSED, FLESH, FROZEN, Kind, has_status};
 use crate::features::enemies::components::{Enemy, Throws};
 use crate::features::enemies::{beetle, goblin};
-use crate::features::level::components::{Doused, Glow, Hazard};
+use crate::features::level::components::{Glow, Hazard};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::props::{
@@ -459,7 +459,7 @@ fn fire_centres(world: &World, fire: Entity) -> Option<(Vec2, Vec2)> {
 pub fn fire_contacts(world: &mut World) {
     let fires: Vec<(Vec2, Vec2)> = world
         .query::<(Entity, &Hazard)>()
-        .filter(|(entity, hazard)| hazard.fire && !world.has::<Doused>(*entity))
+        .filter(|(entity, hazard)| hazard.fire && !is_doused(world, *entity))
         .filter_map(|(entity, _)| fire_centres(world, entity))
         .collect();
     if fires.is_empty() {
@@ -1479,92 +1479,77 @@ pub fn body_impacts(world: &mut World) {
     }
 }
 
-/// Puts the fire hazard `hazard` out for [`DOUSE_SECS`]: its touch held
-/// aside, its glow and trail hidden, with a steam burst; one already out
-/// starts its time again.
+/// Puts the fire hazard `hazard` out for [`DOUSE_SECS`] ([`douse_for`]),
+/// with a steam burst; one already out starts its time again.
 pub fn douse_hazard(world: &mut World, hazard: Entity) {
-    if let Some(doused) = world.get_mut::<Doused>(hazard) {
-        doused.left = DOUSE_SECS;
+    if is_doused(world, hazard) {
+        douse_for(world, hazard, DOUSE_SECS);
         return;
     }
     if !world.get::<Hazard>(hazard).is_some_and(|h| h.fire) {
         return;
     }
-    let touch = world.remove_component::<ContactDamage>(hazard);
-    world.insert(
-        hazard,
-        Doused {
-            left: DOUSE_SECS,
-            touch,
-        },
-    );
+    douse_for(world, hazard, DOUSE_SECS);
     if let Some((_, at)) = fire_centres(world, hazard) {
         spawn_burst(world, "ex10_steam_burst", at);
         audio::play(world, Sound::Steamed, at);
     }
 }
 
-/// `douse_tick`, in the tick phase: each doused hazard's time runs down by
-/// the step, and at 0 it relights, its touch back and its trail emitting.
-pub fn tick_doused(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    if dt <= 0.0 {
-        return;
-    }
-    let mut relit = Vec::new();
-    for (entity, doused) in world.query_mut::<(Entity, &mut Doused)>() {
-        doused.left -= dt;
-        if doused.left <= 1e-5 {
-            relit.push(entity);
-        }
-    }
-    for hazard in relit {
-        if let Some(touch) = world
-            .remove_component::<Doused>(hazard)
-            .and_then(|doused| doused.touch)
-        {
-            world.insert(hazard, touch);
-        }
-        let children: Vec<Entity> = world
-            .get::<Children>(hazard)
-            .map(|children| children.iter().collect())
-            .unwrap_or_default();
-        for child in children {
-            if let Some(state) = world.get_mut::<ParticleEmitterState>(child) {
-                state.drained = false;
-            }
-        }
+/// Puts the fire hazard `hazard` out for `seconds`, quietly: its
+/// [`HAZARD_DOUSED`], whose end relights it ([`relight_handler`]), its
+/// touch switched off, its glow hidden, its trail stopped and its fireball
+/// dimmed. A load's douse, and the spray's.
+pub fn douse_for(world: &mut World, hazard: Entity, seconds: f32) {
+    EffectRequest::new(hazard, DataRef::by_id(HAZARD_DOUSED))
+        .with_scale(seconds)
+        .apply(world);
+    show_doused(world, hazard, true);
+}
+
+/// Whether the fire hazard `hazard` is out: its `status.doused`.
+#[must_use]
+pub fn is_doused(world: &World, hazard: Entity) -> bool {
+    has_status(world, hazard, DOUSED)
+}
+
+/// The seconds the fire hazard `hazard` stays out; `None` while it burns.
+#[must_use]
+pub fn doused_left(world: &World, hazard: Entity) -> Option<f32> {
+    status_left(world, hazard, HAZARD_DOUSED)
+}
+
+/// Chemistry's `relight` handler, a fire hazard's douse ending: its touch
+/// back on, its glow, its fireball's colour and its trail back.
+pub fn relight_handler(world: &mut World, reaction: &Reaction) {
+    if let Some(hazard) = reaction.receiver() {
+        show_doused(world, hazard, false);
     }
 }
 
-/// `doused_look`, before the frame's particles: a doused hazard's glow is
-/// hidden, its trail stops and its fireball dims; a burning one shows.
-pub fn doused_look(world: &mut World) {
-    let hazards: Vec<(Entity, bool, Vec<Entity>)> = world
-        .query::<(Entity, &Hazard, Option<&Children>)>()
-        .filter(|(_, hazard, _)| hazard.fire)
-        .map(|(entity, _, children)| {
-            let children = children.map(|c| c.iter().collect()).unwrap_or_default();
-            (entity, world.has::<Doused>(entity), children)
-        })
-        .collect();
-    for (hazard, doused, children) in hazards {
-        if let Some(glow) = world.get_mut::<Glow>(hazard) {
-            glow.hidden = doused;
-        }
-        if let Some(sprite) = world.get_mut::<Sprite>(hazard) {
-            sprite.color = if doused {
-                [110, 110, 122, 255]
-            } else {
-                [255; 4]
-            };
-        }
-        if doused {
-            for child in children {
-                if let Some(state) = world.get_mut::<ParticleEmitterState>(child) {
-                    state.drained = true;
-                }
-            }
+/// A fire hazard out or burning: its touch off or on, its glow hidden or
+/// shown, its fireball dimmed or whole, its trail stopped or emitting.
+fn show_doused(world: &mut World, hazard: Entity, doused: bool) {
+    if let Some(touch) = world.get_mut::<ContactDamage>(hazard) {
+        touch.set_on(!doused);
+    }
+    if let Some(glow) = world.get_mut::<Glow>(hazard) {
+        glow.hidden = doused;
+    }
+    if let Some(sprite) = world.get_mut::<Sprite>(hazard) {
+        sprite.color = if doused {
+            [110, 110, 122, 255]
+        } else {
+            [255; 4]
+        };
+    }
+    let children: Vec<Entity> = world
+        .get::<Children>(hazard)
+        .map(|children| children.iter().collect())
+        .unwrap_or_default();
+    for child in children {
+        if let Some(state) = world.get_mut::<ParticleEmitterState>(child) {
+            state.drained = doused;
         }
     }
 }

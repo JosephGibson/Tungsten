@@ -118,6 +118,10 @@ pub const CRATE_BREAK: f32 = 5600.0;
 pub const BREAK_SLACK: f32 = 0.01;
 /// Seconds cold puts a fire hazard out for.
 pub const DOUSE_SECS: f32 = 4.0;
+/// A fire hazard's douse (7.13a): 1 s scaled by its request's seconds, so a
+/// load gives one back the seconds it saved, granting `status.doused`; its
+/// end runs `relight`.
+pub const HAZARD_DOUSED: &str = "hazard_doused";
 /// Most emitters over a burning pile's surface: 64 pairs.
 pub const FIRE_EMITTER_CAP: usize = 128;
 /// Seconds a pair stays on one ball before it hops.
@@ -149,15 +153,13 @@ pub const SMASH_KEEP: f32 = 0.9;
 pub const FIRE_HALF: Vec2 = Vec2::new(18.0, 24.0);
 pub const FIRE_CENTRE: Vec2 = Vec2::new(32.0, 32.0);
 
-/// The element rules as a plugin. In the fixed step: the doused hazards'
-/// clocks first (the kit times the burns and the freezes); after the
-/// physics step,
-/// the fires against the balls, the impact bursts, the crushes, the bodies'
-/// impacts, the spread and the burning surface and the black hole's
-/// dousing, then the cascades' run, last of 01's contact systems and
-/// before the kit's resolve. Before the frame's
-/// particles, the burning surface's emitters, the impact sparks' colours
-/// and the doused hazards' looks; in the present phase the cold pulses;
+/// The element rules as a plugin. In the fixed step, after the physics
+/// step (the kit times the burns, the freezes and the douses): the fires
+/// against the balls, the impact bursts, the crushes, the bodies' impacts,
+/// the spread and the burning surface and the black hole's dousing, then
+/// the cascades' run, last of 01's contact systems and before the kit's
+/// resolve. Before the frame's particles, the burning surface's emitters
+/// and the impact sparks' colours; in the present phase the cold pulses;
 /// and the flames, pulses and ice shells drawn after the sprites.
 pub struct ElementsPlugin;
 
@@ -177,7 +179,6 @@ impl Plugin for ElementsPlugin {
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         ensure_phases(schedule);
         let fixed = [
-            Phase::Tick.join(system("douse_tick", systems::tick_doused)),
             Phase::Overlap.join(system(CONTACTS[0], systems::fire_contacts)),
             Phase::Overlap.join(system(CONTACTS[1], systems::ball_impacts)),
             Phase::Overlap.join(system(CONTACTS[2], systems::crush)),
@@ -204,7 +205,6 @@ impl Plugin for ElementsPlugin {
         for desc in [
             system("fire_particles", systems::fire_particles),
             system("impact_sparks", systems::impact_sparks),
-            system("doused_look", systems::doused_look),
         ] {
             let desc = desc.after(PHYSICS_SYNC).before(PARTICLE_COUNT_REFRESH);
             schedule.add(Stage::PostUpdate, desc);
@@ -298,6 +298,12 @@ pub fn thermal_shatter(world: &mut World, at: Vec2, radius: f32) {
 /// Puts the fire hazard `hazard` out for [`DOUSE_SECS`], with steam.
 pub fn douse_hazard(world: &mut World, hazard: Entity) {
     systems::douse_hazard(world, hazard);
+}
+
+/// Whether the fire hazard `hazard` is out.
+#[must_use]
+pub fn is_doused(world: &World, hazard: Entity) -> bool {
+    systems::is_doused(world, hazard)
 }
 
 /// A cold pulse at `at`, `size` across: a freeze's or a shatter's cue.

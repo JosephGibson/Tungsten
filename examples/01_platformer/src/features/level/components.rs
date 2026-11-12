@@ -5,7 +5,6 @@ use std::collections::BTreeSet;
 use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::{Entity, LayerKind, TilemapData};
-use tungsten::kit::ContactDamage;
 
 /// A level emitter of torch embers, spray or motes: the map's `emitters`
 /// objects spawn it from the `ex10_ambient_emitter` prefab, which names it
@@ -16,25 +15,17 @@ pub struct AmbientEmitter;
 /// A hazard the map places: spikes, a fireball on its oscillator, or a
 /// lava basin, whose touch the kit's contact damage deals. Its prefab names
 /// it `hazard`. Cold douses a fire and crusts a basin over for a while
-/// (`lava`). A basin holds the player on its surface and its touch burns and
-/// throws it up and out of the pool, in its invulnerability window too
-/// (`push_always`); an enemy falls through the surface and its touch burns
-/// and throws it the same way. Its child touches what is frozen with fire,
-/// which blows it apart.
+/// (`lava`), each a status (7.13a). A basin holds the player on its surface
+/// and its touch burns and throws it up and out of the pool, in its
+/// invulnerability window too (`push_always`); an enemy falls through the
+/// surface and its touch burns and throws it the same way. What is frozen
+/// in it is sent `heat`, which blows it apart (`lava::take`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct Hazard {
     pub fire: bool,
     /// A lava basin's surface.
     #[serde(default)]
     pub lava: bool,
-}
-
-/// A fire hazard cold put out, for `left` game seconds: its touch held
-/// aside until it relights, its glow and trail hidden meanwhile.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Doused {
-    pub left: f32,
-    pub touch: Option<ContactDamage>,
 }
 
 /// One of the level's areas: a zone across its columns, named after the

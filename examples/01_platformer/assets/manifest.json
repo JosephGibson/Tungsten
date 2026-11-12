@@ -920,6 +920,9 @@
       "corroded": {
         "path": "data/effects/corroded.json"
       },
+      "crust": {
+        "path": "data/effects/crust.json"
+      },
       "doused": {
         "path": "data/effects/doused.json"
       },
@@ -932,11 +935,17 @@
       "frozen": {
         "path": "data/effects/frozen.json"
       },
+      "hazard_doused": {
+        "path": "data/effects/hazard_doused.json"
+      },
       "ice": {
         "path": "data/effects/ice.json"
       },
       "kindled": {
         "path": "data/effects/kindled.json"
+      },
+      "lava_chill": {
+        "path": "data/effects/lava_chill.json"
       },
       "lit": {
         "path": "data/effects/lit.json"
@@ -1591,15 +1600,6 @@
     },
     "ex10_lava_2": {
       "path": "prefabs/ex10_lava_2.json"
-    },
-    "ex10_lava_frost_0": {
-      "path": "prefabs/ex10_lava_frost_0.json"
-    },
-    "ex10_lava_frost_1": {
-      "path": "prefabs/ex10_lava_frost_1.json"
-    },
-    "ex10_lava_frost_2": {
-      "path": "prefabs/ex10_lava_frost_2.json"
     },
     "ex10_missile_trail": {
       "path": "prefabs/ex10_missile_trail.json"

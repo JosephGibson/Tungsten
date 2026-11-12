@@ -1,10 +1,12 @@
-//! Lava's crust: the ice spray hardens a basin into stone for a while. A
-//! cold ray that stops on a basin's surface chills it; [`CRUST_COLD`]
-//! seconds of chill set the whole basin, its touch and its frost child's
-//! held aside, its surface solid for every body, with a hiss and steam
-//! along it. It melts after [`CRUST_SECS`], its cracks glowing over the
-//! last [`CRACK_SECS`]: its touches come back, so a player still on it is
-//! thrown out as by any touch, and what stood on it falls in.
+//! Lava's crust: the ice spray hardens a basin into stone for a while, its
+//! chill and its crust statuses (7.13a). A cold ray that stops on a
+//! basin's surface builds its [`LAVA_CHILL`]; [`CRUST_COLD`] seconds of
+//! chill reach its band, whose `harden` handler sets the whole basin, its
+//! touch switched off, its surface solid for every body, with a hiss and
+//! steam along it, under a [`CRUST`] of [`CRUST_SECS`]. Its end's `melt`
+//! handler melts it, its cracks having glowed over the last
+//! [`CRACK_SECS`]: its touch comes back, so a player still on it is thrown
+//! out as by any touch, and what stood on it falls in.
 //!
 //! Its look (01 (k)) reads only the basin's chill and its crust's seconds
 //! left, which a save keeps: one front comes down through the whole basin
@@ -14,16 +16,17 @@
 //!
 //! An uncrusted basin takes the bodies that fall into its burn ([`take`]):
 //! a keg or a goblin's bomb goes off, a frozen prop is left to the heat's
-//! thermal shock, and every other ball, block, scrap, crate, rock or stone
+//! thermal shock, a frozen target is sent `heat`, whose thermal shock
+//! blows it apart, and every other ball, block, scrap, crate, rock or stone
 //! goes in steam and embers, with one sizzle a basin a step.
 
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AssetRegistry, BodyKind, Collider, Entity, RigidBody, Shape, Sprite, Time, Transform,
+    AssetRegistry, BodyKind, Collider, DataRef, Entity, RigidBody, Shape, Sprite, Time, Transform,
     Visibility, World,
 };
-use tungsten::kit::{Children, ContactDamage, Health};
+use tungsten::kit::{ContactDamage, EffectRequest, Effects, Health, Reaction, end_effect};
 use tungsten::physics::{SpatialFilter, overlap};
 
 use super::components::{Glow, Hazard};
@@ -31,6 +34,7 @@ use super::{LAVA_LAYER, TILE};
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::cascade;
 use crate::features::elements::is_frozen;
+use crate::features::elements::systems::status_left;
 use crate::features::props::{
     self,
     components::{Bomb, Keg},
@@ -49,24 +53,19 @@ pub const CRACK_SECS: f32 = 1.5;
 /// the actors.
 const CRUST_Z: i32 = -9;
 
-/// A lava basin's chill and its crust, while set.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Lava {
-    /// Seconds of cold spray on it, draining when unsprayed.
-    pub cold: f32,
-    /// A cold ray stopped on it this step.
-    pub sprayed: bool,
-    pub crust: Option<Crust>,
-}
+/// A lava basin, whose chill and crust are its statuses: [`LAVA_CHILL`],
+/// seconds of cold spray on it draining as fast when unsprayed, and
+/// [`CRUST`], the seconds its crust has left.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Lava;
 
-/// A set crust: its seconds left and the touches it holds aside, the
-/// basin's and its frost child's.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Crust {
-    pub left: f32,
-    pub touch: Option<ContactDamage>,
-    pub frost: Option<ContactDamage>,
-}
+/// A basin's statuses (7.13a): its chill, an intensity the spray builds
+/// by its seconds against a decay of 1 a second, whose band at
+/// [`CRUST_COLD`] runs `harden`; and its crust, 1 s scaled by its request's
+/// seconds, so a load gives one back the seconds it saved, whose end runs
+/// `melt`.
+pub const LAVA_CHILL: &str = "lava_chill";
+pub const CRUST: &str = "crust";
 
 /// A basin's look: the freeze's front coming down, in px from the surface;
 /// the crust's frames (`0..9`: the set, its dulling, the hold, two a crack
@@ -102,7 +101,7 @@ pub struct CrustLook {
     since: f32,
 }
 
-/// At a run's start: each basin's chill and crust, none.
+/// At a run's start: each basin marked, with no chill and no crust.
 pub fn start(world: &mut World) {
     let basins: Vec<Entity> = world
         .query::<(Entity, &Hazard)>()
@@ -110,66 +109,86 @@ pub fn start(world: &mut World) {
         .map(|(entity, _)| entity)
         .collect();
     for basin in basins {
-        world.insert(basin, Lava::default());
+        world.insert(basin, Lava);
     }
 }
 
-/// A cold ray stopped on `basin`'s surface this step: its chill runs; a set
-/// crust holds as it is.
-pub fn chill(world: &mut World, basin: Entity) {
-    if let Some(lava) = world.get_mut::<Lava>(basin) {
-        lava.sprayed = true;
-    }
-}
-
-/// `lava_tick`, in the tick phase: each basin's chill runs while sprayed
-/// and drains else, and sets its crust at [`CRUST_COLD`]; each crust runs
-/// down and melts at 0.
-pub fn tick(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    if dt <= 0.0 {
+/// A cold ray stopped on `basin`'s surface this step of `dt` seconds: its
+/// chill builds by twice the step, so it nets the step over the decay
+/// every step takes off, the first step's too, which the next one's decay
+/// would run out; a set crust holds as it is.
+pub fn chill(world: &mut World, basin: Entity, dt: f32) {
+    if dt <= 0.0 || crusted(world, basin) || !world.has::<Lava>(basin) {
         return;
     }
-    let mut set = Vec::new();
-    let mut melted = Vec::new();
-    for (basin, lava) in world.query_mut::<(Entity, &mut Lava)>() {
-        let sprayed = std::mem::take(&mut lava.sprayed);
-        if let Some(crust) = &mut lava.crust {
-            crust.left -= dt;
-            if crust.left <= 1e-5 {
-                melted.push(basin);
-            }
-        } else if sprayed {
-            lava.cold += dt;
-            if lava.cold >= CRUST_COLD - 1e-4 {
-                set.push(basin);
-            }
-        } else {
-            lava.cold = (lava.cold - dt).max(0.0);
-        }
-    }
-    for basin in set {
-        harden(world, basin, CRUST_SECS);
-        if let Some((left, right, skin)) = surface(world, basin) {
-            let mut x = left + TILE * 0.5;
-            while x < right {
-                spawn_burst(world, "ex10_steam_burst", Vec2::new(x, skin));
-                x += TILE * 1.5;
-            }
-            audio::play(world, Sound::LavaSet, Vec2::new((left + right) * 0.5, skin));
-        }
-    }
-    for basin in melted {
-        melt(world, basin);
+    EffectRequest::new(basin, DataRef::by_id(LAVA_CHILL))
+        .with_amount(2.0 * dt)
+        .apply(world);
+}
+
+/// `basin`'s chill, seconds of cold spray: its [`LAVA_CHILL`]'s
+/// intensity; 0 without one.
+#[must_use]
+pub fn cold_of(world: &World, basin: Entity) -> f32 {
+    world
+        .get::<Effects>(basin)
+        .and_then(|effects| effects.intensity(LAVA_CHILL))
+        .unwrap_or(0.0)
+}
+
+/// Puts a saved chill of `cold` seconds back on `basin`.
+pub fn set_cold(world: &mut World, basin: Entity, cold: f32) {
+    if cold > 0.0 {
+        EffectRequest::new(basin, DataRef::by_id(LAVA_CHILL))
+            .with_amount(cold)
+            .apply(world);
     }
 }
 
-/// Sets `basin`'s crust for `left` seconds, silently: its touches held,
-/// its surface in the tiles' layer meeting every body, its glow out. A
-/// load's crust, and the spray's.
+/// The seconds `basin`'s crust has left; `None` while it has none.
+#[must_use]
+pub fn crust_left(world: &World, basin: Entity) -> Option<f32> {
+    status_left(world, basin, CRUST)
+}
+
+/// Whether `basin` has a crust set.
+#[must_use]
+pub fn crusted(world: &World, basin: Entity) -> bool {
+    crust_left(world, basin).is_some()
+}
+
+/// Chemistry's `harden` handler, a basin's chill reaching its band: its
+/// crust sets for [`CRUST_SECS`] ([`harden`]), with steam along its surface
+/// and its hiss.
+pub fn harden_handler(world: &mut World, reaction: &Reaction) {
+    let Some(basin) = reaction.receiver() else {
+        return;
+    };
+    if crusted(world, basin) {
+        return;
+    }
+    harden(world, basin, CRUST_SECS);
+    if let Some((left, right, skin)) = surface(world, basin) {
+        let mut x = left + TILE * 0.5;
+        while x < right {
+            spawn_burst(world, "ex10_steam_burst", Vec2::new(x, skin));
+            x += TILE * 1.5;
+        }
+        audio::play(world, Sound::LavaSet, Vec2::new((left + right) * 0.5, skin));
+    }
+}
+
+/// Sets `basin`'s crust for `left` seconds, silently: its chill gone, its
+/// touch switched off, its surface in the tiles' layer meeting every body,
+/// its glow out. A load's crust, and the spray's.
 pub fn harden(world: &mut World, basin: Entity, left: f32) {
-    let touch = world.remove_component::<ContactDamage>(basin);
-    let frost = frost_child(world, basin).and_then(|child| world.remove_component(child));
+    end_effect(world, basin, &DataRef::by_id(LAVA_CHILL));
+    EffectRequest::new(basin, DataRef::by_id(CRUST))
+        .with_scale(left)
+        .apply(world);
+    if let Some(touch) = world.get_mut::<ContactDamage>(basin) {
+        touch.set_on(false);
+    }
     if let Some(body) = world.get_mut::<RigidBody>(basin) {
         body.layers = 1;
         body.mask = RigidBody::ALL_LAYERS;
@@ -177,26 +196,16 @@ pub fn harden(world: &mut World, basin: Entity, left: f32) {
     if let Some(glow) = world.get_mut::<Glow>(basin) {
         glow.hidden = true;
     }
-    if let Some(lava) = world.get_mut::<Lava>(basin) {
-        lava.cold = 0.0;
-        lava.crust = Some(Crust { left, touch, frost });
-    }
 }
 
-/// Melts `basin`'s crust: its touches back, its surface the player's alone
-/// again, its glow lit.
-fn melt(world: &mut World, basin: Entity) {
-    let Some(crust) = world
-        .get_mut::<Lava>(basin)
-        .and_then(|lava| lava.crust.take())
-    else {
+/// Chemistry's `melt` handler, a basin's crust ending: its touch back on,
+/// its surface the player's alone again, its glow lit.
+pub fn melt_handler(world: &mut World, reaction: &Reaction) {
+    let Some(basin) = reaction.receiver() else {
         return;
     };
-    if let Some(touch) = crust.touch {
-        world.insert(basin, touch);
-    }
-    if let (Some(frost), Some(child)) = (crust.frost, frost_child(world, basin)) {
-        world.insert(child, frost);
+    if let Some(touch) = world.get_mut::<ContactDamage>(basin) {
+        touch.set_on(true);
     }
     if let Some(body) = world.get_mut::<RigidBody>(basin) {
         body.layers = LAVA_LAYER;
@@ -218,7 +227,7 @@ fn melt(world: &mut World, basin: Entity) {
 pub fn take(world: &mut World) {
     let basins: Vec<(Entity, Vec2, Vec2)> = world
         .query::<(Entity, &Lava, &Transform, &ContactDamage)>()
-        .filter(|(_, lava, ..)| lava.crust.is_none())
+        .filter(|(.., touch)| touch.is_on())
         .filter_map(|(basin, _, at, touch)| match touch.shape()?.shape() {
             Shape::Circle { .. } => None,
             other => Some((basin, at.position + touch.offset(), other.half_extents())),
@@ -242,6 +251,26 @@ pub fn take(world: &mut World) {
             .collect();
         bodies.sort_unstable_by_key(|&(id, body)| (id, body.id()));
         bodies.dedup();
+        // A frozen target in its burn: its fire's thermal shock, a fire
+        // nobody lit.
+        let mut frozen: Vec<(Option<SaveId>, Entity)> = met
+            .iter()
+            .flatten()
+            .copied()
+            .filter(|&target| {
+                world
+                    .get::<Health>(target)
+                    .is_some_and(|health| !health.is_dead())
+                    && is_frozen(world, target)
+            })
+            .map(|target| (world.get::<SaveId>(target).copied(), target))
+            .collect();
+        frozen.sort_unstable_by_key(|&(id, target)| (id, target.id()));
+        frozen.dedup();
+        for (_, target) in frozen {
+            let at = body_centre(world, target).unwrap_or(centre);
+            cascade::heat(world, target, at, None);
+        }
         let mut took = false;
         for (_, body) in bodies {
             let frozen = is_frozen(world, body);
@@ -274,11 +303,6 @@ pub fn take(world: &mut World) {
     }
 }
 
-/// `basin`'s frost child: the child touching what is frozen.
-fn frost_child(world: &World, basin: Entity) -> Option<Entity> {
-    world.get::<Children>(basin)?.iter().next()
-}
-
 /// `basin`'s surface: its left and right edges and its skin, in world
 /// pixels.
 fn surface(world: &World, basin: Entity) -> Option<(f32, f32, f32)> {
@@ -295,16 +319,11 @@ fn surface(world: &World, basin: Entity) -> Option<(f32, f32, f32)> {
     ))
 }
 
-/// The rows of lava under `basin`'s surface row, by its touch's box (the
-/// crust's held one while set): from just over the skin to the bed.
+/// The rows of lava under `basin`'s surface row, by its touch's box,
+/// switched off or not: from just over the skin to the bed.
 fn rows(world: &World, basin: Entity) -> usize {
-    let held = world
-        .get::<Lava>(basin)
-        .and_then(|lava| lava.crust.as_ref())
-        .and_then(|crust| crust.touch.clone());
-    let touch = held.or_else(|| world.get::<ContactDamage>(basin).cloned());
-    touch
-        .as_ref()
+    world
+        .get::<ContactDamage>(basin)
         .and_then(ContactDamage::shape)
         .map_or(1, |shape| {
             let height = 2.0 * shape.shape().half_extents().y;
@@ -370,9 +389,9 @@ pub fn look(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let basins: Vec<(Entity, f32, Option<f32>, bool)> = world
         .query::<(Entity, &Lava, Option<&CrustLook>)>()
-        .map(|(basin, lava, shown)| {
-            let left = lava.crust.as_ref().map(|crust| crust.left);
-            (basin, lava.cold, left, shown.is_some())
+        .map(|(basin, _, shown)| {
+            let left = crust_left(world, basin);
+            (basin, cold_of(world, basin), left, shown.is_some())
         })
         .collect();
     for (basin, cold, crust, shown) in basins {

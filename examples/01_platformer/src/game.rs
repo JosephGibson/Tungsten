@@ -11,7 +11,7 @@ use crate::features::dummy::DummyPlugin;
 use crate::features::elements::{CASCADE_BOUND, CASCADE_CAP, ElementsPlugin, cascade, systems};
 use crate::features::enemies::{self, EnemiesPlugin};
 use crate::features::gun::GunPlugin;
-use crate::features::level::{CursorPlugin, LevelPlugin};
+use crate::features::level::{CursorPlugin, LevelPlugin, lava};
 use crate::features::lightning::LightningPlugin;
 use crate::features::player::PlayerPlugin;
 use crate::features::props::{self, PropsPlugin};
@@ -56,7 +56,9 @@ pub const CHEMISTRY_DEPTH: u8 = u8::MAX;
 /// `steam`, the endings' blasts, douses and ends; `light`, a ball, a crate,
 /// a plank or a keg's fuse catching; `detonate`, a keg or a bomb blowing,
 /// and `fuse_out`, its fuse's end setting it off unless put out;
-/// `burn_out`, a crate or a plank burnt out falling in.
+/// `burn_out`, a crate or a plank burnt out falling in; `harden` and
+/// `melt`, a basin's crust setting and melting; `relight`, a fire hazard's
+/// douse ending.
 #[must_use]
 pub fn kit_plugins() -> tungsten::core::PluginSet {
     KitPlugins::set().with(
@@ -71,7 +73,10 @@ pub fn kit_plugins() -> tungsten::core::PluginSet {
             .with_handler("light", cascade::light_handler)
             .with_handler("detonate", cascade::detonate_handler)
             .with_handler("fuse_out", cascade::fuse_out_handler)
-            .with_handler("burn_out", props::burn_out_handler),
+            .with_handler("burn_out", props::burn_out_handler)
+            .with_handler("harden", lava::harden_handler)
+            .with_handler("melt", lava::melt_handler)
+            .with_handler("relight", systems::relight_handler),
     )
 }
 

@@ -214,10 +214,6 @@ impl Plugin for LevelPlugin {
         );
         schedule.add(
             Stage::FixedUpdate,
-            Phase::Tick.join(system("lava_tick", lava::tick)),
-        );
-        schedule.add(
-            Stage::FixedUpdate,
             Phase::Tick.join(system("geyser_tick", geyser::tick)),
         );
         schedule.add(

@@ -63,7 +63,6 @@ use crate::features::enemies::drops::{self, Orb, OrbKind};
 use crate::features::enemies::{self, crawler, snowball, troll, wisp};
 use crate::features::gun::components::{Bullet, Reload};
 use crate::features::gun::{self, BULLET_CENTRE, BulletShot};
-use crate::features::level::components::Doused;
 use crate::features::level::elevator::{Elevator, Stop};
 use crate::features::level::geyser::{self, Geyser, GeyserPhase};
 use crate::features::level::lava::{self, Lava};
@@ -1556,7 +1555,7 @@ pub struct PlatformSave {
 }
 
 /// A lava basin: the cold spray's seconds on it and its crust's seconds
-/// left, while set.
+/// left, while set, its chill's and its crust's statuses (7.13a).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BasinSave {
@@ -1595,7 +1594,7 @@ pub struct ElevatorSave {
 
 /// A fire hazard on its oscillator: where it is and its clock, since the
 /// oscillator adds its change to the point, and the seconds cold has put it
-/// out for yet.
+/// out for yet, its douse's status (7.13a).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HazardSave {
@@ -1913,11 +1912,11 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .collect();
     platforms.sort_by_key(|platform| platform.id);
     let mut basins: Vec<BasinSave> = world
-        .query::<(&SaveId, &Lava)>()
-        .map(|(id, lava)| BasinSave {
+        .query::<(Entity, &SaveId, &Lava)>()
+        .map(|(basin, id, _)| BasinSave {
             id: id.0,
-            cold: lava.cold,
-            crust: lava.crust.as_ref().map(|crust| crust.left),
+            cold: lava::cold_of(world, basin),
+            crust: lava::crust_left(world, basin),
         })
         .collect();
     basins.sort_by_key(|basin| basin.id);
@@ -1947,12 +1946,12 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .collect();
     elevators.sort_by_key(|lift| lift.id);
     let mut hazards: Vec<HazardSave> = world
-        .query::<(&SaveId, &Position, &Oscillator, Option<&Doused>)>()
-        .map(|(id, at, oscillator, doused)| HazardSave {
+        .query::<(Entity, &SaveId, &Position, &Oscillator)>()
+        .map(|(hazard, id, at, oscillator)| HazardSave {
             id: id.0,
             position: at.0.to_array(),
             oscillator: oscillator.clone(),
-            doused: doused.map(|doused| doused.left),
+            doused: crate::features::elements::systems::doused_left(world, hazard),
         })
         .collect();
     hazards.sort_by_key(|hazard| hazard.id);
@@ -2421,9 +2420,7 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             if let Some(left) = basin.crust {
                 lava::harden(world, entity, left);
             }
-            if let Some(lava) = world.get_mut::<Lava>(entity) {
-                lava.cold = basin.cold;
-            }
+            lava::set_cold(world, entity, basin.cold);
         }
     }
     for saved in &save.geysers {
@@ -2455,10 +2452,7 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             place(world, entity, hazard.position);
             world.insert(entity, hazard.oscillator.clone());
             if let Some(left) = hazard.doused {
-                crate::features::elements::douse_hazard(world, entity);
-                if let Some(doused) = world.get_mut::<Doused>(entity) {
-                    doused.left = left;
-                }
+                crate::features::elements::systems::douse_for(world, entity, left);
             }
         }
     }

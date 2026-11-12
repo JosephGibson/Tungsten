@@ -1,0 +1,26 @@
+{
+  "duration": 1,
+  "grant": [
+    "status.doused"
+  ],
+  "scale": {
+    "curve": [
+      [
+        0,
+        0
+      ],
+      [
+        16,
+        16
+      ]
+    ],
+    "into": [
+      "duration"
+    ]
+  },
+  "on_end": [
+    {
+      "handler": "relight"
+    }
+  ]
+}

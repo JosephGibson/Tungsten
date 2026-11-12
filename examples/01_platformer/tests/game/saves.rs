@@ -3324,7 +3324,7 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     }
     assert_eq!(elevator(&harness).1.stop, Stop::Rising, "halfway up");
     let shelf = basin(&harness, schema_23_id(save::S10_SHELF));
-    harness.world_mut().get_mut::<Lava>(shelf).unwrap().cold = 0.2;
+    lava::set_cold(harness.world_mut(), shelf, 0.2);
     let saved = capture(&harness);
     let crust = |id: u64| saved.basins.iter().find(|b| b.id == id).unwrap();
     assert!(
@@ -3347,7 +3347,9 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     let lake = basin(&fresh, schema_23_id(save::S10_LAKE));
     let world = fresh.world();
     assert!(
-        world.get::<tungsten::kit::ContactDamage>(lake).is_none(),
+        world
+            .get::<tungsten::kit::ContactDamage>(lake)
+            .is_some_and(|touch| !touch.is_on()),
         "held"
     );
     assert_eq!(
@@ -3380,9 +3382,11 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     assert_eq!(lift.stop, Stop::Top, "carried to the top");
     // The crust melted on the way: its touch is back.
     let world = fresh.world();
-    assert!(world.get::<Lava>(lake).unwrap().crust.is_none(), "melted");
+    assert!(!lava::crusted(world, lake), "melted");
     assert!(
-        world.get::<tungsten::kit::ContactDamage>(lake).is_some(),
+        world
+            .get::<tungsten::kit::ContactDamage>(lake)
+            .is_some_and(tungsten::kit::ContactDamage::is_on),
         "its touch back"
     );
 }

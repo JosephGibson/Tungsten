@@ -14,7 +14,7 @@ use example_01_platformer::features::enemies::{
     self,
     components::{Enemy, EnemyKind},
 };
-use example_01_platformer::features::level::components::{Doused, Hazard};
+use example_01_platformer::features::level::components::Hazard;
 use example_01_platformer::features::props::{self, components::PropKind};
 use example_01_platformer::features::toys;
 use example_01_platformer::game::GAMEPLAY;
@@ -38,7 +38,6 @@ use example_01_platformer::shared::{BURST_CAP, Burst, despawn_tree};
 use example_01_platformer::features::level::geyser::{
     self, Geyser, GeyserPhase, VENT_CENTRE, VENT_HEIGHT,
 };
-use example_01_platformer::features::level::lava::Lava;
 use example_01_platformer::features::spells::components::Spell;
 use tungsten::core::RigidBody;
 use tungsten::kit::ImmunePart;
@@ -330,15 +329,17 @@ fn lava_bites_with_fire_and_the_fires_douse_leaves_it_hot() {
     // The douse puts a fire out; lava stays hot (the spray crusts it).
     example_01_platformer::features::elements::douse_hazard(harness.world_mut(), basin);
     let world = harness.world();
-    assert!(!world.has::<Doused>(basin) && world.has::<ContactDamage>(basin));
+    assert!(
+        !example_01_platformer::features::elements::is_doused(world, basin)
+            && world
+                .get::<ContactDamage>(basin)
+                .is_some_and(ContactDamage::is_on)
+    );
 }
 
 /// Whether `basin` has a crust set.
 fn crusted(harness: &UiHarness, basin: Entity) -> bool {
-    harness
-        .world()
-        .get::<Lava>(basin)
-        .is_some_and(|lava| lava.crust.is_some())
+    example_01_platformer::features::level::lava::crusted(harness.world(), basin)
 }
 
 #[test]
@@ -377,7 +378,12 @@ fn the_ice_spray_crusts_a_basin_that_holds_the_player_and_melts_to_throw_them() 
     spray(&mut harness, 33);
     assert!(crusted(&harness, pool), "0.5 s sets it");
     let world = harness.world();
-    assert!(!world.has::<ContactDamage>(pool), "its touch held aside");
+    assert!(
+        world
+            .get::<ContactDamage>(pool)
+            .is_some_and(|touch| !touch.is_on()),
+        "its touch held aside"
+    );
     assert_eq!(
         world.get::<RigidBody>(pool).unwrap().layers,
         1,

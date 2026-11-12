@@ -40,7 +40,7 @@ use crate::features::elements::{self, FIRE_CENTRE, FIRE_HALF, STEAM_REACH, freez
 use crate::features::elements::{BALL_BURN, COAT, is_burning, is_frozen};
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
-use crate::features::level::components::{Doused, Hazard};
+use crate::features::level::components::Hazard;
 use crate::features::level::geyser::{self, Geyser};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
@@ -1083,7 +1083,7 @@ pub fn hold_spray(
 fn fires_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Entity> {
     world
         .query::<(Entity, &Hazard, &Position)>()
-        .filter(|(entity, hazard, _)| hazard.fire && !world.has::<Doused>(*entity))
+        .filter(|(entity, hazard, _)| hazard.fire && !elements::is_doused(world, *entity))
         .filter(|(_, _, at)| {
             let shape = Shape::Aabb {
                 half_extents: FIRE_HALF,
@@ -1178,7 +1178,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
         elements::douse_hazard(world, fire);
     }
     for basin in basins {
-        crate::features::level::lava::chill(world, basin);
+        crate::features::level::lava::chill(world, basin, dt);
     }
     for geyser in geysers {
         geyser::chill(world, geyser);

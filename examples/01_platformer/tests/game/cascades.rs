@@ -11,7 +11,7 @@ use example_01_platformer::features::elements::cascade::{self, Cascades};
 use example_01_platformer::features::elements::{
     self, CASCADE_BOUND, CASCADE_CAP, COLD, FROZEN_SECS, burn_left, is_frozen,
 };
-use example_01_platformer::features::level::components::{Doused, Hazard};
+use example_01_platformer::features::level::components::Hazard;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::IronScrap;
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
@@ -315,15 +315,26 @@ fn cold_douses_a_fire_hazard_for_a_while() {
     harness.harness_mut().press_action("cast");
     harness.step(4);
     harness.harness_mut().release_action("cast");
-    assert!(harness.world().has::<Doused>(fire), "the cold put it out");
     assert!(
-        !harness.world().has::<ContactDamage>(fire),
+        elements::is_doused(harness.world(), fire),
+        "the cold put it out"
+    );
+    assert!(
+        harness
+            .world()
+            .get::<ContactDamage>(fire)
+            .is_some_and(|touch| !touch.is_on()),
         "its touch held aside"
     );
     assert!(bursts(&harness, "ex10_steam_burst") >= 1, "with steam");
     harness.step(60 * 4 + 10);
-    assert!(!harness.world().has::<Doused>(fire), "it relit");
-    assert!(harness.world().has::<ContactDamage>(fire));
+    assert!(!elements::is_doused(harness.world(), fire), "it relit");
+    assert!(
+        harness
+            .world()
+            .get::<ContactDamage>(fire)
+            .is_some_and(ContactDamage::is_on)
+    );
 }
 
 /// The physical parts the last frame landed on `target`.

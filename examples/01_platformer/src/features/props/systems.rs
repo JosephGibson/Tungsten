@@ -161,7 +161,7 @@ pub fn heat(world: &mut World) {
     let player = world.get_resource::<Run>().map(|run| run.player);
     let basins: Vec<(Vec2, Vec2)> = world
         .query::<(&Lava, &Transform, &ContactDamage)>()
-        .filter(|(lava, ..)| lava.crust.is_none())
+        .filter(|(.., touch)| touch.is_on())
         .filter_map(|(_, at, touch)| match touch.shape()?.shape() {
             Shape::Circle { .. } => None,
             other => Some((at.position + touch.offset(), other.half_extents())),
