@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 
 use serde::{Deserialize, Serialize};
-use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
+use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions, Saved};
 use tungsten_core::{DataRef, Entity, World};
 
 use crate::chemistry::stimuli::Emission;
@@ -163,6 +163,11 @@ pub(crate) struct Entry {
     pub(crate) credit: Option<Entity>,
     /// The run it was first queued for.
     pub(crate) age: u64,
+    /// A loaded entry whose receiver the load's references are to name: one
+    /// they leave the placeholder is dropped at the load's rebuild, its
+    /// receiver gone from the World. It sits in the entry's padding, so the
+    /// queue's size holds.
+    pub(crate) awaiting: bool,
 }
 
 /// One stimulus to queue, before its merge.
@@ -400,6 +405,7 @@ impl Chemistry {
             depth: stimulus.depth,
             credit: stimulus.credit,
             age,
+            awaiting: false,
         };
         let slot = self.insert(settings.bound, entry)?;
         self.index.insert(key, slot);
@@ -436,10 +442,24 @@ impl Chemistry {
         }
     }
 
-    /// The entries in the save's order, for a test's comparison.
+    /// The entries in a stable order, for a test's comparison: by age,
+    /// depth, receiver (entities by index, then cells) and name.
     #[cfg(test)]
     pub(crate) fn entries(&self) -> Vec<Entry> {
-        self.sorted().into_iter().cloned().collect()
+        let receiver = |entry: &Entry| match &entry.receiver {
+            Receiver::Entity(entity) => (0, entity.id(), None),
+            Receiver::Cell(cell) => (1, 0, Some(cell.clone())),
+        };
+        let mut entries: Vec<&Entry> = self.slots.iter().flatten().collect();
+        entries.sort_by(|a, b| {
+            (a.age, a.depth, receiver(a), self.name(a.stimulus)).cmp(&(
+                b.age,
+                b.depth,
+                receiver(b),
+                self.name(b.stimulus),
+            ))
+        });
+        entries.into_iter().cloned().collect()
     }
 
     /// Whether `receiver` is an entity the kit's despawn holds.
@@ -485,6 +505,7 @@ impl Chemistry {
                 depth,
                 credit,
                 age,
+                awaiting: false,
             },
         );
     }
@@ -612,23 +633,50 @@ impl Chemistry {
         self.ran += count as u64;
     }
 
-    /// The entries in a stable order: by age, depth, receiver (entities by
-    /// index, then cells) and name, for the save.
-    fn sorted(&self) -> Vec<&Entry> {
-        let receiver = |entry: &Entry| match &entry.receiver {
-            Receiver::Entity(entity) => (0, entity.id(), None),
-            Receiver::Cell(cell) => (1, 0, Some(cell.clone())),
-        };
-        let mut entries: Vec<&Entry> = self.slots.iter().flatten().collect();
-        entries.sort_by(|a, b| {
-            (a.age, a.depth, receiver(a), self.name(a.stimulus)).cmp(&(
-                b.age,
-                b.depth,
-                receiver(b),
-                self.name(b.stimulus),
-            ))
-        });
-        entries
+    /// The queue as a save writes it: its entries in the run's order with
+    /// each receiver keyed by its save ID, not its index (age, depth, a
+    /// named receiver by save ID, then an unnamed one, then cells, then the
+    /// stimulus's name; ties in slot order), and each entity receiver
+    /// without a save ID, despawned or never saved, as the placeholder, a
+    /// dead entry. So a World whose entities took other indices writes the
+    /// same queue, and a loaded one, whose dead entries share the
+    /// placeholder in their saved order, writes what it loaded.
+    fn saved_copy(&self, world: &World) -> Chemistry {
+        let mut keyed: Vec<(TakeKey, Entry)> = self
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, entry)| {
+                let mut entry = entry.clone()?;
+                let receiver = match &entry.receiver {
+                    Receiver::Entity(entity) => {
+                        if let Some(saved) = world.get::<Saved>(*entity) {
+                            ReceiverKey::Entity((false, saved.id().0))
+                        } else {
+                            entry.receiver = Receiver::Entity(Entity::PLACEHOLDER);
+                            ReceiverKey::Entity((true, 0))
+                        }
+                    }
+                    Receiver::Cell(cell) => ReceiverKey::Cell(cell.clone()),
+                };
+                let rank = self.ranks[entry.stimulus as usize];
+                Some(((entry.age, entry.depth, receiver, rank, slot), entry))
+            })
+            .collect();
+        keyed.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        Chemistry {
+            slots: keyed.into_iter().map(|(_, entry)| Some(entry)).collect(),
+            names: self.names.clone(),
+            ranks: self.ranks.clone(),
+            pending: self.pending,
+            dropped: self.dropped,
+            cut: self.cut,
+            ran: self.ran,
+            run: self.run,
+            checked: self.checked,
+            light_left: self.light_left,
+            ..Chemistry::default()
+        }
     }
 }
 
@@ -658,6 +706,11 @@ struct EntrySave {
     depth: u8,
     #[serde(default)]
     age: u64,
+    /// Its receiver was despawned or never saved at the capture: the load
+    /// keeps it dead, so a run takes it under the cap and skips it, as the
+    /// uninterrupted run does.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    dead: bool,
 }
 
 fn one() -> f32 {
@@ -678,11 +731,14 @@ struct ChemistrySave {
 }
 
 impl From<&Chemistry> for ChemistrySave {
+    /// The entries in slot order: a capture saves the queue's
+    /// [`saved_copy`](Chemistry::saved_copy) ([`queue_saved`]).
     fn from(chemistry: &Chemistry) -> Self {
         Self {
             entries: chemistry
-                .sorted()
-                .into_iter()
+                .slots
+                .iter()
+                .flatten()
                 .map(|entry| {
                     let (stimulus, status, band) = match &entry.status {
                         None => (Some(chemistry.name(entry.stimulus).to_owned()), None, None),
@@ -703,6 +759,7 @@ impl From<&Chemistry> for ChemistrySave {
                         dot_base: entry.dot_base,
                         depth: entry.depth,
                         age: entry.age,
+                        dead: entry.receiver == Receiver::Entity(Entity::PLACEHOLDER),
                     }
                 })
                 .collect(),
@@ -717,7 +774,8 @@ impl From<&Chemistry> for ChemistrySave {
 
 impl From<ChemistrySave> for Chemistry {
     /// The entries in their saved order under placeholder receivers, which
-    /// the reference pass names or drops ([`queue_saved`]).
+    /// the reference pass names or drops, a dead one's kept
+    /// ([`queue_saved`]).
     fn from(saved: ChemistrySave) -> Self {
         let mut chemistry = Chemistry {
             run: saved.run,
@@ -752,10 +810,13 @@ impl From<ChemistrySave> for Chemistry {
                 }
             };
             let stimulus = chemistry.intern(&label);
-            let receiver = match &entry.cell {
-                Some(cell) => Receiver::Cell(cell.cell()),
-                None => Receiver::Entity(Entity::PLACEHOLDER),
-            };
+            let receiver = entry
+                .cell
+                .as_ref()
+                .map_or(Receiver::Entity(Entity::PLACEHOLDER), |cell| {
+                    Receiver::Cell(cell.cell())
+                });
+            let awaiting = entry.cell.is_none() && !entry.dead;
             chemistry.slots.push(Some(Entry {
                 receiver,
                 stimulus,
@@ -767,28 +828,40 @@ impl From<ChemistrySave> for Chemistry {
                 depth: entry.depth,
                 credit: None,
                 age: entry.age,
+                awaiting,
             }));
         }
+        // Whole without a reference pass too: a restore runs one only for a
+        // save that wrote a reference.
+        chemistry.rebuild(false);
         chemistry
     }
 }
 
 impl Chemistry {
-    /// After a load's reference pass: drops each entry whose receiver it
-    /// did not name, then builds the index, the counts and the free slots.
-    fn rebuild(&mut self) {
+    /// Builds the index, the counts, the free slots and `pending` from the
+    /// slots, a dead entry (its receiver the placeholder) out of the index
+    /// and the counts but pending; after a load's reference pass
+    /// (`resolved`), first drops each entry whose receiver it was to name
+    /// and did not.
+    fn rebuild(&mut self, resolved: bool) {
         self.index.clear();
         self.counts.clear();
         self.free.clear();
         self.pending = 0;
         for slot in 0..self.slots.len() {
-            let Some(entry) = &self.slots[slot] else {
+            let Some(entry) = &mut self.slots[slot] else {
                 self.free.push(slot);
                 continue;
             };
-            if entry.receiver == Receiver::Entity(Entity::PLACEHOLDER) {
+            let unnamed = entry.receiver == Receiver::Entity(Entity::PLACEHOLDER);
+            if resolved && std::mem::take(&mut entry.awaiting) && unnamed {
                 self.slots[slot] = None;
                 self.free.push(slot);
+                continue;
+            }
+            if unnamed {
+                self.pending += 1;
                 continue;
             }
             if entry.status.is_none() {
@@ -803,16 +876,20 @@ impl Chemistry {
     }
 }
 
-/// Each saved entry's receiver and credit, by key, in the save's order.
+/// Each saved entry's receiver, but a dead one's, and credit, by key, in
+/// slot order: a capture's [`saved_copy`](Chemistry::saved_copy) holds the
+/// save's.
 fn queue_refs(chemistry: &Chemistry) -> impl Iterator<Item = (String, Entity)> + '_ {
     chemistry
-        .sorted()
-        .into_iter()
+        .slots
+        .iter()
+        .flatten()
         .enumerate()
         .flat_map(|(index, entry)| {
             entry
                 .receiver
                 .entity()
+                .filter(|&receiver| receiver != Entity::PLACEHOLDER)
                 .map(|receiver| (format!("entries.{index}.receiver"), receiver))
                 .into_iter()
                 .chain(
@@ -824,29 +901,33 @@ fn queue_refs(chemistry: &Chemistry) -> impl Iterator<Item = (String, Entity)> +
 }
 
 /// The queue, saved so a reaction waiting behind the cap runs once after a
-/// load: each receiver and credit by save ID; an entry whose receiver is
-/// gone is dropped at the load, and a gone credit credits no one.
+/// load: its [`saved_copy`](Chemistry::saved_copy), each receiver and
+/// credit by save ID; an entry whose receiver was despawned or never saved
+/// at the capture loads dead, one whose receiver the loaded World lacks is
+/// dropped, and a gone credit credits no one.
 pub(crate) fn queue_saved() -> SaveOptions<Chemistry> {
-    SaveOptions::<Chemistry>::form::<ChemistrySave>().refs(RefCodec {
-        save: |chemistry, out: &mut RefWriter<'_>| {
-            for (key, entity) in queue_refs(chemistry) {
-                out.put(&key, entity);
-            }
-        },
-        load: |chemistry, refs: &RefReader<'_>| {
-            for (index, slot) in chemistry.slots.iter_mut().enumerate() {
-                let Some(entry) = slot else {
-                    continue;
-                };
-                if matches!(entry.receiver, Receiver::Entity(_))
-                    && let Some(receiver) = refs.first(&format!("entries.{index}.receiver"))
-                {
-                    entry.receiver = Receiver::Entity(receiver);
+    SaveOptions::<Chemistry>::form::<ChemistrySave>()
+        .capture_as(|world, _, chemistry| Some(chemistry.saved_copy(world)))
+        .refs(RefCodec {
+            save: |chemistry, out: &mut RefWriter<'_>| {
+                for (key, entity) in queue_refs(chemistry) {
+                    out.put(&key, entity);
                 }
-                entry.credit = refs.first(&format!("entries.{index}.credit"));
-            }
-            chemistry.rebuild();
-        },
-        keys: |chemistry| queue_refs(chemistry).map(|(key, _)| key).collect(),
-    })
+            },
+            load: |chemistry, refs: &RefReader<'_>| {
+                for (index, slot) in chemistry.slots.iter_mut().enumerate() {
+                    let Some(entry) = slot else {
+                        continue;
+                    };
+                    if matches!(entry.receiver, Receiver::Entity(_))
+                        && let Some(receiver) = refs.first(&format!("entries.{index}.receiver"))
+                    {
+                        entry.receiver = Receiver::Entity(receiver);
+                    }
+                    entry.credit = refs.first(&format!("entries.{index}.credit"));
+                }
+                chemistry.rebuild(true);
+            },
+            keys: |chemistry| queue_refs(chemistry).map(|(key, _)| key).collect(),
+        })
 }

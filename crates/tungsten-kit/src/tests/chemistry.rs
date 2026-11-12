@@ -2799,3 +2799,183 @@ fn a_build_crossing_two_bands_in_one_run_enters_both() {
         ["entered:ladder#enter.0", "entered:ladder#enter.1"]
     );
 }
+
+/// The queue's pending entries and the entries the runs took.
+fn queue_counts(world: &World) -> (usize, u64) {
+    let chemistry = chemistry(world);
+    (chemistry.pending(), chemistry.ran())
+}
+
+/// The rule that sets a receiver burning, at a cap of 1, with `names`
+/// named in order.
+fn burning_rig<const N: usize>(names: [&str; N]) -> (World, Schedule, [Entity; N]) {
+    let wood = json!({ "stimulus": "elemental.fire", "outputs": [{ "build": { "status": "burning", "amount": 1 } }] });
+    let (mut world, schedule) = rig_with(&ChemistryPlugin::new().with_cap(1));
+    rule(&mut world, "wood", wood);
+    let named = names.map(|name| {
+        let entity = receiver(&mut world, &[]);
+        tungsten_core::save::name(&mut world, entity, None, name).unwrap();
+        entity
+    });
+    (world, schedule, named)
+}
+
+/// A queue that holds an entry on a receiver despawned before the capture,
+/// ahead of a younger one on `live`: two hits at depth 0 and one at depth 1
+/// on `doomed`, unnamed, a run each; then a hit on `live`, whose run takes
+/// the second of depth 0; then `doomed` despawned.
+fn dead_ahead() -> (World, Schedule, Entity) {
+    let (mut world, mut schedule, [a, b, live]) = burning_rig(["a", "b", "live"]);
+    let doomed = receiver(&mut world, &[]);
+    for (target, depth) in [(a, 0), (b, 0), (doomed, 1)] {
+        DamageRequest::from_parts(
+            target,
+            [DamagePart::new(1.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .with_depth(depth)
+        .apply(&mut world);
+    }
+    step(&mut world, &mut schedule);
+    hit(&mut world, live, "elemental.fire", 1.0);
+    step(&mut world, &mut schedule);
+    assert_eq!(queue_counts(&world), (2, 2), "doomed's, then live's");
+    world.despawn(doomed);
+    (world, schedule, live)
+}
+
+#[test]
+fn a_dead_receivers_entry_keeps_its_place_under_the_cap_through_a_load() {
+    let (mut a, mut schedule_a, live_a) = dead_ahead();
+    let saved = capture_world(&a).unwrap();
+    let text = serde_json::to_value(&saved).unwrap();
+    let entries = &text["resources"]["chemistry_queue"]["entries"];
+    assert_eq!(entries[0]["dead"], json!(true), "{entries}");
+    assert_eq!(entries[1].get("dead"), None, "{entries}");
+
+    let (mut b, mut schedule_b, [_, _, live_b]) = burning_rig(["a", "b", "live"]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert_eq!(queue_counts(&b), queue_counts(&a), "the dead entry kept");
+    assert_eq!(
+        serde_json::to_value(capture_world(&b).unwrap()).unwrap(),
+        text,
+        "a load saves what it loaded"
+    );
+    for run in 0..3 {
+        step(&mut a, &mut schedule_a);
+        step(&mut b, &mut schedule_b);
+        assert_eq!(queue_counts(&b), queue_counts(&a), "run {run}");
+        assert_eq!(
+            has(&b, live_b, "burning"),
+            has(&a, live_a, "burning"),
+            "run {run}"
+        );
+    }
+    assert!(has(&b, live_b, "burning"), "after the dead entry's run");
+}
+
+/// Kept receivers: `x1` takes the first ID at a high index, `x2` the next
+/// at the index `x0` freed; each takes a hit behind one at depth 0.
+fn crossed(ids: Option<[tungsten_core::save::SaveId; 2]>) -> (World, [Entity; 2]) {
+    let (mut world, mut schedule, [anchor]) = burning_rig(["anchor"]);
+    let kept = |world: &mut World, id: Option<tungsten_core::save::SaveId>| {
+        let id = id.unwrap_or_else(|| tungsten_core::save::take_id(world).unwrap());
+        let entity = receiver(world, &[]);
+        world.insert(entity, tungsten_core::save::Saved::kept(id));
+        entity
+    };
+    let receivers = match ids {
+        None => {
+            let x0 = world.spawn();
+            let x1 = kept(&mut world, None);
+            world.despawn(x0);
+            let x2 = kept(&mut world, None);
+            assert!(x2.id() < x1.id(), "the later ID at the lower index");
+            [x1, x2]
+        }
+        Some([id1, id2]) => {
+            let x1 = kept(&mut world, Some(id1));
+            let x2 = kept(&mut world, Some(id2));
+            [x1, x2]
+        }
+    };
+    if ids.is_none() {
+        hit(&mut world, anchor, "elemental.fire", 1.0);
+        for (&target, amount) in receivers.iter().zip([1.0, 2.0]) {
+            DamageRequest::from_parts(
+                target,
+                [DamagePart::new(amount).with_tags(Tags::new(["elemental.fire"]))],
+            )
+            .with_depth(1)
+            .apply(&mut world);
+        }
+        step(&mut world, &mut schedule);
+        assert_eq!(queue_counts(&world), (2, 1));
+    }
+    (world, receivers)
+}
+
+#[test]
+fn a_saved_queue_orders_its_receivers_by_save_id_not_index() {
+    let (a, [x1, x2]) = crossed(None);
+    let id = |entity| a.get::<tungsten_core::save::Saved>(entity).unwrap().id();
+    let saved = capture_world(&a).unwrap();
+    let queue = |save: &tungsten_core::save::WorldSave| {
+        serde_json::to_value(save).unwrap()["resources"]["chemistry_queue"].clone()
+    };
+    let refs = |save: &tungsten_core::save::WorldSave| {
+        serde_json::to_value(save).unwrap()["resource_refs"]["chemistry_queue"].clone()
+    };
+    assert_eq!(
+        queue(&saved)["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["raw"].as_f64().unwrap())
+            .collect::<Vec<_>>(),
+        [1.0, 2.0],
+        "x1's first, by its ID"
+    );
+    assert_eq!(
+        refs(&saved),
+        json!({ "entries.0.receiver": [id(x1).0], "entries.1.receiver": [id(x2).0] })
+    );
+
+    let (mut b, _) = crossed(Some([id(x1), id(x2)]));
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    let again = capture_world(&b).unwrap();
+    assert_eq!(queue(&again), queue(&saved));
+    assert_eq!(refs(&again), refs(&saved));
+}
+
+#[test]
+fn a_loaded_queue_without_references_counts_its_dead_entries() {
+    // One entry, on a receiver despawned before the capture and with no
+    // credit, so the save writes no reference and its load no reference
+    // pass.
+    let (mut a, mut schedule_a, [first]) = burning_rig(["first"]);
+    let doomed = receiver(&mut a, &[]);
+    for (target, depth) in [(first, 0), (doomed, 1)] {
+        DamageRequest::from_parts(
+            target,
+            [DamagePart::new(1.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .with_depth(depth)
+        .apply(&mut a);
+    }
+    step(&mut a, &mut schedule_a);
+    a.despawn(doomed);
+    let saved = capture_world(&a).unwrap();
+    assert!(
+        serde_json::to_value(&saved).unwrap()["resource_refs"]
+            .get("chemistry_queue")
+            .is_none()
+    );
+    let (mut b, mut schedule_b, _) = burning_rig(["first"]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert_eq!(queue_counts(&b), queue_counts(&a));
+    assert_eq!(queue_counts(&b), (1, 1));
+    step(&mut a, &mut schedule_a);
+    step(&mut b, &mut schedule_b);
+    assert_eq!(queue_counts(&b), (0, 2), "taken, skipped and counted");
+    assert_eq!(queue_counts(&b), queue_counts(&a));
+}
