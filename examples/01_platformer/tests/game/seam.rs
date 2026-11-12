@@ -48,9 +48,11 @@ fn capture_is_none_with_no_run_and_a_save_in_one() {
         "the title has no run"
     );
     start(&mut harness);
+    let player = player_entity(&harness);
+    let health = harness.world().get::<Health>(player).expect("its health");
+    assert_eq!(health.current(), MAX_HEALTH);
     let saved = save::capture(harness.world()).expect("a live run saves");
     assert_eq!(saved.meta.difficulty, Difficulty::Normal);
-    assert_eq!(saved.player.health.current(), MAX_HEALTH);
 }
 
 #[test]

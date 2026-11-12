@@ -2323,9 +2323,10 @@ fn a_throw_whose_troll_dies_in_flight_keeps_its_damage_through_a_load() {
     // The troll dead in flight, a save, a load: the same hit, from nobody.
     let (killed, player, _) = throw(true);
     let player_id = id_of(&killed, player);
+    let throws = &killed.world().resource::<Throws>().0;
+    assert_eq!(throws.len(), 1, "the throw in flight");
+    assert_eq!(throws[0].factor, 1.5, "Hard's damage factor, kept");
     let saved = save::capture(killed.world()).unwrap();
-    assert_eq!(saved.throws.len(), 1, "the throw in flight");
-    assert_eq!(saved.throws[0].factor, 1.5, "Hard's damage factor, kept");
     let mut fresh = reload(saved);
     let player = by_id(&fresh, player_id).expect("the player");
     let after = hits_over(&mut fresh, player, 150);
@@ -2358,9 +2359,8 @@ fn a_save_while_the_troll_holds_iron_loads_with_the_hold() {
     assert!(troll::pick_up(harness.world_mut(), troll, block));
     harness.step(3);
     let (troll_id, block_id) = (id_of(&harness, troll), id_of(&harness, block));
+    assert_eq!(troll::held(harness.world(), troll), Some(block));
     let saved = save::capture(harness.world()).unwrap();
-    let held = saved.enemies.iter().find(|enemy| enemy.id == troll_id);
-    assert_eq!(held.and_then(|enemy| enemy.held), Some(block_id));
     let mut fresh = reload(saved);
     let (troll, block) = (
         by_id(&fresh, troll_id).unwrap(),
@@ -2937,10 +2937,10 @@ fn a_killed_map_enemy_stays_dead_through_a_load() {
     land(&mut harness, dead, Kind::Physical, 1000.0);
     harness.step(3);
     assert!(!harness.world().is_alive(dead));
+    let live = enemies::live(harness.world());
+    assert!(live.iter().all(|&(id, _)| id != dead_id), "gone");
+    assert_eq!(live.len() as u64, save::MAP_ENEMIES - 1);
     let saved = save::capture(harness.world()).unwrap();
-    assert!(saved.gone.contains(&dead_id), "gone: {:?}", saved.gone);
-    assert!(saved.enemies.iter().all(|enemy| enemy.id != dead_id));
-    assert_eq!(saved.enemies.len() as u64, save::MAP_ENEMIES - 1);
     let mut fresh = harness_loaded(saved);
     fresh.step(2);
     let live: Vec<u64> = fresh
@@ -3211,8 +3211,12 @@ fn an_enemy_thrown_out_of_the_level_is_gone_and_stays_gone_through_a_load() {
     harness.world_mut().get_mut::<Position>(enemy).unwrap().0 = out;
     harness.step(2);
     assert!(!harness.world().is_alive(enemy), "the level's edge took it");
+    let live = enemies::live(harness.world());
+    assert!(
+        live.iter().all(|&(live, _)| live != id),
+        "gone from the run"
+    );
     let saved = save::capture(harness.world()).expect("a live run captures");
-    assert!(saved.gone.contains(&id), "gone in the save");
     let text = serde_json::to_value(&saved).expect("a save serializes");
     let loaded: save::SaveGame = serde_json::from_value(text).expect("it loads");
     let fresh = reload(loaded);
@@ -4406,12 +4410,13 @@ fn a_summoned_armoured_troll_the_last_summon_type_saves_and_loads_armoured() {
         .query::<(Entity, &Enemy, &SaveId)>()
         .find(|(_, enemy, _)| enemy.variant == Variant::Armoured && enemy.kind == EnemyKind::Troll)
         .map(|(entity, _, id)| (id.0, entity))
-        .filter(|&(id, _)| id != 21)
         .expect("an armoured troll summoned");
     assert!(tagged(&harness, troll, "armoured") && armour_table(&harness, troll));
+    assert!(
+        !enemies::placed(harness.world(), id),
+        "summoned, not the map's"
+    );
     let saved = save::capture(harness.world()).unwrap();
-    let mine = saved.enemies.iter().find(|e| e.id == id).unwrap();
-    assert_eq!((mine.map, mine.enemy.variant), (false, Variant::Armoured));
     let fresh = reload(saved);
     let loaded = by_id(&fresh, id).expect("it loads");
     let enemy = *fresh.world().get::<Enemy>(loaded).unwrap();

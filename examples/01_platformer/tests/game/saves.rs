@@ -66,8 +66,8 @@ use tungsten::core::{
     Velocity, World,
 };
 use tungsten::kit::{
-    Abilities, Chemistry, ContactDamage, DamageRequest, Damaged, Effects, Health, Hitbox, Modifier,
-    Oscillator, PathFollower, Shield, StateMachine, Stats, Tags,
+    Abilities, Chemistry, ContactDamage, ContactTouch, DamageRequest, Damaged, Effects, Health,
+    Hitbox, Modifier, Oscillator, PathFollower, Projectile, Shield, StateMachine, Stats, Tags,
 };
 use tungsten::testing::UiHarness;
 
@@ -264,42 +264,57 @@ fn busy(harness: &mut UiHarness) {
     assert_eq!(toys::flask::count(harness.world()), 1, "a flask flies");
 }
 
+/// The moving platforms' points, by save ID: the decks but the elevator's.
+fn platform_points(harness: &UiHarness) -> Vec<[f32; 2]> {
+    let mut points: Vec<(u64, [f32; 2])> = harness
+        .world()
+        .query_filtered::<(&SaveId, &Position, &PathFollower), tungsten::core::Without<Elevator>>()
+        .map(|(id, at, _)| (id.0, at.0.to_array()))
+        .collect();
+    points.sort_by_key(|&(id, _)| id);
+    points.into_iter().map(|(_, at)| at).collect()
+}
+
+/// Whether a bullet is in flight.
+fn bullets_flying(harness: &UiHarness) -> usize {
+    harness
+        .world()
+        .query::<(&Bullet, &Projectile)>()
+        .filter(|(_, projectile)| !projectile.is_spent())
+        .count()
+}
+
 #[test]
 fn a_capture_round_trips_through_a_load_with_a_platform_displaced() {
     let (mut harness, _) = grounded();
-    let first = capture(&harness);
+    let first = platform_points(&harness);
     busy(&mut harness);
-    let saved = capture(&harness);
     let moved = |before: &[[f32; 2]], after: &[[f32; 2]]| {
         before
             .iter()
             .zip(after)
             .any(|(a, b)| Vec2::from(*a).distance(Vec2::from(*b)) > 8.0)
     };
-    let points = |save: &SaveGame| {
-        save.platforms
-            .iter()
-            .map(|p| p.position)
-            .collect::<Vec<_>>()
-    };
-    let (platforms, platforms_now) = (points(&first), points(&saved));
     assert!(
-        moved(&platforms, &platforms_now),
+        moved(&first, &platform_points(&harness)),
         "a platform is off its spawn"
     );
-    assert!(!saved.missiles.is_empty() && !saved.black_holes.is_empty());
-    assert!(!saved.bullets.is_empty(), "a bullet in flight");
-    assert!(saved.blocks.iter().any(|b| b.scrap.is_some()));
+    let world = harness.world();
+    assert!(world.query::<&FireMissile>().count() > 0 && world.query::<&BlackHole>().count() > 0);
+    assert!(bullets_flying(&harness) > 0, "a bullet in flight");
+    assert!(world.query::<&IronScrap>().count() > 0);
     assert!(
-        saved
-            .blocks
-            .iter()
-            .any(|b| b.scrap.is_none() && b.chill.is_some())
+        world.query::<(Entity, &IronBlock)>().any(|(block, _)| {
+            elements::systems::coat_of(world, block) > 0.0
+                && elements::ice_left(world, block).is_none()
+        }),
+        "an iron block chilled, not frozen"
     );
-    assert!(saved.balls.iter().any(|b| b.burn.is_some()));
     let lit = |kind: PropKind| {
-        saved.props.iter().any(|prop| {
-            prop.kind == kind && (prop.fuse.is_some() || prop.fuel.is_some_and(|fuel| fuel.lit))
+        props::all(world).into_iter().any(|prop| {
+            props::kind(world, prop) == Some(kind)
+                && (props::fuse_left(world, prop).is_some()
+                    || props::fire(world, prop).is_some_and(|fire| fire.lit))
         })
     };
     assert!(lit(PropKind::Crate), "a crate alight");
@@ -307,16 +322,16 @@ fn a_capture_round_trips_through_a_load_with_a_platform_displaced() {
         lit(PropKind::Keg) && lit(PropKind::Bomb),
         "a keg's and a bomb's fuse"
     );
-    let rocks: Vec<u64> = saved
-        .props
-        .iter()
-        .filter(|prop| prop.kind == PropKind::Rock)
-        .map(|prop| prop.id)
-        .collect();
     assert!(
-        saved.throws.iter().any(|throw| rocks.contains(&throw.body)),
-        "a rock in flight, its throw saved"
+        world
+            .resource::<Throws>()
+            .0
+            .iter()
+            .any(|throw| world.has::<Rock>(throw.body)),
+        "a rock in flight, its throw kept"
     );
+    let saved = capture(&harness);
+    assert!(saved.balls.iter().any(|b| b.burn.is_some()));
     let mut fresh = super::harness();
     load(&mut fresh, saved.clone());
     assert_eq!(json(&capture(&fresh)), json(&saved));
@@ -961,8 +976,14 @@ fn a_cast_in_the_step_that_asks_for_an_autosave_saves_its_cost_and_its_missile()
         panic!("the autosave is written");
     };
     assert_eq!(saved.area.as_deref(), Some("Broken aqueduct"));
-    assert_eq!(saved.player.stats.base("mana"), Some(96.0), "its cost");
-    assert_eq!(saved.missiles.len(), 1, "and its missile");
+    let mut fresh = super::harness();
+    load(&mut fresh, saved.clone());
+    assert_eq!(mana(&fresh), 96.0, "its cost");
+    assert_eq!(
+        fresh.world().query::<&FireMissile>().count(),
+        1,
+        "and its missile"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -978,9 +999,9 @@ fn a_save_during_casting_loads_with_the_mana_still_paused() {
     cast(&mut harness, Spell::ForcePush, Vec2::new(800.0, 400.0), 1);
     let spent = mana(&harness);
     assert!(spent < 88.0, "a push's 12.5 spent: {spent}");
-    let saved = capture(&harness);
     let casting = |tags: &Tags| tags.iter().any(|tag| tag == "casting");
-    assert!(casting(&saved.player.tags));
+    assert!(casting(harness.world().get::<Tags>(player).unwrap()));
+    let saved = capture(&harness);
     let mut fresh = super::harness();
     load(&mut fresh, saved);
     let player = player_entity(&fresh);
@@ -1151,15 +1172,14 @@ fn divergence(churned: bool) {
         }
         uninterrupted.step(1);
     }
+    let shocked = uninterrupted
+        .world()
+        .query::<(&Dummy, &Tags)>()
+        .any(|(_, tags)| tags.has("status.shocked"));
+    assert!(shocked, "the dummy shocked");
     let saved = capture(&uninterrupted);
     assert_eq!(saved.area.as_deref(), Some("Lantern clearing"));
     assert_eq!(pending(&uninterrupted), 0, "the chain ran out");
-    let shocked = |save: &SaveGame| {
-        save.dummies
-            .iter()
-            .any(|d| d.tags.iter().any(|tag| tag == "status.shocked"))
-    };
-    assert!(shocked(&saved));
     let mut loaded = harness();
     if churned {
         let world = loaded.world_mut();
@@ -1338,18 +1358,10 @@ fn a_save_after_an_attack_has_hit_loads_without_a_second_hit() {
             .any(|hit| hit.entity == player && hit.source == Some(beetle))
     });
     assert!(struck, "the charge hits the player");
+    let hitbox = harness.world().get::<Hitbox>(beetle).expect("its hitbox");
+    assert_eq!(hitbox.hit_targets(), [player], "its activation's target");
+    assert!(hitbox.is_armed(), "saved mid-window");
     let saved = capture(&harness);
-    let entry = saved.enemies.iter().find(|enemy| enemy.id == beetle_id);
-    let entry = entry.expect("the beetle saved");
-    assert_eq!(
-        entry.hit,
-        [player_id],
-        "its activation's target, by save ID"
-    );
-    assert!(
-        entry.hitbox.as_ref().is_some_and(Hitbox::is_armed),
-        "saved mid-window"
-    );
     let mut loaded = reloaded(saved, false);
     for (run, harness) in [("uninterrupted", &mut harness), ("loaded", &mut loaded)] {
         let again = hit_frames(harness, player_id, beetle_id, 50);
@@ -1383,11 +1395,13 @@ fn a_save_with_a_pending_transition_enters_it_once_after_the_load() {
             .is_some_and(|machine| machine.pending() == Some(EnemyState::Attack))
     });
     assert!(asked, "its tell asked for the lunge");
-    let saved = capture(&harness);
-    let entry = saved.enemies.iter().find(|enemy| enemy.id == crawler_id);
-    let machine = &entry.expect("the crawler saved").machine;
+    let machine = harness
+        .world()
+        .get::<StateMachine<EnemyState>>(crawler)
+        .expect("its machine");
     assert_eq!(machine.state(), EnemyState::WindUp);
     assert_eq!(machine.pending(), Some(EnemyState::Attack));
+    let saved = capture(&harness);
     let mut loaded = reloaded(saved, false);
     let (mut hisses, mut lunges) = (0, 0);
     for _ in 0..10 {
@@ -1432,32 +1446,52 @@ fn a_cooling_a_dashing_and_a_panicking_goblin_save_and_load_back_the_same() {
         .apply(world);
     harness.step(3);
     let ids = [cooling, dashing, panicking].map(|goblin| id_of(&harness, goblin));
-    let saved = capture(&harness);
-    let entry = |save: &SaveGame, id: u64| {
-        save.enemies
-            .iter()
-            .find(|enemy| enemy.id == id)
-            .cloned()
-            .expect("the goblin saved")
-    };
-    assert!(entry(&saved, ids[0]).brain.cooldown > 0.0, "cooling");
-    let dash = entry(&saved, ids[1]);
+    let brain =
+        |harness: &UiHarness, goblin: Entity| *harness.world().get::<Brain>(goblin).unwrap();
+    assert!(brain(&harness, cooling).cooldown > 0.0, "cooling");
     assert_eq!(
-        (dash.machine.state(), dash.brain.strike),
+        (state(&harness, dashing), brain(&harness, dashing).strike),
         (EnemyState::Attack, Some(Strike::Dash)),
         "dashing"
     );
-    assert_eq!(entry(&saved, ids[2]).machine.state(), EnemyState::Panic);
+    assert_eq!(state(&harness, panicking), EnemyState::Panic);
+    let before = ids.map(|id| enemy_parts(&harness, id));
+    let saved = capture(&harness);
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("the save reads");
     let loaded = reloaded(read, false);
-    let again = capture(&loaded);
-    for id in ids {
-        assert_eq!(
-            serde_json::to_value(entry(&again, id)).unwrap(),
-            serde_json::to_value(entry(&saved, id)).unwrap(),
-            "{id} back the same"
-        );
+    for (id, before) in ids.into_iter().zip(before) {
+        assert_eq!(enemy_parts(&loaded, id), before, "{id} back the same");
     }
+}
+
+/// The parts of the enemy of save ID `id` a save keeps, as JSON: its body,
+/// its drivers, its machine and what it knows, its health, stats,
+/// resistances, effects, tags, abilities, knockback and hitbox; none of its
+/// resistances, effects or tags reads as an empty one, as a load gives it.
+fn enemy_parts(harness: &UiHarness, id: u64) -> serde_json::Value {
+    use example_01_platformer::features::enemies::components::{Brain, Displaced, Sight};
+    use tungsten::kit::{Knockback, PlatformerController, Resist, TopDownMover};
+    let world = harness.world();
+    let enemy = by_id(harness, id);
+    serde_json::json!({
+        "position": world.get::<Position>(enemy).map(|at| at.0.to_array()),
+        "velocity": world.get::<Velocity>(enemy).map(|v| v.0.to_array()),
+        "controller": world.get::<PlatformerController>(enemy),
+        "mover": world.get::<TopDownMover>(enemy),
+        "displaced": world.get::<Displaced>(enemy).map(|displaced| &displaced.0),
+        "machine": world.get::<StateMachine<EnemyState>>(enemy),
+        "enemy": world.get::<Enemy>(enemy),
+        "brain": world.get::<Brain>(enemy),
+        "sight": world.get::<Sight>(enemy),
+        "health": world.get::<Health>(enemy),
+        "stats": world.get::<Stats>(enemy),
+        "resist": world.get::<Resist>(enemy).cloned().unwrap_or_default(),
+        "effects": world.get::<Effects>(enemy).cloned().unwrap_or_default(),
+        "tags": world.get::<Tags>(enemy).cloned().unwrap_or_default(),
+        "abilities": world.get::<Abilities>(enemy),
+        "knockback": world.get::<Knockback>(enemy),
+        "hitbox": world.get::<Hitbox>(enemy),
+    })
 }
 
 /// Steps `harness` until a snowball bursts, at most 120 frames: the fixed
@@ -1477,6 +1511,29 @@ fn snowball_landing(harness: &mut UiHarness) -> Option<(u32, Vec2)> {
         }
     }
     None
+}
+
+/// The snowballs in flight: each one's save ID, point, velocity, thrower,
+/// damage factor and seconds left.
+type Flight = (u64, [f32; 2], [f32; 2], Option<u64>, f32, f32);
+
+fn snowballs(harness: &UiHarness) -> Vec<Flight> {
+    use example_01_platformer::features::enemies::components::Snowball;
+    let world = harness.world();
+    snowball::flying(world)
+        .into_iter()
+        .map(|(id, ball)| {
+            let flying = world.get::<Snowball>(ball).unwrap();
+            (
+                id,
+                world.get::<Position>(ball).unwrap().0.to_array(),
+                world.get::<Velocity>(ball).unwrap().0.to_array(),
+                flying.thrower,
+                flying.factor,
+                flying.left,
+            )
+        })
+        .collect()
 }
 
 #[test]
@@ -1504,21 +1561,19 @@ fn a_snowball_in_flight_and_a_cooling_crawler_save_and_load_and_it_lands_as_it_w
     });
     assert!(thrown, "its snowball flies");
     harness.step(3);
-    let saved = capture(&harness);
-    assert_eq!(saved.snowballs.len(), 1, "the snowball saved");
-    let cooling = saved
-        .enemies
-        .iter()
-        .find(|enemy| enemy.id == crawler_id)
-        .expect("the crawler saved")
-        .brain
+    let flying = snowballs(&harness);
+    assert_eq!(flying.len(), 1, "the snowball flies");
+    let cooling = harness
+        .world()
+        .get::<example_01_platformer::features::enemies::components::Brain>(crawler)
+        .unwrap()
         .cooldown;
-    assert!(cooling > 0.0, "its cooldown saved: {cooling}");
+    assert!(cooling > 0.0, "its cooldown: {cooling}");
+    let saved = capture(&harness);
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("the save reads");
     let mut loaded = reloaded(read, false);
     loaded.harness_mut().set_dt(1.0 / 60.0);
-    let again = capture(&loaded);
-    assert_eq!(again.snowballs, saved.snowballs, "the snowball back");
+    assert_eq!(snowballs(&loaded), flying, "the snowball back");
     let brain = loaded
         .world()
         .get::<example_01_platformer::features::enemies::components::Brain>(by_id(
@@ -1550,11 +1605,15 @@ fn a_save_mid_touch_keeps_the_touch_schedule() {
     });
     assert!(touched, "its touch burns the player");
     harness.step(15);
-    let saved = capture(&harness);
-    let entry = saved.enemies.iter().find(|enemy| enemy.id == wisp_id);
-    let touches = &entry.expect("the wisp saved").touches;
+    let touches: Vec<ContactTouch> = harness
+        .world()
+        .get::<ContactDamage>(wisp)
+        .expect("its touch")
+        .touches()
+        .collect();
     assert_eq!(touches.len(), 1, "its touch's times: {touches:?}");
-    assert_eq!(touches[0].0, player_id);
+    assert_eq!(touches[0].target(), player);
+    let saved = capture(&harness);
     let mut loaded = reloaded(saved, false);
     let before = hit_frames(&mut harness, player_id, wisp_id, 80);
     let after = hit_frames(&mut loaded, player_id, wisp_id, 80);
@@ -1581,15 +1640,18 @@ fn a_flyer_saved_frozen_mid_flight_thaws_into_its_saved_flight() {
     assert!(flying.length() > 0.05, "in flight: {flying}");
     super::combat::apply(&mut harness, wisp, "frozen", None);
     harness.step(10);
-    let saved = capture(&harness);
-    let entry = saved.enemies.iter().find(|enemy| enemy.id == wisp_id);
-    let entry = entry.expect("the wisp saved");
+    let world = harness.world();
     assert!(
-        entry.mover.is_none() && entry.controller.is_some(),
+        world.get::<TopDownMover>(wisp).is_none()
+            && world.get::<PlatformerController>(wisp).is_some(),
         "it falls"
     );
-    let displaced = entry.displaced.clone().expect("its flight set aside");
+    let displaced = world
+        .get::<Displaced>(wisp)
+        .map(|displaced| displaced.0.clone())
+        .expect("its flight set aside");
     assert_eq!(displaced.direction(), flying);
+    let saved = capture(&harness);
     let mut loaded = reloaded(saved, false);
     let wisp = by_id(&loaded, wisp_id);
     let world = loaded.world();
@@ -1702,6 +1764,11 @@ fn a_loaded_run_with_enemies_mid_attack_and_mid_search_keeps_with_the_uninterrup
     enemy_divergence(true);
 }
 
+/// Whether the dummy of save ID `id` is the map's.
+fn dummy_placed(harness: &UiHarness, id: u64) -> bool {
+    example_01_platformer::features::dummy::placed(harness.world(), id)
+}
+
 #[test]
 fn burning_frozen_and_shocked_dummies_load_with_their_sources() {
     use super::combat::{apply, dummy_at};
@@ -1716,19 +1783,28 @@ fn burning_frozen_and_shocked_dummies_load_with_their_sources() {
         apply(&mut harness, dummy, effect, Some(player));
     }
     harness.step(5);
-    let saved = capture(&harness);
-    assert_eq!(saved.dummies.len(), 4, "the clearing's and the three");
+    let world = harness.world();
+    assert_eq!(
+        world.query::<&Dummy>().count(),
+        4,
+        "the clearing's and the three"
+    );
     let id = |entity: Entity| harness.world().get::<SaveId>(entity).unwrap().0;
-    let player_id = id(player);
     for &(dummy, effect) in &dummies {
-        let save = saved.dummies.iter().find(|d| d.id == id(dummy)).unwrap();
-        assert!(!save.map, "summoned, not the map's");
-        assert!(save.effects.has(effect), "{effect}");
         assert!(
-            save.sources.iter().any(|&(_, source)| source == player_id),
-            "{effect}: its source by save ID"
+            !dummy_placed(&harness, id(dummy)),
+            "summoned, not the map's"
+        );
+        let effects = world.get::<Effects>(dummy).unwrap();
+        assert!(effects.has(effect), "{effect}");
+        assert!(
+            effects
+                .instances()
+                .any(|instance| instance.source() == Some(player)),
+            "{effect}: its source the player"
         );
     }
+    let saved = capture(&harness);
     let mut fresh = super::harness();
     load(&mut fresh, saved.clone());
     let loaded_player = player_entity(&fresh);
@@ -1855,8 +1931,8 @@ fn a_bullet_in_flight_loads_and_lands() {
     )
     .expect("a bullet");
     harness.step(6);
+    assert_eq!(bullets_flying(&harness), 1, "in flight");
     let saved = capture(&harness);
-    assert_eq!(saved.bullets.len(), 1, "in flight");
     let mut fresh = super::harness();
     load(&mut fresh, saved.clone());
     assert_eq!(json(&capture(&fresh)), json(&saved), "the bullet whole");
@@ -1887,7 +1963,7 @@ fn a_bullet_in_flight_loads_and_lands() {
     let (before, after) = (hits(&mut harness), hits(&mut fresh));
     assert_eq!(before.len(), 1, "it landed: {before:?}");
     assert_eq!(before, after, "where and when it would have");
-    assert!(capture(&fresh).bullets.is_empty());
+    assert_eq!(bullets_flying(&fresh), 0, "spent");
 }
 
 #[test]
@@ -2086,9 +2162,9 @@ fn a_guttered_staff_light_loads_guttered() {
     stats.set_base("mana", 0.0);
     super::combat::apply(&mut harness, player, "casting", None);
     harness.step(1);
-    assert!(harness.world().get::<Lantern>(player).unwrap().guttered);
+    let lantern = *harness.world().get::<Lantern>(player).unwrap();
+    assert!(lantern.on && lantern.guttered, "{lantern:?}");
     let saved = capture(&harness);
-    assert!(saved.lantern && saved.lantern_guttered);
     let mut fresh = super::harness();
     load(&mut fresh, saved);
     fresh.world_mut().resource_mut::<Time>().resume();
@@ -2979,12 +3055,19 @@ fn placed_health_orbs_never_fade_and_one_taken_stays_gone_through_a_load() {
         }
     }
     assert!(!harness.world().is_alive(orb), "taken");
-    let saved = capture(&harness);
-    assert!(saved.gone.contains(&taken), "{:?}", saved.gone);
     assert!(
-        saved.orbs.is_empty(),
+        placed_orbs(&harness).iter().all(|&(id, _)| id != taken),
+        "off the map"
+    );
+    assert_eq!(
+        harness
+            .world()
+            .query::<(&Orb, &tungsten::kit::Lifetime)>()
+            .count(),
+        0,
         "a placed orb is the map's, not a drop's"
     );
+    let saved = capture(&harness);
     let mut fresh = super::harness();
     load(&mut fresh, saved);
     let left: Vec<u64> = placed_orbs(&fresh).into_iter().map(|(id, _)| id).collect();
@@ -3325,16 +3408,13 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     assert_eq!(elevator(&harness).1.stop, Stop::Rising, "halfway up");
     let shelf = basin(&harness, schema_23_id(save::S10_SHELF));
     lava::set_cold(harness.world_mut(), shelf, 0.2);
+    let world = harness.world();
+    assert!(lava::crust_left(world, lake).is_some_and(|left| left > 1.0 && left < 4.0));
+    assert_eq!(lava::cold_of(world, shelf), 0.2);
+    assert_eq!(world.query::<&Elevator>().count(), 1);
+    let (deck, lift) = elevator(&harness);
+    assert!(world.has::<PathFollower>(deck) && lift.ridden);
     let saved = capture(&harness);
-    let crust = |id: u64| saved.basins.iter().find(|b| b.id == id).unwrap();
-    assert!(
-        crust(schema_23_id(save::S10_LAKE))
-            .crust
-            .is_some_and(|left| left > 1.0 && left < 4.0)
-    );
-    assert_eq!(crust(schema_23_id(save::S10_SHELF)).cold, 0.2);
-    assert_eq!(saved.elevators.len(), 1);
-    assert!(saved.elevators[0].follower.is_some() && saved.elevators[0].ridden);
     // Loaded from its file, as Continue loads it, it captures back to
     // itself: the crust's touch held, its surface solid, the deck mid-path.
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("a save reads");
@@ -3491,14 +3571,26 @@ fn three_open_black_holes_load_back_to_themselves() {
         let hole = toys::place_black_hole(world, Vec2::new(x, TOP - 300.0));
         world.get_mut::<BlackHole>(hole).unwrap().left = 2.0 + i as f32;
     }
+    let open = holes(&harness);
+    assert_eq!(open.len(), 3, "every hole open");
     let saved = capture(&harness);
-    assert_eq!(saved.black_holes.len(), 3, "every hole saved");
     // Through JSON, as Continue reads a slot.
     let loaded: SaveGame = serde_json::from_value(json(&saved)).expect("it loads");
     let mut fresh = super::harness();
     load(&mut fresh, loaded);
     assert_eq!(fresh.world().query::<&BlackHole>().count(), 3);
-    assert_eq!(capture(&fresh).black_holes, saved.black_holes);
+    assert_eq!(holes(&fresh), open, "each where it was, its time left");
+}
+
+/// The open black holes: each one's save ID, point and seconds left.
+fn holes(harness: &UiHarness) -> Vec<(u64, [f32; 2], f32)> {
+    let mut open: Vec<(u64, [f32; 2], f32)> = harness
+        .world()
+        .query::<(&SaveId, &Transform, &BlackHole)>()
+        .map(|(id, at, hole)| (id.0, at.position.to_array(), hole.left))
+        .collect();
+    open.sort_by_key(|&(id, ..)| id);
+    open
 }
 
 #[test]
@@ -4090,25 +4182,32 @@ fn a_run_holding_two_tomes_and_a_half_shield_loads_them_back_with_their_books_go
     harness.step(1);
     DamageRequest::new(player, 25.0).queue(harness.world_mut());
     harness.step(30);
-    let saved = capture(&harness);
-    assert_eq!(saved.player.tomes, [TomeKind::Bounding, TomeKind::Pact]);
-    let shield = saved.player.shield.clone().expect("the pact's shield");
+    let held = Tomes(vec![TomeKind::Bounding, TomeKind::Pact]);
+    let world = harness.world();
+    assert_eq!(world.get::<Tomes>(player), Some(&held));
+    let shield = world
+        .get::<Shield>(player)
+        .cloned()
+        .expect("the pact's shield");
     assert_eq!(shield.current(), 25.0, "half full");
-    assert_eq!(saved.player.health.max(), 50.0);
+    let health = |h: &UiHarness| {
+        let health = h.world().get::<Health>(player_entity(h)).unwrap();
+        (health.current(), health.max())
+    };
+    assert_eq!(health(&harness).1, 50.0);
+    let saved = capture(&harness);
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("the save reads");
     let mut fresh = super::harness();
     load(&mut fresh, read);
     let player = player_entity(&fresh);
-    assert_eq!(
-        fresh.world().get::<Tomes>(player),
-        Some(&Tomes(vec![TomeKind::Bounding, TomeKind::Pact]))
-    );
+    assert_eq!(fresh.world().get::<Tomes>(player), Some(&held));
     assert_eq!(books(&fresh), [TomeKind::Arcane], "the third on the map");
-    let again = capture(&fresh);
-    assert_eq!(again.player.tomes, saved.player.tomes);
-    assert_eq!(again.player.shield, Some(shield), "its wait too");
-    let health = |save: &SaveGame| (save.player.health.current(), save.player.health.max());
-    assert_eq!(health(&again), health(&saved));
+    assert_eq!(
+        fresh.world().get::<Shield>(player),
+        Some(&shield),
+        "its wait too"
+    );
+    assert_eq!(health(&fresh), health(&harness));
 }
 
 #[test]
@@ -4144,28 +4243,28 @@ fn burning_planks_save_through_json_and_load_back() {
     assert!(props::light(world, crate_, Some(5)));
     props::break_crate(world, crate_, Vec2::ZERO);
     harness.step(20);
+    let planks = |harness: &UiHarness| {
+        let world = harness.world();
+        let mut planks: Vec<(u64, usize, PropFire)> = world
+            .query::<(Entity, &SaveId, &Plank)>()
+            .map(|(entity, id, plank)| {
+                let fire = props::fire(world, entity).expect("a plank's fire");
+                (id.0, plank.variant, fire)
+            })
+            .collect();
+        planks.sort_by_key(|(id, ..)| *id);
+        planks
+    };
+    assert!(!harness.world().is_alive(crate_), "broken");
+    let kept = planks(&harness);
+    assert_eq!(kept.len(), 5, "its planks");
+    assert!(kept.iter().all(|(.., fire)| fire.lit));
     let saved = capture(&harness);
-    assert_eq!(saved.planks.len(), 5, "the planks, apart from the props");
-    assert!(saved.props.iter().all(|prop| prop.kind != PropKind::Plank));
-    assert!(saved.planks.iter().all(|plank| plank.fuel.lit));
     // Through JSON, as Continue reads a slot.
     let loaded: SaveGame = serde_json::from_value(json(&saved)).expect("a save loads");
     let mut fresh = super::harness();
     load(&mut fresh, loaded);
-    let world = fresh.world();
-    let mut back: Vec<(u64, usize, PropFire)> = world
-        .query::<(Entity, &SaveId, &Plank)>()
-        .map(|(entity, id, plank)| {
-            let fire = props::fire(world, entity).expect("a plank's fire");
-            (id.0, plank.variant, fire)
-        })
-        .collect();
-    back.sort_by_key(|(id, ..)| *id);
-    let kept: Vec<(u64, usize, PropFire)> = saved
-        .planks
-        .iter()
-        .map(|plank| (plank.id, plank.variant, plank.fuel))
-        .collect();
+    let back = planks(&fresh);
     assert_eq!(back.len(), 5);
     for ((id, variant, fuel), (want_id, want_variant, want)) in back.into_iter().zip(kept) {
         assert_eq!((id, variant), (want_id, want_variant));
@@ -4194,36 +4293,36 @@ fn three_stones_of_three_sizes_save_through_json_and_load_back() {
         );
     }
     harness.step(30);
-    let saved = capture(&harness);
-    assert_eq!(saved.stones.len(), 3, "the stones, apart from the props");
-    assert!(
-        saved
-            .props
-            .iter()
-            .all(|prop| !matches!(prop.kind, PropKind::Stone(_)))
-    );
-    let sizes: Vec<StoneSize> = saved.stones.iter().map(|stone| stone.size).collect();
+    // Each stone's save ID, size, look, point and velocity.
+    type Rubble = (u64, StoneSize, usize, [f32; 2], [f32; 2]);
+    let stones = |harness: &UiHarness| {
+        let mut stones: Vec<Rubble> = harness
+            .world()
+            .query::<(&SaveId, &Stone, &Position, &Velocity)>()
+            .map(|(id, stone, at, velocity)| {
+                let (at, velocity) = (at.0.to_array(), velocity.0.to_array());
+                (id.0, stone.size, stone.variant, at, velocity)
+            })
+            .collect();
+        stones.sort_by_key(|(id, ..)| *id);
+        stones
+    };
+    let kept = stones(&harness);
+    assert_eq!(kept.len(), 3, "the three stones");
+    let sizes: Vec<StoneSize> = kept.iter().map(|&(_, size, ..)| size).collect();
     assert_eq!(sizes, StoneSize::ALL);
-    let variants: BTreeSet<usize> = saved.stones.iter().map(|stone| stone.variant).collect();
+    let variants: BTreeSet<usize> = kept.iter().map(|&(_, _, variant, ..)| variant).collect();
     assert_eq!(variants.len(), 2, "both looks, by the IDs' parity");
+    let saved = capture(&harness);
     // Through JSON, as Continue reads a slot.
     let loaded: SaveGame = serde_json::from_value(json(&saved)).expect("a save loads");
     let mut fresh = super::harness();
     load(&mut fresh, loaded);
-    let mut back: Vec<(u64, StoneSize, usize, [f32; 2])> = fresh
-        .world()
-        .query::<(Entity, &SaveId, &Stone, &Position)>()
-        .map(|(_, id, stone, at)| (id.0, stone.size, stone.variant, at.0.to_array()))
-        .collect();
-    back.sort_by_key(|(id, ..)| *id);
-    let kept: Vec<(u64, StoneSize, usize, [f32; 2])> = saved
-        .stones
-        .iter()
-        .map(|stone| (stone.id, stone.size, stone.variant, stone.position))
-        .collect();
-    assert_eq!(back, kept, "each at its place, size and look");
-    let resaved = capture(&fresh);
-    assert_eq!(resaved.stones, saved.stones, "and saved again the same");
+    assert_eq!(
+        stones(&fresh),
+        kept,
+        "each at its place, size, look and velocity"
+    );
 }
 
 #[test]
@@ -4378,6 +4477,18 @@ fn the_maps_geysers_and_the_player_take_the_save_ids_their_names_derive() {
     assert_eq!(id_of(&harness, player), schema_23_from_18(save::S18_PLAYER));
 }
 
+/// The geysers' states by save ID: each one's ID, phase, the phase's
+/// seconds left and its choke's.
+fn geyser_states(harness: &UiHarness) -> Vec<(u64, GeyserPhase, f32, f32)> {
+    let mut states: Vec<(u64, GeyserPhase, f32, f32)> = harness
+        .world()
+        .query::<(&SaveId, &Geyser)>()
+        .map(|(id, geyser)| (id.0, geyser.phase, geyser.left, geyser.choked))
+        .collect();
+    states.sort_by_key(|&(id, ..)| id);
+    states
+}
+
 #[test]
 fn a_geyser_saved_mid_eruption_and_one_saved_choked_load_back_to_finish_as_they_would_have() {
     let (mut harness, _) = run();
@@ -4409,17 +4520,17 @@ fn a_geyser_saved_mid_eruption_and_one_saved_choked_load_back_to_finish_as_they_
     for step in 1..=420_u32 {
         harness.step(1);
         fresh.step(1);
-        let (a, b) = (capture(&harness).geysers, capture(&fresh).geysers);
+        let (a, b) = (geyser_states(&harness), geyser_states(&fresh));
         for (want, got) in a.iter().zip(&b) {
-            assert_eq!((want.id, want.phase), (got.id, got.phase), "step {step}");
-            assert!((want.left - got.left).abs() < 1e-4, "step {step}");
-            assert!((want.choked - got.choked).abs() < 1e-4, "step {step}");
+            assert_eq!((want.0, want.1), (got.0, got.1), "step {step}");
+            assert!((want.2 - got.2).abs() < 1e-4, "step {step}");
+            assert!((want.3 - got.3).abs() < 1e-4, "step {step}");
         }
         assert_eq!(touched(&fresh, 0), touched(&harness, 0), "step {step}");
         if ended.is_none() && !touched(&fresh, 0) {
             ended = Some(step);
         }
-        if sputtered.is_none() && b[1].phase == GeyserPhase::Sputter {
+        if sputtered.is_none() && b[1].1 == GeyserPhase::Sputter {
             sputtered = Some(step);
         }
     }
@@ -4624,6 +4735,41 @@ fn flask_landing(harness: &mut UiHarness) -> Option<(u32, Vec2)> {
     None
 }
 
+/// A flask in flight: its save ID, point, flight, range so far and the save
+/// ID of what threw it.
+type Flask = (
+    u64,
+    [f32; 2],
+    Projectile,
+    tungsten::kit::LinearMotion,
+    Option<u64>,
+);
+
+/// The flasks in flight, by save ID.
+fn flasks(harness: &UiHarness) -> Vec<Flask> {
+    let world = harness.world();
+    let id = |entity: Entity| world.get::<SaveId>(entity).map(|id| id.0);
+    let mut flying: Vec<Flask> = toys::flask::flying(world)
+        .into_iter()
+        .map(|(own, flask)| {
+            (
+                own.0,
+                world.get::<Position>(flask).unwrap().0.to_array(),
+                world.get::<Projectile>(flask).unwrap().clone(),
+                world
+                    .get::<tungsten::kit::LinearMotion>(flask)
+                    .unwrap()
+                    .clone(),
+                world
+                    .get::<tungsten::kit::Source>(flask)
+                    .and_then(|source| id(source.entity())),
+            )
+        })
+        .collect();
+    flying.sort_by_key(|flask| flask.0);
+    flying
+}
+
 #[test]
 fn a_flask_in_flight_saves_loads_and_bursts_where_it_would_have() {
     let (mut harness, player) = grounded();
@@ -4633,14 +4779,14 @@ fn a_flask_in_flight_saves_loads_and_bursts_where_it_would_have() {
     let thrown = toys::flask::throw(harness.world_mut(), player, from, to);
     assert!(thrown.is_some(), "a flask flies");
     harness.step(6);
+    let flying = flasks(&harness);
+    assert_eq!(flying.len(), 1, "the flask flies");
+    assert_eq!(flying[0].4, Some(id_of(&harness, player)), "the thrower's");
     let saved = capture(&harness);
-    assert_eq!(saved.flasks.len(), 1, "the flask saved");
-    assert_eq!(saved.flasks[0].source, Some(id_of(&harness, player)));
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("the save reads");
     let mut loaded = reloaded(read, false);
     loaded.harness_mut().set_dt(1.0 / 60.0);
-    let again = capture(&loaded);
-    assert_eq!(again.flasks, saved.flasks, "the flask back");
+    assert_eq!(flasks(&loaded), flying, "the flask back");
     let (before, after) = (flask_landing(&mut harness), flask_landing(&mut loaded));
     let (steps, at) = before.expect("it bursts");
     let (loaded_steps, loaded_at) = after.expect("it bursts after the load");
@@ -4839,6 +4985,7 @@ fn an_enemy_added_to_the_map_needs_no_schema_bump() {
     let mut differ = Vec::new();
     differences(&json(&read), &saved, "", &mut differ);
     assert!(differ.is_empty(), "read as it was written: {differ:?}");
+    let read_again = read.clone();
     let mut fresh = super::harness();
     with_one_more_enemy(&mut fresh, "added goblin");
     load(&mut fresh, read);
@@ -4855,13 +5002,31 @@ fn an_enemy_added_to_the_map_needs_no_schema_bump() {
             .current()
     };
     assert_eq!(health(&fresh), health(&harness), "the hurt one");
-    let mut again = json(&capture(&fresh));
-    let enemies = again["enemies"].as_array_mut().unwrap();
-    let before = enemies.len();
-    enemies.retain(|saved| saved["id"] != SaveId::authored("added goblin").0);
-    assert_eq!(enemies.len() + 1, before, "the added goblin saved too");
+    // Every saved enemy back by its ID, where it was and as hurt, and the
+    // added one beside them.
+    let live = |h: &UiHarness| -> BTreeMap<u64, ([f32; 2], f32)> {
+        let world = h.world();
+        enemies::live(world)
+            .into_iter()
+            .map(|(id, enemy)| {
+                let at = world.get::<Position>(enemy).unwrap().0.to_array();
+                (id, (at, world.get::<Health>(enemy).unwrap().current()))
+            })
+            .collect()
+    };
+    let mut expected = live(&harness);
+    let added_id = SaveId::authored("added goblin").0;
+    expected.insert(added_id, live(&fresh)[&added_id]);
+    assert_eq!(
+        live(&fresh),
+        expected,
+        "the saved enemies, and the added one"
+    );
+    // The same save in the shipped map loads whole.
+    let mut plain = super::harness();
+    load(&mut plain, read_again);
     let mut differ = Vec::new();
-    differences(&again, &saved, "", &mut differ);
+    differences(&json(&capture(&plain)), &saved, "", &mut differ);
     assert!(differ.is_empty(), "the save, loaded whole: {differ:?}");
 }
 
