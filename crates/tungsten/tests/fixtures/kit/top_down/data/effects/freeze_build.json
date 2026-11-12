@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 1,
+    "decay": 0.25
+  },
+  "bands": [
+    {
+      "at": 0.9999,
+      "enter": [
+        {
+          "apply": {
+            "status": "frozen"
+          }
+        },
+        {
+          "remove": "freeze_build"
+        }
+      ]
+    }
+  ]
+}

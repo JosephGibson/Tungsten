@@ -128,11 +128,11 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let kinds: BTreeSet<&str> = descriptions.kinds().map(|(kind, _)| kind).collect();
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
-    assert_eq!(described.len(), 50);
+    assert_eq!(described.len(), 49);
     assert_eq!(kinds.len(), 11);
     assert_eq!(
         descriptions.shapes().count(),
-        86,
+        85,
         "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction, \
          the projectile's end and the place; 7.10g's clip rule, blink, path rider and tag look; \
          7.18's camera box, lead, follow and fixed, and the camera action"
@@ -422,7 +422,7 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 179,
+        checked, 174,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
          four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
          hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
@@ -437,8 +437,8 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let world = world();
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
-    assert_eq!(count("component "), 50);
-    assert_eq!(count("shape "), 86);
+    assert_eq!(count("component "), 49);
+    assert_eq!(count("shape "), 85);
     assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

@@ -498,96 +498,6 @@ impl core::marker::Unpin for tungsten_kit::ActionInputPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ActionInputPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ActionInputPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ActionInputPlugin
-pub struct tungsten_kit::prelude::AilmentBuckets
-impl tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::fill(&self, &str) -> f32
-pub fn tungsten_kit::AilmentBuckets::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, f32)>
-pub fn tungsten_kit::AilmentBuckets::new() -> Self
-impl core::clone::Clone for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::clone(&self) -> tungsten_kit::AilmentBuckets
-impl core::cmp::PartialEq for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::eq(&self, &tungsten_kit::AilmentBuckets) -> bool
-impl core::convert::From<tungsten_kit::AilmentBuckets> for alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>
-pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>::from(tungsten_kit::AilmentBuckets) -> Self
-impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>> for tungsten_kit::AilmentBuckets
-pub type tungsten_kit::AilmentBuckets::Error = alloc::string::String
-pub fn tungsten_kit::AilmentBuckets::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>) -> core::result::Result<Self, Self::Error>
-impl core::default::Default for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::default() -> tungsten_kit::AilmentBuckets
-impl core::fmt::Debug for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tungsten_kit::AilmentBuckets
-impl serde_core::ser::Serialize for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl tungsten_core::inspect::Inspectable for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
-impl core::marker::Freeze for tungsten_kit::AilmentBuckets
-impl core::marker::Send for tungsten_kit::AilmentBuckets
-impl core::marker::Sync for tungsten_kit::AilmentBuckets
-impl core::marker::Unpin for tungsten_kit::AilmentBuckets
-impl core::marker::UnsafeUnpin for tungsten_kit::AilmentBuckets
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AilmentBuckets
-impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AilmentBuckets
-pub struct tungsten_kit::prelude::AilmentRung
-impl tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::blocked_by(&self) -> &[alloc::string::String]
-pub fn tungsten_kit::AilmentRung::chance(&self) -> f32
-pub fn tungsten_kit::AilmentRung::effect(&self) -> &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>
-pub fn tungsten_kit::AilmentRung::needs(&self) -> core::option::Option<f32>
-pub fn tungsten_kit::AilmentRung::new(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
-pub fn tungsten_kit::AilmentRung::requires(&self) -> &[alloc::string::String]
-pub fn tungsten_kit::AilmentRung::window(&self) -> core::option::Option<f32>
-pub fn tungsten_kit::AilmentRung::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
-pub fn tungsten_kit::AilmentRung::with_chance(self, f32) -> Self
-pub fn tungsten_kit::AilmentRung::with_needs(self, f32, f32) -> Self
-pub fn tungsten_kit::AilmentRung::with_requires(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
-impl core::clone::Clone for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::clone(&self) -> tungsten_kit::AilmentRung
-impl core::cmp::PartialEq for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::eq(&self, &tungsten_kit::AilmentRung) -> bool
-impl core::fmt::Debug for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tungsten_kit::AilmentRung
-impl serde_core::ser::Serialize for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
-impl core::marker::Freeze for tungsten_kit::AilmentRung
-impl core::marker::Send for tungsten_kit::AilmentRung
-impl core::marker::Sync for tungsten_kit::AilmentRung
-impl core::marker::Unpin for tungsten_kit::AilmentRung
-impl core::marker::UnsafeUnpin for tungsten_kit::AilmentRung
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AilmentRung
-impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AilmentRung
-pub struct tungsten_kit::prelude::AilmentThreshold
-impl tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::flat(&self) -> f32
-pub fn tungsten_kit::AilmentThreshold::new(f32) -> Self
-pub fn tungsten_kit::AilmentThreshold::of_max_health(&self) -> f32
-pub fn tungsten_kit::AilmentThreshold::with_of_max_health(self, f32) -> Self
-impl core::clone::Clone for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::clone(&self) -> tungsten_kit::AilmentThreshold
-impl core::cmp::PartialEq for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::eq(&self, &tungsten_kit::AilmentThreshold) -> bool
-impl core::fmt::Debug for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_kit::AilmentThreshold
-impl core::marker::StructuralPartialEq for tungsten_kit::AilmentThreshold
-impl serde_core::ser::Serialize for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl tungsten_core::inspect::Inspectable for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
-impl core::marker::Freeze for tungsten_kit::AilmentThreshold
-impl core::marker::Send for tungsten_kit::AilmentThreshold
-impl core::marker::Sync for tungsten_kit::AilmentThreshold
-impl core::marker::Unpin for tungsten_kit::AilmentThreshold
-impl core::marker::UnsafeUnpin for tungsten_kit::AilmentThreshold
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AilmentThreshold
-impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AilmentThreshold
 pub struct tungsten_kit::prelude::Aim
 impl tungsten_kit::Aim
 pub fn tungsten_kit::Aim::at(tungsten_kit::Target) -> Self
@@ -5080,96 +4990,6 @@ impl core::marker::Unpin for tungsten_kit::ActionInputPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ActionInputPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ActionInputPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ActionInputPlugin
-pub struct tungsten_kit::AilmentBuckets
-impl tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::fill(&self, &str) -> f32
-pub fn tungsten_kit::AilmentBuckets::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, f32)>
-pub fn tungsten_kit::AilmentBuckets::new() -> Self
-impl core::clone::Clone for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::clone(&self) -> tungsten_kit::AilmentBuckets
-impl core::cmp::PartialEq for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::eq(&self, &tungsten_kit::AilmentBuckets) -> bool
-impl core::convert::From<tungsten_kit::AilmentBuckets> for alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>
-pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>::from(tungsten_kit::AilmentBuckets) -> Self
-impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>> for tungsten_kit::AilmentBuckets
-pub type tungsten_kit::AilmentBuckets::Error = alloc::string::String
-pub fn tungsten_kit::AilmentBuckets::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>) -> core::result::Result<Self, Self::Error>
-impl core::default::Default for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::default() -> tungsten_kit::AilmentBuckets
-impl core::fmt::Debug for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tungsten_kit::AilmentBuckets
-impl serde_core::ser::Serialize for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl tungsten_core::inspect::Inspectable for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::AilmentBuckets
-pub fn tungsten_kit::AilmentBuckets::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
-impl core::marker::Freeze for tungsten_kit::AilmentBuckets
-impl core::marker::Send for tungsten_kit::AilmentBuckets
-impl core::marker::Sync for tungsten_kit::AilmentBuckets
-impl core::marker::Unpin for tungsten_kit::AilmentBuckets
-impl core::marker::UnsafeUnpin for tungsten_kit::AilmentBuckets
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AilmentBuckets
-impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AilmentBuckets
-pub struct tungsten_kit::AilmentRung
-impl tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::blocked_by(&self) -> &[alloc::string::String]
-pub fn tungsten_kit::AilmentRung::chance(&self) -> f32
-pub fn tungsten_kit::AilmentRung::effect(&self) -> &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>
-pub fn tungsten_kit::AilmentRung::needs(&self) -> core::option::Option<f32>
-pub fn tungsten_kit::AilmentRung::new(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
-pub fn tungsten_kit::AilmentRung::requires(&self) -> &[alloc::string::String]
-pub fn tungsten_kit::AilmentRung::window(&self) -> core::option::Option<f32>
-pub fn tungsten_kit::AilmentRung::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
-pub fn tungsten_kit::AilmentRung::with_chance(self, f32) -> Self
-pub fn tungsten_kit::AilmentRung::with_needs(self, f32, f32) -> Self
-pub fn tungsten_kit::AilmentRung::with_requires(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
-impl core::clone::Clone for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::clone(&self) -> tungsten_kit::AilmentRung
-impl core::cmp::PartialEq for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::eq(&self, &tungsten_kit::AilmentRung) -> bool
-impl core::fmt::Debug for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tungsten_kit::AilmentRung
-impl serde_core::ser::Serialize for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::AilmentRung
-pub fn tungsten_kit::AilmentRung::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
-impl core::marker::Freeze for tungsten_kit::AilmentRung
-impl core::marker::Send for tungsten_kit::AilmentRung
-impl core::marker::Sync for tungsten_kit::AilmentRung
-impl core::marker::Unpin for tungsten_kit::AilmentRung
-impl core::marker::UnsafeUnpin for tungsten_kit::AilmentRung
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AilmentRung
-impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AilmentRung
-pub struct tungsten_kit::AilmentThreshold
-impl tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::flat(&self) -> f32
-pub fn tungsten_kit::AilmentThreshold::new(f32) -> Self
-pub fn tungsten_kit::AilmentThreshold::of_max_health(&self) -> f32
-pub fn tungsten_kit::AilmentThreshold::with_of_max_health(self, f32) -> Self
-impl core::clone::Clone for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::clone(&self) -> tungsten_kit::AilmentThreshold
-impl core::cmp::PartialEq for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::eq(&self, &tungsten_kit::AilmentThreshold) -> bool
-impl core::fmt::Debug for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_kit::AilmentThreshold
-impl core::marker::StructuralPartialEq for tungsten_kit::AilmentThreshold
-impl serde_core::ser::Serialize for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl tungsten_core::inspect::Inspectable for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::AilmentThreshold
-pub fn tungsten_kit::AilmentThreshold::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
-impl core::marker::Freeze for tungsten_kit::AilmentThreshold
-impl core::marker::Send for tungsten_kit::AilmentThreshold
-impl core::marker::Sync for tungsten_kit::AilmentThreshold
-impl core::marker::Unpin for tungsten_kit::AilmentThreshold
-impl core::marker::UnsafeUnpin for tungsten_kit::AilmentThreshold
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AilmentThreshold
-impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AilmentThreshold
 pub struct tungsten_kit::Aim
 impl tungsten_kit::Aim
 pub fn tungsten_kit::Aim::at(tungsten_kit::Target) -> Self
@@ -9569,8 +9389,6 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ZonePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ZonePlugin
 pub const tungsten_kit::ABILITY_TICK: &str
 pub const tungsten_kit::ACTION_INPUT: &str
-pub const tungsten_kit::AILMENT_FEED: &str
-pub const tungsten_kit::AILMENT_TICK: &str
 pub const tungsten_kit::AIM: &str
 pub const tungsten_kit::ANIMATION_TICK: &str
 pub const tungsten_kit::CAMERA_RIG: &str

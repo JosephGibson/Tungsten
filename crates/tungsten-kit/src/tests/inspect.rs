@@ -90,7 +90,6 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
         ("effects", "Effects"),
         ("abilities", "Abilities"),
         ("level", "Level"),
-        ("ailment_threshold", "AilmentThreshold"),
     ] {
         assert!(described.get(scene).is_some(), "{scene} is described");
         assert!(labels.contains(&label), "{scene} has rows under {label}");
@@ -98,7 +97,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
     for label in ["Intent", "Source", "Parent", "Children", "LocalOffset"] {
         assert!(labels.contains(&label), "{label}");
     }
-    assert_eq!(described.iter().count(), 50);
+    assert_eq!(described.iter().count(), 49);
 }
 
 #[test]

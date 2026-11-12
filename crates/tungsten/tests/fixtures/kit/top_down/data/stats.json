@@ -3,7 +3,7 @@
     "min": 0,
     "max": 10
   },
-  "ailment_threshold_mult": {
+  "status_threshold": {
     "min": 0
   },
   "stamina": {

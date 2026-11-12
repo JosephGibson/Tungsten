@@ -1,0 +1,17 @@
+{
+  "stimulus": "digital.corruption",
+  "on": {
+    "all": [
+      "susceptible"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "corrupt_build",
+        "per": "status_threshold",
+        "scale": 1
+      }
+    }
+  ]
+}

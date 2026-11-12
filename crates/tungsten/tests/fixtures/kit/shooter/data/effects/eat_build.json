@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 0.5,
+    "decay": 0.5
+  },
+  "bands": [
+    {
+      "at": 0.4999,
+      "enter": [
+        {
+          "apply": {
+            "status": "eaten"
+          }
+        },
+        {
+          "remove": "eat_build"
+        }
+      ]
+    }
+  ]
+}

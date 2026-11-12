@@ -1,0 +1,18 @@
+{
+  "stimulus": "biological.acid",
+  "on": {
+    "all": [
+      "susceptible",
+      "status.eaten"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "dissolve_build",
+        "per": "status_threshold",
+        "scale": 1
+      }
+    }
+  ]
+}

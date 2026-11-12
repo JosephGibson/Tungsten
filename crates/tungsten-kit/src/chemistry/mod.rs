@@ -21,7 +21,6 @@ use std::rc::Rc;
 use tungsten_core::physics::ContactBegan;
 use tungsten_core::{Entity, EventCursor, EventQueue, Plugin, Schedule, Time, World, system};
 
-use crate::damage::ailments::{AILMENT_FEED, AILMENT_TICK};
 use crate::damage::effects::{EFFECT_TICK, definition};
 use crate::damage::health::{DamagedPart, Health};
 use crate::damage::pipeline::DAMAGE_RESOLVE;
@@ -50,14 +49,14 @@ use stimuli::{Emission, LightSampler, Reach, impacts, spread};
 use tiles::{TILE_STATUSES, tile_saved};
 
 /// [`ChemistryPlugin`]'s system, in the resolve phase after
-/// [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) and the ailment feed when they
-/// are registered, before [`EFFECT_RESOLVE`](crate::EFFECT_RESOLVE), so the
-/// statuses it applies land in its step.
+/// [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) when it is registered, before
+/// [`EFFECT_RESOLVE`](crate::EFFECT_RESOLVE), so the statuses it applies
+/// land in its step.
 pub const CHEMISTRY: &str = "chemistry";
 
 /// [`ChemistryPlugin`]'s second system, in the tick phase after
-/// [`EFFECT_TICK`](crate::EFFECT_TICK) and the ailment tick when they are
-/// registered: before the step's physics it registers the contact begins'
+/// [`EFFECT_TICK`](crate::EFFECT_TICK) when it is registered: before the
+/// step's physics it registers the contact begins'
 /// queue while a rule answers `stimulus.impact`, and it samples the light
 /// on its period while one answers `stimulus.light`; idle as [`CHEMISTRY`]
 /// is.
@@ -370,8 +369,7 @@ impl Plugin for ChemistryPlugin {
                 .join(system(CHEMISTRY_TICK, move |world: &mut World| {
                     ticker.run(world);
                 }))
-                .after_if_present(EFFECT_TICK)
-                .after_if_present(AILMENT_TICK),
+                .after_if_present(EFFECT_TICK),
         );
         let mut runner = Runner::default();
         schedule.add(
@@ -380,8 +378,7 @@ impl Plugin for ChemistryPlugin {
                 .join(system(CHEMISTRY, move |world: &mut World| {
                     runner.run(world);
                 }))
-                .after_if_present(DAMAGE_RESOLVE)
-                .after_if_present(AILMENT_FEED),
+                .after_if_present(DAMAGE_RESOLVE),
         );
     }
 }

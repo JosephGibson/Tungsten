@@ -164,6 +164,18 @@
       },
       "eaten": {
         "path": "data/effects/eaten.json"
+      },
+      "eat_build": {
+        "path": "data/effects/eat_build.json"
+      },
+      "dissolve_build": {
+        "path": "data/effects/dissolve_build.json"
+      },
+      "corrupt_build": {
+        "path": "data/effects/corrupt_build.json"
+      },
+      "dissolved": {
+        "path": "data/effects/dissolved.json"
       }
     },
     "abilities": {
@@ -192,6 +204,17 @@
     "stats": {
       "game": {
         "path": "data/stats.json"
+      }
+    },
+    "interactions": {
+      "eat": {
+        "path": "data/interactions/eat.json"
+      },
+      "dissolve": {
+        "path": "data/interactions/dissolve.json"
+      },
+      "corrupt": {
+        "path": "data/interactions/corrupt.json"
       }
     }
   },

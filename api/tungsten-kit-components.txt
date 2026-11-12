@@ -9,11 +9,6 @@ component action_input: The actions that steer the entity, read into its Intent 
   field slots: { slot: action } = {} — named slots, such as `jump`, read as held and just pressed
   genres: platformer, top_down, rpg, shooter, arpg
   sample: { "move": ["move_left", "move_right"] }
-component ailment_threshold: How much the entity's ailment buckets must hold before a ladder's `needs` rungs reach: flat plus a fraction of its full health, times its `ailment_threshold_mult` stat when it has one.
-  field flat: f32 (>= 0) = 0.0 — the flat part
-  field of_max_health: f32 (>= 0) = 0.0 — a fraction of the entity's `health` max, added
-  genres: top_down, shooter
-  sample: {}
 component aim: The direction the entity aims in, from its intent, the cursor, its movement or a target, kept while its source gives none.
   field from: one of intent | cursor | movement | target = "intent" — the intent's aim, the cursor's world point, the movement or a target
   field target: shape target = null — what it aims at with `from: target`, unused otherwise; the load checks its tags
@@ -320,7 +315,7 @@ component speed_limit: Caps the entity's speed, the length first, then each axis
   sample: { "speed": 600 }
 component stats: Named values with ordered modifiers, which the movers, health and cooldowns read.
   field bases: stat name → finite base, or { base, lines: [line] } — the value itself: each stat well-known or declared, its base within its bounds; a line is `{ modifier, with, while, against }`, the entity's own under the source `base`, its tags declared
-  genres: platformer, top_down, arpg
+  genres: platformer, top_down, shooter, arpg
   sample: { "move_speed": 160 }
 component stay_in_view: Clamps the entity's box inside an area and stops its outward speed; exactly one of `region` and `view`.
   field region: [[min_x, min_y], [max_x, max_y]] = null — the closed box, in world pixels
@@ -410,14 +405,6 @@ shape ability_trigger: What fires an ability.
   field interval: f32 (> 0) — seconds of game time between uses, at most once a step
   field manual: {} — `use_ability` and the `ability` cue action alone
   sample: { "manual": {} }
-shape ailment_rung: One rung of a damage type's ladder, written from the lowest up and climbed from the top down.
-  field effect: effects ID or entry — applied to the target from the part's source, scaled by the fill over the threshold; the load checks it
-  field needs: f32 (> 0) = null — the fraction of the target's threshold the bucket must hold; any fill when left out
-  field requires: list of tag = [] — tags the target must carry, the tags of effects the feed queued for it this step counted; the load checks them
-  field blocked_by: list of tag = [] — tags that skip the rung while the target carries one, the tags of effects the feed queued for it this step counted, so the bucket fills on for the rungs above; the load checks them
-  field chance: f32 (> 0, <= 1) = 1.0 — drawn from the kit's random stream once the rung is reached
-  field window: f32 (> 0) = null — seconds the bucket drains a threshold over, the first `needs` rung's; required with `needs`
-  sample: { "effect": "chilled", "window": 4 }
 shape apply_output: A status applied, with a damage-over-time rate and lines.
   field status: effects ID or entry — the status; the load checks it
   field dot: f32 (>= 0) = null — its damage over time a second: this times the hit's base, the drawn amount before the factors times the `delivery.dot` sums and the status effect
@@ -565,7 +552,6 @@ shape curve: A piecewise-linear map: linear between its points and held at the e
   sample: [[0, 0], [1, 1]]
 shape damage_type: A game's damage type: each field inherited from its nearest declared ancestor that sets it.
   field label_style: shape label_style = null — how a `damaged_part` cue's `{ "label": {} }` floats a part of the type
-  field ailments: list of shape ailment_rung = null — the ladder a part of the type climbs, from the lowest rung up; the feed takes the highest rung the target reaches and empties its bucket
   sample: {}
 shape despawn_action: An entity despawned with its children.
   field target: one of self | other = "self" — the subject or the other entity
@@ -871,7 +857,7 @@ kind abilities: An `ability`: what an entity's `abilities` list owns, a trigger 
 kind cue_rules: A list of `cue_rule`: shared reactions to an event, run after the entity's own cues.
 kind curves: A `curve`: what an effect's `scale` reads and a `level` climbs.
 kind damage_types: An object of `damage_type` by damage type: each key a declared tag, defined by one entry; a World holds 64.
-kind effects: An `effect`: what a cue's `effect` action, an ailment, an ability or an offer applies.
+kind effects: An `effect`: what a cue's `effect` action, a chemistry rule, an ability or an offer applies.
 kind interactions: An `interaction`: a chemistry rule from a stimulus to outputs on what receives it.
 kind loot_tables: A `weighted_table`: what a `roll` cue action draws and spawns.
 kind offers: An `offers`: what a `level` draws at each level up.

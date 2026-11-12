@@ -311,6 +311,15 @@
       },
       "fuse": {
         "path": "data/effects/fuse.json"
+      },
+      "chill_build": {
+        "path": "data/effects/chill_build.json"
+      },
+      "freeze_build": {
+        "path": "data/effects/freeze_build.json"
+      },
+      "burn_build": {
+        "path": "data/effects/burn_build.json"
       }
     },
     "curves": {
@@ -364,6 +373,18 @@
       },
       "douses_lamps": {
         "path": "data/interactions/douses_lamps.json"
+      },
+      "chill": {
+        "path": "data/interactions/chill.json"
+      },
+      "freeze": {
+        "path": "data/interactions/freeze.json"
+      },
+      "burn": {
+        "path": "data/interactions/burn.json"
+      },
+      "poison": {
+        "path": "data/interactions/poison.json"
       }
     }
   },

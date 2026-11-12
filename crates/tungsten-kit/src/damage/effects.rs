@@ -24,7 +24,6 @@ use crate::chemistry::queue::{Receiver, StatusList};
 use crate::chemistry::rules::check_stimulus;
 use crate::chemistry::stimuli::{Named, emit_from};
 use crate::chemistry::{CHEMISTRY, Chemistry, Output, queue_status_list};
-use crate::damage::ailments::{AILMENT_FEED, register_ailments};
 use crate::damage::defense::Resist;
 use crate::damage::health::Health;
 use crate::damage::pipeline::{DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest};
@@ -56,8 +55,8 @@ use crate::{TIME_EPSILON, count_down};
 pub const EFFECT_TICK: &str = "effect_tick";
 
 /// [`EffectsPlugin`]'s system that applies the queued requests, in the
-/// resolve phase after [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) and the
-/// ailment feed when they are registered.
+/// resolve phase after [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) when it is
+/// registered.
 pub const EFFECT_RESOLVE: &str = "effect_resolve";
 
 /// The data kind of effects, and the scene component.
@@ -2488,7 +2487,7 @@ pub enum Applied {
 }
 
 /// An effect to apply: its target, the effect, the entity it comes from and
-/// the scale its curve reads. The kit's cues, ladder, abilities and offers
+/// the scale its curve reads. The kit's cues, chemistry, abilities and offers
 /// queue one for the step's [`EFFECT_RESOLVE`]; a game's Rust builds its
 /// own and either [`apply`](Self::apply)s it now or
 /// [`queue`](Self::queue)s it.
@@ -4253,11 +4252,7 @@ fn tick_instance(
 /// request queue, [`EFFECT_TICK`] in the tick phase after
 /// [`STATS_APPLY`](crate::STATS_APPLY) when it is registered,
 /// [`EFFECT_RESOLVE`] in the resolve phase after
-/// [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) and the ailment feed when
-/// they are registered, and the ailment ladder's `ailment_threshold`
-/// component, [`AILMENT_FEED`](crate::AILMENT_FEED) and
-/// [`AILMENT_TICK`](crate::AILMENT_TICK), since the ladder applies
-/// effects.
+/// [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) when it is registered.
 ///
 /// A modifier placed in one step's resolve reaches the movers, health and
 /// cooldowns through the next step's `stats_apply`, and an expiry comes
@@ -4344,10 +4339,8 @@ impl Plugin for EffectsPlugin {
                     resolver.run(world);
                 }))
                 .after_if_present(DAMAGE_RESOLVE)
-                .after_if_present(AILMENT_FEED)
                 .after_if_present(CHEMISTRY),
         );
-        register_ailments(schedule, world);
         ensure_looks(schedule, world);
     }
 }
@@ -4897,7 +4890,7 @@ fn describe_effects(world: &mut World) {
     describe_kind(
         world,
         EFFECTS,
-        "An `effect`: what a cue's `effect` action, an ailment, an ability or an offer applies.",
+        "An `effect`: what a cue's `effect` action, a chemistry rule, an ability or an offer applies.",
     );
 }
 

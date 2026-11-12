@@ -5,7 +5,7 @@
 //! and drops, orbs and a knight; M66's fantasy damage types: a spellblade
 //! and a golem, a pyromancer, its firebolts and a ward; M67's burning
 //! slimes, the hero's wand and dash, the ranger's volley, ammo, levels and
-//! offers, the golem's cold ladder and the ghouls' poison; M74's burn named
+//! offers, the golem's cold builds and the ghouls' poison; M74's burn named
 //! after a load, the golem's frost stream and a game's own damage numbers;
 //! M75's guard saved mid-swing; M76's arrow through hedges, saved
 //! mid-flight; 7.10a's veteran with its scoped lines, a focused effect and
@@ -1530,21 +1530,24 @@ fn cold_hits_chill_then_freeze_the_golem_and_a_thawed_golem_resists_the_next_fre
         let golem = spawn(&mut harness, "golem", [0.0, 0.0]);
         let mage = harness.world_mut().spawn();
         harness.step(1);
-        // The threshold is 4 at the golem's 1.5 multiplier; a hit of 8 lands
-        // 6.4 after its resistance: a full bucket chills, the next freezes,
-        // and three such hits leave the golem of 20 alive.
+        // The golem's `status_threshold` is 6; a hit of 8 lands 6.4 after its
+        // resistance: a full chill build chills, its band's effect at
+        // chemistry's run after the hit's, the next hit's freeze build
+        // freezes, and three such hits leave the golem of 20 alive.
+        let two_steps = frames_for(2.0 / 60.0, dt);
         cold(golem, 8.0)
             .with_source(mage)
             .apply(harness.world_mut());
-        harness.step(1);
+        harness.step(two_steps);
         assert!(has_effect(&harness, golem, "chilled") && !has_effect(&harness, golem, "frozen"));
         cold(golem, 8.0)
             .with_source(mage)
             .apply(harness.world_mut());
-        harness.step(1);
+        harness.step(two_steps);
         assert!(has_effect(&harness, golem, "frozen"), "dt {dt}");
         // Up to the step the freeze expires on; that step, the rival, of a
-        // lower index than the mage, lands another full bucket.
+        // lower index than the mage, lands another full build, whose
+        // freeze its band applies the step after, under the thaw.
         loop {
             let left = harness
                 .world()
@@ -1565,7 +1568,7 @@ fn cold_hits_chill_then_freeze_the_golem_and_a_thawed_golem_resists_the_next_fre
                 .with_source(rival)
                 .queue(harness.world_mut())
         );
-        harness.step(1);
+        harness.step(two_steps);
         let world = harness.world();
         let effects = world.get::<Effects>(golem).unwrap();
         assert!(effects.has("thawed") && !effects.has("frozen"), "dt {dt}");
@@ -1591,7 +1594,9 @@ fn cold_hits_chill_then_freeze_the_golem_and_a_thawed_golem_resists_the_next_fre
 }
 
 #[test]
-fn a_toxic_hit_poisons_by_chance_under_a_seed() {
+fn a_toxic_hit_poisons_a_susceptible_ghoul_whatever_the_seed() {
+    // 7.13a: the ladder's chance went with it; the rule applies its poison
+    // on each hit, so a seed changes nothing.
     for dt in DTS {
         let run = |seed: u64| -> Vec<bool> {
             let mut harness = recipe(GENRE, KitPlugins::set(), dt);
@@ -1614,12 +1619,8 @@ fn a_toxic_hit_poisons_by_chance_under_a_seed() {
                 .collect()
         };
         let a = run(21);
-        assert_eq!(a, run(21), "dt {dt}: one seed, one outcome");
-        assert_ne!(a, run(22), "dt {dt}");
-        assert!(
-            a.iter().any(|&p| p) && a.iter().any(|&p| !p),
-            "dt {dt}: {a:?}"
-        );
+        assert_eq!(a, run(22), "dt {dt}: no draw");
+        assert!(a.iter().all(|&p| p), "dt {dt}: {a:?}");
     }
 }
 

@@ -238,7 +238,6 @@ fn the_plugin_registers_its_kind_queue_and_system() {
     let names: Vec<&str> = schedule.names(Stage::FixedUpdate).collect();
     let at = |name: &str| names.iter().position(|n| *n == name).unwrap();
     assert!(at(DAMAGE_RESOLVE) < at(CHEMISTRY));
-    assert!(at(AILMENT_FEED) < at(CHEMISTRY));
     assert!(at(CHEMISTRY) < at(crate::EFFECT_RESOLVE));
     // The kit declares its stimuli, so a rule names them anywhere.
     for name in [

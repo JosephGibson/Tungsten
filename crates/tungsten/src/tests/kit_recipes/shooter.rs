@@ -3,9 +3,9 @@
 //! view, raiders from a wave on a path, and a walker on a floor under the
 //! same actions; M64's fighter, drifter, asteroid, mine and gun; M65's
 //! interceptor, lasers, carrier and bulwark; M66's sci-fi damage types: a
-//! hacker, its payloads and a mainframe; M67's corruption ladder, the
+//! hacker, its payloads and a mainframe; M67's corruption build, the
 //! ship's cannon and the turret's pulse; M74's acid named after a load, the
-//! acid ladder's held rung and a game's own damage numbers; M75's drone
+//! acid's held build and a game's own damage numbers; M75's drone
 //! saved mid-volley; 7.10c's breacher, Static Front's: its SMG held, its
 //! dodge along the move stick and its reload's sweep; a lobber's grenade
 //! and its blast where it lands; a cryo trooper's cone; an escort carrier's
@@ -599,13 +599,15 @@ fn a_corrupted_mainframe_takes_more_digital_damage_until_its_wither_expires() {
         let mut harness = recipe(GENRE, KitPlugins::set(), dt);
         let mainframe = spawn(&mut harness, "mainframe", [640.0, 300.0]);
         harness.step(1);
-        // The threshold is 20 plus a tenth of 100; a corruption hit of 60
-        // lands 30 at the half resistance: a full bucket corrupts.
+        // The mainframe's `status_threshold` is 30, 20 plus a tenth of its
+        // 100; a corruption hit of 60 lands 30 at the half resistance: a full
+        // build corrupts, its band's effect at chemistry's run after the
+        // hit's.
         assert_eq!(
             digital(mainframe, "digital.corruption", 60.0).apply(harness.world_mut()),
             Hit::Hurt
         );
-        harness.step(1);
+        harness.step(frames_for(2.0 / 60.0, dt));
         let world = harness.world();
         assert!(
             world.get::<Effects>(mainframe).unwrap().has("corrupted"),

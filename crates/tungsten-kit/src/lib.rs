@@ -163,9 +163,6 @@
 //!   transition at the end, which the cue action `effect` applies; with an
 //!   intensity, a status, built by its requests' amounts and status
 //!   effect, worn by its decay, granting bands and burning a fuel stat.
-//!   [`AilmentRung`], [`AilmentThreshold`] and [`AilmentBuckets`]: the
-//!   ladder on a `damage_types` definition that a target's bucket of that
-//!   type climbs against its threshold, each rung an effect.
 //! - **Chemistry.** [`Interaction`], [`Output`], [`Reaction`], [`Chemistry`]
 //!   and [`ChemistryPlugin`]: the `interactions` kind's rules from a
 //!   stimulus (a landed hit's damage type, a status's or an output's
@@ -247,9 +244,6 @@ mod transform;
 pub use chemistry::{
     CHEMISTRY, CHEMISTRY_TICK, Chemistry, ChemistryPlugin, Interaction, Output, Reaction, TileCell,
     TileStatuses, stimulate,
-};
-pub use damage::ailments::{
-    AILMENT_FEED, AILMENT_TICK, AilmentBuckets, AilmentRung, AilmentThreshold,
 };
 pub use damage::defense::{Resist, SHIELD_TICK, Shield};
 pub use damage::effects::{
@@ -362,29 +356,28 @@ pub use transform::hierarchy::{
 pub mod prelude {
     pub use crate::{
         Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, ActionInput,
-        ActionInputPlugin, AilmentBuckets, AilmentRung, AilmentThreshold, Aim, AimPlugin,
-        AnimationPlugin, Applied, CameraRigId, CameraRigPlugin, CameraTarget, CameraTargetPlugin,
-        CameraZone, Cap, CapPlugin, CharacterAnimator, CharacterAnimatorPlugin, Chemistry,
-        ChemistryPlugin, Children, ClipRule, Clips, Cone, ContactDamage, ContactDamagePlugin,
-        Conversion, Cooldown, CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction,
-        CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart,
-        DamageRequest, Damaged, DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside,
-        DespawnOutsidePlugin, Direction, Effect, EffectApplied, EffectExpired, EffectInstance,
-        EffectRequest, Effects, EffectsPlugin, Expire, Facing, FacingPlugin, Flags, Follow,
-        FollowPlugin, HealRequest, Healed, Health, HealthBar, HealthBarPlugin, HealthPlugin,
-        HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox, Hold, Hurtbox, ImmunePart,
-        Intent, Interaction, KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback,
-        KnockbackPlugin, LabelStyle, Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin,
-        LinearMotion, LinearMotionPlugin, Lob, LocalOffset, Looks, LooksPlugin, Modifier, Offer,
-        Offers, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Output, Parent, Past,
-        PathFollower, PathFollowerPlugin, Payload, Penetration, Phase, PickedUp, Pickup,
-        PickupPlugin, Place, PlatformerController, PlatformerControllerPlugin, Projectile,
-        ProjectileBounced, ProjectileExpired, ProjectilePassed, ProjectilePlugin, Reaction,
-        Refresh, Resist, Scaled, Shield, SoundOnEvent, Source, SourcePlugin, SpawnChildren,
-        SpawnChildrenPlugin, SpawnWith, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin,
-        StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin,
-        Steering, SteeringPlugin, Struck, TagFilter, TagLook, Tags, TagsPlugin, Target,
-        TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered,
+        ActionInputPlugin, Aim, AimPlugin, AnimationPlugin, Applied, CameraRigId, CameraRigPlugin,
+        CameraTarget, CameraTargetPlugin, CameraZone, Cap, CapPlugin, CharacterAnimator,
+        CharacterAnimatorPlugin, Chemistry, ChemistryPlugin, Children, ClipRule, Clips, Cone,
+        ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed, CooldownPlugin,
+        Counters, CountersPlugin, CueAction, CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin,
+        Curve, DamageKinds, DamagePart, DamageRequest, Damaged, DamagedPart, DepthSort,
+        DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Direction, Effect, EffectApplied,
+        EffectExpired, EffectInstance, EffectRequest, Effects, EffectsPlugin, Expire, Facing,
+        FacingPlugin, Flags, Follow, FollowPlugin, HealRequest, Healed, Health, HealthBar,
+        HealthBarPlugin, HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox,
+        Hold, Hurtbox, ImmunePart, Intent, Interaction, KitDebug, KitDebugPlugin, KitPlugins,
+        KitRng, KitTrace, Knockback, KnockbackPlugin, LabelStyle, Level, LevelPlugin, LevelUp,
+        Lifetime, LifetimePlugin, LinearMotion, LinearMotionPlugin, Lob, LocalOffset, Looks,
+        LooksPlugin, Modifier, Offer, Offers, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin,
+        Output, Parent, Past, PathFollower, PathFollowerPlugin, Payload, Penetration, Phase,
+        PickedUp, Pickup, PickupPlugin, Place, PlatformerController, PlatformerControllerPlugin,
+        Projectile, ProjectileBounced, ProjectileExpired, ProjectilePassed, ProjectilePlugin,
+        Reaction, Refresh, Resist, Scaled, Shield, SoundOnEvent, Source, SourcePlugin,
+        SpawnChildren, SpawnChildrenPlugin, SpawnWith, Spawner, SpawnerPlugin, SpeedLimit,
+        SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView,
+        StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter, TagLook, Tags, TagsPlugin,
+        Target, TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered,
         TriggerZone, Used, WallContact, WeightedTable, WorldBounds, WorldCue, Wrap, WrapPlugin,
         Zone, ZoneEntered, ZonePlugin, carried_by, carry, cursor_to_world, damage,
         despawn_recursive, end_effect, ensure_phases, face_toward, float_label, heal, kill,

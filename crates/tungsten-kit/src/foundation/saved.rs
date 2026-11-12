@@ -23,7 +23,6 @@ const HIERARCHY: &str = "the hierarchy: children come back from their parent's f
 /// that changes one of these in play registers it itself.
 pub const UNSAVED_COMPONENTS: &[(&str, &str)] = &[
     ("action_input", RULE),
-    ("ailment_threshold", RULE),
     ("animation", PRESENTATION),
     ("camera_rig", PRESENTATION),
     ("camera_target", RULE),

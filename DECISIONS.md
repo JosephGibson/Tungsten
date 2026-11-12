@@ -2538,6 +2538,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 **Amended by D-200:** `DamagedPart` and the type labels only; a part carries its request's `crit`, and `DamageKinds::label_style` reads the style a style-less `label` floats a part of those kinds in; the rest stands.
 **Amended by D-238:** `Resist`, conversion and the type label only; a factor's floor raises it before penetration; a skill sheet converts and adds extra damage at its use with a history per part, while a request without a sheet converts as before; a type label groups by `merge`, `ticks` and `crit`; the rest stands.
 **Amended by D-241:** `DamagedPart` and conversion only; a part carries its damage-over-time base, its hit's status effect and its chemistry depth, and a request typed at a status's application skips its source's conversion; the rest stands.
+**Amended by D-271:** a `damage_types` definition's fields only; its `ailments` ladder is gone, a definition's `label_style` its one field; the rest stand.
 **Date:** 2026-10-18
 **Decision:** The kit catalogue's DT (`docs/plans/1.0/w13-kit.md` §7), on core alone with no new dependency:
 
@@ -2571,6 +2572,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 **Amended by D-244:** abilities only; a `held` trigger, a `direction` (`aim` or `movement`) and `Abilities::refill_left`; a spawn payload's `centred` and `lob`, a speed keeping the prefab's acceleration; the `cone` and `conduct` payloads; the rest stands.
 **Amended by D-245:** abilities only; the `place` payload sets a prefab down by its centre at the aim's point, refused before the spend with no point or one past its range (`no_target`), no room (`no_room`) or at its cap (`capped`); a spawn payload is admitted under its prefab's cap; the rest stands.
 **Amended by D-246:** abilities only; `ability`'s `icon` and `clip`, the clip played on the user after its payloads, read by `Abilities::icon` and `clip`; the rest stands.
+**Amended by D-271:** the ailment ladder only; `AilmentRung`, `AilmentThreshold`, `AilmentBuckets`, `ailment_feed` and `ailment_tick` are removed, a status an `interactions` rule builds against the receiver's stat (`per`), its bands applying the rungs' effects, doing their work; the rest stand.
 **Date:** 2026-10-18
 **Decision:** The kit catalogue's E (`docs/plans/1.0/w13-kit.md` §7), on core alone with no new dependency:
 
@@ -3037,6 +3039,7 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 **Amended by D-209:** the gun's magazine only; nine rounds 0.2 s apart, and a `reload` press refills a magazine short of its rounds after `RELOAD_SECS`, the trigger blocked and clicking meanwhile; the rest stand.
 **Amended by D-210:** the cascade queue only; an entry credits whoever lit its chain, not only the run's player: `queue_from` and `thermal_shock_from` take a source save ID, every ending a sourced entry queues keeps it and the reactions queue by their part's source, a gone source crediting none; and a fourth kind of ending, `Detonation`, blows a powder keg or a goblin's bomb; the rest stand.
 **Amended by D-238:** the player's crits and blast half only; they are the player's `crit_chance` 0.05, `crit_multiplier` 2 and `damage_taken` halved in the `hit.blast` context, which the kit's rules read (`roll_crit` at the hit's build); the rest stands.
+**Amended by D-271:** 01's element states, ladders and endings only; its targets' ailments are builds on chemistry, its bodies' fire and cold, its props' fires, fuses and douses, a basin's crust and a fire's douse statuses, its endings chemistry's rules with 01's handlers, and its cascade keeps lightning's jumps alone; the rest stand.
 **Date:** 2026-10-21
 **Decision:** M74 builds example 01's second stop on the kit:
 
@@ -3825,6 +3828,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 ## D-241 — Chemistry: the `interactions` kind from stimuli to a fixed list of outputs through a saved, capped and bounded queue; a status's `on_end` and a band's `enter`; damage-over-time rates from the hit; spread, impacts and light as stimuli; statuses on tiles and `set_tile`; `become` under an identity; the blast; 02's `spread` row
 **Amended by D-244:** the inert World only; chemistry also runs while a blast waits from outside a run, a projectile's end, and sets it off that step; the rest stands.
 **Amended by D-245:** the `spawn` and `become` outputs only; each is admitted under its prefab's cap, a refusal a skipped output, a replacement's receiver leaving its group as it arrives; the rest stands.
+**Amended by D-271:** a build's amount and a game's stimulus only; a `build` output's `per` divides its amount by the receiver's stat, whole without it, and `stimulate` queues a game's own declared stimulus as a landed part's, refusing an undeclared one, an amount not finite or below 0 and a gone receiver; the rest stand.
 **Date:** 2026-11-03
 **Decision:** Redo 7.10b's chemistry (phase 7's Step 9, the chemistry plan, re-planned from the statuses-and-chemistry plan's saved third step) lands every step it planned. Every rule is inert in a World without an `interactions` entry, a queued entry or a tile status: `chemistry` and `chemistry_tick` return before any query, so 01's and the template's behaviour, the physics hashes, the kit's pin and every counter guard pin hold.
 
@@ -4246,3 +4250,15 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Amends `D-075`'s and `D-066`'s event clauses as their marker lines say; `D-064`'s gate (`penetration > 0`) and `D-065`'s rule that a resting contact sends every step while awake stand. Breaking for a reader that counted an event a substep.
 - Pins: the determinism and containment hashes and `KIT_RECIPES_HASH` hold; 02's guards send fewer events (`blast` 271,607 → 68,838, `friction` 155,823 → 40,787, `slopes` 34,488 → 9,959, `physics` 31,391 → 12,737, `terrain` 7,926 → 2,135, `physics-sparse` 4,866 → 4,621); 01's `pit` holds; `blast`'s digest moves by its `events` count alone.
 - Known limit: an event names its pair's first penetrating substep, so a reader that projects a speed on the event's normal misses a later, more head-on substep's; `ContactBegan::speed` keeps an impact's largest closing speed.
+
+## D-271 — 01's elements on chemistry: a build relative to its receiver (`per`) and a game's own stimulus (`stimulate`); the kit's ailment ladders, buckets and `ailment_threshold` removed
+**Date:** 2026-11-12
+**Decision:** 7.13a. The kit: a `build` output's `per` names the stat its amount is divided by on the receiver, whole on one without it, and `stimulate` queues a game's own declared stimulus, or a damage type, as a landed part's, refusing an undeclared one, an amount not finite or below 0 and a gone receiver, warned once a run. The ailment ladder goes: `AilmentRung`, `AilmentThreshold`, `AilmentBuckets`, `AILMENT_FEED`, `AILMENT_TICK`, a `damage_types` definition's `ailments` and the `ailment_threshold` component; a status an `interactions` rule builds, its bands applying the rungs' effects and removing the build, the rungs' gates its rules' filters, does their work, and the genre fixtures port their ladders so. Example 01: its targets' ailments are builds a rung each against a `status_threshold` stat; its bodies' fire and cold, its props' fires, fuses and douses, a basin's chill and crust and a fire's douse are statuses; its endings, thermal shock, shatter, steam and a keg's blast, are chemistry's rules with 01's handlers; its saves migrate (schemas 25 to 27 drop the buckets and the cascade's endings and detonations and add the thresholds); its cascade keeps lightning's jumps alone. Kept as seams: chemistry's one cap a run, 01's 48, over its cheap reactions and its blasts; the balls' spread and the hole's douse as 01's passes; 01's blasts, steam, iron's scraps and crust as handlers, outside the kit's outputs.
+
+**Why:** 01's elements were a second effect system beside the kit's: components with their own clocks, a cascade whose endings chemistry's rules can decide, and the kit's ladder, whose buckets chemistry's builds do with one mechanism, a status with bands; two climbs were two things to explain and test. The handlers keep 01's outcomes where the kit's outputs differ: a blast's falloff and its receiver, steam's douse before its blast, a chain seeded by one target.
+
+**Consequences:**
+- Amends `D-176`, `D-177`, `D-200` and `D-241` as their marker lines say.
+- Breaking (the kit): the five ladder items and `ailments` are gone; a game's ladder becomes builds with `per` and bands, and a rung's `chance` has no counterpart. The census: components 50 → 49, shapes 86 → 85, numeric fields 179 → 174; `stats` claims the shooter genre, whose fixture's prefabs carry a threshold.
+- Pins: `KIT_RECIPES_HASH` moves once, the buckets' rows gone; 01's `pit` guard moves with its causes in the run's evidence; 02's guards hold; the template's schedule snapshot and component list lose the ladder's systems and component.
+- Known limits: a save between a stimulus and its run drops it until 01's saves hold chemistry's queue (7.13b); a band's `enter` runs at chemistry's next run, a step after its build; a look's tint holds no time and its overlay plays a clip, so 01's status overlays and flickering tints stay its own.

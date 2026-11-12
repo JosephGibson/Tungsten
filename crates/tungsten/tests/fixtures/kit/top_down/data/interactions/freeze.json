@@ -1,0 +1,18 @@
+{
+  "stimulus": "elemental.cold",
+  "on": {
+    "all": [
+      "susceptible",
+      "status.chilled"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "freeze_build",
+        "per": "status_threshold",
+        "scale": 1
+      }
+    }
+  ]
+}
