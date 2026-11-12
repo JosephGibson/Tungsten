@@ -19,6 +19,7 @@ use tungsten::kit::{Health, Phase, ensure_phases};
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Plugin, SceneEntity};
 
+use crate::features::level;
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
 use crate::shared::{self, BODIES, Body, Saved, despawn_tree, spawn_key_burst};
@@ -48,22 +49,26 @@ impl Plugin for DummyPlugin {
     }
 }
 
-/// Spawns a dummy with its sprite's top-left at `at`, owned by gameplay,
-/// with the run's next save ID and its body from its data
-/// ([`shared::fit_body`]), at once: a summon's or a load's.
+/// Spawns a dummy with its sprite's top-left at `at`, owned by gameplay, as
+/// one of the run's records (`PreparedPrefab::saved`, the map's area), its
+/// body from its data ([`shared::fit_body`]), at once.
 pub fn spawn(world: &mut World, at: Vec2) -> Entity {
-    let id = shared::take_id(world);
     let dummy = world
         .prepare_prefab(DUMMY_PREFAB, at.to_array())
         .expect("the manifest's prefabs load with it")
         .with((
-            Saved::kept(id),
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
+        .saved(world, Some(level::MAP))
         .spawn(world);
     shared::fit_body(world, dummy, DUMMY_PREFAB);
     dummy
+}
+
+/// A restored dummy's body, which its spawn gives beyond its prefab.
+pub fn restored(world: &mut World, dummy: Entity) {
+    shared::fit_body(world, dummy, DUMMY_PREFAB);
 }
 
 /// The dummy's body, as its data holds it now: every dummy prefab's.
@@ -93,16 +98,15 @@ pub fn fits(world: &World, at: Vec2) -> bool {
 /// Summons a dummy of `prefab` with its body's centre at `at`, with a
 /// poof; past [`SUMMON_CAP`] summoned live, the oldest goes, with its own.
 pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
-    let id = shared::take_id(world);
     let corner = at - body(world).centre;
     let dummy = world
         .prepare_prefab(prefab, corner.to_array())
         .ok()?
         .with((
-            Saved::kept(id),
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
+        .saved(world, Some(level::MAP))
         .spawn(world);
     shared::fit_body(world, dummy, DUMMY_PREFAB);
     spawn_key_burst(world, "ex10_poof", at);

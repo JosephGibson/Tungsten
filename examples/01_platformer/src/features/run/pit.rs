@@ -13,7 +13,7 @@ use tungsten::kit::{Health, StateMachine, Stats};
 use super::Run;
 use crate::features::combat::BURNING;
 use crate::features::elements::components::Flame;
-use crate::features::enemies::components::{EnemyKind, EnemyState};
+use crate::features::enemies::components::{EnemyKind, EnemyState, Variant};
 use crate::features::level::{PIT, PIT_DECK, PIT_SHELVES, TILE};
 use crate::features::{enemies, lightning, player, toys};
 use crate::shell::Difficulty;
@@ -103,9 +103,9 @@ pub fn wake_foes(world: &mut World) -> Result<[Entity; 6], String> {
     ];
     let mut six = [player; 6];
     for (slot, (kind, centre)) in six.iter_mut().zip(cast) {
-        let id = crate::shared::take_id(world);
         let corner = centre - enemies::body(world, kind).centre;
-        let enemy = enemies::spawn(world, kind, corner, id).ok_or("an enemy's prefab")?;
+        let enemy = enemies::spawn_record(world, kind, Variant::Plain, corner)
+            .ok_or("an enemy's prefab")?;
         enemies::scale(world, enemy, Difficulty::Normal);
         *slot = enemy;
     }

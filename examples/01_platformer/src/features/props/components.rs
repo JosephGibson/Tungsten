@@ -25,8 +25,8 @@ pub enum StoneSize {
 }
 
 /// A crate or keg the map sets down for a fresh run, at its markers: none
-/// of the summon's, so its caps leave it alone. Saved as `PropSave::map`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// of the summon's, so its caps leave it alone. Saved, as `map_prop`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MapProp;
 
 impl StoneSize {
@@ -61,7 +61,30 @@ pub struct Plank {
     pub variant: usize,
 }
 
-/// A crate's or a plank's fire as a save writes it (7.13a): the game
+/// [`Plank`] in a save: its row, which its prefab leaves out.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlankForm {
+    pub variant: usize,
+}
+
+impl From<&Plank> for PlankForm {
+    fn from(plank: &Plank) -> Self {
+        Self {
+            variant: plank.variant,
+        }
+    }
+}
+
+impl From<PlankForm> for Plank {
+    fn from(form: PlankForm) -> Self {
+        Self {
+            variant: form.variant,
+        }
+    }
+}
+
+/// A crate's or a plank's fire, as a break passes it on (7.13a): the game
 /// seconds of fire it has left, its `fuel` stat, kept once it is put out;
 /// whether it burns, its `prop_burn`; the save ID its fire credits, the
 /// burn's source's; and the seconds a douse keeps it from lighting, its

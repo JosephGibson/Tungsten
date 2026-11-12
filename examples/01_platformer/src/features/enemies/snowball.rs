@@ -47,8 +47,8 @@ pub const BURST_SECS: f32 = 0.3;
 pub const BURST_PARTICLES: &str = "ex10_snowball_burst";
 const BURST_Z: i32 = 14;
 
-/// A snowball's body with its sprite's top-left at `corner`, at once, with
-/// the run's next save ID: a throw's, or a load's.
+/// A snowball's body with its sprite's top-left at `corner`, at once, one
+/// of the run's records: a throw's.
 pub fn spawn(world: &mut World, corner: Vec2) -> Entity {
     toys::spawn_toy(world, SNOWBALL_PREFAB, corner, 1.0)
 }

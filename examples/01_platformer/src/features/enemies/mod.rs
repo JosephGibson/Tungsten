@@ -48,7 +48,7 @@ use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
 use crate::features::combat;
-use crate::features::level::LAVA_LAYER;
+use crate::features::level::{self, LAVA_LAYER};
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
 use crate::shared::{self, BODIES, Body, SaveId, Saved, despawn_tree, spawn_key_burst};
@@ -277,6 +277,7 @@ impl Plugin for EnemiesPlugin {
             SaveOptions::<components::Holding>::form::<components::HoldingForm>()
                 .refs(components::holding_refs()),
         );
+        world.register_saved_with("snowball", SaveOptions::<components::Snowball>::new());
         world.register_saved_resource_with(
             "throws",
             SaveOptions::<Throws>::form::<components::ThrowsForm>().refs(components::throws_refs()),
@@ -414,28 +415,40 @@ pub const fn icon(kind: EnemyKind, variant: Variant) -> &'static str {
     }
 }
 
-/// Spawns a plain enemy of `kind` with its sprite's top-left at `corner`,
-/// owned by gameplay, with the save ID `id`, at once ([`spawn_as`]).
+/// Spawns a plain enemy of `kind` with its sprite's top-left at `corner`
+/// ([`spawn_as`]).
 pub fn spawn(world: &mut World, kind: EnemyKind, corner: Vec2, id: SaveId) -> Option<Entity> {
     spawn_as(world, kind, Variant::Plain, corner, id)
 }
 
-/// Spawns an enemy of `kind`'s `variant` with its sprite's top-left at
-/// `corner`, owned by gameplay, with the save ID `id`, its body from its
-/// kind's data ([`shared::fit_body`]), at once: a summon's or a load's. Its
-/// home is where it stands, a bat's the roost above.
+/// [`spawn_record`] for a caller that took a save ID first, as every one
+/// did while 01's own records held its enemies: the ID goes unused, since a
+/// record takes the run's next at its spawn.
 pub fn spawn_as(
     world: &mut World,
     kind: EnemyKind,
     variant: Variant,
     corner: Vec2,
-    id: SaveId,
+    _id: SaveId,
+) -> Option<Entity> {
+    spawn_record(world, kind, variant, corner)
+}
+
+/// Spawns an enemy of `kind`'s `variant` with its sprite's top-left at
+/// `corner`, owned by gameplay, as one of the run's records
+/// (`PreparedPrefab::saved`, the map's area), at once: a summon's or a
+/// test's. Its body is its kind's data's ([`fit`]), and its home where it
+/// stands, a bat's the roost above.
+pub fn spawn_record(
+    world: &mut World,
+    kind: EnemyKind,
+    variant: Variant,
+    corner: Vec2,
 ) -> Option<Entity> {
     let enemy = world
         .prepare_prefab(prefab(kind, variant), corner.to_array())
         .ok()?
         .with((
-            Saved::kept(id),
             Brain::default(),
             Sight::default(),
             tungsten::kit::StateMachine::new(EnemyState::Patrol),
@@ -443,14 +456,32 @@ pub fn spawn_as(
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
+        .saved(world, Some(level::MAP))
         .spawn(world);
-    shared::fit_body(world, enemy, kind.info().prefab);
-    walk_on_rock(world, enemy);
+    fit(world, enemy);
     let home = home(world, kind, corner + body(world, kind).centre);
     if let Some(mine) = world.get_mut::<Enemy>(enemy) {
         mine.home = home.to_array();
     }
     Some(enemy)
+}
+
+/// What a restored enemy's spawn gave it beyond its prefab and its saved
+/// state: its kind's body and its hold on rock ([`fit`]), and its shown
+/// state.
+pub fn restored(world: &mut World, enemy: Entity) {
+    fit(world, enemy);
+    world.insert(enemy, Shown::default());
+}
+
+/// An enemy's body from its kind's data ([`shared::fit_body`]) and its hold
+/// on rock ([`walk_on_rock`]): a spawn's and a load's.
+fn fit(world: &mut World, enemy: Entity) {
+    let Some(kind) = world.get::<Enemy>(enemy).map(|enemy| enemy.kind) else {
+        return;
+    };
+    shared::fit_body(world, enemy, kind.info().prefab);
+    walk_on_rock(world, enemy);
 }
 
 /// The home of an enemy of `kind` placed with its body's centre at `at`:
@@ -494,9 +525,8 @@ pub fn summon(world: &mut World, kind: EnemyKind, at: Vec2) -> Option<Entity> {
 pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2) -> Option<Entity> {
     let difficulty =
         crate::shell::run_meta(world).map_or(Difficulty::Normal, |meta| meta.difficulty);
-    let id = shared::take_id(world);
     let corner = at - body(world, kind).centre;
-    let enemy = spawn_as(world, kind, variant, corner, id)?;
+    let enemy = spawn_record(world, kind, variant, corner)?;
     scale(world, enemy, difficulty);
     spawn_key_burst(world, "ex10_poof", at);
     let summoned: Vec<(u64, Entity)> = live(world)

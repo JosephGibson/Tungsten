@@ -317,8 +317,9 @@ pub fn throws_refs() -> RefCodec<Throws> {
 /// A crawler's snowball in flight (e01foes): its thrower's save ID, the
 /// thrower's damage factor at the throw, and the seconds before it bursts
 /// in the air. Inserted at the throw, so its prefab names no 01 component.
-/// Saved.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Saved, its thrower by save ID.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Snowball {
     pub thrower: Option<u64>,
     pub factor: f32,

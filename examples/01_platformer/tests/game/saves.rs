@@ -1,6 +1,8 @@
 //! Saves: a capture loads back to itself; every component a saved entity
-//! carries is saved (the registry names it, or 01's records hold it),
-//! rebuilt from its prefab or the map, or presentation; a cast in the step
+//! carries is saved (the registry names it, or 01's ball table holds it),
+//! rebuilt from its prefab or the map, or presentation, and every loaded
+//! entity holds its uninterrupted twin's but a projectile's emitter; a
+//! loaded fire missile and bullet spare their caster; a cast in the step
 //! that asks for an autosave saves its cost and its missile; a save during
 //! `casting` loads with the mana still paused; a loaded run keeps with the
 //! run it was saved from, in a fresh harness and in a churned world, saved
@@ -9,7 +11,8 @@
 //! block's waiting thermal shock and a kept block's waiting freeze run as
 //! they would have; a lava touch keeps its time; a moved player saves the
 //! same again and the camera frames it; a save the engine refuses loads as
-//! a new run with nothing staged; the recorded spawns are the kit's; a
+//! a new run with nothing staged; the recorded spawns are the run's toys
+//! and props and the kit's; a
 //! bullet in flight loads and lands; a reaction toasts nothing; every
 //! schema before the engine's saves is refused; an enemy's hit, pending
 //! transition, touch and frozen flight load as they were, and a loaded run
@@ -383,9 +386,10 @@ macro_rules! registered {
 /// `became`, `carried` and `spawned`, whose types no game can name.
 fn registered(world: &World) -> BTreeSet<&'static str> {
     use example_01_platformer::features::enemies::components::{
-        Brain, Displaced, EnemyState, Holding, Sight,
+        Brain, Displaced, EnemyState, Holding, Sight, Snowball,
     };
     use example_01_platformer::features::player::components::Lantern;
+    use example_01_platformer::features::props::components::{MapProp, Plank};
     use example_01_platformer::features::spells::components::Spellbook;
     use tungsten::core::{Collider, PrevPosition, RigidBody, Spin, Visibility};
     use tungsten::kit::{
@@ -401,7 +405,7 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
         Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Resist, Shield,
         Source, Spawner, Stats, Steering, Tags, TopDownMover, Tomes, Elevator, Geyser, Lava,
         Spellbook, Lantern, Bullet, Reload, Enemy, Brain, Sight, StateMachine<EnemyState>,
-        Displaced, Orb, Holding,
+        Displaced, Orb, Holding, BlackHole, IronScrap, MapProp, Plank, Snowball,
     );
     let unnamed: BTreeSet<&str> = registry
         .component_names()
@@ -428,11 +432,10 @@ fn lists(kind: &str) -> Lists {
         AnimationState, Collider, ParticleEmitter, ParticleEmitterState, RigidBody, Sprite,
         Velocity, Visibility,
     };
-    use tungsten::kit::Resist;
+
     use tungsten::kit::{
         ActionInput, Aim, CharacterAnimator, Children, ContactDamage, Cues, Effects, Facing,
-        HitFlash, Hitbox, Hurtbox, Intent, Knockback, LinearMotion, PlatformerController,
-        Projectile, Source, Stats,
+        HitFlash, Hitbox, Hurtbox, Intent, Knockback, Stats,
     };
     let body = [name::<Collider>(), name::<RigidBody>()];
     let at = [name::<Saved>(), name::<Position>()];
@@ -525,11 +528,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<AnimationState>(), name::<ColdFace>()]].concat(),
         },
         "block" => Lists {
-            recorded: [
-                &at[..],
-                &[name::<Velocity>(), name::<Effects>(), name::<Tags>()],
-            ]
-            .concat(),
+            recorded: Vec::new(),
             rebuilt: [
                 &body[..],
                 &[
@@ -547,16 +546,7 @@ fn lists(kind: &str) -> Lists {
             ]),
         },
         "scrap" => Lists {
-            recorded: [
-                &at[..],
-                &[
-                    name::<Velocity>(),
-                    name::<IronScrap>(),
-                    name::<Effects>(),
-                    name::<Tags>(),
-                ],
-            ]
-            .concat(),
+            recorded: Vec::new(),
             rebuilt: [
                 &body[..],
                 &[
@@ -569,7 +559,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
         },
         "black hole" => Lists {
-            recorded: names([name::<Saved>(), name::<Transform>(), name::<BlackHole>()]),
+            recorded: Vec::new(),
             rebuilt: names([
                 name::<SceneEntity>(),
                 name::<PreviousVelocity>(),
@@ -579,17 +569,7 @@ fn lists(kind: &str) -> Lists {
             presentation: names([name::<Visibility>(), name::<ParticleEmitterState>()]),
         },
         "dummy" => Lists {
-            recorded: [
-                &at[..],
-                &[
-                    name::<Velocity>(),
-                    name::<Health>(),
-                    name::<Resist>(),
-                    name::<Effects>(),
-                    name::<Tags>(),
-                ],
-            ]
-            .concat(),
+            recorded: Vec::new(),
             rebuilt: [
                 &body[..],
                 &[
@@ -606,16 +586,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<HitFlash>()]].concat(),
         },
         "missile" => Lists {
-            recorded: [
-                &at[..],
-                &[
-                    name::<Projectile>(),
-                    name::<LinearMotion>(),
-                    name::<Source>(),
-                    EMITTER,
-                ],
-            ]
-            .concat(),
+            recorded: Vec::new(),
             rebuilt: names([
                 name::<FireMissile>(),
                 name::<Joined>(),
@@ -627,16 +598,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<AnimationState>(), name::<GlowParts>()]].concat(),
         },
         "flask" => Lists {
-            recorded: [
-                &at[..],
-                &[
-                    name::<Projectile>(),
-                    name::<LinearMotion>(),
-                    name::<Source>(),
-                    EMITTER,
-                ],
-            ]
-            .concat(),
+            recorded: Vec::new(),
             rebuilt: names([
                 name::<example_01_platformer::features::toys::components::ToxicFlask>(),
                 name::<SceneEntity>(),
@@ -645,17 +607,7 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<AnimationState>()]].concat(),
         },
         "bullet" => Lists {
-            recorded: [
-                &at[..],
-                &[
-                    name::<Projectile>(),
-                    name::<LinearMotion>(),
-                    name::<Source>(),
-                    EMITTER,
-                    name::<Bullet>(),
-                ],
-            ]
-            .concat(),
+            recorded: Vec::new(),
             rebuilt: names([name::<SceneEntity>(), name::<Joined>(), name::<Hitbox>()]),
             presentation: drawn.to_vec(),
         },
@@ -664,42 +616,33 @@ fn lists(kind: &str) -> Lists {
         // fuse (its status), each saved whole, and whether the map set it
         // down; a rock's throw is the throws'; a keg's or a bomb's looks
         // by its tags are its prefab's.
-        "crate" | "keg" | "bomb" | "rock" => {
-            use example_01_platformer::features::props::components::MapProp;
-            Lists {
-                recorded: [
-                    &at[..],
-                    &[
-                        name::<Velocity>(),
-                        name::<MapProp>(),
-                        name::<Crate>(),
-                        name::<Stats>(),
-                        name::<Keg>(),
-                        name::<Bomb>(),
-                        name::<Rock>(),
-                        name::<Effects>(),
-                        name::<Tags>(),
-                    ],
-                ]
-                .concat(),
-                rebuilt: [
-                    &body[..],
-                    &[
-                        name::<SceneEntity>(),
-                        name::<PreviousVelocity>(),
-                        name::<tungsten::kit::Looks>(),
-                    ],
-                ]
-                .concat(),
-                presentation: [&drawn[..], &[name::<ColdFace>()]].concat(),
-            }
-        }
-        // A rubble stone: its size and art, saved whole; it takes no frost.
-        "stone" => Lists {
-            recorded: [&at[..], &[name::<Velocity>(), name::<Stone>()]].concat(),
+        "crate" | "keg" | "bomb" | "rock" => Lists {
+            recorded: Vec::new(),
             rebuilt: [
                 &body[..],
-                &[name::<SceneEntity>(), name::<PreviousVelocity>()],
+                &[
+                    name::<SceneEntity>(),
+                    name::<PreviousVelocity>(),
+                    name::<tungsten::kit::Looks>(),
+                    name::<Crate>(),
+                    name::<Keg>(),
+                    name::<Bomb>(),
+                    name::<Rock>(),
+                ],
+            ]
+            .concat(),
+            presentation: [&drawn[..], &[name::<ColdFace>()]].concat(),
+        },
+        // A rubble stone: its size and art, saved whole; it takes no frost.
+        "stone" => Lists {
+            recorded: Vec::new(),
+            rebuilt: [
+                &body[..],
+                &[
+                    name::<SceneEntity>(),
+                    name::<PreviousVelocity>(),
+                    name::<Stone>(),
+                ],
             ]
             .concat(),
             presentation: drawn.to_vec(),
@@ -707,33 +650,19 @@ fn lists(kind: &str) -> Lists {
         // A broken crate's planks: its art, its fire (its fuel stat and its
         // statuses) and its frost, each saved whole; their tumble is
         // presentation.
-        "plank" => {
-            use example_01_platformer::features::props::components::Plank;
-            Lists {
-                recorded: [
-                    &at[..],
-                    &[
-                        name::<Velocity>(),
-                        name::<Plank>(),
-                        name::<Stats>(),
-                        name::<Effects>(),
-                        name::<Tags>(),
-                    ],
-                ]
-                .concat(),
-                rebuilt: [
-                    &body[..],
-                    &[name::<SceneEntity>(), name::<PreviousVelocity>()],
-                ]
-                .concat(),
-                presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
-            }
-        }
+        "plank" => Lists {
+            recorded: Vec::new(),
+            rebuilt: [
+                &body[..],
+                &[name::<SceneEntity>(), name::<PreviousVelocity>()],
+            ]
+            .concat(),
+            presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
+        },
         "snowball" => {
-            use example_01_platformer::features::enemies::components::Snowball;
             use tungsten::core::AnimationState;
             Lists {
-                recorded: [&at[..], &[name::<Velocity>(), name::<Snowball>()]].concat(),
+                recorded: Vec::new(),
                 rebuilt: [
                     &body[..],
                     &[name::<SceneEntity>(), name::<PreviousVelocity>()],
@@ -743,33 +672,10 @@ fn lists(kind: &str) -> Lists {
             }
         }
         "wisp" | "crawler" | "beetle" | "bat" | "troll" | "goblin" => {
-            use example_01_platformer::features::enemies::components::{
-                Brain, Displaced, EnemyState, Scared, Shown, Sight,
-            };
-            use tungsten::kit::{Abilities, StateMachine, TopDownMover};
+            use example_01_platformer::features::enemies::components::{Scared, Shown};
+
             Lists {
-                recorded: [
-                    &at[..],
-                    &[
-                        name::<Velocity>(),
-                        name::<PlatformerController>(),
-                        name::<TopDownMover>(),
-                        name::<Displaced>(),
-                        name::<StateMachine<EnemyState>>(),
-                        name::<Enemy>(),
-                        name::<Brain>(),
-                        name::<Sight>(),
-                        name::<Health>(),
-                        name::<Stats>(),
-                        name::<Resist>(),
-                        name::<Effects>(),
-                        name::<Tags>(),
-                        name::<Knockback>(),
-                        name::<Abilities>(),
-                        name::<Hitbox>(),
-                    ],
-                ]
-                .concat(),
+                recorded: Vec::new(),
                 rebuilt: [
                     &body[..],
                     &[
@@ -797,9 +703,9 @@ fn lists(kind: &str) -> Lists {
             }
         }
         "orb" => {
-            use tungsten::kit::{Lifetime, Pickup};
+            use tungsten::kit::Pickup;
             Lists {
-                recorded: [&at[..], &[name::<Orb>(), name::<Lifetime>()]].concat(),
+                recorded: Vec::new(),
                 rebuilt: names([
                     name::<SceneEntity>(),
                     name::<Joined>(),
@@ -984,6 +890,53 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "wisp"
         ]
     );
+}
+
+#[test]
+fn every_loaded_entity_holds_its_uninterrupted_twins_components() {
+    // A load gives each saved entity back what it carried, saved, rebuilt
+    // or drawn, but a projectile's emitter, which a record's spawn from its
+    // prefab cannot derive (the plan's §2.6).
+    let (mut harness, _) = grounded();
+    busy(&mut harness);
+    let types = |world: &World| -> BTreeMap<u64, (&'static str, BTreeSet<&'static str>)> {
+        world
+            .query::<(Entity, &Saved)>()
+            .map(|(entity, saved)| {
+                let held = world
+                    .component_types(entity)
+                    .into_iter()
+                    .map(|(_, ty)| ty)
+                    .collect();
+                (saved.id().0, (kind(world, entity), held))
+            })
+            .collect()
+    };
+    let saved = capture(&harness);
+    let mut fresh = super::harness();
+    load(&mut fresh, saved);
+    scaffold(&mut fresh);
+    pin_camera(&mut fresh, CORNER);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    // One step on each run: what the kit and 01 set up at a spawn's first
+    // step (a prefab's children, a flare's embers) is there on both.
+    harness.step(1);
+    fresh.step(1);
+    let twins = types(harness.world());
+    let loaded = types(fresh.world());
+    let mut lacking: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for (id, (kind, held)) in &twins {
+        let Some((_, back)) = loaded.get(id) else {
+            lacking.entry(kind).or_default().insert("(the entity)");
+            continue;
+        };
+        for ty in held.difference(back) {
+            if *ty != EMITTER {
+                lacking.entry(kind).or_default().insert(ty);
+            }
+        }
+    }
+    assert!(lacking.is_empty(), "{lacking:#?}");
 }
 
 #[test]
@@ -1698,9 +1651,12 @@ fn a_flyer_saved_frozen_mid_flight_thaws_into_its_saved_flight() {
     let mut loaded = reloaded(saved, false);
     let wisp = by_id(&loaded, wisp_id);
     let world = loaded.world();
+    // Its flight as the save holds it: the kit's mover form leaves out
+    // whether its first step ran, so a loaded mover's first step is still.
+    let flight = |mover: &TopDownMover| (mover.direction(), mover.velocity());
     assert_eq!(
-        world.get::<Displaced>(wisp).map(|d| d.0.clone()),
-        Some(displaced)
+        world.get::<Displaced>(wisp).map(|d| flight(&d.0)),
+        Some(flight(&displaced))
     );
     assert!(world.get::<PlatformerController>(wisp).is_some());
     let thaw = |harness: &mut UiHarness| -> (TopDownMover, Vec2) {
@@ -1714,7 +1670,11 @@ fn a_flyer_saved_frozen_mid_flight_thaws_into_its_saved_flight() {
         (mover, super::body(harness, wisp))
     };
     let (before, after) = (thaw(&mut harness), thaw(&mut loaded));
-    assert_eq!(before.0, after.0, "the same flight back at the thaw");
+    assert_eq!(
+        before.0.direction(),
+        after.0.direction(),
+        "the same flight back at the thaw"
+    );
     assert!(
         before.1.distance(after.1) < 2.0,
         "flying on alike: {} and {}",
@@ -2339,7 +2299,13 @@ fn a_save_the_engine_refuses_loads_as_a_fresh_run_with_nothing_staged() {
     let (mut harness, _) = grounded();
     busy(&mut harness);
     let saved = capture(&harness);
-    assert!(!saved.balls.is_empty() && !saved.blocks.is_empty());
+    assert!(!saved.balls.is_empty(), "balls the first pass would stage");
+    assert!(
+        !json(&saved)["world"]["areas"]["ex10_level"]["spawns"]
+            .as_array()
+            .is_none_or(Vec::is_empty),
+        "and records the restore would spawn"
+    );
     let mut newer = json(&saved);
     newer["world"]["versions"]["components"]["health"] = serde_json::json!(99);
     let newer: SaveGame = serde_json::from_value(newer).expect("a save reads");
@@ -2408,7 +2374,10 @@ fn a_moved_player_saves_and_loads_to_itself_and_the_camera_frames_it() {
 }
 
 #[test]
-fn a_captures_recorded_spawns_are_the_kits_from_a_saved_source() {
+fn a_captures_recorded_spawns_are_the_runs_toys_props_and_the_kits() {
+    // The run's spawns, 01's and the kit's from a saved source, are the
+    // World save's records; the balls are 01's table. Pinned, so a spawn
+    // added later (a cue's prefab) shows here.
     let (mut harness, _) = grounded();
     busy(&mut harness);
     let saved = json(&capture(&harness));
@@ -2424,17 +2393,96 @@ fn a_captures_recorded_spawns_are_the_kits_from_a_saved_source() {
         .flatten()
         .filter_map(|spawn| spawn["prefab"].as_str())
         .collect();
-    let kits = BTreeSet::from([
+    let [small, medium, large] = props::STONE_PREFABS;
+    let expected = BTreeSet::from([
         gun::BULLET_PREFAB,
         toys::FIRE_MISSILE_PREFAB,
-        OrbKind::Health.prefab(),
         OrbKind::Mana.prefab(),
+        toys::IRON_BLOCK_PREFAB,
+        toys::IRON_SCRAP_PREFAB,
+        toys::BLACK_HOLE_PREFAB,
+        toys::flask::FLASK_PREFAB,
+        snowball::SNOWBALL_PREFAB,
+        props::CRATE_PREFAB,
+        props::KEG_PREFAB,
+        props::BOMB_PREFAB,
+        props::ROCK_PREFAB,
+        props::PLANK_PREFAB,
+        small,
+        medium,
+        large,
     ]);
-    assert!(prefabs.is_subset(&kits), "{prefabs:?}");
+    assert_eq!(prefabs, expected);
     assert!(
-        prefabs.contains(gun::BULLET_PREFAB) && prefabs.contains(toys::FIRE_MISSILE_PREFAB),
-        "{prefabs:?}"
+        saved["balls"]
+            .as_array()
+            .is_some_and(|balls| balls.len() >= 500),
+        "the balls in 01's table"
     );
+}
+
+/// Puts the player on `shot` and steps once: whether the shot still flies,
+/// and the player's health after.
+fn through_its_caster(harness: &mut UiHarness, shot: u64) -> (bool, f32) {
+    let player = player_entity(harness);
+    let at = super::body(harness, by_id(harness, shot));
+    teleport(harness, player, at);
+    harness.step(1);
+    let flies = harness
+        .world()
+        .query::<&Saved>()
+        .any(|saved| saved.id().0 == shot);
+    (flies, hurt(harness).0)
+}
+
+/// A bullet and the spell's fire missile in flight from the player: the
+/// run and each shot's save ID.
+fn shots() -> (UiHarness, [u64; 2]) {
+    let (mut harness, player) = grounded();
+    let centre = super::body(&harness, player);
+    let bullet = gun::fire(
+        harness.world_mut(),
+        centre + Vec2::new(0.0, -120.0),
+        Vec2::new(300.0, 0.0),
+        Some(player),
+    )
+    .expect("a bullet")
+    .0;
+    cast(
+        &mut harness,
+        Spell::FireMissile,
+        centre + Vec2::new(-800.0, -200.0),
+        1,
+    );
+    let missile = harness
+        .world()
+        .query::<(&FireMissile, &Saved)>()
+        .map(|(_, saved)| saved.id().0)
+        .next()
+        .expect("the spell's missile");
+    (harness, [bullet, missile])
+}
+
+#[test]
+fn a_loaded_fire_missile_and_bullet_spare_their_caster() {
+    // Each loads without the emitter its spawn derived (the plan's §2.6),
+    // its `Source` by reference: a hit spares the source's entity, as the
+    // run it was saved from does.
+    for index in 0..2 {
+        let (mut harness, ids) = shots();
+        let shot = ids[index];
+        let saved = capture(&harness);
+        let mut fresh = super::harness();
+        load(&mut fresh, saved);
+        scaffold(&mut fresh);
+        pin_camera(&mut fresh, CORNER);
+        fresh.world_mut().resource_mut::<Time>().resume();
+        let health = hurt(&harness).0;
+        let live = through_its_caster(&mut harness, shot);
+        let loaded = through_its_caster(&mut fresh, shot);
+        assert_eq!(loaded, live, "shot {shot}");
+        assert_eq!(live, (true, health), "shot {shot} passes and spares");
+    }
 }
 
 /// The harness's save slots.

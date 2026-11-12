@@ -86,8 +86,7 @@ pub fn throw(world: &mut World, thrower: Entity, from: Vec2, to: Vec2) -> Option
 }
 
 /// A flask with its sprite's top-left at `corner` flying at `velocity`,
-/// from `source`, at once, with the run's next save ID: a toss's, or a
-/// load's.
+/// from `source`, at once, one of the run's records: a toss's.
 pub fn spawn(world: &mut World, corner: Vec2, velocity: Vec2, source: Option<Entity>) -> Entity {
     let flask = super::spawn_toy(world, FLASK_PREFAB, corner, 1.0);
     if let Some(motion) = world.get_mut::<LinearMotion>(flask) {

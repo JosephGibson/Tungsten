@@ -15,8 +15,8 @@ pub mod wave;
 
 use glam::Vec2;
 use tungsten::core::{
-    BodyKind, CommandBuffer, Entity, EventCursor, RigidBody, Schedule, Shape, Stage, Time,
-    Transform, Velocity, World, system,
+    BodyKind, CommandBuffer, Entity, EventCursor, PreparedPrefab, RigidBody, Schedule, Shape,
+    Stage, Time, Transform, Velocity, World, system,
 };
 use tungsten::kit::{
     LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase, TOP_DOWN_MOVER, ensure_phases,
@@ -26,7 +26,7 @@ use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
 use crate::features::audio::{self, components::Sound};
-use crate::features::level::TILE;
+use crate::features::level::{self, TILE};
 use crate::game::GAMEPLAY;
 use crate::shared::{Joined, SaveId, Saved, body_centre, despawn_tree, spawn_burst};
 use components::{
@@ -179,6 +179,10 @@ impl Plugin for ToysPlugin {
         world.register_component::<BlackHole>("black_hole");
         world.register_component::<FireMissile>("fire_missile");
         world.register_component::<components::ToxicFlask>("toxic_flask");
+        // A scrap's variant and a hole's time left: what a record of one
+        // holds past its prefab.
+        world.register_saved::<IronScrap>("iron_scrap");
+        world.register_saved::<BlackHole>("black_hole");
         world.insert_resource(BallSpawner::default());
         world.insert_resource(HoleHold::default());
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
@@ -242,10 +246,8 @@ impl Plugin for ToysPlugin {
     }
 }
 
-/// A toy's prefab at `at`, owned by gameplay, with the run's next save ID
-/// and its art at `scale`, spawned at once: a toy's or a prop's.
-pub(crate) fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
-    let id = crate::shared::take_id(world);
+/// A toy's prefab at `at`, owned by gameplay, with its art at `scale`.
+fn prepare_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> PreparedPrefab {
     let transform = Transform {
         position: at,
         rotation: 0.0,
@@ -256,10 +258,27 @@ pub(crate) fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -
         .expect("the manifest's prefabs load with it")
         .with((
             transform,
-            Saved::kept(id),
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
+}
+
+/// A toy's prefab at `at`, owned by gameplay, with its art at `scale`,
+/// spawned at once as one of the run's records, which the World save holds
+/// whole in the map's area (`PreparedPrefab::saved`): a toy's or a prop's.
+pub(crate) fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
+    prepare_toy(world, prefab, at, scale)
+        .saved(world, Some(level::MAP))
+        .spawn(world)
+}
+
+/// [`spawn_toy`] for a ball, under a kept identity of the run's next save
+/// ID: 01's own table saves the balls, since a full pit's 12,000 as records
+/// would pass the save's bound.
+fn spawn_ball_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
+    let id = crate::shared::take_id(world);
+    prepare_toy(world, prefab, at, scale)
+        .with((Saved::kept(id),))
         .spawn(world)
 }
 
@@ -355,9 +374,9 @@ pub fn stop_small_balls_loop(world: &mut World) {
 /// what a test or a load sets down where it wants it.
 pub fn spawn_ball(world: &mut World, at: Vec2, small: bool) -> Entity {
     let ball = if small {
-        spawn_toy(world, SMALL_BALL, at - SMALL_BALL_CENTRE, SMALL_BALL_SCALE)
+        spawn_ball_toy(world, SMALL_BALL, at - SMALL_BALL_CENTRE, SMALL_BALL_SCALE)
     } else {
-        spawn_toy(world, BOWLING_BALL, at - BALL_CENTRE, BALL_SCALE)
+        spawn_ball_toy(world, BOWLING_BALL, at - BALL_CENTRE, BALL_SCALE)
     };
     if small {
         let phase = crate::shared::save_id(world, ball).map_or(0, |id| id.0 as u32);
@@ -378,7 +397,7 @@ pub fn toss_bowling_ball(world: &mut World, from: Vec2, aim: Vec2) -> Option<Ent
     let angle = (-aim.y).atan2(aim.x.abs()).min(TOSS_STEEPEST);
     let launch = Vec2::new(side * angle.cos(), -angle.sin());
     let centre = from + aim * TOSS_OFFSET;
-    let ball = spawn_toy(world, BOWLING_BALL, centre - BALL_CENTRE, BALL_SCALE);
+    let ball = spawn_ball_toy(world, BOWLING_BALL, centre - BALL_CENTRE, BALL_SCALE);
     if let Some(velocity) = world.get_mut::<Velocity>(ball) {
         velocity.0 = launch * TOSS_SPEED;
     }
@@ -461,34 +480,34 @@ pub fn spawn_scrap(
 /// at once and quietly: a load's.
 pub fn restore_ball(world: &mut World, small: bool, at: Vec2) -> Entity {
     if small {
-        spawn_toy(world, SMALL_BALL, at, SMALL_BALL_SCALE)
+        spawn_ball_toy(world, SMALL_BALL, at, SMALL_BALL_SCALE)
     } else {
-        spawn_toy(world, BOWLING_BALL, at, BALL_SCALE)
+        spawn_ball_toy(world, BOWLING_BALL, at, BALL_SCALE)
     }
 }
 
-/// A saved iron block set back with its point at `at`, quietly.
-pub fn restore_iron(world: &mut World, at: Vec2) -> Entity {
-    spawn_toy(world, IRON_BLOCK_PREFAB, at, 1.0)
+/// A restored scrap's look, which its spawn gives beyond its prefab: its
+/// saved variant's sprite, at rest at its saved angle ([`rest`]).
+pub fn restored_scrap(world: &mut World, scrap: Entity) {
+    let Some(&IronScrap { variant }) = world.get::<IronScrap>(scrap) else {
+        return;
+    };
+    rest(world, scrap);
+    systems::show_scrap_variant(world, scrap, variant % 4);
 }
 
-/// A saved scrap of `variant` set back with its point at `at`, at rest.
-pub fn restore_scrap(world: &mut World, at: Vec2, variant: usize) -> Entity {
-    let scrap = spawn_toy(world, IRON_SCRAP_PREFAB, at, SCRAP_SCALE);
-    let variant = variant % 4;
+/// Sets a restored scrap's or plank's tumble at rest at the angle its saved
+/// transform holds, which the tumble draws from then on.
+pub fn rest(world: &mut World, entity: Entity) {
+    let angle = world
+        .get::<Transform>(entity)
+        .map_or(0.0, |transform| transform.rotation);
     let rest = components::ScrapTumble {
         born_at: 0.0,
-        initial_angle: 0.0,
+        initial_angle: angle,
         total_turn: 0.0,
     };
-    world.insert_bundle(scrap, (IronScrap { variant }, rest));
-    systems::show_scrap_variant(world, scrap, variant);
-    scrap
-}
-
-/// A saved black hole set back open at `at`, quietly.
-pub fn restore_hole(world: &mut World, at: Vec2) -> Entity {
-    spawn_toy(world, BLACK_HOLE_PREFAB, at, 1.0)
+    world.insert(entity, rest);
 }
 
 /// Opens a black hole at `at` for [`HOLE_SECS`], with its opening's ring and

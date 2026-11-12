@@ -122,30 +122,27 @@ pub fn heading(velocity: Vec2) -> f32 {
 
 /// Fires a bullet with its centre at `centre` at `velocity`, from
 /// `source`, credited and spared as the gun's payload would: spawned at the
-/// frame's flush, its save ID, flight and look its own, so `bullet_adopt`
-/// leaves it be. Its save ID.
+/// frame's flush, one of the run's records, its flight and look its own, so
+/// `bullet_adopt` leaves it be. Its save ID.
 pub fn fire(
     world: &mut World,
     centre: Vec2,
     velocity: Vec2,
     source: Option<tungsten::core::Entity>,
 ) -> Option<SaveId> {
-    let id = crate::shared::take_id(world);
     let bullet = BulletShot {
-        id,
         centre,
         motion: LinearMotion::new(velocity),
         projectile: None,
         ricochets: 0,
     };
-    spawn(world, bullet, source).then_some(id)
+    spawn(world, bullet, source)
 }
 
-/// A bullet to spawn: its save ID, its centre, its flight, its range so
-/// far (a fresh one's when none) and the times it turned off iron.
+/// A bullet to spawn: its centre, its flight, its range so far (a fresh
+/// one's when none) and the times it turned off iron.
 #[derive(Debug, Clone)]
 pub struct BulletShot {
-    pub id: SaveId,
     pub centre: Vec2,
     pub motion: LinearMotion,
     pub projectile: Option<Projectile>,
@@ -153,13 +150,16 @@ pub struct BulletShot {
 }
 
 /// Spawns `shot` at the frame's flush from `source`, so its source and its
-/// emitter come with it, shown and turned along its flight. Whether its
-/// prefab loaded.
-pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core::Entity>) -> bool {
+/// emitter come with it, shown and turned along its flight, as one of the
+/// run's records (`PreparedPrefab::saved`, the map's area). Its save ID,
+/// none when its prefab did not load.
+pub fn spawn(
+    world: &mut World,
+    shot: BulletShot,
+    source: Option<tungsten::core::Entity>,
+) -> Option<SaveId> {
     let at = shot.centre - BULLET_CENTRE;
-    let Ok(prepared) = world.prepare_prefab(BULLET_PREFAB, at.to_array()) else {
-        return false;
-    };
+    let prepared = world.prepare_prefab(BULLET_PREFAB, at.to_array()).ok()?;
     let transform = Transform {
         position: at,
         rotation: heading(shot.motion.velocity()),
@@ -169,7 +169,6 @@ pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core:
         transform,
         Position(at),
         PrevPosition(at),
-        crate::shared::Saved::kept(shot.id),
         crate::shared::Joined,
         shot.motion,
         Bullet {
@@ -182,6 +181,8 @@ pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core:
     if let Some(projectile) = shot.projectile {
         prepared = prepared.with((projectile,));
     }
+    let prepared = prepared.saved(world, Some(crate::features::level::MAP));
+    let id = prepared.save_id();
     let commands = world.resource_mut::<CommandBuffer>();
     match source {
         Some(source) => {
@@ -191,5 +192,5 @@ pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core:
             commands.spawn_prefab(prepared);
         }
     }
-    true
+    id
 }

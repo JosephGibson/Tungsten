@@ -158,6 +158,13 @@ impl Plugin for PropsPlugin {
         world.register_component::<Rock>("rock");
         world.register_component::<Plank>("plank");
         world.register_component::<Stone>("stone");
+        // What a record of one holds past its prefab: whether the map set
+        // it down, and a plank's row.
+        world.register_saved::<MapProp>("map_prop");
+        world.register_saved_with(
+            "plank",
+            tungsten::core::save::SaveOptions::<Plank>::form::<components::PlankForm>(),
+        );
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         ensure_phases(schedule);
         let roll = system("props_roll", systems::roll);
@@ -317,33 +324,27 @@ pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     prop
 }
 
-/// A saved prop of `kind` set back with its point at `at`, the top-left of
-/// its art, under its save `id`, at once and quietly: a load's, which puts
-/// its state over it. A crate, a rock, a plank or a stone takes its art's
-/// `variant`.
-pub fn restore(world: &mut World, kind: PropKind, at: Vec2, id: SaveId, variant: usize) -> Entity {
-    let prop = toys::spawn_toy(world, prefab(kind), at, 1.0);
-    world.insert(prop, Saved::kept(id));
-    match kind {
-        PropKind::Crate => {
-            world.insert(prop, Crate { variant });
-            systems::show_variant(world, prop, variant);
-        }
-        PropKind::Rock => {
-            world.insert(prop, Rock { variant });
-            systems::show_rock(world, prop, variant);
-        }
-        PropKind::Plank => {
-            world.insert(prop, Plank { variant });
-            systems::show_plank(world, prop, variant);
-        }
-        PropKind::Stone(size) => {
-            world.insert(prop, Stone { size, variant });
-            systems::show_stone(world, prop, size, variant);
-        }
-        PropKind::Keg | PropKind::Bomb => {}
+/// What a restored prop's spawn gives it beyond its prefab and its saved
+/// state: a crate's, a rock's or a stone's art by its save ID's parity
+/// ([`art`]), a plank's by its saved row, its tumble at rest.
+pub fn restored(world: &mut World, prop: Entity) {
+    let variant = art(crate::shared::save_id(world, prop));
+    if world.has::<Crate>(prop) {
+        world.insert(prop, Crate { variant });
+        systems::show_variant(world, prop, variant);
     }
-    prop
+    if world.has::<Rock>(prop) {
+        world.insert(prop, Rock { variant });
+        systems::show_rock(world, prop, variant);
+    }
+    if let Some(&Stone { size, .. }) = world.get::<Stone>(prop) {
+        world.insert(prop, Stone { size, variant });
+        systems::show_stone(world, prop, size, variant);
+    }
+    if let Some(&Plank { variant }) = world.get::<Plank>(prop) {
+        toys::rest(world, prop);
+        systems::show_plank(world, prop, variant);
+    }
 }
 
 /// Breaks `crate_` under a heavy hit (V33): it goes with its splinters, a
@@ -533,8 +534,8 @@ pub fn lighter(world: &World, prop: Entity) -> Option<u64> {
         .map(|id| id.0)
 }
 
-/// A crate's or a plank's fire as a save writes it; `None` for another
-/// prop.
+/// A crate's or a plank's fire, as a break passes it on; `None` for
+/// another prop.
 #[must_use]
 pub fn fire(world: &World, prop: Entity) -> Option<PropFire> {
     has_fuel(world, prop).then(|| PropFire {
@@ -547,9 +548,9 @@ pub fn fire(world: &World, prop: Entity) -> Option<PropFire> {
     })
 }
 
-/// Puts `fire` on the crate or plank `prop` at once and quietly, a load's
-/// or a break's: its fuel left, its burn sourced to `lighter` when it
-/// burns, and its douse's seconds.
+/// Puts `fire` on the crate or plank `prop` at once and quietly, a break's:
+/// its fuel left, its burn sourced to `lighter` when it burns, and its
+/// douse's seconds.
 pub fn set_fire(world: &mut World, prop: Entity, fire: &PropFire, lighter: Option<Entity>) {
     if let Some(stats) = world.get_mut::<Stats>(prop) {
         stats.set_base(FUEL, fire.left);
@@ -559,48 +560,6 @@ pub fn set_fire(world: &mut World, prop: Entity, fire: &PropFire, lighter: Optio
     }
     if fire.doused > 0.0 {
         douse(world, prop, fire.doused);
-    }
-}
-
-/// Puts a saved fuse with `fuse` seconds left, sourced to `lighter`, and
-/// a douse of `doused` seconds on the keg or bomb `prop`, at once and
-/// quietly: a load's.
-pub fn set_fuse(
-    world: &mut World,
-    prop: Entity,
-    fuse: Option<f32>,
-    lighter: Option<Entity>,
-    doused: f32,
-) {
-    if let Some(left) = fuse {
-        light_fuse(world, prop, left, lighter);
-    }
-    if doused > 0.0 {
-        douse(world, prop, doused);
-    }
-}
-
-/// Credits `prop`'s fire to `fire` and its lit fuse to `fuse` where its
-/// status names no source yet, applying nothing: a load's, once the lighter
-/// is back.
-pub fn credit(world: &mut World, prop: Entity, fire: Option<Entity>, fuse: Option<Entity>) {
-    let Some(effects) = world.get_mut::<Effects>(prop) else {
-        return;
-    };
-    let unset: Vec<(u64, Entity)> = effects
-        .instances()
-        .filter(|instance| instance.source().is_none())
-        .filter_map(|instance| {
-            let lighter = match instance.effect().id() {
-                Some(PROP_BURN) => fire,
-                Some(LIT) => fuse,
-                _ => None,
-            };
-            Some((instance.serial(), lighter?))
-        })
-        .collect();
-    for (serial, lighter) in unset {
-        effects.set_source(serial, Some(lighter));
     }
 }
 
