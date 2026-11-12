@@ -531,9 +531,10 @@ fn serialize_error(what: &str, component: &str, err: &serde_json::Error) -> Capt
 /// ([`RestoreError::Generation`]). An area whose save names no generation
 /// restores as before, since names decide (`D-230`).
 ///
-/// It checks everything first and changes nothing on an error: the
-/// format, each version, each value migrated a step at a time and merged,
-/// each spawn's prefab prepared, each tile against its map. A component
+/// It checks everything first, as [`check_world`], and changes nothing on
+/// an error: the format, each version, each value migrated a step at a
+/// time and merged, each spawn's prefab prepared, each tile against its
+/// map. A component
 /// name the registry lacks, a prefab the manifest lacks, a named record
 /// whose entity the level no longer has and a tile edit past its map's
 /// layers or cells, on a layer whose name changed or naming a sprite its
@@ -548,6 +549,62 @@ pub fn restore_world<B: Bundle + Clone>(
     save: &WorldSave,
     with: &B,
 ) -> Result<RestoreReport, RestoreError> {
+    let Checked {
+        registry,
+        plan,
+        kept,
+        kept_generations,
+        mut report,
+    } = check_save(world, save)?;
+
+    // Checked: from here every change applies. A World that named nothing
+    // gains save state only from a save that names something (D-230).
+    if !world.has_resource::<SaveState>() && names_anything(save, &kept) {
+        world.insert_resource(SaveState::default());
+    }
+    let holders = apply(world, &registry, plan, with);
+    let placed: Vec<Entity> = holders.iter().map(|&(entity, _)| entity).collect();
+    if let Some(state) = world.get_resource_mut::<SaveState>() {
+        state.next_id = save.next_id;
+        state.kept = kept;
+        state.pending.clear();
+    }
+    if !kept_generations.is_empty() {
+        world.insert_resource(KeptGenerations(kept_generations));
+    } else if world.has_resource::<KeptGenerations>() {
+        world.remove_resource::<KeptGenerations>();
+    }
+    resolve_all(world, &registry, holders, &save.resource_refs, &mut report);
+    settle(world, &placed, &mut report);
+    Ok(report)
+}
+
+/// [`restore_world`]'s checks alone: the format, the counter, each
+/// version, each loaded area's records (each value migrated a step at a
+/// time and merged, each spawn's prefab prepared, each tile against its
+/// map), each kept area's and each resource's value. It changes no entity,
+/// component, resource or save state, so a game that stages entities
+/// before a restore checks first and stages only a save that passes;
+/// preparing a spawn's prefab may intern its sprite names, as any spawn of
+/// it would. The report holds the lines the restore would log.
+///
+/// # Errors
+///
+/// The [`RestoreError`] [`restore_world`] would return.
+pub fn check_world(world: &mut World, save: &WorldSave) -> Result<RestoreReport, RestoreError> {
+    check_save(world, save).map(|checked| checked.report)
+}
+
+/// What [`check_save`] found: the plan a restore applies.
+struct Checked {
+    registry: SaveRegistry,
+    plan: Plan,
+    kept: BTreeMap<String, AreaSave>,
+    kept_generations: BTreeMap<String, Generation>,
+    report: RestoreReport,
+}
+
+fn check_save(world: &mut World, save: &WorldSave) -> Result<Checked, RestoreError> {
     if save.format != FORMAT {
         return Err(RestoreError::Format { found: save.format });
     }
@@ -645,27 +702,13 @@ pub fn restore_world<B: Bundle + Clone>(
         check(entry, &value, &what)?;
         plan.resources.push((entry.clone(), value));
     }
-
-    // Checked: from here every change applies. A World that named nothing
-    // gains save state only from a save that names something (D-230).
-    if !world.has_resource::<SaveState>() && names_anything(save, &kept) {
-        world.insert_resource(SaveState::default());
-    }
-    let holders = apply(world, &registry, plan, with);
-    let placed: Vec<Entity> = holders.iter().map(|&(entity, _)| entity).collect();
-    if let Some(state) = world.get_resource_mut::<SaveState>() {
-        state.next_id = save.next_id;
-        state.kept = kept;
-        state.pending.clear();
-    }
-    if !kept_generations.is_empty() {
-        world.insert_resource(KeptGenerations(kept_generations));
-    } else if world.has_resource::<KeptGenerations>() {
-        world.remove_resource::<KeptGenerations>();
-    }
-    resolve_all(world, &registry, holders, &save.resource_refs, &mut report);
-    settle(world, &placed, &mut report);
-    Ok(report)
+    Ok(Checked {
+        registry,
+        plan,
+        kept,
+        kept_generations,
+        report,
+    })
 }
 
 /// Whether `save` names something a World keeps save state for: a named

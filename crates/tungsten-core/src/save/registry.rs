@@ -7,7 +7,8 @@
 //! registers in one line, `App::register_saved::<T>(name)`; a plugin in its
 //! `build` through [`World::register_saved`] and
 //! [`World::register_saved_with`], whose [`SaveOptions`] add a version,
-//! migration steps, a saved form and a [`RefCodec`].
+//! migration steps, a saved form, a [`RefCodec`] and the value a save holds
+//! in place of the live one ([`SaveOptions::capture_as`]).
 
 use std::any::{TypeId, type_name};
 use std::collections::{BTreeMap, HashMap};
@@ -131,11 +132,15 @@ impl<'a> RefReader<'a> {
     }
 }
 
+/// [`SaveOptions::capture_as`]'s read.
+type CaptureAs<T> = fn(&World, Option<Entity>, &T) -> Option<T>;
+
 /// A registration's version, migration steps, saved form and references.
 pub struct SaveOptions<T> {
     version: u32,
     steps: BTreeMap<u32, MigrationStep>,
     refs: Option<RefCodec<T>>,
+    capture_as: Option<CaptureAs<T>>,
     to: fn(&T) -> serde_json::Result<Value>,
     from: fn(Value) -> serde_json::Result<T>,
 }
@@ -175,6 +180,7 @@ impl<T: 'static> SaveOptions<T> {
             version: 1,
             steps: BTreeMap::new(),
             refs: None,
+            capture_as: None,
             to,
             from,
         }
@@ -204,6 +210,19 @@ impl<T: 'static> SaveOptions<T> {
     #[must_use]
     pub fn refs(mut self, codec: RefCodec<T>) -> Self {
         self.refs = Some(codec);
+        self
+    }
+
+    /// The value a save holds in place of the live one, read with the
+    /// World: `read` gets the holder, `Some(entity)` for a component and
+    /// `None` for the resource, and the live value, and `None` back saves
+    /// the live value. It is what a capture writes, its references
+    /// included, what [`name`](super::name) keeps as a baseline and what a
+    /// restore patches over; a body's drawn transform saved at its
+    /// position is one.
+    #[must_use]
+    pub fn capture_as(mut self, read: fn(&World, Option<Entity>, &T) -> Option<T>) -> Self {
+        self.capture_as = Some(read);
         self
     }
 }
@@ -249,7 +268,25 @@ struct Typed<T> {
     to: fn(&T) -> serde_json::Result<Value>,
     from: fn(Value) -> serde_json::Result<T>,
     refs: Option<RefCodec<T>>,
+    capture_as: Option<CaptureAs<T>>,
     _marker: PhantomData<T>,
+}
+
+impl<T: 'static> Typed<T> {
+    /// What a save reads at `at`: the `capture_as` value, else the live one.
+    fn read<R>(&self, world: &World, at: Holder, then: impl FnOnce(&T) -> R) -> Option<R> {
+        let live = get::<T>(world, at)?;
+        let holder = match at {
+            Holder::Entity(entity) => Some(entity),
+            Holder::Resource => None,
+        };
+        Some(
+            match self.capture_as.and_then(|read| read(world, holder, live)) {
+                Some(value) => then(&value),
+                None => then(live),
+            },
+        )
+    }
 }
 
 fn get<T: 'static>(world: &World, at: Holder) -> Option<&T> {
@@ -272,7 +309,7 @@ impl<T: 'static> Erased for Typed<T> {
     }
 
     fn to_value(&self, world: &World, at: Holder) -> Option<serde_json::Result<Value>> {
-        get::<T>(world, at).map(self.to)
+        self.read(world, at, self.to)
     }
 
     fn check(&self, value: Value) -> serde_json::Result<()> {
@@ -310,10 +347,11 @@ impl<T: 'static> Erased for Typed<T> {
         ids: &dyn Fn(Entity) -> Option<SaveId>,
     ) -> Option<(Refs, usize)> {
         let codec = self.refs?;
-        let value = get::<T>(world, at)?;
-        let mut writer = RefWriter::new(ids);
-        (codec.save)(value, &mut writer);
-        Some(writer.finish())
+        self.read(world, at, |value| {
+            let mut writer = RefWriter::new(ids);
+            (codec.save)(value, &mut writer);
+            writer.finish()
+        })
     }
 
     fn load_refs(&self, world: &mut World, at: Holder, refs: &BTreeMap<String, Vec<Entity>>) {
@@ -327,7 +365,7 @@ impl<T: 'static> Erased for Typed<T> {
 
     fn keys(&self, world: &World, at: Holder) -> Option<Vec<String>> {
         let codec = self.refs?;
-        get::<T>(world, at).map(codec.keys)
+        self.read(world, at, codec.keys)
     }
 }
 
@@ -401,6 +439,7 @@ impl Kind {
                     to: options.to,
                     from: options.from,
                     refs: options.refs,
+                    capture_as: options.capture_as,
                     _marker: PhantomData,
                 }),
             },

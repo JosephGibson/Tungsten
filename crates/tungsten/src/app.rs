@@ -38,7 +38,7 @@ use tungsten_core::assets::{
     FontRegistry, LoadedManifest, ParticleConfigRegistry, ParticleMeshRegistry, ResolvedManifest,
     RoomGenerator, ShaderRegistry, SoundRegistry, TilemapRegistry,
 };
-use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
+use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig, Position};
 use tungsten_core::post::{PostPass, PostStack, PostTail};
 use tungsten_core::save::SaveOptions;
 use tungsten_core::ui::{
@@ -47,9 +47,9 @@ use tungsten_core::ui::{
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, Binding, CameraController, CameraState,
     CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
-    DisplayState, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin,
-    PluginSet, RawInput, RoutedInput, SaveSlots, Schedule, Settings, Stage, SystemDesc, Time,
-    TimeConfig, Transform, Visibility, World, WorldLabels, WorldRngSeed, system,
+    DisplayState, Entity, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget,
+    Plugin, PluginSet, RawInput, RoutedInput, SaveSlots, Schedule, Settings, Stage, SystemDesc,
+    Time, TimeConfig, Transform, Visibility, World, WorldLabels, WorldRngSeed, system,
 };
 use tungsten_render::renderer::RenderError;
 use tungsten_render::sprite::TextureHandles;
@@ -809,7 +809,7 @@ impl App {
         // Redo 7.9: the saved components every game draws with.
         world.register_saved_with(
             "transform",
-            SaveOptions::<Transform>::form::<SavedTransform>(),
+            SaveOptions::<Transform>::form::<SavedTransform>().capture_as(body_transform),
         );
         world.register_saved_with(
             "visibility",
@@ -3038,7 +3038,6 @@ fn manifest_reload_roots(roots: &[PathBuf], manifest_path: Option<&Path>) -> Vec
     }
 }
 
-/// True when the canonical path `canon` names one of `reload_roots`.
 /// `Transform` in a save.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -3066,6 +3065,18 @@ impl From<SavedTransform> for Transform {
             scale: saved.scale.into(),
         }
     }
+}
+
+/// A body's transform as a save holds it: at its `Position`, not the point
+/// the frame drew between its last two steps, which a load cannot draw
+/// again (`D-033`); its rotation and scale as they are. An entity without
+/// a `Position` saves its transform as it is.
+fn body_transform(world: &World, entity: Option<Entity>, live: &Transform) -> Option<Transform> {
+    let &Position(at) = world.get::<Position>(entity?)?;
+    (live.position != at).then_some(Transform {
+        position: at,
+        ..*live
+    })
 }
 
 /// `Visibility` in a save: whether it is drawn.

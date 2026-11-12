@@ -12150,6 +12150,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveId
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveId
 pub struct tungsten_core::save::SaveOptions<T>
 impl<T: 'static> tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::capture_as(self, fn(&tungsten_core::World, core::option::Option<tungsten_core::Entity>, &T) -> core::option::Option<T>) -> Self
 pub fn tungsten_core::SaveOptions<T>::form<F>() -> Self where F: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + for<'a> core::convert::From<&'a T>, T: core::convert::From<F>
 pub fn tungsten_core::SaveOptions<T>::refs(self, tungsten_core::save::RefCodec<T>) -> Self
 pub fn tungsten_core::SaveOptions<T>::step(self, u32, tungsten_core::save::MigrationStep) -> Self
@@ -12338,6 +12339,7 @@ pub const tungsten_core::save::SaveData::SCHEMA: u32
 pub fn tungsten_core::save::SaveData::migrate(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
 pub fn tungsten_core::save::SaveData::migrate_step(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
 pub fn tungsten_core::save::capture_world(&tungsten_core::World) -> core::result::Result<tungsten_core::save::WorldSave, tungsten_core::save::CaptureError>
+pub fn tungsten_core::save::check_world(&mut tungsten_core::World, &tungsten_core::save::WorldSave) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::enter_area<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &str, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::name(&mut tungsten_core::World, tungsten_core::Entity, core::option::Option<&str>, &str) -> core::result::Result<tungsten_core::SaveId, tungsten_core::save::NameError>
 pub fn tungsten_core::save::order_key(&tungsten_core::World, tungsten_core::Entity) -> (bool, u64)
@@ -23584,6 +23586,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveId
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveId
 pub struct tungsten_core::SaveOptions<T>
 impl<T: 'static> tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::capture_as(self, fn(&tungsten_core::World, core::option::Option<tungsten_core::Entity>, &T) -> core::option::Option<T>) -> Self
 pub fn tungsten_core::SaveOptions<T>::form<F>() -> Self where F: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + for<'a> core::convert::From<&'a T>, T: core::convert::From<F>
 pub fn tungsten_core::SaveOptions<T>::refs(self, tungsten_core::save::RefCodec<T>) -> Self
 pub fn tungsten_core::SaveOptions<T>::step(self, u32, tungsten_core::save::MigrationStep) -> Self

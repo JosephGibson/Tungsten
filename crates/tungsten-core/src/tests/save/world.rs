@@ -2024,3 +2024,224 @@ fn a_prepared_saved_spawn_is_captured_whole_and_restored_from_its_prefab() {
     assert!(b.has::<Scene>(bolt));
     assert_eq!(b.resource::<SaveState>().next_id(), 1);
 }
+
+/// A gauge whose shown level a save holds as its holder's ammo.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Meter {
+    shown: f32,
+    tint: u8,
+}
+
+/// `Meter` as a save holds it: its level at its holder's ammo, when it has
+/// any.
+fn meter_saved(world: &World, holder: Option<Entity>, live: &Meter) -> Option<Meter> {
+    let &Ammo(ammo) = world.get::<Ammo>(holder?)?;
+    Some(Meter {
+        shown: ammo as f32,
+        ..live.clone()
+    })
+}
+
+/// A forecast a save holds as the weather's wind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Forecast {
+    wind: f32,
+}
+
+fn forecast_saved(world: &World, holder: Option<Entity>, _: &Forecast) -> Option<Forecast> {
+    assert!(holder.is_none(), "a resource has no holder");
+    world
+        .get_resource::<Weather>()
+        .map(|weather| Forecast { wind: weather.wind })
+}
+
+/// The entity it aims at, which a save holds as what its holder chases.
+#[derive(Debug, Clone, PartialEq)]
+struct Aim {
+    at: Entity,
+}
+
+#[derive(Serialize, Deserialize)]
+struct AimForm {}
+
+impl From<&Aim> for AimForm {
+    fn from(_: &Aim) -> Self {
+        Self {}
+    }
+}
+
+impl From<AimForm> for Aim {
+    fn from(_: AimForm) -> Self {
+        Self {
+            at: Entity::PLACEHOLDER,
+        }
+    }
+}
+
+fn aim_saved(world: &World, holder: Option<Entity>, _: &Aim) -> Option<Aim> {
+    Some(Aim {
+        at: world.get::<Chase>(holder?)?.target,
+    })
+}
+
+/// `world()` with `Meter`, `Aim` and `Forecast` saved through `capture_as`.
+fn projected_world() -> World {
+    let mut world = world();
+    world.register_saved_with("meter", SaveOptions::<Meter>::new().capture_as(meter_saved));
+    world.register_saved_with(
+        "aim",
+        SaveOptions::<Aim>::form::<AimForm>()
+            .refs(RefCodec {
+                save: |aim, out| out.put("at", aim.at),
+                load: |aim, refs| {
+                    if let Some(at) = refs.first("at") {
+                        aim.at = at;
+                    }
+                },
+                keys: |_| vec!["at".into()],
+            })
+            .capture_as(aim_saved),
+    );
+    world.register_saved_resource_with(
+        "forecast",
+        SaveOptions::<Forecast>::new().capture_as(forecast_saved),
+    );
+    world.insert_resource(Forecast { wind: -1.0 });
+    world
+}
+
+/// A hero and a turret, each with a meter; the turret's shows its ammo.
+fn metered(world: &mut World) -> [Entity; 2] {
+    let hero = world.spawn_prefab("hero", [16.0, 16.0]).unwrap();
+    let turret = world.spawn_prefab("turret", [200.0, 40.0]).unwrap();
+    for entity in [hero, turret] {
+        world.insert(
+            entity,
+            Meter {
+                shown: 9.0,
+                tint: 1,
+            },
+        );
+    }
+    name(world, hero, None, "hero").unwrap();
+    name(world, turret, Some("cave"), "turret").unwrap();
+    [hero, turret]
+}
+
+#[test]
+fn a_capture_as_value_is_what_a_save_writes_keeps_and_patches_over() {
+    let mut a = projected_world();
+    let [hero_a, turret_a] = metered(&mut a);
+    let fresh = value(&capture_world(&a).unwrap());
+    assert_eq!(
+        fresh["areas"]["cave"]["named"].get("turret"),
+        None,
+        "the baseline holds the saved level, 3, not the live 9"
+    );
+    assert_eq!(fresh["resources"]["forecast"], json!({ "wind": 0.0 }));
+
+    // The live level moves alone: nothing to save. The tint and the ammo
+    // move: both are patched, the level at the ammo.
+    a.get_mut::<Meter>(turret_a).unwrap().shown = 7.0;
+    a.get_mut::<Meter>(hero_a).unwrap().shown = 4.0;
+    assert_eq!(
+        value(&capture_world(&a).unwrap())["areas"]["cave"]["named"].get("turret"),
+        None
+    );
+    a.get_mut::<Meter>(turret_a).unwrap().tint = 5;
+    a.resource_mut::<Weather>().wind = 3.0;
+    let saved = value(&capture_world(&a).unwrap());
+    assert_eq!(
+        saved["areas"]["cave"]["named"]["turret"]["components"],
+        json!({ "meter": { "tint": 5 } })
+    );
+    assert_eq!(
+        saved["global"]["named"]["hero"]["components"]["meter"],
+        json!({ "shown": 4.0 }),
+        "no ammo: the live value"
+    );
+    assert_eq!(saved["resources"]["forecast"], json!({ "wind": 3.0 }));
+
+    // The patch goes over the fresh spawn's saved value, its level 3, not
+    // its live 9.
+    let mut b = projected_world();
+    let [hero_b, turret_b] = metered(&mut b);
+    restore_world(&mut b, &from_value(saved), &(Scene,)).unwrap();
+    assert_eq!(
+        b.get::<Meter>(turret_b),
+        Some(&Meter {
+            shown: 3.0,
+            tint: 5
+        })
+    );
+    assert_eq!(b.get::<Meter>(hero_b).unwrap().shown, 4.0);
+    assert_eq!(b.resource::<Forecast>(), &Forecast { wind: 3.0 });
+}
+
+#[test]
+fn a_capture_as_value_writes_its_own_references() {
+    let mut world = projected_world();
+    let level = level(&mut world);
+    let stray = world.spawn();
+    world.insert(level.bat_1, Aim { at: stray });
+    let saved = capture_world(&world).unwrap();
+    assert_eq!(saved.dropped_refs(), 0, "the live aim's stray is not saved");
+    assert_eq!(
+        value(&saved)["areas"]["cave"]["named"]["bat_1"]["refs"]["aim"],
+        json!({ "at": [SaveId::authored("hero").0] }),
+        "the saved aim's, at what it chases"
+    );
+}
+
+#[test]
+fn check_world_refuses_what_restore_world_refuses_and_changes_nothing() {
+    let mut a = world();
+    let la = level(&mut a);
+    fire(&mut a, la.turret, 210.0);
+    flush(&mut a);
+    a.despawn(la.bat_2);
+    a.get_mut::<Health>(la.bat_1).unwrap().current = 2.0;
+    a.resource_mut::<Weather>().wind = 4.0;
+    let saved = value(&capture_world(&a).unwrap());
+
+    let mut b = world();
+    level(&mut b);
+    let before = |world: &World| {
+        (
+            snapshot(world),
+            format!("{:?}", world.resource::<SaveState>()),
+        )
+    };
+    let fresh = before(&b);
+
+    let mut newer = saved.clone();
+    newer["versions"]["components"]["health"] = json!(5);
+    let newer = from_value(newer);
+    assert_eq!(
+        check_world(&mut b, &newer),
+        restore_world(&mut b, &newer, &(Scene,)),
+    );
+    assert!(matches!(
+        check_world(&mut b, &newer),
+        Err(RestoreError::NewerVersion { .. })
+    ));
+    assert_eq!(before(&b), fresh);
+
+    let mut failing = saved.clone();
+    failing["resources"]["weather"] = json!({ "raining": "yes" });
+    let failing = from_value(failing);
+    let err = check_world(&mut b, &failing).unwrap_err();
+    assert!(
+        matches!(&err, RestoreError::Value { what, .. } if what == "resource `weather`"),
+        "{err}"
+    );
+    assert_eq!(Err(err), restore_world(&mut b, &failing, &(Scene,)));
+    assert_eq!(before(&b), fresh);
+
+    let saved = from_value(saved);
+    let report = check_world(&mut b, &saved).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(before(&b), fresh, "a passing check changes nothing either");
+    assert_eq!(restore_world(&mut b, &saved, &(Scene,)), Ok(report));
+    assert_eq!(b.resource::<Weather>().wind, 4.0);
+}

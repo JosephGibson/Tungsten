@@ -1,6 +1,6 @@
-# 01's saves on the engine, re-planned (example-01-engine-saves) — draft
+# 01's saves on the engine, re-planned (example-01-engine-saves) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13b again, after its first plan's Step 4 stopped on the app's saved `transform`: first the engine saves what a load can give back, a body's transform at its `Position`, not the frame's drawn point (known issues' P2 row), and chemistry's queue loaded with every entry it saved, in an order no entity index decides, with a check a game can make before it stages a load; then example 01's capture and restore through the engine's save registry (`D-230`), its named entities as patches over their fresh spawn, its run's spawns as the engine's records, its state as registered components and resources, so the registry also saves chemistry's queue, tile statuses and `became` for it; its small and bowling balls a table of its own until 7.14's C5; its map's iron, crates, kegs and stones as named map objects (phase 7's §2.8, 7.13b: P7-8's, S-101's and S-125's 01 parts, saves-and-seams' Q2 and F1, the known issues on a fire hazard's touches and chemistry's queue for 01).
 - **non-goals:**
   - The first plan's landed Steps 1 to 3 (`D-272`, `dcd3cfca`, `f81f45a8`): not redone.
@@ -245,5 +245,6 @@ Round 2: the same critic, 2026-11-12, `--raw --repo --effort xhigh` on the plan 
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-12 | landed | Before the change the umbrella's `saves_tests::a_moving_body_saves_its_position_as_its_transforms_and_a_held_load_saves_the_same` failed on the transform: `the named body's transform at its position`, left `[43.5, 0.0]` (drawn), right `[44.5, 0.0]` (`Position`). After: `cargo test -p tungsten-core save::` exit 0, 88 passed, 3 ignored (`a_capture_as_value_is_what_a_save_writes_keeps_and_patches_over`, `a_capture_as_value_writes_its_own_references`, `check_world_refuses_what_restore_world_refuses_and_changes_nothing` among them; the two `capture_as` tests rerun after the lint fix, 2 passed); `cargo test -p tungsten --lib` exit 0, 1138 passed; `cargo test -p tungsten-template-basic --locked` exit 0, 184 passed; `cargo test -p tungsten-kit` exit 0, 982 + 145 passed, its determinism pin unchanged; `cargo test -p example-02-bench guards_` exit 0, 16 passed, no pin rewritten (`guards_saves` held its `allocated_bytes`); 01's `cargo test --test game -- guards::` exit 0, 1 passed, no pin rewritten; `just api` then `git diff --stat api/`: `api/tungsten-core.txt` alone, 3 insertions (`SaveOptions<T>::capture_as` twice, `save::check_world` once); `just api-check`, `just docs-ratchet`, `just repo-check`, `cargo fmt --all -- --check` exit 0; `just lint` exit 101 on `clippy::unnecessary_wraps` in the test's `forecast_saved`, fixed, then exit 0. `D-273`. Deviation: the test's deck spawns at rest and is set moving after its naming, since a restore's teleport zeroes a named body's velocity that equals its fresh spawn's (a P3 row in the known issues). | `target/e01s/s1_*.log` (machine-local) |
 
 ## Follow-ups

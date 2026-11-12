@@ -4,9 +4,9 @@
 use std::collections::BTreeSet;
 
 use glam::Vec2;
-use tungsten_core::physics::{Position, PrevPosition};
+use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
 use tungsten_core::save::{self, SaveRegistry, WorldSave, capture_world, restore_world};
-use tungsten_core::{Config, DataRef, Entity, Schedule, World};
+use tungsten_core::{Config, DataRef, Entity, PrefabRegistry, Schedule, Time, Transform, World};
 
 use crate::App;
 use crate::kit::{
@@ -378,4 +378,96 @@ fn an_effect_from_a_kept_source_keeps_it_after_a_restore_that_spawned_it_back() 
         assert_eq!(sources(&a, mage_a), sources(&b, mage_b), "frame {frame}");
     }
     assert!(health(&b, golem_b) < 20.0);
+}
+
+/// The prefab a moving spawn comes back from: a kinematic disc.
+fn orbs(world: &mut World) {
+    let mut prefabs = PrefabRegistry::new();
+    prefabs.insert(
+        "orb".into(),
+        serde_json::from_value(serde_json::json!({ "components": { "rigid_body": {
+            "kind": "kinematic", "shape": { "kind": "circle", "radius": 4 } } } }))
+        .unwrap(),
+    );
+    world.insert_resource(prefabs);
+}
+
+/// A run's start: a dynamic body at rest named `deck` and a sign named
+/// `sign` with a `Transform` and no `Position`.
+fn movers(world: &mut World) -> [Entity; 2] {
+    orbs(world);
+    let deck = world.spawn_with(RigidBodyBundle::dynamic(
+        Position(Vec2::new(40.0, 0.0)),
+        Collider::circle(4.0),
+    ));
+    world.insert(deck, Transform::from_position(Vec2::new(40.0, 0.0)));
+    named(world, deck, "deck");
+    let sign = world.spawn_with((Transform::from_position(Vec2::new(8.0, 8.0)),));
+    named(world, sign, "sign");
+    [deck, sign]
+}
+
+#[test]
+fn a_moving_body_saves_its_position_as_its_transforms_and_a_held_load_saves_the_same() {
+    let mut a = harness(0);
+    let [deck, sign] = movers(a.world_mut());
+    let world = a.world_mut();
+    let orb = world
+        .prepare_prefab("orb", [0.0, 60.0])
+        .unwrap()
+        .with(
+            RigidBodyBundle::kinematic(Position(Vec2::new(0.0, 60.0)), Collider::circle(4.0))
+                .with_velocity(Velocity(Vec2::new(0.0, -120.0))),
+        )
+        .saved(world, None)
+        .spawn(world);
+    world.get_mut::<Velocity>(deck).unwrap().0 = Vec2::new(90.0, 0.0);
+    world.get_mut::<Transform>(sign).unwrap().position = Vec2::new(12.0, 20.0);
+    // Five frames of 1/90 s at 1/60 s steps: three steps, a third of one
+    // left, so each body is drawn between its last two points.
+    a.set_dt(1.0 / 90.0);
+    a.step(5);
+    let world = a.world();
+    let alpha = world.resource::<Time>().alpha();
+    assert!(alpha > 0.0 && alpha < 1.0, "{alpha}");
+    for body in [deck, orb] {
+        let drawn = world.get::<Transform>(body).unwrap().position;
+        let at = world.get::<Position>(body).unwrap().0;
+        assert!(
+            drawn.distance(at) > 0.1,
+            "{body:?} drawn at {drawn} off {at}"
+        );
+    }
+
+    let saved = capture(&a);
+    let text = serde_json::to_value(&saved).unwrap();
+    let point = |at: Vec2| serde_json::json!([at.x, at.y]);
+    let deck_at = world.get::<Position>(deck).unwrap().0;
+    let orb_at = world.get::<Position>(orb).unwrap().0;
+    assert_eq!(
+        text["global"]["named"]["deck"]["components"]["transform"]["position"],
+        point(deck_at),
+        "the named body's transform at its position"
+    );
+    assert_eq!(
+        text["global"]["spawns"][0]["components"]["transform"]["position"],
+        point(orb_at),
+        "the spawn's transform at its position"
+    );
+    assert_eq!(
+        text["global"]["named"]["sign"]["components"]["transform"]["position"],
+        point(Vec2::new(12.0, 20.0)),
+        "a transform without a position as it is"
+    );
+
+    let mut b = harness(7);
+    movers(b.world_mut());
+    restore(&mut b, &saved);
+    b.world_mut().resource_mut::<Time>().pause();
+    b.step(1);
+    assert_eq!(
+        serde_json::to_value(capture(&b)).unwrap(),
+        text,
+        "a held load saves what it loaded"
+    );
 }
