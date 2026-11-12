@@ -28,12 +28,19 @@
     },
     "platformer_controller": {
       "run_speed": 210,
-      "jump_speed": 600
+      "jump_speed": 600,
+      "shove_mass": 40,
+      "shove_share": 0.200000003,
+      "step_height": 32,
+      "without": [
+        4
+      ]
     },
     "health": {
       "max": 60,
       "invulnerability": 0,
-      "despawn_on_death": 0
+      "despawn_on_death": 0,
+      "disarm": true
     },
     "stats": {
       "max_health": 60,

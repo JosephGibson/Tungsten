@@ -11,7 +11,7 @@
 
 use glam::Vec2;
 use tungsten::core::{Entity, PhysicsConfig, Position, Time, Velocity, World};
-use tungsten::kit::PlatformerController;
+use tungsten::kit::{PlatformerController, lob_velocity};
 
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Scared, Strike};
 use super::hop::{self, Ahead, Hops, Leap, grounded};
@@ -35,7 +35,7 @@ pub const LUNGE_RISE: f32 = 64.0;
 /// the level's gravity the leap flies 0.42 s, 80 px up and 270 px across;
 /// the lock holds its speed just past the landing, about 20 px more, so
 /// the lunge carries about 290 px, within its range.
-pub const TELL_SECS: f32 = 0.4;
+pub const TELL_CLIP: &str = "ex10_crawler_windup";
 pub const LUNGE_SPEED: f32 = 640.0;
 pub const LUNGE_LIFT: f32 = 760.0;
 pub const LUNGE_LOCK: f32 = 0.45;
@@ -80,8 +80,8 @@ pub const HOPS: Hops = Hops {
 pub const SNOWBALL_NEAR: f32 = 140.0;
 pub const SNOWBALL_FAR: f32 = 290.0;
 pub const SNOWBALL_RISE: f32 = 160.0;
-pub const SNOWBALL_TELL: f32 = 0.36;
-pub const SNOWBALL_SECS: f32 = 0.25;
+pub const SNOWBALL_TELL_CLIP: &str = "ex10_crawler_snowball_windup";
+pub const SNOWBALL_CLIP: &str = "ex10_crawler_snowball_throw";
 pub const SNOWBALL_COOLDOWN: f32 = 4.0;
 pub const SNOWBALL_PACE: f32 = 1.0 / 650.0;
 pub const SNOWBALL_LEAST: f32 = 0.3;
@@ -318,8 +318,8 @@ pub fn enter_windup(world: &mut World, crawler: Entity) {
     }
 }
 
-/// The tell lasts [`SNOWBALL_TELL`] before a snowball, else [`TELL_SECS`],
-/// then the attack; afraid, it spends its strike and chases again, so it
+/// The tell lasts its clip, [`SNOWBALL_TELL_CLIP`] before a snowball, else
+/// [`TELL_CLIP`], then the attack; afraid, it spends its strike and chases again, so it
 /// backs out.
 pub fn windup(world: &mut World, crawler: Entity) {
     rest(world, crawler);
@@ -331,11 +331,11 @@ pub fn windup(world: &mut World, crawler: Entity) {
         return;
     }
     let tell = if snowballing(world, crawler) {
-        SNOWBALL_TELL
+        SNOWBALL_TELL_CLIP
     } else {
-        TELL_SECS
+        TELL_CLIP
     };
-    if elapsed(world, crawler) >= tell - 1e-4 {
+    if elapsed(world, crawler) >= super::clip_secs(world, tell) - 1e-4 {
         go(world, crawler, EnemyState::Attack);
     }
 }
@@ -359,7 +359,7 @@ fn flick(world: &mut World, crawler: Entity) {
         .get_resource::<PhysicsConfig>()
         .map_or(Vec2::ZERO, |config| config.gravity);
     let time = (from.distance(target) * SNOWBALL_PACE).clamp(SNOWBALL_LEAST, SNOWBALL_MOST);
-    let velocity = troll::ballistic(from, target, time, gravity);
+    let velocity = lob_velocity(from, target, time, gravity);
     let thrower = crate::shared::save_id(world, crawler).map(|id| id.0);
     let factor = troll::factor(world, crawler);
     snowball::throw(world, from, velocity, thrower, factor);
@@ -388,13 +388,13 @@ pub fn enter_attack(world: &mut World, crawler: Entity) {
     }
 }
 
-/// The throw's clip runs [`SNOWBALL_SECS`], then it spends its strike and
+/// The throw's clip, [`SNOWBALL_CLIP`], runs out, then it spends its strike and
 /// recovers; the lunge ends when it lands, or after [`LUNGE_MOST`].
 pub fn attack(world: &mut World, crawler: Entity) {
     let t = elapsed(world, crawler);
     if snowballing(world, crawler) {
         rest(world, crawler);
-        if t >= SNOWBALL_SECS - 1e-4 {
+        if t >= super::clip_secs(world, SNOWBALL_CLIP) - 1e-4 {
             if let Some(brain) = world.get_mut::<Brain>(crawler) {
                 brain.strike = None;
             }

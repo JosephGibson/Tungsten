@@ -33,7 +33,8 @@
     "health": {
       "max": 30,
       "invulnerability": 0,
-      "despawn_on_death": 0
+      "despawn_on_death": 0,
+      "disarm": true
     },
     "stats": {
       "max_health": 30,

@@ -14,13 +14,14 @@ use tungsten::core::{
     AnimationState, AssetRegistry, Collider, Entity, EventCursor, EventQueue, Position,
     PrevPosition, Sprite, Transform, Visibility, World,
 };
-use tungsten::kit::{Health, Lifetime, LinearMotion, ProjectileExpired, Source, Tags};
+use tungsten::kit::{
+    Health, Lifetime, LinearMotion, ProjectileExpired, Source, Tags, lob_velocity,
+};
 
 use super::components::ToxicFlask;
 use super::systems::first_contact;
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{Hit, Kind, LIVING};
-use crate::features::enemies::troll;
 use crate::features::level::GRAVITY;
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
@@ -81,7 +82,7 @@ pub fn throw(world: &mut World, thrower: Entity, from: Vec2, to: Vec2) -> Option
         return None;
     }
     let time = flight(from.distance(to));
-    let velocity = troll::ballistic(from, to, time, Vec2::new(0.0, GRAVITY));
+    let velocity = lob_velocity(from, to, time, Vec2::new(0.0, GRAVITY));
     Some(spawn(world, from - FLASK_CENTRE, velocity, Some(thrower)))
 }
 

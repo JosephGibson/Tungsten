@@ -1,8 +1,9 @@
 //! The cave troll: a lanky, long-armed walker on the kit's platformer
 //! controller, on a 128 px frame. It walks its ground and roars on sight.
-//! Within [`SWIPE_RANGE`] of the player it draws its arm back for
-//! [`SWIPE_TELL`] and rakes the box in front of it; within [`SLAM_RANGE`]
-//! it raises its fists for [`SLAM_TELL`] with a grunt, a dust ring growing
+//! Within [`SWIPE_RANGE`] of the player it draws its arm back for its clip
+//! ([`SWIPE_TELL_CLIP`]) and rakes the box in front of it; within
+//! [`SLAM_RANGE`] it raises its fists for its clip ([`SLAM_TELL_CLIP`]) with
+//! a grunt, a dust ring growing
 //! to the slam's reach about its fist's point, and slams the ground,
 //! hurting every target within [`SLAM_REACH`] of its fist, shaking the
 //! camera, kicking the bodies by their mass and shattering frozen things.
@@ -34,7 +35,7 @@ use tungsten::core::{
     BodyKind, Collider, Entity, EventQueue, PhysicsConfig, Position, PrevPosition, RigidBody,
     ShakeEvent, Shape, Velocity, World,
 };
-use tungsten::kit::{Health, PlatformerController, Stats};
+use tungsten::kit::{Health, PlatformerController, Stats, lob_velocity};
 use tungsten::physics::wake;
 
 use super::components::{
@@ -60,10 +61,10 @@ pub const SEARCH_PACE: f32 = 0.8;
 /// How near the player, across and up or down, its chase raises its fist.
 pub const SLAM_RANGE: f32 = 140.0;
 pub const SLAM_RISE: f32 = 120.0;
-/// The slam's tell, its reach about the fist's point and its push on what
-/// it hurts; its shake by the courier's distance, whole within the first
-/// and none past the second.
-pub const SLAM_TELL: f32 = 0.8;
+/// The slam's tell, its clip's length, its reach about the fist's point and
+/// its push on what it hurts; its shake by the courier's distance, whole
+/// within the first and none past the second.
+pub const SLAM_TELL_CLIP: &str = "ex10_troll_windup";
 pub const SLAM_REACH: f32 = 160.0;
 pub const SLAM_PUSH: f32 = 420.0;
 pub const SLAM_SHAKE: f32 = 0.5;
@@ -75,7 +76,7 @@ pub const SHAKE_FAR: f32 = 640.0;
 /// up.
 pub const SWIPE_RANGE: f32 = 90.0;
 pub const SWIPE_RISE: f32 = 80.0;
-pub const SWIPE_TELL: f32 = 0.3;
+pub const SWIPE_TELL_CLIP: &str = "ex10_troll_swipe_windup";
 pub const SWIPE_HALF: Vec2 = Vec2::new(40.0, 36.0);
 pub const SWIPE_AT: Vec2 = Vec2::new(52.0, -10.0);
 pub const SWIPE_DAMAGE: f32 = 18.0;
@@ -270,13 +271,6 @@ fn aim(world: &World, object: Entity, target: Vec2) -> Vec2 {
     Vec2::new(target.x, target.y.min(feet - below))
 }
 
-/// The velocity that carries a body from `from` to `to` in `time` under
-/// `gravity`.
-#[must_use]
-pub fn ballistic(from: Vec2, to: Vec2, time: f32, gravity: Vec2) -> Vec2 {
-    (to - from) / time - 0.5 * gravity * time
-}
-
 /// A throw's seconds in the air over `distance`.
 #[must_use]
 pub fn flight(distance: f32) -> f32 {
@@ -298,7 +292,7 @@ pub fn throw(world: &mut World, troll: Entity) -> Option<Entity> {
         return Some(object);
     };
     let to = aim(world, object, target);
-    let velocity = ballistic(from, to, flight(from.distance(to)), gravity);
+    let velocity = lob_velocity(from, to, flight(from.distance(to)), gravity);
     release(world, object, velocity);
     let throw = Throw {
         body: object,
@@ -624,14 +618,15 @@ pub fn enter_windup(world: &mut World, troll: Entity) {
     }
 }
 
-/// Its tell, [`THROW_TELL`] for a throw, [`SWIPE_TELL`] for a swipe and
-/// [`SLAM_TELL`] for a slam; then the attack.
+/// Its tell, [`THROW_TELL`] for a throw, else its clip's length,
+/// [`SWIPE_TELL_CLIP`] for a swipe and [`SLAM_TELL_CLIP`] for a slam; then
+/// the attack.
 pub fn windup(world: &mut World, troll: Entity) {
     rest(world, troll);
     let tell = match strike(world, troll) {
         Strike::Throw => THROW_TELL,
-        Strike::Swipe => SWIPE_TELL,
-        _ => SLAM_TELL,
+        Strike::Swipe => super::clip_secs(world, SWIPE_TELL_CLIP),
+        _ => super::clip_secs(world, SLAM_TELL_CLIP),
     };
     if elapsed(world, troll) >= tell - 1e-4 {
         go(world, troll, EnemyState::Attack);

@@ -3454,3 +3454,82 @@ fn a_schema_29_save_keeps_its_arcane_power() {
         "the shot as it was: {shot_loaded} for {shot_plain}"
     );
 }
+
+/// Each saved `health` among `value`'s records without its `disarm`, as a
+/// save from before the death policy wrote it; how many it stripped.
+fn strip_disarm(value: &mut serde_json::Value) -> usize {
+    let mut stripped = 0;
+    match value {
+        serde_json::Value::Object(object) => {
+            if let Some(serde_json::Value::Object(health)) = object.get_mut("health")
+                && health.remove("disarm").is_some()
+            {
+                stripped += 1;
+            }
+            for inner in object.values_mut() {
+                stripped += strip_disarm(inner);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                stripped += strip_disarm(item);
+            }
+        }
+        _ => {}
+    }
+    stripped
+}
+
+#[test]
+fn older_foes_still_disarm() {
+    use tungsten::kit::kill;
+
+    let (mut harness, _) = grounded();
+    // Two records: a crawler, which hurts by touch, and a beetle, whose
+    // charge's hitbox is armed for the test.
+    let crawler = enemy(
+        &mut harness,
+        EnemyKind::Crawler,
+        Vec2::new(880.0, TOP - 40.0),
+    );
+    let beetle = enemy(
+        &mut harness,
+        EnemyKind::Beetle,
+        Vec2::new(1080.0, TOP - 13.5),
+    );
+    harness.step(1);
+    let ids = (id_of(&harness, crawler), id_of(&harness, beetle));
+    let mut older = json(&capture(&harness));
+    let records = &mut older["world"];
+    assert!(strip_disarm(records) >= 2, "the two records' health");
+    let read: SaveGame = serde_json::from_value(older).expect("the save reads");
+    let mut loaded = reloaded(read, false);
+    let (crawler, beetle) = (by_id(&loaded, ids.0), by_id(&loaded, ids.1));
+    let world = loaded.world_mut();
+    for foe in [crawler, beetle] {
+        assert!(
+            world.get::<Health>(foe).unwrap().disarms(),
+            "its prefab's disarm"
+        );
+    }
+    world.get_mut::<Hitbox>(beetle).unwrap().set_on(true);
+    assert!(world.get::<ContactDamage>(crawler).unwrap().is_on());
+    for foe in [crawler, beetle] {
+        assert_eq!(kill(world, foe), tungsten::kit::Hit::Killed);
+    }
+    assert!(
+        !world.get::<ContactDamage>(crawler).unwrap().is_on(),
+        "its touch off at the kill"
+    );
+    assert!(
+        !world.get::<Hitbox>(beetle).unwrap().is_on(),
+        "its hitbox off at the kill"
+    );
+    loaded.step(2);
+    let world = loaded.world();
+    if world.is_alive(crawler)
+        && let Some(touch) = world.get::<ContactDamage>(crawler)
+    {
+        assert!(!touch.is_on(), "left off while it lies dead");
+    }
+}

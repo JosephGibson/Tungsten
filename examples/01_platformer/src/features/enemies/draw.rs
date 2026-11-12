@@ -20,7 +20,7 @@ use tungsten::render::{SpriteBatch, SpriteInstance};
 use super::beetle::{self, PLOUGH_HALF};
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
 use super::goblin::{self, STAB_HALF};
-use super::troll::{self, SLAM_REACH, SLAM_TELL, SWIPE_HALF};
+use super::troll::{self, SLAM_REACH, SLAM_TELL_CLIP, SWIPE_HALF};
 use super::{SEARCH_MARK_AFTER, body};
 use crate::features::level::draw::{instance, push_quad, view};
 use crate::features::level::systems::drawn_time;
@@ -174,7 +174,8 @@ pub fn rings(world: &World) -> Vec<SpriteBatch> {
         if !slamming {
             continue;
         }
-        let grown = (machine.elapsed() / SLAM_TELL).clamp(0.0, 1.0);
+        let tell = super::clip_secs(world, SLAM_TELL_CLIP);
+        let grown = (machine.elapsed() / tell).clamp(0.0, 1.0);
         let reach = SLAM_REACH * grown;
         if reach < 2.0 {
             continue;

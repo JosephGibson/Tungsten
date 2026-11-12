@@ -360,7 +360,8 @@ pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
 /// with its ring and its sound, and a bound refused for mana sounds its
 /// refusal; a landing after the first raises dust and holds the land clip.
 /// A dead player's body drops where it died and falls as its controller
-/// falls, its input locked for good (F13), and its clips and bursts end.
+/// falls, its input locked for good (F13), as its health's death policy
+/// (`disarm`) stopped it at the kill, and its clips and bursts end.
 pub fn moves(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -370,28 +371,14 @@ pub fn moves(world: &mut World) {
         let left = world
             .get::<Facing>(player)
             .is_some_and(|facing| facing.direction().x < 0.0);
-        let first = world.get_mut::<Moves>(player).is_some_and(|moves| {
+        if let Some(moves) = world.get_mut::<Moves>(player) {
             moves.landing = 0.0;
             moves.tuck = false;
-            let first = !std::mem::replace(&mut moves.dead, true);
-            if first {
+            if !std::mem::replace(&mut moves.dead, true) {
                 // The death clip takes over from any gesture, flare or
                 // hurt, facing as the wizard faced.
                 (moves.cast, moves.glow, moves.hurt_clip) = (0.0, 0.0, 0.0);
                 moves.dead_left = left;
-            }
-            first
-        });
-        if first {
-            // Straight down from where it died: no run or knockback slides
-            // it, and its rise or fall carries on.
-            let fall = world
-                .get::<Velocity>(player)
-                .map_or(0.0, |velocity| velocity.0.y);
-            if let Some(controller) = world.get_mut::<PlatformerController>(player) {
-                controller.set_run(0.0);
-                controller.launch(Vec2::new(0.0, fall));
-                controller.lock_input(f32::MAX);
             }
         }
         return;

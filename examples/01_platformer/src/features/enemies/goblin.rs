@@ -9,14 +9,14 @@
 //! [`CLOSE_IN`] it closes, and between them it rests facing the player
 //! while its [`COOLDOWN`] runs; then, the player within [`THROW_RISE`] up
 //! or down, it approaches. One `KitRng` draw picks a dash-in under
-//! [`DASH_CHANCE`]: a crouch for [`DASH_TELL`], then a sprint at
+//! [`DASH_CHANCE`]: a crouch for its clip ([`DASH_TELL_CLIP`]), then a sprint at
 //! [`DASH_SPEED`] for at most [`DASH_MOST`] that ends in its stab once
-//! within the stab's reach. Else it winds up a throw for [`TELL_SECS`]: the
+//! within the stab's reach. Else it winds up a throw for its clip ([`TELL_CLIP`]): the
 //! tell's draw picks a bomb under [`BOMB_CHANCE`], else a rock, which its
 //! brain keeps as its strike; its attack throws that from its hand at the
 //! courier's centre on a ballistic arc, then it recovers for [`RECOVER`].
 //! A courier within [`STAB_REACH`] across and [`STAB_RISE`] up or down
-//! gets its knife at once: a [`STAB_TELL`] tell, a stab of [`STAB_DAMAGE`]
+//! gets its knife at once: a tell for its clip ([`STAB_TELL_CLIP`]), a stab of [`STAB_DAMAGE`]
 //! in a box ahead of it, and a leap back. Below [`FLEE_SHARE`] of its
 //! health it runs from a courier within [`FLEE_REACH`] across rather than
 //! throw; burning, it panics, running from the player, flailing, until the
@@ -32,7 +32,9 @@
 
 use glam::Vec2;
 use tungsten::core::{Collider, Entity, PhysicsConfig, Position, Time, Velocity, World};
-use tungsten::kit::{Health, KitRng, PlatformerController, StateMachine, Stats, Tags};
+use tungsten::kit::{
+    Health, KitRng, PlatformerController, StateMachine, Stats, Tags, lob_velocity,
+};
 
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike, Throw, Throws};
 use super::hop::{self, Hops, grounded};
@@ -52,9 +54,11 @@ pub const SEARCH_PACE: f32 = 0.8;
 pub const KEEP_OFF: f32 = 140.0;
 pub const CLOSE_IN: f32 = 420.0;
 pub const THROW_RISE: f32 = 200.0;
-/// Its throw's tell, the throw's clip and its recovery, seconds.
-pub const TELL_SECS: f32 = 0.45;
-pub const THROW_SECS: f32 = 0.25;
+/// Its throw's tell and the throw's clips, which their states run (S-170),
+/// a bomb's tell its own; and its recovery, seconds.
+pub const TELL_CLIP: &str = "ex10_goblin_windup";
+pub const BOMB_TELL_CLIP: &str = "ex10_goblin_windup_bomb";
+pub const THROW_CLIP: &str = "ex10_goblin_throw";
 pub const RECOVER: f32 = 0.9;
 /// The share of its throws that are bombs: one draw at each tell.
 pub const BOMB_CHANCE: f32 = 0.2;
@@ -74,8 +78,8 @@ pub const ROCK_CREDIT: f32 = 2.0;
 /// body's centre, mirrored as it faces.
 pub const STAB_REACH: f32 = 56.0;
 pub const STAB_RISE: f32 = 40.0;
-pub const STAB_TELL: f32 = 0.2;
-pub const STAB_SECS: f32 = 0.22;
+pub const STAB_TELL_CLIP: &str = "ex10_goblin_stab_windup";
+pub const STAB_CLIP: &str = "ex10_goblin_stab";
 pub const STAB_DAMAGE: f32 = 6.0;
 pub const STAB_PUSH: Vec2 = Vec2::new(320.0, -120.0);
 pub const STAB_HALF: Vec2 = Vec2::new(20.0, 16.0);
@@ -114,7 +118,7 @@ pub const COOLDOWN: f32 = 2.5;
 pub const DASH_CHANCE: f32 = 1.0 / 3.0;
 /// Its dash-in: its crouch, seconds; its sprint's speed, px/s, and the most
 /// seconds it runs, its input locked; the scuff of dust at its heels.
-pub const DASH_TELL: f32 = 0.3;
+pub const DASH_TELL_CLIP: &str = "ex10_goblin_dash_windup";
 pub const DASH_SPEED: f32 = 560.0;
 pub const DASH_MOST: f32 = 0.6;
 pub const DASH_DUST: &str = "ex10_dash_dust";
@@ -303,16 +307,18 @@ pub fn enter_windup(world: &mut World, goblin: Entity) {
     }
 }
 
-/// The tell lasts [`STAB_TELL`] for a stab, [`DASH_TELL`] for a dash-in,
-/// else [`TELL_SECS`], then the attack.
+/// The tell lasts its clip, [`STAB_TELL_CLIP`] for a stab,
+/// [`DASH_TELL_CLIP`] for a dash-in, [`BOMB_TELL_CLIP`] for a bomb, else
+/// [`TELL_CLIP`], then the attack.
 pub fn windup(world: &mut World, goblin: Entity) {
     rest(world, goblin);
     let tell = match strike(world, goblin) {
-        Some(Strike::Stab) => STAB_TELL,
-        Some(Strike::Dash) => DASH_TELL,
-        _ => TELL_SECS,
+        Some(Strike::Stab) => STAB_TELL_CLIP,
+        Some(Strike::Dash) => DASH_TELL_CLIP,
+        Some(Strike::Bomb) => BOMB_TELL_CLIP,
+        _ => TELL_CLIP,
     };
-    if elapsed(world, goblin) >= tell - 1e-4 {
+    if elapsed(world, goblin) >= super::clip_secs(world, tell) - 1e-4 {
         go(world, goblin, EnemyState::Attack);
     }
 }
@@ -361,9 +367,9 @@ fn end_dash(world: &mut World, goblin: Entity, next: Option<Strike>) {
 
 /// The dash-in runs until a courier is within [`STAB_REACH`] across and
 /// [`STAB_RISE`] up or down, where it stops and its attack starts again as
-/// the stab, or for [`DASH_MOST`], then the recovery. The stab's clip runs
-/// [`STAB_SECS`], then it spends its strike and leaps back into its
-/// recovery; the throw's runs [`THROW_SECS`], then the recovery.
+/// the stab, or for [`DASH_MOST`], then the recovery. The stab's clip
+/// ([`STAB_CLIP`]) runs out, then it spends its strike and leaps back into
+/// its recovery; the throw's ([`THROW_CLIP`]), then the recovery.
 pub fn attack(world: &mut World, goblin: Entity) {
     rest(world, goblin);
     if strike(world, goblin) == Some(Strike::Dash) {
@@ -385,8 +391,8 @@ pub fn attack(world: &mut World, goblin: Entity) {
         return;
     }
     let stabbing = strike(world, goblin) == Some(Strike::Stab);
-    let clip = if stabbing { STAB_SECS } else { THROW_SECS };
-    if elapsed(world, goblin) < clip - 1e-4 {
+    let clip = if stabbing { STAB_CLIP } else { THROW_CLIP };
+    if elapsed(world, goblin) < super::clip_secs(world, clip) - 1e-4 {
         return;
     }
     if stabbing {
@@ -487,8 +493,7 @@ pub fn throw(world: &mut World, goblin: Entity) -> Option<Entity> {
         .get_resource::<PhysicsConfig>()
         .map_or(Vec2::ZERO, |config| config.gravity);
     let thrown = if strike == Strike::Bomb {
-        let velocity =
-            troll::ballistic(from, target, troll::flight(from.distance(target)), gravity);
+        let velocity = lob_velocity(from, target, troll::flight(from.distance(target)), gravity);
         let bomb = props::spawn_bomb(world, from, thrower);
         if let Some(own) = world.get_mut::<Velocity>(bomb) {
             own.0 = velocity;
@@ -496,7 +501,7 @@ pub fn throw(world: &mut World, goblin: Entity) -> Option<Entity> {
         bomb
     } else {
         let time = (from.distance(target) * ROCK_PACE).clamp(ROCK_LEAST, ROCK_MOST);
-        let velocity = troll::ballistic(from, target, time, gravity);
+        let velocity = lob_velocity(from, target, time, gravity);
         let rock = props::lob_rock(world, from, velocity);
         let throw = Throw {
             body: rock,

@@ -37,12 +37,15 @@ pub mod troll;
 pub mod wisp;
 
 use glam::Vec2;
-use tungsten::core::save::SaveOptions;
-use tungsten::core::{Entity, EventCursor, Position, Schedule, Shape, Stage, World, system};
+use tungsten::core::save::{SaveOptions, Value};
+use tungsten::core::{
+    AnimationRegistry, Entity, EventCursor, Position, PrefabRegistry, Schedule, Shape, Stage,
+    World, system,
+};
 use tungsten::kit::{
     ANIMATION_TICK, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line, Modifier, PICKUP_MAGNET, PICKUP_TICK,
-    PLATFORMER_CONTROLLER, Phase, PickedUp, PlatformerController, Stats, TOP_DOWN_MOVER, TagFilter,
-    WorldSource, WorldSources, ensure_phases,
+    PLATFORMER_CONTROLLER, Phase, PickedUp, Stats, TOP_DOWN_MOVER, TagFilter, WorldSource,
+    WorldSources, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -105,27 +108,6 @@ pub const WALK_STEP: f32 = 32.0;
 #[must_use]
 pub fn walk_filter() -> SpatialFilter {
     SpatialFilter::new().with_mask(!LAVA_LAYER)
-}
-
-/// Gives `enemy`'s controller, when it has one, [`walk_filter`], and a
-/// walker's its shove of up to [`WALK_SHOVE_MOST`] by its kind's mass and
-/// its [`WALK_STEP`]: at a spawn, at a run's start for the map's, and after
-/// a load, whose saved controller leaves its filter out. A frozen flyer's
-/// borrowed controller takes the filter alone.
-pub fn walk_on_rock(world: &mut World, enemy: Entity) {
-    let walker = world
-        .get::<Enemy>(enemy)
-        .map(|mine| mine.kind.info())
-        .filter(|info| !info.flyer);
-    if let Some(controller) = world.get_mut::<PlatformerController>(enemy) {
-        let mut set = controller.clone().with_filter(walk_filter());
-        if let Some(info) = walker {
-            set = set
-                .with_shove(info.mass, WALK_SHOVE_MOST / info.mass)
-                .with_step_height(WALK_STEP);
-        }
-        *controller = set;
-    }
 }
 
 /// A kind's table entry: its prefab, whose name its body's data takes
@@ -464,16 +446,39 @@ pub fn spawn_record(
 pub fn restored(world: &mut World, enemy: Entity) {
     fit(world, enemy);
     world.insert(enemy, Shown::default());
+    disarm_as_prefab(world, enemy);
 }
 
-/// An enemy's body from its kind's data ([`shared::fit_body`]) and its hold
-/// on rock ([`walk_on_rock`]): a spawn's and a load's.
+/// An older save's enemy record, whose health lacks its prefab's death
+/// policy's `disarm`, takes it, read from the prefab's data.
+fn disarm_as_prefab(world: &mut World, enemy: Entity) {
+    let Some(mine) = world.get::<Enemy>(enemy) else {
+        return;
+    };
+    let disarms = world
+        .get_resource::<PrefabRegistry>()
+        .and_then(|prefabs| prefabs.get(prefab(mine.kind, mine.variant)))
+        .and_then(|data| data.components.get("health"))
+        .and_then(|health| health.get("disarm"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if disarms
+        && let Some(health) = world.get_mut::<Health>(enemy)
+        && !health.disarms()
+    {
+        *health = health.clone().disarming();
+    }
+}
+
+/// An enemy's body from its kind's data ([`shared::fit_body`]): a spawn's
+/// and a load's. A walker's controller takes its filter (lava's layer
+/// left out), its shove by its kind's mass and its [`WALK_STEP`] from its
+/// prefab's data (S-99).
 fn fit(world: &mut World, enemy: Entity) {
     let Some(kind) = world.get::<Enemy>(enemy).map(|enemy| enemy.kind) else {
         return;
     };
     shared::fit_body(world, enemy, kind.info().prefab);
-    walk_on_rock(world, enemy);
 }
 
 /// The home of an enemy of `kind` placed with its body's centre at `at`:
@@ -565,7 +570,6 @@ pub fn start(world: &mut World, difficulty: Difficulty) {
             ),
         );
         scale(world, entity, difficulty);
-        walk_on_rock(world, entity);
     }
     let mut placed: Vec<u64> = placed.into_iter().map(|(_, id, _)| id).collect();
     placed.sort_unstable();
@@ -610,6 +614,18 @@ pub fn gone(world: &World) -> Vec<u64> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// The seconds the clip `clip` (its manifest ID, `ex10_` and all) plays,
+/// its frames' durations summed: a one-shot tell's or throw's, which its
+/// state runs on its own fixed-step clock (S-170); 0 for a clip the
+/// registry lacks.
+#[must_use]
+pub fn clip_secs(world: &World, clip: &str) -> f32 {
+    world
+        .get_resource::<AnimationRegistry>()
+        .and_then(|registry| registry.get(clip))
+        .map_or(0.0, |data| data.total_duration_ms() as f32 / 1000.0)
 }
 
 /// An enemy's body centre.

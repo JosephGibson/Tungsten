@@ -7,7 +7,7 @@ use tungsten::core::{
     RigidBody, Sprite, Time, Transform, Visibility, World,
 };
 use tungsten::kit::{
-    ContactDamage, Damaged, Health, Hitbox, PathFollower, PlatformerController, StateMachine,
+    ContactDamage, Damaged, Health, PathFollower, PlatformerController, StateMachine,
     StateMachinePlugin, TopDownMover,
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
@@ -703,8 +703,12 @@ fn swap_driver(world: &mut World, enemy: Entity, frozen: bool) {
 }
 
 /// An enemy's touch for its state: frozen, switched off, its targets'
-/// times kept; thawed, on again with them.
+/// times kept; thawed, on again with them; dead, left off, as its death
+/// policy's `disarm` switched it.
 fn swap_touch(world: &mut World, enemy: Entity, frozen: bool) {
+    if world.get::<Health>(enemy).is_some_and(Health::is_dead) {
+        return;
+    }
     if let Some(touch) = world.get_mut::<ContactDamage>(enemy)
         && touch.is_on() == frozen
     {
@@ -713,9 +717,9 @@ fn swap_touch(world: &mut World, enemy: Entity, frozen: bool) {
 }
 
 /// `enemy_deaths`, in the react phase after the step's reactions: each
-/// enemy a hit killed stops hurting at once, since its despawn comes at the
-/// next step's end and its touch and hitbox would act until then; it ends
-/// in one burst by its state, and its sprite goes with it.
+/// enemy a hit killed, whose death policy's `disarm` switched its touch
+/// and hitbox off at the kill, ends in one burst by its state, and its
+/// sprite goes with it.
 pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     let Some(events) = world.get_resource::<EventQueue<Damaged>>() else {
         return;
@@ -726,8 +730,6 @@ pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
         .map(|hit| hit.entity)
         .collect();
     for enemy in killed {
-        world.remove_component::<ContactDamage>(enemy);
-        world.remove_component::<Hitbox>(enemy);
         end(world, enemy);
     }
 }

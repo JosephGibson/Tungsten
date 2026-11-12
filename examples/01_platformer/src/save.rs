@@ -592,7 +592,6 @@ fn rebuild(world: &mut World, touches: &[(Entity, Option<ContactDamage>)]) {
             despawn_tree(world, book);
         }
     }
-    crate::features::player::shove_bodies(world, player);
     if let Some(centre) = crate::shared::body_centre(world, player)
         && let Some(camera) = world.get_resource_mut::<CameraController>()
     {

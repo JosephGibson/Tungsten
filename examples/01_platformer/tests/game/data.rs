@@ -91,6 +91,37 @@ fn every_restated_constant_matches_its_data() {
         assert_eq!(hurtbox, file.hurtbox, "{prefab}");
     }
     // The toys' sizes and the iron's and its scraps' masses.
+    // The walkers' controllers: their step, which the ledge check reads, and
+    // their shove by their kind's mass up to the heaviest a walker moves,
+    // which the troll's kick reads; lava's layer left out (S-99).
+    for kind in EnemyKind::ALL.into_iter().filter(|kind| !kind.info().flyer) {
+        let info = kind.info();
+        for variant in [Variant::Plain, Variant::Armoured] {
+            let prefab = enemies::prefab(kind, variant);
+            let value = json(&format!("prefabs/{prefab}.json"));
+            let controller = "/components/platformer_controller";
+            assert_eq!(
+                number(&value, &format!("{controller}/step_height")),
+                enemies::WALK_STEP,
+                "{prefab}"
+            );
+            assert_eq!(
+                number(&value, &format!("{controller}/shove_mass")),
+                info.mass
+            );
+            assert_eq!(
+                number(&value, &format!("{controller}/shove_share")),
+                enemies::WALK_SHOVE_MOST / info.mass,
+                "{prefab}"
+            );
+            assert_eq!(
+                value.pointer(&format!("{controller}/without")),
+                Some(&serde_json::json!([4])),
+                "{prefab}: lava's layer"
+            );
+            assert_eq!(1 << 4, example_01_platformer::features::level::LAVA_LAYER);
+        }
+    }
     assert_eq!(body("iron_block").0, IRON_HALF);
     let iron = json("prefabs/iron_block.json");
     assert_eq!(number(&iron, "/components/rigid_body/mass"), IRON_MASS);

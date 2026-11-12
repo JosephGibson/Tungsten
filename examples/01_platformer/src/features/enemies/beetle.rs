@@ -33,9 +33,9 @@ pub const SEARCH_PACE: f32 = 0.8;
 /// above or below it the player may stand.
 pub const CHARGE_RANGE: f32 = 360.0;
 pub const CHARGE_RISE: f32 = 80.0;
-/// The paw before the charge, the charge's speed and its seconds, which
-/// its ability's hitbox window matches.
-pub const PAW_SECS: f32 = 0.8;
+/// The paw before the charge, its clip's length; the charge's speed and its
+/// seconds, which its ability's hitbox window matches.
+pub const PAW_CLIP: &str = "ex10_beetle_paw";
 pub const CHARGE_SPEED: f32 = 600.0;
 pub const CHARGE_SECS: f32 = 0.8;
 /// Its charge's ability, which arms its hitbox.
@@ -108,10 +108,10 @@ pub fn enter_windup(world: &mut World, beetle: Entity) {
     }
 }
 
-/// The paw lasts [`PAW_SECS`], then the charge.
+/// The paw lasts its clip ([`PAW_CLIP`]), then the charge.
 pub fn windup(world: &mut World, beetle: Entity) {
     rest(world, beetle);
-    if elapsed(world, beetle) >= PAW_SECS - 1e-4 {
+    if elapsed(world, beetle) >= super::clip_secs(world, PAW_CLIP) - 1e-4 {
         go(world, beetle, EnemyState::Attack);
     }
 }

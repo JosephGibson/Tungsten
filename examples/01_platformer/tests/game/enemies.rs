@@ -30,7 +30,7 @@ use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::systems::crush;
 use example_01_platformer::features::elements::{BODY_HIT_MOST, CRUSH_SPEED, body_hit};
 use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
-use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED, PAW_SECS};
+use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED, PAW_CLIP};
 use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Held, Shown, Sight, Strike, Throws, Variant,
 };
@@ -1547,7 +1547,7 @@ fn a_snowball_on_a_dummy_chilled_near_its_freeze_rung_freezes_it() {
         .world()
         .resource::<tungsten::core::PhysicsConfig>()
         .gravity;
-    let velocity = troll::ballistic(from, centre, 0.25, gravity);
+    let velocity = tungsten::kit::lob_velocity(from, centre, 0.25, gravity);
     snowball::throw(harness.world_mut(), from, velocity, None, 1.0);
     let frozen = until(&mut harness, 60, |h| tagged(h, dummy, "status.frozen"));
     assert!(frozen, "its 12 cold freezes it");
@@ -1639,7 +1639,8 @@ fn the_beetle_paws_then_charges_and_its_charge_hurts_enemies_too() {
     }
     let (windup, attack) = (windup.expect("its paw"), attack.expect("its charge"));
     let paw = (attack - windup) as f32 / 60.0;
-    assert!((paw - PAW_SECS).abs() <= 1.5 / 60.0, "a 0.8 s paw: {paw}");
+    let paw_secs = enemies::clip_secs(harness.world(), PAW_CLIP);
+    assert!((paw - paw_secs).abs() <= 1.5 / 60.0, "a 0.8 s paw: {paw}");
     for i in 0..60 {
         if i == 2 {
             let pace = speed(&harness, beetle).x;
@@ -2139,8 +2140,9 @@ fn the_troll_slams_after_its_wind_up_hurting_kicking_and_shattering() {
     }
     let (windup, attack) = (windup.expect("its wind-up"), attack.expect("its slam"));
     let tell = (attack - windup) as f32 / 60.0;
+    let slam_tell = enemies::clip_secs(harness.world(), troll::SLAM_TELL_CLIP);
     assert!(
-        (tell - troll::SLAM_TELL).abs() <= 1.5 / 60.0,
+        (tell - slam_tell).abs() <= 1.5 / 60.0,
         "its wind-up: {tell}"
     );
     // The bowling ball kicked by its mass at the slam, away from the fist
@@ -3868,8 +3870,9 @@ fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
     harness.step(1);
     let (tell, hits) = troll_blow(&mut harness, troll, player, 300.0, 300);
     let tell = tell.expect("its swipe") as f32 / 60.0;
+    let swipe_tell = enemies::clip_secs(harness.world(), troll::SWIPE_TELL_CLIP);
     assert!(
-        (tell - troll::SWIPE_TELL).abs() <= 1.5 / 60.0,
+        (tell - swipe_tell).abs() <= 1.5 / 60.0,
         "a 0.3 s tell: {tell}"
     );
     assert_eq!(hits, [troll::SWIPE_DAMAGE], "the swipe's 18");
@@ -3880,8 +3883,9 @@ fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
     harness.step(1);
     let (tell, hits) = troll_blow(&mut harness, troll, player, 300.0, 300);
     let tell = tell.expect("its slam") as f32 / 60.0;
+    let slam_tell = enemies::clip_secs(harness.world(), troll::SLAM_TELL_CLIP);
     assert!(
-        (tell - troll::SLAM_TELL).abs() <= 1.5 / 60.0,
+        (tell - slam_tell).abs() <= 1.5 / 60.0,
         "a 0.8 s tell: {tell}"
     );
     assert_eq!(hits, [40.0], "the slam's 40");
