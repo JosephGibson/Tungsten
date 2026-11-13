@@ -583,6 +583,7 @@ shape cue_rule: A shared reaction: on an event, for each subject whose tags pass
   field reason: one of not_ready | no_charge | no_cost | no_target | no_room | capped = null — why the use was refused; `ability_refused` only
   field min_interval: f32 (>= 0) = 0.0 — game seconds the rule waits for a subject once it ran for it
   field cap: u32 (>= 1) = null — the rule's runs a step at most
+  field group: text = null — rules naming one group run once a subject a step: the first in load order of those the step's occurrences about it pass, on the first it passes
   field do: list of shape cue_action — the actions, in order
   sample: { "on": "killed", "do": [] }
 shape curve: A piecewise-linear map: linear between its points and held at the ends.
@@ -720,6 +721,7 @@ shape label_style: The event's amount as a timed world label: it rises, pops fro
 shape label_ticks: A type label's periodic parts: summed on their own over its window at this size.
   field size: f32 (> 0) — UI units tall
   field kind: tag filter = {} — the periodic parts it takes by their damage kinds, each a declared damage type or an ancestor of one
+  field first: bool = null — `true` floats a window's first tick at once, as a plain part; it waits for the close when left out
   sample: { "size": 10 }
 shape lob: A spawn's launch onto the aim's point, by its prefab's body: a dynamic body's velocity under gravity times its `gravity_scale`, else its `linear_motion`'s under that motion's acceleration.
   field speed: f32 (> 0) — world pixels per second over the ground: the flight lasts the distance over it

@@ -46,7 +46,7 @@ use crate::present::character::{CLIPS_FORM, CharacterAnimator, Clips, check_clip
 use crate::present::facing::Facing;
 use crate::present::labels::{
     CritLabel, LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, PartLabel, TickLabel,
-    float_label, label_tick,
+    float_label, float_owned, label_tick,
 };
 use crate::react::counters::{Counters, Flags};
 use crate::react::level::LevelUp;
@@ -929,13 +929,15 @@ impl CueAction {
     /// Three fields group a target's numbers, each optional: `merge`, the
     /// seconds a target's parts of a type sum over, its first plain part
     /// floating at once and the rest within the window as one sum when it
-    /// closes; `ticks`, `{ "size", "kind" }`, periodic parts whose kinds pass
-    /// `kind` (every periodic part by default) summed on their own over the
-    /// window at that size; and `crit`, `{ "size", "color" }`, a step's crit
-    /// parts on a target floated at once as one sum in the first part's
-    /// type's style at that size and colour. Open sums are presentation,
-    /// unsaved, aged on the fixed step; without the fields each part floats
-    /// alone.
+    /// closes; `ticks`, `{ "size", "kind", "first" }`, periodic parts whose
+    /// kinds pass `kind` (every periodic part by default) summed on their own
+    /// over the window at that size, a window's first tick floating at once
+    /// with `first`; and `crit`, `{ "size", "color" }`, a step's crit parts on
+    /// a target floated as one sum in the first part's type's style at that
+    /// size and colour. A step's labels float once its parts are read: its
+    /// crit sums, then the parts that float at once, then the sums whose
+    /// window closed. Open sums are presentation, unsaved, aged on the fixed
+    /// step; without the fields each part floats alone.
     ///
     /// # Examples
     ///
@@ -2758,6 +2760,8 @@ struct CueRuleDef {
     min_interval: f32,
     #[serde(default, deserialize_with = "positive_cap")]
     cap: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
     #[serde(rename = "do")]
     actions: Vec<CueAction>,
 }
@@ -3003,6 +3007,8 @@ struct CueRule {
     min_interval: f32,
     /// Runs a step at most.
     cap: Option<u32>,
+    /// The group whose first passing rule alone runs for a subject a step.
+    group: Option<Arc<str>>,
     actions: Arc<[CueAction]>,
 }
 
@@ -3059,6 +3065,13 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
             if rule.ability.as_deref() == Some("") {
                 return Err(format!("{i}.ability: an ability's name, not empty"));
             }
+            if let Some(group) = &rule.group
+                && !valid_tag(group)
+            {
+                return Err(format!(
+                    "{i}.group: `{group}` is not a group's name (`[a-z][a-z0-9_]*` segments joined by dots)"
+                ));
+            }
             let names = rule
                 .filter
                 .names()
@@ -3080,6 +3093,7 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                 reason: rule.reason.map(ReasonDef::code),
                 min_interval: rule.min_interval,
                 cap: rule.cap,
+                group: rule.group.map(Arc::from),
                 actions: rule.actions.into(),
             });
         }
@@ -3347,7 +3361,12 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// `no_target`, `no_room` and `capped`. Its limits come last, so an occurrence a filter turns
 /// away spends neither: `min_interval`, the game seconds a rule waits for a
 /// subject once it ran for it, and `cap`, its runs a step at most. A held
-/// rule is traced as skipped; the limits are the cue system's, unsaved. The
+/// rule is traced as skipped; the limits are the cue system's, unsaved.
+/// Rules naming one `group` run once a subject a step: of the group's rules
+/// that the step's occurrences about the subject pass, the first in load
+/// order alone runs, on the first occurrence it passes, its limits applying
+/// as ever and the others' untouched; a group's rules may be on different
+/// events, so a kill, a blow and a tick choose one sound. The
 /// load checks every event name, tag, damage type, effect, prefab, sound
 /// and loot table ID it names, and refuses a filter on an event that
 /// cannot carry it.
@@ -3596,6 +3615,14 @@ struct Reactor {
     sums: HashMap<(usize, Entity, DamageKinds, bool), OpenSum>,
     /// The step's crit sums, floated at its end in the order they opened.
     crits: Vec<OpenSum>,
+    /// The step's parts that float on their own, floated after its crits.
+    fresh: Vec<(LabelStyle, Vec2, f32)>,
+    /// The sums whose window closed this step, floated last, in the order
+    /// they opened.
+    closing: Vec<OpenSum>,
+    /// Each rule group's choice this step: its rule and the occurrence it
+    /// runs on, by group and subject.
+    chosen: Vec<GroupChoice>,
     /// How many sums have opened: their close order.
     opened: u64,
     /// The step's effect IDs, which its occurrences index; the first
@@ -3618,6 +3645,16 @@ struct Reactor {
     /// of.
     world_cues: EventCursor<WorldCue>,
     unknown_cues: HashSet<String>,
+}
+
+/// A rule group's choice for one subject this step: of its rules the step's
+/// occurrences about the subject pass, the first in load order, `rank`,
+/// on the first occurrence it passes, `occurrence`.
+struct GroupChoice {
+    group: Arc<str>,
+    subject: Entity,
+    rank: usize,
+    occurrence: usize,
 }
 
 /// A part label's sum while it is open: its label and target, the sum and
@@ -3727,21 +3764,31 @@ impl Reactor {
     fn react(&mut self, world: &mut World) {
         let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
         self.clock += f64::from(dt);
-        self.close_sums(world, dt);
+        self.close_sums(dt);
         self.sweep(world);
         self.runs.clear();
         self.occurrences.clear();
         self.effect_count = 0;
         self.read(world);
-        if self.occurrences.is_empty() {
-            return;
+        if !self.occurrences.is_empty() {
+            self.prepare_types(world);
+            let mut occurrences = std::mem::take(&mut self.occurrences);
+            self.run_batch(world, &mut occurrences);
+            self.occurrences = occurrences;
         }
-        self.prepare_types(world);
-        let mut occurrences = std::mem::take(&mut self.occurrences);
-        self.run_batch(world, &mut occurrences);
-        self.occurrences = occurrences;
+        // The step's part labels, once its parts are read: its crit sums,
+        // then the parts that float on their own, then the sums whose
+        // window closed.
         for open in self.crits.drain(..) {
-            float_label(world, &open.style, open.position, open.sum);
+            float_owned(world, open.style, open.position, open.sum);
+        }
+        for (style, at, amount) in self.fresh.drain(..) {
+            float_owned(world, style, at, amount);
+        }
+        for open in self.closing.drain(..) {
+            if open.parts > 0 {
+                float_owned(world, open.style, open.position, open.sum);
+            }
         }
         for entity in self.despawns.drain(..) {
             if let Some(commands) = world.get_resource_mut::<CommandBuffer>() {
@@ -3781,8 +3828,9 @@ impl Reactor {
                 self.apply(world, occurrence, action, None);
             }
         }
-        for occurrence in occurrences.iter() {
-            self.match_rules(world, occurrence);
+        self.choose_groups(world, occurrences);
+        for (index, occurrence) in occurrences.iter().enumerate() {
+            self.match_rules(world, occurrence, index);
             for why in self.held.drain(..) {
                 trace(world, occurrence.subject, || TraceKind::Skipped {
                     event: occurrence.event,
@@ -3801,11 +3849,86 @@ impl Reactor {
         }
     }
 
+    /// Each rule group's choice this step, in `chosen`: for each subject, of
+    /// the group's rules that the step's `occurrences` about it pass, the
+    /// first in load order, on the first occurrence it passes. Nothing
+    /// while no rule names a group.
+    fn choose_groups(&mut self, world: &World, occurrences: &[Occurrence]) {
+        self.chosen.clear();
+        let Some(data) = world.get_resource::<DataRegistry>() else {
+            return;
+        };
+        let grouped = data.ids(CUE_RULES).any(|id| {
+            data.get::<CueRules>(id)
+                .is_some_and(|rules| rules.0.iter().any(|rule| rule.group.is_some()))
+        });
+        if !grouped {
+            return;
+        }
+        let table = world.get_resource::<DamageTypeTable>();
+        let flags = world.get_resource::<Flags>();
+        let Self {
+            masks,
+            effect_ids,
+            effect_count,
+            chosen,
+            ..
+        } = self;
+        let effect_ids = &effect_ids[..*effect_count];
+        let mut mask = |name: &str| -> DamageKinds {
+            if let Some(&kinds) = masks.get(name) {
+                return kinds;
+            }
+            let kinds = table.map_or(DamageKinds::NONE, |table| table.mask_of(name));
+            masks.insert(name.to_owned(), kinds);
+            kinds
+        };
+        for (index, occurrence) in occurrences.iter().enumerate() {
+            let tags = world.get::<Tags>(occurrence.subject);
+            let mut rank = 0;
+            for id in data.ids(CUE_RULES) {
+                let Some(rules) = data.get::<CueRules>(id) else {
+                    continue;
+                };
+                for rule in &rules.0 {
+                    rank += 1;
+                    let Some(group) = &rule.group else {
+                        continue;
+                    };
+                    if !(rule.on == occurrence.event
+                        && rule.filter.matches(tags)
+                        && (rule.kind.is_everything()
+                            || rule.kind.matches(occurrence.kinds, &mut mask))
+                        && rule.passes(occurrence, flags, effect_ids))
+                    {
+                        continue;
+                    }
+                    match chosen.iter_mut().find(|choice| {
+                        choice.subject == occurrence.subject && *choice.group == **group
+                    }) {
+                        Some(choice) if rank < choice.rank => {
+                            choice.rank = rank;
+                            choice.occurrence = index;
+                        }
+                        Some(_) => {}
+                        None => chosen.push(GroupChoice {
+                            group: Arc::clone(group),
+                            subject: occurrence.subject,
+                            rank,
+                            occurrence: index,
+                        }),
+                    }
+                }
+            }
+        }
+    }
+
     /// The rules for `occurrence`'s event whose tag filter its subject
     /// passes, whose kind filter its kinds pass and whose other filters it
-    /// passes, in entry-ID order, then file order; then each rule's limits,
-    /// a held rule's reason in `held`.
-    fn match_rules(&mut self, world: &World, occurrence: &Occurrence) {
+    /// passes, in entry-ID order, then file order, a grouped rule only as
+    /// its group's choice for the step's `index`th occurrence; then each
+    /// rule's limits, a held rule's reason in `held`.
+    fn match_rules(&mut self, world: &World, occurrence: &Occurrence, index: usize) {
         let Some(data) = world.get_resource::<DataRegistry>() else {
             return;
         };
@@ -3821,6 +3944,7 @@ impl Reactor {
             runs,
             held,
             clock,
+            chosen,
             ..
         } = self;
         let effect_ids = &effect_ids[..*effect_count];
@@ -3832,11 +3956,23 @@ impl Reactor {
             masks.insert(name.to_owned(), kinds);
             kinds
         };
+        let mut rank = 0;
         for id in data.ids(CUE_RULES) {
             let Some(rules) = data.get::<CueRules>(id) else {
                 continue;
             };
             for (i, rule) in rules.0.iter().enumerate() {
+                rank += 1;
+                if let Some(group) = &rule.group
+                    && !chosen.iter().any(|choice| {
+                        choice.subject == occurrence.subject
+                            && *choice.group == **group
+                            && choice.rank == rank
+                            && choice.occurrence == index
+                    })
+                {
+                    continue;
+                }
                 if !(rule.on == occurrence.event
                     && rule.filter.matches(tags)
                     && (rule.kind.is_everything()
@@ -4353,24 +4489,21 @@ impl Reactor {
         });
     }
 
-    /// Ages the part labels' open sums by `dt` and floats each that closes
-    /// with a part in it, in the order they opened.
-    fn close_sums(&mut self, world: &mut World, dt: f32) {
+    /// Ages the part labels' open sums by `dt` and keeps each that closes
+    /// for the step's end, in the order they opened.
+    fn close_sums(&mut self, dt: f32) {
         if self.sums.is_empty() {
             return;
         }
-        let mut closed: Vec<OpenSum> = self
-            .sums
-            .extract_if(|_, open| {
-                open.left -= dt;
-                open.left <= SUM_SLACK
-            })
-            .map(|(_, open)| open)
-            .collect();
-        closed.sort_by_key(|open| open.order);
-        for open in closed.iter().filter(|open| open.parts > 0) {
-            float_label(world, &open.style, open.position, open.sum);
-        }
+        self.closing.extend(
+            self.sums
+                .extract_if(|_, open| {
+                    open.left -= dt;
+                    open.left <= SUM_SLACK
+                })
+                .map(|(_, open)| open),
+        );
+        self.closing.sort_by_key(|open| open.order);
     }
 
     /// A part label's number for `occurrence`'s part of `amount` in its
@@ -4421,7 +4554,7 @@ impl Reactor {
             _ => style,
         };
         let Some(window) = label.merge else {
-            float_label(world, &style, occurrence.position, amount);
+            self.fresh.push((style, occurrence.position, amount));
             return;
         };
         let key = (id, subject, occurrence.kinds, tick);
@@ -4431,12 +4564,14 @@ impl Reactor {
             open.position = occurrence.position;
             return;
         }
-        // A window opens: a plain part floats at once, a tick waits for
-        // the close.
-        let (sum, parts) = if tick {
+        // A window opens: a plain part floats at once, and a tick with
+        // its ticks' `first`; another tick waits for the close.
+        let first = label.ticks.as_ref().is_some_and(|ticks| ticks.first);
+        let (sum, parts) = if tick && !first {
             (amount, 1)
         } else {
-            float_label(world, &style, occurrence.position, amount);
+            self.fresh
+                .push((style.clone(), occurrence.position, amount));
             (0.0, 0)
         };
         self.opened += 1;
@@ -5217,6 +5352,14 @@ fn describe_cues(world: &mut World) {
             )
             .default("{}"),
         )
+        .field(
+            FieldDescription::new(
+                "first",
+                FieldType::Bool,
+                "`true` floats a window's first tick at once, as a plain part; it waits for the close when left out",
+            )
+            .default("null"),
+        )
         .sample(r#"{ "size": 10 }"#)
         .roundtrip(round_trip::<TickLabel>),
         ComponentDescription::new(
@@ -5466,6 +5609,14 @@ fn describe_cues(world: &mut World) {
                     max: None,
                 },
                 "the rule's runs a step at most",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "group",
+                FieldType::Text,
+                "rules naming one group run once a subject a step: the first in load order of those the step's occurrences about it pass, on the first it passes",
             )
             .default("null"),
         )

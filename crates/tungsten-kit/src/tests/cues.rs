@@ -1847,11 +1847,11 @@ fn a_steps_crit_parts_on_a_target_float_at_once_as_one_sum_in_the_crit_style() {
     assert_eq!(
         floated(&mut world, &mut schedule),
         [
-            label("1", 16.0, BLUE),
             label("9", 24.0, GOLD),
-            label("5", 24.0, GOLD)
+            label("5", 24.0, GOLD),
+            label("1", 16.0, BLUE)
         ],
-        "the plain part at once, each target's crits as one at the step's end"
+        "each target's crits as one, then the plain part, as the step's parts are read"
     );
     crit_hit(&mut world, golem, &[(2.0, "elemental.fire")]);
     typed_step(&mut world, &mut schedule);
@@ -1859,6 +1859,86 @@ fn a_steps_crit_parts_on_a_target_float_at_once_as_one_sum_in_the_crit_style() {
         floated(&mut world, &mut schedule).last(),
         Some(&label("2", 24.0, GOLD)),
         "the next step's crits on their own"
+    );
+}
+
+// 7.13c's foes and cues, Step 5: a step's labels in order, and a tick's
+// first at once.
+
+#[test]
+fn a_part_label_floats_crits_then_new_parts_then_closed_sums() {
+    let (mut world, mut schedule) = typed_running(styled());
+    let crit = json!({ "merge": 0.25, "crit": { "size": 24, "color": [1, 0.7, 0, 1] } });
+    let golem = numbered(&mut world, &crit);
+    hit(&mut world, golem, &[(4.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    hit(&mut world, golem, &[(2.0, &["elemental.fire"])]);
+    for _ in 1..15 {
+        typed_step(&mut world, &mut schedule);
+    }
+    let mut so_far = vec![label("4", 16.0, RED)];
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        so_far,
+        "fire's window open"
+    );
+    // In the step fire's window closes: a crit and a new cold part land.
+    crate::DamageRequest::from_parts(
+        golem,
+        [crate::DamagePart::new(3.0).with_tags(Tags::new(["elemental.cold"]))],
+    )
+    .with_crit(true)
+    .apply(&mut world);
+    hit(&mut world, golem, &[(1.0, &["elemental.cold"])]);
+    typed_step(&mut world, &mut schedule);
+    so_far.extend([
+        label("3", 24.0, GOLD),
+        label("1", 16.0, BLUE),
+        label("2", 16.0, RED),
+    ]);
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        so_far,
+        "the crit sum, then the part that opened a window, then the closed sum"
+    );
+}
+
+#[test]
+fn a_ticks_first_part_floats_at_once_with_first() {
+    let (mut world, mut schedule) = typed_running(styled());
+    let golem = numbered(
+        &mut world,
+        &json!({ "merge": 0.25, "ticks": { "size": 10, "first": true } }),
+    );
+    tick(&mut world, golem, 1.0, "elemental.fire");
+    typed_step(&mut world, &mut schedule);
+    let mut so_far = vec![label("1", 10.0, RED)];
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        so_far,
+        "its first at once, at the tick size"
+    );
+    tick(&mut world, golem, 2.0, "elemental.fire");
+    typed_step(&mut world, &mut schedule);
+    tick(&mut world, golem, 0.5, "elemental.fire");
+    for _ in 2..15 {
+        typed_step(&mut world, &mut schedule);
+    }
+    assert_eq!(floated(&mut world, &mut schedule), so_far, "the rest wait");
+    typed_step(&mut world, &mut schedule);
+    so_far.push(label("2.5", 10.0, RED));
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        so_far,
+        "the rest as one"
+    );
+    // Its data form keeps `first` alone when set.
+    let action: CueAction =
+        serde_json::from_value(json!({ "label": { "ticks": { "size": 10, "first": true } } }))
+            .unwrap();
+    assert_eq!(
+        serde_json::to_value(&action).unwrap(),
+        json!({ "label": { "ticks": { "size": 10.0, "kind": {}, "first": true } } })
     );
 }
 
@@ -1987,6 +2067,65 @@ mod filters {
 
     fn load_error(world: &mut World, value: Value) -> String {
         check_rules(world, value).unwrap_err()
+    }
+
+    // 7.13c's foes and cues, Step 5: rule groups.
+
+    #[test]
+    fn a_group_runs_its_first_passing_rule_once_a_subject_a_step() {
+        let (mut world, mut schedule) = rig();
+        insert_rules(
+            &mut world,
+            json!([
+                { "on": "killed", "group": "hurt", "do": count("died") },
+                { "on": "damaged", "periodic": false, "group": "hurt", "cap": 1, "do": count("hurt") },
+                { "on": "damaged", "periodic": true, "group": "hurt", "min_interval": 0.15, "do": count("ticked") },
+                { "on": "damaged", "periodic": false, "do": count("blows") }
+            ]),
+        );
+        let (hero, other) = (
+            world.spawn_with((Health::new(100.0),)),
+            world.spawn_with((Health::new(100.0),)),
+        );
+        let tick = |world: &mut World, target: Entity| {
+            crate::DamageRequest::new(target, 1.0)
+                .with_periodic(true)
+                .apply(world);
+        };
+        let counts =
+            |world: &World| ["died", "hurt", "ticked", "blows"].map(|name| game(world, name));
+        // A tick and a blow in one step: the blow's rule alone, the tick's
+        // left with no wait.
+        tick(&mut world, hero);
+        damage(&mut world, hero, 1.0);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(counts(&world), [0, 1, 0, 1]);
+        tick(&mut world, hero);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(
+            counts(&world),
+            [0, 1, 1, 1],
+            "a tick alone, its wait untouched"
+        );
+        // A tick, a blow and a kill on the hero, and a blow on the other:
+        // the hero's `killed` rule alone, its dropped `hurt` leaving its cap
+        // to the other's own.
+        step(&mut world, &mut schedule, 0.2);
+        tick(&mut world, hero);
+        damage(&mut world, hero, 1.0);
+        damage(&mut world, hero, 1000.0);
+        damage(&mut world, other, 1.0);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(
+            counts(&world),
+            [1, 2, 1, 4],
+            "the ungrouped rule on each of the step's three blows"
+        );
+        assert!(world.get::<Health>(hero).unwrap().is_dead());
+        // A group's name is checked.
+        let bad: Result<CueRules, _> =
+            serde_json::from_value(json!([{ "on": "killed", "group": "Hurt", "do": [] }]));
+        assert!(bad.is_err());
     }
 
     #[test]

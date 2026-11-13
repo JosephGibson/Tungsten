@@ -165,8 +165,9 @@ pub(crate) struct PartLabel {
     pub(crate) crit: Option<CritLabel>,
 }
 
-/// A part label's ticks as data writes them: `{ "size": 10, "kind": { "any": ["elemental"] } }`,
-/// `kind` every periodic part by default.
+/// A part label's ticks as data writes them: `{ "size": 10, "kind": { "any": ["elemental"] }, "first": true }`,
+/// `kind` every periodic part by default; with `first`, a tick window's
+/// first part floats at once, else the window waits for its close.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TickLabel {
@@ -174,6 +175,9 @@ pub(crate) struct TickLabel {
     pub(crate) size: f32,
     #[serde(default)]
     pub(crate) kind: KindFilterDef,
+    /// A tick window's first part floats at once, as a plain part's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) first: bool,
 }
 
 /// A part label's crit style as data writes it:
@@ -525,6 +529,14 @@ pub fn float_label(world: &mut World, style: &LabelStyle, anchor: Vec2, amount: 
     if !(amount.is_finite() && anchor.is_finite()) {
         return;
     }
+    float_owned(world, style.clone(), anchor, amount);
+}
+
+/// [`float_label`] of a style the caller gives up, so it is not cloned.
+pub(crate) fn float_owned(world: &mut World, style: LabelStyle, anchor: Vec2, amount: f32) {
+    if !(amount.is_finite() && anchor.is_finite()) {
+        return;
+    }
     let Some(live) = world.get_resource_mut::<LiveLabels>() else {
         return;
     };
@@ -534,7 +546,7 @@ pub fn float_label(world: &mut World, style: &LabelStyle, anchor: Vec2, amount: 
     live.labels.push_back(Live {
         text: amount_text(amount),
         anchor,
-        style: style.clone(),
+        style,
         age: 0.0,
         fresh: true,
     });
