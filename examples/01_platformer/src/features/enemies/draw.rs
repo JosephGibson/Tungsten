@@ -1,7 +1,7 @@
-//! What the enemies draw over the sprites: each live troll's health bar
-//! over its head, its fill the share of health left; a troll's slam's dust
-//! ring growing on the ground over its tell; each flat colour, one white
-//! texel of a particle sprite, tinted. A charging beetle's streaks behind
+//! What the enemies draw over the sprites: a troll's slam's dust ring
+//! growing on the ground over its tell; each flat colour, one white texel
+//! of a particle sprite, tinted. A troll's health bar is the kit's
+//! (`health_bar` on its prefab). A charging beetle's streaks behind
 //! it, their own clip's frames. And each enemy's mark over its frame: "!"
 //! after a fresh alert, "?" through a search. Under F1, the colliders'
 //! overlay, the kit's debug shapes draw too, with 01's own blows beside its
@@ -26,12 +26,10 @@ use crate::features::level::draw::{instance, push_quad, view};
 use crate::features::level::systems::drawn_time;
 use crate::shared::Body;
 
-/// The bar's size, its gap over the troll's frame, and its back's and its
-/// fill's colours.
+/// The troll's bar's size and its gap over its frame, the kit's
+/// `health_bar` defaults, which a troll's mark rises over.
 pub const BAR_SIZE: Vec2 = Vec2::new(64.0, 6.0);
 pub const BAR_RISE: f32 = 6.0;
-pub const BAR_BACK: [u8; 4] = [24, 18, 22, 220];
-pub const BAR_FILL: [u8; 4] = [196, 48, 40, 255];
 /// The sprite whose white texel the bar samples, and that texel's centre.
 pub const FLAT: &str = "ex10_mote";
 const FLAT_TEXEL: Vec2 = Vec2::new(31.5, 31.5);
@@ -60,51 +58,6 @@ fn flat(asset: &SpriteAsset, origin: Vec2, size: Vec2, color: [u8; 4]) -> Sprite
     quad.uv_min = (Vec2::from(quad.uv_min) + Vec2::from(quad.uv_size) * texel).to_array();
     quad.uv_size = [0.0, 0.0];
     quad
-}
-
-/// Every live troll's bar in view: its back centred over its body as it is
-/// drawn, [`BAR_RISE`] over its frame, and its fill from the left.
-#[must_use]
-pub fn bars(world: &World) -> Vec<SpriteBatch> {
-    let Some(asset) = world
-        .get_resource::<AssetRegistry>()
-        .and_then(|assets| assets.get_sprite(FLAT))
-    else {
-        return Vec::new();
-    };
-    let (min, max) = view(world);
-    let mut batches = Vec::new();
-    for (entity, enemy, health) in world.query::<(Entity, &Enemy, &Health)>() {
-        let Some(at) = world.get::<Transform>(entity) else {
-            continue;
-        };
-        if enemy.kind != EnemyKind::Troll || health.is_dead() {
-            continue;
-        }
-        let body = body_x(body(world, enemy.kind), heading(world, entity));
-        let origin = at.position + Vec2::new(body - BAR_SIZE.x / 2.0, -BAR_RISE - BAR_SIZE.y);
-        if (origin + BAR_SIZE).cmplt(min).any() || origin.cmpgt(max).any() {
-            continue;
-        }
-        push_quad(
-            &mut batches,
-            asset,
-            flat(asset, origin, BAR_SIZE, BAR_BACK),
-            None,
-        );
-        let share = (health.current() / health.max()).clamp(0.0, 1.0);
-        if share > 0.0 {
-            let inner = BAR_SIZE - Vec2::splat(2.0);
-            let fill = Vec2::new(inner.x * share, inner.y);
-            push_quad(
-                &mut batches,
-                asset,
-                flat(asset, origin + Vec2::ONE, fill, BAR_FILL),
-                None,
-            );
-        }
-    }
-    batches
 }
 
 /// A charging beetle's streaks: [`STREAK_FRAMES`] frames of `<STREAK>_<f>`

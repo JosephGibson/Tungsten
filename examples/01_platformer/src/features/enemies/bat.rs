@@ -77,7 +77,7 @@ fn fly(world: &mut World, bat: Entity, point: Option<Vec2>, pace: f32) -> bool {
 }
 
 /// Whether `bat` hangs at its roost.
-fn roosting(world: &World, bat: Entity) -> bool {
+pub fn roosting(world: &World, bat: Entity) -> bool {
     let (Some(home), Some(at)) = (world.get::<Enemy>(bat).map(Enemy::home), centre(world, bat))
     else {
         return false;
@@ -196,17 +196,5 @@ pub fn land(world: &mut World, bat: Entity) {
     };
     if let (true, Some(at)) = (grounded, centre(world, bat)) {
         Hit::new(bat, [(Kind::Physical, left)]).at(at).queue(world);
-    }
-}
-
-/// Its clip for `state`: the flash through its tell, the dive through its
-/// attack, hanging at its roost on patrol, else in flight.
-#[must_use]
-pub fn clip(world: &World, bat: Entity, state: EnemyState) -> &'static str {
-    match state {
-        EnemyState::WindUp => "bat_windup",
-        EnemyState::Attack => "bat_dive",
-        EnemyState::Patrol if roosting(world, bat) => "bat_roost",
-        _ => "bat_fly",
     }
 }

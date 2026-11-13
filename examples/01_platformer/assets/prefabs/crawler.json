@@ -137,6 +137,115 @@
       "mass": 40,
       "prepare": "armour",
       "scale": 0
+    },
+    "character_animator": {
+      "idle": {
+        "right": "ex10_crawler_walk",
+        "left": "ex10_crawler_walk_left"
+      },
+      "min_speed": 1,
+      "rules": [
+        {
+          "when": {
+            "all": [
+              "state.windup",
+              "strike.snowball"
+            ]
+          },
+          "clip": {
+            "right": "ex10_crawler_snowball_windup",
+            "left": "ex10_crawler_snowball_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_crawler_windup",
+            "left": "ex10_crawler_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack",
+              "strike.snowball"
+            ]
+          },
+          "clip": {
+            "right": "ex10_crawler_snowball_throw",
+            "left": "ex10_crawler_snowball_throw_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_crawler_lunge",
+            "left": "ex10_crawler_lunge_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.recover"
+            ]
+          },
+          "clip": {
+            "right": "ex10_crawler_recover",
+            "left": "ex10_crawler_recover_left"
+          }
+        },
+        {
+          "motion": "rise",
+          "clip": {
+            "right": "ex10_crawler_hop",
+            "left": "ex10_crawler_hop_left"
+          }
+        },
+        {
+          "motion": "fall",
+          "clip": {
+            "right": "ex10_crawler_hop",
+            "left": "ex10_crawler_hop_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "crawler.afraid"
+            ]
+          },
+          "motion": "move",
+          "clip": {
+            "right": "ex10_crawler_retreat",
+            "left": "ex10_crawler_retreat_left"
+          }
+        },
+        {
+          "when": {
+            "any": [
+              "status.scared",
+              "status.retreating"
+            ]
+          },
+          "clip": {
+            "right": "ex10_crawler_scared",
+            "left": "ex10_crawler_scared_left"
+          }
+        }
+      ],
+      "hold": {
+        "all": [
+          "state.held"
+        ]
+      }
     }
   }
 }

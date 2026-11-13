@@ -1,26 +1,27 @@
 //! The enemies' systems: the state machine and the hooks every kind
-//! shares, the sight, the alerts, the hold, the deaths and the clips.
+//! shares, the sight, the alerts, the hold, the deaths, the tags their
+//! clips and looks read, and the steps and drawing their clips need.
 
 use glam::Vec2;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, BodyKind, Entity, EventCursor, EventQueue, Position,
-    RigidBody, Sprite, Time, Transform, Visibility, World,
+    AnimationState, BodyKind, Entity, EventCursor, EventQueue, Position, RigidBody, Time,
+    Transform, Visibility, World,
 };
 use tungsten::kit::{
     ContactDamage, Damaged, Health, PathFollower, PlatformerController, StateMachine,
-    StateMachinePlugin, TopDownMover,
+    StateMachinePlugin, Tags, TopDownMover,
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{
-    Brain, Displaced, Enemy, EnemyKind, EnemyState, Shown, Sight, Spotted, Variant,
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, Shown, Sight, Spotted, Strike,
 };
 use super::{
     ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
     WALL_LAYERS, bat, beetle, centre, crawler, goblin, heading_of, troll, turn, wisp,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{BURNING, CORRODED, FROZEN, STUNNED, has_status};
+use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements;
 use crate::features::level::elevator::Elevator;
@@ -753,112 +754,124 @@ fn end(world: &mut World, enemy: Entity) {
     }
 }
 
-/// The clip `enemy` shows now: its kind's clip for its state, facing its
-/// heading; the armoured troll's its own, and once Corrosive has taken it
-/// a beetle's and an armoured troll's their stripped clips, the iron eaten
-/// away (e01flask).
-fn clip(world: &World, enemy: Entity) -> Option<String> {
-    let mine = world.get::<Enemy>(enemy)?;
-    let state = world.get::<StateMachine<EnemyState>>(enemy)?.state();
-    let clip = match mine.kind {
-        EnemyKind::Wisp => wisp::clip(state),
-        EnemyKind::Crawler => crawler::clip(world, enemy, state),
-        EnemyKind::Beetle => beetle::clip(state),
-        EnemyKind::Bat => bat::clip(world, enemy, state),
-        EnemyKind::Troll => {
-            let shown = world.get::<Shown>(enemy).map_or("", |shown| &shown.clip);
-            troll::clip(world, enemy, state, shown)
-        }
-        EnemyKind::Goblin => goblin::clip(world, enemy, state),
+/// The tag a live foe holds while its machine is held: dead, dormant,
+/// frozen or stunned ([`hold`]), which its animator holds its clip by.
+pub const HELD: &str = "state.held";
+/// The tags a troll holds while it holds something over its head, a
+/// crawler while it stands inside its fear's edge and a bat while it hangs
+/// at its roost.
+pub const TROLL_HOLDING: &str = "troll.holding";
+pub const CRAWLER_AFRAID: &str = "crawler.afraid";
+pub const BAT_ROOSTING: &str = "bat.roosting";
+
+/// Every tag [`foe_tags`] keeps.
+fn foe_tag_names() -> impl Iterator<Item = &'static str> {
+    EnemyState::ALL
+        .into_iter()
+        .map(EnemyState::tag)
+        .chain([HELD])
+        .chain(Strike::ALL.into_iter().map(Strike::tag))
+        .chain([TROLL_HOLDING, CRAWLER_AFRAID, BAT_ROOSTING])
+}
+
+/// The tags `foe` holds now: none dead; else its state's, [`HELD`] while
+/// its machine is held, its brain's strike's, and its kind's own while
+/// [`troll::held`], [`crawler::afraid`] or [`bat::roosting`] says so.
+fn wanted_tags(world: &World, foe: Entity) -> [Option<&'static str>; 4] {
+    let live = world
+        .get::<Health>(foe)
+        .is_some_and(|health| !health.is_dead());
+    let Some(machine) = world.get::<StateMachine<EnemyState>>(foe).filter(|_| live) else {
+        return [None; 4];
     };
-    let side = if heading_of(world, enemy) == Some(-1.0) {
-        "_left"
-    } else {
-        ""
+    let strike = world.get::<Brain>(foe).and_then(|brain| brain.strike);
+    let own = match kind(world, foe) {
+        Some(EnemyKind::Troll) => troll::held(world, foe).is_some().then_some(TROLL_HOLDING),
+        Some(EnemyKind::Crawler) => crawler::afraid(world, foe).then_some(CRAWLER_AFRAID),
+        Some(EnemyKind::Bat) => bat::roosting(world, foe).then_some(BAT_ROOSTING),
+        _ => None,
     };
-    let stripped = has_status(world, enemy, CORRODED);
-    match (mine.kind, mine.variant) {
-        (EnemyKind::Troll, Variant::Armoured) => {
-            let part = clip.trim_start_matches("troll_");
-            let stem = if stripped {
-                "troll_stripped"
-            } else {
-                "troll_armoured"
-            };
-            Some(format!("ex10_{stem}_{part}{side}"))
+    [
+        Some(machine.state().tag()),
+        machine.is_held().then_some(HELD),
+        strike.map(Strike::tag),
+        own,
+    ]
+}
+
+/// `foe_tags`, in the react phase after the deaths: each foe's tags from
+/// its machine, its brain and its kind's rules, which its prefab's clip
+/// rules and looks read (`D-247`): `state.<state>`, [`HELD`], its strike's
+/// `strike.<strike>` and its kind's own; a dead one holds none. Only a
+/// changed tag is inserted or removed. `foes` is the step's scratch list.
+pub fn foe_tags(world: &mut World, foes: &mut Vec<Entity>) {
+    foes.clear();
+    foes.extend(world.query::<(Entity, &Enemy)>().map(|(entity, _)| entity));
+    for &foe in foes.iter() {
+        let wanted = wanted_tags(world, foe);
+        let Some(tags) = world.get_mut::<Tags>(foe) else {
+            continue;
+        };
+        for tag in foe_tag_names() {
+            let want = wanted.contains(&Some(tag));
+            if want != tags.has(tag) {
+                if want {
+                    tags.insert(tag);
+                } else {
+                    tags.remove(tag);
+                }
+            }
         }
-        (EnemyKind::Beetle, _) if stripped => {
-            let part = clip.trim_start_matches("beetle_");
-            Some(format!("ex10_beetle_stripped_{part}{side}"))
-        }
-        _ => Some(format!("ex10_{clip}{side}")),
     }
 }
 
 /// The troll's walk frames its feet land on, where its steps sound.
 const TROLL_STEPS: [usize; 2] = [0, 4];
+/// The troll's walks, the armoured and the stripped one's too.
+const TROLL_WALKS: [&str; 3] = [
+    "ex10_troll_walk",
+    "ex10_troll_armoured_walk",
+    "ex10_troll_stripped_walk",
+];
 
-/// `enemy_clips`, in the present phase after the kit's animation tick: each
-/// enemy shows its state's clip, from its first frame when it changes, and
-/// holds its frame while it thinks nothing; a wisp's flare lights a second
-/// ember emitter, and a troll's feet sound as they land. A `_left` frame is
-/// its right one mirrored, so a kind whose body is off its frame's centre
-/// (the troll) draws a left frame shifted by twice the difference, its body
-/// over its box; the physics sync writes the transform again each frame.
+/// `enemy_clips`, in the present phase after the kit's character animator,
+/// which shows each enemy's clip by the rules its prefab holds over the
+/// tags [`foe_tags`] keeps, holding its frame while [`HELD`], and before
+/// the late look pass: a troll's feet sound as they land, and a kind whose
+/// body is off its frame's centre (the troll) draws a `_left` frame, its
+/// right one mirrored, shifted by twice the difference, its body over its
+/// box, where the looks and the bar find it; a wisp's flare lights a
+/// second ember emitter. The physics sync writes the transform again each
+/// frame.
 pub fn clips(world: &mut World) {
-    let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
-        return;
-    };
     for enemy in enemies(world) {
-        let Some(wanted) = clip(world, enemy) else {
-            continue;
-        };
-        let held = world
-            .get::<StateMachine<EnemyState>>(enemy)
-            .is_some_and(StateMachine::is_held);
-        let current = world
-            .get::<AnimationState>(enemy)
-            .map(|state| state.animation_id.clone());
-        if current.as_deref() != Some(wanted.as_str()) {
-            let state = AnimationState::new(wanted.clone());
-            let frame = state.current_sprite(&registry);
-            world.insert(enemy, state);
-            if let (Some(frame), Some(sprite)) = (frame, world.get_mut::<Sprite>(enemy)) {
-                sprite.asset_id = frame;
-            }
-        }
-        if let Some(state) = world.get_mut::<AnimationState>(enemy) {
-            state.playing = !held;
-        }
-        steps(world, enemy, &wanted);
-        if let Some(shown) = world.get_mut::<Shown>(enemy) {
-            shown.clip = wanted;
-        }
+        steps(world, enemy);
         mirror(world, enemy);
         wisp::flare_embers(world, enemy);
     }
-    world.insert_resource(registry);
 }
 
-/// A troll's step, when its walk reaches a frame its foot lands on.
-fn steps(world: &mut World, enemy: Entity, wanted: &str) {
-    let frame = world
-        .get::<AnimationState>(enemy)
-        .map_or(0, |state| state.frame_index);
-    let last = world
-        .get::<Shown>(enemy)
-        .map(|shown| (shown.frame, shown.clip == wanted));
+/// A troll's step, when its walk reaches a frame its foot lands on: the
+/// clip and frame its animator shows against those [`Shown`] kept.
+fn steps(world: &mut World, enemy: Entity) {
+    let (Some(state), Some(shown)) = (
+        world.get::<AnimationState>(enemy),
+        world.get::<Shown>(enemy),
+    ) else {
+        return;
+    };
+    let frame = state.frame_index;
+    let walking = TROLL_WALKS
+        .iter()
+        .any(|walk| state.animation_id.starts_with(walk));
+    let changed = (shown.clip != state.animation_id).then(|| state.animation_id.clone());
+    let landed = changed.is_some() || shown.frame != frame;
     if let Some(shown) = world.get_mut::<Shown>(enemy) {
         shown.frame = frame;
+        if let Some(clip) = changed {
+            shown.clip = clip;
+        }
     }
-    let walking = [
-        "ex10_troll_walk",
-        "ex10_troll_armoured_walk",
-        "ex10_troll_stripped_walk",
-    ]
-    .iter()
-    .any(|walk| wanted.starts_with(walk));
-    let landed = last.is_some_and(|(was, same)| !same || was != frame);
     if walking
         && landed
         && TROLL_STEPS.contains(&frame)

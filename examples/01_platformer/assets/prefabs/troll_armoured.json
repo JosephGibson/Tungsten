@@ -126,6 +126,236 @@
       "mass": 600,
       "prepare": "armour",
       "scale": 0
+    },
+    "character_animator": {
+      "idle": {
+        "right": "ex10_troll_armoured_idle",
+        "left": "ex10_troll_armoured_idle_left"
+      },
+      "move": {
+        "right": "ex10_troll_armoured_walk",
+        "left": "ex10_troll_armoured_walk_left"
+      },
+      "min_speed": 1,
+      "rules": [
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.attack",
+              "strike.swipe"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_swipe",
+            "left": "ex10_troll_stripped_swipe_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.attack",
+              "strike.throw"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_throw",
+            "left": "ex10_troll_stripped_throw_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_slam",
+            "left": "ex10_troll_stripped_slam_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "troll.holding"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_pickup",
+            "left": "ex10_troll_stripped_pickup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.windup",
+              "strike.swipe"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_swipe_windup",
+            "left": "ex10_troll_stripped_swipe_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_windup",
+            "left": "ex10_troll_stripped_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded"
+            ],
+            "any": [
+              "state.alert",
+              "state.recover"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_idle",
+            "left": "ex10_troll_stripped_idle_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded"
+            ]
+          },
+          "motion": "move",
+          "clip": {
+            "right": "ex10_troll_stripped_walk",
+            "left": "ex10_troll_stripped_walk_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_idle",
+            "left": "ex10_troll_stripped_idle_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack",
+              "strike.swipe"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_swipe",
+            "left": "ex10_troll_armoured_swipe_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack",
+              "strike.throw"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_throw",
+            "left": "ex10_troll_armoured_throw_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_slam",
+            "left": "ex10_troll_armoured_slam_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "troll.holding"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_pickup",
+            "left": "ex10_troll_armoured_pickup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup",
+              "strike.swipe"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_swipe_windup",
+            "left": "ex10_troll_armoured_swipe_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_windup",
+            "left": "ex10_troll_armoured_windup_left"
+          }
+        },
+        {
+          "when": {
+            "any": [
+              "state.alert",
+              "state.recover"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_idle",
+            "left": "ex10_troll_armoured_idle_left"
+          }
+        }
+      ],
+      "hold": {
+        "all": [
+          "state.held"
+        ]
+      }
+    },
+    "health_bar": {
+      "offset": [
+        10,
+        0
+      ],
+      "back": [
+        0.0941,
+        0.0706,
+        0.0863,
+        0.8627
+      ],
+      "fill": [
+        0.7686,
+        0.1882,
+        0.1569,
+        1
+      ]
     }
   }
 }

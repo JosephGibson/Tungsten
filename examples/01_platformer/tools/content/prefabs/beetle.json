@@ -141,6 +141,77 @@
       "mass": 120,
       "prepare": "armour",
       "scale": 0
+    },
+    "character_animator": {
+      "idle": {
+        "right": "ex10_beetle_walk",
+        "left": "ex10_beetle_walk_left"
+      },
+      "min_speed": 1,
+      "rules": [
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_stripped_paw",
+            "left": "ex10_beetle_stripped_paw_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_stripped_charge",
+            "left": "ex10_beetle_stripped_charge_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_stripped_walk",
+            "left": "ex10_beetle_stripped_walk_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_paw",
+            "left": "ex10_beetle_paw_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_charge",
+            "left": "ex10_beetle_charge_left"
+          }
+        }
+      ],
+      "hold": {
+        "all": [
+          "state.held"
+        ]
+      }
     }
   }
 }

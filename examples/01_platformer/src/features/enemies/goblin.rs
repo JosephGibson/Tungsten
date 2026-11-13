@@ -540,35 +540,6 @@ pub fn seek(world: &mut World, goblin: Entity, point: Option<Vec2>) -> bool {
     !scurry(world, goblin, across.signum(), SEARCH_PACE)
 }
 
-/// Its clip for `state`: its panic, in the air too; its stab's, its
-/// dash-in's or its throw's tell, a rock or a lit bomb, by the strike its
-/// brain keeps; the stab, the dash or the throw through its attack; a hop
-/// while it is in the air; standing while alert or recovering; else
-/// walking or standing as it moves.
-#[must_use]
-pub fn clip(world: &World, goblin: Entity, state: EnemyState) -> &'static str {
-    match state {
-        EnemyState::Panic => "goblin_panic",
-        EnemyState::WindUp => match strike(world, goblin) {
-            Some(Strike::Bomb) => "goblin_windup_bomb",
-            Some(Strike::Stab) => "goblin_stab_windup",
-            Some(Strike::Dash) => "goblin_dash_windup",
-            _ => "goblin_windup",
-        },
-        EnemyState::Attack if strike(world, goblin) == Some(Strike::Stab) => "goblin_stab",
-        EnemyState::Attack if strike(world, goblin) == Some(Strike::Dash) => "goblin_dash",
-        EnemyState::Attack => "goblin_throw",
-        _ if !grounded(world, goblin) => "goblin_hop",
-        EnemyState::Alert | EnemyState::Recover => "goblin_idle",
-        _ => {
-            let moving = world
-                .get::<Velocity>(goblin)
-                .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
-            if moving { "goblin_walk" } else { "goblin_idle" }
-        }
-    }
-}
-
 /// `goblin_panic`, in the intent phase after the hold and before the
 /// machine: each goblin whose machine is not held, burning, neither in nor
 /// bound for its panic, spends its strike and panics (V26).

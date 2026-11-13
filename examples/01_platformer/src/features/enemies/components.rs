@@ -131,6 +131,36 @@ pub enum Strike {
     Dash,
 }
 
+impl Strike {
+    /// Every strike.
+    pub const ALL: [Strike; 8] = [
+        Strike::Rock,
+        Strike::Bomb,
+        Strike::Slam,
+        Strike::Swipe,
+        Strike::Throw,
+        Strike::Stab,
+        Strike::Snowball,
+        Strike::Dash,
+    ];
+
+    /// The tag a live foe whose brain keeps it holds
+    /// ([`foe_tags`](super::systems::foe_tags)).
+    #[must_use]
+    pub const fn tag(self) -> &'static str {
+        match self {
+            Strike::Rock => "strike.rock",
+            Strike::Bomb => "strike.bomb",
+            Strike::Slam => "strike.slam",
+            Strike::Swipe => "strike.swipe",
+            Strike::Throw => "strike.throw",
+            Strike::Stab => "strike.stab",
+            Strike::Snowball => "strike.snowball",
+            Strike::Dash => "strike.dash",
+        }
+    }
+}
+
 /// An enemy's sight: the seconds to its next check and whether its last
 /// check saw the player. Saved, so a load checks when the run would have.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -164,6 +194,39 @@ pub enum EnemyState {
     /// A goblin's flight while it burns (e01foes): it runs from the player,
     /// flailing.
     Panic,
+}
+
+impl EnemyState {
+    /// Every state.
+    pub const ALL: [EnemyState; 9] = [
+        EnemyState::Patrol,
+        EnemyState::Alert,
+        EnemyState::Chase,
+        EnemyState::WindUp,
+        EnemyState::Attack,
+        EnemyState::Recover,
+        EnemyState::Search,
+        EnemyState::Return,
+        EnemyState::Panic,
+    ];
+
+    /// The tag a live foe in it holds
+    /// ([`foe_tags`](super::systems::foe_tags)), which its prefab's clip
+    /// rules and looks read.
+    #[must_use]
+    pub const fn tag(self) -> &'static str {
+        match self {
+            EnemyState::Patrol => "state.patrol",
+            EnemyState::Alert => "state.alert",
+            EnemyState::Chase => "state.chase",
+            EnemyState::WindUp => "state.windup",
+            EnemyState::Attack => "state.attack",
+            EnemyState::Recover => "state.recover",
+            EnemyState::Search => "state.search",
+            EnemyState::Return => "state.return",
+            EnemyState::Panic => "state.panic",
+        }
+    }
 }
 
 /// A frozen flyer's own mover, set aside while it falls on a borrowed
@@ -342,8 +405,9 @@ pub struct Spotted {
     pub player: Entity,
 }
 
-/// The clip an enemy shows and its frame at the last look, and the second
-/// ember emitter a wisp's flare lights. Presentation, never saved.
+/// The clip the kit's animator showed an enemy and its frame at the last
+/// look, which a troll's steps sound by, and the second ember emitter a
+/// wisp's flare lights. Presentation, never saved.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Shown {
     pub clip: String,

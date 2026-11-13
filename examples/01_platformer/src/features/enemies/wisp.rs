@@ -154,16 +154,6 @@ pub fn fire(world: &mut World) {
     }
 }
 
-/// Its clip for `state`: the flare while alerted, else afloat.
-#[must_use]
-pub fn clip(state: EnemyState) -> &'static str {
-    if state == EnemyState::Alert {
-        "wisp_flare"
-    } else {
-        "wisp_float"
-    }
-}
-
 /// A wisp's flare lights a second ember emitter at its centre, which goes
 /// when the flare ends: more embers while it flares. Presentation.
 pub fn flare_embers(world: &mut World, wisp: Entity) {

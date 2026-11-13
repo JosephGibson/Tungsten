@@ -10,7 +10,7 @@
 //! silent tell ([`super::snowball`]), the light burning or not.
 
 use glam::Vec2;
-use tungsten::core::{DataRef, Entity, PhysicsConfig, Position, Velocity, World};
+use tungsten::core::{DataRef, Entity, PhysicsConfig, Position, World};
 use tungsten::kit::{EffectRequest, PlatformerController, lob_velocity};
 
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
@@ -422,28 +422,4 @@ pub fn seek(world: &mut World, crawler: Entity, point: Option<Vec2>) -> bool {
     }
     !scuttle(world, crawler, across.signum(), SEARCH_PACE)
         && !into_light(world, crawler, across.signum())
-}
-
-/// Its clip for `state`: its snowball's tell and throw by the strike its
-/// brain keeps, else the lunge's three, its coil through the tell, its
-/// stretch through the leap and its landing through the recovery; a hop in
-/// the air; its retreat while it backs out of its fear, its scare while it
-/// holds at the edge or stands cornered; else its walk.
-#[must_use]
-pub fn clip(world: &World, crawler: Entity, state: EnemyState) -> &'static str {
-    let moving = world
-        .get::<Velocity>(crawler)
-        .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
-    let snowball = snowballing(world, crawler);
-    match state {
-        EnemyState::WindUp if snowball => "crawler_snowball_windup",
-        EnemyState::WindUp => "crawler_windup",
-        EnemyState::Attack if snowball => "crawler_snowball_throw",
-        EnemyState::Attack => "crawler_lunge",
-        EnemyState::Recover => "crawler_recover",
-        _ if !grounded(world, crawler) => "crawler_hop",
-        _ if moving && afraid(world, crawler) => "crawler_retreat",
-        _ if scared(world, crawler) => "crawler_scared",
-        _ => "crawler_walk",
-    }
 }

@@ -667,34 +667,3 @@ pub fn seek(world: &mut World, troll: Entity, point: Option<Vec2>) -> bool {
     clear_way(world, troll, across.signum());
     !stride(world, troll, across.signum(), SEARCH_PACE)
 }
-
-/// Its clip for `state`: over its head what it holds; the throw, the swipe
-/// or the slam through its attack, by the strike its tell chose, the throw
-/// too after a lift (`shown`, its last clip); the swipe's or the slam's
-/// wind-up through its tell; standing while it recovers, roars or stands
-/// still; else its walk.
-#[must_use]
-pub fn clip(world: &World, troll: Entity, state: EnemyState, shown: &str) -> &'static str {
-    // By the stem-free part, so the armoured troll's clips read alike.
-    let lifting = shown.contains("_pickup") || shown.contains("_throw");
-    let strike = world.get::<Brain>(troll).and_then(|brain| brain.strike);
-    match state {
-        EnemyState::Attack => match strike {
-            Some(Strike::Swipe) => "troll_swipe",
-            Some(Strike::Throw) => "troll_throw",
-            Some(_) => "troll_slam",
-            None if lifting => "troll_throw",
-            None => "troll_slam",
-        },
-        _ if held(world, troll).is_some() => "troll_pickup",
-        EnemyState::WindUp if strike == Some(Strike::Swipe) => "troll_swipe_windup",
-        EnemyState::WindUp => "troll_windup",
-        EnemyState::Alert | EnemyState::Recover => "troll_idle",
-        _ => {
-            let moving = world
-                .get::<Velocity>(troll)
-                .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
-            if moving { "troll_walk" } else { "troll_idle" }
-        }
-    }
-}

@@ -139,6 +139,31 @@
       "mass": 1.5,
       "prepare": "armour",
       "scale": 0
+    },
+    "character_animator": {
+      "idle": {
+        "right": "ex10_wisp_float",
+        "left": "ex10_wisp_float_left"
+      },
+      "min_speed": 1,
+      "rules": [
+        {
+          "when": {
+            "all": [
+              "state.alert"
+            ]
+          },
+          "clip": {
+            "right": "ex10_wisp_flare",
+            "left": "ex10_wisp_flare_left"
+          }
+        }
+      ],
+      "hold": {
+        "all": [
+          "state.held"
+        ]
+      }
     }
   }
 }

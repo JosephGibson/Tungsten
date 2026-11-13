@@ -32,7 +32,7 @@ use example_01_platformer::features::elements::systems::crush;
 use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
 use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED, PAW_CLIP};
 use example_01_platformer::features::enemies::components::{
-    Brain, Enemy, EnemyKind, EnemyState, Held, Shown, Sight, Strike, Throws, Variant,
+    Brain, Enemy, EnemyKind, EnemyState, Held, Sight, Strike, Throws, Variant,
 };
 use example_01_platformer::features::enemies::crawler::{
     self, FROST_BREATH, LUNGE_SPEED, SNOWBALL_COOLDOWN,
@@ -65,7 +65,7 @@ use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
     AnimationState, AssetRegistry, AudioCommand, Bundle, CameraState, Collider, Entity, EventQueue,
-    Position, PrevPosition, RigidBodyBundle, Time, Velocity,
+    Position, PrevPosition, RigidBodyBundle, Sprite, Time, Velocity, Visibility,
 };
 use tungsten::kit::{
     ContactDamage, Damaged, Effects, Health, Hitbox, KitRng, Knockback, PlatformerController,
@@ -2034,7 +2034,11 @@ fn the_maps_bats_hang_at_their_roosts_from_the_start() {
     for (bat, home) in bats {
         let hangs = at(&harness, bat);
         assert!(hangs.distance(home) < 1.0, "{hangs} off its roost {home}");
-        let shown = world.get::<Shown>(bat).unwrap().clip.clone();
+        let shown = world
+            .get::<AnimationState>(bat)
+            .unwrap()
+            .animation_id
+            .clone();
         assert!(
             ["ex10_bat_roost", "ex10_bat_roost_left"].contains(&shown.as_str()),
             "{shown} at {hangs}"
@@ -2059,7 +2063,12 @@ fn the_bat_roosts_until_it_sees_the_player() {
         "it hangs at its roost: {}",
         at(&harness, bat)
     );
-    let shown = harness.world().get::<Shown>(bat).unwrap().clip.clone();
+    let shown = harness
+        .world()
+        .get::<AnimationState>(bat)
+        .unwrap()
+        .animation_id
+        .clone();
     assert!(shown.starts_with("ex10_bat_roost"), "{shown}");
     harness.step(60);
     assert!(at(&harness, bat).distance(roost) <= 2.0, "still there");
@@ -2088,7 +2097,11 @@ fn the_bat_flashes_dives_in_its_window_and_climbs_back() {
         match state(&harness, bat) {
             EnemyState::WindUp if windup.is_none() => windup = Some(step),
             EnemyState::WindUp => {
-                let shown = &harness.world().get::<Shown>(bat).unwrap().clip;
+                let shown = &harness
+                    .world()
+                    .get::<AnimationState>(bat)
+                    .unwrap()
+                    .animation_id;
                 flashed |= shown.starts_with("ex10_bat_windup");
             }
             EnemyState::Attack => attack = Some(step),
@@ -2722,49 +2735,112 @@ fn the_troll_stuns_only_past_a_high_threshold() {
     assert!(tagged(&harness, troll, "status.stunned"), "stunned");
 }
 
+/// A bar part's corner, size, colour and whether it shows.
+type BarPart = (Vec2, Vec2, [u8; 4], bool);
+
+/// The kit's bar parts within 160 px of `troll`'s body, back before fill
+/// by depth: each one's box, colour and whether it shows. The manifest's
+/// sprites registered first ([`with_sprites`]), so `engine_white` and the
+/// troll's frames have their sizes.
+fn bar_parts(harness: &UiHarness, troll: Entity) -> Vec<BarPart> {
+    let world = harness.world();
+    let white = world.resource::<AssetRegistry>().sprite_id("engine_white");
+    let near = at(harness, troll);
+    let mut parts: Vec<(i32, BarPart)> = world
+        .query::<(&tungsten::core::Transform, &Sprite, &Visibility)>()
+        .filter(|(transform, sprite, _)| {
+            Some(sprite.asset_id) == white && transform.position.distance(near) < 160.0
+        })
+        .map(|(transform, sprite, shown)| {
+            let part = (
+                transform.position,
+                transform.scale,
+                sprite.color,
+                shown.visible,
+            );
+            (sprite.z_order, part)
+        })
+        .collect();
+    parts.sort_by_key(|(z, _)| *z);
+    parts.into_iter().map(|(_, part)| part).collect()
+}
+
+/// Registers the manifest's sprites' sizes, as a load does, so the kit's
+/// bar finds `engine_white` and its holder's drawn frame.
+fn with_sprites(harness: &mut UiHarness) {
+    harness
+        .harness_mut()
+        .register_sprites(game::MANIFEST)
+        .expect("the manifest's sprites");
+}
+
+/// The bar's back and fill, as 01 drew them: 64 × 6, its fill 1 px in,
+/// and their linear colours' bytes.
+const BAR_SIZE: Vec2 = Vec2::new(64.0, 6.0);
+const BAR_BACK: [u8; 4] = [24, 18, 22, 220];
+const BAR_FILL: [u8; 4] = [196, 48, 40, 255];
+
 #[test]
 fn the_troll_shows_its_health_bar() {
     let (mut harness, _) = arena();
+    with_sprites(&mut harness);
     let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
     still(&mut harness, troll);
     harness.step(2);
-    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
-    mock_sprite(assets, enemies::draw::FLAT, 41, false);
-    let quads = |harness: &UiHarness| -> Vec<(Vec2, Vec2, [u8; 4])> {
-        enemies::draw::bars(harness.world())
-            .into_iter()
-            .filter(|batch| batch.texture.0 == 41)
-            .flat_map(|batch| batch.instances)
-            .map(|quad| (Vec2::from(quad.position), Vec2::from(quad.size), quad.color))
-            .collect()
-    };
-    let full = quads(&harness);
+    let full = bar_parts(&harness, troll);
     assert_eq!(full.len(), 2, "its back and its fill: {full:?}");
     let (back, fill) = (full[0], full[1]);
-    let size = enemies::draw::BAR_SIZE;
-    assert_eq!(back.1, size);
-    assert_eq!(fill.1, size - Vec2::splat(2.0), "full");
+    assert!(back.3 && fill.3, "shown");
+    assert_eq!(back.1, BAR_SIZE);
+    assert_eq!(fill.1, BAR_SIZE - Vec2::splat(2.0), "full");
     let frame_top = harness
         .world()
         .get::<tungsten::core::Transform>(troll)
         .unwrap()
         .position
         .y;
-    assert!(back.0.y + size.y <= frame_top, "over its head");
+    assert!(back.0.y + BAR_SIZE.y <= frame_top, "over its head");
     assert!(
-        (back.0.x + size.x / 2.0 - at(&harness, troll).x).abs() < 1.0,
+        (back.0.x + BAR_SIZE.x / 2.0 - at(&harness, troll).x).abs() < 1.0,
         "centred over its body"
     );
-    assert_eq!(
-        (back.2, fill.2),
-        (enemies::draw::BAR_BACK, enemies::draw::BAR_FILL)
-    );
+    assert_eq!((back.2, fill.2), (BAR_BACK, BAR_FILL));
     land(&mut harness, troll, Kind::Physical, 300.0);
-    let half = quads(&harness)[1].1.x;
+    harness.step(1);
+    let half = bar_parts(&harness, troll)[1].1.x;
     assert!(
-        (half - (size.x - 2.0) / 2.0).abs() < 0.01,
+        (half - (BAR_SIZE.x - 2.0) / 2.0).abs() < 0.01,
         "half its health: {half}"
     );
+}
+
+#[test]
+fn the_trolls_bar_stays_over_its_body_facing_either_way() {
+    let (mut harness, _) = arena();
+    with_sprites(&mut harness);
+    let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
+    still(&mut harness, troll);
+    land(&mut harness, troll, Kind::Physical, 150.0);
+    for heading in [1.0, -1.0, 1.0] {
+        enemies::turn(harness.world_mut(), troll, heading);
+        harness.step(2);
+        assert_eq!(enemies::heading_of(harness.world(), troll), Some(heading));
+        let parts = bar_parts(&harness, troll);
+        assert_eq!(parts.len(), 2, "{heading}: {parts:?}");
+        let (back, fill) = (parts[0], parts[1]);
+        let centre = back.0.x + back.1.x / 2.0;
+        let body = at(&harness, troll).x;
+        assert!(
+            (centre - body).abs() < 1.0,
+            "facing {heading}: the back at {centre}, the body at {body}"
+        );
+        let share = health(&harness, troll) / 600.0;
+        assert!(
+            (fill.1.x - (BAR_SIZE.x - 2.0) * share).abs() < 0.01,
+            "facing {heading}: {} for {share}",
+            fill.1.x
+        );
+    }
 }
 
 /// A seed whose stream's first draw from the loot table `table` is
@@ -4653,7 +4729,13 @@ fn the_armoured_troll_walks_and_lifts_on_its_own_clips() {
     let (mut harness, player) = arena();
     harness.harness_mut().set_dt(1.0 / 60.0);
     let troll = armoured_troll_at(&mut harness, 1300.0);
-    let clip = |h: &UiHarness| h.world().get::<Shown>(troll).unwrap().clip.clone();
+    let clip = |h: &UiHarness| {
+        h.world()
+            .get::<AnimationState>(troll)
+            .unwrap()
+            .animation_id
+            .clone()
+    };
     let (mut walked, mut stepped) = (false, false);
     for _ in 0..300 {
         harness.step(1);
@@ -4768,7 +4850,13 @@ fn corroded_beetles_and_armoured_trolls_show_their_stripped_clips_under_the_reac
         apply(&mut harness, foe, "shocked", None);
     }
     harness.step(2);
-    let clip = |h: &UiHarness, foe| h.world().get::<Shown>(foe).unwrap().clip.clone();
+    let clip = |h: &UiHarness, foe| {
+        h.world()
+            .get::<AnimationState>(foe)
+            .unwrap()
+            .animation_id
+            .clone()
+    };
     assert!(
         clip(&harness, beetle).starts_with("ex10_beetle_stripped_"),
         "{}",

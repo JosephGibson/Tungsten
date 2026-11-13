@@ -234,17 +234,6 @@ pub fn seek(world: &mut World, beetle: Entity, point: Option<Vec2>) -> bool {
     !stride(world, beetle, across.signum(), SEARCH_PACE)
 }
 
-/// Its clip for `state`: the paw through its tell, the charge through its
-/// attack, else its walk.
-#[must_use]
-pub fn clip(state: EnemyState) -> &'static str {
-    match state {
-        EnemyState::WindUp => "beetle_paw",
-        EnemyState::Attack => "beetle_charge",
-        _ => "beetle_walk",
-    }
-}
-
 /// `beetle_dust`, before the frame's particles: a beetle pawing kicks up a
 /// puff of [`PAW_DUST`] at its front foot every [`PAW_DUST_SECS`]; one
 /// charging leaves a trail of [`DUST`] at its rear feet every

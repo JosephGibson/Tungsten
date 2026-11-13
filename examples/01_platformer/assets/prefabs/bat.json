@@ -131,6 +131,54 @@
       "mass": 1,
       "prepare": "armour",
       "scale": 0
+    },
+    "character_animator": {
+      "idle": {
+        "right": "ex10_bat_fly",
+        "left": "ex10_bat_fly_left"
+      },
+      "min_speed": 1,
+      "rules": [
+        {
+          "when": {
+            "all": [
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_bat_windup",
+            "left": "ex10_bat_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_bat_dive",
+            "left": "ex10_bat_dive_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.patrol",
+              "bat.roosting"
+            ]
+          },
+          "clip": {
+            "right": "ex10_bat_roost",
+            "left": "ex10_bat_roost_left"
+          }
+        }
+      ],
+      "hold": {
+        "all": [
+          "state.held"
+        ]
+      }
     }
   }
 }

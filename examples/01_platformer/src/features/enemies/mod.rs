@@ -17,8 +17,9 @@
 //! fall, a bat's roost, a troll's hold and throws, a goblin's throws, its
 //! stab, its fidgets and its flight, a crawler's fear of the light, its
 //! retreat and its snowball ([`snowball`]), the walkers' hops and leaps
-//! ([`hop`]), the deaths' bursts,
-//! their clips and the troll's bar. A run keeps its placed
+//! ([`hop`]), the deaths' bursts, and the tags their prefabs' clip rules
+//! read, the troll's steps and its shifted drawing; the kit's animator
+//! shows their clips and draws the troll's bar. A run keeps its placed
 //! enemies' save IDs, so a save names the dead as gone; the summon slot
 //! places more, [`SUMMON_CAP`] at most, the oldest going.
 
@@ -43,9 +44,9 @@ use tungsten::core::{
     World, system,
 };
 use tungsten::kit::{
-    ANIMATION_TICK, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line, Modifier, PICKUP_TICK,
-    PLATFORMER_CONTROLLER, Phase, PickedUp, Stats, TOP_DOWN_MOVER, TagFilter, WorldSource,
-    WorldSources, ensure_phases,
+    CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
+    Modifier, PICKUP_TICK, PLATFORMER_CONTROLLER, Phase, PickedUp, Stats, TOP_DOWN_MOVER,
+    TagFilter, WorldSource, WorldSources, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -228,11 +229,13 @@ impl EnemyKind {
 /// trolls' holds after the movers and the dropped orbs' fall after the
 /// kit's magnet; in the overlap phase the orbs collected and the
 /// crawlers' snowballs ([`snowball::snowballs`]); in the react
-/// phase the deaths and where the dead fell; in `PreUpdate` the orbs'
-/// adoption; in the present phase the clips after the kit's animation tick,
-/// the beetles' dust, the dropped orbs' blink and, under F1, their hit
-/// tests before the kit's debug draw; and the trolls' bars and slam rings
-/// and the enemies' marks drawn over the sprites.
+/// phase the deaths, the tags the foes' clip rules read
+/// ([`systems::foe_tags`]) and where the dead fell; in `PreUpdate` the
+/// orbs' adoption; in the present phase the trolls' steps and shifted
+/// drawing after the kit's animator and before its late look pass, the
+/// beetles' dust, the dropped orbs' blink and, under F1, their hit
+/// tests before the kit's debug draw; and the beetles' streaks, the
+/// trolls' slam rings and the enemies' marks drawn over the sprites.
 pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
@@ -259,7 +262,6 @@ impl Plugin for EnemiesPlugin {
         world.register_data_kind::<Body>(BODIES);
         world.register_event::<Spotted>();
         world.insert_resource(Throws::default());
-        world.resource_mut::<Extracts>().add_sprites(draw::bars);
         world.resource_mut::<Extracts>().add_sprites(draw::charges);
         world.resource_mut::<Extracts>().add_sprites(draw::rings);
         world.resource_mut::<Extracts>().add_sprites(draw::marks);
@@ -305,13 +307,21 @@ impl Plugin for EnemiesPlugin {
         })
         .after("combat_reactions");
         schedule.add(Stage::FixedUpdate, Phase::React.join(deaths));
+        let mut foes = Vec::new();
+        let tags = system("foe_tags", move |world: &mut World| {
+            systems::foe_tags(world, &mut foes);
+        })
+        .after("enemy_deaths");
+        schedule.add(Stage::FixedUpdate, Phase::React.join(tags));
         let mut cursor = EventCursor::new();
         let fallen = system("orb_fallen", move |world: &mut World| {
             drops::fallen(world, &mut cursor);
         })
         .after("enemy_deaths");
         schedule.add(Stage::FixedUpdate, Phase::React.join(fallen));
-        let clips = system("enemy_clips", systems::clips).after(ANIMATION_TICK);
+        let clips = system("enemy_clips", systems::clips)
+            .after(CHARACTER_ANIMATOR)
+            .before(EFFECT_LOOK_LATE);
         schedule.add(Stage::PostUpdate, Phase::Present.join(clips));
         schedule.add(
             Stage::PostUpdate,
