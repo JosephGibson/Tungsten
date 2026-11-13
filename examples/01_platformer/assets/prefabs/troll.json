@@ -108,6 +108,16 @@
           "roll": "troll_drops"
         }
       ]
+    },
+    "impact_damage": {
+      "kind": "damage.physical",
+      "speed": 400,
+      "per_mass": 0.002,
+      "most": 120,
+      "floor": 2,
+      "mass": 600,
+      "prepare": "armour",
+      "scale": 0
     }
   }
 }

@@ -170,8 +170,13 @@ pub fn pick_up(world: &mut World, troll: Entity, object: Entity) -> bool {
     let Some(body) = world.get::<RigidBody>(object).copied() else {
         return false;
     };
-    if let Some(throws) = world.get_resource_mut::<Throws>() {
+    let thrown = world.get_resource_mut::<Throws>().is_some_and(|throws| {
+        let before = throws.0.len();
         throws.0.retain(|throw| throw.body != object);
+        throws.0.len() < before
+    });
+    if thrown {
+        crate::features::elements::systems::end_throw(world, object);
     }
     world.insert(object, Held { by: troll, body });
     world.insert(troll, Holding(object));
@@ -298,6 +303,7 @@ pub fn throw(world: &mut World, troll: Entity) -> Option<Entity> {
     if let Some(throws) = world.get_resource_mut::<Throws>() {
         throws.0.push(throw);
     }
+    crate::features::elements::systems::arm_throw(world, &throw);
     audio::play(world, Sound::TrollThrow, from);
     Some(object)
 }

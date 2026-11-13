@@ -512,6 +512,7 @@ pub fn throw(world: &mut World, goblin: Entity) -> Option<Entity> {
         if let Some(throws) = world.get_resource_mut::<Throws>() {
             throws.0.push(throw);
         }
+        crate::features::elements::systems::arm_throw(world, &throw);
         rock
     };
     if let Some(brain) = world.get_mut::<Brain>(goblin) {

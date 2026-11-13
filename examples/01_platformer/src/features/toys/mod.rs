@@ -14,12 +14,14 @@ pub mod systems;
 pub mod wave;
 
 use glam::Vec2;
+use serde::Deserialize;
 use tungsten::core::{
-    BodyKind, CommandBuffer, Entity, EventCursor, PreparedPrefab, RigidBody, Schedule, Shape,
-    Stage, Time, Transform, Velocity, World, system,
+    BodyKind, CommandBuffer, Entity, EventCursor, PrefabRegistry, PreparedPrefab, RigidBody,
+    Schedule, Shape, Stage, Time, Transform, Velocity, World, system,
 };
 use tungsten::kit::{
-    LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase, TOP_DOWN_MOVER, ensure_phases,
+    ImpactDamage, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase, TOP_DOWN_MOVER,
+    ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
@@ -27,6 +29,7 @@ use tungsten::{Extracts, Plugin, SceneEntity};
 
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::{self, TILE};
+use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 use crate::shared::{Joined, SaveId, Saved, body_centre, despawn_tree, spawn_burst};
 use components::{
@@ -68,10 +71,6 @@ pub const IRON_CAP: usize = 24;
 /// a troll holds or throws it.
 pub const IRON_WEIGHT: f32 = 1800.0;
 pub const IRON_FALL_FROM: f32 = 30.0;
-/// Iron's blow: a body hit from iron is pushed along the closing line by
-/// this share of the closing speed, at most [`IRON_PUSH_MOST`] px/s.
-pub const IRON_PUSH_SHARE: f32 = 0.6;
-pub const IRON_PUSH_MOST: f32 = 900.0;
 /// Iron's hard landing: a block meeting a still body or a tile at this
 /// closing speed or more raises dust, and its thud's rule shakes the
 /// camera.
@@ -243,21 +242,49 @@ impl Plugin for ToysPlugin {
     }
 }
 
-/// A toy's prefab at `at`, owned by gameplay, with its art at `scale`.
+/// A toy's prefab at `at`, owned by gameplay, with its art at `scale` and
+/// its impact rule, when it has one, credited to the run's player
+/// ([`credited_rule`]).
 fn prepare_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> PreparedPrefab {
     let transform = Transform {
         position: at,
         rotation: 0.0,
         scale: Vec2::splat(scale),
     };
-    world
+    let rule = credited_rule(world, prefab);
+    let prepared = world
         .prepare_prefab(prefab, at.to_array())
         .expect("the manifest's prefabs load with it")
         .with((
             transform,
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
-        ))
+        ));
+    match rule {
+        Some(rule) => prepared.with((rule,)),
+        None => prepared,
+    }
+}
+
+/// `prefab`'s `impact_damage` as its file gives it; none for a prefab
+/// without one.
+#[must_use]
+pub fn prefab_rule(world: &World, prefab: &str) -> Option<ImpactDamage> {
+    let data = world
+        .get_resource::<PrefabRegistry>()?
+        .get(prefab)?
+        .components
+        .get("impact_damage")?;
+    ImpactDamage::deserialize(data.clone()).ok()
+}
+
+/// [`prefab_rule`] credited to the run's player, as each body 01 spawns
+/// takes it: its hits the player's, and none on the player.
+#[must_use]
+pub fn credited_rule(world: &World, prefab: &str) -> Option<ImpactDamage> {
+    let mut rule = prefab_rule(world, prefab)?;
+    rule.set_credit(world.get_resource::<Run>().map(|run| run.player));
+    Some(rule)
 }
 
 /// A toy's prefab at `at`, owned by gameplay, with its art at `scale`,
@@ -320,6 +347,9 @@ pub fn place_small_balls(world: &mut World, at: Vec2, dt: f32) -> u32 {
     spawner.phase = spawner.phase.wrapping_add(count);
     spawner.queued += count;
     const GOLDEN_ANGLE: f32 = 2.399_963_2;
+    let rule = (count > 0)
+        .then(|| credited_rule(world, SMALL_BALL))
+        .flatten();
     for i in 0..count {
         let phase = first.wrapping_add(i);
         let angle = phase as f32 * GOLDEN_ANGLE;
@@ -331,7 +361,7 @@ pub fn place_small_balls(world: &mut World, at: Vec2, dt: f32) -> u32 {
             rotation: 0.0,
             scale: Vec2::splat(SMALL_BALL_SCALE),
         };
-        let prepared = world
+        let mut prepared = world
             .prepare_prefab(SMALL_BALL, point.to_array())
             .expect("the manifest's prefabs load with it")
             .with((
@@ -341,6 +371,9 @@ pub fn place_small_balls(world: &mut World, at: Vec2, dt: f32) -> u32 {
                 PreviousVelocity::default(),
                 SceneEntity { state_id: GAMEPLAY },
             ));
+        if let Some(rule) = &rule {
+            prepared = prepared.with((rule.clone(),));
+        }
         world.resource_mut::<CommandBuffer>().spawn_prefab(prepared);
     }
     if count > 0 && world.resource::<BallSpawner>().voice.is_none() {

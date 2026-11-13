@@ -8,6 +8,7 @@ use example_01_platformer::features::audio::components::Sound;
 use example_01_platformer::features::combat::{
     CHILL_BUILD, CHILL_NEEDS, FREEZE_BUILDS, FREEZE_NEEDS,
 };
+use example_01_platformer::features::elements;
 use example_01_platformer::features::enemies::bat::DIVE_SECS;
 use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
 use example_01_platformer::features::enemies::components::{EnemyKind, Variant};
@@ -230,6 +231,30 @@ fn every_restated_constant_matches_its_data() {
     };
     assert_eq!(fuel("crate"), BURN_SECS);
     assert_eq!(fuel("plank"), PLANK_BURN_SECS);
+    // Each enemy's impact rule, inert until a troll throws it, at its
+    // kind's mass, half of it under the light mass, as a body's hit counts.
+    for kind in EnemyKind::ALL {
+        let info = kind.info();
+        let mass = if info.mass < elements::LIGHT_MASS {
+            info.mass * 0.5
+        } else {
+            info.mass
+        };
+        for variant in [Variant::Plain, Variant::Armoured] {
+            let prefab = enemies::prefab(kind, variant);
+            let value = json(&format!("prefabs/{prefab}.json"));
+            assert_eq!(
+                number(&value, "/components/impact_damage/mass"),
+                mass,
+                "{prefab}"
+            );
+            assert_eq!(
+                number(&value, "/components/impact_damage/scale"),
+                0.0,
+                "{prefab}"
+            );
+        }
+    }
     // A crawler's snowball's.
     assert_eq!(
         body(snowball::SNOWBALL_PREFAB),

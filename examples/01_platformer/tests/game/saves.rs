@@ -225,12 +225,14 @@ fn busy(harness: &mut UiHarness) {
     let bomb = props::spawn_bomb(world, Vec2::new(2200.0, 600.0), Some(0));
     world.get_mut::<Velocity>(bomb).unwrap().0 = Vec2::new(-100.0, -300.0);
     let rock = props::lob_rock(world, Vec2::new(2300.0, 500.0), Vec2::new(-200.0, -100.0));
-    world.resource_mut::<Throws>().0.push(Throw {
+    let throw = Throw {
         body: rock,
         thrower: 0,
         factor: 1.0,
         left: 2.0,
-    });
+    };
+    world.resource_mut::<Throws>().0.push(throw);
+    elements::systems::arm_throw(world, &throw);
     // And a crawler's snowball high over the sky's ground.
     snowball::throw(
         world,
@@ -389,15 +391,15 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
     use example_01_platformer::features::spells::components::Spellbook;
     use tungsten::core::{Collider, PrevPosition, RigidBody, Spin, Visibility};
     use tungsten::kit::{
-        Aim, Cooldown, Counters, Delivery, Facing, Flags, Follow, Hurtbox, Knockback, Level,
-        Lifetime, LinearMotion, Orbit, Pickup, PlatformerController, Projectile, Resist, Source,
-        Spawner, Steering, TopDownMover,
+        Aim, Cooldown, Counters, Delivery, Facing, Flags, Follow, Hurtbox, ImpactDamage, Knockback,
+        Level, Lifetime, LinearMotion, Orbit, Pickup, PlatformerController, Projectile, Resist,
+        Source, Spawner, Steering, TopDownMover,
     };
     let registry = world.resource::<SaveRegistry>();
     let (types, names) = registered!(registry;
         Transform, Visibility, Position, PrevPosition, Velocity, Spin, Collider, RigidBody,
         Abilities, Aim, ContactDamage, Cooldown, Counters, Delivery, Effects, Facing, Flags,
-        Follow, Health, Hitbox, Hurtbox, Knockback, Level, Lifetime, LinearMotion, Orbit,
+        Follow, Health, Hitbox, Hurtbox, ImpactDamage, Knockback, Level, Lifetime, LinearMotion, Orbit,
         Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Resist, Shield,
         Source, Spawner, Stats, Steering, Tags, TopDownMover, Tomes, Elevator, Geyser, Lava,
         Spellbook, Lantern, Bullet, Reload, Enemy, Brain, Sight, StateMachine<EnemyState>,
@@ -409,7 +411,7 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
         .collect();
     assert_eq!(
         unnamed,
-        BTreeSet::from(["became", "carried", "impact_damage", "spawned"]),
+        BTreeSet::from(["became", "carried", "spawned"]),
         "the census asks the registry of every type it saves"
     );
     types
@@ -518,6 +520,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Ball>(),
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
+                    name::<tungsten::kit::ImpactDamage>(),
                 ],
             ]
             .concat(),
@@ -3318,6 +3321,196 @@ fn an_older_flask_still_splashes() {
         |h: &UiHarness, e: Entity| h.world().get::<Tags>(e).unwrap().has("status.poisoned");
     assert!(poisoned(&harness, goblin), "poisoned in the run");
     assert!(poisoned(&loaded, loaded_goblin), "poisoned after the load");
+}
+
+/// Each `impact_damage` among `value`'s records taken out, as a save from
+/// before 01's bodies hit by the kit's impact rule; how many there were.
+fn strip_impacts(value: &mut serde_json::Value) -> usize {
+    let mut stripped = 0;
+    match value {
+        serde_json::Value::Object(object) => {
+            if object.remove("impact_damage").is_some() {
+                stripped += 1;
+            }
+            for inner in object.values_mut() {
+                stripped += strip_impacts(inner);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                stripped += strip_impacts(item);
+            }
+        }
+        _ => {}
+    }
+    stripped
+}
+
+/// `body` set at `target`'s left side, a pixel off it, flying at it at
+/// `speed`, its bounce off, thrown by `thrower` at `factor` when given, its
+/// rule set as a throw sets it.
+fn flung_at(
+    harness: &mut UiHarness,
+    body: Entity,
+    target: Entity,
+    speed: f32,
+    thrower: Option<(Entity, f32)>,
+) {
+    let half = |h: &UiHarness, e: Entity| {
+        h.world()
+            .get::<tungsten::core::Collider>(e)
+            .unwrap()
+            .shape
+            .half_extents()
+            .x
+    };
+    let gap = Vec2::new(half(harness, target) + half(harness, body) + 1.0, 0.0);
+    let side = example_01_platformer::shared::body_centre(harness.world(), target).unwrap() - gap;
+    let id = thrower.map(|(by, _)| id_of(harness, by));
+    let world = harness.world_mut();
+    let corner = side - world.get::<tungsten::core::Collider>(body).unwrap().offset;
+    world.get_mut::<Position>(body).unwrap().0 = corner;
+    world.get_mut::<PrevPosition>(body).unwrap().0 = corner;
+    world.get_mut::<Velocity>(body).unwrap().0 = Vec2::new(speed, 0.0);
+    if let Some(own) = world.get_mut::<tungsten::core::RigidBody>(body) {
+        own.restitution = 0.0;
+    }
+    if let (Some((_, factor)), Some(thrower)) = (thrower, id) {
+        let throw = Throw {
+            body,
+            thrower,
+            factor,
+            left: 2.0,
+        };
+        world.resource_mut::<Throws>().0.push(throw);
+        elements::systems::arm_throw(world, &throw);
+    }
+}
+
+/// A still enemy of `kind` standing on the ground at `x`.
+fn still_enemy(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
+    let foe = enemy(
+        harness,
+        kind,
+        Vec2::new(x, TOP - kind_body(kind).half.y - 0.5),
+    );
+    harness
+        .world_mut()
+        .remove_component::<StateMachine<EnemyState>>(foe);
+    foe
+}
+
+/// The hits each of `targets` took in one step: its parts' amounts, and
+/// the save ID each came from.
+fn impacts_on(harness: &mut UiHarness, targets: &[u64]) -> Vec<Vec<(f32, Option<u64>)>> {
+    harness.step(1);
+    let world = harness.world();
+    let id = |entity: Entity| example_01_platformer::shared::save_id(world, entity).map(|id| id.0);
+    targets
+        .iter()
+        .map(|&target| {
+            harness
+                .harness()
+                .events::<tungsten::kit::DamagedPart>()
+                .filter(|part| id(part.entity) == Some(target) && !part.periodic)
+                .map(|part| (part.amount, part.source.and_then(id)))
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn older_bodies_still_hit() {
+    let (mut harness, player) = grounded();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    // Four still goblins, a troll and a goblin to throw at them, and a
+    // frozen bat.
+    let marks: Vec<Entity> = [1100.0, 1400.0, 1700.0, 2000.0]
+        .into_iter()
+        .map(|x| still_enemy(&mut harness, EnemyKind::Goblin, x))
+        .collect();
+    let troll = still_enemy(&mut harness, EnemyKind::Troll, 2600.0);
+    let thrower = still_enemy(&mut harness, EnemyKind::Goblin, 2900.0);
+    let crate_ = props::spawn(
+        harness.world_mut(),
+        PropKind::Crate,
+        Vec2::new(800.0, TOP - CRATE_HALF.y - 0.5),
+    );
+    let rock = props::lob_rock(
+        harness.world_mut(),
+        Vec2::new(850.0, TOP - 40.0),
+        Vec2::ZERO,
+    );
+    let bat = enemy(&mut harness, EnemyKind::Bat, Vec2::new(900.0, TOP - 300.0));
+    tungsten::kit::EffectRequest::new(bat, tungsten::core::DataRef::by_id("frozen"))
+        .apply(harness.world_mut());
+    let block = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(950.0, TOP - IRON_HALF.y - 0.5),
+    );
+    harness.step(2);
+    // Each mid-flight at its mark: the crate and the bat thrown by the
+    // troll, the rock by the goblin, at Hard's factor; the iron the
+    // player's.
+    flung_at(&mut harness, crate_, marks[0], 900.0, Some((troll, 1.5)));
+    flung_at(&mut harness, rock, marks[1], 900.0, Some((thrower, 1.5)));
+    flung_at(&mut harness, bat, marks[2], 2400.0, Some((troll, 1.5)));
+    flung_at(&mut harness, block, marks[3], 700.0, None);
+    let ids: Vec<u64> = marks.iter().map(|&mark| id_of(&harness, mark)).collect();
+    let mut older = json(&capture(&harness));
+    assert!(
+        strip_impacts(&mut older["world"]) >= 4,
+        "the records' rules"
+    );
+    let read: SaveGame = serde_json::from_value(older).expect("the save reads");
+    let mut loaded = reloaded(read, false);
+    loaded.harness_mut().set_dt(1.0 / 60.0);
+    // A body's bounce is its prefab's again after the load: off, as the
+    // run's.
+    for body in [crate_, rock, block] {
+        let loaded_body = by_id(&loaded, id_of(&harness, body));
+        if let Some(own) = loaded
+            .world_mut()
+            .get_mut::<tungsten::core::RigidBody>(loaded_body)
+        {
+            own.restitution = 0.0;
+        }
+    }
+    let run = impacts_on(&mut harness, &ids);
+    let after = impacts_on(&mut loaded, &ids);
+    let (troll, thrower, me) = (
+        id_of(&harness, troll),
+        id_of(&harness, thrower),
+        id_of(&harness, player),
+    );
+    for (i, (run, after)) in run.iter().zip(&after).enumerate() {
+        assert!(!run.is_empty(), "mark {i} hit in the run");
+        assert_eq!(after.len(), run.len(), "mark {i}: {after:?} and {run:?}");
+        for (got, want) in after.iter().zip(run) {
+            assert!(
+                (got.0 - want.0).abs() < 0.05,
+                "mark {i}: {after:?} and {run:?}"
+            );
+            assert_eq!(got.1, want.1, "mark {i}");
+        }
+    }
+    assert_eq!(after[0][0].1, Some(troll), "the crate's thrower");
+    assert!(
+        (after[1][0].0 - 12.0).abs() < 1e-3 && after[1][0].1 == Some(thrower),
+        "the rock's flat 8 at 1.5: {:?}",
+        after[1]
+    );
+    assert_eq!(after[2][0].1, Some(troll), "the bat's thrower");
+    assert_eq!(after[3][0].1, Some(me), "the iron the player's");
+    let along = loaded
+        .world()
+        .get::<tungsten::kit::Knockback>(by_id(&loaded, ids[1]))
+        .map(|knockback| knockback.push());
+    assert!(
+        along.is_some_and(|push| push.x > 0.0),
+        "pushed along its flight: {along:?}"
+    );
+    let _ = rock;
 }
 
 /// Puts one more enemy on `harness`'s map before a run spawns it: a copy of

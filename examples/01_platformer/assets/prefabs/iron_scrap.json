@@ -27,6 +27,19 @@
       {
         "prefab": "ex10_iron_scrap_frost"
       }
-    ]
+    ],
+    "impact_damage": {
+      "kind": "damage.physical",
+      "speed": 400,
+      "per_mass": 0.002,
+      "most": 120,
+      "floor": 2,
+      "push": {
+        "away": 0.6,
+        "most": 900
+      },
+      "land": "now",
+      "prepare": "armour"
+    }
   }
 }

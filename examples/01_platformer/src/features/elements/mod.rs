@@ -87,20 +87,16 @@ pub const STEAM_PUSH: f32 = 700.0;
 /// The most cascades a run takes, and the most that wait (Q11).
 pub const CASCADE_CAP: usize = 48;
 pub const CASCADE_BOUND: usize = 16_384;
-/// A moving body's hit on a target: from this closing speed, `k` × mass ×
-/// the speed past it, at most so much a hit; a frozen target landing at
-/// [`SHATTER_SPEED`] or more takes this share of the speed past it.
-pub const BODY_HIT_SPEED: f32 = 400.0;
-pub const BODY_HIT_K: f32 = 0.002;
-pub const BODY_HIT_MOST: f32 = 120.0;
+/// A frozen target landing at [`SHATTER_SPEED`] or more takes this share of
+/// the speed past it. A moving body's hit on a target is its prefab's
+/// `impact_damage`: from 400 px/s, 0.002 × its mass × the speed past it, at
+/// most 120 a hit and nothing under 2, a body lighter than [`LIGHT_MASS`]
+/// at half its mass, so a small ball hurts from 2,400 px/s, a goblin's bomb
+/// from 1,067, a bowling ball from 525 and a crate from 483.
 pub const LANDING_SHARE: f32 = 0.1;
-/// A body lighter than this counts this share of its mass in its hit, and
-/// a hit worth less than the floor lands nothing ([`body_hit`]): a small
-/// ball hurts from 2,400 px/s, a goblin's bomb from 1,067, a bowling ball
-/// from 525 and a crate from 483.
+/// The lightest body a keg's blow counts whole ([`blows_keg`]), under which
+/// an impact counts half its mass.
 pub const LIGHT_MASS: f32 = 4.0;
-pub const LIGHT_SHARE: f32 = 0.5;
-pub const BODY_HIT_FLOOR: f32 = 2.0;
 /// The least mass that shatters a frozen body it meets hard: a bowling
 /// ball's, so small balls flying in a pile break no ice.
 pub const SHATTER_MASS: f32 = 8.0;
@@ -253,21 +249,6 @@ pub fn is_burning(world: &World, ball: Entity) -> bool {
 #[must_use]
 pub fn burn_left(world: &World, ball: Entity) -> Option<f32> {
     systems::burn_left(world, ball)
-}
-
-/// What a body of `mass` closing on a target at `closing` px/s hurts it by:
-/// [`BODY_HIT_K`] × its mass, [`LIGHT_SHARE`] of it under [`LIGHT_MASS`], ×
-/// the speed past [`BODY_HIT_SPEED`], at most [`BODY_HIT_MOST`]; 0 where
-/// that comes under [`BODY_HIT_FLOOR`].
-#[must_use]
-pub fn body_hit(mass: f32, closing: f32) -> f32 {
-    let mass = if mass < LIGHT_MASS {
-        mass * LIGHT_SHARE
-    } else {
-        mass
-    };
-    let amount = (BODY_HIT_K * mass * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST);
-    if amount < BODY_HIT_FLOOR { 0.0 } else { amount }
 }
 
 /// Whether a keg meeting something of `mass` (infinite for a tile or a

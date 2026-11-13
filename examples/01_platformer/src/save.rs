@@ -35,11 +35,13 @@ use tungsten::core::save::{
     RestoreError, Value, WorldSave, capture_world, check_world, restore_world,
 };
 use tungsten::core::{CameraController, DataRef, Entity, Position, SaveData, Velocity, World};
-use tungsten::kit::{ContactDamage, EffectRequest, Health, Stats};
+use tungsten::kit::{ContactDamage, EffectRequest, Health, ImpactDamage, Stats};
 
 use crate::features::dummy::{self, components::Dummy};
 use crate::features::elements::components::ColdFace;
-use crate::features::elements::systems::{coat_of, freeze_for, light, show_douse};
+use crate::features::elements::systems::{
+    arm_throw, coat_of, freeze_for, light, prefab_of, show_douse,
+};
 use crate::features::elements::{COAT, burn_left, ice_left};
 use crate::features::enemies::components::{Enemy, Held, Holding, Throws};
 use crate::features::enemies::drops::{self, Orb};
@@ -563,8 +565,9 @@ fn spawn_balls(world: &mut World, save: &SaveGame) -> Vec<Entity> {
 /// record's `PreviousVelocity`, a dummy's and every enemy's body, an
 /// enemy's hold on rock, a scrap's, a crate's, a rock's, a stone's and a
 /// plank's look; what an older save's records lack of their prefabs, an
-/// enemy's disarm, a dropped orb's fall and a flask's end, shape and body
-/// walls; a crusted basin's body layers, mask, touch and glow, a
+/// enemy's disarm, a dropped orb's fall, a flask's end, shape and body
+/// walls and a body's or an enemy's impact rule, a body's credited to the
+/// player; each live throw's rule set as the throw set it; a crusted basin's body layers, mask, touch and glow, a
 /// doused hazard's touch, glow and trail, a geyser's touch on in an
 /// eruption and held aside else, from `touches`, the run's, where the save
 /// holds none; a troll's hold lifted again; the taken tomes' books off the
@@ -604,9 +607,10 @@ fn rebuild(world: &mut World, touches: &[(Entity, Option<ContactDamage>)]) {
         .query::<(Entity, &Enemy)>()
         .map(|(entity, _)| entity)
         .collect();
-    for enemy in foes {
+    for &enemy in &foes {
         enemies::restored(world, enemy);
     }
+    impact_rules(world, recorded.iter().chain(&foes).copied());
     let basins: Vec<Entity> = world
         .query::<(Entity, &Lava)>()
         .map(|(entity, _)| entity)
@@ -658,5 +662,38 @@ fn rebuild(world: &mut World, touches: &[(Entity, Option<ContactDamage>)]) {
         && let Some(camera) = world.get_resource_mut::<CameraController>()
     {
         camera.cut_to(centre);
+    }
+}
+
+/// What an older save's bodies and enemies lack of their impact rules: a
+/// record or an enemy without one takes its prefab's, and a body's rule
+/// without a credit the run's player's, as its spawn gives them; then each
+/// live throw's body takes its throw's rule ([`arm_throw`]), as the throw
+/// set it.
+fn impact_rules(world: &mut World, restored: impl Iterator<Item = Entity>) {
+    let player = world.get_resource::<Run>().map(|run| run.player);
+    for entity in restored.collect::<Vec<_>>() {
+        let enemy = world.has::<Enemy>(entity) || world.has::<Dummy>(entity);
+        if !world.has::<ImpactDamage>(entity) {
+            let Some(rule) =
+                prefab_of(world, entity).and_then(|prefab| toys::prefab_rule(world, &prefab))
+            else {
+                continue;
+            };
+            world.insert(entity, rule);
+        }
+        if !enemy
+            && let Some(rule) = world.get_mut::<ImpactDamage>(entity)
+            && rule.credit().is_none()
+        {
+            rule.set_credit(player);
+        }
+    }
+    let throws = world
+        .get_resource::<Throws>()
+        .map(|throws| throws.0.clone())
+        .unwrap_or_default();
+    for throw in &throws {
+        arm_throw(world, throw);
     }
 }

@@ -130,8 +130,6 @@ pub const KEG_BLAST: f32 = 192.0;
 pub const BOMB_BLAST: f32 = 128.0;
 /// A frozen crate's or keg's thermal shock reach.
 pub const PROP_BLAST: f32 = 96.0;
-/// The fire a burning crate's impact adds to its hit on a live target.
-pub const BURNING_IMPACT: f32 = 12.0;
 /// Wood's sliding friction while it rests on something, px/s², and the
 /// share of a hole's pull a crate and a keg take.
 pub const WOOD_FRICTION: f32 = 900.0;

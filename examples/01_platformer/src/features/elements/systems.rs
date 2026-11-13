@@ -11,30 +11,30 @@ use tungsten::core::{
     RigidBody, Shape, Sprite, Time, Transform, Velocity, With, World,
 };
 use tungsten::kit::{
-    Children, ContactDamage, EffectRequest, Effects, Health, Hit, Reaction, Tags, end_effect,
-    stimulate,
+    Children, ContactDamage, EffectRequest, Effects, Health, Hit, ImpactDamage, Impacted, Reaction,
+    Tags, end_effect, stimulate,
 };
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::cascade;
 use super::components::{ColdFace, FireEmitter, Flame, IcePulse};
 use super::{
-    BALL_BURN, BASE_SMASH, BODY_HIT_SPEED, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, COAT, COLD,
-    CRATE_BREAK, CRUSH_HIT, CRUSH_SPEED, DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL,
-    FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF, FROZEN_SECS, HAZARD_DOUSED, ICE,
-    IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN, IMPACT_SPEED, KINDLED, LANDING_SHARE, SHATTER_MASS,
-    SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, SPENT, THAW_RATE,
-    blows_keg, body_hit, is_burning, is_frozen,
+    BALL_BURN, BASE_SMASH, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, COAT, COLD, CRATE_BREAK, CRUSH_HIT,
+    CRUSH_SPEED, DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP,
+    FIRE_HALF, FROZEN_SECS, HAZARD_DOUSED, ICE, IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN,
+    IMPACT_SPEED, KINDLED, LANDING_SHARE, SHATTER_MASS, SHATTER_SPEED, SMASH_CAP, SMASH_KEEP,
+    SPEED_PER_BALL, SPEED_PER_HIT, SPENT, THAW_RATE, blows_keg, is_burning, is_frozen,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{self, BURNING, DOUSED, FLESH, FROZEN, Kind, has_status};
-use crate::features::enemies::components::{Enemy, Throws};
+use crate::features::dummy::components::Dummy;
+use crate::features::enemies::components::{Enemy, Throw, Throws};
 use crate::features::enemies::{beetle, goblin};
 use crate::features::level::components::{Glow, Hazard};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::props::{
-    self, BURNING_IMPACT,
+    self,
     components::{Crate, Keg, Rock, Stone},
 };
 use crate::features::run::Run;
@@ -43,8 +43,8 @@ use crate::features::toys::components::{
 };
 use crate::features::toys::systems::holes;
 use crate::features::toys::{
-    self, BALL_RADIUS, HOLE_RADIUS, IRON_HALF, IRON_LAND_SPEED, IRON_PUSH_MOST, IRON_PUSH_SHARE,
-    SCRAP_COUNT, SCRAP_HALF, SMALL_BALL_RADIUS,
+    self, BALL_RADIUS, HOLE_RADIUS, IRON_HALF, IRON_LAND_SPEED, SCRAP_COUNT, SCRAP_HALF,
+    SMALL_BALL_RADIUS,
 };
 use crate::game::GAMEPLAY;
 use crate::shared::{
@@ -1013,23 +1013,6 @@ fn mass(world: &World, entity: Entity) -> f32 {
         .map_or(f32::INFINITY, |body| 1.0 / body.inv_mass)
 }
 
-/// A thrown body's mass: a dynamic body's own, an enemy's its kind's, whose
-/// kinematic body has none.
-fn thrown_mass(world: &World, entity: Entity) -> f32 {
-    match world.get::<Enemy>(entity) {
-        Some(enemy) if !moves(world, entity) => enemy.kind.info().mass,
-        _ => mass(world, entity),
-    }
-}
-
-/// The live entity of save ID `id`.
-fn live_by_id(world: &World, id: u64) -> Option<Entity> {
-    world
-        .query::<(Entity, &Saved, &Health)>()
-        .find(|(_, own, health)| own.id().0 == id && !health.is_dead())
-        .map(|(entity, ..)| entity)
-}
-
 /// The gap between two bodies' surfaces, boxes or circles: below 0 where
 /// they overlap.
 fn gap(a: Vec2, a_shape: Shape, b: Vec2, b_shape: Shape) -> f32 {
@@ -1050,69 +1033,6 @@ fn gap(a: Vec2, a_shape: Shape, b: Vec2, b_shape: Shape) -> f32 {
         _ => ((a - b).abs() - (half(a_shape) + half(b_shape))).max_element(),
     }
 }
-
-/// The moving bodies that end the step touching a live target, each with
-/// its closing speed along the line between their centres from their
-/// speeds before the step: the solver stops a body at a target's face in
-/// the step it arrives, before any contact reports it. A body is iron, a
-/// scrap or a ball, or any body a troll threw; the player is a target of
-/// thrown bodies alone, and a thrown body never hits its thrower.
-fn target_hits(world: &World, player: Option<Entity>) -> Vec<(Entity, Entity, f32)> {
-    let targets: Vec<(Entity, Vec2, Shape, Option<u64>)> = world
-        .query::<(Entity, &Health, &Position, &Collider)>()
-        .filter(|(_, health, ..)| !health.is_dead())
-        .map(|(entity, _, at, collider)| {
-            let id = crate::shared::save_id(world, entity).map(|id| id.0);
-            (entity, at.0 + collider.offset, collider.shape, id)
-        })
-        .collect();
-    if targets.is_empty() {
-        return Vec::new();
-    }
-    let throws = world.get_resource::<Throws>();
-    let mut hits = Vec::new();
-    for (body, at, collider, previous, velocity) in world.query::<(
-        Entity,
-        &Position,
-        &Collider,
-        Option<&PreviousVelocity>,
-        Option<&Velocity>,
-    )>() {
-        // `before_step` from the row: the cheap speed check comes first.
-        let before = previous
-            .map(|v| v.0)
-            .or_else(|| velocity.map(|v| v.0))
-            .unwrap_or(Vec2::ZERO);
-        if before.length_squared() < BODY_HIT_SPEED * BODY_HIT_SPEED {
-            continue;
-        }
-        let throw = throws.and_then(|throws| throws.of(body));
-        if throw.is_none() && !is_body(world, body) {
-            continue;
-        }
-        let centre = at.0 + collider.offset;
-        for &(target, target_at, shape, id) in &targets {
-            let thrower = throw.is_some_and(|throw| id == Some(throw.thrower));
-            let spared = Some(target) == player && throw.is_none();
-            if target == body || thrower || spared {
-                continue;
-            }
-            if gap(centre, collider.shape, target_at, shape) > CONTACT_MARGIN {
-                continue;
-            }
-            let towards = (target_at - centre).normalize_or_zero();
-            let closing = (before - before_step(world, target)).dot(towards);
-            if closing >= BODY_HIT_SPEED {
-                hits.push((body, target, closing));
-            }
-        }
-    }
-    hits
-}
-
-/// A moving body's hit on a target: the body, the target and the closing
-/// speed.
-type Hurt = (Entity, Entity, f32);
 
 /// `shape` grown by `margin` on every side.
 fn grown(shape: Shape, margin: f32) -> Shape {
@@ -1247,28 +1167,22 @@ pub fn iron_killed(world: &World, target: Entity) -> bool {
 /// body meeting something that does not move, or a body of at least
 /// [`SHATTER_MASS`], at a closing speed of [`SHATTER_SPEED`] or more, from
 /// the step's contacts and the bodies' speeds before it, queues its
-/// shatter; a moving body that ends the step touching a live target
-/// ([`target_hits`]), closing at [`BODY_HIT_SPEED`] or more, hurts it by
-/// [`body_hit`] of its mass and that speed, nothing under its floor
-/// (`BODY_HIT_FLOOR`, read before a thrower's factor: no part, no fire, no
-/// push, and a throw flies on), credited to the player, or for a thrown
-/// body by its thrower's damage factor, credited to its thrower while it
-/// lives, the throw ending at its first such hit, a goblin's thrown rock landing
-/// `goblin::ROCK_DAMAGE` with `goblin::ROCK_PUSH` along its flight in place
-/// of the speed's; and a frozen target landing as hard
-/// takes [`LANDING_SHARE`] of the speed past [`SHATTER_SPEED`]. Each pair
-/// counts once a step, at its hardest. The throws count down. Iron's hits
-/// (a block's or a scrap's, thrown or not) push their target along the
-/// closing line by [`IRON_PUSH_SHARE`] of the closing speed, at most
-/// [`IRON_PUSH_MOST`], and apply at once, as the crush's do, so each knows
-/// whether it killed: a `flesh` target it killed is marked ([`IronKills`]).
+/// shatter; and a frozen target landing as hard takes [`LANDING_SHARE`] of
+/// the speed past [`SHATTER_SPEED`]. A moving body's hit on a live target
+/// is its prefab's `impact_damage`, the kit's pass before this one: by its
+/// mass and the closing speed, credited to the player, or while a throw
+/// stands at its thrower's damage factor, credited to its thrower while it
+/// lives ([`arm_throw`]); the throw ends at its first such hit, its window
+/// or its body gone, and its body takes its prefab's rule back
+/// ([`end_throw`]). The throws count down. Iron's hits land at once, so
+/// each knows whether it killed: a `flesh` target an iron hit killed this
+/// step is marked ([`IronKills`]).
 /// A block meeting a still body or a tile at [`IRON_LAND_SPEED`] or more
 /// lands hard, once a step (`toys::systems::iron_landed`). A keg that is
 /// not frozen meeting something hard enough for its mass ([`blows_keg`])
 /// goes off, credited to its own throw's thrower (a troll's), else the
-/// thrower of what met it, else the player; a burning
-/// crate's hit on a target adds [`BURNING_IMPACT`] fire; and a goblin's rock
-/// meeting anything at [`SHATTER_SPEED`] or more clacks, and a stone knocks,
+/// thrower of what met it, else the player; and a goblin's rock meeting
+/// anything at [`SHATTER_SPEED`] or more clacks, and a stone knocks,
 /// each at most [`IMPACT_BURSTS_PER_STEP`] a step. Last, each crate a hit breaks
 /// ([`crate_hits`]) breaks into its planks, once a step in save-ID order,
 /// after its own blows and landings.
@@ -1279,7 +1193,6 @@ pub fn body_impacts(world: &mut World) {
     };
     let player = world.get_resource::<Run>().map(|run| run.player);
     let mut shatters: Vec<Entity> = Vec::new();
-    let mut hits: BTreeMap<(Option<SaveId>, Option<SaveId>), Hurt> = BTreeMap::new();
     let mut landings: BTreeMap<Option<SaveId>, (Entity, f32)> = BTreeMap::new();
     let mut hard: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
     let mut blown: BTreeMap<Option<SaveId>, (Entity, Option<u64>)> = BTreeMap::new();
@@ -1359,14 +1272,6 @@ pub fn body_impacts(world: &mut World) {
             }
         }
     }
-    for (body, target, closing) in target_hits(world, player) {
-        let key = (
-            crate::shared::save_id(world, target),
-            crate::shared::save_id(world, body),
-        );
-        let best = hits.entry(key).or_insert((body, target, closing));
-        best.2 = best.2.max(closing);
-    }
     let mut shatters: Vec<(Option<SaveId>, Entity)> = shatters
         .into_iter()
         .map(|entity| (crate::shared::save_id(world, entity), entity))
@@ -1378,68 +1283,22 @@ pub fn body_impacts(world: &mut World) {
     for (keg, credit) in blown.into_values() {
         props::set_off(world, keg, credit);
     }
+    // The step's impacts, the kit's: the throws that landed a blow, and
+    // the `flesh` an iron blow killed.
     let mut landed: Vec<Entity> = Vec::new();
     let mut kills: Vec<Entity> = Vec::new();
-    for (body, target, closing) in hits.into_values() {
-        let throw = world
-            .get_resource::<Throws>()
-            .and_then(|throws| throws.of(body))
-            .copied();
-        let heavy = match throw {
-            Some(_) => thrown_mass(world, body),
-            None => mass(world, body),
-        };
-        // A goblin's thrown rock lands its own blow, pushed along its flight.
-        let rock = throw.is_some() && world.has::<Rock>(body);
-        let amount = if rock {
-            goblin::ROCK_DAMAGE
-        } else {
-            body_hit(heavy, closing)
-        };
-        // Under the floor it lands nothing, and a throw flies on.
-        if amount <= 0.0 {
-            continue;
-        }
-        let at = body_centre(world, target).unwrap_or_default();
-        let fire = props::alight(world, body).then_some((Kind::Fire, BURNING_IMPACT));
-        let hit = match throw {
-            Some(throw) => {
-                landed.push(body);
-                let parts = [(Kind::Physical, amount * throw.factor)]
-                    .into_iter()
-                    .chain(fire);
-                let mut hit = combat::Hit::new(target, parts);
-                if rock {
-                    let along = before_step(world, body).normalize_or_zero();
-                    hit = hit.push(along * goblin::ROCK_PUSH);
-                }
-                match live_by_id(world, throw.thrower) {
-                    Some(thrower) => hit.from(thrower),
-                    None => hit,
-                }
+    if let Some(impacts) = world.get_resource::<EventQueue<Impacted>>() {
+        let throws = world.get_resource::<Throws>();
+        for impact in impacts.iter_current() {
+            if throws.is_some_and(|throws| throws.of(impact.hitter).is_some()) {
+                landed.push(impact.hitter);
             }
-            None => {
-                let parts = [(Kind::Physical, amount)].into_iter().chain(fire);
-                let hit = combat::Hit::new(target, parts);
-                match player {
-                    Some(player) => hit.from(player),
-                    None => hit,
-                }
+            let flesh = world
+                .get::<Tags>(impact.target)
+                .is_some_and(|tags| tags.has(FLESH));
+            if is_iron(world, impact.hitter) && impact.outcome == Some(Hit::Killed) && flesh {
+                kills.push(impact.target);
             }
-        };
-        if !is_iron(world, body) {
-            hit.at(at).queue(world);
-            continue;
-        }
-        let from = body_centre(world, body).unwrap_or(at);
-        let push =
-            (at - from).normalize_or_zero() * (IRON_PUSH_SHARE * closing).min(IRON_PUSH_MOST);
-        let outcome = hit.at(at).push(push).request(world).apply(world);
-        let flesh = world
-            .get::<Tags>(target)
-            .is_some_and(|tags| tags.has(FLESH));
-        if matches!(outcome, Hit::Killed) && flesh {
-            kills.push(target);
         }
     }
     world.insert_resource(IronKills(kills));
@@ -1469,11 +1328,20 @@ pub fn body_impacts(world: &mut World) {
                 .collect()
         })
         .unwrap_or_default();
+    let mut ended: Vec<Entity> = Vec::new();
     if let Some(throws) = world.get_resource_mut::<Throws>() {
         throws.0.retain_mut(|throw| {
             throw.left -= dt;
-            throw.left > 0.0 && !landed.contains(&throw.body) && !gone.contains(&throw.body)
+            let flies =
+                throw.left > 0.0 && !landed.contains(&throw.body) && !gone.contains(&throw.body);
+            if !flies {
+                ended.push(throw.body);
+            }
+            flies
         });
+    }
+    for body in ended {
+        end_throw(world, body);
     }
     for (target, closing) in landings.into_values() {
         let amount = (closing - SHATTER_SPEED) * LANDING_SHARE;
@@ -1694,4 +1562,67 @@ pub fn douse(world: &mut World) {
         spawn_burst(world, "ex10_extinguish", at);
     }
     audio::play(world, Sound::Doused, doused[0].2);
+}
+
+/// Sets `throw`'s body's impact rule as a throw does: credited to its
+/// thrower, the entity of its save ID, at its damage factor; a goblin's
+/// rock lands `goblin::ROCK_DAMAGE` pushed `goblin::ROCK_PUSH` along its
+/// flight in place of its mass's blow. A throw's start and a load's live
+/// throws (`save::rebuild`) both set it here.
+pub fn arm_throw(world: &mut World, throw: &Throw) {
+    let thrower = world
+        .query::<(Entity, &Saved)>()
+        .find(|(_, own)| own.id().0 == throw.thrower)
+        .map(|(entity, _)| entity);
+    let rock = world.has::<Rock>(throw.body);
+    let Some(rule) = world.get_mut::<ImpactDamage>(throw.body) else {
+        return;
+    };
+    let mut armed = rule.clone();
+    armed.set_credit(thrower);
+    armed.set_scale(throw.factor);
+    if rock {
+        armed = armed
+            .with_amount(goblin::ROCK_DAMAGE)
+            .with_push_along(goblin::ROCK_PUSH);
+    }
+    *rule = armed;
+}
+
+/// Puts `body`'s prefab's impact rule back whole as its throw ends: a
+/// body's credited to the run's player, an enemy's and the dummy's inert,
+/// so a rock hits by its mass again.
+pub fn end_throw(world: &mut World, body: Entity) {
+    if !world.is_alive(body) || !world.has::<ImpactDamage>(body) {
+        return;
+    }
+    let Some(prefab) = prefab_of(world, body) else {
+        return;
+    };
+    let rule = if world.has::<Enemy>(body) || world.has::<Dummy>(body) {
+        toys::prefab_rule(world, &prefab)
+    } else {
+        toys::credited_rule(world, &prefab)
+    };
+    if let Some(rule) = rule {
+        world.insert(body, rule);
+    }
+}
+
+/// The prefab `body` came from: an enemy's by its kind and variant, the
+/// dummy's, a ball's by its size, else its saved spawn's.
+#[must_use]
+pub fn prefab_of(world: &World, body: Entity) -> Option<String> {
+    let prefab = if let Some(enemy) = world.get::<Enemy>(body) {
+        crate::features::enemies::prefab(enemy.kind, enemy.variant)
+    } else if world.has::<Dummy>(body) {
+        crate::features::dummy::DUMMY_PREFAB
+    } else if world.has::<SmallBall>(body) {
+        toys::SMALL_BALL
+    } else if world.has::<BowlingBall>(body) {
+        toys::BOWLING_BALL
+    } else {
+        return world.get::<Saved>(body)?.prefab().map(str::to_owned);
+    };
+    Some(prefab.to_owned())
 }

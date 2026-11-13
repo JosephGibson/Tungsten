@@ -27,8 +27,8 @@ use example_01_platformer::features::combat::draw::overlays;
 use example_01_platformer::features::combat::{FREEZE_NEEDS, Hit, Kind, STATUS_THRESHOLD};
 use example_01_platformer::features::dummy;
 use example_01_platformer::features::elements;
+use example_01_platformer::features::elements::CRUSH_SPEED;
 use example_01_platformer::features::elements::systems::crush;
-use example_01_platformer::features::elements::{BODY_HIT_MOST, CRUSH_SPEED, body_hit};
 use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
 use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED, PAW_CLIP};
 use example_01_platformer::features::enemies::components::{
@@ -300,10 +300,14 @@ fn lift_and_throw(harness: &mut UiHarness, troll: Entity, object: Entity) {
     assert_eq!(troll::throw(world, troll), Some(object));
 }
 
+/// The bodies' impact rules' most a hit (their prefabs' `impact_damage`).
+const IMPACT_MOST: f32 = 120.0;
+
 /// Steps until `target` is hit, at most `frames` frames, keeping the
-/// `body`'s rule for the hit: the impact by the game's rule from the body's
-/// speed before the hit's step, the player's speed before it, and the
-/// centres after it, for a body of `mass`. The hit and that impact.
+/// `body`'s rule for the hit: the impact by its `impact_damage` from the
+/// body's speed before the hit's step (the kit's record), the player's
+/// speed before it, and the centres after it, for a body of `mass`. The
+/// hit and that impact.
 fn first_impact(
     harness: &mut UiHarness,
     body: Entity,
@@ -321,12 +325,14 @@ fn first_impact(
             .map(|hit| (hit.amount, hit.source));
         if let Some(hit) = hit {
             let world = harness.world();
-            let before = world
-                .get::<PreviousVelocity>(body)
-                .map_or_else(|| speed(harness, body), |velocity| velocity.0);
+            let before =
+                tungsten::kit::step_velocity(world, body).unwrap_or_else(|| speed(harness, body));
             let towards = (body_of(harness, target) - body_of(harness, body)).normalize_or_zero();
             let closing = (before - target_before).dot(towards);
-            let rule = body_hit(mass, closing);
+            let rule = world
+                .get::<tungsten::kit::ImpactDamage>(body)
+                .expect("its impact rule");
+            let rule = rule.amount(rule.mass().unwrap_or(mass), closing);
             return Some((hit, rule));
         }
     }
@@ -2222,7 +2228,7 @@ fn a_thrown_bowling_ball_hurts_by_its_speed_and_mass() {
     let ((amount, source), rule) =
         first_impact(&mut harness, ball, player, mass, 150).expect("it hits the player");
     assert_eq!(source, Some(troll));
-    assert!(amount > 0.0 && amount < BODY_HIT_MOST, "{amount}");
+    assert!(amount > 0.0 && amount < IMPACT_MOST, "{amount}");
     assert!(
         (amount - rule).abs() < 0.05,
         "by its speed and mass: {amount} against {rule}"
@@ -2300,7 +2306,7 @@ fn a_thrown_frozen_enemy_flies_the_throws_arc_and_hurts_at_its_kinds_mass() {
         first_impact(&mut harness, crawler, player, mass, 150).expect("it hits the player");
     assert_eq!(source, Some(troll));
     assert!(
-        amount > 0.0 && amount < BODY_HIT_MOST,
+        amount > 0.0 && amount < IMPACT_MOST,
         "a finite mass: {amount}"
     );
     assert!(
@@ -3562,6 +3568,214 @@ fn a_rock_from_a_goblin_killed_in_flight_still_lands_at_its_factor() {
     );
     assert_eq!(rock[0].1, None, "from nobody");
 }
+
+#[test]
+fn a_rock_after_its_throw_hits_by_its_mass() {
+    use example_01_platformer::features::enemies::goblin;
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let thrower = walker(&mut harness, EnemyKind::Goblin, 900.0, TOP);
+    harness
+        .world_mut()
+        .remove_component::<StateMachine<EnemyState>>(thrower);
+    harness.step(2);
+    let rock = goblin::throw(harness.world_mut(), thrower).expect("a rock");
+    let ended = until(&mut harness, 300, |h| {
+        h.world().resource::<Throws>().of(rock).is_none()
+    });
+    assert!(ended, "its throw ends");
+    // A still crawler, and the rock knocked into its side at 900 px/s.
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 1500.0, TOP);
+    harness
+        .world_mut()
+        .remove_component::<StateMachine<EnemyState>>(crawler);
+    harness.step(2);
+    fling_at(&mut harness, rock, crawler, 900.0, None);
+    harness.step(1);
+    let hits: Vec<(f32, Option<Entity>)> = harness
+        .harness()
+        .events::<Damaged>()
+        .filter(|hit| hit.entity == crawler && !hit.periodic)
+        .map(|hit| (hit.amount, hit.source))
+        .collect();
+    // By its mass of 6: 0.002 × 6 × (900 − 400), the player's, unpushed.
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert!((hits[0].0 - 6.0).abs() < 0.01, "by its mass: {hits:?}");
+    assert_eq!(hits[0].1, Some(player), "an unthrown body's");
+    assert_eq!(
+        knockback(&harness, crawler).push(),
+        Vec2::ZERO,
+        "no push along its flight"
+    );
+}
+
+/// The parts `target` took this frame but periodic ones: each amount and
+/// its deepest type.
+fn parts_took(harness: &UiHarness, target: Entity) -> Vec<(f32, String)> {
+    let world = harness.world();
+    harness
+        .harness()
+        .events::<tungsten::kit::DamagedPart>()
+        .filter(|part| part.entity == target && !part.periodic)
+        .map(|part| {
+            let names = part.kinds.names(world);
+            (part.amount, names.last().copied().unwrap_or("").to_owned())
+        })
+        .collect()
+}
+
+/// Steps until `target` takes parts, at most `frames` frames: those parts.
+fn first_parts(harness: &mut UiHarness, target: Entity, frames: u32) -> Vec<(f32, String)> {
+    for _ in 0..frames {
+        harness.step(1);
+        let parts = parts_took(harness, target);
+        if !parts.is_empty() {
+            return parts;
+        }
+    }
+    Vec::new()
+}
+
+/// `body` set at `target`'s left side, a pixel off it, flying at it at
+/// `speed`, its bounce taken off so it ends its step at the side, where a
+/// hit is read, and with `thrower` thrown by it at `factor`, its rule set
+/// as a throw sets it.
+fn fling_at(
+    harness: &mut UiHarness,
+    body: Entity,
+    target: Entity,
+    speed: f32,
+    thrower: Option<(Entity, f32)>,
+) {
+    use example_01_platformer::features::enemies::components::Throw;
+    let half = |h: &UiHarness, e: Entity| {
+        let shape = h.world().get::<Collider>(e).unwrap().shape;
+        shape.half_extents().x
+    };
+    let at = Vec2::new(half(harness, target) + half(harness, body) + 1.0, 0.0);
+    let side = example_01_platformer::shared::body_centre(harness.world(), target).unwrap() - at;
+    let id = thrower.map(|(by, _)| {
+        example_01_platformer::shared::save_id(harness.world(), by)
+            .unwrap()
+            .0
+    });
+    let world = harness.world_mut();
+    let corner = side - world.get::<Collider>(body).unwrap().offset;
+    world.get_mut::<Position>(body).unwrap().0 = corner;
+    world.get_mut::<PrevPosition>(body).unwrap().0 = corner;
+    world.get_mut::<Velocity>(body).unwrap().0 = Vec2::new(speed, 0.0);
+    if let Some(own) = world.get_mut::<tungsten::core::RigidBody>(body) {
+        own.restitution = 0.0;
+    }
+    if let (Some((_, factor)), Some(thrower)) = (thrower, id) {
+        let throw = Throw {
+            body,
+            thrower,
+            factor,
+            left: 2.0,
+        };
+        world.resource_mut::<Throws>().0.push(throw);
+        elements::systems::arm_throw(world, &throw);
+    }
+}
+
+#[test]
+fn an_impact_on_an_armoured_beetle_lands_whole() {
+    // A bowling ball rolled into the beetle's front at 900 px/s: its hit,
+    // at the beetle's centre, 0.002 × 8 × 500, lands whole past its shell.
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness
+        .world_mut()
+        .insert_resource(KitRng::seeded(PLAIN_SEED));
+    let beetle = walker(&mut harness, EnemyKind::Beetle, 1300.0, TOP);
+    still(&mut harness, beetle);
+    enemies::turn(harness.world_mut(), beetle, -1.0);
+    let ball = toys::spawn_ball(harness.world_mut(), Vec2::new(900.0, TOP - 40.0), false);
+    harness.step(2);
+    fling_at(&mut harness, ball, beetle, 900.0, None);
+    let parts = first_parts(&mut harness, beetle, 3);
+    assert_eq!(parts.len(), 1, "{parts:?}");
+    assert_eq!(parts[0].1, "damage.physical");
+    assert!((parts[0].0 - 8.0).abs() < 0.05, "whole: {parts:?}");
+}
+
+#[test]
+fn impacts_keep_their_amounts() {
+    let golden = |parts: &[(f32, String)], want: &[(f32, &str)], what: &str| {
+        assert_eq!(parts.len(), want.len(), "{what}: {parts:?}");
+        for (got, &(amount, kind)) in parts.iter().zip(want) {
+            assert!((got.0 - amount).abs() < 1e-4, "{what}: {parts:?}");
+            assert_eq!(got.1, kind, "{what}: {parts:?}");
+        }
+    };
+    // A falling iron block on a still goblin, the player's.
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness
+        .world_mut()
+        .insert_resource(KitRng::seeded(PLAIN_SEED));
+    let goblin = walker(&mut harness, EnemyKind::Goblin, 1300.0, TOP);
+    still(&mut harness, goblin);
+    let over = body(&harness, goblin)
+        - Vec2::new(
+            0.0,
+            kind_body(EnemyKind::Goblin).half.y + IRON_HALF.y + 80.0,
+        );
+    toys::place_iron(harness.world_mut(), over);
+    golden(&first_parts(&mut harness, goblin, 90), &IRON, "iron");
+    // A burning crate a troll threw at Hard, at 900 px/s.
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let troll = troll_at(&mut harness, 2400.0, Difficulty::Normal);
+    still(&mut harness, troll);
+    let goblin = walker(&mut harness, EnemyKind::Goblin, 1300.0, TOP);
+    still(&mut harness, goblin);
+    let crate_ = props::spawn(
+        harness.world_mut(),
+        PropKind::Crate,
+        Vec2::new(900.0, TOP - CRATE_HALF.y),
+    );
+    harness.step(2);
+    assert!(props::light(harness.world_mut(), crate_, None));
+    harness.step(3);
+    fling_at(&mut harness, crate_, goblin, 900.0, Some((troll, 1.5)));
+    golden(&first_parts(&mut harness, goblin, 3), &CRATE, "crate");
+    // A goblin's rock, thrown at Hard, at 900 px/s.
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let thrower = walker(&mut harness, EnemyKind::Goblin, 2400.0, TOP);
+    still(&mut harness, thrower);
+    let goblin = walker(&mut harness, EnemyKind::Goblin, 1300.0, TOP);
+    still(&mut harness, goblin);
+    let rock = props::lob_rock(
+        harness.world_mut(),
+        Vec2::new(900.0, TOP - 40.0),
+        Vec2::ZERO,
+    );
+    harness.step(2);
+    fling_at(&mut harness, rock, goblin, 900.0, Some((thrower, 1.5)));
+    golden(&first_parts(&mut harness, goblin, 3), &ROCK, "rock");
+    // A frozen bat a troll threw at Hard, at 2,400 px/s.
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let troll = troll_at(&mut harness, 2400.0, Difficulty::Normal);
+    still(&mut harness, troll);
+    let goblin = walker(&mut harness, EnemyKind::Goblin, 1300.0, TOP);
+    still(&mut harness, goblin);
+    let bat = walker(&mut harness, EnemyKind::Bat, 900.0, TOP - 200.0);
+    apply(&mut harness, bat, "frozen", None);
+    harness.step(2);
+    fling_at(&mut harness, bat, goblin, 2400.0, Some((troll, 1.5)));
+    golden(&first_parts(&mut harness, goblin, 3), &BAT, "frozen bat");
+}
+
+/// [`impacts_keep_their_amounts`]' golden parts, taken at `b65cb2ee`, before
+/// 01's impacts moved onto the kit.
+const IRON: [(f32, &str); 1] = [(120.0, "damage.physical")];
+const CRATE: [(f32, &str); 2] = [(17.957_304, "damage.physical"), (12.0, "damage.fire")];
+const ROCK: [(f32, &str); 1] = [(12.0, "damage.physical")];
+const BAT: [(f32, &str); 1] = [(5.986_431_6, "damage.physical")];
 
 /// A seed whose stream's first approaches go as `first` does.
 fn seed_opening(first: &[Approach]) -> u64 {
