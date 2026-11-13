@@ -28,7 +28,8 @@
 //! carrying crates over their heads, which drop them at rest when killed
 //! or frozen; and a brute with a health bar, and a mark while alerted, as
 //! 01's troll; 7.13c's boulder rolled into a goblin, credited to its
-//! roller, and a nugget that falls to the ground for the climber.
+//! roller, and a nugget that falls to the ground for the climber; 7.13c's
+//! foes and cues' crate, whose hard landing sparks under a rule's amount.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2669,5 +2670,50 @@ fn a_nugget_dropped_in_the_air_falls_to_the_ground_and_a_climber_takes_it() {
             1,
             "dt {dt}"
         );
+    }
+}
+
+// 7.13c's foes and cues, Step 4: a crate's hard landing sparks.
+
+/// 7.13c's foes and cues: a crate on its controller dropped 150 px lands at
+/// about 775 px/s, and the `landings` rule, from 500, bursts `fuse_sparks`
+/// at its feet; dropped 10 px, it lands too softly to spark.
+#[test]
+fn a_crates_hard_landing_sparks_and_a_soft_one_does_not() {
+    use crate::kit::ParticleBurst;
+    for dt in DTS {
+        for (drop, sparks) in [(150.0, true), (10.0, false)] {
+            let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+            spawn(&mut harness, "ground", [0.0, 300.0]);
+            let crate_ = spawn(&mut harness, "sparking_crate", [0.0, 282.0 - drop]);
+            let mut landed = None;
+            for _ in 0..frames_for(1.0, dt) {
+                harness.step(1);
+                let world = harness.world();
+                if world
+                    .get::<crate::kit::PlatformerController>(crate_)
+                    .is_some_and(crate::kit::PlatformerController::grounded)
+                {
+                    landed = Some(body_at(&harness, crate_));
+                    break;
+                }
+            }
+            let at = landed.unwrap_or_else(|| panic!("dt {dt}, {drop}: it lands"));
+            let bursts: Vec<Vec2> = harness
+                .world()
+                .query::<(&ParticleBurst, &Transform)>()
+                .map(|(_, transform)| transform.position)
+                .collect();
+            if sparks {
+                assert_eq!(bursts.len(), 1, "dt {dt}: {bursts:?}");
+                assert!(
+                    (bursts[0] - (at + Vec2::new(0.0, 8.0))).length() < 1.0,
+                    "dt {dt}: at its feet: {} for {at}",
+                    bursts[0]
+                );
+            } else {
+                assert!(bursts.is_empty(), "dt {dt}: a soft landing: {bursts:?}");
+            }
+        }
     }
 }

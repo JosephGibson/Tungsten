@@ -39,7 +39,7 @@ use crate::testing::Harness;
 /// `post_update` with `DefaultPlugins`, then `KitPlugins::set()`, the sound
 /// plugin, the trigger zone and the state machine: the present phase after
 /// the late propagation and before the camera.
-const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, effect_look, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, effect_look_late, kit_debug_draw, hit_sound, camera_update";
+const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, effect_look, burst_cleanup, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, effect_look_late, kit_debug_draw, hit_sound, camera_update";
 
 /// `fixed_update` with the same plugins: the six fixed phases around
 /// `physics_step`, each member in its registration order but where an edge

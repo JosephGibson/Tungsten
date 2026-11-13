@@ -10,11 +10,11 @@ use glam::Vec2;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use tungsten_core::camera;
-use tungsten_core::physics::Position;
+use tungsten_core::physics::{Collider, Position};
 use tungsten_core::{
     AudioCommands, AudioHandle, CommandBuffer, DataRef, DataRegistry, Entity, EventCursor,
-    EventQueue, Inspectable, MissingAsset, Plugin, Schedule, ShakeEvent, SoundRegistry,
-    SpawnContext, SquashEvent, SquashTrigger, Time, Transform, Voice, World, system,
+    EventQueue, Inspectable, MissingAsset, ParticleConfigRegistry, Plugin, Schedule, ShakeEvent,
+    SoundRegistry, SpawnContext, SquashEvent, SquashTrigger, Time, Transform, Voice, World, system,
 };
 
 use crate::damage::effects::{EFFECTS, Effect, EffectApplied, EffectExpired, EffectRequest};
@@ -36,12 +36,14 @@ use crate::lifecycle::cap::admit;
 use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
 use crate::motion::drive::prefab_centre;
-use crate::overlap::hit::Struck;
+use crate::overlap::hit::{Struck, optional_offset};
 use crate::overlap::pickup::PickedUp;
 use crate::overlap::projectile::ProjectileExpired;
 use crate::overlap::zone::ZoneEntered;
+use crate::present::burst::burst;
 use crate::present::camera::CameraRigId;
 use crate::present::character::{CLIPS_FORM, CharacterAnimator, Clips, check_clips};
+use crate::present::facing::Facing;
 use crate::present::labels::{
     CritLabel, LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, PartLabel, TickLabel,
     float_label, label_tick,
@@ -285,7 +287,7 @@ impl Cues {
 ///
 /// | Action | Data |
 /// | --- | --- |
-/// | prefab | `{ "prefab": "puff" }`, spawned at the event's position from the subject |
+/// | prefab | `{ "prefab": "puff" }`, spawned at the event's position from the subject; `at` `centre` at its body centre, moved by `offset`, as for `roll`, `burst` and `sound` |
 /// | counter | `{ "counter": { "name": "kills", "add": 1, "target": "game" } }`, or `"set": 0`; `target` `self`, `other` or `game` |
 /// | flag | `{ "flag": { "name": "has_key", "set": true, "target": "other" } }`; `set` true by default |
 /// | despawn | `{ "despawn": {} }`, or `{ "despawn": { "target": "other" } }` |
@@ -295,6 +297,7 @@ impl Cues {
 /// | flash | `{ "flash": {} }`, the subject's [`HitFlash`](crate::HitFlash) |
 /// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label; on `damaged_part`, `{ "label": {} }` floats it in its type's style, `merge`, `ticks` and `crit` grouping a target's numbers ([`type_label`](CueAction::type_label)) |
 /// | roll | `{ "roll": "slime_drops" }`, a `loot_tables` entry or the [`WeightedTable`] in place: each prefab drawn spawned at the event's position from the subject |
+/// | burst | `{ "burst": "sparks" }`, or `{ "burst": { "particles": "gore", "key": true } }`, a one-off particle burst ([`burst`](crate::burst)) under the [`BurstBudget`](crate::BurstBudget) |
 /// | effect | `{ "effect": "burning" }`, or `{ "effect": { "id": "burning", "target": "other" } }`, an `effects` entry or the [`Effect`] in place under `id`, queued on the subject from the event's other entity, or on the other from the subject |
 /// | ability | `{ "ability": "wand" }`, or `{ "ability": { "name": "wand", "op": "refill", "target": "other" } }`, the named ability of the subject or the other used now (`op` `use`), or made ready with every charge (`refill`) |
 /// | loop | `{ "loop": { "id": "crackle", "volume": 1.0, "fade": 0.1 } }`, the subject wants the sound looping: one voice per sound ID at its loudest want by the [`CueListener`] |
@@ -326,10 +329,11 @@ pub struct CueAction {
 /// What an action does.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ActionKind {
-    /// A prefab, its centre on the position when `centred`.
+    /// A prefab at its place, its centre on it when `centred`.
     Prefab {
         id: String,
         centred: bool,
+        place: ActionPlace,
     },
     Counter {
         name: String,
@@ -345,6 +349,7 @@ pub(crate) enum ActionKind {
     Sound {
         id: String,
         min_interval: f32,
+        place: ActionPlace,
     },
     /// Trauma, whole within the falloff's near of the listener and none
     /// from its far.
@@ -358,11 +363,18 @@ pub(crate) enum ActionKind {
     Label(Option<LabelStyle>),
     /// A `damaged_part`'s amount in its type's style, grouped.
     PartLabel(Box<PartLabel>),
-    /// A table's draws, each prefab's centre on the position when
+    /// A table's draws at its place, each prefab's centre on it when
     /// `centred`.
     Roll {
         table: DataRef<WeightedTable>,
         centred: bool,
+        place: ActionPlace,
+    },
+    /// A one-off particle burst at its place, a key one when `key`.
+    Burst {
+        particles: String,
+        key: bool,
+        place: ActionPlace,
     },
     Effect {
         effect: DataRef<Effect>,
@@ -418,6 +430,71 @@ pub(crate) enum Target {
     Game,
 }
 
+/// Where a `prefab`, `roll`, `burst` or `sound` action happens: the
+/// event's point, or its subject's body centre with `centre`, moved by
+/// `offset`, its x mirrored while the subject's [`Facing`] points left.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct ActionPlace {
+    centre: bool,
+    offset: Vec2,
+}
+
+impl ActionPlace {
+    /// Whether it is the event's point, unmoved.
+    fn is_event(self) -> bool {
+        !self.centre && self.offset == Vec2::ZERO
+    }
+
+    /// The point it names for `occurrence`.
+    fn of(self, world: &World, occurrence: &Occurrence) -> Vec2 {
+        let subject = occurrence.subject;
+        let base =
+            if self.centre && (world.has::<Position>(subject) || world.has::<Transform>(subject)) {
+                body_point(world, subject)
+            } else {
+                occurrence.position
+            };
+        if self.offset == Vec2::ZERO {
+            return base;
+        }
+        let left = world
+            .get::<Facing>(subject)
+            .is_some_and(|facing| facing.direction().x < 0.0);
+        base + if left {
+            Vec2::new(-self.offset.x, self.offset.y)
+        } else {
+            self.offset
+        }
+    }
+
+    /// Its data fields: `at`, written only at `centre`, and `offset`,
+    /// written only when set.
+    fn fields(self) -> (Option<AtField>, Option<Vec2>) {
+        (
+            self.centre.then_some(AtField::Centre),
+            (self.offset != Vec2::ZERO).then_some(self.offset),
+        )
+    }
+
+    /// The place data's `at` and `offset` give.
+    fn from_fields(at: Option<AtField>, offset: Option<Vec2>) -> Self {
+        Self {
+            centre: at == Some(AtField::Centre),
+            offset: offset.unwrap_or(Vec2::ZERO),
+        }
+    }
+}
+
+/// An action's `at`, as data writes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AtField {
+    /// The event's point.
+    Event,
+    /// The subject's body centre.
+    Centre,
+}
+
 impl CueAction {
     fn of(kind: ActionKind) -> Self {
         Self { kind }
@@ -431,6 +508,7 @@ impl CueAction {
         Self::of(ActionKind::Prefab {
             id: id.into(),
             centred: false,
+            place: ActionPlace::default(),
         })
     }
 
@@ -456,6 +534,100 @@ impl CueAction {
             ),
         }
         self
+    }
+
+    /// Fires a one-off burst of the manifest particle config `particles` at
+    /// the event's point ([`burst`](crate::burst)), a cosmetic one the
+    /// [`BurstBudget`](crate::BurstBudget) drops at its cap. Data form
+    /// `{ "burst": "sparks" }` or `{ "burst": { "particles": "sparks",
+    /// "key": true, "at": "centre", "offset": [0, -8] } }`; the load checks
+    /// the config.
+    ///
+    /// ```
+    /// use glam::Vec2;
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let puff = CueAction::burst("puff");
+    /// assert_eq!(serde_json::to_value(&puff).unwrap(), serde_json::json!({ "burst": "puff" }));
+    /// let gore = CueAction::burst("gore").as_key().at_centre().with_offset(Vec2::new(4.0, 0.0));
+    /// assert_eq!(
+    ///     serde_json::to_value(&gore).unwrap(),
+    ///     serde_json::json!({ "burst": { "particles": "gore", "key": true, "at": "centre", "offset": [4.0, 0.0] } })
+    /// );
+    /// ```
+    #[must_use]
+    pub fn burst(particles: impl Into<String>) -> Self {
+        Self::of(ActionKind::Burst {
+            particles: particles.into(),
+            key: false,
+            place: ActionPlace::default(),
+        })
+    }
+
+    /// The `burst` action, a key burst, which takes the oldest cosmetic
+    /// burst's slot at the budget's cap.
+    ///
+    /// # Panics
+    ///
+    /// When the action is not a `burst`.
+    #[must_use]
+    #[track_caller]
+    pub fn as_key(mut self) -> Self {
+        let name = self.name();
+        match &mut self.kind {
+            ActionKind::Burst { key, .. } => *key = true,
+            _ => panic!("CueAction::as_key: a `{name}` action fires no burst"),
+        }
+        self
+    }
+
+    /// The `prefab`, `roll`, `burst` or `sound` action, at its subject's
+    /// body centre (its `Position` plus its collider's offset) rather than
+    /// the event's point. Data form `"at": "centre"`.
+    ///
+    /// # Panics
+    ///
+    /// When the action is none of those.
+    #[must_use]
+    #[track_caller]
+    pub fn at_centre(mut self) -> Self {
+        let name = self.name();
+        match self.place_mut() {
+            Some(place) => place.centre = true,
+            None => panic!("CueAction::at_centre: a `{name}` action has no place"),
+        }
+        self
+    }
+
+    /// The `prefab`, `roll`, `burst` or `sound` action, moved by `offset`
+    /// from its point, its x mirrored while the subject's [`Facing`] points
+    /// left. Data form `"offset": [x, y]`.
+    ///
+    /// # Panics
+    ///
+    /// When the action is none of those, or `offset` is not finite and
+    /// within the kit's extent.
+    #[must_use]
+    #[track_caller]
+    pub fn with_offset(mut self, offset: Vec2) -> Self {
+        let offset = crate::overlap::hit::checked_offset("CueAction::with_offset", offset);
+        let name = self.name();
+        match self.place_mut() {
+            Some(place) => place.offset = offset,
+            None => panic!("CueAction::with_offset: a `{name}` action has no place"),
+        }
+        self
+    }
+
+    /// The action's place, when it has one.
+    fn place_mut(&mut self) -> Option<&mut ActionPlace> {
+        match &mut self.kind {
+            ActionKind::Prefab { place, .. }
+            | ActionKind::Roll { place, .. }
+            | ActionKind::Burst { place, .. }
+            | ActionKind::Sound { place, .. } => Some(place),
+            _ => None,
+        }
     }
 
     /// Despawns the subject, with its children, after the step's spawns.
@@ -558,6 +730,7 @@ impl CueAction {
         Self::of(ActionKind::Sound {
             id: id.into(),
             min_interval: 0.0,
+            place: ActionPlace::default(),
         })
     }
 
@@ -811,6 +984,7 @@ impl CueAction {
         Self::of(ActionKind::Roll {
             table,
             centred: false,
+            place: ActionPlace::default(),
         })
     }
 
@@ -933,8 +1107,8 @@ impl CueAction {
     }
 
     /// The action's data name: `prefab`, `counter`, `flag`, `despawn`,
-    /// `sound`, `shake`, `squash`, `flash`, `label`, `roll`, `effect`,
-    /// `ability`, `loop`, `stop`, `clip` or `camera`.
+    /// `sound`, `shake`, `squash`, `flash`, `label`, `roll`, `burst`,
+    /// `effect`, `ability`, `loop`, `stop`, `clip` or `camera`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self.kind {
@@ -948,6 +1122,7 @@ impl CueAction {
             ActionKind::Flash => "flash",
             ActionKind::Label(_) | ActionKind::PartLabel(_) => "label",
             ActionKind::Roll { .. } => "roll",
+            ActionKind::Burst { .. } => "burst",
             ActionKind::Effect { .. } => "effect",
             ActionKind::Ability { .. } => "ability",
             ActionKind::Loop { .. } => "loop",
@@ -998,6 +1173,7 @@ pub(crate) enum CueActionDef {
     Flash(FlashDef),
     Label(LabelDef),
     Roll(RollActionDef),
+    Burst(BurstActionDef),
     Effect(EffectActionDef),
     Ability(AbilityActionDef),
     Loop(LoopDef),
@@ -1383,11 +1559,13 @@ impl<'de> Deserialize<'de> for EffectActionDef {
 }
 
 /// A `prefab` action as data writes it: the prefab's ID alone, or an
-/// object of `id` and `centred`; written back as the ID unless centred.
+/// object of `id`, `centred`, `at` and `offset`; written back as the ID
+/// unless centred or placed.
 #[derive(Clone)]
 pub(crate) struct PrefabActionDef {
     id: String,
     centred: bool,
+    place: ActionPlace,
 }
 
 /// The object form of a `prefab` action.
@@ -1397,14 +1575,25 @@ struct PrefabActionObject {
     id: String,
     #[serde(default)]
     centred: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    at: Option<AtField>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
 }
 
 impl Serialize for PrefabActionDef {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if self.centred {
+        if self.centred || !self.place.is_event() {
+            let (at, offset) = self.place.fields();
             PrefabActionObject {
                 id: self.id.clone(),
-                centred: true,
+                centred: self.centred,
+                at,
+                offset,
             }
             .serialize(serializer)
         } else {
@@ -1420,23 +1609,26 @@ impl<'de> Deserialize<'de> for PrefabActionDef {
             return Ok(Self {
                 id: id.to_owned(),
                 centred: false,
+                place: ActionPlace::default(),
             });
         }
         let object = PrefabActionObject::deserialize(value).map_err(de::Error::custom)?;
         Ok(Self {
             id: object.id,
             centred: object.centred,
+            place: ActionPlace::from_fields(object.at, object.offset),
         })
     }
 }
 
 /// A `roll` action as data writes it: the table's ID or the table in
-/// place, or an object of `table` and `centred`; written back as the table
-/// unless centred.
+/// place, or an object of `table`, `centred`, `at` and `offset`; written
+/// back as the table unless centred or placed.
 #[derive(Clone)]
 pub(crate) struct RollActionDef {
     table: DataRef<WeightedTable>,
     centred: bool,
+    place: ActionPlace,
 }
 
 /// The object form of a `roll` action.
@@ -1446,14 +1638,25 @@ struct RollActionObject {
     table: DataRef<WeightedTable>,
     #[serde(default)]
     centred: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    at: Option<AtField>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
 }
 
 impl Serialize for RollActionDef {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if self.centred {
+        if self.centred || !self.place.is_event() {
+            let (at, offset) = self.place.fields();
             RollActionObject {
                 table: self.table.clone(),
-                centred: true,
+                centred: self.centred,
+                at,
+                offset,
             }
             .serialize(serializer)
         } else {
@@ -1470,12 +1673,77 @@ impl<'de> Deserialize<'de> for RollActionDef {
             return Ok(Self {
                 table: object.table,
                 centred: object.centred,
+                place: ActionPlace::from_fields(object.at, object.offset),
             });
         }
         let table = DataRef::<WeightedTable>::deserialize(value).map_err(de::Error::custom)?;
         Ok(Self {
             table,
             centred: false,
+            place: ActionPlace::default(),
+        })
+    }
+}
+
+/// A `burst` action as data writes it: the particle config's ID alone, or
+/// an object of `particles`, `key`, `at` and `offset`; written back as the
+/// ID unless a key burst or placed.
+#[derive(Clone)]
+pub(crate) struct BurstActionDef {
+    particles: String,
+    key: bool,
+    place: ActionPlace,
+}
+
+/// The object form of a `burst` action.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BurstActionObject {
+    particles: String,
+    #[serde(default)]
+    key: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    at: Option<AtField>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
+}
+
+impl Serialize for BurstActionDef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.key || !self.place.is_event() {
+            let (at, offset) = self.place.fields();
+            BurstActionObject {
+                particles: self.particles.clone(),
+                key: self.key,
+                at,
+                offset,
+            }
+            .serialize(serializer)
+        } else {
+            self.particles.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BurstActionDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(particles) = value.as_str() {
+            return Ok(Self {
+                particles: particles.to_owned(),
+                key: false,
+                place: ActionPlace::default(),
+            });
+        }
+        let object = BurstActionObject::deserialize(value).map_err(de::Error::custom)?;
+        Ok(Self {
+            particles: object.particles,
+            key: object.key,
+            place: ActionPlace::from_fields(object.at, object.offset),
         })
     }
 }
@@ -1487,6 +1755,14 @@ pub(crate) struct SoundDef {
     id: String,
     #[serde(default, deserialize_with = "non_negative")]
     min_interval: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    at: Option<AtField>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
 }
 
 /// A `flash` action as data writes it: no fields.
@@ -1534,6 +1810,7 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Prefab(def) => ActionKind::Prefab {
                 id: def.id,
                 centred: def.centred,
+                place: def.place,
             },
             CueActionDef::Counter(def) => ActionKind::Counter {
                 name: def.name,
@@ -1553,6 +1830,7 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Sound(def) => ActionKind::Sound {
                 id: def.id,
                 min_interval: def.min_interval,
+                place: ActionPlace::from_fields(def.at, def.offset),
             },
             CueActionDef::Shake(ShakeDef::Trauma(trauma)) => ActionKind::Shake {
                 trauma,
@@ -1569,6 +1847,12 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Roll(def) => ActionKind::Roll {
                 table: def.table,
                 centred: def.centred,
+                place: def.place,
+            },
+            CueActionDef::Burst(def) => ActionKind::Burst {
+                particles: def.particles,
+                key: def.key,
+                place: def.place,
             },
             CueActionDef::Effect(def) => ActionKind::Effect {
                 effect: def.id,
@@ -1602,8 +1886,8 @@ impl TryFrom<CueActionDef> for CueAction {
 impl From<CueAction> for CueActionDef {
     fn from(action: CueAction) -> Self {
         match action.kind {
-            ActionKind::Prefab { id, centred } => {
-                CueActionDef::Prefab(PrefabActionDef { id, centred })
+            ActionKind::Prefab { id, centred, place } => {
+                CueActionDef::Prefab(PrefabActionDef { id, centred, place })
             }
             ActionKind::Counter { name, op, target } => CueActionDef::Counter(CounterDef {
                 name,
@@ -1625,8 +1909,18 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Despawn(target) => CueActionDef::Despawn(DespawnDef {
                 target: target.into(),
             }),
-            ActionKind::Sound { id, min_interval } => {
-                CueActionDef::Sound(SoundDef { id, min_interval })
+            ActionKind::Sound {
+                id,
+                min_interval,
+                place,
+            } => {
+                let (at, offset) = place.fields();
+                CueActionDef::Sound(SoundDef {
+                    id,
+                    min_interval,
+                    at,
+                    offset,
+                })
             }
             ActionKind::Shake {
                 trauma,
@@ -1644,9 +1938,24 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Flash => CueActionDef::Flash(FlashDef {}),
             ActionKind::Label(style) => CueActionDef::Label(LabelDef(style, None)),
             ActionKind::PartLabel(part) => CueActionDef::Label(LabelDef(None, Some(part))),
-            ActionKind::Roll { table, centred } => {
-                CueActionDef::Roll(RollActionDef { table, centred })
-            }
+            ActionKind::Roll {
+                table,
+                centred,
+                place,
+            } => CueActionDef::Roll(RollActionDef {
+                table,
+                centred,
+                place,
+            }),
+            ActionKind::Burst {
+                particles,
+                key,
+                place,
+            } => CueActionDef::Burst(BurstActionDef {
+                particles,
+                key,
+                place,
+            }),
             ActionKind::Effect { effect, target } => CueActionDef::Effect(EffectActionDef {
                 id: effect,
                 target: target.into(),
@@ -2363,7 +2672,7 @@ impl<E: 'static> CueSource for GameSource<E> {
             let position = if event.position.is_finite() {
                 event.position
             } else {
-                point_of(world, event.entity)
+                body_point(world, event.entity)
             };
             out.push(Occurrence {
                 amount: event.amount,
@@ -2840,6 +3149,7 @@ pub(crate) fn check_world_cue(cue: &WorldCueActions, world: &World) -> Result<()
         let refused = match &action.kind {
             ActionKind::Prefab { .. }
             | ActionKind::Roll { .. }
+            | ActionKind::Burst { .. }
             | ActionKind::Sound { .. }
             | ActionKind::Shake { .. }
             | ActionKind::Label(Some(_))
@@ -2857,7 +3167,7 @@ pub(crate) fn check_world_cue(cue: &WorldCueActions, world: &World) -> Result<()
         if let Some(field) = refused {
             return Err(MissingAsset::new(
                 field,
-                "world cue action (prefab, roll, sound, shake, a styled label, a game counter or flag)",
+                "world cue action (prefab, roll, burst, sound, shake, a styled label, a game counter or flag)",
                 action.name(),
             ));
         }
@@ -2890,6 +3200,17 @@ fn check_actions(
         match &action.kind {
             ActionKind::Prefab { id, .. } => world.check_prefab_id(&at, id)?,
             ActionKind::Roll { table, .. } => table.check(world, &at)?,
+            ActionKind::Burst { particles, .. } => {
+                if let Some(configs) = world.get_resource::<ParticleConfigRegistry>()
+                    && configs.id_for_name(particles).is_none()
+                {
+                    return Err(MissingAsset::new(
+                        format!("{at}.particles"),
+                        "particle config",
+                        particles.as_str(),
+                    ));
+                }
+            }
             ActionKind::Effect { effect, target } => {
                 effect.check(world, &at)?;
                 if *target == Target::Other && !event.other {
@@ -3221,6 +3542,7 @@ const TOO_SOON: &str = "the sound played within its min_interval";
 const UNHEARD: &str = "the cue's position is past the listener's hearing";
 const FAR: &str = "the cue's position is past the shake's far";
 const NO_TABLE: &str = "the World has no such loot table";
+const NO_BURST: &str = "the burst budget is full or the particle config unknown";
 const NO_WORLD_CUE: &str = "the World has no such world cue";
 const NO_STYLE: &str = "the part's types set no label style";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
@@ -3578,28 +3900,43 @@ impl Reactor {
             }
         };
         match &action.kind {
-            ActionKind::Prefab { id, centred } => {
+            ActionKind::Prefab { id, centred, place } => {
                 if !world.has_resource::<CommandBuffer>() {
                     return skip(world, NO_COMMANDS);
                 }
-                let at = placed(world, id, occurrence.position, *centred);
+                let at = placed(world, id, place.of(world, occurrence), *centred);
                 if !self.spawn(world, occurrence, action.name(), id, at) {
                     return;
                 }
             }
-            ActionKind::Roll { table, centred } => {
+            ActionKind::Roll {
+                table,
+                centred,
+                place,
+            } => {
                 if !world.has_resource::<CommandBuffer>() {
                     return skip(world, NO_COMMANDS);
                 }
                 if !self.draw(world, table) {
                     return skip(world, NO_TABLE);
                 }
+                let point = place.of(world, occurrence);
                 let drawn = std::mem::take(&mut self.drawn);
                 for id in &drawn {
-                    let at = placed(world, id, occurrence.position, *centred);
+                    let at = placed(world, id, point, *centred);
                     self.spawn(world, occurrence, action.name(), id, at);
                 }
                 self.drawn = drawn;
+            }
+            ActionKind::Burst {
+                particles,
+                key,
+                place,
+            } => {
+                let at = place.of(world, occurrence);
+                if burst(world, particles, at, *key).is_none() {
+                    return skip(world, NO_BURST);
+                }
             }
             ActionKind::Counter {
                 name,
@@ -3660,7 +3997,11 @@ impl Reactor {
                     self.despawns.push(entity);
                 }
             }
-            ActionKind::Sound { id, min_interval } => {
+            ActionKind::Sound {
+                id,
+                min_interval,
+                place,
+            } => {
                 let interval = f64::from(*min_interval);
                 if interval > 0.0
                     && let Some(&last) = self.played.get(id)
@@ -3674,11 +4015,12 @@ impl Reactor {
                 else {
                     return skip(world, NO_SOUND);
                 };
+                let at = place.of(world, occurrence);
                 let listener = world.get_resource::<CueListener>();
-                let gain = listener.map_or(1.0, |listener| listener.gain(occurrence.position));
+                let gain = listener.map_or(1.0, |listener| listener.gain(at));
                 let pan = listener
                     .filter(|listener| listener.pan.is_some())
-                    .map(|listener| listener.pan(occurrence.position));
+                    .map(|listener| listener.pan(at));
                 if gain <= 0.0 {
                     return skip(world, UNHEARD);
                 }
@@ -4152,7 +4494,7 @@ impl Reactor {
             for event in parts.read(queue) {
                 let position = event
                     .position
-                    .unwrap_or_else(|| point_of(world, event.entity));
+                    .unwrap_or_else(|| body_point(world, event.entity));
                 occurrences.push(Occurrence {
                     amount: Some(event.amount),
                     other: event.source,
@@ -4166,7 +4508,7 @@ impl Reactor {
             for event in damaged.read(queue) {
                 let position = event
                     .position
-                    .unwrap_or_else(|| point_of(world, event.entity));
+                    .unwrap_or_else(|| body_point(world, event.entity));
                 let hit = Occurrence {
                     amount: Some(event.amount),
                     other: event.source,
@@ -4195,7 +4537,7 @@ impl Reactor {
                 Occurrence::new(
                     COOLDOWN_ELAPSED,
                     event.entity,
-                    point_of(world, event.entity),
+                    body_point(world, event.entity),
                 )
             }));
         }
@@ -4210,7 +4552,7 @@ impl Reactor {
             occurrences.extend(healed.read(queue).map(|event| Occurrence {
                 amount: Some(event.amount),
                 other: event.source,
-                ..Occurrence::new(HEALED, event.entity, point_of(world, event.entity))
+                ..Occurrence::new(HEALED, event.entity, body_point(world, event.entity))
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<PickedUp>>() {
@@ -4233,7 +4575,11 @@ impl Reactor {
                     other: event.source,
                     bits: u8::from(event.fresh) * FRESH,
                     effect: effect_index(effect_ids, effect_count, event.id.as_deref()),
-                    ..Occurrence::new(EFFECT_APPLIED, event.entity, point_of(world, event.entity))
+                    ..Occurrence::new(
+                        EFFECT_APPLIED,
+                        event.entity,
+                        body_point(world, event.entity),
+                    )
                 });
             }
         }
@@ -4242,7 +4588,11 @@ impl Reactor {
                 occurrences.push(Occurrence {
                     bits: u8::from(event.ended) * ENDED,
                     effect: effect_index(effect_ids, effect_count, event.id.as_deref()),
-                    ..Occurrence::new(EFFECT_EXPIRED, event.entity, point_of(world, event.entity))
+                    ..Occurrence::new(
+                        EFFECT_EXPIRED,
+                        event.entity,
+                        body_point(world, event.entity),
+                    )
                 });
             }
         }
@@ -4266,7 +4616,7 @@ impl Reactor {
         if let Some(queue) = world.get_resource::<EventQueue<LevelUp>>() {
             occurrences.extend(level_ups.read(queue).map(|event| Occurrence {
                 amount: Some(event.level as f32),
-                ..Occurrence::new(LEVEL_UP, event.entity, point_of(world, event.entity))
+                ..Occurrence::new(LEVEL_UP, event.entity, body_point(world, event.entity))
             }));
         }
         if let Some(cues) = world.get_resource_mut::<ControllerCues>() {
@@ -4374,6 +4724,16 @@ fn point_of(world: &World, entity: Entity) -> Vec2 {
     )
 }
 
+/// Where an occurrence without a point of its own sits: `entity`'s body
+/// centre, its `Position` plus its collider's offset, else its point
+/// ([`point_of`]).
+fn body_point(world: &World, entity: Entity) -> Vec2 {
+    match (world.get::<Position>(entity), world.get::<Collider>(entity)) {
+        (Some(position), Some(collider)) => position.0 + collider.offset,
+        _ => point_of(world, entity),
+    }
+}
+
 /// The `cues` round trip: an event left out has no actions, which the
 /// description writes as its default `[]`.
 fn cues_round_trip(value: serde_json::Value) -> Result<serde_json::Value, String> {
@@ -4470,6 +4830,11 @@ fn describe_cues(world: &mut World) {
                 "roll",
                 FieldType::Shape("roll_action"),
                 "a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject, or its centre there; a table alone reads as `{ \"table\": .. }`",
+            ))
+            .field(FieldDescription::new(
+                "burst",
+                FieldType::Shape("burst_action"),
+                "a one-off particle burst at the event's position under the burst budget; an ID alone reads as `{ \"particles\": .. }`",
             ))
             .field(FieldDescription::new(
                 "effect",
@@ -4619,6 +4984,22 @@ fn describe_cues(world: &mut World) {
                     "game seconds before this sound plays again from a cue",
                 )
                 .default("0.0"),
+            )
+            .field(
+                FieldDescription::new(
+                    "at",
+                    FieldType::Enum(&["event", "centre"]),
+                    "the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "offset",
+                    FieldType::Vec2,
+                    "moved from that point, its x mirrored while the subject faces left; unmoved when left out",
+                )
+                .default("null"),
             )
             .sample(r#"{ "id": "blip" }"#)
             .roundtrip(round_trip::<SoundDef>),
@@ -4874,6 +5255,22 @@ fn describe_cues(world: &mut World) {
             )
             .default("false"),
         )
+        .field(
+            FieldDescription::new(
+                "at",
+                FieldType::Enum(&["event", "centre"]),
+                "the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "offset",
+                FieldType::Vec2,
+                "moved from that point, its x mirrored while the subject faces left; unmoved when left out",
+            )
+            .default("null"),
+        )
         .sample(r#"{ "id": "puff" }"#)
         .roundtrip(round_trip::<PrefabActionObject>),
         ComponentDescription::new(
@@ -4893,8 +5290,59 @@ fn describe_cues(world: &mut World) {
             )
             .default("false"),
         )
+        .field(
+            FieldDescription::new(
+                "at",
+                FieldType::Enum(&["event", "centre"]),
+                "the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "offset",
+                FieldType::Vec2,
+                "moved from that point, its x mirrored while the subject faces left; unmoved when left out",
+            )
+            .default("null"),
+        )
         .sample(r#"{ "table": "drops" }"#)
         .roundtrip(round_trip::<RollActionObject>),
+        ComponentDescription::new(
+            "burst_action",
+            "A one-off burst of a manifest particle config, spawned at once and gone with its particles, under the World's burst budget.",
+        )
+        .field(FieldDescription::new(
+            "particles",
+            FieldType::Text,
+            "the manifest particle config; the load checks the ID",
+        ))
+        .field(
+            FieldDescription::new(
+                "key",
+                FieldType::Bool,
+                "a key burst, which takes the oldest cosmetic burst's slot at the budget's cap rather than being dropped",
+            )
+            .default("false"),
+        )
+        .field(
+            FieldDescription::new(
+                "at",
+                FieldType::Enum(&["event", "centre"]),
+                "the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "offset",
+                FieldType::Vec2,
+                "moved from that point, its x mirrored while the subject faces left; unmoved when left out",
+            )
+            .default("null"),
+        )
+        .sample(r#"{ "particles": "sparks" }"#)
+        .roundtrip(round_trip::<BurstActionObject>),
         ComponentDescription::new(
             "cue_rule",
             "A shared reaction: on an event, for each subject whose tags pass the filter, the actions in order.",
@@ -5068,7 +5516,7 @@ fn describe_cues(world: &mut World) {
     describe_kind(
         world,
         WORLD_CUES,
-        "A list of `cue_action` a game plays by name at a point, with no subject: `prefab`, `roll`, `sound`, `shake`, a `label` with a font, and a `counter` or `flag` with `target: game`.",
+        "A list of `cue_action` a game plays by name at a point, with no subject: `prefab`, `roll`, `burst`, `sound`, `shake`, a `label` with a font, and a `counter` or `flag` with `target: game`.",
     );
 }
 

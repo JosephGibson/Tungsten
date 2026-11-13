@@ -87,6 +87,8 @@ pub fn register(app: &mut App, info: GameInfo) {
     app.add_plugins(kit_plugins());
     // Before the manifest loads, whose blasts and impacts name it.
     add_hit_prep(app.world_mut(), armour::PREPARE, armour::prepare);
+    app.world_mut()
+        .insert_resource(crate::shared::Bursts::new().with_cap(crate::shared::BURST_CAP));
     app.add_plugin(ShellPlugin::new(info));
     app.add_plugin(LevelPlugin);
     app.add_plugin(PlayerPlugin);

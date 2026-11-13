@@ -1,0 +1,18 @@
+[
+  {
+    "on": "landed",
+    "filter": {
+      "all": [
+        "sparky"
+      ]
+    },
+    "amount": {
+      "min": 500
+    },
+    "do": [
+      {
+        "burst": "fuse_sparks"
+      }
+    ]
+  }
+]

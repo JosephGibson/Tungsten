@@ -1098,6 +1098,210 @@ mod running {
         );
     }
 
+    // 7.13c's foes and cues, Step 4: body points, an action's place and
+    // the burst action.
+
+    /// A body with health 1 at `at`, its collider's offset (8, 8), and
+    /// `cues`.
+    fn body(world: &mut World, at: Vec2, cues: Cues) -> Entity {
+        use tungsten_core::physics::{Collider, Position, Shape};
+        world.spawn_with((
+            Health::new(1.0),
+            Position(at),
+            Collider {
+                shape: Shape::Aabb {
+                    half_extents: Vec2::splat(8.0),
+                },
+                offset: Vec2::splat(8.0),
+            },
+            cues,
+        ))
+    }
+
+    /// The `puff`s spawned, by their x.
+    fn puffs(world: &World) -> Vec<Vec2> {
+        let mut puffs: Vec<Vec2> = spawned(world)
+            .into_iter()
+            .filter(|(tag, ..)| tag == "puff")
+            .map(|(_, at, _)| at)
+            .collect();
+        puffs.sort_by(|a, b| a.x.total_cmp(&b.x));
+        puffs
+    }
+
+    #[test]
+    fn an_occurrence_without_a_point_sits_at_its_body_centre() {
+        let (mut world, mut schedule) = rig();
+        // A kill with no request point: a body's at its centre, a bodiless
+        // one's at its point.
+        let crate_ = body(
+            &mut world,
+            Vec2::new(10.0, 0.0),
+            Cues::new().on("killed", [CueAction::prefab("puff")]),
+        );
+        let ghost = world.spawn_with((
+            Health::new(1.0),
+            Transform::from_position(Vec2::new(40.0, 5.0)),
+            Cues::new().on("killed", [CueAction::prefab("puff")]),
+        ));
+        damage(&mut world, crate_, 1.0);
+        damage(&mut world, ghost, 1.0);
+        step(&mut world, &mut schedule);
+        flush(&mut world);
+        assert_eq!(puffs(&world), [Vec2::new(18.0, 8.0), Vec2::new(40.0, 5.0)]);
+        // A hit with a point of its own keeps it.
+        let hit = body(
+            &mut world,
+            Vec2::new(100.0, 0.0),
+            Cues::new().on("killed", [CueAction::prefab("puff")]),
+        );
+        crate::DamageRequest::new(hit, 1.0)
+            .with_position(Vec2::new(200.0, -4.0))
+            .apply(&mut world);
+        step(&mut world, &mut schedule);
+        flush(&mut world);
+        assert_eq!(puffs(&world)[2], Vec2::new(200.0, -4.0));
+    }
+
+    #[test]
+    fn a_roll_lands_at_its_subjects_centre() {
+        let (mut world, mut schedule) = rig();
+        let drops = WeightedTable::new().with_entry("puff", 1.0);
+        world.resource_mut::<DataRegistry>().insert("drops", drops);
+        // Killed by hits landing 100 px off: the roll at the event's point,
+        // and at the body's centre.
+        let roll = || CueAction::roll(DataRef::by_id("drops"));
+        let plain = body(
+            &mut world,
+            Vec2::new(0.0, 0.0),
+            Cues::new().on("killed", [roll()]),
+        );
+        let centred = body(
+            &mut world,
+            Vec2::new(300.0, 0.0),
+            Cues::new().on("killed", [roll().at_centre()]),
+        );
+        for (target, x) in [(plain, 100.0), (centred, 400.0)] {
+            crate::DamageRequest::new(target, 1.0)
+                .with_position(Vec2::new(x, 50.0))
+                .apply(&mut world);
+        }
+        step(&mut world, &mut schedule);
+        flush(&mut world);
+        assert_eq!(
+            puffs(&world),
+            [Vec2::new(100.0, 50.0), Vec2::new(308.0, 8.0)]
+        );
+        assert_eq!(
+            serde_json::to_value(roll().at_centre()).unwrap(),
+            json!({ "roll": { "table": "drops", "centred": false, "at": "centre" } })
+        );
+    }
+
+    #[test]
+    fn a_burst_action_takes_its_place_and_offset() {
+        use std::sync::Arc;
+
+        use tungsten_core::{ParticleConfig, ParticleConfigRegistry};
+
+        use crate::{Facing, ParticleBurst};
+
+        let (mut world, mut schedule) = rig();
+        let sparks: ParticleConfig = serde_json::from_value(json!({
+            "sprite": "spark", "max_alive": 8,
+            "emission": { "kind": "continuous", "rate_hz": 30.0 },
+            "lifetime": { "min": 0.2, "max": 0.2 },
+            "initial_velocity": { "kind": "radial", "speed": { "min": 40.0, "max": 60.0 } }
+        }))
+        .unwrap();
+        let mut configs = ParticleConfigRegistry::new();
+        configs.register(
+            "sparks".into(),
+            PathBuf::from("sparks.json"),
+            Arc::new(sparks),
+        );
+        world.insert_resource(configs);
+        // Four bodies hit 50 px under their points: the event's point, the
+        // body's centre, its centre moved (6, -2), and that facing left.
+        let lane = |x: f32, action: CueAction| (x, action);
+        let lanes = [
+            lane(0.0, CueAction::burst("sparks")),
+            lane(100.0, CueAction::burst("sparks").at_centre()),
+            lane(
+                200.0,
+                CueAction::burst("sparks")
+                    .at_centre()
+                    .with_offset(Vec2::new(6.0, -2.0)),
+            ),
+            lane(
+                300.0,
+                CueAction::burst("sparks")
+                    .as_key()
+                    .at_centre()
+                    .with_offset(Vec2::new(6.0, -2.0)),
+            ),
+        ];
+        for (x, action) in lanes {
+            let target = body(
+                &mut world,
+                Vec2::new(x, 0.0),
+                Cues::new().on("killed", [action]),
+            );
+            let mut facing = Facing::new();
+            facing.face(if x >= 300.0 { Vec2::NEG_X } else { Vec2::X });
+            world.insert(target, facing);
+            crate::DamageRequest::new(target, 1.0)
+                .with_position(Vec2::new(x, 50.0))
+                .apply(&mut world);
+        }
+        step(&mut world, &mut schedule);
+        let mut bursts: Vec<(Vec2, bool)> = world
+            .query::<(&ParticleBurst, &Transform)>()
+            .map(|(burst, transform)| (transform.position, burst.key))
+            .collect();
+        bursts.sort_by(|a, b| a.0.x.total_cmp(&b.0.x));
+        assert_eq!(
+            bursts,
+            [
+                (Vec2::new(0.0, 50.0), false),
+                (Vec2::new(108.0, 8.0), false),
+                (Vec2::new(214.0, 6.0), false),
+                (Vec2::new(302.0, 6.0), true),
+            ]
+        );
+        // Its data forms, and an unknown config refused at the load.
+        for (action, data) in [
+            (CueAction::burst("sparks"), json!({ "burst": "sparks" })),
+            (
+                CueAction::burst("sparks")
+                    .as_key()
+                    .with_offset(Vec2::new(0.0, -8.0)),
+                json!({ "burst": { "particles": "sparks", "key": true, "offset": [0.0, -8.0] } }),
+            ),
+            (
+                CueAction::sound("blip").at_centre(),
+                json!({ "sound": { "id": "blip", "min_interval": 0.0, "at": "centre" } }),
+            ),
+            (
+                CueAction::prefab("puff").with_offset(Vec2::new(2.0, 0.0)),
+                json!({ "prefab": { "id": "puff", "centred": false, "offset": [2.0, 0.0] } }),
+            ),
+        ] {
+            assert_eq!(serde_json::to_value(&action).unwrap(), data, "{action:?}");
+            assert_eq!(serde_json::from_value::<CueAction>(data).unwrap(), action);
+        }
+        assert_eq!(
+            serde_json::from_value::<CueAction>(json!({ "burst": { "particles": "sparks" } }))
+                .unwrap(),
+            CueAction::burst("sparks")
+        );
+        assert!(check(&world, &json!({ "killed": [{ "burst": "sparks" }] })).is_ok());
+        assert_eq!(
+            check(&world, &json!({ "killed": [{ "burst": "smoke" }] })).unwrap_err(),
+            "component `cues`, field `killed.0.burst.particles`: unknown particle config `smoke`"
+        );
+    }
+
     #[test]
     fn a_roll_of_a_missing_table_is_skipped_and_traced() {
         let (mut world, mut schedule) = rig();

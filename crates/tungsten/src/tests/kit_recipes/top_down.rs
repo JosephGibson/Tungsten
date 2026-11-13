@@ -32,7 +32,9 @@
 //! timed state machine cycles; 7.13c's barrel bomb, whose blast hurts it
 //! too, at its centre and as it goes off, a crate knocked into a ranger,
 //! credited to its brawler, a stone bolt ending at a rolling ball, and a
-//! crystal on a dynamic body drawn in by the ranger's magnet.
+//! crystal on a dynamic body drawn in by the ranger's magnet; 7.13c's foes
+//! and cues' ogre, whose kill's key burst takes a full budget's oldest
+//! cosmetic slot.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3559,5 +3561,60 @@ fn a_crystal_on_a_dynamic_body_is_drawn_to_the_ranger() {
             1,
             "dt {dt}"
         );
+    }
+}
+
+// 7.13c's foes and cues, Step 4: a key burst past a full budget.
+
+/// 7.13c's foes and cues: with the budget's two slots taken by cosmetic
+/// bursts, the brawler kills an ogre whose `killed` cue bursts `kill_flash`
+/// as a key burst: it takes the oldest cosmetic burst's slot, which drains,
+/// counts no more and goes with its last particle.
+#[test]
+fn a_kill_past_a_full_budget_takes_the_oldest_cosmetic_slot() {
+    use crate::kit::{BurstBudget, ParticleBurst, burst};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness
+            .world_mut()
+            .insert_resource(BurstBudget::new().with_cap(2));
+        let brawler = spawn(&mut harness, "brawler", [100.0, 100.0]);
+        let ogre = spawn(&mut harness, "flashing_ogre", [140.0, 100.0]);
+        let world = harness.world_mut();
+        let oldest = burst(world, "kill_flash", Vec2::new(0.0, 0.0), false).unwrap();
+        let newer = burst(world, "kill_flash", Vec2::new(10.0, 0.0), false).unwrap();
+        assert!(
+            burst(world, "kill_flash", Vec2::ZERO, false).is_none(),
+            "dt {dt}: full"
+        );
+        crate::kit::DamageRequest::new(ogre, 1.0)
+            .with_source(brawler)
+            .apply(world);
+        harness.step(1);
+        let world = harness.world();
+        let key: Vec<Entity> = world
+            .query::<(Entity, &ParticleBurst)>()
+            .filter(|(_, burst)| burst.key)
+            .map(|(entity, _)| entity)
+            .collect();
+        assert_eq!(key.len(), 1, "dt {dt}: the kill's flash");
+        // The oldest, drained, counts no more, gone with its last particle.
+        let slot = |entity| {
+            world
+                .get::<ParticleBurst>(entity)
+                .map(|burst| burst.counted)
+        };
+        assert_ne!(
+            slot(oldest),
+            Some(true),
+            "dt {dt}: the oldest gave its slot"
+        );
+        assert_eq!(slot(newer), Some(true), "dt {dt}");
+        assert_eq!(slot(key[0]), Some(true), "dt {dt}");
+        let counted = world
+            .query::<&ParticleBurst>()
+            .filter(|burst| burst.counted)
+            .count();
+        assert_eq!(counted, 2, "dt {dt}: the budget's two");
     }
 }

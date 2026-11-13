@@ -221,6 +221,9 @@
     },
     "roamer": {
       "path": "prefabs/roamer.json"
+    },
+    "flashing_ogre": {
+      "path": "prefabs/flashing_ogre.json"
     }
   },
   "data": {
@@ -494,6 +497,11 @@
     },
     "blip": {
       "path": "sounds/blip.ogg"
+    }
+  },
+  "particles": {
+    "kill_flash": {
+      "path": "particles/kill_flash.json"
     }
   }
 }

@@ -34,7 +34,7 @@ use crate::features::enemies::components::Enemy;
 use crate::features::enemies::drops::Orb;
 use crate::features::player;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, Saved, burst_cleanup};
+use crate::shared::{SaveId, Saved};
 use components::SceneTime;
 
 /// The level's tilemap, by its manifest ID.
@@ -253,7 +253,6 @@ impl Plugin for LevelPlugin {
             Stage::PostUpdate,
             Phase::Present.join(system("level_light", systems::light)),
         );
-        schedule.add(Stage::Update, system("burst_cleanup", burst_cleanup));
         // Before the frame's emission, whose embers it starts and stops.
         let geysers = system("geyser_look", geyser::look)
             .after(PHYSICS_SYNC)

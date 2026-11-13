@@ -1,0 +1,19 @@
+{
+  "sprite": "kill_flash_0",
+  "max_alive": 16,
+  "emission": {
+    "kind": "continuous",
+    "rate_hz": 30.0
+  },
+  "lifetime": {
+    "min": 0.3,
+    "max": 0.3
+  },
+  "initial_velocity": {
+    "kind": "radial",
+    "speed": {
+      "min": 0.0,
+      "max": 0.0
+    }
+  }
+}

@@ -562,6 +562,48 @@ impl core::marker::Unpin for tungsten_kit::AnimationPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AnimationPlugin
+pub struct tungsten_kit::prelude::BurstBudget
+impl tungsten_kit::BurstBudget
+pub const tungsten_kit::BurstBudget::DEFAULT_CAP: usize
+pub fn tungsten_kit::BurstBudget::cap(&self) -> usize
+pub fn tungsten_kit::BurstBudget::new() -> Self
+pub fn tungsten_kit::BurstBudget::spawned(&self) -> u64
+pub fn tungsten_kit::BurstBudget::with_cap(self, usize) -> Self
+impl core::clone::Clone for tungsten_kit::BurstBudget
+pub fn tungsten_kit::BurstBudget::clone(&self) -> tungsten_kit::BurstBudget
+impl core::cmp::Eq for tungsten_kit::BurstBudget
+impl core::cmp::PartialEq for tungsten_kit::BurstBudget
+pub fn tungsten_kit::BurstBudget::eq(&self, &tungsten_kit::BurstBudget) -> bool
+impl core::default::Default for tungsten_kit::BurstBudget
+pub fn tungsten_kit::BurstBudget::default() -> Self
+impl core::fmt::Debug for tungsten_kit::BurstBudget
+pub fn tungsten_kit::BurstBudget::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::BurstBudget
+impl core::marker::StructuralPartialEq for tungsten_kit::BurstBudget
+impl core::marker::Freeze for tungsten_kit::BurstBudget
+impl core::marker::Send for tungsten_kit::BurstBudget
+impl core::marker::Sync for tungsten_kit::BurstBudget
+impl core::marker::Unpin for tungsten_kit::BurstBudget
+impl core::marker::UnsafeUnpin for tungsten_kit::BurstBudget
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::BurstBudget
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::BurstBudget
+pub struct tungsten_kit::prelude::BurstPlugin
+impl core::clone::Clone for tungsten_kit::BurstPlugin
+pub fn tungsten_kit::BurstPlugin::clone(&self) -> tungsten_kit::BurstPlugin
+impl core::default::Default for tungsten_kit::BurstPlugin
+pub fn tungsten_kit::BurstPlugin::default() -> tungsten_kit::BurstPlugin
+impl core::fmt::Debug for tungsten_kit::BurstPlugin
+pub fn tungsten_kit::BurstPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::BurstPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::BurstPlugin
+pub fn tungsten_kit::BurstPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::BurstPlugin
+impl core::marker::Send for tungsten_kit::BurstPlugin
+impl core::marker::Sync for tungsten_kit::BurstPlugin
+impl core::marker::Unpin for tungsten_kit::BurstPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::BurstPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::BurstPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::BurstPlugin
 pub struct tungsten_kit::prelude::CameraRigId(_)
 impl tungsten_kit::CameraRigId
 pub fn tungsten_kit::CameraRigId::as_str(&self) -> &str
@@ -1110,6 +1152,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CountersPlugin
 pub struct tungsten_kit::prelude::CueAction
 impl tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::ability(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::as_key(self) -> Self
+pub fn tungsten_kit::CueAction::at_centre(self) -> Self
+pub fn tungsten_kit::CueAction::burst(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::centred(self) -> Self
 pub fn tungsten_kit::CueAction::clip(impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CueAction::counter_add(&str, i64) -> Self
@@ -1136,6 +1181,7 @@ pub fn tungsten_kit::CueAction::type_label() -> Self
 pub fn tungsten_kit::CueAction::with_fade(self, f32) -> Self
 pub fn tungsten_kit::CueAction::with_falloff(self, f32, f32) -> Self
 pub fn tungsten_kit::CueAction::with_min_interval(self, f32) -> Self
+pub fn tungsten_kit::CueAction::with_offset(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::CueAction::with_volume(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::clone(&self) -> tungsten_kit::CueAction
@@ -2914,6 +2960,26 @@ impl core::marker::Unpin for tungsten_kit::Parent
 impl core::marker::UnsafeUnpin for tungsten_kit::Parent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Parent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Parent
+#[non_exhaustive] pub struct tungsten_kit::prelude::ParticleBurst
+pub tungsten_kit::prelude::ParticleBurst::counted: bool
+pub tungsten_kit::prelude::ParticleBurst::key: bool
+pub tungsten_kit::prelude::ParticleBurst::order: u64
+impl core::clone::Clone for tungsten_kit::ParticleBurst
+pub fn tungsten_kit::ParticleBurst::clone(&self) -> tungsten_kit::ParticleBurst
+impl core::cmp::Eq for tungsten_kit::ParticleBurst
+impl core::cmp::PartialEq for tungsten_kit::ParticleBurst
+pub fn tungsten_kit::ParticleBurst::eq(&self, &tungsten_kit::ParticleBurst) -> bool
+impl core::fmt::Debug for tungsten_kit::ParticleBurst
+pub fn tungsten_kit::ParticleBurst::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ParticleBurst
+impl core::marker::StructuralPartialEq for tungsten_kit::ParticleBurst
+impl core::marker::Freeze for tungsten_kit::ParticleBurst
+impl core::marker::Send for tungsten_kit::ParticleBurst
+impl core::marker::Sync for tungsten_kit::ParticleBurst
+impl core::marker::Unpin for tungsten_kit::ParticleBurst
+impl core::marker::UnsafeUnpin for tungsten_kit::ParticleBurst
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ParticleBurst
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ParticleBurst
 pub struct tungsten_kit::prelude::PathFollower
 impl tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::is_finished(&self) -> bool
@@ -4286,6 +4352,7 @@ impl core::marker::Unpin for tungsten_kit::ZonePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ZonePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ZonePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ZonePlugin
+pub fn tungsten_kit::prelude::burst(&mut tungsten_core::ecs::world::World, &str, glam::f32::vec2::Vec2, bool) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::prelude::carried_by(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::prelude::carry(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, tungsten_kit::Hold) -> bool
 pub fn tungsten_kit::prelude::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>
@@ -5099,6 +5166,48 @@ impl core::marker::Unpin for tungsten_kit::Blast
 impl core::marker::UnsafeUnpin for tungsten_kit::Blast
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Blast
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Blast
+pub struct tungsten_kit::BurstBudget
+impl tungsten_kit::BurstBudget
+pub const tungsten_kit::BurstBudget::DEFAULT_CAP: usize
+pub fn tungsten_kit::BurstBudget::cap(&self) -> usize
+pub fn tungsten_kit::BurstBudget::new() -> Self
+pub fn tungsten_kit::BurstBudget::spawned(&self) -> u64
+pub fn tungsten_kit::BurstBudget::with_cap(self, usize) -> Self
+impl core::clone::Clone for tungsten_kit::BurstBudget
+pub fn tungsten_kit::BurstBudget::clone(&self) -> tungsten_kit::BurstBudget
+impl core::cmp::Eq for tungsten_kit::BurstBudget
+impl core::cmp::PartialEq for tungsten_kit::BurstBudget
+pub fn tungsten_kit::BurstBudget::eq(&self, &tungsten_kit::BurstBudget) -> bool
+impl core::default::Default for tungsten_kit::BurstBudget
+pub fn tungsten_kit::BurstBudget::default() -> Self
+impl core::fmt::Debug for tungsten_kit::BurstBudget
+pub fn tungsten_kit::BurstBudget::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::BurstBudget
+impl core::marker::StructuralPartialEq for tungsten_kit::BurstBudget
+impl core::marker::Freeze for tungsten_kit::BurstBudget
+impl core::marker::Send for tungsten_kit::BurstBudget
+impl core::marker::Sync for tungsten_kit::BurstBudget
+impl core::marker::Unpin for tungsten_kit::BurstBudget
+impl core::marker::UnsafeUnpin for tungsten_kit::BurstBudget
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::BurstBudget
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::BurstBudget
+pub struct tungsten_kit::BurstPlugin
+impl core::clone::Clone for tungsten_kit::BurstPlugin
+pub fn tungsten_kit::BurstPlugin::clone(&self) -> tungsten_kit::BurstPlugin
+impl core::default::Default for tungsten_kit::BurstPlugin
+pub fn tungsten_kit::BurstPlugin::default() -> tungsten_kit::BurstPlugin
+impl core::fmt::Debug for tungsten_kit::BurstPlugin
+pub fn tungsten_kit::BurstPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::BurstPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::BurstPlugin
+pub fn tungsten_kit::BurstPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::BurstPlugin
+impl core::marker::Send for tungsten_kit::BurstPlugin
+impl core::marker::Sync for tungsten_kit::BurstPlugin
+impl core::marker::Unpin for tungsten_kit::BurstPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::BurstPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::BurstPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::BurstPlugin
 pub struct tungsten_kit::CameraRigId(_)
 impl tungsten_kit::CameraRigId
 pub fn tungsten_kit::CameraRigId::as_str(&self) -> &str
@@ -5696,6 +5805,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CountersPlugin
 pub struct tungsten_kit::CueAction
 impl tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::ability(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::as_key(self) -> Self
+pub fn tungsten_kit::CueAction::at_centre(self) -> Self
+pub fn tungsten_kit::CueAction::burst(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::centred(self) -> Self
 pub fn tungsten_kit::CueAction::clip(impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CueAction::counter_add(&str, i64) -> Self
@@ -5722,6 +5834,7 @@ pub fn tungsten_kit::CueAction::type_label() -> Self
 pub fn tungsten_kit::CueAction::with_fade(self, f32) -> Self
 pub fn tungsten_kit::CueAction::with_falloff(self, f32, f32) -> Self
 pub fn tungsten_kit::CueAction::with_min_interval(self, f32) -> Self
+pub fn tungsten_kit::CueAction::with_offset(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::CueAction::with_volume(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::clone(&self) -> tungsten_kit::CueAction
@@ -7878,6 +7991,26 @@ impl core::marker::Unpin for tungsten_kit::PartRecord
 impl core::marker::UnsafeUnpin for tungsten_kit::PartRecord
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PartRecord
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PartRecord
+#[non_exhaustive] pub struct tungsten_kit::ParticleBurst
+pub tungsten_kit::ParticleBurst::counted: bool
+pub tungsten_kit::ParticleBurst::key: bool
+pub tungsten_kit::ParticleBurst::order: u64
+impl core::clone::Clone for tungsten_kit::ParticleBurst
+pub fn tungsten_kit::ParticleBurst::clone(&self) -> tungsten_kit::ParticleBurst
+impl core::cmp::Eq for tungsten_kit::ParticleBurst
+impl core::cmp::PartialEq for tungsten_kit::ParticleBurst
+pub fn tungsten_kit::ParticleBurst::eq(&self, &tungsten_kit::ParticleBurst) -> bool
+impl core::fmt::Debug for tungsten_kit::ParticleBurst
+pub fn tungsten_kit::ParticleBurst::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ParticleBurst
+impl core::marker::StructuralPartialEq for tungsten_kit::ParticleBurst
+impl core::marker::Freeze for tungsten_kit::ParticleBurst
+impl core::marker::Send for tungsten_kit::ParticleBurst
+impl core::marker::Sync for tungsten_kit::ParticleBurst
+impl core::marker::Unpin for tungsten_kit::ParticleBurst
+impl core::marker::UnsafeUnpin for tungsten_kit::ParticleBurst
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ParticleBurst
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ParticleBurst
 pub struct tungsten_kit::PathFollower
 impl tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::is_finished(&self) -> bool
@@ -9533,6 +9666,7 @@ pub const tungsten_kit::ABILITY_TICK: &str
 pub const tungsten_kit::ACTION_INPUT: &str
 pub const tungsten_kit::AIM: &str
 pub const tungsten_kit::ANIMATION_TICK: &str
+pub const tungsten_kit::BURST_CLEANUP: &str
 pub const tungsten_kit::CAMERA_RIG: &str
 pub const tungsten_kit::CAMERA_TARGET: &str
 pub const tungsten_kit::CAMERA_ZONE: &str
@@ -9598,6 +9732,8 @@ pub const tungsten_kit::WRAP: &str
 pub const tungsten_kit::ZONE_TICK: &str
 pub fn tungsten_kit::add_hit_prep(&mut tungsten_core::ecs::world::World, impl core::convert::Into<alloc::string::String>, tungsten_kit::HitPrep)
 pub fn tungsten_kit::blast(&mut tungsten_core::ecs::world::World, glam::f32::vec2::Vec2, &tungsten_kit::Blast, core::option::Option<tungsten_core::ecs::entity::Entity>, core::option::Option<tungsten_core::ecs::entity::Entity>)
+pub fn tungsten_kit::burst(&mut tungsten_core::ecs::world::World, &str, glam::f32::vec2::Vec2, bool) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::burst_with<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, &str, glam::f32::vec2::Vec2, bool, B) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::carried_by(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::carry(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, tungsten_kit::Hold) -> bool
 pub fn tungsten_kit::centre_of(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<glam::f32::vec2::Vec2>

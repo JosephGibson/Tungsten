@@ -9,8 +9,7 @@ use glam::Vec2;
 use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    ActionMap, Collider, DataRegistry, Entity, InputState, Particle, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, RoutedInput, Shape, Transform, World,
+    ActionMap, Collider, DataRegistry, Entity, InputState, Position, RoutedInput, Shape, World,
 };
 
 use tungsten::kit::{Aim, Children, Hurtbox};
@@ -196,126 +195,41 @@ pub fn surface_distance(at: Vec2, centre: Vec2, shape: Shape) -> f32 {
     }
 }
 
-/// At most this many bursts count at once; a cosmetic burst past it is
-/// dropped, and a key burst takes the oldest cosmetic one's slot.
+/// At most this many bursts count at once, the kit's [`Bursts`] budget's
+/// cap at boot (`game::register`); a cosmetic burst past it is dropped,
+/// and a key burst takes the oldest cosmetic one's slot.
 pub const BURST_CAP: usize = 16;
 
 /// A one-off particle burst at a point, a jump's puff or an impact's
-/// sparks, despawned once its particles are gone. Presentation: never
-/// saved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Burst {
-    /// Its place in the run's bursts, which orders the oldest first.
-    pub order: u64,
-    /// A key burst: a death, gore, a summon, a shatter or a refusal, which
-    /// the cap never drops.
-    pub key: bool,
-    /// It counts against [`BURST_CAP`]; a cosmetic burst that gave its
-    /// slot to a key one fades out uncounted.
-    pub counted: bool,
-}
+/// sparks, despawned once its particles are gone: the kit's, whose `key`
+/// marks a death, gore, a summon, a shatter or a refusal, which the cap
+/// never drops. Presentation: never saved.
+pub use tungsten::kit::ParticleBurst as Burst;
 
-/// The bursts a run has spawned, which seed the next, so a run's bursts
-/// look the same whatever entity IDs the ECS hands out.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Bursts(pub u64);
+/// The kit's burst budget, whose count of the bursts spawned seeds the
+/// next, so a run's bursts look the same whatever entity IDs the ECS hands
+/// out: a run starts it again.
+pub use tungsten::kit::BurstBudget as Bursts;
 
 /// Spawns a cosmetic burst of the particle config `name` at `at`, owned by
 /// gameplay, unless [`BURST_CAP`] bursts count or the config is unknown. It
-/// is spawned at once, so the engine's emit pass of this frame sees it.
+/// is spawned at once, so the engine's emit pass of this frame sees it
+/// ([`tungsten::kit::burst`]).
 pub fn spawn_burst(world: &mut World, name: &str, at: Vec2) -> Option<Entity> {
-    if counted_bursts(world) >= BURST_CAP {
-        return None;
-    }
-    burst(world, name, at, false)
+    tungsten::kit::burst_with(world, name, at, false, OWNED)
 }
 
 /// Spawns a key burst of the particle config `name` at `at`: a death,
 /// gore, a summon, a shatter or a refusal. At the cap, the oldest cosmetic
 /// burst gives up its slot, drained at once and no longer counted, its
-/// particles left to fade, and `burst_cleanup` sweeps it as it does a burst;
+/// particles left to fade, and the kit's sweep takes it as it does a burst;
 /// with every slot a key burst's, it is dropped.
 pub fn spawn_key_burst(world: &mut World, name: &str, at: Vec2) -> Option<Entity> {
-    if counted_bursts(world) >= BURST_CAP {
-        let oldest = world
-            .query::<(Entity, &Burst)>()
-            .filter(|(_, burst)| burst.counted && !burst.key)
-            .min_by_key(|(_, burst)| burst.order)
-            .map(|(entity, _)| entity)?;
-        if let Some(burst) = world.get_mut::<Burst>(oldest) {
-            burst.counted = false;
-        }
-        if let Some(state) = world.get_mut::<ParticleEmitterState>(oldest) {
-            state.drained = true;
-        }
-    }
-    burst(world, name, at, true)
+    tungsten::kit::burst_with(world, name, at, true, OWNED)
 }
 
-/// How many bursts count against [`BURST_CAP`].
-fn counted_bursts(world: &World) -> usize {
-    world
-        .query::<&Burst>()
-        .filter(|burst| burst.counted)
-        .count()
-}
-
-/// A burst of `name` at `at`, the run's next.
-fn burst(world: &mut World, name: &str, at: Vec2, key: bool) -> Option<Entity> {
-    let config = world
-        .get_resource::<ParticleConfigRegistry>()?
-        .id_for_name(name)?;
-    let order = match world.get_resource_mut::<Bursts>() {
-        Some(bursts) => {
-            bursts.0 = bursts.0.wrapping_add(1);
-            bursts.0
-        }
-        None => 0,
-    };
-    Some(world.spawn_with((
-        Burst {
-            order,
-            key,
-            counted: true,
-        },
-        Transform::from_position(at),
-        ParticleEmitter::with_seed(config, 0x1a_0000 + order),
-        ParticleEmitterState::default(),
-        SceneEntity { state_id: GAMEPLAY },
-    )))
-}
-
-/// `burst_cleanup`: despawns each burst whose emitter has ticked, drained
-/// and reported it, and that owns no particle.
-pub fn burst_cleanup(world: &mut World) {
-    let drained: Vec<Entity> = world
-        .query::<(Entity, &Burst, &ParticleEmitterState)>()
-        .filter(|(_, _, state)| {
-            state.first_tick_done
-                && state.drained
-                && state.drain_reported
-                && state.active_count == 0
-        })
-        .map(|(entity, ..)| entity)
-        .collect();
-    if drained.is_empty() {
-        return;
-    }
-    // One pass over the particles for every drained burst, not one each
-    // (P6).
-    let owning: std::collections::HashSet<Entity> = world
-        .query::<&Particle>()
-        .filter_map(|particle| particle.emitter)
-        .filter(|emitter| drained.contains(emitter))
-        .collect();
-    let finished: Vec<Entity> = drained
-        .into_iter()
-        .filter(|entity| !owning.contains(entity))
-        .collect();
-    for entity in finished {
-        world.despawn(entity);
-    }
-}
+/// A burst's gameplay ownership, spawned with it in one archetype move.
+const OWNED: (SceneEntity,) = (SceneEntity { state_id: GAMEPLAY },);
 
 /// Despawns `entity` and every entity that hangs from it, down the tree,
 /// at once: a body that leaves mid-step takes its art and emitters along.
