@@ -538,37 +538,61 @@
     ]
   },
   {
-    "on": "player_hurt",
+    "on": "killed",
     "filter": {
       "all": [
         "team.player"
       ]
     },
-    "do": [
-      {
-        "shake": 0.5
-      },
-      {
-        "sound": {
-          "id": "ex10_player_hit_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "player_died",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
+    "group": "player_hurt",
     "do": [
       {
         "shake": 0.8
       },
       {
         "sound": {
-          "id": "ex10_player_death_sfx"
+          "id": "ex10_player_death_sfx",
+          "at": "centre"
+        }
+      }
+    ]
+  },
+  {
+    "on": "damaged",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "periodic": false,
+    "group": "player_hurt",
+    "do": [
+      {
+        "shake": 0.5
+      },
+      {
+        "sound": {
+          "id": "ex10_player_hit_sfx",
+          "at": "centre"
+        }
+      }
+    ]
+  },
+  {
+    "on": "damaged",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "periodic": true,
+    "group": "player_hurt",
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_player_tick_sfx",
+          "min_interval": 0.15,
+          "at": "centre"
         }
       }
     ]
@@ -584,22 +608,6 @@
       {
         "sound": {
           "id": "ex10_staff_gutter_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "crawler_scared",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_crawler_scared_sfx",
-          "min_interval": 0.4
         }
       }
     ]
@@ -1183,22 +1191,6 @@
     ]
   },
   {
-    "on": "crawler_retreated",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_crawler_retreat_sfx",
-          "min_interval": 0.2
-        }
-      }
-    ]
-  },
-  {
     "on": "crawler_hopped",
     "filter": {
       "all": [
@@ -1306,22 +1298,6 @@
         "sound": {
           "id": "ex10_ground_strike_sfx",
           "min_interval": 0.1
-        }
-      }
-    ]
-  },
-  {
-    "on": "player_ticked",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_player_tick_sfx",
-          "min_interval": 0.15
         }
       }
     ]

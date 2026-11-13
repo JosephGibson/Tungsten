@@ -880,11 +880,7 @@ fn a_crawler_is_scared_at_the_drawn_light() {
             harness.step(1);
             let (centre, reach) = fear(&harness);
             nearest = nearest.min(at(&harness, crawler).distance(centre) - reach);
-            hisses += harness
-                .harness()
-                .events::<Sounded>()
-                .filter(|sounded| sounded.sound == Sound::CrawlerScared)
-                .count();
+            hisses += played(&harness, "ex10_crawler_scared_sfx");
             puffs = puffs.max(super::bursts(&harness, FROST_BREATH));
         }
         assert!(nearest >= -1.0, "outside its fear's edge: {nearest}");
@@ -919,6 +915,73 @@ fn a_crawler_is_scared_at_the_drawn_light() {
     }
 }
 
+#[test]
+fn a_crawler_scared_again_within_its_hold_starts_no_new_scare() {
+    use std::collections::BTreeMap;
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 1400.0, TOP);
+    still(&mut harness, crawler);
+    harness.step(2);
+    // Its frost breath's bursts by their order, with their points, and its
+    // hisses.
+    let mut puffs: BTreeMap<u64, Vec2> = BTreeMap::new();
+    let mut hisses = 0;
+    let run = |harness: &mut UiHarness,
+               frames: u32,
+               effect: Option<&str>,
+               puffs: &mut BTreeMap<u64, Vec2>,
+               hisses: &mut usize| {
+        if let Some(effect) = effect {
+            tungsten::kit::EffectRequest::new(crawler, tungsten::core::DataRef::by_id(effect))
+                .apply(harness.world_mut());
+        }
+        for _ in 0..frames {
+            harness.step(1);
+            let world = harness.world();
+            let breath = world
+                .resource::<tungsten::core::ParticleConfigRegistry>()
+                .id_for_name(FROST_BREATH);
+            for (burst, emitter, at) in world.query::<(
+                &example_01_platformer::shared::Burst,
+                &tungsten::core::ParticleEmitter,
+                &tungsten::core::Transform,
+            )>() {
+                if Some(emitter.config) == breath {
+                    puffs.entry(burst.order).or_insert(at.position);
+                }
+            }
+            *hisses += played(harness, "ex10_crawler_scared_sfx")
+                + played(harness, "ex10_crawler_retreat_sfx");
+        }
+    };
+    // A refusal, a retreat 0.2 s later and another refusal 0.3 s after
+    // that: one scare, its puff at the mouth.
+    run(&mut harness, 12, Some("scared"), &mut puffs, &mut hisses);
+    assert!(crawler::scared(harness.world(), crawler), "scared");
+    run(
+        &mut harness,
+        18,
+        Some("retreating"),
+        &mut puffs,
+        &mut hisses,
+    );
+    run(&mut harness, 2, Some("scared"), &mut puffs, &mut hisses);
+    assert_eq!((puffs.len(), hisses), (1, 1), "one puff and one hiss");
+    let heading = enemies::heading_of(harness.world(), crawler).unwrap();
+    let mouth = at(&harness, crawler) + Vec2::new(heading * 26.0, -2.0);
+    let first = *puffs.values().next().unwrap();
+    assert!(
+        first.distance(mouth) < 0.5,
+        "at its mouth: {first} for {mouth}"
+    );
+    // Quiet for 0.5 s, its scare over; then a refusal starts another.
+    run(&mut harness, 30, None, &mut puffs, &mut hisses);
+    assert!(!crawler::scared(harness.world(), crawler), "its scare over");
+    run(&mut harness, 2, Some("scared"), &mut puffs, &mut hisses);
+    assert_eq!((puffs.len(), hisses), (2, 2), "a second scare");
+}
+
 /// The arena's player facing right with its staff lit, at x 900, and the
 /// light's centre.
 fn lit_arena() -> (UiHarness, Entity, Vec2) {
@@ -946,7 +1009,7 @@ fn a_crawler_in_the_light_backs_out_past_its_fear_facing_the_player() {
     let (mut out, mut retreats, mut clips) = (None, 0, Vec::new());
     for frame in 1..=90 {
         harness.step(1);
-        retreats += heard(&harness, Sound::CrawlerRetreated);
+        retreats += played(&harness, "ex10_crawler_retreat_sfx");
         assert_ne!(state(&harness, crawler), EnemyState::WindUp, "no tell");
         clips.push(
             harness
@@ -1694,6 +1757,20 @@ fn charge(harness: &mut UiHarness, beetle: Entity, heading: f32) {
     let world = harness.world_mut();
     enemies::turn(world, beetle, heading);
     world.insert(beetle, StateMachine::new(EnemyState::Attack));
+}
+
+/// How often manifest sound `id` played in the last frame.
+fn played(harness: &UiHarness, id: &str) -> usize {
+    let sound = harness
+        .world()
+        .resource::<tungsten::core::SoundRegistry>()
+        .get_by_id(id);
+    harness
+        .harness()
+        .audio()
+        .iter()
+        .filter(|command| matches!(command, AudioCommand::Play { handle, .. } if Some(*handle) == sound))
+        .count()
 }
 
 /// How often `sound` was heard in the last frame.

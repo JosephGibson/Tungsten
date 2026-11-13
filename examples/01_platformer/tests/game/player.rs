@@ -479,11 +479,11 @@ fn a_blow_tints_the_courier_red_for_a_moment() {
 
 /// The player's hurt edge, the share `Moves` holds and the alpha its quad
 /// over the view draws at, the edge's art mocked as texture 970; and the
-/// frame's ticks and hurts.
+/// frame's ticks and hurts, the plays of their cue rules' sounds.
 fn edge(harness: &UiHarness, player: Entity) -> (f32, Option<u8>, usize, usize) {
-    use example_01_platformer::features::audio::components::{Sound, Sounded};
     use example_01_platformer::features::combat::draw;
     use example_01_platformer::features::level::draw::view;
+    use tungsten::core::{AudioCommand, SoundRegistry};
     let world = harness.world();
     let (min, max) = view(world);
     let drawn: Vec<u8> = draw::edge(world)
@@ -494,18 +494,20 @@ fn edge(harness: &UiHarness, player: Entity) -> (f32, Option<u8>, usize, usize) 
         .map(|quad| quad.color[3])
         .collect();
     assert!(drawn.len() <= 1, "{drawn:?}");
-    let count = |sound: Sound| {
+    let count = |id: &str| {
+        let sound = world.resource::<SoundRegistry>().get_by_id(id);
         harness
             .harness()
-            .events::<Sounded>()
-            .filter(|sounded| sounded.sound == sound)
+            .audio()
+            .iter()
+            .filter(|command| matches!(command, AudioCommand::Play { handle, .. } if Some(*handle) == sound))
             .count()
     };
     (
         world.get::<Moves>(player).unwrap().edge,
         drawn.first().copied(),
-        count(Sound::PlayerTicked),
-        count(Sound::PlayerHurt),
+        count("ex10_player_tick_sfx"),
+        count("ex10_player_hit_sfx"),
     )
 }
 

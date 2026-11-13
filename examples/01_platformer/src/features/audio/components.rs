@@ -112,14 +112,8 @@ pub enum Sound {
     TrollThrow,
     /// A shot through a wooden deck.
     Splintered,
-    /// The player hurt by a blow, never by a tick (X1).
-    PlayerHurt,
     /// The staff light guttering out for want of mana.
     StaffGuttered,
-    /// A crawler shrinking from the light's edge.
-    CrawlerScared,
-    /// The player killed, by a blow or a tick.
-    PlayerDied,
     /// Lava crusting over under the ice spray.
     LavaSet,
     /// The mine's elevator setting off, and arriving.
@@ -190,9 +184,7 @@ pub enum Sound {
     Bounded,
     /// A beetle's charge setting a body moving out of its way (e01foes).
     BeetlePloughed,
-    /// A crawler backing out of the staff light's fear, and its hop or
-    /// leap (e01foes).
-    CrawlerRetreated,
+    /// A crawler's hop or leap (e01foes).
     CrawlerHopped,
     /// A crawler's snowball thrown, and its burst (e01foes).
     SnowballThrown,
@@ -205,9 +197,6 @@ pub enum Sound {
     /// Lightning striking the ground or a deck, in place of the snap a
     /// body takes (e01sfx).
     GroundStruck,
-    /// A tick of damage on the player that does not kill it, apart from a
-    /// blow's hurt (e01sfx).
-    PlayerTicked,
     /// A crate breaking into its planks under a heavy hit (e01sfx).
     CrateBroke,
     /// A geyser's sputter starting, and its eruption (e01hollow).
@@ -224,7 +213,7 @@ pub enum Sound {
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 89] = [
+    pub const ALL: [Sound; 84] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -258,10 +247,7 @@ impl Sound {
         Sound::TrollSlam,
         Sound::TrollThrow,
         Sound::Splintered,
-        Sound::PlayerHurt,
         Sound::StaffGuttered,
-        Sound::CrawlerScared,
-        Sound::PlayerDied,
         Sound::LavaSet,
         Sound::LiftStarted,
         Sound::LiftStopped,
@@ -298,7 +284,6 @@ impl Sound {
         Sound::TomeArcaneTaken,
         Sound::Bounded,
         Sound::BeetlePloughed,
-        Sound::CrawlerRetreated,
         Sound::CrawlerHopped,
         Sound::SnowballThrown,
         Sound::SnowballBurst,
@@ -306,7 +291,6 @@ impl Sound {
         Sound::GoblinDashed,
         Sound::GoblinYelped,
         Sound::GroundStruck,
-        Sound::PlayerTicked,
         Sound::CrateBroke,
         Sound::GeyserSputter,
         Sound::GeyserErupt,
@@ -353,10 +337,7 @@ impl Sound {
             Sound::TrollSlam => "troll_slammed",
             Sound::TrollThrow => "troll_threw",
             Sound::Splintered => "splintered",
-            Sound::PlayerHurt => "player_hurt",
             Sound::StaffGuttered => "staff_guttered",
-            Sound::CrawlerScared => "crawler_scared",
-            Sound::PlayerDied => "player_died",
             Sound::LavaSet => "lava_set",
             Sound::LiftStarted => "lift_started",
             Sound::LiftStopped => "lift_stopped",
@@ -393,7 +374,6 @@ impl Sound {
             Sound::TomeArcaneTaken => "tome_arcane_taken",
             Sound::Bounded => "bounded",
             Sound::BeetlePloughed => "beetle_ploughed",
-            Sound::CrawlerRetreated => "crawler_retreated",
             Sound::CrawlerHopped => "crawler_hopped",
             Sound::SnowballThrown => "snowball_thrown",
             Sound::SnowballBurst => "snowball_burst",
@@ -401,7 +381,6 @@ impl Sound {
             Sound::GoblinDashed => "goblin_dashed",
             Sound::GoblinYelped => "goblin_yelped",
             Sound::GroundStruck => "ground_struck",
-            Sound::PlayerTicked => "player_ticked",
             Sound::CrateBroke => "crate_broke",
             Sound::GeyserSputter => "geyser_sputtered",
             Sound::GeyserErupt => "geyser_erupted",

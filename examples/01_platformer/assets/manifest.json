@@ -874,6 +874,9 @@
       }
     },
     "cue_rules": {
+      "blood": {
+        "path": "data/cue_rules/blood.json"
+      },
       "sounds": {
         "path": "data/cue_rules/sounds.json"
       },
@@ -970,6 +973,12 @@
       },
       "prop_doused": {
         "path": "data/effects/prop_doused.json"
+      },
+      "retreating": {
+        "path": "data/effects/retreating.json"
+      },
+      "scared": {
+        "path": "data/effects/scared.json"
       },
       "shatter_build": {
         "path": "data/effects/shatter_build.json"

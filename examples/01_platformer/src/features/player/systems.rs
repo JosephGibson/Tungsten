@@ -313,12 +313,11 @@ pub fn staff_light(world: &mut World) {
     }
 }
 
-/// `player_hurt`, in the react phase: a blow on the player plays its hurt
-/// sound, shake, tint and clip and fills the hurt edge, and the hit that
-/// kills it, a blow or a tick, its death sound and a harder shake in their
-/// place; a tick of burning or bleeding that does not kill raises the edge
-/// to [`TICK_EDGE`] at least and plays its soft tick, once a step however
-/// many land (K1 stays). `cursor` reads each hit once.
+/// `player_hurt`, in the react phase: a blow on the player plays its tint
+/// and clip and fills the hurt edge; a tick of burning or bleeding that does
+/// not kill raises the edge to [`TICK_EDGE`] at least (K1 stays). Its
+/// sounds and shakes are the `player_hurt` group's cue rules: the death's,
+/// a blow's or a tick's, once a step. `cursor` reads each hit once.
 pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     let Some(player) = player(world) else {
         return;
@@ -340,18 +339,6 @@ pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
         } else if ticked && !killed {
             moves.edge = moves.edge.max(TICK_EDGE);
         }
-    }
-    let sound = if killed {
-        Sound::PlayerDied
-    } else if hurt {
-        Sound::PlayerHurt
-    } else {
-        Sound::PlayerTicked
-    };
-    if (hurt || ticked || killed)
-        && let Some(at) = body_centre(world, player)
-    {
-        audio::play(world, sound, at);
     }
 }
 

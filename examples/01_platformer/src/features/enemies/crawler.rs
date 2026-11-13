@@ -10,17 +10,17 @@
 //! silent tell ([`super::snowball`]), the light burning or not.
 
 use glam::Vec2;
-use tungsten::core::{Entity, PhysicsConfig, Position, Time, Velocity, World};
-use tungsten::kit::{PlatformerController, lob_velocity};
+use tungsten::core::{DataRef, Entity, PhysicsConfig, Position, Velocity, World};
+use tungsten::kit::{EffectRequest, PlatformerController, lob_velocity};
 
-use super::components::{Brain, Enemy, EnemyKind, EnemyState, Scared, Strike};
+use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
 use super::hop::{self, Ahead, Hops, Leap, grounded};
 use super::systems::{blocked, elapsed, face, go, player, rest, sees, stride};
 use super::{ARRIVED, centre, heading_of, snowball, troll};
 use crate::features::audio::{self, components::Sound};
+use crate::features::combat::has_status;
 use crate::features::level::components::Glow;
 use crate::features::player::components::Lantern;
-use crate::shared::spawn_burst;
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.5;
@@ -47,10 +47,14 @@ pub const LUNGE_MOST: f32 = 1.0;
 pub const DAMAGE: f32 = 15.0;
 pub const MOVE_SPEED: f32 = 210.0;
 /// How long its scared look holds after the light last refused its walk,
-/// in game seconds: a refusal after that starts a new scare, with its hiss
-/// and its puff of frost breath (B4).
+/// in game seconds, its `scared` and `retreating` effects' duration: a
+/// refusal after that starts a new scare, whose effect's cue rules puff its
+/// frost breath and hiss at its mouth (B4).
 pub const SCARED_HOLD: f32 = 0.4;
 pub const FROST_BREATH: &str = "ex10_frost_breath";
+/// Its scare's statuses: held at the fear's edge, or backing out of it.
+pub const SCARED: &str = "status.scared";
+pub const RETREATING: &str = "status.retreating";
 /// Its fear's reach over the staff light's drawn one (V20): 227.5 px for
 /// the staff's 175, the drawn light unchanged.
 pub const FEAR_SHARE: f32 = 1.3;
@@ -125,33 +129,20 @@ fn into_light(world: &World, crawler: Entity, heading: f32) -> bool {
 }
 
 /// Whether `crawler` shows its scare: the light refused its walk, or drove
-/// it back, within [`SCARED_HOLD`].
+/// it back, within [`SCARED_HOLD`], its [`SCARED`] or [`RETREATING`]
+/// status.
 #[must_use]
 pub fn scared(world: &World, crawler: Entity) -> bool {
-    let now = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
-    world
-        .get::<Scared>(crawler)
-        .is_some_and(|scared| now - scared.at <= f64::from(SCARED_HOLD))
+    has_status(world, crawler, SCARED) || has_status(world, crawler, RETREATING)
 }
 
-/// The light refused `crawler`'s walk, or, `retreating`, drives it back: a
-/// scare starts, with a puff of frost breath at its mouth and its hiss, or
-/// its retreat's longer one, unless one shows already.
+/// The light refused `crawler`'s walk, or, `retreating`, drives it back:
+/// its `scared` or `retreating` effect applied for [`SCARED_HOLD`], or
+/// refreshed. A fresh one's cue rule puffs frost breath at its mouth and
+/// hisses, or its retreat's longer hiss, unless the other shows already.
 fn scare(world: &mut World, crawler: Entity, retreating: bool) {
-    let fresh = !scared(world, crawler);
-    let now = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
-    world.insert(crawler, Scared { at: now });
-    let heading = heading_of(world, crawler).unwrap_or(1.0);
-    if let (true, Some(at)) = (fresh, centre(world, crawler)) {
-        let mouth = at + Vec2::new(heading * 26.0, -2.0);
-        spawn_burst(world, FROST_BREATH, mouth);
-        let sound = if retreating {
-            Sound::CrawlerRetreated
-        } else {
-            Sound::CrawlerScared
-        };
-        audio::play(world, sound, mouth);
-    }
+    let effect = if retreating { "retreating" } else { "scared" };
+    EffectRequest::new(crawler, DataRef::by_id(effect)).apply(world);
 }
 
 /// Stands `crawler` at its fear's edge, facing the player, scared.

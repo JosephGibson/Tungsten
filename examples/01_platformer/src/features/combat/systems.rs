@@ -19,7 +19,7 @@ use tungsten::kit::{
 
 use super::components::{StatusEmitter, StatusLook};
 use super::{
-    ARMOURED, BURNING, CHILL_BUILD, CHILL_NEEDS, CHILLED, CORRODED, DOUSED, FLESH, FREEZABLE,
+    ARMOURED, BURNING, CHILL_BUILD, CHILL_NEEDS, CHILLED, CORRODED, DOUSED, FREEZABLE,
     FREEZE_BUILDS, FREEZE_NEEDS, FROZEN, Kind, POISONED, SHOCKED, STATUS_THRESHOLD, has_status,
 };
 use crate::features::audio::{self, components::Sound};
@@ -72,9 +72,8 @@ pub fn states(world: &mut World) {
 /// kit's `ImmunePart`: a frozen wisp, which takes no fire, or a burning
 /// frost crawler, which takes no cold) is sent on as its type to a target
 /// that was frozen, or burning, as the resolve began, credited to its
-/// source, for chemistry's next run. A blow, a physical part that is not a tick, on a `flesh`
-/// target or the courier spurts blood where it landed, once a target a
-/// step, and `bleeding` applied spurts again; a target frozen this step
+/// source, for chemistry's next run. A blow's blood and `bleeding`'s spurt
+/// are cue rules (`data/cue_rules/blood.json`); a target frozen this step
 /// (frozen now, not as the resolve began), in place too, bursts in frost,
 /// its sound a cue rule's. A geyser's fire part on a target neither burning,
 /// frozen nor doused sets it burning from the geyser, once a target a step,
@@ -84,7 +83,7 @@ pub fn reactions(
     world: &mut World,
     parts: &mut EventCursor<DamagedPart>,
     immune: &mut EventCursor<ImmunePart>,
-    applied: &mut EventCursor<EffectApplied>,
+    _applied: &mut EventCursor<EffectApplied>,
 ) {
     let states = world
         .get_resource::<ResolveStates>()
@@ -92,7 +91,6 @@ pub fn reactions(
         .unwrap_or_default();
     let player = world.get_resource::<Run>().map(|run| run.player);
     let mut sent: Vec<(Entity, &'static str, f32, Option<Entity>)> = Vec::new();
-    let mut blows: Vec<(Entity, Option<Vec2>)> = Vec::new();
     let mut burns: Vec<(Entity, Entity)> = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<DamagedPart>>() {
         for part in parts.read(events) {
@@ -106,13 +104,6 @@ pub fn reactions(
                 && !burns.iter().any(|(target, _)| *target == part.entity)
             {
                 burns.push((part.entity, geyser));
-            }
-            let bleeds = Some(part.entity) == player || has_status(world, part.entity, FLESH);
-            if bleeds
-                && part.kinds.has(world, Kind::Physical.tag())
-                && !blows.iter().any(|(target, _)| *target == part.entity)
-            {
-                blows.push((part.entity, part.position));
             }
         }
     }
@@ -131,14 +122,6 @@ pub fn reactions(
             }
         }
     }
-    let mut spurts = Vec::new();
-    if let Some(events) = world.get_resource::<EventQueue<EffectApplied>>() {
-        for effect in applied.read(events) {
-            if effect.id.as_deref() == Some("bleeding") {
-                spurts.push(effect.entity);
-            }
-        }
-    }
     for (target, geyser) in burns {
         let lit = [BURNING, FROZEN, DOUSED]
             .into_iter()
@@ -147,16 +130,6 @@ pub fn reactions(
             EffectRequest::new(target, DataRef::by_id("burning"))
                 .with_source(geyser)
                 .apply(world);
-        }
-    }
-    for (target, at) in blows {
-        if let Some(at) = at.or_else(|| body_centre(world, target)) {
-            spawn_burst(world, "ex10_blood_burst", at);
-        }
-    }
-    for target in spurts {
-        if let Some(at) = body_centre(world, target) {
-            spawn_burst(world, "ex10_blood_spurt", at);
         }
     }
     let mut froze: Vec<(Option<SaveId>, Entity)> = world

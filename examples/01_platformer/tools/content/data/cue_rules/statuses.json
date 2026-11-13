@@ -70,5 +70,73 @@
         }
       }
     ]
+  },
+  {
+    "on": "effect_applied",
+    "effect": "scared",
+    "fresh": true,
+    "filter": {
+      "none": [
+        "status.retreating"
+      ]
+    },
+    "do": [
+      {
+        "burst": {
+          "particles": "ex10_frost_breath",
+          "key": false,
+          "at": "centre",
+          "offset": [
+            26,
+            -2
+          ]
+        }
+      },
+      {
+        "sound": {
+          "id": "ex10_crawler_scared_sfx",
+          "min_interval": 0.4,
+          "at": "centre",
+          "offset": [
+            26,
+            -2
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "on": "effect_applied",
+    "effect": "retreating",
+    "fresh": true,
+    "filter": {
+      "none": [
+        "status.scared"
+      ]
+    },
+    "do": [
+      {
+        "burst": {
+          "particles": "ex10_frost_breath",
+          "key": false,
+          "at": "centre",
+          "offset": [
+            26,
+            -2
+          ]
+        }
+      },
+      {
+        "sound": {
+          "id": "ex10_crawler_retreat_sfx",
+          "min_interval": 0.2,
+          "at": "centre",
+          "offset": [
+            26,
+            -2
+          ]
+        }
+      }
+    ]
   }
 ]

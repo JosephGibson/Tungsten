@@ -671,7 +671,7 @@ fn lists(kind: &str) -> Lists {
             }
         }
         "wisp" | "crawler" | "beetle" | "bat" | "troll" | "goblin" => {
-            use example_01_platformer::features::enemies::components::{Scared, Shown};
+            use example_01_platformer::features::enemies::components::Shown;
 
             Lists {
                 recorded: Vec::new(),
@@ -695,7 +695,6 @@ fn lists(kind: &str) -> Lists {
                         name::<HitFlash>(),
                         name::<GlowParts>(),
                         name::<Shown>(),
-                        name::<Scared>(),
                     ],
                 ]
                 .concat(),
