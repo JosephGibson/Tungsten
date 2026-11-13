@@ -843,16 +843,15 @@ fn an_end_blast_goes_off_at_each_of_its_ends_and_not_at_a_lifetimes() {
         let shot = bolt(&mut world, blasting(projectile));
         world.insert(shot, Source::new(shooter));
         let mut ended = None;
+        let mut hurt = Vec::new();
         for _ in 0..60 {
             let (expired, parts) = blast_step(&mut world, &mut schedule);
-            assert!(
-                parts_on(&parts, near).is_empty(),
-                "{end}: nothing before it ends"
-            );
+            hurt = parts_on(&parts, near);
             if let Some(expired) = expired.iter().find(|expired| expired.entity == shot) {
                 ended = Some(expired.position);
                 break;
             }
+            assert!(hurt.is_empty(), "{end}: nothing before it ends");
         }
         let at = ended.unwrap_or_else(|| panic!("{end}: it ends"));
         assert!(
@@ -861,12 +860,10 @@ fn an_end_blast_goes_off_at_each_of_its_ends_and_not_at_a_lifetimes() {
         );
         assert!(
             world.resource::<Blasts>().0.is_empty(),
-            "{end}: set off by its step's run"
+            "{end}: never queued for chemistry's run"
         );
-        // At the next step's resolve: 10 at 1 - 30 / 50, from its source, at
+        // At its own step's resolve: 10 at 1 - 30 / 50, from its source, at
         // depth 0; nothing where it passed, turned or met the first.
-        let (_, parts) = blast_step(&mut world, &mut schedule);
-        let hurt = parts_on(&parts, near);
         assert_eq!(hurt.len(), 1, "{end}: {hurt:?}");
         assert!((hurt[0].0 - 4.0).abs() < 1e-4, "{end}: {hurt:?}");
         assert_eq!((hurt[0].1, hurt[0].2), (Some(shooter), 0), "{end}");
@@ -878,6 +875,8 @@ fn an_end_blast_goes_off_at_each_of_its_ends_and_not_at_a_lifetimes() {
             );
         }
         // The kit despawned it at its step's end; its end went off once.
+        let (_, parts) = blast_step(&mut world, &mut schedule);
+        assert!(parts_on(&parts, near).is_empty(), "{end}: once");
         assert!(!world.is_alive(shot), "{end}");
         assert!(world.resource::<Blasts>().0.is_empty(), "{end}");
     }
@@ -897,8 +896,8 @@ fn an_end_blast_goes_off_at_each_of_its_ends_and_not_at_a_lifetimes() {
 
 #[test]
 fn an_end_blast_goes_off_with_no_rule_and_an_empty_queue() {
-    // Chemistry with no `interactions` entry and nothing queued: its run
-    // takes the blast the step it is queued.
+    // Chemistry with no `interactions` entry and nothing queued: the end's
+    // blast goes off in its own step all the same.
     let (mut world, mut schedule) = blast_rig(true);
     assert!(!crate::chemistry::rules::any_rule(&world));
     let near = bystander(&mut world, Vec2::new(30.0, 20.0));
@@ -908,7 +907,7 @@ fn an_end_blast_goes_off_with_no_rule_and_an_empty_queue() {
         assert!(expired.is_empty());
     }
     assert_eq!(world.resource::<crate::Chemistry>().pending(), 0);
-    let (expired, _) = blast_step(&mut world, &mut schedule);
+    let (expired, parts) = blast_step(&mut world, &mut schedule);
     assert_eq!(
         expired
             .iter()
@@ -918,10 +917,10 @@ fn an_end_blast_goes_off_with_no_rule_and_an_empty_queue() {
     );
     assert!(
         world.resource::<Blasts>().0.is_empty(),
-        "set off by the step's run"
+        "never queued for chemistry's run"
     );
-    // 10 at 1 - 20 / 50, credited to the bolt itself, which has no source.
-    let (_, parts) = blast_step(&mut world, &mut schedule);
+    // 10 at 1 - 20 / 50 at the step's resolve, credited to the bolt
+    // itself, which has no source.
     let hurt = parts_on(&parts, near);
     assert_eq!(hurt.len(), 1, "{hurt:?}");
     assert!((hurt[0].0 - 6.0).abs() < 1e-4, "{hurt:?}");
@@ -988,8 +987,8 @@ fn a_projectile_takes_an_end_from_rust() {
         blasting(Projectile::new().with_range(30.0)),
         "the data form's end"
     );
-    // It goes off as data's does: 10 at 1 − 20 / 50 at the next resolve,
-    // credited to the bolt; with `land` `now`, in its own step.
+    // It goes off as data's does: 10 at 1 − 20 / 50 in the step it ends,
+    // credited to the bolt, queued or with `land` `now`.
     for now in [false, true] {
         let (mut world, mut schedule) = blast_rig(true);
         let near = bystander(&mut world, Vec2::new(30.0, 20.0));
@@ -1010,13 +1009,152 @@ fn a_projectile_takes_an_end_from_rust() {
                 landed_at = Some(step);
             }
         }
-        assert_eq!(
-            landed_at,
-            Some(if now { 2 } else { 3 }),
-            "now: {now}, the step it ended is 2"
-        );
+        assert_eq!(landed_at, Some(2), "now: {now}, the step it ended");
         assert!((world.get::<crate::Health>(near).unwrap().current() - 94.0).abs() < 1e-4);
     }
+}
+
+// 7.13c's foes and cues, Step 1: an end's blast in its own step.
+
+/// The tracked target's health as each step's projectiles are done, before
+/// the step's resolve: a World resource of [`ending_rig`]'s.
+#[derive(Default)]
+struct Probe(Option<Entity>, Vec<f32>);
+
+/// [`blast_rig`] with effects, the tag `creature` and a probe after the
+/// projectiles; with `chemistry`, a rule dazing each creature a blast
+/// reaches.
+fn ending_rig(chemistry: bool) -> (World, Schedule) {
+    use tungsten_core::physics::PhysicsPlugin;
+
+    let mut world = World::new();
+    world.insert_resource(tungsten_core::Time::new());
+    world.insert_resource(tungsten_core::CommandBuffer::new());
+    world.insert_resource(tungsten_core::TilemapRegistry::new());
+    world.insert_resource(crate::foundation::trace::KitTrace::default());
+    world.insert_resource(Probe::default());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    crate::TagsPlugin::new()
+        .with_tags(["creature"])
+        .build(&mut schedule, &mut world);
+    crate::StatsPlugin::new().build(&mut schedule, &mut world);
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    crate::EffectsPlugin.build(&mut schedule, &mut world);
+    crate::LinearMotionPlugin.build(&mut schedule, &mut world);
+    crate::LifetimePlugin.build(&mut schedule, &mut world);
+    if chemistry {
+        crate::ChemistryPlugin::new().build(&mut schedule, &mut world);
+    }
+    ProjectilePlugin.build(&mut schedule, &mut world);
+    schedule.add(
+        Phase::Overlap.stage(),
+        Phase::Overlap
+            .join(system("probe", |world: &mut World| {
+                let Some(tracked) = world.resource::<Probe>().0 else {
+                    return;
+                };
+                let health = world.get::<crate::Health>(tracked).unwrap().current();
+                world.resource_mut::<Probe>().1.push(health);
+            }))
+            .after(PROJECTILE_TICK),
+    );
+    schedule.resolve().unwrap();
+    let data = world.resource_mut::<tungsten_core::DataRegistry>();
+    data.insert("dazed", crate::Effect::new());
+    if chemistry {
+        let rule: crate::Interaction = serde_json::from_value(json!({
+            "stimulus": "stimulus.blast", "on": { "all": ["creature"] },
+            "outputs": [{ "apply": { "status": "dazed" } }]
+        }))
+        .unwrap();
+        data.insert("daze", rule);
+    }
+    (world, schedule)
+}
+
+#[test]
+fn an_end_blast_lands_in_its_own_step() {
+    use tungsten_core::physics::RigidBodyBundle;
+
+    // A bolt ending at a wall whose face is at x 95, its centre at x 93,
+    // beside a goblin 30 px below: 10 at 1 - 30 / 50.
+    for now in [false, true] {
+        let (mut world, mut schedule) = ending_rig(true);
+        world.spawn_with(RigidBodyBundle::r#static(
+            Position::new(100.0, 0.0),
+            Collider::aabb(Vec2::new(5.0, 50.0)),
+        ));
+        let goblin = world.spawn_with((
+            tungsten_core::Transform::from_position(Vec2::new(93.0, 30.0)),
+            crate::Health::new(100.0),
+            crate::Tags::new(["creature"]),
+        ));
+        world.resource_mut::<Probe>().0 = Some(goblin);
+        let mut end = crate::Blast::new(50.0).with_damage(10.0);
+        if now {
+            end = end.landing_now();
+        }
+        let shot = bolt(&mut world, Projectile::new().with_end(end));
+        let mut ended = None;
+        for step in 0..20 {
+            let (expired, parts) = blast_step(&mut world, &mut schedule);
+            let hurt = parts_on(&parts, goblin);
+            if expired.iter().any(|expired| expired.entity == shot) {
+                ended = Some((step, hurt));
+                break;
+            }
+            assert!(hurt.is_empty(), "now {now}: nothing before its end");
+        }
+        let (step, hurt) = ended.expect("it ends at the wall");
+        assert_eq!(hurt.len(), 1, "now {now}: in its own step: {hurt:?}");
+        assert!((hurt[0].0 - 4.0).abs() < 1e-4, "now {now}: {hurt:?}");
+        // Queued, the hit waits for the step's resolve; landing now, it is
+        // in before the projectiles' step is over.
+        let probed = world.resource::<Probe>().1[step];
+        let want = if now { 96.0 } else { 100.0 };
+        assert!(
+            (probed - want).abs() < 1e-4,
+            "now {now}: {probed} as the projectiles finish"
+        );
+        assert!(
+            world
+                .get::<crate::Effects>(goblin)
+                .is_some_and(|effects| effects.has("dazed")),
+            "now {now}: dazed by its stimulus at the step's run"
+        );
+    }
+    // Without chemistry: its skip traced, nothing landed.
+    let (mut world, mut schedule) = ending_rig(false);
+    let goblin = world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::new(30.0, 20.0)),
+        crate::Health::new(100.0),
+        crate::Tags::new(["creature"]),
+    ));
+    let shot = bolt(
+        &mut world,
+        Projectile::new()
+            .with_range(30.0)
+            .with_end(crate::Blast::new(50.0).with_damage(10.0).landing_now()),
+    );
+    for _ in 0..6 {
+        blast_step(&mut world, &mut schedule);
+    }
+    let skipped = world
+        .resource::<crate::foundation::trace::KitTrace>()
+        .about(shot)
+        .filter(|entry| {
+            matches!(
+                entry.kind,
+                TraceKind::Skipped {
+                    action: "blast",
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(skipped, 1);
+    assert_eq!(world.get::<crate::Health>(goblin).unwrap().current(), 100.0);
 }
 
 // 7.13c: a projectile's own shape, bodies as walls and named layers.

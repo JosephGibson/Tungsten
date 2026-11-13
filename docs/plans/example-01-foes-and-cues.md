@@ -1,6 +1,6 @@
-# 01's blasts, impacts and cues on the kit (example-01-foes-and-cues) — draft
+# 01's blasts, impacts and cues on the kit (example-01-foes-and-cues) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13c's foes and cues, the first of its two plans (§2.1). In the kit: a projectile's end blast set off at its end, blasts that pass the dead, the impact record taken before the kit's movers and a dead credit that credits nobody; one-off particle bursts under a game's budget as a cue action, occurrences at their subject's body centre and an action's own place; rule groups and a part label's step order. Then example 01's blasts, shakes and body impacts on the kit (S-4, S-73, S-121, P7-2's 01 part), and its cues and numbers of hits, impacts and pickups, its crawler's scare and its centred spawns (S-12, S-41, S-88, S-96, S-100, S-122), its tests unchanged (§2.2) and its older saves loading whole (§2.13).
 - **non-goals:**
   - The eleven rows split to **7.13c's foes**, written when this plan closes (§2.1): the foes' clips, looks, bar, timers and attack clocks, carry, flight, snowball and per-kind data (S-10, S-20, S-21, S-30, S-34, S-36, S-37, S-52, S-92, S-158, S-189); S-10's slam ring and marks need art in the locked effects family first.
@@ -303,5 +303,6 @@ Round 2: the same reviewer at xhigh, 2026-11-12, `--repo` on the plan without th
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-12 | landed | `cargo test -p tungsten-kit --lib --locked -- overlap::projectile:: overlap::impact:: chemistry::` → exit 0, "75 passed, 936 filtered out", `an_end_blast_lands_in_its_own_step`, `a_blast_passes_the_dead`, `the_impact_record_keeps_what_a_body_carries_into_the_step`, `a_dead_credit_credits_nobody` and the three moved tests among them (before the change only those three failed, at `:848`, `:926`, `:1013`; the two new impact tests fail on HEAD's `impact.rs`, a negative control); `cargo test -p tungsten --lib --locked -- kit_tests:: kit_recipes::` → exit 0, 278 passed, `KIT_FIXED_UPDATE` `… phases, kit_move, impact_record, path_follow, …`, `the_recipes_hash_the_same_twice_and_match_the_pin` ok; `cargo test -p tungsten-template-basic --locked` → exit 0, 184 passed, its schedule moved alike; `cargo test -p example-02-bench guards_` → exit 0, 16 passed, no pin rewritten; 01 `cargo test --test game` → exit 0, "434 passed, 1 ignored", the pit pin unchanged; `just api` then `git diff --stat api/` → `api/tungsten-kit.txt` alone (+2, `Projectile::end_blast`); `cargo fmt --all -- --check`, `just lint`, `just repo-check`, `just ctx`, `just docs-ratchet` → exit 0. Moves: both fixed-update pins, the three timing tests (each hit now in its ending step), the frag grenade's comment, `api/`. Also: `busy` drops its projectile-end case (nothing queues `Blasts` outside a run); an impact on a target an earlier hit of the pass killed lands no more | `crates/tungsten-kit/src/overlap/`, `crates/tungsten-kit/src/chemistry/`, `crates/tungsten-kit/src/tests/`, `crates/tungsten/src/tests/`, `templates/basic/tests/game/sample.rs`, `api/`, `DESIGN.md` |
 
 ## Follow-ups

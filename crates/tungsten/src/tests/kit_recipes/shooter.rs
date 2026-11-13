@@ -1979,7 +1979,8 @@ fn a_frag_grenade_spares_its_thrower_and_keeps_half_at_its_edge() {
         }
         let at = landed.unwrap_or_else(|| panic!("dt {dt}: the grenade lands"));
         assert!((at.y - 8.0).abs() < 1e-3, "dt {dt}: on the floor: {at}");
-        // Its blast at the next resolve: 20 by 1 - 0.5 d / 64.
+        // Its blast in the step it landed: 20 by 1 - 0.5 d / 64, and no
+        // more two steps on.
         harness.step(2);
         let world = harness.world();
         let lost = |entity| 40.0 - world.get::<Health>(entity).unwrap().current();

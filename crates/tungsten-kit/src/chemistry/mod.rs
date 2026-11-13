@@ -383,16 +383,14 @@ impl Plugin for ChemistryPlugin {
     }
 }
 
-/// Whether chemistry has work: an `interactions` entry, a queued entry, or
-/// a blast queued outside a run, such as a projectile's end.
+/// Whether chemistry has work: an `interactions` entry or a queued entry,
+/// a projectile end's stimuli among them. Only a run's reactions queue
+/// blasts, and the run sets them off.
 fn busy(world: &World) -> bool {
     let waiting = world
         .get_resource::<Chemistry>()
         .is_some_and(|chemistry| chemistry.pending() > 0);
-    let blasting = world
-        .get_resource::<blast::Blasts>()
-        .is_some_and(|blasts| !blasts.0.is_empty());
-    waiting || blasting || any_rule(world)
+    waiting || any_rule(world)
 }
 
 /// Whether [`CHEMISTRY_TICK`] has work: [`busy`], or a tile status or a

@@ -12,8 +12,7 @@ use tungsten_core::{
     World, system,
 };
 
-use crate::chemistry::blast::{Blast, Blasts};
-use crate::chemistry::queue::Receiver;
+use crate::chemistry::blast::{Blast, Blasts, blast, credits};
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
     describe, describe_shape, round_trip,
@@ -66,12 +65,19 @@ const PROJECTILE_END: &str = "projectile_end";
 ///   pierce, a wall it neither passes nor turns at, or its range: a
 ///   [`Blast`](crate::Blast), in the chemistry output's form, at its
 ///   hitbox's centre there (its point without a hitbox), which neither
-///   hurts nor pushes it and is credited to its [`Source`](crate::Source),
-///   else to itself, for [`ChemistryPlugin`](crate::ChemistryPlugin)'s run
-///   that step; a World without that plugin traces the end's blast as
-///   skipped. A [`Lifetime`](crate::Lifetime)'s despawn is no end of its
-///   own and sets off nothing. None by default; Rust gives one with
-///   [`with_end`](Self::with_end).
+///   hurts nor pushes it. Once the step's sweeps are done the system sets
+///   the step's ends off through [`blast`](crate::blast), in the order the
+///   projectiles ended, each credited to its [`Source`](crate::Source)
+///   while that lives and, holding [`Health`](crate::Health), is not dead,
+///   else to nobody, and to itself only without a source: a `queue` hit
+///   lands at the step's resolve, a `now` hit at once, and its stimuli
+///   reach [`ChemistryPlugin`](crate::ChemistryPlugin)'s run that step, so
+///   an end's parts and statuses come in its own step, as a hit's do. A
+///   World without that plugin traces the end's blast as skipped. A
+///   [`Lifetime`](crate::Lifetime)'s despawn is no end of its own and sets
+///   off nothing. None by default; Rust gives one with
+///   [`with_end`](Self::with_end), and [`end_blast`](Self::end_blast) reads
+///   it.
 ///
 /// Walls are tiles of collision layers, in their layer's physics layers
 /// (layer 0 by default, [`LayerPhysics`](tungsten_core::LayerPhysics)), and
@@ -408,6 +414,16 @@ impl Projectile {
     #[must_use]
     pub fn shape(&self) -> Option<(HitShape, Vec2)> {
         self.shape
+    }
+
+    /// The blast it sets off at its end, while it has one: none once it
+    /// has gone off.
+    #[must_use]
+    pub fn end_blast(&self) -> Option<&Blast> {
+        match &self.end {
+            Some(ProjectileEnd::Blast(blast)) => Some(blast),
+            None => None,
+        }
     }
 
     /// The targets it has hit.
@@ -827,9 +843,9 @@ enum Stop {
 }
 
 /// [`PROJECTILE_TICK`]'s state between steps: the step's projectiles, a
-/// query's candidates, a projectile's hits, the walls an overlap lists and
-/// the walls it passes, kept so a step allocates nothing once warm, and the
-/// skips warned about.
+/// query's candidates, a projectile's hits, the walls an overlap lists, the
+/// walls it passes and the step's end blasts, kept so a step allocates
+/// nothing once warm, and the skips warned about.
 #[derive(Default)]
 struct ProjectileRunner {
     projectiles: Vec<Entity>,
@@ -840,11 +856,15 @@ struct ProjectileRunner {
     /// (t, wall) of the walls in its pass layers before its stop, in sweep
     /// order once sorted.
     passed: Vec<(f32, WallContact)>,
+    /// The step's end blasts, in the order their projectiles ended: the
+    /// projectile, its blast and the blast's centre.
+    ends: Vec<(Entity, Box<Blast>, Vec2)>,
     warned: Warned,
 }
 
 impl ProjectileRunner {
-    /// Runs every live projectile, in entity order.
+    /// Runs every live projectile, in entity order, then sets off the
+    /// step's end blasts in the order their projectiles ended.
     fn run(&mut self, world: &mut World) {
         let Some(grid) = world.remove_resource::<HitGrid>() else {
             return;
@@ -870,11 +890,15 @@ impl ProjectileRunner {
             }
         }
         world.insert_resource(grid);
+        for (entity, end, centre) in self.ends.drain(..) {
+            set_off(world, entity, &end, centre);
+        }
     }
 
     /// One projectile's step: its hits up to the first wall it does not
     /// pass or its range, the walls it passed before its end, then its end,
-    /// its bounce or its full travel.
+    /// its bounce or its full travel; an end's blast kept for the step's
+    /// ends.
     fn fly(&mut self, world: &mut World, grid: &HitGrid, entity: Entity) {
         self.passed.clear();
         let (shape, offset) = match world.get::<Hitbox>(entity) {
@@ -910,18 +934,26 @@ impl ProjectileRunner {
         }
         let ended = self.hit(world, grid, entity, &sweep, until);
         self.send_passed(world, entity, &sweep, offset, ended.unwrap_or(until));
-        if let Some(t) = ended {
-            return finish(world, entity, &sweep, offset, length, t, None);
-        }
-        match stop {
-            Some(Stop::Wall(wall, frame)) if turns(world, entity, wall.layers) => {
-                bounce(world, entity, &sweep, offset, length, until, wall, frame);
+        let end = if let Some(t) = ended {
+            finish(world, entity, &sweep, offset, length, t, None)
+        } else {
+            match stop {
+                Some(Stop::Wall(wall, frame)) if turns(world, entity, wall.layers) => {
+                    bounce(world, entity, &sweep, offset, length, until, wall, frame);
+                    None
+                }
+                Some(Stop::Wall(wall, _)) => {
+                    finish(world, entity, &sweep, offset, length, until, Some(wall))
+                }
+                Some(Stop::Range) => finish(world, entity, &sweep, offset, length, until, None),
+                None => {
+                    world.get_mut::<Projectile>(entity).unwrap().travelled += length;
+                    None
+                }
             }
-            Some(Stop::Wall(wall, _)) => {
-                finish(world, entity, &sweep, offset, length, until, Some(wall));
-            }
-            Some(Stop::Range) => finish(world, entity, &sweep, offset, length, until, None),
-            None => world.get_mut::<Projectile>(entity).unwrap().travelled += length,
+        };
+        if let Some((blast, centre)) = end {
+            self.ends.push((entity, blast, centre));
         }
     }
 
@@ -1190,7 +1222,8 @@ fn bounce(
 
 /// Ends `entity` at `t` of its sweep, at `wall` when it ended at one:
 /// placed there, its movers stopped, spent, [`ProjectileExpired`] sent and
-/// traced, and listed for the kit's end-of-step despawn.
+/// traced, and listed for the kit's end-of-step despawn; its end's blast,
+/// taken, and the sweep's centre there.
 fn finish(
     world: &mut World,
     entity: Entity,
@@ -1199,7 +1232,7 @@ fn finish(
     length: f32,
     t: f32,
     wall: Option<WallContact>,
-) {
+) -> Option<(Box<Blast>, Vec2)> {
     let point = sweep.at(t) - offset;
     place(world, entity, point);
     if let Some(motion) = world.get_mut::<LinearMotion>(entity) {
@@ -1227,17 +1260,16 @@ fn finish(
         other: None,
         amount: None,
     });
-    if let Some(ProjectileEnd::Blast(blast)) = goes_off {
-        set_off(world, entity, &blast, sweep.at(t));
-    }
     end(world, entity, "projectile");
+    goes_off.map(|ProjectileEnd::Blast(blast)| (blast, sweep.at(t)))
 }
 
-/// Queues `blast` at `centre` for chemistry's run, from the projectile,
-/// which it neither hurts nor pushes, credited to its [`Source`], else to
-/// itself, at depth 0; traced as skipped in a World without chemistry's
-/// blasts.
-fn set_off(world: &mut World, entity: Entity, blast: &Blast, centre: Vec2) {
+/// Sets `def` off at `centre` through [`blast`], from the projectile, which
+/// it neither hurts nor pushes, credited to its [`Source`] while that lives
+/// and, holding [`Health`](crate::Health), is not dead, else to nobody, and
+/// to itself only without a source; traced as skipped in a World without
+/// chemistry's blasts.
+fn set_off(world: &mut World, entity: Entity, def: &Blast, centre: Vec2) {
     if !world.has_resource::<Blasts>() {
         trace(world, entity, || TraceKind::Skipped {
             event: "expired",
@@ -1246,10 +1278,11 @@ fn set_off(world: &mut World, entity: Entity, blast: &Blast, centre: Vec2) {
         });
         return;
     }
-    let credit = world
-        .get::<Source>(entity)
-        .map_or(entity, |source| source.entity());
-    blast.queue(world, centre, Receiver::Entity(entity), Some(credit), 0);
+    let credit = match world.get::<Source>(entity) {
+        Some(source) => Some(source.entity()).filter(|&source| credits(world, source)),
+        None => Some(entity),
+    };
+    blast(world, centre, def, credit, Some(entity));
 }
 
 impl Inspectable for Projectile {

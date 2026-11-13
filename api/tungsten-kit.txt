@@ -3157,6 +3157,7 @@ impl tungsten_kit::Projectile
 pub fn tungsten_kit::Projectile::body_walls(&self) -> u32
 pub fn tungsten_kit::Projectile::bounce_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::bounces(&self) -> u32
+pub fn tungsten_kit::Projectile::end_blast(&self) -> core::option::Option<&tungsten_kit::Blast>
 pub fn tungsten_kit::Projectile::hits(&self) -> u32
 pub fn tungsten_kit::Projectile::is_spent(&self) -> bool
 pub fn tungsten_kit::Projectile::new() -> Self
@@ -8120,6 +8121,7 @@ impl tungsten_kit::Projectile
 pub fn tungsten_kit::Projectile::body_walls(&self) -> u32
 pub fn tungsten_kit::Projectile::bounce_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::bounces(&self) -> u32
+pub fn tungsten_kit::Projectile::end_blast(&self) -> core::option::Option<&tungsten_kit::Blast>
 pub fn tungsten_kit::Projectile::hits(&self) -> u32
 pub fn tungsten_kit::Projectile::is_spent(&self) -> bool
 pub fn tungsten_kit::Projectile::new() -> Self

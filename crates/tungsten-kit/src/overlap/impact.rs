@@ -2,8 +2,8 @@
 //! its closing speed before the step, as a thrown crate, a falling iron
 //! block or a rolling boulder does. The physics stops a body at a target's
 //! face in the step it arrives, before any contact reports it, and two
-//! kinematic bodies never touch, so the kit keeps each body's velocity
-//! before the step and measures the touch after it.
+//! kinematic bodies never touch, so the kit keeps each body's velocity as
+//! the step's moves begin and measures the touch after the step.
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,7 @@ use tungsten_core::{
     Entity, EventQueue, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, World, system,
 };
 
+use crate::chemistry::blast::credits;
 use crate::damage::health::{Health, Hit};
 use crate::damage::kinds::check_type;
 use crate::damage::pipeline::{
@@ -44,8 +45,8 @@ use crate::motion::wrap::WRAP;
 use crate::overlap::hit::DamageDef;
 use crate::overlap::pickup::PICKUP_MAGNET;
 
-/// [`ImpactDamagePlugin`]'s record of the step's velocities, in the move
-/// phase after the kit's movers and before `physics_step`.
+/// [`ImpactDamagePlugin`]'s record of the step's velocities, first in the
+/// move phase, before the kit's movers.
 pub const IMPACT_RECORD: &str = "impact_record";
 
 /// [`ImpactDamagePlugin`]'s pass, in the overlap phase after the step.
@@ -60,8 +61,9 @@ const IMPACT_PUSH: &str = "impact_push";
 /// A hitter: a dynamic body, or a kinematic one with a `mass`, that hurts a
 /// target it ends a step touching by how fast the two closed before it.
 ///
-/// Each step its holder's velocity before the step (its record, after the
-/// kit's movers, [`step_velocity`]) reaching `speed`, it takes each target
+/// Each step its holder's velocity before the step (its record, taken as
+/// the move phase begins, before the kit's movers, [`step_velocity`])
+/// reaching `speed`, it takes each target
 /// whose body ends within `margin` of its own: an entity with [`Health`],
 /// alive and not being despawned, whose tags pass `filter`, but itself, its
 /// [`Source`] and the entity its hit is credited to. Their closing speed
@@ -71,10 +73,13 @@ const IMPACT_PUSH: &str = "impact_push";
 /// then times `scale`, of the damage type `kind`, with `extra`'s parts while
 /// its own tags pass their filter; pushed `away × u` from its centre, at most
 /// `most`, plus `along` along its kept velocity; at the target's centre;
-/// credited to its credit while that lives, else to its live `Source`; its
-/// game's preparation run on it (`prepare`), its crit rolled at its build
-/// from its credit's stats; resolved at once with `land` `now`, else queued
-/// for the step's resolve. A step's hits build in the targets' save order,
+/// credited to its credit while that lives and, holding [`Health`], is not
+/// dead, else to its `Source` on the same terms, else to nobody, checked as
+/// the hit is built, so a credit an earlier `now` hit of the pass killed
+/// credits nobody and draws no crit; its game's preparation run on it
+/// (`prepare`), its crit rolled at its build from its credit's stats;
+/// resolved at once with `land` `now`, else queued for the step's resolve,
+/// and none on a target an earlier hit of the pass killed. A step's hits build in the targets' save order,
 /// then their hitters', and each sends [`Impacted`] with its outcome. `mass`
 /// replaces its body's own; a `scale` of 0 leaves it inert.
 ///
@@ -784,11 +789,13 @@ struct ImpactRecord {
     kept: Vec<(Entity, Vec2)>,
 }
 
-/// `entity`'s velocity as [`IMPACT_RECORD`] kept it this step, after the
-/// kit's movers and before the physics step: each [`ImpactDamage`]
-/// holder's and each [`Health`] holder's while any hitter exists; `None`
-/// for one it did not keep. A game's own velocity change meant for the
-/// step's impacts runs before [`IMPACT_RECORD`] by name.
+/// `entity`'s velocity as [`IMPACT_RECORD`] kept it this step, as the move
+/// phase began, before the kit's movers: what it carried into the step, so
+/// a mover that stops a body at a target's face does not hide the hit, and
+/// the next step's record sees this step's shove or pull. Each
+/// [`ImpactDamage`] holder's and each [`Health`] holder's while any hitter
+/// exists; `None` for one it did not keep. A game's own velocity change
+/// meant for the step's impacts runs before [`IMPACT_RECORD`] by name.
 #[must_use]
 pub fn step_velocity(world: &World, entity: Entity) -> Option<Vec2> {
     let kept = &world.get_resource::<ImpactRecord>()?.kept;
@@ -860,7 +867,6 @@ struct Touch {
     centre: Vec2,
     at: Vec2,
     kept: Vec2,
-    credit: Option<Entity>,
 }
 
 /// [`IMPACT_DAMAGE`]'s lists, kept so a warm step allocates nothing.
@@ -913,24 +919,21 @@ impl ImpactRunner {
             &Collider,
             Option<&RigidBody>,
         )>() {
-            if rule.scale <= 0.0 || world.has::<Despawning>(hitter) {
+            if rule.scale <= 0.0 {
+                continue;
+            }
+            // Its kept speed first: a slow hitter costs one lookup.
+            let kept = kept_velocity(world, hitter);
+            if kept.length_squared() < rule.speed * rule.speed || world.has::<Despawning>(hitter) {
                 continue;
             }
             let Some(mass) = hitter_mass(rule, body) else {
                 continue;
             };
-            let kept = kept_velocity(world, hitter);
-            if kept.length_squared() < rule.speed * rule.speed {
-                continue;
-            }
             let centre = position.0 + collider.offset;
             let source = world.get::<Source>(hitter).map(|source| source.entity());
-            let credit = rule
-                .credit
-                .filter(|&credit| world.is_alive(credit))
-                .or_else(|| source.filter(|&source| world.is_alive(source)));
             for &(target, at, shape) in &self.targets {
-                if target == hitter || Some(target) == source || Some(target) == credit {
+                if target == hitter || Some(target) == source || Some(target) == rule.credit {
                     continue;
                 }
                 if gap(centre, collider.shape, at, shape) > rule.margin
@@ -949,7 +952,6 @@ impl ImpactRunner {
                         centre,
                         at,
                         kept,
-                        credit,
                     });
                 }
             }
@@ -969,11 +971,18 @@ impl ImpactRunner {
     }
 }
 
-/// Builds and lands `touch`'s hit, and sends [`Impacted`].
+/// Builds and lands `touch`'s hit, credited as it is built, and sends
+/// [`Impacted`]; none on a target an earlier hit killed.
 fn land(world: &mut World, touch: &Touch) {
     let Some(rule) = world.get::<ImpactDamage>(touch.hitter) else {
         return;
     };
+    if world
+        .get::<Health>(touch.target)
+        .is_none_or(Health::is_dead)
+    {
+        return;
+    }
     let amount = rule.amount(touch.mass, touch.closing) * rule.scale;
     if amount <= 0.0 {
         return;
@@ -1015,8 +1024,17 @@ fn land(world: &mut World, touch: &Touch) {
         velocity
     });
     let now = rule.now;
+    let credit = rule
+        .credit
+        .filter(|&credit| credits(world, credit))
+        .or_else(|| {
+            world
+                .get::<Source>(touch.hitter)
+                .map(|source| source.entity())
+                .filter(|&source| credits(world, source))
+        });
     let mut request = DamageRequest::from_parts(touch.target, parts).with_position(touch.at);
-    if let Some(credit) = touch.credit {
+    if let Some(credit) = credit {
         request = request.with_source(credit);
     }
     if let Some(push) = push {
@@ -1094,7 +1112,7 @@ struct SceneFields<'a> {
 }
 
 /// Registers the `impact_damage` scene component and its saved form,
-/// `EventQueue<Impacted>`, [`IMPACT_RECORD`] in the move phase after the
+/// `EventQueue<Impacted>`, [`IMPACT_RECORD`] in the move phase before the
 /// kit's movers, the speed limit and the pickups' magnet, each when
 /// registered, and [`IMPACT_DAMAGE`] in the overlap phase, before
 /// `despawn_outside`, `wrap` and `stay_in_view`, each when registered. Both
@@ -1135,17 +1153,17 @@ impl Plugin for ImpactDamagePlugin {
             Phase::Move.stage(),
             Phase::Move
                 .join(system(IMPACT_RECORD, record))
-                .after_if_present(PATH_FOLLOW)
-                .after_if_present(LINEAR_MOTION)
-                .after_if_present(OSCILLATOR)
-                .after_if_present(PLATFORMER_CONTROLLER)
-                .after_if_present(TOP_DOWN_MOVER)
-                .after_if_present(STEERING)
-                .after_if_present(FOLLOW)
-                .after_if_present(ORBIT)
-                .after_if_present(KNOCKBACK)
-                .after_if_present(PICKUP_MAGNET)
-                .after_if_present(SPEED_LIMIT),
+                .before_if_present(PATH_FOLLOW)
+                .before_if_present(LINEAR_MOTION)
+                .before_if_present(OSCILLATOR)
+                .before_if_present(PLATFORMER_CONTROLLER)
+                .before_if_present(TOP_DOWN_MOVER)
+                .before_if_present(STEERING)
+                .before_if_present(FOLLOW)
+                .before_if_present(ORBIT)
+                .before_if_present(KNOCKBACK)
+                .before_if_present(PICKUP_MAGNET)
+                .before_if_present(SPEED_LIMIT),
         );
         let mut runner = ImpactRunner::default();
         schedule.add(

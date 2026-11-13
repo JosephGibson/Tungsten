@@ -3359,3 +3359,64 @@ fn a_named_preparation_runs_on_each_blast_hit() {
     assert!(named("armour").check(&world).is_ok());
     let _ = &mut schedule;
 }
+
+// 7.13c's foes and cues, Step 1: a blast passes the dead.
+
+#[test]
+fn a_blast_passes_the_dead() {
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+    // Three dynamic bodies with health and a knockback, their surfaces 50 px
+    // out: one dead, one being despawned, one alive; a credit that crits
+    // half its hits.
+    let body = |world: &mut World, at: Vec2| {
+        let entity = world.spawn_with(RigidBodyBundle::dynamic(
+            Position(at),
+            Collider::circle(10.0),
+        ));
+        world.insert(entity, Health::new(1000.0));
+        world.insert(entity, crate::Knockback::new(1.0));
+        entity
+    };
+    let dead = body(&mut world, Vec2::new(60.0, 0.0));
+    let going = body(&mut world, Vec2::new(0.0, 60.0));
+    let live = body(&mut world, Vec2::new(-60.0, 0.0));
+    let lucky = world.spawn_with((Stats::new()
+        .with(Stats::CRIT_CHANCE, 0.5)
+        .with(Stats::CRIT_MULTIPLIER, 2.0),));
+    step(&mut world, &mut schedule);
+    crate::kill(&mut world, dead);
+    assert!(world.get::<Health>(dead).unwrap().is_dead());
+    world.insert(going, crate::lifecycle::ended::Despawning);
+    world.insert_resource(crate::KitRng::seeded(7));
+    let hits_before = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .count();
+    let bang = Blast::new(100.0)
+        .with_damage(10.0)
+        .with_push(600.0)
+        .with_impulse(300.0)
+        .landing_now();
+    blast(&mut world, Vec2::ZERO, &bang, Some(lucky), None);
+    let hit: Vec<Entity> = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .skip(hits_before)
+        .map(|hit| hit.entity)
+        .collect();
+    assert_eq!(hit, [live], "a request for the living alone");
+    assert_eq!(
+        world.resource::<crate::KitRng>().draws(),
+        1,
+        "the living one's crit drawn alone"
+    );
+    let velocity = |world: &World, entity| world.get::<Velocity>(entity).unwrap().0;
+    assert_eq!(velocity(&world, dead), Vec2::ZERO, "the dead unpushed");
+    assert_eq!(
+        velocity(&world, going),
+        Vec2::ZERO,
+        "the despawning unpushed"
+    );
+    assert!(velocity(&world, live).x < 0.0, "{}", velocity(&world, live));
+    assert_eq!(lost(&world, going), 0.0);
+}

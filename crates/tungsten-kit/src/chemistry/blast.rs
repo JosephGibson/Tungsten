@@ -18,6 +18,7 @@ use crate::damage::pipeline::{
 };
 use crate::foundation::saved::order_of;
 use crate::foundation::tags::{STIMULUS_BLAST, TagFilter, Tags, check_declared, valid_tag};
+use crate::lifecycle::ended::Despawning;
 use crate::overlap::hit::DamageDef;
 
 /// A blast: its radius, the damage it deals at its centre, the context its
@@ -29,8 +30,9 @@ use crate::overlap::hit::DamageDef;
 ///
 /// Set off, a blast:
 ///
-/// - hurts each entity with [`Health`] within its radius whose
-///   [`Tags`] pass its `filter`, but its receiver unless it hurts that too
+/// - hurts each entity with [`Health`] within its radius, alive and not
+///   being despawned, whose [`Tags`] pass its `filter`, but its receiver
+///   unless it hurts that too
 ///   (`receiver`, at distance 0) and its credit when it spares it (`spare`):
 ///   one hit each, of its damage by the falloff, typed, in its `context`,
 ///   pushing away from its centre (straight up from it), credited to its
@@ -42,8 +44,8 @@ use crate::overlap::hit::DamageDef;
 ///   or queued for the next resolve with `queue`;
 /// - moves every dynamic body, and kinematic one with a mass, within its
 ///   radius by its impulse ([`apply_impulse`]), but its receiver, the bodies
-///   it hurt, which take its push as their hit's knockback alone, and the
-///   credit it spares;
+///   it hurt, which take its push as their hit's knockback alone, the dead
+///   and despawning it passed, and the credit it spares;
 /// - sends `stimulus.blast` of the falloff to each tagged entity and each
 ///   material cell within its radius but its receiver, for chemistry's next
 ///   run, unless `stimulus` is false.
@@ -621,10 +623,10 @@ pub fn blast(
 #[derive(Default)]
 struct BlastReach(Reach);
 
-/// The blasts a run's reactions and the step's projectile ends set off,
-/// which the run detonates once its reactions are done: a World resource
+/// The blasts a run's reactions set off, which the run detonates once its
+/// reactions are done: a World resource
 /// [`ChemistryPlugin`](crate::ChemistryPlugin) inserts and no save holds,
-/// since a step makes and takes them.
+/// since a run makes and takes them.
 #[derive(Debug, Default)]
 pub(crate) struct Blasts(pub(crate) Vec<Pending>);
 
@@ -638,6 +640,25 @@ pub(crate) struct Pending {
     from: Receiver,
     credit: Option<Entity>,
     depth: u8,
+}
+
+/// Whether a hit may be credited to `entity`: it lives and, holding
+/// [`Health`], is not dead. A blast's and an impact's credit are checked as
+/// each hit is built, so a credit an earlier hit killed credits nobody.
+pub(crate) fn credits(world: &World, entity: Entity) -> bool {
+    world.is_alive(entity)
+        && world
+            .get::<Health>(entity)
+            .is_none_or(|health| !health.is_dead())
+}
+
+/// Whether a blast hurts `target`: it holds [`Health`], alive, and is not
+/// being despawned.
+fn lives(world: &World, target: Entity) -> bool {
+    world
+        .get::<Health>(target)
+        .is_some_and(|health| !health.is_dead())
+        && !world.has::<Despawning>(target)
 }
 
 /// `1 − d / r`, in `[0, 1]`.
@@ -765,11 +786,13 @@ fn go_off(
         let order = order_of(world);
         targets.sort_by_key(|&(entity, ..)| order.key(entity));
     }
+    // The bodies it hurt, then the dead and despawning it passed: its
+    // impulse leaves both.
     let mut hurt_bodies: Vec<Entity> = Vec::new();
     if def.damage.is_some() {
         for &(target, at, distance) in &targets {
             if Some(target) == spared
-                || !world.has::<Health>(target)
+                || !lives(world, target)
                 || !def.passes(world.get::<Tags>(target))
             {
                 continue;
@@ -802,6 +825,12 @@ fn go_off(
         }
     }
     if def.impulse > 0.0 {
+        hurt_bodies.extend(
+            targets
+                .iter()
+                .map(|&(target, ..)| target)
+                .filter(|&target| world.has::<Health>(target) && !lives(world, target)),
+        );
         radial_impulse(world, centre, radius, def.impulse, |entity| {
             Some(entity) == receiver || Some(entity) == spared || hurt_bodies.contains(&entity)
         });
