@@ -676,3 +676,112 @@ fn an_aim_set_picks_by_elevation_and_flips_left() {
         );
     }
 }
+
+#[test]
+fn an_animator_holds_its_clip_while_its_hold_passes() {
+    use crate::{TagFilter, Tags, TagsPlugin};
+    let (mut world, mut schedule) = rig();
+    let dt = 0.04;
+    let ghoul = world.spawn_with((
+        walker().with_hold(TagFilter::new().all(["state.held"])),
+        Tags::new(Vec::<String>::new()),
+        Velocity(Vec2::ZERO),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    let held = |world: &mut World, on: bool| {
+        let tags = world.get_mut::<Tags>(ghoul).unwrap();
+        if on {
+            tags.insert("state.held");
+        } else {
+            tags.remove("state.held");
+        }
+    };
+    let state = |world: &World| {
+        let state = world.get::<AnimationState>(ghoul).unwrap();
+        (
+            state.animation_id.clone(),
+            state.accumulated_ms.round() as u32,
+            state.playing,
+        )
+    };
+    frame(&mut world, &mut schedule, dt);
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(state(&world), ("idle".into(), 40, true));
+    // Held: the tick that ran before the pass is the last.
+    held(&mut world, true);
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(state(&world), ("idle".into(), 80, false));
+    for _ in 0..5 {
+        frame(&mut world, &mut schedule, dt);
+    }
+    assert_eq!(state(&world), ("idle".into(), 80, false), "the frame held");
+    // A clip picked meanwhile starts held, on its first frame.
+    world.get_mut::<Velocity>(ghoul).unwrap().0 = Vec2::new(40.0, 0.0);
+    frame(&mut world, &mut schedule, dt);
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(state(&world), ("walk_right".into(), 0, false));
+    assert_eq!(shown(&world, ghoul).2, SpriteAssetId::new(20));
+    // Let go, it plays from the next tick.
+    held(&mut world, false);
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(state(&world), ("walk_right".into(), 0, true));
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(state(&world), ("walk_right".into(), 40, true));
+    // A one-shot's count holds with it: 300 ms of `land` outlast a held
+    // second, then end 300 ms after the hold lets go.
+    world.get_mut::<Velocity>(ghoul).unwrap().0 = Vec2::ZERO;
+    held(&mut world, true);
+    world
+        .get_mut::<CharacterAnimator>(ghoul)
+        .unwrap()
+        .play("land");
+    for _ in 0..25 {
+        frame(&mut world, &mut schedule, dt);
+    }
+    assert_eq!(state(&world), ("land".into(), 0, false));
+    held(&mut world, false);
+    for _ in 0..7 {
+        frame(&mut world, &mut schedule, dt);
+    }
+    assert_eq!(state(&world).0, "land", "240 ms of its 300 shown");
+    frame(&mut world, &mut schedule, dt);
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(state(&world).0, "idle", "ended, the state's clip back");
+
+    // Without a hold the animator leaves `playing` to the game.
+    let idler = world.spawn_with((
+        CharacterAnimator::new("idle"),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    frame(&mut world, &mut schedule, dt);
+    world.get_mut::<AnimationState>(idler).unwrap().playing = false;
+    frame(&mut world, &mut schedule, dt);
+    assert!(!world.get::<AnimationState>(idler).unwrap().playing);
+
+    // The load checks the hold's tags; a save keeps it.
+    TagsPlugin::new()
+        .with_tags(["state.held"])
+        .build(&mut schedule, &mut world);
+    let components = world.resource::<ComponentRegistry>();
+    components
+        .check_in(
+            "character_animator",
+            &json!({ "idle": "idle", "hold": { "all": ["state.held"] } }),
+            &world,
+        )
+        .unwrap();
+    let error = components
+        .check_in(
+            "character_animator",
+            &json!({ "idle": "idle", "hold": { "all": ["state.dazed"] } }),
+            &world,
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("hold.all.0"), "{error}");
+    let saved = serde_json::to_value(world.get::<CharacterAnimator>(ghoul).unwrap()).unwrap();
+    assert_eq!(saved["hold"], json!({ "all": ["state.held"] }));
+    let loaded: CharacterAnimator = serde_json::from_value(saved).unwrap();
+    assert_eq!(&loaded, world.get::<CharacterAnimator>(ghoul).unwrap());
+    let plain = serde_json::to_value(CharacterAnimator::new("idle")).unwrap();
+    assert!(plain.get("hold").is_none(), "none written by default");
+}

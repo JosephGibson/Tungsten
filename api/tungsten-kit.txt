@@ -752,6 +752,7 @@ pub fn tungsten_kit::CharacterAnimator::playing(&self) -> core::option::Option<&
 pub fn tungsten_kit::CharacterAnimator::state(&self) -> &'static str
 pub fn tungsten_kit::CharacterAnimator::stop(&mut self)
 pub fn tungsten_kit::CharacterAnimator::with_fall(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::CharacterAnimator::with_hold(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_min_speed(self, f32) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_move(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_rise(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
@@ -2046,6 +2047,7 @@ pub fn tungsten_kit::HealthBar::new() -> Self
 pub fn tungsten_kit::HealthBar::size(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::HealthBar::with_colors(self, [f32; 4], [f32; 4]) -> Self
 pub fn tungsten_kit::HealthBar::with_inset(self, f32) -> Self
+pub fn tungsten_kit::HealthBar::with_offset(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::HealthBar::with_rise(self, f32) -> Self
 pub fn tungsten_kit::HealthBar::with_size(self, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_kit::HealthBar
@@ -5356,6 +5358,7 @@ pub fn tungsten_kit::CharacterAnimator::playing(&self) -> core::option::Option<&
 pub fn tungsten_kit::CharacterAnimator::state(&self) -> &'static str
 pub fn tungsten_kit::CharacterAnimator::stop(&mut self)
 pub fn tungsten_kit::CharacterAnimator::with_fall(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
+pub fn tungsten_kit::CharacterAnimator::with_hold(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_min_speed(self, f32) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_move(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
 pub fn tungsten_kit::CharacterAnimator::with_rise(self, impl core::convert::Into<tungsten_kit::Clips>) -> Self
@@ -6746,6 +6749,7 @@ pub fn tungsten_kit::HealthBar::new() -> Self
 pub fn tungsten_kit::HealthBar::size(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::HealthBar::with_colors(self, [f32; 4], [f32; 4]) -> Self
 pub fn tungsten_kit::HealthBar::with_inset(self, f32) -> Self
+pub fn tungsten_kit::HealthBar::with_offset(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::HealthBar::with_rise(self, f32) -> Self
 pub fn tungsten_kit::HealthBar::with_size(self, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_kit::HealthBar
@@ -7685,6 +7689,7 @@ pub fn tungsten_kit::Look::with_light(self, [f32; 4], f32, f32) -> Self
 pub fn tungsten_kit::Look::with_overlay(self, tungsten_kit::Overlay) -> Self
 pub fn tungsten_kit::Look::with_particles(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Look::with_particles_at(self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Look::with_particles_offset(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::Look::with_sound(self, impl core::convert::Into<alloc::string::String>, f32) -> Self
 pub fn tungsten_kit::Look::with_tint(self, [f32; 4]) -> Self
 impl core::clone::Clone for tungsten_kit::Look
@@ -7910,6 +7915,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Output
 pub struct tungsten_kit::Overlay
 impl tungsten_kit::Overlay
 pub fn tungsten_kit::Overlay::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Overlay::sprite(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Overlay::unflipped(self) -> Self
+pub fn tungsten_kit::Overlay::with_bob(self, f32, f32) -> Self
 pub fn tungsten_kit::Overlay::with_material(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Overlay::with_offset(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::Overlay::with_scale(self, f32, f32) -> Self

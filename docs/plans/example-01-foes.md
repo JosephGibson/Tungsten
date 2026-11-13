@@ -1,6 +1,6 @@
-# 01's foes' clips, looks, timers and drops on the kit (example-01-foes) — draft
+# 01's foes' clips, looks, timers and drops on the kit (example-01-foes) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13c's foes, the first of its two plans (§2.1). In the kit: a look's plain-sprite overlay with a bob and an unflipped frame, its particles' offset, a character animator's hold, a health bar's offset, and a bodiless prefab's centre from its shapes. Then example 01's foes on them: their clips as the animator's rules over state tags 01 writes, the troll's bar, the "!" and "?" marks, the beetle's streak and dust and the wisp's flare as looks, the "!" and the attack rests as kit timers, the bat's dive speed an effect and the dive and the charge ended by their hitbox windows (S-10, S-20, S-36, S-52, S-158, S-189); its impact cues as rules (S-41); its orbs' pickups and its centred drops and bullet (S-88, S-100); its tests unchanged (§2.2) and its older saves loading whole (§2.10).
 - **non-goals:**
   - The rows split to **7.13c's carry, flight and data** (§2.1): the troll's carry and its throws' window (S-37, S-36's window), the flyers' flight on steering (S-92), the snowball (S-21) and the foes' per-kind data (S-30, S-34).
@@ -258,6 +258,7 @@ Round 2: the same reviewer at xhigh, 2026-11-13, `--repo` on the plan without th
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-13 | landed | `cargo test -p tungsten-kit --lib --locked -- present::` → 104 passed, the five named among them; the kit's lib 1,024 and doctests 154 passed; describe census: numeric fields 188 → 190 (`look_bob`'s `height` and `seconds`), shapes 88 → 89 (`look_bob`, the shape holding them), components 50 and kinds 11 held; `animation` kept described as needed, `sprite` its stand-in, since a `null` default dropped it from the census's `z` probe; `kit_tests:: kit_recipes::` 280 passed, `the_recipes_hash_the_same_twice_and_match_the_pin` ok; the template 184 passed; 02's `guards_` 16 passed, no pin rewritten; 01's `cargo test --test game` 442 passed, 1 ignored, `pit.json` untouched; `cargo fmt --all -- --check`, `just lint`, `just repo-check`, `just ctx`, `just docs-ratchet` ("no rise") exit 0; `just api` then `git diff --stat api/` → `api/tungsten-kit-components.txt` (+13 −3) and `api/tungsten-kit.txt` (+8) alone | Step 1's Files line, all ten |
 
 ## Follow-ups
 

@@ -1081,3 +1081,352 @@ fn tag_and_status_tints_multiply() {
     frame(&mut world, &mut schedule);
     assert_eq!(color(&world, slime), WHITE, "its own colour back");
 }
+
+/// The parts showing sprite `id` that are not `holder`: each one's
+/// transform, flip, depth and whether it plays a clip.
+fn shown_sprites(world: &World, holder: Entity, id: &str) -> Vec<(Transform, bool, i32, bool)> {
+    let sprite = world.resource::<AssetRegistry>().sprite_id(id).unwrap();
+    world
+        .query::<(Entity, &Transform, &Sprite, &SpriteFlip)>()
+        .filter(|(entity, _, shown, _)| *entity != holder && shown.asset_id == sprite)
+        .map(|(entity, transform, shown, flip)| {
+            (
+                *transform,
+                flip.0,
+                shown.z_order,
+                world.has::<AnimationState>(entity),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_look_overlay_shows_a_plain_sprite() {
+    use tungsten_core::ComponentRegistry;
+    let (mut world, mut schedule) = rig();
+    // A status's: the 8 px ember, still, at the drawn centre (108, 58)
+    // plus (4, -2), one above in z.
+    let marked = Effect::new().with_look(
+        Look::new().with_overlay(Overlay::sprite("ember").with_offset(Vec2::new(4.0, -2.0))),
+    );
+    insert(&mut world, "marked", marked);
+    let holder = slime(&mut world, Vec2::new(100.0, 50.0));
+    world.get_mut::<Sprite>(holder).unwrap().z_order = 5;
+    apply(&mut world, holder, "marked", 1.0);
+    frame(&mut world, &mut schedule);
+    let shown = shown_sprites(&world, holder, "ember");
+    assert!(
+        matches!(shown.as_slice(), [(transform, false, 6, false)] if close(transform.position, Vec2::new(108.0, 52.0))),
+        "{shown:?}"
+    );
+    assert!(overlays(&world).is_empty(), "no clip plays");
+    frames(&mut world, &mut schedule, 3);
+    assert_eq!(shown_sprites(&world, holder, "ember").len(), 1, "kept");
+    // Mirrored with its holder.
+    world.insert(holder, SpriteFlip(true));
+    frame(&mut world, &mut schedule);
+    let shown = shown_sprites(&world, holder, "ember");
+    assert!(
+        matches!(shown.as_slice(), [(transform, true, ..)] if close(transform.position, Vec2::new(100.0, 52.0))),
+        "{shown:?}"
+    );
+    assert!(end_effect(&mut world, holder, &DataRef::by_id("marked")));
+    frame(&mut world, &mut schedule);
+    assert!(
+        shown_sprites(&world, holder, "ember").is_empty(),
+        "gone with it"
+    );
+    // A tag look's too.
+    let looks = Looks::new().with(TagLook::new(
+        TagFilter::new().all(["status.other"]),
+        Look::new().with_overlay(Overlay::sprite("ember")),
+    ));
+    let tagged = tagged_slime(&mut world, Vec2::new(300.0, 50.0), looks);
+    set_tag(&mut world, tagged, "status.other", true);
+    frame(&mut world, &mut schedule);
+    let shown = shown_sprites(&world, tagged, "ember");
+    assert!(
+        matches!(shown.as_slice(), [(transform, ..)] if close(transform.position, Vec2::new(304.0, 54.0))),
+        "{shown:?}"
+    );
+
+    // The data form: exactly one of `animation` and `sprite`.
+    let data = serde_json::json!({ "overlay": { "sprite": "ember", "offset": [4, -2] } });
+    let look: Look = serde_json::from_value(data).unwrap();
+    assert_eq!(
+        look,
+        Look::new().with_overlay(Overlay::sprite("ember").with_offset(Vec2::new(4.0, -2.0)))
+    );
+    let written = serde_json::to_value(&look).unwrap();
+    assert_eq!(written["overlay"]["sprite"], "ember");
+    assert!(written["overlay"].get("animation").is_none());
+    assert_eq!(serde_json::from_value::<Look>(written).unwrap(), look);
+    for refused in [
+        serde_json::json!({ "overlay": { "animation": "rime", "sprite": "ember" } }),
+        serde_json::json!({ "overlay": { "offset": [1, 1] } }),
+    ] {
+        let error = serde_json::from_value::<Look>(refused.clone()).unwrap_err();
+        assert!(
+            error.to_string().contains("exactly one"),
+            "{refused}: {error}"
+        );
+    }
+    // An unknown sprite is refused at the load, naming its field.
+    let error = Effect::new()
+        .with_look(Look::new().with_overlay(Overlay::sprite("nope")))
+        .check(&world)
+        .unwrap_err();
+    assert_eq!(error.field, "look.overlay.sprite");
+    assert!(
+        Effect::new()
+            .with_look(Look::new().with_overlay(Overlay::sprite("ember")))
+            .check(&world)
+            .is_ok()
+    );
+    LooksPlugin.build(&mut schedule, &mut world);
+    let components = world.resource::<ComponentRegistry>();
+    let check = |value: serde_json::Value| {
+        components
+            .check_in("looks", &value, &world)
+            .map_err(|error| error.to_string())
+    };
+    check(serde_json::json!([{ "when": {}, "look": { "overlay": { "sprite": "ember" } } }]))
+        .unwrap();
+    let error =
+        check(serde_json::json!([{ "when": {}, "look": { "overlay": { "sprite": "embr" } } }]))
+            .unwrap_err();
+    assert!(error.contains("0.look.overlay.sprite"), "{error}");
+}
+
+#[test]
+fn an_overlay_bobs_and_keeps_its_frame_unflipped() {
+    let (mut world, mut schedule) = rig_with_facing();
+    let glyph = || {
+        Looks::new().with(TagLook::new(
+            TagFilter::new(),
+            Look::new().with_overlay(
+                Overlay::sprite("ember")
+                    .with_offset(Vec2::new(6.0, -12.0))
+                    .with_bob(2.0, 0.5)
+                    .unflipped(),
+            ),
+        ))
+    };
+    // Facing left under a facing that neither turns nor flips: the offset
+    // mirrored, the frame not. Centre (108, 108) plus (-6, -12), less the
+    // 8 px ember's half.
+    let ghoul = tagged_slime(&mut world, Vec2::new(100.0, 100.0), glyph());
+    world.insert(ghoul, crate::Facing::new());
+    world
+        .get_mut::<crate::Facing>(ghoul)
+        .unwrap()
+        .face(Vec2::NEG_X);
+    let at = |world: &World| {
+        let shown = shown_sprites(world, ghoul, "ember");
+        assert!(
+            matches!(shown.as_slice(), [(_, false, ..)]),
+            "one, unflipped: {shown:?}"
+        );
+        shown[0].0.position
+    };
+    frame(&mut world, &mut schedule);
+    assert!(close(at(&world), Vec2::new(98.0, 92.0)), "{}", at(&world));
+    // 15 frames on, a quarter second from its show, half its 0.5 s: risen
+    // its whole 2 px; at 0.5 s back down.
+    frames(&mut world, &mut schedule, 15);
+    assert!(
+        at(&world).distance(Vec2::new(98.0, 90.0)) < 1e-3,
+        "{}",
+        at(&world)
+    );
+    frames(&mut world, &mut schedule, 15);
+    assert!(
+        at(&world).distance(Vec2::new(98.0, 92.0)) < 1e-3,
+        "{}",
+        at(&world)
+    );
+    // Paused, the game clock stands and the bob with it.
+    frames(&mut world, &mut schedule, 15);
+    world.resource_mut::<Time>().pause();
+    frames(&mut world, &mut schedule, 7);
+    assert!(
+        at(&world).distance(Vec2::new(98.0, 90.0)) < 1e-3,
+        "{}",
+        at(&world)
+    );
+    world.resource_mut::<Time>().resume();
+    world.despawn(ghoul);
+
+    // A drawn flip mirrors the offset of an anchored clip kept unflipped:
+    // its unflipped frame's drawn centre lands on (104, 6) + (-4, -2).
+    let pinned = tagged_slime(
+        &mut world,
+        Vec2::new(96.0, -2.0),
+        Looks::new().with(TagLook::new(
+            TagFilter::new(),
+            Look::new().with_overlay(
+                Overlay::new("pin")
+                    .with_offset(Vec2::new(4.0, -2.0))
+                    .unflipped(),
+            ),
+        )),
+    );
+    world.insert(pinned, SpriteFlip(true));
+    frames(&mut world, &mut schedule, 2);
+    let (transform, flipped) = world
+        .query::<(&AnimationState, &Transform, &SpriteFlip)>()
+        .find(|(state, ..)| state.animation_id == "pin")
+        .map(|(_, transform, flip)| (*transform, flip.0))
+        .unwrap();
+    let assets = world.resource::<AssetRegistry>();
+    let asset = assets.sprite(assets.sprite_id("pin").unwrap()).unwrap();
+    let centre = sprite_centre(asset, &transform, false);
+    assert!(!flipped && close(centre, Vec2::new(100.0, 4.0)), "{centre}");
+    world.despawn(pinned);
+
+    // A status's bob counts from its apply.
+    let pulse =
+        Effect::new().with_look(Look::new().with_overlay(Overlay::new("rime").with_bob(4.0, 1.0)));
+    insert(&mut world, "pulse", pulse);
+    let target = slime(&mut world, Vec2::new(300.0, 50.0));
+    apply(&mut world, target, "pulse", 1.0);
+    frame(&mut world, &mut schedule);
+    let y = |world: &World| overlays(world)[0].1.position.y;
+    assert!((y(&world) - 54.0).abs() < 1e-4, "at rest: {}", y(&world));
+    frames(&mut world, &mut schedule, 30);
+    assert!(
+        (y(&world) - 50.0).abs() < 1e-3,
+        "4 px up at 0.5 s: {}",
+        y(&world)
+    );
+
+    // The data form: a bob and a flip written, the defaults read back.
+    let data = serde_json::json!({
+        "overlay": { "sprite": "ember", "bob": { "height": 2, "seconds": 0.5 }, "flip": false }
+    });
+    let look: Look = serde_json::from_value(data).unwrap();
+    assert_eq!(
+        look,
+        Look::new().with_overlay(Overlay::sprite("ember").with_bob(2.0, 0.5).unflipped())
+    );
+    assert_eq!(
+        serde_json::from_value::<Look>(serde_json::to_value(&look).unwrap()).unwrap(),
+        look
+    );
+    let plain = serde_json::to_value(Look::new().with_overlay(Overlay::new("rime"))).unwrap();
+    assert!(plain["overlay"].get("bob").is_none());
+    assert_eq!(plain["overlay"]["flip"], true);
+    for refused in [
+        serde_json::json!({ "overlay": { "sprite": "ember", "bob": { "height": 2, "seconds": 0 } } }),
+        serde_json::json!({ "overlay": { "sprite": "ember", "bob": { "height": -1, "seconds": 1 } } }),
+        serde_json::json!({ "overlay": { "sprite": "ember", "bob": { "height": 2 } } }),
+    ] {
+        assert!(
+            serde_json::from_value::<Look>(refused.clone()).is_err(),
+            "{refused}"
+        );
+    }
+    assert!(std::panic::catch_unwind(|| Overlay::sprite("ember").with_bob(1.0, 0.0)).is_err());
+}
+
+/// Every emitter's point, by x.
+fn emitters(world: &World) -> Vec<Vec2> {
+    let mut found: Vec<Vec2> = world
+        .query::<(&tungsten_core::ParticleEmitter, &Transform)>()
+        .map(|(_, transform)| transform.position)
+        .collect();
+    found.sort_by(|a, b| a.x.total_cmp(&b.x));
+    found
+}
+
+#[test]
+fn look_particles_take_a_mirrored_offset() {
+    let (mut world, mut schedule) = rig_with_parts();
+    insert(
+        &mut world,
+        "fused",
+        Effect::new().with_look(
+            Look::new()
+                .with_particles_at("sparks", "fuse")
+                .with_particles_offset(Vec2::new(3.0, -1.0)),
+        ),
+    );
+    // The fuse at (112, 52), plus (3, -1).
+    let keg = slime(&mut world, Vec2::new(100.0, 50.0));
+    apply(&mut world, keg, "fused", 1.0);
+    frame(&mut world, &mut schedule);
+    assert!(
+        close(emitters(&world)[0], Vec2::new(115.0, 51.0)),
+        "{:?}",
+        emitters(&world)
+    );
+    // Mirrored with the fuse: (104, 52) less 3.
+    world.insert(keg, SpriteFlip(true));
+    frame(&mut world, &mut schedule);
+    assert!(
+        close(emitters(&world)[0], Vec2::new(101.0, 51.0)),
+        "{:?}",
+        emitters(&world)
+    );
+    // Turned with it: the fuse at (114, 62), the offset turned to (1, 3).
+    world.insert(keg, SpriteFlip(false));
+    world.get_mut::<Transform>(keg).unwrap().rotation = std::f32::consts::FRAC_PI_2;
+    frame(&mut world, &mut schedule);
+    assert!(
+        close(emitters(&world)[0], Vec2::new(115.0, 65.0)),
+        "{:?}",
+        emitters(&world)
+    );
+    assert!(end_effect(&mut world, keg, &DataRef::by_id("fused")));
+    frame(&mut world, &mut schedule);
+    assert!(emitters(&world).is_empty());
+
+    // A tag look's, from the drawn centre (308, 58), mirrored by the side
+    // of a facing that neither turns nor flips its holder, its last side
+    // kept while it points straight down.
+    let looks = Looks::new().with(TagLook::new(
+        TagFilter::new(),
+        Look::new()
+            .with_particles("sparks")
+            .with_particles_offset(Vec2::new(5.0, 2.0)),
+    ));
+    let walker = tagged_slime(&mut world, Vec2::new(300.0, 50.0), looks);
+    world.insert(walker, crate::Facing::new());
+    let face = |world: &mut World, direction: Vec2| {
+        world
+            .get_mut::<crate::Facing>(walker)
+            .unwrap()
+            .face(direction);
+    };
+    for (direction, at) in [
+        (Vec2::X, Vec2::new(313.0, 60.0)),
+        (Vec2::NEG_X, Vec2::new(303.0, 60.0)),
+        (Vec2::Y, Vec2::new(303.0, 60.0)),
+    ] {
+        face(&mut world, direction);
+        frames(&mut world, &mut schedule, 2);
+        assert!(
+            close(emitters(&world)[0], at),
+            "{direction}: {:?}",
+            emitters(&world)
+        );
+    }
+
+    // The data form, and a zero offset written as such.
+    let data = serde_json::json!({ "particles": { "config": "sparks", "offset": [3, -1] } });
+    let look: Look = serde_json::from_value(data).unwrap();
+    assert_eq!(
+        look,
+        Look::new()
+            .with_particles("sparks")
+            .with_particles_offset(Vec2::new(3.0, -1.0))
+    );
+    assert_eq!(
+        serde_json::from_value::<Look>(serde_json::to_value(&look).unwrap()).unwrap(),
+        look
+    );
+    assert!(
+        std::panic::catch_unwind(|| Look::new().with_particles_offset(Vec2::ONE)).is_err(),
+        "no particles to offset"
+    );
+}

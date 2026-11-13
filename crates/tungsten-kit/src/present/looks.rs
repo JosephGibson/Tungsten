@@ -51,19 +51,24 @@ const ENGINE_GLOW: &str = "engine_glow";
 ///   the frame's writers left it, taken toward `tint` by the share times
 ///   `a`; several multiply in instance order. The colour comes back as the
 ///   frame's writers leave it when the look ends.
-/// - `overlay`, `{ "animation", "speed", "offset", "z", "material", "scale" }`:
-///   an entity playing the clip, looped, its frame's drawn centre at the
+/// - `overlay`, `{ "animation", "sprite", "speed", "offset", "z", "material", "scale", "bob", "flip" }`:
+///   an entity playing the clip, looped, or showing the plain `sprite`
+///   instead, exactly one of the two, its frame's drawn centre at the
 ///   holder's drawn centre plus `offset` whatever the frame's anchor,
 ///   mirrored and turned with it, `z` above the holder's, at
 ///   `speed`, from a phase drawn from the holder's index, through
 ///   `material` when set, scaled from `scale`'s first to its second by the
-///   share, `[1, 1]` by default.
+///   share, `[1, 1]` by default; `bob`, `{ "height", "seconds" }`, raises
+///   it `height · |sin(π·t / seconds)|` px at `t` game seconds from its
+///   show, and `flip: false` keeps its frame unflipped while its offset
+///   still mirrors, so a glyph reads alike either way.
 /// - `glow`, `{ "color", "radius" }`: `engine_white` through `engine_glow`,
 ///   `radius` px about the drawn centre, one below the holder, its alpha by
 ///   the share.
-/// - `particles`, `{ "config", "at" }`: an emitter of the particle config at
-///   the holder's named sprite point `at`, else its drawn centre, moved
-///   there each frame, so it follows the frame, the flip and the turn, its
+/// - `particles`, `{ "config", "at", "offset" }`: an emitter of the particle
+///   config at the holder's named sprite point `at`, else its drawn centre,
+///   plus `offset` mirrored and turned as an overlay's is, moved there each
+///   frame, so it follows the frame, the flip and the turn, its
 ///   `rate_scale` the share; its live particles age out after it.
 /// - `light`, `{ "color", "radius", "intensity" }`: a point `Light` at the
 ///   holder's point, its `Position`, else its `Transform`, its intensity
@@ -101,11 +106,13 @@ pub struct Look {
     pub(crate) sound: Option<LookSound>,
 }
 
-/// A look's particles: the config and the named point they emit at.
+/// A look's particles: the config, the named point they emit at and their
+/// offset from it.
 #[derive(Debug, Clone, PartialEq)]
 struct LookParticles {
     config: String,
     at: Option<String>,
+    offset: Vec2,
 }
 
 /// A look's light: a point light's colour, its alpha scaling the
@@ -124,17 +131,45 @@ pub(crate) struct LookSound {
     pub(crate) volume: f32,
 }
 
-/// A look's overlay: a clip played on an entity riding the holder. Build
-/// one with [`Overlay::new`].
+/// A look's overlay: a clip played on an entity riding the holder, or a
+/// plain sprite shown there. Build one with [`Overlay::new`] or
+/// [`Overlay::sprite`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Overlay {
-    animation: String,
+    art: Art,
     speed: f32,
     offset: Vec2,
     z: i32,
     material: Option<String>,
     /// Its scale at a share of 0 and of 1.
     scale: [f32; 2],
+    bob: Option<Bob>,
+    /// Whether its frame mirrors with the holder.
+    flip: bool,
+}
+
+/// What an overlay shows.
+#[derive(Debug, Clone, PartialEq)]
+enum Art {
+    /// A manifest animation, looped.
+    Clip(String),
+    /// A manifest sprite, still.
+    Sprite(String),
+}
+
+/// An overlay's bob: the world pixels it rises at its top and the game
+/// seconds from one rest to the next.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Bob {
+    height: f32,
+    seconds: f32,
+}
+
+impl Bob {
+    /// Its rise `shown` game seconds from its show.
+    fn rise(self, shown: f32) -> f32 {
+        self.height * (std::f32::consts::PI * shown / self.seconds).sin().abs()
+    }
 }
 
 /// A look's glow: its colour and radius.
@@ -202,6 +237,7 @@ impl Look {
         self.particles = Some(LookParticles {
             config: config.into(),
             at: None,
+            offset: Vec2::ZERO,
         });
         self
     }
@@ -218,7 +254,28 @@ impl Look {
         self.particles = Some(LookParticles {
             config: config.into(),
             at: Some(point.into()),
+            offset: Vec2::ZERO,
         });
+        self
+    }
+
+    /// The look, its particles `offset` px from their point, mirrored and
+    /// turned as an overlay's offset is.
+    ///
+    /// # Panics
+    ///
+    /// When the look has no particles, or a coordinate is not finite.
+    #[must_use]
+    #[track_caller]
+    pub fn with_particles_offset(mut self, offset: Vec2) -> Self {
+        assert!(
+            offset.is_finite(),
+            "Look::with_particles_offset: offset must be finite (got {offset})"
+        );
+        let Some(particles) = self.particles.as_mut() else {
+            panic!("Look::with_particles_offset: the look has no particles");
+        };
+        particles.offset = offset;
         self
     }
 
@@ -284,14 +341,29 @@ impl Look {
     /// overlay's animation and material. `field` names the look.
     pub(crate) fn check(&self, world: &World, field: &str) -> Result<(), MissingAsset> {
         if let Some(overlay) = &self.overlay {
-            if let Some(animations) = world.get_resource::<AnimationRegistry>()
-                && animations.get(&overlay.animation).is_none()
-            {
-                return Err(MissingAsset::new(
-                    format!("{field}.overlay.animation"),
-                    "animation",
-                    overlay.animation.as_str(),
-                ));
+            match &overlay.art {
+                Art::Clip(animation) => {
+                    if let Some(animations) = world.get_resource::<AnimationRegistry>()
+                        && animations.get(animation).is_none()
+                    {
+                        return Err(MissingAsset::new(
+                            format!("{field}.overlay.animation"),
+                            "animation",
+                            animation.as_str(),
+                        ));
+                    }
+                }
+                Art::Sprite(sprite) => {
+                    if let Some(assets) = world.get_resource::<AssetRegistry>()
+                        && assets.sprite_id(sprite).is_none()
+                    {
+                        return Err(MissingAsset::new(
+                            format!("{field}.overlay.sprite"),
+                            "sprite",
+                            sprite.as_str(),
+                        ));
+                    }
+                }
             }
             if let (Some(material), Some(materials)) =
                 (&overlay.material, world.get_resource::<MaterialRegistry>())
@@ -333,13 +405,62 @@ impl Overlay {
     /// drawn centre, one above it in z, through the clip's own material.
     #[must_use]
     pub fn new(animation: impl Into<String>) -> Self {
+        Self::of(Art::Clip(animation.into()))
+    }
+
+    /// An overlay showing manifest sprite `sprite`, still, on the holder's
+    /// drawn centre, one above it in z, through the sprite's own material:
+    /// a mark or a glyph a clip of one frame would hold.
+    #[must_use]
+    pub fn sprite(sprite: impl Into<String>) -> Self {
+        Self::of(Art::Sprite(sprite.into()))
+    }
+
+    fn of(art: Art) -> Self {
         Self {
-            animation: animation.into(),
+            art,
             speed: 1.0,
             offset: Vec2::ZERO,
             z: 1,
             material: None,
             scale: [1.0, 1.0],
+            bob: None,
+            flip: true,
+        }
+    }
+
+    /// The overlay, rising `height` px and back every `seconds` of game
+    /// time from its show: `height · |sin(π·t / seconds)|` at `t`.
+    ///
+    /// # Panics
+    ///
+    /// When `height` is not finite and at least 0, or `seconds` is not
+    /// finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_bob(mut self, height: f32, seconds: f32) -> Self {
+        assert!(
+            height.is_finite() && height >= 0.0 && seconds.is_finite() && seconds > 0.0,
+            "Overlay::with_bob: needs a finite height >= 0 and seconds > 0 (got {height}, {seconds})"
+        );
+        self.bob = Some(Bob { height, seconds });
+        self
+    }
+
+    /// The overlay, its frame never mirrored while its offset still mirrors
+    /// with the holder: a glyph that reads alike either way.
+    #[must_use]
+    pub fn unflipped(mut self) -> Self {
+        self.flip = false;
+        self
+    }
+
+    /// Its offset from the holder's drawn centre `shown` game seconds from
+    /// its show, its bob's rise taken off `y`.
+    fn offset_at(&self, shown: f32) -> Vec2 {
+        match self.bob {
+            Some(bob) => self.offset - Vec2::new(0.0, bob.rise(shown)),
+            None => self.offset,
         }
     }
 
@@ -434,6 +555,8 @@ pub(crate) struct ParticlesDef {
     config: String,
     #[serde(default)]
     at: Option<String>,
+    #[serde(default)]
+    offset: [f32; 2],
 }
 
 /// A look's light as data writes it.
@@ -479,11 +602,32 @@ pub(crate) struct LookSoundDef {
     volume: f32,
 }
 
-/// An overlay as data writes it.
+/// An overlay as data writes it, exactly one of `animation` and `sprite`.
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "OverlayFields")]
 pub(crate) struct OverlayDef {
-    animation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    animation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sprite: Option<String>,
+    speed: f32,
+    offset: [f32; 2],
+    z: i32,
+    material: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scale: Option<[f32; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bob: Option<BobDef>,
+    flip: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OverlayFields {
+    #[serde(default)]
+    animation: Option<String>,
+    #[serde(default)]
+    sprite: Option<String>,
     #[serde(default = "one", deserialize_with = "non_negative")]
     speed: f32,
     #[serde(default)]
@@ -492,8 +636,43 @@ pub(crate) struct OverlayDef {
     z: i32,
     #[serde(default)]
     material: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     scale: Option<[f32; 2]>,
+    #[serde(default)]
+    bob: Option<BobDef>,
+    #[serde(default = "flipped")]
+    flip: bool,
+}
+
+impl TryFrom<OverlayFields> for OverlayDef {
+    type Error = String;
+
+    fn try_from(fields: OverlayFields) -> Result<Self, Self::Error> {
+        if fields.animation.is_some() == fields.sprite.is_some() {
+            return Err("an overlay needs exactly one of `animation` and `sprite`".into());
+        }
+        Ok(Self {
+            animation: fields.animation,
+            sprite: fields.sprite,
+            speed: fields.speed,
+            offset: fields.offset,
+            z: fields.z,
+            material: fields.material,
+            scale: fields.scale,
+            bob: fields.bob,
+            flip: fields.flip,
+        })
+    }
+}
+
+/// An overlay's bob as data writes it.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BobDef {
+    #[serde(deserialize_with = "non_negative")]
+    height: f32,
+    #[serde(deserialize_with = "positive")]
+    seconds: f32,
 }
 
 /// Whether an overlay's scale is two finite values of at least 0.
@@ -517,6 +696,10 @@ fn one() -> f32 {
 
 fn above() -> i32 {
     1
+}
+
+fn flipped() -> bool {
+    true
 }
 
 /// An optional colour, each channel finite.
@@ -545,14 +728,7 @@ impl TryFrom<LookDef> for Look {
         }
         Ok(Self {
             tint: def.tint,
-            overlay: def.overlay.map(|overlay| Overlay {
-                animation: overlay.animation,
-                speed: overlay.speed,
-                offset: Vec2::from(overlay.offset),
-                z: overlay.z,
-                material: overlay.material,
-                scale: overlay.scale.unwrap_or([1.0, 1.0]),
-            }),
+            overlay: def.overlay.map(Overlay::try_from).transpose()?,
             glow: def.glow.map(|glow| Glow {
                 color: glow.color,
                 radius: glow.radius,
@@ -560,6 +736,7 @@ impl TryFrom<LookDef> for Look {
             particles: def.particles.map(|particles| LookParticles {
                 config: particles.config,
                 at: particles.at,
+                offset: Vec2::from(particles.offset),
             }),
             light: def.light.map(|light| LookLight {
                 color: light.color,
@@ -574,17 +751,54 @@ impl TryFrom<LookDef> for Look {
     }
 }
 
+impl TryFrom<OverlayDef> for Overlay {
+    type Error = String;
+
+    fn try_from(def: OverlayDef) -> Result<Self, Self::Error> {
+        let art = match (def.animation, def.sprite) {
+            (Some(animation), None) => Art::Clip(animation),
+            (None, Some(sprite)) => Art::Sprite(sprite),
+            _ => return Err("an overlay needs exactly one of `animation` and `sprite`".into()),
+        };
+        Ok(Self {
+            art,
+            speed: def.speed,
+            offset: Vec2::from(def.offset),
+            z: def.z,
+            material: def.material,
+            scale: def.scale.unwrap_or([1.0, 1.0]),
+            bob: def.bob.map(|bob| Bob {
+                height: bob.height,
+                seconds: bob.seconds,
+            }),
+            flip: def.flip,
+        })
+    }
+}
+
 impl From<Look> for LookDef {
     fn from(look: Look) -> Self {
         Self {
             tint: look.tint,
-            overlay: look.overlay.map(|overlay| OverlayDef {
-                animation: overlay.animation,
-                speed: overlay.speed,
-                offset: overlay.offset.into(),
-                z: overlay.z,
-                material: overlay.material,
-                scale: (overlay.scale != [1.0, 1.0]).then_some(overlay.scale),
+            overlay: look.overlay.map(|overlay| {
+                let (animation, sprite) = match overlay.art {
+                    Art::Clip(animation) => (Some(animation), None),
+                    Art::Sprite(sprite) => (None, Some(sprite)),
+                };
+                OverlayDef {
+                    animation,
+                    sprite,
+                    speed: overlay.speed,
+                    offset: overlay.offset.into(),
+                    z: overlay.z,
+                    material: overlay.material,
+                    scale: (overlay.scale != [1.0, 1.0]).then_some(overlay.scale),
+                    bob: overlay.bob.map(|bob| BobDef {
+                        height: bob.height,
+                        seconds: bob.seconds,
+                    }),
+                    flip: overlay.flip,
+                }
             }),
             glow: look.glow.map(|glow| GlowDef {
                 color: glow.color,
@@ -593,6 +807,7 @@ impl From<Look> for LookDef {
             particles: look.particles.map(|particles| ParticlesDef {
                 config: particles.config,
                 at: particles.at,
+                offset: particles.offset.into(),
             }),
             light: look.light.map(|light| LightDef {
                 color: light.color,
@@ -626,7 +841,7 @@ pub(crate) fn describe_looks(world: &mut World) {
             FieldDescription::new(
                 "overlay",
                 FieldType::Shape("look_overlay"),
-                "a clip played on an entity riding the holder",
+                "a clip played, or a sprite shown, on an entity riding the holder",
             )
             .default("null"),
         )
@@ -666,13 +881,21 @@ pub(crate) fn describe_looks(world: &mut World) {
         .roundtrip(round_trip::<LookDef>),
         ComponentDescription::new(
             "look_overlay",
-            "A clip looped on an entity, its frame's drawn centre at the holder's drawn centre plus its offset whatever the frame's anchor, mirrored and turned with it.",
+            "A clip looped, or a sprite shown still, on an entity, its frame's drawn centre at the holder's drawn centre plus its offset whatever the frame's anchor, mirrored and turned with it.",
         )
         .field(FieldDescription::new(
             "animation",
             FieldType::Text,
-            "the manifest animation; the load checks it",
+            "the manifest animation it loops, needed but where `sprite` stands in its place; the load checks it",
         ))
+        .field(
+            FieldDescription::new(
+                "sprite",
+                FieldType::Text,
+                "a manifest sprite it shows still in place of `animation`, never beside it; the load checks it",
+            )
+            .default("null"),
+        )
         .field(
             FieldDescription::new(
                 "speed",
@@ -719,8 +942,46 @@ pub(crate) fn describe_looks(world: &mut World) {
             )
             .default("null"),
         )
+        .field(
+            FieldDescription::new(
+                "bob",
+                FieldType::Shape("look_bob"),
+                "a rise and fall over its offset, counted on the game clock from its show",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "flip",
+                FieldType::Bool,
+                "its frame mirrored with the holder; false keeps it unflipped while its offset still mirrors, so a glyph reads alike either way",
+            )
+            .default("true"),
+        )
         .sample(r#"{ "animation": "frost" }"#)
         .roundtrip(round_trip::<OverlayDef>),
+        ComponentDescription::new(
+            "look_bob",
+            "An overlay's rise of `height · |sin(π·t / seconds)|` world pixels at `t` game seconds from its show.",
+        )
+        .field(FieldDescription::new(
+            "height",
+            FieldType::F32 {
+                min: Bound::Inclusive(0.0),
+                max: Bound::Open,
+            },
+            "world pixels it rises at its top",
+        ))
+        .field(FieldDescription::new(
+            "seconds",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "game seconds from one rest to the next",
+        ))
+        .sample(r#"{ "height": 2, "seconds": 0.5 }"#)
+        .roundtrip(round_trip::<BobDef>),
         ComponentDescription::new("look_glow", "A soft glow under the holder.")
             .field(FieldDescription::new(
                 "color",
@@ -750,6 +1011,14 @@ pub(crate) fn describe_looks(world: &mut World) {
                     "the holder's sprite point it emits at, its drawn centre on a frame without it",
                 )
                 .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "offset",
+                    FieldType::Vec2,
+                    "world pixels from its point, mirrored and turned as an overlay's offset is",
+                )
+                .default("[0.0, 0.0]"),
             )
             .sample(r#"{ "config": "sparks" }"#)
             .roundtrip(round_trip::<ParticlesDef>),
@@ -1099,7 +1368,7 @@ impl LookEntry {
 #[derive(Debug, Default)]
 pub(crate) struct LookHolders(pub(crate) Vec<LookEntry>);
 
-/// One look's parts.
+/// One look's parts, with the game seconds they have shown.
 #[derive(Debug)]
 struct Parts {
     holder: Entity,
@@ -1108,6 +1377,7 @@ struct Parts {
     overlay: Option<Entity>,
     glow: Option<Entity>,
     emitter: Option<Entity>,
+    shown: f32,
 }
 
 /// One tag look's parts, by its holder and its entry's index, with the
@@ -1183,13 +1453,15 @@ impl LookState {
             }
         }
         // Parts whose look is gone, whose band changed, or whose holder is
-        // gone or despawning go.
+        // gone or despawning go; the rest age by the frame's game time.
         let entries = std::mem::take(&mut self.entries);
+        let dt = frame_seconds(world);
         let mut i = 0;
         while i < self.parts.len() {
-            let parts = &self.parts[i];
+            let parts = &mut self.parts[i];
             let live = world.is_alive(parts.holder) && !world.has::<Despawning>(parts.holder);
             if live && entries.iter().any(|entry| entry.owns(parts)) {
+                parts.shown += dt;
                 i += 1;
                 continue;
             }
@@ -1229,9 +1501,7 @@ impl LookState {
             };
             let at = crate::damage::effects::running_look(world, entry.holder, entry.serial)
                 .and_then(|(look, _, _)| look.particles.as_ref())
-                .and_then(|particles| particles.at.as_deref())
-                .and_then(|point| sprite_point(world, parts.holder, point))
-                .or_else(|| drawn(world, parts.holder).map(|drawn| drawn.centre));
+                .and_then(|particles| emitter_point(world, parts.holder, particles, None));
             if let Some(at) = at
                 && let Some(transform) = world.get_mut::<Transform>(emitter)
             {
@@ -1254,6 +1524,7 @@ impl LookState {
             overlay,
             glow,
             emitter,
+            shown: 0.0,
         }
     }
 
@@ -1285,10 +1556,7 @@ impl LookState {
         if self.tag_live.is_empty() && self.tag_parts.is_empty() {
             return;
         }
-        let dt = world
-            .get_resource::<Time>()
-            .map_or(0.0, Time::delta)
-            .max(0.0);
+        let dt = frame_seconds(world);
         let mut i = 0;
         while i < self.tag_parts.len() {
             let parts = &mut self.tag_parts[i];
@@ -1331,7 +1599,7 @@ impl LookState {
                 left: false,
             });
         }
-        for parts in &self.tag_parts {
+        for parts in &mut self.tag_parts {
             let Some(emitter) = parts.emitter else {
                 continue;
             };
@@ -1339,13 +1607,9 @@ impl LookState {
                 continue;
             };
             let share = entry.share(parts.shown);
-            let at = entry
-                .look
-                .particles
-                .as_ref()
-                .and_then(|particles| particles.at.as_deref())
-                .and_then(|point| sprite_point(world, parts.holder, point))
-                .or_else(|| drawn(world, parts.holder).map(|drawn| drawn.centre));
+            let at = entry.look.particles.as_ref().and_then(|particles| {
+                emitter_point(world, parts.holder, particles, Some(&mut parts.left))
+            });
             if let Some(at) = at
                 && let Some(transform) = world.get_mut::<Transform>(emitter)
             {
@@ -1458,13 +1722,13 @@ impl LookState {
             let overlay = look
                 .overlay
                 .as_ref()
-                .map(|overlay| (overlay.offset, overlay.z, overlay.scale_at(entry.share)));
+                .map(|overlay| Placed::of(overlay, entry.share, parts.shown));
             let glow = look.glow;
             let Some(drawn) = drawn(world, parts.holder) else {
                 continue;
             };
-            if let (Some(part), Some((offset, z, scale))) = (parts.overlay, overlay) {
-                place_overlay(world, part, offset, z, scale, &drawn);
+            if let (Some(part), Some(placed)) = (parts.overlay, overlay) {
+                place_overlay(world, part, placed, &drawn);
             }
             if let (Some(part), Some(glow)) = (parts.glow, glow) {
                 place_glow(world, part, glow, entry.share, &drawn);
@@ -1520,7 +1784,7 @@ impl LookState {
                         .look
                         .overlay
                         .as_ref()
-                        .map(|overlay| (overlay.offset, overlay.z, overlay.scale_at(share)));
+                        .map(|overlay| Placed::of(overlay, share, parts.shown));
                     (overlay, entry.look.glow, share)
                 })
             else {
@@ -1529,17 +1793,9 @@ impl LookState {
             let Some(mut drawn) = drawn(world, parts.holder) else {
                 continue;
             };
-            if let Some(facing) = world.get::<Facing>(parts.holder)
-                && !facing.turns_or_flips()
-            {
-                let side = facing.direction().x;
-                if side != 0.0 {
-                    parts.left = side < 0.0;
-                }
-                drawn.flip |= parts.left;
-            }
-            if let (Some(part), Some((offset, z, scale))) = (parts.overlay, overlay) {
-                place_overlay(world, part, offset, z, scale, &drawn);
+            drawn.flip = mirrors(world, parts.holder, drawn.flip, &mut parts.left);
+            if let (Some(part), Some(placed)) = (parts.overlay, overlay) {
+                place_overlay(world, part, placed, &drawn);
             }
             if let (Some(part), Some(glow)) = (parts.glow, glow) {
                 place_glow(world, part, glow, share, &drawn);
@@ -1582,7 +1838,7 @@ pub(crate) struct Drawn {
     pub(crate) centre: Vec2,
     rotation: f32,
     scale: Vec2,
-    flip: bool,
+    pub(crate) flip: bool,
     pub(crate) z: i32,
     /// Half its drawn height, unturned: 0 without a sprite.
     pub(crate) half_height: f32,
@@ -1643,27 +1899,43 @@ fn turn(arm: Vec2, rotation: f32) -> Vec2 {
     }
 }
 
-/// Spawns an overlay playing its clip at `at`, from a phase drawn from its
-/// holder's index; `None` when the World has no such clip.
+/// Spawns an overlay at `at`: one playing its clip from a phase drawn from
+/// its holder's index, or one showing its sprite; `None` when the World has
+/// no such clip or sprite.
 fn spawn_overlay(world: &mut World, holder: Entity, overlay: &Overlay, at: Vec2) -> Option<Entity> {
+    let material = overlay
+        .material
+        .as_ref()
+        .and_then(|id| world.get_resource::<MaterialRegistry>()?.get(id));
+    let with_material = |sprite: Sprite| match material {
+        Some(material) => sprite.with_material(material),
+        None => sprite,
+    };
+    let animation = match &overlay.art {
+        Art::Clip(animation) => animation,
+        Art::Sprite(id) => {
+            let sprite = world.get_resource::<AssetRegistry>()?.sprite_id(id)?;
+            return Some(world.spawn_with((
+                Transform::from_position(at),
+                with_material(Sprite::new(sprite)),
+                Visibility::default(),
+                SpriteFlip(false),
+            )));
+        }
+    };
     let animations = world.get_resource::<AnimationRegistry>()?;
-    let clip = animations.get(&overlay.animation)?;
+    let clip = animations.get(animation)?;
     let first = clip.frames.first()?.sprite;
     let total = clip.total_duration_ms().max(1);
-    let mut state = AnimationState::new(overlay.animation.clone()).with_speed(1.0);
+    let mut state = AnimationState::new(animation.clone()).with_speed(1.0);
     // Holders do not play in step: a phase from the index's hash.
     let phase =
         (u64::from(holder.id()).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) % u64::from(total);
     state.advance(phase as f32, animations);
     state.set_speed(overlay.speed);
-    let mut sprite = Sprite::new(state.current_sprite(animations).unwrap_or(first));
-    if let Some(material) = overlay
-        .material
-        .as_ref()
-        .and_then(|id| world.get_resource::<MaterialRegistry>()?.get(id))
-    {
-        sprite = sprite.with_material(material);
-    }
+    let sprite = with_material(Sprite::new(
+        state.current_sprite(animations).unwrap_or(first),
+    ));
     Some(world.spawn_with((
         Transform::from_position(at),
         sprite,
@@ -1673,17 +1945,103 @@ fn spawn_overlay(world: &mut World, holder: Entity, overlay: &Overlay, at: Vec2)
     )))
 }
 
-/// Places `part`, an overlay's entity `offset` from the holder's centre and
-/// `z` above it, `scale` times the holder's, on the holder as `drawn` shows
-/// it: its frame's drawn centre on that point, whatever the frame's anchor,
-/// so it holds there as its scale grows.
-fn place_overlay(world: &mut World, part: Entity, offset: Vec2, z: i32, scale: f32, drawn: &Drawn) {
-    let offset = if drawn.flip {
+/// An overlay's place this frame: its offset, bobbed, its depth over the
+/// holder's, its scale times the holder's and whether its frame mirrors.
+#[derive(Clone, Copy)]
+struct Placed {
+    offset: Vec2,
+    z: i32,
+    scale: f32,
+    flip: bool,
+}
+
+impl Placed {
+    /// `overlay`'s place at `share`, `shown` game seconds from its show.
+    fn of(overlay: &Overlay, share: f32, shown: f32) -> Self {
+        Self {
+            offset: overlay.offset_at(shown),
+            z: overlay.z,
+            scale: overlay.scale_at(share),
+            flip: overlay.flip,
+        }
+    }
+}
+
+/// `offset` from a point of the holder as `drawn` shows it, mirrored by
+/// `flip`, scaled and turned with it.
+fn arm(offset: Vec2, flip: bool, drawn: &Drawn) -> Vec2 {
+    let offset = if flip {
         Vec2::new(-offset.x, offset.y)
     } else {
         offset
     };
-    let centre = drawn.centre + turn(offset * drawn.scale, drawn.rotation);
+    turn(offset * drawn.scale, drawn.rotation)
+}
+
+/// Whether `holder`'s parts mirror this frame: by `flip`, as it is drawn,
+/// or, drawn unflipped under a [`Facing`] that neither turns nor flips it,
+/// by that facing's side, left of the vertical, `left` keeping the last
+/// side while it points straight up or down.
+pub(crate) fn mirrors(world: &World, holder: Entity, flip: bool, left: &mut bool) -> bool {
+    match world.get::<Facing>(holder) {
+        Some(facing) if !facing.turns_or_flips() => {
+            let side = facing.direction().x;
+            if side != 0.0 {
+                *left = side < 0.0;
+            }
+            flip || *left
+        }
+        _ => flip,
+    }
+}
+
+/// Where a look's particles emit on `holder` this frame: its named sprite
+/// point, else its drawn centre, plus their offset mirrored and turned as
+/// an overlay's is; by the holder's facing too with `left`, a tag look's
+/// last side ([`mirrors`]).
+fn emitter_point(
+    world: &World,
+    holder: Entity,
+    particles: &LookParticles,
+    left: Option<&mut bool>,
+) -> Option<Vec2> {
+    let point = particles
+        .at
+        .as_deref()
+        .and_then(|point| sprite_point(world, holder, point));
+    if particles.offset == Vec2::ZERO {
+        return point.or_else(|| drawn(world, holder).map(|drawn| drawn.centre));
+    }
+    let drawn = drawn(world, holder)?;
+    let flip = match left {
+        Some(left) => mirrors(world, holder, drawn.flip, left),
+        None => drawn.flip,
+    };
+    Some(point.unwrap_or(drawn.centre) + arm(particles.offset, flip, &drawn))
+}
+
+/// The frame's game seconds, none while paused.
+fn frame_seconds(world: &World) -> f32 {
+    world
+        .get_resource::<Time>()
+        .map_or(0.0, Time::delta)
+        .max(0.0)
+}
+
+/// Places `part`, an overlay's entity, as `placed` puts it on the holder as
+/// `drawn` shows it: its frame's drawn centre on the holder's plus the
+/// offset, whatever the frame's anchor, so it holds there as its scale
+/// grows; its frame mirrored with the holder unless `placed` keeps it
+/// unflipped.
+fn place_overlay(world: &mut World, part: Entity, placed: Placed, drawn: &Drawn) {
+    let Placed {
+        offset,
+        z,
+        scale,
+        flip,
+    } = placed;
+    let centre = drawn.centre + arm(offset, drawn.flip, drawn);
+    let flip = drawn.flip && flip;
     let mut placed = Transform {
         position: Vec2::ZERO,
         rotation: drawn.rotation,
@@ -1698,9 +2056,7 @@ fn place_overlay(world: &mut World, part: Entity, offset: Vec2, z: i32, scale: f
                 .get_resource::<AssetRegistry>()
                 .and_then(|assets| assets.sprite(sprite.asset_id))
         })
-        .map_or(Vec2::ZERO, |asset| {
-            sprite_centre(asset, &placed, drawn.flip)
-        });
+        .map_or(Vec2::ZERO, |asset| sprite_centre(asset, &placed, flip));
     placed.position = centre - from_point;
     if let Some(transform) = world.get_mut::<Transform>(part) {
         *transform = placed;
@@ -1708,8 +2064,8 @@ fn place_overlay(world: &mut World, part: Entity, offset: Vec2, z: i32, scale: f
     if let Some(sprite) = world.get_mut::<Sprite>(part) {
         sprite.z_order = drawn.z.saturating_add(z);
     }
-    if let Some(flip) = world.get_mut::<SpriteFlip>(part) {
-        flip.0 = drawn.flip;
+    if let Some(part_flip) = world.get_mut::<SpriteFlip>(part) {
+        part_flip.0 = flip;
     }
 }
 

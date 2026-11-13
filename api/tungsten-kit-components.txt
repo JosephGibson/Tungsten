@@ -52,6 +52,7 @@ component character_animator: Picks the entity's animation clip each frame: idle
   field fall: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up = null — what a platformer shows falling; `idle` when left out
   field min_speed: f32 (>= 0) = 10.0 — world pixels per second from which it moves
   field rules: list of shape clip_rule = [] — clips over the motion state's by the entity's tags and motion, the first that passes; the load checks each tag and ID
+  field hold: tag filter = null — while the entity's tags pass it, its clip holds its frame, a clip picked meanwhile starting held; the load checks each tag
   genres: platformer, top_down, rpg, arpg
   sample: { "idle": "hero_idle" }
 component contact_damage: Hurts the hurtboxes its shape touches, at once and again each interval while they touch: a hazard, an aura.
@@ -161,6 +162,7 @@ component health: Health with an invulnerability window after each hit, which `d
 component health_bar: A bar over the entity showing its health's share: a back and a fill drawn from `engine_white`, hidden while it is dead.
   field size: [x, y] = [64.0, 6.0] — the back's width and height in world pixels, each above 0
   field rise: f32 (>= 0) = 6.0 — world pixels from the back's bottom up to the holder's drawn top
+  field offset: [x, y] = [0.0, 0.0] — world pixels from the holder's drawn centre to the bar's, x mirrored as a look's overlay offset is
   field back: [r, g, b, a] = [0.05, 0.04, 0.05, 0.86] — linear
   field fill: [r, g, b, a] = [0.77, 0.19, 0.16, 1.0] — linear; its width the health's share
   field inset: f32 (>= 0) = 1.0 — world pixels the fill sits inside the back
@@ -729,12 +731,16 @@ shape lob: A spawn's launch onto the aim's point, by its prefab's body: a dynami
   sample: { "speed": 600, "time": [0.3, 1.2] }
 shape look: What a status shows on its holder while it runs, by its share: a tint, an overlay clip and a glow, each optional; unsaved.
   field tint: [r, g, b, a] = null — linear: the holder's sprite colour taken toward it by the share times its alpha; several multiply
-  field overlay: shape look_overlay = null — a clip played on an entity riding the holder
+  field overlay: shape look_overlay = null — a clip played, or a sprite shown, on an entity riding the holder
   field glow: shape look_glow = null — `engine_white` through `engine_glow` under the holder, its alpha by the share
   field particles: shape look_particles = null — an emitter at the holder's named sprite point, following its frame, flip and turn, its rate by the share
   field light: shape look_light = null — a point light at the holder, its intensity by the share, kept on the fixed step
   field sound: shape look_sound = null — a looping sound the instance wants by the holder's place, its volume by the share
   sample: {}
+shape look_bob: An overlay's rise of `height · |sin(π·t / seconds)|` world pixels at `t` game seconds from its show.
+  field height: f32 (>= 0) — world pixels it rises at its top
+  field seconds: f32 (> 0) — game seconds from one rest to the next
+  sample: { "height": 2, "seconds": 0.5 }
 shape look_glow: A soft glow under the holder.
   field color: [r, g, b, a] — linear; its alpha by the share
   field radius: f32 (> 0) — world pixels about the holder's drawn centre
@@ -744,17 +750,21 @@ shape look_light: A point light at the holder, kept on the fixed step.
   field radius: f32 (> 0) — world pixels it reaches
   field intensity: f32 (>= 0) = 1.0 — at a share of 1
   sample: { "color": [1.0, 0.6, 0.2, 1.0], "radius": 64 }
-shape look_overlay: A clip looped on an entity, its frame's drawn centre at the holder's drawn centre plus its offset whatever the frame's anchor, mirrored and turned with it.
-  field animation: text — the manifest animation; the load checks it
+shape look_overlay: A clip looped, or a sprite shown still, on an entity, its frame's drawn centre at the holder's drawn centre plus its offset whatever the frame's anchor, mirrored and turned with it.
+  field animation: text — the manifest animation it loops, needed but where `sprite` stands in its place; the load checks it
+  field sprite: text = null — a manifest sprite it shows still in place of `animation`, never beside it; the load checks it
   field speed: f32 (>= 0) = 1.0 — its playback rate
   field offset: [x, y] = [0.0, 0.0] — world pixels from the holder's drawn centre, mirrored and turned with it
   field z: i64 (>= -2147483648, <= 2147483647) = 1 — its depth above the holder's
   field material: text = null — a manifest material it draws through; the load checks it
   field scale: [x, y] = null — `[from, to]`, each at least 0: its scale from `from` at a share of 0 to `to` at 1, a ring growing over a tell; `[1, 1]` when left out
+  field bob: shape look_bob = null — a rise and fall over its offset, counted on the game clock from its show
+  field flip: bool = true — its frame mirrored with the holder; false keeps it unflipped while its offset still mirrors, so a glyph reads alike either way
   sample: { "animation": "frost" }
 shape look_particles: An emitter riding the holder.
   field config: text — the manifest particle config; the load checks it
   field at: text = null — the holder's sprite point it emits at, its drawn centre on a frame without it
+  field offset: [x, y] = [0.0, 0.0] — world pixels from its point, mirrored and turned as an overlay's offset is
   sample: { "config": "sparks" }
 shape look_sound: A looping sound the running look wants.
   field id: text — the manifest sound; the load checks it

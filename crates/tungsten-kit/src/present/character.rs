@@ -606,7 +606,11 @@ struct OneShot {
 /// Its [`ClipRule`]s pick over the motion state's clip by the entity's tags
 /// and motion, the first that passes. A one-shot
 /// ([`play`](Self::play)), such as a landing, a hurt or an attack a cue's
-/// `clip` action or an ability's `clip` plays, shows once over both.
+/// `clip` action or an ability's `clip` plays, shows once over both. While
+/// the entity's tags pass its `hold` filter, its clip holds its frame
+/// (`AnimationState::playing` false), a one-shot's count with it, and a
+/// clip picked meanwhile starts held; an animator with a hold owns its
+/// entity's `playing`.
 ///
 /// [`CharacterAnimatorPlugin`]'s system runs after the animation tick: on a
 /// change of clip it replaces the entity's `AnimationState` and writes the
@@ -616,12 +620,12 @@ struct OneShot {
 /// on children.
 ///
 /// Scene name `character_animator`:
-/// `{ "idle": "hero_idle", "move": "hero_run", "rise": "hero_jump", "fall": "hero_fall", "min_speed": 10, "rules": [{ "when": { "all": ["state.charging"] }, "clip": "hero_charge" }] }`,
+/// `{ "idle": "hero_idle", "move": "hero_run", "rise": "hero_jump", "fall": "hero_fall", "min_speed": 10, "rules": [{ "when": { "all": ["state.charging"] }, "clip": "hero_charge" }], "hold": { "all": ["state.frozen"] } }`,
 /// each clip an animation ID, a set by facing or aim poses, `idle` needed,
-/// `min_speed` in world pixels per second, 10 by default, and `rules`
-/// none by default; the load checks every ID against the manifest's
-/// animations, naming the field (`move.left`), and each rule's tags. It is
-/// data: a game's save can hold it, but a one-shot.
+/// `min_speed` in world pixels per second, 10 by default, and `rules` and
+/// `hold` none by default; the load checks every ID against the manifest's
+/// animations, naming the field (`move.left`), and each rule's tags and
+/// the hold's. It is data: a game's save can hold it, but a one-shot.
 ///
 /// # Examples
 ///
@@ -674,6 +678,8 @@ pub struct CharacterAnimator {
     min_speed: f32,
     /// In order: the first that passes picks over the motion state's clip.
     rules: Vec<ClipRule>,
+    /// While the entity's tags pass it, the clip holds its frame.
+    hold: Option<TagFilter>,
     /// The state at its last frame.
     state: State,
     /// The animation it showed at its last frame; `None` when the next pass
@@ -701,6 +707,8 @@ struct CharacterAnimatorFields {
     min_speed: f32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rules: Vec<ClipRule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hold: Option<TagFilter>,
     #[serde(default)]
     state: State,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -730,6 +738,7 @@ impl TryFrom<CharacterAnimatorFields> for CharacterAnimator {
             fall: fields.fall,
             min_speed: fields.min_speed,
             rules: fields.rules,
+            hold: fields.hold,
             state: fields.state,
             clip: fields.clip,
             left: fields.left,
@@ -747,6 +756,7 @@ impl From<CharacterAnimator> for CharacterAnimatorFields {
             fall: animator.fall,
             min_speed: animator.min_speed,
             rules: animator.rules,
+            hold: animator.hold,
             state: animator.state,
             clip: animator.clip,
             left: animator.left,
@@ -766,6 +776,7 @@ impl CharacterAnimator {
             fall: None,
             min_speed: DEFAULT_MIN_SPEED,
             rules: Vec::new(),
+            hold: None,
             state: State::Idle,
             clip: None,
             left: false,
@@ -777,6 +788,16 @@ impl CharacterAnimator {
     #[must_use]
     pub fn with_rule(mut self, rule: ClipRule) -> Self {
         self.rules.push(rule);
+        self
+    }
+
+    /// The animator, holding its clip's frame while the entity's tags pass
+    /// `hold`: the clip stands, a one-shot's count with it, and a clip
+    /// picked meanwhile starts held; it plays on once they stop passing.
+    /// The animator then owns the entity's `AnimationState::playing`.
+    #[must_use]
+    pub fn with_hold(mut self, hold: TagFilter) -> Self {
+        self.hold = Some(hold);
         self
     }
 
@@ -927,6 +948,14 @@ impl Plugin for CharacterAnimatorPlugin {
                 )
                 .default("[]"),
             )
+            .field(
+                FieldDescription::new(
+                    "hold",
+                    FieldType::Filter,
+                    "while the entity's tags pass it, its clip holds its frame, a clip picked meanwhile starting held; the load checks each tag",
+                )
+                .default("null"),
+            )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
             .genre(RPG)
@@ -968,6 +997,9 @@ impl Plugin for CharacterAnimatorPlugin {
                         check_declared(world, &format!("rules.{i}.when.{field}"), name)?;
                     }
                 }
+                for (field, name) in def.hold.iter().flat_map(TagFilterDef::names) {
+                    check_declared(world, &format!("hold.{field}"), name)?;
+                }
                 let clips = [
                     ("idle".to_string(), Some(&def.idle)),
                     ("move".to_string(), def.moving.as_ref()),
@@ -995,6 +1027,7 @@ impl Plugin for CharacterAnimatorPlugin {
                 animator.rise = def.rise;
                 animator.fall = def.fall;
                 animator.rules = def.rules.into_iter().map(ClipRule::from).collect();
+                animator.hold = def.hold.map(TagFilter::from);
                 (animator,)
             },
         );
@@ -1026,6 +1059,8 @@ struct CharacterAnimatorDef {
     min_speed: f32,
     #[serde(default)]
     rules: Vec<ClipRuleDef>,
+    #[serde(default)]
+    hold: Option<TagFilterDef>,
 }
 
 /// The load's check of `clips` at `field`: each animation ID against the
@@ -1088,7 +1123,7 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
         let speed = world
             .get::<AnimationState>(entity)
             .map_or(1.0, AnimationState::speed);
-        let (state, rule) = {
+        let (state, rule, held) = {
             let animator = world.get::<CharacterAnimator>(entity).unwrap();
             let state = if airborne {
                 // y points down: a rise is a negative velocity.
@@ -1102,16 +1137,16 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
             } else {
                 State::Idle
             };
-            let rule = if animator.rules.is_empty() {
-                None
-            } else {
-                let tags = world.get::<Tags>(entity);
-                animator
-                    .rules
-                    .iter()
-                    .position(|rule| rule.passes(tags, state))
-            };
-            (state, rule)
+            let tags = (!animator.rules.is_empty() || animator.hold.is_some())
+                .then(|| world.get::<Tags>(entity))
+                .flatten();
+            let rule = animator
+                .rules
+                .iter()
+                .position(|rule| rule.passes(tags, state));
+            // `Some` while the animator owns the clip's playing.
+            let held = animator.hold.as_ref().map(|hold| hold.matches(tags));
+            (state, rule, held)
         };
         let animator = world.get_mut::<CharacterAnimator>(entity).unwrap();
         animator.state = state;
@@ -1124,7 +1159,7 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
             let (id, flip) = shot.clips.pick(direction, aim, &mut left);
             let length = clip_ms(&registry, id);
             let id = id.to_owned();
-            if shot.started {
+            if shot.started && held != Some(true) {
                 shot.shown_ms += delta.max(0.0) * 1000.0 * speed;
                 ended = shot.shown_ms + ONE_SHOT_EPSILON_MS >= length;
             }
@@ -1153,6 +1188,11 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
             write_flip(world, entity, flip);
         }
         if unchanged {
+            if let Some(held) = held
+                && let Some(state) = world.get_mut::<AnimationState>(entity)
+            {
+                state.playing = !held;
+            }
             continue;
         }
         let first = registry
@@ -1160,7 +1200,11 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
             .and_then(|clip| clip.frames.first())
             .map(|frame| frame.sprite);
         // Redo 7.9: the entity's speed carries across its clip changes.
-        world.insert(entity, AnimationState::new(id).with_speed(speed));
+        let mut shown = AnimationState::new(id).with_speed(speed);
+        if let Some(held) = held {
+            shown.playing = !held;
+        }
+        world.insert(entity, shown);
         if let (Some(first), Some(sprite)) = (first, world.get_mut::<Sprite>(entity)) {
             sprite.asset_id = first;
         }

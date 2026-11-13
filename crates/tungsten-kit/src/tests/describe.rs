@@ -132,11 +132,11 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     assert_eq!(kinds.len(), 11);
     assert_eq!(
         descriptions.shapes().count(),
-        88,
+        89,
         "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction, \
          the projectile's end and the place; 7.10g's clip rule, blink, path rider and tag look; \
          7.18's camera box, lead, follow and fixed, and the camera action; 7.13c's impact extra \
-         and push; 7.13c's foes and cues' burst action"
+         and push; 7.13c's foes and cues' burst action; 7.13c's foes' overlay bob"
     );
 }
 
@@ -428,13 +428,13 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 188,
+        checked, 190,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
          four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
          hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
          radius and intensity and sound's volume, a lob's speed, a cone's reach, half angle, \
          rays, damage, knockback, sweep, push and far share, a conduction's damage, \
-         reach, keep and jumps, a cap's max and a place's range, a blink's last seconds, a spawner's alive and first, a world rule's margin, a path's wait, a lift's board and back, a tag look's growth, a health bar's rise and inset, and a camera rig's view height, zoom and priority and its lead's max, time and smoothing, a blast's far share, an impact's speed, per mass, most, floor, mass, amount, margin and scale, its extra's damage and its push's away, most and along, and a pickup's fall"
+         reach, keep and jumps, a cap's max and a place's range, a blink's last seconds, a spawner's alive and first, a world rule's margin, a path's wait, a lift's board and back, a tag look's growth, an overlay bob's height and seconds, a health bar's rise and inset, and a camera rig's view height, zoom and priority and its lead's max, time and smoothing, a blast's far share, an impact's speed, per mass, most, floor, mass, amount, margin and scale, its extra's damage and its push's away, most and along, and a pickup's fall"
     );
 }
 
@@ -444,7 +444,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 50);
-    assert_eq!(count("shape "), 88);
+    assert_eq!(count("shape "), 89);
     assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

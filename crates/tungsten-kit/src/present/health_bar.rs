@@ -19,7 +19,7 @@ use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::ensure_phases;
 use crate::foundation::{finite_color, non_negative};
 use crate::lifecycle::ended::Despawning;
-use crate::present::looks::{drawn, linear_bytes};
+use crate::present::looks::{drawn, linear_bytes, mirrors};
 
 /// The scene component [`HealthBarPlugin`] registers.
 const HEALTH_BAR: &str = "health_bar";
@@ -35,16 +35,19 @@ const DEFAULT_INSET: f32 = 1.0;
 
 /// A bar over its holder showing its [`Health`](crate::Health)'s share
 /// (redo 7.10g): a back of `size` world pixels centred over the holder's
-/// drawn centre, its bottom `rise` above the drawn top, and a fill `inset`
-/// inside it from the left, its width the share. Both draw `engine_white`
-/// in their linear colours, at the holder's depth plus 1 and 2, as plain
-/// entities the default extract draws; a World without `engine_white`
-/// draws none, with one warning. The bar hides while its holder is dead,
-/// or has no health, and with `full` false while the health is full, so it
-/// waits for a first hurt.
+/// drawn centre plus `offset`, its bottom `rise` above the drawn top, and a
+/// fill `inset` inside it from the left, its width the share. The offset's
+/// x mirrors as a look's overlay offset does: with the holder's drawn flip,
+/// or by the side of a [`Facing`](crate::Facing) that neither turns nor
+/// flips it, so a bar over a body off its frame's centre stays over it
+/// facing either way. Both draw `engine_white` in their linear colours, at
+/// the holder's depth plus 1 and 2, as plain entities the default extract
+/// draws; a World without `engine_white` draws none, with one warning. The
+/// bar hides while its holder is dead, or has no health, and with `full`
+/// false while the health is full, so it waits for a first hurt.
 ///
 /// Scene name `health_bar`:
-/// `{ "size": [64, 6], "rise": 6, "back": [0.05, 0.04, 0.05, 0.86], "fill": [0.77, 0.19, 0.16, 1.0], "inset": 1, "full": true }`,
+/// `{ "size": [64, 6], "rise": 6, "offset": [0, 0], "back": [0.05, 0.04, 0.05, 0.86], "fill": [0.77, 0.19, 0.16, 1.0], "inset": 1, "full": true }`,
 /// each field with those defaults. Unsaved presentation.
 ///
 /// # Examples
@@ -61,6 +64,7 @@ const DEFAULT_INSET: f32 = 1.0;
 pub struct HealthBar {
     size: Vec2,
     rise: f32,
+    offset: Vec2,
     back: [f32; 4],
     fill: [f32; 4],
     inset: f32,
@@ -81,6 +85,7 @@ impl HealthBar {
         Self {
             size: Vec2::from(DEFAULT_SIZE),
             rise: DEFAULT_RISE,
+            offset: Vec2::ZERO,
             back: DEFAULT_BACK,
             fill: DEFAULT_FILL,
             inset: DEFAULT_INSET,
@@ -117,6 +122,23 @@ impl HealthBar {
             "HealthBar::with_rise: rise must be finite and >= 0 (got {rise})"
         );
         self.rise = rise;
+        self
+    }
+
+    /// The bar, centred `offset` world pixels from its holder's drawn
+    /// centre, its x mirrored with the holder.
+    ///
+    /// # Panics
+    ///
+    /// When a coordinate is not finite.
+    #[must_use]
+    #[track_caller]
+    pub fn with_offset(mut self, offset: Vec2) -> Self {
+        assert!(
+            offset.is_finite(),
+            "HealthBar::with_offset: offset must be finite (got {offset})"
+        );
+        self.offset = offset;
         self
     }
 
@@ -195,6 +217,7 @@ fn valid_size(size: [f32; 2]) -> bool {
 struct HealthBarDef {
     size: [f32; 2],
     rise: f32,
+    offset: [f32; 2],
     back: [f32; 4],
     fill: [f32; 4],
     inset: f32,
@@ -208,6 +231,8 @@ struct HealthBarFields {
     size: [f32; 2],
     #[serde(default = "default_rise", deserialize_with = "non_negative")]
     rise: f32,
+    #[serde(default)]
+    offset: [f32; 2],
     #[serde(default = "default_back", deserialize_with = "finite_color")]
     back: [f32; 4],
     #[serde(default = "default_fill", deserialize_with = "finite_color")]
@@ -252,9 +277,20 @@ impl TryFrom<HealthBarFields> for HealthBarDef {
                 fields.size
             ));
         }
+        if fields
+            .offset
+            .iter()
+            .any(|coordinate| !coordinate.is_finite())
+        {
+            return Err(format!(
+                "offset: each must be finite (got {:?})",
+                fields.offset
+            ));
+        }
         Ok(Self {
             size: fields.size,
             rise: fields.rise,
+            offset: fields.offset,
             back: fields.back,
             fill: fields.fill,
             inset: fields.inset,
@@ -268,6 +304,7 @@ impl From<HealthBarDef> for HealthBar {
         Self {
             size: Vec2::from(def.size),
             rise: def.rise,
+            offset: Vec2::from(def.offset),
             back: def.back,
             fill: def.fill,
             inset: def.inset,
@@ -313,6 +350,14 @@ impl Plugin for HealthBarPlugin {
                 .default("6.0"),
             )
             .field(
+                FieldDescription::new(
+                    "offset",
+                    FieldType::Vec2,
+                    "world pixels from the holder's drawn centre to the bar's, x mirrored as a look's overlay offset is",
+                )
+                .default("[0.0, 0.0]"),
+            )
+            .field(
                 FieldDescription::new("back", FieldType::Color, "linear")
                     .default("[0.05, 0.04, 0.05, 0.86]"),
             )
@@ -353,12 +398,13 @@ impl Plugin for HealthBarPlugin {
     }
 }
 
-/// One bar's parts.
+/// One bar's parts, with the side its holder's facing last pointed.
 #[derive(Debug)]
 struct BarParts {
     holder: Entity,
     back: Entity,
     fill: Entity,
+    left: bool,
 }
 
 /// The health bars' parts between frames, which the look passes keep.
@@ -425,14 +471,19 @@ impl Bars {
                 ))
             };
             let (back, fill) = (part(), part());
-            self.parts.push(BarParts { holder, back, fill });
+            self.parts.push(BarParts {
+                holder,
+                back,
+                fill,
+                left: false,
+            });
         }
     }
 
     /// Places each bar over its holder's drawn top at its health's share,
     /// or hides it.
     pub(crate) fn late(&mut self, world: &mut World) {
-        for parts in &self.parts {
+        for parts in &mut self.parts {
             let Some(bar) = world.get::<HealthBar>(parts.holder).copied() else {
                 continue;
             };
@@ -455,11 +506,13 @@ impl Bars {
             } else {
                 0.0
             };
-            let top = drawn.centre.y - drawn.half_height;
-            let back = Vec2::new(
-                drawn.centre.x - bar.size.x * 0.5,
-                top - bar.rise - bar.size.y,
-            );
+            let mut offset = bar.offset;
+            if offset.x != 0.0 && mirrors(world, parts.holder, drawn.flip, &mut parts.left) {
+                offset.x = -offset.x;
+            }
+            let centre = drawn.centre + offset;
+            let top = centre.y - drawn.half_height;
+            let back = Vec2::new(centre.x - bar.size.x * 0.5, top - bar.rise - bar.size.y);
             let inner = (bar.size - Vec2::splat(bar.inset * 2.0)).max(Vec2::ZERO);
             put(
                 world,
