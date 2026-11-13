@@ -1,0 +1,29 @@
+[
+  {
+    "on": "ball_sparked",
+    "min_interval": 0.12,
+    "cap": 4,
+    "do": [
+      {
+        "burst": "ex10_small_ball_impact"
+      }
+    ]
+  },
+  {
+    "on": "ball_dusted",
+    "cap": 1,
+    "do": [
+      {
+        "burst": "ex10_landing_dust"
+      }
+    ]
+  },
+  {
+    "on": "iron_dusted",
+    "do": [
+      {
+        "burst": "ex10_iron_dust"
+      }
+    ]
+  }
+]

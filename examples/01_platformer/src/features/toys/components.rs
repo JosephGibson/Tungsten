@@ -8,14 +8,10 @@ use tungsten::core::{Entity, Voice};
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 pub struct Ball;
 
-/// A small glass marble, which burns, bursts on a hard impact and takes a
+/// A small glass marble, which burns, sparks on a hard impact and takes a
 /// rainbow hue. Its prefab names it `small_ball`.
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
-pub struct SmallBall {
-    /// Game seconds until its next impact burst may show.
-    #[serde(skip)]
-    pub impact_cooldown: f32,
-}
+pub struct SmallBall {}
 
 /// The heavy bowling ball: tossed, it lands low and rolls; a fireball
 /// bursts it. Its prefab names it `bowling_ball`.

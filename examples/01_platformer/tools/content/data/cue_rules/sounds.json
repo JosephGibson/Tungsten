@@ -960,6 +960,7 @@
         "team.player"
       ]
     },
+    "cap": 4,
     "do": [
       {
         "sound": {
@@ -1357,6 +1358,7 @@
         "team.player"
       ]
     },
+    "cap": 4,
     "do": [
       {
         "sound": {

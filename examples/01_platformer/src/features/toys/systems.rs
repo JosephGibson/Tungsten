@@ -36,6 +36,7 @@ use crate::features::elements::cascade;
 use crate::features::elements::components::Flame;
 use crate::features::elements::{self, FIRE_CENTRE, FIRE_HALF, STEAM_REACH, freeze_amount};
 use crate::features::elements::{BALL_BURN, COAT, is_burning, is_frozen};
+use crate::features::elements::{Impact, Raised};
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
 use crate::features::level::components::Hazard;
@@ -93,9 +94,6 @@ pub fn tick(world: &mut World) {
         if hole.left <= 0.0 {
             collapsed.push((id.map(Saved::id), entity));
         }
-    }
-    for ball in world.query_mut::<&mut SmallBall>() {
-        ball.impact_cooldown = (ball.impact_cooldown - dt).max(0.0);
     }
     for hue in world.query_mut::<&mut BallHue>() {
         hue.hue = (hue.hue + hue.speed * dt).rem_euclid(1.0);
@@ -212,10 +210,18 @@ pub fn weight(world: &mut World) {
     }
 }
 
-/// A block landing hard at `at`, its contact: dust there and its thud,
-/// whose rule shakes the camera by its distance from the listener.
-pub fn iron_landed(world: &mut World, at: Vec2) {
-    spawn_burst(world, "ex10_iron_dust", at);
+/// `block` landing hard at `at`, its contact: its `iron_dusted` impact,
+/// whose rule raises dust there, and its thud, whose rule shakes the
+/// camera by its distance from the listener.
+pub fn iron_landed(world: &mut World, block: Entity, at: Vec2) {
+    let impact = Impact {
+        raised: Raised::IronDust,
+        body: block,
+        at,
+    };
+    if let Some(queue) = world.get_resource_mut::<EventQueue<Impact>>() {
+        queue.send(impact);
+    }
     audio::play(world, Sound::IronLanded, at);
 }
 

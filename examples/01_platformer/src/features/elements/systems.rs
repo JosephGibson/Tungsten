@@ -21,8 +21,8 @@ use super::components::{ColdFace, FireEmitter, Flame, IcePulse};
 use super::{
     BALL_BURN, BASE_SMASH, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, COAT, COLD, CRATE_BREAK, CRUSH_HIT,
     CRUSH_SPEED, DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP,
-    FIRE_HALF, FROZEN_SECS, HAZARD_DOUSED, ICE, IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN,
-    IMPACT_SPEED, KINDLED, LANDING_SHARE, SHATTER_MASS, SHATTER_SPEED, SMASH_CAP, SMASH_KEEP,
+    FIRE_HALF, FROZEN_SECS, HAZARD_DOUSED, ICE, IMPACT_BURSTS_PER_STEP, IMPACT_SPEED, Impact,
+    KINDLED, LANDING_SHARE, Raised, SHATTER_MASS, SHATTER_SPEED, SMASH_CAP, SMASH_KEEP,
     SPEED_PER_BALL, SPEED_PER_HIT, SPENT, THAW_RATE, blows_keg, is_burning, is_frozen,
 };
 use crate::features::audio::{self, components::Sound};
@@ -558,19 +558,21 @@ pub fn fire_contacts(world: &mut World) {
 /// A bowling ball's closing speed from which it lands with a thud.
 const BALL_THUD_SPEED: f32 = 700.0;
 
-/// `ball_impacts`, in the overlap phase: a small ball that met something
+/// `ball_impacts`, in the overlap phase: each small ball that met something
 /// faster than [`IMPACT_SPEED`] along the contact, its speed from before
-/// the solver stopped it, bursts its sparks, then waits out its cooldown;
-/// at most [`IMPACT_BURSTS_PER_STEP`] a step, the rest dropped. A bowling
-/// ball closing at [`BALL_THUD_SPEED`] or more raises dust where it met and
-/// thuds, one a step.
+/// the solver stopped it, raises its sparks at its centre, and each bowling
+/// ball closing at [`BALL_THUD_SPEED`] or more its dust where it met, once
+/// a step each, in save-ID order: [`Impact`] events, which
+/// `data/cue_rules/impacts.json` bursts, the sparks a ball's 0.12 s apart
+/// and four a step at most, the dust one a step. The first bowling ball
+/// thuds.
 pub fn ball_impacts(world: &mut World) {
     let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
         return;
     };
-    let mut hits: Vec<Entity> = Vec::with_capacity(IMPACT_BURSTS_PER_STEP);
-    let mut thud: Option<(Option<SaveId>, Vec2)> = None;
-    'events: for event in events.iter_current() {
+    let mut sparked: Vec<(Option<SaveId>, Entity, Vec2)> = Vec::new();
+    let mut dusted: Vec<(Option<SaveId>, Entity, Vec2)> = Vec::new();
+    for event in events.iter_current() {
         let va = world
             .get::<PreviousVelocity>(event.a)
             .map_or(Vec2::ZERO, |v| v.0);
@@ -584,11 +586,11 @@ pub fn ball_impacts(world: &mut World) {
                 let Some(this) = this.filter(|&this| world.has::<BowlingBall>(this)) else {
                     continue;
                 };
-                let id = crate::shared::save_id(world, this);
-                if thud.is_none_or(|(first, _)| id < first)
+                if !dusted.iter().any(|&(_, ball, _)| ball == this)
                     && let Some(centre) = body_centre(world, this)
                 {
-                    thud = Some((id, centre - pushed * BALL_RADIUS));
+                    let id = crate::shared::save_id(world, this);
+                    dusted.push((id, this, centre - pushed * BALL_RADIUS));
                 }
             }
         }
@@ -596,28 +598,32 @@ pub fn ball_impacts(world: &mut World) {
             continue;
         }
         for entity in [Some(event.a), event.b].into_iter().flatten() {
-            let ready = world
-                .get::<SmallBall>(entity)
-                .is_some_and(|ball| ball.impact_cooldown <= 0.0);
-            if ready && !hits.contains(&entity) {
-                hits.push(entity);
-                if hits.len() == IMPACT_BURSTS_PER_STEP {
-                    break 'events;
-                }
+            if world.has::<SmallBall>(entity)
+                && !sparked.iter().any(|&(_, ball, _)| ball == entity)
+                && let Some(at) = body_centre(world, entity)
+            {
+                let id = crate::shared::save_id(world, entity);
+                sparked.push((id, entity, at));
             }
         }
     }
-    for ball in hits {
-        if let Some(state) = world.get_mut::<SmallBall>(ball) {
-            state.impact_cooldown = IMPACT_COOLDOWN;
-        }
-        if let Some(at) = body_centre(world, ball) {
-            spawn_burst(world, "ex10_small_ball_impact", at);
-        }
-    }
-    if let Some((_, at)) = thud {
-        spawn_burst(world, "ex10_landing_dust", at);
+    sparked.sort_by_key(|&(id, ..)| id);
+    dusted.sort_by_key(|&(id, ..)| id);
+    if let Some(&(_, _, at)) = dusted.first() {
         audio::play(world, Sound::BallThudded, at);
+    }
+    let raised = sparked
+        .into_iter()
+        .map(|(_, body, at)| (Raised::Sparks, body, at))
+        .chain(
+            dusted
+                .into_iter()
+                .map(|(_, body, at)| (Raised::BallDust, body, at)),
+        );
+    if let Some(queue) = world.get_resource_mut::<EventQueue<Impact>>() {
+        for (raised, body, at) in raised {
+            queue.send(Impact { raised, body, at });
+        }
     }
 }
 
@@ -1182,10 +1188,10 @@ pub fn iron_killed(world: &World, target: Entity) -> bool {
 /// not frozen meeting something hard enough for its mass ([`blows_keg`])
 /// goes off, credited to its own throw's thrower (a troll's), else the
 /// thrower of what met it, else the player; and a goblin's rock meeting
-/// anything at [`SHATTER_SPEED`] or more clacks, and a stone knocks,
-/// each at most [`IMPACT_BURSTS_PER_STEP`] a step. Last, each crate a hit breaks
-/// ([`crate_hits`]) breaks into its planks, once a step in save-ID order,
-/// after its own blows and landings.
+/// anything at [`SHATTER_SPEED`] or more clacks, and a stone knocks, four
+/// a step at most by their sound rules' `cap` (`data/cue_rules/sounds.json`).
+/// Last, each crate a hit breaks ([`crate_hits`]) breaks into its planks,
+/// once a step in save-ID order, after its own blows and landings.
 pub fn body_impacts(world: &mut World) {
     world.insert_resource(IronKills::default());
     let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
@@ -1194,7 +1200,7 @@ pub fn body_impacts(world: &mut World) {
     let player = world.get_resource::<Run>().map(|run| run.player);
     let mut shatters: Vec<Entity> = Vec::new();
     let mut landings: BTreeMap<Option<SaveId>, (Entity, f32)> = BTreeMap::new();
-    let mut hard: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
+    let mut hard: BTreeMap<Option<SaveId>, (Entity, Vec2)> = BTreeMap::new();
     let mut blown: BTreeMap<Option<SaveId>, (Entity, Option<u64>)> = BTreeMap::new();
     let mut clacks: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
     let mut knocks: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
@@ -1216,7 +1222,7 @@ pub fn body_impacts(world: &mut World) {
             if still && closing >= IRON_LAND_SPEED && world.has::<IronBlock>(this) {
                 let id = crate::shared::save_id(world, this);
                 if let (false, Some(centre)) = (hard.contains_key(&id), body_centre(world, this)) {
-                    hard.insert(id, centre - pushed * IRON_HALF.y);
+                    hard.insert(id, (this, centre - pushed * IRON_HALF.y));
                 }
             }
             let heavy = other
@@ -1302,15 +1308,15 @@ pub fn body_impacts(world: &mut World) {
         }
     }
     world.insert_resource(IronKills(kills));
-    for at in hard.into_values() {
-        toys::systems::iron_landed(world, at);
+    for (block, at) in hard.into_values() {
+        toys::systems::iron_landed(world, block, at);
     }
-    // A rock meeting anything that hard clacks, a few a step.
-    for at in clacks.into_values().take(IMPACT_BURSTS_PER_STEP) {
+    // A rock meeting anything that hard clacks, a stone, heavier, knocks:
+    // their sound rules' `cap` keeps a few a step.
+    for at in clacks.into_values() {
         audio::play(world, Sound::RockHit, at);
     }
-    // A stone, heavier, knocks.
-    for at in knocks.into_values().take(IMPACT_BURSTS_PER_STEP) {
+    for at in knocks.into_values() {
         audio::play(world, Sound::StoneKnock, at);
     }
     // Read while a thrown crate's throw stands, before the count down

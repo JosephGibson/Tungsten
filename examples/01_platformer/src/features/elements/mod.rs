@@ -24,7 +24,7 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::core::save::SaveOptions;
 use tungsten::core::{Entity, Schedule, Stage, World, system};
-use tungsten::kit::{PROJECTILE_TICK, Phase, ensure_phases};
+use tungsten::kit::{CueEvent, CuesOnEvent, PROJECTILE_TICK, Phase, ensure_phases};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
@@ -125,10 +125,10 @@ pub const FIRE_EMITTER_CAP: usize = 128;
 pub const EMITTER_DWELL: f32 = 0.5;
 /// A flame tongue's drawn size: its art is drawn in 2 × 2 pixel blocks.
 pub const FLAME_SIZE: f32 = 32.0;
-/// A small ball's closing speed into a contact, px/s, past which it bursts,
-/// the seconds before it may again, and at most so many bursts a step.
+/// A small ball's closing speed into a contact, px/s, past which it
+/// sparks (`data/cue_rules/impacts.json` bursts each, its interval and cap
+/// there), and the most smashes `crush` raises a step.
 pub const IMPACT_SPEED: f32 = 420.0;
-pub const IMPACT_COOLDOWN: f32 = 0.12;
 pub const IMPACT_BURSTS_PER_STEP: usize = 4;
 /// The black hole's steam puffs a step, spread over what it put out.
 pub const DOUSE_BURSTS_PER_STEP: usize = 4;
@@ -149,6 +149,42 @@ pub const SMASH_KEEP: f32 = 0.9;
 /// A fire hazard's touch box, about its centre from its sprite's top-left.
 pub const FIRE_HALF: Vec2 = Vec2::new(18.0, 24.0);
 pub const FIRE_CENTRE: Vec2 = Vec2::new(32.0, 32.0);
+
+/// What a body's impact raised, which `data/cue_rules/impacts.json` bursts:
+/// a small ball's sparks at its centre, a bowling ball's dust where it met,
+/// an iron block's dust where it landed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Raised {
+    Sparks,
+    BallDust,
+    IronDust,
+}
+
+impl Raised {
+    /// Its cue event's name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Raised::Sparks => "ball_sparked",
+            Raised::BallDust => "ball_dusted",
+            Raised::IronDust => "iron_dusted",
+        }
+    }
+}
+
+/// An impact's raised sparks or dust, about the body at `at`: a game event
+/// the kit's cues read under its [`Raised`]'s name.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Impact {
+    pub raised: Raised,
+    pub body: Entity,
+    pub at: Vec2,
+}
+
+/// The cue event of `impact`: about its body, at its point, by its name.
+fn impact_cue(impact: &Impact) -> Option<CueEvent> {
+    Some(CueEvent::new(impact.body, impact.at).named(impact.raised.name()))
+}
 
 /// The element rules as a plugin. In the fixed step, after the physics
 /// step (the kit times the burns, the freezes and the douses): the fires
@@ -173,6 +209,16 @@ const CONTACTS: [&str; 7] = [
 
 impl Plugin for ElementsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        // Before the manifest's `cue_rules` load and name them.
+        CuesOnEvent::<Impact>::with_names(
+            &[
+                Raised::Sparks.name(),
+                Raised::BallDust.name(),
+                Raised::IronDust.name(),
+            ],
+            impact_cue,
+        )
+        .build(schedule, world);
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         world.register_saved_resource_with(
             "cascades",

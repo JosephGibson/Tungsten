@@ -4,8 +4,8 @@
 //! rainbow and the vortex's inward spiral, and a pit of two thousand mixed
 //! balls that holds.
 
+use example_01_platformer::features::elements::IMPACT_SPEED;
 use example_01_platformer::features::elements::systems::{ball_impacts, impact_sparks};
-use example_01_platformer::features::elements::{IMPACT_BURSTS_PER_STEP, IMPACT_SPEED};
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::toys::components::{Ball, BallSpawner, BlackHole, SmallBall};
 use example_01_platformer::features::toys::systems::{hole_particles, remember_velocities};
@@ -41,6 +41,29 @@ fn small_balls(harness: &UiHarness) -> Vec<Entity> {
 
 const IMPACT: &str = "ex10_small_ball_impact";
 
+/// The most impact sparks a step, its rule's `cap` in
+/// `data/cue_rules/impacts.json`.
+fn spark_cap() -> usize {
+    let rules: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("assets/data/cue_rules/impacts.json").unwrap(),
+    )
+    .unwrap();
+    let rule = rules
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|rule| rule["on"] == "ball_sparked")
+        .unwrap();
+    rule["cap"].as_u64().unwrap() as usize
+}
+
+/// `ball_impacts` on the step's contacts, then a step, in which the kit's
+/// cues burst what it raised.
+fn impacts(harness: &mut UiHarness) {
+    ball_impacts(harness.world_mut());
+    harness.step(1);
+}
+
 /// Despawns every burst, so a case counts its own.
 fn clear_bursts(harness: &mut UiHarness) {
     let world = harness.world_mut();
@@ -53,6 +76,8 @@ fn clear_bursts(harness: &mut UiHarness) {
 #[test]
 fn impacts_require_small_ball_and_closing_speed_strictly_above_threshold() {
     let (mut harness, _) = run();
+    // The geysers' bursts aside, which never drain (e01hollow), as it steps.
+    calm(&mut harness);
     for (velocity, small, expected) in [
         (Vec2::Y * (IMPACT_SPEED + 1.0), true, 1),
         (Vec2::Y * IMPACT_SPEED, true, 0),
@@ -68,14 +93,19 @@ fn impacts_require_small_ball_and_closing_speed_strictly_above_threshold() {
         // The solver stopped the ball: the burst reads the speed from before.
         kick(&mut harness, e, Vec2::ZERO);
         contact(&mut harness, e, None, -Vec2::Y);
-        ball_impacts(harness.world_mut());
+        impacts(&mut harness);
         assert_eq!(
             bursts(&harness, IMPACT),
             expected,
             "{velocity} small={small}"
         );
-        ball_impacts(harness.world_mut());
-        assert_eq!(bursts(&harness, IMPACT), expected, "the ball's cooldown");
+        // The same impact a step later, within its rule's interval.
+        kick(&mut harness, e, velocity);
+        remember_velocities(harness.world_mut());
+        kick(&mut harness, e, Vec2::ZERO);
+        contact(&mut harness, e, None, -Vec2::Y);
+        impacts(&mut harness);
+        assert_eq!(bursts(&harness, IMPACT), expected, "the ball's interval");
         harness.world_mut().despawn(e);
     }
 }
@@ -91,10 +121,14 @@ fn relative_body_impacts_work_on_b_side_and_dense_contacts_remain_bounded() {
     kick(&mut harness, b, -Vec2::X * 300.0);
     remember_velocities(harness.world_mut());
     contact(&mut harness, a, Some(b), -Vec2::X);
-    ball_impacts(harness.world_mut());
+    impacts(&mut harness);
     assert_eq!(bursts(&harness, IMPACT), 1);
     clear_bursts(&mut harness);
-    let mut pile = vec![a, b];
+    // Stepped, the pile would land on the pair: they go once their case is
+    // told.
+    harness.world_mut().despawn(a);
+    harness.world_mut().despawn(b);
+    let mut pile = Vec::new();
     for i in 0..200 {
         let e = ball(
             &mut harness,
@@ -112,10 +146,15 @@ fn relative_body_impacts_work_on_b_side_and_dense_contacts_remain_bounded() {
         }
     }
     remember_velocities(harness.world_mut());
-    ball_impacts(harness.world_mut());
-    assert_eq!(bursts(&harness, IMPACT), IMPACT_BURSTS_PER_STEP);
+    impacts(&mut harness);
+    assert_eq!(bursts(&harness, IMPACT), spark_cap());
+    // Each step's contacts again, the step having flushed the last: four
+    // more balls a step, each 0.12 s apart, until the budget is full.
     for _ in 0..20 {
-        ball_impacts(harness.world_mut());
+        for &e in &pile {
+            contact(&mut harness, e, None, -Vec2::Y);
+        }
+        impacts(&mut harness);
     }
     assert_eq!(bursts(&harness, IMPACT), BURST_CAP);
     // The balls go, so no landing of theirs bursts again, and the bursts drain.
