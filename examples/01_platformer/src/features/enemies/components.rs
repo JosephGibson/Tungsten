@@ -89,13 +89,11 @@ impl Enemy {
 }
 
 /// What an enemy knows: where it last saw the player, the point it
-/// searches, the point a neighbour's alert passed it, the attack its tell
-/// chose, so a load swings the same one and its clip comes from saved
-/// state, the seconds a fresh alert's "!" has left, which no state of its
-/// machine can hold (Alert ends sooner), the seconds before a troll may
-/// slam again, and the seconds before a crawler's snowball or a goblin's
-/// throw or dash-in may come again. Saved; an older save's brains chose
-/// none, show none and wait for nothing.
+/// searches, the point a neighbour's alert passed it, and the attack its
+/// tell chose, so a load swings the same one and its clip comes from saved
+/// state. A fresh alert's "!" is its `alert_mark` effect and a rest after
+/// an attack its kit `Cooldown` (schema 32). Saved; an older save's brains
+/// chose none.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Brain {
@@ -104,16 +102,6 @@ pub struct Brain {
     pub alert: Option<[f32; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strike: Option<Strike>,
-    #[serde(default, skip_serializing_if = "is_none_left")]
-    pub alerted: f32,
-    #[serde(default, skip_serializing_if = "is_none_left")]
-    pub slam_cooldown: f32,
-    #[serde(default, skip_serializing_if = "is_none_left")]
-    pub cooldown: f32,
-}
-
-fn is_none_left(left: &f32) -> bool {
-    *left <= 0.0
 }
 
 /// The attack an enemy's tell chose: a goblin's rock, bomb, stab or

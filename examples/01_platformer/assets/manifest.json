@@ -893,8 +893,14 @@
       }
     },
     "effects": {
+      "alert_mark": {
+        "path": "data/effects/alert_mark.json"
+      },
       "ball_burn": {
         "path": "data/effects/ball_burn.json"
+      },
+      "bat_diving": {
+        "path": "data/effects/bat_diving.json"
       },
       "bleed_build": {
         "path": "data/effects/bleed_build.json"

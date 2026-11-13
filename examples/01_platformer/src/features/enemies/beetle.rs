@@ -16,11 +16,11 @@ use glam::Vec2;
 use tungsten::core::{
     BodyKind, Collider, Entity, Position, RigidBody, Shape, Time, Velocity, World,
 };
-use tungsten::kit::{PlatformerController, StateMachine, use_ability};
+use tungsten::kit::{Hitbox, PlatformerController, StateMachine, use_ability};
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::components::{Enemy, EnemyKind, EnemyState, Held};
-use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
+use super::systems::{armed, elapsed, face, go, pace, player, rest, sees, stride};
 use super::troll::meets;
 use super::{ARRIVED, centre, heading_of};
 use crate::features::audio::{self, components::Sound};
@@ -33,11 +33,10 @@ pub const SEARCH_PACE: f32 = 0.8;
 /// above or below it the player may stand.
 pub const CHARGE_RANGE: f32 = 360.0;
 pub const CHARGE_RISE: f32 = 80.0;
-/// The paw before the charge, its clip's length; the charge's speed and its
-/// seconds, which its ability's hitbox window matches.
+/// The paw before the charge, its clip's length, and the charge's speed;
+/// the charge lasts its ability's hitbox window.
 pub const PAW_CLIP: &str = "ex10_beetle_paw";
 pub const CHARGE_SPEED: f32 = 600.0;
-pub const CHARGE_SECS: f32 = 0.8;
 /// Its charge's ability, which arms its hitbox.
 pub const CHARGE: &str = "beetle_charge";
 /// The dust: the paw's particle config at its front foot and the charge's
@@ -116,17 +115,23 @@ pub fn windup(world: &mut World, beetle: Entity) {
     }
 }
 
-/// The charge: along its heading at [`CHARGE_SPEED`], its input locked for
-/// [`CHARGE_SECS`] and its hitbox armed for as long by its ability.
+/// The charge: along its heading at [`CHARGE_SPEED`], its hitbox armed by
+/// its ability and its input locked for the hitbox's window.
 pub fn enter_attack(world: &mut World, beetle: Entity) {
     let Some(heading) = heading_of(world, beetle) else {
         return;
     };
     if let Some(controller) = world.get_mut::<PlatformerController>(beetle) {
         controller.launch(Vec2::new(heading * CHARGE_SPEED, 0.0));
-        controller.lock_input(CHARGE_SECS);
     }
     use_ability(world, beetle, CHARGE);
+    let window = world
+        .get::<Hitbox>(beetle)
+        .and_then(Hitbox::window)
+        .unwrap_or(0.0);
+    if let Some(controller) = world.get_mut::<PlatformerController>(beetle) {
+        controller.lock_input(window);
+    }
     if let Some(at) = centre(world, beetle) {
         audio::play(world, Sound::BeetleCharge, at);
     }
@@ -135,9 +140,9 @@ pub fn enter_attack(world: &mut World, beetle: Entity) {
 /// The charge, launched again each step at [`CHARGE_SPEED`] along its
 /// heading, falling as it falls, under the lock its start set: a wall that
 /// stops it stops it a step. Each step it ploughs what lies before its face
-/// ([`plough`]); it ends after [`CHARGE_SECS`].
+/// ([`plough`]); it ends once its hitbox's window does.
 pub fn attack(world: &mut World, beetle: Entity) {
-    if elapsed(world, beetle) >= CHARGE_SECS - 1e-4 {
+    if !armed(world, beetle) {
         go(world, beetle, EnemyState::Recover);
         return;
     }

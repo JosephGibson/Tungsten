@@ -74,9 +74,8 @@ pub const SEARCH_SECS: f32 = 3.0;
 /// The seconds an attack's recovery takes, but the troll's and the
 /// goblin's own ([`KindInfo::recover`]).
 pub const RECOVER_SECS: f32 = 0.5;
-/// The seconds a fresh alert's "!" shows over an enemy, and how long a
-/// search lasts before its "?" shows.
-pub const ALERT_MARK_SECS: f32 = 0.8;
+/// How long a search lasts before its "?" shows; a fresh alert's "!" is
+/// its `alert_mark` effect's seconds.
 pub const SEARCH_MARK_AFTER: f32 = 0.4;
 /// The most summoned enemies live at once (Q12, Q45), beside the dummies'
 /// eight.
@@ -223,9 +222,9 @@ impl EnemyKind {
 
 /// The enemies as a plugin: the `enemy` and `orb` components their prefabs
 /// name; the throws in flight; in the intent phase the sight, the alerts,
-/// the marks' and the enemies' cooldowns, the hold and then a burning
-/// goblin's panic before the state machine, whose hooks run each kind's
-/// rules; in the move phase the
+/// the hold and then a burning goblin's panic before the state machine,
+/// whose hooks run each kind's rules, the "!" and the rests on the kit's
+/// effects and cooldowns; in the move phase the
 /// trolls' holds after the movers and the dropped orbs' fall after the
 /// kit's magnet; in the overlap phase the orbs collected and the
 /// crawlers' snowballs ([`snowball::snowballs`]); in the react
@@ -277,12 +276,10 @@ impl Plugin for EnemiesPlugin {
         let hold = system("enemy_hold", systems::hold).before(ENEMY_STATES);
         let fire = system("wisp_fire", wisp::fire).after(ENEMY_STATES);
         let chill = system("chill_grades", combat::systems::chill_grades).before(ENEMY_STATES);
-        let marks = system("enemy_marks", systems::marks).before(ENEMY_STATES);
-        let cooldowns = system("enemy_cooldowns", systems::cooldowns).before(ENEMY_STATES);
         let panics = system("goblin_panic", goblin::panics)
             .after("enemy_hold")
             .before(ENEMY_STATES);
-        for desc in [sight, alerts, hold, fire, chill, marks, cooldowns, panics] {
+        for desc in [sight, alerts, hold, fire, chill, panics] {
             schedule.add(Stage::FixedUpdate, Phase::Intent.join(desc));
         }
         let holds = system("troll_holds", troll::holds)

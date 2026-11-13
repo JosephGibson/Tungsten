@@ -179,6 +179,7 @@
           "state.held"
         ]
       }
-    }
+    },
+    "effects": []
   }
 }

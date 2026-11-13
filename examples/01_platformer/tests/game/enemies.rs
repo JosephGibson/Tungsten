@@ -29,19 +29,17 @@ use example_01_platformer::features::dummy;
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::CRUSH_SPEED;
 use example_01_platformer::features::elements::systems::crush;
-use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
-use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED, PAW_CLIP};
+use example_01_platformer::features::enemies::bat::FLASH_SECS;
+use example_01_platformer::features::enemies::beetle::{CHARGE_SPEED, PAW_CLIP};
 use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Held, Sight, Strike, Throws, Variant,
 };
-use example_01_platformer::features::enemies::crawler::{
-    self, FROST_BREATH, LUNGE_SPEED, SNOWBALL_COOLDOWN,
-};
+use example_01_platformer::features::enemies::crawler::{self, FROST_BREATH, LUNGE_SPEED};
 use example_01_platformer::features::enemies::drops::{
     self, ORB_CENTRE, ORB_HALF, ORB_SECS, Orb, OrbKind, PlacedOrbs,
 };
 use example_01_platformer::features::enemies::goblin::{
-    BOMB_CHANCE, COOLDOWN, DASH_CHANCE, DASH_SPEED, KEEP_OFF, LEAP_BACK, ROCK_DAMAGE, STAB_DAMAGE,
+    BOMB_CHANCE, DASH_CHANCE, DASH_SPEED, KEEP_OFF, LEAP_BACK, ROCK_DAMAGE, STAB_DAMAGE,
 };
 use example_01_platformer::features::enemies::snowball::{self, SNOWBALL_COLD};
 use example_01_platformer::features::enemies::{self, ARRIVED, DORMANT_PAST, SUMMON_CAP, troll};
@@ -68,8 +66,8 @@ use tungsten::core::{
     Position, PrevPosition, RigidBodyBundle, Sprite, Time, Velocity, Visibility,
 };
 use tungsten::kit::{
-    ContactDamage, Damaged, Effects, Health, Hitbox, KitRng, Knockback, PlatformerController,
-    StateMachine, Stats, TopDownMover,
+    ContactDamage, Cooldown, Damaged, Effects, Health, Hitbox, KitRng, Knockback,
+    PlatformerController, StateMachine, Stats, TopDownMover,
 };
 use tungsten::testing::UiHarness;
 
@@ -1172,13 +1170,31 @@ fn stalker() -> (UiHarness, Entity, Entity) {
     (harness, player, crawler)
 }
 
-/// Sets `enemy`'s snowball, throw or dash-in cooling for a minute.
+/// Sets `enemy`'s snowball, throw or dash-in cooling for a minute: a rest
+/// of 60 s, one elapse to go.
 fn cool(harness: &mut UiHarness, enemy: Entity) {
     harness
         .world_mut()
-        .get_mut::<Brain>(enemy)
-        .unwrap()
-        .cooldown = 60.0;
+        .insert(enemy, Cooldown::new(60.0).with_count(1));
+}
+
+/// The seconds of `prefab`'s rest after an attack, its `cooldown`'s.
+fn rest_of(harness: &UiHarness, prefab: &str) -> f32 {
+    harness
+        .world()
+        .resource::<tungsten::core::PrefabRegistry>()
+        .get(prefab)
+        .and_then(|data| data.components.get("cooldown")?.get("seconds")?.as_f64())
+        .expect("its prefab's rest") as f32
+}
+
+/// The seconds of `foe`'s hitbox's window, which its attack's ability opens.
+fn window_of(harness: &UiHarness, foe: Entity) -> f32 {
+    harness
+        .world()
+        .get::<Hitbox>(foe)
+        .and_then(Hitbox::window)
+        .expect("a windowed hitbox")
 }
 
 #[test]
@@ -1427,7 +1443,7 @@ fn a_dark_crawler_snowballs_the_player_on_its_arc_then_cools_four_seconds() {
     assert!(throws.len() >= 2, "it throws again: {throws:?}");
     let after = (throws[1] - throws[0]) as f32 / 60.0;
     assert!(
-        after >= SNOWBALL_COOLDOWN - 1e-3,
+        after >= rest_of(&harness, "crawler") - 1e-3,
         "again {after} s after, not sooner than 4"
     );
 }
@@ -1875,7 +1891,7 @@ fn a_charge_stops_at_iron_and_presses_it_until_it_ends() {
     // Its first visit enters the attack at step 1.
     let charged = (recovered.expect("its recovery") - 1) as f32 / 60.0;
     assert!(
-        (charged - CHARGE_SECS).abs() <= 1.5 / 60.0,
+        (charged - window_of(&harness, beetle)).abs() <= 1.5 / 60.0,
         "a charge of {charged} s"
     );
 }
@@ -2126,11 +2142,19 @@ fn the_bat_flashes_dives_in_its_window_and_climbs_back() {
     }
     let window = armed as f32 / 60.0;
     assert!(
-        (window - DIVE_SECS).abs() <= 1.5 / 60.0,
+        (window - window_of(&harness, bat)).abs() <= 1.5 / 60.0,
         "its window: {window}"
     );
+    // The dive's speed, its `bat_diving` effect's override on `move_speed`.
+    let diving: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("assets/data/effects/bat_diving.json").unwrap(),
+    )
+    .unwrap();
+    let dive_speed = diving["modifiers"][0]["modifier"]["override"]
+        .as_f64()
+        .unwrap() as f32;
     assert!(
-        (fastest - DIVE_SPEED).abs() < 1.0,
+        (fastest - dive_speed).abs() < 1.0,
         "a dive at 700: {fastest}"
     );
     assert_eq!(hurt, [14.0], "the dive hits the player once");
@@ -2681,7 +2705,7 @@ fn the_trolls_slam_waits_out_its_cooldown() {
     for pair in landed.windows(2) {
         let gap = (pair[1] - pair[0]) as f32 / 60.0;
         assert!(
-            gap >= troll::SLAM_COOLDOWN - 1.0 / 60.0,
+            gap >= rest_of(&harness, "troll") - 1.0 / 60.0,
             "{gap} s between slams: {landed:?}"
         );
     }
@@ -3982,14 +4006,15 @@ fn a_goblins_throws_come_at_least_its_cooldown_apart_with_no_tell_between() {
         }
     }
     assert_eq!(throws.len(), 3, "three throws: {throws:?}");
+    let rest = rest_of(&harness, "goblin");
     for pair in throws.windows(2) {
         let apart = (pair[1] - pair[0]) as f32 / 60.0;
-        assert!(apart >= COOLDOWN, "{apart} s apart");
+        assert!(apart >= rest, "{apart} s apart");
         let between = tells
             .iter()
             .filter(|&&tell| tell > pair[0] && tell < pair[1]);
         let early: Vec<&u32> = between
-            .filter(|&&tell| ((tell - pair[0]) as f32 / 60.0) < COOLDOWN)
+            .filter(|&&tell| ((tell - pair[0]) as f32 / 60.0) < rest)
             .collect();
         assert!(early.is_empty(), "a tell while it cools: {early:?}");
     }

@@ -2,17 +2,18 @@
 //! kit's top-down mover. It roosts hanging under the ceiling above where it
 //! was placed; once it sees the player it flies at it, and within
 //! [`DIVE_RANGE`] it flashes white for its tell, then dives at where the
-//! player was at [`DIVE_SPEED`], its `bat_dive` ability arming its hitbox,
-//! and climbs back to its roost. It burns and bleeds; frozen, it falls on a
+//! player was, its `bat_dive` ability giving it its `bat_diving` speed and
+//! arming its hitbox, until the hitbox's window ends, and climbs back to
+//! its roost. It burns and bleeds; frozen, it falls on a
 //! borrowed controller and shatters when it lands.
 
 use glam::Vec2;
-use tungsten::core::{Entity, World};
-use tungsten::kit::{Health, Modifier, PlatformerController, Stats, TopDownMover, use_ability};
+use tungsten::core::{DataRef, Entity, World};
+use tungsten::kit::{Health, PlatformerController, TopDownMover, end_effect, use_ability};
 use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{Enemy, EnemyKind, EnemyState};
-use super::systems::{elapsed, face, go, player, rest, sees};
+use super::systems::{armed, elapsed, face, go, player, rest, sees};
 use super::{ARRIVED, WALL_LAYERS, centre};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{Hit, Kind};
@@ -26,15 +27,12 @@ pub const SEARCH_PACE: f32 = 0.8;
 /// player it flies to get there.
 pub const DIVE_RANGE: f32 = 300.0;
 pub const DIVE_ABOVE: f32 = 120.0;
-/// The white flash before the dive, the dive's speed and its seconds,
-/// which its ability's hitbox window matches.
+/// The white flash before the dive.
 pub const FLASH_SECS: f32 = 0.5;
-pub const DIVE_SPEED: f32 = 700.0;
-pub const DIVE_SECS: f32 = 0.6;
-/// Its dive's ability, which arms its hitbox, and the source of the dive's
-/// speed on its `move_speed`.
+/// Its dive's ability, which gives it the dive's speed, [`DIVE_EFFECT`]'s
+/// override on its `move_speed`, and arms its hitbox for the dive's window.
 pub const DIVE: &str = "bat_dive";
-pub const DIVING: &str = "dive";
+pub const DIVE_EFFECT: &str = "bat_diving";
 
 /// Where a bat placed with its body's centre at `at` hangs, as its body's
 /// centre: its frame's top, where its feet grip, on the first ceiling within
@@ -133,17 +131,14 @@ pub fn windup(world: &mut World, bat: Entity) {
     }
 }
 
-/// The dive: straight at where the player is at [`DIVE_SPEED`], its hitbox
-/// armed for [`DIVE_SECS`] by its ability; with no player, it climbs back.
+/// The dive: straight at where the player is, at the speed its ability's
+/// [`DIVE_EFFECT`] effect gives it, its hitbox armed for the dive's window by
+/// the same ability; with no player, it climbs back.
 pub fn enter_attack(world: &mut World, bat: Entity) {
     let (Some(at), Some((_, target))) = (centre(world, bat), player(world)) else {
         go(world, bat, EnemyState::Recover);
         return;
     };
-    if let Some(stats) = world.get_mut::<Stats>(bat) {
-        stats.remove_modifiers(DIVING);
-        stats.add_modifier(Stats::MOVE_SPEED, DIVING, Modifier::Override(DIVE_SPEED));
-    }
     if let Some(mover) = world.get_mut::<TopDownMover>(bat) {
         mover.set_direction((target - at).normalize_or(Vec2::Y));
     }
@@ -152,24 +147,17 @@ pub fn enter_attack(world: &mut World, bat: Entity) {
     audio::play(world, Sound::BatDive, at);
 }
 
-/// The dive lasts [`DIVE_SECS`], then the climb back.
+/// The dive lasts its hitbox's window, then the climb back.
 pub fn attack(world: &mut World, bat: Entity) {
-    if elapsed(world, bat) >= DIVE_SECS - 1e-4 {
-        end_dive(world, bat);
+    if !armed(world, bat) {
         go(world, bat, EnemyState::Recover);
     }
 }
 
-/// Its own speed back.
-fn end_dive(world: &mut World, bat: Entity) {
-    if let Some(stats) = world.get_mut::<Stats>(bat) {
-        stats.remove_modifiers(DIVING);
-    }
-}
-
-/// After a dive it climbs back to its roost, then roosts.
+/// After a dive it climbs back to its roost, then roosts, at its own
+/// speed: the dive's effect ends, should it run still.
 pub fn recover(world: &mut World, bat: Entity) {
-    end_dive(world, bat);
+    end_effect(world, bat, &DataRef::by_id(DIVE_EFFECT));
     let home = world.get::<Enemy>(bat).map(Enemy::home);
     if fly(world, bat, home, 1.0) {
         go(world, bat, EnemyState::Patrol);

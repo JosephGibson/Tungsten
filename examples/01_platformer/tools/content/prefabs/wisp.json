@@ -164,6 +164,7 @@
           "state.held"
         ]
       }
-    }
+    },
+    "effects": []
   }
 }

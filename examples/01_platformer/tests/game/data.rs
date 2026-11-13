@@ -9,8 +9,6 @@ use example_01_platformer::features::combat::{
     CHILL_BUILD, CHILL_NEEDS, FREEZE_BUILDS, FREEZE_NEEDS,
 };
 use example_01_platformer::features::elements;
-use example_01_platformer::features::enemies::bat::DIVE_SECS;
-use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
 use example_01_platformer::features::enemies::components::{EnemyKind, Variant};
 use example_01_platformer::features::enemies::drops::ORB_SECS;
 use example_01_platformer::features::enemies::{self, crawler, goblin, snowball, troll};
@@ -183,10 +181,11 @@ fn every_restated_constant_matches_its_data() {
             "{orb}"
         );
     }
+    // The charge's and the dive's windows, which end them (S-189).
     let charge = json("data/abilities/beetle_charge.json");
-    assert_eq!(number(&charge, "/payload/0/hitbox"), CHARGE_SECS);
+    assert_eq!(number(&charge, "/payload/0/hitbox"), 0.8);
     let dive = json("data/abilities/bat_dive.json");
-    assert_eq!(number(&dive, "/payload/0/hitbox"), DIVE_SECS);
+    assert_eq!(number(&dive, "/payload/1/hitbox"), 0.6);
     // The gun's bullet and muzzle.
     let bullet = json("prefabs/bullet.json");
     assert_eq!(pair(&bullet, "/components/hitbox/offset"), BULLET_CENTRE);

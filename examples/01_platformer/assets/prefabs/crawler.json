@@ -246,6 +246,11 @@
           "state.held"
         ]
       }
+    },
+    "effects": [],
+    "cooldown": {
+      "seconds": 4,
+      "count": 0
     }
   }
 }

@@ -250,6 +250,11 @@
           "state.held"
         ]
       }
+    },
+    "effects": [],
+    "cooldown": {
+      "seconds": 2.5,
+      "count": 0
     }
   }
 }

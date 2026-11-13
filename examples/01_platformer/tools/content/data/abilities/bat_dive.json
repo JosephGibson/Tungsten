@@ -1,6 +1,9 @@
 {
   "payload": [
     {
+      "effect": "bat_diving"
+    },
+    {
       "hitbox": 0.6
     }
   ]

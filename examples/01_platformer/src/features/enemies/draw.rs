@@ -20,8 +20,10 @@ use tungsten::render::{SpriteBatch, SpriteInstance};
 use super::beetle::{self, PLOUGH_HALF};
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
 use super::goblin::{self, STAB_HALF};
+use super::systems::ALERTED;
 use super::troll::{self, SLAM_REACH, SLAM_TELL_CLIP, SWIPE_HALF};
 use super::{SEARCH_MARK_AFTER, body};
+use crate::features::combat::has_status;
 use crate::features::level::draw::{instance, push_quad, view};
 use crate::features::level::systems::drawn_time;
 use crate::shared::Body;
@@ -174,8 +176,8 @@ pub const MARK_SIDE: f32 = 16.0;
 pub const MARK_RISE: f32 = 6.0;
 const MARK_BOB: f32 = 2.0;
 
-/// The mark `enemy` shows: "!" while a fresh alert's
-/// [`super::ALERT_MARK_SECS`] run, past its alert into the chase; else "?" through a search past its
+/// The mark `enemy` shows: "!" while a fresh alert's `alert_mark` effect
+/// grants [`ALERTED`], past its alert into the chase; else "?" through a search past its
 /// first [`SEARCH_MARK_AFTER`], so a chase that misses one sight check
 /// blinks nothing; none for a dead one.
 #[must_use]
@@ -183,10 +185,7 @@ pub fn mark(world: &World, enemy: Entity) -> Option<&'static str> {
     if world.get::<Health>(enemy).is_none_or(Health::is_dead) {
         return None;
     }
-    if world
-        .get::<Brain>(enemy)
-        .is_some_and(|brain| brain.alerted > 0.0)
-    {
+    if has_status(world, enemy, ALERTED) {
         return Some(MARK_ALERT);
     }
     let machine = world.get::<StateMachine<EnemyState>>(enemy)?;

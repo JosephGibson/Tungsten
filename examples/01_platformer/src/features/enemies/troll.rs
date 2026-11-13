@@ -41,7 +41,7 @@ use tungsten::physics::wake;
 use super::components::{
     Brain, Enemy, EnemyKind, EnemyState, Held, Holding, Strike, Throw, Throws,
 };
-use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
+use super::systems::{elapsed, face, go, pace, player, rest, rested, sees, start_rest, stride};
 use super::{ARRIVED, WALK_SHOVE_MOST, centre, heading_of, hop};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, STUNNED, has_status};
@@ -83,9 +83,6 @@ pub const KICK_MOST: f32 = 650.0;
 pub const KICK_RISE: f32 = 0.6;
 /// Its recovery after an attack, its own.
 pub const RECOVER: f32 = 0.35;
-/// The seconds from a slam's landing before it may slam again; it chases
-/// and swipes meanwhile.
-pub const SLAM_COOLDOWN: f32 = 2.0;
 /// Its walk, its prefab's `move_speed` stat and run speed: restated so a
 /// save can move an older troll's base to it.
 pub const MOVE_SPEED: f32 = 91.0;
@@ -366,15 +363,14 @@ fn blow(
 /// The slam: every live target but the troll within [`SLAM_REACH`] of its
 /// fist takes its `damage` as physical, pushed away; every other body in
 /// reach is kicked away by its mass; every frozen thing in reach shatters;
-/// its boom's rule shakes the camera by the listener's distance; its
-/// [`SLAM_COOLDOWN`] starts.
+/// its boom's rule shakes the camera by the listener's distance; its rest
+/// starts, its prefab's `cooldown` (`systems::start_rest`), through which it
+/// chases and swipes but slams not.
 pub fn slam(world: &mut World, troll: Entity) {
     let Some(point) = fist(world, troll) else {
         return;
     };
-    if let Some(brain) = world.get_mut::<Brain>(troll) {
-        brain.slam_cooldown = SLAM_COOLDOWN;
-    }
+    start_rest(world, troll);
     let damage = world
         .get::<Stats>(troll)
         .and_then(|stats| stats.get(Stats::DAMAGE))
@@ -550,8 +546,8 @@ fn tell(world: &mut World, troll: Entity, x: f32, strike: Strike) {
 }
 
 /// The chase: holding something, it throws; within [`SWIPE_RANGE`] it
-/// swipes and within [`SLAM_RANGE`] it slams, once its [`SLAM_COOLDOWN`]
-/// has run; else with something to lift within [`PICKUP_REACH`] it lifts
+/// swipes and within [`SLAM_RANGE`] it slams, once its rest after the
+/// last slam has run; else with something to lift within [`PICKUP_REACH`] it lifts
 /// it and throws; else it walks at the player, clearing its way. It
 /// searches once it loses sight.
 pub fn chase(world: &mut World, troll: Entity) {
@@ -572,10 +568,7 @@ pub fn chase(world: &mut World, troll: Entity) {
     if grounded && across <= SWIPE_RANGE && rise <= SWIPE_RISE {
         return tell(world, troll, target.x, Strike::Swipe);
     }
-    let rested = world
-        .get::<Brain>(troll)
-        .is_none_or(|brain| brain.slam_cooldown <= 0.0);
-    if grounded && rested && across <= SLAM_RANGE && rise <= SLAM_RISE {
+    if grounded && rested(world, troll) && across <= SLAM_RANGE && rise <= SLAM_RISE {
         return tell(world, troll, target.x, Strike::Slam);
     }
     if grounded

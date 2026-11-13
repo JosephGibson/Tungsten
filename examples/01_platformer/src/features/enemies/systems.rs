@@ -4,12 +4,12 @@
 
 use glam::Vec2;
 use tungsten::core::{
-    AnimationState, BodyKind, Entity, EventCursor, EventQueue, Position, RigidBody, Time,
-    Transform, Visibility, World,
+    AnimationState, BodyKind, DataRef, Entity, EventCursor, EventQueue, Position, PrefabRegistry,
+    RigidBody, Time, Transform, Visibility, World,
 };
 use tungsten::kit::{
-    ContactDamage, Damaged, Health, PathFollower, PlatformerController, StateMachine,
-    StateMachinePlugin, Tags, TopDownMover,
+    ContactDamage, Cooldown, Damaged, EffectRequest, Health, Hitbox, PathFollower,
+    PlatformerController, StateMachine, StateMachinePlugin, Tags, TopDownMover, end_effect,
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
 
@@ -17,8 +17,8 @@ use super::components::{
     Brain, Displaced, Enemy, EnemyKind, EnemyState, Shown, Sight, Spotted, Strike,
 };
 use super::{
-    ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
-    WALL_LAYERS, bat, beetle, centre, crawler, goblin, heading_of, troll, turn, wisp,
+    ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP, WALL_LAYERS, bat,
+    beetle, centre, crawler, goblin, heading_of, troll, turn, wisp,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
@@ -216,7 +216,7 @@ fn patrol(world: &mut World, enemy: Entity) {
 /// Its tell on spotting the player: it stops and faces where the alert
 /// came from; a wisp flares, a troll roars, a goblin cackles. A fresh
 /// alert, from its patrol or its way home, never from a search, shows its
-/// "!" for [`ALERT_MARK_SECS`] and stings: the cue's interval makes the
+/// "!", its [`ALERT_MARK`] effect, and stings: the cue's interval makes the
 /// spotter's and its neighbours' one sting.
 fn enter_alert(world: &mut World, enemy: Entity) {
     rest(world, enemy);
@@ -235,9 +235,7 @@ fn enter_alert(world: &mut World, enemy: Entity) {
                 .is_none_or(|before| matches!(before, EnemyState::Patrol | EnemyState::Return))
         });
     if fresh {
-        if let Some(brain) = world.get_mut::<Brain>(enemy) {
-            brain.alerted = ALERT_MARK_SECS;
-        }
+        EffectRequest::new(enemy, DataRef::by_id(ALERT_MARK)).apply(world);
         if let Some(at) = centre(world, enemy) {
             audio::play(world, Sound::Alerted, at);
         }
@@ -620,29 +618,54 @@ pub fn alerts(world: &mut World, cursor: &mut EventCursor<Spotted>) {
     }
 }
 
-/// `enemy_marks`, in the intent phase before the machine: each fresh
-/// alert's "!" runs down by the step.
-pub fn marks(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    if dt <= 0.0 {
-        return;
-    }
-    for brain in world.query_mut::<&mut Brain>() {
-        if brain.alerted > 0.0 {
-            brain.alerted = (brain.alerted - dt).max(0.0);
-        }
+/// The effect a fresh alert's "!" is: [`ALERTED`] for its seconds, on the
+/// kit's clock, saved with its time.
+pub const ALERT_MARK: &str = "alert_mark";
+/// The tag a foe holds while its "!" shows.
+pub const ALERTED: &str = "mark.alert";
+
+/// Starts `foe`'s rest after an attack: a fresh [`Cooldown`] of its
+/// prefab's `cooldown.seconds` that elapses once, over the one it holds or
+/// in its place, which the kit's tick spends before the machine each step,
+/// held or not. A foe whose prefab names no cooldown rests nothing.
+pub fn start_rest(world: &mut World, foe: Entity) {
+    if let Some(seconds) = rest_seconds(world, foe) {
+        world.insert(foe, Cooldown::new(seconds).with_count(1));
     }
 }
 
-/// `enemy_cooldowns`, in the intent phase before the machine: each enemy's
-/// cooldowns run down by the step, a troll's slam's and the next
-/// snowball's, throw's or dash-in's.
-pub fn cooldowns(world: &mut World) {
-    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
-    for brain in world.query_mut::<&mut Brain>() {
-        brain.slam_cooldown = (brain.slam_cooldown - dt).max(0.0);
-        brain.cooldown = (brain.cooldown - dt).max(0.0);
-    }
+/// Whether `foe` may attack again: its cooldown has no elapse left, or it
+/// holds none, as a fresh foe's spent one and an older record's stripped
+/// one stand.
+#[must_use]
+pub fn rested(world: &World, foe: Entity) -> bool {
+    world
+        .get::<Cooldown>(foe)
+        .is_none_or(|cooldown| cooldown.remaining() == Some(0))
+}
+
+/// The seconds of `foe`'s rest, its prefab's `cooldown.seconds`, read from
+/// the prefab registry as [`super::restored`] reads its health's policy.
+fn rest_seconds(world: &World, foe: Entity) -> Option<f32> {
+    let mine = world.get::<Enemy>(foe)?;
+    let seconds = world
+        .get_resource::<PrefabRegistry>()?
+        .get(super::prefab(mine.kind, mine.variant))?
+        .components
+        .get("cooldown")?
+        .get("seconds")?
+        .as_f64()?;
+    (seconds > 0.0).then_some(seconds as f32)
+}
+
+/// Whether `foe`'s windowed attack still hits: its hitbox's window, which
+/// its ability's `hitbox` payload opened, runs. The bat's dive and the
+/// beetle's charge end once it disarms.
+#[must_use]
+pub fn armed(world: &World, foe: Entity) -> bool {
+    world
+        .get::<Hitbox>(foe)
+        .is_some_and(|hitbox| hitbox.window().is_some() && hitbox.is_armed())
 }
 
 /// `enemy_hold`, in the intent phase before the machine: each enemy that
@@ -736,6 +759,7 @@ pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
 /// it this step, a burn-out if burning, a poof otherwise; its sprite
 /// hidden.
 fn end(world: &mut World, enemy: Entity) {
+    end_effect(world, enemy, &DataRef::by_id(ALERT_MARK));
     let Some(at) = centre(world, enemy) else {
         return;
     };

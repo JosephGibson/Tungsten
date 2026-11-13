@@ -7,7 +7,7 @@
 //! cackles on sight. It keeps its distance: closer than
 //! [`KEEP_OFF`] across it backs away, hopping what it can, farther than
 //! [`CLOSE_IN`] it closes, and between them it rests facing the player
-//! while its [`COOLDOWN`] runs; then, the player within [`THROW_RISE`] up
+//! while its rest runs, its prefab's `cooldown`; then, the player within [`THROW_RISE`] up
 //! or down, it approaches. One `KitRng` draw picks a dash-in under
 //! [`DASH_CHANCE`]: a crouch for its clip ([`DASH_TELL_CLIP`]), then a sprint at
 //! [`DASH_SPEED`] for at most [`DASH_MOST`] that ends in its stab once
@@ -38,7 +38,7 @@ use tungsten::kit::{
 
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike, Throw, Throws};
 use super::hop::{self, Hops, grounded};
-use super::systems::{elapsed, face, go, player, rest, sees};
+use super::systems::{elapsed, face, go, player, rest, rested, sees, start_rest};
 use super::{ARRIVED, centre, heading_of, troll, turn};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, Hit, Kind, has_status};
@@ -111,10 +111,9 @@ pub const SKIP: f32 = 420.0;
 /// [`FLEE_REACH`] across rather than throw.
 pub const FLEE_SHARE: f32 = 0.3;
 pub const FLEE_REACH: f32 = 260.0;
-/// The seconds after a throw's release or a dash-in's end before it may
-/// approach again (V26), and the share of its approaches that are a
-/// dash-in: one draw at each.
-pub const COOLDOWN: f32 = 2.5;
+/// The share of its approaches that are a dash-in: one draw at each, after
+/// the rest a throw's release or a dash-in's end starts, its prefab's
+/// `cooldown` (V26).
 pub const DASH_CHANCE: f32 = 1.0 / 3.0;
 /// Its dash-in: its crouch, seconds; its sprint's speed, px/s, and the most
 /// seconds it runs, its input locked; the scuff of dust at its heels.
@@ -222,7 +221,7 @@ fn hurt(world: &World, goblin: Entity) -> bool {
 /// or down gets its stab's tell; badly hurt, it runs from one within
 /// [`FLEE_REACH`]; closer than [`KEEP_OFF`] across it backs away, farther
 /// than [`CLOSE_IN`] it closes, each hopping what it can; else it rests
-/// facing the player, and with its [`COOLDOWN`] spent and the player within
+/// facing the player, and with its rest spent and the player within
 /// [`THROW_RISE`] up or down it approaches: one draw of the kit's stream, a
 /// dash-in's tell under [`DASH_CHANCE`], else a throw's. It searches once
 /// it loses sight.
@@ -262,10 +261,7 @@ pub fn chase(world: &mut World, goblin: Entity) {
     }
     rest(world, goblin);
     face(world, goblin, target.x);
-    let cooling = world
-        .get::<Brain>(goblin)
-        .is_some_and(|brain| brain.cooldown > 0.0);
-    if cooling || rise.abs() > THROW_RISE {
+    if !rested(world, goblin) || rise.abs() > THROW_RISE {
         return;
     }
     let dash = world
@@ -351,12 +347,12 @@ fn dash(world: &mut World, goblin: Entity) {
 }
 
 /// Ends its dash-in with `next` as its strike, `None` for its recovery, a
-/// stab for its attack entered again; its [`COOLDOWN`] starts.
+/// stab for its attack entered again; its rest starts.
 fn end_dash(world: &mut World, goblin: Entity, next: Option<Strike>) {
     if let Some(brain) = world.get_mut::<Brain>(goblin) {
         brain.strike = next;
-        brain.cooldown = COOLDOWN;
     }
+    start_rest(world, goblin);
     let state = if next.is_some() {
         EnemyState::Attack
     } else {
@@ -515,9 +511,7 @@ pub fn throw(world: &mut World, goblin: Entity) -> Option<Entity> {
         crate::features::elements::systems::arm_throw(world, &throw);
         rock
     };
-    if let Some(brain) = world.get_mut::<Brain>(goblin) {
-        brain.cooldown = COOLDOWN;
-    }
+    start_rest(world, goblin);
     audio::play(world, Sound::RockThrown, from);
     Some(thrown)
 }

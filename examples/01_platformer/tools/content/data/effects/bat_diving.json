@@ -1,0 +1,11 @@
+{
+  "duration": 0.6,
+  "modifiers": [
+    {
+      "stat": "move_speed",
+      "modifier": {
+        "override": 700
+      }
+    }
+  ]
+}

@@ -15,7 +15,7 @@ use tungsten::kit::{EffectRequest, PlatformerController, lob_velocity};
 
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
 use super::hop::{self, Ahead, Hops, Leap, grounded};
-use super::systems::{blocked, elapsed, face, go, player, rest, sees, stride};
+use super::systems::{blocked, elapsed, face, go, player, rest, rested, sees, start_rest, stride};
 use super::{ARRIVED, centre, heading_of, snowball, troll};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::has_status;
@@ -86,7 +86,6 @@ pub const SNOWBALL_FAR: f32 = 290.0;
 pub const SNOWBALL_RISE: f32 = 160.0;
 pub const SNOWBALL_TELL_CLIP: &str = "ex10_crawler_snowball_windup";
 pub const SNOWBALL_CLIP: &str = "ex10_crawler_snowball_throw";
-pub const SNOWBALL_COOLDOWN: f32 = 4.0;
 pub const SNOWBALL_PACE: f32 = 1.0 / 650.0;
 pub const SNOWBALL_LEAST: f32 = 0.3;
 pub const SNOWBALL_MOST: f32 = 0.7;
@@ -269,9 +268,7 @@ pub fn chase(world: &mut World, crawler: Entity) {
     let across = target.x - at.x;
     let lit = light(world).is_some();
     let rise = at.y - target.y;
-    let cooling = world
-        .get::<Brain>(crawler)
-        .is_some_and(|brain| brain.cooldown > 0.0);
+    let cooling = !rested(world, crawler);
     let band = (SNOWBALL_NEAR..=SNOWBALL_FAR).contains(&across.abs());
     if !cooling && band && rise.abs() <= SNOWBALL_RISE {
         face(world, crawler, target.x);
@@ -356,9 +353,7 @@ fn flick(world: &mut World, crawler: Entity) {
     let thrower = crate::shared::save_id(world, crawler).map(|id| id.0);
     let factor = troll::factor(world, crawler);
     snowball::throw(world, from, velocity, thrower, factor);
-    if let Some(brain) = world.get_mut::<Brain>(crawler) {
-        brain.cooldown = SNOWBALL_COOLDOWN;
-    }
+    start_rest(world, crawler);
     audio::play(world, Sound::SnowballThrown, from);
 }
 

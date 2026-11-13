@@ -85,9 +85,10 @@ impl SaveData for SaveGame {
     /// 29 its spawns onto the World save's records: `migrate_step` refuses
     /// every older schema, whose slot reads as an older version's
     /// (`D-204`). Schema 30 moved arcane power's `spell_power` onto a
-    /// `damage_dealt` line ([`to_30`]), and 31 an enemy's `heading` onto
-    /// the kit's `facing` ([`to_31`]).
-    const SCHEMA: u32 = 31;
+    /// `damage_dealt` line ([`to_30`]), 31 an enemy's `heading` onto the
+    /// kit's `facing` ([`to_31`]), and 32 a foe's rests and "!" onto the
+    /// kit's cooldowns and effects ([`to_32`]).
+    const SCHEMA: u32 = 32;
 
     fn migrate_step(
         from: u32,
@@ -106,6 +107,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 30: the save has no world")?;
                 to_31(world);
+                Ok(data)
+            }
+            31 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 31: the save has no world")?;
+                to_32(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -217,6 +225,67 @@ fn s30_facing(left: bool) -> Value {
             "direction".to_owned(),
             Value::from(vec![Value::from(x), Value::from(0.0)]),
         ),
+    ])
+}
+
+/// The source of the bat's dive's speed on its `move_speed` at schema 31,
+/// frozen for the migration.
+const S31_DIVE: &str = "dive";
+
+/// Schema 31 to 32 over a save's `world`: every saved `brain`, a record's
+/// or a patch's, loses its `alerted`, `slam_cooldown` and `cooldown`. A
+/// rest left becomes the foe's kit `cooldown` beside it, of the rest's own
+/// seconds and spent by its one elapse, so it needs no kind and serves no
+/// later rest; the "!" is dropped. Every saved `stats` line from the bat's
+/// dive goes, its speed now an effect's.
+fn to_32(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let rest = object
+                .get_mut("brain")
+                .and_then(Value::as_object_mut)
+                .map(|brain| {
+                    brain.remove("alerted");
+                    ["slam_cooldown", "cooldown"]
+                        .map(|key| brain.remove(key).and_then(|left| left.as_f64()))
+                        .into_iter()
+                        .flatten()
+                        .fold(0.0_f64, f64::max)
+                });
+            if let Some(rest) = rest.filter(|rest| *rest > 0.0) {
+                object.insert("cooldown".to_owned(), s31_rest(rest));
+            }
+            if let Some(Value::Object(stats)) = object.get_mut("stats") {
+                for stat in stats.values_mut().filter_map(Value::as_object_mut) {
+                    for key in ["modifiers", "lines"] {
+                        if let Some(Value::Array(pairs)) = stat.get_mut(key) {
+                            pairs.retain(|pair| {
+                                pair.get(0).and_then(Value::as_str) != Some(S31_DIVE)
+                            });
+                        }
+                    }
+                }
+            }
+            for inner in object.values_mut() {
+                to_32(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                to_32(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A foe's rest left at schema 31 as the kit's `cooldown` of its own
+/// seconds, one elapse to go: frozen for the migration.
+fn s31_rest(seconds: f64) -> Value {
+    Value::from_iter([
+        ("seconds".to_owned(), Value::from(seconds)),
+        ("left".to_owned(), Value::from(seconds)),
+        ("remaining".to_owned(), Value::from(1)),
     ])
 }
 

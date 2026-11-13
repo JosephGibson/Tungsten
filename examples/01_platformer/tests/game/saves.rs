@@ -1381,9 +1381,7 @@ fn a_save_with_a_pending_transition_enters_it_once_after_the_load() {
     // Its snowball cooling a minute, so its tell is the lunge's.
     harness
         .world_mut()
-        .get_mut::<example_01_platformer::features::enemies::components::Brain>(crawler)
-        .unwrap()
-        .cooldown = 60.0;
+        .insert(crawler, tungsten::kit::Cooldown::new(60.0).with_count(1));
     let asked = until(&mut harness, 400, |h| {
         h.world()
             .get::<StateMachine<EnemyState>>(crawler)
@@ -1434,7 +1432,7 @@ fn a_cooling_a_dashing_and_a_panicking_goblin_save_and_load_back_the_same() {
     );
     harness.step(2);
     let world = harness.world_mut();
-    world.get_mut::<Brain>(cooling).unwrap().cooldown = 1.5;
+    world.insert(cooling, tungsten::kit::Cooldown::new(1.5).with_count(1));
     world.get_mut::<Brain>(dashing).unwrap().strike = Some(Strike::Dash);
     world.insert(dashing, StateMachine::new(EnemyState::Attack));
     tungsten::kit::EffectRequest::new(panicking, tungsten::core::DataRef::by_id("burning"))
@@ -1443,7 +1441,10 @@ fn a_cooling_a_dashing_and_a_panicking_goblin_save_and_load_back_the_same() {
     let ids = [cooling, dashing, panicking].map(|goblin| id_of(&harness, goblin));
     let brain =
         |harness: &UiHarness, goblin: Entity| *harness.world().get::<Brain>(goblin).unwrap();
-    assert!(brain(&harness, cooling).cooldown > 0.0, "cooling");
+    assert!(
+        !enemies::systems::rested(harness.world(), cooling),
+        "cooling"
+    );
     assert_eq!(
         (state(&harness, dashing), brain(&harness, dashing).strike),
         (EnemyState::Attack, Some(Strike::Dash)),
@@ -1556,23 +1557,24 @@ fn a_snowball_in_flight_and_a_cooling_crawler_save_and_load_and_it_lands_as_it_w
     assert_eq!(flying.len(), 1, "the snowball flies");
     let cooling = harness
         .world()
-        .get::<example_01_platformer::features::enemies::components::Brain>(crawler)
+        .get::<tungsten::kit::Cooldown>(crawler)
         .unwrap()
-        .cooldown;
-    assert!(cooling > 0.0, "its cooldown: {cooling}");
+        .left();
+    assert!(
+        !enemies::systems::rested(harness.world(), crawler),
+        "its cooldown: {cooling}"
+    );
     let saved = capture(&harness);
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("the save reads");
     let mut loaded = reloaded(read, false);
     loaded.harness_mut().set_dt(1.0 / 60.0);
     assert_eq!(snowballs(&loaded), flying, "the snowball back");
-    let brain = loaded
+    let back = loaded
         .world()
-        .get::<example_01_platformer::features::enemies::components::Brain>(by_id(
-            &loaded, crawler_id,
-        ))
-        .copied()
-        .unwrap();
-    assert_eq!(brain.cooldown, cooling, "its cooldown back");
+        .get::<tungsten::kit::Cooldown>(by_id(&loaded, crawler_id))
+        .unwrap()
+        .left();
+    assert_eq!(back, cooling, "its cooldown back");
     let (before, after) = (
         snowball_landing(&mut harness),
         snowball_landing(&mut loaded),
@@ -3976,5 +3978,209 @@ fn an_older_save_keeps_its_foes_facing() {
     let heading = |id| enemies::heading_of(harness.world(), by_id(&harness, id));
     assert_eq!(heading(ids.0), Some(-1.0), "it loads facing left");
     assert_eq!(heading(ids.1), Some(1.0), "and the other right");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// `older`'s World save rewritten to schema 31's shape: the named record of
+/// save ID `troll` takes its `cooldown` back into its `brain` as the
+/// `slam_cooldown` schema 31 wrote, its seconds left; each spawn record of
+/// `records` loses its `cooldown` and its `effects`, which schema 31's
+/// prefabs held not, a resting one's seconds left back in its `brain`'s
+/// `cooldown`. The troll's components as rewritten.
+fn rests_as_schema_31(
+    world: &mut serde_json::Value,
+    troll: u64,
+    records: &[u64],
+) -> serde_json::Value {
+    let mut patch = serde_json::Value::Null;
+    let mut areas: Vec<&mut serde_json::Value> = Vec::new();
+    for (key, value) in world.as_object_mut().expect("a World save").iter_mut() {
+        match key.as_str() {
+            "global" => areas.push(value),
+            "areas" => areas.extend(value.as_object_mut().unwrap().values_mut()),
+            _ => {}
+        }
+    }
+    for area in areas {
+        if let Some(named) = area
+            .get_mut("named")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            for (name, record) in named.iter_mut() {
+                if SaveId::authored(name).0 != troll {
+                    continue;
+                }
+                let components = record["components"].as_object_mut().unwrap();
+                let left = components
+                    .remove("cooldown")
+                    .and_then(|rest| rest["left"].as_f64())
+                    .expect("the troll's rest in its patch");
+                let brain = components
+                    .entry("brain")
+                    .or_insert_with(|| serde_json::json!({}));
+                brain["slam_cooldown"] = serde_json::Value::from(left);
+                patch = record["components"].clone();
+            }
+        }
+        if let Some(spawns) = area
+            .get_mut("spawns")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for spawn in spawns {
+                if !spawn["id"].as_u64().is_some_and(|id| records.contains(&id)) {
+                    continue;
+                }
+                let components = spawn["components"].as_object_mut().unwrap();
+                components.remove("effects");
+                let rest = components
+                    .remove("cooldown")
+                    .filter(|rest| rest["remaining"] == 1);
+                if let Some(left) = rest.and_then(|rest| rest["left"].as_f64()) {
+                    components["brain"]["cooldown"] = serde_json::Value::from(left);
+                }
+            }
+        }
+    }
+    patch
+}
+
+#[test]
+fn an_older_saves_foes_keep_their_rests() {
+    use example_01_platformer::features::enemies::components::Variant;
+    use example_01_platformer::features::enemies::systems::{rested, start_rest};
+    use example_01_platformer::features::enemies::{goblin, troll};
+    use tungsten::kit::Cooldown;
+
+    let dir = user_folder("rests-31");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let player = player_entity(&harness);
+    scaffold(&mut harness);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.step(1);
+    // A map troll, named, and a goblin, a crawler and a bat summoned past
+    // the player's 1,200 px, so none attacks while the rests run.
+    let map_troll = harness
+        .world()
+        .query::<(Entity, &Enemy, &Saved)>()
+        .find(|(_, enemy, saved)| enemy.kind == EnemyKind::Troll && saved.id().is_authored())
+        .map(|(entity, ..)| entity)
+        .unwrap_or_else(|| {
+            let placed: Vec<(EnemyKind, Variant, bool)> = harness
+                .world()
+                .query::<(&Enemy, &Saved)>()
+                .map(|(enemy, saved)| (enemy.kind, enemy.variant, saved.id().is_authored()))
+                .collect();
+            panic!("a map troll: {placed:?}")
+        });
+    let goblin = enemy(
+        &mut harness,
+        EnemyKind::Goblin,
+        Vec2::new(2000.0, TOP - 20.5),
+    );
+    let crawler = enemy(
+        &mut harness,
+        EnemyKind::Crawler,
+        Vec2::new(2400.0, TOP - 10.5),
+    );
+    let bat = enemy(&mut harness, EnemyKind::Bat, Vec2::new(2800.0, TOP - 200.0));
+    harness.step(2);
+    // The troll resting 1.2 s of its 2, the goblin 2.0 of its 2.5, the
+    // crawler rested, and the bat diving at schema 31's speed line.
+    let resting = |seconds: f32, left: f32| -> Cooldown {
+        serde_json::from_value(
+            serde_json::json!({ "seconds": seconds, "left": left, "remaining": 1 }),
+        )
+        .unwrap()
+    };
+    let world = harness.world_mut();
+    world.insert(map_troll, resting(2.0, 1.2));
+    world.insert(goblin, resting(2.5, 2.0));
+    let own_speed = world.get::<Stats>(bat).unwrap().get(Stats::MOVE_SPEED);
+    world.get_mut::<Stats>(bat).unwrap().add_modifier(
+        Stats::MOVE_SPEED,
+        "dive",
+        Modifier::Override(700.0),
+    );
+    let ids = [map_troll, goblin, crawler, bat].map(|foe| id_of(&harness, foe));
+    let mut older = json(&capture(&harness));
+    assert!(
+        older.to_string().contains(r#"["dive",{"override":700.0}]"#),
+        "the bat's dive line in the save"
+    );
+    let patch = rests_as_schema_31(&mut older["world"], ids[0], &ids[1..]);
+    let left = patch["brain"]["slam_cooldown"].as_f64().unwrap_or(0.0);
+    assert!((left - 1.2).abs() < 1e-6, "{patch}");
+    assert!(
+        patch["enemy"].get("kind").is_none(),
+        "a patch names no kind"
+    );
+    let stamp = tungsten::core::SaveStamp::new(31, "0.117.0", 1_760_400_000_000);
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_1", &older, &stamp)
+        .expect("a schema 31 save is written");
+    let save = slots
+        .load::<SaveGame>("slot_1")
+        .expect("a schema 31 save migrates");
+    load(&mut harness, save);
+    harness.world_mut().resource_mut::<Time>().resume();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let [map_troll, goblin, crawler, bat] = ids.map(|id| by_id(&harness, id));
+    assert!(rested(harness.world(), crawler), "the crawler rested");
+    assert!(
+        harness.world().get::<Cooldown>(crawler).is_none(),
+        "its record held no cooldown"
+    );
+    assert_eq!(
+        harness
+            .world()
+            .get::<Stats>(bat)
+            .unwrap()
+            .get(Stats::MOVE_SPEED),
+        own_speed,
+        "the bat at its own speed"
+    );
+    // Steps until each of `foes` is rested, at most `most`.
+    let until_rested = |harness: &mut UiHarness, foes: &[Entity], most: u32| -> Vec<u32> {
+        let mut when: Vec<Option<u32>> = vec![None; foes.len()];
+        let mut steps = 0;
+        while steps < most && when.iter().any(Option::is_none) {
+            harness.step(1);
+            steps += steps_this_frame(harness);
+            for (foe, at) in foes.iter().zip(&mut when) {
+                if at.is_none() && rested(harness.world(), *foe) {
+                    *at = Some(steps);
+                }
+            }
+        }
+        when.into_iter()
+            .map(|at| at.expect("rested in time"))
+            .collect()
+    };
+    // The troll may slam again 1.2 s on, the goblin approach 2.0 s on.
+    let first = until_rested(&mut harness, &[map_troll, goblin], 200);
+    assert!(first[0].abs_diff(72) <= 1, "the troll's 1.2 s: {first:?}");
+    assert!(first[1].abs_diff(120) <= 1, "the goblin's 2.0 s: {first:?}");
+    // Then each rests its prefab's whole seconds after its next attack:
+    // the troll's slam 2 s, the goblin's throw 2.5 s and the crawler's
+    // snowball 4 s (its flick's rest, `start_rest`).
+    troll::slam(harness.world_mut(), map_troll);
+    assert!(
+        goblin::throw(harness.world_mut(), goblin).is_some(),
+        "a throw"
+    );
+    start_rest(harness.world_mut(), crawler);
+    for (foe, seconds) in [(map_troll, 2.0), (goblin, 2.5), (crawler, 4.0)] {
+        let rest = harness.world().get::<Cooldown>(foe).unwrap();
+        assert_eq!((rest.seconds(), rest.remaining()), (seconds, Some(1)));
+    }
+    let next = until_rested(&mut harness, &[map_troll, goblin, crawler], 300);
+    for (steps, (name, want)) in
+        next.iter()
+            .zip([("troll", 120), ("goblin", 150), ("crawler", 240)])
+    {
+        assert!(steps.abs_diff(want) <= 1, "the {name}'s rest: {next:?}");
+    }
     let _ = std::fs::remove_dir_all(dir);
 }
