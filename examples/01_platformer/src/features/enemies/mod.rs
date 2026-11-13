@@ -45,8 +45,8 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
-    Modifier, PICKUP_TICK, PLATFORMER_CONTROLLER, Phase, PickedUp, Stats, TOP_DOWN_MOVER,
-    TagFilter, WorldSource, WorldSources, ensure_phases,
+    Modifier, PLATFORMER_CONTROLLER, Phase, Stats, TOP_DOWN_MOVER, TagFilter, WorldSource,
+    WorldSources, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -295,12 +295,6 @@ impl Plugin for EnemiesPlugin {
             .after(TOP_DOWN_MOVER)
             .after(KNOCKBACK);
         schedule.add(Stage::FixedUpdate, Phase::Move.join(holds));
-        let mut picked = EventCursor::<PickedUp>::new();
-        let collect = system("orb_collect", move |world: &mut World| {
-            drops::collect(world, &mut picked);
-        })
-        .after(PICKUP_TICK);
-        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(collect));
         let snowballs = system("snowballs", snowball::snowballs);
         schedule.add(Stage::FixedUpdate, Phase::Overlap.join(snowballs));
         // Before the shell's save captures them, so a save holds them whole.
@@ -318,12 +312,6 @@ impl Plugin for EnemiesPlugin {
         })
         .after("enemy_deaths");
         schedule.add(Stage::FixedUpdate, Phase::React.join(tags));
-        let mut cursor = EventCursor::new();
-        let fallen = system("orb_fallen", move |world: &mut World| {
-            drops::fallen(world, &mut cursor);
-        })
-        .after("enemy_deaths");
-        schedule.add(Stage::FixedUpdate, Phase::React.join(fallen));
         let clips = system("enemy_clips", systems::clips)
             .after(CHARACTER_ANIMATOR)
             .before(EFFECT_LOOK_LATE);

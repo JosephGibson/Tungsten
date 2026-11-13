@@ -113,7 +113,11 @@
           "shake": 0.15
         },
         {
-          "roll": "troll_drops"
+          "roll": {
+            "table": "troll_drops",
+            "centred": true,
+            "at": "centre"
+          }
         }
       ]
     },

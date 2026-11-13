@@ -1,12 +1,11 @@
 //! The enemies' drops: health and mana orbs, which each enemy's `killed`
 //! cue rolls from `enemy_drops` (the troll's from `troll_drops`, three
 //! rolls). An orb is a bodiless pickup filtered to `team.player`, drawn by
-//! the player's `pickup_radius` magnet, and fades after [`ORB_SECS`];
-//! [`adopt`] gives each its save ID before the shell's save, centred on the
-//! body of the enemy that dropped it, as [`fallen`] recorded it at the
-//! kill, and moved clear of the rock there, and
-//! [`collect`] queues its effect on the player in the overlap phase, so the
-//! step's own resolve takes it. A dropped orb out of the magnet's reach
+//! the player's `pickup_radius` magnet, and fades after [`ORB_SECS`]; its
+//! foe's `killed` roll centres it on the foe's body (`at: centre`,
+//! `centred`), and [`adopt`] gives each its save ID before the shell's
+//! save, moved clear of the rock there. Its `picked_up` cue lands its
+//! effect on the player at the next resolve and bursts in its colour. A dropped orb out of the magnet's reach
 //! falls by its pickup's `fall` onto the tiles, walls, lava or crust under
 //! it, and blinks over its last seconds by its lifetime's `blink`, both its
 //! prefab's; an older save's orb takes its fall back ([`restored`]). The
@@ -18,10 +17,9 @@ use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
 use tungsten::core::save::Value;
 use tungsten::core::{
-    DataRef, Entity, EventCursor, EventQueue, PhysicsLayers, Position, PrefabRegistry, Shape, With,
-    Without, World,
+    Entity, PhysicsLayers, Position, PrefabRegistry, Shape, With, Without, World,
 };
-use tungsten::kit::{Damaged, EffectRequest, Lifetime, PickedUp, Pickup, Source};
+use tungsten::kit::{Lifetime, Pickup};
 use tungsten::physics::{SpatialFilter, overlap};
 
 use super::WALL_LAYERS;
@@ -34,12 +32,6 @@ use crate::shared::{Joined, Saved, spawn_burst};
 /// run's start inserts, which a save's `gone` reads.
 #[derive(Debug, Clone, Default)]
 pub struct PlacedOrbs(pub Vec<u64>);
-
-/// The enemies killed since the last [`adopt`], each with its body's centre
-/// at the kill, where its drops land: a dead enemy goes the step after its
-/// kill, before its drops are adopted. Not saved.
-#[derive(Debug, Clone, Default)]
-pub struct Fallen(pub Vec<(Entity, Vec2)>);
 
 /// An orb's seconds before it fades: its prefab's lifetime.
 pub const ORB_SECS: f32 = 20.0;
@@ -69,22 +61,13 @@ impl OrbKind {
         }
     }
 
-    /// The burst it gives where it is taken, in its colour.
+    /// The burst it gives where it drops and where it is taken, in its
+    /// colour.
     #[must_use]
     pub const fn burst(self) -> &'static str {
         match self {
             OrbKind::Health => "ex10_orb_health",
             OrbKind::Mana => "ex10_orb_mana",
-        }
-    }
-
-    /// The instant effect its pickup queues on the player: 20 health, or 25
-    /// mana up to its most.
-    #[must_use]
-    pub const fn effect(self) -> &'static str {
-        match self {
-            OrbKind::Health => "orb_heal",
-            OrbKind::Mana => "orb_mana",
         }
     }
 }
@@ -174,87 +157,29 @@ fn clear(world: &World, centre: Vec2) -> Vec2 {
         .unwrap_or(centre)
 }
 
-/// `orb_fallen`, in the react phase after the enemies' deaths: each enemy
-/// killed this step leaves its body's centre for [`adopt`].
-pub fn fallen(world: &mut World, cursor: &mut EventCursor<Damaged>) {
-    let Some(events) = world.get_resource::<EventQueue<Damaged>>() else {
-        return;
-    };
-    let killed: Vec<(Entity, Vec2)> = cursor
-        .read(events)
-        .filter(|hit| hit.killed)
-        .filter_map(|hit| Some((hit.entity, super::centre(world, hit.entity)?)))
-        .collect();
-    if killed.is_empty() {
-        return;
-    }
-    match world.get_resource_mut::<Fallen>() {
-        Some(fallen) => fallen.0.extend(killed),
-        None => world.insert_resource(Fallen(killed)),
-    }
-}
-
 /// `orb_adopt`, in `PreUpdate` before the shell's save: each orb a roll
-/// landed at the last flush joins the run ([`Joined`]), its save ID the
-/// flush's, centred on
-/// the body of the enemy that dropped it (its `Source`, at its kill as
-/// [`fallen`] recorded it), else at its cue's point, and moved clear of the
-/// rock there ([`clear`]); it pops out with its sound and its kind's
-/// sparks. Placed and loaded orbs never pass here.
+/// landed at the last flush, centred on the body of the enemy that dropped
+/// it, joins the run ([`Joined`]), its save ID the flush's, and is moved
+/// clear of the rock there ([`clear`]); it pops out with its sound and its
+/// kind's sparks. Placed and loaded orbs never pass here.
 pub fn adopt(world: &mut World) {
-    let fallen = world.remove_resource::<Fallen>().unwrap_or_default();
     let fresh: Vec<Entity> = world
         .query_filtered::<Entity, (With<Orb>, Without<Joined>)>()
         .collect();
     for orb in fresh {
         world.insert_bundle(orb, (Joined, SceneEntity { state_id: GAMEPLAY }));
-        let (Some(kind), Some(point)) = (
+        let (Some(kind), Some(centre)) = (
             world.get::<Orb>(orb).map(|orb| orb.kind),
             world.get::<Position>(orb).map(|at| at.0 + ORB_CENTRE),
         ) else {
             continue;
         };
-        let centre = world
-            .get::<Source>(orb)
-            .map(|source| source.entity())
-            .and_then(|enemy| {
-                let killed = fallen.0.iter().find(|(dead, _)| *dead == enemy);
-                killed
-                    .map(|&(_, at)| at)
-                    .or_else(|| super::centre(world, enemy))
-            })
-            .unwrap_or(point);
         let at = clear(world, centre);
         if let Some(position) = world.get_mut::<Position>(orb) {
             position.0 = at - ORB_CENTRE;
         }
         spawn_burst(world, kind.burst(), at);
         audio::play(world, Sound::OrbDropped, at);
-    }
-}
-
-/// `orb_collect`, in the overlap phase after the kit's pickup: each orb
-/// collected queues its kind's effect on its collector, from the orb, and
-/// bursts in its colour where it was; its cue plays the potion's sound.
-pub fn collect(world: &mut World, cursor: &mut EventCursor<PickedUp>) {
-    let Some(events) = world.get_resource::<EventQueue<PickedUp>>() else {
-        return;
-    };
-    let picked: Vec<(Entity, OrbKind, Option<Vec2>)> = cursor
-        .read(events)
-        .filter_map(|picked| {
-            let kind = world.get::<Orb>(picked.entity)?.kind;
-            let at = world
-                .get::<Position>(picked.entity)
-                .map(|at| at.0 + ORB_CENTRE);
-            Some((picked.by, kind, at))
-        })
-        .collect();
-    for (by, kind, at) in picked {
-        EffectRequest::new(by, DataRef::by_id(kind.effect())).queue(world);
-        if let Some(at) = at {
-            spawn_burst(world, kind.burst(), at);
-        }
     }
 }
 
