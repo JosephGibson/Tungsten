@@ -1,0 +1,307 @@
+# 01's blasts, impacts and cues on the kit (example-01-foes-and-cues) — draft
+
+- **status:** draft
+- **goal:** Phase 7's 7.13c's foes and cues, the first of its two plans (§2.1). In the kit: a projectile's end blast set off at its end, blasts that pass the dead, the impact record taken before the kit's movers and a dead credit that credits nobody; one-off particle bursts under a game's budget as a cue action, occurrences at their subject's body centre and an action's own place; rule groups and a part label's step order. Then example 01's blasts, shakes and body impacts on the kit (S-4, S-73, S-121, P7-2's 01 part), and its cues and numbers of hits, impacts and pickups, its crawler's scare and its centred spawns (S-12, S-41, S-88, S-96, S-100, S-122), its tests unchanged (§2.2) and its older saves loading whole (§2.13).
+- **non-goals:**
+  - The eleven rows split to **7.13c's foes**, written when this plan closes (§2.1): the foes' clips, looks, bar, timers and attack clocks, carry, flight, snowball and per-kind data (S-10, S-20, S-21, S-30, S-34, S-36, S-37, S-52, S-92, S-158, S-189); S-10's slam ring and marks need art in the locked effects family first.
+  - The troll's slam as a kit area strike (Later, `D-276`'s Q3); 01's hits as the kit's requests (S-47's rest, Later); 01's other readers of its `PreviousVelocity` onto `step_velocity` (Q6); 01's spells', toys' and gun's flight (7.13d).
+  - Core changes; kit changes past Steps 1, 4 and 5; retuning 01; new 01 content or art; a sitting as evidence (`D-226`).
+- **files to touch:** by step, §3's Files lines; nothing outside them but §6's admitted files. In short: Steps 1, 4 and 5 the kit's projectile, blast, chemistry, impact and cue modules, a new `present/burst.rs`, their tests, the umbrella's kit tests, recipes and fixtures, the template's schedule test, `api/`, `DESIGN.md` (Step 4 also 01's burst helpers and their wiring); Steps 2, 3 and 6–9 `examples/01_platformer/` (`src/`, `tests/game/`, `tools/content/`, the generated `assets/` copies, `README.md`), `docs/known-issues.md` (Step 3); Step 10 this plan (deleted), `docs/plans/phase-7.md`, `ROADMAP.md`, `DECISIONS.md`, `docs/DECISION_INDEX.md`, `docs/known-issues.md`.
+- **ordered steps:** (1) the kit's end blasts, blasts past the dead, the impact record and its credit; (2) 01's blasts and shakes; (3) 01's body impacts; (4) the kit's bursts, body points and an action's place, with 01's bursts on them; (5) the kit's rule groups and label order; (6) 01's hits, hurt and scare as rules; (7) 01's impact cues; (8) 01's pickups and centred spawns; (9) 01's damage numbers; (10) close.
+- **done-when:** every step's done-when passes, quoted in the evidence log; `just check` passes and the demo (§3's Step 10) works; the landed steps' rows read `landed <sha>` in phase 7's §2.2 (P7-2's note naming Step 3's), a skipped step's rows moved with their reason (§6), the eleven split rows `7.13` and `open`; the plan deleted with its citations and `example-01-foes-and-cues` out of Now.
+
+Item `example-01-foes-and-cues` in [ROADMAP.md](../../ROADMAP.md), phase 7's 7.13c's foes and cues (§2.8, [phase 7](phase-7.md)), from the redo's 7.13 row and phase 7's Step 13. Written 2026-11-12 at `077a363a`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md) and the [operating rules](../operating-rules.md); this plan records only where it differs.
+
+## Context digest
+
+- 7.13c closed with its Steps 5 and 6 stopped (`D-276`): the flask's end blast landed a step late, and the kit's movers ran between 01's `PreviousVelocity` and the impact record. Its second plan holds 21 rows: 17 split rows and the stopped S-4, S-73, S-121 and P7-2's 01 part (A1). Every one needs kit work, so they need about twenty steps; split by dependency order (phase 7's §6, commit `077a363a`), this plan takes the stopped rows and the cues and numbers that stand on them, and 7.13c's foes takes the rest (§2.1).
+- Both stops' kit fixes were probed in the tree at `077a363a`, then restored (A2, A3): the end blast set off at the projectile's end passes all nine of 01's flask tests; the record before the movers matches `PreviousVelocity` in all 248,458 comparisons over the full pit.
+- It stands on `D-276` (the blast's fields, impact damage, hit preparations), `D-244` (a projectile's `end`, amended here), `D-242` (cue filters, limits and a shake's falloff), `D-238` (part labels), `D-247` (presence gates), `D-271` (01's handlers) and `D-275` (01's saves).
+- Rules: tests are the spec (§2.2); the contact record stays off (`D-233`); `D-226` for perf; code at xhigh; no save schema bump is expected (§2.13).
+- Later items expect: 7.13c's foes to put the foes' looks, clips and timers on the kit over this plan's bursts and body points; 7.13d the missile's and the gun's flight; 7.14 to measure 01 on these systems.
+
+## 1. Audit
+
+Read at `077a363a`. Paths under `examples/01_platformer/` are written `src/…`, `tests/…`, `tools/…`; `K/` is `crates/tungsten-kit/src/`, `C/` `crates/tungsten-core/src/`.
+
+| # | Finding | Evidence |
+| --- | --- | --- |
+| A1 | Phase 7 sends 7.13c's second plan 17 split rows plus 7.13c's stopped S-4, S-73, S-121 and P7-2's 01 part | `docs/plans/phase-7.md:420`, `:143`, `:144`, `:173`, `:183` |
+| A2 | Probe: `set_off` calling `blast()` in place of `Blast::queue`, with 7.13c's flask work at `land: queue`, passed `cargo test --test game -- flask` (9 of 9) and every 01 test but the pit pin (allocations 68,324 → 68,322, bytes 70,156,526 → 70,156,398: `flask_contacts` gone); three kit tests fail on the old timing | `target/plan-wip/7.13c-step5-flask-wip.patch`; `K/tests/projectile.rs:848`, `:926`, `:1013` |
+| A3 | Probe: `impact_record` with `before_if_present` on the eleven movers, inert rules on every `PreviousVelocity` holder: 248,458 comparisons over 120 steps of the full pit, six foes and a falling iron block, 0 apart; the player's kept velocity equals its last-frame one; kit impact tests pass; only `kit_plugins_resolve_into_their_phases` moves, to `kit_move, impact_record, path_follow, …` | `K/overlap/impact.rs:1131-1150`; `crates/tungsten/src/tests/kit.rs:49`, `:133` |
+| A4 | A projectile's end queues its blast on chemistry's unsaved `Blasts`, drained after the run reads the step's parts: `now` hits reach the next run, `queue` hits the next step (`D-244`'s choice); a World without `Blasts` traces a skip | `K/overlap/projectile.rs:1194-1253`; `K/chemistry/mod.rs:386-396`, `:474-569`; `K/chemistry/blast.rs:540-561`, `:624-629` |
+| A5 | The blast builds a request for every `Health` holder in reach, dead or not, so a dead one costs a crit draw; 01 filters the dead first; impact damage skips them | `K/chemistry/blast.rs:665-700`; `K/damage/pipeline.rs:674-690`; `K/overlap/impact.rs:899` |
+| A6 | The blast's impulse moves every collider in reach but its receiver, spared and hurt bodies; at 0 it runs nothing; its push on a `Health` holder is 01's `blast_hit` push | `K/chemistry/blast.rs:804-880`; `src/features/elements/cascade.rs:776-800` |
+| A7 | 01's radial sites: thermal shock (reach by kind, fire and physical reach / 8, push 900), steam (128, a small ball's 96, 5 and 5, push 700, the spray's `steam_at` in the intent phase), detonation (keg 192 at 24 and 24, bomb 128 at 16 and 16, push 900), all flat, `.at(centre).blast()`, applied in chemistry's handlers, each shoving bin bodies itself; the strike's shock (40 flat within 40 px, caster spared, `.spell()`, queued in the intent phase); the missile's heat (`burn_targets`: 72 px, 20 × (1 − 0.5 d / r), the player spared, `.at(at).spell()`, queued in the overlap phase); the flask (`splash`: 96 px, 16 poison × (1 − 0.5 d / r), `living`, the player spared, queued) | `src/features/elements/cascade.rs:380-508`, `:614-697`, `:776-971`; `src/features/toys/systems.rs:645-730`, `:1236-1243`; `src/features/lightning/mod.rs:267-339`; `src/features/toys/flask.rs:105-191` |
+| A8 | Shakes: `blast_trauma`, 0.68 × `falloff` from the view's centre, whole within 0.25 and none past 1.5 of the visible width (2,048 px at the default view's 1,152 px height, 16:9), for the missile, kegs and bombs, × 0.2 for iron's landing; the strike 0.5 flat; the slam 0.5 × `falloff(courier, 120, 640)`, none while the player is dead; the kit's cue `shake` falls off from the listener, 01's at the live player's centre; no test pins an amount | `src/features/toys/systems.rs:217-228`, `:795-818`; `src/features/lightning/mod.rs:363-367`; `src/features/enemies/troll.rs:391-398`; `K/react/cues.rs:604-637`; `src/features/audio/mod.rs:200`; `tools/content/prefabs/player.json` |
+| A9 | The rules beside them play sounds alone: `blasted` :3, `thundered` :235, `troll_slammed` :476, `iron_landed` :654, `keg_blasted` :886 | `tools/content/data/cue_rules/sounds.json` |
+| A10 | A restored record takes its saved components whole: a schema-31 flask would come back with no `end`, a point sweep and no body walls; `drops::restored` is the precedent fix; `Projectile` has `shape()` and `body_walls()`, no end getter | `C/save/world.rs:1183-1236`; `K/overlap/projectile.rs:169-200`, `:346-410`; `src/features/enemies/drops.rs:261-304` |
+| A11 | 01's impacts: `target_hits` over thrown bodies, iron, scrap, balls and props from 400 px/s, within 3 px, closing along the centres from both pre-step velocities; `body_hit` 0.002 × m′ × (u − 400) to 120, none under 2, m′ halved under mass 4; thrown hits at the thrower's factor, credited to it while alive and not dead, never it; unthrown ones the player's, never on it; the goblin's rock 8 × factor, pushed 260 along; a burning crate or plank +12 fire; iron pushes min(0.6 u, 900), lands at once and marks killed flesh in `IronKills`; once a pair a step at its hardest | `src/features/elements/systems.rs:1009-1112`, `:1236-1250`, `:1360-1478`; `src/features/elements/mod.rs:90-104`, `:263-270`; `src/features/props/mod.rs:134`, `:486-488` |
+| A12 | `PreviousVelocity` is written by `toys_velocities` and read by `target_hits`, `crush`, `ball_impacts`, `body_impacts` and `crate_hits`; the player holds none; `first_impact` recomputes `body_hit` from it | `src/features/toys/systems.rs:181-188`; `src/features/elements/systems.rs:993-999`; `tests/game/enemies.rs:302-333` |
+| A13 | The kit credits an impact to its `credit`, else its `Source`, while that entity exists, dead or not; 01's "from nobody" tests kill the thrower mid-flight | `K/overlap/impact.rs:927-931`; `tests/game/enemies.rs:2275`, `:3500` |
+| A14 | The record keeps every rule holder whatever its scale, and the pass looks up despawning, mass and the record before the speed check; 01's pit has 2,000 balls | `K/overlap/impact.rs:803-824`, `:889-925` |
+| A15 | 01's bursts: `spawn_burst` and `spawn_key_burst`, spawned at once, seeded `0x1a_0000 + order`, unsaved, under `BURST_CAP` 16 where a key burst drains the oldest cosmetic one; `burst_cleanup` in `update`; 86 calls in 26 files, 11 test files read them | `src/shared.rs:198-283`; `src/features/level/mod.rs:256` |
+| A16 | The kit's cue actions hold no burst; a `prefab` spawns through the command buffer a frame later and takes a save ID from a saved subject | `K/react/cues.rs:3841-3887`; `api/tungsten-kit-components.txt:541-558` |
+| A17 | An occurrence without a point of its own sits at its subject's `Position` (01's sprite corner): parts and hits without a request point, cooldowns, heals, effect applications and expiries; no action takes a centre or offset; a roll spawns at the occurrence's point | `K/react/cues.rs:4152-4245`, `:3585-3603` |
+| A18 | A rule's `min_interval` waits per subject, its `cap` counts per rule a step; a held occurrence records no wait; no rule excludes another | `K/react/cues.rs:3515-3551` |
+| A19 | The part label floats a tick's window only at its close, a step's crits at the step's end after its plain parts, and closed sums before the step's new parts; 01 floats crits, then new parts (a tick's first included), then closed sums; kit tests pin today's order | `K/react/cues.rs:4016-4113`; `src/features/combat/numbers.rs:70-147`; `K/tests/cues.rs:1587`, `:1621` |
+| A20 | 01's blood: a blow on the player or a `flesh` target bursts `ex10_blood_burst` once a target a step at the part's point, else its centre; any `bleeding` application `ex10_blood_spurt` at the centre | `src/features/combat/systems.rs:83-160` |
+| A21 | 01's hurt: one sound a step, died over hurt over ticked, at the body centre, through 01's events and three sound rules (shake 0.8, 0.5; ticked `min_interval` 0.15); `Moves`' hurt, clip and edge stay 01's | `src/features/player/systems.rs:316-355`; `tools/content/data/cue_rules/sounds.json:524`, `:542`, `:1283` |
+| A22 | The crawler's scare: `Scared { at }`, unsaved; held 0.4 s past the last refusal; a fresh one puffs `ex10_frost_breath` and hisses (scared or retreated) at its mouth, centre + (heading × 26, −2); its clip reads it | `src/features/enemies/crawler.rs:49-52`, `:127-180`, `:430-457`; `src/features/enemies/components.rs:345-351` |
+| A23 | 01's impact cues: small-ball sparks strictly above 420 at the centre, a 0.12 s unsaved cooldown, at most 4 a step; a bowling ball's dust at 700 or more, one a step; iron's dust at 900; their sounds 01's events about the player with rule intervals | `src/features/elements/systems.rs:559-622`, `:1275-1456`; `src/features/toys/components.rs:13-17` |
+| A24 | 01's orbs: `orb_collect` queues `orb_heal` (20) or `orb_mana` (25) on the collector, resolved that step, and bursts at the pickup's centre; `orb_fallen` keeps each killed foe's centre for `adopt`, which centres the orb there, clears it of rock and pops it | `src/features/enemies/drops.rs:37-41`, `:179-258`; `src/features/enemies/mod.rs:291-313` |
+| A25 | The bullet and the missile are moved onto their user's centre by 01; their payloads lack `centred` | `src/features/gun/systems.rs:150-173`; `src/features/spells/systems.rs:358-370`; `src/features/toys/mod.rs:557-569`; `tools/content/data/abilities/gun.json:13`, `fire_missile.json:16` |
+| A26 | 01's numbers: `damage_numbers` over `DamagedPart` while `GameOptions.damage_numbers`, windows of 0.25 s, ticks (periodic fire or bleed) at 11 with their first at once, a step's crits on one target one sum at 24 in `CRIT_YELLOW`, at the request's point else the body centre; the template gates its labels on the flag `show.damage_numbers` set from the option | `src/features/combat/numbers.rs`; `src/features/combat/mod.rs:282-286`; `templates/basic/src/sample/mod.rs:84`, `:160-168` |
+| A27 | Pins: the kit's fixed and post-update schedule pins and the template's; 01's pit (68,324 allocations, 70,156,526 bytes, 298 moves, 295 spawned, 246 despawned, 12 events); the template's `AGENTS.md` at 12,277 of 12,288 bytes and the LLM index at 12,278, the kit indexed by folder; a cue action or rule field needs no catalogue name, a component, data kind or cue event does | `crates/tungsten/src/tests/kit.rs:44-49`, `:128-136`; `templates/basic/tests/game/sample.rs:95`; `tests/game/guards/pit.json`; `scripts/check-repo.py:153-168`; `docs/LLM_INDEX.md:14` |
+| A28 | Saves: schema 31; the census of saved, rebuilt and presentation components lists `Scared`, `Numbers` stays out; `impact_damage` registered and held by none | `src/save.rs:86`; `tests/game/saves.rs:383-417`, `:671-699` |
+| A29 | 01's tests: 435, 434 run and 1 ignored | `rg -c '#\[test\]' tests/game` |
+| A30 | 01's impacts read a target's `PreviousVelocity`, else its `Velocity` after the step: the player, which holds none, closes at its velocity as the step ends; `first_impact` reads its velocity before the frame | `src/features/elements/systems.rs:992-999`, `:1104`; `tests/game/enemies.rs:302-333` |
+
+## 2. Design
+
+### 2.1 Scope: what lands, what splits
+
+The 21 rows need about ten kit changes and as many 01 ports, past phase 7's ten steps, so they split by dependency order (§6, commit `077a363a`). This plan lands ten rows: S-4 (the slam's area strike stays Later), S-12, S-41, S-73, S-88, S-96, S-100, S-121, S-122 and P7-2's 01 part. **7.13c's foes** takes eleven, each with its gap at `077a363a`:
+
+| Row | The gap | On this plan's |
+| --- | --- | --- |
+| S-10 | A tag look has no delay, bob, alpha by its share or plain-sprite overlay; no ring or mark clips, the effects family locked | bursts |
+| S-20 | The animator holds no frame, reads a floor's carry over `min_speed`, and every state flag is a 01 tag to write | — |
+| S-52 | The bar centres on the drawn frame, 10 px off the troll's body, and is the pit's first holder | — |
+| S-36, S-158, S-189 | One `Cooldown` an entity that cannot re-arm; a hitbox's window and an effect run while the machine is held | — |
+| S-37 | The carry mirrors about `Position`, has no holder read or thaw drop, and loses a ball's hold | — |
+| S-92 | Steering takes the mover's direction whole: no pace, rest, dive line or hole blend | — |
+| S-21 | A lifetime's end sends no `expired`; a cap admits kit spawns alone; the thrower's factor | bursts, body points |
+| S-30, S-34 | `StateMachine`, `Sight` and `Shown` have no data form; `KindInfo`'s 11 fields read at 25 sites | — |
+
+### 2.2 Tests are the spec
+
+- Each step keeps all 434 of 01's run tests passing with their asserted outcomes. A test's body changes only where it reads, spawns or calls what the step removes, ported to the kit's equivalent (the kit's `Burst` for 01's, `step_velocity` for `PreviousVelocity` in `first_impact`, the harness's audio log for a `Sounded` the step removes, a rule's value for a removed constant), each port counted in the evidence row.
+- An asserted value moves only where the step's Moves names it, by at most one fixed step in time, 1 % in an amount or 1 px in a place, its old and new value listed. Any other changed outcome stops the step (§6). No test is deleted but one whose subject the step deletes.
+- New tests only where a done-when names them; the kit's additions take kit tests and a recipe in each genre that claims them.
+- The RNG: crits drawn where 01 drew them, in its order (save ID); a seeded crit that moves stops the step.
+
+### 2.3 A projectile's end blast at its end; blasts past the dead (Step 1)
+
+- `projectile_tick` keeps the step's ends and, once its sweeps are done, sets each off through `blast()`, in the order the projectiles ended, at its sweep's centre, the projectile its receiver, credited to its `Source` while that lives and, holding `Health`, is not dead, else to nobody (no crit drawn), and to itself only when it has no `Source`; `Blasts` no longer holds projectile ends. A `queue` hit lands in the step's `damage_resolve`, a `now` hit at once, and the blast's stimuli reach the step's chemistry run, so an end's parts and statuses come in its own step, as a hit's do; a World without `ChemistryPlugin` still traces its skip. Amends `D-244`'s end (A4).
+- A blast passes a target whose `Health` is dead or that is despawning: no request, no crit draw, no push, as impact damage (A5).
+- `Projectile::end_blast()` reads its end's blast, for a game's restore (§2.13).
+- Moves: the three kit tests that pin the old timing (A2), each to its new step; the frag grenade's stale comment.
+
+### 2.4 The impact record before the movers; a dead credit (Step 1)
+
+- `impact_record` runs first in the move phase, before path following, linear motion, oscillators, both controllers, steering, follow, orbit, knockback, the magnet and the speed limit, so it keeps what each body carries into the step: a mover that cuts its body short at a target's face no longer hides the hit, and the next step's record sees this step's shove or pull. Probed equal to 01's `PreviousVelocity` (A3). Amends `D-276`'s record.
+- A hit is credited to its rule's `credit` while that entity lives and, holding `Health`, is not dead, else to its `Source` on the same terms, else to nobody (A13), checked as each hit is built, after the pass sorts its touches, so a thrower an earlier `now` hit of the same pass killed credits nobody and draws no crit.
+- The pass reads a hitter's kept speed before its despawning mark, mass and filter, so a slow hitter costs one lookup (A14).
+
+### 2.5 01's blasts and shakes (Step 2)
+
+Each site's damage through the kit's blast; every physical one names `prepare: armour`; none sends a stimulus or an impulse (01's shove stays, A6):
+
+| Site | Blast | 01 keeps |
+| --- | --- | --- |
+| Thermal shock | reach by kind, fire and physical reach / 8, `far` 1, push 900, `hit.blast`, `receiver`, `point: centre`, `land: now`, credit `live_credit` | the end first, iron's scraps, `heat`, `jolt`, the shove, the look |
+| Steam | 128 (96), 5 and 5, `far` 1, push 700, `hit.blast`, `receiver`, `point: centre`, `land: now`; the spray's `steam_at` too, credited to its caster | the douse first, `cold`, the shove, the look |
+| Detonation | keg 192 at 24 and 24, bomb 128 at 16 and 16, `far` 1, push 900, `hit.blast`, `point: centre`, `land: now`, credited to the lighter | once a step, the frozen keg's shatter, `jolt`, `heat`, the shove, the look |
+| The strike's shock | 40, 40 shock, `far` 1, `hit.spell`, `spare: source` (the caster), `point: centre`, `land: queue` | the conductors, the chain (7.13d) |
+| The missile's heat | 72, 20 fire, `far` 0.5, `hit.spell`, `spare: source` (the player), `point: centre`, `land: queue` | its push, shatter and ignites, its range fizzle (7.13d) |
+| The flask (S-73) | its prefab's `projectile.end`: 96, 16 poison, `far` 0.5, `filter` `living`, `spare: source`, `hit.spell`, `point: centre`, `land: queue`; `shape` a radius-5 circle at (8, 8), `body_walls` [0, 1, 2, 3, 4] | its look at `ProjectileExpired` |
+
+- `blast_hit`, `burn_targets`, the flask's `contacts` and `splash` go; a Rust site calls `blast()` where its hits are built today, so each lands in the phase it lands in now.
+- **S-121:** the `blasted` and `keg_blasted` rules take `shake: {trauma: 0.68, near: 512, far: 3072}`, `iron_landed` `{0.136, 512, 3072}`, `troll_slammed` `{0.5, 120, 640}` and `thundered` `0.5`; `blast_trauma`, `toys::systems::falloff` and the three sites' shake sends go (the wave's own `falloff` stays). The keg's, missile's and iron's share is then measured from the player at the default view's widths, not from the view's centre at its zoom's (Moves, Q3).
+- **Older saves:** `flask::restored`, from `save::rebuild`'s records pass, gives a restored flask whose `Projectile` lacks its end, shape or body walls its prefab's, read from the prefab registry through `with_end`, `with_shape` and `with_body_walls`, as `drops::restored` does (A10).
+
+### 2.6 01's body impacts (Step 3)
+
+- Iron, scraps, small and bowling balls, crates, kegs, bombs, planks, rocks and stones carry `impact_damage` in their prefabs at A11's numbers: `kind` `damage.physical`, `speed` 400, `per_mass` 0.002, `most` 120, `floor` 2, `mass` half the body's under 4, `extra` 12 fire while `status.burning` on crates and planks, iron's `push: {away: 0.6, most: 900}` and `land: now`, `prepare: armour` on each; 01 sets each one's `credit` to the run's player where it spawns them, so an unthrown body credits it and never hits it. Every enemy's prefab carries an inert rule (`scale` 0) at its kind's mass, halved under 4 as `body_hit` halves it (the wisp's 3, the bat's 2).
+- A throw sets the thrown thing's `credit` to the thrower and its `scale` to the factor, and a goblin's rock's rule `amount` 8 and `push.along` 260; the throw's end (its first `Impacted`, its window or the body gone) puts back the prefab's rule whole, read from the prefab registry, with the player's credit for a body and inert for an enemy, so a rock after its throw hits by its mass again (A11); no `Source` changes.
+- `target_hits`, `body_hit` and their hit loop go; `IronKills` comes from iron's `Impacted` whose outcome killed a `flesh` target; `first_impact` reads `step_velocity` and `ImpactDamage::amount`; `PreviousVelocity` stays for 01's other readers (Q6).
+- The step's first check is A3's probe, rerun as a scratch test: the record equal to `PreviousVelocity` for the pit's balls, its six foes and a falling block over 120 steps, else the step stops; and a thrown crate at a player walking into it and at one jumping off, HEAD's hit against the change's: they differ only by the player's velocity change within the step, the player's term read as the step starts (A30), as `first_impact` reads it, else the step stops. Golden amounts taken at the step's base, before the change (a falling iron block's on a goblin, a thrown crate's, the rock's, a thrown frozen bat's), are a new test's fixed values.
+- **Older saves:** a restored iron block, scrap, prop, rock, stone or enemy whose record lacks `impact_damage` takes its prefab's, a body's `credit` the player; every live throw in `Throws` sets its thrown thing's rule as the throw does, through one helper for both (the thrower's credit and factor, a rock's `amount` 8 and `push.along` 260); balls restored from 01's table take the player's credit (§2.13). The census moves `impact_damage` to the saved names.
+
+### 2.7 Bursts, body points and an action's place (Step 4)
+
+- **Bursts** (`K/present/burst.rs`): `burst(world, particles, at, key) -> Option<Entity>` spawns a one-off emitter of a manifest particle config at once, so the frame's emit pass sees it; unsaved; seeded `0x1a_0000 + order` from a run counter; under `BurstBudget`'s cap (a World resource, 16 by default), past which a cosmetic burst is dropped and a key one drains the oldest cosmetic burst's slot, or is dropped when every slot is a key burst's; `burst_cleanup` in `post_update` after `particle_tick` despawns a burst whose emitter drained and that owns no particle. `ParticleBurst { order, key, counted }` marks them, as 01's `Burst` does (A15); the name stays clear of core's `EmissionKind::Burst`.
+- **The `burst` cue action:** `{ "burst": { "particles": id, "key": false, "at": "event", "offset": [0, 0] } }`, an ID alone reading as `{ "particles": .. }`; the load checks the ID.
+- **Body points:** an occurrence without a point of its own sits at its subject's body centre (`Position` plus its collider's offset), else at its `Position` (A17); this takes Later's body-centre cue line.
+- **An action's place:** `at` (`event`, the default, or `centre`, the subject's body centre) and `offset` (mirrored when the subject's `Facing` points left) on `prefab`, `roll`, `burst` and `sound`.
+- **01's bursts on the kit's:** `shared::spawn_burst` and `spawn_key_burst` call `burst` and add their `SceneEntity`; `Burst` re-exports the kit's `ParticleBurst` and `BURST_CAP` sets the budget, so 01's 86 calls and its tests' reads stand; 01's `burst_cleanup` goes for the kit's; the budget's cap 16 at boot; `level`'s `burst_cleanup` registration goes.
+- Recipes: a platformer crate whose hard landing sparks, a top-down brawler's key burst on a kill past a full budget.
+
+### 2.8 Rule groups and the label's order (Step 5)
+
+- **`group`:** rules naming one group run once a subject a step: of the group's rules that the step's occurrences about the subject pass, only the first in load order runs, on the first occurrence it passes; the others' limits are untouched. The group's rules may be on different events (`killed`, `damaged`).
+- **The part label's order:** a step's labels float once its parts are read, its crit sums first, then the parts that opened a window, then the sums whose window closed (A19, 01's order; `K/tests/cues.rs:1621` moves by design). `ticks.first: true` floats a tick window's first part at once, as a plain part's; at its default, `false`, a tick waits for its close as today.
+
+### 2.9 01's hits, hurt and scare as rules (Step 6)
+
+- **S-122, blood:** a `damaged_part` rule with `kind` physical, `periodic: false`, `filter` `{any: [team.player, flesh]}` and `min_interval` 0.001 (once a target a step) bursts `ex10_blood_burst` at the part's point, else the body centre; an `effect_applied` rule on `bleeding` bursts `ex10_blood_spurt` `at: centre`. `combat_reactions`' blood goes.
+- **S-122, hurt:** the group `player_hurt` on `team.player`: `killed` sounds `player_died` with shake 0.8, a `damaged` blow (`periodic: false`) `player_hurt` with shake 0.5, a `damaged` tick `player_ticked` with `min_interval` 0.15, each `at: centre`, their sound IDs and volumes today's rules'; those three rules and their 01 events go, and `hurt` keeps `Moves`' hurt, clip and edge.
+- **S-96, the scare:** the crawler applies `scared` (holding at the fear's edge) or `retreating` (backing out), two 0.4 s effects refreshed on each refusal, tagged `status.scared` and `status.retreating`; `effect_applied` rules with `fresh: true` on each, filtered `{none: [<the other's tag>]}` so a scare starts once whichever shows, burst `ex10_frost_breath` and sound the hiss `at: centre`, `offset` (26, −2); `scared()` reads either tag; `Scared` goes from the components and the census.
+- Moves: a load keeps a scare (an effect is saved, A28).
+
+### 2.10 01's impact cues (Step 7)
+
+- **S-41:** 01's impact systems keep each test in Rust (closing speeds, thresholds, the dust's point) and send a game event about the body at its point: `ball_sparked` (a small ball closing above 420), `ball_dusted` (a bowling ball at 700, at centre − normal × 15), `iron_dusted` (iron at 900). Rules burst them: `ex10_small_ball_impact` with `min_interval` 0.12 and `cap` 4, `ex10_landing_dust` with `cap` 1 (01 sends in save-ID order), `ex10_iron_dust` with `min_interval` 0.001. `impact_cooldown` and the bursts' Rust go; the sounds stay 01's events about the player with today's rules and intervals.
+- `ball_pit.rs`' two tests, which call `ball_impacts` and count bursts, step the schedule after the call (ported, §2.2).
+
+### 2.11 01's pickups and centred spawns (Step 8)
+
+- **S-100:** each orb prefab's `picked_up` cues take `effect: {id: orb_heal | orb_mana, target: other}` and the burst at the event (the pickup's centre); `orb_collect` goes. Moves: the heal and the mana land a step later, the cue's effect resolving at the next step's resolve.
+- **S-88, the orbs:** the seven foes' `killed` rolls take `at: centre` and `centred: true`, so a drop lands centred on its foe's body at the kill; `Fallen`, `orb_fallen` and `adopt`'s centring go; `adopt` keeps `Joined`, the scene state, `clear` and the pop.
+- **S-88, the bullet and the missile:** `"centred": true` on `gun.json`'s and `fire_missile.json`'s spawn payloads; the gun's and `adopt_missile`'s shifts go.
+
+### 2.12 01's damage numbers (Step 9)
+
+- **S-12:** `numbers.rs` goes; `data/cue_rules/numbers.json` holds one `damaged_part` rule, flagged `show.damage_numbers`: `label: {merge: 0.25, ticks: {size: 11, kind: {any: [damage.fire, damage.physical.bleed]}, first: true}, crit: {size: 24, color: CRIT_YELLOW}}`, each type's style from `damage_types`. A 01 system in the react phase before the kit's `cues`, by name, sets the flag from `GameOptions.damage_numbers` every step, so a change mid-run takes the next step, as `numbers_follow_the_damage_numbers_option` switches it (`tests/game/combat.rs:497`); its read of the removed `Numbers` goes with the resource.
+- Moves: the flag in saves (rewritten each step); a sum open when the option turns off still floats at its close.
+
+### 2.13 Pins, guards, saves and records
+
+- **Unchanged:** the physics hashes; the kit's determinism pin; 02's pins; the views guard; the template's tests' outcomes; `src/shell/`.
+- **Moved by design:** the kit's fixed-update pin and the template's schedule (Step 1's record), the kit's post-update pin and the template's (Step 4's cleanup); `api/`, the describe census and `DESIGN.md` with Steps 1, 4 and 5.
+- **01's pit:** each step may move `allocations` and `allocated_bytes`, quoted with its cause (Step 2 −2 and −128, A2; Step 3 the record and pass over 2,000 balls); Steps 6–8 may move `events_sent` too, quoted; every other line holds.
+- **Saves:** no saved form changes shape, so schema 31 stands; a step that finds one takes schema 32 with its migration and a test. A prefab that gives a record a kit component or field it lacked (Steps 2, 3) has 01's restore pass give an older record its prefab's, read from the prefab registry, never restated, each with a test whose capture has the new part stripped. `pit_full_saves_within_two_mib` holds.
+- **Records:** 01's README rows each step makes wrong; the template's `AGENTS.md` and the LLM index unchanged (A27); `D-27[7]` at the close with the tungsten-decision skill, the next ID rechecked then.
+
+## 3. Steps
+
+Every code step's done-when adds: `cargo fmt --all -- --check` → exit 0; `just lint` → exit 0; `just repo-check` → exit 0. Every 01 step's adds, from `examples/01_platformer`: `cargo test --test game` → exit 0, 434 passed before the step's new tests, 1 ignored, the Moves named; `cargo clippy --all-targets -- -D warnings` → exit 0; `just level-check` → exit 0 where `tools/content/` changes (Pillow in `target/e01s/venv`, run alone in the background); `TUNGSTEN_GUARDS_WRITE=1 cargo test --test game -- guards::` then `cargo test --test game -- guards::` → exit 0, no line but §2.13's moved, each quoted with its cause.
+
+### Step 1: End blasts at their end, the impact record before the movers (kit)
+
+- **Files:** `crates/tungsten-kit/src/overlap/projectile.rs`, `crates/tungsten-kit/src/chemistry/blast.rs`, `crates/tungsten-kit/src/chemistry/mod.rs`, `crates/tungsten-kit/src/overlap/impact.rs`, `crates/tungsten-kit/src/tests/projectile.rs`, `crates/tungsten-kit/src/tests/chemistry.rs`, `crates/tungsten-kit/src/tests/impact.rs`, `crates/tungsten/src/tests/kit.rs`, `crates/tungsten/src/tests/kit_recipes/shooter.rs`, `templates/basic/tests/game/sample.rs`, `api/tungsten-kit.txt`, `DESIGN.md`.
+- **Change:** §2.3, §2.4.
+- **Done-when:** `cargo test -p tungsten-kit --lib --locked -- overlap::projectile:: overlap::impact:: chemistry::` → exit 0 with these among the run: `an_end_blast_lands_in_its_own_step` (a bolt ending at a wall beside a goblin: its `queue` blast's hit in the ending step's resolve, its `now` blast's at once, the goblin's status from its stimulus that step; with no `ChemistryPlugin`, its skip traced), `a_blast_passes_the_dead` (a dead holder in reach: no request, the next `KitRng` draw unchanged, no push), `the_impact_record_keeps_what_a_body_carries_into_the_step` (a controller turned this step and a knocked body: `step_velocity` their velocities before the movers; a kinematic hitter its own path stops at a target's face still hits at its approach speed), `a_dead_credit_credits_nobody` (a thrown body whose thrower died mid-flight, a bolt whose shooter died before its end, and a thrower an earlier `now` impact of the same pass kills: each hit from nobody, no crit drawn, the dead never hit), and the three moved tests (A2); `cargo test -p tungsten --lib --locked -- kit_tests:: kit_recipes::` → exit 0, `KIT_FIXED_UPDATE` reading `… phases, kit_move, impact_record, path_follow, …`, the determinism pin unchanged; `cargo test -p tungsten-template-basic --locked` → exit 0, its schedule with the record's place; `cargo test -p example-02-bench guards_` → exit 0, no pin rewritten; from `examples/01_platformer`, `cargo test --test game` → exit 0, 434 passed, 1 ignored, its pit pin unchanged; `just api` then `git diff --stat api/` → `api/tungsten-kit.txt` alone; `just ctx`, `just docs-ratchet` → exit 0.
+- **Commit:** `feat(kit): end blasts at their end, the impact record before movers`
+- **Moves:** both fixed-update schedule pins; the three end-blast timing tests; `api/`.
+
+### Step 2: 01's blasts and shakes
+
+- **Files:** `examples/01_platformer/src/features/elements/cascade.rs`, `examples/01_platformer/src/features/elements/mod.rs`, `examples/01_platformer/src/features/lightning/mod.rs`, `examples/01_platformer/src/features/toys/flask.rs`, `examples/01_platformer/src/features/toys/systems.rs`, `examples/01_platformer/src/features/toys/mod.rs`, `examples/01_platformer/src/features/enemies/troll.rs`, `examples/01_platformer/src/features/props/mod.rs`, `examples/01_platformer/src/save.rs`, `examples/01_platformer/tools/content/prefabs/toxic_flask.json`, `examples/01_platformer/assets/prefabs/toxic_flask.json`, `examples/01_platformer/tools/content/data/cue_rules/sounds.json`, `examples/01_platformer/assets/data/cue_rules/sounds.json`, `examples/01_platformer/tests/game/spells.rs`, `examples/01_platformer/tests/game/enemies.rs`, `examples/01_platformer/tests/game/saves.rs`, `examples/01_platformer/tests/game/lightning.rs`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/01_platformer/README.md`.
+- **Change:** §2.5, the flask's port from `target/plan-wip/7.13c-step5-flask-wip.patch` (`patch -p1 --dry-run`, then without it; `land` set to `queue`, its unused imports and module doc fixed), the rest written from §2.5.
+- **Done-when:** the common checks, these among the run: `enemies::a_blast_behind_an_armoured_beetle_lands_whole` (a keg's blast behind the beetle: its physical part whole; in front of it, a quarter) and `saves::an_older_flask_still_splashes` (a capture with a flying flask's `end`, `shape` and `body_walls` stripped, loaded: it bursts and poisons the goblin as an unloaded run does) and `spells::a_flask_after_its_wizards_death_credits_nobody` (written first and passing at the step's base: the wizard killed while the flask flies; its poison from nobody and the next `KitRng` draw the one before the burst); `rg -q 'fn (blast_hit|burn_targets|blast_trauma)\b' src; test $? -eq 1` → exit 0; `rg -q 'fn (contacts|splash)\b' src/features/toys/flask.rs; test $? -eq 1` → exit 0; `rg -q 'fn falloff\b' src/features/toys/systems.rs; test $? -eq 1` → exit 0; `jq -e '.components.projectile.end.blast.land == "queue" and .components.projectile.shape != null' assets/prefabs/toxic_flask.json` → exit 0; `jq -e '[.[] | select(.on == "troll_slammed") | .do[] | select(.shake)] | length == 1' assets/data/cue_rules/sounds.json` → exit 0.
+- **Commit:** `feat(example-01): 01's blasts on the kit's blast and shake`
+- **Moves:** a shake's share from the player at the default view's widths (§2.5); the pit's allocations and bytes (A2).
+
+### Step 3: 01's body impacts
+
+- **Files:** `examples/01_platformer/src/features/elements/systems.rs`, `examples/01_platformer/src/features/elements/mod.rs`, `examples/01_platformer/src/features/enemies/troll.rs`, `examples/01_platformer/src/features/enemies/goblin.rs`, `examples/01_platformer/src/features/enemies/components.rs`, `examples/01_platformer/src/features/enemies/mod.rs`, `examples/01_platformer/src/features/props/mod.rs`, `examples/01_platformer/src/features/toys/mod.rs`, `examples/01_platformer/src/save.rs`, `examples/01_platformer/tools/content/prefabs/`, `examples/01_platformer/assets/prefabs/`, `examples/01_platformer/tests/game/enemies.rs`, `examples/01_platformer/tests/game/data.rs`, `examples/01_platformer/tests/game/saves.rs`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/01_platformer/README.md`, `docs/known-issues.md`.
+- **Change:** §2.6; the known issue on an impact's cells (line 72) re-pointed: 01's impacts send no `stimulus.impact`.
+- **Done-when:** first, §2.6's probe → 0 apart, else the step stops; then the common checks, these among the run: `enemies::an_impact_on_an_armoured_beetle_lands_whole`, `enemies::impacts_keep_their_amounts` (§2.6's golden amounts within 1e-4, a thrown frozen bat's among them, each part `damage.physical`, the burning crate's 12 `damage.fire`), `enemies::a_rock_after_its_throw_hits_by_its_mass` (written first and passing at the step's base: a goblin's rock thrown, then knocked into a crawler: a mass-based hit with no 260 push) and `saves::older_bodies_still_hit` (a capture with its records' `impact_damage` stripped and a crate, a goblin's rock and a frozen enemy each mid-throw, loaded: each hits at its factor credited to its thrower, the rock its flat 8 pushed along its flight; an iron block credited to the player); `rg -q 'fn (target_hits|body_hit)\b' src; test $? -eq 1` → exit 0.
+- **Commit:** `feat(example-01): 01's impacts on the kit's impact damage`
+- **Moves:** the pit's allocations and bytes; `first_impact`'s velocities from `step_velocity`; a thrown body's hit on a moving player, its term as the step starts (A30).
+
+### Step 4: Bursts, body points and an action's place (kit, and 01's bursts)
+
+- **Files:** `crates/tungsten-kit/src/present/burst.rs` (new), `crates/tungsten-kit/src/present/mod.rs`, `crates/tungsten-kit/src/react/cues.rs`, `crates/tungsten-kit/src/foundation/plugins.rs`, `crates/tungsten-kit/src/lib.rs`, `crates/tungsten-kit/src/tests/burst.rs` (new), `crates/tungsten-kit/src/tests/cues.rs`, `crates/tungsten-kit/src/tests/describe.rs`, `crates/tungsten/src/tests/kit.rs`, `crates/tungsten/src/tests/kit_recipes/`, `crates/tungsten/tests/fixtures/kit/`, `templates/basic/tests/game/sample.rs`, `examples/01_platformer/src/shared.rs`, `examples/01_platformer/src/game.rs`, `examples/01_platformer/src/features/level/mod.rs`, `examples/01_platformer/tests/game/guards/pit.json`, `api/tungsten-kit.txt`, `api/tungsten-kit-components.txt`, `DESIGN.md`.
+- **Change:** §2.7.
+- **Done-when:** `cargo test -p tungsten-kit --lib --locked -- present::burst:: react::cues::` → exit 0 with these among the run: `a_burst_spawns_at_once_and_goes_with_its_particles`, `bursts_keep_their_budget` (cosmetic dropped at the cap; a key burst drains the oldest cosmetic one; all key, dropped), `a_burst_action_takes_its_place_and_offset` (the event's point, the subject's centre, an offset mirrored facing left; an unknown ID refused at load), `an_occurrence_without_a_point_sits_at_its_body_centre`, `a_roll_lands_at_its_subjects_centre`; `cargo test -p tungsten --lib --locked -- kit_tests:: kit_recipes::` → exit 0, `KIT_POST_UPDATE` with `burst_cleanup`, the two recipes among the run, the determinism pin unchanged; `cargo test -p tungsten-template-basic --locked` → exit 0; `cargo test -p example-02-bench guards_` → exit 0, no pin rewritten; from `examples/01_platformer`, the 01 common checks, its tests' `Burst` reads unchanged; `rg -q 'fn burst_cleanup' src; test $? -eq 1` → exit 0; `just api` then `git diff --stat api/` → the two kit files alone; `just ctx` → exit 0, the template's `AGENTS.md` unchanged.
+- **Commit:** `feat(kit): cue bursts under a budget, occurrences at a body's centre`
+- **Moves:** both post-update schedule pins; positions of point-less occurrences in kit tests, each to the body centre; a burst's despawn a frame sooner (`post_update` after its tick, where 01's ran in `update`); `api/`, the census.
+
+### Step 5: Rule groups and the label's order (kit)
+
+- **Files:** `crates/tungsten-kit/src/react/cues.rs`, `crates/tungsten-kit/src/present/labels.rs`, `crates/tungsten-kit/src/tests/cues.rs`, `crates/tungsten-kit/src/tests/describe.rs`, `crates/tungsten/src/tests/kit_recipes/`, `crates/tungsten/tests/fixtures/kit/`, `api/tungsten-kit.txt`, `api/tungsten-kit-components.txt`, `DESIGN.md`.
+- **Change:** §2.8, `ticks.first` in `TickLabel`.
+- **Done-when:** `cargo test -p tungsten-kit --lib --locked -- react::cues::` → exit 0 with these among the run: `a_group_runs_its_first_passing_rule_once_a_subject_a_step` (a kill, a blow and a tick in one step on one subject: the `killed` rule alone; a blow and a tick: the blow's; another subject's its own; the dropped rules' waits and caps untouched), `a_part_label_floats_crits_then_new_parts_then_closed_sums`, `a_ticks_first_part_floats_at_once_with_first` and `K/tests/cues.rs:1621`'s test moved; `cargo test -p tungsten --lib --locked -- kit_tests:: kit_recipes::` → exit 0, the determinism pin unchanged; `cargo test -p tungsten-template-basic --locked` → exit 0; from `examples/01_platformer`, `cargo test --test game` → exit 0, every test passing, its pit pin unchanged; `just api` then `git diff --stat api/` → the two kit files alone.
+- **Commit:** `feat(kit): cue rule groups and a part label's step order`
+- **Moves:** the label order's kit test (A19); `api/`, the census.
+
+### Step 6: 01's hits, hurt and scare as rules
+
+- **Files:** `examples/01_platformer/src/features/combat/systems.rs`, `examples/01_platformer/src/features/player/systems.rs`, `examples/01_platformer/src/features/enemies/crawler.rs`, `examples/01_platformer/src/features/enemies/components.rs`, `examples/01_platformer/src/features/enemies/mod.rs`, `examples/01_platformer/src/features/audio/components.rs`, `examples/01_platformer/src/features/audio/mod.rs`, `examples/01_platformer/tools/content/data/cue_rules/`, `examples/01_platformer/assets/data/cue_rules/`, `examples/01_platformer/tools/content/data/effects/`, `examples/01_platformer/assets/data/effects/`, `examples/01_platformer/tools/content/data/tags/game.json`, `examples/01_platformer/assets/data/tags/game.json`, `examples/01_platformer/assets/manifest.json`, `examples/01_platformer/tools/outputs.json`, `examples/01_platformer/tests/game/combat.rs`, `examples/01_platformer/tests/game/player.rs`, `examples/01_platformer/tests/game/enemies.rs`, `examples/01_platformer/tests/game/saves.rs`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/01_platformer/README.md`.
+- **Change:** §2.9.
+- **Done-when:** the common checks, `enemies::a_crawler_scared_again_within_its_hold_starts_no_new_scare` among the run (a refusal, a retreat 0.2 s later and another 0.3 s after that: one puff and one hiss; 0.5 s quiet, then a refusal: a second); `rg -q 'ex10_blood_(burst|spurt)' src; test $? -eq 1` → exit 0; `rg -q 'struct Scared\b' src; test $? -eq 1` → exit 0; `rg -q 'PlayerHurt|PlayerDied|PlayerTicked' src; test $? -eq 1` → exit 0.
+- **Commit:** `feat(example-01): blood, hurt and the crawler's scare as cue rules`
+- **Moves:** a scare kept across a load; `events_sent`, quoted.
+
+### Step 7: 01's impact cues
+
+- **Files:** `examples/01_platformer/src/features/elements/systems.rs`, `examples/01_platformer/src/features/toys/systems.rs`, `examples/01_platformer/src/features/toys/components.rs`, `examples/01_platformer/src/features/audio/components.rs`, `examples/01_platformer/src/features/audio/mod.rs`, `examples/01_platformer/tools/content/data/cue_rules/`, `examples/01_platformer/assets/data/cue_rules/`, `examples/01_platformer/assets/manifest.json`, `examples/01_platformer/tools/outputs.json`, `examples/01_platformer/tests/game/ball_pit.rs`, `examples/01_platformer/tests/game/props.rs`, `examples/01_platformer/tests/game/presentation.rs`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/01_platformer/README.md`.
+- **Change:** §2.10.
+- **Done-when:** the common checks, `ball_pit.rs`' two tests ported; `rg -q 'impact_cooldown|IMPACT_COOLDOWN|IMPACT_BURSTS_PER_STEP' src; test $? -eq 1` → exit 0; `rg -q '"ex10_(small_ball_impact|landing_dust|iron_dust)"' src; test $? -eq 1` → exit 0.
+- **Commit:** `feat(example-01): impact sparks and dust as cue rules`
+- **Moves:** `events_sent`, quoted.
+
+### Step 8: 01's pickups and centred spawns
+
+- **Files:** `examples/01_platformer/src/features/enemies/drops.rs`, `examples/01_platformer/src/features/enemies/mod.rs`, `examples/01_platformer/src/features/gun/systems.rs`, `examples/01_platformer/src/features/spells/systems.rs`, `examples/01_platformer/src/features/toys/mod.rs`, `examples/01_platformer/tools/content/prefabs/`, `examples/01_platformer/assets/prefabs/`, `examples/01_platformer/tools/content/data/abilities/gun.json`, `examples/01_platformer/assets/data/abilities/gun.json`, `examples/01_platformer/tools/content/data/abilities/fire_missile.json`, `examples/01_platformer/assets/data/abilities/fire_missile.json`, `examples/01_platformer/tests/game/enemies.rs`, `examples/01_platformer/tests/game/spells.rs`, `examples/01_platformer/tests/game/gun.rs`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/01_platformer/README.md`.
+- **Change:** §2.11.
+- **Done-when:** the common checks; `rg -q 'fn (collect|fallen)\b|struct Fallen\b' src/features/enemies/drops.rs; test $? -eq 1` → exit 0; `jq -e '[.. | objects | select(has("spawn")) | .spawn.centred] | length > 0 and all' assets/data/abilities/gun.json assets/data/abilities/fire_missile.json` → exit 0, `true` for each.
+- **Commit:** `feat(example-01): orbs and spawns centred by the kit's cues`
+- **Moves:** an orb's heal or mana a step later.
+
+### Step 9: 01's damage numbers
+
+- **Files:** `examples/01_platformer/src/features/combat/numbers.rs` (deleted), `examples/01_platformer/src/features/combat/mod.rs`, `examples/01_platformer/src/features/run/mod.rs`, `examples/01_platformer/tools/content/data/cue_rules/numbers.json` (new), `examples/01_platformer/assets/data/cue_rules/numbers.json` (new), `examples/01_platformer/assets/manifest.json`, `examples/01_platformer/tools/outputs.json`, `examples/01_platformer/tests/game/combat.rs`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/01_platformer/README.md`.
+- **Change:** §2.12; `combat.rs`' imports of the removed constants take the rule's values, and its `Numbers` read goes (§2.2).
+- **Done-when:** the common checks; `test ! -e src/features/combat/numbers.rs` → exit 0; `jq -e '.[0].do[0].label.ticks.first == true' assets/data/cue_rules/numbers.json` → exit 0.
+- **Commit:** `feat(example-01): damage numbers on the kit's part labels`
+- **Moves:** the flag in saves; a sum open at the option's switch still floats.
+
+### Step 10: Close
+
+- **Files:** this plan (deleted), `docs/plans/phase-7.md`, `ROADMAP.md`, `DECISIONS.md`, `docs/DECISION_INDEX.md`, `docs/known-issues.md`.
+- **Change:** `D-27[7]` with the tungsten-decision skill (§2.3, §2.4, §2.7, §2.8; amending `D-244`, `D-276`, `D-242` and `D-238`, the next ID rechecked); phase 7's §2.2: each landed step's rows `landed <sha>`, P7-2's note with Step 3's, a skipped step's rows `open` with its move noted, the eleven split rows noted for 7.13c's foes; its evidence row "13 (7.13), part c's second"; ROADMAP: Later's body-centre cue line out once Step 4 lands, the phase-7 line naming 7.13c's foes next; follow-ups to known issues or Later; the plan and its citations deleted; `example-01-foes-and-cues` out of Now.
+- **Done-when:** `just check` → exit 0; `just physics-release` → exit 0, the hashes unchanged; `just smoke` → passes; `just api-check`, `just docs-ratchet`, `just repo-check`, `just ctx`, `git diff --check` → exit 0; before the deletion, `rg -n '^\| (S-4|S-12|S-41|S-73|S-88|S-96|S-100|S-121|S-122) \| [^|]+ \| 7\.13 \| landed ' docs/plans/phase-7.md` → a row for each whose step landed, the evidence log naming the rest, and `rg -c '^\| (S-10|S-20|S-21|S-30|S-34|S-36|S-37|S-52|S-92|S-158|S-189) \| [^|]+ \| 7\.13 \| open \|' docs/plans/phase-7.md` → 11; after it, `rg -l 'plans/example-01-foes-and-cues\.md' --glob '!CHANGELOG.md' .; test $? -eq 1` → exit 0; `WGPU_BACKEND=vulkan just perf sitting --quick` → `e01-pit` quoted as information, not evidence; the demo: from `examples/01_platformer`, `tungsten run --script` on a scratch script (`start_run`; `place_player` at a clear point; `cast_at` `fire_missile` and then `lightning` at the player's feet, a `capture` after each; the `player` probe; `wake_foes`; `cast_at` `fire_missile` at the deck's middle and an `iron_block` over it, a `capture`; `reload_run`; the `player`, `pit` and `area` probes and `count` of `enemy`) → exit 0, its asserts passed: the player at full health after its own blasts, the six alive and awake before the load, the World's foes and the area the same across it, its captures the sheet.
+- **Ends with:** the commits, the evidence, what the owner should try (01 plays as before: kegs, steam and thermal shock, the flask's splash, thrown and falling bodies, the shakes, sparks and dust, blood and the hurt sounds, the crawler's scare, orbs that drop and heal, damage numbers), the next prompt (7.13c's foes' plan).
+
+## 4. Open questions
+
+| # | Question | Default |
+| --- | --- | --- |
+| Q1 | One plan of about twenty steps, or the split | The split (§2.1), by phase 7's §6 |
+| Q2 | The end blast set off mid-sweep or after the sweeps | After the sweeps, in end order: the probe's mid-sweep call passed 01's tests, and a later projectile then never meets an earlier one's `now` hits mid-step |
+| Q3 | The blast shakes' measure | From the listener at the default view's 512 and 3,072; zooming no longer widens it |
+| Q4 | A dead player's slam shake | Kept by the rule; 01's skip goes (the listener stays where the player fell) |
+| Q5 | Bursts as the kit's or 01's | The kit's, with 01's names re-exported, so a rule's burst and a Rust one share one budget |
+| Q6 | 01's `PreviousVelocity` | Kept for `crush`, `ball_impacts`, `body_impacts` and `crate_hits`; their move onto `step_velocity` is a seam for 7.13c's foes |
+| Q7 | The hurt sounds' exclusion | A rule group (§2.8), not a lethal filter: died over hurt over ticked is one choice a step |
+| Q8 | Two scare effects or one with a flag | Two, each filtered on the other's tag, so the hiss starts once whichever shows |
+| Q9 | Body points as the kit's default | Yes, for every occurrence without a point; a game that wanted the corner never had one |
+| Q10 | Older saves | The restore pass where a prefab gives a record what it lacked (Steps 2, 3), a migration where a shape changes; no refusal |
+| Q11 | A moving player's term in a thrown body's hit | As the step starts, as the record keeps every target's and `first_impact` reads it; 01 read the player's after the step (A30), a Move Step 3 measures |
+
+Each question takes its stated default; the owner reviews the plan on their own time.
+
+## 5. Invariants
+
+- **May move:** the kit's schedule pins and the template's (Steps 1, 4); `api/`, the describe census, `DESIGN.md` (Steps 1, 4, 5); the kit tests §2.3, §2.7 and §2.8 name; 01's pit `allocations`, `allocated_bytes` and, in Steps 6–8, `events_sent`, quoted; 01's asserted values only as the Moves name them.
+- **Must not move:** the physics hashes (`just physics-release`); the kit's determinism pin; 02's pins; the views guard; the template's tests' outcomes; `src/shell/`, byte-equal to the template's; the perf rows' scripts; 01's schema (31) unless §2.13's rule takes 32; 01's other pit lines; 01's tests' other outcomes.
+
+## 6. Stop conditions
+
+- A done-when check fails: restore the step's files from the last commit, mark the step skipped, and continue with steps that don't depend on it: Steps 2 and 3 depend on 1; 6 on 4 and 5; 7 and 8 on 4; 9 on 4 and 5. A skipped step's rows stay `open` at the close, moved to 7.13c's foes or a re-plan with the stop's reason; the close's checks count the steps that landed.
+- A test whose asserted outcome moves outside §2.2's Moves, a seeded crit that moves, a migration that cannot keep a schema's state: stop the step; never widen a tolerance.
+- A change to core, to the kit outside Steps 1, 4 and 5, or to `src/shell/`: stop the step.
+- A pin moves in a line §2.13 holds: stop, decompose the move by probes, record it.
+- The template's `AGENTS.md` or the LLM index past its cap: stop the step.
+
+## 7. Critique
+
+Round 1: gpt-6-astra through Codex at xhigh, 2026-11-12, `--repo` on the tree at `077a363a` with this plan untracked; 664.3 s, 2,736,140 tokens in (2,617,216 cached), 35 commands, 390.6 KB of output, 5h 0 → 45 %, week 40 → 47 %. Six findings, all true; four changed a mechanism (Step 3's first check, Steps 2 and 3's done-when, Step 9's flag), so round 2 runs.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 1 | [HIGH] The impact probe misses the player's velocity, which 01 reads after the step and the record before | `src/features/elements/systems.rs:992-999`, `:1104`; `K/overlap/impact.rs:819`; `tests/game/enemies.rs:302-333` (`first_impact` reads the player's before the frame) | True (A30) | Step 3's first check adds a thrown crate at a walking and a jumping player, HEAD against the change; the player's term at the step's start a named Move (Q11) |
+| 2 | [MEDIUM] The flask's end blast credits a dead wizard and draws a crit from his stats | `src/features/toys/flask.rs:166-171`; `K/chemistry/blast.rs:739-740`; `K/damage/pipeline.rs:674-690` | True | A projectile end's `Source` credits only while alive and not dead, else nobody (§2.3); Step 1's credit test and Step 2's `a_flask_after_its_wizards_death_credits_nobody`, passing at the base first |
+| 3 | [MEDIUM] A rock keeps its thrown 8 and push after its throw, where 01 hits by its mass | `src/features/elements/systems.rs:1393-1399`; `src/features/props/mod.rs:202-214` (a rock is a prop); `K/overlap/impact.rs:684` | True | The throw sets the rock's `amount` and `push`; its end puts the prefab's rule back whole (§2.6); `a_rock_after_its_throw_hits_by_its_mass` |
+| 4 | [MEDIUM] The impact rules leave `kind` unset, so their parts are untyped | `K/overlap/impact.rs:250`, `:992`; `src/features/elements/systems.rs:1408`, `:1422` | True | `kind: damage.physical` on every rule (§2.6); the golden test checks each part's type |
+| 5 | [MEDIUM] Step 5 leaves out `present/labels.rs`, whose `TickLabel` denies unknown fields | `K/present/labels.rs:168-176` | True | Step 5's Files take it |
+| 6 | [MEDIUM] A flag set at start and resume misses the option test's mid-run switch | `tests/game/combat.rs:497-526` | True | 01 sets the flag every step before the kit's `cues` (§2.12); the test's `Numbers` read goes with the resource |
+
+Round 2: the same reviewer at xhigh, 2026-11-12, `--repo` on the plan without this section and the log (54,401 characters), with a focus note naming round 1's changes; 447.6 s, 1,492,926 tokens in (1,397,504 cached), 24 commands, 316.4 KB of output, 5h 45 → 73 %, week 47 → 51 %. Three findings, all true, each a gap round 1's fixes or the impact port left; no third round.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 2.1 | [HIGH] An older save's flying rock comes back without its thrown 8 and push | `src/features/enemies/components.rs:237-243` (`ThrowForm`: thrower, factor, time left); `src/features/elements/systems.rs:1393-1399` | True | The restore sets a live throw's rule through the throw's own helper, the rock's `amount` and `push` included (§2.6); the stripped-save test throws a rock too |
+| 2.2 | [MEDIUM] Enemy rules at the raw mass double a light kind's thrown hit | `src/features/elements/mod.rs:263-271` (`body_hit` halves under 4); `src/features/enemies/mod.rs:144`, `:183` (wisp 3, bat 2); `K/overlap/impact.rs:680` | True | An enemy's inert rule takes its kind's mass halved under 4 (§2.6); the golden test pins a thrown frozen bat |
+| 2.3 | [MEDIUM] The pass takes each touch's credit before landing any hit, so an earlier `now` kill leaves a dead credit | `K/overlap/impact.rs:927-931`, `:958-967`; `K/damage/pipeline.rs:674-690` | True | Credit checked as each hit is built (§2.4); Step 1's credit test kills a thrower with an earlier `now` impact of the same pass |
+
+## Evidence log
+
+| Step | Date | Verdict | Key numbers | Paths |
+| --- | --- | --- | --- | --- |
+
+## Follow-ups
