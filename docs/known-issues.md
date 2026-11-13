@@ -125,6 +125,8 @@ Carried from the review, as of `0.27.0`.
 
 Carried findings from the dated passes listed above; later entries name their milestone or investigation. Those dates describe recorded evidence, not a fresh verification of every entry.
 
+- example-01-foes-and-cues' follow-ups (0.118): a troll's thrown crate breaks in its first step inside the map's area zone sensor, since `elements::systems::touches` counts a sensor as a touch, at the plan's base too (its Step 3 probe measured a bowling ball instead); 01's `reactions` keeps a `DamageApplied` cursor it no longer reads, its blood gone to `data/cue_rules/blood.json`, the parameter `_applied` until a step lists its registration in `combat/mod.rs`; the kit's `burst_cleanup` sweeps in `post_update` before the particle passes, not after `particle_tick` as the plan's design said, so a burst drained in a frame goes in the next (`D-277`); its stopped Steps 7 and 8 (01's impact cues; its orbs, pickups and centred spawns) are 7.13c's foes' rows (phase 7's S-41, S-88, S-100), the second needing the kit's prefab centre for a prefab with no body and no loaded art.
+
 - example-01-new-systems' follow-ups (0.118): `just perf sitting --quick` runs 810 warm-up and 150 frames, 960 in all, while `e01-stress`'s script steps to frame 975, so the row reads invalid in a quick sitting on any tree; a full sitting measures it (7.13a's F11).
 
 - level-generation's follow-ups (0.117): 02's `generate` row has no smoke rows either, as `rooms`'s below, `scripts/smoke-examples.sh` and `scripts/test-smoke-examples.sh` being outside its step's list; its first capture is functional only (`D-226`), so its first sitting is its evidence.
