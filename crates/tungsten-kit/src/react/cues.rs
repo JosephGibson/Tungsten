@@ -513,8 +513,9 @@ impl CueAction {
     }
 
     /// The `prefab` or `roll` action, placing each prefab's centre (its
-    /// `rigid_body`'s offset or its sprite's drawn centre) on the event's
-    /// position rather than its point. Data form
+    /// `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup
+    /// or projectile shape offset, else its sprite's drawn centre) on the
+    /// event's position rather than its point. Data form
     /// `{ "prefab": { "id": "puff", "centred": true } }` or
     /// `{ "roll": { "table": "slime_drops", "centred": true } }`.
     ///
@@ -5394,7 +5395,7 @@ fn describe_cues(world: &mut World) {
             FieldDescription::new(
                 "centred",
                 FieldType::Bool,
-                "its centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point",
+                "its centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the position rather than its point",
             )
             .default("false"),
         )
@@ -5429,7 +5430,7 @@ fn describe_cues(world: &mut World) {
             FieldDescription::new(
                 "centred",
                 FieldType::Bool,
-                "each prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point",
+                "each prefab's centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the position rather than its point",
             )
             .default("false"),
         )

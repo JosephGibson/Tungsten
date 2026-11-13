@@ -2724,3 +2724,100 @@ fn a_scaled_prefab_spawns_by_its_scaled_centre() {
         "its drawn centre on the caster's"
     );
 }
+
+// 7.13c's foes: a bodiless prefab's centre from its own shapes.
+
+#[test]
+fn a_bodiless_prefab_centres_on_its_shapes_offset() {
+    use crate::motion::drive::prefab_centre;
+    let (mut world, mut schedule) = rig();
+    crate::PickupPlugin.build(&mut schedule, &mut world);
+    crate::HitPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    // No art loaded: the orb's and the dart's sprites are never registered.
+    prefab(
+        &mut world,
+        "orb",
+        json!({ "tag": "orb", "sprite": { "asset_id": "orb" },
+                "components": { "pickup": { "shape": { "circle": 6 }, "offset": [6, 6] } } }),
+    );
+    prefab(
+        &mut world,
+        "dart",
+        json!({ "tag": "dart", "sprite": { "asset_id": "dart" },
+                "components": { "hitbox": { "shape": { "aabb": [8, 2] }, "offset": [8, 2], "damage": 1 } } }),
+    );
+    // A body's offset first, over its hurtbox's; a projectile's own shape's;
+    // with neither, its sprite's drawn centre, else its point.
+    prefab(
+        &mut world,
+        "rock",
+        json!({ "tag": "rock", "components": {
+            "rigid_body": { "kind": "dynamic", "shape": { "kind": "circle", "radius": 4 }, "offset": [4, 4] },
+            "hurtbox": { "shape": { "circle": 4 }, "offset": [9, 9] } } }),
+    );
+    prefab(
+        &mut world,
+        "pellet",
+        json!({ "tag": "pellet", "components": {
+            "projectile": { "shape": { "circle": 2 }, "offset": [3, 1] } } }),
+    );
+    sprite(&mut world, "mote", [8, 6], None);
+    prefab(
+        &mut world,
+        "mote",
+        json!({ "tag": "mote", "sprite": { "asset_id": "mote" } }),
+    );
+    prefab(&mut world, "speck", json!({ "tag": "speck" }));
+    let centres =
+        ["orb", "dart", "rock", "pellet", "mote", "speck"].map(|id| prefab_centre(&world, id));
+    assert_eq!(
+        centres,
+        [
+            Vec2::new(6.0, 6.0),
+            Vec2::new(8.0, 2.0),
+            Vec2::new(4.0, 4.0),
+            Vec2::new(3.0, 1.0),
+            Vec2::new(4.0, 3.0),
+            Vec2::ZERO,
+        ]
+    );
+    // Spawned centred by a user at (100, 50), each shape's centre on the
+    // user's.
+    let drop = insert(
+        &mut world,
+        "drop",
+        Ability::new().with_payload(spawn_of("orb", true, 0.0)),
+    );
+    let throw = insert(
+        &mut world,
+        "throw",
+        Ability::new().with_payload(spawn_of("dart", true, 0.0)),
+    );
+    let user = at(
+        &mut world,
+        100.0,
+        50.0,
+        (Abilities::new().with(drop).with(throw), Intent::default()),
+    );
+    for (ability, prefab, shape) in [
+        ("drop", "orb", Vec2::new(6.0, 6.0)),
+        ("throw", "dart", Vec2::new(8.0, 2.0)),
+    ] {
+        assert_eq!(
+            use_ability(&mut world, user, ability),
+            Used::Used,
+            "{ability}"
+        );
+        steps(&mut world, &mut schedule, 1);
+        let [spawned] = tagged(&world, prefab)[..] else {
+            panic!("one {prefab}");
+        };
+        let point = world.get::<Transform>(spawned).unwrap().position;
+        assert_eq!(
+            point + shape,
+            Vec2::new(100.0, 50.0),
+            "the {prefab}'s shape centred on the user"
+        );
+    }
+}

@@ -246,7 +246,9 @@ impl Payload {
 }
 
 /// A spawn payload with its options: a [`Payload::Spawn`]'s prefab, speed
-/// and offset, and its prefab's centre placed on the entity's centre
+/// and offset, and its prefab's centre (its `rigid_body`'s offset, else a
+/// bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else
+/// its sprite's drawn centre) placed on the entity's centre
 /// ([`centre_of`](crate::centre_of)) rather than its point on the entity's
 /// point, or a [`Lob`] in place of its speed. Its data form is the `spawn`
 /// payload's with `centred` or `lob`.
@@ -3757,7 +3759,7 @@ fn describe_abilities(world: &mut World) {
                 FieldDescription::new(
                     "centred",
                     FieldType::Bool,
-                    "the prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the entity's centre plus the offset, rather than its point on the entity's point",
+                    "the prefab's centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the entity's centre plus the offset, rather than its point on the entity's point",
                 )
                 .default("false"),
             )

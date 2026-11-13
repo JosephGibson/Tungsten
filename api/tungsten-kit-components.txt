@@ -815,7 +815,7 @@ shape position_wave: A position channel: amplitude · sin(2π(t / period + phase
   sample: { "amplitude": [0, 3], "period": 1.2 }
 shape prefab_action: A prefab spawned from the subject at the event's position, its point or its centre there.
   field id: prefab ID — the manifest prefab; the load checks the ID
-  field centred: bool = false — its centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point
+  field centred: bool = false — its centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the position rather than its point
   field at: one of event | centre = null — the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out
   field offset: [x, y] = null — moved from that point, its x mirrored while the subject faces left; unmoved when left out
   sample: { "id": "puff" }
@@ -832,7 +832,7 @@ shape resist_modifier: A modifier on the target's resistance to one damage tag, 
   sample: { "tag": "arcane", "modifier": { "mul": 2 } }
 shape roll_action: A weighted table drawn, each prefab drawn spawned from the subject at the event's position, its point or its centre there.
   field table: loot_tables ID or entry — the table: a `loot_tables` entry's ID or a table in place; the load checks its IDs
-  field centred: bool = false — each prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point
+  field centred: bool = false — each prefab's centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the position rather than its point
   field at: one of event | centre = null — the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out
   field offset: [x, y] = null — moved from that point, its x mirrored while the subject faces left; unmoved when left out
   sample: { "table": "drops" }
@@ -877,7 +877,7 @@ shape spawn_payload: A prefab spawned from the entity at its point.
   field prefab: prefab ID — the manifest prefab; the load checks the ID, that it holds a `linear_motion` with a speed, and a dynamic `rigid_body` or a `linear_motion` with a lob
   field speed: f32 (>= 0) = 0.0 — world pixels per second along the direction, as its `linear_motion`'s velocity, its acceleration kept; 0 leaves the prefab's own
   field offset: f32 = 0.0 — world pixels from the entity's point along the direction
-  field centred: bool = false — the prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the entity's centre plus the offset, rather than its point on the entity's point
+  field centred: bool = false — the prefab's centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the entity's centre plus the offset, rather than its point on the entity's point
   field lob: shape lob = null — in place of a `speed`: the launch that lands it on the aim's point, a `nearest` or `random` target's (its centre when centred), else the entity's `aim` point; a use with none is refused before anything is spent
   sample: { "prefab": "bolt" }
 shape stat_bounds: A game stat's clamp.

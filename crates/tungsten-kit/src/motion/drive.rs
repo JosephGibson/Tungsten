@@ -182,9 +182,11 @@ pub fn centre_of(world: &World, entity: Entity) -> Option<Vec2> {
 }
 
 /// Where prefab `id`'s centre sits from its point: its `rigid_body`'s
-/// `offset`, else its sprite's drawn centre at the prefab's `scale` with no
-/// turn or flip, as a spawn places it, else none; read from its registry
-/// entry.
+/// `offset`; else, bodiless, the offset of its own shape, its `hurtbox`'s,
+/// `hitbox`'s, `pickup`'s or projectile `shape`'s, the first it has, art
+/// loaded or not (7.13c's foes); else its sprite's drawn centre at the
+/// prefab's `scale` with no turn or flip, as a spawn places it, else none;
+/// read from its registry entry.
 pub(crate) fn prefab_centre(world: &World, id: &str) -> Vec2 {
     let Some(data) = world
         .get_resource::<PrefabRegistry>()
@@ -192,11 +194,26 @@ pub(crate) fn prefab_centre(world: &World, id: &str) -> Vec2 {
     else {
         return Vec2::ZERO;
     };
-    if let Some(body) = data.components.get("rigid_body") {
-        return body
-            .get("offset")
+    let offset = |item: &serde_json::Value| {
+        item.get("offset")
             .and_then(|offset| serde_json::from_value::<[f32; 2]>(offset.clone()).ok())
-            .map_or(Vec2::ZERO, Vec2::from);
+            .map_or(Vec2::ZERO, Vec2::from)
+    };
+    if let Some(body) = data.components.get("rigid_body") {
+        return offset(body);
+    }
+    let shaped = ["hurtbox", "hitbox", "pickup"]
+        .iter()
+        .find_map(|name| data.components.get(*name))
+        .or_else(|| {
+            data.components.get("projectile").filter(|projectile| {
+                projectile
+                    .get("shape")
+                    .is_some_and(|shape| !shape.is_null())
+            })
+        });
+    if let Some(shape) = shaped {
+        return offset(shape);
     }
     data.sprite
         .as_ref()
