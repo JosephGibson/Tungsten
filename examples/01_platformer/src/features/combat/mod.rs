@@ -11,7 +11,9 @@
 //! stunned and bleeding go on whatever has health, and poisoned on what is
 //! `living`; 01 reads their `status.*` tags for its looks and its physics.
 //!
-//! Combat also floats the damage numbers ([`numbers`]).
+//! Its damage numbers are the kit's part labels, the `numbers` cue rule's
+//! (`data/cue_rules/numbers.json`), under the game's
+//! [`DAMAGE_NUMBERS_FLAG`], which the Damage numbers option sets each step.
 //!
 //! The frame rule: every request is built and queued in the intent, move or
 //! overlap phase, so the step's resolve takes it. The kit saves its queued
@@ -20,18 +22,18 @@
 
 pub mod components;
 pub mod draw;
-pub mod numbers;
 pub mod systems;
 
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
-    DAMAGE_RESOLVE, DamagePart, DamageRequest, Penetration, Phase, Tags, ensure_phases,
+    CUES, DAMAGE_RESOLVE, DamagePart, DamageRequest, Flags, Penetration, Phase, Tags, ensure_phases,
 };
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
 use crate::features::enemies::armour;
+use crate::shell::options::GameOptions;
 
 /// The share of the player's hits that crit, and a crit's factor on every
 /// part (Q8): the player's `crit_chance` and `crit_multiplier` in
@@ -252,10 +254,30 @@ pub fn has_status(world: &World, entity: Entity, tag: &str) -> bool {
     world.get::<Tags>(entity).is_some_and(|tags| tags.has(tag))
 }
 
+/// The game's flag the `numbers` cue rule floats a part's damage under (its
+/// `flags` filter), set from the Damage numbers option.
+pub const DAMAGE_NUMBERS_FLAG: &str = "show.damage_numbers";
+
+/// `damage_numbers_flag`, in the react phase before the kit's cues: the
+/// game's [`DAMAGE_NUMBERS_FLAG`] set from the Damage numbers option each
+/// step (on without the options), so a change takes the next step's parts.
+fn damage_numbers_flag(world: &mut World) {
+    let shown = world
+        .get_resource::<GameOptions>()
+        .is_none_or(|options| options.damage_numbers);
+    if !world.has_resource::<Flags>() {
+        world.insert_resource(Flags::new());
+    }
+    let flags = world.resource_mut::<Flags>();
+    if flags.has(DAMAGE_NUMBERS_FLAG) != shown {
+        flags.set(DAMAGE_NUMBERS_FLAG, shown);
+    }
+}
+
 /// Combat as a plugin: in the fixed step, the states the resolve begins
 /// with, recorded before the kit's damage resolve, and in the react phase
 /// the reactions to the step's landed parts, the thaws and the damage
-/// numbers; in the present phase the statuses' tints, before the
+/// numbers' flag; in the present phase the statuses' tints, before the
 /// frame's particles their emitters, and their overlays drawn after the
 /// sprites. The chill's grades run in the enemies' intent phase.
 pub struct CombatPlugin;
@@ -279,11 +301,8 @@ impl Plugin for CombatPlugin {
             systems::thaws(world, &mut expired);
         });
         schedule.add(Stage::FixedUpdate, Phase::React.join(thaws));
-        let mut parts = EventCursor::new();
-        let numbers = system("damage_numbers", move |world: &mut World| {
-            numbers::numbers(world, &mut parts);
-        });
-        schedule.add(Stage::FixedUpdate, Phase::React.join(numbers));
+        let flag = system("damage_numbers_flag", damage_numbers_flag).before(CUES);
+        schedule.add(Stage::FixedUpdate, Phase::React.join(flag));
         schedule.add(
             Stage::PostUpdate,
             Phase::Present.join(system("status_tints", systems::tints)),

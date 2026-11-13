@@ -289,6 +289,7 @@
   "assets/data/bodies/troll.json",
   "assets/data/bodies/wisp.json",
   "assets/data/cue_rules/blood.json",
+  "assets/data/cue_rules/numbers.json",
   "assets/data/cue_rules/sounds.json",
   "assets/data/cue_rules/statuses.json",
   "assets/data/damage_types/game.json",

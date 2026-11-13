@@ -18,7 +18,6 @@ use tungsten::{GameState, Plugin, StateContext, StateId};
 
 pub use components::Run;
 
-use crate::features::combat::numbers::Numbers;
 use crate::features::elements::cascade::Cascades;
 use crate::features::props::components::{MapProp, PropKind, StoneSize};
 use crate::features::spells::components::Summon;
@@ -159,7 +158,6 @@ impl GameState for GameplayState {
         ctx.world.remove_resource::<enemies::drops::PlacedOrbs>();
         ctx.world.remove_resource::<Cascades>();
         ctx.world.remove_resource::<Summon>();
-        ctx.world.remove_resource::<Numbers>();
         level::despawn(ctx.world);
         audio::stop(ctx.world);
         spells::stop(ctx.world);

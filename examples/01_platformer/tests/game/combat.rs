@@ -5,9 +5,6 @@
 //! a type's ticks merged, all following the Damage numbers option; the
 //! blood a blow spills; and steam from cold a burning target is immune to.
 
-use example_01_platformer::features::combat::numbers::{
-    CRIT_SIZE, FOLLOW_SECS, Numbers, TICK_SIZE,
-};
 use example_01_platformer::features::combat::{CRIT_CHANCE, Hit, Kind};
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
@@ -27,6 +24,26 @@ use tungsten::testing::UiHarness;
 
 use super::kind_body;
 use super::{ground, pin_camera, run, stand};
+
+/// The `numbers` cue rule's part label, as its file gives it.
+fn numbers_label() -> serde_json::Value {
+    let text = std::fs::read_to_string("assets/data/cue_rules/numbers.json").expect("the rule");
+    let rules: serde_json::Value = serde_json::from_str(&text).expect("its JSON");
+    rules[0]["do"][0]["label"].clone()
+}
+
+/// The numbers' crit size, tick size and merge window: the rule's.
+fn crit_size() -> f32 {
+    numbers_label()["crit"]["size"].as_f64().unwrap() as f32
+}
+
+fn tick_size() -> f32 {
+    numbers_label()["ticks"]["size"].as_f64().unwrap() as f32
+}
+
+fn follow_secs() -> f32 {
+    numbers_label()["merge"].as_f64().unwrap() as f32
+}
 
 /// The sky's ground.
 pub const TOP: f32 = 1000.0;
@@ -407,7 +424,7 @@ fn numbers_float_in_their_types_colour_and_a_crit_larger_in_yellow() {
     let floated_crit = floated(&mut harness, 3);
     assert_eq!(floated_crit.len(), 1, "{floated_crit:?}");
     let (frame, (text, size, rgb)) = &floated_crit[0];
-    assert_eq!((*frame, text.as_str(), *size), (0, "10", CRIT_SIZE));
+    assert_eq!((*frame, text.as_str(), *size), (0, "10", crit_size()));
     assert!(near(*rgb, YELLOW), "{rgb:?}");
 }
 
@@ -428,7 +445,7 @@ fn two_hits_in_a_step_float_apart_and_only_the_crits_in_yellow() {
         (0, "10"),
         "one sum, at once"
     );
-    assert_eq!(*crit_size, CRIT_SIZE);
+    assert_eq!(*crit_size, self::crit_size());
     assert!(near(*crit_rgb, YELLOW));
     let (cold_frame, (cold_text, cold_size, cold_rgb)) = &floated[1];
     assert!(*cold_frame <= 1, "apart, and at once too");
@@ -469,7 +486,7 @@ fn burn_ticks_float_at_once_and_smaller() {
     }
     assert!(ticks.len() >= 2, "{ticks:?}");
     let sizes: Vec<f32> = shown.iter().map(|&(_, size)| size).collect();
-    assert!(sizes.iter().all(|&size| size == TICK_SIZE), "{shown:?}");
+    assert!(sizes.iter().all(|&size| size == tick_size()), "{shown:?}");
     let at: Vec<usize> = shown.iter().map(|&(frame, _)| frame).collect();
     assert_eq!(at, ticks, "each tick at once");
 }
@@ -489,7 +506,7 @@ fn a_hit_floats_its_number_at_once() {
     let rest = floated(&mut harness, 40);
     let texts: Vec<&str> = rest.iter().map(|(_, l)| l.0.as_str()).collect();
     assert_eq!(texts, ["5"], "the follow-ups' sum: {rest:?}");
-    let window = (FOLLOW_SECS * 60.0) as usize;
+    let window = (follow_secs() * 60.0) as usize;
     assert!(rest[0].0 <= window, "when the window closes: {rest:?}");
 }
 
@@ -509,7 +526,6 @@ fn numbers_follow_the_damage_numbers_option() {
     );
     assert!(Hit::new(dummy, [(Kind::Fire, 4.0)]).queue(world));
     assert!(floated(&mut harness, 50).is_empty(), "off: nothing floats");
-    assert!(harness.world().get_resource::<Numbers>().is_none());
     harness
         .world_mut()
         .resource_mut::<GameOptions>()

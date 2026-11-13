@@ -877,6 +877,9 @@
       "blood": {
         "path": "data/cue_rules/blood.json"
       },
+      "numbers": {
+        "path": "data/cue_rules/numbers.json"
+      },
       "sounds": {
         "path": "data/cue_rules/sounds.json"
       },
