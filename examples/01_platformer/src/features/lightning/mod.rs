@@ -18,17 +18,17 @@ pub mod systems;
 
 use glam::{Vec2, Vec3};
 use tungsten::core::{
-    AssetRegistry, BodyKind, Collider, Entity, EventQueue, Light, Position, RigidBody, Schedule,
-    ShakeEvent, Shape, Sprite, Stage, Transform, Visibility, World, system,
+    AssetRegistry, BodyKind, Collider, Entity, Light, Position, RigidBody, Schedule, Shape, Sprite,
+    Stage, Transform, Visibility, World, system,
 };
-use tungsten::kit::{Health, Phase, Resist, Tags, ensure_phases};
+use tungsten::kit::{Blast, Health, Phase, Resist, Tags, blast, ensure_phases};
 use tungsten::physics::{SpatialFilter, cast_ray};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{FROZEN, Hit, Kind, has_status};
+use crate::features::combat::{FROZEN, Hit, Kind, SPELL, has_status};
 use crate::features::elements::cascade::{self, Cascades, Entry, Jump};
-use crate::features::enemies::{self, components::Enemy};
+use crate::features::enemies::{self, armour, components::Enemy};
 use crate::features::level::{WORLD_MAX, WORLD_MIN};
 use crate::features::props::{self, components::Keg};
 use crate::features::run::Run;
@@ -50,13 +50,12 @@ pub const MAX_JUMPS: u32 = 6;
 pub const SEGMENT: Vec2 = Vec2::new(24.0, 64.0);
 pub const EXITS: [f32; 8] = [-8.0, -4.0, 0.0, 4.0, 8.0, -6.0, 6.0, 2.0];
 /// How long a bolt shows, the strike's light, its reach, its colour and
-/// the seconds it fades over, and the strike's shake.
+/// the seconds it fades over.
 pub const BOLT_SECS: f32 = 0.15;
 pub const STRIKE_LIGHT: f32 = 3.0;
 pub const LIGHT_REACH: f32 = 320.0;
 pub const LIGHT_COLOR: Vec3 = Vec3::new(0.82, 0.72, 1.0);
 pub const LIGHT_SECS: f32 = 0.2;
-pub const STRIKE_SHAKE: f32 = 0.5;
 /// How long a jump's arc shows, fading over its last third, and the
 /// seconds its zigzag holds before it takes a new path, so it crackles.
 pub const ARC_SECS: f32 = 0.35;
@@ -260,10 +259,12 @@ pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Landing {
 }
 
 /// Strikes from `caster` at the aim point `aim`: the bolt falls at the
-/// aim's x from the sky until it meets a tile or a body; its shock hurts
-/// the targets within [`STRIKE_REACH`] of where it lands, `caster` spared,
-/// and sets off the kegs there, credited to `caster`; and one chain of
-/// conduction starts, its first jump due the step after. Where it landed.
+/// aim's x from the sky until it meets a tile or a body; its shock, the
+/// kit's blast of [`STRIKE_SHOCK`] flat within [`STRIKE_REACH`] of where it
+/// lands, a spell's hit queued for the step's resolve, hurts the targets
+/// there, `caster` spared, and it sets off the kegs there, credited to
+/// `caster`; and one chain of conduction starts, its first jump due the
+/// step after. Where it landed.
 pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
     let Landing { at: landing, met } = bolt_end(world, aim, Some(caster));
     let mut struck: Vec<(Option<SaveId>, Entity)> = world
@@ -276,15 +277,17 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
         .map(|(entity, _)| (crate::shared::save_id(world, entity), entity))
         .collect();
     struck.sort_by_key(|(id, _)| *id);
+    let shock = Blast::new(STRIKE_REACH)
+        .with_part(Kind::Shock.tag(), STRIKE_SHOCK)
+        .with_far(1.0)
+        .with_context([SPELL])
+        .sparing_source()
+        .at_centre()
+        .with_stimulus(false)
+        .with_prepare(armour::PREPARE);
+    blast(world, landing, &shock, Some(caster), None);
     let credit = crate::shared::save_id(world, caster).map(|id| id.0);
     for &(_, target) in &struck {
-        if world.get::<Health>(target).is_some_and(|h| !h.is_dead()) {
-            Hit::new(target, [(Kind::Shock, STRIKE_SHOCK)])
-                .from(caster)
-                .at(landing)
-                .spell()
-                .queue(world);
-        }
         if world.has::<Keg>(target) {
             props::set_off(world, target, credit);
         }
@@ -333,10 +336,11 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
     landing
 }
 
-/// A strike's look at `landing`: its bolt from the sky with its veil, its
-/// light and the shake; where it met a body the strike's sparks and the
-/// snap, where it met the ground or a deck the ground's sparks and their
-/// crackle, with a scorch on the ground alone; then the thunder. The
+/// A strike's look at `landing`: its bolt from the sky with its veil and
+/// its light; where it met a body the strike's sparks and the snap, where
+/// it met the ground or a deck the ground's sparks and their crackle, with
+/// a scorch on the ground alone; then the thunder, whose rule shakes the
+/// camera. The
 /// strike's number picks the bolt's five to eight pieces.
 fn show(world: &mut World, landing: Vec2, met: Met, number: u64) {
     let count = 5 + (number % 4) as usize;
@@ -360,11 +364,6 @@ fn show(world: &mut World, landing: Vec2, met: Met, number: u64) {
         StrikeLight { age: 0.0 },
         SceneEntity { state_id: GAMEPLAY },
     ));
-    if let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>() {
-        queue.send(ShakeEvent {
-            trauma_add: STRIKE_SHAKE,
-        });
-    }
     if let Met::Body(_) = met {
         spawn_burst(world, "ex10_strike_sparks", landing);
         audio::play(world, Sound::Snapped, landing);

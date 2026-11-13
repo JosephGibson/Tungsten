@@ -32,8 +32,8 @@
 
 use glam::Vec2;
 use tungsten::core::{
-    BodyKind, Collider, Entity, EventQueue, PhysicsConfig, Position, PrevPosition, RigidBody,
-    ShakeEvent, Shape, Velocity, World,
+    BodyKind, Collider, Entity, PhysicsConfig, Position, PrevPosition, RigidBody, Shape, Velocity,
+    World,
 };
 use tungsten::kit::{Health, PlatformerController, Stats, lob_velocity};
 use tungsten::physics::wake;
@@ -52,7 +52,6 @@ use crate::features::props::{
     components::{Crate, Keg},
 };
 use crate::features::toys::components::{BowlingBall, IronBlock};
-use crate::features::toys::systems::falloff;
 use crate::shared::{SaveId, Saved, body_centre, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
@@ -62,14 +61,10 @@ pub const SEARCH_PACE: f32 = 0.8;
 pub const SLAM_RANGE: f32 = 140.0;
 pub const SLAM_RISE: f32 = 120.0;
 /// The slam's tell, its clip's length, its reach about the fist's point and
-/// its push on what it hurts; its shake by the courier's distance, whole
-/// within the first and none past the second.
+/// its push on what it hurts.
 pub const SLAM_TELL_CLIP: &str = "ex10_troll_windup";
 pub const SLAM_REACH: f32 = 160.0;
 pub const SLAM_PUSH: f32 = 420.0;
-pub const SLAM_SHAKE: f32 = 0.5;
-pub const SHAKE_NEAR: f32 = 120.0;
-pub const SHAKE_FAR: f32 = 640.0;
 /// How near the player, across and up or down, its chase swipes instead;
 /// the swipe's tell, its box's half size and its centre from the body's
 /// facing right, its physical damage at a factor of 1 and its push, out and
@@ -365,8 +360,8 @@ fn blow(
 /// The slam: every live target but the troll within [`SLAM_REACH`] of its
 /// fist takes its `damage` as physical, pushed away; every other body in
 /// reach is kicked away by its mass; every frozen thing in reach shatters;
-/// the camera shakes by the courier's distance; its [`SLAM_COOLDOWN`]
-/// starts.
+/// its boom's rule shakes the camera by the listener's distance; its
+/// [`SLAM_COOLDOWN`] starts.
 pub fn slam(world: &mut World, troll: Entity) {
     let Some(point) = fist(world, troll) else {
         return;
@@ -388,14 +383,6 @@ pub fn slam(world: &mut World, troll: Entity) {
     near.sort_unstable_by_key(|&(id, ..)| id);
     let push = |at: Vec2| (at - point).normalize_or(Vec2::NEG_Y) * SLAM_PUSH;
     blow(world, troll, &near, damage, point, push);
-    if let Some((_, courier)) = player(world) {
-        let trauma = SLAM_SHAKE * falloff(courier.distance(point), SHAKE_NEAR, SHAKE_FAR);
-        if trauma > 0.0
-            && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
-        {
-            queue.send(ShakeEvent { trauma_add: trauma });
-        }
-    }
     spawn_burst(world, "ex10_blast_dust", point);
     audio::play(world, Sound::TrollSlam, point);
 }

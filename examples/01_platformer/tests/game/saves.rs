@@ -3220,6 +3220,106 @@ fn a_flask_in_flight_saves_loads_and_bursts_where_it_would_have() {
     assert!(at.distance(loaded_at) < 0.5, "{at} and {loaded_at}");
 }
 
+/// Each saved `projectile` among `value`'s records without its `end`,
+/// `shape`, `offset` and `body_walls`, as a save from before the flask's
+/// splash was its end's blast; how many had an end.
+fn strip_flask(value: &mut serde_json::Value) -> usize {
+    let mut stripped = 0;
+    match value {
+        serde_json::Value::Object(object) => {
+            if let Some(serde_json::Value::Object(projectile)) = object.get_mut("projectile") {
+                for field in ["shape", "offset", "body_walls"] {
+                    projectile.remove(field);
+                }
+                if projectile.remove("end").is_some() {
+                    stripped += 1;
+                }
+            }
+            for inner in object.values_mut() {
+                stripped += strip_flask(inner);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                stripped += strip_flask(item);
+            }
+        }
+        _ => {}
+    }
+    stripped
+}
+
+/// Steps until `goblin` takes a hit's poison, at most 120 frames: the
+/// frames it took, the poison and its source's save ID.
+fn poisoned_at(harness: &mut UiHarness, goblin: Entity) -> Option<(u32, f32, Option<u64>)> {
+    for frame in 1..=120 {
+        harness.step(1);
+        let world = harness.world();
+        let id =
+            |entity: Entity| example_01_platformer::shared::save_id(world, entity).map(|id| id.0);
+        let poison = harness
+            .harness()
+            .events::<tungsten::kit::DamagedPart>()
+            .find(|part| {
+                part.entity == goblin && !part.periodic && part.kinds.has(world, "damage.poison")
+            })
+            .map(|part| (frame, part.amount, part.source.and_then(id)));
+        if poison.is_some() {
+            return poison;
+        }
+    }
+    None
+}
+
+#[test]
+fn an_older_flask_still_splashes() {
+    let (mut harness, player) = grounded();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    // A still goblin on the ground 400 px off, and a flask thrown at it.
+    let from = centre(&harness, player);
+    let kind = EnemyKind::Goblin;
+    let at = Vec2::new(from.x + 400.0, TOP - kind_body(kind).half.y - 0.5);
+    let goblin = enemy(&mut harness, kind, at);
+    harness
+        .world_mut()
+        .remove_component::<StateMachine<EnemyState>>(goblin);
+    harness.step(1);
+    assert!(toys::flask::throw(harness.world_mut(), player, from, at).is_some());
+    harness.step(6);
+    assert_eq!(toys::flask::count(harness.world()), 1, "the flask flies");
+    let goblin_id = id_of(&harness, goblin);
+    let mut older = json(&capture(&harness));
+    assert_eq!(strip_flask(&mut older["world"]), 1, "the flask's end");
+    let read: SaveGame = serde_json::from_value(older).expect("the save reads");
+    let mut loaded = reloaded(read, false);
+    loaded.harness_mut().set_dt(1.0 / 60.0);
+    let flask = toys::flask::flying(loaded.world())[0].1;
+    let projectile = loaded.world().get::<Projectile>(flask).unwrap();
+    assert!(
+        projectile.end_blast().is_some()
+            && projectile.shape().is_some()
+            && projectile.body_walls() != 0,
+        "its prefab's end, shape and body walls"
+    );
+    let loaded_goblin = by_id(&loaded, goblin_id);
+    let run = poisoned_at(&mut harness, goblin).expect("the run's flask splashes it");
+    let after = poisoned_at(&mut loaded, loaded_goblin).expect("the loaded flask splashes it");
+    assert_eq!(after.0, run.0, "as soon");
+    assert!(
+        (after.1 - run.1).abs() < 1e-4,
+        "as much: {after:?} and {run:?}"
+    );
+    assert_eq!(after.2, Some(id_of(&harness, player)), "from the wizard");
+    assert_eq!(after.2, run.2);
+    // Its status's band enters at chemistry's next run.
+    harness.step(2);
+    loaded.step(2);
+    let poisoned =
+        |h: &UiHarness, e: Entity| h.world().get::<Tags>(e).unwrap().has("status.poisoned");
+    assert!(poisoned(&harness, goblin), "poisoned in the run");
+    assert!(poisoned(&loaded, loaded_goblin), "poisoned after the load");
+}
+
 /// Puts one more enemy on `harness`'s map before a run spawns it: a copy of
 /// the meadow goblin named `name`, four tiles east of it.
 fn with_one_more_enemy(harness: &mut UiHarness, name: &str) {

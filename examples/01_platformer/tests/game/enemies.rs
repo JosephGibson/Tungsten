@@ -1586,6 +1586,44 @@ fn the_beetles_rear_takes_a_bullet_whole_and_ends_it() {
 }
 
 #[test]
+fn a_blast_behind_an_armoured_beetle_lands_whole() {
+    // A keg's blast, 24 physical at its centre: whole behind the beetle,
+    // past its shell, and a quarter in front of it.
+    for (side, part) in [(-1.0, 24.0), (1.0, 6.0)] {
+        let (mut harness, _) = arena();
+        let beetle = walker(&mut harness, EnemyKind::Beetle, 1300.0, TOP);
+        let world = harness.world_mut();
+        world.remove_component::<tungsten::kit::StateMachine<EnemyState>>(beetle);
+        enemies::turn(world, beetle, 1.0);
+        let centre = at(&harness, beetle);
+        let keg = props::spawn(
+            harness.world_mut(),
+            PropKind::Keg,
+            Vec2::new(centre.x + side * 80.0, TOP - 40.0),
+        );
+        harness.step(10);
+        assert!(props::set_off(harness.world_mut(), keg, None));
+        let mut physical = Vec::new();
+        for _ in 0..30 {
+            harness.step(1);
+            let world = harness.world();
+            physical.extend(
+                harness
+                    .harness()
+                    .events::<tungsten::kit::DamagedPart>()
+                    .filter(|got| got.entity == beetle && !got.periodic)
+                    .filter(|got| got.kinds.has(world, Kind::Physical.tag()))
+                    .map(|got| got.amount),
+            );
+            if !harness.world().is_alive(keg) && !physical.is_empty() {
+                break;
+            }
+        }
+        assert_eq!(physical, [part], "side {side}");
+    }
+}
+
+#[test]
 fn the_beetle_paws_then_charges_and_its_charge_hurts_enemies_too() {
     let (mut harness, _) = arena();
     // A crawler with no mind of its own, in the charge's way.

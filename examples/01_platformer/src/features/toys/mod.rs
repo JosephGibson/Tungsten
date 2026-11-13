@@ -73,10 +73,9 @@ pub const IRON_FALL_FROM: f32 = 30.0;
 pub const IRON_PUSH_SHARE: f32 = 0.6;
 pub const IRON_PUSH_MOST: f32 = 900.0;
 /// Iron's hard landing: a block meeting a still body or a tile at this
-/// closing speed or more raises dust and shakes the camera by this share of
-/// a blast's.
+/// closing speed or more raises dust, and its thud's rule shakes the
+/// camera.
 pub const IRON_LAND_SPEED: f32 = 900.0;
-pub const IRON_LAND_SHAKE: f32 = 0.2;
 /// A scrap: a quarter of a block's side, a sixteenth of its mass, its art
 /// drawn at half size.
 pub const SCRAP_HALF: Vec2 = Vec2::splat(IRON_HALF.x / 4.0);
@@ -129,11 +128,10 @@ pub const MISSILE_RADIUS: f32 = 10.0;
 pub const MISSILE_SIZE: f32 = 40.0;
 pub const MISSILE_CAP: usize = 6;
 /// A blast: its heat's reach, which lights small balls and shatters frozen
-/// iron, its push's reach and speed at its centre, and its camera kick.
+/// iron, and its push's reach and speed at its centre.
 pub const BLAST_RADIUS: f32 = 72.0;
 pub const PUSH_RADIUS: f32 = 4.5 * TILE;
 pub const PUSH_SPEED: f32 = 2500.0;
-pub const BLAST_TRAUMA: f32 = 0.68;
 /// A spray's reach and half angle, and the rays it traces: 01 (h)'s 30 %
 /// further than 01 (f)'s 7 and 3.5 tiles, the flamethrower's 30 % further
 /// again (§3.7a).
@@ -158,8 +156,8 @@ pub const FIRE_MISSILE_PREFAB: &str = "fire_missile";
 /// step, the holes' life, the balls' hues and cooldowns, the velocities
 /// before physics, the holes' pull, their hold on the flyers about the
 /// top-down mover, the force push's waves, the missiles' bending before
-/// their motion, their contacts and the flasks' before the kit's projectile
-/// step and their ends after it, so a blast's or a splash's hits take the
+/// their motion, their contacts before the kit's projectile step and their
+/// ends and the flasks' after it, so a blast's or a splash's hits take the
 /// step's resolve, the escaped
 /// bodies' cull, the holes' broom and the sprays' end; in the present
 /// phase the toys' looks and the waves' crescents, and before the frame's
@@ -199,7 +197,6 @@ impl Plugin for ToysPlugin {
             Phase::Overlap.join(
                 system("missile_contacts", systems::missile_contacts).before(PROJECTILE_TICK),
             ),
-            Phase::Overlap.join(system("flask_contacts", flask::contacts).before(PROJECTILE_TICK)),
             Phase::Overlap.join(
                 system("flask_ends", {
                     let mut cursor = EventCursor::new();

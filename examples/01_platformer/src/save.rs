@@ -51,7 +51,9 @@ use crate::features::props;
 use crate::features::run::Run;
 use crate::features::tomes::{Tome, Tomes};
 use crate::features::toys;
-use crate::features::toys::components::{Ball, BallHue, IronScrap, PreviousVelocity, SmallBall};
+use crate::features::toys::components::{
+    Ball, BallHue, IronScrap, PreviousVelocity, SmallBall, ToxicFlask,
+};
 use crate::game::GAMEPLAY;
 use crate::shared::{Joined, SaveId, Saved, despawn_tree};
 use crate::shell::{self, RunMeta};
@@ -561,7 +563,8 @@ fn spawn_balls(world: &mut World, save: &SaveGame) -> Vec<Entity> {
 /// record's `PreviousVelocity`, a dummy's and every enemy's body, an
 /// enemy's hold on rock, a scrap's, a crate's, a rock's, a stone's and a
 /// plank's look; what an older save's records lack of their prefabs, an
-/// enemy's disarm and a dropped orb's fall; a crusted basin's body layers, mask, touch and glow, a
+/// enemy's disarm, a dropped orb's fall and a flask's end, shape and body
+/// walls; a crusted basin's body layers, mask, touch and glow, a
 /// doused hazard's touch, glow and trail, a geyser's touch on in an
 /// eruption and held aside else, from `touches`, the run's, where the save
 /// holds none; a troll's hold lifted again; the taken tomes' books off the
@@ -593,6 +596,8 @@ fn rebuild(world: &mut World, touches: &[(Entity, Option<ContactDamage>)]) {
             props::restored(world, entity);
         } else if world.has::<Orb>(entity) {
             drops::restored(world, entity);
+        } else if world.has::<ToxicFlask>(entity) {
+            toys::flask::restored(world, entity);
         }
     }
     let foes: Vec<Entity> = world

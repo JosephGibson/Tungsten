@@ -11,6 +11,13 @@
         "sound": {
           "id": "ex10_fireball_blast_sfx"
         }
+      },
+      {
+        "shake": {
+          "trauma": 0.68,
+          "near": 512,
+          "far": 3072
+        }
       }
     ]
   },
@@ -244,6 +251,9 @@
           "id": "ex10_thunder_sfx",
           "min_interval": 0.1
         }
+      },
+      {
+        "shake": 0.5
       }
     ]
   },
@@ -485,6 +495,13 @@
           "id": "ex10_troll_slam_sfx",
           "min_interval": 0.1
         }
+      },
+      {
+        "shake": {
+          "trauma": 0.5,
+          "near": 120,
+          "far": 640
+        }
       }
     ]
   },
@@ -662,6 +679,13 @@
         "sound": {
           "id": "ex10_iron_thud_sfx",
           "min_interval": 0.1
+        }
+      },
+      {
+        "shake": {
+          "trauma": 0.136,
+          "near": 512,
+          "far": 3072
         }
       }
     ]
@@ -894,6 +918,13 @@
         "sound": {
           "id": "ex10_keg_boom_sfx",
           "min_interval": 0.06
+        }
+      },
+      {
+        "shake": {
+          "trauma": 0.68,
+          "near": 512,
+          "far": 3072
         }
       }
     ]

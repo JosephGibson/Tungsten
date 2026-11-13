@@ -6,7 +6,43 @@
   "components": {
     "toxic_flask": null,
     "projectile": {
-      "range": 3000
+      "range": 3000,
+      "shape": {
+        "circle": 5
+      },
+      "offset": [
+        8,
+        8
+      ],
+      "body_walls": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "end": {
+        "blast": {
+          "radius": 96,
+          "damage": {
+            "damage.poison": 16
+          },
+          "context": [
+            "hit.spell"
+          ],
+          "far": 0.5,
+          "spare": "source",
+          "filter": {
+            "all": [
+              "living"
+            ]
+          },
+          "point": "centre",
+          "land": "queue",
+          "stimulus": false,
+          "prepare": "armour"
+        }
+      }
     },
     "linear_motion": {
       "velocity": [

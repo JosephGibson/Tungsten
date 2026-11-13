@@ -2,18 +2,16 @@
 
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
-use tungsten::WindowSize;
 use tungsten::core::assets::LayerKind;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, BodyKind, CameraState,
-    Collider, Entity, EventCursor, EventQueue, Light, LightKind, Particle, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, RigidBody, ShakeEvent, Shape,
-    SoundRegistry, Sprite, TilemapInstance, TilemapRegistry, Time, Transform, Velocity, Visibility,
-    With, World,
+    AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, BodyKind, Collider, Entity,
+    EventCursor, EventQueue, Light, LightKind, Particle, ParticleConfigRegistry, ParticleEmitter,
+    ParticleEmitterState, Position, PrevPosition, RigidBody, Shape, SoundRegistry, Sprite,
+    TilemapInstance, TilemapRegistry, Time, Transform, Velocity, Visibility, With, World,
 };
 use tungsten::kit::{
-    Children, EffectInstance, Effects, Health, LinearMotion, Modifier, PlatformerController,
-    Projectile, ProjectileExpired, Stats, Tags, TopDownMover, knock_back, stimulate,
+    Blast, Children, EffectInstance, Effects, Health, LinearMotion, Modifier, PlatformerController,
+    Projectile, ProjectileExpired, Stats, Tags, TopDownMover, blast, knock_back, stimulate,
 };
 use tungsten::physics::wake;
 
@@ -23,15 +21,15 @@ use super::components::{
     Spray, SprayEmitter,
 };
 use super::{
-    BLAST_RADIUS, BLAST_TRAUMA, BOWLING_PULL, BROOM_MOST, BROOM_REACH, COLLAPSE_RING,
-    FIRE_SPRAY_RANGE, FROZEN_FRICTION, HOLD_EASE, HOLD_RING, HOLD_SWIRL, HOLE_FORCE, HOLE_RADIUS,
-    IRON_FALL_FROM, IRON_FRICTION, IRON_LAND_SHAKE, IRON_PULL, IRON_WEIGHT, LOOP_FADE,
-    MISSILE_RADIUS, MISSILE_SIZE, OPEN_INWARD, OPEN_REACH, PUSH_RADIUS, PUSH_SPEED, RING_SECS,
-    SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
+    BLAST_RADIUS, BOWLING_PULL, BROOM_MOST, BROOM_REACH, COLLAPSE_RING, FIRE_SPRAY_RANGE,
+    FROZEN_FRICTION, HOLD_EASE, HOLD_RING, HOLD_SWIRL, HOLE_FORCE, HOLE_RADIUS, IRON_FALL_FROM,
+    IRON_FRICTION, IRON_PULL, IRON_WEIGHT, LOOP_FADE, MISSILE_RADIUS, MISSILE_SIZE, OPEN_INWARD,
+    OPEN_REACH, PUSH_RADIUS, PUSH_SPEED, RING_SECS, SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE,
+    SPRAY_RANGE, rings_full,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{
-    self, BLAST_FIRE, COLD_SPRAY_DPS, FIRE_SPRAY_DPS, FROZEN, Kind, SPRAY_PULSE, has_status,
+    self, BLAST_FIRE, COLD_SPRAY_DPS, FIRE_SPRAY_DPS, FROZEN, Kind, SPELL, SPRAY_PULSE, has_status,
 };
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade;
@@ -214,16 +212,10 @@ pub fn weight(world: &mut World) {
     }
 }
 
-/// A block landing hard at `at`, its contact: dust there, the camera's
-/// shake by its distance ([`IRON_LAND_SHAKE`] of a blast's) and its thud.
+/// A block landing hard at `at`, its contact: dust there and its thud,
+/// whose rule shakes the camera by its distance from the listener.
 pub fn iron_landed(world: &mut World, at: Vec2) {
     spawn_burst(world, "ex10_iron_dust", at);
-    let trauma = blast_trauma(world, at) * IRON_LAND_SHAKE;
-    if trauma > 0.0
-        && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
-    {
-        queue.send(ShakeEvent { trauma_add: trauma });
-    }
     audio::play(world, Sound::IronLanded, at);
 }
 
@@ -637,13 +629,24 @@ pub fn flares(world: &mut World) {
     }
 }
 
-/// A fireball's blast at `at`: its fire on each live target in its heat but
-/// the player who cast it, [`BLAST_FIRE`] at its centre falling to half at
-/// the heat's edge, from the player; the small balls in its heat lit by
-/// their centres, and the crates in it lit and its kegs set off by their
-/// boxes, credited to the player.
+/// A fireball's blast at `at`: its heat, the kit's blast of
+/// [`BLAST_FIRE`] fire on each live target whose body lies within
+/// [`BLAST_RADIUS`], half at its edge, a spell's hit from the player who
+/// cast it, who is spared, queued for the step's resolve; the small balls
+/// in its heat lit by their centres, and the crates in it lit and its kegs
+/// set off by their boxes, credited to the player; its boom's rule shakes
+/// the camera.
 pub fn explode(world: &mut World, at: Vec2) {
-    burn_targets(world, at);
+    let player = world.get_resource::<Run>().map(|run| run.player);
+    let heat = Blast::new(BLAST_RADIUS)
+        .with_part(Kind::Fire.tag(), BLAST_FIRE)
+        .with_far(0.5)
+        .with_context([SPELL])
+        .sparing_source()
+        .at_centre()
+        .with_stimulus(false)
+        .with_prepare(enemies::armour::PREPARE);
+    blast(world, at, &heat, player, None);
     for burst in [
         "ex10_fireball_blast",
         "ex10_blast_embers",
@@ -655,12 +658,6 @@ pub fn explode(world: &mut World, at: Vec2) {
     ring(world, at, 2.0 * PUSH_RADIUS, Ring::Fireball);
     elements::thermal_shatter(world, at, BLAST_RADIUS);
     radial_push(world, at, PUSH_RADIUS, PUSH_SPEED);
-    let trauma = blast_trauma(world, at);
-    if trauma > 0.0
-        && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
-    {
-        queue.send(ShakeEvent { trauma_add: trauma });
-    }
     let mut lit: Vec<(SaveId, Entity)> = world
         .query::<(Entity, &SmallBall, &Position, &Collider, &Saved)>()
         .filter(|(_, _, p, c, _)| (p.0 + c.offset).distance_squared(at) <= BLAST_RADIUS.powi(2))
@@ -702,32 +699,6 @@ fn heat_props(world: &mut World, at: Vec2) {
         } else {
             props::set_off(world, prop, player);
         }
-    }
-}
-
-/// Queues the blast's fire on each live target with a body within
-/// [`BLAST_RADIUS`] of `at`, its surface's distance, in save-ID order.
-fn burn_targets(world: &mut World, at: Vec2) {
-    let player = world.get_resource::<Run>().map(|run| run.player);
-    let mut targets: Vec<(Option<SaveId>, Entity, f32)> = world
-        .query::<(Entity, &tungsten::kit::Health, &Position, &Collider)>()
-        .filter(|(entity, health, ..)| !health.is_dead() && Some(*entity) != player)
-        .filter_map(|(entity, _, p, collider)| {
-            let distance = surface_distance(at, p.0 + collider.offset, collider.shape);
-            (distance <= BLAST_RADIUS)
-                .then(|| (crate::shared::save_id(world, entity), entity, distance))
-        })
-        .collect();
-    targets.sort_by_key(|(id, ..)| *id);
-    for (_, target, distance) in targets {
-        let amount = BLAST_FIRE * (1.0 - 0.5 * distance / BLAST_RADIUS);
-        let mut hit = combat::Hit::new(target, [(Kind::Fire, amount)])
-            .at(at)
-            .spell();
-        if let Some(player) = player {
-            hit = hit.from(player);
-        }
-        hit.queue(world);
     }
 }
 
@@ -787,33 +758,6 @@ pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
     for (_, enemy, push) in thrown {
         knock_back(world, enemy, push);
     }
-}
-
-/// [`BLAST_TRAUMA`] near the view's centre, falling linearly to none a view
-/// width and a half away, so a blast far off screen leaves the camera
-/// still: a missile's and a keg's.
-pub(crate) fn blast_trauma(world: &World, at: Vec2) -> f32 {
-    let Some(camera) = world.get_resource::<CameraState>() else {
-        return 0.0;
-    };
-    let window = world
-        .get_resource::<WindowSize>()
-        .copied()
-        .unwrap_or(WindowSize {
-            width: 1280,
-            height: 720,
-        });
-    let (min, max) = camera.visible_world_aabb(window.width as f32, window.height as f32);
-    let width = (max.x - min.x).max(1.0);
-    BLAST_TRAUMA * falloff(at.distance((min + max) * 0.5), 0.25 * width, 1.5 * width)
-}
-
-/// A shake's share at `distance`: whole within `near`, falling linearly to
-/// none at `far`. A blast's by the view's centre, a troll's slam by the
-/// courier.
-#[must_use]
-pub fn falloff(distance: f32, near: f32, far: f32) -> f32 {
-    (1.0 - (distance - near) / (far - near).max(1.0)).clamp(0.0, 1.0)
 }
 
 /// `toys_bounds`, in the overlap phase: a ball, block, scrap, crate, keg,

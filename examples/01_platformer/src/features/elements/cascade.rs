@@ -33,10 +33,9 @@ use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::core::save::RefCodec;
 use tungsten::core::{
-    BodyKind, Collider, DataRef, Entity, EventQueue, Position, RigidBody, ShakeEvent, Shape,
-    Velocity, World,
+    BodyKind, Collider, DataRef, Entity, Position, RigidBody, Shape, Velocity, World,
 };
-use tungsten::kit::{Chemistry, EffectRequest, Health, Reaction, end_effect, stimulate};
+use tungsten::kit::{Blast, Chemistry, EffectRequest, Health, Reaction, end_effect, stimulate};
 use tungsten::physics::wake;
 
 use super::systems::{ice_pulse, ignite, shatter_iron};
@@ -47,11 +46,12 @@ use super::{
 use super::{is_burning, is_frozen};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{self, BURNING, DOUSED, Kind, has_status};
+use crate::features::enemies::armour;
 use crate::features::props::components::{Bomb, Crate, Keg, Rock, Stone};
 use crate::features::props::{self, BOMB_BLAST, KEG_BLAST, PROP_BLAST};
 use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock, IronScrap, SmallBall};
-use crate::features::toys::systems::{blast_trauma, flare};
+use crate::features::toys::systems::flare;
 use crate::shared::{
     Saved, body_centre, despawn_tree, spawn_burst, spawn_key_burst, surface_distance,
 };
@@ -393,7 +393,9 @@ pub fn thermal_shock_handler(world: &mut World, reaction: &Reaction) {
         .filter(|from| from.distance(at) > 1e-3);
     react_on(world, thing);
     end_frozen(world, thing, from);
-    with_bin(world, |world, bin| blast(world, bin, at, credit, reach));
+    with_bin(world, |world, bin| {
+        blast(world, bin, at, credit, reach, Some(thing));
+    });
     spawn_burst(world, "ex10_frost_blast", at);
     spawn_burst(world, "ex10_fireball_blast", at);
     audio::play(world, Sound::FrostBlasted, at);
@@ -770,53 +772,45 @@ fn shove(world: &mut World, entity: Entity, at: Vec2, reach: f32, speed: f32, di
     wake(world, entity);
 }
 
-/// A hit from the blast at `at` of `parts` fire and physical on `target`,
-/// pushed by `speed` falling to 0 at `reach`, half on the player: landed
-/// at once, as a run's hits once took the step's resolve.
-fn blast_hit(
-    world: &mut World,
-    target: Entity,
-    at: Vec2,
-    parts: f32,
-    push: (f32, f32, f32),
-    source: Option<Entity>,
-) {
-    let (speed, reach, distance) = push;
-    let away = body_centre(world, target)
-        .and_then(|centre| (centre - at).try_normalize())
-        .unwrap_or(-Vec2::Y);
-    let falloff = 1.0 - distance / reach.max(1.0);
-    let mut hit = combat::Hit::new(target, [(Kind::Fire, parts), (Kind::Physical, parts)])
-        .at(at)
-        .push(away * speed * falloff)
-        .blast();
-    if let Some(source) = source {
-        hit = hit.from(source);
-    }
-    hit.request(world).apply(world);
+/// The kit's blast of `reach` with `part` fire and `part` physical, flat to
+/// its edge, pushing [`push`](Blast::with_push) away from its centre: a
+/// blast's or a steam burst's in the [`BLAST`](combat::BLAST) context,
+/// which the player takes half of, at its centre through 01's armour,
+/// landed at once, with no stimulus and no impulse (01 shoves its bodies),
+/// hurting its receiver when `receiver`.
+fn blast_of(reach: f32, part: f32, push: f32, receiver: bool) -> Blast {
+    Blast::new(reach)
+        .with_part(Kind::Fire.tag(), part)
+        .with_part(Kind::Physical.tag(), part)
+        .with_far(1.0)
+        .with_push(push)
+        .with_context([combat::BLAST])
+        .with_receiver(receiver)
+        .at_centre()
+        .landing_now()
+        .with_stimulus(false)
+        .with_prepare(armour::PREPARE)
 }
 
-/// A blast at `at` of `reach`, a thermal shock's or a detonation's: the
-/// targets in reach take fire and physical parts of an eighth of the reach
-/// each with its push, from `credit`, at once; its frozen bodies, small
-/// balls and crates are sent `heat` (each its rule: thermal shock, or a
-/// light), its kegs and bombs `jolt`, crediting `credit`; its bodies are
-/// pushed.
-fn blast(world: &mut World, bin: &Bin, at: Vec2, credit: Option<Entity>, reach: f32) {
-    let parts = reach / 8.0;
+/// A blast at `at` of `reach`, a thermal shock's from `thing` or a
+/// detonation's: the kit's [`blast`](tungsten::kit::blast) hurts the
+/// targets in reach, `thing` among them, with fire and physical parts of an
+/// eighth of the reach each, [`BLAST_PUSH`] away, from `credit`, at once;
+/// then its frozen bodies, small balls and crates are sent `heat` (each its
+/// rule: thermal shock, or a light), its kegs and bombs `jolt`, crediting
+/// `credit`, and its bodies are pushed.
+fn blast(
+    world: &mut World,
+    bin: &Bin,
+    at: Vec2,
+    credit: Option<Entity>,
+    reach: f32,
+    thing: Option<Entity>,
+) {
+    let def = blast_of(reach, reach / 8.0, BLAST_PUSH, thing.is_some());
+    tungsten::kit::blast(world, at, &def, credit, thing);
     for (item, distance) in bin.near(world, at, reach) {
-        if !world.is_alive(item.entity) {
-            continue;
-        }
-        if item.what == What::Target {
-            blast_hit(
-                world,
-                item.entity,
-                at,
-                parts,
-                (BLAST_PUSH, reach, distance),
-                credit,
-            );
+        if !world.is_alive(item.entity) || item.what == What::Target {
             continue;
         }
         if is_frozen(world, item.entity) {
@@ -847,8 +841,7 @@ const DETONATION_BURSTS: [&str; 5] = [
 /// `credit`: once a keg a step, and never on one gone. A frozen keg
 /// shatters instead; else it goes and its [`blast`] runs, its bursts key
 /// ones for the step's first detonation, the missile's flare for the
-/// step's first two, the camera's shake by the view's distance and its
-/// boom.
+/// step's first two, and its boom, whose rule shakes the camera.
 fn detonate(
     world: &mut World,
     bin: &Bin,
@@ -873,7 +866,7 @@ fn detonate(
         return;
     }
     despawn_tree(world, keg);
-    blast(world, bin, at, credit, reach);
+    blast(world, bin, at, credit, reach, None);
     for burst in DETONATION_BURSTS {
         if count == 1 {
             spawn_key_burst(world, burst, at);
@@ -883,12 +876,6 @@ fn detonate(
     }
     if count <= 2 {
         flare(world, at, true);
-    }
-    let trauma = blast_trauma(world, at);
-    if trauma > 0.0
-        && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
-    {
-        queue.send(ShakeEvent { trauma_add: trauma });
     }
     audio::play(world, Sound::KegBlasted, at);
 }
@@ -910,8 +897,9 @@ fn shatter(world: &mut World, thing: Option<Entity>, at: Vec2) {
 /// targets in reach are put out and doused at once, so its own fire cannot
 /// light them again; the burning small balls in reach are sent `cold`,
 /// their own bursts at chemistry's next run, crediting it; the crates and
-/// kegs in reach are put out and doused; then the targets take its fire
-/// and physical parts with its push, at once, and the bodies are pushed.
+/// kegs in reach are put out and doused; then the kit's blast gives the
+/// targets, `thing` among them, its fire and physical parts with its push,
+/// at once, and the bodies are pushed.
 fn steam(
     world: &mut World,
     bin: &Bin,
@@ -936,21 +924,14 @@ fn steam(
             cascades.steamed.push(item.entity);
         }
     }
+    let def = blast_of(reach, STEAM_PART, STEAM_PUSH, true);
+    tungsten::kit::blast(world, at, &def, credit, thing);
     for &(item, distance) in &near {
         if !world.is_alive(item.entity) {
             continue;
         }
         match item.what {
-            What::Target => {
-                blast_hit(
-                    world,
-                    item.entity,
-                    at,
-                    STEAM_PART,
-                    (STEAM_PUSH, reach, distance),
-                    credit,
-                );
-            }
+            What::Target => {}
             What::SmallBall => {
                 if is_burning(world, item.entity) {
                     stimulate(world, item.entity, COLD, 1.0, credit);

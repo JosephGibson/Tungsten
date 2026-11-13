@@ -1036,6 +1036,13 @@ fn flask_flight(harness: &mut UiHarness, frames: u32) -> Flight {
     flight
 }
 
+/// The flask's splash's reach: its prefab's end blast's radius.
+fn splash_radius(harness: &UiHarness) -> f32 {
+    let prefabs = harness.world().resource::<tungsten::core::PrefabRegistry>();
+    let projectile = &prefabs.get(flask::FLASK_PREFAB).unwrap().components["projectile"];
+    projectile["end"]["blast"]["radius"].as_f64().unwrap() as f32
+}
+
 /// A flask's centre.
 fn body_point(harness: &UiHarness, flask: Entity) -> Vec2 {
     harness.world().get::<Position>(flask).unwrap().0 + flask::FLASK_CENTRE
@@ -1159,11 +1166,11 @@ fn the_flask_splash_spares_the_wizard_and_a_wisp_beside_the_goblin() {
     let flight = flask_flight(&mut harness, 30);
     let burst = flight.burst.expect("it bursts");
     assert!(
-        burst.distance(me) <= flask::SPLASH_RADIUS,
+        burst.distance(me) <= splash_radius(&harness),
         "the wizard in reach"
     );
     assert!(
-        burst.distance(body(&harness, wisp)) <= flask::SPLASH_RADIUS,
+        burst.distance(body(&harness, wisp)) <= splash_radius(&harness),
         "the wisp in reach"
     );
     assert_eq!(flight.took(goblin).len(), 1, "the goblin's splash");
@@ -1174,6 +1181,51 @@ fn the_flask_splash_spares_the_wizard_and_a_wisp_beside_the_goblin() {
     let poisoned =
         |h: &UiHarness, e: Entity| h.world().get::<Tags>(e).unwrap().has("status.poisoned");
     assert!(!poisoned(&harness, player) && !poisoned(&harness, wisp));
+}
+
+#[test]
+fn a_flask_after_its_wizards_death_credits_nobody() {
+    use tungsten::kit::KitRng;
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let kind = EnemyKind::Goblin;
+    let at = Vec2::new(me.x + 300.0, SKY - kind_body(kind).half.y - 0.5);
+    let goblin = still_foe(&mut harness, kind, at);
+    harness.step(1);
+    toss_flask(&mut harness, at);
+    assert_eq!(flask::count(harness.world()), 1, "in flight");
+    // The wizard killed while it flies; two frames for his death's own
+    // reactions.
+    tungsten::kit::kill(harness.world_mut(), player);
+    harness.step(2);
+    assert_eq!(flask::count(harness.world()), 1, "still in flight");
+    let mut landed = None;
+    for _ in 0..60 {
+        let draws = harness.world().resource::<KitRng>().draws();
+        harness.step(1);
+        let took: Vec<(Option<Entity>, bool)> = harness
+            .harness()
+            .events::<DamagedPart>()
+            .filter(|part| part.entity == goblin && !part.periodic)
+            .map(|part| {
+                (
+                    part.source,
+                    part.kinds.has(harness.world(), Kind::Poison.tag()),
+                )
+            })
+            .collect();
+        if !took.is_empty() {
+            landed = Some((took, draws));
+            break;
+        }
+    }
+    let (took, draws) = landed.expect("it splashes the goblin");
+    assert_eq!(took, [(None, true)], "its poison from nobody");
+    assert_eq!(
+        harness.world().resource::<KitRng>().draws(),
+        draws,
+        "no crit drawn: the next draw the one before the burst"
+    );
 }
 
 #[test]
