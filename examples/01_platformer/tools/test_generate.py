@@ -426,7 +426,7 @@ FOE_CLIPS = {
     'goblin_dash': ((64, 64), [70] * 4, True, True, True),
     'goblin_panic': ((64, 64), [70] * 6, True, True, True),
 }
-FOE_PARTICLES = {'snowball_burst': 24, 'paw_dust': 12, 'dash_dust': 10}
+FOE_PARTICLES = {'snowball_burst': 24, 'paw_dust': 16, 'dash_dust': 10}
 FOE_SOUNDS = {
     'beetle_paw': (.75, .85), 'beetle_plough': (0, .35), 'crawler_retreat': (.4, .7),
     'crawler_hop': (0, .35), 'snowball_throw': (0, .35), 'snowball_burst': (0, .45),

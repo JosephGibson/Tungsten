@@ -672,7 +672,7 @@ fn lists(kind: &str) -> Lists {
         }
         "wisp" | "crawler" | "beetle" | "bat" | "troll" | "goblin" => {
             use example_01_platformer::features::enemies::components::Shown;
-            use tungsten::kit::{CharacterAnimator, HealthBar};
+            use tungsten::kit::{CharacterAnimator, HealthBar, Looks};
 
             Lists {
                 recorded: Vec::new(),
@@ -698,6 +698,7 @@ fn lists(kind: &str) -> Lists {
                         name::<Shown>(),
                         name::<CharacterAnimator>(),
                         name::<HealthBar>(),
+                        name::<Looks>(),
                     ],
                 ]
                 .concat(),

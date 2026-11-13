@@ -360,6 +360,49 @@
     "cooldown": {
       "seconds": 2,
       "count": 0
-    }
+    },
+    "looks": [
+      {
+        "when": {
+          "all": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_alert",
+            "offset": [
+              10,
+              -90
+            ],
+            "flip": false,
+            "bob": {
+              "height": 2,
+              "seconds": 0.5
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "all": [
+            "mark.search"
+          ],
+          "none": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_search",
+            "offset": [
+              10,
+              -90
+            ],
+            "flip": false
+          }
+        }
+      }
+    ]
   }
 }

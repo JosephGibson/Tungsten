@@ -6,20 +6,16 @@
 //! each burning ball within [`HEAL_REACH`].
 
 use glam::Vec2;
-use tungsten::SceneEntity;
-use tungsten::core::{
-    Entity, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position, World,
-};
-use tungsten::kit::{HealRequest, Health, StateMachine, Tags, TopDownMover, spawn_child};
+use tungsten::core::{Entity, Position, World};
+use tungsten::kit::{HealRequest, Health, StateMachine, Tags, TopDownMover};
 
-use super::components::{Enemy, EnemyKind, EnemyState, Shown};
+use super::components::{Enemy, EnemyKind, EnemyState};
 use super::systems::{elapsed, face, go, player, rest, sees};
 use super::{ARRIVED, centre};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::BURNING;
 use crate::features::elements::components::Flame;
 use crate::features::toys::components::{Ball, SmallBall};
-use crate::game::GAMEPLAY;
 
 /// How far from its home it roams on patrol.
 pub const ROAM: f32 = 160.0;
@@ -150,54 +146,6 @@ pub fn fire(world: &mut World) {
         let rate = (HEAL_EACH * near as f32).min(HEAL_MOST);
         if rate > 0.0 {
             HealRequest::new(wisp, rate * dt).queue(world);
-        }
-    }
-}
-
-/// A wisp's flare lights a second ember emitter at its centre, which goes
-/// when the flare ends: more embers while it flares. Presentation.
-pub fn flare_embers(world: &mut World, wisp: Entity) {
-    let flaring = world
-        .get::<Enemy>(wisp)
-        .is_some_and(|enemy| enemy.kind == EnemyKind::Wisp)
-        && world
-            .get::<StateMachine<EnemyState>>(wisp)
-            .is_some_and(|machine| machine.state() == EnemyState::Alert && !machine.is_held())
-        && world
-            .get::<Health>(wisp)
-            .is_some_and(|health| !health.is_dead());
-    let current = world.get::<Shown>(wisp).and_then(|shown| shown.flare);
-    match (flaring, current) {
-        (true, None) => {
-            let Some(config) = world
-                .get_resource::<ParticleConfigRegistry>()
-                .and_then(|registry| registry.id_for_name("ex10_wisp_embers"))
-            else {
-                return;
-            };
-            let seed = 0x3a_0000 + u64::from(wisp.id());
-            // A child, so it follows the wisp and goes with it.
-            let centre = super::body(world, EnemyKind::Wisp).centre;
-            let emitter = spawn_child(
-                world,
-                wisp,
-                centre,
-                (
-                    ParticleEmitter::with_seed(config, seed),
-                    ParticleEmitterState::default(),
-                    SceneEntity { state_id: GAMEPLAY },
-                ),
-            );
-            if let Some(shown) = world.get_mut::<Shown>(wisp) {
-                shown.flare = Some(emitter);
-            }
-        }
-        (true, Some(_)) | (false, None) => {}
-        (false, Some(emitter)) => {
-            world.despawn(emitter);
-            if let Some(shown) = world.get_mut::<Shown>(wisp) {
-                shown.flare = None;
-            }
         }
     }
 }

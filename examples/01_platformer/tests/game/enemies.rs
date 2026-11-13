@@ -1899,39 +1899,102 @@ fn a_charge_stops_at_iron_and_presses_it_until_it_ends() {
 #[test]
 fn the_beetles_paw_puffs_its_dust_and_its_charge_draws_its_streaks() {
     let (mut harness, _) = arena();
-    let names: Vec<String> = (0..4)
-        .flat_map(|f| {
-            [
-                format!("ex10_charge_streak_{f}"),
-                format!("ex10_charge_streak_{f}_left"),
-            ]
-        })
-        .collect();
-    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
-    for (i, name) in names.iter().enumerate() {
-        mock_sprite(assets, name, 800 + i as u32, false);
-    }
     let beetle = walker(&mut harness, EnemyKind::Beetle, 620.0, TOP);
     assert!(until(&mut harness, 240, |h| state(h, beetle)
         == EnemyState::WindUp));
     harness.step(12);
-    assert!(bursts(&harness, "ex10_paw_dust") > 0, "its paw's dust");
-    assert_eq!(bursts(&harness, "ex10_charge_dust"), 0, "no trail yet");
+    assert!(alive(&harness, "ex10_paw_dust") > 0, "its paw's dust");
+    assert_eq!(alive(&harness, "ex10_charge_dust"), 0, "no trail yet");
     assert!(until(&mut harness, 60, |h| state(h, beetle) == EnemyState::Attack));
+    // Its look's streak: the `ex10_charge_streak` clip, its frames turning
+    // over, flipped as it charges left at the player, as its `_left` twin
+    // draws.
     let mut drawn = std::collections::BTreeSet::new();
     for _ in 0..12 {
         harness.step(1);
-        let batches = enemies::draw::charges(harness.world());
-        drawn.extend(batches.iter().map(|batch| batch.texture.0));
+        let world = harness.world();
+        for (state, flip) in
+            world.query::<(&AnimationState, &tungsten::core::components::SpriteFlip)>()
+        {
+            if state.animation_id == "ex10_charge_streak" {
+                drawn.insert((state.frame_index, flip.0));
+            }
+        }
     }
-    // It charges left, at the player: the left-facing frames, 801 to 807.
-    assert!(
-        drawn
-            .iter()
-            .all(|handle| handle % 2 == 1 && (801..808).contains(handle)),
-        "{drawn:?}"
-    );
+    assert!(drawn.iter().all(|(_, flipped)| *flipped), "{drawn:?}");
     assert!(drawn.len() >= 2, "its frames turn over: {drawn:?}");
+}
+
+/// The most paw and trail dust alive at once over a beetle's tell and its
+/// charge, as this test measured them at `479665d4`, Step 4's base, when each
+/// puff was an emitter of its own: the look's one pulsing emitter keeps at
+/// least 80 % of each.
+const PAW_PEAK: usize = 15;
+const TRAIL_PEAK: usize = 36;
+/// The particles of the config `name` alive now.
+fn alive(harness: &UiHarness, name: &str) -> usize {
+    let world = harness.world();
+    let registry = world.resource::<tungsten::core::ParticleConfigRegistry>();
+    let Some(config) = registry.id_for_name(name).and_then(|id| registry.get(id)) else {
+        return 0;
+    };
+    world
+        .query::<&tungsten::core::Particle>()
+        .filter(|particle| std::sync::Arc::ptr_eq(&particle.config, config))
+        .count()
+}
+
+/// The most particles of `name` alive at once while `beetle` holds `state`,
+/// from its start, at most `most` frames.
+fn peak_while(
+    harness: &mut UiHarness,
+    beetle: Entity,
+    state_now: EnemyState,
+    name: &str,
+    most: u32,
+) -> usize {
+    let mut peak = 0;
+    for _ in 0..most {
+        if state(harness, beetle) != state_now {
+            break;
+        }
+        harness.step(1);
+        peak = peak.max(alive(harness, name));
+    }
+    peak
+}
+
+#[test]
+fn a_beetles_dust_keeps_its_density() {
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let beetle = walker(&mut harness, EnemyKind::Beetle, 620.0, TOP);
+    assert!(until(&mut harness, 240, |h| state(h, beetle)
+        == EnemyState::WindUp));
+    let paw = peak_while(
+        &mut harness,
+        beetle,
+        EnemyState::WindUp,
+        "ex10_paw_dust",
+        120,
+    );
+    assert!(until(&mut harness, 60, |h| state(h, beetle) == EnemyState::Attack));
+    let trail = peak_while(
+        &mut harness,
+        beetle,
+        EnemyState::Attack,
+        "ex10_charge_dust",
+        120,
+    );
+    println!("DENSITY paw {paw} trail {trail}");
+    assert!(
+        paw >= PAW_PEAK * 4 / 5,
+        "the paw's dust: {paw} of {PAW_PEAK}"
+    );
+    assert!(
+        trail >= TRAIL_PEAK * 4 / 5,
+        "the trail's dust: {trail} of {TRAIL_PEAK}"
+    );
 }
 
 #[test]

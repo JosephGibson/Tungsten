@@ -394,11 +394,9 @@ pub struct Spotted {
 }
 
 /// The clip the kit's animator showed an enemy and its frame at the last
-/// look, which a troll's steps sound by, and the second ember emitter a
-/// wisp's flare lights. Presentation, never saved.
+/// look, which a troll's steps sound by. Presentation, never saved.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Shown {
     pub clip: String,
     pub frame: usize,
-    pub flare: Option<Entity>,
 }

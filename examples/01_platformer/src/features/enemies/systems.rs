@@ -787,6 +787,10 @@ pub const HELD: &str = "state.held";
 pub const TROLL_HOLDING: &str = "troll.holding";
 pub const CRAWLER_AFRAID: &str = "crawler.afraid";
 pub const BAT_ROOSTING: &str = "bat.roosting";
+/// The tag a live foe holds while its search has run
+/// [`SEARCH_MARK_AFTER`](super::SEARCH_MARK_AFTER), on its machine's saved
+/// and held-aware time: its "?" look shows while it holds it and no "!".
+pub const SEARCHING: &str = "mark.search";
 
 /// Every tag [`foe_tags`] keeps.
 fn foe_tag_names() -> impl Iterator<Item = &'static str> {
@@ -795,18 +799,20 @@ fn foe_tag_names() -> impl Iterator<Item = &'static str> {
         .map(EnemyState::tag)
         .chain([HELD])
         .chain(Strike::ALL.into_iter().map(Strike::tag))
-        .chain([TROLL_HOLDING, CRAWLER_AFRAID, BAT_ROOSTING])
+        .chain([TROLL_HOLDING, CRAWLER_AFRAID, BAT_ROOSTING, SEARCHING])
 }
 
 /// The tags `foe` holds now: none dead; else its state's, [`HELD`] while
-/// its machine is held, its brain's strike's, and its kind's own while
-/// [`troll::held`], [`crawler::afraid`] or [`bat::roosting`] says so.
-fn wanted_tags(world: &World, foe: Entity) -> [Option<&'static str>; 4] {
+/// its machine is held, its brain's strike's, its kind's own while
+/// [`troll::held`], [`crawler::afraid`] or [`bat::roosting`] says so, and
+/// [`SEARCHING`] once its search has run its first
+/// [`SEARCH_MARK_AFTER`](super::SEARCH_MARK_AFTER).
+fn wanted_tags(world: &World, foe: Entity) -> [Option<&'static str>; 5] {
     let live = world
         .get::<Health>(foe)
         .is_some_and(|health| !health.is_dead());
     let Some(machine) = world.get::<StateMachine<EnemyState>>(foe).filter(|_| live) else {
-        return [None; 4];
+        return [None; 5];
     };
     let strike = world.get::<Brain>(foe).and_then(|brain| brain.strike);
     let own = match kind(world, foe) {
@@ -815,11 +821,14 @@ fn wanted_tags(world: &World, foe: Entity) -> [Option<&'static str>; 4] {
         Some(EnemyKind::Bat) => bat::roosting(world, foe).then_some(BAT_ROOSTING),
         _ => None,
     };
+    let searching = machine.state() == EnemyState::Search
+        && machine.elapsed() >= super::SEARCH_MARK_AFTER - 1e-4;
     [
         Some(machine.state().tag()),
         machine.is_held().then_some(HELD),
         strike.map(Strike::tag),
         own,
+        searching.then_some(SEARCHING),
     ]
 }
 
@@ -864,14 +873,12 @@ const TROLL_WALKS: [&str; 3] = [
 /// the late look pass: a troll's feet sound as they land, and a kind whose
 /// body is off its frame's centre (the troll) draws a `_left` frame, its
 /// right one mirrored, shifted by twice the difference, its body over its
-/// box, where the looks and the bar find it; a wisp's flare lights a
-/// second ember emitter. The physics sync writes the transform again each
-/// frame.
+/// box, where the looks and the bar find it. The physics sync writes the
+/// transform again each frame.
 pub fn clips(world: &mut World) {
     for enemy in enemies(world) {
         steps(world, enemy);
         mirror(world, enemy);
-        wisp::flare_embers(world, enemy);
     }
 }
 

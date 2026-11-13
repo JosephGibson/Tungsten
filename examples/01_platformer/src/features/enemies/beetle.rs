@@ -10,13 +10,9 @@
 //! its rear half takes every hit 01 builds whole (`combat::Hit`). Iron that
 //! drives into it at the crush speed kills it.
 
-use std::collections::HashMap;
-
 use glam::Vec2;
-use tungsten::core::{
-    BodyKind, Collider, Entity, Position, RigidBody, Shape, Time, Velocity, World,
-};
-use tungsten::kit::{Hitbox, PlatformerController, StateMachine, use_ability};
+use tungsten::core::{BodyKind, Collider, Entity, Position, RigidBody, Shape, Velocity, World};
+use tungsten::kit::{Hitbox, PlatformerController, use_ability};
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::components::{Enemy, EnemyKind, EnemyState, Held};
@@ -24,7 +20,7 @@ use super::systems::{armed, elapsed, face, go, pace, player, rest, sees, stride}
 use super::troll::meets;
 use super::{ARRIVED, centre, heading_of};
 use crate::features::audio::{self, components::Sound};
-use crate::shared::{body_centre, spawn_burst};
+use crate::shared::body_centre;
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -37,14 +33,9 @@ pub const CHARGE_RISE: f32 = 80.0;
 /// the charge lasts its ability's hitbox window.
 pub const PAW_CLIP: &str = "ex10_beetle_paw";
 pub const CHARGE_SPEED: f32 = 600.0;
-/// Its charge's ability, which arms its hitbox.
+/// Its charge's ability, which arms its hitbox. Its paw's dust, its
+/// charge's trail of it and its streaks are its prefab's looks.
 pub const CHARGE: &str = "beetle_charge";
-/// The dust: the paw's particle config at its front foot and the charge's
-/// in its trail, and the seconds between two puffs of each.
-pub const PAW_DUST: &str = "ex10_paw_dust";
-pub const DUST: &str = "ex10_charge_dust";
-pub const PAW_DUST_SECS: f32 = 0.15;
-pub const TRAIL_DUST_SECS: f32 = 0.06;
 /// The plough (K30): the box before its face, [`PLOUGH_HALF`] about its
 /// body's `plough` point ([`plough_box`]), and the kick a body
 /// there takes along its heading, px/s: [`PLOUGH_KICK`] over its mass, at
@@ -54,11 +45,6 @@ pub const PLOUGH_HALF: Vec2 = Vec2::new(12.0, 14.0);
 pub const PLOUGH_KICK: f32 = 12_000.0;
 pub const PLOUGH_MOST: f32 = 1_000.0;
 pub const PLOUGH_RISE: f32 = 0.3;
-
-/// Each beetle's seconds to its next puff of dust while it paws or
-/// charges: presentation, not saved, so a load starts each over.
-#[derive(Debug, Default)]
-pub struct Dust(HashMap<Entity, f32>);
 
 /// Whether `entity` is a beetle.
 #[must_use]
@@ -237,55 +223,4 @@ pub fn seek(world: &mut World, beetle: Entity, point: Option<Vec2>) -> bool {
         return true;
     }
     !stride(world, beetle, across.signum(), SEARCH_PACE)
-}
-
-/// `beetle_dust`, before the frame's particles: a beetle pawing kicks up a
-/// puff of [`PAW_DUST`] at its front foot every [`PAW_DUST_SECS`]; one
-/// charging leaves a trail of [`DUST`] at its rear feet every
-/// [`TRAIL_DUST_SECS`]. Drawn from the state each frame, so a load shows it
-/// at once.
-pub fn dust(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    if dt <= 0.0 {
-        return;
-    }
-    let beetles: Vec<(Entity, EnemyState, f32)> = world
-        .query::<(Entity, &Enemy, &StateMachine<EnemyState>)>()
-        .filter(|(_, enemy, _)| enemy.kind == EnemyKind::Beetle)
-        .map(|(entity, _, machine)| {
-            let heading = heading_of(world, entity).unwrap_or(1.0);
-            (entity, machine.state(), heading)
-        })
-        .collect();
-    let mut puffs = Vec::new();
-    let mut timers = std::mem::take(&mut world.resource_mut::<Dust>().0);
-    timers.retain(|entity, _| {
-        beetles.iter().any(|(e, state, _)| {
-            e == entity && matches!(state, EnemyState::WindUp | EnemyState::Attack)
-        })
-    });
-    for (beetle, state, heading) in beetles {
-        let (every, side, config) = match state {
-            EnemyState::WindUp => (PAW_DUST_SECS, 0.6, PAW_DUST),
-            EnemyState::Attack => (TRAIL_DUST_SECS, -0.5, DUST),
-            _ => continue,
-        };
-        let next = timers.entry(beetle).or_insert(0.0);
-        *next -= dt;
-        if *next > 0.0 {
-            continue;
-        }
-        *next += every;
-        if let Some(at) = centre(world, beetle) {
-            let half = super::body(world, EnemyKind::Beetle).half;
-            puffs.push((
-                at + Vec2::new(heading * side * half.x, half.y - 4.0),
-                config,
-            ));
-        }
-    }
-    world.resource_mut::<Dust>().0 = timers;
-    for (at, config) in puffs {
-        spawn_burst(world, config, at);
-    }
 }

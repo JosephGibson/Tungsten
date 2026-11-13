@@ -251,6 +251,49 @@
     "cooldown": {
       "seconds": 4,
       "count": 0
-    }
+    },
+    "looks": [
+      {
+        "when": {
+          "all": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_alert",
+            "offset": [
+              0,
+              -46
+            ],
+            "flip": false,
+            "bob": {
+              "height": 2,
+              "seconds": 0.5
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "all": [
+            "mark.search"
+          ],
+          "none": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_search",
+            "offset": [
+              0,
+              -46
+            ],
+            "flip": false
+          }
+        }
+      }
+    ]
   }
 }

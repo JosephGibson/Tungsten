@@ -85,7 +85,7 @@ def particle_configs():
         'double_jump':config('spark',18,18,.45,240,.24,spread=360,burst=True),
         'jump_puff':config('dust',8,8,.35,120,.3,spread=155,burst=True),
         # A beetle's charge (M79): a few low brown puffs at its feet.
-        'charge_dust':config('dust',6,5,.45,90,.34,direction=(0,-1),spread=150,burst=True),
+        'charge_dust':config('dust',40,5,.45,90,.34,direction=(0,-1),spread=150,burst=True),
         'fire_trail':config('spark',40,36,1.0,115,.23,spread=95),
         'torch_embers':config('spark',24,8,2.5,60,.12),
         'waterfall_spray':config('droplet',64,32,1.5,170,.18,spread=110),
@@ -101,7 +101,9 @@ def particle_configs():
         scale_over_life=[[0,.45],[.15,1],[.75,.6],[1,.05]],
         alpha_over_life=[[0,0],[.08,.9],[.8,.85],[1,0]],
         color_over_life=[[0,[.55,.8,1,1]],[.25,[.62,.35,1,1]],[.5,[1,.3,.8,1]],[.72,[1,.55,.18,1]],[.9,[1,.95,.8,1]],[1,[.4,.1,.5,1]]])
-    configs['charge_dust'].update(gravity=[0,40],drag_per_sec=1.6,color_over_life=[[0,[.66,.54,.4,1]],[1,[.42,.34,.26,0]]])
+    # A pulse of five every 0.06 s while it charges, its longest puff
+    # overlapping eight pulses: one look's emitter holds what one a puff did.
+    configs['charge_dust'].update(emission=dict(kind='pulse',count_per_pulse=5,interval_sec=.06),gravity=[0,40],drag_per_sec=1.6,color_over_life=[[0,[.66,.54,.4,1]],[1,[.42,.34,.26,0]]])
     configs['ball_explosion'].update(initial_velocity=dict(kind='radial',speed=dict(min=90,max=310)),gravity=[0,180],color_over_life=[[0,[1,.9,.4,1]],[.4,[1,.42,.08,1]],[1,[.35,.1,.06,0]]])
     # Warm flame bodies and finer, longer-lived torch embers; both rise.
     fire_ramp=[[0,[1,1,.8,1]],[.18,[1,.85,.25,1]],[.45,[1,.38,.035,1]],
@@ -596,8 +598,10 @@ def particle_configs():
     # out and falling with a few flakes, white. Particles draw under the
     # sprites, so each launches clear of the body or the burst first.
     earth = [[0, [.62, .5, .38, 1]], [.6, [.5, .42, .34, 1]], [1, [.38, .33, .29, 0]]]
+    # A pulse of four every 0.15 s while it paws, its longest puff
+    # overlapping four pulses.
     configs['paw_dust'] = full(
-        'dust', 12, burst(4), (.35, .6), cone((0, -1), 120, 50, 120), (0, 160), 2.2, (.18, .32),
+        'dust', 16, dict(kind='pulse', count_per_pulse=4, interval_sec=.15), (.35, .6), cone((0, -1), 120, 50, 120), (0, 160), 2.2, (.18, .32),
         [[0, .6], [.3, 1], [1, 1.4]], [[0, 0], [.12, .85], [.6, .6], [1, 0]], earth, (-2, 2))
     configs['dash_dust'] = full(
         'dust', 10, burst(8), (.3, .55), cone((0, -1), 170, 60, 170), (0, 220), 3.0, (.2, .34),

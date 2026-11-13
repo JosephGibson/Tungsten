@@ -57,5 +57,6 @@
   "troll.holding",
   "crawler.afraid",
   "bat.roosting",
-  "mark.alert"
+  "mark.alert",
+  "mark.search"
 ]

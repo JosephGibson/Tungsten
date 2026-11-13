@@ -36,9 +36,7 @@ use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::beetle::{self, PLOUGH_HALF};
 use example_01_platformer::features::enemies::components::{Brain, EnemyKind, EnemyState, Strike};
-use example_01_platformer::features::enemies::draw::{
-    HIT_COLOR, HIT_THICKNESS, MARK_ALERT, MARK_SEARCH, mark,
-};
+use example_01_platformer::features::enemies::draw::{HIT_COLOR, HIT_THICKNESS};
 use example_01_platformer::features::enemies::goblin::{self, STAB_HALF};
 use example_01_platformer::features::enemies::troll::{self, SLAM_REACH, SWIPE_HALF};
 use example_01_platformer::features::level::components::SceneTime;
@@ -1035,6 +1033,61 @@ fn machine_state(harness: &UiHarness, enemy: Entity) -> EnemyState {
         .state()
 }
 
+/// The marks' sprites, which the foes' prefabs' looks show.
+const MARK_ALERT: &str = "ex10_mark_alert";
+const MARK_SEARCH: &str = "ex10_mark_search";
+
+/// The offset from its drawn centre at which `foe`'s prefab's look shows
+/// the mark `sprite`.
+fn mark_offset(world: &tungsten::core::World, foe: Entity, sprite: &str) -> Option<Vec2> {
+    let mine = world.get::<example_01_platformer::features::enemies::components::Enemy>(foe)?;
+    let prefab = enemies::prefab(mine.kind, mine.variant);
+    let looks = world
+        .resource::<tungsten::core::PrefabRegistry>()
+        .get(prefab)?
+        .components
+        .get("looks")?
+        .as_array()?;
+    let overlay = looks
+        .iter()
+        .map(|entry| &entry["look"]["overlay"])
+        .find(|overlay| overlay["sprite"] == sprite)?;
+    let offset = overlay["offset"].as_array()?;
+    Some(Vec2::new(
+        offset[0].as_f64()? as f32,
+        offset[1].as_f64()? as f32,
+    ))
+}
+
+/// The mark `foe`'s looks show, read from the look parts: a part drawing
+/// the mark's sprite at its look's offset from the foe's drawn centre,
+/// mirrored as the foe faces, within its "!"'s 2 px bob. Headless, a frame
+/// has no size, so the drawn centre is its point.
+fn mark(world: &tungsten::core::World, foe: Entity) -> Option<&'static str> {
+    let at = world.get::<Transform>(foe)?.position;
+    let left = enemies::heading_of(world, foe) == Some(-1.0);
+    let assets = world.resource::<AssetRegistry>();
+    [MARK_ALERT, MARK_SEARCH].into_iter().find(|name| {
+        let Some(offset) = mark_offset(world, foe, name) else {
+            return false;
+        };
+        let point = at
+            + if left {
+                Vec2::new(-offset.x, offset.y)
+            } else {
+                offset
+            };
+        let sprite = assets.sprite_id(name);
+        world
+            .query::<(Entity, &Transform, &Sprite)>()
+            .any(|(part, transform, shown)| {
+                part != foe
+                    && Some(shown.asset_id) == sprite
+                    && transform.position.distance(point) <= 2.5
+            })
+    })
+}
+
 /// The sky's ground the enemies' tests stand on.
 const SKY_TOP: f32 = 1000.0;
 
@@ -1482,5 +1535,51 @@ fn a_hole_opens_over_three_tenths_of_a_second() {
             (small / full - 0.08).abs() <= 0.01,
             "{small} of {full}: not 0.08"
         );
+    }
+}
+
+#[test]
+fn a_marks_glyph_is_never_mirrored() {
+    let mut harness = super::harness();
+    super::start(&mut harness);
+    let player = super::player_entity(&harness);
+    super::calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    super::ground(&mut harness, SKY_TOP);
+    hold_step(&mut harness, player, 300.0);
+    // A crawler and a goblin searching, out of sight and awake, facing
+    // left: the goblin's mark sits 2 px right of its frame's centre facing
+    // right, so mirrored 2 px left of it.
+    let crawler = crawler(&mut harness, 900.0);
+    let kind = EnemyKind::Goblin;
+    let centre = Vec2::new(1100.0, SKY_TOP - kind_body(kind).half.y - 0.5);
+    let goblin = enemies::spawn(harness.world_mut(), kind, centre - kind_body(kind).centre)
+        .expect("its prefab");
+    for foe in [crawler, goblin] {
+        let world = harness.world_mut();
+        world.insert(foe, StateMachine::new(EnemyState::Search));
+        enemies::turn(world, foe, -1.0);
+    }
+    // Past its search's first 0.4 s.
+    for _ in 0..30 {
+        hold_step(&mut harness, player, 300.0);
+    }
+    let world = harness.world();
+    let search = world.resource::<AssetRegistry>().sprite_id(MARK_SEARCH);
+    for (foe, mirrored) in [
+        (crawler, Vec2::new(0.0, -46.0)),
+        (goblin, Vec2::new(-2.0, -46.0)),
+    ] {
+        assert_eq!(machine_state(&harness, foe), EnemyState::Search);
+        assert_eq!(enemies::heading_of(world, foe), Some(-1.0), "facing left");
+        assert_eq!(mark(world, foe), Some(MARK_SEARCH), "its ?");
+        let at = world.get::<Transform>(foe).unwrap().position + mirrored;
+        let parts: Vec<(Vec2, bool)> = world
+            .query::<(&Transform, &Sprite, &tungsten::core::components::SpriteFlip)>()
+            .filter(|(_, shown, _)| Some(shown.asset_id) == search)
+            .map(|(transform, _, flip)| (transform.position, flip.0))
+            .filter(|(point, _)| point.distance(at) < 0.01)
+            .collect();
+        assert_eq!(parts, [(at, false)], "at its mirrored offset, unflipped");
     }
 }

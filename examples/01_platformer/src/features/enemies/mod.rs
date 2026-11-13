@@ -40,8 +40,8 @@ pub mod wisp;
 use glam::Vec2;
 use tungsten::core::save::{SaveOptions, Value};
 use tungsten::core::{
-    AnimationRegistry, Entity, EventCursor, Position, PrefabRegistry, Schedule, Shape, Stage,
-    World, system,
+    AnimationRegistry, AssetRegistry, Entity, EventCursor, Position, PrefabRegistry, Schedule,
+    Shape, Stage, World, system,
 };
 use tungsten::kit::{
     CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
@@ -77,6 +77,8 @@ pub const RECOVER_SECS: f32 = 0.5;
 /// How long a search lasts before its "?" shows; a fresh alert's "!" is
 /// its `alert_mark` effect's seconds.
 pub const SEARCH_MARK_AFTER: f32 = 0.4;
+/// The "!" and "?" marks' sprites, which the foes' prefabs' looks show.
+const MARK_SPRITES: [&str; 2] = ["ex10_mark_alert", "ex10_mark_search"];
 /// The most summoned enemies live at once (Q12, Q45), beside the dummies'
 /// eight.
 pub const SUMMON_CAP: usize = 10;
@@ -232,9 +234,10 @@ impl EnemyKind {
 /// ([`systems::foe_tags`]) and where the dead fell; in `PreUpdate` the
 /// orbs' adoption; in the present phase the trolls' steps and shifted
 /// drawing after the kit's animator and before its late look pass, the
-/// beetles' dust, the dropped orbs' blink and, under F1, their hit
-/// tests before the kit's debug draw; and the beetles' streaks, the
-/// trolls' slam rings and the enemies' marks drawn over the sprites.
+/// dropped orbs' blink and, under F1, their hit tests before the kit's
+/// debug draw; and the trolls' slam rings drawn over the sprites. The
+/// marks, the beetle's streaks and dust and the wisp's flare are the
+/// prefabs' looks.
 pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
@@ -259,12 +262,17 @@ impl Plugin for EnemiesPlugin {
             SaveOptions::<Throws>::form::<components::ThrowsForm>().refs(components::throws_refs()),
         );
         world.register_data_kind::<Body>(BODIES);
+        // The marks' plain sprites, which the foes' looks name: interned
+        // before the manifest loads and checks each look's sprite. A load
+        // interns the manifest's every sprite first; the headless harness
+        // only those its animations, particles and prefabs' own sprites
+        // name (known issues).
+        world
+            .resource_mut::<AssetRegistry>()
+            .intern_sprites(MARK_SPRITES);
         world.register_event::<Spotted>();
         world.insert_resource(Throws::default());
-        world.resource_mut::<Extracts>().add_sprites(draw::charges);
         world.resource_mut::<Extracts>().add_sprites(draw::rings);
-        world.resource_mut::<Extracts>().add_sprites(draw::marks);
-        world.insert_resource(beetle::Dust::default());
         ensure_phases(schedule);
         systems::machine().build(schedule, world);
         let sight = system("enemy_sight", systems::sight).before("enemy_alerts");
@@ -320,10 +328,6 @@ impl Plugin for EnemiesPlugin {
             .after(CHARACTER_ANIMATOR)
             .before(EFFECT_LOOK_LATE);
         schedule.add(Stage::PostUpdate, Phase::Present.join(clips));
-        schedule.add(
-            Stage::PostUpdate,
-            Phase::Present.join(system("beetle_dust", beetle::dust)),
-        );
         let boxes = system("enemy_debug_boxes", draw::debug_boxes).before(KIT_DEBUG_DRAW);
         schedule.add(Stage::PostUpdate, Phase::Present.join(boxes));
     }

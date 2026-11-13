@@ -40,9 +40,9 @@
   ],
   "drag_per_sec": 1.6,
   "emission": {
-    "count": 5,
-    "kind": "burst",
-    "once": true
+    "count_per_pulse": 5,
+    "interval_sec": 0.06,
+    "kind": "pulse"
   },
   "gravity": [
     0,
@@ -64,7 +64,7 @@
     "max": 0.45,
     "min": 0.29250000000000004
   },
-  "max_alive": 6,
+  "max_alive": 40,
   "scale_over_life": [
     [
       0,
