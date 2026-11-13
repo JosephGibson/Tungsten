@@ -8,6 +8,10 @@
       "kind": "troll",
       "variant": "armoured"
     },
+    "facing": {
+      "from": "intent",
+      "snap": "horizontal"
+    },
     "tags": [
       "team.enemy",
       "flesh",

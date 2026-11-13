@@ -43,10 +43,6 @@ impl EnemyKind {
     }
 }
 
-fn right() -> f32 {
-    1.0
-}
-
 /// An enemy's variant of its kind (e01flask): the kind itself, or the
 /// armoured troll, the troll in iron plate, its own prefab, icon and clips
 /// on the troll's body, rules and ice.
@@ -67,12 +63,11 @@ impl Variant {
 }
 
 /// An enemy, which its prefab names `enemy` with its kind: where it patrols
-/// and returns to, its body's centre, which its spawn sets, its heading,
-/// 1 right or -1 left, which its hooks set and gameplay reads (the beetle's
-/// front), and how far from its home, across, a patrol may take it, which
-/// a map placement may set (the falls' crawler), and its variant, which its
-/// prefab sets. Saved; a schema 8 save's enemies have no leash, and an
-/// older save's no variant: plain.
+/// and returns to, its body's centre, which its spawn sets, how far from
+/// its home, across, a patrol may take it, which a map placement may set
+/// (the falls' crawler), and its variant, which its prefab sets; the way it
+/// faces is its prefab's `facing` (`enemies::heading_of`). Saved; a schema
+/// 8 save's enemies have no leash, and an older save's no variant: plain.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Enemy {
@@ -81,8 +76,6 @@ pub struct Enemy {
     pub variant: Variant,
     #[serde(default)]
     pub home: [f32; 2],
-    #[serde(default = "right")]
-    pub heading: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leash: Option<f32>,
 }

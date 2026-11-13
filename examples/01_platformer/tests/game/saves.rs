@@ -56,7 +56,7 @@ use example_01_platformer::features::toys::components::{
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game;
 use example_01_platformer::save::{self, MAP_ENEMIES, SaveGame};
-use example_01_platformer::shared::{Joined, SaveId, Saved, take_id};
+use example_01_platformer::shared::{Joined, SaveId, Saved};
 use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, SlotState};
 use glam::Vec2;
@@ -1255,9 +1255,7 @@ fn a_loaded_run_keeps_with_the_uninterrupted_one_in_a_churned_world() {
 /// save ID the run's next.
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = take_id(world);
-    let entity =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let entity = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
     entity
 }
@@ -1542,11 +1540,7 @@ fn a_snowball_in_flight_and_a_cooling_crawler_save_and_load_and_it_lands_as_it_w
         EnemyKind::Crawler,
         Vec2::new(600.0 + 260.0, TOP - 10.5),
     );
-    harness
-        .world_mut()
-        .get_mut::<Enemy>(crawler)
-        .unwrap()
-        .heading = -1.0;
+    enemies::turn(harness.world_mut(), crawler, -1.0);
     let crawler_id = id_of(&harness, crawler);
     let thrown = until(&mut harness, 240, |h| {
         !snowball::flying(h.world()).is_empty()
@@ -3612,4 +3606,80 @@ fn older_orbs_still_fall() {
     loaded.step(150);
     assert_eq!(point(&loaded, orb), landed, "it lands as the run's did");
     assert_eq!(point(&loaded, placed), float, "the placed orb stays put");
+}
+
+/// Each saved foe's `facing` among `value`'s records and patches moved back
+/// onto its `enemy` as the `heading` schema 30 wrote, 1 right or -1 left;
+/// how many it moved.
+fn facing_as_schema_30(value: &mut serde_json::Value) -> usize {
+    let mut moved = 0;
+    match value {
+        serde_json::Value::Object(object) => {
+            if object
+                .get("enemy")
+                .is_some_and(serde_json::Value::is_object)
+            {
+                let left = object
+                    .remove("facing")
+                    .and_then(|facing| facing["direction"][0].as_f64())
+                    .is_some_and(|x| x < 0.0);
+                object["enemy"]["heading"] = serde_json::Value::from(if left { -1.0 } else { 1.0 });
+                moved += 1;
+            }
+            for inner in object.values_mut() {
+                moved += facing_as_schema_30(inner);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                moved += facing_as_schema_30(item);
+            }
+        }
+        _ => {}
+    }
+    moved
+}
+
+#[test]
+fn an_older_save_keeps_its_foes_facing() {
+    let dir = user_folder("facing-30");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let player = player_entity(&harness);
+    scaffold(&mut harness);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.step(1);
+    // Two crawlers on the sky's ground, the first turned left, written as
+    // schema 30 wrote them and loaded through their slot, which migrates
+    // them.
+    let left = enemy(
+        &mut harness,
+        EnemyKind::Crawler,
+        Vec2::new(1400.0, TOP - 40.0),
+    );
+    let right = enemy(
+        &mut harness,
+        EnemyKind::Crawler,
+        Vec2::new(1800.0, TOP - 40.0),
+    );
+    enemies::turn(harness.world_mut(), left, -1.0);
+    let ids = (id_of(&harness, left), id_of(&harness, right));
+    let mut older = json(&capture(&harness));
+    assert!(
+        facing_as_schema_30(&mut older["world"]) >= 2,
+        "the two crawlers' records"
+    );
+    let stamp = tungsten::core::SaveStamp::new(30, "0.117.0", 1_760_400_000_000);
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_1", &older, &stamp)
+        .expect("a schema 30 save is written");
+    let save = slots
+        .load::<SaveGame>("slot_1")
+        .expect("a schema 30 save migrates");
+    load(&mut harness, save);
+    let heading = |id| enemies::heading_of(harness.world(), by_id(&harness, id));
+    assert_eq!(heading(ids.0), Some(-1.0), "it loads facing left");
+    assert_eq!(heading(ids.1), Some(1.0), "and the other right");
+    let _ = std::fs::remove_dir_all(dir);
 }

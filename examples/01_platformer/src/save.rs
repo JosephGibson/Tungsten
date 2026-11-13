@@ -21,12 +21,12 @@
 //! 7.14's prefab table takes them over. Schema 29 makes the run's spawns
 //! records, so `migrate_step` refuses every older save, which reads as an
 //! older version's (`D-204`); schema 30 moves arcane power's `spell_power`
-//! onto the kit's `damage_dealt`, and migrates a schema-29 save.
+//! onto the kit's `damage_dealt`, and schema 31 an enemy's `heading` onto
+//! the kit's `facing`, each migrating the schema before.
 //!
 //! A save names another entity by its save ID, never by its entity.
 //! Presentation is not saved: particles, lights, glows, flames, overlays
-//! and tints, animation and facing, flashes, shake, toasts, the HUD and the
-//! music.
+//! and tints, animation, flashes, shake, toasts, the HUD and the music.
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -81,8 +81,9 @@ impl SaveData for SaveGame {
     /// 29 its spawns onto the World save's records: `migrate_step` refuses
     /// every older schema, whose slot reads as an older version's
     /// (`D-204`). Schema 30 moved arcane power's `spell_power` onto a
-    /// `damage_dealt` line ([`to_30`]).
-    const SCHEMA: u32 = 30;
+    /// `damage_dealt` line ([`to_30`]), and 31 an enemy's `heading` onto
+    /// the kit's `facing` ([`to_31`]).
+    const SCHEMA: u32 = 31;
 
     fn migrate_step(
         from: u32,
@@ -94,6 +95,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 29: the save has no world")?;
                 to_30(world);
+                Ok(data)
+            }
+            30 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 30: the save has no world")?;
+                to_31(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -161,6 +169,51 @@ fn to_30(value: &mut Value) {
         }
         _ => {}
     }
+}
+
+/// Schema 30 to 31 over a save's `world`: every saved `enemy`, a record's
+/// or a patch's, loses its `heading`, 1 right or -1 left, which becomes the
+/// kit's `facing` beside it, from an intent and snapped left or right, as
+/// the foes' prefabs give it at schema 31.
+fn to_31(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let heading = object
+                .get_mut("enemy")
+                .and_then(Value::as_object_mut)
+                .and_then(|enemy| enemy.remove("heading"));
+            if let Some(heading) = heading {
+                let left = heading.as_f64().is_some_and(|x| x < 0.0);
+                object.entry("facing").or_insert_with(|| s30_facing(left));
+            }
+            for inner in object.values_mut() {
+                to_31(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                to_31(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A foe's `facing` as schema 31 saves it, facing left or right: frozen
+/// for the migration.
+fn s30_facing(left: bool) -> Value {
+    let x = if left { -1.0 } else { 1.0 };
+    Value::from_iter([
+        ("from".to_owned(), Value::from("intent")),
+        ("snap".to_owned(), Value::from("horizontal")),
+        ("turn".to_owned(), Value::from(false)),
+        ("offset".to_owned(), Value::from(0.0)),
+        ("min_speed".to_owned(), Value::from(1.0)),
+        (
+            "direction".to_owned(),
+            Value::from(vec![Value::from(x), Value::from(0.0)]),
+        ),
+    ])
 }
 
 /// The dummies the map's `dummies` layer places.

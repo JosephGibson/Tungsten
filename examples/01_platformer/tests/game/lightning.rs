@@ -25,7 +25,6 @@ use example_01_platformer::features::lightning::{
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, IRON_HALF};
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shared::take_id;
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
@@ -584,9 +583,7 @@ fn a_jumps_arc_crackles_on_new_paths_and_goes_after_its_life() {
 /// An enemy of `kind`, its mind taken away, its body's centre at `centre`.
 fn still_enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = take_id(world);
-    let enemy =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let enemy = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     world.remove_component::<StateMachine<EnemyState>>(enemy);
     enemy
 }

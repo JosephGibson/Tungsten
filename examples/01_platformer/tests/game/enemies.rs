@@ -59,7 +59,7 @@ use example_01_platformer::features::toys::components::{PreviousVelocity, ScrapT
 use example_01_platformer::features::{player as courier, toys};
 use example_01_platformer::game;
 use example_01_platformer::save;
-use example_01_platformer::shared::{SaveId, Saved, body_centre, take_id};
+use example_01_platformer::shared::{SaveId, Saved, body_centre};
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
 use glam::Vec2;
 use tungsten::SceneEntity;
@@ -96,9 +96,7 @@ fn arena() -> (UiHarness, Entity) {
 /// save ID the run's next.
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = take_id(world);
-    let entity =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let entity = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
     entity
 }
@@ -257,9 +255,7 @@ fn troll_at(harness: &mut UiHarness, x: f32, difficulty: Difficulty) -> Entity {
     let kind = EnemyKind::Troll;
     let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = take_id(world);
-    let troll =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let troll = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, troll, difficulty);
     troll
 }
@@ -835,7 +831,7 @@ fn the_crawler_walks_its_ledge_and_turns_at_the_ends() {
         low = low.min(now.x);
         high = high.max(now.x);
         assert!((now.y - rest).abs() < 2.0, "on the ledge: {now}");
-        let facing = harness.world().get::<Enemy>(crawler).unwrap().heading;
+        let facing = enemies::heading_of(harness.world(), crawler).unwrap();
         if facing != heading {
             turns += 1;
             heading = facing;
@@ -887,7 +883,7 @@ fn a_crawler_is_scared_at_the_drawn_light() {
         }
         assert!(nearest >= -1.0, "outside its fear's edge: {nearest}");
         assert!(nearest <= 24.0, "held at the edge: {nearest}");
-        let heading = harness.world().get::<Enemy>(crawler).unwrap().heading;
+        let heading = enemies::heading_of(harness.world(), crawler).unwrap();
         assert_eq!(heading, -side, "facing the player");
         let clip = &harness
             .world()
@@ -960,7 +956,7 @@ fn a_crawler_in_the_light_backs_out_past_its_fear_facing_the_player() {
         }
     }
     assert!(out.is_some(), "out past its fear's edge within 1.5 s");
-    let heading = harness.world().get::<Enemy>(crawler).unwrap().heading;
+    let heading = enemies::heading_of(harness.world(), crawler).unwrap();
     assert_eq!(heading, -1.0, "facing the player");
     assert!(
         clips.iter().any(|clip| clip == "ex10_crawler_retreat_left"),
@@ -1000,11 +996,7 @@ fn the_crawler_runs_at_210_from_a_fresh_spawn() {
     harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
     let crawler = walker(&mut harness, EnemyKind::Crawler, 300.0 + 395.0, TOP);
     // Facing the player, which its eye sees from there.
-    harness
-        .world_mut()
-        .get_mut::<Enemy>(crawler)
-        .unwrap()
-        .heading = -1.0;
+    enemies::turn(harness.world_mut(), crawler, -1.0);
     let mut fastest = 0.0_f32;
     for _ in 0..60 {
         harness.step(1);
@@ -1042,11 +1034,7 @@ fn crossing(side: f32, gap: f32, up: f32) -> (bool, bool, usize, f32) {
     harness.step(1);
     stand(&mut harness, player, edge + side * 350.0, far);
     let crawler = walker(&mut harness, EnemyKind::Crawler, edge - side * 50.0, near);
-    harness
-        .world_mut()
-        .get_mut::<Enemy>(crawler)
-        .unwrap()
-        .heading = side;
+    enemies::turn(harness.world_mut(), crawler, side);
     let half = kind_body(EnemyKind::Crawler).half;
     let (mut hops, mut reached, mut kept, mut nearest) = (0, false, true, f32::MAX);
     for _ in 0..180 {
@@ -1237,11 +1225,7 @@ fn the_crawlers_lunge_leaps_about_270_px_and_80_up() {
     still(&mut harness, crawler);
     harness.step(2);
     let start = at(&harness, crawler);
-    harness
-        .world_mut()
-        .get_mut::<Enemy>(crawler)
-        .unwrap()
-        .heading = 1.0;
+    enemies::turn(harness.world_mut(), crawler, 1.0);
     crawler::enter_attack(harness.world_mut(), crawler);
     let grounded = |h: &UiHarness| {
         h.world()
@@ -1326,11 +1310,7 @@ fn a_dark_crawler_snowballs_the_player_on_its_arc_then_cools_four_seconds() {
     let x = 1540.0;
     stand(&mut harness, player, x, TOP);
     let crawler = walker(&mut harness, EnemyKind::Crawler, x + 260.0, TOP);
-    harness
-        .world_mut()
-        .get_mut::<Enemy>(crawler)
-        .unwrap()
-        .heading = -1.0;
+    enemies::turn(harness.world_mut(), crawler, -1.0);
     let gravity = harness
         .world()
         .resource::<tungsten::core::PhysicsConfig>()
@@ -1389,11 +1369,7 @@ fn a_cooling_crawler_closes_in_and_lunges() {
     harness.harness_mut().set_dt(1.0 / 60.0);
     harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
     let crawler = walker(&mut harness, EnemyKind::Crawler, 300.0 + 350.0, TOP);
-    harness
-        .world_mut()
-        .get_mut::<Enemy>(crawler)
-        .unwrap()
-        .heading = -1.0;
+    enemies::turn(harness.world_mut(), crawler, -1.0);
     cool(&mut harness, crawler);
     let start = at(&harness, crawler).x;
     let (mut lunged, mut thrown) = (false, 0);
@@ -1414,11 +1390,7 @@ fn a_cooling_crawler_closes_in_and_lunges() {
 fn a_crawler_held_at_the_fear_edge_snowballs_a_lit_player_and_never_lunges() {
     let (mut harness, player, _) = lit_arena();
     let crawler = walker(&mut harness, EnemyKind::Crawler, 900.0 + 340.0, TOP);
-    harness
-        .world_mut()
-        .get_mut::<Enemy>(crawler)
-        .unwrap()
-        .heading = -1.0;
+    enemies::turn(harness.world_mut(), crawler, -1.0);
     let (mut thrown, mut lunges, mut hits, mut deepest) = (0, 0, Vec::new(), f32::MAX);
     for _ in 0..360 {
         stand(&mut harness, player, 900.0, TOP);
@@ -1558,11 +1530,7 @@ fn the_beetles_front_turns_a_bullet_that_flies_on_and_hits_another_target() {
     let (mut harness, player) = arena();
     let dummy = dummy_at(&mut harness, 700.0);
     let beetle = walker(&mut harness, EnemyKind::Beetle, 1300.0, TOP);
-    harness
-        .world_mut()
-        .get_mut::<Enemy>(beetle)
-        .unwrap()
-        .heading = -1.0;
+    enemies::turn(harness.world_mut(), beetle, -1.0);
     harness.step(2);
     let y = at(&harness, beetle).y;
     let id = shoot(&mut harness, Vec2::new(1000.0, y), Vec2::X);
@@ -1588,7 +1556,7 @@ fn the_beetles_rear_takes_a_bullet_whole_and_ends_it() {
     let beetle = walker(&mut harness, EnemyKind::Beetle, 1300.0, TOP);
     harness.step(2);
     assert_eq!(
-        harness.world().get::<Enemy>(beetle).unwrap().heading,
+        enemies::heading_of(harness.world(), beetle).unwrap(),
         1.0,
         "its rear toward the shot"
     );
@@ -1680,7 +1648,7 @@ fn beetle_before(
 /// attack, entered at the next step.
 fn charge(harness: &mut UiHarness, beetle: Entity, heading: f32) {
     let world = harness.world_mut();
-    world.get_mut::<Enemy>(beetle).unwrap().heading = heading;
+    enemies::turn(world, beetle, heading);
     world.insert(beetle, StateMachine::new(EnemyState::Attack));
 }
 
@@ -3538,9 +3506,7 @@ fn a_rock_from_a_goblin_killed_in_flight_still_lands_at_its_factor() {
     let kind = EnemyKind::Goblin;
     let centre = Vec2::new(620.0, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = take_id(world);
-    let goblin =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let goblin = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, goblin, Difficulty::Hard);
     harness.step(1);
     let threw = until(&mut harness, 300, |h| !thrown(h).is_empty());
@@ -3910,7 +3876,7 @@ fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
     let (mut harness, _) = arena();
     let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
     still(&mut harness, troll);
-    let heading = harness.world().get::<Enemy>(troll).unwrap().heading;
+    let heading = enemies::heading_of(harness.world(), troll).unwrap();
     let crate_at = Vec2::new(900.0 + 70.0 * heading, TOP - CRATE_HALF.y);
     let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, crate_at);
     harness.step(2);
@@ -4263,8 +4229,7 @@ fn a_bat_diving_through_a_hole_dives_on_its_own_way_after() {
 fn a_shot_turns_off_a_beetles_front_and_hits_it_once_corroded() {
     let (mut harness, player) = arena();
     let beetle = walker(&mut harness, EnemyKind::Beetle, 1300.0, TOP);
-    let face_left =
-        |h: &mut UiHarness| h.world_mut().get_mut::<Enemy>(beetle).unwrap().heading = -1.0;
+    let face_left = |h: &mut UiHarness| enemies::turn(h.world_mut(), beetle, -1.0);
     face_left(&mut harness);
     harness.step(2);
     // Its front toward the shot turns it, unharmed.
@@ -4303,9 +4268,8 @@ fn armoured_troll_at(harness: &mut UiHarness, x: f32) -> Entity {
     let kind = EnemyKind::Troll;
     let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = take_id(world);
     let corner = centre - kind_body(kind).centre;
-    let troll = enemies::spawn_as(world, kind, Variant::Armoured, corner, id).expect("its prefab");
+    let troll = enemies::spawn_as(world, kind, Variant::Armoured, corner).expect("its prefab");
     enemies::scale(world, troll, Difficulty::Normal);
     troll
 }
@@ -4442,7 +4406,7 @@ fn a_shot_turns_off_the_armoured_trolls_front() {
     let (mut harness, player) = arena();
     let troll = armoured_troll_at(&mut harness, 1300.0);
     still(&mut harness, troll);
-    harness.world_mut().get_mut::<Enemy>(troll).unwrap().heading = -1.0;
+    enemies::turn(harness.world_mut(), troll, -1.0);
     harness.step(2);
     let y = at(&harness, troll).y;
     let id = shoot(&mut harness, Vec2::new(1000.0, y), Vec2::X);

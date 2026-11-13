@@ -17,7 +17,7 @@ use super::components::{
 };
 use super::{
     ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
-    WALL_LAYERS, bat, beetle, centre, crawler, goblin, troll, wisp,
+    WALL_LAYERS, bat, beetle, centre, crawler, goblin, heading_of, troll, turn, wisp,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, CORRODED, FROZEN, STUNNED, has_status};
@@ -91,15 +91,14 @@ pub fn sees(world: &World, enemy: Entity) -> bool {
     world.get::<Sight>(enemy).is_some_and(|sight| sight.sees)
 }
 
-/// Turns `enemy` to face `x`.
+/// Turns `enemy` to face `x` from its body's centre, past a pixel's dead
+/// zone, by its `Facing` ([`turn`]).
 pub fn face(world: &mut World, enemy: Entity, x: f32) {
     let Some(at) = centre(world, enemy) else {
         return;
     };
-    if let Some(mine) = world.get_mut::<Enemy>(enemy)
-        && (x - at.x).abs() > 1.0
-    {
-        mine.heading = (x - at.x).signum();
+    if (x - at.x).abs() > 1.0 {
+        turn(world, enemy, (x - at.x).signum());
     }
 }
 
@@ -178,9 +177,7 @@ pub fn stride(world: &mut World, walker: Entity, heading: f32, pace: f32) -> boo
         rest(world, walker);
         return false;
     }
-    if let Some(mine) = world.get_mut::<Enemy>(walker) {
-        mine.heading = heading;
-    }
+    turn(world, walker, heading);
     if let Some(controller) = world.get_mut::<PlatformerController>(walker) {
         controller.set_run(heading * pace);
     }
@@ -190,7 +187,7 @@ pub fn stride(world: &mut World, walker: Entity, heading: f32, pace: f32) -> boo
 /// Walks `walker` its ground at `pace`, turning at each end and at walls;
 /// in the air it waits to land.
 pub fn pace(world: &mut World, walker: Entity, pace: f32) {
-    let Some(heading) = world.get::<Enemy>(walker).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, walker) else {
         return;
     };
     let grounded = world
@@ -507,8 +504,8 @@ pub fn clear(world: &World, seer: Entity, from: Vec2, to: Vec2) -> bool {
 #[must_use]
 pub fn eye(world: &World, enemy: Entity) -> Option<Vec2> {
     let at = world.get::<Position>(enemy)?.0;
-    let mine = world.get::<Enemy>(enemy)?;
-    Some(at + super::body(world, mine.kind).point("eye", mine.heading)?)
+    let kind = world.get::<Enemy>(enemy)?.kind;
+    Some(at + super::body(world, kind).point("eye", heading_of(world, enemy)?)?)
 }
 
 /// `enemy_sight`, in the intent phase: every [`SIGHT_EVERY`] seconds an
@@ -774,7 +771,11 @@ fn clip(world: &World, enemy: Entity) -> Option<String> {
         }
         EnemyKind::Goblin => goblin::clip(world, enemy, state),
     };
-    let side = if mine.heading < 0.0 { "_left" } else { "" };
+    let side = if heading_of(world, enemy) == Some(-1.0) {
+        "_left"
+    } else {
+        ""
+    };
     let stripped = has_status(world, enemy, CORRODED);
     match (mine.kind, mine.variant) {
         (EnemyKind::Troll, Variant::Armoured) => {
@@ -875,7 +876,7 @@ fn mirror(world: &mut World, enemy: Entity) {
     };
     let body = super::body(world, mine.kind);
     let shift = 2.0 * body.centre.x - body.frame.x;
-    if mine.heading < 0.0
+    if heading_of(world, enemy) == Some(-1.0)
         && shift != 0.0
         && let Some(transform) = world.get_mut::<Transform>(enemy)
     {

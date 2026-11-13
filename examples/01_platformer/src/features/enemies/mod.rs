@@ -43,7 +43,7 @@ use tungsten::core::{
     World, system,
 };
 use tungsten::kit::{
-    ANIMATION_TICK, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line, Modifier, PICKUP_TICK,
+    ANIMATION_TICK, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line, Modifier, PICKUP_TICK,
     PLATFORMER_CONTROLLER, Phase, PickedUp, Stats, TOP_DOWN_MOVER, TagFilter, WorldSource,
     WorldSources, ensure_phases,
 };
@@ -54,7 +54,7 @@ use crate::features::combat;
 use crate::features::level::{self, LAVA_LAYER};
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
-use crate::shared::{self, BODIES, Body, SaveId, Saved, despawn_tree, spawn_key_burst};
+use crate::shared::{self, BODIES, Body, Saved, despawn_tree, spawn_key_burst};
 use crate::shell::Difficulty;
 use components::{
     Brain, Enemy, EnemyKind, EnemyState, PlacedEnemies, Shown, Sight, Spotted, Throws, Variant,
@@ -385,19 +385,18 @@ pub const fn icon(kind: EnemyKind, variant: Variant) -> &'static str {
 
 /// Spawns a plain enemy of `kind` with its sprite's top-left at `corner`
 /// ([`spawn_as`]).
-pub fn spawn(world: &mut World, kind: EnemyKind, corner: Vec2, id: SaveId) -> Option<Entity> {
-    spawn_as(world, kind, Variant::Plain, corner, id)
+pub fn spawn(world: &mut World, kind: EnemyKind, corner: Vec2) -> Option<Entity> {
+    spawn_as(world, kind, Variant::Plain, corner)
 }
 
-/// [`spawn_record`] for a caller that took a save ID first, as every one
-/// did while 01's own records held its enemies: the ID goes unused, since a
-/// record takes the run's next at its spawn.
+/// Spawns an enemy of `kind`'s `variant` with its sprite's top-left at
+/// `corner`, one of the run's records ([`spawn_record`]), which takes the
+/// run's next save ID at its spawn: a test's.
 pub fn spawn_as(
     world: &mut World,
     kind: EnemyKind,
     variant: Variant,
     corner: Vec2,
-    _id: SaveId,
 ) -> Option<Entity> {
     spawn_record(world, kind, variant, corner)
 }
@@ -620,6 +619,27 @@ pub fn clip_secs(world: &World, clip: &str) -> f32 {
         .get_resource::<AnimationRegistry>()
         .and_then(|registry| registry.get(clip))
         .map_or(0.0, |data| data.total_duration_ms() as f32 / 1000.0)
+}
+
+/// Which way `enemy` faces along x, 1 right or -1 left: its prefab's
+/// `facing`, from an intent it never has, so only [`turn`] turns it; none
+/// without one.
+#[must_use]
+pub fn heading_of(world: &World, enemy: Entity) -> Option<f32> {
+    let facing = world.get::<Facing>(enemy)?;
+    Some(if facing.direction().x < 0.0 {
+        -1.0
+    } else {
+        1.0
+    })
+}
+
+/// Turns `enemy` to `heading` along x, 1 right or -1 left
+/// (`Facing::face`); its facing holds it until the next turn.
+pub fn turn(world: &mut World, enemy: Entity, heading: f32) {
+    if let Some(facing) = world.get_mut::<Facing>(enemy) {
+        facing.face(Vec2::new(heading, 0.0));
+    }
 }
 
 /// An enemy's body centre.

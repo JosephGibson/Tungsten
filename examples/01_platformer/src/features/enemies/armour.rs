@@ -1,5 +1,5 @@
-//! Armour (e01flask, Q3, Q6): an `armoured` creature's front, the half its
-//! heading faces, turns bullets as iron does while it lives, unfrozen and
+//! Armour (e01flask, Q3, Q6): an `armoured` creature's front, the half it
+//! faces, turns bullets as iron does while it lives, unfrozen and
 //! uncorroded (`gun::systems`); its rear half takes a hit whole: every hit
 //! 01 builds (`combat::Hit`) and every kit blast and impact naming the
 //! `armour` hit preparation ([`prepare`]). The beetle and the armoured
@@ -10,8 +10,7 @@ use glam::Vec2;
 use tungsten::core::{Entity, World};
 use tungsten::kit::{DamageRequest, Penetration};
 
-use super::centre;
-use super::components::Enemy;
+use super::{centre, heading_of};
 use crate::features::combat::{ARMOURED, Kind, has_status};
 
 /// The hit preparation [`prepare`] is registered as (`game::register`),
@@ -25,13 +24,13 @@ pub fn armoured(world: &World, entity: Entity) -> bool {
 }
 
 /// Whether `point` lies on `target`'s front half: past its centre on the
-/// side its heading faces.
+/// side it faces ([`heading_of`]).
 #[must_use]
 pub fn front(world: &World, target: Entity, point: Vec2) -> bool {
-    let (Some(mine), Some(at)) = (world.get::<Enemy>(target), centre(world, target)) else {
+    let (Some(heading), Some(at)) = (heading_of(world, target), centre(world, target)) else {
         return false;
     };
-    (point.x - at.x) * mine.heading > 0.0
+    (point.x - at.x) * heading > 0.0
 }
 
 /// Whether `target` wears armour and `point` lies on its rear half, which

@@ -42,7 +42,7 @@ use super::components::{
     Brain, Enemy, EnemyKind, EnemyState, Held, Holding, Strike, Throw, Throws,
 };
 use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
-use super::{ARRIVED, WALK_SHOVE_MOST, centre, hop};
+use super::{ARRIVED, WALK_SHOVE_MOST, centre, heading_of, hop};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
@@ -198,7 +198,7 @@ fn place(world: &mut World, troll: Entity, object: Entity) {
     let (Some(at), Some(collider), Some(heading)) = (
         world.get::<Position>(troll).map(|at| at.0),
         world.get::<Collider>(object).copied(),
-        world.get::<Enemy>(troll).map(|mine| mine.heading),
+        heading_of(world, troll),
     ) else {
         return;
     };
@@ -312,7 +312,7 @@ pub fn throw(world: &mut World, troll: Entity) -> Option<Entity> {
 #[must_use]
 pub fn fist(world: &World, troll: Entity) -> Option<Vec2> {
     let at = world.get::<Position>(troll)?.0;
-    let heading = world.get::<Enemy>(troll)?.heading;
+    let heading = heading_of(world, troll)?;
     Some(at + super::body(world, EnemyKind::Troll).point("fist", heading)?)
 }
 
@@ -411,7 +411,7 @@ pub(crate) fn meets(centre: Vec2, shape: Shape, at: Vec2, half: Vec2) -> bool {
 #[must_use]
 pub fn swipe_box(world: &World, troll: Entity) -> Option<Vec2> {
     let at = centre(world, troll)?;
-    let heading = world.get::<Enemy>(troll)?.heading;
+    let heading = heading_of(world, troll)?;
     Some(at + Vec2::new(SWIPE_AT.x * heading, SWIPE_AT.y))
 }
 
@@ -424,7 +424,7 @@ pub fn swipe(world: &mut World, troll: Entity) {
     let (Some(box_at), Some(from)) = (swipe_box(world, troll), centre(world, troll)) else {
         return;
     };
-    let heading = world.get::<Enemy>(troll).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, troll).unwrap_or(1.0);
     let mut near: Vec<(u64, Entity, Vec2)> = world
         .query::<(Entity, &Saved, &Position, &Collider)>()
         .filter_map(|(entity, id, position, collider)| {
@@ -484,7 +484,7 @@ pub fn patrol(world: &mut World, troll: Entity) {
 /// its back, at rest, so it falls to the ground where its patrol walks
 /// away from it, not onto its head, too short a way to set a keg off.
 fn set_down(world: &mut World, troll: Entity, object: Entity) {
-    let heading = world.get::<Enemy>(troll).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, troll).unwrap_or(1.0);
     if let (Some(at), Some(collider), Some(point)) = (
         centre(world, troll),
         world.get::<Collider>(object).copied(),

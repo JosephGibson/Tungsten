@@ -36,6 +36,12 @@ pub const BAR_FILL: [u8; 4] = [196, 48, 40, 255];
 pub const FLAT: &str = "ex10_mote";
 const FLAT_TEXEL: Vec2 = Vec2::new(31.5, 31.5);
 
+/// Which way `enemy` faces along x ([`super::heading_of`]), right without a
+/// facing.
+fn heading(world: &World, enemy: Entity) -> f32 {
+    super::heading_of(world, enemy).unwrap_or(1.0)
+}
+
 /// The x of `enemy`'s body in its frame as it is drawn: a left frame is its
 /// right one mirrored, drawn shifted ([`super::systems::clips`]).
 fn body_x(body: &Body, heading: f32) -> f32 {
@@ -68,11 +74,14 @@ pub fn bars(world: &World) -> Vec<SpriteBatch> {
     };
     let (min, max) = view(world);
     let mut batches = Vec::new();
-    for (enemy, health, at) in world.query::<(&Enemy, &Health, &Transform)>() {
+    for (entity, enemy, health) in world.query::<(Entity, &Enemy, &Health)>() {
+        let Some(at) = world.get::<Transform>(entity) else {
+            continue;
+        };
         if enemy.kind != EnemyKind::Troll || health.is_dead() {
             continue;
         }
-        let body = body_x(body(world, enemy.kind), enemy.heading);
+        let body = body_x(body(world, enemy.kind), heading(world, entity));
         let origin = at.position + Vec2::new(body - BAR_SIZE.x / 2.0, -BAR_RISE - BAR_SIZE.y);
         if (origin + BAR_SIZE).cmplt(min).any() || origin.cmpgt(max).any() {
             continue;
@@ -117,23 +126,23 @@ pub fn charges(world: &World) -> Vec<SpriteBatch> {
     let half = body(world, EnemyKind::Beetle).half;
     let frame = (drawn_time(world) / STREAK_FRAME_SECS) as usize % STREAK_FRAMES;
     let mut batches = Vec::new();
-    for (enemy, machine, at) in world.query::<(&Enemy, &StateMachine<EnemyState>, &Transform)>() {
+    for (entity, enemy, machine) in world.query::<(Entity, &Enemy, &StateMachine<EnemyState>)>() {
+        let Some(at) = world.get::<Transform>(entity) else {
+            continue;
+        };
         if enemy.kind != EnemyKind::Beetle || machine.state() != EnemyState::Attack {
             continue;
         }
-        let side = if enemy.heading < 0.0 { "_left" } else { "" };
+        let heading = heading(world, entity);
+        let side = if heading < 0.0 { "_left" } else { "" };
         let Some(asset) = assets.get_sprite(&format!("{STREAK}_{frame}{side}")) else {
             continue;
         };
         let body = body(world, enemy.kind);
-        let centre = at.position + Vec2::new(body_x(body, enemy.heading), body.centre.y);
+        let centre = at.position + Vec2::new(body_x(body, heading), body.centre.y);
         let size = Vec2::new(asset.width as f32, asset.height as f32);
-        let rear = centre.x - enemy.heading * (half.x + STREAK_BEHIND);
-        let left = if enemy.heading > 0.0 {
-            rear - size.x
-        } else {
-            rear
-        };
+        let rear = centre.x - heading * (half.x + STREAK_BEHIND);
+        let left = if heading > 0.0 { rear - size.x } else { rear };
         let origin = Vec2::new(left, centre.y - size.y / 2.0);
         if (origin + size).cmplt(min).any() || origin.cmpgt(max).any() {
             continue;
@@ -181,10 +190,11 @@ pub fn rings(world: &World) -> Vec<SpriteBatch> {
             continue;
         }
         let body = body(world, enemy.kind);
-        let Some(fist) = body.point("fist", enemy.heading) else {
+        let heading = heading(world, entity);
+        let Some(fist) = body.point("fist", heading) else {
             continue;
         };
-        let centre = at.position + Vec2::new(body_x(body, enemy.heading), body.centre.y);
+        let centre = at.position + Vec2::new(body_x(body, heading), body.centre.y);
         let fist = centre + fist - body.centre;
         let span = Vec2::new(reach, reach * RING_FLAT) + RING_DOT;
         if (fist + span).cmplt(min).any() || (fist - span).cmpgt(max).any() {
@@ -260,7 +270,7 @@ pub fn marks(world: &World) -> Vec<SpriteBatch> {
         } else {
             0.0
         };
-        let body = body_x(body(world, enemy.kind), enemy.heading);
+        let body = body_x(body(world, enemy.kind), heading(world, entity));
         let rise = MARK_RISE + bar + MARK_SIDE + bob;
         let origin = at.position + Vec2::new(body - MARK_SIDE / 2.0, -rise);
         if (origin + Vec2::splat(MARK_SIDE)).cmplt(min).any() || origin.cmpgt(max).any() {

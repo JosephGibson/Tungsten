@@ -16,7 +16,7 @@ use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
 use example_01_platformer::features::player::systems::{JUMP_PUFF, LANDING_DUST};
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shared::{BURST_CAP, Burst, Saved, spawn_burst, take_id};
+use example_01_platformer::shared::{BURST_CAP, Burst, Saved, spawn_burst};
 use example_01_platformer::shell::options::GameOptions;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, ResolvedManifest, TilemapData, TilemapLayer};
@@ -35,9 +35,7 @@ use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::beetle::{self, PLOUGH_HALF};
-use example_01_platformer::features::enemies::components::{
-    Brain, Enemy, EnemyKind, EnemyState, Strike,
-};
+use example_01_platformer::features::enemies::components::{Brain, EnemyKind, EnemyState, Strike};
 use example_01_platformer::features::enemies::draw::{
     HIT_COLOR, HIT_THICKNESS, MARK_ALERT, MARK_SEARCH, mark,
 };
@@ -1003,9 +1001,7 @@ fn crawler(harness: &mut UiHarness, x: f32) -> Entity {
     let kind = EnemyKind::Crawler;
     let centre = Vec2::new(x, SKY_TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = take_id(world);
-    let crawler =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let crawler = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, crawler, Difficulty::Normal);
     crawler
 }
@@ -1047,9 +1043,7 @@ const SKY_TOP: f32 = 1000.0;
 fn standing(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
     let centre = Vec2::new(x, SKY_TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = take_id(world);
-    let enemy =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let enemy = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(enemy);
     enemy
@@ -1189,7 +1183,7 @@ fn f1_outlines_a_charging_beetles_plough_box() {
     };
     assert_eq!(plough_quad(&harness), None, "it stands: no plough");
     let world = harness.world_mut();
-    world.get_mut::<Enemy>(beetle).unwrap().heading = 1.0;
+    enemies::turn(world, beetle, 1.0);
     world.insert(beetle, StateMachine::new(EnemyState::Attack));
     harness.step(2);
     assert_eq!(

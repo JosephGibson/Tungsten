@@ -31,7 +31,7 @@ use example_01_platformer::features::toys::{
     self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS,
     PUSH_SPEED, RING_CAP,
 };
-use example_01_platformer::shared::{BURST_CAP, Burst, take_id};
+use example_01_platformer::shared::{BURST_CAP, Burst};
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::{
@@ -961,8 +961,7 @@ fn flask_range() -> (UiHarness, Entity) {
 /// difficulty, still: its state machine taken off.
 fn still_foe(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = take_id(world);
-    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
+    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre).unwrap();
     enemies::scale(world, foe, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(foe);
     foe

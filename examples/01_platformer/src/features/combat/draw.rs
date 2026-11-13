@@ -139,7 +139,7 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
                 .map_or(64.0, |asset| asset.width as f32);
             let mut origin = at.position;
             if let Some(enemy) = world.get::<Enemy>(entity)
-                && enemy.heading < 0.0
+                && enemies::heading_of(world, entity) == Some(-1.0)
                 && world.has::<StateMachine<EnemyState>>(entity)
             {
                 let body = enemies::body(world, enemy.kind);

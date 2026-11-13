@@ -9,9 +9,9 @@ use tungsten::core::{BodyKind, Entity, RigidBody, Shape, World};
 use tungsten::kit::{PlatformerController, Stats};
 use tungsten::physics::{SpatialFilter, cast_ray, overlap};
 
-use super::centre;
 use super::components::Enemy;
 use super::systems::{blocked, rest, solid, stride};
+use super::{centre, turn};
 use crate::features::level::GRAVITY;
 use crate::features::props::components::{Bomb, Keg};
 
@@ -227,9 +227,7 @@ pub fn hop(world: &mut World, walker: Entity, heading: f32, hops: &Hops) -> bool
     if !grounded(world, walker) {
         return false;
     }
-    if let Some(mine) = world.get_mut::<Enemy>(walker) {
-        mine.heading = heading;
-    }
+    turn(world, walker, heading);
     if let Some(controller) = world.get_mut::<PlatformerController>(walker) {
         controller.launch(Vec2::new(0.0, -hops.rise));
         controller.set_run(heading);
@@ -244,9 +242,7 @@ fn leap(world: &mut World, walker: Entity, heading: f32, leap: Leap) -> bool {
     if !grounded(world, walker) {
         return false;
     }
-    if let Some(mine) = world.get_mut::<Enemy>(walker) {
-        mine.heading = heading;
-    }
+    turn(world, walker, heading);
     if let Some(controller) = world.get_mut::<PlatformerController>(walker) {
         controller.launch(Vec2::new(heading * leap.across, -leap.lift));
         controller.lock_input(leap.lock);
@@ -267,9 +263,7 @@ pub fn scurry(world: &mut World, walker: Entity, heading: f32, pace: f32, hops: 
         Ahead::Leap if hops.leap.is_some_and(|it| leap(world, walker, heading, it)) => Ahead::Leap,
         Ahead::Step => {
             // Off the short drop, which the walk's ledge check refuses.
-            if let Some(mine) = world.get_mut::<Enemy>(walker) {
-                mine.heading = heading;
-            }
+            turn(world, walker, heading);
             if let Some(controller) = world.get_mut::<PlatformerController>(walker) {
                 controller.set_run(heading * pace);
             }

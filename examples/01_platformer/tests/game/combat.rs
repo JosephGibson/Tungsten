@@ -13,7 +13,7 @@ use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
 use example_01_platformer::features::spells::components::School;
 use example_01_platformer::features::{dummy, toys};
-use example_01_platformer::shared::{Burst, take_id};
+use example_01_platformer::shared::Burst;
 use example_01_platformer::shell::Difficulty;
 use example_01_platformer::shell::options::GameOptions;
 use glam::Vec2;
@@ -571,8 +571,7 @@ fn cold_on_a_burning_frost_crawler_bursts_into_steam() {
     let kind = EnemyKind::Crawler;
     let centre = Vec2::new(1300.0, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = take_id(world);
-    let crawler = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
+    let crawler = enemies::spawn(world, kind, centre - kind_body(kind).centre).unwrap();
     enemies::scale(world, crawler, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(crawler);
     harness.step(1);
@@ -597,8 +596,7 @@ fn cold_on_a_burning_frost_crawler_bursts_into_steam() {
 fn foe(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
     let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = take_id(world);
-    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
+    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre).unwrap();
     enemies::scale(world, foe, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(foe);
     foe

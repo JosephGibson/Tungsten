@@ -34,7 +34,7 @@ use example_01_platformer::features::toys::{
     self, BLAST_RADIUS, FROZEN_FRICTION, IRON_FRICTION, IRON_HALF, IRON_MASS, MISSILE_SPEED,
     SCRAP_COUNT, SCRAP_HALF, SPRAY_RANGE,
 };
-use example_01_platformer::shared::{BURST_CAP, take_id};
+use example_01_platformer::shared::BURST_CAP;
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, TilemapData};
@@ -932,9 +932,7 @@ fn cold_arena() -> (UiHarness, Entity) {
 fn creature(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
     let centre = Vec2::new(x, GROUND - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = take_id(world);
-    let enemy =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let enemy = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(enemy);
     harness.step(1);
@@ -1291,7 +1289,6 @@ fn the_flakes_thicken_by_stage() {
 
 #[test]
 fn a_left_facing_troll_s_frost_and_cube_fit_its_hurtbox() {
-    use example_01_platformer::features::enemies::components::Enemy;
     use tungsten::kit::PlatformerController;
     // A troll with its mind, so its clip shows and a left one is drawn
     // shifted, its input locked so it stands: where its frost, then its
@@ -1301,11 +1298,10 @@ fn a_left_facing_troll_s_frost_and_cube_fit_its_hurtbox() {
         let kind = EnemyKind::Troll;
         let centre = Vec2::new(1200.0, GROUND - kind_body(kind).half.y - 0.5);
         let world = harness.world_mut();
-        let id = take_id(world);
         let troll =
-            enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+            enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
         enemies::scale(world, troll, Difficulty::Normal);
-        world.get_mut::<Enemy>(troll).unwrap().heading = heading;
+        enemies::turn(world, troll, heading);
         world
             .get_mut::<PlatformerController>(troll)
             .unwrap()
@@ -1325,7 +1321,7 @@ fn a_left_facing_troll_s_frost_and_cube_fit_its_hurtbox() {
         };
         cold(&mut harness, troll, 2.0);
         assert_eq!(
-            harness.world().get::<Enemy>(troll).unwrap().heading,
+            enemies::heading_of(harness.world(), troll).unwrap(),
             heading,
             "it still faces its way"
         );

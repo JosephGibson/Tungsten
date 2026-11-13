@@ -7,6 +7,10 @@
     "enemy": {
       "kind": "bat"
     },
+    "facing": {
+      "from": "intent",
+      "snap": "horizontal"
+    },
     "tags": [
       "team.enemy",
       "flesh",

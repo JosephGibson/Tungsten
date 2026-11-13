@@ -30,7 +30,6 @@ use example_01_platformer::features::props::{
 };
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, SMALL_BALL_RADIUS};
-use example_01_platformer::shared::take_id;
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::{
@@ -399,9 +398,7 @@ fn a_frozen_keg_shatters_in_fire_and_never_blows() {
 /// An enemy of `kind` with its body's centre at `centre`.
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = take_id(world);
-    let entity =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let entity = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
     entity
 }

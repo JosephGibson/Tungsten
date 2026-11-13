@@ -22,7 +22,7 @@ use tungsten::physics::{SpatialFilter, overlap, wake};
 use super::components::{Enemy, EnemyKind, EnemyState, Held};
 use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
 use super::troll::meets;
-use super::{ARRIVED, centre};
+use super::{ARRIVED, centre, heading_of};
 use crate::features::audio::{self, components::Sound};
 use crate::shared::{body_centre, spawn_burst};
 
@@ -119,7 +119,7 @@ pub fn windup(world: &mut World, beetle: Entity) {
 /// The charge: along its heading at [`CHARGE_SPEED`], its input locked for
 /// [`CHARGE_SECS`] and its hitbox armed for as long by its ability.
 pub fn enter_attack(world: &mut World, beetle: Entity) {
-    let Some(heading) = world.get::<Enemy>(beetle).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, beetle) else {
         return;
     };
     if let Some(controller) = world.get_mut::<PlatformerController>(beetle) {
@@ -141,7 +141,7 @@ pub fn attack(world: &mut World, beetle: Entity) {
         go(world, beetle, EnemyState::Recover);
         return;
     }
-    let Some(heading) = world.get::<Enemy>(beetle).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, beetle) else {
         return;
     };
     let fall = world
@@ -157,7 +157,7 @@ pub fn attack(world: &mut World, beetle: Entity) {
 #[must_use]
 pub fn plough_box(world: &World, beetle: Entity) -> Option<Vec2> {
     let at = world.get::<Position>(beetle)?.0;
-    let heading = world.get::<Enemy>(beetle)?.heading;
+    let heading = heading_of(world, beetle)?;
     Some(at + super::body(world, EnemyKind::Beetle).point("plough", heading)?)
 }
 
@@ -258,7 +258,10 @@ pub fn dust(world: &mut World) {
     let beetles: Vec<(Entity, EnemyState, f32)> = world
         .query::<(Entity, &Enemy, &StateMachine<EnemyState>)>()
         .filter(|(_, enemy, _)| enemy.kind == EnemyKind::Beetle)
-        .map(|(entity, enemy, machine)| (entity, machine.state(), enemy.heading))
+        .map(|(entity, _, machine)| {
+            let heading = heading_of(world, entity).unwrap_or(1.0);
+            (entity, machine.state(), heading)
+        })
         .collect();
     let mut puffs = Vec::new();
     let mut timers = std::mem::take(&mut world.resource_mut::<Dust>().0);

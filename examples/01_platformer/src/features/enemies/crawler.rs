@@ -16,7 +16,7 @@ use tungsten::kit::{PlatformerController, lob_velocity};
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Scared, Strike};
 use super::hop::{self, Ahead, Hops, Leap, grounded};
 use super::systems::{blocked, elapsed, face, go, player, rest, sees, stride};
-use super::{ARRIVED, centre, snowball, troll};
+use super::{ARRIVED, centre, heading_of, snowball, troll};
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::Glow;
 use crate::features::player::components::Lantern;
@@ -141,7 +141,7 @@ fn scare(world: &mut World, crawler: Entity, retreating: bool) {
     let fresh = !scared(world, crawler);
     let now = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
     world.insert(crawler, Scared { at: now });
-    let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, crawler).unwrap_or(1.0);
     if let (true, Some(at)) = (fresh, centre(world, crawler)) {
         let mouth = at + Vec2::new(heading * 26.0, -2.0);
         spawn_burst(world, FROST_BREATH, mouth);
@@ -180,7 +180,7 @@ pub fn retreat(world: &mut World, crawler: Entity) {
     if !grounded(world, crawler) {
         return;
     }
-    let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, crawler).unwrap_or(1.0);
     let away = if (at.x - light.x).abs() > 1.0 {
         (at.x - light.x).signum()
     } else {
@@ -229,10 +229,12 @@ pub fn patrol(world: &mut World, crawler: Entity) {
         retreat(world, crawler);
         return;
     }
-    let Some(mine) = world.get::<Enemy>(crawler).copied() else {
+    let (Some(mine), Some(mut heading)) = (
+        world.get::<Enemy>(crawler).copied(),
+        heading_of(world, crawler),
+    ) else {
         return;
     };
-    let mut heading = mine.heading;
     if let (Some(leash), Some(at)) = (mine.leash, centre(world, crawler)) {
         let out = at.x - mine.home().x;
         if out.abs() >= leash && out.signum() == heading {
@@ -349,7 +351,7 @@ fn flick(world: &mut World, crawler: Entity) {
     let (Some((_, target)), Some(at)) = (player(world), centre(world, crawler)) else {
         return;
     };
-    let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, crawler).unwrap_or(1.0);
     let body = super::body(world, EnemyKind::Crawler);
     let Some(from) = body.point("snowball", heading) else {
         return;
@@ -376,7 +378,7 @@ pub fn enter_attack(world: &mut World, crawler: Entity) {
         flick(world, crawler);
         return;
     }
-    let Some(heading) = world.get::<Enemy>(crawler).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, crawler) else {
         return;
     };
     if let Some(controller) = world.get_mut::<PlatformerController>(crawler) {

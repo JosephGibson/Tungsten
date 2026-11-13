@@ -39,7 +39,7 @@ use tungsten::kit::{
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike, Throw, Throws};
 use super::hop::{self, Hops, grounded};
 use super::systems::{elapsed, face, go, player, rest, sees};
-use super::{ARRIVED, centre, troll};
+use super::{ARRIVED, centre, heading_of, troll, turn};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, Hit, Kind, has_status};
 use crate::features::props;
@@ -130,16 +130,16 @@ pub const PANIC_HOP: f32 = 300.0;
 /// standing to look back for [`FIDGET_PAUSE`] or skipping in place, in
 /// turn, timed by its patrol's seconds, which its machine saves.
 pub fn patrol(world: &mut World, goblin: Entity) {
-    let Some(mine) = world.get::<Enemy>(goblin).copied() else {
+    let (Some(mine), Some(heading)) = (
+        world.get::<Enemy>(goblin).copied(),
+        heading_of(world, goblin),
+    ) else {
         return;
     };
     if let (Some(leash), Some(at)) = (mine.leash, centre(world, goblin)) {
         let out = at.x - mine.home().x;
-        if out.abs() >= leash
-            && out.signum() == mine.heading
-            && let Some(enemy) = world.get_mut::<Enemy>(goblin)
-        {
-            enemy.heading = -mine.heading;
+        if out.abs() >= leash && out.signum() == heading {
+            turn(world, goblin, -heading);
         }
     }
     let dt = world.resource::<Time>().delta();
@@ -154,8 +154,8 @@ pub fn patrol(world: &mut World, goblin: Entity) {
     if now && !before {
         if looking {
             // It looks back over its shoulder, turned round for the pause.
-            if let Some(enemy) = world.get_mut::<Enemy>(goblin) {
-                enemy.heading = -enemy.heading;
+            if let Some(heading) = heading_of(world, goblin) {
+                turn(world, goblin, -heading);
             }
         } else {
             skip(world, goblin);
@@ -163,8 +163,8 @@ pub fn patrol(world: &mut World, goblin: Entity) {
     }
     if before && !now && cycle(t - dt) % 2 == 0 {
         // The look's end: it turns back the way it walked.
-        if let Some(enemy) = world.get_mut::<Enemy>(goblin) {
-            enemy.heading = -enemy.heading;
+        if let Some(heading) = heading_of(world, goblin) {
+            turn(world, goblin, -heading);
         }
     }
     if now && looking {
@@ -178,7 +178,7 @@ pub fn patrol(world: &mut World, goblin: Entity) {
 /// stopped, hopping what it can; in the air it keeps its run until it
 /// lands.
 fn wander(world: &mut World, goblin: Entity, pace: f32) {
-    let Some(heading) = world.get::<Enemy>(goblin).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, goblin) else {
         return;
     };
     if !grounded(world, goblin) {
@@ -338,7 +338,7 @@ pub fn enter_attack(world: &mut World, goblin: Entity) {
 /// locked for [`DASH_MOST`], with its dust at its heels and its sound; a
 /// body stops it dead.
 fn dash(world: &mut World, goblin: Entity) {
-    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, goblin).unwrap_or(1.0);
     if let Some(controller) = world.get_mut::<PlatformerController>(goblin) {
         controller.launch(Vec2::new(heading * DASH_SPEED, 0.0));
         controller.lock_input(DASH_MOST);
@@ -407,7 +407,7 @@ pub fn attack(world: &mut World, goblin: Entity) {
 /// A leap back from where it faces: up and away at [`LEAP_BACK`], its input
 /// locked for [`LEAP_LOCK`].
 fn leap_back(world: &mut World, goblin: Entity) {
-    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, goblin).unwrap_or(1.0);
     if let Some(controller) = world.get_mut::<PlatformerController>(goblin) {
         controller.launch(Vec2::new(-heading * LEAP_BACK.x, -LEAP_BACK.y));
         controller.lock_input(LEAP_LOCK);
@@ -418,7 +418,7 @@ fn leap_back(world: &mut World, goblin: Entity) {
 #[must_use]
 pub fn hand(world: &World, goblin: Entity) -> Option<Vec2> {
     let at = world.get::<Position>(goblin)?.0;
-    let heading = world.get::<Enemy>(goblin)?.heading;
+    let heading = heading_of(world, goblin)?;
     Some(at + super::body(world, EnemyKind::Goblin).point("hand", heading)?)
 }
 
@@ -427,7 +427,7 @@ pub fn hand(world: &World, goblin: Entity) -> Option<Vec2> {
 #[must_use]
 pub fn stab_box(world: &World, goblin: Entity) -> Option<Vec2> {
     let at = centre(world, goblin)?;
-    let heading = world.get::<Enemy>(goblin)?.heading;
+    let heading = heading_of(world, goblin)?;
     Some(at + Vec2::new(STAB_AT.x * heading, STAB_AT.y))
 }
 
@@ -438,7 +438,7 @@ pub fn stab(world: &mut World, goblin: Entity) {
     let Some(box_at) = stab_box(world, goblin) else {
         return;
     };
-    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, goblin).unwrap_or(1.0);
     let mut near: Vec<(u64, Entity, Vec2)> = world
         .query::<(Entity, &Saved, &Position, &Collider, &Health)>()
         .filter(|&(entity, .., health)| entity != goblin && !health.is_dead())
@@ -593,7 +593,7 @@ pub fn panics(world: &mut World) {
 
 /// The way from the player across, else its heading.
 fn away(world: &World, goblin: Entity) -> f32 {
-    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, goblin).unwrap_or(1.0);
     match (player(world), centre(world, goblin)) {
         (Some((_, target)), Some(at)) if (at.x - target.x).abs() > 1.0 => {
             (at.x - target.x).signum()
@@ -614,9 +614,7 @@ pub fn enter_panic(world: &mut World, goblin: Entity) {
         return;
     }
     let away = away(world, goblin);
-    if let Some(mine) = world.get_mut::<Enemy>(goblin) {
-        mine.heading = away;
-    }
+    turn(world, goblin, away);
     let run = world
         .get::<Stats>(goblin)
         .and_then(|stats| stats.get(Stats::MOVE_SPEED))
