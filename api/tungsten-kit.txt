@@ -1063,6 +1063,7 @@ pub fn tungsten_kit::Cooldown::rate(&self) -> f32
 pub fn tungsten_kit::Cooldown::remaining(&self) -> core::option::Option<u32>
 pub fn tungsten_kit::Cooldown::restart(&mut self)
 pub fn tungsten_kit::Cooldown::seconds(&self) -> f32
+pub fn tungsten_kit::Cooldown::set_left(&mut self, f32)
 pub fn tungsten_kit::Cooldown::with_count(self, u32) -> Self
 pub fn tungsten_kit::Cooldown::with_jitter(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Cooldown
@@ -5800,6 +5801,7 @@ pub fn tungsten_kit::Cooldown::rate(&self) -> f32
 pub fn tungsten_kit::Cooldown::remaining(&self) -> core::option::Option<u32>
 pub fn tungsten_kit::Cooldown::restart(&mut self)
 pub fn tungsten_kit::Cooldown::seconds(&self) -> f32
+pub fn tungsten_kit::Cooldown::set_left(&mut self, f32)
 pub fn tungsten_kit::Cooldown::with_count(self, u32) -> Self
 pub fn tungsten_kit::Cooldown::with_jitter(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Cooldown
