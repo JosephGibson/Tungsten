@@ -9,7 +9,7 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     Abilities, Aim, Health, Hurtbox, LinearMotion, Projectile, ProjectileBounced,
-    ProjectileExpired, ProjectilePassed, Source, Struck, Used, use_ability,
+    ProjectileExpired, ProjectilePassed, Source, Struck, Used, WorldCue, use_ability,
 };
 use tungsten::physics::wake;
 
@@ -17,7 +17,7 @@ use super::components::{Bullet, Muzzle, Reload};
 use super::{
     BALL_KICK, BULLET_CENTRE, BULLET_RADIUS, GUN, MAX_RICOCHETS, MUZZLE_FRAME_SECS, MUZZLE_FRAMES,
     MUZZLE_LIGHT, MUZZLE_LIGHT_COLOR, MUZZLE_LIGHT_REACH, MUZZLE_OFFSET, RELOAD, RELOAD_SECS,
-    SHOOT, SHOT_DAMAGE, SHOT_PUSH, heading, rounds,
+    SHOOT, SHOT_DAMAGE, SHOT_DUSTED, SHOT_PUSH, SHOT_SPARKED, SHOT_SPLINTERED, heading, rounds,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{CORRODED, FROZEN, Hit, Kind, has_status};
@@ -453,9 +453,12 @@ fn bullet_walls<E: 'static>(
 /// [`MAX_RICOCHETS`] times, when the pass left it alive, else end it there;
 /// armour's rear, or frozen or corroded armour anywhere, takes the shot as
 /// a hit, which its rear takes whole. A `Struck` the decision passes over deals
-/// nothing. The walls' answers: the kit's turn off an iron wall throws
-/// sparks with the ricochet's sound, a wooden deck passed throws splinters
-/// with theirs, and a shot ending at a wall puffs dust.
+/// nothing. The walls' answers, named world cues the cue system plays after
+/// the step's other sources, with no subject, so a shot despawning in the
+/// step loses none: the kit's turn off an iron wall throws sparks
+/// ([`SHOT_SPARKED`]) with the ricochet's sound, a wooden deck passed throws
+/// splinters ([`SHOT_SPLINTERED`]) with theirs, and a shot ending at a wall
+/// puffs dust ([`SHOT_DUSTED`]).
 pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
     let mut met: Vec<(Entity, Entity, Vec2)> = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<Struck>>() {
@@ -530,7 +533,7 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
         let reach = body.map_or(1.0, |body| body.t);
         for &(_, at, _) in passed.iter().filter(|&&(entity, ..)| entity == bullet) {
             if along(at) <= reach {
-                spawn_burst(world, "ex10_poof", at);
+                WorldCue::new(SHOT_SPLINTERED, at).play(world);
                 audio::play(world, Sound::Splintered, at);
             }
         }
@@ -567,8 +570,7 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
                     end.filter(|&(.., normal)| normal != Vec2::ZERO)
                 {
                     let at = at + normal * BULLET_RADIUS;
-                    spawn_burst(world, "ex10_landing_dust", at);
-                    spawn_burst(world, "ex10_ricochet", at);
+                    WorldCue::new(SHOT_DUSTED, at).play(world);
                 }
             }
         }
@@ -578,7 +580,7 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
 /// The kit's turn of a bullet off an iron wall at `at`, its tracer turned
 /// along its new flight by its facing: sparks and the ricochet's sound.
 fn sparks(world: &mut World, at: Vec2) {
-    spawn_burst(world, "ex10_ricochet", at);
+    WorldCue::new(SHOT_SPARKED, at).play(world);
     audio::play(world, Sound::Ricocheted, at);
 }
 

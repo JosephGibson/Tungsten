@@ -42,6 +42,12 @@ pub const BULLET_PREFAB: &str = "bullet";
 /// hitbox's radius there.
 pub const BULLET_CENTRE: Vec2 = Vec2::new(16.0, 1.5);
 pub const BULLET_RADIUS: f32 = 2.0;
+/// The walls' answers, named world cues (`data/world_cues/`): the kit's
+/// turn off an iron wall's sparks, a wooden deck passed's splinters and a
+/// wall end's dust.
+pub const SHOT_SPARKED: &str = "shot_sparked";
+pub const SHOT_SPLINTERED: &str = "shot_splintered";
+pub const SHOT_DUSTED: &str = "shot_dusted";
 /// A hit's physical damage and push, px/s.
 pub const SHOT_DAMAGE: f32 = 6.0;
 pub const SHOT_PUSH: f32 = 120.0;

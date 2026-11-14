@@ -1157,6 +1157,17 @@
       "pact": {
         "path": "data/tomes/pact.json"
       }
+    },
+    "world_cues": {
+      "shot_dusted": {
+        "path": "data/world_cues/shot_dusted.json"
+      },
+      "shot_sparked": {
+        "path": "data/world_cues/shot_sparked.json"
+      },
+      "shot_splintered": {
+        "path": "data/world_cues/shot_splintered.json"
+      }
     }
   },
   "font_fallback": [

@@ -563,3 +563,100 @@ fn a_tracer_turns_with_its_shot() {
         "it turned off the mine's iron"
     );
 }
+
+/// The walls' answers a frame made: each burst not in `seen` among the
+/// three answers' configs, by name in order, and each of their two sounds.
+fn answers(
+    harness: &UiHarness,
+    seen: &mut std::collections::HashSet<Entity>,
+) -> (Vec<String>, Vec<Sound>) {
+    use example_01_platformer::shared::Burst;
+    use tungsten::core::{ParticleConfigRegistry, ParticleEmitter};
+    let world = harness.world();
+    let configs = world.resource::<ParticleConfigRegistry>();
+    let mut bursts: Vec<String> = world
+        .query::<(Entity, &Burst, &ParticleEmitter)>()
+        .filter(|(entity, ..)| seen.insert(*entity))
+        .filter_map(|(_, _, emitter)| configs.name_for_id(emitter.config))
+        .filter(|name| ["ex10_ricochet", "ex10_poof", "ex10_landing_dust"].contains(name))
+        .map(str::to_owned)
+        .collect();
+    bursts.sort();
+    let sounds = harness
+        .harness()
+        .events::<Sounded>()
+        .map(|sounded| sounded.sound)
+        .filter(|sound| matches!(sound, Sound::Ricocheted | Sound::Splintered))
+        .collect();
+    (bursts, sounds)
+}
+
+#[test]
+fn a_shots_wall_answers_burst_and_sound_as_before() {
+    // On the map: the mine's iron riser turns a shot, the rope bridge's
+    // deck lets one through and the stone shelf under it ends it.
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    let mut seen = std::collections::HashSet::new();
+    let face = Vec2::new(306.0 * TILE, 54.5 * TILE);
+    let id = shot(&mut harness, face - Vec2::new(300.0, 0.0), Vec2::X * SPEED);
+    let _ = answers(&harness, &mut seen);
+    let riser = bullet(&harness, id).expect("it flies");
+    let mut turned = None;
+    for _ in 0..60 {
+        harness.step(1);
+        let bounced = harness
+            .harness()
+            .events::<ProjectileBounced>()
+            .any(|event| event.entity == riser);
+        let frame = answers(&harness, &mut seen);
+        if bounced {
+            turned = Some(frame);
+            break;
+        }
+    }
+    assert_eq!(
+        turned,
+        Some((vec!["ex10_ricochet".to_owned()], vec![Sound::Ricocheted])),
+        "sparks and the ricochet's sound off the iron"
+    );
+    let id = shot(
+        &mut harness,
+        Vec2::new(56.0 * TILE, 34.0 * TILE),
+        Vec2::Y * SPEED,
+    );
+    let _ = answers(&harness, &mut seen);
+    let down = bullet(&harness, id).expect("it flies");
+    let (mut passed, mut ended) = (None, None);
+    for _ in 0..60 {
+        harness.step(1);
+        let events = harness.harness();
+        let pass = events
+            .events::<ProjectilePassed>()
+            .any(|event| event.entity == down);
+        let end = events
+            .events::<ProjectileExpired>()
+            .any(|event| event.entity == down);
+        let frame = answers(&harness, &mut seen);
+        if pass {
+            passed = Some(frame.clone());
+        }
+        if end {
+            ended = Some(frame);
+            break;
+        }
+    }
+    assert_eq!(
+        passed,
+        Some((vec!["ex10_poof".to_owned()], vec![Sound::Splintered])),
+        "splinters and their sound through the deck"
+    );
+    assert_eq!(
+        ended,
+        Some((
+            vec!["ex10_landing_dust".to_owned(), "ex10_ricochet".to_owned()],
+            vec![]
+        )),
+        "dust at the stone, no sound"
+    );
+}
