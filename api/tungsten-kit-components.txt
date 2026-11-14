@@ -188,6 +188,7 @@ component hitbox: Hits the hurtboxes its shape meets over each step, each target
   field window: f32 (> 0) = null — seconds it hits for once armed, by `arm` or an ability's `hitbox` payload; always armed when left out
   field facing: one of mirror | turn = null — its offset, written for an entity facing right, follows the entity's facing: `mirror` negates its x while it faces left, `turn` rotates it by the facing's angle, a box's half extents swapped while it faces nearer vertical; as written without a facing
   field on: bool = true — it hits; off, it hits nothing, armed or not, its activation and window kept, as a death policy's `disarm` leaves it
+  field credit: one of source | live = "source" — whom its hits credit: `source` its source, dead or alive, else its entity; `live` its source while that lives and is not dead, else nobody
   events: Struck
   genres: platformer, top_down, rpg, shooter, arpg
   sample: { "shape": { "circle": 4 }, "damage": 1 }
@@ -300,13 +301,14 @@ component platformer_controller: A side-view character on a kinematic body: it r
 component projectile: Ends at its hitbox's first hit, its first wall or its range, unless it pierces, bounces or passes the wall.
   field pierce: u32 = 0 — targets it passes before the next ends it
   field range: f32 (> 0) = null — world pixels it travels before it ends; none when left out
+  field seconds: f32 (> 0) = null — seconds it flies before it ends at its step's end, as at its range; none when left out
   field bounces: u32 = 0 — walls it turns at before the next ends it
   field bounce_layers: list of a physics layer: its number, 0 to 31, or its physics_layers name = null — physics layers whose walls it turns at while it has bounces left, a tile in its collision layer's; a wall outside them ends it; every layer when left out
   field pass_layers: list of a physics layer: its number, 0 to 31, or its physics_layers name = [] — physics layers whose walls it passes as if open, before the bounce layers
   field body_walls: list of a physics layer: its number, 0 to 31, or its physics_layers name = [] — physics layers whose dynamic and kinematic bodies are walls to it, met over their step's move, turning it in their frame; never its source's
-  field shape: shape hit_shape = null — its sweep's own circle or box without a hitbox, its walls and end measured from it; a point when left out
+  field shape: shape hit_shape = null — its sweep's own circle or box, which meets its walls, a hitbox beside it hitting by its own; without a hitbox its end is measured from it; its hitbox's, else a point, when left out
   field offset: [x, y] = null — its own shape's offset from its point, with `shape` only; [0, 0] when left out
-  field end: shape projectile_end = null — what it sets off at each of its own ends, a hit past its pierce, a wall or its range, not at a lifetime's; none when left out
+  field end: shape projectile_end = null — what it sets off at each of its own ends, a hit past its pierce, a wall, its range or its seconds, not at a lifetime's; none when left out
   events: ProjectileExpired, ProjectileBounced, ProjectilePassed, Struck
   genres: platformer, top_down, shooter
   sample: {}

@@ -2187,6 +2187,7 @@ impl tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::activation(&self) -> u32
 pub fn tungsten_kit::Hitbox::arm(&mut self)
 pub fn tungsten_kit::Hitbox::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
+pub fn tungsten_kit::Hitbox::credits_live(&self) -> bool
 pub fn tungsten_kit::Hitbox::damage(&self) -> f32
 pub fn tungsten_kit::Hitbox::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::Hitbox::has_hit(&self, tungsten_core::ecs::entity::Entity) -> bool
@@ -2209,6 +2210,7 @@ pub fn tungsten_kit::Hitbox::window(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Hitbox::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::Hitbox::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::Hitbox::with_knockback(self, f32) -> Self
+pub fn tungsten_kit::Hitbox::with_live_credit(self) -> Self
 pub fn tungsten_kit::Hitbox::with_offset(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::Hitbox::with_parts(self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
 pub fn tungsten_kit::Hitbox::with_penetration(self, tungsten_kit::Penetration) -> Self
@@ -3235,6 +3237,8 @@ pub fn tungsten_kit::Projectile::new() -> Self
 pub fn tungsten_kit::Projectile::pass_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::pierce(&self) -> u32
 pub fn tungsten_kit::Projectile::range(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Projectile::seconds(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Projectile::seconds_left(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Projectile::shape(&self) -> core::option::Option<(tungsten_kit::HitShape, glam::f32::vec2::Vec2)>
 pub fn tungsten_kit::Projectile::travelled(&self) -> f32
 pub fn tungsten_kit::Projectile::with_body_walls(self, u32) -> Self
@@ -3244,6 +3248,7 @@ pub fn tungsten_kit::Projectile::with_end(self, tungsten_kit::Blast) -> Self
 pub fn tungsten_kit::Projectile::with_pass_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_pierce(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_range(self, f32) -> Self
+pub fn tungsten_kit::Projectile::with_seconds(self, f32) -> Self
 pub fn tungsten_kit::Projectile::with_shape(self, tungsten_kit::HitShape, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_kit::Projectile
 pub fn tungsten_kit::Projectile::clone(&self) -> tungsten_kit::Projectile
@@ -6954,6 +6959,7 @@ impl tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::activation(&self) -> u32
 pub fn tungsten_kit::Hitbox::arm(&mut self)
 pub fn tungsten_kit::Hitbox::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
+pub fn tungsten_kit::Hitbox::credits_live(&self) -> bool
 pub fn tungsten_kit::Hitbox::damage(&self) -> f32
 pub fn tungsten_kit::Hitbox::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::Hitbox::has_hit(&self, tungsten_core::ecs::entity::Entity) -> bool
@@ -6976,6 +6982,7 @@ pub fn tungsten_kit::Hitbox::window(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Hitbox::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::Hitbox::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::Hitbox::with_knockback(self, f32) -> Self
+pub fn tungsten_kit::Hitbox::with_live_credit(self) -> Self
 pub fn tungsten_kit::Hitbox::with_offset(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::Hitbox::with_parts(self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
 pub fn tungsten_kit::Hitbox::with_penetration(self, tungsten_kit::Penetration) -> Self
@@ -8281,6 +8288,8 @@ pub fn tungsten_kit::Projectile::new() -> Self
 pub fn tungsten_kit::Projectile::pass_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::pierce(&self) -> u32
 pub fn tungsten_kit::Projectile::range(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Projectile::seconds(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::Projectile::seconds_left(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Projectile::shape(&self) -> core::option::Option<(tungsten_kit::HitShape, glam::f32::vec2::Vec2)>
 pub fn tungsten_kit::Projectile::travelled(&self) -> f32
 pub fn tungsten_kit::Projectile::with_body_walls(self, u32) -> Self
@@ -8290,6 +8299,7 @@ pub fn tungsten_kit::Projectile::with_end(self, tungsten_kit::Blast) -> Self
 pub fn tungsten_kit::Projectile::with_pass_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_pierce(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_range(self, f32) -> Self
+pub fn tungsten_kit::Projectile::with_seconds(self, f32) -> Self
 pub fn tungsten_kit::Projectile::with_shape(self, tungsten_kit::HitShape, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_kit::Projectile
 pub fn tungsten_kit::Projectile::clone(&self) -> tungsten_kit::Projectile

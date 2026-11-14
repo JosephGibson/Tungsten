@@ -892,3 +892,69 @@ fn an_off_hitbox_hits_nothing() {
     let scene = json!({ "shape": { "circle": 4 }, "damage": 1, "on": false });
     assert!(check(&world, HITBOX, &scene).is_ok());
 }
+
+#[test]
+fn a_live_credit_credits_a_live_source_alone() {
+    // Each case's blade, of 3 damage, on a target: whom its hit credits,
+    // its caster's case and whether its credit is live.
+    let credit = |caster: &str, live: bool| -> (Option<Entity>, Entity, Entity) {
+        let (mut world, mut schedule) = hit_rig(&[]);
+        let victim = target(&mut world);
+        let mage = world.spawn_with((crate::Health::new(10.0),));
+        let mut hitbox = Hitbox::new(HitShape::circle(4.0), 3.0);
+        if live {
+            hitbox = hitbox.with_live_credit();
+        }
+        assert_eq!(hitbox.credits_live(), live);
+        let blade = world.spawn_with((tungsten_core::Transform::from_position(Vec2::ZERO), hitbox));
+        if caster != "none" {
+            world.insert(blade, crate::Source::new(mage));
+        }
+        match caster {
+            "dead" => assert_eq!(crate::kill(&mut world, mage), crate::Hit::Killed),
+            "despawned" => world.despawn(mage),
+            _ => {}
+        }
+        fixed_step(&mut world, &mut schedule);
+        let sources: Vec<Option<Entity>> = world
+            .resource::<tungsten_core::EventQueue<crate::DamagedPart>>()
+            .iter()
+            .filter(|part| part.entity == victim)
+            .map(|part| part.source)
+            .collect();
+        assert_eq!(sources.len(), 1, "{caster}, live {live}: one hit");
+        (sources[0], mage, blade)
+    };
+    let (got, mage, _) = credit("live", true);
+    assert_eq!(got, Some(mage), "a live source credited");
+    for caster in ["dead", "despawned", "none"] {
+        let (got, _, blade) = credit(caster, true);
+        assert_eq!(got, None, "{caster}: nobody");
+        assert_ne!(got, Some(blade), "{caster}: never the hitbox");
+    }
+    // The default credit as before: its source, dead or alive, else itself.
+    let (got, mage, _) = credit("dead", false);
+    assert_eq!(got, Some(mage));
+    let (got, _, blade) = credit("none", false);
+    assert_eq!(got, Some(blade));
+    // Saved and read as data: `credit` left out at its default.
+    let plain = Hitbox::new(HitShape::circle(4.0), 3.0);
+    assert!(
+        serde_json::to_value(&plain)
+            .unwrap()
+            .get("credit")
+            .is_none()
+    );
+    let live = plain.clone().with_live_credit();
+    let saved = serde_json::to_value(&live).unwrap();
+    assert_eq!(saved["credit"], json!("live"));
+    assert_eq!(serde_json::from_value::<Hitbox>(saved).unwrap(), live);
+    let (world, _) = rig();
+    let components = world.resource::<ComponentRegistry>();
+    let scene = |credit: serde_json::Value| {
+        let def = json!({ "shape": { "circle": 4 }, "damage": 1, "credit": credit });
+        components.check_in("hitbox", &def, &world)
+    };
+    assert!(scene(json!("live")).is_ok() && scene(json!("source")).is_ok());
+    assert!(scene(json!("anyone")).is_err());
+}

@@ -28,6 +28,7 @@ use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::ended::{Despawning, end, ensure_kit_despawn};
 use crate::motion::drive::{Body, Skip, Warned, body_of};
 use crate::motion::linear::LinearMotion;
+use crate::motion::slide::step_dt;
 use crate::motion::steering::Steering;
 use crate::overlap::grid::{
     Blow, HitGrid, Sweep, ensure_emitter, first_contact, reflect, spares, strike, sweep_of,
@@ -57,12 +58,17 @@ const PROJECTILE_END: &str = "projectile_end";
 /// - `bounces`: at a wall it turns this many times, its movers' velocities
 ///   reflected about the wall, and ends at the next.
 /// - `range`: it ends once it has travelled this far, in world pixels.
+/// - `seconds`: it ends once it has flown this long, its seconds left
+///   falling by each projectile step's `dt` from its spawn's and ending it
+///   at the step they reach 0 or below, at that step's end, as its range
+///   does. None by default.
 /// - `bounce_layers`: the physics layers whose walls it turns at while it
 ///   has bounces left; a wall outside them ends it. Every layer by default.
 /// - `pass_layers`: the physics layers whose walls it passes as if they
 ///   were open. None by default.
 /// - `end`: what it sets off at each of its own ends, a hit past its
-///   pierce, a wall it neither passes nor turns at, or its range: a
+///   pierce, a wall it neither passes nor turns at, its range or its
+///   seconds: a
 ///   [`Blast`](crate::Blast), in the chemistry output's form, at its
 ///   hitbox's centre there (its point without a hitbox), which neither
 ///   hurts nor pushes it. Once the step's sweeps are done the system sets
@@ -86,9 +92,11 @@ const PROJECTILE_END: &str = "projectile_end";
 /// their step's move from their `PrevPosition` and turning it in their own
 /// frame, and never its [`Source`](crate::Source)'s; otherwise their
 /// hurtboxes are what it hits. A wall is in the masks when one of its
-/// layers is, and passing comes first. Without a hitbox it sweeps its own
-/// `shape` at its `offset`, its walls and its end measured from it, else
-/// its point. In a step the sweep meets walls in order: each one passed
+/// layers is, and passing comes first. Its own `shape` at its `offset`
+/// measures its walls, its hitbox's when it has none (a snowball's hitbox a
+/// little wider than the ball that meets the ground); without a hitbox its
+/// end is measured from its own shape too, else from its point. In a step
+/// the sweep meets walls in order: each one passed
 /// sends [`ProjectilePassed`] and the sweep goes on, and the first one not
 /// passed turns it, sending [`ProjectileBounced`], or ends it; hits before
 /// that wall land first, and a pierce count and a pass are independent. A
@@ -98,16 +106,16 @@ const PROJECTILE_END: &str = "projectile_end";
 /// at, and the kit's end-of-step despawn takes it after its cues. A
 /// dynamic body or a child is skipped, with one warning.
 ///
-/// Scene name `projectile`: `{ "pierce": 1, "range": 600, "bounces": 0,
+/// Scene name `projectile`: `{ "pierce": 1, "range": 600, "seconds": 3, "bounces": 0,
 /// "bounce_layers": [0, "armour"], "pass_layers": [3], "body_walls":
 /// ["crates"], "shape": { "circle": 5 }, "offset": [8, 8], "end": { "blast":
 /// { "radius": 64, "damage": 20 } } }`, each optional: `pierce` and
-/// `bounces` 0, `range` none, `bounce_layers` every layer, `pass_layers`
+/// `bounces` 0, `range` and `seconds` none, `bounce_layers` every layer, `pass_layers`
 /// and `body_walls` none, as lists of layer numbers 0 to 31 or
 /// `physics_layers` names, no shape, and `end` none; the load checks the
 /// layer names and the blast's damage types and context tags. It is data:
-/// a game's save can hold it, its end, shape, body walls, hits, distance
-/// and bounces included.
+/// a game's save can hold it, its end, shape, body walls, hits, distance,
+/// bounces and seconds left included.
 ///
 /// # Examples
 ///
@@ -128,6 +136,8 @@ const PROJECTILE_END: &str = "projectile_end";
 pub struct Projectile {
     pierce: u32,
     range: Option<f32>,
+    /// The seconds it flies before it ends.
+    seconds: Option<f32>,
     bounces: u32,
     /// The layers whose walls it turns at.
     bounce_layers: u32,
@@ -145,6 +155,8 @@ pub struct Projectile {
     travelled: f32,
     /// The walls it has turned at.
     bounced: u32,
+    /// Its seconds left, while it has `seconds`.
+    left: Option<f32>,
     /// It has ended.
     spent: bool,
 }
@@ -155,6 +167,7 @@ impl Default for Projectile {
         Projectile {
             pierce: 0,
             range: None,
+            seconds: None,
             bounces: 0,
             bounce_layers: RigidBody::ALL_LAYERS,
             pass_layers: 0,
@@ -164,6 +177,7 @@ impl Default for Projectile {
             hits: 0,
             travelled: 0.0,
             bounced: 0,
+            left: None,
             spent: false,
         }
     }
@@ -179,6 +193,8 @@ struct ProjectileFields {
     pierce: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     range: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    seconds: Option<f32>,
     #[serde(default)]
     bounces: u32,
     #[serde(default = "every_layer", skip_serializing_if = "is_every_layer")]
@@ -203,6 +219,8 @@ struct ProjectileFields {
     travelled: f32,
     #[serde(default)]
     bounced: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    left: Option<f32>,
     #[serde(default)]
     spent: bool,
 }
@@ -238,9 +256,23 @@ impl TryFrom<ProjectileFields> for Projectile {
                 fields.travelled
             ));
         }
+        if let Some(seconds) = fields.seconds
+            && !(seconds.is_finite() && seconds > 0.0)
+        {
+            return Err(format!("seconds: must be finite and > 0 (got {seconds})"));
+        }
+        if let Some(left) = fields.left
+            && !left.is_finite()
+        {
+            return Err(format!("left: must be finite (got {left})"));
+        }
+        if fields.left.is_some() && fields.seconds.is_none() {
+            return Err("`left` comes only with `seconds`".to_string());
+        }
         Ok(Self {
             pierce: fields.pierce,
             range: fields.range,
+            seconds: fields.seconds,
             bounces: fields.bounces,
             bounce_layers: fields.bounce_layers,
             pass_layers: fields.pass_layers,
@@ -250,6 +282,7 @@ impl TryFrom<ProjectileFields> for Projectile {
             hits: fields.hits,
             travelled: fields.travelled,
             bounced: fields.bounced,
+            left: fields.left.or(fields.seconds),
             spent: fields.spent,
         })
     }
@@ -260,6 +293,7 @@ impl From<Projectile> for ProjectileFields {
         Self {
             pierce: projectile.pierce,
             range: projectile.range,
+            seconds: projectile.seconds,
             bounces: projectile.bounces,
             bounce_layers: projectile.bounce_layers,
             pass_layers: projectile.pass_layers,
@@ -273,6 +307,7 @@ impl From<Projectile> for ProjectileFields {
             hits: projectile.hits,
             travelled: projectile.travelled,
             bounced: projectile.bounced,
+            left: projectile.left,
             spent: projectile.spent,
         }
     }
@@ -321,6 +356,25 @@ impl Projectile {
         self
     }
 
+    /// The projectile, ending once it has flown `seconds`: its seconds left
+    /// fall by each projectile step's `dt`, and the step they reach 0 or
+    /// below ends it at that step's end, as its range does.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_seconds(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds > 0.0,
+            "Projectile::with_seconds: seconds must be finite and > 0 (got {seconds})"
+        );
+        self.seconds = Some(seconds);
+        self.left = Some(seconds);
+        self
+    }
+
     /// The projectile, turning at `walls` walls and ending at the next.
     #[must_use]
     pub fn with_bounces(mut self, walls: u32) -> Self {
@@ -364,9 +418,10 @@ impl Projectile {
         self
     }
 
-    /// The projectile, sweeping `shape` at `offset` from its point when it
-    /// has no hitbox: its walls, body walls and end's blast measured from
-    /// it, as from a hitbox's. A point by default.
+    /// The projectile, sweeping `shape` at `offset` from its point for its
+    /// walls and body walls, a hitbox beside it hitting by its own shape;
+    /// without a hitbox its end's blast is measured from it too. A hitbox's
+    /// shape, else a point, by default.
     #[must_use]
     pub fn with_shape(mut self, shape: HitShape, offset: Vec2) -> Self {
         self.shape = Some((shape, offset));
@@ -383,6 +438,18 @@ impl Projectile {
     #[must_use]
     pub fn range(&self) -> Option<f32> {
         self.range
+    }
+
+    /// The seconds it flies before it ends, when it has them.
+    #[must_use]
+    pub fn seconds(&self) -> Option<f32> {
+        self.seconds
+    }
+
+    /// Its seconds left, while it has `seconds`.
+    #[must_use]
+    pub fn seconds_left(&self) -> Option<f32> {
+        self.left
     }
 
     /// The walls it turns at before the next ends it.
@@ -596,6 +663,12 @@ struct ProjectileScene {
         skip_serializing_if = "Option::is_none"
     )]
     range: Option<f32>,
+    #[serde(
+        default,
+        deserialize_with = "optional_positive",
+        skip_serializing_if = "Option::is_none"
+    )]
+    seconds: Option<f32>,
     #[serde(default)]
     bounces: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -663,6 +736,9 @@ impl ProjectileDef {
             .shape
             .map(|shape| (shape, scene.offset.unwrap_or(Vec2::ZERO)));
         projectile.end = scene.end;
+        if let Some(seconds) = scene.seconds {
+            projectile = projectile.with_seconds(seconds);
+        }
         match scene.range {
             Some(range) => projectile.with_range(range),
             None => projectile,
@@ -728,6 +804,17 @@ impl Plugin for ProjectilePlugin {
             )
             .field(
                 FieldDescription::new(
+                    "seconds",
+                    FieldType::F32 {
+                        min: Bound::Exclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "seconds it flies before it ends at its step's end, as at its range; none when left out",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
                     "bounces",
                     FieldType::U32 {
                         min: None,
@@ -765,7 +852,7 @@ impl Plugin for ProjectilePlugin {
                 FieldDescription::new(
                     "shape",
                     FieldType::Shape("hit_shape"),
-                    "its sweep's own circle or box without a hitbox, its walls and end measured from it; a point when left out",
+                    "its sweep's own circle or box, which meets its walls, a hitbox beside it hitting by its own; without a hitbox its end is measured from it; its hitbox's, else a point, when left out",
                 )
                 .default("null"),
             )
@@ -781,7 +868,7 @@ impl Plugin for ProjectilePlugin {
                 FieldDescription::new(
                     "end",
                     FieldType::Shape(PROJECTILE_END),
-                    "what it sets off at each of its own ends, a hit past its pierce, a wall or its range, not at a lifetime's; none when left out",
+                    "what it sets off at each of its own ends, a hit past its pierce, a wall, its range or its seconds, not at a lifetime's; none when left out",
                 )
                 .default("null"),
             )
@@ -838,7 +925,7 @@ enum Stop {
     /// A wall it does not pass, and the wall's velocity: a body wall's
     /// frame, zero for a tile or a static collider.
     Wall(WallContact, Vec2),
-    /// Its range.
+    /// Its range or its seconds: an end with no wall.
     Range,
 }
 
@@ -869,6 +956,7 @@ impl ProjectileRunner {
         let Some(grid) = world.remove_resource::<HitGrid>() else {
             return;
         };
+        let dt = step_dt(world);
         self.projectiles.clear();
         self.projectiles.extend(
             world
@@ -886,7 +974,7 @@ impl ProjectileRunner {
             match body_of(world, entity) {
                 Body::Dynamic => self.warned.skip("Projectile", entity, Skip::Dynamic),
                 Body::Child => self.warned.skip("Projectile", entity, Skip::Child),
-                _ => self.fly(world, &grid, entity),
+                _ => self.fly(world, &grid, entity, dt),
             }
         }
         world.insert_resource(grid);
@@ -899,27 +987,49 @@ impl ProjectileRunner {
     /// pass or its range, the walls it passed before its end, then its end,
     /// its bounce or its full travel; an end's blast kept for the step's
     /// ends.
-    fn fly(&mut self, world: &mut World, grid: &HitGrid, entity: Entity) {
+    fn fly(&mut self, world: &mut World, grid: &HitGrid, entity: Entity, dt: f32) {
         self.passed.clear();
-        let (shape, offset) = match world.get::<Hitbox>(entity) {
-            Some(hitbox) => (hitbox.shape().shape(), hitbox.offset()),
-            None => world
-                .get::<Projectile>(entity)
-                .and_then(|projectile| projectile.shape)
-                .map_or(
-                    (Shape::Circle { radius: 0.0 }, Vec2::ZERO),
-                    |(shape, offset)| (shape.shape(), offset),
-                ),
-        };
+        // Its hitbox hits, else its own shape; its own shape meets its
+        // walls, else its hitbox. Both sweeps share the step's motion, so a
+        // `t` along one is the same point along the other.
+        let own = world
+            .get::<Projectile>(entity)
+            .and_then(|projectile| projectile.shape)
+            .map(|(shape, offset)| (shape.shape(), offset));
+        let hitbox = world
+            .get::<Hitbox>(entity)
+            .map(|hitbox| (hitbox.shape().shape(), hitbox.offset()));
+        let (shape, offset) = hitbox
+            .or(own)
+            .unwrap_or((Shape::Circle { radius: 0.0 }, Vec2::ZERO));
         let Some(sweep) = sweep_of(world, entity, shape, offset) else {
             return;
+        };
+        let walls = match (hitbox, own) {
+            (Some(_), Some((shape, offset))) => {
+                let Some(walls) = sweep_of(world, entity, shape, offset) else {
+                    return;
+                };
+                walls
+            }
+            _ => sweep,
+        };
+        // Its seconds fall by the step and end it at the step's end.
+        let timed_out = {
+            let projectile = world.get_mut::<Projectile>(entity).unwrap();
+            projectile.left.as_mut().is_some_and(|left| {
+                if dt > 0.0 {
+                    *left -= dt;
+                }
+                *left <= 0.0
+            })
         };
         let length = (sweep.end - sweep.start).length();
         let mut until = 1.0_f32;
         let mut stop = None;
         if length > 0.0 {
             let pass = world.get::<Projectile>(entity).unwrap().pass_layers;
-            if let Some((t, wall, frame)) = self.wall(world, entity, &sweep, length, pass) {
+            if let Some((t, wall, frame)) = self.wall(world, entity, &walls, length, pass) {
                 until = t;
                 stop = Some(Stop::Wall(wall, frame));
             }
@@ -931,6 +1041,9 @@ impl ProjectileRunner {
                     stop = Some(Stop::Range);
                 }
             }
+        }
+        if timed_out && stop.is_none() {
+            stop = Some(Stop::Range);
         }
         let ended = self.hit(world, grid, entity, &sweep, until);
         self.send_passed(world, entity, &sweep, offset, ended.unwrap_or(until));
