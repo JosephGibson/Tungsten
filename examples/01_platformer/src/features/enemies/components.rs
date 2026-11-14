@@ -2,8 +2,8 @@
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
+use tungsten::core::Entity;
 use tungsten::core::save::RefCodec;
-use tungsten::core::{Entity, RigidBody};
 use tungsten::kit::TopDownMover;
 
 /// One of the six enemies, which its prefab names.
@@ -222,18 +222,10 @@ impl EnemyState {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Displaced(pub TopDownMover);
 
-/// What a troll holds over its head: the troll, and the object's own body,
-/// which it gets back at the throw or the drop; while held, its body is a
-/// sensor. Rebuilt at a load from the troll's [`Holding`].
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Held {
-    pub by: Entity,
-    pub body: RigidBody,
-}
-
-/// The troll's side of a hold, the object it holds over its head: on the
-/// troll from the lift to the throw or the drop, saved by reference, so a
-/// load lifts the object again.
+/// The troll's side of a hold, the object it holds over its head on the
+/// kit's carry: on the troll from the lift to the throw or the drop, saved
+/// by reference, so a load lifts the object again, a kept ball's too, whose
+/// hold no save captures.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Holding(pub Entity);
 

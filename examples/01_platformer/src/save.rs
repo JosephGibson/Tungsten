@@ -35,7 +35,7 @@ use tungsten::core::save::{
     RestoreError, Value, WorldSave, capture_world, check_world, restore_world,
 };
 use tungsten::core::{CameraController, DataRef, Entity, Position, SaveData, Velocity, World};
-use tungsten::kit::{ContactDamage, EffectRequest, Health, ImpactDamage, Stats};
+use tungsten::kit::{ContactDamage, EffectRequest, Health, ImpactDamage, Stats, carrier_of};
 
 use crate::features::dummy::{self, components::Dummy};
 use crate::features::elements::components::ColdFace;
@@ -43,7 +43,7 @@ use crate::features::elements::systems::{
     arm_throw, coat_of, freeze_for, light, prefab_of, show_douse,
 };
 use crate::features::elements::{COAT, burn_left, ice_left};
-use crate::features::enemies::components::{Enemy, Held, Holding, Throws};
+use crate::features::enemies::components::{Enemy, Holding, Throws};
 use crate::features::enemies::drops::{self, Orb};
 use crate::features::enemies::{self, troll};
 use crate::features::level::components::Hazard;
@@ -706,7 +706,17 @@ fn rebuild(world: &mut World, touches: &[(Entity, Option<ContactDamage>)]) {
         .collect();
     for (troll, object) in holds {
         world.remove_component::<Holding>(troll);
-        if world.is_alive(object) && !world.has::<Held>(object) {
+        if !world.is_alive(object) {
+            continue;
+        }
+        // The kit's `carried` brings an engine record back held with no
+        // body until its first step: let it go at rest and lift it again at
+        // once, so a paused load shows it held, as a kept ball, whose hold
+        // no save captures, is lifted.
+        if carrier_of(world, object) == Some(troll) {
+            tungsten::kit::release(world, troll, Vec2::ZERO);
+        }
+        if carrier_of(world, object).is_none() {
             troll::pick_up(world, troll, object);
         }
     }

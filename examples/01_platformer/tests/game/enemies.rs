@@ -32,7 +32,7 @@ use example_01_platformer::features::elements::systems::crush;
 use example_01_platformer::features::enemies::bat::FLASH_SECS;
 use example_01_platformer::features::enemies::beetle::{CHARGE_SPEED, PAW_CLIP};
 use example_01_platformer::features::enemies::components::{
-    Brain, Enemy, EnemyKind, EnemyState, Held, Sight, Strike, Throws, Variant,
+    Brain, Enemy, EnemyKind, EnemyState, Holding, Sight, Strike, Throws, Variant,
 };
 use example_01_platformer::features::enemies::crawler::{self, FROST_BREATH, LUNGE_SPEED};
 use example_01_platformer::features::enemies::drops::{
@@ -67,7 +67,7 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     ContactDamage, Cooldown, Damaged, Effects, Health, Hitbox, KitRng, Knockback,
-    PlatformerController, StateMachine, Stats, TopDownMover,
+    PlatformerController, StateMachine, Stats, TopDownMover, carrier_of,
 };
 use tungsten::testing::UiHarness;
 
@@ -2589,10 +2589,89 @@ fn a_save_while_the_troll_holds_iron_loads_with_the_hold() {
 }
 
 #[test]
+fn the_trolls_load_rides_over_its_centre_facing_either_way() {
+    let (mut harness, _) = arena();
+    let troll = troll_at(&mut harness, 1300.0, Difficulty::Normal);
+    carrying(&mut harness, troll);
+    let block = iron_at(&mut harness, 1460.0);
+    harness.step(2);
+    assert!(troll::pick_up(harness.world_mut(), troll, block));
+    // Its body's `hands` point as it faces, less the block's half height:
+    // where the block's centre sits.
+    let hands = |h: &UiHarness, heading: f32| {
+        let at = h.world().get::<Position>(troll).unwrap().0;
+        at + actor_body("troll")
+            .point("hands", heading)
+            .expect("the troll's hands")
+            - Vec2::new(0.0, IRON_HALF.y)
+    };
+    assert!(body(&harness, block).distance(hands(&harness, 1.0)) < 1e-3);
+    for heading in [1.0, -1.0] {
+        enemies::turn(harness.world_mut(), troll, heading);
+        for step in 0..10 {
+            harness.step(1);
+            assert_eq!(
+                enemies::heading_of(harness.world(), troll),
+                Some(heading),
+                "it faces {heading}"
+            );
+            let off = body(&harness, block).distance(hands(&harness, heading));
+            assert!(off < 1e-3, "heading {heading}, step {step}: {off} px off");
+        }
+    }
+}
+
+#[test]
+fn a_troll_drops_a_held_foe_that_thaws() {
+    let (mut harness, _) = arena();
+    let troll = troll_at(&mut harness, 1300.0, Difficulty::Normal);
+    // Mindless, it neither throws nor sets down what it holds.
+    still(&mut harness, troll);
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 1460.0, TOP);
+    harness.step(2);
+    apply(&mut harness, crawler, "frozen", None);
+    harness.step(1);
+    assert!(tagged(&harness, crawler, "status.frozen"));
+    assert!(troll::pick_up(harness.world_mut(), troll, crawler));
+    let holding = |h: &UiHarness| h.world().get::<Holding>(troll).map(|holding| holding.0);
+    let kind = |h: &UiHarness| {
+        h.world()
+            .get::<tungsten::core::RigidBody>(crawler)
+            .unwrap()
+            .kind
+    };
+    let mut thawed = false;
+    for step in 0..900 {
+        harness.step(1);
+        let held = carrier_of(harness.world(), crawler) == Some(troll);
+        if tagged(&harness, crawler, "status.frozen") {
+            assert!(held, "step {step}: held while frozen");
+            assert_eq!(holding(&harness), Some(crawler), "step {step}");
+            assert_eq!(kind(&harness), tungsten::core::BodyKind::Sensor);
+            continue;
+        }
+        // The step its ice goes: let go at rest, its own body back, the
+        // troll's hands empty.
+        assert!(!held, "let go the step it thaws");
+        assert_eq!(holding(&harness), None, "the troll's Holding gone");
+        assert_eq!(kind(&harness), tungsten::core::BodyKind::Kinematic);
+        let velocity = harness
+            .world()
+            .get::<tungsten::core::Velocity>(crawler)
+            .unwrap()
+            .0;
+        assert!(velocity.x.abs() < 1e-3, "at rest: {velocity}");
+        thawed = true;
+        break;
+    }
+    assert!(thawed, "it thaws");
+}
+
+#[test]
 fn killing_or_evicting_the_troll_drops_what_it_holds() {
     let dropped = |harness: &UiHarness, block: Entity| {
         let world = harness.world();
-        !world.has::<example_01_platformer::features::enemies::components::Held>(block)
+        carrier_of(world, block).is_none()
             && world.get::<tungsten::core::RigidBody>(block).unwrap().kind
                 == tungsten::core::BodyKind::Dynamic
     };
@@ -4428,7 +4507,7 @@ fn a_chasing_troll_lifts_an_unlit_keg_and_throws_it_but_leaves_a_lit_one() {
                 break;
             }
             last = body(&harness, keg);
-            lifted |= world.get::<Held>(keg).is_some_and(|hold| hold.by == troll);
+            lifted |= carrier_of(world, keg) == Some(troll);
             thrown |= world.resource::<Throws>().of(keg).is_some();
             lighted |= !lit && props::burning(world, keg);
         }
@@ -4458,10 +4537,7 @@ fn a_searching_troll_lifts_the_crate_in_its_way_and_carries_it_past() {
     let mut lifted = false;
     for _ in 0..300 {
         harness.step(1);
-        lifted |= harness
-            .world()
-            .get::<Held>(crate_)
-            .is_some_and(|hold| hold.by == troll);
+        lifted |= carrier_of(harness.world(), crate_) == Some(troll);
         if at(&harness, troll).x < start.x - 20.0 {
             break;
         }
@@ -4507,7 +4583,7 @@ fn a_returning_troll_kicks_scrap_from_its_way_and_passes_it() {
         "past where it lay: {}",
         at(&harness, troll)
     );
-    assert!(harness.world().get::<Held>(scrap).is_none(), "never lifted");
+    assert!(carrier_of(harness.world(), scrap).is_none(), "never lifted");
 }
 
 #[test]
@@ -4533,7 +4609,7 @@ fn a_troll_sets_down_what_it_holds_back_on_patrol() {
         harness.step(1);
         blasts += heard(&harness, Sound::KegBlasted);
     }
-    assert!(harness.world().get::<Held>(keg).is_none(), "set down");
+    assert!(carrier_of(harness.world(), keg).is_none(), "set down");
     assert_eq!(blasts, 0, "a fall too short to set it off");
     let half = props::KEG_HALF;
     assert!(

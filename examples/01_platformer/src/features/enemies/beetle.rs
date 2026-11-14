@@ -12,10 +12,10 @@
 
 use glam::Vec2;
 use tungsten::core::{BodyKind, Collider, Entity, Position, RigidBody, Shape, Velocity, World};
-use tungsten::kit::{Hitbox, PlatformerController, use_ability};
+use tungsten::kit::{Hitbox, PlatformerController, carrier_of, use_ability};
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
-use super::components::{Enemy, EnemyKind, EnemyState, Held};
+use super::components::{Enemy, EnemyKind, EnemyState};
 use super::systems::{armed, elapsed, face, go, pace, player, rest, sees, stride};
 use super::troll::meets;
 use super::{ARRIVED, centre, heading_of};
@@ -178,7 +178,7 @@ fn plough(world: &mut World, beetle: Entity, heading: f32) {
             let at = world.get::<Position>(entity)?.0 + collider.offset;
             let light = body.kind == BodyKind::Dynamic && body.inv_mass * heaviest > 1.0;
             if !light
-                || world.has::<Held>(entity)
+                || carrier_of(world, entity).is_some()
                 || !meets(at, collider.shape, box_at, PLOUGH_HALF)
             {
                 return None;

@@ -44,7 +44,7 @@ use tungsten::core::{
     Shape, Stage, World, system,
 };
 use tungsten::kit::{
-    CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
+    CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, FOLLOW, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
     Modifier, PLATFORMER_CONTROLLER, Phase, Stats, TOP_DOWN_MOVER, TagFilter, WorldSource,
     WorldSources, ensure_phases,
 };
@@ -293,7 +293,8 @@ impl Plugin for EnemiesPlugin {
         let holds = system("troll_holds", troll::holds)
             .after(PLATFORMER_CONTROLLER)
             .after(TOP_DOWN_MOVER)
-            .after(KNOCKBACK);
+            .after(KNOCKBACK)
+            .after(FOLLOW);
         schedule.add(Stage::FixedUpdate, Phase::Move.join(holds));
         let snowballs = system("snowballs", snowball::snowballs);
         schedule.add(Stage::FixedUpdate, Phase::Overlap.join(snowballs));

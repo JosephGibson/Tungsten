@@ -31,10 +31,10 @@ use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
 use example_01_platformer::features::elements::components::{ColdFace, Flame};
 use example_01_platformer::features::enemies::components::{
-    Enemy, EnemyKind, EnemyState, Throw, Throws,
+    Enemy, EnemyKind, EnemyState, Holding, Throw, Throws,
 };
 use example_01_platformer::features::enemies::drops::{self, Orb, OrbKind};
-use example_01_platformer::features::enemies::{self, snowball};
+use example_01_platformer::features::enemies::{self, snowball, troll};
 use example_01_platformer::features::gun;
 use example_01_platformer::features::gun::components::{Bullet, Reload};
 use example_01_platformer::features::level;
@@ -68,15 +68,15 @@ use tungsten::core::{
 use tungsten::kit::{
     Abilities, Chemistry, ContactDamage, ContactTouch, DamageRequest, Damaged, Effects, Health,
     Hitbox, Modifier, Oscillator, PathFollower, Pickup, Projectile, Shield, StateMachine, Stats,
-    Tags,
+    Tags, carrier_of,
 };
 use tungsten::testing::UiHarness;
 
+use super::{actor_body, kind_body, player_half};
 use super::{
     aim_at, calm, centre, choose, floor, ground, harness, harness_with, mana, pin_camera,
     player_entity, run, settle, stand, start, steps_this_frame, teleport, top, user_folder,
 };
-use super::{kind_body, player_half};
 
 /// The sky's ground and the camera's corner over it.
 const TOP: f32 = 1000.0;
@@ -355,6 +355,11 @@ struct Lists {
 /// engine record loads without it (the plan's §2.6).
 const EMITTER: &str = "tungsten_kit::overlap::grid::Emitter";
 
+/// The kit's hold on a held body, a type no game can name, saved as
+/// `carried` on an engine record and rebuilt on a kept ball from its
+/// troll's `Holding`.
+const CARRIED: &str = "tungsten_kit::motion::carry::Carried";
+
 /// The components an engine record's load does not give back.
 fn lost(kind: &str) -> &'static [&'static str] {
     match kind {
@@ -380,8 +385,9 @@ macro_rules! registered {
 }
 
 /// The component types the registry saves, by type name: every one 01's
-/// saved entities could carry. It names three more, the kit's own
-/// `became`, `carried` and `spawned`, whose types no game can name.
+/// saved entities could carry, the kit's hold ([`CARRIED`]) by its literal
+/// name. It names two more, the kit's own `became` and `spawned`, whose
+/// types no game can name.
 fn registered(world: &World) -> BTreeSet<&'static str> {
     use example_01_platformer::features::enemies::components::{
         Brain, Displaced, EnemyState, Holding, Sight, Snowball,
@@ -396,7 +402,7 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
         Source, Spawner, Steering, TopDownMover,
     };
     let registry = world.resource::<SaveRegistry>();
-    let (types, names) = registered!(registry;
+    let (mut types, mut names) = registered!(registry;
         Transform, Visibility, Position, PrevPosition, Velocity, Spin, Collider, RigidBody,
         Abilities, Aim, ContactDamage, Cooldown, Counters, Delivery, Effects, Facing, Flags,
         Follow, Health, Hitbox, Hurtbox, ImpactDamage, Knockback, Level, Lifetime, LinearMotion, Orbit,
@@ -405,13 +411,17 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
         Spellbook, Lantern, Bullet, Reload, Enemy, Brain, Sight, StateMachine<EnemyState>,
         Displaced, Orb, Holding, BlackHole, IronScrap, MapProp, Plank, Snowball,
     );
+    if registry.component_names().any(|saved| saved == "carried") {
+        types.insert(CARRIED);
+        names.insert("carried".to_owned());
+    }
     let unnamed: BTreeSet<&str> = registry
         .component_names()
         .filter(|saved| !names.contains(*saved))
         .collect();
     assert_eq!(
         unnamed,
-        BTreeSet::from(["became", "carried", "spawned"]),
+        BTreeSet::from(["became", "spawned"]),
         "the census asks the registry of every type it saves"
     );
     types
@@ -521,6 +531,7 @@ fn lists(kind: &str) -> Lists {
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
                     name::<tungsten::kit::ImpactDamage>(),
+                    CARRIED,
                 ],
             ]
             .concat(),
@@ -892,6 +903,138 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "wisp"
         ]
     );
+}
+
+/// Each component on `entity` that is not in exactly one home by the
+/// census's rules ([`registered`], [`lists`]): saved with it, rebuilt,
+/// drawn or lost at an engine record's load.
+fn misplaced(world: &World, entity: Entity, registered: &BTreeSet<&str>) -> BTreeSet<String> {
+    let kind = kind(world, entity);
+    let lists = lists(kind);
+    let saved = world.get::<Saved>(entity).expect("a saved entity");
+    let engine = saved.prefab().is_some() || saved.id().is_authored();
+    let mut wrong = BTreeSet::new();
+    for (_, ty) in world.component_types(entity) {
+        let count = |homes: &[&[&str]]| homes.iter().filter(|list| list.contains(&ty)).count();
+        let structural = ty == name::<Saved>() || ty == name::<PrevPosition>();
+        let homes = if structural || (engine && registered.contains(ty)) {
+            1
+        } else if engine {
+            count(&[&lists.rebuilt, &lists.presentation, lost(kind)])
+        } else {
+            count(&[&lists.recorded, &lists.rebuilt, &lists.presentation])
+        };
+        if homes != 1 {
+            wrong.insert(format!("{kind}: {ty} is in {homes} lists, not one"));
+        }
+    }
+    wrong
+}
+
+#[test]
+fn held_bodies_are_saved_rebuilt_or_presentation() {
+    let (mut harness, _) = grounded();
+    let kind = EnemyKind::Troll;
+    let y = TOP - kind_body(kind).half.y - 0.5;
+    let trolls = [1300.0, 1900.0].map(|x| enemy(&mut harness, kind, Vec2::new(x, y)));
+    for troll in trolls {
+        // Searching nowhere, it carries what it lifts.
+        harness
+            .world_mut()
+            .insert(troll, StateMachine::new(EnemyState::Search));
+    }
+    let iron = iron_at(&mut harness, 1460.0);
+    let ball = toys::spawn_ball(
+        harness.world_mut(),
+        Vec2::new(2060.0, TOP - toys::BALL_RADIUS - 0.5),
+        false,
+    );
+    harness.step(2);
+    for (troll, body) in [(trolls[0], iron), (trolls[1], ball)] {
+        assert!(troll::pick_up(harness.world_mut(), troll, body));
+    }
+    harness.step(3);
+    let world = harness.world();
+    let engine = |entity: Entity| world.get::<Saved>(entity).unwrap().prefab().is_some();
+    assert!(engine(iron), "the iron an engine record");
+    assert!(!engine(ball), "the ball one of 01's own");
+    let registered = registered(world);
+    for (body, what) in [(iron, "iron"), (ball, "ball")] {
+        assert!(carrier_of(world, body).is_some(), "{what}: held");
+        assert!(
+            world
+                .component_types(body)
+                .iter()
+                .any(|&(_, ty)| ty == CARRIED),
+            "{what}: the kit's hold on it"
+        );
+        let wrong = misplaced(world, body, &registered);
+        assert!(wrong.is_empty(), "{what}: {wrong:#?}");
+    }
+}
+
+/// Removes every `key` from `value`'s objects, at any depth: how many.
+fn strip_key(value: &mut serde_json::Value, key: &str) -> usize {
+    match value {
+        serde_json::Value::Object(object) => {
+            let own = usize::from(object.remove(key).is_some());
+            own + object
+                .values_mut()
+                .map(|inner| strip_key(inner, key))
+                .sum::<usize>()
+        }
+        serde_json::Value::Array(items) => items.iter_mut().map(|item| strip_key(item, key)).sum(),
+        _ => 0,
+    }
+}
+
+#[test]
+fn an_older_saves_hold_loads_held() {
+    let (mut harness, _) = grounded();
+    let kind = EnemyKind::Troll;
+    let troll = enemy(
+        &mut harness,
+        kind,
+        Vec2::new(1300.0, TOP - kind_body(kind).half.y - 0.5),
+    );
+    harness
+        .world_mut()
+        .insert(troll, StateMachine::new(EnemyState::Search));
+    let iron = iron_at(&mut harness, 1460.0);
+    assert!(troll::pick_up(harness.world_mut(), troll, iron));
+    harness.step(3);
+    let (troll_id, iron_id) = (id_of(&harness, troll), id_of(&harness, iron));
+    // Schema 32's shape: no kit hold on the iron.
+    let mut older = json(&capture(&harness));
+    assert!(
+        strip_key(&mut older["world"], "carried") > 0,
+        "the kit's hold saved"
+    );
+    let read: SaveGame = serde_json::from_value(older).expect("the save reads");
+    let mut loaded = super::harness();
+    load(&mut loaded, read);
+    assert!(
+        loaded.world().resource::<Time>().is_paused(),
+        "the clock held"
+    );
+    let (troll, iron) = (by_id(&loaded, troll_id), by_id(&loaded, iron_id));
+    let world = loaded.world();
+    assert_eq!(
+        world.get::<Holding>(troll).map(|holding| holding.0),
+        Some(iron),
+        "the troll's Holding names it"
+    );
+    assert_eq!(carrier_of(world, iron), Some(troll));
+    assert_eq!(
+        world.get::<tungsten::core::RigidBody>(iron).unwrap().kind,
+        tungsten::core::BodyKind::Sensor,
+        "a sensor at once"
+    );
+    let hands = world.get::<Position>(troll).unwrap().0
+        + actor_body("troll").point("hands", 1.0).unwrap()
+        - Vec2::new(0.0, IRON_HALF.y);
+    let off = centre(&loaded, iron).distance(hands);
+    assert!(off < 1e-3, "at the hands: {off} px off");
 }
 
 #[test]

@@ -17,10 +17,11 @@
 //! what it may not lift; it carries what it lifts until it throws it in a
 //! chase or sets it down back on patrol.
 //!
-//! A held object keeps its entity and save ID: its body turns a sensor,
-//! which [`holds`] puts at the troll's hands before each step at the
-//! troll's velocity, and the throw or the drop gives its body back. A troll
-//! that dies, freezes, is stunned or goes drops what it holds.
+//! A held object keeps its entity and save ID: the kit's carry turns its
+//! body a sensor and puts it at the troll's hands each step, centre over
+//! centre at the troll's velocity ([`pick_up`]), and the throw or the drop
+//! gives its body back. A troll that dies, freezes, is stunned or goes drops
+//! what it holds, and a held dummy or foe slips out as it thaws.
 //!
 //! Its prefab holds the rest: regeneration that burning holds, no
 //! knockback, and its own builds of the cold and the shock, a short
@@ -35,12 +36,13 @@ use tungsten::core::{
     BodyKind, Collider, Entity, PhysicsConfig, Position, PrevPosition, RigidBody, Shape, Velocity,
     World,
 };
-use tungsten::kit::{Health, PlatformerController, Stats, lob_velocity};
+use tungsten::kit::{
+    Health, Hold, PlatformerController, Stats, TagFilter, carried_by, carrier_of, carry,
+    lob_velocity,
+};
 use tungsten::physics::wake;
 
-use super::components::{
-    Brain, Enemy, EnemyKind, EnemyState, Held, Holding, Strike, Throw, Throws,
-};
+use super::components::{Brain, Enemy, EnemyKind, EnemyState, Holding, Strike, Throw, Throws};
 use super::systems::{elapsed, face, go, pace, player, rest, rested, sees, start_rest, stride};
 use super::{ARRIVED, WALK_SHOVE_MOST, centre, heading_of, hop};
 use crate::features::audio::{self, components::Sound};
@@ -52,7 +54,7 @@ use crate::features::props::{
     components::{Crate, Keg},
 };
 use crate::features::toys::components::{BowlingBall, IronBlock};
-use crate::shared::{SaveId, Saved, body_centre, spawn_burst};
+use crate::shared::{Saved, body_centre, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -106,13 +108,10 @@ fn half(shape: Shape) -> Vec2 {
     shape.half_extents()
 }
 
-/// What `troll` holds.
+/// What `troll` holds: the body the kit's carry holds for it.
 #[must_use]
 pub fn held(world: &World, troll: Entity) -> Option<Entity> {
-    world
-        .query::<(Entity, &Held)>()
-        .find(|(_, hold)| hold.by == troll)
-        .map(|(entity, _)| entity)
+    carried_by(world, troll)
 }
 
 /// Whether a troll may lift `entity`: an iron block, a bowling ball, a
@@ -134,7 +133,7 @@ fn liftable(world: &World, entity: Entity) -> bool {
         || world.has::<Crate>(entity)
         || unlit;
     (thing || frozen_target)
-        && !world.has::<Held>(entity)
+        && carrier_of(world, entity).is_none()
         && world
             .get_resource::<Throws>()
             .is_none_or(|throws| throws.of(entity).is_none())
@@ -157,14 +156,14 @@ pub fn nearest_liftable(world: &World, troll: Entity) -> Option<Entity> {
         .map(|(.., entity)| entity)
 }
 
-/// `troll` lifts `object` over its head: its body a sensor until the throw
-/// or the drop, the troll's [`Holding`] naming it. Whether it did: a troll
-/// holds one thing at a time.
+/// `troll` lifts `object` over its head on the kit's carry ([`hold`]): its
+/// body a sensor until the throw or the drop, the troll's [`Holding`]
+/// naming it. Whether it did: a troll holds one thing at a time.
 pub fn pick_up(world: &mut World, troll: Entity, object: Entity) -> bool {
-    if held(world, troll).is_some() || world.has::<Held>(object) {
+    if held(world, troll).is_some() || carrier_of(world, object).is_some() {
         return false;
     }
-    let Some(body) = world.get::<RigidBody>(object).copied() else {
+    let Some(hold) = hold(world, object).filter(|_| world.has::<RigidBody>(object)) else {
         return false;
     };
     let thrown = world.get_resource_mut::<Throws>().is_some_and(|throws| {
@@ -175,71 +174,51 @@ pub fn pick_up(world: &mut World, troll: Entity, object: Entity) -> bool {
     if thrown {
         crate::features::elements::systems::end_throw(world, object);
     }
-    world.insert(object, Held { by: troll, body });
+    if !carry(world, troll, object, hold) {
+        return false;
+    }
     world.insert(troll, Holding(object));
-    if let Some(own) = world.get_mut::<RigidBody>(object) {
-        *own = RigidBody::sensor();
-    }
-    place(world, troll, object);
-    if let Some(at) = world.get::<Position>(object).map(|at| at.0)
-        && let Some(prev) = world.get_mut::<PrevPosition>(object)
-    {
-        prev.0 = at;
-    }
     true
 }
 
-/// Puts `object` at `troll`'s hands, its body's `hands` point over its
-/// head, where the object's bottom sits, at `troll`'s velocity.
-fn place(world: &mut World, troll: Entity, object: Entity) {
-    let (Some(at), Some(collider), Some(heading)) = (
-        world.get::<Position>(troll).map(|at| at.0),
-        world.get::<Collider>(object).copied(),
-        heading_of(world, troll),
-    ) else {
-        return;
-    };
-    let Some(hands) = super::body(world, EnemyKind::Troll).point("hands", heading) else {
-        return;
-    };
-    let centre = at + hands - Vec2::new(0.0, half(collider.shape).y);
-    let velocity = world.get::<Velocity>(troll).map_or(Vec2::ZERO, |v| v.0);
-    if let Some(position) = world.get_mut::<Position>(object) {
-        position.0 = centre - collider.offset;
-    }
-    if let Some(own) = world.get_mut::<Velocity>(object) {
-        own.0 = velocity;
-    }
+/// How a troll holds `object`: the object's bottom at its body's `hands`
+/// point over its head, set centre over centre so it holds facing either
+/// way, let go when the troll freezes or is stunned, and a held dummy or
+/// foe let go once it thaws. `None` for an object without a collider.
+fn hold(world: &World, object: Entity) -> Option<Hold> {
+    let body = super::body(world, EnemyKind::Troll);
+    let hands = body.point("hands", 1.0)?;
+    let below = half(world.get::<Collider>(object)?.shape).y;
+    let hold = Hold::new(hands - body.centre - Vec2::new(0.0, below))
+        .centred()
+        .with_drop(TagFilter::new().any([FROZEN, STUNNED]));
+    let target = world.has::<Dummy>(object) || world.has::<Enemy>(object);
+    Some(if target {
+        hold.with_held_drop(TagFilter::new().none([FROZEN]))
+    } else {
+        hold
+    })
 }
 
-/// Lets `object` go at `velocity` with its own body back: a dynamic body
-/// takes the velocity, a frozen enemy's controller a launch, its input
-/// locked for [`THROWN_LOCK`] unless it is a drop.
+/// Lets `object` go from its troll's hands at `velocity`, the kit's release
+/// giving its body back (a dynamic body takes the velocity and wakes, a
+/// frozen enemy's controller a launch) and the troll's [`Holding`] gone, the
+/// thrown controller's input locked for [`THROWN_LOCK`] unless it is a drop.
 fn release(world: &mut World, object: Entity, velocity: Vec2) {
-    let Some(hold) = world.get::<Held>(object).copied() else {
+    let Some(troll) = carrier_of(world, object) else {
         return;
     };
-    world.remove_component::<Held>(object);
+    tungsten::kit::release(world, troll, velocity);
     if world
-        .get::<Holding>(hold.by)
+        .get::<Holding>(troll)
         .is_some_and(|holding| holding.0 == object)
     {
-        world.remove_component::<Holding>(hold.by);
+        world.remove_component::<Holding>(troll);
     }
-    if let Some(body) = world.get_mut::<RigidBody>(object) {
-        *body = hold.body;
-    }
-    if let Some(own) = world.get_mut::<Velocity>(object) {
-        own.0 = velocity;
-    }
-    if let Some(controller) = world.get_mut::<PlatformerController>(object) {
-        controller.launch(velocity);
-        if velocity != Vec2::ZERO {
-            controller.lock_input(THROWN_LOCK);
-        }
-    }
-    if hold.body.kind == BodyKind::Dynamic {
-        wake(world, object);
+    if velocity != Vec2::ZERO
+        && let Some(controller) = world.get_mut::<PlatformerController>(object)
+    {
+        controller.lock_input(THROWN_LOCK);
     }
 }
 
@@ -432,31 +411,20 @@ pub fn swipe(world: &mut World, troll: Entity) {
     audio::play(world, Sound::TrollSwiped, box_at);
 }
 
-/// `troll_holds`, in the move phase after the movers: each held object
-/// goes to its troll's hands at its troll's velocity, since a sensor moves
-/// by its velocity in the step; one whose troll is gone, dead, frozen or
-/// stunned, or a held enemy or dummy that thawed, drops where it is, its
-/// body back at rest.
+/// `troll_holds`, in the move phase after the kit's follow pass, which puts
+/// each held object at its troll's hands at its troll's velocity or drops
+/// it where it is, its body back at rest, once its troll is gone, dead,
+/// frozen or stunned or a held enemy or dummy thawed ([`hold`]): a troll
+/// whose [`Holding`] names a body the kit no longer holds for it loses it,
+/// so a save never names a let-go body.
 pub fn holds(world: &mut World) {
-    let mut held: Vec<(Option<SaveId>, Entity, Entity)> = world
-        .query::<(Entity, &Held)>()
-        .map(|(entity, hold)| (crate::shared::save_id(world, entity), entity, hold.by))
+    let empty: Vec<Entity> = world
+        .query::<(Entity, &Holding)>()
+        .filter(|&(troll, holding)| carrier_of(world, holding.0) != Some(troll))
+        .map(|(troll, _)| troll)
         .collect();
-    held.sort_unstable_by_key(|&(id, ..)| id);
-    for (_, object, troll) in held {
-        let able = world.is_alive(troll)
-            && world
-                .get::<Health>(troll)
-                .is_some_and(|health| !health.is_dead())
-            && !has_status(world, troll, FROZEN)
-            && !has_status(world, troll, STUNNED);
-        let target = world.has::<Dummy>(object) || world.has::<Enemy>(object);
-        let thawed = target && !has_status(world, object, FROZEN);
-        if able && !thawed {
-            place(world, troll, object);
-        } else {
-            drop_held(world, object);
-        }
+    for troll in empty {
+        world.remove_component::<Holding>(troll);
     }
 }
 
@@ -506,7 +474,7 @@ fn clear_way(world: &mut World, troll: Entity, heading: f32) -> bool {
     }
     let Some(inv_mass) = world
         .get::<RigidBody>(body)
-        .filter(|_| !world.has::<Held>(body))
+        .filter(|_| carrier_of(world, body).is_none())
         .map(|own| own.inv_mass)
     else {
         return false;

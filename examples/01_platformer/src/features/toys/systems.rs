@@ -11,7 +11,8 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     Blast, Children, EffectInstance, Effects, Health, LinearMotion, Modifier, PlatformerController,
-    Projectile, ProjectileExpired, Stats, Tags, TopDownMover, blast, knock_back, stimulate,
+    Projectile, ProjectileExpired, Stats, Tags, TopDownMover, blast, carrier_of, knock_back,
+    stimulate,
 };
 use tungsten::physics::wake;
 
@@ -38,7 +39,7 @@ use crate::features::elements::{self, FIRE_CENTRE, FIRE_HALF, STEAM_REACH, freez
 use crate::features::elements::{BALL_BURN, COAT, is_burning, is_frozen};
 use crate::features::elements::{Impact, Raised};
 use crate::features::enemies;
-use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
+use crate::features::enemies::components::{Enemy, EnemyKind, Throws};
 use crate::features::level::components::Hazard;
 use crate::features::level::geyser::{self, Geyser};
 use crate::features::level::systems::drawn_time;
@@ -198,7 +199,7 @@ pub fn weight(world: &mut World) {
         .query::<(Entity, &IronBlock, &Velocity)>()
         .filter(|(block, _, velocity)| {
             velocity.0.y > IRON_FALL_FROM
-                && !world.has::<Held>(*block)
+                && carrier_of(world, *block).is_none()
                 && throws.is_none_or(|throws| throws.of(*block).is_none())
         })
         .map(|(block, ..)| block)
